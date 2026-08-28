@@ -84,11 +84,11 @@ test('DISCLOSURE CONTENT DRIFT DEFECT: Settings renders the server inventory and
 });
 
 test('a cold-boot 503 is a "not yet", not a cached terminal error', async () => {
-// The route is mounted before `StationRuntime` constructs the service behind
-// it, so a fresh boot answers 503 first. With the app's real query defaults
-// (`retry: 1`, `refetchOnMount: false`, five-minute `staleTime`) a cached
-// error here withholds the disclosure for the entire session — the panel
-// simply never appears.
+  // The route is mounted before `StationRuntime` constructs the service behind
+  // it, so a fresh boot answers 503 first. With the app's real query defaults
+  // (`retry: 1`, `refetchOnMount: false`, five-minute `staleTime`) a cached
+  // error here withholds the disclosure for the entire session — the panel
+  // simply never appears.
   const ready = {
     data: {
       acknowledged: false,
@@ -141,12 +141,12 @@ test('a cold-boot 503 is a "not yet", not a cached terminal error', async () => 
 });
 
 test('a persistently failing acknowledgement does not trap the user behind the first-run dialog', async () => {
-// The first-run disclosure covers the whole app, including the
-// connection-recovery UI. Its acknowledgement can fail persistently — a
-// revoked session, a 403, an unwritable receipt path — so the acknowledgement
-// must not be the only way out, or the app becomes unusable with no recourse
-//Dismissal is for this page only; the receipt is still
-// what stops the disclosure coming back.
+  // The first-run disclosure covers the whole app, including the
+  // connection-recovery UI. Its acknowledgement can fail persistently — a
+  // revoked session, a 403, an unwritable receipt path — so the acknowledgement
+  // must not be the only way out, or the app becomes unusable with no recourse
+  //Dismissal is for this page only; the receipt is still
+  // what stops the disclosure coming back.
   resetUsageTelemetryDisclosureDismissal();
   authenticatedFetch.mockReset();
   authenticatedFetch.mockImplementation(async (url: string) =>
@@ -176,12 +176,12 @@ test('a persistently failing acknowledgement does not trap the user behind the f
     </QueryClientProvider>,
   );
 
-// Pin that there IS a dialog to be trapped by, so the dismissal assertion
-// below cannot pass by the dialog never having rendered.
+  // Pin that there IS a dialog to be trapped by, so the dismissal assertion
+  // below cannot pass by the dialog never having rendered.
   expect(await screen.findByRole('dialog')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'I understand' }));
 
-// The failure is disclosed and the action stays available as a retry.
+  // The failure is disclosed and the action stays available as a retry.
   expect(
     await screen.findByRole('alert'),
     'a failed acknowledgement was not disclosed',
@@ -191,7 +191,7 @@ test('a persistently failing acknowledgement does not trap the user behind the f
     'the retry affordance disappeared with the failure',
   ).toBeTruthy();
 
-// And there is a way out that does not depend on the write succeeding.
+  // And there is a way out that does not depend on the write succeeding.
   fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
 
   await waitFor(() =>
@@ -228,8 +228,8 @@ const ACKNOWLEDGEMENTS_URL =
   'http://station.test/api/usage-telemetry/disclosure/acknowledgements';
 
 test('the first-run STEP acknowledges through the same endpoint, then advances', async () => {
-// Same copy, same receipt: moving the disclosure into the first-run chapter
-// must not fork the acknowledgement into a second write path.
+  // Same copy, same receipt: moving the disclosure into the first-run chapter
+  // must not fork the acknowledgement into a second write path.
   resetUsageTelemetryDisclosureDismissal();
   authenticatedFetch.mockReset();
   authenticatedFetch.mockImplementation(async (url: string) =>
@@ -262,16 +262,16 @@ test('the first-run STEP acknowledges through the same endpoint, then advances',
       method: 'POST',
     }),
   );
-// And only AFTER the receipt landed: advancing on the click would leave a
-// failed write looking like an acknowledgement.
+  // And only AFTER the receipt landed: advancing on the click would leave a
+  // failed write looking like an acknowledgement.
   await waitFor(() => expect(advance).toHaveBeenCalledTimes(1));
   resetUsageTelemetryDisclosureDismissal();
 });
 
 test('"Not now" in the step writes nothing and still moves the run on', async () => {
-// Same semantics as the standalone modal's "Not now": no receipt, so the
-// disclosure is offered again on the next load — but the first run does not
-// stall on a step the user declined.
+  // Same semantics as the standalone modal's "Not now": no receipt, so the
+  // disclosure is offered again on the next load — but the first run does not
+  // stall on a step the user declined.
   resetUsageTelemetryDisclosureDismissal();
   authenticatedFetch.mockReset();
   authenticatedFetch.mockImplementation(async () => inventoryResponse(false));
@@ -284,9 +284,9 @@ test('"Not now" in the step writes nothing and still moves the run on', async ()
     </QueryClientProvider>,
   );
 
-// The standalone modal renders beside the step here on purpose — that is
-// what makes the dismissal assertion below observable — so every query is
-// scoped to the step rather than to the page.
+  // The standalone modal renders beside the step here on purpose — that is
+  // what makes the dismissal assertion below observable — so every query is
+  // scoped to the step rather than to the page.
   expect(await screen.findByRole('dialog')).toBeTruthy();
   const step = screen.getByTestId('first-run-disclosure');
   fireEvent.click(within(step).getByRole('button', { name: 'Not now' }));
@@ -298,9 +298,9 @@ test('"Not now" in the step writes nothing and still moves the run on', async ()
     ),
     '"Not now" wrote an acknowledgement receipt',
   ).toEqual([]);
-// The standalone modal beside it stands down for this page — the same
-// dismissal the modal's own "Not now" performs — rather than re-offering the
-// moment the run ends.
+  // The standalone modal beside it stands down for this page — the same
+  // dismissal the modal's own "Not now" performs — rather than re-offering the
+  // moment the run ends.
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   resetUsageTelemetryDisclosureDismissal();
 });

@@ -120,20 +120,20 @@ test('a cached granted status does not survive the server failing to affirm it �
     expect(rendered.result.current).toMatchObject({ state: 'granted' }),
   );
 
-// The grant store becomes unreadable: the server 503s. A plugin registry
-// reload (the hook's own revalidation seam) triggers the refetch.
+  // The grant store becomes unreadable: the server 503s. A plugin registry
+  // reload (the hook's own revalidation seam) triggers the refetch.
   serverHealthy = false;
   act(() => {
     for (const notify of registrySeam.subscribers) notify();
   });
 
-// The hook's own retry policy (one retry, ~1s default backoff) must
-// exhaust before the error state lands; the window is bounded by design.
+  // The hook's own retry policy (one retry, ~1s default backoff) must
+  // exhaust before the error state lands; the window is bounded by design.
   await waitFor(() => expect(rendered.result.current).toBeUndefined(), {
     timeout: 4000,
   });
-// The stale granted payload is genuinely still in the query cache — the
-// authority projection, not cache absence, is what kept it from mounting.
+  // The stale granted payload is genuinely still in the query cache — the
+  // authority projection, not cache absence, is what kept it from mounting.
   expect(queryClient.getQueryData(['workspace-home-role'])).toMatchObject({
     state: 'granted',
   });
@@ -145,7 +145,7 @@ test('revocation transitions to the floor optimistically, before the wire answer
     'fetch',
     vi.fn(async (_input: unknown, init?: { method?: string }) => {
       if (init?.method === 'DELETE') {
-// A wire that never answers: the floor must not wait for it.
+        // A wire that never answers: the floor must not wait for it.
         return new Promise(() => {});
       }
       return grantedResponse();

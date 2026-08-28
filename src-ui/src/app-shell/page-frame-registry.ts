@@ -26,21 +26,21 @@ import { APP_SURFACE_REGISTRY } from './surface-registry';
 const SPLIT_PANE: PageFrameSpec = { width: 'full', body: 'fill', flush: true };
 
 const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
- // Home is the one intentional hero. Its is a prompt ("What do you want
-// to work on?"), not a page name, and a page header above it would title a
-// question. Documented exception, not an omission.
+  // Home is the one intentional hero. Its is a prompt ("What do you want
+  // to work on?"), not a page name, and a page header above it would title a
+  // question. Documented exception, not an omission.
   home: null,
 
   agents: SPLIT_PANE,
   'agent-new': SPLIT_PANE,
   'agent-edit': SPLIT_PANE,
 
-// archive#4463: a top-level nav page gets
-// NO eyebrow — the prior pattern of an eyebrow restating the title in caps
-// (`GUIDANCE` over **Guidance**, and every top-level entry below before
-// this change) is retired as one of the audit's findings. The word is
-// already the page's own `<h1>`; repeating it one line above named nothing
-// an ancestor and duplicated the title instead.
+  // archive#4463: a top-level nav page gets
+  // NO eyebrow — the prior pattern of an eyebrow restating the title in caps
+  // (`GUIDANCE` over **Guidance**, and every top-level entry below before
+  // this change) is retired as one of the audit's findings. The word is
+  // already the page's own `<h1>`; repeating it one line above named nothing
+  // an ancestor and duplicated the title instead.
   guidance: SPLIT_PANE,
 
   connections: {
@@ -52,15 +52,15 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'connections-provider-edit': SPLIT_PANE,
   'connections-engines': SPLIT_PANE,
   'connections-runtime-edit': SPLIT_PANE,
-// Both are the Engines section (CONNECTION_SECTIONS): the frame names the
-// section, so these defaults must agree with it rather than introduce a
-// sixth title for the same destination.
-//
-// The eyebrow is the PARENT only ('Connections'), not the retired
-// 'Connections / Engines' breadcrumb-as-eyebrow — the title already says
-// 'Engines' as its own `<h1>`. `ConnectionsSectionFrame` publishes the
-// live (linked) version of this once it mounts; this is only the brief
-// fallback shown before that chunk arrives.
+  // Both are the Engines section (CONNECTION_SECTIONS): the frame names the
+  // section, so these defaults must agree with it rather than introduce a
+  // sixth title for the same destination.
+  //
+  // The eyebrow is the PARENT only ('Connections'), not the retired
+  // 'Connections / Engines' breadcrumb-as-eyebrow — the title already says
+  // 'Engines' as its own `<h1>`. `ConnectionsSectionFrame` publishes the
+  // live (linked) version of this once it mounts; this is only the brief
+  // fallback shown before that chunk arrives.
   'connections-acp': {
     eyebrow: 'Connections',
     title: 'Engines',
@@ -92,10 +92,10 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'review-queue': SPLIT_PANE,
   activity: SPLIT_PANE,
 
-// 'Developer' is not self-referential here — the title is the active tab
-// ('Logs'/'System'/'Telemetry'/'Memory'/'Archive'), so the eyebrow is a
-// real parent, not a restated title. `DeveloperView` republishes it as a
-// link back to `/developer` once it mounts.
+  // 'Developer' is not self-referential here — the title is the active tab
+  // ('Logs'/'System'/'Telemetry'/'Memory'/'Archive'), so the eyebrow is a
+  // real parent, not a restated title. `DeveloperView` republishes it as a
+  // link back to `/developer` once it mounts.
   developer: { eyebrow: 'Developer', width: 'full', body: 'fill' },
   schedule: {
     title: 'Schedule',
@@ -114,8 +114,8 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   },
   notifications: {
     title: 'Notifications',
- // states the page's model in its own subtitle, and the two regions
-// below are named for exactly these two halves.
+    // states the page's model in its own subtitle, and the two regions
+    // below are named for exactly these two halves.
     subtitle: 'Things that need you, and what happened.',
     width: 'narrow',
   },
@@ -123,34 +123,34 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'project-session-board': { width: 'full', body: 'fill' },
   'project-flow-console': { width: 'full', body: 'fill' },
 
-// archive#4079: the board face is a workspace-like surface (its
-// own grid IS the content), not a management page — same shape as
-// `project`/`layout`/`workspace-pane` below.
+  // archive#4079: the board face is a workspace-like surface (its
+  // own grid IS the content), not a management page — same shape as
+  // `project`/`layout`/`workspace-pane` below.
   board: null,
 
-// An editor, not a management page: its header carries the unsaved badge
-// and the Save/Back pair that only exist while you are editing, and a page
-// header above that would be a second title over a surface that already
-// names its subject. It stays on `DetailHeader` deliberately; see
- // docs/design/shell-skeletons.md §2.2.
+  // An editor, not a management page: its header carries the unsaved badge
+  // and the Save/Back pair that only exist while you are editing, and a page
+  // header above that would be a second title over a surface that already
+  // names its subject. It stays on `DetailHeader` deliberately; see
+  // docs/design/shell-skeletons.md §2.2.
   'project-edit': null,
 
-// The project surfaces below are workspaces, not management pages. Each
-// one's own identity header IS its content (a project's avatar/name/path
-// row, a task's status header, a layout or pane rendering a plugin's
-// viewport edge-to-edge). Framing them would put a second title above a
-// surface that already answers "where am I" — and for panes and layouts,
-// steal viewport from a renderer that was handed the whole area.
+  // The project surfaces below are workspaces, not management pages. Each
+  // one's own identity header IS its content (a project's avatar/name/path
+  // row, a task's status header, a layout or pane rendering a plugin's
+  // viewport edge-to-edge). Framing them would put a second title above a
+  // surface that already answers "where am I" — and for panes and layouts,
+  // steal viewport from a renderer that was handed the whole area.
   project: null,
   task: null,
   layout: null,
   'workspace-pane': null,
 
-// Not a page: a route-level overlay that renders its own dialog chrome.
+  // Not a page: a route-level overlay that renders its own dialog chrome.
   'project-new': null,
 
-// The error surface is the whole page here; `ErrorState` already carries a
-// title, a description and the recovery action.
+  // The error surface is the whole page here; `ErrorState` already carries a
+  // title, a description and the recovery action.
   'not-found': null,
 };
 
@@ -158,7 +158,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
  * Fallback titles for the two framed routes the sidebar has no surface for.
  *
  * Every other framed route resolves its fallback from `surface-registry.ts`
-* the SAME `label` the sidebar row and the command palette render, so the
+ * the SAME `label` the sidebar row and the command palette render, so the
  * word in the header while a chunk loads is by construction the word the user
  * just clicked. These two are reached from inside a project, not from the
  * sidebar, so there is no surface to derive from and the name is recorded
@@ -192,9 +192,9 @@ const RESOLVED_FRAMES = ((): Record<
       resolved[type] = spec;
       continue;
     }
-// `getSurfaceForView` reads `view.type` and nothing else (it is a lookup
-// in the registry's `managementViewTypes` index), so the type alone is
-// the whole input a fallback title can depend on.
+    // `getSurfaceForView` reads `view.type` and nothing else (it is a lookup
+    // in the registry's `managementViewTypes` index), so the type alone is
+    // the whole input a fallback title can depend on.
     const surface = APP_SURFACE_REGISTRY.getSurfaceForView({
       type,
     } as NavigationView);

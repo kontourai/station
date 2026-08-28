@@ -114,11 +114,11 @@ describe('SplitPaneLayout', () => {
     expect(screen.getByText('Create a workspace skill.')).toBeTruthy();
   });
 
- // archive#4463 (the double-empty rule): an empty list has nothing
-// to select, so the detail pane's default "nothing selected" copy is not a
-// second fact — it repeats the list pane's own empty message. Review's
- // queue showed both at once (the); this is the
-// mechanism every split-pane route inherits.
+  // archive#4463 (the double-empty rule): an empty list has nothing
+  // to select, so the detail pane's default "nothing selected" copy is not a
+  // second fact — it repeats the list pane's own empty message. Review's
+  // queue showed both at once (the); this is the
+  // mechanism every split-pane route inherits.
   describe('the double-empty rule', () => {
     test('an empty list suppresses the default detail empty state entirely', () => {
       render(
@@ -199,10 +199,10 @@ describe('SplitPaneLayout', () => {
       expect(screen.getByText('Add catalog')).toBeTruthy();
     });
 
-// a failed read is ALSO an empty items array, so the
-// detail default must defer here too — the list pane's error message is
-// the one fact worth showing, not "error" beside a "nothing selected"
-// that has nothing to do with the read that failed.
+    // a failed read is ALSO an empty items array, so the
+    // detail default must defer here too — the list pane's error message is
+    // the one fact worth showing, not "error" beside a "nothing selected"
+    // that has nothing to do with the read that failed.
     test('a list-read error also suppresses the default detail empty state', () => {
       render(
         <SplitPaneLayout
@@ -246,10 +246,10 @@ describe('SplitPaneLayout', () => {
     });
   });
 
- // the eight split-pane routes each derived "the list is empty"
-// from `items.length === 0`, which is ALSO what a failed read produces —
-// Guidance asserted "No installed skills yet" over a 500. The failure branch
-// is the shell's, so every route gets it from one place.
+  // the eight split-pane routes each derived "the list is empty"
+  // from `items.length === 0`, which is ALSO what a failed read produces —
+  // Guidance asserted "No installed skills yet" over a 500. The failure branch
+  // is the shell's, so every route gets it from one place.
   test('renders the read failure instead of the list empty state', () => {
     const onRetry = vi.fn();
     render(
@@ -276,12 +276,12 @@ describe('SplitPaneLayout', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-// archive#771: `error` used to outrank `items`
-// unconditionally, so a REFETCH failure with cached items still on hand
- // blanked a working list behind an error card — the exact regression archive#769
-// exists to prevent (ProjectPage renders cached data with no banner on a
-// refetch failure). A non-empty `items` must win: the list keeps
-// rendering, with no new banner UI, exactly as it did before the refetch.
+  // archive#771: `error` used to outrank `items`
+  // unconditionally, so a REFETCH failure with cached items still on hand
+  // blanked a working list behind an error card — the exact regression archive#769
+  // exists to prevent (ProjectPage renders cached data with no banner on a
+  // refetch failure). A non-empty `items` must win: the list keeps
+  // rendering, with no new banner UI, exactly as it did before the refetch.
   test('a refetch failure with cached items keeps the list rendering, not the error card', () => {
     const onRetry = vi.fn();
     render(
@@ -324,8 +324,8 @@ describe('SplitPaneLayout', () => {
     expect(screen.getByText('Unable to load skills')).toBeTruthy();
   });
 
-// The wait is the more specific fact while it holds: a first read in flight
-// has not failed yet, and blanking to an error would be its own false claim.
+  // The wait is the more specific fact while it holds: a first read in flight
+  // has not failed yet, and blanking to an error would be its own false claim.
   test('the loading skeleton outranks the failure branch', () => {
     render(
       <SplitPaneLayout
@@ -372,11 +372,11 @@ describe('SplitPaneLayout', () => {
     expect(onSearch).toHaveBeenCalledWith('');
   });
 
-// archive#4463: a typed query
-// over a collection that is ALREADY empty is not what emptied it — without
-// `collectionEmpty`, this misattributed the emptiness to the search
-// ("Nothing in X matches your search") and offered a "Clear filter" action
-// that fixes nothing, because nothing exists regardless of the query.
+  // archive#4463: a typed query
+  // over a collection that is ALREADY empty is not what emptied it — without
+  // `collectionEmpty`, this misattributed the emptiness to the search
+  // ("Nothing in X matches your search") and offered a "Clear filter" action
+  // that fixes nothing, because nothing exists regardless of the query.
   describe('collectionEmpty', () => {
     test('a genuinely-empty collection shows the plain empty state even with a typed query', () => {
       const onSearch = vi.fn();
@@ -519,9 +519,9 @@ describe('SplitPaneLayout', () => {
     );
   }
 
-// The clickable title was reachable by mouse only: no role, no tab stop, no
-// key handler. These assert the `activatable` wiring end-to-end in a real
-// component, which the primitive's own unit tests cannot.
+  // The clickable title was reachable by mouse only: no role, no tab stop, no
+  // key handler. These assert the `activatable` wiring end-to-end in a real
+  // component, which the primitive's own unit tests cannot.
   test('a clearable title is a keyboard-operable control', () => {
     const onDeselect = vi.fn();
     render(
@@ -545,21 +545,21 @@ describe('SplitPaneLayout', () => {
     fireEvent.keyDown(title, { key: 'Enter' });
     expect(onDeselect).toHaveBeenCalledTimes(1);
 
-// Space follows native button timing: suppressed on keydown (no page
-// scroll), activated on keyup — so a held key cannot auto-repeat.
+    // Space follows native button timing: suppressed on keydown (no page
+    // scroll), activated on keyup — so a held key cannot auto-repeat.
     fireEvent.keyDown(title, { key: ' ' });
     expect(onDeselect).toHaveBeenCalledTimes(1);
     fireEvent.keyUp(title, { key: ' ' });
     expect(onDeselect).toHaveBeenCalledTimes(2);
 
-// Keys that mean something else must pass straight through.
+    // Keys that mean something else must pass straight through.
     fireEvent.keyDown(title, { key: 'Tab' });
     expect(onDeselect).toHaveBeenCalledTimes(2);
   });
 
   test('a title with nothing to clear is not a control at all', () => {
-// No selection to deselect: a tab stop here would promise an action the
-// element does not perform.
+    // No selection to deselect: a tab stop here would promise an action the
+    // element does not perform.
     render(
       <SplitPaneLayout
         label="skills"
@@ -582,8 +582,8 @@ describe('SplitPaneLayout', () => {
     isMobileMock.mockReturnValue(false);
     const { container } = renderWithSelection();
 
-// Both list (left) and detail (right) panes render their --visible modifier
-// on desktop, so panes sit side-by-side rather than stacking.
+    // Both list (left) and detail (right) panes render their --visible modifier
+    // on desktop, so panes sit side-by-side rather than stacking.
     expect(container.querySelector('.split-pane__left--visible')).toBeTruthy();
     expect(container.querySelector('.split-pane__right--visible')).toBeTruthy();
     expect(screen.queryByText('← Back to list')).toBeNull();
@@ -593,8 +593,8 @@ describe('SplitPaneLayout', () => {
     isMobileMock.mockReturnValue(true);
     const { container } = renderWithSelection();
 
-// With a selection on mobile, only the detail pane is visible (single
-// column) and the list pane is hidden behind a back affordance.
+    // With a selection on mobile, only the detail pane is visible (single
+    // column) and the list pane is hidden behind a back affordance.
     expect(container.querySelector('.split-pane__left--visible')).toBeNull();
     expect(container.querySelector('.split-pane__right--visible')).toBeTruthy();
     expect(container.querySelector('.split-pane__right--sheet')).toBeTruthy();
@@ -619,8 +619,8 @@ describe('SplitPaneLayout', () => {
 
     expect(screen.getByLabelText('Loading list')).toBeTruthy();
     expect(screen.getByLabelText('Loading detail')).toBeTruthy();
-// archive#4463: the list wait is the shared `SkeletonList` row
-// shape (icon + two lines), not a bespoke local skeleton.
+    // archive#4463: the list wait is the shared `SkeletonList` row
+    // shape (icon + two lines), not a bespoke local skeleton.
     expect(container.querySelectorAll('.skeleton-list__item')).toHaveLength(7);
     expect(
       container.querySelectorAll(
@@ -628,17 +628,17 @@ describe('SplitPaneLayout', () => {
       ),
     ).toHaveLength(3);
 
- // Fix round : count/nesting alone did not catch the rhythm actually
-// drifting when the local skeletons were collapsed onto the shared
-// primitives — the shared circle defaults to 28px, visibly taller than
-// what this replaced. The icon size is a directly-binding CSS property
-// (a fixed width/height has no competing natural-size claim), so a text
-// assertion against the shipped CSS is trustworthy for it; ROW HEIGHT is
-// not (see SplitPaneLayout.skeleton-geometry.test.tsx: min-height alone
-// could not be trusted this way — the row's own content already
-// exceeded it, so the min-height text this test used to assert never
-// bound in the rendered page. That property is now proven with a real
-// Chromium measurement instead of grepped CSS text.
+    // Fix round : count/nesting alone did not catch the rhythm actually
+    // drifting when the local skeletons were collapsed onto the shared
+    // primitives — the shared circle defaults to 28px, visibly taller than
+    // what this replaced. The icon size is a directly-binding CSS property
+    // (a fixed width/height has no competing natural-size claim), so a text
+    // assertion against the shipped CSS is trustworthy for it; ROW HEIGHT is
+    // not (see SplitPaneLayout.skeleton-geometry.test.tsx: min-height alone
+    // could not be trusted this way — the row's own content already
+    // exceeded it, so the min-height text this test used to assert never
+    // bound in the rendered page. That property is now proven with a real
+    // Chromium measurement instead of grepped CSS text.
     expect(cssRuleFrom(skeletonCss, '.skeleton-list__icon')).toContain(
       'width: 24px;',
     );
@@ -839,9 +839,9 @@ describe('SplitPaneLayout', () => {
     rerender(<BreakpointHarness />);
     expect(document.activeElement).not.toBe(row);
 
-// Returning to mobile and then closing the route must still use the
-// original row chain. If the desktop transition consumed it, this lands on
-// the list fallback instead.
+    // Returning to mobile and then closing the route must still use the
+    // original row chain. If the desktop transition consumed it, this lands on
+    // the list fallback instead.
     isMobileMock.mockReturnValue(true);
     rerender(<BreakpointHarness />);
     fireEvent.click(screen.getByRole('button', { name: 'Close route' }));
@@ -1086,8 +1086,8 @@ describe('SplitPaneLayout', () => {
 
     const { container, rerender } = render(<Host />);
     const desktopRoot = container.querySelector('.split-pane__right');
-// Hydration's inline bootstrap deliberately gives way to the stable portal
-// root once. Movement after that must not create another detail subtree.
+    // Hydration's inline bootstrap deliberately gives way to the stable portal
+    // root once. Movement after that must not create another detail subtree.
     const mountsBeforeMovement = mounts;
     const unmountsBeforeMovement = unmounts;
     fireEvent.click(screen.getByRole('button', { name: 'Count 0' }));
@@ -1147,19 +1147,19 @@ describe('SplitPaneLayout', () => {
     expect(document.querySelectorAll('.split-pane__right')).toHaveLength(0);
   });
 
-/**
-* archive#1259. The row this restores to is a list item, and the detail pane
-* the sheet opened is free to delete it — a bare ref to the button was then a
-* detached node, and `.focus` on one is a silent no-op that leaves `<body>`
-* focused (archive#1126). The test above is the surviving-row control; this
-* is the case that had no restore at all.
-*
-* jsdom is the right level for this half: it is about a node leaving the
-* document and the walk continuing to the ancestor it occupied, both of which
-* jsdom models. The half jsdom cannot see — a surviving ancestor that is
-* present but refuses focus — belongs to the shared module and is proven in
-* Chromium by `tests/dialog-return-focus.spec.ts`.
-*/
+  /**
+   * archive#1259. The row this restores to is a list item, and the detail pane
+   * the sheet opened is free to delete it — a bare ref to the button was then a
+   * detached node, and `.focus` on one is a silent no-op that leaves `<body>`
+   * focused (archive#1126). The test above is the surviving-row control; this
+   * is the case that had no restore at all.
+   *
+   * jsdom is the right level for this half: it is about a node leaving the
+   * document and the walk continuing to the ancestor it occupied, both of which
+   * jsdom models. The half jsdom cannot see — a surviving ancestor that is
+   * present but refuses focus — belongs to the shared module and is proven in
+   * Chromium by `tests/dialog-return-focus.spec.ts`.
+   */
   test('mobile dismiss falls back to the list when the detail pane deleted the row', async () => {
     isMobileMock.mockReturnValue(true);
 
@@ -1177,8 +1177,8 @@ describe('SplitPaneLayout', () => {
           items={items}
           selectedId={selectedId}
           onSelect={setSelectedId}
-// The real shape: the detail pane deletes the record it is showing
-// and the sheet closes in the same commit.
+          // The real shape: the detail pane deletes the record it is showing
+          // and the sheet closes in the same commit.
           onDeselect={() => {
             setItems((current) => current.filter((item) => item.id !== 'a'));
             setSelectedId(null);
@@ -1292,8 +1292,8 @@ describe('SplitPaneLayout', () => {
     fireEvent.click(screen.getByRole('button', { name: '← Back to list' }));
     await waitFor(() => expect(document.activeElement).toBe(add));
 
-// The chain is consumed on its first open; a direct subsequent selection
-// has no stale Add intent to resurrect and lands on the focusable list.
+    // The chain is consumed on its first open; a direct subsequent selection
+    // has no stale Add intent to resurrect and lands on the focusable list.
     fireEvent.click(screen.getByRole('button', { name: 'Direct detail' }));
     fireEvent.click(screen.getByRole('button', { name: '← Back to list' }));
     await waitFor(() =>
@@ -1406,9 +1406,9 @@ describe('SplitPaneLayout', () => {
     removeSpy.mockRestore();
   });
 
-// eight routes had no page header because this layout drew its own
-// 14.7px panel title instead. Framed, the collection's identity goes UP into
-// the page header and the pane keeps only its search and its list.
+  // eight routes had no page header because this layout drew its own
+  // 14.7px panel title instead. Framed, the collection's identity goes UP into
+  // the page header and the pane keeps only its search and its list.
   describe('inside a page frame', () => {
     function renderFramed(props: Record<string, unknown> = {}) {
       return render(
@@ -1444,11 +1444,11 @@ describe('SplitPaneLayout', () => {
       expect(header?.textContent).toContain(
         'Connect model services for chats and agents',
       );
- // The trail minus its own name — archive#4463 (the 
- //) retired the page header's old self-referential eyebrow
-// shape (`SCHEDULE` above **Schedule**); only the real ancestor
-// ('connections') remains, and the current page's own segment
-// ('providers', which restates the page's h1) is dropped.
+      // The trail minus its own name — archive#4463 (the
+      //) retired the page header's old self-referential eyebrow
+      // shape (`SCHEDULE` above **Schedule**); only the real ancestor
+      // ('connections') remains, and the current page's own segment
+      // ('providers', which restates the page's h1) is dropped.
       expect(container.querySelector('.page__label')?.textContent).toBe(
         'connections',
       );
@@ -1466,13 +1466,13 @@ describe('SplitPaneLayout', () => {
       ).toBeTruthy();
     });
 
-// archive#4463: `framedBreadcrumbSegments` only drops a
-// trailing segment that RESTATES the title. When it does not (a real
-// multi-level trail — an entity slug ahead of an editor tab, say), the
-// last segment is KEPT — and a kept terminal crumb must never auto-link
-// to a fabricated `/<segment>` route; only earlier, real ancestor
-// segments do. Probes on the first unsuppression of the framed dedup
-// found live `/edit`/`/detail`/`/tools` links exactly from this gap.
+    // archive#4463: `framedBreadcrumbSegments` only drops a
+    // trailing segment that RESTATES the title. When it does not (a real
+    // multi-level trail — an entity slug ahead of an editor tab, say), the
+    // last segment is KEPT — and a kept terminal crumb must never auto-link
+    // to a fabricated `/<segment>` route; only earlier, real ancestor
+    // segments do. Probes on the first unsuppression of the framed dedup
+    // found live `/edit`/`/detail`/`/tools` links exactly from this gap.
     test('a kept terminal crumb (the trail does not restate the title) is inert text, not a fabricated link', () => {
       const { container } = renderFramed({
         label: 'Agents / my-agent',
@@ -1482,13 +1482,13 @@ describe('SplitPaneLayout', () => {
       const eyebrow = container.querySelector('.page__label');
       expect(eyebrow?.textContent).toBe('Agents / my-agent');
 
-// The real ancestor ('Agents') still auto-links.
+      // The real ancestor ('Agents') still auto-links.
       const links = eyebrow?.querySelectorAll('.split-pane__label-link');
       expect(Array.from(links ?? []).map((el) => el.textContent)).toEqual([
         'Agents',
       ]);
 
-// The kept terminal crumb ('my-agent') is plain text, not a link.
+      // The kept terminal crumb ('my-agent') is plain text, not a link.
       const myAgentSpan = Array.from(eyebrow?.children ?? []).find(
         (el) => el.textContent === 'my-agent',
       );
@@ -1506,8 +1506,8 @@ describe('SplitPaneLayout', () => {
         container.querySelector('.page-frame__body h1, .page-frame__body h2'),
       ).toBeNull();
       expect(screen.getByPlaceholderText('Search providers...')).toBeTruthy();
-// The collapse control moves next to the search rather than vanishing
-// with the heading block it used to live in.
+      // The collapse control moves next to the search rather than vanishing
+      // with the heading block it used to live in.
       expect(screen.getByLabelText('Hide list pane')).toBeTruthy();
     });
 
@@ -1527,15 +1527,15 @@ describe('SplitPaneLayout', () => {
       const actions = container.querySelector('.page__actions');
       expect(actions?.textContent).toContain('Browse Registry');
       expect(actions?.textContent).toContain('+ Add provider');
-// The shared Button, not a third button family: `page__btn-primary`
-// was retired with the rest of it.
+      // The shared Button, not a third button family: `page__btn-primary`
+      // was retired with the rest of it.
       expect(actions?.querySelector('.button')?.textContent).toBe(
         '+ Add provider',
       );
       fireEvent.click(screen.getByText('+ Add provider'));
       expect(onAdd).toHaveBeenCalledTimes(1);
 
-// List chrome is NOT a page action and stays in the list footer.
+      // List chrome is NOT a page action and stays in the list footer.
       const footer = container.querySelector('.split-pane__add');
       expect(footer?.textContent).toBe('list chrome');
     });

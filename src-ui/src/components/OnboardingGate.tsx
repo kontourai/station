@@ -79,7 +79,7 @@ type ConnectionModalMode =
 const PAIRING_APPROVAL_BANNER_ID = 'chrome:onboarding:pairing-approval';
 /**
  * Module-scope loaders (archive#2605 keeps these out of render), handed to
-* `LazyBoundary` rather than `lazy` directly: a rejected import is cached
+ * `LazyBoundary` rather than `lazy` directly: a rejected import is cached
  * by React forever, so an unguarded chunk 404 — which every `station upgrade`
  * can produce by rebuilding `dist-ui` under an open tab — blanks the whole
  * app shell from here (archive#2773).
@@ -100,16 +100,16 @@ const loadBundledServiceBanner = () =>
 export function OnboardingGate({ children }: { children: ReactNode }) {
   const { refetch } = useSystemStatus();
   const { apiBase, activeConnection, connections } = useConnections();
-// archive#1290: every server-scoped query cache (agents, model
-// connections, sessions,...) keeps serving the previous server's data
-// after a switch unless it's explicitly invalidated here — OnboardingGate
-// is the one place mounted at the app root, above the connected/
-// disconnected branch below, that observes every apiBase change regardless
-// of current connection status. `activeConnection != null` lets the hook
-// tell initial connection establishment (boot) apart from a real switch —
-// see the hook's doc comment for why that specific signal, read from the
-// same context snapshot as `apiBase`, is what closes the native
-// two-stage-boot false positive.
+  // archive#1290: every server-scoped query cache (agents, model
+  // connections, sessions,...) keeps serving the previous server's data
+  // after a switch unless it's explicitly invalidated here — OnboardingGate
+  // is the one place mounted at the app root, above the connected/
+  // disconnected branch below, that observes every apiBase change regardless
+  // of current connection status. `activeConnection != null` lets the hook
+  // tell initial connection establishment (boot) apart from a real switch —
+  // see the hook's doc comment for why that specific signal, read from the
+  // same context snapshot as `apiBase`, is what closes the native
+  // two-stage-boot false positive.
   const activeConnectionScope = activeConnection
     ? [
         activeConnection.id,
@@ -141,18 +141,18 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const [ignoredPendingRequestId, setIgnoredPendingRequestId] = useState<
     string | null
   >(null);
-// archive#3387: the terminal outcome of a pairing attempt, held as state so
-// exactly one thing decides both whether its banner is presented and whether
-// the two banners it supersedes stay suppressed.
-//
-// It carries the Station the REQUEST was for, taken from the exchange's own
-// `targetConnectionId` — not whichever Station happened to be active when the
-// answer arrived. Requesting access never activates its target: the list row's
-// handler stops propagation precisely so the row is not selected
-// (`ConnectionListPanel`), and the deep-link path find-or-ADDS a connection
-// without activating it (`resolvePendingTarget`). So "the active one" is
-// routinely the wrong subject, and a decline attributed to the wrong Station
- // is the defect archive#3387 exists to close, one route over.
+  // archive#3387: the terminal outcome of a pairing attempt, held as state so
+  // exactly one thing decides both whether its banner is presented and whether
+  // the two banners it supersedes stay suppressed.
+  //
+  // It carries the Station the REQUEST was for, taken from the exchange's own
+  // `targetConnectionId` — not whichever Station happened to be active when the
+  // answer arrived. Requesting access never activates its target: the list row's
+  // handler stops propagation precisely so the row is not selected
+  // (`ConnectionListPanel`), and the deep-link path find-or-ADDS a connection
+  // without activating it (`resolvePendingTarget`). So "the active one" is
+  // routinely the wrong subject, and a decline attributed to the wrong Station
+  // is the defect archive#3387 exists to close, one route over.
   const [pairingFailure, setPairingFailure] = useState<{
     connectionId: string;
     connectionLabel: string;
@@ -172,52 +172,52 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const credentialRequired = activeConnection?.credentialState === 'required';
   const connectionEvidence = `${activeConnection?.id ?? ''}:${activeConnection?.lastSuccessAt ?? ''}:${activeConnection?.credentialState ?? ''}`;
   const previousConnectionEvidence = useRef(connectionEvidence);
- // archive#1007: the pairing banner is dismissible, but the dismissal is keyed to the
-// exact connection evidence it was shown for and lives only in component
-// state. Deliberately not persisted: "this host needs pairing" is an
-// unresolved, actionable state, and a relaunch is the natural moment to ask
- // again — the same reasoning archive#794 used to prefer a page-lifetime `defer` over
-// a durable `dismiss` for an unfinished setup. Because the key is the
-// evidence string, selecting another connection or a change in credential
-// state re-arms the banner on its own, with no effect and no cleanup.
+  // archive#1007: the pairing banner is dismissible, but the dismissal is keyed to the
+  // exact connection evidence it was shown for and lives only in component
+  // state. Deliberately not persisted: "this host needs pairing" is an
+  // unresolved, actionable state, and a relaunch is the natural moment to ask
+  // again — the same reasoning archive#794 used to prefer a page-lifetime `defer` over
+  // a durable `dismiss` for an unfinished setup. Because the key is the
+  // evidence string, selecting another connection or a change in credential
+  // state re-arms the banner on its own, with no effect and no cleanup.
   const [dismissedCredentialNotice, setDismissedCredentialNotice] = useState<
     string | null
   >(null);
- // A decline is never withheld — a silent refusal is the original archive#3387
-// defect — and it always takes the band's single visible slot, because both
-// banners sit in `connectionBlocking` where the stack shows one and collapses
-// the rest, and the id tie-break would otherwise bury the decline behind
- // `chrome:onboarding:credential`. That is the exact shape archive#3387 fixed.
-//
-// DISCLOSED TRADEOFF: while a decline stands for ANY Station, the active
-// Station's own "request access to reconnect" reminder is suppressed even
-// when they are different Stations. The reminder is a standing prompt; the
-// decline is a terminal answer to something the user just did, and its
-// "Request access again" action opens the connection list, from which the
-// active Station is one tap away. It clears as soon as the declined Station
-// is re-paired or forgotten.
-//
-// What this flag decides is only whether the copy has to say WHOSE answer it
-// is: an unattributed decline reads as being about the Station in front of
-// the reader, which is a lie whenever that is a different one. The shared
-// map's `declined-device` entry names it (archive#3849) — this flag decides
-// whether the banner ALSO carries the subject prefix.
+  // A decline is never withheld — a silent refusal is the original archive#3387
+  // defect — and it always takes the band's single visible slot, because both
+  // banners sit in `connectionBlocking` where the stack shows one and collapses
+  // the rest, and the id tie-break would otherwise bury the decline behind
+  // `chrome:onboarding:credential`. That is the exact shape archive#3387 fixed.
+  //
+  // DISCLOSED TRADEOFF: while a decline stands for ANY Station, the active
+  // Station's own "request access to reconnect" reminder is suppressed even
+  // when they are different Stations. The reminder is a standing prompt; the
+  // decline is a terminal answer to something the user just did, and its
+  // "Request access again" action opens the connection list, from which the
+  // active Station is one tap away. It clears as soon as the declined Station
+  // is re-paired or forgotten.
+  //
+  // What this flag decides is only whether the copy has to say WHOSE answer it
+  // is: an unattributed decline reads as being about the Station in front of
+  // the reader, which is a lie whenever that is a different one. The shared
+  // map's `declined-device` entry names it (archive#3849) — this flag decides
+  // whether the banner ALSO carries the subject prefix.
   const pairingFailureIsForActiveConnection =
     pairingFailure != null &&
     pairingFailure.connectionId === activeConnection?.id;
 
-// Retire it from its SUBJECT's state, not from whatever is active. A decline
-// stops describing anything once that Station no longer needs access — it
-// was re-paired, or it was forgotten. Reading the active connection instead
-// would both miss that (when the subject is not active) and wrongly discard
-// a decline the moment the user selects the Station it is about.
+  // Retire it from its SUBJECT's state, not from whatever is active. A decline
+  // stops describing anything once that Station no longer needs access — it
+  // was re-paired, or it was forgotten. Reading the active connection instead
+  // would both miss that (when the subject is not active) and wrongly discard
+  // a decline the moment the user selects the Station it is about.
   const pairingFailureSubjectResolved = pairingFailure
     ? (connections ?? []).find(
         (connection) => connection.id === pairingFailure.connectionId,
       )
     : undefined;
-// Prefer what the Station is called NOW. The recorded label is what it was
-// called when the request was made, which a rename since would make stale.
+  // Prefer what the Station is called NOW. The recorded label is what it was
+  // called when the request was made, which a rename since would make stale.
   const pairingFailureSubjectName =
     pairingFailureSubjectResolved?.name ||
     pairingFailure?.connectionLabel ||
@@ -231,11 +231,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const credentialNoticeDismissed =
     dismissedCredentialNotice === connectionEvidence;
 
-// The native bootstrap has already completed its one bounded recovery
-// attempt. If its replacement credential could not be written, this is not
-// a network failure and retrying the generic connection UI cannot repair
-// it; surface the keychain action exactly once when the shell becomes
-// available.
+  // The native bootstrap has already completed its one bounded recovery
+  // attempt. If its replacement credential could not be written, this is not
+  // a network failure and retrying the generic connection UI cannot repair
+  // it; surface the keychain action exactly once when the shell becomes
+  // available.
   const reportedBootstrapRecoveryError = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (
@@ -249,25 +249,25 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     showToast(bootstrapRecoveryError);
   }, [bootstrapRecoveryError, profile.isDesktop, showToast]);
 
-// archive#4475 — `restartBundledServer` reports whether the request even
-// REACHED the host (its own doc comment: "so the recovery screen can tell
-// the user when it didn't"), but both callers of it here used to discard
-// that boolean entirely (`void restartBundledServer;`) — the exact
-// "dead button" mechanism the owner hit on their phone: a dangling proxy
-// (tailscale serve → a port nothing owns) makes the restart POST fail,
-// and nothing on screen ever said so. Both the banner's "Restart Station"
-// action and the Stations sheet row's "Restart" button now go through
-// this, and it is `useCallback`-stable and self-referencing so the toast's
-// own "Try again" action can retry the exact same request.
-//
-// archive#4512: `duration: 0` — sticky until dismissed, the
-// same precedent `showToolApproval` already sets for a decision the
-// reader has to act on rather than merely notice ("No auto-dismiss for
-// approvals", `ToastContext.tsx`). A restart that could not even reach
-// the host is exactly that: a 5-second default would vanish this toast,
-// "Try again" and all, while the reader was still reading the FIRST
-// sentence of it — which is the same silence-on-failure defect one layer
-// up from the one this whole fix exists to close.
+  // archive#4475 — `restartBundledServer` reports whether the request even
+  // REACHED the host (its own doc comment: "so the recovery screen can tell
+  // the user when it didn't"), but both callers of it here used to discard
+  // that boolean entirely (`void restartBundledServer;`) — the exact
+  // "dead button" mechanism the owner hit on their phone: a dangling proxy
+  // (tailscale serve → a port nothing owns) makes the restart POST fail,
+  // and nothing on screen ever said so. Both the banner's "Restart Station"
+  // action and the Stations sheet row's "Restart" button now go through
+  // this, and it is `useCallback`-stable and self-referencing so the toast's
+  // own "Try again" action can retry the exact same request.
+  //
+  // archive#4512: `duration: 0` — sticky until dismissed, the
+  // same precedent `showToolApproval` already sets for a decision the
+  // reader has to act on rather than merely notice ("No auto-dismiss for
+  // approvals", `ToastContext.tsx`). A restart that could not even reach
+  // the host is exactly that: a 5-second default would vanish this toast,
+  // "Try again" and all, while the reader was still reading the FIRST
+  // sentence of it — which is the same silence-on-failure defect one layer
+  // up from the one this whole fix exists to close.
   const handleRestartBundledServer = useCallback(() => {
     void restartBundledServer().then((ok) => {
       if (ok) return;
@@ -297,8 +297,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const showConnections = (detail?: OpenConnectionsModalDetail) => {
-// Anything unrecognized falls back to the list, which is the only
-// panel that is correct for every connection state.
+      // Anything unrecognized falls back to the list, which is the only
+      // panel that is correct for every connection state.
       setConnectionModalMode(
         detail?.mode === 'pair-device' ||
           detail?.mode === 'request-access' ||
@@ -323,8 +323,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       window.removeEventListener(OPEN_CONNECTIONS_MODAL_EVENT, openConnections);
   }, []);
 
-// The durable service can only request this one reviewed destination. Consume
-// it once and strip it immediately so refreshes do not repeatedly reopen UI.
+  // The durable service can only request this one reviewed destination. Consume
+  // it once and strip it immediately so refreshes do not repeatedly reopen UI.
   useEffect(() => {
     if (
       new URLSearchParams(window.location.search).get('station-connect') !==
@@ -342,9 +342,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     setShowModal(true);
   }, []);
 
-// A deferral covers the trip into Connections; leaving that area again ends
-// it, so an abandoned setup does not stay hidden for the whole session while
- // chat is still unready (archive#794).
+  // A deferral covers the trip into Connections; leaving that area again ends
+  // it, so an abandoned setup does not stay hidden for the whole session while
+  // chat is still unready (archive#794).
   useEffect(() => {
     const isInConnections = pathname.startsWith('/connections');
     if (wasInConnections.current && !isInConnections) {
@@ -361,10 +361,10 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     }
   }, [activeConnection, connectionEvidence, refetch]);
 
-// archive#1876: a browser or Android pairing request has no native
-// transport state, so every health probe looks like a dead host until a
-// human approves it. Read the request persisted by the pairing flow and
-// disclose that real, bounded state above the generic offline strip.
+  // archive#1876: a browser or Android pairing request has no native
+  // transport state, so every health probe looks like a dead host until a
+  // human approves it. Read the request persisted by the pairing flow and
+  // disclose that real, bounded state above the generic offline strip.
   const restoredPendingExchange = useMemo(() => {
     const candidates = (connections ?? []).flatMap((connection) =>
       (['direct', 'code'] as const).map((requestKind) =>
@@ -415,10 +415,10 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     apiBase;
   const pendingApprovalMessage = useMemo(() => {
     if (!pendingApproval) return null;
-// The shared pairing-state map (archive#3849). The waiting sentences said
-// "the host" — a noun docs/glossary.md forbids introducing, and the wrong
-// one twice over here, since the sentence before it had just named the
-// Station. Naming it again is what the map does.
+    // The shared pairing-state map (archive#3849). The waiting sentences said
+    // "the host" — a noun docs/glossary.md forbids introducing, and the wrong
+    // one twice over here, since the sentence before it had just named the
+    // Station. Naming it again is what the map does.
     const waitMessage = waitingForTransport
       ? `Waiting to reach ${serverLabel} again. The access request is still open and will resume automatically.`
       : pairingStateCopy(
@@ -477,9 +477,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     effectivePendingExchange?.requestKind,
   ]);
 
-// archive#1958: credential pairing chrome → BannerHost under Header.
-// Plain reachability while the shell is up is ConnectionBannerSource
-// (same slot) — do not dual-mount a second reconnect strip.
+  // archive#1958: credential pairing chrome → BannerHost under Header.
+  // Plain reachability while the shell is up is ConnectionBannerSource
+  // (same slot) — do not dual-mount a second reconnect strip.
   const credentialFailure =
     activeConnection?.lastError &&
     activeConnection.lastError.reason !== 'awaiting-approval'
@@ -489,21 +489,21 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           activeConnection.url,
         )
       : null;
-// archive#3297: one line, with the remedy behind the banner's disclosure —
-// the same policy ConnectionBannerSource follows. This is the banner a phone
-// actually meets for a stale credential, and it was three lines of prose.
+  // archive#3297: one line, with the remedy behind the banner's disclosure —
+  // the same policy ConnectionBannerSource follows. This is the banner a phone
+  // actually meets for a stale credential, and it was three lines of prose.
   const credentialMessage = credentialFailure
     ? credentialFailure.summary
     : `Request access to reconnect to ${serverLabel}.`;
   const credentialDetail = credentialFailure?.action;
-// A live approval request is the current credential recovery, so do not
-// stack an instruction to begin pairing again underneath it. A terminal
-// pairing failure is the same thing one step later — it carries its own
-// "Request access again" action — and it is not just redundant underneath:
-// both banners sit in the connectionBlocking band, where the stack shows one
-// front banner and collapses the rest, and `chrome:onboarding:credential`
-// wins that band's id tie-break over `chrome:onboarding:pairing-failure`
-// (archive#3387).
+  // A live approval request is the current credential recovery, so do not
+  // stack an instruction to begin pairing again underneath it. A terminal
+  // pairing failure is the same thing one step later — it carries its own
+  // "Request access again" action — and it is not just redundant underneath:
+  // both banners sit in the connectionBlocking band, where the stack shows one
+  // front banner and collapses the rest, and `chrome:onboarding:credential`
+  // wins that band's id tie-break over `chrome:onboarding:pairing-failure`
+  // (archive#3387).
   const showCredentialChrome =
     !credentialNoticeDismissed &&
     credentialRequired &&
@@ -516,11 +516,11 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         id: BANNER_IDS.credential,
         priority: BANNER_PRIORITY.connectionBlocking,
         tone: 'blocked',
-// The occurrence is the same evidence string the component's own
-// durable dismissal keys on: connection id + last success + credential
-// state. Without it the store suppressed on id alone, permanently —
-// a NEW credential incident on the same connection stayed hidden
- // behind an old dismissal (archive#2557 finding).
+        // The occurrence is the same evidence string the component's own
+        // durable dismissal keys on: connection id + last success + credential
+        // state. Without it the store suppressed on id alone, permanently —
+        // a NEW credential incident on the same connection stayed hidden
+        // behind an old dismissal (archive#2557 finding).
         occurrence: connectionEvidence,
         message: credentialMessage,
         detail: credentialDetail,
@@ -563,9 +563,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       priority: BANNER_PRIORITY.connectionBlocking,
       tone: 'warning',
       badge: pairingFailure.title,
-// The copy says "this device" without naming a Station, which reads as
-// the Station in front of the reader. When that is a different one, say
-// whose answer this is rather than withhold it.
+      // The copy says "this device" without naming a Station, which reads as
+      // the Station in front of the reader. When that is a different one, say
+      // whose answer this is rather than withhold it.
       message: pairingFailureIsForActiveConnection
         ? pairingFailure.message
         : `${pairingFailureSubjectName}: ${pairingFailure.message}`,
@@ -589,27 +589,27 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     pairingFailureSubjectName,
   ]);
 
-// Same-user local self-authorization (archive#1715, revised archive#1818
- //). The desktop shell's OWN local-service Station is the one case
-// where "needs a credential" is never a user problem to solve — the
-// native broker refuses every request until
-// `station_profile_authorize_active` has run at least once (see
-// `authorized_profile_for_origin` in `src-desktop/src/lib.rs`), and a
-// freshly installed local Station has no credential to authorize yet.
-// `pendingLocalSelfProvisionProfileName` answers `undefined` for every
-// saved Station shape except the process-selected Station with `localService` set — it
-// deliberately does NOT also check `credentialRef`/`configurationState`
-// (archive#1818: a stranded profile after a bundle-swap keychain ACL
-// mismatch has both set, exactly like a healthy one, and the webview
-// cannot read the keychain to tell the difference). This effect therefore
-// runs, and `station_local_self_provision` (the Rust command) decides
-// eligibility fresh every boot: it refuses instantly and harmlessly for an
-// already-working profile, and re-provisions for one whose credential
-// cannot actually be read back. One attempt per app boot (the imported
-// function's own module latch) either way; on success, re-read the shared
-// saved Station store the native command just wrote and force a genuinely new
-// status attempt so the app proceeds straight past the pairing screen it
-// would otherwise have shown.
+  // Same-user local self-authorization (archive#1715, revised archive#1818
+  //). The desktop shell's OWN local-service Station is the one case
+  // where "needs a credential" is never a user problem to solve — the
+  // native broker refuses every request until
+  // `station_profile_authorize_active` has run at least once (see
+  // `authorized_profile_for_origin` in `src-desktop/src/lib.rs`), and a
+  // freshly installed local Station has no credential to authorize yet.
+  // `pendingLocalSelfProvisionProfileName` answers `undefined` for every
+  // saved Station shape except the process-selected Station with `localService` set — it
+  // deliberately does NOT also check `credentialRef`/`configurationState`
+  // (archive#1818: a stranded profile after a bundle-swap keychain ACL
+  // mismatch has both set, exactly like a healthy one, and the webview
+  // cannot read the keychain to tell the difference). This effect therefore
+  // runs, and `station_local_self_provision` (the Rust command) decides
+  // eligibility fresh every boot: it refuses instantly and harmlessly for an
+  // already-working profile, and re-provisions for one whose credential
+  // cannot actually be read back. One attempt per app boot (the imported
+  // function's own module latch) either way; on success, re-read the shared
+  // saved Station store the native command just wrote and force a genuinely new
+  // status attempt so the app proceeds straight past the pairing screen it
+  // would otherwise have shown.
   useEffect(() => {
     if (!profile.isDesktop) return;
     let cancelled = false;
@@ -629,17 +629,17 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     };
   }, [profile.isDesktop, forceRefetch]);
 
-// archive#1866: re-provisioning reachable from an authentication refusal.
-// The boot-time effect above deliberately does NOT fire when the credential
-// reads back as `Readable` — which proves only that the bytes are in the
-// keychain, not that the server will honour them. A server restart
-// invalidates the local grant while it stays perfectly readable, so the
-// app would strand with no recovery. When the transport observes a coded
-// auth rejection (`authentication-failed`) for the active local-service
-// profile, the native side records the rejection (401/403) and this effect
-// fires the one-shot rejection-retry — `retryLocalSelfProvisionAfterRejection`
-// has its OWN per-boot guard (independent of `attemptedThisBoot`) so a
-// genuinely-rejecting server cannot cause a mint loop.
+  // archive#1866: re-provisioning reachable from an authentication refusal.
+  // The boot-time effect above deliberately does NOT fire when the credential
+  // reads back as `Readable` — which proves only that the bytes are in the
+  // keychain, not that the server will honour them. A server restart
+  // invalidates the local grant while it stays perfectly readable, so the
+  // app would strand with no recovery. When the transport observes a coded
+  // auth rejection (`authentication-failed`) for the active local-service
+  // profile, the native side records the rejection (401/403) and this effect
+  // fires the one-shot rejection-retry — `retryLocalSelfProvisionAfterRejection`
+  // has its OWN per-boot guard (independent of `attemptedThisBoot`) so a
+  // genuinely-rejecting server cannot cause a mint loop.
   const observedAuthFailure =
     activeConnection?.lastError?.reason === 'authentication-failed';
   useEffect(() => {
@@ -661,9 +661,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     };
   }, [profile.isDesktop, observedAuthFailure, forceRefetch]);
 
-// `shouldRenderSetupLauncher` already requires non-null content; the
-// explicit `&& setupBannerContent` only exists so TypeScript narrows the
-// prop type here without a cast.
+  // `shouldRenderSetupLauncher` already requires non-null content; the
+  // explicit `&& setupBannerContent` only exists so TypeScript narrows the
+  // prop type here without a cast.
   const setupLauncherVisible =
     shouldRenderSetupLauncher({
       credentialRequired,
@@ -675,9 +675,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     <SetupLauncher
       content={setupBannerContent}
       onOpenTarget={() => {
-// Going to Connections to *do* the setup is not evidence the setup
-// worked — defer for this page lifetime instead of recording a
- // permanent dismissal (archive#794).
+        // Going to Connections to *do* the setup is not evidence the setup
+        // worked — defer for this page lifetime instead of recording a
+        // permanent dismissal (archive#794).
         deferSetupBanner();
         navigate(
           setupBannerContent.actionTarget === 'providers'
@@ -699,21 +699,21 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     />
   ) : null;
 
-// THE THIRD OVERLAY, under the same one-at-a-time rule as the other two.
-// It is mounted after `{children}`, so wherever it renders it renders on
-// top: over the launcher (which is why the first-run E2E specs used to have
-// to answer it before they could click anything) and, on a fresh home, over
-// the first-run chapter. A `pending` home shows it as the chapter's first
-// step instead; nothing here changes for any other home.
+  // THE THIRD OVERLAY, under the same one-at-a-time rule as the other two.
+  // It is mounted after `{children}`, so wherever it renders it renders on
+  // top: over the launcher (which is why the first-run E2E specs used to have
+  // to answer it before they could click anything) and, on a fresh home, over
+  // the first-run chapter. A `pending` home shows it as the chapter's first
+  // step instead; nothing here changes for any other home.
   const usageTelemetryDisclosureMounted = shouldRenderUsageTelemetryDisclosure({
     firstRunStatus: config?.firstRun?.status,
     setupLauncherVisible: Boolean(setupLauncherVisible),
     firstRunChapterOpen,
   });
 
-// The shell is invariant across ready, loading, and local-service repair
-// states. Service lifecycle is disclosed in chrome, never by withholding
-// local, cached, settings, or connection-management affordances.
+  // The shell is invariant across ready, loading, and local-service repair
+  // states. Service lifecycle is disclosed in chrome, never by withholding
+  // local, cached, settings, or connection-management affordances.
   return (
     <>
       {profile.supervisesBundledServer && (
@@ -757,18 +757,18 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
               void refetch();
               triggerHaptic('success');
             },
-// archive#3387: the request is over, so retire the
-// waiting-for-approval claim as well as reporting the outcome.
-// Leaving the pending record live kept that banner presented, and
-// it wins the connectionBlocking band's id tie-break — a declined
-// phone went on reading that it was still waiting, with the
-// decline and its only remedy collapsed behind the stack cap.
+            // archive#3387: the request is over, so retire the
+            // waiting-for-approval claim as well as reporting the outcome.
+            // Leaving the pending record live kept that banner presented, and
+            // it wins the connectionBlocking band's id tie-break — a declined
+            // phone went on reading that it was still waiting, with the
+            // decline and its only remedy collapsed behind the stack cap.
             onTerminalFailure: (title: string, message: string) => {
-// The target is optional on the record's type. Every producer
-// sets it (`resolvePendingTarget`), and `restoredPendingExchange`
-// will not surface a record missing it — so the fallback is for a
-// shape neither path can currently produce, and it degrades to
-// the pre-review behaviour rather than dropping the decline.
+              // The target is optional on the record's type. Every producer
+              // sets it (`resolvePendingTarget`), and `restoredPendingExchange`
+              // will not surface a record missing it — so the fallback is for a
+              // shape neither path can currently produce, and it degrades to
+              // the pre-review behaviour rather than dropping the decline.
               setPairingFailure({
                 connectionId:
                   effectivePendingExchange.targetConnectionId ??
@@ -814,12 +814,12 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           profile.isDesktop ? authenticatedFetch : undefined
         }
         onRestartInjectedConnection={
-// Ownership, not just "this build supervises a bundled server".
-// The banner stopped offering a Restart it cannot honour; without
-// this the banner's ONLY remaining action routes the user to the
-// connection list, which renders the same dead Restart on a row
- // labelled "Not running" — the exact framing archive#3079 objected to.
-// Same predicate HeaderActions already uses.
+          // Ownership, not just "this build supervises a bundled server".
+          // The banner stopped offering a Restart it cannot honour; without
+          // this the banner's ONLY remaining action routes the user to the
+          // connection list, which renders the same dead Restart on a row
+          // labelled "Not running" — the exact framing archive#3079 objected to.
+          // Same predicate HeaderActions already uses.
           profile.supervisesBundledServer &&
           bundledStatus?.ownership === 'sidecar'
             ? handleRestartBundledServer
@@ -893,7 +893,7 @@ function SetupLauncher({
           </div>
         )}
 
-{/*
+        {/*
           SHELL-02/SHELL-12: this card carried the app's fifth primary-button
           treatment — a hard-coded blue gradient (#3b82f6 -> #2563eb), outside
           the token system, on the one surface that follows the user from route

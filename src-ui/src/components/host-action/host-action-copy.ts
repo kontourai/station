@@ -16,12 +16,12 @@
  *
  * WHAT `reach` IS. Not decoration: it is the fact that decides which of
  * {@link HostAction}'s three branches a paired device gets.
-*  - `remote-safe` — the host performs it, the device only asks. The
-*    affordance renders unchanged and the host is named beside it.
-*  - `host-hands` — it needs a shell run there, a file placed there, a
-*    binary installed there. The affordance is replaced by the instruction,
-*    with the host named and (where there is one) the exact command to copy.
-*    Never a disabled button, never silently hidden.
+ *  - `remote-safe` — the host performs it, the device only asks. The
+ *    affordance renders unchanged and the host is named beside it.
+ *  - `host-hands` — it needs a shell run there, a file placed there, a
+ *    binary installed there. The affordance is replaced by the instruction,
+ *    with the host named and (where there is one) the exact command to copy.
+ *    Never a disabled button, never silently hidden.
  */
 
 import type { DevicePresentation } from '@kontourai/station-contracts/system-status';
@@ -29,31 +29,31 @@ import type { DevicePresentation } from '@kontourai/station-contracts/system-sta
 export type HostActionReach = 'remote-safe' | 'host-hands';
 
 export type HostActionId =
- /** archive#3843 — the SSH creator's trust command (archive#3733's creator). */
+  /** archive#3843 — the SSH creator's trust command (archive#3733's creator). */
   | 'ssh-trust-command'
- /** archive#3843 — the first-run engines chapter's scan lede. */
+  /** archive#3843 — the first-run engines chapter's scan lede. */
   | 'engine-scan'
- /** archive#3843 — the first-run engines chapter's still-scanning line. */
+  /** archive#3843 — the first-run engines chapter's still-scanning line. */
   | 'engine-scan-pending'
- /** archive#3843 — an engine the scan did not find. */
+  /** archive#3843 — an engine the scan did not find. */
   | 'engine-missing'
- /** archive#3843 — the Agents row's one fixing verb, accessibly named. */
+  /** archive#3843 — the Agents row's one fixing verb, accessibly named. */
   | 'agent-engine-setup'
- /** archive#3843 — the Developer surface's redacted log read. */
+  /** archive#3843 — the Developer surface's redacted log read. */
   | 'developer-logs';
 
 export interface HostActionCopyEntry {
   reach: HostActionReach;
-/** What the person sitting at the host machine reads. */
+  /** What the person sitting at the host machine reads. */
   host: string;
-/** What a paired device reads. `hostName` is the host machine's own name. */
+  /** What a paired device reads. `hostName` is the host machine's own name. */
   paired: (hostName: string) => string;
 }
 
 export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
   'ssh-trust-command': {
-// It appends a line to a known_hosts file on the machine `ssh` will run
-// from. Nothing a browser can do reaches that file.
+    // It appends a line to a known_hosts file on the machine `ssh` will run
+    // from. Nothing a browser can do reaches that file.
     reach: 'host-hands',
     host: 'Copy command',
     paired: (hostName) =>
@@ -71,32 +71,32 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     paired: (hostName) => `Looking for agent CLIs on ${hostName}…`,
   },
   'engine-missing': {
-// Deliberately still claims nothing about installation — `notReadyNote`'s
-// restraint (`reason` is orthogonal to `detected`) survives the rewrite.
-// Naming where it would have to be installed is an instruction, not an
-// observation.
+    // Deliberately still claims nothing about installation — `notReadyNote`'s
+    // restraint (`reason` is orthogonal to `detected`) survives the rewrite.
+    // Naming where it would have to be installed is an instruction, not an
+    // observation.
     reach: 'host-hands',
     host: 'Not found on this machine.',
     paired: (hostName) =>
       `Not found on ${hostName}. Agent CLIs run on that computer, so it has to be installed there.`,
   },
   'agent-engine-setup': {
-// Setting up an engine sends you to Connections, which a paired device
-// can browse perfectly well — so the verb stays, and stays the ONLY verb
-// on the row (`tests/agents-readiness-board.spec.ts`'s one-verb
-// contract). All that changes is which machine the row's accessible name
-// says the engine would be set up on. A TRAILING CLAUSE rather than a
-// whole label, because the label is composed from the server's verb and
-// the agent's own name; the host is the third thing, not a replacement
-// for either.
+    // Setting up an engine sends you to Connections, which a paired device
+    // can browse perfectly well — so the verb stays, and stays the ONLY verb
+    // on the row (`tests/agents-readiness-board.spec.ts`'s one-verb
+    // contract). All that changes is which machine the row's accessible name
+    // says the engine would be set up on. A TRAILING CLAUSE rather than a
+    // whole label, because the label is composed from the server's verb and
+    // the agent's own name; the host is the third thing, not a replacement
+    // for either.
     reach: 'remote-safe',
     host: '',
     paired: (hostName) => `on ${hostName}`,
   },
   'developer-logs': {
- // The read itself works from anywhere; redacts it for a principal
-// that did not prove home possession. Saying so is the whole point —
-// a silently degraded page reads as a broken one.
+    // The read itself works from anywhere; redacts it for a principal
+    // that did not prove home possession. Saying so is the whole point —
+    // a silently degraded page reads as a broken one.
     reach: 'remote-safe',
     host: '',
     paired: (hostName) =>

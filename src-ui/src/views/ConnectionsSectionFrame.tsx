@@ -72,8 +72,8 @@ function ConnectionsSectionFrameInner({
   const { navigate } = useNavigation();
   const [computerChooserOpen, setComputerChooserOpen] = useState(false);
   const mobileReturnFocus = useSplitPaneExternalReturnFocus();
-// One derivation for both facts this rail renders, shared with the
-// `/connections` resolver.
+  // One derivation for both facts this rail renders, shared with the
+  // `/connections` resolver.
   const { count, needsAttention } = useConnectionSectionSignals();
   usePageHeader({
     eyebrow: CONNECTIONS_EYEBROW,
@@ -99,7 +99,7 @@ function ConnectionsSectionFrameInner({
   return (
     <div className="pane-host connections-section-frame">
       <PageFrameActions>
- {/* archive#4463 (Button): was a bespoke `button button--primary`
+        {/* archive#4463 (Button): was a bespoke `button button--primary`
             with no size modifier, rendering at the base 10px/16px scale while
             every other primary page action (Agents/Plugins/Skills/Schedule)
             renders through the shared `Button` at `size="sm"` — the audit's
@@ -111,11 +111,11 @@ function ConnectionsSectionFrameInner({
       <Tabs
         id={TABS_ID}
         aria-label="Connection sections"
-// Manual activation (archive#4463): each
-// tab's onSelect pushes a ROUTE (`navigate`), so automatic
-// activation was pushing one history entry per arrow-key press and
-// yanking focus out of the strip. Arrows move focus only here;
-// Enter/Space navigates.
+        // Manual activation (archive#4463): each
+        // tab's onSelect pushes a ROUTE (`navigate`), so automatic
+        // activation was pushing one history entry per arrow-key press and
+        // yanking focus out of the strip. Arrows move focus only here;
+        // Enter/Space navigates.
         activation="manual"
         items={CONNECTION_SECTIONS.map((entry) => ({
           key: entry.id,

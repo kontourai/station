@@ -50,7 +50,7 @@ export function IntegrationEditorPanel({
   viewMode: 'form' | 'raw';
   rawJson: string;
   rawError: string | null;
-/** The parent owns the saved integration baseline, so it owns this guard. */
+  /** The parent owns the saved integration baseline, so it owns this guard. */
   secretBindingRequireSave?: boolean;
   savePending: boolean;
   reconnectPending: boolean;
@@ -75,18 +75,18 @@ export function IntegrationEditorPanel({
   onUnlock: () => void;
 }) {
   const isBuiltin = editForm.kind === 'builtin';
-/**
-* server-derived (`GET /integrations`), not inferred from `kind` —
-* Station's own tool servers persist as `kind: 'mcp'`, so the `isBuiltin`
-* test above (which means "Strands vended tool") was false for them and
-* this panel offered a Delete the runtime silently undid on next start.
-*/
+  /**
+   * server-derived (`GET /integrations`), not inferred from `kind` —
+   * Station's own tool servers persist as `kind: 'mcp'`, so the `isBuiltin`
+   * test above (which means "Strands vended tool") was false for them and
+   * this panel offered a Delete the runtime silently undid on next start.
+   */
   const isRuntimeManaged = editForm.builtin === true;
-/**
-* the live catalogue only carries names once an agent session has
-* opened a client, so fall back to the names the last probe recorded. Never
-* a count without a way to see what it counted.
-*/
+  /**
+   * the live catalogue only carries names once an agent session has
+   * opened a client, so fall back to the names the last probe recorded. Never
+   * a count without a way to see what it counted.
+   */
   const probedToolNames = editForm.probe?.toolNames ?? [];
 
   return (

@@ -109,12 +109,12 @@ export function substituteSkillVariables(
   let content = body;
   for (const variable of variables) {
     const typed = provided[variable.name];
-// An explicitly empty value is no value: fall to the default (delta
-// review — clearing a Test field used to suppress the default until the
-// modal was closed).
+    // An explicitly empty value is no value: fall to the default (delta
+    // review — clearing a Test field used to suppress the default until the
+    // modal was closed).
     const value =
       typed !== undefined && typed.trim() !== '' ? typed : variable.default;
-// An empty declared default is not usable either; both read as missing.
+    // An empty declared default is not usable either; both read as missing.
     if (value === undefined || value.trim() === '') {
       missing.push(variable.name);
       continue;

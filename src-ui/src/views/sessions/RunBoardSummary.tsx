@@ -25,8 +25,8 @@ type RunBoardBucket = {
   count: number;
   firstMemberId: string;
   emphasized: boolean;
- /** : the member that CAUSED a quiet-turn emphasis, so activation
-* lands on it (not an arbitrary healthy member), and the label can say so. */
+  /** : the member that CAUSED a quiet-turn emphasis, so activation
+   * lands on it (not an arbitrary healthy member), and the label can say so. */
   firstQuietMemberId?: string;
 };
 
@@ -41,9 +41,9 @@ export function summarizeRunBoard(
   const buckets = new Map<SessionStateLabel, RunBoardBucket>();
   for (const member of members) {
     const state = orchestrationLifecycleLabel(member);
- // the SAME applicability gate the member rows use — a stale
-// observation on an inactive turn is not a live fact and must not
-// emphasize the board while the rows beneath show nothing.
+    // the SAME applicability gate the member rows use — a stale
+    // observation on an inactive turn is not a live fact and must not
+    // emphasize the board while the rows beneath show nothing.
     const quiet = Boolean(activeTurnProgress(member)?.progressSilence);
     const emphasized =
       state === 'Needs attention' ||
@@ -98,14 +98,14 @@ export function RunBoardSummary({
       {buckets.map((bucket) => {
         const presentation = statusGlyphPresentation(bucket.state);
         const label = presentation.ariaLabel.toLowerCase();
- // Review + delta /: when the SILENCE is the sole reason this
-// cluster is emphasized (state itself unremarkable), activation lands
-// on the member that caused it and the name says why — in the USER'S
-// words for this observation ("no recent progress", aligned with
-// ProgressSilenceObservation's copy; 'quiet' is internal vocabulary,
-// archive#1783 class). For states that are emphasized in their own
-// right (Needs attention/Failed/Stopped), the state IS the reason:
-// standard first-member naming and targeting.
+        // Review + delta /: when the SILENCE is the sole reason this
+        // cluster is emphasized (state itself unremarkable), activation lands
+        // on the member that caused it and the name says why — in the USER'S
+        // words for this observation ("no recent progress", aligned with
+        // ProgressSilenceObservation's copy; 'quiet' is internal vocabulary,
+        // archive#1783 class). For states that are emphasized in their own
+        // right (Needs attention/Failed/Stopped), the state IS the reason:
+        // standard first-member naming and targeting.
         const stateEmphasized =
           bucket.state === 'Needs attention' ||
           bucket.state === 'Failed' ||

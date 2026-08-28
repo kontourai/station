@@ -16,9 +16,9 @@ export function handleSessionLifecycleEvent(
     { method: 'session.started' | 'session.configured' }
   >,
 ) {
- // Only session.configured carries a resolved approvalMode (archive#727
- //) — session.started fires first and has none, so this
-// must not overwrite an existing lastAppliedApprovalMode with undefined.
+  // Only session.configured carries a resolved approvalMode (archive#727
+  //) — session.started fires first and has none, so this
+  // must not overwrite an existing lastAppliedApprovalMode with undefined.
   const approvalMode =
     event.method === 'session.configured' &&
     isApprovalMode(event.metadata?.approvalMode)
@@ -99,19 +99,19 @@ export function handleSessionStateChangedEvent(
   event: Extract<OrchestrationEvent, { method: 'session.state-changed' }>,
   store: SessionActivityStore = activeChatsStore,
 ) {
- // archive#1076: `to` is the provider's coarse PROCESS status — 'running' means
- // the runtime attached, not that a turn is open. Mirror the archive#1034 snapshot
-// guard using the client's turn fold (orchestrationTurnOpen — set by
-// turn.started, cleared by terminal turn events, reseeded from the
-// snapshot's hasActiveTurn). `status === 'sending'` alone is NOT a valid
-// fold: an in-turn approval drops status to 'idle', and the post-approval
- // 'running' state-change must re-engage the shell  The
-// optimistic local send still counts — it covers the window before the
-// server's first turn event, which the fold cannot yet know about. For
-// state-first adapters a non-initiating client may see a brief idle blip
-// between state-changed('running') and turn.started; that self-corrects
-// on the very next event and is strictly better than trusting process
-// status (the bug this closes).
+  // archive#1076: `to` is the provider's coarse PROCESS status — 'running' means
+  // the runtime attached, not that a turn is open. Mirror the archive#1034 snapshot
+  // guard using the client's turn fold (orchestrationTurnOpen — set by
+  // turn.started, cleared by terminal turn events, reseeded from the
+  // snapshot's hasActiveTurn). `status === 'sending'` alone is NOT a valid
+  // fold: an in-turn approval drops status to 'idle', and the post-approval
+  // 'running' state-change must re-engage the shell  The
+  // optimistic local send still counts — it covers the window before the
+  // server's first turn event, which the fold cannot yet know about. For
+  // state-first adapters a non-initiating client may see a brief idle blip
+  // between state-changed('running') and turn.started; that self-corrects
+  // on the very next event and is strictly better than trusting process
+  // status (the bug this closes).
   const chat = store.getSnapshot()[event.threadId];
   const turnActive =
     chat?.orchestrationTurnOpen === true || chat?.status === 'sending';

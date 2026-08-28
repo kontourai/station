@@ -63,8 +63,8 @@ const baseProps = {
   region: 'us-east-1',
   regionError: undefined,
   onRegionChange: vi.fn(),
-// Pass-through by default (the "not dirty" case) — tests below that need
-// the intercepting behavior render `GuardedHarness` instead.
+  // Pass-through by default (the "not dirty" case) — tests below that need
+  // the intercepting behavior render `GuardedHarness` instead.
   guard: (callback: () => void) => callback(),
 };
 
@@ -165,7 +165,7 @@ describe('AgentDefaultsSection', () => {
     expect(screen.queryByText('Global System Instructions')).toBeNull();
   });
 
- // archive#settings-revamp 1.
+  // archive#settings-revamp 1.
   describe('unsaved-guard wiring for the "Open Agents" cross-links', () => {
     test('both Default model and Default region captions navigate to /agents when the page is not dirty', () => {
       navigateMock.mockClear();

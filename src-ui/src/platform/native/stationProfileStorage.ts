@@ -28,17 +28,17 @@ interface TauriInvoker {
  */
 export interface VerifiedStationProfilePairing {
   connectionId: string;
-/** Candidate display name and endpoint, accepted only after the handshake. */
+  /** Candidate display name and endpoint, accepted only after the handshake. */
   name: string;
   endpoint: string;
   handshake: StationHandshakeIdentity;
-/** Exact UUID used by this pairing exchange; the server grant binds it. */
+  /** Exact UUID used by this pairing exchange; the server grant binds it. */
   clientInstanceId: string;
-/** Newly exchanged bearer value, if the pairing flow rotated it. */
+  /** Newly exchanged bearer value, if the pairing flow rotated it. */
   credential?: string;
-/** Opaque host-owned native exchange handle; never contains a bearer. */
+  /** Opaque host-owned native exchange handle; never contains a bearer. */
   credentialHandle?: string;
-/** An explicit keyring-reference rotation, not an inferred environment id. */
+  /** An explicit keyring-reference rotation, not an inferred environment id. */
   nextCredentialRef?: StationProfileCredentialRef;
 }
 
@@ -139,47 +139,47 @@ export interface NativeStationProfileRepository {
     pairing: VerifiedStationProfilePairing,
   ): Promise<string>;
   makeDefault(connectionId: string): Promise<StationProfile>;
-/**
-* Makes a saved Station the native credential projection for this UI
-* session only. This intentionally does not write `defaultProfile`.
-*/
+  /**
+   * Makes a saved Station the native credential projection for this UI
+   * session only. This intentionally does not write `defaultProfile`.
+   */
   authorizeActiveConnection(connectionId: string): Promise<boolean>;
-/** Selects one saved profile for this process without changing CLI default. */
+  /** Selects one saved profile for this process without changing CLI default. */
   selectProfileForProcess(profileName: string): string | undefined;
-/** Re-authorizes the CLI-owned default after each native process start. */
+  /** Re-authorizes the CLI-owned default after each native process start. */
   authorizeDefaultProfile(): Promise<boolean>;
-/** Returns a receipt only for the already-authorized exact connection/base. */
+  /** Returns a receipt only for the already-authorized exact connection/base. */
   captureNativeRequestBinding(
     connectionId: string,
     exactOrigin: string,
   ): NativeProfileRequestBinding | null;
-/**
-* Same-user local self-authorization (archive#1715, revised archive#1818
- *): the process-selected Station's name, IF it is a local-service install
-* otherwise `undefined`. Every other profile shape (remote, no selection
-* selected) returns `undefined` so the caller falls straight through to
-* today's pairing-ceremony UI with no special-casing.
-*
-* archive#1818: this DELIBERATELY no longer pre-filters on
-* `credentialRef`/`configurationState`. It used to return `undefined` for
-* any profile already carrying `credentialRef` + `configured`, on the
-* theory that those two fields mean "already durably provisioned" — but
-* that is exactly the label-vs-derivation defect this issue is about: a
-* nightly bundle swap re-signs the app, the macOS keychain ACL bound to
-* the previous signature then refuses every read of the credential this
-* build's `station_local_self_provision` needs, and those two RECORDED
-* fields keep reading as healthy forever. The webview cannot read the
-* keychain itself (by design — the bearer never crosses IPC), so it has
-* no way to observe usability from here; only the Rust command can, via
-* `profile_already_locally_provisioned` /
-* `read_credential_for_eligibility` (`src-desktop/src/lib.rs`). This
-* function now returns eligibility on shape alone and lets the command
-* decide the rest — the cost is one keychain read every boot for an
-* already-healthy profile, which correctly refuses fast
-* ("the selected Station is already configured") and is a no-op from
-* the caller's point of view (`attemptLocalSelfProvision` catches that
-* refusal and returns `false`).
-*/
+  /**
+   * Same-user local self-authorization (archive#1715, revised archive#1818
+   *): the process-selected Station's name, IF it is a local-service install
+   * otherwise `undefined`. Every other profile shape (remote, no selection
+   * selected) returns `undefined` so the caller falls straight through to
+   * today's pairing-ceremony UI with no special-casing.
+   *
+   * archive#1818: this DELIBERATELY no longer pre-filters on
+   * `credentialRef`/`configurationState`. It used to return `undefined` for
+   * any profile already carrying `credentialRef` + `configured`, on the
+   * theory that those two fields mean "already durably provisioned" — but
+   * that is exactly the label-vs-derivation defect this issue is about: a
+   * nightly bundle swap re-signs the app, the macOS keychain ACL bound to
+   * the previous signature then refuses every read of the credential this
+   * build's `station_local_self_provision` needs, and those two RECORDED
+   * fields keep reading as healthy forever. The webview cannot read the
+   * keychain itself (by design — the bearer never crosses IPC), so it has
+   * no way to observe usability from here; only the Rust command can, via
+   * `profile_already_locally_provisioned` /
+   * `read_credential_for_eligibility` (`src-desktop/src/lib.rs`). This
+   * function now returns eligibility on shape alone and lets the command
+   * decide the rest — the cost is one keychain read every boot for an
+   * already-healthy profile, which correctly refuses fast
+   * ("the selected Station is already configured") and is a no-op from
+   * the caller's point of view (`attemptLocalSelfProvision` catches that
+   * refusal and returns `false`).
+   */
   pendingLocalSelfProvisionProfileName(): string | undefined;
 }
 
@@ -256,15 +256,15 @@ export class NativeStationProfileStorage
     await this.refresh();
   }
 
-/**
-* Re-read the CLI-owned profile document without touching the credential
-* vault. Desktop uses this as a bounded observer for profile add/remove/use
-* commands performed while the shell is already open.
-*
-* Invalid or unreadable metadata deliberately leaves the last known-good
-* projection in place: callers can keep using a safe snapshot, but must not
-* treat a failed read as an empty profile list.
-*/
+  /**
+   * Re-read the CLI-owned profile document without touching the credential
+   * vault. Desktop uses this as a bounded observer for profile add/remove/use
+   * commands performed while the shell is already open.
+   *
+   * Invalid or unreadable metadata deliberately leaves the last known-good
+   * projection in place: callers can keep using a safe snapshot, but must not
+   * treat a failed read as an empty profile list.
+   */
   async refresh(): Promise<boolean> {
     const next = await this.readProfileStore();
     if (JSON.stringify(next) === JSON.stringify(this.profileStore)) {
@@ -275,9 +275,9 @@ export class NativeStationProfileStorage
   }
 
   private replaceProfileStore(store: StationProfileStore): void {
-// A metadata-only refresh (for example `updatedAt` on another profile)
-// must not strand the current native request epoch. Preserve it only if
-// the exact selected connection still has the same configured authority.
+    // A metadata-only refresh (for example `updatedAt` on another profile)
+    // must not strand the current native request epoch. Preserve it only if
+    // the exact selected connection still has the same configured authority.
     const retained = this.activeRequestBinding;
     const retainedProfile = retained
       ? store.profiles.find(
@@ -333,9 +333,9 @@ export class NativeStationProfileStorage
   }
 
   set(key: string, value: string): void {
-// `ConnectionStore` records a temporary selected connection through this
-// key. Retaining it only in memory is intentional: navigation and a
-// one-off selection never rewrite the shared CLI default.
+    // `ConnectionStore` records a temporary selected connection through this
+    // key. Retaining it only in memory is intentional: navigation and a
+    // one-off selection never rewrite the shared CLI default.
     this.values.set(key, value);
   }
 
@@ -370,12 +370,12 @@ export class NativeStationProfileStorage
     throw new Error('saved Station default changed concurrently; retry.');
   }
 
-/**
-* The native host, not the webview, binds a selected saved Station to the
-* active keyring credential. Keeping the selected id only in this adapter
-* makes a connection-list choice transient; `makeDefault` is the sole CLI
-* default mutation.
-*/
+  /**
+   * The native host, not the webview, binds a selected saved Station to the
+   * active keyring credential. Keeping the selected id only in this adapter
+   * makes a connection-list choice transient; `makeDefault` is the sole CLI
+   * default mutation.
+   */
   async authorizeActiveConnection(connectionId: string): Promise<boolean> {
     const profile = this.profileStore.profiles.find(
       (candidate) => profileConnectionId(candidate) === connectionId,
@@ -444,44 +444,44 @@ export class NativeStationProfileStorage
     const profile = this.profileStore.profiles.find(
       (candidate) => profileConnectionId(candidate) === selectedConnectionId,
     );
-// archive#1715 live-boot fix: `station setup local` (packages/cli/src/
-// commands/setup-command.ts) writes a fresh local-service profile with
-// `configurationState: 'configured'` and NO `credentialRef` at all — the
-// CLI itself never needed one, so "configured" here has always meant
-// "fully set up as far as the CLI cares", not "has a working native
-// credential". The original check (`configurationState === 'configured'`
-// means "skip it") therefore refused every real installation outright:
-// live verification against an actual `~/.station/config/profiles.json`
-// showed the wiring never even invoked the native command.
-//
- // archive#1818 1 : this function used to ALSO
-// skip any profile already carrying `credentialRef` + `configured`,
-// re-encoding the exact defect this fix exists to close — a stranded
-// profile after a bundle-swap keychain ACL mismatch looks EXACTLY like
-// that shape (both fields recorded, credential unreadable), so that
-// short-circuit silently prevented `station_local_self_provision` from
-// ever running in precisely the incident scenario archive#1818 reports.
-// This process (the webview) cannot read the OS keychain to check
-// usability itself; only the Rust command can
-// (`profile_already_locally_provisioned` in `src-desktop/src/lib.rs`).
-// The only shape check left here is "is this a local-service install at
-// all" — everything about whether it still needs provisioning is now
-// the Rust command's decision, made fresh on every boot.
-// `localService` describes a service attachment, not ownership. Only the
-// channel-authored local profile may spend the owner-only local-grant
-// secret to replace a credential. A paired profile can legitimately
-// share this origin and must remain untouched.
+    // archive#1715 live-boot fix: `station setup local` (packages/cli/src/
+    // commands/setup-command.ts) writes a fresh local-service profile with
+    // `configurationState: 'configured'` and NO `credentialRef` at all — the
+    // CLI itself never needed one, so "configured" here has always meant
+    // "fully set up as far as the CLI cares", not "has a working native
+    // credential". The original check (`configurationState === 'configured'`
+    // means "skip it") therefore refused every real installation outright:
+    // live verification against an actual `~/.station/config/profiles.json`
+    // showed the wiring never even invoked the native command.
+    //
+    // archive#1818 1 : this function used to ALSO
+    // skip any profile already carrying `credentialRef` + `configured`,
+    // re-encoding the exact defect this fix exists to close — a stranded
+    // profile after a bundle-swap keychain ACL mismatch looks EXACTLY like
+    // that shape (both fields recorded, credential unreadable), so that
+    // short-circuit silently prevented `station_local_self_provision` from
+    // ever running in precisely the incident scenario archive#1818 reports.
+    // This process (the webview) cannot read the OS keychain to check
+    // usability itself; only the Rust command can
+    // (`profile_already_locally_provisioned` in `src-desktop/src/lib.rs`).
+    // The only shape check left here is "is this a local-service install at
+    // all" — everything about whether it still needs provisioning is now
+    // the Rust command's decision, made fresh on every boot.
+    // `localService` describes a service attachment, not ownership. Only the
+    // channel-authored local profile may spend the owner-only local-grant
+    // secret to replace a credential. A paired profile can legitimately
+    // share this origin and must remain untouched.
     if (!profile?.localService || profile.setupSource !== 'local') {
       return undefined;
     }
     return profile.name;
   }
 
-/**
-* Persist a verified identity, and only a verified identity. A profile's
-* credential reference is stable across environment discovery by default;
-* callers that intentionally rotate it get a compensated keyring migration.
-*/
+  /**
+   * Persist a verified identity, and only a verified identity. A profile's
+   * credential reference is stable across environment discovery by default;
+   * callers that intentionally rotate it get a compensated keyring migration.
+   */
   async commitVerifiedPairing(
     pairing: VerifiedStationProfilePairing,
   ): Promise<string> {
@@ -499,9 +499,9 @@ export class NativeStationProfileStorage
     }
     const endpoint = normalizedPairingEndpoint(pairing.endpoint);
     for (let attempt = 0; attempt < 3; attempt += 1) {
-// Never mutate from the bootstrap snapshot: a CLI can add or select a
-// profile while Desktop is open. Re-read within every explicit mutation,
-// then let the native CAS make a stale attempt fail rather than clobber.
+      // Never mutate from the bootstrap snapshot: a CLI can add or select a
+      // profile while Desktop is open. Re-read within every explicit mutation,
+      // then let the native CAS make a stale attempt fail rather than clobber.
       const current = await this.readProfileStore();
       const matchingProfiles = current.profiles.filter(
         (profile) =>
@@ -526,9 +526,9 @@ export class NativeStationProfileStorage
           'Native pairing requires one host-owned handle and target credential reference.',
         );
       }
-// Rust allocates and binds the target reference to the exchange handle.
-// Rotating on every pairing ensures an old bearer is never exposed under
-// a newly approved origin while metadata and keyring state converge.
+      // Rust allocates and binds the target reference to the exchange handle.
+      // Rotating on every pairing ensures an old bearer is never exposed under
+      // a newly approved origin while metadata and keyring state converge.
       const nextRef = pairing.nextCredentialRef;
       if (
         current.profiles.some(
@@ -631,10 +631,10 @@ export class NativeStationProfileStorage
         const candidate: StationProfileStore = {
           ...live,
           revision: live.revision + 1,
-// Pairing completion is the first point where both metadata and the
-// host-owned credential are durable. Select the first saved Station
-// in this same CAS only when no explicit valid default exists in the
-// latest live store; a concurrent explicit choice always wins.
+          // Pairing completion is the first point where both metadata and the
+          // host-owned credential are durable. Select the first saved Station
+          // in this same CAS only when no explicit valid default exists in the
+          // latest live store; a concurrent explicit choice always wins.
           defaultProfile: hasExplicitDefault
             ? live.defaultProfile
             : liveTarget.name,
@@ -713,10 +713,10 @@ export class NativeStationProfileStorage
           : {}),
         ...binding,
       };
-// Desktop's temporary ConnectionStore entry is deliberately replaced by
-// the shared saved Station projection above. Return its real service identity
-// so the caller cannot continue reconciling or selecting the discarded
-// temporary connection.
+      // Desktop's temporary ConnectionStore entry is deliberately replaced by
+      // the shared saved Station projection above. Return its real service identity
+      // so the caller cannot continue reconciling or selecting the discarded
+      // temporary connection.
       return connectionId;
     }
     throw new Error('saved Station changed concurrently; retry pairing.');

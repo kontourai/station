@@ -17,9 +17,9 @@ import { PROVIDER_PRESETS } from '../providerCatalog';
 const OPERATOR_SUPPLIED_PRESET_IDS = new Set([
   'lmstudio',
   'litellm',
-// Azure AI Foundry ships with an EMPTY base URL: the resource endpoint is
-// per-account and Station cannot know it, which is the definition of an
-// endpoint it has no catalogue knowledge of.
+  // Azure AI Foundry ships with an EMPTY base URL: the resource endpoint is
+  // per-account and Station cannot know it, which is the definition of an
+  // endpoint it has no catalogue knowledge of.
   'azure-foundry',
 ]);
 

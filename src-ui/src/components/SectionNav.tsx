@@ -5,7 +5,7 @@ import '../views/page-layout.css';
 
 /**
  * The shared scroll-spy / URL-section navigation primitive (archive#4463
-*). For the family that switches a deep-linkable URL
+ *). For the family that switches a deep-linkable URL
  * section — Settings, ProjectSettingsView, KnowledgeConnectionView — NOT
  * for true in-place tab widgets; those use `components/Tabs.tsx` instead.
  *
@@ -14,34 +14,34 @@ import '../views/page-layout.css';
  * design language while staying semantically honest about which job each is
  * doing. Consequences of being real navigation, not a tab widget:
  * - Normal Tab-key focus order (the browser's native links rotor), NOT
-*   roving tabindex — every link is independently reachable and a screen
-*   reader's link-list/rotor sees every one of them, which `role="tab"`
-*   would have hidden.
+ *   roving tabindex — every link is independently reachable and a screen
+ *   reader's link-list/rotor sees every one of them, which `role="tab"`
+ *   would have hidden.
  * - No arrow-key activation. Wiring arrow keys to `onNavigate` (as an
-*   earlier version of this fix did) reproduced two real defects: an
-*   arrow-key press pushed a browser history entry per keystroke, and the
-*   host's own deep-link "reveal" effect (`focusSection` in
-*   `useSectionNavigation`) then stole focus back out of the strip —
-* archive#4463.
+ *   earlier version of this fix did) reproduced two real defects: an
+ *   arrow-key press pushed a browser history entry per keystroke, and the
+ *   host's own deep-link "reveal" effect (`focusSection` in
+ *   `useSectionNavigation`) then stole focus back out of the strip —
+ * archive#4463.
  * - Ctrl/Cmd/Shift/Alt+click bails out BEFORE `preventDefault`, so a
-*   modified click still opens the section in a new tab / window exactly
-*   like any other link, rather than always hijacking the click into an
- * in-app navigation 
+ *   modified click still opens the section in a new tab / window exactly
+ *   like any other link, rather than always hijacking the click into an
+ * in-app navigation
  */
 export interface SectionNavItem {
-/** Stable identity — what `activeKey` compares against and `onNavigate` receives. */
+  /** Stable identity — what `activeKey` compares against and `onNavigate` receives. */
   key: string;
   label: string;
-/** The real, bookmarkable URL for this section (typically `hrefForSection(id)`). */
+  /** The real, bookmarkable URL for this section (typically `hrefForSection(id)`). */
   href: string;
-/**
-* Draws a real, presentational divider element after this item — the
-* non-textual stand-in for a scope-group boundary (Settings' Station /
-* Defaults / This device). A dedicated `aria-hidden` element, not a
-* border on the item itself: an earlier version put the divider on the
-* LAST item's own border, which visibly conflicted with that same item's
- * active-pill border when it was also the selected tab 
-*/
+  /**
+   * Draws a real, presentational divider element after this item — the
+   * non-textual stand-in for a scope-group boundary (Settings' Station /
+   * Defaults / This device). A dedicated `aria-hidden` element, not a
+   * border on the item itself: an earlier version put the divider on the
+   * LAST item's own border, which visibly conflicted with that same item's
+   * active-pill border when it was also the selected tab
+   */
   dividerAfter?: boolean;
 }
 
@@ -49,9 +49,9 @@ export interface SectionNavProps {
   items: readonly SectionNavItem[];
   activeKey: string;
   onNavigate: (key: string) => void;
-/** Required — every nav landmark needs an accessible name distinguishing it from other navs on the page. */
+  /** Required — every nav landmark needs an accessible name distinguishing it from other navs on the page. */
   'aria-label': string;
-/** Extra class(es) merged onto the `.section-nav` strip, for a host's own layout hooks. */
+  /** Extra class(es) merged onto the `.section-nav` strip, for a host's own layout hooks. */
   className?: string;
 }
 
@@ -76,9 +76,9 @@ export const SectionNav = forwardRef<HTMLElement, SectionNavProps>(
                   selected ? 'page__tab page__tab--active' : 'page__tab'
                 }
                 onClick={(event) => {
-// A modified click means "open elsewhere" — let the
-// browser's native link behavior win, same as any other
- // anchor on the page 
+                  // A modified click means "open elsewhere" — let the
+                  // browser's native link behavior win, same as any other
+                  // anchor on the page
                   if (
                     event.metaKey ||
                     event.ctrlKey ||

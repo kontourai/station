@@ -243,7 +243,7 @@ export function ReadinessPanel({
   renderSetup,
 }: {
   projectSlug: string;
-/** Optional setup CTA rendered inside the not-configured empty state. */
+  /** Optional setup CTA rendered inside the not-configured empty state. */
   renderSetup?: (reason: string | undefined) => React.ReactNode;
 }) {
   const { data, isLoading, isPlaceholderData, error } =
@@ -251,11 +251,11 @@ export function ReadinessPanel({
   const refresh = useRefreshReadinessMutation(projectSlug);
   const refreshError =
     refresh.error instanceof Error ? refresh.error.message : null;
-// `isPlaceholderData` is true only for the held render of the OUTGOING
-// project's data while the new project's readiness is in flight — it is
-// false for a same-project background refetch. This is the signal that
-// must never go unmarked: the content on screen belongs to a different
-// project than the one currently selected (archive#3092).
+  // `isPlaceholderData` is true only for the held render of the OUTGOING
+  // project's data while the new project's readiness is in flight — it is
+  // false for a same-project background refetch. This is the signal that
+  // must never go unmarked: the content on screen belongs to a different
+  // project than the one currently selected (archive#3092).
   const showingPreviousProject = isPlaceholderData;
 
   return (

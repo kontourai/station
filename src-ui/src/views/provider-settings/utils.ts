@@ -28,7 +28,7 @@ export function defaultConfig(type: string): Record<string, unknown> {
 
 /**
  * Bedrock only persists the fields its selected `authMode` actually uses
-* (docs/design/connections-onboarding.md §3.1;, review):
+ * (docs/design/connections-onboarding.md §3.1;, review):
  * `authMode` itself is omitted for the default "chain" mode (keeping the
  * absent-means-chain convention), and `profile`/`apiKey` are omitted — not
  * merely emptied — for the modes that don't use them, so a save never
@@ -37,7 +37,7 @@ export function defaultConfig(type: string): Record<string, unknown> {
  */
 /**
  * Whether a connection's config is complete enough to save (/,
-* review): a Bedrock connection in "profile" or "api-key" auth
+ * review): a Bedrock connection in "profile" or "api-key" auth
  * mode must have its corresponding field filled in before Save is enabled —
  * an empty required field must never silently persist as chain auth.
  * A no-op (`true`) for every non-bedrock type.
@@ -88,9 +88,9 @@ export function filterModelProviders(
   search: string,
 ): ProviderConnection[] {
   const normalizedSearch = search.toLowerCase();
-// archive#3747: these providers arrive from `/api/connections/models`, which
-// is the LLM-capable inventory. The capability re-filter here was a second
-// (and differently-worded) derivation of the route's own membership rule.
+  // archive#3747: these providers arrive from `/api/connections/models`, which
+  // is the LLM-capable inventory. The capability re-filter here was a second
+  // (and differently-worded) derivation of the route's own membership rule.
   return providers.filter(
     (provider) =>
       provider.name.toLowerCase().includes(normalizedSearch) ||
@@ -164,8 +164,8 @@ export function mergeServerIntoEdit(
   for (const path of dirty) {
     if (!path.startsWith('config.')) continue;
     const key = path.slice('config.'.length);
-// Deleted-on-the-client keys (modelOptions is cleared when baseUrl
-// changes) must stay deleted rather than resurrect from the server copy.
+    // Deleted-on-the-client keys (modelOptions is cleared when baseUrl
+    // changes) must stay deleted rather than resurrect from the server copy.
     if (key in currentEdit.config) {
       config[key] = (currentEdit.config as Record<string, unknown>)[key];
     } else {

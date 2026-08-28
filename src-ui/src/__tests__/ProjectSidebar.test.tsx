@@ -94,16 +94,16 @@ vi.mock('@kontourai/station-sdk', () => ({
   useOrchestrationSessionsQuery: () => ({ data: sessions }),
   useProjectLayoutsQuery: () => ({ data: [] }),
   useReorderProjectsMutation: () => ({ mutate: vi.fn() }),
-// archive#3313 routed the sidebar's visibility flags through
-// useSurfaceVisibilityFlags, which reads enabled previews from here. A
-// hand-rolled module mock owes every export its subject reaches, so this
-// file went red on main the moment that hook was added.
+  // archive#3313 routed the sidebar's visibility flags through
+  // useSurfaceVisibilityFlags, which reads enabled previews from here. A
+  // hand-rolled module mock owes every export its subject reaches, so this
+  // file went red on main the moment that hook was added.
   useFeaturePreviewsQuery: () => ({ data: [] }),
-// archive#3780 gave ProjectSidebarRow the Board-availability read, and this
-// file went red again for exactly the reason recorded above — the same
-// hazard, one hook later. `undefined` is the honest shape while no row is
-// expanded: the row's read is gated `enabled: expanded && !collapsed`, so
-// the server is never asked, and nothing here asserts a Board entry.
+  // archive#3780 gave ProjectSidebarRow the Board-availability read, and this
+  // file went red again for exactly the reason recorded above — the same
+  // hazard, one hook later. `undefined` is the honest shape while no row is
+  // expanded: the row's read is gated `enabled: expanded && !collapsed`, so
+  // the server is never asked, and nothing here asserts a Board entry.
   useBoardAvailabilityQuery: () => ({ data: undefined }),
 }));
 
@@ -122,8 +122,8 @@ function resetState() {
   vi.mocked(openChatsStore.focus).mockClear();
   chatDraftsStore.clear('session-draft');
   window.localStorage.clear();
-// The device-settings singleton keeps in-memory state across tests;
-// clearing localStorage alone would leak a prior test's toggles.
+  // The device-settings singleton keeps in-memory state across tests;
+  // clearing localStorage alone would leak a prior test's toggles.
   deviceSettingsStore.reloadFromStorage();
 }
 
@@ -165,7 +165,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
 
     render(<ProjectSidebar />);
     expect(screen.getByText('Open chats')).toBeTruthy();
- // The mini-inbox rows are lazy-loaded (archive#3314) — await their chunk.
+    // The mini-inbox rows are lazy-loaded (archive#3314) — await their chunk.
     expect(await screen.findByText('Fix login bug')).toBeTruthy();
   });
 
@@ -247,7 +247,7 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
       document.getElementById('sidebar-open-chats')?.hasAttribute('hidden'),
     ).toBe(true);
 
-// Persisted device-side: a fresh mount stays collapsed.
+    // Persisted device-side: a fresh mount stays collapsed.
     first.unmount();
     render(<ProjectSidebar />);
     expect(
@@ -278,23 +278,23 @@ describe('ProjectSidebar Open chats mini-inbox (station#3314)', () => {
 
     await screen.findByText('Chat 0');
     expect(screen.getByText('Chat 2')).toBeTruthy();
-// Capped at OPEN_CHATS_SIDEBAR_CAP (3): the 4th/5th fold behind N more.
+    // Capped at OPEN_CHATS_SIDEBAR_CAP (3): the 4th/5th fold behind N more.
     expect(screen.queryByText('Chat 3')).toBeNull();
 
-// archive#3314: this used to assert `inboxOpen === true` as proof of
-// a destination. That setting DEFAULTS to true, so the assertion passed on
-// a fresh store whether or not anything wrote it — no power at all, for a
-// button that led nowhere on mobile and in an edge placement.
-//
-// The destination guarantee now lives with the dock, which is the only
-// thing that knows which surface is mounted, and is proven exhaustively in
-// chat-dock-utils.test.ts ("every chrome reaches a destination that
-// mounts"). What the SIDEBAR owes is delegation: ask, never guess.
+    // archive#3314: this used to assert `inboxOpen === true` as proof of
+    // a destination. That setting DEFAULTS to true, so the assertion passed on
+    // a fresh store whether or not anything wrote it — no power at all, for a
+    // button that led nowhere on mobile and in an edge placement.
+    //
+    // The destination guarantee now lives with the dock, which is the only
+    // thing that knows which surface is mounted, and is proven exhaustively in
+    // chat-dock-utils.test.ts ("every chrome reaches a destination that
+    // mounts"). What the SIDEBAR owes is delegation: ask, never guess.
     deviceSettingsStore.set('inboxOpen', false);
     fireEvent.click(screen.getByRole('button', { name: '2 more' }));
     expect(openChatsStore.openCollection).toHaveBeenCalledTimes(1);
-// The sidebar must NOT decide the destination itself — routing that from
-// here is what produced a dead end in the chromes it cannot see.
+    // The sidebar must NOT decide the destination itself — routing that from
+    // here is what produced a dead end in the chromes it cannot see.
     expect(deviceSettingsStore.get('inboxOpen')).toBe(false);
   });
 
@@ -393,8 +393,8 @@ describe('ProjectSidebar live-work badge', () => {
     );
 
     const { container } = render(<ProjectSidebar />);
-// The number and the sentence come from the same lanes, so the badge can
-// never total something its own explanation does not account for.
+    // The number and the sentence come from the same lanes, so the badge can
+    // never total something its own explanation does not account for.
     expect(
       container.querySelector('.sidebar__project-live-count')?.textContent,
     ).toBe('2');
@@ -405,12 +405,12 @@ describe('ProjectSidebar live-work badge', () => {
     ).toBeTruthy();
   });
 
-/**
-* archive#1781's narrowing survives the move: `answerability` still demotes
-* an open request nothing can answer. It lands in Active now as
-* 'Unanswerable' rather than claiming to be yours to act on, which is the
-* Sessions lane model's own rule.
-*/
+  /**
+   * archive#1781's narrowing survives the move: `answerability` still demotes
+   * an open request nothing can answer. It lands in Active now as
+   * 'Unanswerable' rather than claiming to be yours to act on, which is the
+   * Sessions lane model's own rule.
+   */
   test('an open request nothing can answer is not claimed as Needs you', () => {
     resetState();
     projects.push({ id: 'p1', slug: 'station', name: 'Station' });
@@ -436,9 +436,9 @@ describe('ProjectSidebar live-work badge', () => {
   });
 
   test('a finished run is not live work and no longer reaches this badge', () => {
-// The archive#1781 leg this change deliberately drops. Asserted, not
-// silently removed: if a later change re-adds finished runs to the badge
-// without re-adding them to the project page section, this reds.
+    // The archive#1781 leg this change deliberately drops. Asserted, not
+    // silently removed: if a later change re-adds finished runs to the badge
+    // without re-adding them to the project page section, this reds.
     resetState();
     projects.push({ id: 'p1', slug: 'station', name: 'Station' });
     sessions.push(
@@ -503,9 +503,9 @@ describe('ProjectSidebar live-work badge', () => {
     );
 
     const { container } = render(<ProjectSidebar />);
-// Clicking the number is clicking the row: the badge stays decoration
-// inside the project button, and the project page it selects is where the
-// live sessions are now listed.
+    // Clicking the number is clicking the row: the badge stays decoration
+    // inside the project button, and the project page it selects is where the
+    // live sessions are now listed.
     fireEvent.click(
       container.querySelector('.sidebar__project-live-count') as Element,
     );
@@ -536,9 +536,9 @@ describe('ProjectSidebar New Project affordance (station#1300)', () => {
 describe('ProjectSidebar compact rail chat entry (#1348)', () => {
   test('keeps a named Open chats control inside the collapsed rail', () => {
     resetState();
- // archive#1348 was written against the raw pre-unification key; sidebar
- // collapse now lives in the device-settings envelope, so
-// seed through the store rather than the migrated-away legacy key.
+    // archive#1348 was written against the raw pre-unification key; sidebar
+    // collapse now lives in the device-settings envelope, so
+    // seed through the store rather than the migrated-away legacy key.
     deviceSettingsStore.set('projectSidebarCollapsed', true);
     const listener = vi.fn();
     const unregister = openChatsStore.registerNavigation({

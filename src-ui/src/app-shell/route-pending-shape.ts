@@ -15,14 +15,14 @@ import { resolveGuidanceTab } from '../views/guidance-tab';
  * Which shape the body holds while a route's chunk is in flight.
  *
  * - `split-pane` — list rail + detail pane, and below the mobile breakpoint the
-*   list alone (the stylesheet collapses it, mirroring `SplitPaneLayout.css`).
+ *   list alone (the stylesheet collapses it, mirroring `SplitPaneLayout.css`).
  * - `detail-sheet` — the detail filling the width, with no list beside it. Two
-*   routes arrive that way: a mobile route that opens an editor, and a desktop
-*   route whose list pane is persisted collapsed.
+ *   routes arrive that way: a mobile route that opens an editor, and a desktop
+ *   route whose list pane is persisted collapsed.
  * - `region` — one column of content the frame pads and `.content-view`
-*   scrolls.
+ *   scrolls.
  * - `unshaped` — the route has no frame, so nothing has told the user which
-*   page they are arriving at and there is no declared shape to hold.
+ *   page they are arriving at and there is no declared shape to hold.
  */
 export type RoutePendingShape =
   | 'split-pane'
@@ -66,11 +66,11 @@ function baseShape(
  * questions are different and the difference is exactly that field:
  *
  * - `routeIdentity` asks "is this a different route?", i.e. may the entrance
-*   replay and may the route body remount. Picking a row in Guidance's split
-*   pane is not leaving the surface, so re-keying on it would remount an
-*   editor mid-edit. It stays out.
+ *   replay and may the route body remount. Picking a row in Guidance's split
+ *   pane is not leaving the surface, so re-keying on it would remount an
+ *   editor mid-edit. It stays out.
  * - This asks "which side will the pane open on?" — and a selected row is
-*   precisely what makes it open on the detail. It has to come in.
+ *   precisely what makes it open on the detail. It has to come in.
  *
  * So the overlap is a consequence, not a definition, and any future route whose
  * pane opens on a detail without changing its identity belongs here and not
@@ -90,8 +90,8 @@ export function routeOpensDetailPane(view: NavigationView): boolean {
       return true;
     case 'activity':
       return view.sessionId !== undefined;
-// `/guidance/new` selects `__new__` in the tab's own pane, so any selected
-// id — including the literal `new` — opens the detail.
+    // `/guidance/new` selects `__new__` in the tab's own pane, so any selected
+    // id — including the literal `new` — opens the detail.
     case 'guidance':
       return view.selectedId !== undefined;
     default:
@@ -145,11 +145,11 @@ export function routePendingShape(
   if (base !== 'split-pane') return base;
 
   if (isMobile) {
-// Below the breakpoint the pane shows one side; the collapse state is a
-// desktop affordance and `SplitPaneLayout` ignores it there. The
-// placeholder knows THAT the route names a record, not which one, and
-// `shouldShowMobileDetailSheet` only tests the id for null — so a stand-in
-// is the whole of what the shared rule needs to decide this.
+    // Below the breakpoint the pane shows one side; the collapse state is a
+    // desktop affordance and `SplitPaneLayout` ignores it there. The
+    // placeholder knows THAT the route names a record, not which one, and
+    // `shouldShowMobileDetailSheet` only tests the id for null — so a stand-in
+    // is the whole of what the shared rule needs to decide this.
     return shouldShowMobileDetailSheet(
       isMobile,
       routeOpensDetailPane(view) ? PENDING_SELECTION : null,

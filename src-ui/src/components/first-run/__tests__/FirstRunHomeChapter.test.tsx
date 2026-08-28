@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
-* The first-run chapter's placement and gate.
+ * The first-run chapter's placement and gate.
  *
  * These are the assertions the old surface could not make, because its
  * activation was a readiness probe and its placement was a fixed corner slot:
@@ -123,8 +123,8 @@ vi.mock('../../../hooks/useSystemStatus', () => ({
   useSystemStatus: () => ({
     data: { externalEngines: engineState.engines },
     isLoading: engineState.statusLoading,
-// A RESTORED query has data and is not "loading", but is still fetching —
-// the chapter's auto-open reads this one.
+    // A RESTORED query has data and is not "loading", but is still fetching —
+    // the chapter's auto-open reads this one.
     isFetching: engineState.statusLoading || engineState.statusRestored,
   }),
 }));
@@ -216,9 +216,9 @@ describe('AC1 — the gate is a durable fact about the home', () => {
   });
 
   test('a home whose config predates the field is not ambushed', () => {
-// The regression the old `sawSetupLauncher` rule was reaching for, kept
-// without the rule: absent is "this home has already been in use", which
-// is a different state from `pending` and must never open a guided run.
+    // The regression the old `sawSetupLauncher` rule was reaching for, kept
+    // without the rule: absent is "this home has already been in use", which
+    // is a different state from `pending` and must never open a guided run.
     configValue.firstRun = undefined;
     render(<FirstRunHomeChapter />);
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
@@ -226,9 +226,9 @@ describe('AC1 — the gate is a durable fact about the home', () => {
   });
 
   test('the engines on this machine cannot decide whether the chapter runs', () => {
- // exactly: with `claude`/`codex` ready on first paint the launcher
-// never appeared and the run never happened. Ready engines now change what
-// the chapter SAYS, never whether it exists.
+    // exactly: with `claude`/`codex` ready on first paint the launcher
+    // never appeared and the run never happened. Ready engines now change what
+    // the chapter SAYS, never whether it exists.
     engineState.engines = [READY_CODEX, READY_CLAUDE];
     render(<FirstRunHomeChapter />);
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
@@ -237,26 +237,26 @@ describe('AC1 — the gate is a durable fact about the home', () => {
 
 describe('a restored config snapshot cannot re-open a deferred run', () => {
   test('nothing auto-opens while the config read is still being revalidated', () => {
-// `['config']` is persisted to IndexedDB, so a boot renders the PREVIOUS
-// session's copy first. Right after a deferral that copy still says
-// `pending`.
+    // `['config']` is persisted to IndexedDB, so a boot renders the PREVIOUS
+    // session's copy first. Right after a deferral that copy still says
+    // `pending`.
     configState.settled = false;
     render(<FirstRunHomeChapter />);
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
-// The card renders from the restored copy, and should: it offers, it does
-// not interrupt.
+    // The card renders from the restored copy, and should: it offers, it does
+    // not interrupt.
     expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
   });
 
   test('a stale pending that resolves to skipped never opens the chapter', () => {
-// THE OBSERVED DEFECT, as a test: deferred a moment ago, reloaded, and the
-// restored snapshot re-opened the chapter over the decision just made.
+    // THE OBSERVED DEFECT, as a test: deferred a moment ago, reloaded, and the
+    // restored snapshot re-opened the chapter over the decision just made.
     configState.settled = false;
     configValue.firstRun = { status: 'pending' };
     const view = render(<FirstRunHomeChapter />);
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
 
-// The network answers with what the home actually holds.
+    // The network answers with what the home actually holds.
     configValue.firstRun = {
       status: 'skipped',
       skippedAt: '2026-01-01T00:00:00.000Z',
@@ -269,7 +269,7 @@ describe('a restored config snapshot cannot re-open a deferred run', () => {
   });
 
   test('a confirmed pending still opens it', () => {
-// The guard must not swallow the case it exists to protect.
+    // The guard must not swallow the case it exists to protect.
     configState.settled = false;
     const view = render(<FirstRunHomeChapter />);
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
@@ -285,9 +285,9 @@ describe('the connect launcher goes first, and can only ever delay', () => {
     setupState.launcherWouldShow = true;
     render(<FirstRunHomeChapter />);
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
-// Still OFFERED: the durable fact is untouched, so Home carries the card
-// and the run is one click (or one launcher dismissal) away. This is what
-// separates it from the old rule, which decided the run never happened.
+    // Still OFFERED: the durable fact is untouched, so Home carries the card
+    // and the run is one click (or one launcher dismissal) away. This is what
+    // separates it from the old rule, which decided the run never happened.
     expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
   });
 
@@ -303,16 +303,16 @@ describe('the connect launcher goes first, and can only ever delay', () => {
   });
 
   test('nothing opens on a RESTORED status from the previous session', () => {
-// `['system-status']` is persisted to IndexedDB, so a boot renders last
-// session's answer — which can say "chat is ready" while THIS session's
-// Station has nothing configured. Opening on it left the launcher under
-// the chapter's scrim with its primary action unclickable (E2E bucket).
+    // `['system-status']` is persisted to IndexedDB, so a boot renders last
+    // session's answer — which can say "chat is ready" while THIS session's
+    // Station has nothing configured. Opening on it left the launcher under
+    // the chapter's scrim with its primary action unclickable (E2E bucket).
     engineState.statusRestored = true;
     setupState.launcherWouldShow = false;
     const view = render(<FirstRunHomeChapter />);
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
 
-// The network confirms it, and it says the launcher owns the screen.
+    // The network confirms it, and it says the launcher owns the screen.
     engineState.statusRestored = false;
     setupState.launcherWouldShow = true;
     view.rerender(<FirstRunHomeChapter />);
@@ -320,31 +320,31 @@ describe('the connect launcher goes first, and can only ever delay', () => {
   });
 
   test('nothing opens before the launcher question has been ASKED', () => {
-// `isBlockingFullScreen` is false while `/api/system/status` is in flight,
-// because the launcher's own visibility is `!!status && …`. Treating that
-// as "no launcher" opened the chapter first and left the launcher under
-// its scrim, with its primary action unclickable.
+    // `isBlockingFullScreen` is false while `/api/system/status` is in flight,
+    // because the launcher's own visibility is `!!status && …`. Treating that
+    // as "no launcher" opened the chapter first and left the launcher under
+    // its scrim, with its primary action unclickable.
     engineState.statusLoading = true;
     const view = render(<FirstRunHomeChapter />);
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
 
-// The answer arrives, and it says the launcher owns the screen.
+    // The answer arrives, and it says the launcher owns the screen.
     engineState.statusLoading = false;
     setupState.launcherWouldShow = true;
     view.rerender(<FirstRunHomeChapter />);
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
 
-// …and once it is resolved, the chapter opens.
+    // …and once it is resolved, the chapter opens.
     setupState.launcherWouldShow = false;
     view.rerender(<FirstRunHomeChapter />);
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
   });
 
   test('the chapter publishes whether it owns the screen', () => {
- // this is the ONE piece of state both first-run overlays read,
-// which is what makes "at most one of them exists" a rule rather than two
-// components guessing from the same flapping probe. The integrated
-// assertion lives in `first-run-overlay-exclusivity.test.tsx`.
+    // this is the ONE piece of state both first-run overlays read,
+    // which is what makes "at most one of them exists" a rule rather than two
+    // components guessing from the same flapping probe. The integrated
+    // assertion lives in `first-run-overlay-exclusivity.test.tsx`.
     const view = render(<FirstRunHomeChapter />);
     expect(presence.at(-1)).toBe(true);
 
@@ -352,16 +352,16 @@ describe('the connect launcher goes first, and can only ever delay', () => {
     expect(presence.at(-1)).toBe(false);
 
     view.unmount();
-// Leaving Home hands the screen back even if the chapter was still open.
+    // Leaving Home hands the screen back even if the chapter was still open.
     expect(presence.at(-1)).toBe(false);
   });
 
-// "a launcher that re-appears cannot close a chapter already open" USED to
-// live here. It passed while mocking `OnboardingGate` away, so it could only
- // ever see one of the two overlays — the review's is precisely that the
-// other one was rendering at the same time. Replaced by
-// `src-ui/src/__tests__/first-run-overlay-exclusivity.test.tsx`, which mounts
-// both components and the real store between them.
+  // "a launcher that re-appears cannot close a chapter already open" USED to
+  // live here. It passed while mocking `OnboardingGate` away, so it could only
+  // ever see one of the two overlays — the review's is precisely that the
+  // other one was rendering at the same time. Replaced by
+  // `src-ui/src/__tests__/first-run-overlay-exclusivity.test.tsx`, which mounts
+  // both components and the real store between them.
 });
 
 describe('AC5 — a flapping status probe cannot toggle the chapter', () => {
@@ -371,7 +371,7 @@ describe('AC5 — a flapping status probe cannot toggle the chapter', () => {
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
     const firstRow = screen.getByTestId('first-run-engine-claude').textContent;
 
-// The probe flaps to ready…
+    // The probe flaps to ready…
     engineState.engines = [READY_CLAUDE];
     view.rerender(<FirstRunHomeChapter />);
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
@@ -379,7 +379,7 @@ describe('AC5 — a flapping status probe cannot toggle the chapter', () => {
       firstRow,
     );
 
-// …and back again. Six transitions, one chapter, never a mount or unmount.
+    // …and back again. Six transitions, one chapter, never a mount or unmount.
     for (const engines of [
       [UNVERIFIABLE_CLAUDE],
       [READY_CLAUDE],
@@ -392,10 +392,10 @@ describe('AC5 — a flapping status probe cannot toggle the chapter', () => {
   });
 
   test('an unanswered status probe holds the list, not the chapter', () => {
-// Opened on a settled probe, then the query re-keys and goes back in
-// flight (`useSystemStatus` is keyed by apiBase, so switching connection
-// mid-chapter does exactly this). The LIST goes back to its loading line;
-// the chapter does not move.
+    // Opened on a settled probe, then the query re-keys and goes back in
+    // flight (`useSystemStatus` is keyed by apiBase, so switching connection
+    // mid-chapter does exactly this). The LIST goes back to its loading line;
+    // the chapter does not move.
     const view = render(<FirstRunHomeChapter />);
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
 
@@ -407,8 +407,8 @@ describe('AC5 — a flapping status probe cannot toggle the chapter', () => {
     engineState.statusLoading = false;
     view.rerender(<FirstRunHomeChapter />);
     expect(screen.queryByTestId('first-run-engines-loading')).toBeNull();
-// The selection seeds from the answer that arrived, not from the empty
-// catalog the list was showing.
+    // The selection seeds from the answer that arrived, not from the empty
+    // catalog the list was showing.
     expect(screen.getByRole('button', { name: 'Set up 1' })).toBeTruthy();
   });
 
@@ -425,9 +425,9 @@ describe('AC3 — it renders as a dialog, and only inside Home', () => {
     const { container } = render(<FirstRunHomeChapter />);
     const overlay = document.querySelector('.responsive-surface-overlay');
     expect(overlay).toBeTruthy();
-// The shared surface owns the layer. Nothing in the first-run tree may
-// declare its own placement — that is how the old card ended up above
-// modal scrims and the command palette.
+    // The shared surface owns the layer. Nothing in the first-run tree may
+    // declare its own placement — that is how the old card ended up above
+    // modal scrims and the command palette.
     expect(
       document.querySelector('.first-run-about[style], .first-run-engines'),
     ).toBeTruthy();
@@ -435,8 +435,8 @@ describe('AC3 — it renders as a dialog, and only inside Home', () => {
   });
 
   test('unmounting the route takes the chapter with it', () => {
-// The component is mounted by `HomeView`, so "navigated away" is
-// "unmounted". Nothing survives to follow the user.
+    // The component is mounted by `HomeView`, so "navigated away" is
+    // "unmounted". Nothing survives to follow the user.
     const view = render(<FirstRunHomeChapter />);
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
     view.unmount();
@@ -453,8 +453,8 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     await waitFor(() =>
       expect(recordFirstRunDecision).toHaveBeenCalledTimes(1),
     );
-// A status and nothing else: the server decides whether the move is legal
- // and stamps when it happened 
+    // A status and nothing else: the server decides whether the move is legal
+    // and stamps when it happened
     expect(recordFirstRunDecision).toHaveBeenCalledWith({ status: 'skipped' });
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
     expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
@@ -491,8 +491,8 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     });
     expect(materializeEngineAgent).toHaveBeenCalledTimes(2);
 
-// The questions are the second step of the same dialog — not a second
-// surface in a corner somewhere.
+    // The questions are the second step of the same dialog — not a second
+    // surface in a corner somewhere.
     await waitFor(() =>
       expect(screen.getByTestId('first-run-about-you')).toBeTruthy(),
     );
@@ -503,8 +503,8 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     expect(recordFirstRunDecision.mock.calls.map((call) => call[0])).toEqual([
       { status: 'completed' },
     ]);
-// Skipping the questions persists NO profile at all — absent is what makes
-// the server inject nothing.
+    // Skipping the questions persists NO profile at all — absent is what makes
+    // the server inject nothing.
     expect(
       updateConfig.mock.calls.some((call) =>
         Object.hasOwn(call[0], 'userProfile'),
@@ -514,11 +514,11 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
   });
 
   test('completing leaves no stray deferral behind it', async () => {
-// `ResponsiveDialogSurface` runs its own `onClose` as it tears down, and
-// this chapter's `onClose` IS the deferral. The config refetch after the
-// `completed` PUT has not landed at that instant, so the record still
-// reads `pending` — and a `skipped` write landing after `completed`
-// persists a finished run as a deferred one.
+    // `ResponsiveDialogSurface` runs its own `onClose` as it tears down, and
+    // this chapter's `onClose` IS the deferral. The config refetch after the
+    // `completed` PUT has not landed at that instant, so the record still
+    // reads `pending` — and a `skipped` write landing after `completed`
+    // persists a finished run as a deferred one.
     engineState.engines = [];
     render(<FirstRunHomeChapter />);
     await act(async () => {
@@ -530,9 +530,9 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
     });
-// The card is still on screen until the config refetch lands, so the
-// chapter is re-openable inside that window — and closing it must not
-// write a deferral over the completion that just happened.
+    // The card is still on screen until the config refetch lands, so the
+    // chapter is re-openable inside that window — and closing it must not
+    // write a deferral over the completion that just happened.
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Set up Station' }));
     });
@@ -546,9 +546,9 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
   });
 
   test('H1 — a failed engine can never leave the home completed', async () => {
-// The review's High: the report's Continue advanced unconditionally,
-// About-you's Skip wrote `completed`, and a home whose chosen engines were
-// never enabled recorded a finished first run.
+    // The review's High: the report's Continue advanced unconditionally,
+    // About-you's Skip wrote `completed`, and a home whose chosen engines were
+    // never enabled recorded a finished first run.
     materializeEngineAgent.mockRejectedValue(new Error('offline'));
     render(<FirstRunHomeChapter />);
     await act(async () => {
@@ -556,8 +556,8 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     });
     await screen.findByTestId('first-run-engines-report');
 
-// There is no exit from here that completes: the questions are not even
-// reachable, so `complete` cannot be called.
+    // There is no exit from here that completes: the questions are not even
+    // reachable, so `complete` cannot be called.
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
     await act(async () => {
       fireEvent.click(screen.getByTestId('first-run-engines-give-up'));
@@ -567,14 +567,14 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     expect(
       recordFirstRunDecision.mock.calls.map((call) => call[0].status),
     ).toEqual(['skipped']);
-// And the card stays: the engines they asked for still do not exist, so
-// the run is still on offer.
+    // And the card stays: the engines they asked for still do not exist, so
+    // the run is still on offer.
     expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
   });
 
   test('H1 — retrying until it lands DOES complete', async () => {
-// The other direction, so the guard cannot be satisfied by never
-// completing anything.
+    // The other direction, so the guard cannot be satisfied by never
+    // completing anything.
     materializeEngineAgent.mockRejectedValueOnce(new Error('offline'));
     render(<FirstRunHomeChapter />);
     await act(async () => {
@@ -602,10 +602,10 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
   });
 
   test('H1 — a retry whose engine has left the catalog cannot complete the home', async () => {
-// The durable half of the empty-plan defect: the chapter's report used to
-// vanish and the run walk on to the questions, whose Skip writes
-// `completed` — for a home whose Codex was never set up and is no longer
-// even on offer.
+    // The durable half of the empty-plan defect: the chapter's report used to
+    // vanish and the run walk on to the questions, whose Skip writes
+    // `completed` — for a home whose Codex was never set up and is no longer
+    // even on offer.
     materializeEngineAgent.mockRejectedValue(new Error('offline'));
     const view = render(<FirstRunHomeChapter />);
     await act(async () => {
@@ -613,12 +613,12 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     });
     await screen.findByTestId('first-run-engines-report');
 
-// The engine drops out of the catalog before the retry lands. The
-// re-render is load-bearing: `runBatch` closes over the options of the
-// render it was created in, so mutating the fixture alone would leave the
-// retry planning against the OLD catalog and this test would pass without
-// ever reaching the empty-plan branch it exists for (proved by injection —
-// it did exactly that until the rerender was added).
+    // The engine drops out of the catalog before the retry lands. The
+    // re-render is load-bearing: `runBatch` closes over the options of the
+    // render it was created in, so mutating the fixture alone would leave the
+    // retry planning against the OLD catalog and this test would pass without
+    // ever reaching the empty-plan branch it exists for (proved by injection —
+    // it did exactly that until the rerender was added).
     engineState.engines = [];
     view.rerender(<FirstRunHomeChapter />);
     await act(async () => {
@@ -629,7 +629,7 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     expect(
       recordFirstRunDecision.mock.calls.map((call) => call[0].status),
     ).toEqual([]);
-// The only exits are still the two honest ones.
+    // The only exits are still the two honest ones.
     expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
     await act(async () => {
       fireEvent.click(screen.getByTestId('first-run-engines-give-up'));
@@ -640,8 +640,8 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
   });
 
   test('an already-enabled engine is shown as done and creates nothing', async () => {
- // "no duplicate agents": an enabled row is not selectable, so it can
-// never enter a batch however it renders.
+    // "no duplicate agents": an enabled row is not selectable, so it can
+    // never enter a batch however it renders.
     engineState.engines = [READY_CODEX];
     render(<FirstRunHomeChapter />);
     fireEvent.click(screen.getByRole('checkbox', { name: 'Enable Codex' }));
@@ -660,9 +660,9 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
     });
-// Nothing claims it was saved: `configValue.firstRun` is still `pending`,
-// so the next load offers the chapter again. The rejection is caught, not
-// floated.
+    // Nothing claims it was saved: `configValue.firstRun` is still `pending`,
+    // so the next load offers the chapter again. The rejection is caught, not
+    // floated.
     expect(configValue.firstRun?.status).toBe('pending');
   });
 });
@@ -685,7 +685,7 @@ describe('the disclosure is the first step of the run, not a modal over it', () 
     expect(screen.getByTestId('first-run-disclosure')).toBeTruthy();
     expect(screen.getByText('Step 1 of 3')).toBeTruthy();
     expect(screen.getByText('What Station sends')).toBeTruthy();
-// The engines step is BEHIND it, not beside it.
+    // The engines step is BEHIND it, not beside it.
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
 
     fireEvent.click(screen.getByTestId('first-run-disclosure'));
@@ -695,8 +695,8 @@ describe('the disclosure is the first step of the run, not a modal over it', () 
   });
 
   test('an already-acknowledged home runs two steps and says so', () => {
-// The count is derived from the run the chapter actually opened with, so
-// "Step 1 of 3" is never printed over a run that has two steps.
+    // The count is derived from the run the chapter actually opened with, so
+    // "Step 1 of 3" is never printed over a run that has two steps.
     disclosureState.outstanding = false;
     render(<FirstRunHomeChapter />);
 
@@ -706,15 +706,15 @@ describe('the disclosure is the first step of the run, not a modal over it', () 
   });
 
   test('nothing opens until the disclosure query has answered', () => {
-// Opening on an unanswered query would print a step count that is about
-// to change under the reader — the same class of lie as a label with
-// nothing behind it.
+    // Opening on an unanswered query would print a step count that is about
+    // to change under the reader — the same class of lie as a label with
+    // nothing behind it.
     disclosureState.settled = false;
     disclosureState.outstanding = false;
     const view = render(<FirstRunHomeChapter />);
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
     expect(screen.queryByTestId('first-run-disclosure')).toBeNull();
-// The Home card still offers the run: it interrupts nobody.
+    // The Home card still offers the run: it interrupts nobody.
     expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
 
     disclosureState.settled = true;
@@ -725,8 +725,8 @@ describe('the disclosure is the first step of the run, not a modal over it', () 
   });
 
   test('closing the run at the disclosure step still writes the deferral', async () => {
-// The dialog's own close is the RUN's decision at every step, including
-// the one the disclosure owns — its "Not now" only advances.
+    // The dialog's own close is the RUN's decision at every step, including
+    // the one the disclosure owns — its "Not now" only advances.
     disclosureState.outstanding = true;
     render(<FirstRunHomeChapter />);
     await act(async () => {

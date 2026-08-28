@@ -190,16 +190,16 @@ export function capabilityLabel(capability: string): string {
     vectordb: 'Vector database',
     steering: 'Mid-turn steering',
   };
-// Validated, not defaulted. `capability` comes from a plugin manifest's
-// `capabilities` array, and a plain object literal answers Object's
-// inherited keys -- `map['__proto__']` is `Object.prototype`, which is
-// truthy, so `??` never fires. This value is rendered directly as a React
-// child (`AgentConnectionView`), and a non-string child throws "Objects are
-// not valid as a React child", crashing the view.
-//
-// Same defect and same guard as `describePermission`; the reference
-// implementation for this class in this repo is `grants-file-store.ts`,
-// which hands out null-prototype objects and rejects these keys outright.
+  // Validated, not defaulted. `capability` comes from a plugin manifest's
+  // `capabilities` array, and a plain object literal answers Object's
+  // inherited keys -- `map['__proto__']` is `Object.prototype`, which is
+  // truthy, so `??` never fires. This value is rendered directly as a React
+  // child (`AgentConnectionView`), and a non-string child throws "Objects are
+  // not valid as a React child", crashing the view.
+  //
+  // Same defect and same guard as `describePermission`; the reference
+  // implementation for this class in this repo is `grants-file-store.ts`,
+  // which hands out null-prototype objects and rejects these keys outright.
   const label = map[capability];
   return typeof label === 'string' ? label : capability.replace(/-/g, ' ');
 }
@@ -213,13 +213,13 @@ type AgentWithExecution = {
   toolsConfig?: {
     mcpServers?: string[];
   };
-/**
-* The backing connection's adapter type (archive#954), e.g. 'acp' —
-* `resolveAgentExecution` uses it to route a promoted ACP default through
-* the `acp` provider, since `agentConnectionIdToProviderKind` can only
-* infer a provider from the `<id>-runtime` id convention native
-* runtimes use, not an arbitrary ACP connection id.
-*/
+  /**
+   * The backing connection's adapter type (archive#954), e.g. 'acp' —
+   * `resolveAgentExecution` uses it to route a promoted ACP default through
+   * the `acp` provider, since `agentConnectionIdToProviderKind` can only
+   * infer a provider from the `<id>-runtime` id convention native
+   * runtimes use, not an arbitrary ACP connection id.
+   */
   engineConnectionType?: string;
 };
 
@@ -316,13 +316,13 @@ export function resolveEffectiveModel({
   runtimeCurrentMode?: string | null;
   projectDefaultModel?: string | null;
   sessionOverride?: string | null;
-/**
-* The user's most-recently-chosen model for this agent app connection
-* (see src-ui/src/hooks/lastChosenModel.ts). Beats the app-reported
-* current model and the project default, but loses to an explicit
-* session override. Only trusted when it is still present in
-* selectableModels (when that catalog is known) — otherwise ignored.
-*/
+  /**
+   * The user's most-recently-chosen model for this agent app connection
+   * (see src-ui/src/hooks/lastChosenModel.ts). Beats the app-reported
+   * current model and the project default, but loses to an explicit
+   * session override. Only trusted when it is still present in
+   * selectableModels (when that catalog is known) — otherwise ignored.
+   */
   lastChosenModel?: string | null;
 }): EffectiveModel {
   const catalog = (runtimeConnection as AgentConnectionView | null)
@@ -354,9 +354,9 @@ export function resolveEffectiveModel({
   ) ?? [null, 'unknown'];
   return {
     id: id || null,
-// archive#3391: one derivation of an id's display name, shared with Home's
-// work items and the model picker. Was `known?.name || id`, which printed
-// the raw id whenever the catalog did not know it.
+    // archive#3391: one derivation of an id's display name, shared with Home's
+    // work items and the model picker. Was `known?.name || id`, which printed
+    // the raw id whenever the catalog did not know it.
     label: modelDisplayLabel(id, selectableModels),
     source,
     catalogSource: catalog?.source ?? 'none',
@@ -422,8 +422,8 @@ export function runtimeCatalogVisibleModels(
   if (!runtimeCatalog) {
     return asModelOptions(runtimeConnection?.config.modelOptions);
   }
-// A connection's catalog may omit models/builtInModels entirely — guard so a
-// partial catalog doesn't crash callers that render a model picker from it.
+  // A connection's catalog may omit models/builtInModels entirely — guard so a
+  // partial catalog doesn't crash callers that render a model picker from it.
   if (runtimeCatalog.models?.length) {
     return runtimeCatalog.models;
   }
@@ -434,7 +434,7 @@ export function runtimeCatalogVisibleModels(
 }
 
 /**
-* archive#1003: reads a connection's canonical engine identity
+ * archive#1003: reads a connection's canonical engine identity
  * (`config.engineId`) with a `config.executionClass` read-compat fallback
  * (`'managed'` -> `'station'`, `'connected'`/`'external'` -> `'external'`)
  * so hand-built test-double connection views (still constructing the legacy
@@ -521,7 +521,7 @@ export function supportsProviderManagedBinding(
   agentConnections: ConnectionConfig[] = [],
 ): boolean {
   if (!agent) return false;
-// An agent explicitly bound to a connected/external runtime isn't managed.
+  // An agent explicitly bound to a connected/external runtime isn't managed.
   const boundId = agent.execution?.agentConnectionId;
   if (boundId) {
     const engineId = connectionEngineId(
@@ -529,7 +529,7 @@ export function supportsProviderManagedBinding(
     );
     if (engineId && engineId !== 'station') return false;
   }
-// Managed agents run on Station's engine + a Model connection — tools are fine.
+  // Managed agents run on Station's engine + a Model connection — tools are fine.
   return true;
 }
 
@@ -660,9 +660,9 @@ export function isManagedRuntimeConnectionId(
   agentConnectionId?: string | null,
   agentConnections: ConnectionConfig[] = [],
 ): boolean {
-// archive#3662: an ABSENT binding is Station's own engine, not "no engine".
-// The one caller uses this to decide whether to offer the Model-connection
-// picker, and a Station-engine Agent is precisely the one that needs it.
+  // archive#3662: an ABSENT binding is Station's own engine, not "no engine".
+  // The one caller uses this to decide whether to offer the Model-connection
+  // picker, and a Station-engine Agent is precisely the one that needs it.
   if (!agentConnectionId) {
     return true;
   }
@@ -739,9 +739,9 @@ export function preferredConnectedRuntime(
     ) {
       return false;
     }
-// Strict "connected" (native external, non-station, non-acp)
-// parity with the pre-rename executionClass literal — ACP connections
-// have their own separate resolution path, never counted here.
+    // Strict "connected" (native external, non-station, non-acp)
+    // parity with the pre-rename executionClass literal — ACP connections
+    // have their own separate resolution path, never counted here.
     const engineId = connectionEngineId(connection);
     return (
       engineId !== undefined && engineId !== 'station' && engineId !== 'acp'
@@ -942,8 +942,8 @@ function resolveProviderManagedExecution(
   },
   modelConnections: ConnectionConfig[],
 ): ChatExecutionMetadata | null {
-// archive#3747: `modelConnections` is the LLM-capable inventory; readiness
-// and enablement are the only facts this resolver still has to check.
+  // archive#3747: `modelConnections` is the LLM-capable inventory; readiness
+  // and enablement are the only facts this resolver still has to check.
   const enabledLlmConnections = modelConnections.filter(
     (connection) =>
       connection.kind === 'model' &&
@@ -997,10 +997,10 @@ export function preferredChatRuntime(
   agentConnections: ConnectionConfig[],
 ): ConnectionConfig | null {
   const ready = agentConnections.filter(isAgentConnectionSelectable);
-// Strict "connected" parity with the pre-rename executionClass literal —
-// ACP connections are excluded here (they have their own separate
-// resolution path elsewhere); `connected[0]` below is a same-bucket
-// fallback, not a "first non-station" catch-all.
+  // Strict "connected" parity with the pre-rename executionClass literal —
+  // ACP connections are excluded here (they have their own separate
+  // resolution path elsewhere); `connected[0]` below is a same-bucket
+  // fallback, not a "first non-station" catch-all.
   const connected = ready.filter((connection) => {
     const engineId = connectionEngineId(connection);
     return (
@@ -1037,12 +1037,12 @@ export function isSessionExecutionActive(
   session?: SessionExecutionActivity | null,
 ): boolean {
   if (!session) return false;
-// OR the two liveness signals rather than letting a stale
-// `orchestrationStatus` (e.g. 'idle' left over from the previous turn)
-// veto a locally-initiated send. `status === 'sending'` flips the moment
-// the user submits / turn.started lands, so activity indicators appear
-// immediately instead of waiting for the provider's session.state-changed
-// round-trip.
+  // OR the two liveness signals rather than letting a stale
+  // `orchestrationStatus` (e.g. 'idle' left over from the previous turn)
+  // veto a locally-initiated send. `status === 'sending'` flips the moment
+  // the user submits / turn.started lands, so activity indicators appear
+  // immediately instead of waiting for the provider's session.state-changed
+  // round-trip.
   return (
     session.orchestrationStatus === 'running' ||
     session.orchestrationStatus === 'awaiting-approval' ||

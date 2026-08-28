@@ -137,11 +137,11 @@ afterEach(() => {
 });
 
 describe('SkillsView', () => {
-//. `isLoading` was a hardcoded `false`, so for the ~2.2 s the skills
-// read was in flight the list panel asserted "No installed skills yet" — the
-// definitive empty state, with a CTA to create one — and then swapped in 24
-// installed skills. Reproduced 3/3 in the audit; a new user's first
-// impression of Guidance was a screen telling them they had nothing.
+  //. `isLoading` was a hardcoded `false`, so for the ~2.2 s the skills
+  // read was in flight the list panel asserted "No installed skills yet" — the
+  // definitive empty state, with a CTA to create one — and then swapped in 24
+  // installed skills. Reproduced 3/3 in the audit; a new user's first
+  // impression of Guidance was a screen telling them they had nothing.
   test('shows the loading skeleton, not the empty state, while skills load', () => {
     localSkillsPendingMock = true;
     localSkillsMock = [];
@@ -162,10 +162,10 @@ describe('SkillsView', () => {
     expect(screen.queryByLabelText('Loading list')).toBeNull();
   });
 
-// The pending fix above left the other half of  open: a
-// FAILED read also settles with no data, so `isPending === false` plus the
-// `= []` default rendered the same definitive "No installed skills yet" over
-// a 500. Error is not empty.
+  // The pending fix above left the other half of  open: a
+  // FAILED read also settles with no data, so `isPending === false` plus the
+  // `= []` default rendered the same definitive "No installed skills yet" over
+  // a 500. Error is not empty.
   test('shows the read failure, not the empty state, when the skills query errors', () => {
     localSkillsPendingMock = false;
     localSkillsMock = [];
@@ -253,8 +253,8 @@ describe('SkillsView', () => {
     expect(screen.queryByRole('button', { name: 'Open Playbooks' })).toBeNull();
   });
 
-// The Skills editor owns the whole authoring surface: the command switch,
-// the body's variables, usage counters, and test/export.
+  // The Skills editor owns the whole authoring surface: the command switch,
+  // the body's variables, usage counters, and test/export.
   describe('command skills', () => {
     function selectSkill(skill: any, detail?: any) {
       selectionState.selectedId = skill.name;
@@ -301,9 +301,9 @@ describe('SkillsView', () => {
       });
     });
 
-// Turning a command OFF has to be a WRITE. Omitting `command` from the
-// payload would leave the old declaration on disk and the skill would go on
-// answering to its word.
+    // Turning a command OFF has to be a WRITE. Omitting `command` from the
+    // payload would leave the old declaration on disk and the skill would go on
+    // answering to its word.
     test('sends command.enabled false when the switch is turned off', async () => {
       selectSkill(
         {
@@ -339,8 +339,8 @@ describe('SkillsView', () => {
           source: 'local',
           body: 'Ship {{ticket}} now',
           command: { enabled: true },
-// `stale` is declared but the body no longer uses it: a field that
-// substitutes nothing must not be offered.
+          // `stale` is declared but the body no longer uses it: a field that
+          // substitutes nothing must not be offered.
           variables: [
             { name: 'ticket', description: 'Jira key' },
             { name: 'stale', description: 'gone' },
@@ -355,7 +355,7 @@ describe('SkillsView', () => {
       expect(screen.getByDisplayValue('Jira key')).toBeTruthy();
     });
 
-// An unreadable counter store is not an unused skill.
+    // An unreadable counter store is not an unused skill.
     test('says the counters are unavailable instead of claiming zero runs', () => {
       selectSkill(
         {
@@ -368,7 +368,7 @@ describe('SkillsView', () => {
 
       render(<SkillsView />);
 
-// Both the list row and the editor footer say it, and neither says "0".
+      // Both the list row and the editor footer say it, and neither says "0".
       expect(screen.getAllByText('run count unavailable').length).toBe(2);
       expect(screen.queryByText(/0 runs/)).toBeNull();
     });
@@ -388,9 +388,9 @@ describe('SkillsView', () => {
       expect(screen.getAllByText('3 runs · 100% success').length).toBe(2);
     });
 
-// Slice 1 answers 409 for a command declared on a skill Station cannot
-// write. The editor says what would make it possible instead of offering a
-// switch that fails on save.
+    // Slice 1 answers 409 for a command declared on a skill Station cannot
+    // write. The editor says what would make it possible instead of offering a
+    // switch that fails on save.
     test('offers the install action, not a switch, on a read-only skill', () => {
       selectSkill(
         { name: 'packaged-skill', source: 'package' },
@@ -407,8 +407,8 @@ describe('SkillsView', () => {
       ).toBeNull();
     });
 
-// A declaration that is not in EFFECT (a clashing word) must say so rather
-// than read as enabled.
+    // A declaration that is not in EFFECT (a clashing word) must say so rather
+    // than read as enabled.
     test('renders the server command diagnostic', () => {
       selectSkill(
         {
@@ -440,13 +440,13 @@ describe('SkillsView', () => {
       expect(screen.getByText('/release-check')).toBeTruthy();
     });
 
-// archive#4463 ("the
- // reviewer's misattribution "): the Commands tab is itself empty here
-// (no skill is a command), independent of any search. A typed query on
-// top of that must not read as "your search matched nothing" — the tab
-// is what's empty, not the query, so `collectionEmpty` is derived from
-// the CURRENT TAB's pre-query collection, not the whole (both-tabs)
-// skills list.
+    // archive#4463 ("the
+    // reviewer's misattribution "): the Commands tab is itself empty here
+    // (no skill is a command), independent of any search. A typed query on
+    // top of that must not read as "your search matched nothing" — the tab
+    // is what's empty, not the query, so `collectionEmpty` is derived from
+    // the CURRENT TAB's pre-query collection, not the whole (both-tabs)
+    // skills list.
     test('a typed query on an empty Commands tab shows the tab-empty state, not FilteredEmpty', () => {
       localSkillsMock = [{ name: 'plain-skill', source: 'local' }];
 
@@ -483,12 +483,12 @@ describe('SkillsView', () => {
       );
     });
 
- // `selected` changes the moment skill B is clicked, but the
-// form used to keep skill A's body until B's DETAIL arrived — so Test and
-// Export could operate on A's body under B's header, and a failed B read
-// left the mismatch standing forever. While B's detail is pending the
-// pane waits (skeleton), A's body is gone, and every body-bound action is
-// disabled.
+    // `selected` changes the moment skill B is clicked, but the
+    // form used to keep skill A's body until B's DETAIL arrived — so Test and
+    // Export could operate on A's body under B's header, and a failed B read
+    // left the mismatch standing forever. While B's detail is pending the
+    // pane waits (skeleton), A's body is gone, and every body-bound action is
+    // disabled.
     test("selecting a second skill with its detail pending clears the first skill's body and disables the actions", () => {
       const skillA = { name: 'skill-a', source: 'local' };
       const skillB = { name: 'skill-b', source: 'local' };
@@ -499,7 +499,7 @@ describe('SkillsView', () => {
       const { rerender } = render(<SkillsView />);
       expect(screen.getByDisplayValue('A body')).toBeTruthy();
 
-// Skill B selected; its detail read is in flight.
+      // Skill B selected; its detail read is in flight.
       selectionState.selectedId = 'skill-b';
       editableSkillMock = undefined;
       detailPendingMock = true;
@@ -530,8 +530,8 @@ describe('SkillsView', () => {
       ).toBe(true);
     });
 
- // Review failure half: a detail read that FAILS must render the
-// failure with a retry, not A's form under B's header indefinitely.
+    // Review failure half: a detail read that FAILS must render the
+    // failure with a retry, not A's form under B's header indefinitely.
     test('a failed detail read renders the error with retry and keeps actions disabled', () => {
       selectionState.selectedId = 'skill-b';
       localSkillsMock = [

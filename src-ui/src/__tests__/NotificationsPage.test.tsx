@@ -76,11 +76,11 @@ function renderPage() {
   );
   return {
     ...view,
-/**
-* Re-render against the current module-level fixtures, standing in for the
-* refetch a mutation's `invalidateQueries` triggers. A fresh element is
-* required: React bails out of a re-render handed the identical element.
-*/
+    /**
+     * Re-render against the current module-level fixtures, standing in for the
+     * refetch a mutation's `invalidateQueries` triggers. A fresh element is
+     * required: React bails out of a re-render handed the identical element.
+     */
     refresh: () =>
       view.rerender(
         <QueryClientProvider client={client}>
@@ -92,8 +92,8 @@ function renderPage() {
 
 /**
  * The number the header bell renders, derived exactly as `HeaderActions` does
-* `attention.pendingCount` through the notifications surface's own `badge`
-* so these tests compare the page against the real badge derivation rather
+ * `attention.pendingCount` through the notifications surface's own `badge`
+ * so these tests compare the page against the real badge derivation rather
  * than against a number restated in the test.
  */
 function bellBadgeCount(): number | null {
@@ -210,8 +210,8 @@ describe('NotificationsPage', () => {
     expect(
       screen.getByText(/That approval request isn’t available/i),
     ).toBeTruthy();
-// The load-bearing promise, and the reason this message exists at all:
-// Station declines to substitute a different approval (archive#3965).
+    // The load-bearing promise, and the reason this message exists at all:
+    // Station declines to substitute a different approval (archive#3965).
     expect(
       screen.getByText(/won’t open a different one in its place/i),
     ).toBeTruthy();
@@ -255,8 +255,8 @@ describe('NotificationsPage', () => {
     expect(
       screen.getByText(/That approval request isn’t available/i),
     ).toBeTruthy();
-// The load-bearing promise, and the reason this message exists at all:
-// Station declines to substitute a different approval (archive#3965).
+    // The load-bearing promise, and the reason this message exists at all:
+    // Station declines to substitute a different approval (archive#3965).
     expect(
       screen.getByText(/won’t open a different one in its place/i),
     ).toBeTruthy();
@@ -266,8 +266,8 @@ describe('NotificationsPage', () => {
   test('renders structured empty-state copy when there are no notifications', () => {
     renderPage();
 
-// The title and subtitle are the page frame's (page-frame-registry.ts);
-// what this page still owns is its sections and their empty copy.
+    // The title and subtitle are the page frame's (page-frame-registry.ts);
+    // what this page still owns is its sections and their empty copy.
     expect(screen.getByText('All caught up')).toBeTruthy();
     expect(
       screen.getByText(
@@ -352,9 +352,9 @@ describe('NotificationsPage', () => {
     expect(screen.getByText('Nightly job failed')).toBeTruthy();
   });
 
- // archive#settings-revamp: canonical cross-link to Settings → Notifications.
- // No guard here (confirmed, 1) — this page holds no editable/dirty
-// state a navigation could silently discard.
+  // archive#settings-revamp: canonical cross-link to Settings → Notifications.
+  // No guard here (confirmed, 1) — this page holds no editable/dirty
+  // state a navigation could silently discard.
   test('the Notification settings link navigates to Settings with the notifications section param', () => {
     renderPage();
 
@@ -385,19 +385,19 @@ describe('NotificationsPage', () => {
     });
   });
 
- // the failure branch dropped the header the loading branch
-// deliberately preserves, so a failed read took the route's own title and
-// its Clear / Notification settings controls down with it — the 6-
-// defect the loading branch had already been fixed for.
+  // the failure branch dropped the header the loading branch
+  // deliberately preserves, so a failed read took the route's own title and
+  // its Clear / Notification settings controls down with it — the 6-
+  // defect the loading branch had already been fixed for.
   test('a load failure keeps the page header the loading branch preserves', () => {
     notificationsError = new Error('Notification service unavailable');
 
     renderPage();
 
     expect(screen.getByText('Unable to load notifications')).toBeTruthy();
-// The title is the page frame's (page-frame-registry.ts) and never
-// depended on the read; what this page must keep publishing on a
-// failure is its own header action.
+    // The title is the page frame's (page-frame-registry.ts) and never
+    // depended on the read; what this page must keep publishing on a
+    // failure is its own header action.
     expect(
       screen.getByRole('button', { name: /Notification settings/i }),
     ).toBeTruthy();
@@ -525,8 +525,8 @@ describe('NotificationsPage', () => {
       expect(sdkMocks.acknowledgeAttentionItem).toHaveBeenCalledTimes(2),
     );
     expect(clearActivity, 'activity count unchanged').not.toHaveBeenCalled();
-// The answered confirm closes. It used to stay open and re-render against
-// the emptied queue as "Dismiss 0 items needing attention?".
+    // The answered confirm closes. It used to stay open and re-render against
+    // the emptied queue as "Dismiss 0 items needing attention?".
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
@@ -567,10 +567,10 @@ describe('NotificationsPage', () => {
     expect(sdkMocks.acknowledgeAttentionItem).not.toHaveBeenCalled();
   });
 
-// archive#1912: `NotificationCard` used to render its Dismiss button only
-// for `status === 'delivered'` — an `expired` (or still-`pending`)
-// notification, exactly the stale-pairing-request shape the issue
-// reported, had no dismiss affordance at all.
+  // archive#1912: `NotificationCard` used to render its Dismiss button only
+  // for `status === 'delivered'` — an `expired` (or still-`pending`)
+  // notification, exactly the stale-pairing-request shape the issue
+  // reported, had no dismiss affordance at all.
   test('an expired notification still offers a Dismiss button', () => {
     notifications = [
       {
@@ -592,8 +592,8 @@ describe('NotificationsPage', () => {
     expect(dismiss).toHaveBeenCalledWith('notif-expired');
   });
 
-// A terminal status (already dismissed/actioned) still gets no button —
-// the fix widens the gate, it does not remove it.
+  // A terminal status (already dismissed/actioned) still gets no button —
+  // the fix widens the gate, it does not remove it.
   test('an already-dismissed notification renders no Dismiss button', () => {
     notifications = [
       {
@@ -614,8 +614,8 @@ describe('NotificationsPage', () => {
     expect(screen.queryByText('Dismiss')).toBeNull();
   });
 
-// archive#1914: a `session-failed` attention item's "Dismiss" acknowledges
-// it (a stored ack, not a notification delete) rather than doing nothing.
+  // archive#1914: a `session-failed` attention item's "Dismiss" acknowledges
+  // it (a stored ack, not a notification delete) rather than doing nothing.
   test('dismissing a session-failed attention item acknowledges it', () => {
     const timestamp = new Date().toISOString();
     attention = {
@@ -645,7 +645,7 @@ describe('NotificationsPage', () => {
 });
 
 /**
-* archive#1780: the full notifications page carries the SAME annotation
+ * archive#1780: the full notifications page carries the SAME annotation
  * the popover carries, on the same join. The two surfaces disagreeing about
  * one approval is the divergence this slice exists to end — and this page is
  * the one a reader reaches by clicking "View all notifications" from the
@@ -699,7 +699,7 @@ describe('NotificationsPage answerability annotation', () => {
     ];
     renderPage();
 
-// Anti-filter first: the row must still be here.
+    // Anti-filter first: the row must still be here.
     expect(screen.getByText('Approval needed')).toBeTruthy();
     const notice = screen.getByTestId('notification-answerability').textContent;
     expect(notice).toContain("no adapter for provider 'acme'");
@@ -767,11 +767,11 @@ describe('NotificationsPage attention count scope', () => {
     expect(attentionHeading()).toBe('Needs attention (2)');
   });
 
-/**
-* The reported symptom. Searching for one of three rows used to leave the
-* heading reading "(1)" beside a bell still reading 2, with nothing on the
-* page saying which of them meant what.
-*/
+  /**
+   * The reported symptom. Searching for one of three rows used to leave the
+   * heading reading "(1)" beside a bell still reading 2, with nothing on the
+   * page saying which of them meant what.
+   */
   test('under a filter the heading names both populations instead of restating the badge label', () => {
     attention = {
       pendingCount: 2,
@@ -790,14 +790,14 @@ describe('NotificationsPage attention count scope', () => {
     expect(screen.getByText('Build failed')).toBeTruthy();
     expect(screen.queryByText('Deploy crashed')).toBeNull();
     expect(bellBadgeCount()).toBe(2);
-// Both numbers present and each labelled by its position in the pair.
+    // Both numbers present and each labelled by its position in the pair.
     expect(attentionHeading()).toBe('Needs attention (1 of 2)');
   });
 
-/**
-* The worst case: the filter hides every pending item. The old label printed
-* nothing at all here, so the badge's 2 vanished from the page it links to.
-*/
+  /**
+   * The worst case: the filter hides every pending item. The old label printed
+   * nothing at all here, so the badge's 2 vanished from the page it links to.
+   */
   test('a filter that hides every pending item still reports the badge total', () => {
     attention = {
       pendingCount: 2,
@@ -837,12 +837,12 @@ describe('NotificationsPage attention count scope', () => {
     expect(bellBadgeCount()).toBe(2);
   });
 
-/**
-* Acknowledging is the operation archive#3203 taught to move the badge; both
-* numbers must move together, filtered or not. The projection is re-served
-* with the acknowledgement recorded, exactly as the invalidation-driven
-* refetch does.
-*/
+  /**
+   * Acknowledging is the operation archive#3203 taught to move the badge; both
+   * numbers must move together, filtered or not. The projection is re-served
+   * with the acknowledgement recorded, exactly as the invalidation-driven
+   * refetch does.
+   */
   test('acknowledging an item moves the heading and the badge together', () => {
     attention = {
       pendingCount: 2,
@@ -901,16 +901,16 @@ describe('NotificationsPage attention count scope', () => {
     expect(attentionHeading()).toBe('Needs attention (0 of 1)');
   });
 
-/**
-* WHICH source the total comes from, not merely that it happens to agree.
-* The fixture is deliberately inconsistent — `pendingCount` says 4 while the
-* two unacknowledged rows would recompute to 2 — so the page can only read
-* 4 by consuming `AttentionProjection.pendingCount`, the exact field the
-* bell badge renders. A page that re-derived the total from `items` with its
-* own `!acknowledgedAt` filter would print 2 here and reintroduce the
-* two-derivations-for-one-label defect the moment the server's definition of
-* pending changed.
-*/
+  /**
+   * WHICH source the total comes from, not merely that it happens to agree.
+   * The fixture is deliberately inconsistent — `pendingCount` says 4 while the
+   * two unacknowledged rows would recompute to 2 — so the page can only read
+   * 4 by consuming `AttentionProjection.pendingCount`, the exact field the
+   * bell badge renders. A page that re-derived the total from `items` with its
+   * own `!acknowledgedAt` filter would print 2 here and reintroduce the
+   * two-derivations-for-one-label defect the moment the server's definition of
+   * pending changed.
+   */
   test('the unfiltered total is read off pendingCount, not recomputed from items', () => {
     attention = {
       pendingCount: 4,

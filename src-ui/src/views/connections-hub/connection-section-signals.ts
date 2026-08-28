@@ -35,7 +35,7 @@ import { useComputerRows } from './useComputerRows';
 export interface ConnectionSectionSignals {
   count: (id: ConnectionSectionId) => number;
   needsAttention: (id: ConnectionSectionId) => boolean;
-/** The section `/connections` resolves to, or undefined when none needs it. */
+  /** The section `/connections` resolves to, or undefined when none needs it. */
   firstNeedingAttention: (typeof CONNECTION_SECTIONS)[number] | undefined;
 }
 
@@ -46,23 +46,23 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
   const { data: knowledge } = useGlobalKnowledgeStatusQuery();
   const { rows: computers } = useComputerRows();
 
-/**
-* Live capture caught both halves of getting the counts wrong: "Models 1"
-* beside a Models section reading "No model connections yet" (the count
-* included the built-in vector store, which the Models list filters out
-* because it is neither an LLM nor an embedding provider), and "Engines 0"
-* beside a list of three engines (the count read `/api/connections`, the
-* list reads `/api/connections/agents`).
-*
-* archive#3747 closes the first half at its root: the count now reads the
-* SAME route the Models list reads (`/api/connections/models`, LLM-capable
-* by contract) instead of reading the full projection and re-deriving
-* membership with a client-side filter. `filterModelProviders` with an empty
-* search is now a no-op pass-through; it is left in place because it is the
-* one place the Models list's ORDERING and search live, and a count derived
-* from a different expression than the list is what produced this bug the
-* first time.
-*/
+  /**
+   * Live capture caught both halves of getting the counts wrong: "Models 1"
+   * beside a Models section reading "No model connections yet" (the count
+   * included the built-in vector store, which the Models list filters out
+   * because it is neither an LLM nor an embedding provider), and "Engines 0"
+   * beside a list of three engines (the count read `/api/connections`, the
+   * list reads `/api/connections/agents`).
+   *
+   * archive#3747 closes the first half at its root: the count now reads the
+   * SAME route the Models list reads (`/api/connections/models`, LLM-capable
+   * by contract) instead of reading the full projection and re-deriving
+   * membership with a client-side filter. `filterModelProviders` with an empty
+   * search is now a no-op pass-through; it is left in place because it is the
+   * one place the Models list's ORDERING and search live, and a count derived
+   * from a different expression than the list is what produced this bug the
+   * first time.
+   */
   const models = filterModelProviders(connections as ProviderConnection[], '');
 
   const count = (id: ConnectionSectionId): number => {
@@ -76,17 +76,17 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
 
   const needsAttention = (id: ConnectionSectionId): boolean => {
     if (id === 'knowledge') return Boolean(knowledge && !knowledge.vectorDb);
-// `connected` is "an agent session currently holds a client",
-// which is false for every tool server — including the built-ins — until
-// a turn runs, so deriving attention from it put a warn dot on a healthy
-// section forever. A probe that FAILED is the observation that means
-// attention; never-probed is not a failure.
+    // `connected` is "an agent session currently holds a client",
+    // which is false for every tool server — including the built-ins — until
+    // a turn runs, so deriving attention from it put a warn dot on a healthy
+    // section forever. A probe that FAILED is the observation that means
+    // attention; never-probed is not a failure.
     if (id === 'tools')
       return tools.some((item) => item.probe && !item.probe.ok);
-// Computers claims nothing: this client holds no liveness evidence for a
-// paired device or a manual entry, and an SSH profile's phase is "not
-// connected" for every computer nobody has connected yet — which is a
-// resting state, not a problem to fix.
+    // Computers claims nothing: this client holds no liveness evidence for a
+    // paired device or a manual entry, and an SSH profile's phase is "not
+    // connected" for every computer nobody has connected yet — which is a
+    // resting state, not a problem to fix.
     if (id === 'computers') return false;
     const list = id === 'models' ? models : engines;
     return list.some(

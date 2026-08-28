@@ -115,9 +115,9 @@ function migrateSharedDeviceRoot(raw: unknown): Partial<DeviceSettings> {
 
 export interface SettingsExportPayloadV2 {
   version: 2;
- /** Registry-driven / config (`APP_SETTINGS_REGISTRY` keys only). */
+  /** Registry-driven / config (`APP_SETTINGS_REGISTRY` keys only). */
   station: Partial<AppConfig>;
- /** The full device-settings envelope (archive#settings-revamp slices 2-3) — now the sole owner of every device-scope field, including the archive#1359-era shortcut/model-picker preferences. */
+  /** The full device-settings envelope (archive#settings-revamp slices 2-3) — now the sole owner of every device-scope field, including the archive#1359-era shortcut/model-picker preferences. */
   device: DeviceSettingsEnvelope;
 }
 
@@ -150,13 +150,13 @@ const PRIOR_KEY_TO_DEFINITION = new Map(
 
 export interface ParsedSettingsImport {
   serverConfig: Partial<AppConfig>;
-/**
-* Registered device-setting keys present in the file whose value failed
-* descriptor validation and were dropped rather than imported (archive#
- * settings-revamp). Empty when nothing was
-* dropped (including every non-v2 / no-`device`-field file, which never
-* calls `importEnvelope` at all).
-*/
+  /**
+   * Registered device-setting keys present in the file whose value failed
+   * descriptor validation and were dropped rather than imported (archive#
+   * settings-revamp). Empty when nothing was
+   * dropped (including every non-v2 / no-`device`-field file, which never
+   * calls `importEnvelope` at all).
+   */
   droppedDeviceKeys: (keyof DeviceSettings)[];
 }
 
@@ -180,17 +180,17 @@ export async function parseImportedSettingsFile(
   if (record.version === 2) {
     let droppedDeviceKeys: (keyof DeviceSettings)[] = [];
     if (record.device && typeof record.device === 'object') {
-// Deliberately not caught here — a future-version envelope must
-// surface as an error to the caller, not fail silently.
+      // Deliberately not caught here — a future-version envelope must
+      // surface as an error to the caller, not fail silently.
       ({ droppedKeys: droppedDeviceKeys } = deviceSettingsStore.importEnvelope(
         record.device,
       ));
     }
- // An OLD export (from the archive#1359/slice-2 coexistence window) can still
-// carry the shared root verbatim in `sharedDeviceRoot` — migrate its
-// fields onto the envelope's own entries instead of writing the raw
- // root back to localStorage (archive#settings-revamp archive#1359
-// convergence: the envelope is now the sole home for those fields).
+    // An OLD export (from the archive#1359/slice-2 coexistence window) can still
+    // carry the shared root verbatim in `sharedDeviceRoot` — migrate its
+    // fields onto the envelope's own entries instead of writing the raw
+    // root back to localStorage (archive#settings-revamp archive#1359
+    // convergence: the envelope is now the sole home for those fields).
     const priorPartial = migrateSharedDeviceRoot(
       (record as { sharedDeviceRoot?: unknown }).sharedDeviceRoot,
     );
@@ -203,13 +203,13 @@ export async function parseImportedSettingsFile(
     };
   }
 
-// Prior format: `{...config, _localStorage: {4 keys}}`. Map each
-// `_localStorage` entry through the matching registry entry's
-// `priorStorageKey`, parsed the same way the store's own one-time
-// migration parses it (already descriptor-safe by construction — see
-// `parsePriorValue` — so this path never produces an invalid value to
-// drop); a key with no matching registry entry is ignored (there is no
-// destination for it anymore).
+  // Prior format: `{...config, _localStorage: {4 keys}}`. Map each
+  // `_localStorage` entry through the matching registry entry's
+  // `priorStorageKey`, parsed the same way the store's own one-time
+  // migration parses it (already descriptor-safe by construction — see
+  // `parsePriorValue` — so this path never produces an invalid value to
+  // drop); a key with no matching registry entry is ignored (there is no
+  // destination for it anymore).
   const { _localStorage, ...serverConfigRaw } = record;
   if (_localStorage && typeof _localStorage === 'object') {
     const partial: Partial<DeviceSettings> = {};
@@ -217,10 +217,10 @@ export async function parseImportedSettingsFile(
       _localStorage as Record<string, unknown>,
     )) {
       if (typeof raw !== 'string') continue;
- // A prior export from a archive#1359-era build can carry the shared
-// `station.device-settings` root inside `_localStorage` — migrate its
-// fields into the same partial being assembled below rather than
-// writing the raw root back to localStorage.
+      // A prior export from a archive#1359-era build can carry the shared
+      // `station.device-settings` root inside `_localStorage` — migrate its
+      // fields into the same partial being assembled below rather than
+      // writing the raw root back to localStorage.
       if (priorKey === SHARED_PRIOR_DEVICE_SETTINGS_KEY) {
         Object.assign(partial, migrateSharedDeviceRoot(raw));
         continue;

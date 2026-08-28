@@ -50,10 +50,10 @@ export function useSlashCommandHandler() {
       const chatState = activeChatsStore.getSnapshot()[sessionId];
       if (!chatState) return false;
 
- // ONE shell-style parse of the whole line (: a whitespace
-// split broke quoted values). The command word is readable even when a
-// later quote never closes, so the ACP passthrough and the parse-error
-// bail can both name the command the user typed.
+      // ONE shell-style parse of the whole line (: a whitespace
+      // split broke quoted values). The command word is readable even when a
+      // later quote never closes, so the ACP passthrough and the parse-error
+      // bail can both name the command the user typed.
       const parsed = parseShellWords(command.slice(1).trim());
       const words = parsed.ok ? parsed.words : [];
       const cmd = (
@@ -65,20 +65,20 @@ export function useSlashCommandHandler() {
 
       const agent = agents.find((a) => a.slug === chatState.agentSlug);
 
-// Default cleanup: clear input and close autocomplete
+      // Default cleanup: clear input and close autocomplete
       const cleanup = () => {
         updateChat(sessionId, { input: '' });
         context.autocomplete.closeAll();
       };
 
-// ACP agents: pass all slash commands through as prompt text to kiro-cli
+      // ACP agents: pass all slash commands through as prompt text to kiro-cli
       if (agent?.engineConnectionType === 'acp') {
         cleanup();
         return command; // Return the command text to be sent as a message
       }
 
-// A line the parser cannot read is never dispatched anywhere — not to
-// a skill, a builtin, or the model — the user reads why instead.
+      // A line the parser cannot read is never dispatched anywhere — not to
+      // a skill, a builtin, or the model — the user reads why instead.
       if (!parsed.ok) {
         addEphemeralMessage(sessionId, {
           role: 'system',
@@ -88,7 +88,7 @@ export function useSlashCommandHandler() {
         return true;
       }
 
-// 1. Check custom commands (send as message)
+      // 1. Check custom commands (send as message)
       if (agent?.commands?.[cmd]) {
         let expandedPrompt = agent.commands[cmd].prompt;
         const params = agent.commands[cmd].params || [];
@@ -106,14 +106,14 @@ export function useSlashCommandHandler() {
         return expandedPrompt;
       }
 
-// 2. Check command skills
+      // 2. Check command skills
       const cached = queryClient.getQueryData<Skill[]>(['skills', 'local']);
       const match = findMatchingSkillCommand(cached, cmd, agent);
       if (match) {
-// The listing carries no bodies, so the text is read here — through
-// the same cache entry the editor fills, so a second `/command` in
-// the session costs nothing. A failed read must not send the raw
-// `/command` to the model as if it were a message.
+        // The listing carries no bodies, so the text is read here — through
+        // the same cache entry the editor fills, so a second `/command` in
+        // the session costs nothing. A failed read must not send the raw
+        // `/command` to the model as if it were a message.
         let skill: Skill;
         try {
           skill = await readSkillDetail(match.name);
@@ -125,15 +125,15 @@ export function useSlashCommandHandler() {
           cleanup();
           return true;
         }
-// Variable substitution is the SAME derivation the Test modal runs
-// (`substituteSkillVariables`), fed by the ONE arg parser
-// (`assignSkillVariableArgs`): `name=value` words assign
-// by name — so an earlier variable can keep its default while a later
-// required one is supplied — and the remaining words fill the
-// unnamed variables in declaration order. A variable left with
-// neither a value nor a usable default is REJECTED — named in an
-// error the user reads, never silently substituted with an empty
- // string 
+        // Variable substitution is the SAME derivation the Test modal runs
+        // (`substituteSkillVariables`), fed by the ONE arg parser
+        // (`assignSkillVariableArgs`): `name=value` words assign
+        // by name — so an earlier variable can keep its default while a later
+        // required one is supplied — and the remaining words fill the
+        // unnamed variables in declaration order. A variable left with
+        // neither a value nor a usable default is REJECTED — named in an
+        // error the user reads, never silently substituted with an empty
+        // string
         const argAssignment = assignSkillVariableArgs(
           skill.variables ?? [],
           args,
@@ -164,7 +164,7 @@ export function useSlashCommandHandler() {
         return substitution.content;
       }
 
-// 3. Check registered commands
+      // 3. Check registered commands
       const handler = getCommand(cmd);
       if (handler) {
         cleanup();
@@ -187,13 +187,13 @@ export function useSlashCommandHandler() {
         return true;
       }
 
-// 4. CLI runtime passthrough — forward unrecognized commands to the SDK
+      // 4. CLI runtime passthrough — forward unrecognized commands to the SDK
       if (chatState.provider === 'claude' || chatState.provider === 'codex') {
         cleanup();
         return command; // Raw text forwarded to sendOrchestrationTurn
       }
 
-// 5. Unknown command
+      // 5. Unknown command
       const availableCommands = getAllCommands();
       addEphemeralMessage(sessionId, {
         role: 'system',

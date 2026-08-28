@@ -25,7 +25,7 @@ const MODE_GLYPH: Record<ApprovalMode, ReactNode> = {
 
 interface ComposerModeSheetProps {
   triggerRef: RefObject<HTMLButtonElement | null>;
-/** The resolved effective mode this session is running under. */
+  /** The resolved effective mode this session is running under. */
   effectiveMode: ApprovalMode;
   engineConnectionId?: string | null;
   onClose: () => void;
@@ -135,17 +135,17 @@ export function ComposerModeSheet({
                   checked={isSelected}
                   aria-checked={isSelected}
                   className="composer-mode-sheet__option-input"
-// Native radio semantics (real element per the a11y rule
-// biome's `useSemanticElements` names, replacing the prior
-// `role="radio"` button) give keyboard/screen-reader users a
-// genuine radio group for free. `onChange` covers a real
-// selection change (click on a different option, or arrow-key
-// navigation); `onClick` preserves the pre-existing behavior
-// of re-clicking the ALREADY-selected option still calling
-// `choose` (browsers don't fire `change` when the checked
-// state doesn't transition, but `click` always fires) — see
-// ApprovalModeChip.test.tsx's "re-affirming an already-never
-// mode" case.
+                  // Native radio semantics (real element per the a11y rule
+                  // biome's `useSemanticElements` names, replacing the prior
+                  // `role="radio"` button) give keyboard/screen-reader users a
+                  // genuine radio group for free. `onChange` covers a real
+                  // selection change (click on a different option, or arrow-key
+                  // navigation); `onClick` preserves the pre-existing behavior
+                  // of re-clicking the ALREADY-selected option still calling
+                  // `choose` (browsers don't fire `change` when the checked
+                  // state doesn't transition, but `click` always fires) — see
+                  // ApprovalModeChip.test.tsx's "re-affirming an already-never
+                  // mode" case.
                   onChange={() => choose(option.value)}
                   onClick={() => choose(option.value)}
                 />

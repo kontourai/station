@@ -23,30 +23,30 @@ import {
  * The launcher constraints this file exists to keep:
  *
  * - **The built-in Home is un-removable.** Every path out of this component
-*   that is not the granted Pane rendering successfully lands on
-*   `builtinHome` — with a truthful reason where there is a failure to
-*   explain, silently while the plugin inventory is still loading.
+ *   that is not the granted Pane rendering successfully lands on
+ *   `builtinHome` — with a truthful reason where there is a failure to
+ *   explain, silently while the plugin inventory is still loading.
  * - **A broken granted Home must be recoverable — including one that breaks
-*   during SELECTION.** `RouteViewBoundary` above this route catches and
-*   offers Reload, and a reload re-enters the same failure; an eager deref
-*   during catalog resolution has already blanked the whole app once
-*   (`workspacePaneRendererSelection.ts`). So renderer selection AND
-*   resolution run INSIDE `HomeRoleRecoveryBoundary` (a React boundary
-*   cannot catch throws from the component constructing it), and the
-*   fallback is the built-in Home plus the actual failure text — never a
-*   blank root, never a reload loop.
+ *   during SELECTION.** `RouteViewBoundary` above this route catches and
+ *   offers Reload, and a reload re-enters the same failure; an eager deref
+ *   during catalog resolution has already blanked the whole app once
+ *   (`workspacePaneRendererSelection.ts`). So renderer selection AND
+ *   resolution run INSIDE `HomeRoleRecoveryBoundary` (a React boundary
+ *   cannot catch throws from the component constructing it), and the
+ *   fallback is the built-in Home plus the actual failure text — never a
+ *   blank root, never a reload loop.
  * - **Which tiers may render here is decided at two sites, deliberately.**
-*   `isWorkspaceHomeRoleEligibleDescriptor` (enforced when the grant is
-*   created AND re-enforced on every parse) is one; this host's offered
-*   capability set (no sandboxed hosts enabled) is the other. They are
-*   independent checks that must agree — defence in depth, not a single
-*   line to flip.
+ *   `isWorkspaceHomeRoleEligibleDescriptor` (enforced when the grant is
+ *   created AND re-enforced on every parse) is one; this host's offered
+ *   capability set (no sandboxed hosts enabled) is the other. They are
+ *   independent checks that must agree — defence in depth, not a single
+ *   line to flip.
  */
 export interface HomeRolePaneProps {
   grant: WorkspaceHomeRoleGrant;
-/** The un-removable floor: rendered whenever the granted Pane is not. */
+  /** The un-removable floor: rendered whenever the granted Pane is not. */
   builtinHome: ReactNode;
-/** Revocation, wired to the server store; returning to the built-in is its whole effect. */
+  /** Revocation, wired to the server store; returning to the built-in is its whole effect. */
   onRevoke: () => void;
 }
 
@@ -88,8 +88,8 @@ class HomeRoleRecoveryBoundary extends Component<
   }
 
   componentDidCatch(error: unknown): void {
-// The user-facing explanation is the fallback's job; this keeps the full
-// error reachable for someone debugging the plugin.
+    // The user-facing explanation is the fallback's job; this keeps the full
+    // error reachable for someone debugging the plugin.
     console.error('Granted Home Workspace Pane failed to render:', error);
   }
 
@@ -166,16 +166,16 @@ function GrantedHomeSelection({
   builtinHome,
   onRevoke,
 }: HomeRolePaneProps) {
-// Selection consults the live plugin registry; its settled load status is
-// the notification boundary that turns a just-loaded bundle into a
-// selectable renderer (same seam as `useResolvedWorkspacePaneCatalog`).
+  // Selection consults the live plugin registry; its settled load status is
+  // the notification boundary that turns a just-loaded bundle into a
+  // selectable renderer (same seam as `useResolvedWorkspacePaneCatalog`).
   const loadStatus = useSyncExternalStore(
     pluginRegistry.subscribe,
     pluginRegistry.getLoadStatus,
   );
 
-// No sandboxed host capabilities are offered at Home — the second of the
-// two tier-decision sites (see the module docblock).
+  // No sandboxed host capabilities are offered at Home — the second of the
+  // two tier-decision sites (see the module docblock).
   const selection = selectClientWorkspacePaneRenderer(grant.descriptor, {
     mcpAppsEnabled: false,
     instance: grant.instance,
@@ -183,9 +183,9 @@ function GrantedHomeSelection({
 
   if (selection.state !== 'selected') {
     if (loadStatus.state === 'loading') {
-// The inventory has not settled; "missing" would be a claim nothing
-// has derived yet. The floor renders, quietly, and the settled status
-// re-renders this component.
+      // The inventory has not settled; "missing" would be a claim nothing
+      // has derived yet. The floor renders, quietly, and the settled status
+      // re-renders this component.
       return <>{builtinHome}</>;
     }
     return (
@@ -201,17 +201,17 @@ function GrantedHomeSelection({
   const candidate = selection.candidate;
 
   if (candidate.renderer.kind === 'standard-data') {
-// The descriptor's declared degradation rung: inert, read-only data in
-// place of a plugin renderer that failed to LOAD. It must not outlive
-// the grant — the rung's own selection check compares two STORED
-// snapshots, so it is additionally gated here on the client's live
-// registry still evidencing the granted plugin: either its loaded
-// manifest at the approved version, or this generation's inventory
-// having listed it and its bundle having failed (the case the rung
-// exists for). An uninstalled or version-bumped plugin satisfies
-// neither, so the floor renders instead. (The server already derives
-// `lapsed` for uninstall/version change; this closes the staleness
-// window between that derivation and this render.)
+    // The descriptor's declared degradation rung: inert, read-only data in
+    // place of a plugin renderer that failed to LOAD. It must not outlive
+    // the grant — the rung's own selection check compares two STORED
+    // snapshots, so it is additionally gated here on the client's live
+    // registry still evidencing the granted plugin: either its loaded
+    // manifest at the approved version, or this generation's inventory
+    // having listed it and its bundle having failed (the case the rung
+    // exists for). An uninstalled or version-bumped plugin satisfies
+    // neither, so the floor renders instead. (The server already derives
+    // `lapsed` for uninstall/version change; this closes the staleness
+    // window between that derivation and this render.)
     const pluginId = grant.descriptor.provenance.pluginId;
     const approvedVersion = grant.instance.boundContext?.contribution?.version;
     const liveManifest =
@@ -250,9 +250,9 @@ function GrantedHomeSelection({
   }
 
   if (candidate.renderer.kind !== 'plugin-component') {
-// Unreachable under this host's capability set (no sandboxed hosts, and
-// builtin candidates require canonical builtin declarations); kept as a
-// fail-closed landing on the floor rather than a throw.
+    // Unreachable under this host's capability set (no sandboxed hosts, and
+    // builtin candidates require canonical builtin declarations); kept as a
+    // fail-closed landing on the floor rather than a throw.
     return (
       <HomeRoleFallback
         grant={grant}
@@ -292,10 +292,10 @@ export function HomeRolePane({
   builtinHome,
   onRevoke,
 }: HomeRolePaneProps) {
-// A widened projection is a NEW grant. The stored field list is what the
-// approval covered; naming exactly the fields it did not is what makes
-// this message derived rather than asserted. Pure data comparison — safe
-// outside the boundary.
+  // A widened projection is a NEW grant. The stored field list is what the
+  // approval covered; naming exactly the fields it did not is what makes
+  // this message derived rather than asserted. Pure data comparison — safe
+  // outside the boundary.
   if (
     !workspaceHomeRoleGrantCoversProjection(
       grant,

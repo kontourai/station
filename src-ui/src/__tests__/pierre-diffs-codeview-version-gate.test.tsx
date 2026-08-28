@@ -118,9 +118,9 @@ describe('@pierre/diffs CodeView controlled-item version gate (station#3159 trip
       });
       expect(screen.getByTestId('marker').textContent).toBe('first');
 
-// Same version, different content: CodeView's controlled-item gate must
- // discard this update entirely. This is exactly DiffPanel's pre-archive#3104
-// bug shape — a fresh item object with an unchanged `version`.
+      // Same version, different content: CodeView's controlled-item gate must
+      // discard this update entirely. This is exactly DiffPanel's pre-archive#3104
+      // bug shape — a fresh item object with an unchanged `version`.
       rerender(
         <CodeView
           items={[buildItem(1, 'second')]}
@@ -129,13 +129,13 @@ describe('@pierre/diffs CodeView controlled-item version gate (station#3159 trip
           options={options}
         />,
       );
-// Give any (async, e.g. Shiki-tokenization-driven) update a real chance
-// to land before asserting it didn't.
+      // Give any (async, e.g. Shiki-tokenization-driven) update a real chance
+      // to land before asserting it didn't.
       await new Promise((resolve) => setTimeout(resolve, 300));
       expect(screen.getByTestId('marker').textContent).toBe('first');
 
-// Bumping version must apply the update — this is the half of the
-// contract DiffPanel's `itemsRevisionRef` relies on.
+      // Bumping version must apply the update — this is the half of the
+      // contract DiffPanel's `itemsRevisionRef` relies on.
       rerender(
         <CodeView
           items={[buildItem(2, 'third')]}

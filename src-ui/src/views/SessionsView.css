@@ -456,7 +456,7 @@
 
 .sessions-detail__attention {
   display: grid;
- /* (archive#1170): a lifecycle item and one or more
+  /* (archive#1170): a lifecycle item and one or more
      Flow-gate items can legitimately coexist for one session, so this can
      render more than one AttentionCard. */
   gap: 0.65rem;
@@ -491,7 +491,7 @@
   gap: 0.5rem;
   margin: 0;
   min-width: 0;
-/*
+  /*
 * Size each card to its own content. Grid items stretch to the row's
 * height by default, so a short row (`Project` / `dev`) inherited the
 * height of whatever else shared it — or of the grid's own stretched
@@ -878,7 +878,7 @@
     font-size: 0.68rem;
   }
 
- /* (archive#1170), restructured for archive#3305: with the
+  /* (archive#1170), restructured for archive#3305: with the
      keyboard open, everything between the pinned header and the pinned
      request/compose controls lives in the `__scroll` region, so a long
      attention item (AttentionCard's own answer form is the ONLY way to
@@ -894,7 +894,7 @@
     gap: 0.5rem;
   }
 
-/* (archive#1170): hiding the WHOLE header used to
+  /* (archive#1170): hiding the WHOLE header used to
      remove this page's only answers to "what am I looking at" (the
      title/prompt) and "what state is it in" (the status badge) at exactly
      the viewport where the owner is most likely to be looking — an
@@ -919,7 +919,7 @@
     margin-top: 0;
   }
 
-/* The note is pinned chrome beside the composer (outside the scroll
+  /* The note is pinned chrome beside the composer (outside the scroll
      region), so hiding it genuinely buys keyboard-open space. The context
      grid stays visible: it is a non-shrinking child of `__scroll` (see the
      `flex-shrink: 0` rule there — without it the grid would compress to

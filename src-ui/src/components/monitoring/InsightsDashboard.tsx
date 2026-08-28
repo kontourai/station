@@ -43,7 +43,7 @@ interface Insights {
   totalChats: number;
   totalToolCalls: number;
   totalErrors: number;
-/** Results whose producer reported no terminal status (archive#3075). */
+  /** Results whose producer reported no terminal status (archive#3075). */
   totalOutcomeUnknown?: number;
   days: number;
   applied?: { agent?: string; tool?: string; engine?: string; limit?: number };
@@ -90,8 +90,8 @@ export async function downloadInsightEvents(
   filters: { agent?: string },
   expectedToolCalls?: number,
 ): Promise<{ written: boolean; rows: number; reason?: string }> {
-// /monitoring/events, which owns the per-user and tenant authorization
-// these rows require — not a parallel export (archive#3076).
+  // /monitoring/events, which owns the per-user and tenant authorization
+  // these rows require — not a parallel export (archive#3076).
   const events = await fetchMonitoringEvents(
     new Date(Date.now() - days * 24 * 60 * 60 * 1000),
     new Date(),
@@ -99,20 +99,20 @@ export async function downloadInsightEvents(
     { ...filters, tools: true },
   );
 
-// REFUSE rather than hand over a file that misrepresents itself. This
-// endpoint scopes rows to the requesting user; /api/insights, which
-// produced the number displayed beside this button, does not — so on a
-// corpus whose tool events were written without attribution the panel
-// reads thousands and the export returns almost nothing (archive#3130).
-// fetchMonitoringEvents used to flatten every failure — 401, 500, a parse
-// error — into an empty array, so "no rows" and "the request failed" were
-// the same value here. archive#3658 made every non-success read throw (a
-// non-ok status as `StationHttpError` with the status preserved, an
-// unreadable body or `success:false` as an Error carrying the route's own
-// sentence), which this caller's `.catch` renders as "Export failed: …".
-// Only a SUCCEEDED read with zero rows now reaches the branch below. A
-// silently empty download asserting it holds the rows behind those numbers
-// is the defect this whole change exists to remove, one layer down.
+  // REFUSE rather than hand over a file that misrepresents itself. This
+  // endpoint scopes rows to the requesting user; /api/insights, which
+  // produced the number displayed beside this button, does not — so on a
+  // corpus whose tool events were written without attribution the panel
+  // reads thousands and the export returns almost nothing (archive#3130).
+  // fetchMonitoringEvents used to flatten every failure — 401, 500, a parse
+  // error — into an empty array, so "no rows" and "the request failed" were
+  // the same value here. archive#3658 made every non-success read throw (a
+  // non-ok status as `StationHttpError` with the status preserved, an
+  // unreadable body or `success:false` as an Error carrying the route's own
+  // sentence), which this caller's `.catch` renders as "Export failed: …".
+  // Only a SUCCEEDED read with zero rows now reaches the branch below. A
+  // silently empty download asserting it holds the rows behind those numbers
+  // is the defect this whole change exists to remove, one layer down.
   if (events.length === 0) {
     return {
       written: false,
@@ -139,8 +139,8 @@ export async function downloadInsightEvents(
   );
   const link = document.createElement('a');
   link.href = url;
-// Name the filter too: the file outlives the UI state that produced it,
-// and an unfiltered export and an agent-scoped one otherwise collide.
+  // Name the filter too: the file outlives the UI state that produced it,
+  // and an unfiltered export and an agent-scoped one otherwise collide.
   const scope = filters.agent ? `-${filters.agent}` : '';
   link.download = `station-tool-events${scope}-${days}d.ndjson`;
   link.click();
@@ -152,19 +152,19 @@ export async function downloadInsightEvents(
 
 function UsageTab() {
   const [days, setDays] = useState(14);
-// Server-side slicing (archive#3075). The dimensions were always on the
-// data; only the endpoint refused to use them, so answering "what did THIS
-// agent run" meant reading raw NDJSON by hand.
+  // Server-side slicing (archive#3075). The dimensions were always on the
+  // data; only the endpoint refused to use them, so answering "what did THIS
+  // agent run" meant reading raw NDJSON by hand.
   const [agent, setAgent] = useState<string | undefined>();
   const [exportNote, setExportNote] = useState<string | undefined>();
-// NO engine control, deliberately. The server accepts an `engine` filter,
-// but it reads gen_ai.provider.name, and on a real corpus every tool event
-// still carries null there — the attribution the server's own comment
-// predicts would be missing. A selector that always narrows to nothing is
-// worse than no selector. An earlier draft of this carried `engine` state
-// whose setter was only ever called with undefined: an inert control, and
-// a PR description claiming a filter that could not be set (archive#3075
-// review). Wire it when the events carry the field (archive#3130).
+  // NO engine control, deliberately. The server accepts an `engine` filter,
+  // but it reads gen_ai.provider.name, and on a real corpus every tool event
+  // still carries null there — the attribution the server's own comment
+  // predicts would be missing. A selector that always narrows to nothing is
+  // worse than no selector. An earlier draft of this carried `engine` state
+  // whose setter was only ever called with undefined: an inert control, and
+  // a PR description claiming a filter that could not be set (archive#3075
+  // review). Wire it when the events carry the field (archive#3130).
   const { data } = useInsightsQuery(days, { agent }) as {
     data: Insights | undefined;
   };
@@ -192,7 +192,7 @@ function UsageTab() {
       {agent !== undefined && (
         <div className="insights-filter-row">
           <span className="insights-section-label">
-{/* Only claim "Filtered" when the SERVER says it filtered. It
+            {/* Only claim "Filtered" when the SERVER says it filtered. It
                 echoes `applied` precisely so a client can tell a narrowed
                 rollup from a whole-corpus one, and a UI that renders the
                 chrome off its own local state would show "agent: dev" over
@@ -215,9 +215,9 @@ function UsageTab() {
           { label: 'Chats', value: data.totalChats },
           { label: 'Tool Calls', value: data.totalToolCalls },
           { label: 'Errors', value: data.totalErrors },
-// Shown beside Errors deliberately: these results reported no
-// terminal status, so an error rate that ignores them flatters
-// itself, and a reader deserves the denominator (archive#3075).
+          // Shown beside Errors deliberately: these results reported no
+          // terminal status, so an error rate that ignores them flatters
+          // itself, and a reader deserves the denominator (archive#3075).
           ...(data.totalOutcomeUnknown
             ? [{ label: 'Outcome unreported', value: data.totalOutcomeUnknown }]
             : []),
@@ -315,9 +315,9 @@ function UsageTab() {
             <Empty variant="compact" label="No agent usage yet" />
           ) : (
             agents.map(([name, stats]) => (
-// Clicking an agent filters the whole rollup to it. The number
-// and the thing it describes should be one gesture apart, not
-// an API call the user has to know exists.
+              // Clicking an agent filters the whole rollup to it. The number
+              // and the thing it describes should be one gesture apart, not
+              // an API call the user has to know exists.
               <button
                 type="button"
                 key={name}
@@ -373,7 +373,7 @@ function FeedbackTab() {
 
   return (
     <div className="feedback-grid">
-{/* Left: Ratings list */}
+      {/* Left: Ratings list */}
       <div>
         <div className="insights-pill-row">
           {(
@@ -453,7 +453,7 @@ function FeedbackTab() {
         )}
       </div>
 
-{/* Right: Behavior summary */}
+      {/* Right: Behavior summary */}
       <div>
         <div className="feedback-behaviors-header">
           <div className="insights-section-label">Learned Behaviors</div>

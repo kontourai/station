@@ -55,13 +55,13 @@ function ToastCard({
     metadata: Record<string, unknown>,
     toastId: string,
   ) => void;
-/**
-* Optional: only the approval-queue call site (tool-approval/pairing-request
-* items) ever needs this — the transient toast-stack call site filters
-* those types out entirely (see `transientNotifications` below), so it has
-* no real `handleAction` to pass and shouldn't need to invent one just to
-* satisfy a prop this component structurally never exercises there.
-*/
+  /**
+   * Optional: only the approval-queue call site (tool-approval/pairing-request
+   * items) ever needs this — the transient toast-stack call site filters
+   * those types out entirely (see `transientNotifications` below), so it has
+   * no real `handleAction` to pass and shouldn't need to invent one just to
+   * satisfy a prop this component structurally never exercises there.
+   */
   handleAction?: (notificationId: string, actionId: string) => void;
   onActivate?: () => void;
   clickable: boolean;
@@ -244,25 +244,25 @@ export function NotificationContainer() {
   const approvalQueueRef = useRef<HTMLDivElement>(null);
   const approvalQueueTriggerRef = useRef<HTMLButtonElement>(null);
   const [approvalQueueOpen, setApprovalQueueOpen] = useState(false);
-/**
-* archive#1259. This popover is the one surface in the app whose own action
-* removes the control it has to hand focus back to: approving or denying the
-* last request empties `approvals`, the queue element unmounts with the
-* trigger inside it, and — when nothing transient is left — the whole
-* container returns `null`. So the live-ref restore other menus get is not
-* available here; the trigger has to be captured while it is still attached,
-* together with the ancestors focus can fall back to.
-*/
+  /**
+   * archive#1259. This popover is the one surface in the app whose own action
+   * removes the control it has to hand focus back to: approving or denying the
+   * last request empties `approvals`, the queue element unmounts with the
+   * trigger inside it, and — when nothing transient is left — the whole
+   * container returns `null`. So the live-ref restore other menus get is not
+   * available here; the trigger has to be captured while it is still attached,
+   * together with the ancestors focus can fall back to.
+   */
   const returnFocusRef = useRef<HTMLElement[]>([]);
 
-/**
-* Every close path, not just Escape. The outside-pointerdown path used to
-* leave focus wherever the pointer put it — on `<body>` for a tap on
-* non-focusable chrome (archive#1126's outcome) — and the auto-close effect
-* below restored nothing at all. `applyReturnFocus` declines when another
-* actor already holds focus, which is what makes it safe to call on the
-* pointer path: a tap on a real control keeps that control.
-*/
+  /**
+   * Every close path, not just Escape. The outside-pointerdown path used to
+   * leave focus wherever the pointer put it — on `<body>` for a tap on
+   * non-focusable chrome (archive#1126's outcome) — and the auto-close effect
+   * below restored nothing at all. `applyReturnFocus` declines when another
+   * actor already holds focus, which is what makes it safe to call on the
+   * pointer path: a tap on a real control keeps that control.
+   */
   const closeApprovalQueue = useCallback(() => {
     setApprovalQueueOpen(false);
     restoreReturnFocus(returnFocusRef.current, approvalQueueRef.current);
@@ -277,14 +277,14 @@ export function NotificationContainer() {
   );
   const stackedTransients = selectToastStackItems(transientNotifications);
   const stackLayout = buildToastStackLayout(stackedTransients.length);
-/**
- * Coarse-pointer expansion for the archive#1960 stack. CSS `:hover`/`:focus-within`
-* expansion has no touch equivalent, so on a device that cannot hover the
-* stack could never be expanded at all. A tap on the collapsed stack sets
-* this state (the CSS treats it as a third expansion trigger); outside-tap
-* and Escape clear it. Hover-capable pointers never reach the tap path —
-* their stack is already expanded by :hover before any click lands.
-*/
+  /**
+   * Coarse-pointer expansion for the archive#1960 stack. CSS `:hover`/`:focus-within`
+   * expansion has no touch equivalent, so on a device that cannot hover the
+   * stack could never be expanded at all. A tap on the collapsed stack sets
+   * this state (the CSS treats it as a third expansion trigger); outside-tap
+   * and Escape clear it. Hover-capable pointers never reach the tap path —
+   * their stack is already expanded by :hover before any click lands.
+   */
   const toastStackRef = useRef<HTMLDivElement>(null);
   const [stackExpanded, setStackExpanded] = useState(false);
 
@@ -317,8 +317,8 @@ export function NotificationContainer() {
 
   const expandStackOnCoarseTap = (event: ReactMouseEvent) => {
     if (stackExpanded || stackedTransients.length <= 1) return;
-// Missing matchMedia (jsdom) reads as hover-capable: interception is a
-// touch affordance, never desktop default behavior.
+    // Missing matchMedia (jsdom) reads as hover-capable: interception is a
+    // touch affordance, never desktop default behavior.
     const hoverCapable = window.matchMedia?.('(hover: hover)').matches ?? true;
     if (hoverCapable) return;
     event.preventDefault();
@@ -358,7 +358,7 @@ export function NotificationContainer() {
     metadata: Record<string, unknown>,
     toastId: string,
   ) => {
-// Pairing requests: open Connections in pair-device mode (host approve).
+    // Pairing requests: open Connections in pair-device mode (host approve).
     if (
       metadata.surface === 'connections:pairing' ||
       (metadata.navigateTo as { mode?: string } | undefined)?.mode ===
@@ -382,7 +382,7 @@ export function NotificationContainer() {
       dismissToast(toastId);
       return;
     }
-// Use navigate for project/layout navigation
+    // Use navigate for project/layout navigation
     if (nav.project && nav.layout) {
       navigate(`/projects/${nav.project}/layouts/${nav.layout}`);
     } else if (nav.project) {
@@ -422,18 +422,18 @@ export function NotificationContainer() {
     return `${isMac ? '⌘' : 'Ctrl+'}${sessionIndex + 1}`;
   };
 
-/**
- * archive#872 (archive#1971) put an empty state here and it was the wrong
-* surface. This container is mounted unconditionally in `main.tsx` as the
-* fixed-position toast overlay (z-index 1900) — it has no open/closed state,
-* so "render something when empty" means a card pinned over the top-right of
-* every page forever, with `pointer-events: auto` swallowing clicks on the
-* chrome underneath it. The issue asked for an empty state on the surfaces a
-* user *navigates to*, and both already have one: the header popover
-* (`NotificationHistory`) renders its zero-notifications `Empty` card, and
-* `/notifications` is a routed destination reachable at zero notifications.
-* An overlay with nothing to show must render nothing.
-*/
+  /**
+   * archive#872 (archive#1971) put an empty state here and it was the wrong
+   * surface. This container is mounted unconditionally in `main.tsx` as the
+   * fixed-position toast overlay (z-index 1900) — it has no open/closed state,
+   * so "render something when empty" means a card pinned over the top-right of
+   * every page forever, with `pointer-events: auto` swallowing clicks on the
+   * chrome underneath it. The issue asked for an empty state on the surfaces a
+   * user *navigates to*, and both already have one: the header popover
+   * (`NotificationHistory`) renders its zero-notifications `Empty` card, and
+   * `/notifications` is a routed destination reachable at zero notifications.
+   * An overlay with nothing to show must render nothing.
+   */
   if (activeNotifications.length === 0) return null;
 
   const approvalCountLabel = `${approvals.length} pending approval${approvals.length === 1 ? '' : 's'}`;

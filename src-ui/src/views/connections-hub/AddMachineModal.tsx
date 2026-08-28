@@ -2,19 +2,19 @@
  * archive#1134 — one "Add a computer" entry point that asks the GOAL
  * first, then routes into the flow that serves it. Three branches, because
  * three mechanisms exist and the audit found all three reachable by
-* differently-shaped affordances within 300px of each other :
-*   - "control this Station" -> device pairing, via `ConnectionManagerModal`'s
-*     already-shipped `pair-host` panel (create an offer, approve requests,
-*     manage paired devices — `HostDevicePairingPanel` in
-*     `@kontourai/station-connect`). Nothing about that flow changes here;
-*     this is a new call site only, mirroring the existing
-*     `GuidedConnect`/`OnboardingGate` wiring.
-*   - "reach another Station" -> `StationAddressDialog`, which absorbs the
-*     sibling inline "Add Station" form this replaced.
+ * differently-shaped affordances within 300px of each other :
+ *   - "control this Station" -> device pairing, via `ConnectionManagerModal`'s
+ *     already-shipped `pair-host` panel (create an offer, approve requests,
+ *     manage paired devices — `HostDevicePairingPanel` in
+ *     `@kontourai/station-connect`). Nothing about that flow changes here;
+ *     this is a new call site only, mirroring the existing
+ *     `GuidedConnect`/`OnboardingGate` wiring.
+ *   - "reach another Station" -> `StationAddressDialog`, which absorbs the
+ *     sibling inline "Add Station" form this replaced.
  * - "run work over SSH" -> `SshComputerCreatorDialog`, which replaced
-*     `SshEnvironmentSetupModal`: that one dead-ended in the browser and, on
-*     desktop, created a saved connection rather than the SSH environment
-* profile this section lists.
+ *     `SshEnvironmentSetupModal`: that one dead-ended in the browser and, on
+ *     desktop, created a saved connection rather than the SSH environment
+ * profile this section lists.
  *
  * The underlying flows stay distinct on purpose (per the issue: "the flows
  * can stay distinct underneath; the decision should not be the user's to
@@ -45,8 +45,8 @@ interface AddMachineGoalOption {
 }
 
 /**
- * The two goals, and the exact "what this unlocks" copy (archive#1134 
-* "the highest-value part of the whole issue"). Each line names the
+ * The two goals, and the exact "what this unlocks" copy (archive#1134
+ * "the highest-value part of the whole issue"). Each line names the
  * direction and the capability it grants, never a liveness claim —
  * both flows below still gate the real "ready"/"connected" state themselves.
  */
@@ -77,11 +77,11 @@ export const ADD_MACHINE_GOAL_OPTIONS: readonly AddMachineGoalOption[] = [
 export interface AddMachineModalProps {
   isOpen: boolean;
   onClose: () => void;
-/**
-* The entry button persists while a selected setup flow replaces this
-* chooser. Carry it across that replacement so the child flow can restore
-* focus after it closes instead of capturing the removed goal option.
-*/
+  /**
+   * The entry button persists while a selected setup flow replaces this
+   * chooser. Carry it across that replacement so the child flow can restore
+   * focus after it closes instead of capturing the removed goal option.
+   */
   returnFocusTarget?: HTMLElement | null;
 }
 

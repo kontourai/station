@@ -35,11 +35,11 @@ function NewProjectModalHeader({
           ref={headingRef}
           className="new-project-modal__title"
           id="new-project-modal-title"
-// Only actually receives focus when `NewProjectModalContent`'s own
-// effect imperatively moves it here on returning from the layout
- // browser (archive#1825 2) — never stolen on
-// the modal's genuine first open, which stays owned by
-// `ResponsiveDialogSurface`'s own initial-focus behavior.
+          // Only actually receives focus when `NewProjectModalContent`'s own
+          // effect imperatively moves it here on returning from the layout
+          // browser (archive#1825 2) — never stolen on
+          // the modal's genuine first open, which stays owned by
+          // `ResponsiveDialogSurface`'s own initial-focus behavior.
           tabIndex={-1}
         >
           New Project
@@ -69,7 +69,7 @@ function NewProjectFormActions({
       <Button variant="secondary" onClick={onClose}>
         Cancel
       </Button>
-{/*
+      {/*
         SHELL-01: Create fired with no acknowledgement at all for the 6-8 s
         the POST took, which is what invited the double-submit the audit's
         first pass rendered as an error. The label swap was already here; the
@@ -209,17 +209,17 @@ export function NewProjectModalContent({
   const returnToForm = () => starter.setShowLayoutBrowser(false);
 
   const browseHistoryId = useId();
-// Hardware/browser Back while browsing must return to the draft form, not
- // exit the whole New Project flow (archive#1825 2).
-// The outer `ResponsiveDialogSurface` below intentionally does NOT push a
-// history layer of its own (`historyMode="route"`: the modal's overall
-// open/close is driven by the app's own `/projects/new` route, mounting
-// and unmounting `NewProjectModal` directly — see `AppViewContent.tsx`'s
-// `ProjectNewViewGate`), so without this, a Back press falls straight
-// through to that route level and discards the whole draft. The old
-// nested dialog got this for free from its own default `historyMode
-// ="entry"`; this recreates exactly that registration, scoped to the
-// browsing sub-state, using the same primitive.
+  // Hardware/browser Back while browsing must return to the draft form, not
+  // exit the whole New Project flow (archive#1825 2).
+  // The outer `ResponsiveDialogSurface` below intentionally does NOT push a
+  // history layer of its own (`historyMode="route"`: the modal's overall
+  // open/close is driven by the app's own `/projects/new` route, mounting
+  // and unmounting `NewProjectModal` directly — see `AppViewContent.tsx`'s
+  // `ProjectNewViewGate`), so without this, a Back press falls straight
+  // through to that route level and discards the whole draft. The old
+  // nested dialog got this for free from its own default `historyMode
+  // ="entry"`; this recreates exactly that registration, scoped to the
+  // browsing sub-state, using the same primitive.
   useEffect(() => {
     if (!browsingLayouts) return;
     return registerDialogHistory(browseHistoryId, () =>
@@ -227,38 +227,38 @@ export function NewProjectModalContent({
     );
   }, [browseHistoryId, browsingLayouts, starter.setShowLayoutBrowser]);
 
-// Escape, a backdrop tap, and the header's own close button all funnel
-// through `ResponsiveDialogSurface`'s single `onClose` prop. While
-// browsing, all three must behave like "Back to project" — return to the
-// draft — rather than discard it and exit the whole flow; only the draft
-// step itself can actually close the modal. This mirrors the old nested
-// dialog, whose own close button was already scoped "Close layout
-// browser", never "Close new project".
+  // Escape, a backdrop tap, and the header's own close button all funnel
+  // through `ResponsiveDialogSurface`'s single `onClose` prop. While
+  // browsing, all three must behave like "Back to project" — return to the
+  // draft — rather than discard it and exit the whole flow; only the draft
+  // step itself can actually close the modal. This mirrors the old nested
+  // dialog, whose own close button was already scoped "Close layout
+  // browser", never "Close new project".
   const dismiss = browsingLayouts ? returnToForm : onClose;
 
   const headingRef = useRef<HTMLHeadingElement>(null);
   const wasBrowsingRef = useRef(false);
-// Return-focus for the reverse transition (archive#1825
- //): `NewProjectLayoutBrowserBody` moves focus onto its own heading
-// when it mounts (forward). Coming back, the modal frame itself doesn't
-// remount (unlike the old nested dialog, which got a fresh focus trap for
-// free), so without this, focus falls to `document.body` — outside the
-// panel's own Tab-containment, which only intercepts keydowns targeted at
-// a descendant of the panel — and no announcement reaches screen readers
-// that the content changed back.
-//
-// Deliberately a passive `useEffect`, not `useLayoutEffect`: `NewProjectForm`
-// (mounted fresh on this same transition, as the ternary's other branch)
-// contains `PathAutocomplete`, which has its own pre-existing `autoFocus`
-// default — the same behavior the modal's genuine first open already
-// relies on — implemented as its own passive `useEffect` several levels
-// deeper in the tree. React flushes passive effects child-before-parent
-// within one commit, so a `useLayoutEffect` here (verified live in a real
-// browser) fires and is immediately overwritten by that deeper passive
-// effect afterward, leaving focus in the Working Directory field instead
-// of the heading. Matching the effect type puts this callback in the same
-// passive-effect phase, still ordered after PathAutocomplete's as the
-// shallower ancestor, so it reliably wins instead.
+  // Return-focus for the reverse transition (archive#1825
+  //): `NewProjectLayoutBrowserBody` moves focus onto its own heading
+  // when it mounts (forward). Coming back, the modal frame itself doesn't
+  // remount (unlike the old nested dialog, which got a fresh focus trap for
+  // free), so without this, focus falls to `document.body` — outside the
+  // panel's own Tab-containment, which only intercepts keydowns targeted at
+  // a descendant of the panel — and no announcement reaches screen readers
+  // that the content changed back.
+  //
+  // Deliberately a passive `useEffect`, not `useLayoutEffect`: `NewProjectForm`
+  // (mounted fresh on this same transition, as the ternary's other branch)
+  // contains `PathAutocomplete`, which has its own pre-existing `autoFocus`
+  // default — the same behavior the modal's genuine first open already
+  // relies on — implemented as its own passive `useEffect` several levels
+  // deeper in the tree. React flushes passive effects child-before-parent
+  // within one commit, so a `useLayoutEffect` here (verified live in a real
+  // browser) fires and is immediately overwritten by that deeper passive
+  // effect afterward, leaving focus in the Working Directory field instead
+  // of the heading. Matching the effect type puts this callback in the same
+  // passive-effect phase, still ordered after PathAutocomplete's as the
+  // shallower ancestor, so it reliably wins instead.
   useEffect(() => {
     if (wasBrowsingRef.current && !browsingLayouts) {
       headingRef.current?.focus();

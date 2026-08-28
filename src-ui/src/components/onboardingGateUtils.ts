@@ -11,15 +11,15 @@ export interface SetupBannerContent {
   description: string;
   actionLabel: string;
   badges: string[];
-/**
-* archive#1544: `'runtimes'` used to be a third target here. No branch of
-* `buildSetupBannerContent` has ever returned it since the variants below
-* settled, so the `actionTarget === 'runtimes'` checks in `OnboardingGate`
-* and `ChatEmptyState` were unreachable navigation. Removed with the
-* variant rather than left reading as live.
-*/
+  /**
+   * archive#1544: `'runtimes'` used to be a third target here. No branch of
+   * `buildSetupBannerContent` has ever returned it since the variants below
+   * settled, so the `actionTarget === 'runtimes'` checks in `OnboardingGate`
+   * and `ChatEmptyState` were unreachable navigation. Removed with the
+   * variant rather than left reading as live.
+   */
   actionTarget: 'providers' | 'connections' | 'engine';
-/** Present only for an engine action; this is the owning Agent Apps connection. */
+  /** Present only for an engine action; this is the owning Agent Apps connection. */
   engineConnectionId?: EngineConnectionId;
 }
 
@@ -72,18 +72,18 @@ export function configuredLlmProviders(
 }
 
 export function setupBannerVariant(status: SystemStatus): SetupBannerVariant {
-// archive#chat-dock-maximize-readiness: while system prerequisite
-// discovery is still `pending`, the status snapshot is an all-false
-// placeholder that would otherwise read as 'unconfigured'. Withhold the
-// setup conclusion until discovery settles so a genuinely ready
-// Claude/Codex/ACP/Ollama path can suppress the launcher instead of
-// flashing a false "no chat configured" overlay during first run.
+  // archive#chat-dock-maximize-readiness: while system prerequisite
+  // discovery is still `pending`, the status snapshot is an all-false
+  // placeholder that would otherwise read as 'unconfigured'. Withhold the
+  // setup conclusion until discovery settles so a genuinely ready
+  // Claude/Codex/ACP/Ollama path can suppress the launcher instead of
+  // flashing a false "no chat configured" overlay during first run.
   if (status.prerequisitesState === 'pending') {
     return 'hidden';
   }
-// A verified ready path must never be presented as setup work. Engine
-// choice remains available in Connections and the chat model picker; Home
-// should not interrupt a user who can already start a chat.
+  // A verified ready path must never be presented as setup work. Engine
+  // choice remains available in Connections and the chat model picker; Home
+  // should not interrupt a user who can already start a chat.
   if (status.acp.connected) {
     return 'hidden';
   }
@@ -95,16 +95,16 @@ export function setupBannerVariant(status: SystemStatus): SetupBannerVariant {
     return 'hidden';
   }
 
-// A per-engine failure is setup work only when no engine can already start
-// chat. Keep this before the attention branch: an array `.some` over
-// unready rows cannot encode the ready-path precedence contract.
+  // A per-engine failure is setup work only when no engine can already start
+  // chat. Keep this before the attention branch: an array `.some` over
+  // unready rows cannot encode the ready-path precedence contract.
   if (status.externalEngines?.some((engine) => engine.ready)) {
     return 'hidden';
   }
 
-// Per-engine rows are producer-owned readiness facts. Do not replace this
-// with `clis`, `capabilities.runtime`, or a recommendation: each collapses
-// the reason a detected engine cannot yet start a chat.
+  // Per-engine rows are producer-owned readiness facts. Do not replace this
+  // with `clis`, `capabilities.runtime`, or a recommendation: each collapses
+  // the reason a detected engine cannot yet start a chat.
   if (
     status.externalEngines?.some(
       (engine) =>
@@ -144,7 +144,7 @@ export function setupBannerVariant(status: SystemStatus): SetupBannerVariant {
 }
 
 /**
-* archive#1194 introduced a second, narrower predicate
+ * archive#1194 introduced a second, narrower predicate
  * (`chatSetupNeeded`) that excluded the 'engine-picker' variant, because that
  * variant meant "chat already works, pick which engine backs it" and a chat
  * surface must not read it as setup work. archive#1544 removed that variant,

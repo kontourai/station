@@ -190,8 +190,8 @@ describe('ChatInputArea', () => {
     ).toBe(true);
   });
 
- // Stop could be pressed again while the first request was
-// still outstanding, submitting a duplicate command and a duplicate receipt.
+  // Stop could be pressed again while the first request was
+  // still outstanding, submitting a duplicate command and a duplicate receipt.
   test('disables Stop while a stop request is outstanding and says what is pending', () => {
     const props = renderChatInputArea({
       turnInFlight: true,
@@ -275,10 +275,10 @@ describe('ChatInputArea', () => {
           {...renderProps({
             availableModels: [],
             canModelSelect: true,
-// Offline-no-cache: nothing has been confirmed live this
-// session, so the viewmodel derives unconfirmed/stale — the
-// discriminator between "unreachable" and "engine reported
-// no selectable models" (a REACHABLE engine's honest zero).
+            // Offline-no-cache: nothing has been confirmed live this
+            // session, so the viewmodel derives unconfirmed/stale — the
+            // discriminator between "unreachable" and "engine reported
+            // no selectable models" (a REACHABLE engine's honest zero).
             modelsStale: true,
             modelQuery,
             onModelOpen: () => setModelQuery(''),
@@ -352,10 +352,10 @@ describe('ChatInputArea', () => {
   test('#1291 anchors the model popover from the start (left) edge, matching its left-edge trigger', () => {
     renderChatInputArea({ modelQuery: '' });
 
-// The model chip sits at the left edge of the composer meta rail, like
-// ComposerActionsMenu and ComposerModeSheet — it must anchor with
-// `--start`, not `--end`, or the clamp saturates and pins the panel to
-// the far left of the viewport (archive#1291).
+    // The model chip sits at the left edge of the composer meta rail, like
+    // ComposerActionsMenu and ComposerModeSheet — it must anchor with
+    // `--start`, not `--end`, or the clamp saturates and pins the panel to
+    // the far left of the viewport (archive#1291).
     const overlay = screen
       .getByRole('dialog', { name: 'Model' })
       .closest('.responsive-surface-overlay');
@@ -370,10 +370,10 @@ describe('ChatInputArea', () => {
       availableModels: [{ id: 'opencode/big-pickle', name: 'Big Pickle' }],
     });
 
-// Assistive tech reaching this control by role must be able to tell
-// which model/connection is active from the accessible name alone
- // (docs/design/chat-composer.md §3.3) — the visible identity spans are
-// aria-hidden, so the name has to carry the selection itself.
+    // Assistive tech reaching this control by role must be able to tell
+    // which model/connection is active from the accessible name alone
+    // (docs/design/chat-composer.md §3.3) — the visible identity spans are
+    // aria-hidden, so the name has to carry the selection itself.
     const modelButton = screen.getByRole('button', {
       name: /OpenCode.*Big Pickle/,
     });
@@ -381,9 +381,9 @@ describe('ChatInputArea', () => {
     expect(modelButton.getAttribute('aria-label')).toContain('Big Pickle');
     expect(modelButton.textContent).toContain('OpenCode');
     expect(modelButton.textContent).toContain('Big Pickle');
-// The source moved from a second visible line into the accessible name:
-// that subline is what made this pill two rows tall on a phone, and the
-// override state stays visible via the pill's own variant class.
+    // The source moved from a second visible line into the accessible name:
+    // that subline is what made this pill two rows tall on a phone, and the
+    // override state stays visible via the pill's own variant class.
     expect(modelButton.getAttribute('aria-label')).toContain('agent default');
   });
 
@@ -409,10 +409,10 @@ describe('ChatInputArea', () => {
       availableModels: [{ id: 'opencode/big-pickle', name: 'Big Pickle' }],
     });
 
-// The source is exposed through the accessible name now rather than a
-// second visible line, but it still goes through modelSourceLabel — so
-// this remains a real guard against the internal "runtime" vocabulary
- // leaking to users (docs/design/chat-composer.md §2).
+    // The source is exposed through the accessible name now rather than a
+    // second visible line, but it still goes through modelSourceLabel — so
+    // this remains a real guard against the internal "runtime" vocabulary
+    // leaking to users (docs/design/chat-composer.md §2).
     const modelButton = screen.getByRole('button', { name: /^Model/ });
     const accessibleName = modelButton.getAttribute('aria-label') ?? '';
     expect(modelButton.textContent).not.toContain('runtime');
@@ -485,10 +485,10 @@ describe('ChatInputArea', () => {
     const textarea = screen.getByRole('textbox');
 
     const image = new File(['abc'], 'pasted.png', { type: 'image/png' });
-// Safari / native webviews expose a pasted screenshot only on `items`
-// (kind: 'file' + getAsFile), leaving `files` empty. Copying an image from
-// a web page also carries an accompanying kind: 'string' text entry that
-// must not leak into the textarea.
+    // Safari / native webviews expose a pasted screenshot only on `items`
+    // (kind: 'file' + getAsFile), leaving `files` empty. Copying an image from
+    // a web page also carries an accompanying kind: 'string' text entry that
+    // must not leak into the textarea.
     const notPrevented = fireEvent.paste(textarea, {
       clipboardData: {
         items: [
@@ -499,7 +499,7 @@ describe('ChatInputArea', () => {
       },
     });
 
-// fireEvent returns false when a handler called preventDefault.
+    // fireEvent returns false when a handler called preventDefault.
     expect(notPrevented).toBe(false);
     await waitFor(() => expect(selectAttachmentFiles).toHaveBeenCalledOnce());
     expect(selectAttachmentFiles).toHaveBeenCalledWith([
@@ -508,7 +508,7 @@ describe('ChatInputArea', () => {
     expect(onInputChange).not.toHaveBeenCalled();
   });
 
-// archive#3344.
+  // archive#3344.
   test('a pasted image is visible in the composer, with a remove affordance', async () => {
     const onRemoveAttachment = vi.fn();
     renderChatInputArea({
@@ -525,8 +525,8 @@ describe('ChatInputArea', () => {
       ],
     });
 
-// The paperclip popover is mocked out in this file, so anything found
-// here is the composer's own strip, not the menu behind a click.
+    // The paperclip popover is mocked out in this file, so anything found
+    // here is the composer's own strip, not the menu behind a click.
     const strip = screen.getByRole('list', { name: 'Attached files' });
     const thumbnail = within(strip).getByRole('img', { name: 'screen.png' });
     expect(thumbnail.getAttribute('src')).toBe('data:image/png;base64,YWJj');
@@ -537,9 +537,9 @@ describe('ChatInputArea', () => {
     expect(onRemoveAttachment).toHaveBeenCalledWith('att-1');
   });
 
- // a single-attachment fixture cannot tell "removes the one
-// I clicked" from "removes whatever is first". Two attachments, and the
-// second one's button, is what gives the assertion power.
+  // a single-attachment fixture cannot tell "removes the one
+  // I clicked" from "removes whatever is first". Two attachments, and the
+  // second one's button, is what gives the assertion power.
   test('removing one chip removes that attachment, not its neighbour', () => {
     const onRemoveAttachment = vi.fn();
     renderChatInputArea({
@@ -626,7 +626,7 @@ describe('ChatInputArea', () => {
       },
     });
 
-// No file item present → default paste proceeds and the pipeline is idle.
+    // No file item present → default paste proceeds and the pipeline is idle.
     expect(notPrevented).toBe(true);
     expect(selectAttachmentFiles).not.toHaveBeenCalled();
     expect(onInputChange).not.toHaveBeenCalled();
@@ -646,10 +646,10 @@ describe('ChatInputArea', () => {
       />,
     );
 
-// Start an escalation on session A — opens the mode sheet and picks full
-// access, which must land on the confirm step rather than applying.
+    // Start an escalation on session A — opens the mode sheet and picks full
+    // access, which must land on the confirm step rather than applying.
     fireEvent.click(screen.getByRole('button', { name: /^Approval mode:/ }));
-// The mode sheet is lazy-loaded; wait for it rather than the Suspense null.
+    // The mode sheet is lazy-loaded; wait for it rather than the Suspense null.
     await screen.findByRole('radiogroup', { name: 'Approval mode' });
     fireEvent.click(
       screen.getByRole('radio', { name: /Never ask \(full access\)/ }),
@@ -659,7 +659,7 @@ describe('ChatInputArea', () => {
     ).toBeTruthy();
     expect(onApprovalModeChange).not.toHaveBeenCalled();
 
-// The user switches to a different session before confirming.
+    // The user switches to a different session before confirming.
     rerender(
       <ChatInputArea
         {...renderProps({
@@ -672,9 +672,9 @@ describe('ChatInputArea', () => {
       />,
     );
 
-// Session B must not inherit session A's pending confirm — the sheet (and
-// its confirm step) is gone, the chip is back to showing session B's own
-// state, and the escalation was never applied to either session.
+    // Session B must not inherit session A's pending confirm — the sheet (and
+    // its confirm step) is gone, the chip is back to showing session B's own
+    // state, and the escalation was never applied to either session.
     expect(
       screen.queryByRole('button', { name: 'Enable full access' }),
     ).toBeNull();
@@ -697,20 +697,20 @@ describe('ChatInputArea', () => {
         onClearInput,
       });
 
-// The guard itself touches nothing: the draft renders untruncated and
-// no spontaneous clear/rewrite fires on mount (a guard that auto-cleared
-// would call one of these).
+      // The guard itself touches nothing: the draft renders untruncated and
+      // no spontaneous clear/rewrite fires on mount (a guard that auto-cleared
+      // would call one of these).
       const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
       expect(textarea.value).toHaveLength(CHAT_INPUT_MAX_CHARS + overBy);
       expect(onInputChange).not.toHaveBeenCalled();
       expect(onClearInput).not.toHaveBeenCalled();
 
-// Exact, actionable overage — not a generic "too long".
+      // Exact, actionable overage — not a generic "too long".
       expect(screen.getByRole('alert').textContent).toContain(
         '2,431 characters over the limit',
       );
 
-// Send is disabled and Enter cannot send either.
+      // Send is disabled and Enter cannot send either.
       expect(
         (screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement)
           .disabled,
@@ -718,20 +718,20 @@ describe('ChatInputArea', () => {
       fireEvent.keyDown(textarea, { key: 'Enter' });
       expect(onSend).not.toHaveBeenCalled();
 
-// The one path that can clear the draft stays the user's explicit ×
-// click — available while over-limit, and not hijacked by the guard.
+      // The one path that can clear the draft stays the user's explicit ×
+      // click — available while over-limit, and not hijacked by the guard.
       fireEvent.click(screen.getByRole('button', { name: 'Clear input' }));
       expect(onClearInput).toHaveBeenCalledOnce();
       expect(onInputChange).not.toHaveBeenCalled();
     });
 
     test('sends normally at exactly the shared limit constant', () => {
-// The composer's boundary derives from the same exported
-// CHAT_INPUT_MAX_CHARS the server bounds are pinned against (see the
-// chatSchema shape tests and
-// orchestration/__tests__/orchestration-chat-input-limits.test.ts —
-// the seam this composer actually posts to). A hardcoded composer
-// number goes red here or there.
+      // The composer's boundary derives from the same exported
+      // CHAT_INPUT_MAX_CHARS the server bounds are pinned against (see the
+      // chatSchema shape tests and
+      // orchestration/__tests__/orchestration-chat-input-limits.test.ts —
+      // the seam this composer actually posts to). A hardcoded composer
+      // number goes red here or there.
       const onSend = vi.fn(async () => {});
       renderChatInputArea({
         input: 'x'.repeat(CHAT_INPUT_MAX_CHARS),

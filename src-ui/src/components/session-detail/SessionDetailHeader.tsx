@@ -8,7 +8,7 @@ import { Button } from '../Button';
  * (with copy affordance), provider/model/status/live-indicator meta row,
  * and the Stop task action. Split out of `MutableSessionDetail` per
  * archive#1204; the compact-viewport CSS contract
-* (`.sessions-detail--viewport-compact.sessions-detail__eyebrow` etc. in
+ * (`.sessions-detail--viewport-compact.sessions-detail__eyebrow` etc. in
  * SessionsView.css) depends on these exact class names staying put here.
  */
 export function SessionDetailHeader({
@@ -29,14 +29,14 @@ export function SessionDetailHeader({
   threadId: string;
   eventCount: number;
   isFailed: boolean;
-/**
-* `isSessionLifecycleStateStopped` semantics — the session records a run
-* outcome (`completed`/`failed`/`canceled`) and is not doing work. The
-* live indicator and Stop task are gated on this, NOT on terminality
-* (archive#3244): a failed session is retryable, so its composer stays,
-* but "failed AND live AND Stop task" is still the contradiction
-* archive#1170 removed.
-*/
+  /**
+   * `isSessionLifecycleStateStopped` semantics — the session records a run
+   * outcome (`completed`/`failed`/`canceled`) and is not doing work. The
+   * live indicator and Stop task are gated on this, NOT on terminality
+   * (archive#3244): a failed session is retryable, so its composer stays,
+   * but "failed AND live AND Stop task" is still the contradiction
+   * archive#1170 removed.
+   */
   isStopped: boolean;
   isStreaming: boolean;
   connected: boolean;
@@ -61,19 +61,19 @@ export function SessionDetailHeader({
         </p>
         <p className="sessions-detail__meta">
           <span>{displayProvider(session)}</span>
-{/*
-* `reportedModel ?? effectiveModel ?? model`, not `model` alone.
-* The external engine's reported model is the clearest runtime
-* identity and also protects historical sessions from a malformed
-* selector that was persisted before catalog normalization. `model` is only
-* populated when a caller supplied an explicit `modelId` at session
-* start; `effectiveModel` is resolved later from
-* `session.configured`/`turn.started` metadata and is what a
-* session started on an agent's default model carries. The context
-* card this replaces used the same fallback, so reading `model`
-* only here made the model render NOWHERE for those sessions
-* (review of archive#1249, probe-confirmed).
-*/}
+          {/*
+           * `reportedModel ?? effectiveModel ?? model`, not `model` alone.
+           * The external engine's reported model is the clearest runtime
+           * identity and also protects historical sessions from a malformed
+           * selector that was persisted before catalog normalization. `model` is only
+           * populated when a caller supplied an explicit `modelId` at session
+           * start; `effectiveModel` is resolved later from
+           * `session.configured`/`turn.started` metadata and is what a
+           * session started on an agent's default model carries. The context
+           * card this replaces used the same fallback, so reading `model`
+           * only here made the model render NOWHERE for those sessions
+           * (review of archive#1249, probe-confirmed).
+           */}
           {(session.reportedModel ??
             session.effectiveModel ??
             session.model) && (

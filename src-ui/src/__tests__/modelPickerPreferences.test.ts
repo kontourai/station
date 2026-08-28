@@ -46,7 +46,7 @@ describe('model picker device settings', () => {
 
     updateModelPickerPreferences((current) => current);
 
-// The shared legacy root is fully retired after migration.
+    // The shared legacy root is fully retired after migration.
     expect(window.localStorage.getItem('station.device-settings')).toBeNull();
     expect(readModelPickerPreferences().favorites).toEqual(['provider-model']);
   });

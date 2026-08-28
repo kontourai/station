@@ -54,8 +54,8 @@ function refreshSessionReadModelOnTerminal(
 }
 
 /**
-* archive#1225 `queryClient`, when supplied by the
-* caller (`useOrchestration`'s `useQueryClient`), is threaded down to
+ * archive#1225 `queryClient`, when supplied by the
+ * caller (`useOrchestration`'s `useQueryClient`), is threaded down to
  * `applyOrchestrationSnapshot`'s reconnect-fallback refetch so it keeps the
  * SAME `toolMappings` cache-lookup fallback the mount-time rehydrate path
  * has — see `rehydrateChatSession.ts`'s file-header note. Only the FIRST
@@ -69,42 +69,42 @@ export function ensureOrchestrationEventStream(
 ) {
   if (queryClient) sharedQueryClient = queryClient;
   if (activeSources.has(apiBase)) return;
-// archive#1092: dedup guard against duplicate/overlapping frames on a
-// sequence-cursor resume. Applying a stale duplicate here would
-// reapply deltas (e.g. `content.text-delta`) into already-updated chat
-// state, not just re-render an already-correct list — unlike
-// `useSessionEventStream`'s eventId-keyed merge, this handler has no
- // independent dedup of its own. Safe unconditionally: a pre-archive#1092 host
-// never sets a frame `id:`, so the guard never drops anything against it.
+  // archive#1092: dedup guard against duplicate/overlapping frames on a
+  // sequence-cursor resume. Applying a stale duplicate here would
+  // reapply deltas (e.g. `content.text-delta`) into already-updated chat
+  // state, not just re-render an already-correct list — unlike
+  // `useSessionEventStream`'s eventId-keyed merge, this handler has no
+  // independent dedup of its own. Safe unconditionally: a pre-archive#1092 host
+  // never sets a frame `id:`, so the guard never drops anything against it.
   const cursor = createStreamCursorTracker();
-// archive#1225: the FIRST snapshot this stream instance ever receives is
-// always the ordinary connect-time snapshot (a brand-new stream has no
-// `Last-Event-ID` yet, so `resolveStreamResumePlan` always picks the
-// snapshot branch on that very first request) — nothing is stale yet, so
-// no refetch is warranted. Any LATER snapshot on this same stream means
-// the server fell back on a genuine RECONNECT (bounded-gap-exceeded or a
-// stale/evicted cursor); see `applyOrchestrationSnapshot`'s
-// `isReconnectFallback` option for what that triggers. This flag lives on
-// the stream's own closure (not module scope), so it naturally resets if
-// `onTerminal` ever tears the whole stream down and a fresh
-// `ensureOrchestrationEventStream(apiBase)` call starts a new one.
+  // archive#1225: the FIRST snapshot this stream instance ever receives is
+  // always the ordinary connect-time snapshot (a brand-new stream has no
+  // `Last-Event-ID` yet, so `resolveStreamResumePlan` always picks the
+  // snapshot branch on that very first request) — nothing is stale yet, so
+  // no refetch is warranted. Any LATER snapshot on this same stream means
+  // the server fell back on a genuine RECONNECT (bounded-gap-exceeded or a
+  // stale/evicted cursor); see `applyOrchestrationSnapshot`'s
+  // `isReconnectFallback` option for what that triggers. This flag lives on
+  // the stream's own closure (not module scope), so it naturally resets if
+  // `onTerminal` ever tears the whole stream down and a fresh
+  // `ensureOrchestrationEventStream(apiBase)` call starts a new one.
   let hasReceivedSnapshot = false;
   const authenticatedStream = fetchSSE(`${apiBase}/api/orchestration/events`, {
     authentication: 'required',
-// archive#1848: a ceiling equal to the initial delay is not a backoff
-// ladder — it is a fixed 2s poll that never decays, so a server that is
-// down, restarting, or refusing keeps receiving ~30 requests/minute from
-// every open client for as long as the app is open. The ceiling is safe
-// to raise only because `fetchSSE` now restarts the ladder after an
-// attempt that actually delivered frames, so an ordinary blip on a
-// healthy stream still reconnects in 2s rather than inheriting a
-// ratcheted-up delay.
+    // archive#1848: a ceiling equal to the initial delay is not a backoff
+    // ladder — it is a fixed 2s poll that never decays, so a server that is
+    // down, restarting, or refusing keeps receiving ~30 requests/minute from
+    // every open client for as long as the app is open. The ceiling is safe
+    // to raise only because `fetchSSE` now restarts the ladder after an
+    // attempt that actually delivered frames, so an ordinary blip on a
+    // healthy stream still reconnects in 2s rather than inheriting a
+    // ratcheted-up delay.
     retryDelayMs: 2000,
     maxRetryDelayMs: 30_000,
     onMessage: (raw) => {
       if (raw.event === 'orchestration:snapshot') {
-// A snapshot always replaces local state — adopt its cursor
-// unconditionally rather than gating it through `admit`.
+        // A snapshot always replaces local state — adopt its cursor
+        // unconditionally rather than gating it through `admit`.
         cursor.adopt(raw.id);
         const payload = JSON.parse(raw.data) as OrchestrationSnapshotPayload;
         applyOrchestrationSnapshot(payload, {
@@ -115,11 +115,11 @@ export function ensureOrchestrationEventStream(
         hasReceivedSnapshot = true;
       } else if (raw.event === SERVER_EVENTS.ORCHESTRATION_EVENT) {
         if (!cursor.admit(raw.id)) return;
-// archive#1410: the frame is a wrapper, not a bare event — the
-// server attaches a completed turn's provenance envelope as a
-// SIBLING of `event` so the canonical event itself stays untouched.
-// Typed `unknown` all the way to the render boundary, which is the
-// only place that decides whether this build can read it.
+        // archive#1410: the frame is a wrapper, not a bare event — the
+        // server attaches a completed turn's provenance envelope as a
+        // SIBLING of `event` so the canonical event itself stays untouched.
+        // Typed `unknown` all the way to the render boundary, which is the
+        // only place that decides whether this build can read it.
         const payload = JSON.parse(raw.data) as {
           event: OrchestrationEvent;
           provenance?: unknown;
@@ -129,33 +129,33 @@ export function ensureOrchestrationEventStream(
       } else if (
         raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
       ) {
-// archive#4054: this frame carries no claim beyond "re-read the
-// server projection". In particular, the client must not turn
-// `lastEventAt` into a second silence detector; the watchdog's
-// narrower progress derivation is serialized on that projection.
+        // archive#4054: this frame carries no claim beyond "re-read the
+        // server projection". In particular, the client must not turn
+        // `lastEventAt` into a second silence detector; the watchdog's
+        // narrower progress derivation is serialized on that projection.
         void (queryClient ?? sharedQueryClient)?.invalidateQueries({
           queryKey: ['orchestration-sessions'],
         });
       }
     },
-// `fetchSSE` owns transient retry. Keep its single-flight entry until it
-// reaches a terminal stop: deleting it here makes a remount during the
-// backoff window create a second stream while this one is still live and
-// scheduled to reconnect. Both streams then replay and apply the same
-// orchestration events.
+    // `fetchSSE` owns transient retry. Keep its single-flight entry until it
+    // reaches a terminal stop: deleting it here makes a remount during the
+    // backoff window create a second stream while this one is still live and
+    // scheduled to reconnect. Both streams then replay and apply the same
+    // orchestration events.
     onError: () => {},
-// archive#1094: a TERMINAL (401/403) failure now parks
-// this stream indefinitely waiting for an explicit wake instead of
-// giving up — `onError` alone would leave it an orphan: no longer
-// reachable to close (dropped from `activeSources` already), but still
-// strongly referenced by the SDK's origin-scoped credential-change wake
-// registry, and it would silently reactivate — re-applying events
-// against its own stale cursor alongside whatever stream a later
-// `ensureOrchestrationEventStream(apiBase)` call created in the
-// meantime — the next time a matching credential change fires.
-// `close` aborts the controller, which `fetchSSE` checks for
-// immediately after invoking this callback, so the stream never even
-// reaches the wake-registry registration below.
+    // archive#1094: a TERMINAL (401/403) failure now parks
+    // this stream indefinitely waiting for an explicit wake instead of
+    // giving up — `onError` alone would leave it an orphan: no longer
+    // reachable to close (dropped from `activeSources` already), but still
+    // strongly referenced by the SDK's origin-scoped credential-change wake
+    // registry, and it would silently reactivate — re-applying events
+    // against its own stale cursor alongside whatever stream a later
+    // `ensureOrchestrationEventStream(apiBase)` call created in the
+    // meantime — the next time a matching credential change fires.
+    // `close` aborts the controller, which `fetchSSE` checks for
+    // immediately after invoking this callback, so the stream never even
+    // reaches the wake-registry registration below.
     onTerminal: () => {
       authenticatedStream.close();
       activeSources.delete(apiBase);

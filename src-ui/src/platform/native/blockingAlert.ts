@@ -62,20 +62,20 @@ export async function reconcileBlockingAlerts(
   const blocking = notifications.filter((notification) =>
     isBlocking(notification.category),
   );
-/**
-* The backlog present when this connection is first observed is seeded,
-* not announced — the user is looking at Station right now, and a burst of
-* OS notifications for things already waiting is how people learn to switch
-* them off.
-*
-* Disclosed consequence : a request that arrives in the same tick
-* as the first observation of a connection is indistinguishable from one
-* that has been waiting an hour, so it is seeded and never announced. The
-* alternative is comparing a server timestamp against the client clock and
-* announcing anything "recent", which trades a bounded miss for
-* skew-dependent double-announcing. It stays visible in-app, and the next
-* request on that connection announces normally.
-*/
+  /**
+   * The backlog present when this connection is first observed is seeded,
+   * not announced — the user is looking at Station right now, and a burst of
+   * OS notifications for things already waiting is how people learn to switch
+   * them off.
+   *
+   * Disclosed consequence : a request that arrives in the same tick
+   * as the first observation of a connection is indistinguishable from one
+   * that has been waiting an hour, so it is seeded and never announced. The
+   * alternative is comparing a server timestamp against the client clock and
+   * announcing anything "recent", which trades a bounded miss for
+   * skew-dependent double-announcing. It stays visible in-app, and the next
+   * request on that connection announces normally.
+   */
   if (announced?.apiBase !== apiBase) {
     announced = {
       apiBase,
@@ -86,8 +86,8 @@ export async function reconcileBlockingAlerts(
   const seen = announced.ids;
   const fresh = blocking.filter((notification) => !seen.has(notification.id));
   for (const notification of fresh) seen.add(notification.id);
-// Resolved requests are forgotten, so a genuinely new request that reuses
-// an id (a re-request after a denial) still announces.
+  // Resolved requests are forgotten, so a genuinely new request that reuses
+  // an id (a re-request after a denial) still announces.
   const live = new Set(blocking.map((notification) => notification.id));
   for (const id of seen) if (!live.has(id)) seen.delete(id);
   let posted = 0;

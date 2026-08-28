@@ -18,15 +18,15 @@ export function getModelDisplayName(model: string): string {
 
 /** The subset of a chat row these resolvers read. */
 interface TurnIdentitySource {
-/**
-* The model Station asked for, as the chat store recorded it. Deliberately
-* accepted here and deliberately never read for identity: archive#1424's
- * defect was resolving a turn's engine from data like this, and archive#1434
-* keeps that closed by making the envelope the only authority. It stays in
-* the signature so `message-bubble-utils.test.ts` can state that plainly.
-*/
+  /**
+   * The model Station asked for, as the chat store recorded it. Deliberately
+   * accepted here and deliberately never read for identity: archive#1424's
+   * defect was resolving a turn's engine from data like this, and archive#1434
+   * keeps that closed by making the envelope the only authority. It stays in
+   * the signature so `message-bubble-utils.test.ts` can state that plainly.
+   */
   model?: string;
-/** `metadata.provenance` exactly as the server sent it (archive#1410). */
+  /** `metadata.provenance` exactly as the server sent it (archive#1410). */
   provenance?: unknown;
 }
 
@@ -54,12 +54,12 @@ function readEnvelope(msg: TurnIdentitySource): TurnProvenanceEnvelope | null {
  *
  * - It never reads the agent's CURRENT engine binding. That was archive#1424
  * review fix : an agent's engine connection can be rebound after a turn
-*   ran, and deriving from live state silently relabels history. The
-*   envelope is a per-turn record, so it cannot drift.
+ *   ran, and deriving from live state silently relabels history. The
+ *   envelope is a per-turn record, so it cannot drift.
  * - It never infers an engine from a model id. Station has no
-*   evidence-grounded model-id⇄engine mapping (see `codex-models.ts`'s
-*   discovery-only design), and inventing one here would be a guess wearing
-*   a chip.
+ *   evidence-grounded model-id⇄engine mapping (see `codex-models.ts`'s
+ *   discovery-only design), and inventing one here would be a guess wearing
+ *   a chip.
  *
  * The label comes from `engineLabelForProvider` — the same function
  * `TurnProvenanceCard` uses — so the chip and the card speak ONE vocabulary
@@ -82,11 +82,11 @@ export type TurnModelSlot = 'requested' | 'reported' | 'agreed';
 
 export interface TurnModelClaim {
   slot: TurnModelSlot;
-/** Short badge label naming WHICH model identity this is. */
+  /** Short badge label naming WHICH model identity this is. */
   label: string;
-/** The identity verbatim, exactly as the envelope recorded it. */
+  /** The identity verbatim, exactly as the envelope recorded it. */
   value: string;
-/** The card's own full wording for the same slot, kept as the tooltip. */
+  /** The card's own full wording for the same slot, kept as the tooltip. */
   description: string;
 }
 

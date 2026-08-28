@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
-* archive#4463: `Empty` is the canonical empty-state primitive every
+ * archive#4463: `Empty` is the canonical empty-state primitive every
  * split-pane detail pane and hand-rolled "Nothing selected" box is being
  * migrated onto. This pins the behavioral contract Station's consumers rely
  * on — icon/title/description/action slots, and the two a11y properties the
@@ -54,9 +54,9 @@ describe('Empty', () => {
       />,
     );
 
-// A screen-reader interruption on every render of an empty state would be
-// exactly the "second message" the double-empty rule exists to prevent —
-// this asserts the primitive never grows one, in either direction.
+    // A screen-reader interruption on every render of an empty state would be
+    // exactly the "second message" the double-empty rule exists to prevent —
+    // this asserts the primitive never grows one, in either direction.
     expect(container.querySelector('[aria-live]')).toBeNull();
     expect(container.querySelector('[role="status"]')).toBeNull();
     expect(container.querySelector('[role="alert"]')).toBeNull();
@@ -84,16 +84,16 @@ describe('Empty', () => {
     action.focus();
     expect(document.activeElement).toBe(action);
 
-// Nothing in Empty owns a keydown/keyup handler, so natural Tab
-// traversal is never preventDefault'd — a real trap would report
-// defaultPrevented: true here.
+    // Nothing in Empty owns a keydown/keyup handler, so natural Tab
+    // traversal is never preventDefault'd — a real trap would report
+    // defaultPrevented: true here.
     const forward = fireEvent.keyDown(action, { key: 'Tab' });
     expect(forward).toBe(true);
     const backward = fireEvent.keyDown(action, { key: 'Tab', shiftKey: true });
     expect(backward).toBe(true);
 
-// No element in the box is given a tabIndex that would pull focus back
-// onto itself or skip it entirely.
+    // No element in the box is given a tabIndex that would pull focus back
+    // onto itself or skip it entirely.
     expect(action.getAttribute('tabindex')).toBeNull();
   });
 });

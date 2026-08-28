@@ -63,8 +63,8 @@ vi.mock('../hooks/useSlashCommands', () => ({
         source: 'skill',
         availability: { available: true },
       },
- // a server-disabled clash loser renders as its own row,
-// keyed apart from the winner it shares a word with.
+      // a server-disabled clash loser renders as its own row,
+      // keyed apart from the winner it shares a word with.
       {
         cmd: '/review-release',
         description: 'The loser',
@@ -103,9 +103,9 @@ describe('CommandsView', () => {
     expect(setDockState).toHaveBeenCalledWith(true);
   });
 
- // a clash loser the server disabled is a ROW, not an absence —
-// its diagnostic is the reason it is unavailable, rendered by the same
-// unavailable status the capability-gated rows use.
+  // a clash loser the server disabled is a ROW, not an absence —
+  // its diagnostic is the reason it is unavailable, rendered by the same
+  // unavailable status the capability-gated rows use.
   test('renders a disabled command skill with its server diagnostic', () => {
     render(<CommandsView />);
 
@@ -119,11 +119,11 @@ describe('CommandsView', () => {
     expect((buttons[3] as HTMLButtonElement).disabled).toBe(true);
   });
 
-// The catalogue stays its own tab rather than folding into a Skills filter:
-// it is the only list that holds builtins, engine commands and authored
-// commands together, and `/clear` is not a skill and never will be. What it
-// does drop is the retired noun — and it gains the one place to author a new
-// command, which is a command-enabled skill.
+  // The catalogue stays its own tab rather than folding into a Skills filter:
+  // it is the only list that holds builtins, engine commands and authored
+  // commands together, and `/clear` is not a skill and never will be. What it
+  // does drop is the retired noun — and it gains the one place to author a new
+  // command, which is a command-enabled skill.
   test('creates a new command as a command-enabled skill', () => {
     render(<CommandsView />);
     fireEvent.click(screen.getByRole('button', { name: '+ New command' }));

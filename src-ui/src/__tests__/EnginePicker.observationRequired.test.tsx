@@ -97,17 +97,17 @@ describe('station#1549: the observation-required picker state', () => {
     connectionsData = [commandBackedConnection()];
     renderPicker();
 
-// Opening the picker triggers the probe immediately, so the honest
-// sub-line while it is in flight says so — and names the CONNECTION,
-// never the protocol it speaks.
+    // Opening the picker triggers the probe immediately, so the honest
+    // sub-line while it is in flight says so — and names the CONNECTION,
+    // never the protocol it speaks.
     expect(screen.getByTestId('engine-picker-pending-kiro-1')).toBeTruthy();
     expect(screen.getByText('Checking what Kiro supports…')).toBeTruthy();
   });
 
   test('a probe that settles WITHOUT producing an observation falls back to the honest not-checked-yet copy — the row never spins forever', async () => {
-// The failure path matters: a probe can fail (CLI missing, spawn error),
-// and a row left saying "Checking…" indefinitely would be a lie of a
-// different kind — it implies an answer is coming.
+    // The failure path matters: a probe can fail (CLI missing, spawn error),
+    // and a row left saying "Checking…" indefinitely would be a lie of a
+    // different kind — it implies an answer is coming.
     reconnectMutate.mockRejectedValue(new Error('spawn failed'));
     connectionsData = [commandBackedConnection()];
     renderPicker();
@@ -121,19 +121,19 @@ describe('station#1549: the observation-required picker state', () => {
         'Not checked yet — Station verifies what Kiro supports when it connects.',
       ),
     ).toBeTruthy();
-// …and the refresh was asked for, so an observation that DID land is
-// picked up rather than waiting for the next 60s cadence.
+    // …and the refresh was asked for, so an observation that DID land is
+    // picked up rather than waiting for the next 60s cadence.
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: ['connections', 'runtimes'],
     });
   });
 
   test('EVERY pending row settles, not just the last one probed — one mutation observer must not swallow the others', async () => {
-// Review finding. `mutate(id, { onSettled })` keeps ONE options slot and
-// ONE current mutation per observer, so a second call in the same effect
-// pass overwrites the first's callbacks and detaches its observer: with
-// two unobserved connections only the LAST row would ever stop saying
-// "Checking…", and the other would assert an answer was coming forever.
+    // Review finding. `mutate(id, { onSettled })` keeps ONE options slot and
+    // ONE current mutation per observer, so a second call in the same effect
+    // pass overwrites the first's callbacks and detaches its observer: with
+    // two unobserved connections only the LAST row would ever stop saying
+    // "Checking…", and the other would assert an answer was coming forever.
     reconnectMutate.mockRejectedValue(new Error('spawn failed'));
     connectionsData = [
       commandBackedConnection({ id: 'first', name: 'First' }),
@@ -166,7 +166,7 @@ describe('station#1549: the observation-required picker state', () => {
     connectionsData = [commandBackedConnection(), claudeConnection()];
     renderPicker();
 
-// Claude is capable and gets a radio; the unobserved row does not.
+    // Claude is capable and gets a radio; the unobserved row does not.
     const radios = screen.getAllByRole('radio');
     expect(radios).toHaveLength(1);
     expect(
@@ -194,8 +194,8 @@ describe('station#1549: the observation-required picker state', () => {
     expect(reconnectMutate).toHaveBeenCalledTimes(1);
     expect(reconnectMutate.mock.calls[0][0]).toBe('kiro-1');
 
-// A re-render must not re-spawn. A probe is a real child process; firing
-// it per render would turn an explanation into a spawn loop.
+    // A re-render must not re-spawn. A probe is a real child process; firing
+    // it per render would turn an explanation into a spawn loop.
     view.rerender(<EnginePicker onChosen={() => {}} onDismiss={() => {}} />);
     expect(reconnectMutate).toHaveBeenCalledTimes(1);
   });
@@ -251,7 +251,7 @@ describe('station#1549: the observation-required picker state', () => {
     expect(screen.queryByText(/can chat, but it can't operate Station/)).toBe(
       null,
     );
-// The honest row is there instead, and the panel says "yet".
+    // The honest row is there instead, and the panel says "yet".
     expect(screen.getByTestId('engine-picker-pending-kiro-1')).toBeTruthy();
     expect(
       screen.getByText(
@@ -261,12 +261,12 @@ describe('station#1549: the observation-required picker state', () => {
   });
 
   test('an OBSERVED-capable connection is the resolved default and is what confirm saves — the picker must not drop the observation when it re-derives the binding', () => {
-// Review finding, and the highest-severity one: `resolveBuiltinAgentEngineBinding`
-// re-derives capability from (matrix, observation) rather than trusting
-// the caller's filter. Dropping the observation on the way in made the
-// picker OFFER a row it then refused to resolve — the user's own verified
-// engine rendered unselected, and confirming without touching the radio
-// saved `null` (Station) over a working binding.
+    // Review finding, and the highest-severity one: `resolveBuiltinAgentEngineBinding`
+    // re-derives capability from (matrix, observation) rather than trusting
+    // the caller's filter. Dropping the observation on the way in made the
+    // picker OFFER a row it then refused to resolve — the user's own verified
+    // engine rendered unselected, and confirming without touching the radio
+    // saved `null` (Station) over a working binding.
     connectionsData = [
       commandBackedConnection({ controlPlaneObservation: OBSERVED_YES }),
     ];
@@ -299,10 +299,10 @@ describe('station#1549: the observation-required picker state', () => {
   });
 
   test('Settings does not report an unobserved saved choice as incapable', () => {
- // The pre-archive#1549 copy ("Your saved choice (Kiro) can't run the built-in
-// assistant.") is a verdict. Applied to a connection Station has never
-// met it is simply false, and it would push the user to change a setting
-// that is about to start working on its own.
+    // The pre-archive#1549 copy ("Your saved choice (Kiro) can't run the built-in
+    // assistant.") is a verdict. Applied to a connection Station has never
+    // met it is simply false, and it would push the user to change a setting
+    // that is about to start working on its own.
     const display = builtinEngineDisplay({
       value: engineConnectionId('kiro-1'),
       stationChatReady: false,

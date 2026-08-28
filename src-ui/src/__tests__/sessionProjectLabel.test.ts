@@ -16,10 +16,10 @@ function session(
     eventCount: 0,
     createdAt: '2026-08-01T00:00:00.000Z',
     updatedAt: '2026-08-01T00:00:00.000Z',
-// archive#1778: a cast is an EXEMPTION from the required-member
-// enforcement, so this fixture is typed rather than asserted. The
-// decoration is irrelevant to what this file tests — that is exactly why
-// it would have gone unnoticed as undecorated.
+    // archive#1778: a cast is an EXEMPTION from the required-member
+    // enforcement, so this fixture is typed rather than asserted. The
+    // decoration is irrelevant to what this file tests — that is exactly why
+    // it would have gone unnoticed as undecorated.
     answerability: { answerable: true },
     ...overrides,
   } satisfies OrchestrationSessionSummary as OrchestrationSessionSummary;
@@ -45,9 +45,9 @@ describe('sessionProjectLabel', () => {
     );
   });
 
-// The fold that used to spell 'Unassigned' here now lives at each display
-// site, so the helper's own answer for "nothing known" is `null` — a
-// distinguishable absence rather than a string a caller might render.
+  // The fold that used to spell 'Unassigned' here now lives at each display
+  // site, so the helper's own answer for "nothing known" is `null` — a
+  // distinguishable absence rather than a string a caller might render.
   test('no project at all reads as null, not as a label', () => {
     expect(sessionProjectLabel(session({}))).toBeNull();
   });
@@ -84,9 +84,9 @@ describe('sessionProjectLabel', () => {
     ).toBe('station');
   });
 
-// archive#1463 FIX ROUND: a directory match proves the DIRECTORY, and
-// archive#1462 is the standing proof that two projects can sit on one
-// directory — so the name is still unverified and must still say so.
+  // archive#1463 FIX ROUND: a directory match proves the DIRECTORY, and
+  // archive#1462 is the standing proof that two projects can sit on one
+  // directory — so the name is still unverified and must still say so.
   test('a directory-corroborated join keeps the unverified-name caveat (station#1463)', () => {
     expect(
       sessionProjectLabel(
@@ -115,7 +115,7 @@ describe('sessionProjectLabel', () => {
     ).toBe('station');
   });
 
-// archive#1462 FIX ROUND,.
+  // archive#1462 FIX ROUND,.
   test('a bounded candidate list counts what it omitted (station#1462)', () => {
     expect(
       sessionProjectLabel(
@@ -140,7 +140,7 @@ describe('sessionProjectLabel', () => {
  * row vanished entirely (no slug on either field). Both now go through
  * `sessionProjectLabel`, so these assertions are what pins them together.
  *
-* archive#3227 A3 : the cross-surface pin here used to compare the
+ * archive#3227 A3 : the cross-surface pin here used to compare the
  * label against `sessionProjectSection`, which DERIVED its value from the
  * same call — it could not fail. Home is the surface that genuinely computed
  * a second answer (`session.projectSlug || 'No project'`, which dropped a
@@ -170,8 +170,8 @@ describe('sessionProjectLabel is the single source every surface reads', () => {
     }
   });
 
-// The one case where Home legitimately renders a string the helper does not
-// produce: nothing is known, so there is no label to agree with.
+  // The one case where Home legitimately renders a string the helper does not
+  // produce: nothing is known, so there is no label to agree with.
   test('Home folds only the nothing-known case, and folds it to its own copy', () => {
     expect(buildOrchestrationItems([session({})], [])[0].projectLabel).toBe(
       'No project',

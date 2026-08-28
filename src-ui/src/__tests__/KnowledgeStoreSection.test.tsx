@@ -263,7 +263,7 @@ describe('KnowledgeStoreSection', () => {
     });
   });
 
- // archive#settings-revamp 1.
+  // archive#settings-revamp 1.
   describe('unsaved-guard wiring for the "Open Knowledge infrastructure" cross-link', () => {
     test('navigates to /connections/knowledge when the page is not dirty', () => {
       navigateMock.mockClear();

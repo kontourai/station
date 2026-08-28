@@ -9,12 +9,12 @@
  * Accessibility, which a first-run surface has to get right because it is the
  * very first thing a keyboard or screen-reader user meets:
  * - `role="dialog"` + `aria-modal="false"` — it annotates the page rather than
-*   sealing it off, and the anchor stays visible behind it.
+ *   sealing it off, and the anchor stays visible behind it.
  * - Focus moves into the coachmark on mount, so each step is announced.
  * - Tab is trapped inside the card while it is open, so a keyboard user cannot
-*   fall out of the tour into the page behind it and lose their place.
+ *   fall out of the tour into the page behind it and lose their place.
  * - Escape ends the tour. It is bound on the card, not the document, so it
-*   cannot swallow Escape from a dialog opened over it.
+ *   cannot swallow Escape from a dialog opened over it.
  *
  * Return focus is NOT this component's job and is deliberately not done here:
  * the coachmark remounts on every step (`key={step.id}` in `FirstRunFlow`), so
@@ -76,7 +76,7 @@ export interface CoachmarkProps {
   onNext: () => void;
   onBack: () => void;
   onSkip: () => void;
-/** Rendered on the last step instead of "Next". */
+  /** Rendered on the last step instead of "Next". */
   isLastStep: boolean;
 }
 
@@ -98,11 +98,11 @@ export function Coachmark({
   const [anchorFound, setAnchorFound] = useState(false);
 
   const place = useCallback((): boolean => {
-// Attribute-value comparison rather than an interpolated selector: the
-// anchor name would otherwise have to be escaped into CSS syntax, and
-// `CSS.escape` is not universally available (absent in the jsdom the UI
-// suite runs under, and in older webviews Station is expected to run in).
-// A throwing selector here would take out the whole tour.
+    // Attribute-value comparison rather than an interpolated selector: the
+    // anchor name would otherwise have to be escaped into CSS syntax, and
+    // `CSS.escape` is not universally available (absent in the jsdom the UI
+    // suite runs under, and in older webviews Station is expected to run in).
+    // A throwing selector here would take out the whole tour.
     const element = Array.from(
       document.querySelectorAll(`[${FIRST_RUN_ANCHOR_ATTRIBUTE}]`),
     ).find(
@@ -115,8 +115,8 @@ export function Coachmark({
       return false;
     }
     const rect = element.getBoundingClientRect();
-// A zero-area rect is a rendered-but-hidden anchor; treat it as absent
-// rather than pinning the card to the viewport origin.
+    // A zero-area rect is a rendered-but-hidden anchor; treat it as absent
+    // rather than pinning the card to the viewport origin.
     if (rect.width === 0 && rect.height === 0) {
       setAnchorFound(false);
       setPosition(null);
@@ -170,27 +170,27 @@ export function Coachmark({
     return true;
   }, [anchor]);
 
-// Wait for the destination surface to actually paint its anchor.
-//
-// A step navigates to its route and the coachmark mounts in the same commit,
-// so the anchor is never present on the first measurement. This used to be
-// two fixed retries (60ms, 300ms), which was a guess at how long a route
-// change plus its data load takes — and on a real machine it is routinely
-// longer: the review-queue step measured "absent" against an anchor that was
-// in the DOM, and silently fell back to the unanchored card. A tour that
-// quietly stops pointing at things is the failure this component exists to
-// avoid, and no test could see it because tests mount the anchor first.
-//
-// Observe instead of guessing: re-measure on every DOM mutation until the
-// anchor is found, then stop observing. `ANCHOR_WAIT_MS` bounds the wait so a
-// step whose surface genuinely never renders settles into the honest
-// unanchored fallback rather than observing forever.
+  // Wait for the destination surface to actually paint its anchor.
+  //
+  // A step navigates to its route and the coachmark mounts in the same commit,
+  // so the anchor is never present on the first measurement. This used to be
+  // two fixed retries (60ms, 300ms), which was a guess at how long a route
+  // change plus its data load takes — and on a real machine it is routinely
+  // longer: the review-queue step measured "absent" against an anchor that was
+  // in the DOM, and silently fell back to the unanchored card. A tour that
+  // quietly stops pointing at things is the failure this component exists to
+  // avoid, and no test could see it because tests mount the anchor first.
+  //
+  // Observe instead of guessing: re-measure on every DOM mutation until the
+  // anchor is found, then stop observing. `ANCHOR_WAIT_MS` bounds the wait so a
+  // step whose surface genuinely never renders settles into the honest
+  // unanchored fallback rather than observing forever.
   useEffect(() => {
     if (place()) return bindReposition(place);
-// Coalesce into one measurement per frame: this observes the whole document
-// during a route change plus its data load, and `place` runs a
-// `querySelectorAll` — running it per mutation would be a full-document
-// scan on every DOM write for up to ANCHOR_WAIT_MS.
+    // Coalesce into one measurement per frame: this observes the whole document
+    // during a route change plus its data load, and `place` runs a
+    // `querySelectorAll` — running it per mutation would be a full-document
+    // scan on every DOM write for up to ANCHOR_WAIT_MS.
     let pending: number | null = null;
     const observer = new MutationObserver(() => {
       if (pending !== null) return;
@@ -213,8 +213,8 @@ export function Coachmark({
     };
   }, [place]);
 
-// Focus the card itself (not its first button) so the title and body are
-// announced before the controls.
+  // Focus the card itself (not its first button) so the title and body are
+  // announced before the controls.
   useEffect(() => {
     cardRef.current?.focus();
   }, []);
@@ -245,7 +245,7 @@ export function Coachmark({
   return createPortal(
     <div
       ref={cardRef}
-// biome-ignore lint/a11y/noNoninteractiveTabindex: the coachmark is a focus target by design — focus lands on the card so its title and body are announced before the controls.
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: the coachmark is a focus target by design — focus lands on the card so its title and body are announced before the controls.
       tabIndex={0}
       role="dialog"
       aria-modal="false"

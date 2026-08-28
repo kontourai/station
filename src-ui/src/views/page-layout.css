@@ -8,7 +8,7 @@
 .page {
   padding: 2rem 1.5rem;
   font-family: var(--font-sans);
-/* The route entrance moved to `.route-transition` (app-shell) so the eight
+  /* The route entrance moved to `.route-transition` (app-shell) so the eight
      split-pane routes, which are not `.page` descendants, get one too. The
      keyframe that used to run here was named `page-fade-in` and animated an
      8 px slide with no opacity at all — measured, every route popped in at
@@ -44,7 +44,7 @@
     grid-template-columns: 1fr;
   }
 
-/* Tab strips scroll horizontally instead of clipping off-screen at EVERY
+  /* Tab strips scroll horizontally instead of clipping off-screen at EVERY
      viewport (station#4463 slice 2 review HIGH-1 — `.page__tabs`/`.page__tab`'s
      scroll/nowrap layout is unconditional below; this media query now only
      adds the mobile-specific bits: a hidden scrollbar and a 44px touch
@@ -414,7 +414,7 @@
   position: sticky;
   top: 0;
   z-index: 10;
-/* The padding is the strip's own opaque band — content scrolls under it,
+  /* The padding is the strip's own opaque band — content scrolls under it,
      not into the gap below it — so the base rule's margin comes off, or the
      two stack into 64px of dead space between the tabs and the first row. */
   padding-top: 0.25rem;

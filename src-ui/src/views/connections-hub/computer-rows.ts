@@ -1,6 +1,6 @@
 /**
  * The Computers section's row model — one derivation, shared by every kind of
-* computer the section lists (lane design §4).
+ * computer the section lists (lane design §4).
  *
  * Before this, three differently-shaped lists sat within 300px of each other:
  * paired saved connections and manual Station entries as `connections-page__card`
@@ -36,14 +36,14 @@ export interface ComputerRowModel {
   id: string;
   name: string;
   kind: ComputerKind;
-/** Where it is: an endpoint, or the SSH host and the folder work runs in. */
+  /** Where it is: an endpoint, or the SSH host and the folder work runs in. */
   detail: string;
   state: ComputerState;
-/** What this relationship does (or what is missing before it can). */
+  /** What this relationship does (or what is missing before it can). */
   relationship: string;
-/** The SSH profile id, when this row is an SSH computer. */
+  /** The SSH profile id, when this row is an SSH computer. */
   sshEnvironmentId?: string;
-/** Locally-registered manual entries are the only removable rows here. */
+  /** Locally-registered manual entries are the only removable rows here. */
   removableManualEntryId?: string;
 }
 
@@ -90,7 +90,7 @@ export function computerKind(environment: KnownEnvironment): ComputerKind {
  * The SSH connection phases, each with the state word the SERVER's phase
  * supports and the sentence that says what to do about it. Moved verbatim
  * from `SshEnvironmentsSection` so the merged list keeps the phase-specific
-* copy archive#1116's review put there — is about the `error` phase
+ * copy archive#1116's review put there — is about the `error` phase
  * being the one that says nothing, which the section now supplements with
  * the server's own action string.
  */
@@ -231,9 +231,9 @@ function endpointDetail(
     (endpoint) => !hideTunnelEndpoints(endpoint.httpBaseUrl, endpoint.kind),
   );
   if (visible.length === 0) return 'No live endpoint right now';
-// One line per ADDRESS, not per endpoint record: the fold can carry the
-// same URL twice (a saved connection's own url and its preferred endpoint),
-// and printing it twice reads as two computers to reach.
+  // One line per ADDRESS, not per endpoint record: the fold can carry the
+  // same URL twice (a saved connection's own url and its preferred endpoint),
+  // and printing it twice reads as two computers to reach.
   const seen = new Set<string>();
   const addresses: string[] = [];
   for (const endpoint of visible) {
@@ -247,14 +247,14 @@ function endpointDetail(
 }
 
 export interface ComputerRowInput {
-/** Folded known environments (paired + manual + ssh-adapted). */
+  /** Folded known environments (paired + manual + ssh-adapted). */
   environments: readonly KnownEnvironment[];
-/** The server's SSH environments, keyed for the rows folded from them. */
+  /** The server's SSH environments, keyed for the rows folded from them. */
   sshEnvironments: readonly SshEnvironmentView[];
   isPairedAuthorized: (environment: KnownEnvironment) => boolean;
-/** True for an endpoint this device cannot actually open (SSH forwards on mobile). */
+  /** True for an endpoint this device cannot actually open (SSH forwards on mobile). */
   hideEndpoint?: (endpointUrl: string, kind: string) => boolean;
-/** Ids the local manual registry owns, and can therefore remove. */
+  /** Ids the local manual registry owns, and can therefore remove. */
   isManualEntry: (environment: KnownEnvironment) => boolean;
 }
 

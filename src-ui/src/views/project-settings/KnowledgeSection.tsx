@@ -216,7 +216,7 @@ export function KnowledgeSection({
       const result = await scanMutation.mutateAsync({});
       setScanResult(result ?? null);
     } catch {
-/* ignore */
+      /* ignore */
     }
     setScanning(false);
   }
@@ -231,7 +231,7 @@ export function KnowledgeSection({
           content,
         });
       } catch {
-/* ignore */
+        /* ignore */
       }
     }
     setUploading(false);

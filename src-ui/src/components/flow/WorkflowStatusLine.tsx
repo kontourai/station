@@ -1,7 +1,7 @@
 /**
  * WorkflowStatusLine — compact "Workflow" row surfaced in task/session detail
  * panes when a flow-agents durable sidecar (`.kontourai/flow-agents/<slug>/
-* state.json`) is joined to the subject (archive#582). Renders nothing
+ * state.json`) is joined to the subject (archive#582). Renders nothing
  * when there is no state to show — callers own the absence check.
  *
  * `matchKind: 'title-heuristic'` is a fixed-forward honesty requirement from
@@ -28,7 +28,7 @@ export function WorkflowStatusLine({
   showSlug = false,
 }: {
   entry: WorkflowStatusLineEntry;
-/** Show the task_slug label — used by the multi-entry project fallback. */
+  /** Show the task_slug label — used by the multi-entry project fallback. */
   showSlug?: boolean;
 }) {
   return (
@@ -69,8 +69,8 @@ export function WorkflowStatusLineList({
   moreCount = 0,
 }: {
   entries: WorkflowStatusLineEntry[];
-/** Count of additional entries beyond `entries` that were truncated —
-* rendered as a trailing "+N more" line rather than silently dropped. */
+  /** Count of additional entries beyond `entries` that were truncated —
+   * rendered as a trailing "+N more" line rather than silently dropped. */
   moreCount?: number;
 }) {
   if (entries.length === 0) return null;

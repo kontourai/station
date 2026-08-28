@@ -38,9 +38,9 @@ export function ShareAnswerPairingPrompt() {
   const requestAccess = async () => {
     setState({ phase: 'requesting' });
     try {
-// The browser sets `Origin` itself and forbids scripts from overriding
-// it, so no explicit origin is passed here — see
-// `requestCurrentStationAccess`'s own note on the CLI's different case.
+      // The browser sets `Origin` itself and forbids scripts from overriding
+      // it, so no explicit origin is passed here — see
+      // `requestCurrentStationAccess`'s own note on the CLI's different case.
       await requestCurrentStationAccess({
         endpoint: apiBase,
         deviceName: 'This browser',

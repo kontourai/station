@@ -302,9 +302,9 @@ export interface ProjectManifest {
   schemaVersion: typeof PROJECT_MANIFEST_SCHEMA_VERSION;
   /**
    * Portable, opaque, generated once at manifest creation. NEVER derived
-    * from a repo, path, or machine — a project may span repos, change repos,
-    * or have none. This is the join key archive#1392/archive#1123/archive#1409 need and `slug`
-    * (below) is explicitly not (§9 OQ-1, §9 OQ-5).
+   * from a repo, path, or machine — a project may span repos, change repos,
+   * or have none. This is the join key archive#1392/archive#1123/archive#1409 need and `slug`
+   * (below) is explicitly not (§9 OQ-1, §9 OQ-5).
    */
   id: string;
   /**
@@ -395,16 +395,16 @@ export type ResourceResolution =
    * spec-analogue of hachure's `unknown`: no claim exists, so there is nothing
    * to appraise.
    *
-    * NARROWED in archive#1594. It previously ALSO covered "a directory is
-     * declared and it is gone", which is a claim that failed live verification —
-     * a different fact with a different repair, and one the session-cwd seam
-     * treats OPPOSITELY (archive#1023 `$HOME` terminus vs archive#791 fail-closed). That case
+   * NARROWED in archive#1594. It previously ALSO covered "a directory is
+   * declared and it is gone", which is a claim that failed live verification —
+   * a different fact with a different repair, and one the session-cwd seam
+   * treats OPPOSITELY (archive#1023 `$HOME` terminus vs archive#791 fail-closed). That case
    * is now `missing`.
    */
   | 'unbound'
   /**
-    * **A recorded realization whose path does not exist.** The record is either
-    * a binding row or — since archive#1594 — the compat branch's declared
+   * **A recorded realization whose path does not exist.** The record is either
+   * a binding row or — since archive#1594 — the compat branch's declared
    * `workingDirectory`, which §5 makes the compat-era binding
    * ("`workingDirectory` stays authoritative during compat"). `record` says
    * which, and `declaredPath` says what it said.
@@ -415,9 +415,9 @@ export type ResourceResolution =
   | 'unresolvable'
   | 'not-portable'
   /**
-    * No single resource could be named: a manifest with several resources and
-    * no unique `primary`, or one that declares no resources at all
-    * (archive#1499), because §3.6's table has no state for it, and the
+   * No single resource could be named: a manifest with several resources and
+   * no unique `primary`, or one that declares no resources at all
+   * (archive#1499), because §3.6's table has no state for it, and the
    * alternatives both lie — `unbound` implies a resource exists that is
    * merely not set up here, and `unresolvable` means "you were denied",
    * which collapses a configuration problem into an access one.

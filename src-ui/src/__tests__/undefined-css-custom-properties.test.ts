@@ -12,13 +12,13 @@ import { describe, expect, test } from 'vitest';
  *
  * - **archive#1125/archive#1167** — the danger red used as a fill under white text.
  * - **archive#1168** — `--error-primary` / `--error-secondary`, referenced in
-*   eight places and defined in none. Eight error indicators, including the
-*   badge that says a tool call was DENIED, rendered as ordinary body copy.
+ *   eight places and defined in none. Eight error indicators, including the
+ *   badge that says a tool call was DENIED, rendered as ordinary body copy.
  * - **archive#1246** — `--success-primary` / `--success-secondary`, the exact
  * mirror, *one CSS rule above* the rule archive#1168 fixed. It survived because
  * archive#1168's search was scoped to the `--error-` prefix. The same sweep found
-*   `--color-bg-tertiary` two rules further up, which is why the "Auto-approved"
-*   chip had no fill either.
+ *   `--color-bg-tertiary` two rules further up, which is why the "Auto-approved"
+ *   chip had no fill either.
  *
  * Contrast assertions cannot see this class of defect on a foreground: an
  * uncoloured error label just inherits body copy and measures beautifully.
@@ -116,28 +116,28 @@ function walk(root: string, extensions: Set<string>): string[] {
 }
 
 const DEFINITION_PATTERNS = [
-/**
-* A declaration: `--x: value` in CSS, and the quoted-key form
-* `'--x': value` a JSX inline-style object uses (the closing quote sits
-* between the name and the colon, which is why the quote is optional here).
-*/
+  /**
+   * A declaration: `--x: value` in CSS, and the quoted-key form
+   * `'--x': value` a JSX inline-style object uses (the closing quote sits
+   * between the name and the colon, which is why the quote is optional here).
+   */
   /(?:^|[;{\s,("'`])(--[A-Za-z0-9_-]+)['"`]?\s*:/g,
-/** Set imperatively, e.g. the accent picker and the dock height. */
+  /** Set imperatively, e.g. the accent picker and the dock height. */
   /(?:setProperty|getPropertyValue|removeProperty)\(\s*['"`](--[A-Za-z0-9_-]+)['"`]/g,
-/** Registered via the `@property` at-rule. */
+  /** Registered via the `@property` at-rule. */
   /@property\s+(--[A-Za-z0-9_-]+)/g,
 ];
 
 interface VarExpression {
   name: string;
-/** Everything after the first top-level comma, or `null` when there is none. */
+  /** Everything after the first top-level comma, or `null` when there is none. */
   fallback: string | null;
 }
 
 /**
-* Every `var` in `text`, with its fallback kept intact.
+ * Every `var` in `text`, with its fallback kept intact.
  *
-* A regex cannot do this: a fallback can itself contain `var`, so finding
+ * A regex cannot do this: a fallback can itself contain `var`, so finding
  * where the expression ends needs paren balancing. Getting that wrong is how
  * `var(--a, var(--b))` reads as "has a fallback, therefore fine" when both
  * names are undefined and the declaration is dropped entirely.
@@ -164,9 +164,9 @@ function parseVarExpressions(text: string): VarExpression[] {
         commaAt = cursor;
       cursor += 1;
     }
-// An unbalanced expression means the value is wrapped across source lines;
-// the caller scans line by line, so this only happens on truncated input
-// and the expression is skipped rather than guessed at.
+    // An unbalanced expression means the value is wrapped across source lines;
+    // the caller scans line by line, so this only happens on truncated input
+    // and the expression is skipped rather than guessed at.
     if (depth === 0) {
       const end = cursor - 1;
       const name = (
@@ -180,8 +180,8 @@ function parseVarExpressions(text: string): VarExpression[] {
           fallback: commaAt === -1 ? null : text.slice(commaAt + 1, end).trim(),
         });
       }
-// Resume after the whole expression so its own fallback's `var`s are
-// not re-reported as top-level references.
+      // Resume after the whole expression so its own fallback's `var`s are
+      // not re-reported as top-level references.
       opener.lastIndex = cursor;
     } else {
       opener.lastIndex = match.index + match[0].length;
@@ -192,8 +192,8 @@ function parseVarExpressions(text: string): VarExpression[] {
 }
 
 /**
-* Whether a `var` can produce a value: either its name is defined, or its
-* fallback can. A fallback with no `var` in it is a literal and always can.
+ * Whether a `var` can produce a value: either its name is defined, or its
+ * fallback can. A fallback with no `var` in it is a literal and always can.
  */
 function resolves(expression: VarExpression, defined: Set<string>): boolean {
   if (defined.has(expression.name)) return true;
@@ -229,7 +229,7 @@ interface Reference {
 }
 
 /**
-* Every `var` reference in the audited trees, one entry per occurrence,
+ * Every `var` reference in the audited trees, one entry per occurrence,
  * carrying enough source position to name the offender in a failure.
  */
 function collectReferences(): Array<Reference & { expression: VarExpression }> {
@@ -261,7 +261,7 @@ function collectReferences(): Array<Reference & { expression: VarExpression }> {
  * **It is empty, and that is the point.** archive#1246's sweep opened it with
  * 24 names across eight surfaces; archive#1254 closed all 24, one owning
  * surface per commit, and each of those commits shrank this array. There is
-* now no `var` anywhere in `src-ui` or `packages` that cannot produce a
+ * now no `var` anywhere in `src-ui` or `packages` that cannot produce a
  * value.
  *
  * Adding a name here is a deliberate act: it says "this surface is knowingly
@@ -317,13 +317,13 @@ const KNOWN_UNDEFINED: string[] = [];
  *
  * - `--color-warning` — five stylesheets, now `--warning-text`.
  * - `--color-success` — two rules in `CodingLayout.css`, now `--success-text`.
-*   One is the runtime dot directly below a `--color-warning` rule; the other
-*   was also the LABEL over an 18% tint of itself, so it took the self-tint
-*   recipe its own sibling rule had already settled on. Stopping at the first
-*   would have repeated archive#1246 precisely — that defect shipped because
-*   archive#1168's search was prefix-scoped and stopped one rule short.
+ *   One is the runtime dot directly below a `--color-warning` rule; the other
+ *   was also the LABEL over an 18% tint of itself, so it took the self-tint
+ *   recipe its own sibling rule had already settled on. Stopping at the first
+ *   would have repeated archive#1246 precisely — that defect shipped because
+ *   archive#1168's search was prefix-scoped and stopped one rule short.
  * - `--color-bg-tertiary` — the token archive#1246 explicitly retired, re-seeded
-*   behind a translucent-white fallback. Now `--bg-tertiary`.
+ *   behind a translucent-white fallback. Now `--bg-tertiary`.
  *
  * Note what the list is NOT: `--color-bg`, `--color-text`, `--color-border`,
  * `--color-primary`, `--color-error` and three siblings ARE defined, as a
@@ -365,7 +365,7 @@ const UNTHEMED_FALLBACK: string[] = [
 /**
  * Whether a fallback is a colour, and therefore theme- and contrast-bearing.
  *
-* Conservative by construction: hex and the `rgb`/`hsl` function forms are
+ * Conservative by construction: hex and the `rgb`/`hsl` function forms are
  * what this codebase actually writes, and a fallback that is a bare keyword
  * (`transparent`, `currentColor`) carries no fixed pigment to go stale.
  * Anything unrecognised is treated as not-a-colour, so the gate under-reports
@@ -382,7 +382,7 @@ describe('custom properties that no var() reference can resolve', () => {
   const references = collectReferences();
 
   test('the scan actually found the tree (guards against a silent empty walk)', () => {
-// A broken root path would make every assertion below vacuously pass.
+    // A broken root path would make every assertion below vacuously pass.
     expect(references.length).toBeGreaterThan(500);
     expect(defined.size).toBeGreaterThan(100);
     expect(defined.has('--success-text')).toBe(true);
@@ -390,33 +390,33 @@ describe('custom properties that no var() reference can resolve', () => {
   });
 
   test('the declared scope is pinned, so narrowing it is a decision and not a silent edit (epic #1555)', () => {
-// The floor above is necessary and not sufficient. `src-ui/src` alone
-// contributes far more than 500 references, so dropping `packages` from
-// REFERENCE_ROOTS leaves the floor satisfied and this whole suite
-// reporting clean over a tree it no longer reads — the same shape as
-// archive#1559 (a gate enumerating 523 of 525 files while printing a
-// success line naming the scope it did not walk).
-//
-// The pin has to be an INDEPENDENT statement of what the scope must be.
-// Iterating REFERENCE_ROOTS and checking each entry is non-empty cannot
-// catch this: delete an entry and the loop simply iterates one fewer
-// time, every assertion passing. (Written that way first; the injection
-// that removed `packages` came back green, which is what sent it back.)
+    // The floor above is necessary and not sufficient. `src-ui/src` alone
+    // contributes far more than 500 references, so dropping `packages` from
+    // REFERENCE_ROOTS leaves the floor satisfied and this whole suite
+    // reporting clean over a tree it no longer reads — the same shape as
+    // archive#1559 (a gate enumerating 523 of 525 files while printing a
+    // success line naming the scope it did not walk).
+    //
+    // The pin has to be an INDEPENDENT statement of what the scope must be.
+    // Iterating REFERENCE_ROOTS and checking each entry is non-empty cannot
+    // catch this: delete an entry and the loop simply iterates one fewer
+    // time, every assertion passing. (Written that way first; the injection
+    // that removed `packages` came back green, which is what sent it back.)
     expect(REFERENCE_ROOTS).toEqual(['src-ui/src', 'packages']);
     expect(DEFINITION_ROOTS).toEqual(['src-ui/src', 'packages', 'src-server']);
     expect(VENDOR_STYLESHEET_ROOTS).toEqual(['node_modules/@kontourai/ui']);
 
-// Stated rather than implied: `examples/` also contains `var` sites and
-// is deliberately NOT audited — the sample workspaces carry their own
-// token sets and are not shipped surfaces of this app. Naming it here
-// means the next reader knows it is unscanned, instead of assuming the
-// roots above cover every `var` in the repository.
+    // Stated rather than implied: `examples/` also contains `var` sites and
+    // is deliberately NOT audited — the sample workspaces carry their own
+    // token sets and are not shipped surfaces of this app. Naming it here
+    // means the next reader knows it is unscanned, instead of assuming the
+    // roots above cover every `var` in the repository.
   });
 
   test('EVERY declared root is actually walked, not just enough of them to clear the floor (epic #1555)', () => {
-// The complement of the pin: a root that is still declared but has moved,
-// been renamed, or stopped being reachable by the walk. The pin cannot see
-// that; this can. Both are needed, and neither substitutes for the other.
+    // The complement of the pin: a root that is still declared but has moved,
+    // been renamed, or stopped being reachable by the walk. The pin cannot see
+    // that; this can. Both are needed, and neither substitutes for the other.
     for (const root of REFERENCE_ROOTS) {
       const fromRoot = references.filter((reference) =>
         reference.site.startsWith(`${root}/`),
@@ -430,10 +430,10 @@ describe('custom properties that no var() reference can resolve', () => {
       ).toBeGreaterThan(0);
     }
 
-// The definition side matters just as much in the opposite direction: a
-// definition root dropping out does not hide references, it invents
-// failures — but a VENDOR root dropping out is silent and dangerous,
-// because Console Kit ships the `--k-*` layer this app's tokens alias.
+    // The definition side matters just as much in the opposite direction: a
+    // definition root dropping out does not hide references, it invents
+    // failures — but a VENDOR root dropping out is silent and dangerous,
+    // because Console Kit ships the `--k-*` layer this app's tokens alias.
     for (const root of [...DEFINITION_ROOTS, ...VENDOR_STYLESHEET_ROOTS]) {
       expect(
         walk(root, SOURCE_EXTENSIONS).length +
@@ -444,10 +444,10 @@ describe('custom properties that no var() reference can resolve', () => {
   });
 
   test('the parser reads a nested fallback rather than trusting the comma', () => {
-// The inert-test hazard for this file is a parser that stops at the first
-// `)`: `var(--a, var(--b))` would then look fallback-less, or — worse, in
-// the version this replaced — the outer comma alone would mark it
-// resolved. Pin the shape, the top-level-only rule, and the sibling case.
+    // The inert-test hazard for this file is a parser that stops at the first
+    // `)`: `var(--a, var(--b))` would then look fallback-less, or — worse, in
+    // the version this replaced — the outer comma alone would mark it
+    // resolved. Pin the shape, the top-level-only rule, and the sibling case.
     expect(parseVarExpressions('color: var(--a, var(--b));')).toEqual([
       { name: '--a', fallback: 'var(--b)' },
     ]);
@@ -491,9 +491,9 @@ describe('custom properties that no var() reference can resolve', () => {
     const leaning = new Map<string, string[]>();
     for (const reference of references) {
       if (defined.has(reference.name)) continue;
-// Only the ones that DO paint. The ones that do not are the assertion
-// above's business, and double-reporting them would make a single defect
-// fail two tests with two different remedies.
+      // Only the ones that DO paint. The ones that do not are the assertion
+      // above's business, and double-reporting them would make a single defect
+      // fail two tests with two different remedies.
       if (!resolves(reference.expression, defined)) continue;
       if (
         reference.expression.fallback === null ||
@@ -522,8 +522,8 @@ describe('custom properties that no var() reference can resolve', () => {
   });
 
   test('the token families that have already shipped this defect stay defined', () => {
-// Named explicitly so a regression reads as itself rather than as a
-// one-line diff in the list above.
+    // Named explicitly so a regression reads as itself rather than as a
+    // one-line diff in the list above.
     for (const token of [
       '--error-text',
       '--error-bg',
@@ -533,11 +533,11 @@ describe('custom properties that no var() reference can resolve', () => {
       '--success-bg',
       '--success-border',
       '--bg-tertiary',
-// archive#3050: five stylesheets now reference this with no fallback, so
-// deleting it would drop their declarations entirely rather than quietly
-// reverting them to a literal.
+      // archive#3050: five stylesheets now reference this with no fallback, so
+      // deleting it would drop their declarations entirely rather than quietly
+      // reverting them to a literal.
       '--warning-text',
-// archive#3140: the engine chip's fill and its text rung.
+      // archive#3140: the engine chip's fill and its text rung.
       '--text-tertiary',
     ]) {
       expect(defined.has(token), `${token} must be defined`).toBe(true);

@@ -61,8 +61,8 @@ describe('WorkspacePaneAvailabilityList', () => {
       />,
     );
 
-// The available card carries an explicit Open action — never a whole-card
-// click that means different things per state (archive#3318).
+    // The available card carries an explicit Open action — never a whole-card
+    // click that means different things per state (archive#3318).
     expect(screen.getByRole('button', { name: 'Open Files' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Preview Setup needed' }),
@@ -75,11 +75,11 @@ describe('WorkspacePaneAvailabilityList', () => {
     expect(onSelect).toHaveBeenCalledWith(available);
   });
 
- // The safety half of the state-polymorphism fix. Independent 
-// rendered the remediation action AND the Open action on an unavailable card
-// and no assertion caught it — every existing check was about what a card
-// DOES carry. An Open button on a pane that cannot open is the whole defect
- // archive#3318 removed, so it is pinned negatively, per card, here.
+  // The safety half of the state-polymorphism fix. Independent
+  // rendered the remediation action AND the Open action on an unavailable card
+  // and no assertion caught it — every existing check was about what a card
+  // DOES carry. An Open button on a pane that cannot open is the whole defect
+  // archive#3318 removed, so it is pinned negatively, per card, here.
   test('an unavailable card carries its state badge and remediation but never an Open action', () => {
     const onSelect = vi.fn();
     render(
@@ -97,7 +97,7 @@ describe('WorkspacePaneAvailabilityList', () => {
     expect(cards).toHaveLength(2);
     const [unavailableCard, availableCard] = cards;
 
-// Unavailable: state badge (as a toggle) + remediation, and no Open.
+    // Unavailable: state badge (as a toggle) + remediation, and no Open.
     expect(
       unavailableCard.querySelector(
         '.workspace-pane-availability-list__state-toggle',
@@ -116,7 +116,7 @@ describe('WorkspacePaneAvailabilityList', () => {
       }),
     ).toBe(null);
 
-// Available: Open, and no remediation to confuse it with.
+    // Available: Open, and no remediation to confuse it with.
     expect(
       availableCard.querySelector('.workspace-pane-availability-list__open')
         ?.textContent,
@@ -143,7 +143,7 @@ describe('WorkspacePaneAvailabilityList', () => {
       '.workspace-pane-availability-list__preview-glyph',
     ) as HTMLElement;
     expect(glyph.textContent).toBe('F');
-// Deterministic: same id, same accent, regardless of catalog order.
+    // Deterministic: same id, same accent, regardless of catalog order.
     expect(panePreviewAccent('pane.files')).toBe(
       panePreviewAccent('pane.files'),
     );
@@ -154,7 +154,7 @@ describe('WorkspacePaneAvailabilityList', () => {
     expect(preview.style.getPropertyValue('--pane-preview-accent')).toBe(
       panePreviewAccent('pane.files'),
     );
-// Decorative only — the pane's name and state remain the textual signal.
+    // Decorative only — the pane's name and state remain the textual signal.
     expect(preview.getAttribute('aria-hidden')).toBe('true');
   });
 
@@ -440,11 +440,11 @@ describe('WorkspacePaneAvailabilityList', () => {
     },
   );
 
-// archive#1868: the trigger's accessible name used to come from a
-// hand-written `aria-label`, while the DOM rendered two adjacent inline
-// spans. AT read the right thing; the VISIBLE text concatenated
-// ("CodingAvailable") — which is what text selection, find-in-page, and any
-// CSS-less render get. These pin the name as DERIVED from content.
+  // archive#1868: the trigger's accessible name used to come from a
+  // hand-written `aria-label`, while the DOM rendered two adjacent inline
+  // spans. AT read the right thing; the VISIBLE text concatenated
+  // ("CodingAvailable") — which is what text selection, find-in-page, and any
+  // CSS-less render get. These pin the name as DERIVED from content.
   test('derives accessible names from rendered spans, with no aria-label override (station#1868)', () => {
     render(
       <WorkspacePaneAvailabilityList
@@ -453,8 +453,8 @@ describe('WorkspacePaneAvailabilityList', () => {
       />,
     );
 
-// Both named controls compose their name from spans actually rendered
-// (`aria-labelledby`), never a hand-written `aria-label` assertion.
+    // Both named controls compose their name from spans actually rendered
+    // (`aria-labelledby`), never a hand-written `aria-label` assertion.
     const openButton = screen.getByRole('button', { name: 'Open Files' });
     expect(openButton.hasAttribute('aria-label')).toBe(false);
     expect(openButton.getAttribute('aria-labelledby')).toBeTruthy();
@@ -463,16 +463,16 @@ describe('WorkspacePaneAvailabilityList', () => {
     expect(badge.hasAttribute('aria-label')).toBe(false);
     expect(badge.getAttribute('aria-labelledby')).toBeTruthy();
 
-// And the visible card text is separated. Before the 1868 fix this was
-// "FilesAvailable" with no separator anywhere in the DOM.
+    // And the visible card text is separated. Before the 1868 fix this was
+    // "FilesAvailable" with no separator anywhere in the DOM.
     const card = openButton.closest(
       '.workspace-pane-availability-list__card',
     ) as HTMLElement;
     expect(card.textContent).toMatch(/Files:\s*Available/);
 
-// The separator is real content, never aria-hidden — marking it hidden
-// would drop it from any name-from-content derivation and collapse the
-// visible text back to "FilesAvailable".
+    // The separator is real content, never aria-hidden — marking it hidden
+    // would drop it from any name-from-content derivation and collapse the
+    // visible text back to "FilesAvailable".
     const separator = card.querySelector(
       '.workspace-pane-availability-list__separator',
     );
@@ -480,11 +480,11 @@ describe('WorkspacePaneAvailabilityList', () => {
     expect(separator?.getAttribute('aria-hidden')).toBeNull();
   });
 
-// archive#1868: the component referenced `workspace-pane-availability-*`
-// classes across six files while ZERO stylesheet defined them, so the
-// catalog rendered with browser-default list chrome. This asserts the
-// stylesheet exists AND covers every class the component actually emits, so
-// a future class cannot be added against a stylesheet nobody wrote.
+  // archive#1868: the component referenced `workspace-pane-availability-*`
+  // classes across six files while ZERO stylesheet defined them, so the
+  // catalog rendered with browser-default list chrome. This asserts the
+  // stylesheet exists AND covers every class the component actually emits, so
+  // a future class cannot be added against a stylesheet nobody wrote.
   test('has a stylesheet covering every class it renders (station#1868)', () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const componentSource = readFileSync(
@@ -503,8 +503,8 @@ describe('WorkspacePaneAvailabilityList', () => {
         ),
       ]
         .map((match) => match[0])
-// `__item--` is a template-literal prefix; its concrete modifiers are
-// asserted separately below.
+        // `__item--` is a template-literal prefix; its concrete modifiers are
+        // asserted separately below.
         .filter((name) => !name.endsWith('--')),
     );
     expect(used.size).toBeGreaterThan(0);
@@ -514,9 +514,9 @@ describe('WorkspacePaneAvailabilityList', () => {
         `${className} is rendered but has no rule in WorkspacePaneAvailabilityList.css`,
       ).toBe(true);
     }
-// The state modifiers are composed at runtime, so match them by hand
-// against the presentation states the component can produce
-// (`WorkspacePaneAvailabilityState`).
+    // The state modifiers are composed at runtime, so match them by hand
+    // against the presentation states the component can produce
+    // (`WorkspacePaneAvailabilityState`).
     for (const state of [
       'available',
       'coming-soon',
@@ -534,12 +534,12 @@ describe('WorkspacePaneAvailabilityList', () => {
     }
   });
 
-// Responsive-action-surface inventory evidence (archive#3318). jsdom computes
-// no layout, so this does NOT measure 44px — it derives the one link the
-// inventory entry claims: these buttons sit in a container whose class the
-// shared mobile floor selector in index.css actually matches. Asserting the
-// DOM class and the stylesheet rule separately is what makes "inherits the
-// shared floor" a checked statement instead of an assumed one.
+  // Responsive-action-surface inventory evidence (archive#3318). jsdom computes
+  // no layout, so this does NOT measure 44px — it derives the one link the
+  // inventory entry claims: these buttons sit in a container whose class the
+  // shared mobile floor selector in index.css actually matches. Asserting the
+  // DOM class and the stylesheet rule separately is what makes "inherits the
+  // shared floor" a checked statement instead of an assumed one.
   test('card actions sit inside the container the shared mobile 44px floor selects', () => {
     render(
       <WorkspacePaneAvailabilityList
@@ -555,10 +555,10 @@ describe('WorkspacePaneAvailabilityList', () => {
     );
     expect(actionRows.length).toBeGreaterThan(0);
     for (const row of actionRows) {
-// The selector arm that matches is `[class*="__actions"]`.
+      // The selector arm that matches is `[class*="__actions"]`.
       expect(row.className).toContain('__actions');
-// The floor applies to DIRECT children only, so the buttons must be
-// direct children of this row — not nested in a wrapper.
+      // The floor applies to DIRECT children only, so the buttons must be
+      // direct children of this row — not nested in a wrapper.
       const buttons = Array.from(row.querySelectorAll('button'));
       expect(buttons.length).toBeGreaterThan(0);
       for (const button of buttons) expect(button.parentElement).toBe(row);
@@ -573,10 +573,10 @@ describe('WorkspacePaneAvailabilityList', () => {
         '@media (max-width: 768px), (max-height: 540px) and (pointer: coarse)',
       ),
     );
-// The direct-child touch-floor combinator appears more than once in this
-// block (`.responsive-surface-actions` has its own). Pick the rule whose
-// selector list actually contains the arm that matches this component's
-// container, rather than whichever comes first.
+    // The direct-child touch-floor combinator appears more than once in this
+    // block (`.responsive-surface-actions` has its own). Pick the rule whose
+    // selector list actually contains the arm that matches this component's
+    // container, rather than whichever comes first.
     const COMBINATOR = '> :is(button, a, .button, [role="button"])';
     const floorRules: { selectors: string; body: string }[] = [];
     for (let at = mobileBlock.indexOf(COMBINATOR); at > -1; ) {
@@ -593,11 +593,11 @@ describe('WorkspacePaneAvailabilityList', () => {
     expect(sharedFloor?.body).toContain('min-height: 44px');
     expect(sharedFloor?.body).toContain('min-width: 44px');
 
-// archive#3348. The state toggle is the card's other tap target and it
-// stays in `__heading` — it is the state badge, and the shared floor only
-// reaches `__actions` children. So it must declare the floor itself, and
-// both halves of that sentence are checked: it is still outside the shared
-// row, AND its own coarse-pointer rule carries the 44px minimums.
+    // archive#3348. The state toggle is the card's other tap target and it
+    // stays in `__heading` — it is the state badge, and the shared floor only
+    // reaches `__actions` children. So it must declare the floor itself, and
+    // both halves of that sentence are checked: it is still outside the shared
+    // row, AND its own coarse-pointer rule carries the 44px minimums.
     const toggle = document.querySelector(
       '.workspace-pane-availability-list__state-toggle',
     );
@@ -620,8 +620,8 @@ describe('WorkspacePaneAvailabilityList', () => {
       '.workspace-pane-availability-list__state-toggle {',
     );
     expect(toggleRuleAt, 'state toggle has no coarse rule').toBeGreaterThan(-1);
-// Scoped to that rule's own body — an unscoped search over the block would
-// be satisfied by any other rule in it.
+    // Scoped to that rule's own body — an unscoped search over the block would
+    // be satisfied by any other rule in it.
     const toggleRule = coarseBlock.slice(
       toggleRuleAt,
       coarseBlock.indexOf('\n  }', toggleRuleAt),

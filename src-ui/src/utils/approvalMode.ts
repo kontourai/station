@@ -22,7 +22,7 @@ export function approvalModeKnobSupported(engineId?: string | null): boolean {
  * brand-new, untouched connection actually does today. This is what the
  * chip resolves to (not the `'connection-default'` sentinel) so an
  * untouched Codex connection reads as full-access/never-ask at a glance,
-* per archive#727.
+ * per archive#727.
  */
 export function adapterDefaultApprovalMode(
   engineId?: string | null,
@@ -108,7 +108,7 @@ const APPROVAL_MODE_CHIP_LABELS: Record<ApprovalMode, string> = {
   'connection-default': 'Default',
   ask: 'Ask',
   auto: 'Auto',
-// Keeps the severity legible at a glance — the danger is the point.
+  // Keeps the severity legible at a glance — the danger is the point.
   never: 'Full access',
 };
 
@@ -208,9 +208,9 @@ export function resolveEffectiveApprovalMode({
     };
   }
 
-// No knob-supporting runtime is known (read-only providers, or no
-// engineConnectionId at all) — Station genuinely has nothing more specific to
-// report than "whatever the connection already does."
+  // No knob-supporting runtime is known (read-only providers, or no
+  // engineConnectionId at all) — Station genuinely has nothing more specific to
+  // report than "whatever the connection already does."
   return {
     mode: 'connection-default',
     label: approvalModeLabel('connection-default'),

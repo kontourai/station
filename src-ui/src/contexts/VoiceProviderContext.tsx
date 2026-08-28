@@ -31,7 +31,7 @@ interface VoiceProviderContextValue {
   availableTTS: TTSProvider[];
   activeSTT: STTProvider | null;
   activeTTS: TTSProvider | null;
-/** Compatibility lifecycle bridge; direct provider methods remain available. */
+  /** Compatibility lifecycle bridge; direct provider methods remain available. */
   providerVoiceSessionAdapter: ProviderVoiceSessionAdapter | null;
   setSTTProvider: (id: string) => void;
   setTTSProvider: (id: string) => void;
@@ -52,10 +52,10 @@ export function VoiceProviderContext({
 }: {
   children: React.ReactNode;
 }) {
-// Fetch server capabilities and register server-backed providers
+  // Fetch server capabilities and register server-backed providers
   useServerCapabilities();
 
-// Subscribe to registry changes — re-renders when providers are added/removed
+  // Subscribe to registry changes — re-renders when providers are added/removed
   const availableSTT = useSyncExternalStore(
     voiceRegistry.subscribe,
     getSTTSnapshot,
@@ -99,9 +99,9 @@ export function VoiceProviderContext({
   const [providerVoiceSessionAdapter, setProviderVoiceSessionAdapter] =
     React.useState<ProviderVoiceSessionAdapter | null>(null);
   React.useEffect(() => {
-// Create from the selected concrete instances inside the effect. This is
-// deliberate: StrictMode's setup/cleanup rehearsal must dispose one
-// throwaway adapter, never the adapter retained by the live tree.
+    // Create from the selected concrete instances inside the effect. This is
+    // deliberate: StrictMode's setup/cleanup rehearsal must dispose one
+    // throwaway adapter, never the adapter retained by the live tree.
     if (!activeSTT || !activeTTS) {
       setProviderVoiceSessionAdapter(null);
       return;
@@ -123,8 +123,8 @@ export function VoiceProviderContext({
         setProviderVoiceSessionAdapter(nextAdapter);
       })
       .catch(() => {
-// Direct independent providers remain usable if the optional compatibility
-// chunk cannot be loaded; avoid surfacing a rejected import globally.
+        // Direct independent providers remain usable if the optional compatibility
+        // chunk cannot be loaded; avoid surfacing a rejected import globally.
         if (!disposed) setProviderVoiceSessionAdapter(null);
       });
     return () => {

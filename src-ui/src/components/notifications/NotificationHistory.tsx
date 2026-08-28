@@ -46,9 +46,9 @@ export function NotificationHistory({
 }: NotificationHistoryProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { apiBase } = useApiBase();
-// The same live set the OS-alert hook watches, from the shared constant:
-// an equal set spelled in a different order is a DIFFERENT React Query key,
-// which means two cache entries and two authenticated fetches for one fact.
+  // The same live set the OS-alert hook watches, from the shared constant:
+  // an equal set spelled in a different order is a DIFFERENT React Query key,
+  // which means two cache entries and two authenticated fetches for one fact.
   const {
     data: notifications = [],
     error: notificationsError,
@@ -63,27 +63,27 @@ export function NotificationHistory({
     isLoading: attentionLoading,
     refetch: refetchAttention,
   } = useAttentionQuery(apiBase);
-// "All caught up" is the most definitive empty state in the app —
-// a reassurance — and BOTH reads settle with no data when they fail, so a
-// failed read told the user there was nothing waiting on them. The failure
-// outranks the reassurance.
+  // "All caught up" is the most definitive empty state in the app —
+  // a reassurance — and BOTH reads settle with no data when they fail, so a
+  // failed read told the user there was nothing waiting on them. The failure
+  // outranks the reassurance.
   const listsError = notificationsError ?? attentionError;
-/**
-* "All caught up" is a claim about the data, so it may only render once the
-* data it describes has actually arrived. This panel used to be mounted for
-* the app's whole lifetime, which kept both queries warm and hid the gap;
-* now that it mounts on first open (archive#2751) the first paint genuinely
-* has nothing yet, and an unguarded empty state would assert an inbox is
-* clear while it is still being fetched — and again after a cache eviction.
-*/
+  /**
+   * "All caught up" is a claim about the data, so it may only render once the
+   * data it describes has actually arrived. This panel used to be mounted for
+   * the app's whole lifetime, which kept both queries warm and hid the gap;
+   * now that it mounts on first open (archive#2751) the first paint genuinely
+   * has nothing yet, and an unguarded empty state would assert an inbox is
+   * clear while it is still being fetched — and again after a cache eviction.
+   */
   const listsLoading = notificationsLoading || attentionLoading;
   const dismissMutation = useDismissNotificationMutation();
   const [pendingDismiss, setPendingDismiss] = useState<string[]>([]);
   const dismissTimers = useRef(new Map<string, number>());
 
-// A pending dismiss must still land if the popover closes or unmounts —
-// otherwise closing the panel would silently cancel what the user asked for.
-// biome-ignore lint/correctness/useExhaustiveDependencies: mount-scoped flush
+  // A pending dismiss must still land if the popover closes or unmounts —
+  // otherwise closing the panel would silently cancel what the user asked for.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-scoped flush
   useEffect(() => {
     const timers = dismissTimers.current;
     return () => {
@@ -93,11 +93,11 @@ export function NotificationHistory({
       }
       timers.clear();
     };
-// Intentionally mount-scoped: this is an unmount flush, not a subscription.
+    // Intentionally mount-scoped: this is an unmount flush, not a subscription.
   }, []);
   const actionMutation = useNotificationActionMutation();
-// archive#1780: the row the attention projection correctly dropped lands
-// in "Recent activity" below. It is annotated here, never filtered again.
+  // archive#1780: the row the attention projection correctly dropped lands
+  // in "Recent activity" below. It is annotated here, never filtered again.
   const answerabilityFor = useNotificationAnswerability();
   const recentNotifications = useMemo(() => {
     const projected = new Set(
@@ -109,25 +109,25 @@ export function NotificationHistory({
       .filter((notification) => !projected.has(notification.id))
       .slice(0, SECTION_ROW_LIMIT);
   }, [attention?.items, notifications]);
-/**
-* archive#3222 / archive#3227 A5. `AttentionProjection.items` keeps
-* acknowledged items on purpose — acknowledgement is history, not deletion
-* (`attention-projection.ts:225-228`) — while `pendingCount`, the number the
-* bell badge above this popover renders, counts only the unacknowledged ones
-* (`:229`). This section used to slice the raw `items`, so it listed rows the
-* badge had already stopped counting under a heading asserting they need
-* attention, and with every item acknowledged it rendered a populated
-* "Needs attention" beneath a badge that had disappeared.
-*
-* So it renders the badge's own population, through the same
-* `pendingAttentionItems` predicate the page's count uses, and labels the
-* heading through the same `attentionCountLabel` the page's heading uses.
-* `pendingTotal` is read off `pendingCount` rather than recomputed, so the
-* badge and this heading agree by construction; `narrowed` is true whenever
-* the rows on screen are not that whole set — which is the truncation
-* announcing itself, and also the only way a server/client disagreement
-* about "pending" could ever become visible instead of being clamped away.
-*/
+  /**
+   * archive#3222 / archive#3227 A5. `AttentionProjection.items` keeps
+   * acknowledged items on purpose — acknowledgement is history, not deletion
+   * (`attention-projection.ts:225-228`) — while `pendingCount`, the number the
+   * bell badge above this popover renders, counts only the unacknowledged ones
+   * (`:229`). This section used to slice the raw `items`, so it listed rows the
+   * badge had already stopped counting under a heading asserting they need
+   * attention, and with every item acknowledged it rendered a populated
+   * "Needs attention" beneath a badge that had disappeared.
+   *
+   * So it renders the badge's own population, through the same
+   * `pendingAttentionItems` predicate the page's count uses, and labels the
+   * heading through the same `attentionCountLabel` the page's heading uses.
+   * `pendingTotal` is read off `pendingCount` rather than recomputed, so the
+   * badge and this heading agree by construction; `narrowed` is true whenever
+   * the rows on screen are not that whole set — which is the truncation
+   * announcing itself, and also the only way a server/client disagreement
+   * about "pending" could ever become visible instead of being clamped away.
+   */
   const pendingItems = pendingAttentionItems(attention?.items ?? []);
   const attentionItems = pendingItems.slice(0, SECTION_ROW_LIMIT);
   const pendingTotal = attention?.pendingCount ?? 0;
@@ -138,8 +138,8 @@ export function NotificationHistory({
   });
 
   useClickOutside(isOpen, dropdownRef, onClose);
-// Portalled to the document, so the popover is no longer next to its trigger
-// in tab order; move focus in on open and hand it back on close.
+  // Portalled to the document, so the popover is no longer next to its trigger
+  // in tab order; move focus in on open and hand it back on close.
   useMenuFocus(isOpen, onClose, dropdownRef);
   if (!isOpen) return null;
 
@@ -147,13 +147,13 @@ export function NotificationHistory({
   const act = (notificationId: string, actionId: string) => {
     actionMutation.mutate({ actionId, id: notificationId });
   };
-/**
-* Dismiss collapses the row in place and holds it for an undo window instead
-* of committing immediately and closing the whole popover. Acting on one
-* notification is not a reason to lose the list you were triaging, and a
-* destructive action with no way back is worse on a phone, where it is easy
-* to hit the wrong row.
-*/
+  /**
+   * Dismiss collapses the row in place and holds it for an undo window instead
+   * of committing immediately and closing the whole popover. Acting on one
+   * notification is not a reason to lose the list you were triaging, and a
+   * destructive action with no way back is worse on a phone, where it is easy
+   * to hit the wrong row.
+   */
   const dismiss = (notificationId: string) => {
     setPendingDismiss((current) =>
       current.includes(notificationId) ? current : [...current, notificationId],
@@ -177,9 +177,9 @@ export function NotificationHistory({
     );
   };
 
-// Portalled out of the header: the mobile toolbar is a stacking context at
-// z-index 200, so this popover's z-index could never lift it above the fixed
-// coding tabs and dock while it rendered inside.
+  // Portalled out of the header: the mobile toolbar is a stacking context at
+  // z-index 200, so this popover's z-index could never lift it above the fixed
+  // coding tabs and dock while it rendered inside.
   return createPortal(
     <div ref={dropdownRef} className="notification-history" tabIndex={-1}>
       <div className="notification-history__title">Notifications</div>
@@ -205,7 +205,7 @@ export function NotificationHistory({
               }
             />
           ) : (
-/* empty-state action: notifications require no user setup */
+            /* empty-state action: notifications require no user setup */
             <Empty variant="compact" label="All caught up" />
           )
         ) : (
@@ -246,7 +246,7 @@ export function NotificationHistory({
                 Recent activity
               </h2>
               {recentNotifications.length === 0 ? (
-/* empty-state action: notifications require no user setup */
+                /* empty-state action: notifications require no user setup */
                 <Empty variant="compact" label="No recent activity" />
               ) : (
                 recentNotifications.map((notification) =>

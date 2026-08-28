@@ -46,15 +46,15 @@ export function SessionSummaryCard({
   hasSettingsEntryPoint = false,
 }: {
   activeSession: ChatSession;
-/** The host offers its own Summarize entry point (a gear opening `ChatSettingsPanel`). */
+  /** The host offers its own Summarize entry point (a gear opening `ChatSettingsPanel`). */
   hasSettingsEntryPoint?: boolean;
 }) {
   const agentSlug = activeSession.agentSlug;
   const conversationId = activeSession.conversationId;
   const messages = activeSession.messages ?? [];
   const latestMessage = messages.at(-1);
-// This reaches the query key through the same active transcript projection
-// rendered below, making stale refresh when a real later turn arrives.
+  // This reaches the query key through the same active transcript projection
+  // rendered below, making stale refresh when a real later turn arrives.
   const transcriptExtent = `${activeSession.orchestrationHistoryRevision ?? 0}:${latestMessage?.id ?? messages.length}`;
   const summary = useSessionSummaryQuery(
     agentSlug,
@@ -78,12 +78,12 @@ export function SessionSummaryCard({
       submittedAt: mutation.state.submittedAt ?? 0,
     }),
   });
-// A failed generation is dismissible without dismissing the feature; a NEW
-// failure after the dismissal shows again (submittedAt moves forward).
-// Keyed BY CONVERSATION: this component mounts once per host and is not
-// re-keyed when the active chat changes, and `submittedAt` is wall-clock, so
-// a single scalar let a dismissal in one chat hide an OLDER, never-seen
-// failure in another — that chat would render nothing at all, with no Retry.
+  // A failed generation is dismissible without dismissing the feature; a NEW
+  // failure after the dismissal shows again (submittedAt moves forward).
+  // Keyed BY CONVERSATION: this component mounts once per host and is not
+  // re-keyed when the active chat changes, and `submittedAt` is wall-clock, so
+  // a single scalar let a dismissal in one chat hide an OLDER, never-seen
+  // failure in another — that chat would render nothing at all, with no Retry.
   const [errorDismissedAt, setErrorDismissedAt] = useState<
     Record<string, number>
   >({});
@@ -92,15 +92,15 @@ export function SessionSummaryCard({
   const queryError = summary.error;
   useEffect(() => {
     if (!queryError) return;
-// The user did nothing — degrade silently instead of injecting an alert
- // band into the chat (archive#3310). The menu entry point still works.
+    // The user did nothing — degrade silently instead of injecting an alert
+    // band into the chat (archive#3310). The menu entry point still works.
     log.chat('session summary query failed: %o', queryError);
   }, [queryError]);
   const dismissError = dismiss.error;
   useEffect(() => {
     if (!dismissError) return;
-// A failed dismiss leaves the card visible with its buttons re-enabled —
-// the state speaks for itself; log the cause for diagnosis.
+    // A failed dismiss leaves the card visible with its buttons re-enabled —
+    // the state speaks for itself; log the cause for diagnosis.
     log.chat('session summary dismiss failed: %o', dismissError);
   }, [dismissError]);
 
@@ -125,8 +125,8 @@ export function SessionSummaryCard({
   );
 
   if (!data && !isGenerating && !failedGeneration) {
-// No host entry point: keep the inline button, or this host loses the
- // only way to summarize (archive#3310 — ACPChatPanel).
+    // No host entry point: keep the inline button, or this host loses the
+    // only way to summarize (archive#3310 — ACPChatPanel).
     if (hasSettingsEntryPoint) return null;
     return (
       <aside className="session-summary" aria-label="Derived session summary">

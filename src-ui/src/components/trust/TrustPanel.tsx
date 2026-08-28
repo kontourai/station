@@ -202,9 +202,9 @@ export function TrustPanel({ projectSlug }: { projectSlug: string }) {
   } = useTrustReportQuery(projectSlug, expanded ? activeId : null);
 
   const countLabel = bundles ? ` (${bundles.length})` : '';
-// True only for the held render of a PRIOR project's bundle list or a
-// prior bundle's report while the newly selected one is in flight
-// (archive#3092) — never true for a same-key background refetch.
+  // True only for the held render of a PRIOR project's bundle list or a
+  // prior bundle's report while the newly selected one is in flight
+  // (archive#3092) — never true for a same-key background refetch.
   const showingPreviousData = bundlesStale || reportStale;
 
   return (

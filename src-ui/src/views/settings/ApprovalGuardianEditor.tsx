@@ -88,7 +88,7 @@ export function ApprovalGuardianEditor({
             label="Guardian instructions"
             description="House rules added on top of the guardian's built-in judgment of safety, scope, and intent."
           >
-{/* The field holds a prompt (archive#1831): sized like one, with a
+            {/* The field holds a prompt (archive#1831): sized like one, with a
                 placeholder that ADDS a concrete house rule rather than
                 restating DEFAULT_GUARDIAN_PROMPT's own decision rules. */}
             <textarea

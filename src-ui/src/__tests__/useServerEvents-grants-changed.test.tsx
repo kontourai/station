@@ -32,7 +32,7 @@ beforeEach(() => {
 async function dispatch(event: string) {
   const invalidateQueries = vi.fn();
   invalidateQueriesForServerEvent(event, { invalidateQueries });
-// The reload is loaded lazily through a dynamic import.
+  // The reload is loaded lazily through a dynamic import.
   await new Promise((resolve) => setTimeout(resolve, 0));
   return invalidateQueries;
 }
@@ -43,8 +43,8 @@ test('a grants change refreshes the plugin list AND the loaded registry', async 
   );
 
   expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['plugins'] });
-// Without this, a frame that is already open keeps using a withdrawn
-// permission.
+  // Without this, a frame that is already open keeps using a withdrawn
+  // permission.
   expect(reload).toHaveBeenCalledTimes(1);
 });
 

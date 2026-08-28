@@ -167,27 +167,27 @@ describe('HeaderActions — self-describing connection surface', () => {
   test('names state and identity visibly, including a connection named Default', () => {
     const button = renderConnButton();
     expect(button.textContent).toContain('Connected');
-// No 'Default'-name special-casing: identity always renders.
+    // No 'Default'-name special-casing: identity always renders.
     expect(button.textContent).toContain('Default');
     expect(button.getAttribute('aria-label')).toBe(
       'Manage Stations — Connected · Default',
     );
   });
 
-// The one invariant that keeps this component's visible wording and
-// @kontourai/station-connect's control names from drifting apart: whatever
-// the chip shows must appear in the name a screen reader announces
-// (WCAG 2.5.3). It is also the reason `needs-credential` shows "Pair" —
-// connectionIndicatorActionLabel's own word — rather than a fifth phrase
-// invented here.
+  // The one invariant that keeps this component's visible wording and
+  // @kontourai/station-connect's control names from drifting apart: whatever
+  // the chip shows must appear in the name a screen reader announces
+  // (WCAG 2.5.3). It is also the reason `needs-credential` shows "Pair" —
+  // connectionIndicatorActionLabel's own word — rather than a fifth phrase
+  // invented here.
   test.each([
     ['connected', null, 'Connected'],
     ['connecting', null, 'Reconnecting'],
     ['error', 'unreachable', "Can't connect"],
     ['error', 'authentication-failed', 'Pair'],
-// archive#4512: an identity mismatch is a host that answered, not one
-// that stopped answering — it gets its own remedy word, not the generic
-// "Can't connect" a genuinely unreachable host produces.
+    // archive#4512: an identity mismatch is a host that answered, not one
+    // that stopped answering — it gets its own remedy word, not the generic
+    // "Can't connect" a genuinely unreachable host produces.
     ['error', 'identity-mismatch', 'Needs re-pairing'],
   ] as const)(
     'the visible label for %s/%s is inside the accessible name',
@@ -195,8 +195,8 @@ describe('HeaderActions — self-describing connection surface', () => {
       connectionStatus = status;
       connectionReason = reason;
       renderHeader();
-// By class, not by name: `needs-credential` renames the control to its
-// remedy, which is the very thing this asserts.
+      // By class, not by name: `needs-credential` renames the control to its
+      // remedy, which is the very thing this asserts.
       const button = document.querySelector<HTMLElement>('.app-toolbar__conn');
       expect(button, '.app-toolbar__conn not rendered').not.toBeNull();
       const state = button!.querySelector('.app-toolbar__conn-state');
@@ -224,9 +224,9 @@ describe('HeaderActions — a rejected credential is distinguishable without hov
 
   test('leaves the healthy control titled exactly as before', () => {
     renderHeader();
-// archive#3311 put the state and identity in the accessible name, so the
-// name is no longer the bare string — the TITLE is, which is what
-// archive#3297 pinned and what the E2E selectors key on.
+    // archive#3311 put the state and identity in the accessible name, so the
+    // name is no longer the bare string — the TITLE is, which is what
+    // archive#3297 pinned and what the E2E selectors key on.
     const button = screen.getByRole('button', { name: /^Manage Stations/ });
     expect(button.title).toBe('Manage Stations');
     expect(screen.getByTestId('connection-status').dataset.state).toBe(
@@ -238,11 +238,11 @@ describe('HeaderActions — a rejected credential is distinguishable without hov
     connectionStatus = 'error';
     connectionReason = 'authentication-failed';
     renderHeader();
-// The channel that works on a touch screen.
+    // The channel that works on a touch screen.
     expect(screen.getByTestId('connection-status').dataset.state).toBe(
       'needs-credential',
     );
-// And the accessible name names the remedy, not just the state.
+    // And the accessible name names the remedy, not just the state.
     expect(
       screen.getByRole('button', { name: /^Pair this device again/ }),
     ).toBeTruthy();
@@ -310,11 +310,11 @@ describe('HeaderActions — a pending access request reads as waiting, not broke
     expect(button!.getAttribute('aria-label')).toContain('Awaiting approval');
   });
 
-// Precedence (archive#4512): the pending-request fact is independent of
-// `reason` and wins even over identity-mismatch, mirroring
-// `ConnectionBannerSource`'s own `!pendingApproval` gate — while a request
-// is open, nothing else this endpoint's probes say is more true than
-// "still waiting".
+  // Precedence (archive#4512): the pending-request fact is independent of
+  // `reason` and wins even over identity-mismatch, mirroring
+  // `ConnectionBannerSource`'s own `!pendingApproval` gate — while a request
+  // is open, nothing else this endpoint's probes say is more true than
+  // "still waiting".
   test('outranks an identity mismatch while the same request is open', () => {
     connectionReason = 'identity-mismatch';
     const button = renderConnButton();
@@ -333,14 +333,14 @@ describe('HeaderActions — a pending access request reads as waiting, not broke
   });
 
   test('falls back to the underlying reason once the local record expires', () => {
-// Once the request is no longer open, "still waiting" is no longer the
-// most honest read — the coordinator's own classification of this
-// (unresolved) authentication failure takes back over.
+    // Once the request is no longer open, "still waiting" is no longer the
+    // most honest read — the coordinator's own classification of this
+    // (unresolved) authentication failure takes back over.
     pendingApprovalRecord = null;
     renderHeader();
-// `needs-credential` renames the control to its remedy ("Pair this
-// device again"), so it no longer starts with "Manage Stations" —
-// `renderConnButton` would not find it.
+    // `needs-credential` renames the control to its remedy ("Pair this
+    // device again"), so it no longer starts with "Manage Stations" —
+    // `renderConnButton` would not find it.
     const button = screen.getByRole('button', {
       name: /^Pair this device again/,
     });
@@ -401,11 +401,11 @@ describe('HeaderActions — desktop sidecar state', () => {
   });
 
   test('qualifies the connection identity with App only rather than replacing it', () => {
-// The sidecar describes the locally supervised bundled server; the
-// identity names the Station the connection points at. They are
-// independent facts, and a desktop app supervising its sidecar while
-// pointed at a remote Station must not render the sidecar's name in
-// place of that Station's.
+    // The sidecar describes the locally supervised bundled server; the
+    // identity names the Station the connection points at. They are
+    // independent facts, and a desktop app supervising its sidecar while
+    // pointed at a remote Station must not render the sidecar's name in
+    // place of that Station's.
     savedConnections = [{ ...SAVED_STATION, name: 'Kontour' }];
     bundledStatus = { ownership: 'sidecar' };
     const button = renderConnButton();
@@ -416,8 +416,8 @@ describe('HeaderActions — desktop sidecar state', () => {
     expect(button.getAttribute('aria-label')).toBe(
       'Manage Stations — Connected · Kontour · App only',
     );
-// The button's own title is archive#3297's control name; the sidecar's
-// lifetime explanation moved onto the note it describes.
+    // The button's own title is archive#3297's control name; the sidecar's
+    // lifetime explanation moved onto the note it describes.
     expect(button.title).toBe('Manage Stations');
     expect(screen.getByTestId('desktop-sidecar-indicator').title).toBe(
       'Runs while the Station app is open',
@@ -522,15 +522,15 @@ describe('HeaderActions — connection state precedence', () => {
   test('idle prints no identity for the state to contradict', () => {
     const button = renderConnButton();
     expect(button.textContent).toContain('No Station');
-// Neither the connection's name nor the sidecar lifetime note: both would
-// qualify a Station the sentence beside them says does not exist.
+    // Neither the connection's name nor the sidecar lifetime note: both would
+    // qualify a Station the sentence beside them says does not exist.
     expect(button.textContent).not.toContain('Station on this device');
     expect(screen.queryByTestId('desktop-sidecar-indicator')).toBeNull();
     expect(button.getAttribute('aria-label')).toBe(
       'Manage Stations — No Station',
     );
-// Not connectionIndicatorLabel('idle') ("Not running"), which describes a
-// supervised local server that was stopped, not a device with no Station.
+    // Not connectionIndicatorLabel('idle') ("Not running"), which describes a
+    // supervised local server that was stopped, not a device with no Station.
     expect(button.title).toBe('Manage Stations — No Station');
   });
 });

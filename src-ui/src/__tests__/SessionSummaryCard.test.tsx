@@ -232,8 +232,8 @@ describe('SessionSummaryCard', () => {
     },
   );
 
- // archive#3310: the un-generated state pays zero transcript pixels — the entry
-// point lives in the chat-settings menu, not in a permanent band.
+  // archive#3310: the un-generated state pays zero transcript pixels — the entry
+  // point lives in the chat-settings menu, not in a permanent band.
   test('renders nothing when no summary exists and nothing is in flight', () => {
     const { container } = renderCard();
     expect(container.innerHTML).toBe('');
@@ -242,8 +242,8 @@ describe('SessionSummaryCard', () => {
     ).toBeNull();
   });
 
- // archive#3310: a failed summary QUERY is nothing the user did — degrade silently
-// (logged), never an alert band inside the chat.
+  // archive#3310: a failed summary QUERY is nothing the user did — degrade silently
+  // (logged), never an alert band inside the chat.
   test('a failed summary query renders nothing and logs instead of alerting', () => {
     queryResult = {
       data: null,
@@ -340,7 +340,7 @@ describe('SessionSummaryCard entry-point reachability', () => {
 });
 
 /**
-* archive#3310: the card mounts ONCE per host and is
+ * archive#3310: the card mounts ONCE per host and is
  * never re-keyed when the active chat changes, while `submittedAt` is
  * wall-clock. A single dismissal scalar therefore let a dismissal in one
  * conversation hide an OLDER, never-seen failure in another — that chat
@@ -356,15 +356,15 @@ describe('SessionSummaryCard failure dismissal is per conversation', () => {
         submittedAt: 10_005,
       },
     ];
-// ONE mounted card, re-rendered with a different conversation — the app
-// never re-keys or remounts it, and that is the whole defect. An earlier
-// version of this test unmounted and re-rendered instead, which reset the
-// component's state and made it pass against the global-scalar bug.
+    // ONE mounted card, re-rendered with a different conversation — the app
+    // never re-keys or remounts it, and that is the whole defect. An earlier
+    // version of this test unmounted and re-rendered instead, which reset the
+    // component's state and made it pass against the global-scalar bug.
     const view = renderCard({ conversationId: 'c1' });
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(screen.queryByRole('alert')).toBeNull();
 
-// The OTHER conversation's failure is OLDER than the dismissal above.
+    // The OTHER conversation's failure is OLDER than the dismissal above.
     mutationStates = [
       {
         status: 'error',
@@ -396,8 +396,8 @@ describe('SessionSummaryCard failure dismissal is per conversation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(screen.queryByRole('alert')).toBeNull();
 
-// A later run for the SAME conversation must resurface (submittedAt moved
-// forward) — the claim the component's own comment makes.
+    // A later run for the SAME conversation must resurface (submittedAt moved
+    // forward) — the claim the component's own comment makes.
     mutationStates = [
       {
         status: 'error',

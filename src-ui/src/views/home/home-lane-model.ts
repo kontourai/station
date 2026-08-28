@@ -62,14 +62,14 @@ export function isTerminalLifecycle(
 
 /**
  * A `HomeWorkItem` with a logical identity that survives the two known
-* `id`-changing promotions on the default path (archive#1099):
+ * `id`-changing promotions on the default path (archive#1099):
  *
  * (a) `useActiveChatSessionMessaging.ts`'s `assignConversationId` flips a
-*     chat's `id` from its local session key to the server-assigned
-*     conversationId on the first message.
+ *     chat's `id` from its local session key to the server-assigned
+ *     conversationId on the first message.
  * (b) `mergeHomeWorkItems` drops a chat/orchestration item and replaces it
-*     with a differently-keyed task item once a durable Task's `sessionId`
-*     correlates to the same underlying session.
+ *     with a differently-keyed task item once a durable Task's `sessionId`
+ *     correlates to the same underlying session.
  *
  * Both transitions still share at least one of `id`/`chatSessionId`/
  * `taskSessionId`/`orchestrationThreadId` with the item's prior appearance —
@@ -146,9 +146,9 @@ export function withStableIds(
 export interface LaneInputs<T extends HomeWorkItem = HomeLaneItem> {
   items: readonly T[];
   now: number;
-/** item id -> epoch ms at which a live snooze lapses. */
+  /** item id -> epoch ms at which a live snooze lapses. */
   snoozedUntil: ReadonlyMap<string, number>;
-/** item id -> epoch ms of the first observed terminal transition. */
+  /** item id -> epoch ms of the first observed terminal transition. */
   terminalSince: ReadonlyMap<string, number>;
 }
 
@@ -171,24 +171,24 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
   const settled: T[] = [];
 
   for (const item of items) {
-// A live snooze wins over every other classification, matching the
-// mobile inbox's rule (mobile-activity-groups.ts) — snoozing something
-// still running is the entire point of the verb. Deliberately keyed by
-// the raw `item.id`, not `stableId` — snooze/terminal-since keying is
-// out of scope for the identity-alias fix above (a smaller, disclosed
-// residual risk: an item snoozed/lingering right as its id promotes
-// could momentarily lose that state under its new id).
+    // A live snooze wins over every other classification, matching the
+    // mobile inbox's rule (mobile-activity-groups.ts) — snoozing something
+    // still running is the entire point of the verb. Deliberately keyed by
+    // the raw `item.id`, not `stableId` — snooze/terminal-since keying is
+    // out of scope for the identity-alias fix above (a smaller, disclosed
+    // residual risk: an item snoozed/lingering right as its id promotes
+    // could momentarily lose that state under its new id).
     const wakeAt = snoozedUntil.get(item.id);
     if (wakeAt !== undefined && wakeAt > now) {
       snoozed.push(item);
       continue;
     }
     if (isTerminalLifecycle(item.lifecycleLabel)) {
-// Completed conversations are attention items, not a timed toast.
-// A fresh terminal version remains in Just finished through reloads and
-// device changes until the user actually opens it. Non-conversation
-// work keeps the historic Earlier behavior; it has no transcript to
-// acknowledge through the conversation inventory.
+      // Completed conversations are attention items, not a timed toast.
+      // A fresh terminal version remains in Just finished through reloads and
+      // device changes until the user actually opens it. Non-conversation
+      // work keeps the historic Earlier behavior; it has no transcript to
+      // acknowledge through the conversation inventory.
       if (item.conversationUpdatedAt) {
         if (
           item.acknowledgedAt !== undefined &&
@@ -200,9 +200,9 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
         recentlyFinished.push(item);
         continue;
       }
-// Non-conversation work has no transcript version to acknowledge.
-// Retain its historical time-based placement while direct chats and
-// runtime conversations use the durable path above.
+      // Non-conversation work has no transcript version to acknowledge.
+      // Retain its historical time-based placement while direct chats and
+      // runtime conversations use the durable path above.
       const since = terminalSince.get(item.id) ?? now;
       if (now - since >= TERMINAL_LINGER_MS) {
         settled.push(item);
@@ -251,7 +251,7 @@ export function terminalSinceFromRecency(
  * `HomeLaneItem.stableId` — NOT `HomeWorkItem.id`; the raw `id` can change
  * out from under a still-visible row, see `withStableIds` above). Stable ids
  * still present in `activeItems` keep their prior relative position exactly
-* recomputing this every render on the same set of stable ids is a no-op
+ * recomputing this every render on the same set of stable ids is a no-op
  * regardless of how many times a row's `lifecycleLabel`, `updatedAt`, or
  * even its raw `id` changed in between. Only stable ids genuinely new to the
  * lane (not in `previousOrder`) are inserted, at the top, ordered by recency

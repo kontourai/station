@@ -65,8 +65,8 @@ describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
   });
 
   test('an engine that already has an authored Agent is ticked and locked', () => {
-// Idempotency has to be VISIBLE, not merely safe: a second device against
-// the same home must show the user what they already have.
+    // Idempotency has to be VISIBLE, not merely safe: a second device against
+    // the same home must show the user what they already have.
     const [option] = buildFirstRunEngineOptions({
       engines: [READY_CODEX],
       agents: [
@@ -85,11 +85,11 @@ describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
   });
 
   test('a project-OWNED Agent does not make an engine read as already enabled', () => {
- // First run has no project context, and §3.3 A1 says an owned Agent never
-// appears outside its own project. Counting one here would claim "Already
-// set up as X" for an Agent this context cannot reach, while the global
- // picker still offers Enable for the same engine (archive#3027, the defect
- // the picker already paid a to fix).
+    // First run has no project context, and §3.3 A1 says an owned Agent never
+    // appears outside its own project. Counting one here would claim "Already
+    // set up as X" for an Agent this context cannot reach, while the global
+    // picker still offers Enable for the same engine (archive#3027, the defect
+    // the picker already paid a to fix).
     const [option] = buildFirstRunEngineOptions({
       engines: [READY_CODEX],
       agents: [
@@ -105,7 +105,7 @@ describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
   });
 
   test('a global Agent bound to the engine still counts', () => {
-// The other direction, so the scoping cannot pass by excluding everything.
+    // The other direction, so the scoping cannot pass by excluding everything.
     const [option] = buildFirstRunEngineOptions({
       engines: [READY_CODEX],
       agents: [
@@ -119,9 +119,9 @@ describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
   });
 
   test('the engine-default alias row itself never counts as already enabled', () => {
-// The alias carries the same binding as the authored Agent would, so the
-// FIND has to exclude it — otherwise every engine reads as done and the
-// chapter creates nothing, ever.
+    // The alias carries the same binding as the authored Agent would, so the
+    // FIND has to exclude it — otherwise every engine reads as done and the
+    // chapter creates nothing, ever.
     const [option] = buildFirstRunEngineOptions({
       engines: [READY_CODEX],
       agents: [
@@ -158,8 +158,8 @@ describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
   });
 
   test('a detected but unready engine is shown with its reason and cannot be ticked', () => {
-// The server withholds the alias row's `enable` signal for exactly these,
-// so offering one would offer a click that could not succeed.
+    // The server withholds the alias row's `enable` signal for exactly these,
+    // so offering one would offer a click that could not succeed.
     const [option] = buildFirstRunEngineOptions({
       engines: [
         engine({
@@ -200,8 +200,8 @@ describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
   });
 
   test('an unverifiable engine is shown even though nothing was detected', () => {
-// Mirrors `setupBannerVariant`'s existing rule: an adapter Station could
-// not probe is an unknown, not an absence.
+    // Mirrors `setupBannerVariant`'s existing rule: an adapter Station could
+    // not probe is an unknown, not an absence.
     const [option] = buildFirstRunEngineOptions({
       engines: [
         engine({
@@ -216,10 +216,10 @@ describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
   });
 
   test('a ready engine with no connection identity is shown, not offered', () => {
-// `resolveEngineConnectionId` returns undefined for an adapter the
-// registry does not know. There is nothing an Agent could bind to, and
-// dropping the row would be indistinguishable from Station not supporting
-// the engine at all.
+    // `resolveEngineConnectionId` returns undefined for an adapter the
+    // registry does not know. There is nothing an Agent could bind to, and
+    // dropping the row would be indistinguishable from Station not supporting
+    // the engine at all.
     const [option] = buildFirstRunEngineOptions({
       engines: [engine({ name: 'Unbound', detected: true, ready: true })],
       agents: [],
@@ -336,8 +336,8 @@ describe('buildFirstRunEnableBatch — what a confirm actually creates', () => {
   });
 
   test('plans one materialize per newly selected engine, carrying only the engine binding', () => {
-// No draft, and deliberately so: a name invented here is what produced a
-// "<engine> Agent" row beside the engine's own. The server names it.
+    // No draft, and deliberately so: a name invented here is what produced a
+    // "<engine> Agent" row beside the engine's own. The server names it.
     const plan = buildFirstRunEnableBatch(options, ['codex']);
     expect(plan).toEqual([
       {
@@ -349,9 +349,9 @@ describe('buildFirstRunEnableBatch — what a confirm actually creates', () => {
   });
 
   test('creates nothing for an engine that is already enabled', () => {
-// The already-enabled row renders CHECKED, so its id is in the selection
-// set. `selectable` — not the selection — is what may authorise a create;
-// this is the second-run duplicate the chapter must never produce.
+    // The already-enabled row renders CHECKED, so its id is in the selection
+    // set. `selectable` — not the selection — is what may authorise a create;
+    // this is the second-run duplicate the chapter must never produce.
     expect(buildFirstRunEnableBatch(options, ['claude-code'])).toEqual([]);
   });
 
@@ -404,9 +404,9 @@ describe('unplannableFirstRunEngineOutcomes — asked for, cannot be attempted',
   });
 
   test('an already-enabled engine is a resolution, not a failure', () => {
-// It has no plan entry because the Agent exists. Reporting it as failed
-// would make the second-device case — the one the whole find-or-create
-// exists for — read as a broken run.
+    // It has no plan entry because the Agent exists. Reporting it as failed
+    // would make the second-device case — the one the whole find-or-create
+    // exists for — read as a broken run.
     expect(unplannableFirstRunEngineOutcomes(options, ['claude-code'])).toEqual(
       [],
     );
@@ -440,8 +440,8 @@ describe('unplannableFirstRunEngineOutcomes — asked for, cannot be attempted',
   });
 
   test('with no name known at all it still reports rather than dropping the request', () => {
-// A raw id in the copy is worse than a good name and better than silence:
-// the alternative is the run completing over an engine nothing mentions.
+    // A raw id in the copy is worse than a good name and better than silence:
+    // the alternative is the run completing over an engine nothing mentions.
     expect(unplannableFirstRunEngineOutcomes(options, ['muse'])).toMatchObject([
       { engineId: 'muse', name: 'muse', status: 'failed' },
     ]);
@@ -461,8 +461,8 @@ describe('per-engine outcomes', () => {
   )[0];
 
   test('a clean create reports the name the SERVER assigned', () => {
-// Not a name this chapter predicted: materialize is find-or-create, so on
-// a second device the reported name is the row that already existed.
+    // Not a name this chapter predicted: materialize is find-or-create, so on
+    // a second device the reported name is the row that already existed.
     expect(firstRunEnableSuccessOutcome(item, 'Codex', true)).toEqual({
       engineId: 'codex',
       name: 'Codex',
@@ -472,9 +472,9 @@ describe('per-engine outcomes', () => {
   });
 
   test('a find that created nothing says so rather than claiming a set-up', () => {
-// `created: false` is the endpoint's own answer — the Agent was already
-// there. It is a SUCCESS (the engine the user asked for exists), and it
-// must not be worded as work this run performed.
+    // `created: false` is the endpoint's own answer — the Agent was already
+    // there. It is a SUCCESS (the engine the user asked for exists), and it
+    // must not be worded as work this run performed.
     const outcome = firstRunEnableSuccessOutcome(item, 'Codex', false);
     expect(outcome.status).toBe('existing');
     expect(firstRunEnableOutcomeMessage(outcome)).toBe(
@@ -484,8 +484,8 @@ describe('per-engine outcomes', () => {
   });
 
   test('a warned create is NOT reported as a plain success', () => {
-// The save is 2xx even when the Agent cannot launch. Reporting that as
-// "ready" would be a false statement about what the user now has.
+    // The save is 2xx even when the Agent cannot launch. Reporting that as
+    // "ready" would be a false statement about what the user now has.
     const outcome = firstRunEnableSuccessOutcome(item, 'Codex', true, [
       'Agent saved but not launchable: codex is signed out.',
     ]);
@@ -595,10 +595,10 @@ describe('AC4 — item order and copy are stable across renders', () => {
   ];
 
   test('identical data renders the identical list, twice', () => {
-//  caught the same card rendering a different order and different
-// copy on two routes seconds apart. This is the property that makes that
-// impossible: the listing is a pure function of the engine rows and the
-// agent catalog, with no clock, no probe and no render counter in it.
+    //  caught the same card rendering a different order and different
+    // copy on two routes seconds apart. This is the property that makes that
+    // impossible: the listing is a pure function of the engine rows and the
+    // agent catalog, with no clock, no probe and no render counter in it.
     const first = buildFirstRunEngineOptions({ engines, agents: [] });
     const second = buildFirstRunEngineOptions({ engines, agents: [] });
     expect(second).toEqual(first);
@@ -634,7 +634,7 @@ describe('AC4 — item order and copy are stable across renders', () => {
     );
     expect(labels.codex).toBe('Enable Codex');
     expect(labels['claude-code']).toBe('Ready — Claude Code');
-// Nothing Station cannot act on is dressed up as an action.
+    // Nothing Station cannot act on is dressed up as an action.
     expect(labels.kiro).toBe('Kiro');
     expect(labels.opencode).toBe('OpenCode');
   });

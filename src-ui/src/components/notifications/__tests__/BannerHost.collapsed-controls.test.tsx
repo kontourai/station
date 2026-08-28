@@ -80,7 +80,7 @@ function renderCollapsedFixtureMarkup(input: {
 }
 
 /**
-* archive#4470 — the armed "Remove" confirm renders THREE
+ * archive#4470 — the armed "Remove" confirm renders THREE
  * actions ("Pair again"/"Confirm"/"Cancel"), which only ever appear once
  * arming has force-expanded the card (ConnectionBannerSource.tsx) — never
  * collapsed, so this deliberately does NOT call `setCollapsed`.
@@ -193,7 +193,7 @@ describe.skipIf(!chromiumAvailable)(
           expect(await item.getAttribute('data-collapsed')).toBe('true');
           const itemBox = await item.boundingBox();
           expect(itemBox, '.banner-host__item not visible').not.toBe(null);
-// The whole point of the collapsed height: one fixed-height bar.
+          // The whole point of the collapsed height: one fixed-height bar.
           expect(itemBox!.height).toBeCloseTo(52, 0);
 
           const messageBox = await page
@@ -260,17 +260,17 @@ describe.skipIf(!chromiumAvailable)(
       },
     );
 
-/**
-* archive#4470 — the armed "Remove" confirm's three
-* actions ("Pair again"/"Confirm"/"Cancel") render in the row's
-* EXPANDED width (~345px) rather than the collapsed bar's constrained
- * ~244px: arming force-expands a collapsed card, and 
-* closed the remaining way an armed card could still end up collapsed
-* collapsing the chevron while armed now disarms
-* (ConnectionBannerSource.tsx's `onCollapse`) instead of leaving this
-* row reachable behind the 52px bar. Proves the three-button row fits
-* on one line, unclipped and hittable, at 390px.
-*/
+    /**
+     * archive#4470 — the armed "Remove" confirm's three
+     * actions ("Pair again"/"Confirm"/"Cancel") render in the row's
+     * EXPANDED width (~345px) rather than the collapsed bar's constrained
+     * ~244px: arming force-expands a collapsed card, and
+     * closed the remaining way an armed card could still end up collapsed
+     * collapsing the chevron while armed now disarms
+     * (ConnectionBannerSource.tsx's `onCollapse`) instead of leaving this
+     * row reachable behind the 52px bar. Proves the three-button row fits
+     * on one line, unclipped and hittable, at 390px.
+     */
     test('the armed three-action row (Pair again / Confirm / Cancel) fits on one line, expanded, at 390px', async () => {
       const actionLabels = ['Pair again', 'Confirm', 'Cancel'] as const;
       const markup = renderExpandedFixtureMarkup({
@@ -294,9 +294,9 @@ describe.skipIf(!chromiumAvailable)(
           .locator('.banner-host__actions')
           .boundingBox();
         expect(actionsRow, '.banner-host__actions not visible').not.toBe(null);
- // Single line: three actions did not wrap to a second row (the 
-// failure mode). One row of 44px-tall buttons is ~44px tall, not
-// ~96px (two wrapped rows) or ~140px (three).
+        // Single line: three actions did not wrap to a second row (the
+        // failure mode). One row of 44px-tall buttons is ~44px tall, not
+        // ~96px (two wrapped rows) or ~140px (three).
         expect(actionsRow!.height).toBeLessThan(60);
 
         const actionBoxes = await page.locator('.banner-host__action').all();

@@ -25,7 +25,7 @@ export interface KeyboardShortcut {
   modifiers: ShortcutModifier[];
   description: string;
   handler: () => void;
-/** Higher-priority shortcuts own the key before route-level fallbacks. */
+  /** Higher-priority shortcuts own the key before route-level fallbacks. */
   priority?: number;
   when?: ShortcutWhen;
   disabled?: boolean;
@@ -117,8 +117,8 @@ export function evaluateShortcutWhen(
       : false;
   }
   if ('not' in when) return !evaluateShortcutWhen(when.not, lookup, depth + 1);
-// Boolean-algebra identities make an empty conjunction true and an empty
-// disjunction false, while keeping generated expressions composable.
+  // Boolean-algebra identities make an empty conjunction true and an empty
+  // disjunction false, while keeping generated expressions composable.
   if ('and' in when)
     return when.and.every((item) =>
       evaluateShortcutWhen(item, lookup, depth + 1),
@@ -161,9 +161,9 @@ interface ShortcutRegistryStore {
   setBinding: (id: string, binding: ShortcutBinding | null) => void;
   restoreBinding: (id: string) => void;
   isMac: boolean;
-/** Notified when the registry's OBSERVABLE content changes. */
+  /** Notified when the registry's OBSERVABLE content changes. */
   subscribe: (listener: () => void) => () => void;
-/** Content signature of the registry; stable while nothing observable moved. */
+  /** Content signature of the registry; stable while nothing observable moved. */
   getSignature: () => string;
 }
 
@@ -172,17 +172,17 @@ interface ShortcutRegistryStore {
  *
  * Three things belong in it that a first cut left out :
  *
-*  - registration ORDER, because equal-priority dispatch resolves by it and
-* `getAllShortcuts` returns it. Sorting it away meant two registrations
-*    could swap which one fires and no reader was told;
-* - a per-registration TOKEN, because `getAllShortcuts` hands readers the
-*    HANDLERS. Two registrations under one id with identical metadata and
-*    different handlers replace the map entry silently, so an open command
-*    palette kept invoking the action the keyboard had already stopped
-*    invoking. Handlers cannot be compared, so what is compared is the write:
-*    every `register` call gets a number, and re-registering changes it;
-*  - a JSON encoding, because the previous NUL/SOH joins were not injective —
-*    a control character inside a description could forge a boundary.
+ *  - registration ORDER, because equal-priority dispatch resolves by it and
+ * `getAllShortcuts` returns it. Sorting it away meant two registrations
+ *    could swap which one fires and no reader was told;
+ * - a per-registration TOKEN, because `getAllShortcuts` hands readers the
+ *    HANDLERS. Two registrations under one id with identical metadata and
+ *    different handlers replace the map entry silently, so an open command
+ *    palette kept invoking the action the keyboard had already stopped
+ *    invoking. Handlers cannot be compared, so what is compared is the write:
+ *    every `register` call gets a number, and re-registering changes it;
+ *  - a JSON encoding, because the previous NUL/SOH joins were not injective —
+ *    a control character inside a description could forge a boundary.
  *
  * Re-registration therefore publishes. That is the point, and it does not
  * re-open archive#3736: the loop needed registration to re-render a component
@@ -234,7 +234,7 @@ export function orderShortcuts(
 export interface ShortcutConflict {
   chord: string;
   shortcuts: KeyboardShortcut[];
-/** True when priorities tie, so which one fires is registration order. */
+  /** True when priorities tie, so which one fires is registration order. */
   ambiguous: boolean;
 }
 
@@ -314,7 +314,7 @@ export function KeyboardShortcutsProvider({
   const skillOverridesRef = useRef(skillOverrides);
   const listenersRef = useRef(new Set<() => void>());
   const signatureRef = useRef('');
-/** One number per `register` call, so replacing a handler is observable. */
+  /** One number per `register` call, so replacing a handler is observable. */
   const registrationTokensRef = useRef(new Map<string, number>());
   const nextTokenRef = useRef(0);
 
@@ -327,7 +327,7 @@ export function KeyboardShortcutsProvider({
 
   const getSignature = useCallback(() => signatureRef.current, []);
 
-/** Publish only a CHANGE to what a reader can observe. */
+  /** Publish only a CHANGE to what a reader can observe. */
   const publish = useCallback(() => {
     const next = registrySignature(
       Array.from(shortcutsRef.current, ([id, shortcut]) => [
@@ -348,8 +348,8 @@ export function KeyboardShortcutsProvider({
       registrationTokensRef.current.set(shortcut.id, token);
       publish();
       return () => {
-// Only the registration that is still live may retract itself: a
-// later `register` under the same id has already replaced it.
+        // Only the registration that is still live may retract itself: a
+        // later `register` under the same id has already replaced it.
         if (shortcutsRef.current.get(shortcut.id) !== shortcut) return;
         shortcutsRef.current.delete(shortcut.id);
         registrationTokensRef.current.delete(shortcut.id);

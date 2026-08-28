@@ -20,15 +20,15 @@ export function sshForwardProvenanceWarning(
  * Three states, because the boolean was conflating three facts:
  */
 export type SshForwardProbeState =
-/** The probe has not produced a verdict yet. Claim nothing. */
+  /** The probe has not produced a verdict yet. Claim nothing. */
   | 'checking'
-/** The probe completed and the instance answered. */
+  /** The probe completed and the instance answered. */
   | 'reached'
-/**
-* The probe failed. That is consistent with the host being off — and with
-* it being awake and answering everything else. This device observes only
-* its own failed request, never the host's power state.
-*/
+  /**
+   * The probe failed. That is consistent with the host being off — and with
+   * it being awake and answering everything else. This device observes only
+   * its own failed request, never the host's power state.
+   */
   | 'unreached';
 
 /**
@@ -62,7 +62,7 @@ export function sshForwardLifecycleLabel(input: {
     return 'Launcher closed';
   }
   if (input.probe === 'unreached') return "Can't reach this Station";
-// 'checking' deliberately renders nothing rather than a spinner label: the
-// row already exists and a claim either way would be invented.
+  // 'checking' deliberately renders nothing rather than a spinner label: the
+  // row already exists and a claim either way would be invented.
   return null;
 }

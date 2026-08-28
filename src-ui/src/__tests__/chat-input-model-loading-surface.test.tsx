@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
-* archive#1825: the model popover's `React.lazy(SessionModelPicker)`
+ * archive#1825: the model popover's `React.lazy(SessionModelPicker)`
  * Suspense fallback ("Loading models…") rendered as bare text with no
  * surface behind it — floating over the page, reading as broken rather than
  * "about to load" — because `.session-model-picker__loading` had no CSS
@@ -149,13 +149,13 @@ describe('model popover Suspense fallback (station#1825 item 2)', () => {
   test('the first-open loading state renders with its own surface, not bare text over the page', () => {
     renderChatInputArea({ modelQuery: '' });
 
-// This must be observable on the very FIRST, synchronous render — before
-// the lazy chunk's promise has had a chance to resolve — or the test
-// proves nothing about the first-open defect.
-// The wait now renders the shared row skeleton and names itself in the
-// accessible label ('s one loading vocabulary) rather than as
-// bespoke visible copy — but it keeps this wrapper class, because the
-// wrapper is what carries the surface this test exists to protect.
+    // This must be observable on the very FIRST, synchronous render — before
+    // the lazy chunk's promise has had a chance to resolve — or the test
+    // proves nothing about the first-open defect.
+    // The wait now renders the shared row skeleton and names itself in the
+    // accessible label ('s one loading vocabulary) rather than as
+    // bespoke visible copy — but it keeps this wrapper class, because the
+    // wrapper is what carries the surface this test exists to protect.
     const loading = screen.getByLabelText('Loading models');
     expect(loading.className).toContain('skeleton-list');
     expect(loading.closest('.session-model-picker__loading')).toBeTruthy();
@@ -169,16 +169,16 @@ describe('model popover Suspense fallback (station#1825 item 2)', () => {
       '.session-model-picker__loading should be defined in the eagerly loaded index.css',
     ).toBeTruthy();
     const body = rule![1];
-// A real surface, not just muted text: a border/background/shadow that
-// matches what SessionModelPicker itself looks like once it mounts.
+    // A real surface, not just muted text: a border/background/shadow that
+    // matches what SessionModelPicker itself looks like once it mounts.
     expect(body).toMatch(/border:/);
     expect(body).toMatch(/background:/);
     expect(body).toMatch(/box-shadow:/);
 
-// The actual pre-fix defect: this class must not be (re-)defined in the
-// lazy SessionModelPicker.css chunk — that stylesheet has not loaded yet
-// during exactly this render, so any styling placed there is invisible
-// the one time it matters.
+    // The actual pre-fix defect: this class must not be (re-)defined in the
+    // lazy SessionModelPicker.css chunk — that stylesheet has not loaded yet
+    // during exactly this render, so any styling placed there is invisible
+    // the one time it matters.
     const lazyCss = readSource('components/session/SessionModelPicker.css');
     expect(lazyCss).not.toMatch(/\.session-model-picker__loading\s*\{/);
   });

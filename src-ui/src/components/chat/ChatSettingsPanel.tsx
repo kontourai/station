@@ -18,29 +18,29 @@ interface ChatSettingsPanelProps {
   setShowReasoning: (show: boolean) => void;
   showToolDetails: boolean;
   setShowToolDetails: (show: boolean) => void;
-/** The placement in EFFECT on this device — what the picker marks active. */
+  /** The placement in EFFECT on this device — what the picker marks active. */
   dockMode: DockMode;
-/**
-* The placement this device has STORED, which on a narrow screen is not the
-* one in effect (archive#3928). They are different facts and the panel needs
-* both: one to say what is happening, the other to say what is being kept.
-* Conflating them made the "remembered" sentence unreachable — it compared
-* the effective placement against the only available one, which are equal by
-* construction, so the reassurance never rendered in the case it exists for.
-*/
+  /**
+   * The placement this device has STORED, which on a narrow screen is not the
+   * one in effect (archive#3928). They are different facts and the panel needs
+   * both: one to say what is happening, the other to say what is being kept.
+   * Conflating them made the "remembered" sentence unreachable — it compared
+   * the effective placement against the only available one, which are equal by
+   * construction, so the reassurance never rendered in the case it exists for.
+   */
   storedDockSlotPlacement: DockMode;
   availableDockSlotPlacements: readonly DockMode[];
   onDockModeChange: (mode: DockMode) => void;
   autoHideEnabled: boolean;
   setAutoHideEnabled: (v: boolean) => void;
-/**
-* archive#3310: "Summarize session" demoted out of the transcript
-* the un-generated state no longer costs a permanent band above every
-* chat, so this gear panel is its entry point (reachable from the desktop
-* header's gear and the mobile overflow's "Chat settings"). Absent when no
-* conversation is active. This is a per-session ACTION, not a device
-* setting — its section says so beside the device-scope caption above.
-*/
+  /**
+   * archive#3310: "Summarize session" demoted out of the transcript
+   * the un-generated state no longer costs a permanent band above every
+   * chat, so this gear panel is its entry point (reachable from the desktop
+   * header's gear and the mobile overflow's "Chat settings"). Absent when no
+   * conversation is active. This is a per-session ACTION, not a device
+   * setting — its section says so beside the device-scope caption above.
+   */
   sessionSummary?: {
     isGenerating: boolean;
     onGenerate: () => void;
@@ -96,14 +96,14 @@ export function ChatSettingsPanel({
       <h3 id="chat-settings-title" className="chat-settings-modal__title">
         Chat Settings
       </h3>
- {/* archive#settings-revamp: every control below is device-
+      {/* archive#settings-revamp: every control below is device-
             scope (docs/design/settings-architecture.md §3 S4), consistent
             with the /settings "This device" scope caption. */}
       <p className="chat-settings-modal__caption">
         Saved to this device only — never sent to the server.
       </p>
 
-{/*
+      {/*
         One placement available — a phone — is answered, not offered, and not
         hidden (station#3928).
 

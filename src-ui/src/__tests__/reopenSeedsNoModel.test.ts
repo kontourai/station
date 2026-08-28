@@ -27,8 +27,8 @@ describe('a reopened conversation asks for nothing until it knows', () => {
   });
 
   test('a known session model is still sent', () => {
-// The negative control: withholding the override must not also withhold
-// a model the session genuinely has.
+    // The negative control: withholding the override must not also withhold
+    // a model the session genuinely has.
     expect(
       resolveTurnModel({ requestedModel: undefined, model: 'glm-5.3' }),
     ).toEqual({ kind: 'override', modelId: 'glm-5.3' });
@@ -36,11 +36,11 @@ describe('a reopened conversation asks for nothing until it knows', () => {
 });
 
 describe('the reopen decision withholds the model', () => {
-// NOT the caller — the extracted callee. An adversarial review showed the
-// caller (useChatDockActions) can still be reverted to its pre-fix line
-// with every test here green, because nothing asserts it calls this at
-// all. The caller assertion lives in useChatDockActions.test.tsx, where a
- // harness already renders the hook (archive#3165).
+  // NOT the caller — the extracted callee. An adversarial review showed the
+  // caller (useChatDockActions) can still be reverted to its pre-fix line
+  // with every test here green, because nothing asserts it calls this at
+  // all. The caller assertion lives in useChatDockActions.test.tsx, where a
+  // harness already renders the hook (archive#3165).
   const agentExecution = {
     executionMode: 'external',
     model: 'opencode/deepseek-v4-flash-free',
@@ -51,7 +51,7 @@ describe('the reopen decision withholds the model', () => {
     const seeded = reopenedSessionExecution(agentExecution, undefined);
     expect(seeded.model).toBeUndefined();
     expect(seeded.modelSource).toBe('unknown');
-// And end to end: what that seed asks for on the wire is nothing.
+    // And end to end: what that seed asks for on the wire is nothing.
     expect(
       resolveTurnModel({ requestedModel: undefined, model: seeded.model }),
     ).toEqual({ kind: 'engine-selected' });

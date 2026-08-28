@@ -28,52 +28,52 @@ export function ACPConnectionDetailModal({
   conn: ACPConnectionInfo;
   agents: AgentSummary[];
   onClose: () => void;
-/**
- * Explicit per-agent opt-in (docs/design/connections-onboarding.md §5):
-* persist the connection's `provideToolServers` selection. Absent means
-* this surface can't mutate the toggle (falls back to read-only display).
-* May return a promise; internal serialization awaits it to detect
-* settlement (see the dispatch/reconcile logic below) rather than relying
-* on an externally-passed pending flag alone.
-*/
+  /**
+   * Explicit per-agent opt-in (docs/design/connections-onboarding.md §5):
+   * persist the connection's `provideToolServers` selection. Absent means
+   * this surface can't mutate the toggle (falls back to read-only display).
+   * May return a promise; internal serialization awaits it to detect
+   * settlement (see the dispatch/reconcile logic below) rather than relying
+   * on an externally-passed pending flag alone.
+   */
   onUpdateToolServers?: (ids: string[]) => void | Promise<void>;
-/**
-* Optional external "a provideToolServers mutation is pending" signal —
-* OR'd into the disabled-while-sending UI affordance. Not load-bearing
-* for correctness: the dispatch/reconcile logic below is self-contained
-* and does not depend on this prop's timing (it can lag a render behind
-* the internal ref state).
-*/
+  /**
+   * Optional external "a provideToolServers mutation is pending" signal —
+   * OR'd into the disabled-while-sending UI affordance. Not load-bearing
+   * for correctness: the dispatch/reconcile logic below is self-contained
+   * and does not depend on this prop's timing (it can lag a render behind
+   * the internal ref state).
+   */
   isUpdatingToolServers?: boolean;
 }) {
   const isMobile = useIsMobile();
-// Plugin-owned connections are projected from plugin configuration. The
-// connection update endpoint intentionally only persists user-owned
-// connections, so this detail view must never imply these controls can
-// change a plugin-owned connection.
+  // Plugin-owned connections are projected from plugin configuration. The
+  // connection update endpoint intentionally only persists user-owned
+  // connections, so this detail view must never imply these controls can
+  // change a plugin-owned connection.
   const isPluginManaged = conn.source === 'plugin';
   const canUpdateToolServers = !isPluginManaged && Boolean(onUpdateToolServers);
   const { isConnecting, statusLabel, statusColor } =
     getACPConnectionStatusView(conn);
   const { data: integrations = [] } = useIntegrationsQuery();
-// ACP can receive only local stdio MCP servers. Remote transports stay
-// Station-owned and are not offered in this external-engine picker.
+  // ACP can receive only local stdio MCP servers. Remote transports stay
+  // Station-owned and are not offered in this external-engine picker.
   const stdioToolServers = integrations.filter(
     (integration) =>
       integration.kind === 'mcp' && integration.transport === 'stdio',
   );
 
-// Serialization : rapid toggles must never lose a
-// selection to a reversed-completion race. `desiredRef` is the
-// latest-wanted selection, updated synchronously on every toggle;
-// `lastSentRef` is what the most recent dispatch actually sent;
-// `inFlightRef` is true for the duration of exactly one dispatch. A toggle
-// while a dispatch is in flight only updates `desiredRef`/local state — it
-// does NOT fire a second overlapping call. When the in-flight dispatch
-// settles, it compares `desiredRef` against `lastSentRef` and, if they
-// differ (a toggle happened mid-flight), dispatches the delta once. This
-// is intentionally independent of the `isUpdatingToolServers` prop, which
-// can lag a render behind (it reflects a parent-owned mutation object).
+  // Serialization : rapid toggles must never lose a
+  // selection to a reversed-completion race. `desiredRef` is the
+  // latest-wanted selection, updated synchronously on every toggle;
+  // `lastSentRef` is what the most recent dispatch actually sent;
+  // `inFlightRef` is true for the duration of exactly one dispatch. A toggle
+  // while a dispatch is in flight only updates `desiredRef`/local state — it
+  // does NOT fire a second overlapping call. When the in-flight dispatch
+  // settles, it compares `desiredRef` against `lastSentRef` and, if they
+  // differ (a toggle happened mid-flight), dispatches the delta once. This
+  // is intentionally independent of the `isUpdatingToolServers` prop, which
+  // can lag a render behind (it reflects a parent-owned mutation object).
   const [localToolServerIds, setLocalToolServerIds] = useState<string[]>(
     () => conn.provideToolServers ?? [],
   );
@@ -87,8 +87,8 @@ export function ACPConnectionDetailModal({
 
   useEffect(() => {
     if (prevConnIdRef.current !== conn.id) {
-// Switched to a different connection (the modal instance is reused
-// across selections) — reset all local/ref state from scratch.
+      // Switched to a different connection (the modal instance is reused
+      // across selections) — reset all local/ref state from scratch.
       prevConnIdRef.current = conn.id;
       const next = conn.provideToolServers ?? [];
       desiredRef.current = next;
@@ -100,9 +100,9 @@ export function ACPConnectionDetailModal({
       setLocalToolServerIds(next);
       return;
     }
-// Same connection: only resync from the server echo when there is no
-// pending local edit (idle), so a confirmed server value can still
-// reconcile local state without clobbering an in-progress change.
+    // Same connection: only resync from the server echo when there is no
+    // pending local edit (idle), so a confirmed server value can still
+    // reconcile local state without clobbering an in-progress change.
     if (
       !inFlightRef.current &&
       sameToolServerIds(desiredRef.current, lastSentRef.current)
@@ -140,8 +140,8 @@ export function ACPConnectionDetailModal({
         inFlightRef.current = false;
         const desired = desiredRef.current;
         if (!sameToolServerIds(desired, lastSentRef.current)) {
-// A toggle landed while this dispatch was in flight — send the
-// reconciled delta once, rather than dropping it.
+          // A toggle landed while this dispatch was in flight — send the
+          // reconciled delta once, rather than dropping it.
           dispatchSelection(desired);
           return;
         }
@@ -158,8 +158,8 @@ export function ACPConnectionDetailModal({
     desiredRef.current = next;
     setLocalToolServerIds(next);
     if (inFlightRef.current) {
-// A dispatch is already in flight; its settle handler will notice
-// `desiredRef` moved and send this update once that one resolves.
+      // A dispatch is already in flight; its settle handler will notice
+      // `desiredRef` moved and send this update once that one resolves.
       return;
     }
     dispatchSelection(next);
@@ -256,7 +256,7 @@ export function ACPConnectionDetailModal({
           </div>
         </div>
 
-{/* archive#3722: the two-row capability description, derived
+        {/* archive#3722: the two-row capability description, derived
             from the engine capability matrix. Custom engines all resolve
             through the 'acp' matrix — per-connection capability discovery is
             the issue's remaining scope. */}

@@ -38,14 +38,14 @@ import { findAuthoredAgentForEngineConnection } from '../modals/new-chat-modal-u
 
 /**
  * - `available` — ready, addressable, and not enabled yet. The only state the
-*   chapter can act on.
+ *   chapter can act on.
  * - `enabled` — an authored Agent is already bound to this engine's
-*   connection. Rendered checked and locked so idempotency is *visible*, and
-*   excluded from every batch so a second device creates nothing.
+ *   connection. Rendered checked and locked so idempotency is *visible*, and
+ *   excluded from every batch so a second device creates nothing.
  * - `blocked` — Station saw the engine (or could not verify it) but cannot
-*   enable it yet. Shown with its reason, never offered: the server withholds
-*   the alias row's `enable` signal for exactly these, so a click could not
-*   succeed.
+ *   enable it yet. Shown with its reason, never offered: the server withholds
+ *   the alias row's `enable` signal for exactly these, so a click could not
+ *   succeed.
  * - `undetected` — not found on this machine. Secondary, never checked.
  */
 export type FirstRunEngineState =
@@ -59,18 +59,18 @@ export interface FirstRunEngineOption {
   name: string;
   engineConnectionId?: EngineConnectionId;
   state: FirstRunEngineState;
-/** Checked when the checklist opens. */
+  /** Checked when the checklist opens. */
   defaultChecked: boolean;
-/** The user may change this row's checkbox. */
+  /** The user may change this row's checkbox. */
   selectable: boolean;
-/** Why this row reads the way it does. Absent only for a plain `available`. */
+  /** Why this row reads the way it does. Absent only for a plain `available`. */
   note?: string;
 }
 
 export interface FirstRunEnablePlanItem {
   engineId: string;
   name: string;
-/** The only thing the create needs: the server names the Agent. */
+  /** The only thing the create needs: the server names the Agent. */
   engineConnectionId: EngineConnectionId;
 }
 
@@ -81,11 +81,11 @@ interface FirstRunEnableOutcomeBase {
 }
 
 export type FirstRunEnableOutcome =
-// `existing` is a SUCCESS, and separate from `created` because the report
-// states what happened: materialize-engine is find-or-create, so a second
-// device (or a second confirm) resolves to the Agent that is already there
-// and nothing was created. Reporting that as "set up as X" would be a
-// sentence about work this run did not do.
+  // `existing` is a SUCCESS, and separate from `created` because the report
+  // states what happened: materialize-engine is find-or-create, so a second
+  // device (or a second confirm) resolves to the Agent that is already there
+  // and nothing was created. Reporting that as "set up as X" would be a
+  // sentence about work this run did not do.
   | (FirstRunEnableOutcomeBase & { status: 'created' })
   | (FirstRunEnableOutcomeBase & { status: 'existing' })
   | (FirstRunEnableOutcomeBase & { status: 'warned'; warnings: string[] })
@@ -146,10 +146,10 @@ function toOption(
     };
   }
   if (engine.ready) {
-// Ready but unaddressable: the registry holds no public
-// EngineConnectionId for this adapter, so there is nothing an Agent could
-// bind to. Show it rather than dropping the row — a silently missing
-// engine is indistinguishable from one Station never supported.
+    // Ready but unaddressable: the registry holds no public
+    // EngineConnectionId for this adapter, so there is nothing an Agent could
+    // bind to. Show it rather than dropping the row — a silently missing
+    // engine is indistinguishable from one Station never supported.
     if (!engine.engineConnectionId) {
       return {
         ...base,
@@ -180,10 +180,10 @@ function toOption(
     state: 'undetected',
     defaultChecked: false,
     selectable: false,
-// archive#3843: "this machine" is the HOST's machine. On a paired device that
-// sentence is a claim about the wrong computer, so the note names the
-// host and says where the CLI would have to be installed. It still claims
-// nothing about installation state — see `notReadyNote`'s restraint.
+    // archive#3843: "this machine" is the HOST's machine. On a paired device that
+    // sentence is a claim about the wrong computer, so the note names the
+    // host and says where the CLI would have to be installed. It still claims
+    // nothing about installation state — see `notReadyNote`'s restraint.
     note: hostActionCopy('engine-missing', devicePresentation),
   };
 }
@@ -207,11 +207,11 @@ export function buildFirstRunEngineOptions({
 }: {
   engines: readonly ExternalEngineReadinessProjection[];
   agents: AgentData[];
-/**
-* Which machine is reading the checklist. Absent means the server has not
-* said, and the rows then read the way they always have — no device is
-* claimed from nothing.
-*/
+  /**
+   * Which machine is reading the checklist. Absent means the server has not
+   * said, and the rows then read the way they always have — no device is
+   * claimed from nothing.
+   */
   devicePresentation?: DevicePresentation | undefined;
 }): FirstRunEngineOption[] {
   const scopedAgents = selectGlobalContextAgents(agents);
@@ -298,13 +298,13 @@ export function buildFirstRunEnableBatch(
 export function unplannableFirstRunEngineOutcomes(
   options: readonly FirstRunEngineOption[],
   requestedEngineIds: readonly string[],
-/**
-* Display names already known for these engines — a retry's own previous
-* report. An engine that has left the catalog takes its name with it, and
-* "codex: could not be set up" puts a raw id in front of a person; the name
-* the report ALREADY used for that engine is both better copy and a truer
-* statement, because it is what the user was told a moment ago.
-*/
+  /**
+   * Display names already known for these engines — a retry's own previous
+   * report. An engine that has left the catalog takes its name with it, and
+   * "codex: could not be set up" puts a raw id in front of a person; the name
+   * the report ALREADY used for that engine is both better copy and a truer
+   * statement, because it is what the user was told a moment ago.
+   */
   knownNames?: ReadonlyMap<string, string>,
 ): FirstRunEnableOutcome[] {
   const planned = new Set(
@@ -323,8 +323,8 @@ export function unplannableFirstRunEngineOutcomes(
     unresolved.push({
       engineId,
       name,
-// No server ever named an Agent for this engine, so the engine's own
-// name stands in rather than a name nothing created.
+      // No server ever named an Agent for this engine, so the engine's own
+      // name stands in rather than a name nothing created.
       agentName: name,
       status: 'failed',
       message: option?.note ?? 'Station is no longer offering it here.',
@@ -365,8 +365,8 @@ export function firstRunEnableFailureOutcome(
   return {
     engineId: item.engineId,
     name: item.name,
-// A failed create has no server-assigned name to report, so the engine's
-// own name stands in rather than a name nothing ever created.
+    // A failed create has no server-assigned name to report, so the engine's
+    // own name stands in rather than a name nothing ever created.
     agentName: item.name,
     status: 'failed',
     message: error instanceof Error ? error.message : String(error),
@@ -396,7 +396,7 @@ export function firstRunEnableOutcomeMessage(
 }
 
 /**
- * The engines a confirm tried to enable and could NOT 
+ * The engines a confirm tried to enable and could NOT
  *
  * The distinction this carries is the whole point: `created`, `existing` and
  * `warned` all mean the Agent is materialised — a warned create is a 2xx save

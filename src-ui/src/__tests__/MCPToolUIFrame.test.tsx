@@ -216,7 +216,7 @@ describe('MCPToolUIFrame', () => {
   );
 
   test('treats resolved remote URLs as unsupported without rendering an iframe (host opted out)', async () => {
-// mcpUiHost is on by default; this exercises the explicit opt-out path.
+    // mcpUiHost is on by default; this exercises the explicit opt-out path.
     mockConfig = { mcpUiHost: false };
     mockResolver({
       success: true,
@@ -325,10 +325,10 @@ describe('MCPToolUIFrame', () => {
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
     expect(iframe.srcdoc).toContain('hello panel');
     expect(iframe.srcdoc).toContain("default-src 'none'");
-// No declared csp → deny-by-default network, and no permissions → no allow.
+    // No declared csp → deny-by-default network, and no permissions → no allow.
     expect(iframe.srcdoc).toContain("connect-src 'none'");
     expect(iframe.getAttribute('allow')).toBeNull();
-// The unsupported notice must NOT show when the host render is active.
+    // The unsupported notice must NOT show when the host render is active.
     expect(screen.queryByText('MCP UI unsupported')).toBeNull();
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue/resource',
@@ -338,13 +338,13 @@ describe('MCPToolUIFrame', () => {
 
   test('does not grant the Station shell nonce to untrusted srcdoc scripts', async () => {
     mockConfig = { mcpUiHost: true };
-// Seed the nonce where `resolveCspNonce` actually reads it (the marker
-// element). Seeding the old `window.__STATION_CSP_NONCE__` global left
-// this regression test powerless: that carrier was removed, so the
-// assertion would pass even if someone wired `resolveCspNonce` in here
- // tomorrow (archive#4287).
-// `globalThis.document` on purpose: this test shadows `document` further
-// down with the PARSED srcdoc, so the bare name is in its TDZ up here.
+    // Seed the nonce where `resolveCspNonce` actually reads it (the marker
+    // element). Seeding the old `window.__STATION_CSP_NONCE__` global left
+    // this regression test powerless: that carrier was removed, so the
+    // assertion would pass even if someone wired `resolveCspNonce` in here
+    // tomorrow (archive#4287).
+    // `globalThis.document` on purpose: this test shadows `document` further
+    // down with the PARSED srcdoc, so the bare name is in its TDZ up here.
     const cspMarker = globalThis.document.createElement('script');
     cspMarker.nonce = 'shell-csp-nonce';
     cspMarker.setAttribute('data-station-csp-nonce', '');
@@ -404,7 +404,7 @@ describe('MCPToolUIFrame', () => {
   });
 
   test('renders by default (mcpUiHost unset → host on)', async () => {
-// No mcpUiHost in config: the host is on by default and must render.
+    // No mcpUiHost in config: the host is on by default and must render.
     mockConfig = { defaultModel: 'claude-sonnet' } as never;
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith('/resource')) {
@@ -495,14 +495,14 @@ describe('MCPToolUIFrame', () => {
     const iframe = (await screen.findByTitle(
       'MCP tool UI: github/create_issue',
     )) as HTMLIFrameElement;
-// Declared https connect domain is allowed; insecure http is dropped.
+    // Declared https connect domain is allowed; insecure http is dropped.
     expect(iframe.srcdoc).toContain(
       'connect-src https://api.example.com wss://events.example.com',
     );
     expect(iframe.srcdoc).not.toContain('http://insecure.example.com');
-// Resource domain flows into script/style/img directives.
+    // Resource domain flows into script/style/img directives.
     expect(iframe.srcdoc).toContain('https://cdn.example.com');
-// Permission-policy from declared permissions.
+    // Permission-policy from declared permissions.
     expect(iframe.getAttribute('allow')).toContain('clipboard-write');
   });
 
@@ -550,7 +550,7 @@ describe('MCPToolUIFrame', () => {
   });
 
   test('loads the resource before mounting the different-origin sandbox proxy', async () => {
-// A distinct origin from jsdom's window.location.origin.
+    // A distinct origin from jsdom's window.location.origin.
     const frameOrigin = 'http://localhost:4555';
     mockConfig = { mcpUiHost: true, mcpUiFrameOrigin: frameOrigin };
     fetchMock.mockImplementation(async (url: string) => {
@@ -589,14 +589,14 @@ describe('MCPToolUIFrame', () => {
     const iframe = (await screen.findByTitle(
       'MCP tool UI: github/create_issue',
     )) as HTMLIFrameElement;
-// allow-same-origin is granted ONLY because the origin is verified distinct.
+    // allow-same-origin is granted ONLY because the origin is verified distinct.
     expect(iframe.getAttribute('sandbox')).toBe(
       'allow-scripts allow-same-origin',
     );
     expect(iframe.getAttribute('src')).toBe(`${frameOrigin}/mcp-ui/proxy`);
     expect(iframe.getAttribute('srcdoc')).toBeNull();
-// The host fetches and pins the raw resource before delivering it through
-// the reserved sandbox-resource-ready notification.
+    // The host fetches and pins the raw resource before delivering it through
+    // the reserved sandbox-resource-ready notification.
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue/resource',
       undefined,
@@ -604,7 +604,7 @@ describe('MCPToolUIFrame', () => {
   });
 
   test('degrades to opaque-origin srcdoc when the frame origin equals Station origin', async () => {
-// A misconfigured same-origin frame must NOT get allow-same-origin.
+    // A misconfigured same-origin frame must NOT get allow-same-origin.
     mockConfig = {
       mcpUiHost: true,
       mcpUiFrameOrigin: window.location.origin,
@@ -675,7 +675,7 @@ describe('MCPToolUIFrame', () => {
           }),
         };
       }
-// SEP-1865 resolve finds no _meta.ui.resourceUri → missing_resource.
+      // SEP-1865 resolve finds no _meta.ui.resourceUri → missing_resource.
       return {
         ok: true,
         statusText: 'OK',
@@ -699,7 +699,7 @@ describe('MCPToolUIFrame', () => {
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
     expect(iframe.srcdoc).toContain('embedded mcp-ui.dev resource');
     expect(iframe.srcdoc).toContain("default-src 'none'");
-// It fetched the embedded endpoint, not the SEP-1865 /resource endpoint.
+    // It fetched the embedded endpoint, not the SEP-1865 /resource endpoint.
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:3141/integrations/github/ui/create_issue/embedded',
       undefined,
@@ -812,7 +812,7 @@ describe('MCPToolUIFrame', () => {
       },
     });
 
-// No approvalPolicy (defaults to require) → embedded fetch must not happen.
+    // No approvalPolicy (defaults to require) → embedded fetch must not happen.
     renderFrame({ ref: 'github/create_issue' });
 
     expect(await screen.findByText('MCP UI resource missing')).toBeTruthy();
@@ -1044,8 +1044,8 @@ describe('MCPToolUIFrame', () => {
       content: [{ type: 'text', text: 'Unassessed' }],
       structuredContent: { version: 'surface.basis-projection/v1' },
     };
-// Use the same DOM authority as Station: ThemeToggle applies data-theme
-// after render. Pre-setting inline tokens hides stale render-time reads.
+    // Use the same DOM authority as Station: ThemeToggle applies data-theme
+    // after render. Pre-setting inline tokens hides stale render-time reads.
     const hostThemeStyles = document.createElement('style');
     hostThemeStyles.setAttribute('data-mcp-host-theme-test', '');
     hostThemeStyles.textContent =
@@ -1316,8 +1316,8 @@ describe('MCPToolUIFrame', () => {
         const args = JSON.parse(String(init?.body));
         const isA = url.includes('/task-a/');
         if (isA && args.continuationToken) return late;
-// The bridge treats structured content as opaque; domain parser
-// validation is separately exercised with real pages in browser tests.
+        // The bridge treats structured content as opaque; domain parser
+        // validation is separately exercised with real pages in browser tests.
         return Promise.resolve(
           response(
             {

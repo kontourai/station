@@ -19,7 +19,7 @@ export type ProjectAgentFilterState =
 
 /**
  * §3.3 two-input rule applied at layout prompt/action launch time
-* (archive#1004): a prompt/action's
+ * (archive#1004): a prompt/action's
  * `agent` ref (or the layout's `defaultAgent` fallback) must resolve to an
  * agent actually AVAILABLE in this project under the SAME rule the
  * new-chat picker and project-settings filter apply — owned by this

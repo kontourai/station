@@ -94,9 +94,9 @@ describe('ProviderConnectionForm — Bedrock auth modes (docs/design/connections
     expect(options).toEqual(['', 'default', 'work']);
   });
 
-// loading/error/genuine-empty must be
-// distinguishable — never show the empty message while still loading or
-// while the request failed.
+  // loading/error/genuine-empty must be
+  // distinguishable — never show the empty message while still loading or
+  // while the request failed.
   test('named-profile mode shows a distinct loading message while the profile list is in flight', () => {
     awsProfilesResult = {
       data: undefined,
@@ -282,8 +282,8 @@ function anthropicForm(
     config: {},
     enabled: true,
     capabilities: ['llm'],
-// What the server derives from "a non-empty string is saved in the key
- // box" — the state found rendering as "Ready".
+    // What the server derives from "a non-empty string is saved in the key
+    // box" — the state found rendering as "Ready".
     status: 'ready',
     prerequisites: [],
     lastCheckedAt: null,
@@ -362,7 +362,7 @@ describe('ProviderConnectionForm — readiness is derived, not labelled (RT-06/R
       '.provider-detail__summary',
     ) as HTMLElement;
     expect(summary.textContent).toContain('Check failed');
-// Last check is no longer "Not checked" after a test that ran.
+    // Last check is no longer "Not checked" after a test that ran.
     expect(summary.textContent).not.toContain('Not checked');
     expect(
       document.querySelector('.provider-detail__notice')?.textContent,
@@ -372,7 +372,7 @@ describe('ProviderConnectionForm — readiness is derived, not labelled (RT-06/R
     ).toBeTruthy();
   });
 
- // — reachable, no catalogue: neither Ready nor Check failed.
+  // — reachable, no catalogue: neither Ready nor Check failed.
   test('a catalog-unavailable check reads Reachable — no model catalog', () => {
     render(
       <ProviderConnectionForm
@@ -408,7 +408,7 @@ describe('ProviderConnectionForm — readiness is derived, not labelled (RT-06/R
     ) as HTMLElement;
     expect(summary.textContent).toContain('Reachable — no model catalog');
     expect(summary.textContent).not.toContain('Check failed');
-// The rail cannot reach Ready on reachability alone.
+    // The rail cannot reach Ready on reachability alone.
     expect(
       Array.from(
         document.querySelectorAll('.provider-detail__progress-step'),
@@ -418,11 +418,11 @@ describe('ProviderConnectionForm — readiness is derived, not labelled (RT-06/R
     ).toEqual([true, true, false]);
   });
 
- // — a passed smoke is a complete chat turn; it must be read
-// before an OLDER refusal, or it can never repair the presentation.
-// and only before an older one: smoke receipts stay
-// fresh for 24 hours, so unconditional precedence rendered Ready over a
-// genuine refusal observed after the smoke.
+  // — a passed smoke is a complete chat turn; it must be read
+  // before an OLDER refusal, or it can never repair the presentation.
+  // and only before an older one: smoke receipts stay
+  // fresh for 24 hours, so unconditional precedence rendered Ready over a
+  // genuine refusal observed after the smoke.
   function smokeVersusCheck(
     smokeTestedAt: string,
     checkCheckedAt: string,
@@ -432,10 +432,10 @@ describe('ProviderConnectionForm — readiness is derived, not labelled (RT-06/R
         form={anthropicForm({
           readinessEvidence: {
             ...NOT_VERIFIED,
-// The server-derived level for the OLDER-refusal ordering. The
-// screen must reach its own verdict from the two timestamps, not
-// from this word, which is exactly what the newer-refusal case
-// below proves.
+            // The server-derived level for the OLDER-refusal ordering. The
+            // screen must reach its own verdict from the two timestamps, not
+            // from this word, which is exactly what the newer-refusal case
+            // below proves.
             level: 'smoke-passed',
             smoke: {
               status: 'passed',
@@ -485,8 +485,8 @@ describe('ProviderConnectionForm — readiness is derived, not labelled (RT-06/R
     expect(summary.textContent).not.toContain('Ready to use');
   });
 
-// one listing that could not reach the endpoint is a
-// degraded-reachability notice, not a durable refusal.
+  // one listing that could not reach the endpoint is a
+  // degraded-reachability notice, not a durable refusal.
   test('an unreachable check inside its grace window reads Unreachable — retrying', () => {
     render(
       <ProviderConnectionForm
@@ -556,8 +556,8 @@ describe('ProviderConnectionForm — readiness is derived, not labelled (RT-06/R
     expect(summary.textContent).not.toContain('retrying');
   });
 
-// the button used to promise nothing and the contract
-// called the whole check non-billable.
+  // the button used to promise nothing and the contract
+  // called the whole check non-billable.
   test('Test Connection discloses the chat request it may send', () => {
     render(
       <ProviderConnectionForm
@@ -612,13 +612,13 @@ describe('ProviderConnectionForm — readiness is derived, not labelled (RT-06/R
       'Connect',
       'Ready',
     ]);
-// Saved on the server, but nothing has reached the provider yet.
+    // Saved on the server, but nothing has reached the provider yet.
     expect(
       steps.map((step) =>
         step.classList.contains('provider-detail__progress-step--complete'),
       ),
     ).toEqual([true, true, false]);
-// The same fact, announced rather than left to a private class name.
+    // The same fact, announced rather than left to a private class name.
     expect(steps.map((step) => step.getAttribute('aria-current'))).toEqual([
       null,
       null,
@@ -626,9 +626,9 @@ describe('ProviderConnectionForm — readiness is derived, not labelled (RT-06/R
     ]);
   });
 
- // a `catalog-ready` LEVEL is not enough — every listing runs
-// catalogue discovery, so the level alone could be true while nothing had
-// reached the provider. Ready requires the receipt discovery now writes.
+  // a `catalog-ready` LEVEL is not enough — every listing runs
+  // catalogue discovery, so the level alone could be true while nothing had
+  // reached the provider. Ready requires the receipt discovery now writes.
   test('a catalog-ready level with no check receipt still reads Saved — not verified', () => {
     render(
       <ProviderConnectionForm
@@ -696,7 +696,7 @@ describe('ProviderConnectionForm — readiness is derived, not labelled (RT-06/R
         step.classList.contains('provider-detail__progress-step--complete'),
       ),
     ).toEqual([true, true, true]);
-// Every step done: nothing is "the current step" any more.
+    // Every step done: nothing is "the current step" any more.
     expect(
       steps.every((step) => step.getAttribute('aria-current') === null),
     ).toBe(true);
@@ -784,9 +784,9 @@ describe('ProviderConnectionForm — openai-compat default model (#3652)', () =>
   });
 
   test('stays typable when the server offers no catalog to choose from', () => {
-// The whole point of the field: this connection's catalogue is empty or
-// unsupported, so a picker over loaded models would offer nothing and the
-// check could never be satisfied.
+    // The whole point of the field: this connection's catalogue is empty or
+    // unsupported, so a picker over loaded models would offer nothing and the
+    // check could never be satisfied.
     render(
       <ProviderConnectionForm
         form={openAiCompatForm({ modelOptions: [] })}

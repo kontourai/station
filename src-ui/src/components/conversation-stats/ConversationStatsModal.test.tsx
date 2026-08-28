@@ -79,10 +79,10 @@ describe('ConversationStatsModal — measured figures', () => {
 });
 
 describe('ConversationStatsModal — unmeasured figures', () => {
-/**
-* The exact shape behind archive#3201's screenshot: an ACP/OpenCode
-* session reports context occupancy and nothing else.
-*/
+  /**
+   * The exact shape behind archive#3201's screenshot: an ACP/OpenCode
+   * session reports context occupancy and nothing else.
+   */
   const UNMEASURED: ConversationStatsSnapshot = {
     modelId: 'opencode-glm',
     conversationId: 'c2',
@@ -106,8 +106,8 @@ describe('ConversationStatsModal — unmeasured figures', () => {
   test('renders an em-dash for an unreported cost — never $0.0000', () => {
     renderModal(UNMEASURED);
 
-// Both the token total and the cost total are unmeasured here, so the
-// dash appears twice — the point is that neither is a `0`.
+    // Both the token total and the cost total are unmeasured here, so the
+    // dash appears twice — the point is that neither is a `0`.
     expect(screen.getAllByText('Total: —')).toHaveLength(2);
     expect(screen.getByText('Per Turn: —')).toBeTruthy();
     expect(screen.queryByText(/\$0\.0000/)).toBeNull();
@@ -120,7 +120,7 @@ describe('ConversationStatsModal — unmeasured figures', () => {
     expect(note).toContain('Custom engine');
     expect(note).toContain('token counts');
     expect(note).toContain('cost');
-// Context usage WAS reported here, so the note must not claim it wasn't.
+    // Context usage WAS reported here, so the note must not claim it wasn't.
     expect(note).not.toContain('context usage');
   });
 
@@ -154,7 +154,7 @@ describe('ConversationStatsModal — unmeasured figures', () => {
 });
 
 describe('ConversationStatsModal — partially measured figures', () => {
-/** Claude Code: tokens and cost reported, context occupancy reported too. */
+  /** Claude Code: tokens and cost reported, context occupancy reported too. */
   const PARTIAL: ConversationStatsSnapshot = {
     modelId: 'claude-sonnet-4-5',
     conversationId: 'c3',
@@ -169,9 +169,9 @@ describe('ConversationStatsModal — partially measured figures', () => {
   test('shows the tokens that were reported and dashes only the cost', () => {
     renderModal(PARTIAL);
 
-// Claude's declared cache-inclusivity is 'disjoint' (input excludes
-// cache), so the In label carries the qualifier the declaration backs
-// (archive#4196).
+    // Claude's declared cache-inclusivity is 'disjoint' (input excludes
+    // cache), so the In label carries the qualifier the declaration backs
+    // (archive#4196).
     expect(rowValue('In (uncached)')).toBe('900');
     expect(rowValue('Out')).toBe('120');
     expect(rowValue('Total')).toBe('1,020');
@@ -191,8 +191,8 @@ describe('ConversationStatsModal — partially measured figures', () => {
   test('per-turn averages dash the unmeasured breakdown instead of averaging zero', () => {
     renderModal(PARTIAL);
 
-// `userMessageTokens` is a Station-engine context measurement; an
-// external engine never reports it, and `|| 0` used to average it to 0.
+    // `userMessageTokens` is a Station-engine context measurement; an
+    // external engine never reports it, and `|| 0` used to average it to 0.
     expect(rowValue('User')).toBe('—');
     expect(rowValue('Assistant')).toBe('—');
     expect(screen.getByText(/Total In \(uncached\)\s*:\s*450/)).toBeTruthy();
@@ -207,7 +207,7 @@ describe('ConversationStatsModal — partially measured figures', () => {
 });
 
 /**
-* `stats === null` is what a settled-empty read AND a failed read
+ * `stats === null` is what a settled-empty read AND a failed read
  * both look like, and `useStats` dropped the query error entirely — so a
  * failed stats read was drawn as "No stats available", a measurement claim
  * over a request that never answered. Same defect shape as.
@@ -263,12 +263,12 @@ describe('ConversationStatsModal read failure', () => {
 });
 
 describe('ConversationStatsModal — cache-honest totals (station#4196)', () => {
-/**
-* The wire shape the 212x known-answer fixture produces end to end (the
-* fold->wire half is pinned in `conversation-manager.test.ts` with the
-* same numbers): cold-cache 3-turn Claude session, input 30/45/60,
-* cache_creation 9000/400/700, cache_read 0/9000/9400.
-*/
+  /**
+   * The wire shape the 212x known-answer fixture produces end to end (the
+   * fold->wire half is pinned in `conversation-manager.test.ts` with the
+   * same numbers): cold-cache 3-turn Claude session, input 30/45/60,
+   * cache_creation 9000/400/700, cache_read 0/9000/9400.
+   */
   const DISJOINT_CLAUDE: ConversationStatsSnapshot = {
     modelId: 'claude-sonnet-4-5',
     conversationId: 'c-cache',
@@ -288,10 +288,10 @@ describe('ConversationStatsModal — cache-honest totals (station#4196)', () => 
     expect(rowValue('In (uncached)')).toBe('135');
     expect(rowValue('Cache read')).toBe('18,400');
     expect(rowValue('Cache write')).toBe('10,100');
-// The known answer: 135 + 10,100 + 18,400 — where the pre-fix modal
-// said 135 under the same "sent across all API calls" subtitle.
+    // The known answer: 135 + 10,100 + 18,400 — where the pre-fix modal
+    // said 135 under the same "sent across all API calls" subtitle.
     expect(rowValue('Prompt total')).toBe('28,635');
-// And the card total includes cache too: 735 + 28,500.
+    // And the card total includes cache too: 735 + 28,500.
     expect(rowValue('Total')).toBe('29,235');
   });
 
@@ -308,9 +308,9 @@ describe('ConversationStatsModal — cache-honest totals (station#4196)', () => 
       measurement: { source: 'engine-events', provider: 'codex' },
     });
 
-// No inclusivity claim on the label (whether codex's input already
-// contains its cached tokens is undeclared-as-unverified), no
-// Station-built sum anywhere — the provider's own figures stand.
+    // No inclusivity claim on the label (whether codex's input already
+    // contains its cached tokens is undeclared-as-unverified), no
+    // Station-built sum anywhere — the provider's own figures stand.
     expect(rowValue('In')).toBe('2,200');
     expect(rowValue('Cache read')).toBe('900');
     expect(screen.queryByText(/Prompt total/)).toBeNull();
@@ -330,9 +330,9 @@ describe('ConversationStatsModal — cache-honest totals (station#4196)', () => 
       measurement: { source: 'engine-events', provider: 'claude' },
     });
 
-// The declaration still backs the qualifier — claude input excludes
-// cache whether or not this session used any — but with no cache
-// observation there is no row and no summed claim (absent is not zero).
+    // The declaration still backs the qualifier — claude input excludes
+    // cache whether or not this session used any — but with no cache
+    // observation there is no row and no summed claim (absent is not zero).
     expect(rowValue('In (uncached)')).toBe('500');
     expect(screen.queryByText(/Cache read/)).toBeNull();
     expect(screen.queryByText(/Cache write/)).toBeNull();

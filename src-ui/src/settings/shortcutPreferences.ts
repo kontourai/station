@@ -11,7 +11,7 @@ import { deviceSettingsStore } from '../lib/device-settings-store';
 
 /**
  * Legacy compat window-event name — `deviceSettingsStore` itself dispatches
-* this on every mutation (see its `notify`), so consumers that still
+ * this on every mutation (see its `notify`), so consumers that still
  * `window.addEventListener(DEVICE_SETTINGS_EVENT, …)` (rather than the
  * store's own `subscribe`) keep working unchanged.
  */

@@ -72,15 +72,15 @@ vi.mock('../contexts/open-chats-store', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
-// archive#3122: Home resolves its Workspace Pane renderer through
-// the shared selector, which reads the MCP-app host capability from config.
-// Undefined data is the real pre-load shape, and Home's built-in renderer
-// declares no MCP capability, so no selection here depends on it.
+  // archive#3122: Home resolves its Workspace Pane renderer through
+  // the shared selector, which reads the MCP-app host capability from config.
+  // Undefined data is the real pre-load shape, and Home's built-in renderer
+  // declares no MCP capability, so no selection here depends on it.
   useConfigQuery: () => ({ data: undefined, error: null }),
-// archive#3391: Home resolves a work item's model id against this catalog so
-// its rows name a model the way the New Chat cards do. Empty here — these
-// tests supply labels through their own fixtures, and an empty catalog is
-// the honest "this Station knows no models" case rather than a stub name.
+  // archive#3391: Home resolves a work item's model id against this catalog so
+  // its rows name a model the way the New Chat cards do. Empty here — these
+  // tests supply labels through their own fixtures, and an empty catalog is
+  // the honest "this Station knows no models" case rather than a stub name.
   useModelPickerCatalogQuery: () => ({
     data: {
       agentConnections: [],
@@ -108,16 +108,16 @@ vi.mock('@kontourai/station-sdk', () => ({
     isLoading: fixtures.tasksLoading,
     refetch: fixtures.tasksRefetch,
   }),
-// archive#1097: pending by default (`data: undefined`) — proves the local
-// list above never waits on this.
+  // archive#1097: pending by default (`data: undefined`) — proves the local
+  // list above never waits on this.
   useRemoteSessionsQuery: () => ({ data: fixtures.remoteSessionsResult }),
-// Home mounts StarterWorkCard whenever first run is `completed`, which every
-// test here is. The card's own states belong to
-// `components/home/__tests__/StarterWorkCard.test.tsx`; here it is settled on
-// `unbound`, its steady no-starter-yet shape. Deliberately not the pending
-// shape: that renders a skeleton carrying `role="status"`, which would make
-// this file's two "no false empty state while a lane loads" tests ambiguous
-// against the lane skeleton they actually assert on.
+  // Home mounts StarterWorkCard whenever first run is `completed`, which every
+  // test here is. The card's own states belong to
+  // `components/home/__tests__/StarterWorkCard.test.tsx`; here it is settled on
+  // `unbound`, its steady no-starter-yet shape. Deliberately not the pending
+  // shape: that renders a skeleton carrying `role="status"`, which would make
+  // this file's two "no false empty state while a lane loads" tests ambiguous
+  // against the lane skeleton they actually assert on.
   useStarterWorkQuery: () => ({
     data: { state: 'unbound' as const },
     isLoading: false,
@@ -367,10 +367,10 @@ describe('HomeView', () => {
     });
   });
 
-// archive#1297: an orchestration row Station CAN rehydrate (a real
-// `agentSlug`, not `read-only-attached`) should reopen into the chat
-// overlay via the shared focus action instead of always jumping to the
-// Sessions view — the third divergent destination the issue flagged.
+  // archive#1297: an orchestration row Station CAN rehydrate (a real
+  // `agentSlug`, not `read-only-attached`) should reopen into the chat
+  // overlay via the shared focus action instead of always jumping to the
+  // Sessions view — the third divergent destination the issue flagged.
   test('rehydrates a rehydratable orchestration continuation instead of navigating to Sessions', () => {
     fixtures.sessions = [
       {
@@ -415,8 +415,8 @@ describe('HomeView', () => {
     unregister();
   });
 
-// archive#1297: a `read-only-attached` session still can't be rehydrated
-// same Sessions fallback as before.
+  // archive#1297: a `read-only-attached` session still can't be rehydrated
+  // same Sessions fallback as before.
   test('still navigates to Sessions for a read-only-attached orchestration continuation', () => {
     fixtures.sessions = [
       {
@@ -690,7 +690,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
     const clickedAt = Date.now();
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'In 1 hour' }));
 
-// The row left the active lane for the snoozed shelf.
+    // The row left the active lane for the snoozed shelf.
     expect(
       within(recent).queryByRole('button', { name: `Snooze ${ITEM_TITLE}` }),
     ).toBeNull();
@@ -698,9 +698,9 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
       within(recent).getByRole('button', { name: 'Snoozed (1)' }),
     ).toBeTruthy();
 
-// `lanes.snooze` really was called with this item's id and the "In 1
-// hour" preset's wake time — observed through the real store boundary
-// (localStorage), not a mock of the hook itself.
+    // `lanes.snooze` really was called with this item's id and the "In 1
+    // hour" preset's wake time — observed through the real store boundary
+    // (localStorage), not a mock of the hook itself.
     const stored = JSON.parse(
       localStorage.getItem('station.activity.snoozed') ?? '{}',
     );
@@ -760,7 +760,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
 
       renderHomeView({ continuation: null, onNavigate: vi.fn() });
 
-// Advance past the linger window so every item settles.
+      // Advance past the linger window so every item settles.
       act(() => {
         vi.advanceTimersByTime(TERMINAL_LINGER_MS + 60_000);
       });
@@ -848,9 +848,9 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     fixtures.remoteSessionsResult = undefined;
   });
 
- // a two-station fixture (local + two remote environments) shows a
-// merged list with a provenance badge, through the real component render
-// (mocked SDK data, real buildHomeWorkItems/HomeView pipeline).
+  // a two-station fixture (local + two remote environments) shows a
+  // merged list with a provenance badge, through the real component render
+  // (mocked SDK data, real buildHomeWorkItems/HomeView pipeline).
   test('AC1: merges sessions from two connected remote environments into the list with environment badges', () => {
     fixtures.sessions = [
       {
@@ -889,18 +889,18 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
 
     expect(within(recent).getByText('Brian media')).toBeTruthy();
     expect(within(recent).getByText('Office box')).toBeTruthy();
-// Both remote items render the "Remote session" kind label.
+    // Both remote items render the "Remote session" kind label.
     expect(within(recent).getAllByText(/Remote session/).length).toBe(2);
-// The local session's own row must still render, unmarked by any
-// environment badge, using the plain (non-remote) "Session" kind label.
+    // The local session's own row must still render, unmarked by any
+    // environment badge, using the plain (non-remote) "Session" kind label.
     expect(within(recent).getAllByText(/Session · No project/).length).toBe(1);
 
- // archive#1097 2 : REMOTE_SESSION (env-a, "Brian
-// media") is the single most-recent item across every environment here
-// (14:00 vs. the local session's 13:00 and OTHER_REMOTE_SESSION's prior
-// day) — exactly the case that silently no-opped before the fix. The
-// primary CTA must skip past it to the most-recent item this Station can
-// actually continue: the local session.
+    // archive#1097 2 : REMOTE_SESSION (env-a, "Brian
+    // media") is the single most-recent item across every environment here
+    // (14:00 vs. the local session's 13:00 and OTHER_REMOTE_SESSION's prior
+    // day) — exactly the case that silently no-opped before the fix. The
+    // primary CTA must skip past it to the most-recent item this Station can
+    // actually continue: the local session.
     const continueButton = screen.getByRole('button', {
       name: /Continue most recent work/i,
     });
@@ -931,10 +931,10 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     expect(onNavigate).not.toHaveBeenCalled();
   });
 
- // archive#1097 2 : when every visible item is a
-// read-only remote card (no local work at all), the primary CTA — which
-// can only ever continue a LOCAL item — must not render rather than
-// silently target a remote card that no-ops on click.
+  // archive#1097 2 : when every visible item is a
+  // read-only remote card (no local work at all), the primary CTA — which
+  // can only ever continue a LOCAL item — must not render rather than
+  // silently target a remote card that no-ops on click.
   test('AC1: the "Continue most recent work" CTA does not render when only remote sessions exist', () => {
     fixtures.remoteSessionsResult = {
       environments: [
@@ -953,10 +953,10 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     ).toBeNull();
   });
 
- // the local list renders synchronously (from `useOrchestrationSessionsQuery`
-// /`useTasksQuery` data) with the remote query still pending
-// (`useRemoteSessionsQuery` returning `data: undefined`, this suite's
-// default) — proving the remote read never blocks or delays it.
+  // the local list renders synchronously (from `useOrchestrationSessionsQuery`
+  // /`useTasksQuery` data) with the remote query still pending
+  // (`useRemoteSessionsQuery` returning `data: undefined`, this suite's
+  // default) — proving the remote read never blocks or delays it.
   test('AC2: the local list renders while the remote-session query is still pending', () => {
     fixtures.sessions = [
       {
@@ -984,9 +984,9 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     ).toBeNull();
   });
 
- // a remote fetch failure (a connected environment the server could
-// not reach in time) still never blocks the local list, and degrades to
-// an unobtrusive note rather than an error state.
+  // a remote fetch failure (a connected environment the server could
+  // not reach in time) still never blocks the local list, and degrades to
+  // an unobtrusive note rather than an error state.
   test('AC2/R3: an unreachable connected environment shows an unobtrusive note beside a normally-rendered local list', () => {
     fixtures.sessions = [
       {
@@ -1041,10 +1041,10 @@ describe('HomeView remote-session read augmentation (station#1097)', () => {
     ).toBeTruthy();
   });
 
- // the local-first invariant — omitting/defaulting remote data
-// (this suite's baseline `remoteSessionsResult: undefined`, exercised
-// throughout the rest of this file's existing suite) never introduces any
-// remote-only markup.
+  // the local-first invariant — omitting/defaulting remote data
+  // (this suite's baseline `remoteSessionsResult: undefined`, exercised
+  // throughout the rest of this file's existing suite) never introduces any
+  // remote-only markup.
   test('AC3: no remote-session markup appears when no remote environments are connected', () => {
     fixtures.sessions = [
       {

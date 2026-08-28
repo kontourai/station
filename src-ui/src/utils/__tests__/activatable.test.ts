@@ -59,9 +59,9 @@ describe('activatable', () => {
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
- // Native semantics : Enter fires on keydown; Space fires
-// on KEYUP with the scroll default suppressed on keydown — a full
-// press-and-release of either activates a button exactly once.
+  // Native semantics : Enter fires on keydown; Space fires
+  // on KEYUP with the scroll default suppressed on keydown — a full
+  // press-and-release of either activates a button exactly once.
   test.each(['Enter', ' '])(
     'a full press-and-release of %s activates a button exactly once',
     (key) => {
@@ -71,7 +71,7 @@ describe('activatable', () => {
       const { down } = pressKey(props, key);
 
       expect(onActivate).toHaveBeenCalledTimes(1);
-// Space would scroll the page and Enter can submit an enclosing form.
+      // Space would scroll the page and Enter can submit an enclosing form.
       expect(down.preventDefault).toHaveBeenCalledTimes(1);
     },
   );
@@ -80,15 +80,15 @@ describe('activatable', () => {
     const onActivate = vi.fn();
     const props = asActivatable(activatable(onActivate));
 
-// Hold: initial keydown plus auto-repeats, all on one element. Nothing
-// fires yet, but the scroll default is suppressed throughout.
+    // Hold: initial keydown plus auto-repeats, all on one element. Nothing
+    // fires yet, but the scroll default is suppressed throughout.
     const el = {};
     props.onKeyDown(keyEvent(' ', { el }).event);
     props.onKeyDown(keyEvent(' ', { repeat: true, el }).event);
     props.onKeyDown(keyEvent(' ', { repeat: true, el }).event);
     expect(onActivate).not.toHaveBeenCalled();
 
-// Release: exactly one activation, because keyup cannot repeat.
+    // Release: exactly one activation, because keyup cannot repeat.
     props.onKeyUp(keyEvent(' ', { el }).event);
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
@@ -104,9 +104,9 @@ describe('activatable', () => {
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
-// ARIA links follow native-link behavior: Enter navigates, Space remains
-// the page-scroll key. Hijacking Space on a breadcrumb would break
-// scrolling for keyboard users anywhere a link has focus.
+  // ARIA links follow native-link behavior: Enter navigates, Space remains
+  // the page-scroll key. Hijacking Space on a breadcrumb would break
+  // scrolling for keyboard users anywhere a link has focus.
   test('role "link": Enter activates; Space neither activates nor blocks scrolling', () => {
     const onActivate = vi.fn();
     const props = asActivatable(activatable(onActivate, { role: 'link' }));
@@ -120,19 +120,19 @@ describe('activatable', () => {
     props.onKeyUp(spaceUp.event);
 
     expect(onActivate).toHaveBeenCalledTimes(1);
-// The scroll default must survive — preventDefault would hijack it.
+    // The scroll default must survive — preventDefault would hijack it.
     expect(spaceDown.preventDefault).not.toHaveBeenCalled();
     expect(spaceUp.preventDefault).not.toHaveBeenCalled();
   });
 
- // a Space keyup with no live press on the SAME
-// element must not activate. Native buttons cancel on focus-away and on a
-// prevented press; these pin that the primitive does too.
+  // a Space keyup with no live press on the SAME
+  // element must not activate. Native buttons cancel on focus-away and on a
+  // prevented press; these pin that the primitive does too.
   test('an orphan Space keyup (no prior keydown on this element) does NOT activate', () => {
     const onActivate = vi.fn();
     const props = asActivatable(activatable(onActivate));
 
-// Focus arrived mid-hold: the release is the first event seen here.
+    // Focus arrived mid-hold: the release is the first event seen here.
     props.onKeyUp(keyEvent(' ').event);
 
     expect(onActivate).not.toHaveBeenCalled();
@@ -143,9 +143,9 @@ describe('activatable', () => {
     const props = asActivatable(activatable(onActivate));
     const el = {};
 
-// The keydown was already handled (defaultPrevented) — never armed.
+    // The keydown was already handled (defaultPrevented) — never armed.
     props.onKeyDown(keyEvent(' ', { defaultPrevented: true, el }).event);
-// The keyup itself arrives clean.
+    // The keyup itself arrives clean.
     props.onKeyUp(keyEvent(' ', { el }).event);
 
     expect(onActivate).not.toHaveBeenCalled();
@@ -174,7 +174,7 @@ describe('activatable', () => {
     props.onKeyUp(keyEvent(' ', { el }).event);
     expect(onActivate).toHaveBeenCalledTimes(1);
 
-// A SECOND release with no new press is stale — must not fire again.
+    // A SECOND release with no new press is stale — must not fire again.
     props.onKeyUp(keyEvent(' ', { el }).event);
     expect(onActivate).toHaveBeenCalledTimes(1);
   });
@@ -206,10 +206,10 @@ describe('activatable', () => {
     expect(onActivate).not.toHaveBeenCalled();
   });
 
-// The chat dock's project row is also the dock's click-to-toggle surface,
-// so its handler must `stopPropagation` or selecting a project also
-// collapses the dock. Passing the event to onClick alone would have fixed
-// the mouse and shipped that exact bug to the keyboard.
+  // The chat dock's project row is also the dock's click-to-toggle surface,
+  // so its handler must `stopPropagation` or selecting a project also
+  // collapses the dock. Passing the event to onClick alone would have fixed
+  // the mouse and shipped that exact bug to the keyboard.
   test('the activation event reaches the handler on BOTH the mouse and key paths', () => {
     const seen: string[] = [];
     const props = asActivatable(
@@ -253,10 +253,10 @@ describe('activatable', () => {
   test.each([undefined, null])(
     'a %s handler yields NO role and NO tab stop',
     (handler) => {
-// A focusable control that does nothing on activation is worse than
-// static text: it spends a tab stop and promises an action it will not
-// perform. Conditionally-inert call sites (a breadcrumb segment with no
-// route behind it) depend on this.
+      // A focusable control that does nothing on activation is worse than
+      // static text: it spends a tab stop and promises an action it will not
+      // perform. Conditionally-inert call sites (a breadcrumb segment with no
+      // route behind it) depend on this.
       expect(activatable(handler)).toEqual({});
     },
   );

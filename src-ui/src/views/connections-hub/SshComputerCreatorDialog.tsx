@@ -1,5 +1,5 @@
 /**
-* the SSH computer creator 
+ * the SSH computer creator
  *
  * Before this, "Add computer → Run work on another computer over SSH" opened
  * `SshEnvironmentSetupModal`, which in a browser was a dead end ("available
@@ -12,15 +12,15 @@
  * Three rules it keeps:
  *
  * - **Nothing is claimed that the server did not observe.** "Test connection"
-*   calls `POST /api/environments/ssh/probe`, and the sentence rendered on
-*   success or failure is the server's own `summary`/`action` from the
-* readiness-evidence shape — not a string composed here. defect
-*   was a free-text action line that named neither cause nor next step.
+ *   calls `POST /api/environments/ssh/probe`, and the sentence rendered on
+ *   success or failure is the server's own `summary`/`action` from the
+ * readiness-evidence shape — not a string composed here. defect
+ *   was a free-text action line that named neither cause nor next step.
  * - **Save follows a real observation.** The primary action stays disabled
-*   until a probe actually reached the computer, and says why.
+ *   until a probe actually reached the computer, and says why.
  * - **One dialog chrome.** The shared `Dialog` (backdrop, centring, focus
-* containment, Escape, mobile sheet geometry) — was this flow
-*   floating uncentred with no scrim while its own chooser dimmed the page.
+ * containment, Escape, mobile sheet geometry) — was this flow
+ *   floating uncentred with no scrim while its own chooser dimmed the page.
  *
  * Field scope, deliberately (deviation from the lane design's "host · user ·
  * auth · port", disclosed): a saved SSH environment carries a host, a remote
@@ -57,7 +57,7 @@ const AUTH_LABEL: Record<
 
 export interface SshComputerCreatorDialogProps {
   onClose: () => void;
-/** Focus returns here when the dialog closes (the chooser's entry button). */
+  /** Focus returns here when the dialog closes (the chooser's entry button). */
   returnFocusTarget?: HTMLElement | null;
 }
 
@@ -81,9 +81,9 @@ export function SshComputerCreatorDialog({
   const [copyFailed, setCopyFailed] = useState(false);
 
   const trimmedHost = host.trim();
-// A probe is bound to the host it observed: editing the host retires it
-// (`editHost` clears `evidence`), so Save can never ride a receipt for a
-// different computer.
+  // A probe is bound to the host it observed: editing the host retires it
+  // (`editHost` clears `evidence`), so Save can never ride a receipt for a
+  // different computer.
   const reachable = evidence?.reachable === true;
 
   async function test() {
@@ -245,7 +245,7 @@ export function SshComputerCreatorDialog({
             role={evidence.reachable ? 'status' : 'alert'}
           >
             <strong>{evidence.reachable ? 'Reached' : 'Not reached'}</strong>
-{/* The server's own sentence, never a state word composed here. */}
+            {/* The server's own sentence, never a state word composed here. */}
             <span>{evidence.summary}</span>
             {evidence.action && <span>{evidence.action}</span>}
             {evidence.resolved && (
@@ -255,7 +255,7 @@ export function SshComputerCreatorDialog({
                 {AUTH_LABEL[evidence.resolved.identityAgent]}
               </span>
             )}
-{/*
+            {/*
               Station will not record this key, so the dialog hands over the
               two things the operator needs to decide for themselves: the
               fingerprint to read out to whoever owns that computer, and the
@@ -265,7 +265,7 @@ export function SshComputerCreatorDialog({
 */}
             {evidence.unknownHost && (
               <div className="ssh-computer-creator__host-key">
-{/*
+                {/*
                   #3843 T1: the fingerprint sits OUTSIDE the HostAction on
                   purpose. Verifying it is something a person does by voice
                   with whoever owns that computer, and that works from a

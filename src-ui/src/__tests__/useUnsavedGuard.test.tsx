@@ -21,7 +21,7 @@ function Harness() {
       <button type="button" onClick={() => setDirty(false)}>
         Mark Clean
       </button>
-{/* Stands in for any ordinary host re-render — an SSE query
+      {/* Stands in for any ordinary host re-render — an SSE query
           invalidation, a poll, a parent state change. */}
       <button type="button" onClick={() => setTick((t) => t + 1)}>
         Re-render Host
@@ -90,16 +90,16 @@ describe('useUnsavedGuard', () => {
     window.removeEventListener('keydown', parentEscapeHandler);
   });
 
- // Review of archive#1138 found the migration reintroduced archive#1110's defect here, on
-// the one call site CLAUDE.md makes mandatory. `DiscardModal` was declared
-// inline in the hook, so it was a new component TYPE per host render: React
-// remounted the dialog, the unmounting instance's cleanup scheduled an rAF
-// focus restore, and that stale restore then pulled focus to the trigger
-// BEHIND the still-open dialog — after which Escape no longer closed it,
-// because the trap's keydown is panel-scoped.
-//
-// The re-render is not exotic. `useServerEvents` invalidates the query keys
-// backing every one of the six adopting views on ordinary SSE traffic.
+  // Review of archive#1138 found the migration reintroduced archive#1110's defect here, on
+  // the one call site CLAUDE.md makes mandatory. `DiscardModal` was declared
+  // inline in the hook, so it was a new component TYPE per host render: React
+  // remounted the dialog, the unmounting instance's cleanup scheduled an rAF
+  // focus restore, and that stale restore then pulled focus to the trigger
+  // BEHIND the still-open dialog — after which Escape no longer closed it,
+  // because the trap's keydown is panel-scoped.
+  //
+  // The re-render is not exotic. `useServerEvents` invalidates the query keys
+  // backing every one of the six adopting views on ordinary SSE traffic.
   test('a host re-render while the discard dialog is open does not move focus behind it', async () => {
     render(<Harness />);
     const trigger = screen.getByRole('button', { name: 'Trigger Guard' });
@@ -110,11 +110,11 @@ describe('useUnsavedGuard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Re-render Host' }));
     expect(screen.getByTestId('tick').textContent).toBe('1');
 
-// The stale restore is scheduled in a requestAnimationFrame by the
-// unmounting instance's cleanup, so it lands AFTER the remounted instance
-// has focused Cancel. Asserting synchronously here reads the intermediate
-// state and passes against the defect — this test was inert until it
-// waited for the frame.
+    // The stale restore is scheduled in a requestAnimationFrame by the
+    // unmounting instance's cleanup, so it lands AFTER the remounted instance
+    // has focused Cancel. Asserting synchronously here reads the intermediate
+    // state and passes against the defect — this test was inert until it
+    // waited for the frame.
     await act(async () => {
       await new Promise((r) => requestAnimationFrame(() => r(undefined)));
       await new Promise((r) => setTimeout(r, 0));
@@ -126,7 +126,7 @@ describe('useUnsavedGuard', () => {
       `focus left the dialog for ${(document.activeElement as HTMLElement)?.textContent ?? 'nothing'}`,
     ).toBe(true);
 
-//.and Escape still closes it from wherever focus actually landed.
+    //.and Escape still closes it from wherever focus actually landed.
     fireEvent.keyDown(document.activeElement ?? document.body, {
       key: 'Escape',
     });

@@ -24,20 +24,20 @@ type Props = {
   showReasoning?: boolean;
   renderToolCall?: (part: ChatContentPart, index: number) => React.ReactNode;
   renderReasoning?: (content: string, index: number) => React.ReactNode;
-/** Transient provider activity signal (thinking/compacting/…). */
+  /** Transient provider activity signal (thinking/compacting/…). */
   activityHint?: ChatActivityHint;
-/**
- * Row attribution (archive#1424 fix): shown from the FIRST
-* frame of streaming, not just after the turn settles into a persisted
-* `MessageBubble` row — resolved from the current live agent binding,
-* which is the honest source while this turn is actually executing. No
- * `engine` prop here — see the doc comment on
-* `ChatMessageList`'s `streamingAttributionAgent` for why the engine chip
-* is suppressed on this row too, not just the persisted one.
-*/
+  /**
+   * Row attribution (archive#1424 fix): shown from the FIRST
+   * frame of streaming, not just after the turn settles into a persisted
+   * `MessageBubble` row — resolved from the current live agent binding,
+   * which is the honest source while this turn is actually executing. No
+   * `engine` prop here — see the doc comment on
+   * `ChatMessageList`'s `streamingAttributionAgent` for why the engine chip
+   * is suppressed on this row too, not just the persisted one.
+   */
   attributionAgent?: { name: string } | null;
   owner?: OwnerAttribution | null;
-/** Lets the owning scroll surface follow streaming text-height growth. */
+  /** Lets the owning scroll surface follow streaming text-height growth. */
   onContentChange?: () => void;
 };
 
@@ -83,11 +83,11 @@ function StreamingMessageComponent({
     (part) => part.type === 'reasoning' && Boolean(part.content),
   );
   const activityLabel = deriveActivityLabel(activityHint, hasReasoningPart);
-// Consecutive tool-call parts collapse into one batch while the turn is
-// still streaming too — classification (inside the lazy ToolCallBatch
-// chunk) marks a batch in-progress (progressive-tense summary) whenever
-// one of its calls is still `running`, so the collapsed summary never
-// claims a batch is done before it is.
+  // Consecutive tool-call parts collapse into one batch while the turn is
+  // still streaming too — classification (inside the lazy ToolCallBatch
+  // chunk) marks a batch in-progress (progressive-tense summary) whenever
+  // one of its calls is still `running`, so the collapsed summary never
+  // claims a batch is done before it is.
   const blocks = useMemo(() => splitToolCallRuns(contentParts), [contentParts]);
   const contentGrowthKey = useMemo(
     () =>
@@ -98,8 +98,8 @@ function StreamingMessageComponent({
   );
 
   useEffect(() => {
-// The key is the measured streaming-content revision; reading it here
-// keeps this effect tied to text and part growth without changing rows.
+    // The key is the measured streaming-content revision; reading it here
+    // keeps this effect tied to text and part growth without changing rows.
     void contentGrowthKey;
     onContentChange?.();
   }, [contentGrowthKey, onContentChange]);
@@ -116,13 +116,13 @@ function StreamingMessageComponent({
           owner={owner}
         />
 
-{/* Render completed content parts in order */}
+        {/* Render completed content parts in order */}
         {blocks.map((block) => {
           if (block.type === 'tool-call-run') {
             if (!renderToolCall) return null;
-// Same inline threshold as the settled renderer
-// (`MessageContent`'s INLINE_RUN_LIMIT) so a run does not
-// change shape when the turn settles.
+            // Same inline threshold as the settled renderer
+            // (`MessageContent`'s INLINE_RUN_LIMIT) so a run does not
+            // change shape when the turn settles.
             if (block.calls.length <= INLINE_RUN_LIMIT) {
               return block.calls.map(({ part, index }) =>
                 renderToolCall(part, index),
@@ -155,17 +155,17 @@ function StreamingMessageComponent({
           return null;
         })}
 
-{/* Current streaming text — rendered as markdown with throttled
+        {/* Current streaming text — rendered as markdown with throttled
             updates. The wrapper carries the trailing shimmer (transform-only
             overlay) and a fixed-box blinking caret at the tip; both animate
             on a CSS clock independent of the token buffer, so a token pause
             never reads as frozen (station#2651). */}
         {streamingText && (
           <div className="streaming-tip">
-{/* archive#3354: an unclosed trailing fence renders plain and is
+            {/* archive#3354: an unclosed trailing fence renders plain and is
                 never tokenized until it closes. */}
             <StreamingMarkdown content={streamingText} />
-{/* Terminal-style cursor on its own compact line — placement is
+            {/* Terminal-style cursor on its own compact line — placement is
                 identical during the Suspense fallback and after the markdown
                 chunk loads (see .stream-caret-line in index.css). */}
             <div className="stream-caret-line" aria-hidden="true">
@@ -176,7 +176,7 @@ function StreamingMessageComponent({
 
         {progressSummary && <ToolProgressIndicator summary={progressSummary} />}
 
-{/* Loading indicator. Before any content arrives (redacted thinking,
+        {/* Loading indicator. Before any content arrives (redacted thinking,
             SDK spawn latency) a bare dots row reads as "stuck" — pair it
             with a live activity label so the agent never looks idle while
             working. Once content flows, the compact dots row suffices; tool

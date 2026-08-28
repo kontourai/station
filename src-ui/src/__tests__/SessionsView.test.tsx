@@ -104,7 +104,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   getStarterWork: (starterId: string, apiBase?: string) =>
     getStarterWork(starterId, apiBase),
   useProjectQuery: () => ({ data: undefined }),
- // The open-chats refactor (archive#2683) renders shared membership metadata.
+  // The open-chats refactor (archive#2683) renders shared membership metadata.
   useAgentsQuery: () => ({ data: [], isLoading: false }),
   useOrchestrationSessionsQuery: () => ({
     data: sessions,
@@ -320,8 +320,8 @@ describe('SessionsView', () => {
         status: 'idle',
         lifecycleState: 'needs_input',
         model: 'claude-sonnet',
-// REQUIRED on the wire since archive#1791 (ADR 0012); the SDK
-// normalizes it for real callers, and this mock stands in for the SDK.
+        // REQUIRED on the wire since archive#1791 (ADR 0012); the SDK
+        // normalizes it for real callers, and this mock stands in for the SDK.
         answerability: { answerable: true },
         isLoaded: true,
         isPersisted: true,
@@ -347,10 +347,10 @@ describe('SessionsView', () => {
     }));
   });
 
-// archive#771 regression: `isLoading` was consulted by `SplitPaneLayout`'s
-// `loading` prop but the sessions query's `error` was never passed
-// through, so a settled read failure rendered the same "Nothing has run
-// yet" empty state as a host with no sessions — no error, no retry.
+  // archive#771 regression: `isLoading` was consulted by `SplitPaneLayout`'s
+  // `loading` prop but the sessions query's `error` was never passed
+  // through, so a settled read failure rendered the same "Nothing has run
+  // yet" empty state as a host with no sessions — no error, no retry.
   test('renders the sessions list error state with retry when the sessions query fails', () => {
     sessions = [];
     sessionsQueryError = new Error('sessions unavailable');
@@ -382,7 +382,7 @@ describe('SessionsView', () => {
 
     const detail = screen.getByTestId('session-detail');
     expect(within(detail).getByText('tool.started')).toBeTruthy();
-// The live feed rendered the streamed event.
+    // The live feed rendered the streamed event.
     expect(
       within(screen.getByTestId('session-feed')).getByText(/Bash/),
     ).toBeTruthy();
@@ -519,8 +519,8 @@ describe('SessionsView', () => {
       lifecycleState: 'canceled',
       terminalAttribution: {
         kind: 'requested_stop',
-// The server detail is text, not HTML. A hostile-looking fixture
-// proves the member row cannot turn a compact explanation into markup.
+        // The server detail is text, not HTML. A hostile-looking fixture
+        // proves the member row cannot turn a compact explanation into markup.
         detail: '<em>Stopped by request.</em>',
       },
     };
@@ -727,11 +727,11 @@ describe('SessionsView', () => {
 
     expect(loadOlder).toHaveBeenCalledOnce();
 
-// It shipped as a bare <button> with no className, inside a wrapper class
-// that has no CSS rule anywhere in the repo — so it rendered as raw
-// browser chrome in a fully themed transcript (archive#3150). Pin the
-// shared treatment: a class name that matches no stylesheet is worse than
-// none, because it tells the next reader the styling is handled.
+    // It shipped as a bare <button> with no className, inside a wrapper class
+    // that has no CSS rule anywhere in the repo — so it rendered as raw
+    // browser chrome in a fully themed transcript (archive#3150). Pin the
+    // shared treatment: a class name that matches no stylesheet is worse than
+    // none, because it tells the next reader the styling is handled.
     const more = screen.getByRole('button', { name: 'Load earlier events' });
     expect(more.className).toContain('button--secondary');
     expect(screen.getByRole('alert').textContent).toBe(
@@ -739,9 +739,9 @@ describe('SessionsView', () => {
     );
   });
 
-// archive#3378: the history alert is the only place a user learns which of
-// the two outcomes they are in. Both directions, because a message that
-// always says "retrying" is exactly as dishonest as one that never does.
+  // archive#3378: the history alert is the only place a user learns which of
+  // the two outcomes they are in. Both directions, because a message that
+  // always says "retrying" is exactly as dishonest as one that never does.
   test('says a failing session history is being retried, and stops saying so once it is not', async () => {
     historyState = {
       hasMore: false,
@@ -769,12 +769,12 @@ describe('SessionsView', () => {
     expect(screen.getByRole('alert').textContent).toBe('Unauthorized');
   });
 
-/**
-* archive#3386. This surface and the chat dock read the SAME
-* bounded window. The dock disclosed what its size budget withheld and this
-* one rendered the identical amputated turn in silence, because the hook
-* unwrapped `item.event` and dropped the read's own budget report.
-*/
+  /**
+   * archive#3386. This surface and the chat dock read the SAME
+   * bounded window. The dock disclosed what its size budget withheld and this
+   * one rendered the identical amputated turn in silence, because the hook
+   * unwrapped `item.event` and dropped the read's own budget report.
+   */
   test('discloses what the history read withheld, and stays quiet when it withheld nothing', async () => {
     historyState = {
       hasMore: false,
@@ -802,13 +802,13 @@ describe('SessionsView', () => {
     expect(screen.queryByTestId('session-history-elided')).toBeNull();
   });
 
-/**
-* The attached branch places the notice in a DIFFERENT container from the
- * mutable one — `archive#2630` keeps the upgrade/error stories inside the detail
-* for a read-only attached session, so only the pagination control and this
-* notice sit above it. Nothing exercised that placement, which is how a
-* ~150-character sentence came to share a centered flex row with a button.
-*/
+  /**
+   * The attached branch places the notice in a DIFFERENT container from the
+   * mutable one — `archive#2630` keeps the upgrade/error stories inside the detail
+   * for a read-only attached session, so only the pagination control and this
+   * notice sit above it. Nothing exercised that placement, which is how a
+   * ~150-character sentence came to share a centered flex row with a button.
+   */
   test('discloses a withheld history read on a read-only attached session too', async () => {
     sessions[0] = {
       ...sessions[0],
@@ -828,16 +828,16 @@ describe('SessionsView', () => {
     expect(notice.textContent).toContain(
       '1 earlier item is shown without its content',
     );
-// It shares its row with the pagination button, which is what
-// `.session-history-controls`' wrap/gap exists for.
+    // It shares its row with the pagination button, which is what
+    // `.session-history-controls`' wrap/gap exists for.
     expect(
       screen.getByRole('button', { name: 'Load earlier events' }),
     ).toBeTruthy();
     expect(notice.parentElement?.className).toContain(
       'session-history-controls',
     );
-// The detail owns the upgrade/error stories; the notice must not also be
- // handed down and rendered a second time (archive#2630).
+    // The detail owns the upgrade/error stories; the notice must not also be
+    // handed down and rendered a second time (archive#2630).
     expect(screen.getAllByTestId('session-history-elided')).toHaveLength(1);
   });
 
@@ -858,12 +858,12 @@ describe('SessionsView', () => {
     renderView();
 
     const coordinator = screen.getByTestId('delegated-task-coordinator');
-// archive#3227: was `getByText('review release')` — the coordinator's
-// `<h3>` rendered a bare `humanizeId(taskId)`, which is the same helper
-// that returns a raw hash unchanged when there is no task id. It renders
-// `sessionTitle` now, the one name this session is listed under, so the
-// heading and the row beside it say the same thing. Kept as an exact
-// match: a loose `toContain` here would no longer notice a raw id.
+    // archive#3227: was `getByText('review release')` — the coordinator's
+    // `<h3>` rendered a bare `humanizeId(taskId)`, which is the same helper
+    // that returns a raw hash unchanged when there is no task id. It renders
+    // `sessionTitle` now, the one name this session is listed under, so the
+    // heading and the row beside it say the same thing. Kept as an exact
+    // match: a loose `toContain` here would no longer notice a raw id.
     expect(
       within(coordinator).getByText('Worker task · review release'),
     ).toBeTruthy();
@@ -897,7 +897,7 @@ describe('SessionsView', () => {
     expect(screen.queryByTestId('session-detail')).toBeNull();
   });
 
- // archive#1073 closure : pin both sides of isStreamingSession's fallback.
+  // archive#1073 closure : pin both sides of isStreamingSession's fallback.
   test('a legacy running summary without the turn fold stays conservatively locked', async () => {
     sessions[0] = {
       ...sessions[0],
@@ -931,8 +931,8 @@ describe('SessionsView', () => {
   });
 
   test('stops running delegated work directly from the coordinator', async () => {
- // Post-archive#1073 a running session carries the turn fold; the Stop control
-// gates on it, not on lifecycleState.
+    // Post-archive#1073 a running session carries the turn fold; the Stop control
+    // gates on it, not on lifecycleState.
     sessions[0] = {
       ...sessions[0],
       lifecycleState: 'running',
@@ -1005,20 +1005,20 @@ describe('SessionsView', () => {
     expect(screen.queryByText('Child worker of')).toBeNull();
   });
 
-/**
-* archive#1245 — a call site the issue does not list, found by its sweep.
-*
-* `closeDelegation` was `requestAnimationFrame( =>
-* delegationTriggerRef.current?.focus)` with no `isConnected` guard at all.
-* The trigger is a per-row control in the sessions list, and delegating
-* invalidates that list — so the launcher's own action is what removes it,
-* which is archive#1126 exactly. It now goes through
-* `@kontourai/station-shared/return-focus`.
-*
-* COVERAGE HONESTY: jsdom, wiring only. The module's post-focus verification
-* needs a real browser (`tests/dialog-return-focus.spec.ts`); jsdom reports
-* `.focus` on an unfocusable node as successful.
-*/
+  /**
+   * archive#1245 — a call site the issue does not list, found by its sweep.
+   *
+   * `closeDelegation` was `requestAnimationFrame( =>
+   * delegationTriggerRef.current?.focus)` with no `isConnected` guard at all.
+   * The trigger is a per-row control in the sessions list, and delegating
+   * invalidates that list — so the launcher's own action is what removes it,
+   * which is archive#1126 exactly. It now goes through
+   * `@kontourai/station-shared/return-focus`.
+   *
+   * COVERAGE HONESTY: jsdom, wiring only. The module's post-focus verification
+   * needs a real browser (`tests/dialog-return-focus.spec.ts`); jsdom reports
+   * `.focus` on an unfocusable node as successful.
+   */
   describe('delegation launcher return focus (station#1245)', () => {
     function withStubbedFrame<T>(run: (fire: () => void) => T): T {
       let callback: FrameRequestCallback | null = null;
@@ -1078,7 +1078,7 @@ describe('SessionsView', () => {
             screen.getByRole('dialog', { name: 'Delegate a task' }),
           ).getByRole('button', { name: 'Cancel' }),
         );
-// The refreshed list replaced the row the trigger lived on.
+        // The refreshed list replaced the row the trigger lived on.
         row.remove();
         fire();
       });
@@ -1262,8 +1262,8 @@ describe('SessionsView', () => {
     expect(
       within(detail).getByText(/not linked to this session/i),
     ).toBeTruthy();
-// Never a per-entry "matched by title" tag — this fallback list is
-// explicitly unlinked, not a heuristic per-session match.
+    // Never a per-entry "matched by title" tag — this fallback list is
+    // explicitly unlinked, not a heuristic per-session match.
     expect(
       within(detail).queryByTestId('workflow-status-line-hint'),
     ).toBeNull();
@@ -1314,12 +1314,12 @@ describe('SessionsView', () => {
     expect(within(detail).queryByText('Project workflows')).toBeNull();
   });
 
- // archive#1170: a terminal session must never render an action that contradicts
-// its own state — Stop task previously stayed in the DOM (merely
-// disabled) for a completed/failed session, and the live "● live"/"○
-// connecting" indicator and the free-text compose box didn't check
-// terminality at all, which is exactly the "failed AND live AND Stop
-// task" contradiction the issue reported.
+  // archive#1170: a terminal session must never render an action that contradicts
+  // its own state — Stop task previously stayed in the DOM (merely
+  // disabled) for a completed/failed session, and the live "● live"/"○
+  // connecting" indicator and the free-text compose box didn't check
+  // terminality at all, which is exactly the "failed AND live AND Stop
+  // task" contradiction the issue reported.
   test('does not render Stop task, the live indicator, or the compose box for a terminal session', () => {
     sessions[0] = {
       ...sessions[0],
@@ -1367,18 +1367,18 @@ describe('SessionsView', () => {
     expect(within(detail).getAllByText('Failed').length).toBe(1);
   });
 
-/*
-* archive#3203 defect 3: "when I click open session.. it brings me
-* somewhere.. but I don't see an error message". A `session-failed`
-* notification's `openHref` now lands HERE, and it lands COLD — the user
-* was not watching when the session died, so the live feed replayed to this
-* pane carries no `runtime.error` at all. The only surviving basis is the
-* session's own `blockedReason`, and the arrival must render it.
-*
-* The sibling test above supplies the error through the feed, which is the
-* case that was already covered and is NOT the case the notification
-* produces.
-*/
+  /*
+   * archive#3203 defect 3: "when I click open session.. it brings me
+   * somewhere.. but I don't see an error message". A `session-failed`
+   * notification's `openHref` now lands HERE, and it lands COLD — the user
+   * was not watching when the session died, so the live feed replayed to this
+   * pane carries no `runtime.error` at all. The only surviving basis is the
+   * session's own `blockedReason`, and the arrival must render it.
+   *
+   * The sibling test above supplies the error through the feed, which is the
+   * case that was already covered and is NOT the case the notification
+   * produces.
+   */
   test('arriving on an already-failed session with no error in the feed still shows the recorded reason', () => {
     sessions[0] = {
       ...sessions[0],
@@ -1394,8 +1394,8 @@ describe('SessionsView', () => {
     expect(
       within(failure).getByText(/ECONNREFUSED api\.example\.com:443/),
     ).toBeTruthy();
-// And the arrival names WHICH session, so the user can tell the deep link
-// took them to the right one.
+    // And the arrival names WHICH session, so the user can tell the deep link
+    // took them to the right one.
     expect(
       within(screen.getByTestId('session-detail')).getByText('thread-alpha'),
     ).toBeTruthy();
@@ -1412,8 +1412,8 @@ describe('SessionsView', () => {
 
     renderView('thread-alpha');
 
-// Same sentence the notification's own row uses for the same absence —
-// one constant, imported by both (`NO_FAILURE_DETAIL_RECORDED`).
+    // Same sentence the notification's own row uses for the same absence —
+    // one constant, imported by both (`NO_FAILURE_DETAIL_RECORDED`).
     expect(
       within(screen.getByTestId('session-failure')).getByText(
         /No failure detail was recorded for this session\./,
@@ -1421,15 +1421,15 @@ describe('SessionsView', () => {
     ).toBeTruthy();
   });
 
-/*
-* archive#3244. A failed session is RETRYABLE — the lifecycle contract
-* declares `failed -> queued | running`, and the server's only send-path
-* terminal gate rejects `completed` alone — so the composer must stay,
-* exactly as the chat dock keeps its own composer enabled beside the same
-* session's failure banner. This pane used to hide it via a hand-written
-* `['completed','failed','canceled']`, a third copy of the drift
-* archive#1548 deleted server-side.
-*/
+  /*
+   * archive#3244. A failed session is RETRYABLE — the lifecycle contract
+   * declares `failed -> queued | running`, and the server's only send-path
+   * terminal gate rejects `completed` alone — so the composer must stay,
+   * exactly as the chat dock keeps its own composer enabled beside the same
+   * session's failure banner. This pane used to hide it via a hand-written
+   * `['completed','failed','canceled']`, a third copy of the drift
+   * archive#1548 deleted server-side.
+   */
   test('a failed session keeps the composer, below its failure alert, and it really sends (station#3244)', async () => {
     sessions[0] = {
       ...sessions[0],
@@ -1441,17 +1441,17 @@ describe('SessionsView', () => {
 
     renderView('thread-alpha');
 
-// Exactly one failure alert, and the composer coexists with it.
+    // Exactly one failure alert, and the composer coexists with it.
     expect(screen.getAllByTestId('session-failure')).toHaveLength(1);
     const alert = screen.getByTestId('session-failure');
     const input = screen.getByLabelText('Send input to session');
-// The alert renders ABOVE the composer, so the failure context is
-// visible before the affordance that retries past it.
+    // The alert renders ABOVE the composer, so the failure context is
+    // visible before the affordance that retries past it.
     expect(
       alert.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-// And it is a working composer, not a disabled prop: the send path
-// dispatches, because the server accepts turns on a failed session.
+    // And it is a working composer, not a disabled prop: the send path
+    // dispatches, because the server accepts turns on a failed session.
     fireEvent.change(input, { target: { value: 'try again with retries' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     await waitFor(() =>
@@ -1461,8 +1461,8 @@ describe('SessionsView', () => {
         apiBase: 'http://test.local',
       }),
     );
- // archive#1170's decisions stand alongside the new composer: no live
-// indicator, no Stop task on a stopped session.
+    // archive#1170's decisions stand alongside the new composer: no live
+    // indicator, no Stop task on a stopped session.
     expect(screen.queryByRole('button', { name: 'Stop task' })).toBeNull();
     expect(
       within(screen.getByTestId('session-detail')).queryByText('● live'),
@@ -1483,16 +1483,16 @@ describe('SessionsView', () => {
     expect(screen.queryByRole('button', { name: 'Stop task' })).toBeNull();
   });
 
-/*
-* The regression guard for the defect class itself, not one instance of
-* it: composer visibility must agree with the CONTRACT-DERIVED terminal
-* predicate for every lifecycle state the contract knows. Reintroducing a
-* hand-written list that hides `failed` or `canceled` — the exact drift of
-* archive#1548 and archive#3244 — turns this red without anyone
-* remembering which states were once mislisted. Attention is resolved
-* empty here so the only gate under test is terminality (`needs_input`'s
-* attention-driven suppression has its own tests below).
-*/
+  /*
+   * The regression guard for the defect class itself, not one instance of
+   * it: composer visibility must agree with the CONTRACT-DERIVED terminal
+   * predicate for every lifecycle state the contract knows. Reintroducing a
+   * hand-written list that hides `failed` or `canceled` — the exact drift of
+   * archive#1548 and archive#3244 — turns this red without anyone
+   * remembering which states were once mislisted. Attention is resolved
+   * empty here so the only gate under test is terminality (`needs_input`'s
+   * attention-driven suppression has its own tests below).
+   */
   test('composer visibility matches the canonical terminal predicate for every lifecycle state (station#3244)', () => {
     const baseSession = { ...sessions[0], delegation: undefined };
     feedEvents = [];
@@ -1633,9 +1633,9 @@ describe('SessionsView', () => {
       {
         id: 'needs_input:thread-alpha',
         kind: 'needs_input',
-// requestType mirrors the server's own projection (archive#1188):
-// the item is only a genuine duplicate of the live request when
-// this matches the open request's own requestType below.
+        // requestType mirrors the server's own projection (archive#1188):
+        // the item is only a genuine duplicate of the live request when
+        // this matches the open request's own requestType below.
         requestType: 'input',
         title: 'Input needed',
         createdAt: '2026-06-28T00:00:02.000Z',
@@ -1663,13 +1663,13 @@ describe('SessionsView', () => {
     expect(screen.getByTestId('session-request')).toBeTruthy();
   });
 
-// (archive#1170): the previous filter suppressed
-// needs_input/review_pending whenever ANY request was pending, with no
-// correlation to which request. Reproduced live: a review_pending
-// session plus an unrelated permission request made the review reason
-// vanish entirely, leaving only the unrelated permission card — and
-// ReviewAction (a bare "Open session" link) is never equivalent to
-// resolving that unrelated request anyway.
+  // (archive#1170): the previous filter suppressed
+  // needs_input/review_pending whenever ANY request was pending, with no
+  // correlation to which request. Reproduced live: a review_pending
+  // session plus an unrelated permission request made the review reason
+  // vanish entirely, leaving only the unrelated permission card — and
+  // ReviewAction (a bare "Open session" link) is never equivalent to
+  // resolving that unrelated request anyway.
   test('never suppresses review_pending, even when an unrelated request is pending on the same session', () => {
     attentionItems = [
       {
@@ -1705,14 +1705,14 @@ describe('SessionsView', () => {
     expect(
       within(attention).getByRole('link', { name: 'Open session' }),
     ).toBeTruthy();
-// The unrelated live request still gets its own affordance too — both
-// are genuinely different reasons, so both survive.
+    // The unrelated live request still gets its own affordance too — both
+    // are genuinely different reasons, so both survive.
     expect(screen.getByTestId('session-request')).toBeTruthy();
   });
 
-// (archive#1170): needs_input correlation must be
-// by requestType, not "any pending request" — an unrelated request type
-// (e.g. permission) must not suppress a needs_input item either.
+  // (archive#1170): needs_input correlation must be
+  // by requestType, not "any pending request" — an unrelated request type
+  // (e.g. permission) must not suppress a needs_input item either.
   test('does not suppress needs_input against an unrelated (non-matching-requestType) pending request', () => {
     attentionItems = [
       {
@@ -1748,13 +1748,13 @@ describe('SessionsView', () => {
     expect(screen.getByTestId('session-request')).toBeTruthy();
   });
 
-// (archive#1170): attentionQuery.data?.items
-// defaulted to [] for BOTH "still loading" and "fetch failed" — a
-// needs_input session's generic compose box could flash visible before
-// the query resolved and hideGenericCompose flipped it back off.
+  // (archive#1170): attentionQuery.data?.items
+  // defaulted to [] for BOTH "still loading" and "fetch failed" — a
+  // needs_input session's generic compose box could flash visible before
+  // the query resolved and hideGenericCompose flipped it back off.
   test('does not flash the generic compose box for a needs_input session while the attention query is still loading', () => {
     attentionQueryState = { isLoading: true, isError: false, error: null };
-// sessions[0] (the default fixture) is already lifecycleState: 'needs_input'.
+    // sessions[0] (the default fixture) is already lifecycleState: 'needs_input'.
 
     renderView('thread-alpha');
 
@@ -1763,10 +1763,10 @@ describe('SessionsView', () => {
     expect(screen.queryByLabelText('Answer this session')).toBeNull();
   });
 
-// (archive#1170): a genuine fetch failure used to
-// make a session that DOES need attention look identical to one that
-// doesn't — no error, no retry. This asserts the two are distinguishable
-// and that retry re-triggers the query.
+  // (archive#1170): a genuine fetch failure used to
+  // make a session that DOES need attention look identical to one that
+  // doesn't — no error, no retry. This asserts the two are distinguishable
+  // and that retry re-triggers the query.
   test('shows a distinguishable error with retry when the attention check itself fails, instead of silently looking like "nothing to report"', () => {
     attentionQueryState = {
       isLoading: false,
@@ -1832,11 +1832,11 @@ describe('SessionsView', () => {
     ).toBeTruthy();
   });
 
- // describeEvent's default case returns '' for every method it
-// doesn't special-case (platform.mutation among them), and the collapse
-// used to fire on any two consecutive same-method entries with equal
-// bodies — '' === '' — asserting two DIFFERENT governed-mutation receipts
-// were the same event just because neither was ever actually inspected.
+  // describeEvent's default case returns '' for every method it
+  // doesn't special-case (platform.mutation among them), and the collapse
+  // used to fire on any two consecutive same-method entries with equal
+  // bodies — '' === '' — asserting two DIFFERENT governed-mutation receipts
+  // were the same event just because neither was ever actually inspected.
   test('never collapses two different platform.mutation audit events into a false "×N", even though neither renders a body', () => {
     feedEvents = [
       {
@@ -1869,23 +1869,23 @@ describe('SessionsView', () => {
     renderView('thread-alpha');
 
     const diagnostics = screen.getByTestId('session-diagnostics');
-// Two separate rows, neither carrying a "×2" — the old bug rendered
-// exactly one "platform.mutation ×2" row here.
+    // Two separate rows, neither carrying a "×2" — the old bug rendered
+    // exactly one "platform.mutation ×2" row here.
     expect(within(diagnostics).getAllByText('platform.mutation').length).toBe(
       2,
     );
     expect(within(diagnostics).queryByText(/platform\.mutation ×/)).toBeNull();
   });
 
-// (archive#1170): buildDiagnosticsLog reused the
-// merge-identity key (`${method}:${itemId}`) as the React list key even
-// for NON-adjacent occurrences. Streaming protocols commonly reset
-// itemId per turn, so two turns whose first content block both use
-// itemId "0" — with anything in between — produced two entries sharing
-// one React key, a real "Encountered two children with the same key"
-// warning and undefined render behavior. Reproduced live before the fix;
-// this asserts the warning never fires, with a real second content block
-// (a tool call) breaking adjacency so the entries genuinely do NOT merge.
+  // (archive#1170): buildDiagnosticsLog reused the
+  // merge-identity key (`${method}:${itemId}`) as the React list key even
+  // for NON-adjacent occurrences. Streaming protocols commonly reset
+  // itemId per turn, so two turns whose first content block both use
+  // itemId "0" — with anything in between — produced two entries sharing
+  // one React key, a real "Encountered two children with the same key"
+  // warning and undefined render behavior. Reproduced live before the fix;
+  // this asserts the warning never fires, with a real second content block
+  // (a tool call) breaking adjacency so the entries genuinely do NOT merge.
   test('gives non-adjacent diagnostics-log entries that share a (method, itemId) pair distinct React keys', () => {
     const consoleError = vi
       .spyOn(console, 'error')
@@ -1922,7 +1922,7 @@ describe('SessionsView', () => {
     renderView('thread-alpha');
 
     const diagnostics = screen.getByTestId('session-diagnostics');
-// Both non-adjacent groups are real, distinct entries — no false merge.
+    // Both non-adjacent groups are real, distinct entries — no false merge.
     expect(within(diagnostics).getByText('First turn response')).toBeTruthy();
     expect(within(diagnostics).getByText('Second turn response')).toBeTruthy();
 
@@ -1934,20 +1934,20 @@ describe('SessionsView', () => {
     consoleError.mockRestore();
   });
 
- // Review, DOM-presence coverage ONLY — this does NOT prove visibility.
-// jsdom never loads/applies SessionsView.css, so this test cannot see a
-// `display: none` rule and would stay green even if
-// `.sessions-detail__attention` were hidden again in compact mode (proven
- // by — see the PR thread for the red/green transcript).
-// The real regression guard for "is it actually visible on screen" is the
-// Playwright check in the PR's visual-evidence run
-// (getComputedStyle(...).display + a non-zero bounding box at a genuinely
-// short viewport), not this test. This one only pins that React keeps
-// rendering the node into the tree across the compact transition — i.e.
-// no future JS-level conditional (`viewportIsCompact && attentionItem &&
-//.`) silently stops mounting it. Keep both: this test would NOT catch
-// the CSS regression the reviewer fault-injected; only the Playwright
-// check does.
+  // Review, DOM-presence coverage ONLY — this does NOT prove visibility.
+  // jsdom never loads/applies SessionsView.css, so this test cannot see a
+  // `display: none` rule and would stay green even if
+  // `.sessions-detail__attention` were hidden again in compact mode (proven
+  // by — see the PR thread for the red/green transcript).
+  // The real regression guard for "is it actually visible on screen" is the
+  // Playwright check in the PR's visual-evidence run
+  // (getComputedStyle(...).display + a non-zero bounding box at a genuinely
+  // short viewport), not this test. This one only pins that React keeps
+  // rendering the node into the tree across the compact transition — i.e.
+  // no future JS-level conditional (`viewportIsCompact && attentionItem &&
+  //.`) silently stops mounting it. Keep both: this test would NOT catch
+  // the CSS regression the reviewer fault-injected; only the Playwright
+  // check does.
   test('DOM PRESENCE ONLY (not visibility): the attention answer field stays mounted once the viewport goes compact (keyboard-open)', async () => {
     class FakeViewport extends EventTarget {
       height = 844;
@@ -1976,8 +1976,8 @@ describe('SessionsView', () => {
     renderView('thread-alpha');
     expect(screen.getByLabelText('Answer this session')).toBeTruthy();
 
-// Keyboard opens: the visual viewport shrinks below the compact
-// threshold, same signal the mobile chat dock already reacts to.
+    // Keyboard opens: the visual viewport shrinks below the compact
+    // threshold, same signal the mobile chat dock already reacts to.
     viewport.height = 480;
     viewport.dispatchEvent(new Event('resize'));
 
@@ -1997,10 +1997,10 @@ describe('SessionsView', () => {
     });
   });
 
- // the server explicitly allows a lifecycle item and a
-// Flow-gate item to coexist for one session (gate items "never shadow
-// anything else"); a single.find only ever surfaced the first-sorted
-// one.
+  // the server explicitly allows a lifecycle item and a
+  // Flow-gate item to coexist for one session (gate items "never shadow
+  // anything else"); a single.find only ever surfaced the first-sorted
+  // one.
   test('renders every attention item that matches this session, not just the first-sorted one', () => {
     attentionItems = [
       {
@@ -2039,9 +2039,9 @@ describe('SessionsView', () => {
     ).toBeTruthy();
   });
 
- // guarded on !isTerminal like Stop task and the live
-// indicator — a session that crashes mid-request must not leave
-// Approve/Decline clickable against a dead session.
+  // guarded on !isTerminal like Stop task and the live
+  // indicator — a session that crashes mid-request must not leave
+  // Approve/Decline clickable against a dead session.
   test('hides the live in-turn request Approve/Decline once the session is terminal', () => {
     sessions[0] = { ...sessions[0], lifecycleState: 'failed' };
     feedEvents = [
@@ -2061,14 +2061,14 @@ describe('SessionsView', () => {
     expect(screen.queryByTestId('session-request')).toBeNull();
   });
 
-// archive#1462: the list groups by project attribution, so an unattributable
-// attached session used to be indistinguishable from one with no project at
-// all. It must say which projects it is caught between.
-// archive#3027 moved the project off the list HEADING onto a per-row pill.
- // The archive#1462 guarantee is unchanged and is asserted on the pill: an ambiguous
-// attribution names its candidates rather than picking one or collapsing to
-// "Unassigned" — and it is deliberately not a filter control, because one
-// click could not say which candidate the user meant.
+  // archive#1462: the list groups by project attribution, so an unattributable
+  // attached session used to be indistinguishable from one with no project at
+  // all. It must say which projects it is caught between.
+  // archive#3027 moved the project off the list HEADING onto a per-row pill.
+  // The archive#1462 guarantee is unchanged and is asserted on the pill: an ambiguous
+  // attribution names its candidates rather than picking one or collapsing to
+  // "Unassigned" — and it is deliberately not a filter control, because one
+  // click could not say which candidate the user meant.
   test('names an ambiguously-attributed attached session on its row pill, and never files it under one candidate', () => {
     sessions[0] = {
       ...sessions[0],
@@ -2088,8 +2088,8 @@ describe('SessionsView', () => {
     expect(screen.queryByText('Unassigned')).toBeNull();
   });
 
-// archive#1463: a delegated task whose project was joined across machines by
-// name alone must not render as a settled project binding.
+  // archive#1463: a delegated task whose project was joined across machines by
+  // name alone must not render as a settled project binding.
   test('marks a delegated session whose cross-machine project slug join is unverified', () => {
     sessions[0] = {
       ...sessions[0],
@@ -2103,8 +2103,8 @@ describe('SessionsView', () => {
 
     const { container } = renderView('task-remote-1');
 
-// The caveat is carried verbatim by the pill — the list does not get to
-// shorten it away into a bare slug.
+    // The caveat is carried verbatim by the pill — the list does not get to
+    // shorten it away into a bare slug.
     expect(container.querySelector('.session-project-pill')?.textContent).toBe(
       'station (unverified name match)',
     );
@@ -2474,11 +2474,11 @@ describe('SessionsView', () => {
   });
 
   test('a station-owned session never offers Continue in Station', () => {
-// The adopt affordance is only honest on a session Station merely
-// follows (`controlMode: 'read-only-attached'`); offering it on a
-// session Station already owns would "continue" a conversation into a
-// second copy of itself. Anchored on the owned composer rendering so
-// this cannot pass vacuously against a blank screen.
+    // The adopt affordance is only honest on a session Station merely
+    // follows (`controlMode: 'read-only-attached'`); offering it on a
+    // session Station already owns would "continue" a conversation into a
+    // second copy of itself. Anchored on the owned composer rendering so
+    // this cannot pass vacuously against a blank screen.
     renderView('thread-alpha');
 
     const detail = screen.getByTestId('session-detail');
@@ -2707,12 +2707,12 @@ describe('SessionsView', () => {
     expect(within(detail).getByText(/verify/)).toBeTruthy();
     expect(within(detail).queryByText('Project workflows')).toBeNull();
   });
-/*
-* archive#189. The defect these guard is a MERGE: one figure covering
-* the auto-attached station-delivery run and the Builder run at once. So
-* each test asserts the two rows are separately present and separately
-* legible.
-*/
+  /*
+   * archive#189. The defect these guard is a MERGE: one figure covering
+   * the auto-attached station-delivery run and the Builder run at once. So
+   * each test asserts the two rows are separately present and separately
+   * legible.
+   */
 
   test('renders the Builder run as its own row alongside the linked Flow run', () => {
     sessionFlowRun = {
@@ -2742,18 +2742,18 @@ describe('SessionsView', () => {
     renderView('thread-alpha');
 
     const detail = screen.getByTestId('session-detail');
-// Two rows, not one merged figure.
+    // Two rows, not one merged figure.
     expect(within(detail).getByText('Linked Flow')).toBeTruthy();
     expect(within(detail).getByText('Builder run')).toBeTruthy();
     expect(within(detail).getByText('kontourai-station-1388')).toBeTruthy();
     expect(within(detail).getByText(/Matched on run correlation/)).toBeTruthy();
-// archive#3139: same assertion, glossary wording — docs/glossary.md
-// retires "runtime" as a user-facing word in favour of "engine".
+    // archive#3139: same assertion, glossary wording — docs/glossary.md
+    // retires "runtime" as a user-facing word in favour of "engine".
     expect(
       within(detail).getByText(/Engine session identity present/),
     ).toBeTruthy();
     expect(within(detail).getByText(/builder\.build/)).toBeTruthy();
-// No freshness claim: `flow_run` carries no currency stamp upstream.
+    // No freshness claim: `flow_run` carries no currency stamp upstream.
     expect(
       within(detail).getByText(/as of the last sidecar write/),
     ).toBeTruthy();
@@ -2847,18 +2847,18 @@ describe('SessionsView', () => {
     ).toBeNull();
   });
 
-/*
- * archive#1249 — both branches below shipped with ZERO coverage and
-* each was probe-confirmed as a real regression before these landed.
-*/
+  /*
+   * archive#1249 — both branches below shipped with ZERO coverage and
+   * each was probe-confirmed as a real regression before these landed.
+   */
 
   test('an approval item with no actions renders only Dismiss and must NOT hide the composer (station#1249 review HIGH)', () => {
-// `ApprovalActions` gates Approve/Deny on `isApprovalLivePending`
-// (actions.length > 0), so an action-less approval renders a lone
-// Dismiss. Suppressing the composer on `kind === 'approval'` alone left
-// such a session with no way to respond at all. This state is externally
-// reachable: POST /api/notifications accepts category 'approval-request'
-// with no actions and an arbitrary metadata.sessionId.
+    // `ApprovalActions` gates Approve/Deny on `isApprovalLivePending`
+    // (actions.length > 0), so an action-less approval renders a lone
+    // Dismiss. Suppressing the composer on `kind === 'approval'` alone left
+    // such a session with no way to respond at all. This state is externally
+    // reachable: POST /api/notifications accepts category 'approval-request'
+    // with no actions and an arbitrary metadata.sessionId.
     sessions[0].lifecycleState = 'running';
     sessions[0].delegation = undefined;
     attentionItems = [
@@ -2885,7 +2885,7 @@ describe('SessionsView', () => {
     fireEvent.click(dismiss);
     expect(dismissNotification).toHaveBeenCalledWith('notif-actionless');
     expect(within(detail).queryByText('Approve')).toBeNull();
-// The composer is the ONLY remaining way to respond — it must survive.
+    // The composer is the ONLY remaining way to respond — it must survive.
     expect(screen.getByLabelText('Send input to session')).toBeTruthy();
   });
 
@@ -2949,10 +2949,10 @@ describe('SessionsView', () => {
   });
 
   test('a session carrying only effectiveModel still shows its model (station#1249 review HIGH)', () => {
-// `model` is set only when a caller supplied an explicit modelId at start;
-// `effectiveModel` is resolved later from session.configured/turn.started.
-// Removing the context row while the header read `model` alone made the
-// model render NOWHERE for a session started on an agent default.
+    // `model` is set only when a caller supplied an explicit modelId at start;
+    // `effectiveModel` is resolved later from session.configured/turn.started.
+    // Removing the context row while the header read `model` alone made the
+    // model render NOWHERE for a session started on an agent default.
     sessions[0].model = undefined;
     sessions[0].effectiveModel = 'gpt-5.6-sol';
 
@@ -2984,16 +2984,16 @@ describe('SessionsView', () => {
     );
   });
 
-/**
- * archive#1781 — the session-detail pending-request card.
-*
-* `MutableSessionDetail` renders Approve/Deny for a live `request.opened`.
-* Since archive#1791 retired the boot-time cancellation write, a session
-* whose provider adapter is gone keeps that request open forever, so the
-* card offered two buttons that dispatch into a guaranteed server rejection
-* and `hideGenericCompose` suppressed the composer BECAUSE that card was
-* assumed to own the response affordance.
-*/
+  /**
+   * archive#1781 — the session-detail pending-request card.
+   *
+   * `MutableSessionDetail` renders Approve/Deny for a live `request.opened`.
+   * Since archive#1791 retired the boot-time cancellation write, a session
+   * whose provider adapter is gone keeps that request open forever, so the
+   * card offered two buttons that dispatch into a guaranteed server rejection
+   * and `hideGenericCompose` suppressed the composer BECAUSE that card was
+   * assumed to own the response affordance.
+   */
   describe('SessionsView unanswerable request card', () => {
     const observation = {
       answerable: false,
@@ -3021,8 +3021,8 @@ describe('SessionsView', () => {
       sessions[0].answerability = observation;
       renderView('thread-alpha');
 
-// Anti-filter first: deleting the card would hide a request that really
-// is still open.
+      // Anti-filter first: deleting the card would hide a request that really
+      // is still open.
       const request = screen.getByTestId('session-request');
       expect(within(request).getByText('Allow write')).toBeTruthy();
 
@@ -3058,22 +3058,22 @@ describe('SessionsView', () => {
           name: 'Approve',
         }),
       );
-// The mutation dispatches on a microtask, so a bare synchronous
-// assertion here has no power — it passes with the button ENABLED.
- // Found by (re-enabling the buttons left this test
-// green); flushing first is what binds it to the guard.
+      // The mutation dispatches on a microtask, so a bare synchronous
+      // assertion here has no power — it passes with the button ENABLED.
+      // Found by (re-enabling the buttons left this test
+      // green); flushing first is what binds it to the guard.
       await act(async () => {
         await Promise.resolve();
       });
       expect(resolveRequest).not.toHaveBeenCalled();
     });
 
-/**
-* The composer suppression only ever fires when a LIVE attention item
-* owns the response affordance, so the test must seed one — without it
-* `hideGenericCompose` is already false and the assertion has no power
- * (found by : removing the guard left it green).
-*/
+    /**
+     * The composer suppression only ever fires when a LIVE attention item
+     * owns the response affordance, so the test must seed one — without it
+     * `hideGenericCompose` is already false and the assertion has no power
+     * (found by : removing the guard left it green).
+     */
     function seedLiveApprovalItem() {
       attentionItems = [
         {
@@ -3094,8 +3094,8 @@ describe('SessionsView', () => {
     }
 
     test('negative control: a live approval item DOES suppress the composer', () => {
-// Proves the suppression this AC un-does actually fires here, so the
-// assertion below is bound to the guard rather than to an empty list.
+      // Proves the suppression this AC un-does actually fires here, so the
+      // assertion below is bound to the guard rather than to an empty list.
       openRequest();
       seedLiveApprovalItem();
       renderView('thread-alpha');
@@ -3125,12 +3125,12 @@ describe('SessionsView', () => {
     });
   });
 
-/**
-* archive#3139. The owner opened this page and read
-* `external:claude:5dfa…` as a row label, on an unsorted, untimed list whose
-* search could only match the hash it was printing. Every assertion here is
-* about what the LIST renders — the detail pane already got these right.
-*/
+  /**
+   * archive#3139. The owner opened this page and read
+   * `external:claude:5dfa…` as a row label, on an unsorted, untimed list whose
+   * search could only match the hash it was printing. Every assertion here is
+   * about what the LIST renders — the detail pane already got these right.
+   */
   describe('sessions list rows (station#3139)', () => {
     const HASH = 'external:claude:5dfa0c7b19e34a5f8c2d6b1e7a409f33';
 
@@ -3179,10 +3179,10 @@ describe('SessionsView', () => {
       });
     }
 
- // a run group followed by a flat session in the SAME
-// lane must not re-emit the lane heading. Members carry the lane section
-// now; a member with an undefined section reset the layout's neighbor
-// comparison and the following flat row duplicated 'Active now · N'.
+    // a run group followed by a flat session in the SAME
+    // lane must not re-emit the lane heading. Members carry the lane section
+    // now; a member with an undefined section reset the layout's neighbor
+    // comparison and the following flat row duplicated 'Active now · N'.
     test('emits the lane heading exactly once when a run group and a flat session share the lane', () => {
       const parent = {
         ...sessions[0],
@@ -3240,13 +3240,13 @@ describe('SessionsView', () => {
       const { container } = renderView();
 
       expect(rowNames(container)).toEqual(['Claude Code session']);
-// The whole row, not just its name: the subtitle must not reintroduce it.
+      // The whole row, not just its name: the subtitle must not reintroduce it.
       expect(listRows(container)[0].textContent).not.toContain(HASH);
       expect(listRows(container)[0].textContent).not.toContain('external');
     });
 
     test('the delegated work card reads the lifecycle state in words, not the wire token', () => {
-// The seeded session is delegated and `needs_input`.
+      // The seeded session is delegated and `needs_input`.
       renderView();
 
       const coordinator = screen.getByTestId('delegated-task-coordinator');
@@ -3271,7 +3271,7 @@ describe('SessionsView', () => {
     test('lists the newest session first, against a server list that arrives oldest-first', () => {
       const stamp = (iso: string) => ({ createdAt: iso, updatedAt: iso });
       sessions = [
-// Server order is `createdAt` ASCENDING (orchestration-service.ts).
+        // Server order is `createdAt` ASCENDING (orchestration-service.ts).
         attachedSession({
           threadId: 'thread-oldest',
           displayTitle: 'Oldest',
@@ -3294,17 +3294,17 @@ describe('SessionsView', () => {
       expect(rowNames(container)).toEqual(['Newest', 'Middle', 'Oldest']);
     });
 
-/**
-* archive#3027 replaced the project heading with a state lane (the owner's
- * call: "by state yes"). The archive#3139 invariant this test was written for is
-* NOT about projects — it is that a heading is emitted exactly once rather
-* than run-length-encoded over an unsorted list, and that rows are
-* newest-first inside their group. Both are re-asserted here against the
-* new grouping, with the same interleaved-on-arrival fixture shape.
-*/
+    /**
+     * archive#3027 replaced the project heading with a state lane (the owner's
+     * call: "by state yes"). The archive#3139 invariant this test was written for is
+     * NOT about projects — it is that a heading is emitted exactly once rather
+     * than run-length-encoded over an unsorted list, and that rows are
+     * newest-first inside their group. Both are re-asserted here against the
+     * new grouping, with the same interleaved-on-arrival fixture shape.
+     */
     test('emits each state heading exactly once for an interleaved multi-project list, newest-first inside it', () => {
       const stamp = (iso: string) => ({ createdAt: iso, updatedAt: iso });
-// Interleaved on arrival, which is what run-length-encoded the headings.
+      // Interleaved on arrival, which is what run-length-encoded the headings.
       sessions = [
         attachedSession({
           threadId: 'a-1',
@@ -3334,7 +3334,7 @@ describe('SessionsView', () => {
 
       const { container } = renderView();
 
-// Every fixture is `completed` and hours old: one lane, one heading.
+      // Every fixture is `completed` and hours old: one lane, one heading.
       expect(sectionHeadings(container)).toEqual(['Earlier · 4']);
       expect(listRows(container)).toHaveLength(4);
       expect(rowNames(container)).toEqual([
@@ -3343,7 +3343,7 @@ describe('SessionsView', () => {
         'Beta one',
         'Alpha one',
       ]);
-// The project is still on screen — as a row pill, not a heading.
+      // The project is still on screen — as a row pill, not a heading.
       expect(
         Array.from(container.querySelectorAll('.session-project-pill')).map(
           (pill) => pill.textContent,
@@ -3385,7 +3385,7 @@ describe('SessionsView', () => {
 
       const { container } = renderView();
 
-// "Active now" has no members here and therefore emits nothing at all.
+      // "Active now" has no members here and therefore emits nothing at all.
       expect(sectionHeadings(container)).toEqual([
         'Needs you · 2',
         'Recently finished · 1',
@@ -3399,18 +3399,18 @@ describe('SessionsView', () => {
       ]);
     });
 
-/**
-* archive#3227 A1. The row's meta line used to print
-* `sessionLifecycleLabel(session.lifecycleState)` — the raw wire state,
-* with none of the fold's overrides — while the section heading above it
-* came from the fold. So a row under "Recently finished" said *Running*.
-*
-* This walks the rendered list in document order, carrying the current
-* section heading down onto each row, and asserts every row's state word
-* is one that heading permits. The vocabulary is stated here rather than
-* imported from the implementation's own refinement table: a test that
-* recomputes the map it checks agrees by construction.
-*/
+    /**
+     * archive#3227 A1. The row's meta line used to print
+     * `sessionLifecycleLabel(session.lifecycleState)` — the raw wire state,
+     * with none of the fold's overrides — while the section heading above it
+     * came from the fold. So a row under "Recently finished" said *Running*.
+     *
+     * This walks the rendered list in document order, carrying the current
+     * section heading down onto each row, and asserts every row's state word
+     * is one that heading permits. The vocabulary is stated here rather than
+     * imported from the implementation's own refinement table: a test that
+     * recomputes the map it checks agrees by construction.
+     */
     test('no rendered row contradicts the section heading above it', () => {
       const LANE_VOCABULARY: Record<string, string[]> = {
         'Needs you': [
@@ -3425,7 +3425,7 @@ describe('SessionsView', () => {
       };
 
       sessions = [
- // A1 shape 1 (archive#1069): attached, never ran a turn.
+        // A1 shape 1 (archive#1069): attached, never ran a turn.
         attachedSession({
           threadId: 'idle-running',
           displayTitle: 'Attached but idle',
@@ -3435,7 +3435,7 @@ describe('SessionsView', () => {
           hasActiveTurn: false,
           updatedAt: new Date(Date.now() - 30_000).toISOString(),
         }),
-// A1 shape 2: a review is pending while a turn is in flight.
+        // A1 shape 2: a review is pending while a turn is in flight.
         attachedSession({
           threadId: 'review-while-running',
           displayTitle: 'Review pending mid-turn',
@@ -3446,7 +3446,7 @@ describe('SessionsView', () => {
           pendingReview: true,
           updatedAt: new Date(Date.now() - 40_000).toISOString(),
         }),
- // A1 shape 3 (archive#1296): the board closed a session mid-run.
+        // A1 shape 3 (archive#1296): the board closed a session mid-run.
         attachedSession({
           threadId: 'closed-while-running',
           displayTitle: 'Closed mid-run',
@@ -3457,7 +3457,7 @@ describe('SessionsView', () => {
           hasActiveTurn: true,
           updatedAt: new Date(Date.now() - 50_000).toISOString(),
         }),
- // A1 shape 4 (archive#1783): nothing can answer it.
+        // A1 shape 4 (archive#1783): nothing can answer it.
         attachedSession({
           threadId: 'stranded',
           displayTitle: 'Stranded request',
@@ -3508,8 +3508,8 @@ describe('SessionsView', () => {
         });
       }
 
-// Every session reached a lane, and the fixture spans all four — a walk
-// over a short or single-lane render would pass while checking nothing.
+      // Every session reached a lane, and the fixture spans all four — a walk
+      // over a short or single-lane render would pass while checking nothing.
       expect(rendered).toHaveLength(6);
       expect(new Set(rendered.map((entry) => entry.heading))).toEqual(
         new Set(['Needs you', 'Active now', 'Recently finished', 'Earlier']),
@@ -3524,7 +3524,7 @@ describe('SessionsView', () => {
         ).toBe(true);
       }
 
-// The four A1 shapes, by the word each used to print.
+      // The four A1 shapes, by the word each used to print.
       const rowText = (name: string) =>
         listRows(container).find((row) => row.textContent?.includes(name))
           ?.textContent ?? '';
@@ -3532,15 +3532,15 @@ describe('SessionsView', () => {
       expect(rowText('Review pending mid-turn')).toContain('Needs attention');
       expect(rowText('Closed mid-run')).toContain('Completed');
       expect(rowText('Stranded request')).toContain("Can't answer here");
-// The explicit stopped outcome must not fold into the successful word.
+      // The explicit stopped outcome must not fold into the successful word.
       expect(rowText('Canceled run')).toContain('Stopped');
     });
 
-/**
-* The reason the lane exists. `DelegatedTaskCoordinator` renders
-* `tasks[0]` only, so a SECOND delegated session waiting on the user had
-* nowhere on this page to appear.
-*/
+    /**
+     * The reason the lane exists. `DelegatedTaskCoordinator` renders
+     * `tasks[0]` only, so a SECOND delegated session waiting on the user had
+     * nowhere on this page to appear.
+     */
     test('a second waiting delegated session is visible in the list, not only the first in the card', () => {
       sessions = [
         {
@@ -3578,7 +3578,7 @@ describe('SessionsView', () => {
       expect(
         footer?.querySelector('[data-testid="delegated-task-coordinator"]'),
       ).toBeTruthy();
-//.and its actions still work from there.
+      //.and its actions still work from there.
       fireEvent.click(
         within(screen.getByTestId('delegated-task-coordinator')).getByRole(
           'button',
@@ -3710,9 +3710,9 @@ describe('SessionsView', () => {
 
       search('Repair');
 
-// Both predicates applied: the beta session matches the query but is
-// outside the filter, and the second alpha session is inside the filter
-// but does not match.
+      // Both predicates applied: the beta session matches the query but is
+      // outside the filter, and the second alpha session is inside the filter
+      // but does not match.
       expect(rowNames(container)).toEqual(['Repair the failing gate']);
     });
 
@@ -3788,10 +3788,10 @@ describe('SessionsView', () => {
         '.split-pane__item-icon .brand-icon',
       );
       expect(icons).toHaveLength(2);
-// Claude Code resolves to its brand mark...
+      // Claude Code resolves to its brand mark...
       expect(icons[0].className).toContain('brand-icon--claude');
-//.and an id this build has no product name for renders AgentIcon's
-// own initials fallback rather than a guessed glyph for some engine.
+      //.and an id this build has no product name for renders AgentIcon's
+      // own initials fallback rather than a guessed glyph for some engine.
       expect(icons[1].className).not.toContain('brand-icon--');
       expect(icons[1].querySelector('.brand-icon__initials')?.textContent).toBe(
         'SP',
@@ -3843,12 +3843,12 @@ describe('SessionsView', () => {
     });
   });
 
-/**
-* archive#4052: a session row that has ENDED is one activation from
-* the evidence behind its outcome. The control rides the existing
-* `/activity?session=<id>` deep-link path plus the one-shot
-* `focus=evidence` route intent the session detail honors exactly once.
-*/
+  /**
+   * archive#4052: a session row that has ENDED is one activation from
+   * the evidence behind its outcome. The control rides the existing
+   * `/activity?session=<id>` deep-link path plus the one-shot
+   * `focus=evidence` route intent the session detail honors exactly once.
+   */
   describe('evidence affordance (station#4052 slice 3)', () => {
     function flatSession(
       overrides: Record<string, unknown>,
@@ -3895,10 +3895,10 @@ describe('SessionsView', () => {
           displayTitle: 'Waiting work',
           lifecycleState: 'needs_input',
         }),
-// Terminal, but a read-only attached transcript: its detail is
-// `AttachedSessionDetail`, which has no receipts/diagnostics region —
-// never offer a control whose target may be absent (the
-// `revealHomeRegion` rule).
+        // Terminal, but a read-only attached transcript: its detail is
+        // `AttachedSessionDetail`, which has no receipts/diagnostics region —
+        // never offer a control whose target may be absent (the
+        // `revealHomeRegion` rule).
         flatSession({
           threadId: 'attached-done',
           displayTitle: 'Attached transcript',
@@ -3909,7 +3909,7 @@ describe('SessionsView', () => {
 
       renderView();
 
-// Present on every ended row…
+      // Present on every ended row…
       expect(
         screen.getByRole('button', { name: 'Evidence for Completed work' }),
       ).toBeTruthy();
@@ -3919,8 +3919,8 @@ describe('SessionsView', () => {
       expect(
         screen.getByRole('button', { name: 'Evidence for Stopped work' }),
       ).toBeTruthy();
-// …and on no other row — asserted both by name and by count, so an
-// unconditional render cannot pass on the strength of the present rows.
+      // …and on no other row — asserted both by name and by count, so an
+      // unconditional render cannot pass on the strength of the present rows.
       expect(
         screen.queryByRole('button', { name: 'Evidence for Running work' }),
       ).toBeNull();
@@ -3976,25 +3976,25 @@ describe('SessionsView', () => {
         screen.getByRole('button', { name: 'Evidence for Completed work' }),
       );
 
-// The control navigated the same working deep-link path every other
-// surface uses, plus the one-shot focus intent…
+      // The control navigated the same working deep-link path every other
+      // surface uses, plus the one-shot focus intent…
       expect(window.location.pathname).toBe('/activity');
       expect(window.location.search).toBe('?session=done&focus=evidence');
 
-// …which the route plumbing hands back as props
-// (`AppViewContent`: `sessionId={view.sessionId} focusHint={view.focus}`).
+      // …which the route plumbing hands back as props
+      // (`AppViewContent`: `sessionId={view.sessionId} focusHint={view.focus}`).
       view.rerenderSession('done', 'evidence');
 
       expect(screen.getByTestId('session-detail')).toBeTruthy();
       const region = screen.getByTestId('session-evidence-region');
       await waitFor(() => expect(document.activeElement).toBe(region));
-// Consumed one-shot: the focus param is cleared after admission (the
-// `openFilePreviewIntent` idiom), so a stale hint can never re-fire on
-// the next same-path navigation.
+      // Consumed one-shot: the focus param is cleared after admission (the
+      // `openFilePreviewIntent` idiom), so a stale hint can never re-fire on
+      // the next same-path navigation.
       expect(window.location.search).toBe('?session=done');
 
-// A later render with the routed props unchanged must not drag the
-// reader back to the region they have since left.
+      // A later render with the routed props unchanged must not drag the
+      // reader back to the region they have since left.
       screen
         .getByRole('button', { name: 'Evidence for Completed work' })
         .focus();
@@ -4002,11 +4002,11 @@ describe('SessionsView', () => {
       expect(document.activeElement).not.toBe(region);
     });
 
- // the once-only record lives in the detail (a ref that dies
-// at unmount) while the token lives in the parent — deselect-then-
-// reselect used to remount the detail against the STALE token and
-// scroll-steal a plain click. The parent now clears the reveal on every
-// non-arming selection.
+    // the once-only record lives in the detail (a ref that dies
+    // at unmount) while the token lives in the parent — deselect-then-
+    // reselect used to remount the detail against the STALE token and
+    // scroll-steal a plain click. The parent now clears the reveal on every
+    // non-arming selection.
     test('a plain reselect after an evidence reveal does not re-fire it', async () => {
       sessions = [flatSession({})];
       const view = renderView();
@@ -4024,9 +4024,9 @@ describe('SessionsView', () => {
           .find((candidate) =>
             candidate.classList.contains('split-pane__item'),
           )!;
-// Deselect via the pane title (SplitPaneLayout's clickable-title
-// gesture -> onDeselect -> selectWithIntent(null)): the detail
-// unmounts, destroying its consumption record.
+      // Deselect via the pane title (SplitPaneLayout's clickable-title
+      // gesture -> onDeselect -> selectWithIntent(null)): the detail
+      // unmounts, destroying its consumption record.
       const paneTitle = document.querySelector('.split-pane__title--clickable');
       expect(paneTitle).not.toBeNull();
       fireEvent.click(paneTitle as HTMLElement);
@@ -4034,11 +4034,11 @@ describe('SessionsView', () => {
         expect(screen.queryByTestId('session-evidence-region')).toBeNull(),
       );
 
-// Plain reselect (no evidence intent): the detail remounts fresh.
+      // Plain reselect (no evidence intent): the detail remounts fresh.
       fireEvent.click(rowButton());
       view.rerenderSession('done', undefined);
       const remounted = await screen.findByTestId('session-evidence-region');
-// The stale token must NOT drag focus to the region on this mount.
+      // The stale token must NOT drag focus to the region on this mount.
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(document.activeElement).not.toBe(remounted);
     });
@@ -4067,12 +4067,12 @@ describe('SessionsView', () => {
       const control = screen.getByRole('button', {
         name: 'Evidence for Completed work',
       });
-// A native button: in the Tab order (no tabindex override) and
-// activated from the keyboard. jsdom does not synthesize the browser's
-// Enter-to-click activation for native buttons, so this asserts the two
-// halves jsdom can see: focus reaches the control, and activating the
-// FOCUSED element (what Enter dispatches in a real browser) performs
-// the navigation.
+      // A native button: in the Tab order (no tabindex override) and
+      // activated from the keyboard. jsdom does not synthesize the browser's
+      // Enter-to-click activation for native buttons, so this asserts the two
+      // halves jsdom can see: focus reaches the control, and activating the
+      // FOCUSED element (what Enter dispatches in a real browser) performs
+      // the navigation.
       expect(control.tagName).toBe('BUTTON');
       expect(control.getAttribute('tabindex')).toBeNull();
       control.focus();
@@ -4090,13 +4090,13 @@ describe('SessionsView', () => {
  * halves of that rename where they render:
  *
  * - the page heading/label says Activity, and no standalone capitalized
-*   "Sessions" (the old surface name) survives anywhere in the rendered
-*   output, populated or empty — a half-rename here would be a label the
-*   navigation no longer derives;
+ *   "Sessions" (the old surface name) survives anywhere in the rendered
+ *   output, populated or empty — a half-rename here would be a label the
+ *   navigation no longer derives;
  * - the page root carries `data-first-run-anchor="activity"`, which is what
-*   the first-run tour step anchors on now that the `nav-sessions` sidebar
-*   button no longer exists (`tour-steps.test.ts` checks the source literal;
-*   this checks the rendered DOM).
+ *   the first-run tour step anchors on now that the `nav-sessions` sidebar
+ *   button no longer exists (`tour-steps.test.ts` checks the source literal;
+ *   this checks the rendered DOM).
  */
 describe('Activity presentation (sessions moved under Home)', () => {
   function activitySession(
@@ -4126,8 +4126,8 @@ describe('Activity presentation (sessions moved under Home)', () => {
     const { container } = renderView();
 
     expect(screen.getAllByText('Activity').length).toBeGreaterThan(0);
-// The old surface name must not survive anywhere in the rendered text.
-// Lowercase "session(s)" stays legitimate — it is the item noun.
+    // The old surface name must not survive anywhere in the rendered text.
+    // Lowercase "session(s)" stays legitimate — it is the item noun.
     expect(container.textContent).not.toMatch(/\bSessions\b/);
     expect(
       container.querySelector('[data-first-run-anchor="activity"]'),

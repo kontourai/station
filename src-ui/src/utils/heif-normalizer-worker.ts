@@ -1,7 +1,7 @@
 /*
-* A local, dependency-free best-effort adapter.  It deliberately relies only
+ * A local, dependency-free best-effort adapter.  It deliberately relies only
  * on the browser/host's own decoder: importing a codec here would change the
-* distribution and CSP review boundary.  A host that cannot decode HEIF says
+ * distribution and CSP review boundary.  A host that cannot decode HEIF says
  * so; it never sends the source to Station for conversion.
  */
 type DecodeRequest = {
@@ -53,8 +53,8 @@ workerScope.onmessage = async (event: MessageEvent<DecodeRequest>) => {
       workerScope.postMessage({ id, ok: false, code: 'decoder-unavailable' });
       return;
     }
-// JPEG has no alpha. A deterministic white matte is safer than silently
-// accepting the browser's implementation-specific transparent result.
+    // JPEG has no alpha. A deterministic white matte is safer than silently
+    // accepting the browser's implementation-specific transparent result.
     context.fillStyle = '#fff';
     context.fillRect(0, 0, width, height);
     context.drawImage(bitmap, 0, 0, width, height);

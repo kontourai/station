@@ -75,9 +75,9 @@ export function selectProjectScopedChatAgents({
         agent,
       ),
   );
-// An unavailable persisted Agent still belongs in New Chat: hiding a custom
-// Agent whose connection was removed also hides its reason and repair path.
-// Apply the same project-scope rule used for launchable Agents.
+  // An unavailable persisted Agent still belongs in New Chat: hiding a custom
+  // Agent whose connection was removed also hides its reason and repair path.
+  // Apply the same project-scope rule used for launchable Agents.
   const unavailableAgents = agents.filter(
     (agent) =>
       agent.available === false &&
@@ -147,16 +147,16 @@ export function selectFirstChatTarget({
 }: {
   agents: AgentData[];
   agentConnections: ConnectionConfig[];
-/**
- * §3.3 A3 (archive#1004 MED): the project identity the header
-* currently renders inside, if any (threaded from
-* `getHeaderBreadcrumb(currentView)?.projectSlug` — absent = global
-* context). Without this, the header's quick-start prompt picked the
-* first agent that could start a chat from the FULL unfiltered catalog,
-* including an agent owned by a project the header isn't even inside —
-* the same two-input rule the dock's own `selectChatReadyAgents` path
-* already enforces.
-*/
+  /**
+   * §3.3 A3 (archive#1004 MED): the project identity the header
+   * currently renders inside, if any (threaded from
+   * `getHeaderBreadcrumb(currentView)?.projectSlug` — absent = global
+   * context). Without this, the header's quick-start prompt picked the
+   * first agent that could start a chat from the FULL unfiltered catalog,
+   * including an agent owned by a project the header isn't even inside —
+   * the same two-input rule the dock's own `selectChatReadyAgents` path
+   * already enforces.
+   */
   selectedProjectSlug?: string;
 }): AgentData | undefined {
   return agents.find(

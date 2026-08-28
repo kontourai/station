@@ -57,14 +57,14 @@ vi.mock('../hooks/useSystemStatus', () => ({
     isLoading,
     isPending,
     isError,
- // archive#1818 1 : while `isConnectPending` is true
-// (still retrying), the real `@tanstack/query-core` reducer only ever
-// populates `failureReason` — `error` is set exclusively by the
-// `'error'` action, which simultaneously flips `status` to `'error'`
-// (making `isPending`/`isConnectPending` false). This mock therefore
-// exposes ONLY `failureReason` while pending, matching the real hook's
-// actual reachable state space — not the impossible
-// `isLoading: true` + `error` set combination the pre-fix test used.
+    // archive#1818 1 : while `isConnectPending` is true
+    // (still retrying), the real `@tanstack/query-core` reducer only ever
+    // populates `failureReason` — `error` is set exclusively by the
+    // `'error'` action, which simultaneously flips `status` to `'error'`
+    // (making `isPending`/`isConnectPending` false). This mock therefore
+    // exposes ONLY `failureReason` while pending, matching the real hook's
+    // actual reachable state space — not the impossible
+    // `isLoading: true` + `error` set combination the pre-fix test used.
     failureReason: queryFailureReason,
     refetch,
   }),
@@ -223,9 +223,9 @@ vi.mock('../components/PendingPairingReconciler', async () => {
 vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch: vi.fn(),
   useForceRefetchSystemStatus: () => forceRefetch,
-// archive#1194: EnginePicker (rendered when the engine-picker variant
-// applies) reads these — empty/no-op defaults keep every other test in
-// this file (none of which exercise the picker's own behavior) unaffected.
+  // archive#1194: EnginePicker (rendered when the engine-picker variant
+  // applies) reads these — empty/no-op defaults keep every other test in
+  // this file (none of which exercise the picker's own behavior) unaffected.
   useAgentConnectionsQuery: () => ({ data: [] }),
   useConfigQuery: () => ({ data: configData }),
   useUpdateConfigMutation: () => ({
@@ -347,9 +347,9 @@ describe('OnboardingGate', () => {
     activeConnectionUrl = 'http://localhost:3242';
     activeConnectionId = 'tailnet-station';
     connections = [];
-// archive#1194: resolved, no explicit choice yet — the
-// representative "config has loaded" default for every existing test
-// in this file (none of which exercise the picker's own gating).
+    // archive#1194: resolved, no explicit choice yet — the
+    // representative "config has loaded" default for every existing test
+    // in this file (none of which exercise the picker's own gating).
     configData = {};
     bundledStatus = null;
     platformProfile = {
@@ -361,8 +361,8 @@ describe('OnboardingGate', () => {
     };
     navigate.mockReset();
     refetch.mockReset();
-// The real refetch (react-query) always returns a promise; a bare mockReset
-// leaves it undefined, which is not a state the component can ever see.
+    // The real refetch (react-query) always returns a promise; a bare mockReset
+    // leaves it undefined, which is not a state the component can ever see.
     refetch.mockResolvedValue(undefined);
     forceRefetch.mockReset();
     forceRefetch.mockResolvedValue(undefined);
@@ -418,8 +418,8 @@ describe('OnboardingGate', () => {
     );
     expect(toastMocks.showToast).toHaveBeenCalledTimes(1);
 
-// This makes the effect run again with the SAME terminal error. Without
-// the ref guard it would report a duplicate when desktop returns.
+    // This makes the effect run again with the SAME terminal error. Without
+    // the ref guard it would report a duplicate when desktop returns.
     platformProfile = { ...platformProfile, isDesktop: true };
     rerender(
       <OnboardingGate>
@@ -589,10 +589,10 @@ describe('OnboardingGate', () => {
     expect(screen.queryByText('Connection manager')).toBeNull();
   });
 
- // archive#794: the launcher used to record a *persisted* dismissal when the user
-// navigated to Connections to do the setup, so it vanished for good — while
-// Connections still read "chat: setup needed" and its own copy promised it
-// "disappears automatically once chat is ready".
+  // archive#794: the launcher used to record a *persisted* dismissal when the user
+  // navigated to Connections to do the setup, so it vanished for good — while
+  // Connections still read "chat: setup needed" and its own copy promised it
+  // "disappears automatically once chat is ready".
   test('navigating to Connections defers the launcher without recording a dismissal', () => {
     render(
       <OnboardingGate>
@@ -616,14 +616,14 @@ describe('OnboardingGate', () => {
     fireEvent.click(screen.getByLabelText('Dismiss setup launcher'));
 
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
-// Dismissal now persists through the device-settings store (archive#
- // settings-revamp) rather than its own raw localStorage key.
+    // Dismissal now persists through the device-settings store (archive#
+    // settings-revamp) rather than its own raw localStorage key.
     expect(deviceSettingsStore.get('onboardingSetupDismissed')).toBe(true);
   });
 
- // archive#794: a deferral covers the trip into Connections. Leaving that
-// area without finishing setup must bring the launcher back, or the same
-// "gone while chat is still unready" complaint returns, session-scoped.
+  // archive#794: a deferral covers the trip into Connections. Leaving that
+  // area without finishing setup must bring the launcher back, or the same
+  // "gone while chat is still unready" complaint returns, session-scoped.
   test('re-arms the launcher when the user leaves the Connections area', async () => {
     const { rerender } = render(
       <OnboardingGate>
@@ -1014,9 +1014,9 @@ describe('OnboardingGate', () => {
   });
 
   test('wires the local-server Restart handler into the steady-state modal on a supervising desktop', () => {
-// The catch-all modal (reached once connected / after a remote pairs) is
-// exactly the PR's headline scenario: paired remote → local server later
-// fails. It must carry the restart affordance too.
+    // The catch-all modal (reached once connected / after a remote pairs) is
+    // exactly the PR's headline scenario: paired remote → local server later
+    // fails. It must carry the restart affordance too.
     platformProfile = {
       isTauri: true,
       target: 'macos',
@@ -1024,9 +1024,9 @@ describe('OnboardingGate', () => {
       isDesktop: true,
       supervisesBundledServer: true,
     };
-// A real saved remote is present (the headline scenario: paired remote →
-// local server later fails), so the gate skips the supervisor-phase screen
-// and reaches the steady-state catch-all modal.
+    // A real saved remote is present (the headline scenario: paired remote →
+    // local server later fails), so the gate skips the supervisor-phase screen
+    // and reaches the steady-state catch-all modal.
     connections = [
       {
         id: 'remote',
@@ -1037,11 +1037,11 @@ describe('OnboardingGate', () => {
       },
     ];
     currentStatus = chatReadyStatus();
-// The status the real scenario carries. This fixture used to be omitted
-// entirely, leaving it null — which happened to pass while the handler
-// was gated on `supervisesBundledServer` alone. It is now also gated on
-// sidecar ownership (the command refuses for any other owner), so the
-// test has to say who owns the home, the same as the app does.
+    // The status the real scenario carries. This fixture used to be omitted
+    // entirely, leaving it null — which happened to pass while the handler
+    // was gated on `supervisesBundledServer` alone. It is now also gated on
+    // sidecar ownership (the command refuses for any other owner), so the
+    // test has to say who owns the home, the same as the app does.
     bundledStatus = {
       phase: 'failed',
       attempt: 5,
@@ -1067,22 +1067,22 @@ describe('OnboardingGate', () => {
     const restart = screen.getByTestId('cm-restart-injected');
     fireEvent.click(restart);
     expect(restartBundledServerMock).toHaveBeenCalledTimes(1);
-// A restart that genuinely reached the host and succeeded has nothing to
-// report — the toast stays quiet.
+    // A restart that genuinely reached the host and succeeded has nothing to
+    // report — the toast stays quiet.
     expect(toastMocks.showToast).not.toHaveBeenCalled();
   });
 
-/**
-* archive#4475 — `restartBundledServer`'s own doc comment says the boolean
-* exists "so the recovery screen can tell the user when it didn't [reach
-* the host]", but both callers of it discarded that boolean with a bare
-* `void restartBundledServer;` — a dangling proxy (tailscale serve → a
-* port nothing owns) makes the restart POST fail, and the button read as
-* dead: no error, no re-enable, nothing. This is the mechanism check: a
-* failed restart must surface visibly and the control must remain
-* re-tappable (never disabled, so nothing to assert there beyond the
-* click firing again below).
-*/
+  /**
+   * archive#4475 — `restartBundledServer`'s own doc comment says the boolean
+   * exists "so the recovery screen can tell the user when it didn't [reach
+   * the host]", but both callers of it discarded that boolean with a bare
+   * `void restartBundledServer;` — a dangling proxy (tailscale serve → a
+   * port nothing owns) makes the restart POST fail, and the button read as
+   * dead: no error, no re-enable, nothing. This is the mechanism check: a
+   * failed restart must surface visibly and the control must remain
+   * re-tappable (never disabled, so nothing to assert there beyond the
+   * click firing again below).
+   */
   test('surfaces a visible failure when the restart request does not reach the host', async () => {
     platformProfile = {
       isTauri: true,
@@ -1131,33 +1131,33 @@ describe('OnboardingGate', () => {
     expect(toastMocks.showToast.mock.calls[0]?.[0]).toMatch(
       /couldn.t restart/i,
     );
-// archive#4512: sticky until dismissed — a 5s default would
-// vanish this toast, "Try again" and all, while the reader was still
-// reading the first sentence of a restart failure.
+    // archive#4512: sticky until dismissed — a 5s default would
+    // vanish this toast, "Try again" and all, while the reader was still
+    // reading the first sentence of a restart failure.
     expect(toastMocks.showToast.mock.calls[0]?.[2]).toBe(0);
-// Re-tappable: nothing about the control (never disabled to begin with)
-// stops a second attempt from reaching the same request again.
+    // Re-tappable: nothing about the control (never disabled to begin with)
+    // stops a second attempt from reaching the same request again.
     fireEvent.click(restart);
     expect(restartBundledServerMock).toHaveBeenCalledTimes(2);
   });
 
-/**
- * archive#4512 — a prior round claimed "re-tappable" evidence
-* by re-clicking the ORIGINAL restart control, which never exercises the
- * toast's own retry action at all. A reviewer's that
-* deleted the whole `actions` argument from the `showToast` call stayed
-* green against all 79 tests in this file, because nothing invoked it.
-* This drives the action's `onClick` directly, the way a reader clicking
-* "Try again" IN THE TOAST (not back on the original control) would.
-*/
+  /**
+   * archive#4512 — a prior round claimed "re-tappable" evidence
+   * by re-clicking the ORIGINAL restart control, which never exercises the
+   * toast's own retry action at all. A reviewer's that
+   * deleted the whole `actions` argument from the `showToast` call stayed
+   * green against all 79 tests in this file, because nothing invoked it.
+   * This drives the action's `onClick` directly, the way a reader clicking
+   * "Try again" IN THE TOAST (not back on the original control) would.
+   */
   test('the failure toast carries a working Try again action that retries the same request', async () => {
- // archive#4512 — this used to assert the ARGUMENT passed to
-// the mocked `showToast` (`calls[0][2] === 0`), which proved nothing
-// about the actual toast: the real store's `duration: 0` new-toast path
-// scheduled `setTimeout(dismiss, 0)` regardless, dismissing the toast on
-// the very next macrotask. Delegating the mock to the REAL toastStore
-// and running its timers is the effect test that catches that — an
-// argument assertion cannot.
+    // archive#4512 — this used to assert the ARGUMENT passed to
+    // the mocked `showToast` (`calls[0][2] === 0`), which proved nothing
+    // about the actual toast: the real store's `duration: 0` new-toast path
+    // scheduled `setTimeout(dismiss, 0)` regardless, dismissing the toast on
+    // the very next macrotask. Delegating the mock to the REAL toastStore
+    // and running its timers is the effect test that catches that — an
+    // argument assertion cannot.
     const { toastStore: realToastStore } = await vi.importActual<
       typeof import('../contexts/ToastContext')
     >('../contexts/ToastContext');
@@ -1224,7 +1224,7 @@ describe('OnboardingGate', () => {
       );
       expect(restartBundledServerMock).toHaveBeenCalledTimes(1);
 
-// The EFFECT, from the real store — not the mocked call's arguments.
+      // The EFFECT, from the real store — not the mocked call's arguments.
       const toastBefore = realToastStore
         .getSnapshot()
         .find((t) => t.message.match(/couldn.t restart/i));
@@ -1233,8 +1233,8 @@ describe('OnboardingGate', () => {
         'restart-failure toast never reached the real store',
       ).toBeTruthy();
 
-// Run every timer the store scheduled. A `duration: 0` toast must
- // still be present after this — the exact case broke.
+      // Run every timer the store scheduled. A `duration: 0` toast must
+      // still be present after this — the exact case broke.
       act(() => {
         vi.runAllTimers();
       });
@@ -1252,7 +1252,7 @@ describe('OnboardingGate', () => {
       expect(actions).toHaveLength(1);
       expect(actions?.[0]?.label).toBe('Try again');
 
-// Invoke the action itself — not a re-click of the original control.
+      // Invoke the action itself — not a re-click of the original control.
       actions?.[0]?.onClick();
       expect(restartBundledServerMock).toHaveBeenCalledTimes(2);
     } finally {
@@ -1262,9 +1262,9 @@ describe('OnboardingGate', () => {
   });
 
   test('withholds the modal Restart handler when the sidecar does not own the home', () => {
-// The negative the gate exists for, and the one nothing asserted: a
-// service-owned (or unowned) home refuses restart_bundled_server, so
-// offering the control routes the user to a button that does nothing.
+    // The negative the gate exists for, and the one nothing asserted: a
+    // service-owned (or unowned) home refuses restart_bundled_server, so
+    // offering the control routes the user to a button that does nothing.
     platformProfile = {
       isTauri: true,
       target: 'macos',
@@ -1308,7 +1308,7 @@ describe('OnboardingGate', () => {
   });
 
   test('does not pass a restart handler to the steady-state modal when the desktop does not supervise', () => {
-// Web/mobile parity: no bundled server, so nothing to restart from here.
+    // Web/mobile parity: no bundled server, so nothing to restart from here.
     currentStatus = chatReadyStatus();
 
     render(
@@ -1461,13 +1461,13 @@ describe('OnboardingGate', () => {
         supervisesBundledServer: false,
       };
       activeConnectionUrl = 'http://localhost:3242';
-// The phone's one saved Station is BOTH the active connection and the
-// exchange's target, which is what the E2E journey actually looks like.
-// The fixture used to leave these different and still expect the banner,
-// which is exactly how an attribution defect stayed invisible.
+      // The phone's one saved Station is BOTH the active connection and the
+      // exchange's target, which is what the E2E journey actually looks like.
+      // The fixture used to leave these different and still expect the banner,
+      // which is exactly how an attribution defect stayed invisible.
       activeConnectionId = 'saved-lan';
-// The phone in the pairing journey has no credential yet — the state
-// that also arms the credential banner once the wait is over.
+      // The phone in the pairing journey has no credential yet — the state
+      // that also arms the credential banner once the wait is over.
       credentialState = 'required';
       connections = [
         {
@@ -1500,9 +1500,9 @@ describe('OnboardingGate', () => {
       pairingReconcilerOutcome = {
         title: 'Access request declined',
         message:
-// The reconciler's real output since archive#3849: the shared map
-// names the Station by its browser-local label, so a banner about a
-// Station the reader is not looking at says which one.
+          // The reconciler's real output since archive#3849: the shared map
+          // names the Station by its browser-local label, so a banner about a
+          // Station the reader is not looking at says which one.
           'Tailnet Station declined this device. Request access again if that was unexpected.',
       };
     }
@@ -1523,8 +1523,8 @@ describe('OnboardingGate', () => {
       expect(
         screen.getByRole('button', { name: 'Request access again' }),
       ).toBeTruthy();
-// Not merely present: the front banner. A collapsed stack renders one
-// banner plus a cap, and the decline used to be the banner behind it.
+      // Not merely present: the front banner. A collapsed stack renders one
+      // banner plus a cap, and the decline used to be the banner behind it.
       expect(screen.queryByTestId('banner-stack-cap')).toBeNull();
     });
 
@@ -1560,16 +1560,16 @@ describe('OnboardingGate', () => {
       ).toBeNull();
     });
 
-/**
-* Requesting access never activates its target: the list row's handler
-* stops propagation so the row is not selected, and the deep-link path
-* find-or-ADDS a connection without activating it. So the Station that
-* declined is routinely NOT the one in front of the user.
-*/
+    /**
+     * Requesting access never activates its target: the list row's handler
+     * stops propagation so the row is not selected, and the deep-link path
+     * find-or-ADDS a connection without activating it. So the Station that
+     * declined is routinely NOT the one in front of the user.
+     */
     function seedTwoStationsWithBRequesting() {
       seedPhoneAwaitingApproval();
-// A is active and healthy; B is saved, needs access, and is the target
-// of the pending exchange.
+      // A is active and healthy; B is saved, needs access, and is the target
+      // of the pending exchange.
       activeConnectionId = 'station-a';
       credentialState = 'required';
       connections = [
@@ -1604,8 +1604,8 @@ describe('OnboardingGate', () => {
         </OnboardingGate>,
       );
 
- // Withholding it would be the original archive#3387 defect: the user just asked
-// B for access and got refused. It renders — naming B.
+      // Withholding it would be the original archive#3387 defect: the user just asked
+      // B for access and got refused. It renders — naming B.
       const banner = await screen.findByText(
         /Tailnet Station declined this device/,
       );
@@ -1625,21 +1625,21 @@ describe('OnboardingGate', () => {
         /Tailnet Station declined this device/,
       );
 
-// It must not read as A's answer. The decline takes the band's one
-// visible slot (see the disclosed tradeoff in OnboardingGate), so naming
-// its subject is what keeps it honest.
+      // It must not read as A's answer. The decline takes the band's one
+      // visible slot (see the disclosed tradeoff in OnboardingGate), so naming
+      // its subject is what keeps it honest.
       expect(banner.textContent).toContain('Station B');
       expect(banner.textContent).not.toContain('Station A');
-//.and nothing of A's is left collapsed behind a cap either.
+      //.and nothing of A's is left collapsed behind a cap either.
       expect(screen.queryByTestId('banner-stack-cap')).toBeNull();
     });
 
     test('shows a decline for a target the deep-link path added but never activated', async () => {
       seedTwoStationsWithBRequesting();
-// `resolvePendingTarget` find-or-adds by origin and does not activate,
-// so the target is a connection the user has never selected. Keyed on
-// the target alone with no render for a non-active subject, this decline
- // would be invisible — archive#3387 reintroduced.
+      // `resolvePendingTarget` find-or-adds by origin and does not activate,
+      // so the target is a connection the user has never selected. Keyed on
+      // the target alone with no render for a non-active subject, this decline
+      // would be invisible — archive#3387 reintroduced.
       activeConnectionId = 'station-a';
 
       render(
@@ -1663,14 +1663,14 @@ describe('OnboardingGate', () => {
           <BannerHost />
         </OnboardingGate>,
       );
-// One Station, and it is the subject: the copy stands unqualified.
+      // One Station, and it is the subject: the copy stands unqualified.
       const banner = await screen.findByText(
         /Tailnet Station declined this device/,
       );
       expect(banner.textContent).not.toContain('Tailnet Station:');
 
-// Select a different Station. The decline is still true, and still about
-// the first one — so it must now say which.
+      // Select a different Station. The decline is still true, and still about
+      // the first one — so it must now say which.
       activeConnectionId = 'other-station';
       activeConnectionUrl = 'http://localhost:9999';
       pairingReconcilerOutcome = null;
@@ -1699,9 +1699,9 @@ describe('OnboardingGate', () => {
       );
       await screen.findByText(/Tailnet Station declined this device/);
 
-// The Station the decline names now holds a credential. A decline that
-// outlived the condition it described would keep a working Station
-// looking refused.
+      // The Station the decline names now holds a credential. A decline that
+      // outlived the condition it described would keep a working Station
+      // looking refused.
       credentialState = 'saved';
       connections = [
         { ...(connections[0] as object), credentialState: 'device-session' },
@@ -1739,20 +1739,20 @@ describe('OnboardingGate', () => {
     expect(alert.textContent).toMatch(
       /Tailnet Station isn't accepting this device/,
     );
-// archive#3297: one line. The remedy is a tap away, not a third line of
-// prose on a phone.
-// archive#3903 rewrote that second line: it used to say "pair this device
-// again" beside a button labelled Request access.
+    // archive#3297: one line. The remedy is a tap away, not a third line of
+    // prose on a phone.
+    // archive#3903 rewrote that second line: it used to say "pair this device
+    // again" beside a button labelled Request access.
     expect(alert.textContent).not.toMatch(/request access to/i);
-// archive#4470b: the disclosure toggle's label is the constant "Details"
-// now (was "More"/"Less").
+    // archive#4470b: the disclosure toggle's label is the constant "Details"
+    // now (was "More"/"Less").
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect((await screen.findByRole('alert')).textContent).toMatch(
       /isn't authorised there\. Request access to Tailnet Station again/i,
     );
-// The copy must not send the reader at the network. This banner is the
-// surface that told a phone its answering host "may be off, asleep, or on
-// another network" while it returned 401.
+    // The copy must not send the reader at the network. This banner is the
+    // surface that told a phone its answering host "may be off, asleep, or on
+    // another network" while it returned 401.
     expect((await screen.findByRole('alert')).textContent).not.toMatch(
       /off, asleep|another network/i,
     );
@@ -1954,13 +1954,13 @@ describe('OnboardingGate', () => {
       expect(screen.getByText('Connection manager: list')).toBeTruthy();
     });
 
-/**
-* archive#4475 — the banner's own "Restart Station" action used to
-* discard `restartBundledServer`'s result (`void restartBundledServer;`
-* in OnboardingGate.tsx), so a request that never reached the host (the
-* owner's dangling-tailscale-proxy scenario) left the banner reading
-* exactly as it did before the tap — a dead button, silently.
-*/
+    /**
+     * archive#4475 — the banner's own "Restart Station" action used to
+     * discard `restartBundledServer`'s result (`void restartBundledServer;`
+     * in OnboardingGate.tsx), so a request that never reached the host (the
+     * owner's dangling-tailscale-proxy scenario) left the banner reading
+     * exactly as it did before the tap — a dead button, silently.
+     */
     test('surfaces a visible failure when the banner Restart does not reach the host', async () => {
       bundledStatus = bundled({
         phase: 'failed',
@@ -1988,8 +1988,8 @@ describe('OnboardingGate', () => {
       expect(toastMocks.showToast.mock.calls[0]?.[0]).toMatch(
         /couldn.t restart/i,
       );
-// Re-tappable: the banner's own action button is never disabled by
-// this path, so a second tap reaches the same request again.
+      // Re-tappable: the banner's own action button is never disabled by
+      // this path, so a second tap reaches the same request again.
       fireEvent.click(screen.getByRole('button', { name: 'Restart Station' }));
       expect(restartBundledServerMock).toHaveBeenCalledTimes(2);
     });
@@ -2071,7 +2071,7 @@ describe('OnboardingGate', () => {
     });
 
     test('a report-error host that does not supervise degrades to the web flow', () => {
-// TAURI_UNKNOWN_PROFILE: native, but supervisesBundledServer stays false.
+      // TAURI_UNKNOWN_PROFILE: native, but supervisesBundledServer stays false.
       platformProfile = {
         isTauri: true,
         target: 'unknown',
@@ -2090,8 +2090,8 @@ describe('OnboardingGate', () => {
     });
   });
 
- // archive#1007 / archive#1958. Pairing chrome flows through BannerHost under the header
-// (not a root strip). Pin in-flow layout, drag region, and dismiss.
+  // archive#1007 / archive#1958. Pairing chrome flows through BannerHost under the header
+  // (not a root strip). Pin in-flow layout, drag region, and dismiss.
   describe('pairing banner does not occlude the window chrome (#1007)', () => {
     function shell(children?: ReactNode) {
       return (

@@ -67,7 +67,7 @@ export function isKnownFirstRunChapter(
 /** Where a resume or a re-trigger should put the user. */
 export interface FirstRunResumePoint {
   chapter: FirstRunChapter;
-/** Only meaningful when `chapter === 'tour'`. */
+  /** Only meaningful when `chapter === 'tour'`. */
   stepIndex: number;
 }
 
@@ -75,13 +75,13 @@ export interface FirstRunResumePoint {
  * Resolve where to (re)enter the first run from persisted progress.
  *
  * - A partial run resumes at the chapter it stopped in, and a partial tour at
-*   the step it stopped on — that is what "skipping persists progress" buys.
+ *   the step it stopped on — that is what "skipping persists progress" buys.
  * - A finished run re-entered on purpose (the command-palette action) restarts
-*   the tour from its first step, because there is nothing left to resume and
-*   dropping someone on the last coachmark of a tour they asked to see again
-*   is not a resume.
+ *   the tour from its first step, because there is nothing left to resume and
+ *   dropping someone on the last coachmark of a tour they asked to see again
+ *   is not a resume.
  * - An unrecognised chapter (written by a newer Station, then downgraded)
-*   restarts rather than crashing or inventing a position.
+ *   restarts rather than crashing or inventing a position.
  */
 export function resolveResumePoint(
   progress: FirstRunProgress | null | undefined,
@@ -105,7 +105,7 @@ export function resolveResumePoint(
 }
 
 /**
-* Where the explicit "Take the tour" action should land 
+ * Where the explicit "Take the tour" action should land
  *
  * Distinct from `resolveResumePoint` on purpose. That rule answers "continue
  * the guided run where it stopped", which for a run abandoned at the questions
@@ -141,14 +141,14 @@ class FirstRunStore {
   getSnapshot = (): FirstRunProgress =>
     deviceSettingsStore.get('firstRunProgress');
 
-/** Move to a chapter, clearing any tour position that no longer applies. */
+  /** Move to a chapter, clearing any tour position that no longer applies. */
   enterChapter = (chapter: FirstRunChapter) => {
     const current = this.getSnapshot();
     if (current.chapter === chapter && chapter !== 'tour') return;
     deviceSettingsStore.set('firstRunProgress', { chapter });
   };
 
-/** Record the tour step the user is looking at, so leaving resumes here. */
+  /** Record the tour step the user is looking at, so leaving resumes here. */
   recordTourStep = (stepId: string) => {
     const current = this.getSnapshot();
     if (current.chapter === 'tour' && current.tourStepId === stepId) return;
@@ -158,11 +158,11 @@ class FirstRunStore {
     });
   };
 
-/**
-* The run is over — by finishing it or by skipping out of it. Both persist
-* the same way on purpose: a skip is a decision, and re-asking someone who
-* already said no is how first-run experiences get resented.
-*/
+  /**
+   * The run is over — by finishing it or by skipping out of it. Both persist
+   * the same way on purpose: a skip is a decision, and re-asking someone who
+   * already said no is how first-run experiences get resented.
+   */
   finish = () => {
     const current = this.getSnapshot();
     const lastStepId = FIRST_RUN_TOUR_STEPS[FIRST_RUN_TOUR_STEPS.length - 1].id;

@@ -17,12 +17,12 @@ import { ConnectionsHubSection } from './ConnectionsHubSection';
  *
  * Three honesty rules this surface exists to keep:
  *
-*  - **Unknown is not zero.** A reading that failed renders as a stated reason
-*    with no meter at all, never an empty bar that reads as "nothing used".
-*  - **The provider's verdict wins.** `exhausted` comes from the provider's own
-*    flags; this component never re-derives it from a percentage.
-*  - **Say when it was read.** These are point-in-time reads of a remote
-*    counter, not Station's own accounting.
+ *  - **Unknown is not zero.** A reading that failed renders as a stated reason
+ *    with no meter at all, never an empty bar that reads as "nothing used".
+ *  - **The provider's verdict wins.** `exhausted` comes from the provider's own
+ *    flags; this component never re-derives it from a percentage.
+ *  - **Say when it was read.** These are point-in-time reads of a remote
+ *    counter, not Station's own accounting.
  */
 const USAGE_ENGINES: ReadonlyArray<{ id: string; label: string }> = [
   { id: 'claude', label: 'Claude Code' },
@@ -52,7 +52,7 @@ function fetchedAtLabel(fetchedAt: string): string | null {
 
 function UsageBody({ usage }: { usage: CredentialUsage }) {
   if (usage.status === 'unknown') {
-// Deliberately no meter: an empty bar here would read as "nothing used".
+    // Deliberately no meter: an empty bar here would read as "nothing used".
     return (
       <div className="credential-usage__unknown">
         <span className="credential-usage__unknown-label">
@@ -63,10 +63,10 @@ function UsageBody({ usage }: { usage: CredentialUsage }) {
     );
   }
   if (usage.windows.length === 0) {
-// an account the provider says is EXHAUSTED but
-// reports no percentages for rendered "Limit reached" above this line and
-// "reported no limits" below it — two statements that contradict each
-// other. The absence of percentages is not the absence of limits.
+    // an account the provider says is EXHAUSTED but
+    // reports no percentages for rendered "Limit reached" above this line and
+    // "reported no limits" below it — two statements that contradict each
+    // other. The absence of percentages is not the absence of limits.
     return (
       <div className="credential-usage__unknown">
         <span className="credential-usage__unknown-label">
@@ -94,7 +94,7 @@ function UsageBody({ usage }: { usage: CredentialUsage }) {
                 <span className="credential-usage__window-reset">{reset}</span>
               )}
             </div>
-{/* A real <meter>, not a div wearing role="meter": the element
+            {/* A real <meter>, not a div wearing role="meter": the element
                 carries the semantics natively and assistive tech announces
                 the value without a hand-maintained aria triple. */}
             <meter
@@ -120,7 +120,7 @@ function AccountCard({ entry }: { entry: CredentialUsageEntry }) {
         {usage.status === 'ok' && usage.planLabel && (
           <span className="credential-usage__plan">{usage.planLabel}</span>
         )}
-{/* The provider's own verdict, never a threshold computed here. */}
+        {/* The provider's own verdict, never a threshold computed here. */}
         {usage.status === 'ok' && usage.exhausted && (
           <span className="credential-usage__exhausted">Limit reached</span>
         )}
@@ -136,9 +136,9 @@ function AccountCard({ entry }: { entry: CredentialUsageEntry }) {
 function EngineUsage({ id, label }: { id: string; label: string }) {
   const { data, isLoading, isError, refetch } = useCredentialUsageQuery(id);
 
-// The route 404s for a connection with no credential-profile channel, and an
-// engine that is simply not configured has nothing to report. Either way,
-// rendering nothing beats an empty card that never fills.
+  // The route 404s for a connection with no credential-profile channel, and an
+  // engine that is simply not configured has nothing to report. Either way,
+  // rendering nothing beats an empty card that never fills.
   if (isError || (!isLoading && (!data || data.length === 0))) return null;
 
   return (

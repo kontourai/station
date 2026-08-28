@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  *
-* the SSH computer creator (audit BLOCKER: nothing in the UI could
-* create an SSH environment, and : a failure that named no cause and no
+ * the SSH computer creator (audit BLOCKER: nothing in the UI could
+ * create an SSH environment, and : a failure that named no cause and no
  * next step).
  */
 
@@ -82,8 +82,8 @@ describe('SshComputerCreatorDialog', () => {
   beforeEach(() => {
     mocks.probe.mockReset();
     mocks.create.mockReset().mockResolvedValue(undefined);
-// The default is the machine Station runs on; the paired cases below say
-// so explicitly.
+    // The default is the machine Station runs on; the paired cases below say
+    // so explicitly.
     mocks.devicePresentation
       .mockReset()
       .mockReturnValue({ deviceClass: 'host', hostName: 'workshop' });
@@ -261,13 +261,13 @@ describe('SshComputerCreatorDialog', () => {
     ).toBe(true);
   });
 
-/**
- * archive#3843 — the trust command is host-hands: it appends a line to a
-* known_hosts file on the machine `ssh` will run from, so a paired device
-* cannot execute it and must not present it as though it could. The
-* fingerprint is the opposite — verifying it is a conversation with the
-* computer's owner, which works from anywhere — so it stays visible in both.
-*/
+  /**
+   * archive#3843 — the trust command is host-hands: it appends a line to a
+   * known_hosts file on the machine `ssh` will run from, so a paired device
+   * cannot execute it and must not present it as though it could. The
+   * fingerprint is the opposite — verifying it is a conversation with the
+   * computer's owner, which works from anywhere — so it stays visible in both.
+   */
   test('on a paired device the trust command becomes guidance naming the host, with the fingerprint still visible', async () => {
     mocks.devicePresentation.mockReturnValue({
       deviceClass: 'paired',
@@ -286,14 +286,14 @@ describe('SshComputerCreatorDialog', () => {
         "Run this on workshop. It records the key in that computer's known_hosts file, so it only takes effect there.",
       ),
     ).toBeTruthy();
-// The exact bytes, readable and copyable rather than buried in prose.
+    // The exact bytes, readable and copyable rather than buried in prose.
     expect(screen.getByText(TRUST_COMMAND)).toBeTruthy();
-// Never a disabled button, never silently hidden.
+    // Never a disabled button, never silently hidden.
     const copy = screen.getByRole('button', {
       name: 'Copy command',
     }) as HTMLButtonElement;
     expect(copy.disabled).toBe(false);
-// The fingerprint is the part a person can verify from anywhere.
+    // The fingerprint is the part a person can verify from anywhere.
     expect(
       screen.getByText(
         'ssh-ed25519 SHA256:6dPBcHKtaMBrKUJvC/6DcGGVXCEQvSlPO9lVCJ6L1DE',
@@ -315,13 +315,13 @@ describe('SshComputerCreatorDialog', () => {
     expect(document.querySelector('.host-action')).toBeNull();
   });
 
-// The client-side rejection of an unprobed save IS the native `disabled`
-// attribute (React blocks the handler on a disabled button's fiber props,
-// so there is no second in-handler path a test could drive — a guard there
-// would be a rejection branch that never executes). This pins it in every
-// not-reached state, so no state can quietly re-enable Save. There is no
-// server-side probe requirement on `POST /api/environments/ssh`: it stores
-// a profile, and reaching the host is gated by the host key, not by this.
+  // The client-side rejection of an unprobed save IS the native `disabled`
+  // attribute (React blocks the handler on a disabled button's fiber props,
+  // so there is no second in-handler path a test could drive — a guard there
+  // would be a rejection branch that never executes). This pins it in every
+  // not-reached state, so no state can quietly re-enable Save. There is no
+  // server-side probe requirement on `POST /api/environments/ssh`: it stores
+  // a profile, and reaching the host is gated by the host key, not by this.
   test.each([
     ['never probed', null],
     ['a failed probe', { reachable: false as const }],

@@ -33,7 +33,7 @@
   font-size: 70%;
 }
 .brand-icon__initials {
- /* archive#1424 fix : a bare percentage font-size
+  /* archive#1424 fix : a bare percentage font-size
      resolves against the INHERITED ambient text size, not this element's
      own icon box — the original `font-size: 42%` never actually scaled
      with the icon's `size` prop (a 48px "large" icon and a 20px avatar

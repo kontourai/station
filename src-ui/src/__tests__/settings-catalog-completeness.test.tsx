@@ -181,9 +181,9 @@ describe('settings catalog completeness', () => {
   async function renderSettings() {
     const { SettingsView } = await import('../views/SettingsView');
     const client = new QueryClient();
-// A fresh element every time: React bails out of re-rendering when handed
-// the identical element object, which would make `applyServerSnapshot` a
-// no-op.
+    // A fresh element every time: React bails out of re-rendering when handed
+    // the identical element object, which would make `applyServerSnapshot` a
+    // no-op.
     const tree = () => (
       <QueryClientProvider client={client}>
         <SettingsView onBack={vi.fn()} />
@@ -193,7 +193,7 @@ describe('settings catalog completeness', () => {
     return {
       container: result.container,
       unmount: result.unmount,
-/** Re-renders with the current `configSnapshot`, as a refetch would. */
+      /** Re-renders with the current `configSnapshot`, as a refetch would. */
       applyServerSnapshot: () => act(() => result.rerender(tree())),
     };
   }
@@ -220,11 +220,11 @@ describe('settings catalog completeness', () => {
     expect(rendered).toHaveLength(expected.length);
   }
 
-// `useConfigSnapshot` logged the config query's error and
-// returned `config: null` — the same shape an in-flight read has — so the
-// `if (!configData)` branch below drew the loading skeleton FOREVER on a
-// failed initial read. A page that cannot say "this failed" says "still
-// loading" instead, indefinitely.
+  // `useConfigSnapshot` logged the config query's error and
+  // returned `config: null` — the same shape an in-flight read has — so the
+  // `if (!configData)` branch below drew the loading skeleton FOREVER on a
+  // failed initial read. A page that cannot say "this failed" says "still
+  // loading" instead, indefinitely.
   test('a failed config read renders the failure, not a permanent skeleton', async () => {
     const retry = vi.fn();
     configSnapshot = {
@@ -239,9 +239,9 @@ describe('settings catalog completeness', () => {
     expect(container.querySelector('.settings__skeleton')).toBeNull();
     expect(screen.getByText('Unable to load settings')).toBeTruthy();
     expect(screen.getByText('config read failed')).toBeTruthy();
-// 6-: the frame the page owns does not depend on the read — the
-// title is the page frame's (page-frame-registry.ts), rendered by the
-// shell above this body, so the page itself renders only the failure.
+    // 6-: the frame the page owns does not depend on the read — the
+    // title is the page frame's (page-frame-registry.ts), rendered by the
+    // shell above this body, so the page itself renders only the failure.
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(retry).toHaveBeenCalledTimes(1);
@@ -262,9 +262,9 @@ describe('settings catalog completeness', () => {
     const rendered = await renderedCatalogIds();
     const expected = visibleCatalogIds({ isMobile: false });
     expectExactCatalog(rendered, expected);
-// 37 at the merge base; +2 from archive#3313 (feature-previews,
-// enable-developer-tools) and +1 from the chat-dock lane's
-// sidebar-sections. Counted from the merged catalog, not added up.
+    // 37 at the merge base; +2 from archive#3313 (feature-previews,
+    // enable-developer-tools) and +1 from the chat-dock lane's
+    // sidebar-sections. Counted from the merged catalog, not added up.
     expect(SETTINGS_CATALOG).toHaveLength(40);
   });
 
@@ -476,8 +476,8 @@ describe('settings catalog completeness', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await screen.findByText(/Log Level could not be saved/);
 
-// Another client edits a key this form never touched, while the draft is
-// still pending. The snapshot must be remembered, not consumed.
+    // Another client edits a key this form never touched, while the draft is
+    // still pending. The snapshot must be remembered, not consumed.
     configSnapshot = {
       config: { ...INITIAL_CONFIG, defaultMaxTurns: 500 },
       dataUpdatedAt: 2000,
@@ -502,7 +502,7 @@ describe('settings catalog completeness', () => {
         (screen.getByLabelText('Default max turns') as HTMLInputElement).value,
       ).toBe('500'),
     );
-// The retry's own write is newer than that snapshot, so it survives it.
+    // The retry's own write is newer than that snapshot, so it survives it.
     expect(
       (screen.getByLabelText('Log Level') as HTMLSelectElement).value,
     ).toBe('debug');
@@ -529,8 +529,8 @@ describe('settings catalog completeness', () => {
       (screen.getByLabelText('Default max turns') as HTMLInputElement).value,
     ).toBe('201');
 
-// Another client restores the original value. The payload is byte-identical
-// to the first snapshot, so only the fetch generation says it is new.
+    // Another client restores the original value. The payload is byte-identical
+    // to the first snapshot, so only the fetch generation says it is new.
     configSnapshot = {
       config: { ...INITIAL_CONFIG, defaultMaxTurns: 100 },
       dataUpdatedAt: now + 60_000,
@@ -608,18 +608,18 @@ describe('settings catalog completeness', () => {
     ).toBe('201');
   });
 
- // archive#3313: nothing pinned that `?view=` resolves at all. The
-// test below passes `view=system` but asserts only the `highlight`
-// behaviour, so making `?view=` a no-op left 161 tests green — and this
-// branch retires the standalone /feature-previews route in favour of a
-// redirect to `/settings?view=feature-previews`, which makes the query the
-// ONLY way to reach that surface directly.
+  // archive#3313: nothing pinned that `?view=` resolves at all. The
+  // test below passes `view=system` but asserts only the `highlight`
+  // behaviour, so making `?view=` a no-op left 161 tests green — and this
+  // branch retires the standalone /feature-previews route in favour of a
+  // redirect to `/settings?view=feature-previews`, which makes the query the
+  // ONLY way to reach that surface directly.
   test('?view= narrows the page to that one section and focuses it', async () => {
     Element.prototype.scrollIntoView = vi.fn();
     window.history.replaceState({}, '', '/settings?view=feature-previews');
     const rendered = await renderedCatalogIds();
 
-// Narrowed: the section the query names, and nothing else.
+    // Narrowed: the section the query names, and nothing else.
     expect(rendered).toEqual(['feature-previews']);
     await waitFor(() =>
       expect(document.activeElement).toBe(
@@ -784,8 +784,8 @@ describe('settings catalog completeness', () => {
     await waitFor(() =>
       expect(window.location.search).toBe('?view=station-config'),
     );
-// Simulate the browser restoring the previous same-page history entry.
-// The Settings instance remains mounted, so its draft must remain local.
+    // Simulate the browser restoring the previous same-page history entry.
+    // The Settings instance remains mounted, so its draft must remain local.
     window.history.replaceState({}, '', '/settings?view=system');
     fireEvent(window, new PopStateEvent('popstate'));
     await waitFor(() =>

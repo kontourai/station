@@ -387,7 +387,7 @@ export interface ComposerImageSupportInputs {
    * "Projection", not "the identical value": these views are assembled per
    * connection kind, and the ACP view is hand-built in
    * `connection-inspector.ts` rather than read off the adapter. That copy had
-    * already lost `image-input` (archive#3344), which is why it now spreads
+   * already lost `image-input` (archive#3344), which is why it now spreads
    * `ACP_ADAPTER_CAPABILITIES` — the adapter's own array — instead of a
    * second literal. A view that drifts from its adapter makes this input
    * lie, and it is pinned by a test for exactly that reason.

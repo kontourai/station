@@ -66,7 +66,7 @@ describe('first-run dock nudge', () => {
 });
 
 /**
-* archive#3314: the sidebar's "N more" and its "Open
+ * archive#3314: the sidebar's "N more" and its "Open
  * chats" heading promised the dock inbox from every chrome. The panel mounts
  * only on desktop, and there only in bottom mode or a fullscreen placement, so
  * on mobile the drawer closed and the dock snapped to half showing the CURRENT
@@ -93,12 +93,12 @@ describe('routeToOpenChatsCollection (#3314 SF-1)', () => {
     (chrome) => {
       const route = routeToOpenChatsCollection(chrome);
       if (route.surface === 'task-switcher-sheet') {
-// Derived, not asserted in prose: the sheet must actually mount here.
+        // Derived, not asserted in prose: the sheet must actually mount here.
         expect(mobileTaskSwitcherMounts(chrome)).toBe(true);
         return;
       }
-// Applying the route's own mode change must make the panel mountable —
-// otherwise this is a button promising a surface that never appears.
+      // Applying the route's own mode change must make the panel mountable —
+      // otherwise this is a button promising a surface that never appears.
       const afterRoute: DockChrome = route.switchToBottomMode
         ? { ...chrome, dockMode: 'bottom' }
         : chrome;
@@ -180,17 +180,17 @@ describe('effectiveChatModelId (#3309)', () => {
         agentDefaultModel: null,
       }),
     ).toBeUndefined();
-// A blank override must not shadow a real model behind it.
+    // A blank override must not shadow a real model behind it.
     expect(
       effectiveChatModelId({ composerModel: '  ', sessionModel: 'gpt-5' }),
     ).toBe('gpt-5');
   });
 
   test('the exit budget equals the --motion-base token the exit CSS animates on', () => {
-// Read from tokens.css, not restated: the CSS owns the duration and this
-// constant owns when the element leaves the tree, so a drift between them
-// deletes the panel mid-animation. Asserting the number against itself
-// would prove nothing about that pairing.
+    // Read from tokens.css, not restated: the CSS owns the duration and this
+    // constant owns when the element leaves the tree, so a drift between them
+    // deletes the panel mid-animation. Asserting the number against itself
+    // would prove nothing about that pairing.
     const tokens = readFileSync(
       path.resolve(import.meta.dirname, '..', 'tokens.css'),
       'utf8',
@@ -200,8 +200,8 @@ describe('effectiveChatModelId (#3309)', () => {
     const ms = Number(declared?.[1]) * (declared?.[2] === 'ms' ? 1 : 1000);
     expect(CHAT_DOCK_INBOX_EXIT_MS).toBe(ms);
 
-// And the exit rule really does animate on that token rather than a
-// literal, so the pairing above is about the same duration.
+    // And the exit rule really does animate on that token rather than a
+    // literal, so the pairing above is about the same duration.
     const inboxCss = readFileSync(
       path.resolve(
         import.meta.dirname,
@@ -241,8 +241,8 @@ describe('chatModelLabel (#3309)', () => {
 
   test('an alias the engine resolved names the concrete model, not the alias', () => {
     expect(chatModelLabel('default', CATALOG)).toBe('Opus 5 (1M context)');
-// The exact regression: the alias name must NOT be what a user reads,
-// because the composer two rows below is showing the resolution.
+    // The exact regression: the alias name must NOT be what a user reads,
+    // because the composer two rows below is showing the resolution.
     expect(chatModelLabel('default', CATALOG)).not.toBe(
       'Default (recommended)',
     );
@@ -475,10 +475,10 @@ describe('resolveDirectNewChatProjectSlug (station#4525 review HIGH-3)', () => {
     ).toBeUndefined();
   });
 
- // The exact repro: New Chat inside a project's own Coding layout
-// must target THAT project, never the ambient device-global binding —
-// passing the binding here trips `shouldRouteScopedChatProject` into
-// navigating away instead of creating a chat.
+  // The exact repro: New Chat inside a project's own Coding layout
+  // must target THAT project, never the ambient device-global binding —
+  // passing the binding here trips `shouldRouteScopedChatProject` into
+  // navigating away instead of creating a chat.
   test('an immutably project-scoped layout ALWAYS targets its own project, never the ambient binding', () => {
     expect(
       resolveDirectNewChatProjectSlug({
@@ -527,8 +527,8 @@ describe('resolveNewChatModalDefaultProjectSlug (station#4525 review MED-3)', ()
     ).toBe('bound-project');
   });
 
- // an unbound user gets the pre-archive#4525 behavior back —
-// navigating to a project and opening New Chat preselects that project.
+  // an unbound user gets the pre-archive#4525 behavior back —
+  // navigating to a project and opening New Chat preselects that project.
   test('the ambient dock with NO binding falls back to the route-level currently-viewed project (pre-fix behavior restored)', () => {
     expect(
       resolveNewChatModalDefaultProjectSlug({

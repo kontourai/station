@@ -32,23 +32,23 @@ type Toast = {
   message: string;
   sessionId?: string;
   duration?: number;
-// 'pairing-request' (archive#1982): NotificationContainer.tsx already
-// renders a dedicated Allow/Deny card for this variant — grouped into the
-// persistent approval queue alongside 'tool-approval', never the ephemeral
-// toast stack — and routes both actions through the same
-// `/api/notifications/:id/action/:actionId` handler `handleAction` already
-// calls. No producer constructs one yet (nothing calls `show` with this
-// type), so it is currently unreachable at runtime; it belongs in this
-// union regardless, because the rendering code already switches on it and
-// a real device-pairing notification producer is meant to opt into this
-// exact shape next, not invent a second one.
+  // 'pairing-request' (archive#1982): NotificationContainer.tsx already
+  // renders a dedicated Allow/Deny card for this variant — grouped into the
+  // persistent approval queue alongside 'tool-approval', never the ephemeral
+  // toast stack — and routes both actions through the same
+  // `/api/notifications/:id/action/:actionId` handler `handleAction` already
+  // calls. No producer constructs one yet (nothing calls `show` with this
+  // type), so it is currently unreachable at runtime; it belongs in this
+  // union regardless, because the rendering code already switches on it and
+  // a real device-pairing notification producer is meant to opt into this
+  // exact shape next, not invent a second one.
   type?: 'info' | 'tool-approval' | 'tool-activity' | 'pairing-request';
   toolName?: string;
   agentName?: string;
   conversationTitle?: string;
   actions?: ToastAction[];
   onNavigate?: () => void;
-/** Opaque metadata from server-side notifications (e.g. navigateTo for cross-project routing) */
+  /** Opaque metadata from server-side notifications (e.g. navigateTo for cross-project routing) */
   metadata?: Record<string, unknown>;
 };
 
@@ -99,9 +99,9 @@ class ToastStore {
   ) {
     const clean = stripAnsi(message);
 
-// Collapse rapid duplicates (a provider error retried in a loop would
-// otherwise stack identical toasts until they cover the viewport). Refresh
-// the existing toast's auto-dismiss timer instead of adding another copy.
+    // Collapse rapid duplicates (a provider error retried in a loop would
+    // otherwise stack identical toasts until they cover the viewport). Refresh
+    // the existing toast's auto-dismiss timer instead of adding another copy.
     const existing = this.toasts.find(
       (t) =>
         t.type === 'info' && t.message === clean && t.sessionId === sessionId,
@@ -132,7 +132,7 @@ class ToastStore {
     this.toasts.push(toast);
     this.history.unshift({ ...toast, timestamp: Date.now(), dismissed: false });
 
-// Keep history size limited
+    // Keep history size limited
     if (this.history.length > this.maxHistory) {
       this.history = this.history.slice(0, this.maxHistory);
     }
@@ -140,13 +140,13 @@ class ToastStore {
     this.notify();
     this.notifyHistory();
 
- // archive#4512 — `duration > 0` guards this the same way
-// the existing-toast refresh path above already does. Before this fix,
-// `duration: 0` (the "sticky, no auto-dismiss" contract `showToolApproval`
-// below establishes by never scheduling a timeout at all) instead
-// scheduled `setTimeout(dismiss, 0)` here — a toast asking for NO
-// auto-dismiss dismissed itself on the very next macrotask, faster than
-// the 5-second default it was meant to opt out of.
+    // archive#4512 — `duration > 0` guards this the same way
+    // the existing-toast refresh path above already does. Before this fix,
+    // `duration: 0` (the "sticky, no auto-dismiss" contract `showToolApproval`
+    // below establishes by never scheduling a timeout at all) instead
+    // scheduled `setTimeout(dismiss, 0)` here — a toast asking for NO
+    // auto-dismiss dismissed itself on the very next macrotask, faster than
+    // the 5-second default it was meant to opt out of.
     if (duration > 0) {
       const timeout = setTimeout(() => {
         this.dismiss(id);
@@ -169,7 +169,7 @@ class ToastStore {
   }) {
     const id = `approval-${Date.now()}-${Math.random()}`;
 
-// Format tool display: [server] tool or just toolName
+    // Format tool display: [server] tool or just toolName
     const toolDisplay =
       options.server && options.tool
         ? `[${options.server}] ${options.tool}`
@@ -267,7 +267,7 @@ class ToastStore {
       this.timeouts.delete(id);
     }
 
-// Mark as dismissed in history
+    // Mark as dismissed in history
     const historyItem = this.history.find((h) => h.id === id);
     if (historyItem) {
       historyItem.dismissed = true;
@@ -285,9 +285,9 @@ class ToastStore {
     this.notify();
   }
 
-// Dismiss every currently-visible notification at once. The container renders
-// from history (filtered by `dismissed`), so clearing live toasts alone is not
-// enough — mark the active history entries dismissed too.
+  // Dismiss every currently-visible notification at once. The container renders
+  // from history (filtered by `dismissed`), so clearing live toasts alone is not
+  // enough — mark the active history entries dismissed too.
   dismissAll() {
     this.timeouts.forEach((timeout) => clearTimeout(timeout));
     this.timeouts.clear();
@@ -401,9 +401,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     toastStore.clearHistory();
   }, []);
 
-// archive#3796: one memoised value per provider — a fresh object literal
-// here republishes the context to every consumer on any render of this
-// provider, whatever the render was actually about.
+  // archive#3796: one memoised value per provider — a fresh object literal
+  // here republishes the context to every consumer on any render of this
+  // provider, whatever the render was actually about.
   const value = useMemo(
     () => ({
       showToast,

@@ -38,16 +38,16 @@ export function AgentDefaultsSection({
   onChange: (config: AppConfig) => void;
   region: string;
   regionError?: string;
- /** docs/design/settings-architecture.md §4's named example: `region`/`AWS_REGION`. */
+  /** docs/design/settings-architecture.md §4's named example: `region`/`AWS_REGION`. */
   regionProvenance?: SettingProvenanceEntry;
   showRegion: boolean;
   onRegionChange: (value: string) => void;
-/**
- * `SettingsView.tsx`'s own `useUnsavedGuard` guard — 
- * ( 1): every navigation trigger from a page with dirty state
-* must route through it (CLAUDE.md's unsaved-guard standard), including
-* this section's own "Open Agents" cross-links.
-*/
+  /**
+   * `SettingsView.tsx`'s own `useUnsavedGuard` guard —
+   * ( 1): every navigation trigger from a page with dirty state
+   * must route through it (CLAUDE.md's unsaved-guard standard), including
+   * this section's own "Open Agents" cross-links.
+   */
   guard: (callback: () => void) => void;
 }) {
   const { navigate } = useNavigation();

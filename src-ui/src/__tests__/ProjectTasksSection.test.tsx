@@ -265,9 +265,9 @@ describe('ProjectTasksSection', () => {
       target: { value: 'Starter task' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
-// archive#3965: plain language now, but the two facts it must carry are
-// unchanged — the task EXISTS, and whether the agent picked it up is
-// unknown, so the reader must look before starting it again.
+    // archive#3965: plain language now, but the two facts it must carry are
+    // unchanged — the task EXISTS, and whether the agent picked it up is
+    // unknown, so the reader must look before starting it again.
     expect(
       await screen.findByText(/couldn’t tell whether the agent started/i),
     ).toBeTruthy();
@@ -625,11 +625,11 @@ describe('ProjectTasksSection', () => {
 
     render(<ProjectTasksSection slug="project-alpha" />);
 
-// task-1 is selected by default — no workflow line renders because the
-// slug is ambiguous across the project's tasks.
+    // task-1 is selected by default — no workflow line renders because the
+    // slug is ambiguous across the project's tasks.
     expect(screen.queryByTestId('workflow-status-line')).toBeNull();
 
-// Selecting the other colliding task also renders nothing.
+    // Selecting the other colliding task also renders nothing.
     fireEvent.click(screen.getByText('existing_task'));
     expect(screen.queryByTestId('workflow-status-line')).toBeNull();
   });
@@ -778,9 +778,9 @@ describe('ProjectTasksSection', () => {
   });
 
   test('does not hide a provider item behind an unnamespaced (opaque) local workItemRef', () => {
-// An unnamespaced ref ('583', not 'github:owner/repo#583') must never be
- // treated as a safe cross-provider join key — see the archive#583
-// finding on false-hiding via bare-string collisions.
+    // An unnamespaced ref ('583', not 'github:owner/repo#583') must never be
+    // treated as a safe cross-provider join key — see the archive#583
+    // finding on false-hiding via bare-string collisions.
     tasks[0] = { ...tasks[0], workItemRef: '583' };
     workItemsData = {
       providers: [
@@ -858,8 +858,8 @@ describe('ProjectTasksSection', () => {
     );
     expect(screen.getByTestId('source-chip-detail')).toBeTruthy();
 
-// Simulate the 30s refetch dropping the selected item (dedupe, board
-// movement, or the provider going unavailable).
+    // Simulate the 30s refetch dropping the selected item (dedupe, board
+    // movement, or the provider going unavailable).
     workItemsData = {
       providers: [
         {
@@ -880,16 +880,16 @@ describe('ProjectTasksSection', () => {
     };
     rerender(<ProjectTasksSection slug="project-alpha" />);
 
-// The stale selection is reconciled: the provider-item detail pane is
-// gone, and selection falls back to the local task instead of leaving
-// the pane stuck rendering nothing for the vanished item forever.
+    // The stale selection is reconciled: the provider-item detail pane is
+    // gone, and selection falls back to the local task instead of leaving
+    // the pane stuck rendering nothing for the vanished item forever.
     expect(screen.queryByTestId('source-chip-detail')).toBeNull();
     await waitFor(() =>
       expect(screen.getByText('No session yet')).toBeTruthy(),
     );
   });
 
- // Roadmap archive#584, part of, : dispatch-as-claim UI.
+  // Roadmap archive#584, part of, : dispatch-as-claim UI.
   describe('AssignmentProvider claim state', () => {
     test('a claimed-by-other task guards the Dispatch button with the actor surfaced', () => {
       tasks[0] = { ...tasks[0], workItemRef: 'github:kontourai/station#584' };

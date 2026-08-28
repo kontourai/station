@@ -13,7 +13,7 @@ interface UIBlockRendererProps {
 }
 
 /**
-* archive#1399, : shipped the
+ * archive#1399, : shipped the
  * `attestationState` DATA with no reader anywhere in the product — nothing
  * in `UIBlockRenderer` inspected it, so a `'unattested'` block rendered
  * identically to an `'attested'` one and the state was invisible in
@@ -27,7 +27,7 @@ interface UIBlockRendererProps {
  */
 /**
  * archive#1399 fix, (independent review — the reviewer's
-* condition for accepting the host's upward correction): Console Kit's
+ * condition for accepting the host's upward correction): Console Kit's
  * `Badge` has no title/tooltip prop of its own (it forwards only `value`/
  * `tone`/`className`), so the precise meaning is carried on a wrapping
  * `<span title>` — a plain, standard HTML tooltip, not a new component API.
@@ -229,7 +229,7 @@ function UICodeBlockView({ block }: { block: UICodeBlock }) {
         </div>
       )}
       {html ? (
-// Shiki output is escaped HTML; the code is rendered, never executed.
+        // Shiki output is escaped HTML; the code is rendered, never executed.
         <div
           className="ui-block__code-body"
           dangerouslySetInnerHTML={{ __html: html }}

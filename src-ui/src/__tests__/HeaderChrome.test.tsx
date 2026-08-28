@@ -72,8 +72,8 @@ describe('Header chrome accessibility', () => {
     const home = screen.getByRole('link', { name: 'Station home' });
     expect(home.textContent).toBe('Station');
 
-// The decorative img (alt="") is a mouse convenience for the same
-// destination — a role/tabindex on it would duplicate the tab stop.
+    // The decorative img (alt="") is a mouse convenience for the same
+    // destination — a role/tabindex on it would duplicate the tab stop.
     const logo = document.querySelector('.app-toolbar__logo') as HTMLElement;
     expect(logo.getAttribute('role')).toBeNull();
     expect(logo.getAttribute('tabindex')).toBeNull();
@@ -81,7 +81,7 @@ describe('Header chrome accessibility', () => {
     fireEvent.keyDown(home, { key: 'Enter' });
     expect(goHome).toHaveBeenCalledTimes(1);
 
-// Space over a link must keep scrolling the page, not navigate.
+    // Space over a link must keep scrolling the page, not navigate.
     fireEvent.keyDown(home, { key: ' ' });
     fireEvent.keyUp(home, { key: ' ' });
     expect(goHome).toHaveBeenCalledTimes(1);

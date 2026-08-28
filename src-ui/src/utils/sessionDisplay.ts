@@ -65,7 +65,7 @@ export function builderRunMatchLabel(
  * docs/glossary.md retires "runtime" as a user-facing word precisely because
  * it meant too many things, and names **engine** as the term for the thing
  * that executed the work. The status is about the sidecar's `runtime_session`
-* the engine session the Builder run recorded — so the user-facing wording
+ * the engine session the Builder run recorded — so the user-facing wording
  * follows the glossary while the wire field keeps its producer-owned name.
  */
 export function builderRunIdentityLabel(
@@ -167,19 +167,19 @@ export function sessionKindLabel(session: OrchestrationSessionSummary): string {
  *
  * Every branch says exactly what is known, and no branch drops the session:
  * - a delegated task joined to a REMOTE Station purely by project *name* is
-*   labelled unverified (archive#1463) — slugs are locally generated, so a
-*   cross-machine name match is a coincidence rather than proof of identity;
+ *   labelled unverified (archive#1463) — slugs are locally generated, so a
+ *   cross-machine name match is a coincidence rather than proof of identity;
  * - `directory-corroborated` still carries the unverified-name caveat: the
-*   corroboration proves the DIRECTORY matches the operator-verified path,
-*   and archive#1462 is the standing proof that two projects can sit on one
-*   directory, so it is a weaker claim than a verified binding, not a
-*   substitute for one;
+ *   corroboration proves the DIRECTORY matches the operator-verified path,
+ *   and archive#1462 is the standing proof that two projects can sit on one
+ *   directory, so it is a weaker claim than a verified binding, not a
+ *   substitute for one;
  * - a working directory configured as more than one project reads as
-*   ambiguous with the candidates named (archive#1462), never as one
-*   arbitrarily-chosen project and never as plain "Unassigned", which would
-*   read as "no project" when the truth is "too many". A bounded-away tail
-*   of candidates is counted rather than dropped, so the list never renders
-*   16 of 20 names as if that were all of them.
+ *   ambiguous with the candidates named (archive#1462), never as one
+ *   arbitrarily-chosen project and never as plain "Unassigned", which would
+ *   read as "no project" when the truth is "too many". A bounded-away tail
+ *   of candidates is counted rather than dropped, so the list never renders
+ *   16 of 20 names as if that were all of them.
  *
  * Every surface that names a session's project goes through here — the
  * sessions list ROW PILL (archive#3027 moved it off the heading and onto the
@@ -220,17 +220,17 @@ export function sessionProjectLabel(
  * decide, and retired it:
  *
  * - It never regained a rendering caller. archive#3027 moved the sessions
-*   list off project headings onto state lanes and nothing moved back; only a
-*   test held it alive, which is the definition of machinery ahead of a call
-*   site (see the archive#1781 note further down this file for the same call).
+ *   list off project headings onto state lanes and nothing moved back; only a
+ *   test held it alive, which is the definition of machinery ahead of a call
+ *   site (see the archive#1781 note further down this file for the same call).
  * - Home DOES group by project (`activity-bars.tsx`, `HomeSurface.tsx`),
-*   so it was the one plausible caller — and it wants neither half of this
-*   function. The `Project · ` prefix is a section-heading form, and Home
-*   renders the label inside `{kindLabel} · {projectLabel}` and as a bar row
-*   name, where it would read "Session · Project · station". Its `'Unassigned'`
-*   fold also contradicts the `'No project'` Home already shows for a
-*   project-less direct chat, and one Home list must not spell the same
-*   absence two ways.
+ *   so it was the one plausible caller — and it wants neither half of this
+ *   function. The `Project · ` prefix is a section-heading form, and Home
+ *   renders the label inside `{kindLabel} · {projectLabel}` and as a bar row
+ *   name, where it would read "Session · Project · station". Its `'Unassigned'`
+ *   fold also contradicts the `'No project'` Home already shows for a
+ *   project-less direct chat, and one Home list must not spell the same
+ *   absence two ways.
  *
  * Both callers now read `sessionProjectLabel` and fold `null` themselves at
  * the display site. Every assertion this function carried was kept, retargeted
@@ -244,7 +244,7 @@ export function sessionProjectLabel(
  * (`AttachedSessionDetail`'s per-row transcript, gated on the same
  * `controlMode === 'read-only-attached'` check `SessionsView.tsx` already
  * uses) — a `delegated-worker`/`delegated-task` posture was cut in review
-* (archive#1424) because no chat/stream transcript surface
+ * (archive#1424) because no chat/stream transcript surface
  * renders a delegated session's messages today (`SessionsView`/
  * `SessionDetailHeader` already show the equivalent page-level label via
  * `sessionKindLabel`); reintroduce it alongside a real wired call site in

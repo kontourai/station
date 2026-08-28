@@ -24,9 +24,9 @@ export type MessageData = {
 };
 
 export type ConversationsContextType = {
-/** Resolves `false` on a failed fetch (logged and swallowed internally)
- * instead of throwing — archive#1312: `useOpenConversation` reads
-*  this to avoid rehydrating into a permanently empty chat tab. */
+  /** Resolves `false` on a failed fetch (logged and swallowed internally)
+   * instead of throwing — archive#1312: `useOpenConversation` reads
+   *  this to avoid rehydrating into a permanently empty chat tab. */
   fetchMessages: (
     apiBase: string,
     agentSlug: string,

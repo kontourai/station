@@ -25,7 +25,7 @@ type Disclosure = {
  * The dialog needs an exit that does not require the acknowledgement to
  * succeed — a revoked session, a 403, or an unwritable receipt path otherwise
  * traps the user behind a modal whose single action keeps failing, with the
-* connection-recovery UI it covers unreachable. But the
+ * connection-recovery UI it covers unreachable. But the
  * component re-mounts on every route, so component state would forget the
  * dismissal immediately; it lives here instead.
  *
@@ -96,9 +96,9 @@ async function responseData(response: Response): Promise<Disclosure> {
 export interface UsageTelemetryDisclosureState {
   data: Disclosure | undefined;
   isError: boolean;
-/** The query has answered — with an inventory or with a failure. */
+  /** The query has answered — with an inventory or with a failure. */
   settled: boolean;
-/** There is an unacknowledged inventory this page has not dismissed. */
+  /** There is an unacknowledged inventory this page has not dismissed. */
   outstanding: boolean;
 }
 
@@ -124,9 +124,9 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
     data: query.data,
     isError: query.isError,
     settled: !query.isLoading,
-// `events` is read with Object.entries below: a host that answers with an
-// unexpected shape (older build, error envelope) must degrade to showing
-// nothing, not throw through the app shell and blank the window.
+    // `events` is read with Object.entries below: a host that answers with an
+    // unexpected shape (older build, error envelope) must degrade to showing
+    // nothing, not throw through the app shell and blank the window.
     outstanding:
       !query.isLoading &&
       !!query.data?.events &&
@@ -229,7 +229,7 @@ export function UsageTelemetryDisclosureStep({
       </div>
       <ResponsiveSurfaceActions className="first-run-chapter__actions">
         {acknowledgeErrorNotice(acknowledge.isError)}
-{/* "Not now" is the same decision it is in the standalone modal: the
+        {/* "Not now" is the same decision it is in the standalone modal: the
             run moves on, no receipt is written, and the disclosure is offered
             again on the next load. It never ends the first run — that is the
             dialog's own close, one step down. */}
@@ -288,24 +288,24 @@ export function UsageTelemetryDisclosure({
     acknowledge.isError,
   );
 
-// First run is a dialog, not a floating panel. The inventory is generated
-// server-side and grows with the event list, so the surface has to cap at
-// the viewport and scroll its own body — the launcher card it used to borrow
-// had no bound at all and ran off the top and bottom of the screen with the
-// single action stranded below the fold.
+  // First run is a dialog, not a floating panel. The inventory is generated
+  // server-side and grows with the event list, so the surface has to cap at
+  // the viewport and scroll its own body — the launcher card it used to borrow
+  // had no bound at all and ran off the top and bottom of the screen with the
+  // single action stranded below the fold.
   if (firstRun) {
     return (
       <Dialog
-// Escape, a backdrop click, and the "Not now" button below all reach
-// the same page-lifetime dismissal. This dialog covers the whole app,
-// including the connection-recovery UI, and its acknowledgement can
-// fail persistently — so it must not be the only way out. The receipt
-// is still what stops it coming back.
+        // Escape, a backdrop click, and the "Not now" button below all reach
+        // the same page-lifetime dismissal. This dialog covers the whole app,
+        // including the connection-recovery UI, and its acknowledgement can
+        // fail persistently — so it must not be the only way out. The receipt
+        // is still what stops it coming back.
         onClose={dismissForPageLifetime}
         closeLabel="Close usage telemetry disclosure"
-// Focus the primary action rather than the panel: the panel is what
-// the surface focuses by default, and a focus ring around the whole
-// dialog reads as a selection, not as "press this".
+        // Focus the primary action rather than the panel: the panel is what
+        // the surface focuses by default, and a focus ring around the whole
+        // dialog reads as a selection, not as "press this".
         initialFocusRef={acknowledgeRef}
         initialFocusPolicy="always"
         eyebrow="Usage telemetry"

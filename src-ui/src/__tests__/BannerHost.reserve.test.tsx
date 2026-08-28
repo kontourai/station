@@ -32,7 +32,7 @@ const BANNER_CSS = resolve(
 /**
  * The MOTION PRIMITIVE. The reduced-motion decision is made once, here, for
  * the whole app; `BannerHost.css` no longer restates it for its own selectors
-*The contract these tests assert is
+ *The contract these tests assert is
  * therefore spread across two files, and reading only one of them would let
  * either half be deleted with a green suite.
  */
@@ -200,7 +200,7 @@ describe('BannerHost space reservation', () => {
     presentBlocking();
     const { container } = render(<BannerHost />);
 
-// Card bottom 106, host top 40.
+    // Card bottom 106, host top 40.
     expect(
       container.style.getPropertyValue(BANNER_RESERVED_HEIGHT_PROPERTY),
     ).toBe('66px');
@@ -251,8 +251,8 @@ describe('BannerHost space reservation', () => {
     const css = readCss();
     const [body] = ruleBodies(css, '.app__main > .main-content');
     expect(body, 'no rule consumes the reservation').toBeDefined();
-// On `.main-content` (the box that is NOT the scroller), so the band is
-// taken out of the scroll viewport and nothing passes behind the banner.
+    // On `.main-content` (the box that is NOT the scroller), so the band is
+    // taken out of the scroll viewport and nothing passes behind the banner.
     expect(body).toMatch(/padding-top:\s*var\(--banner-stack-height,\s*0px\)/);
   });
 });
@@ -262,8 +262,8 @@ describe('BannerHost per-banner collapse', () => {
     presentBlocking({ dismissible: false });
     render(<BannerHost />);
 
-// archive#3432 kept this band out of the stack cap; that is about leaving
-// the DOM, and says nothing about collapsing in place.
+    // archive#3432 kept this band out of the stack cap; that is about leaving
+    // the DOM, and says nothing about collapsing in place.
     expect(screen.queryByRole('button', { name: 'Dismiss notice' })).toBeNull();
     expect(
       screen.getByRole('button', { name: 'Collapse notice' }),
@@ -280,14 +280,14 @@ describe('BannerHost per-banner collapse', () => {
     const card = screen.getByRole('alert');
     expect(card.dataset.collapsed).toBe('true');
     expect(card.className).toMatch(/banner-host__item--collapsed/);
-// Not a blank strip: the badge, the message and the remedy all survive.
+    // Not a blank strip: the badge, the message and the remedy all survive.
     expect(screen.getByText('Credential required')).toBeTruthy();
     expect(screen.getByText(/Station cannot reach this host/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Pair again' })).toBeTruthy();
-// Only the recoverable part goes: the detail disclosure is not rendered
-// (a focusable control inside a clipped box is reachable and invisible).
-// archive#4470b: the toggle's label is the constant "Details" now (was
-// "More"/"Less").
+    // Only the recoverable part goes: the detail disclosure is not rendered
+    // (a focusable control inside a clipped box is reachable and invisible).
+    // archive#4470b: the toggle's label is the constant "Details" now (was
+    // "More"/"Less").
     expect(screen.queryByRole('button', { name: 'Details' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Expand notice' })).toBeTruthy();
   });
@@ -300,7 +300,7 @@ describe('BannerHost per-banner collapse', () => {
     });
     expect(screen.getByRole('alert').dataset.collapsed).toBe('true');
 
-// The poll that would otherwise undo the user's decision every 10s.
+    // The poll that would otherwise undo the user's decision every 10s.
     presentBlocking({
       occurrence: 'pairing-required',
       message: 'Changed copy.',
@@ -329,12 +329,12 @@ describe('BannerHost per-banner collapse', () => {
       screen.getByRole('button', { name: 'Collapse notice' }).click();
     });
 
-// Superseded by a different occurrence, which arrives expanded...
+    // Superseded by a different occurrence, which arrives expanded...
     presentBlocking({ occurrence: 'host-moved' });
     expect(screen.getByRole('alert').dataset.collapsed).toBeUndefined();
-//.and the first condition recurring is a new thing to read, not a
-// resumption of the showing the user collapsed. Same posture as
-// dismissal, whose suppression key is released the same way.
+    //.and the first condition recurring is a new thing to read, not a
+    // resumption of the showing the user collapsed. Same posture as
+    // dismissal, whose suppression key is released the same way.
     presentBlocking({ occurrence: 'pairing-required' });
 
     expect(screen.getByRole('alert').dataset.collapsed).toBeUndefined();
@@ -362,8 +362,8 @@ describe('BannerHost per-banner collapse', () => {
 
     act(() => bannerStore.dismiss('test:blocking', { reason: 'user' }));
 
-// Queried by attribute, not by role: an exiting card is `aria-hidden`.
-// Both states would drive `height`, and the exit's row collapse must win.
+    // Queried by attribute, not by role: an exiting card is `aria-hidden`.
+    // Both states would drive `height`, and the exit's row collapse must win.
     const card = container.querySelector('[data-banner-id]');
     expect(card).not.toBeNull();
     if (card === null) return;
@@ -376,31 +376,31 @@ describe('BannerHost collapse animation contract', () => {
   test('collapse is a real height tween, behind prefers-reduced-motion', () => {
     const css = readCss();
 
-// The two ends of the tween: both lengths, so `height` interpolates.
+    // The two ends of the tween: both lengths, so `height` interpolates.
     const [item] = ruleBodies(css, '.banner-host__item');
     expect(item).toMatch(/height:\s*var\(--banner-natural-height,\s*auto\)/);
     const [collapsedCard] = ruleBodies(css, '.banner-host__item--collapsed');
     expect(collapsedCard).toMatch(/height:\s*var\(--banner-collapsed-height\)/);
 
-// Non-zero: the collapsed card is a bar, not a blank strip.
+    // Non-zero: the collapsed card is a bar, not a blank strip.
     expect(item).toMatch(/--banner-collapsed-height:\s*(?!0px)\d+px/);
 
-// The tween itself. Anchored on the separator before it: unanchored, this
-// pattern also matches `min-height var(--motion-base)...` two rules down,
-// and an injection that deleted the height tween outright still read as
-// present. A regex that matches a different property is not a test.
+    // The tween itself. Anchored on the separator before it: unanchored, this
+    // pattern also matches `min-height var(--motion-base)...` two rules down,
+    // and an injection that deleted the height tween outright still read as
+    // present. A regex that matches a different property is not a test.
     const tween = /[\s,]height var\(--motion-base\) var\(--ease-standard\)/;
     expect(css).toMatch(tween);
 
-// "behind prefers-reduced-motion" is still the contract; what changed is
-// WHERE it is derived. This file used to wrap the tween in its own
-// `no-preference` block, which is the same preference the motion primitive
-// already reads for every surface in the app — so the wrapper was a second
-// copy of a decision, and the DRY rule retired it. The refusal now comes
-// from `tokens.css`, asserted here rather than assumed: a universal rule,
-// inside a `reduce` block, forcing transition AND animation duration to a
-// near-zero value with `!important` (so it wins over this file's
-// unconditional declaration regardless of order or specificity).
+    // "behind prefers-reduced-motion" is still the contract; what changed is
+    // WHERE it is derived. This file used to wrap the tween in its own
+    // `no-preference` block, which is the same preference the motion primitive
+    // already reads for every surface in the app — so the wrapper was a second
+    // copy of a decision, and the DRY rule retired it. The refusal now comes
+    // from `tokens.css`, asserted here rather than assumed: a universal rule,
+    // inside a `reduce` block, forcing transition AND animation duration to a
+    // near-zero value with `!important` (so it wins over this file's
+    // unconditional declaration regardless of order or specificity).
     const [primitiveReduce] = mediaBlocks(
       readTokensCss(),
       'prefers-reduced-motion: reduce',
@@ -417,14 +417,14 @@ describe('BannerHost collapse animation contract', () => {
 
   test('reduced motion refuses the tween but keeps the inset correct', () => {
     const css = readCss();
-// The inset TRANSITION is refused by the motion primitive (asserted in the
-// test above), so this file no longer carries a `transition: none` copy of
-// that decision. What it must never do is touch the inset ITSELF: the
-// content area still has to be inset under reduced motion — only the move
-// into place is refused. An inset that reduced motion switched OFF would
-// put the overlap straight back for exactly the users who asked for less
-// motion. So: the tween is declared, and NO reduced-motion rule anywhere
-// in this file alters `padding-top`.
+    // The inset TRANSITION is refused by the motion primitive (asserted in the
+    // test above), so this file no longer carries a `transition: none` copy of
+    // that decision. What it must never do is touch the inset ITSELF: the
+    // content area still has to be inset under reduced motion — only the move
+    // into place is refused. An inset that reduced motion switched OFF would
+    // put the overlap straight back for exactly the users who asked for less
+    // motion. So: the tween is declared, and NO reduced-motion rule anywhere
+    // in this file alters `padding-top`.
     expect(css).toMatch(
       /\.app__main > \.main-content \{\s*transition: padding-top/,
     );

@@ -16,18 +16,18 @@ export function useDegradedQueryState({
 }: {
   isPending: boolean;
   timeoutMs?: number;
-/**
-* Bump on retry: a retry that hangs again must get a FRESH loading
- * window before re-degrading, not stay degraded instantly (
-* of archive#2647).
-*/
+  /**
+   * Bump on retry: a retry that hangs again must get a FRESH loading
+   * window before re-degrading, not stay degraded instantly (
+   * of archive#2647).
+   */
   resetKey?: unknown;
 }): DegradedQueryState {
   const [isDegraded, setIsDegraded] = useState(false);
 
   useEffect(() => {
-// Reading the retry identity is intentional: its value is not otherwise
-// consumed, but a change must restart this effect's loading window.
+    // Reading the retry identity is intentional: its value is not otherwise
+    // consumed, but a change must restart this effect's loading window.
     void resetKey;
     setIsDegraded(false);
     if (!isPending) return;

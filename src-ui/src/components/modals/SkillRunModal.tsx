@@ -12,8 +12,8 @@ import './SkillRunModal.css';
 interface SkillRunModalProps {
   isOpen: boolean;
   skill: { name: string; body: string };
-/** Full declared variables (name + default), not bare names: the preview
-* applies defaults, and substitution is the shared derivation. */
+  /** Full declared variables (name + default), not bare names: the preview
+   * applies defaults, and substitution is the shared derivation. */
   variables: SubstitutableSkillVariable[];
   agents: { slug: string; name: string }[];
   onRun: (resolvedContent: string, agentSlug: string) => void;
@@ -32,11 +32,11 @@ export function SkillRunModal({
   const defaultAgentSlug = agents[0]?.slug || '';
   const [agentSlug, setAgentSlug] = useState(defaultAgentSlug);
 
-// Entered values belong to THIS test of THIS skill: closing the modal or
- // switching skills discards them (review — they used to survive both).
-// `defaultAgentSlug` is a string, so the effect re-runs only when the
-// default actually changes, not on a parent re-render.
-// biome-ignore lint/correctness/useExhaustiveDependencies: skill.name is the intentional reset signal (same idiom as ProviderSettingsView's selection reset).
+  // Entered values belong to THIS test of THIS skill: closing the modal or
+  // switching skills discards them (review — they used to survive both).
+  // `defaultAgentSlug` is a string, so the effect re-runs only when the
+  // default actually changes, not on a parent re-render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: skill.name is the intentional reset signal (same idiom as ProviderSettingsView's selection reset).
   useEffect(() => {
     if (isOpen) {
       setValues({});
@@ -44,9 +44,9 @@ export function SkillRunModal({
     }
   }, [isOpen, skill.name, defaultAgentSlug]);
 
-// The SAME substitution the slash handler runs: declared defaults apply, a
-// variable with neither a value nor a default is rejected and named — the
-// preview never silently shows an empty gap where one belonged.
+  // The SAME substitution the slash handler runs: declared defaults apply, a
+  // variable with neither a value nor a default is rejected and named — the
+  // preview never silently shows an empty gap where one belonged.
   const substitution = useMemo(
     () => substituteSkillVariables(skill.body, variables, values),
     [skill.body, variables, values],
@@ -81,9 +81,9 @@ export function SkillRunModal({
                   <input
                     id={`skill-variable-${v.name}`}
                     className="editor-input"
-// The placeholder IS the value a cleared field will use
- // clearing a field falls back to its
-// declared default, so the preview and this hint agree.
+                    // The placeholder IS the value a cleared field will use
+                    // clearing a field falls back to its
+                    // declared default, so the preview and this hint agree.
                     placeholder={
                       v.default !== undefined ? `default: ${v.default}` : v.name
                     }

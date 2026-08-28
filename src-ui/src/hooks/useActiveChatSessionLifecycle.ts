@@ -70,12 +70,12 @@ export function useCreateChatSession() {
 export function useOpenConversation(apiBase: string) {
   const { initChat, updateChat, removeChat } = useActiveChatActions();
   const { fetchMessages } = useConversationActions();
- // archive#1311: resolves the reopened conversation's real
-// server-side `updatedAt` (an explicit inventory value from row-open paths,
-// then the per-agent cache; no network call of its own — see
-// `resolveConversationUpdatedAt`) so reopening an old, already-read
-// conversation doesn't stamp its messages with "now" and jump it to the
-// top of the inbox.
+  // archive#1311: resolves the reopened conversation's real
+  // server-side `updatedAt` (an explicit inventory value from row-open paths,
+  // then the per-agent cache; no network call of its own — see
+  // `resolveConversationUpdatedAt`) so reopening an old, already-read
+  // conversation doesn't stamp its messages with "now" and jump it to the
+  // top of the inbox.
   const queryClient = useQueryClient();
 
   return useCallback(
@@ -87,12 +87,12 @@ export function useOpenConversation(apiBase: string) {
       projectName?: string,
       execution?: ChatExecutionMetadata,
       inventoryUpdatedAt?: string,
-/** A newly replay-seeded fork has copied history before its first execution Session. */
+      /** A newly replay-seeded fork has copied history before its first execution Session. */
       hydrateMessages = false,
     ): Promise<string | null> => {
-// Orchestration events are keyed by provider thread id. Reopening one of
-// those conversations must preserve that identity so recovered events,
-// live SSE frames, and subsequent turns all address the same session.
+      // Orchestration events are keyed by provider thread id. Reopening one of
+      // those conversations must preserve that identity so recovered events,
+      // live SSE frames, and subsequent turns all address the same session.
       const sessionId = execution?.provider
         ? conversationId
         : `${agentSlug}:${Date.now()}`;
@@ -115,8 +115,8 @@ export function useOpenConversation(apiBase: string) {
         defaultModel: execution?.defaultModel,
         defaultModelSource: execution?.defaultModelSource,
         providerOptions: execution?.providerOptions,
-// A replay-seeded fork has a durable Conversation and copied history,
-// but no execution Session until its first divergent turn.
+        // A replay-seeded fork has a durable Conversation and copied history,
+        // but no execution Session until its first divergent turn.
         orchestrationSessionStarted:
           Boolean(execution?.provider) && !hydrateMessages,
       });
@@ -195,20 +195,20 @@ export function useLaunchChat(apiBase: string) {
 }
 
 export function useRehydrateSessions(apiBase: string) {
-// archive#1225 resolved HERE (a real hook boundary)
-// and threaded through — `rehydrateChatSession` itself cannot call
-// `useQueryClient`, and dropping this silently regressed the
-// `toolMappings` cache-lookup fallback the pre-extraction inline code had
-// (see `rehydrateChatSession.ts`'s file-header note).
+  // archive#1225 resolved HERE (a real hook boundary)
+  // and threaded through — `rehydrateChatSession` itself cannot call
+  // `useQueryClient`, and dropping this silently regressed the
+  // `toolMappings` cache-lookup fallback the pre-extraction inline code had
+  // (see `rehydrateChatSession.ts`'s file-header note).
   const queryClient = useQueryClient();
 
   return useCallback(async () => {
     const allChats = activeChatsStore.getSnapshot();
     for (const [sessionId, chat] of Object.entries(allChats)) {
-// archive#1225: shared with the reconnect-fallback refetch
-// (`snapshotHandlers.ts`'s `applyOrchestrationSnapshot`) via
-// `rehydrateChatSession` — see that module's header for why this is
-// no longer inlined here.
+      // archive#1225: shared with the reconnect-fallback refetch
+      // (`snapshotHandlers.ts`'s `applyOrchestrationSnapshot`) via
+      // `rehydrateChatSession` — see that module's header for why this is
+      // no longer inlined here.
       await rehydrateChatSession(apiBase, sessionId, chat, { queryClient });
     }
   }, [apiBase, queryClient]);

@@ -56,9 +56,9 @@ function MobilePairingSection() {
   const { activeConnection } = useConnections();
   const serverPort = (() => {
     try {
- // archive#198: resolve against the current page as the base so a relative
-// or empty `activeConnection.url` never throws — parity with the
-// hardened `TerminalPanel.tsx`/`deriveVoiceWsUrl` pattern elsewhere.
+      // archive#198: resolve against the current page as the base so a relative
+      // or empty `activeConnection.url` never throws — parity with the
+      // hardened `TerminalPanel.tsx`/`deriveVoiceWsUrl` pattern elsewhere.
       const url = new URL(
         activeConnection?.url || window.location.origin,
         window.location.href,

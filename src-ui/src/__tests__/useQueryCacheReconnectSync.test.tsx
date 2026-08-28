@@ -81,20 +81,20 @@ describe('useQueryCacheReconnectSync', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['agents'] });
   });
 
-/**
-* archive#3069. These two drive REAL query state rather than only spying on
-* the client: the defect was that an errored, non-persisted query had no
-* path back to a refetch, so a spy on `invalidateQueries` could not have
-* caught it — `invalidateQueries` was being called correctly the whole time,
-* just never for these keys, and an invalidation of an observer-less query
-* does not refetch it either way.
-*/
+  /**
+   * archive#3069. These two drive REAL query state rather than only spying on
+   * the client: the defect was that an errored, non-persisted query had no
+   * path back to a refetch, so a spy on `invalidateQueries` could not have
+   * caught it — `invalidateQueries` was being called correctly the whole time,
+   * just never for these keys, and an invalidation of an observer-less query
+   * does not refetch it either way.
+   */
   it('refetches a query that errored during the outage even though its key is not persisted', async () => {
     connectionStatus.status = 'error';
     const queryClient = new QueryClient();
-// 'orchestration-sessions' is deliberately excluded from
-// PERSISTED_QUERY_KEY_PREFIXES, so the whitelist path cannot reach it.
-// It backs Home's "Recent work", the card observed stuck on-device.
+    // 'orchestration-sessions' is deliberately excluded from
+    // PERSISTED_QUERY_KEY_PREFIXES, so the whitelist path cannot reach it.
+    // It backs Home's "Recent work", the card observed stuck on-device.
     expect(PERSISTED_QUERY_KEY_PREFIXES as readonly string[]).not.toContain(
       'orchestration-sessions',
     );
@@ -117,8 +117,8 @@ describe('useQueryCacheReconnectSync', () => {
     rerender();
 
     await vi.waitFor(() => expect(queryFn).toHaveBeenCalledTimes(2));
-// The refetch is in flight at that point; the card only clears once it
-// lands, so assert the recovered state rather than just the call.
+    // The refetch is in flight at that point; the card only clears once it
+    // lands, so assert the recovered state rather than just the call.
     await vi.waitFor(() =>
       expect(
         queryClient.getQueryState(['orchestration-sessions'])?.status,

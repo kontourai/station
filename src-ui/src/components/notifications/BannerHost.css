@@ -174,13 +174,13 @@
   grid-template-rows: 1fr;
   flex-shrink: 0;
   min-height: 0;
-/* The collapsed end of the tween: one 44px control row (the tap-target
+  /* The collapsed end of the tween: one 44px control row (the tap-target
      floor every control in this card already honours) plus its padding. It
      is a constant rather than a measurement because the collapsed layout is
      deterministic — one row, message clamped to one line — whereas the
      expanded height depends on the text. */
   --banner-collapsed-height: 52px;
-/* The expanded end, written by `BannerHost.tsx` from the content row's own
+  /* The expanded end, written by `BannerHost.tsx` from the content row's own
      `scrollHeight`. `auto` until something is measured, which is the state
      jsdom and any pre-layout frame sees; the card then behaves exactly as it
      did before this property existed. */
@@ -192,7 +192,7 @@
   border-radius: 10px;
   background: var(--bg-primary, #111827);
   overflow: hidden;
- /* archive#3432 /3, (disclosed, not fixed): the CSS overflow
+  /* archive#3432 /3, (disclosed, not fixed): the CSS overflow
 * shorthand computes `overflow-x: auto` alongside `.banner-host__stack`'s
 * own `overflow-y: auto`, so this shadow is clipped on its sides whenever
 * the stack is actually scrolling. Every apparent fix widens
@@ -515,7 +515,7 @@
 /* Exit: collapse row height so siblings reflow without a snap. */
 .banner-host__item--exiting {
   grid-template-rows: 0fr;
-/* Beats the measured `--banner-natural-height` above (later rule, equal
+  /* Beats the measured `--banner-natural-height` above (later rule, equal
      specificity). Without it the card holds its measured height all the way
      out and the row collapse has nothing to do — the exit reflow this file
      has always had would have been the casualty of adding a height at all. */
@@ -622,7 +622,7 @@
     left: 36px;
   }
 
-/* A bottom dock spans the full width UNDER the content, so there is no
+  /* A bottom dock spans the full width UNDER the content, so there is no
 * column to inset into and the rules above have nothing to bite on. Nor is
 * there reliably a band to shrink into: the resize handle takes the dock to
 * within a toolbar's height of the top (measured live at 854px of 900), so
@@ -680,7 +680,7 @@
     line-height: 1.45;
   }
 
-/* Collapsed on mobile: the actions come back up into the single row, which
+  /* Collapsed on mobile: the actions come back up into the single row, which
      is most of the height this state gives back on a phone. */
   .banner-host__item--collapsed .banner-host__item-inner {
     grid-template-columns: minmax(0, 1fr) auto auto;
@@ -708,7 +708,7 @@
     width: 100%;
   }
 
-/* archive#3453: BOTH declarations below are inert, in both directions —
+  /* archive#3453: BOTH declarations below are inert, in both directions —
 * not just "below the floor and harmless." `.banner-host__action` sits
 * inside `.banner-host__actions`, which the global mobile touch-target net
 * in index.css (`:is([class*="__actions"],...) > :is(button, a,.button,
@@ -730,7 +730,7 @@
     padding-inline: 14px;
   }
 
- /* archive#3453, carried through the archive#3122 controls split: the dismiss
+  /* archive#3453, carried through the archive#3122 controls split: the dismiss
  * control measured 40x40 on a real phone viewport, below the 43.99px floor
  * `tests/helpers/touch-target.ts` enforces elsewhere. It is a sibling of
  * `.banner-host__actions`, not a descendant of an `*__actions`/`*__footer`/
@@ -748,7 +748,7 @@
     margin-top: 0;
   }
 
-/* No mobile size override for `.banner-host__dismiss` /
+  /* No mobile size override for `.banner-host__dismiss` /
  * `.banner-host__collapse`. archive#3511 added one here at 40x40, which sat three
 * rules below its own comment saying both controls "carry the 44px floor
 * explicitly in their own rules below" — the base rules do; this override

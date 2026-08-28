@@ -20,10 +20,10 @@ import type { ReactElement } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 
 vi.mock('../contexts/AgentsContext', () => ({
-// A real, resolvable agent — `agentEngineDescriptor({ slug: 'dev-agent' })`
-// resolves this to `{ name: 'Station' }` (no execution binding at all ->
-// Station, per EngineChip.test.tsx's own pinned case). If MessageBubble
-// still derived its chip from this live agent, "Station" would render.
+  // A real, resolvable agent — `agentEngineDescriptor({ slug: 'dev-agent' })`
+  // resolves this to `{ name: 'Station' }` (no execution binding at all ->
+  // Station, per EngineChip.test.tsx's own pinned case). If MessageBubble
+  // still derived its chip from this live agent, "Station" would render.
   useAgents: () => [{ slug: 'dev-agent', name: 'Dev Agent' }],
 }));
 
@@ -96,19 +96,19 @@ describe('MessageBubble temporal-drift regression (station#1424 M1)', () => {
       />,
     );
 
-// The agent's own name IS still shown (identity, not engine — see
-// MessageAttribution.test.tsx for that boundary)...
+    // The agent's own name IS still shown (identity, not engine — see
+    // MessageAttribution.test.tsx for that boundary)...
     expect(screen.getByText('Dev Agent')).toBeTruthy();
-//.but no "Station" engine chip — `agentEngineDescriptor` would have
-// resolved one from the current agent config, proving this row is NOT
-// reading that live source for its engine chip. This is deliberately
-// NOT a blanket "no.engine-chip ever" assertion (archive#1424
- //): a correct archive#1410 turn-envelope implementation is
-// EXPECTED to make a real engine chip appear here once it lands as the
-// per-turn authority, and a blanket absence check would misread that
-// as a regression. `queryByText('Station')` pins the specific defect
-// (no LIVE-derivation leak) without pinning against a legitimate future
-// implementation.
+    //.but no "Station" engine chip — `agentEngineDescriptor` would have
+    // resolved one from the current agent config, proving this row is NOT
+    // reading that live source for its engine chip. This is deliberately
+    // NOT a blanket "no.engine-chip ever" assertion (archive#1424
+    //): a correct archive#1410 turn-envelope implementation is
+    // EXPECTED to make a real engine chip appear here once it lands as the
+    // per-turn authority, and a blanket absence check would misread that
+    // as a regression. `queryByText('Station')` pins the specific defect
+    // (no LIVE-derivation leak) without pinning against a legitimate future
+    // implementation.
     expect(screen.queryByText('Station')).toBeNull();
   });
 
@@ -117,7 +117,7 @@ describe('MessageBubble temporal-drift regression (station#1424 M1)', () => {
       <ChatMessageList
         activeSession={{
           id: 'deleted-agent-session',
-// No entry in the mocked useAgents list below matches this slug.
+          // No entry in the mocked useAgents list below matches this slug.
           agentSlug: agentId('deleted-agent-slug'),
           agentName: 'Formerly Known Agent',
           title: 'Deleted agent chat',
@@ -141,8 +141,8 @@ describe('MessageBubble temporal-drift regression (station#1424 M1)', () => {
       />,
     );
 
-// The row still names an agent — the session's threaded agentName, not
-// a blank identity next to a now-orphaned owner chip.
+    // The row still names an agent — the session's threaded agentName, not
+    // a blank identity next to a now-orphaned owner chip.
     expect(screen.getByText('Formerly Known Agent')).toBeTruthy();
     expect(screen.getByText(/via Brian Anderson/)).toBeTruthy();
   });

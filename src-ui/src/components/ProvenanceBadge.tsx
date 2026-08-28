@@ -1,6 +1,6 @@
 /**
  * archive#settings-revamp (docs/design/settings-architecture.md §4
-* "provenance... so the UI can render 'overridden by operator env' badges
+ * "provenance... so the UI can render 'overridden by operator env' badges
  * instead of accepting doomed edits").
  *
  * Reads `GET /config/app`'s per-field provenance map
@@ -10,9 +10,9 @@
  * established pattern):
  *
  * - `source: 'env'` -> "Set by operator: {envVar}", tone `neutral`. Either a
-*   runtime-injected field (e.g. `managedChatOrchestration`) or a registered
-*   field with nothing stored whose declared `envFallback` is set — in both
-*   cases the env var is where the effective value comes from.
+ *   runtime-injected field (e.g. `managedChatOrchestration`) or a registered
+ *   field with nothing stored whose declared `envFallback` is set — in both
+ *   cases the env var is where the effective value comes from.
  * - `source: 'default'` -> a subtle "Default" chip, tone `neutral`.
  * - `source: 'file'` (the common case: a real, editable stored value) -> no badge.
  * - No provenance entry at all -> no badge.

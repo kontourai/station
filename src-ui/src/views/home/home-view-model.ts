@@ -24,7 +24,7 @@ import {
 
 export interface HomeWorkItem {
   id: string;
-/** Durable conversation identity when this row represents one. */
+  /** Durable conversation identity when this row represents one. */
   conversationId?: string;
   kind: 'task' | 'chat' | 'orchestration' | 'remote-session';
   kindLabel: 'Durable Task' | 'Direct chat' | 'Session' | 'Remote session';
@@ -32,96 +32,96 @@ export interface HomeWorkItem {
   projectLabel: string;
   agentLabel: string;
   modelLabel: string;
-/** Conversation's reported model, preserved for reopen rather than display only. */
+  /** Conversation's reported model, preserved for reopen rather than display only. */
   model?: string;
-/** Present only when this row is represented by the canonical conversation inventory. */
+  /** Present only when this row is represented by the canonical conversation inventory. */
   conversationUpdatedAt?: string;
-/** Epoch ms of the inventory version the current user has opened. */
+  /** Epoch ms of the inventory version the current user has opened. */
   acknowledgedAt?: number;
-/** Compact display-only working-directory hint for orchestration rows. */
+  /** Compact display-only working-directory hint for orchestration rows. */
   cwdLabel?: string;
-/**
-* archive#4054: copied verbatim from the server's watchdog projection.
-* Home intentionally does not compare `lastEventAt` with the current time:
-* the watchdog's progress vocabulary is narrower than canonical activity.
-*/
+  /**
+   * archive#4054: copied verbatim from the server's watchdog projection.
+   * Home intentionally does not compare `lastEventAt` with the current time:
+   * the watchdog's progress vocabulary is narrower than canonical activity.
+   */
   turnProgress?: OrchestrationSessionSummary['turnProgress'];
   updatedAt: number;
   lifecycleLabel: HomeLifecycleLabel;
-/**
-* archive#1783: the observation behind an `'Unanswerable'` lifecycle
-* label — which arm fired, which process observed it, and when. Set only
-* for an observed negative; a bare label with no basis is the
-* label-vs-derivation defect ADR 0012's negative arm carries `observedBy`/
-* `observedAt` to prevent.
-*/
+  /**
+   * archive#1783: the observation behind an `'Unanswerable'` lifecycle
+   * label — which arm fired, which process observed it, and when. Set only
+   * for an observed negative; a bare label with no basis is the
+   * label-vs-derivation defect ADR 0012's negative arm carries `observedBy`/
+   * `observedAt` to prevent.
+   */
   unanswerableNotice?: string;
-/**
-* The compact explanation behind a Failed or Stopped label. Chat refusals
-* retain their existing server-authored sentence; orchestration sessions
-* carry only the server-derived terminal attribution detail. Raw
-* `blockedReason` remains excluded because it can contain adapter output.
-*/
+  /**
+   * The compact explanation behind a Failed or Stopped label. Chat refusals
+   * retain their existing server-authored sentence; orchestration sessions
+   * carry only the server-derived terminal attribution detail. Raw
+   * `blockedReason` remains excluded because it can contain adapter output.
+   */
   failureNotice?: string;
   chatSessionId?: string;
   orchestrationThreadId?: string;
-/**
-* Execution lineage folded into this one conversation-owned row. The inbox
-* never renders each member as another chat; detail/open surfaces retain
-* these exact server session ids for provenance.
-*/
+  /**
+   * Execution lineage folded into this one conversation-owned row. The inbox
+   * never renders each member as another chat; detail/open surfaces retain
+   * these exact server session ids for provenance.
+   */
   orchestrationThreadIds?: readonly string[];
   taskSessionId?: string;
-/**
-* The agent this row is bound to, when one is named.
-*
-* archive#1297 introduced it for `'orchestration'` items
-* (`session.assignedAgentSlug`), so a row-open policy could rehydrate the
-* session into the chat overlay (`useOpenConversation`/`openConversation`)
-* instead of falling back to `/activity` purely because no in-memory chat
-* tab happens to exist for it yet. Its docblock then said "never set on a
-* `'chat'` item", which described that need, not a hazard: a chat item
-* always carries `chatSessionId`, and `resolveWorkItemOpenAction` returns
-* `'focus'` on that field before it ever reads this one.
-*
-* A chat item now sets it too, because Home's rows draw an agent icon and
-* the SLUG is the only fact that resolves one — `agentLabel` is a display
-* string that may be an engine name, a bare slug or `'Agent not
-* reported'`. Carrying the slug is not a second derivation of the label;
-* it is the fact the label was derived from. The open policy is unaffected
-* in both directions, and `work-item-open-policy.test.ts` pins that a chat
-* item carrying an `agentSlug` still resolves to `'focus'`.
-*/
+  /**
+   * The agent this row is bound to, when one is named.
+   *
+   * archive#1297 introduced it for `'orchestration'` items
+   * (`session.assignedAgentSlug`), so a row-open policy could rehydrate the
+   * session into the chat overlay (`useOpenConversation`/`openConversation`)
+   * instead of falling back to `/activity` purely because no in-memory chat
+   * tab happens to exist for it yet. Its docblock then said "never set on a
+   * `'chat'` item", which described that need, not a hazard: a chat item
+   * always carries `chatSessionId`, and `resolveWorkItemOpenAction` returns
+   * `'focus'` on that field before it ever reads this one.
+   *
+   * A chat item now sets it too, because Home's rows draw an agent icon and
+   * the SLUG is the only fact that resolves one — `agentLabel` is a display
+   * string that may be an engine name, a bare slug or `'Agent not
+   * reported'`. Carrying the slug is not a second derivation of the label;
+   * it is the fact the label was derived from. The open policy is unaffected
+   * in both directions, and `work-item-open-policy.test.ts` pins that a chat
+   * item carrying an `agentSlug` still resolves to `'focus'`.
+   */
   agentSlug?: string;
-/**
-* The project slug backing this row, distinct from `projectLabel` (a
-* display string that also covers the no-project fallback and
-* `sessionProjectLabel`'s ambiguity caveats).
-*
-* archive#1297 threaded it from an `'orchestration'` item into
-* `openConversation` so a rehydrated session keeps its project context. A
-* `'chat'` item now carries its own (`chat.projectSlug`) for the same
-* reason `agentSlug` does: Home's activity chart can only offer a project
-* destination for a row whose items agree on a real slug, and a display
-* label cannot be turned back into one.
-*/
+  /**
+   * The project slug backing this row, distinct from `projectLabel` (a
+   * display string that also covers the no-project fallback and
+   * `sessionProjectLabel`'s ambiguity caveats).
+   *
+   * archive#1297 threaded it from an `'orchestration'` item into
+   * `openConversation` so a rehydrated session keeps its project context. A
+   * `'chat'` item now carries its own (`chat.projectSlug`) for the same
+   * reason `agentSlug` does: Home's activity chart can only offer a project
+   * destination for a row whose items agree on a real slug, and a display
+   * label cannot be turned back into one.
+   */
   projectSlug?: string;
-/**
-* archive#1297: an `'orchestration'` item's `session.controlMode`. A
-* `'read-only-attached'` session is followed from an external source
-* Station does not own the runtime for — it cannot be rehydrated into the
-* chat overlay, so the row-open policy falls back to `/activity` for it
-* even when `agentSlug` is present.
-*/
+  /**
+   * archive#1297: an `'orchestration'` item's `session.controlMode`. A
+   * `'read-only-attached'` session is followed from an external source
+   * Station does not own the runtime for — it cannot be rehydrated into the
+   * chat overlay, so the row-open policy falls back to `/activity` for it
+   * even when `agentSlug` is present.
+   */
   controlMode?: SessionControlMode;
-/**
-* archive#1097: set only on a `'remote-session'` item — the connected
-* SSH environment it was read from. Never set on a local item, and a
-* remote item never sets `chatSessionId`/`taskSessionId`/
-* `orchestrationThreadId` either — see `buildRemoteSessionItems`'s
-* docblock for why that keeps remote items structurally unable to alias
-* with a local item under `home-lane-model.ts`'s `withStableIds`.
-*/
+  /**
+   * archive#1097: set only on a `'remote-session'` item — the connected
+   * SSH environment it was read from. Never set on a local item, and a
+   * remote item never sets `chatSessionId`/`taskSessionId`/
+   * `orchestrationThreadId` either — see `buildRemoteSessionItems`'s
+   * docblock for why that keeps remote items structurally unable to alias
+   * with a local item under `home-lane-model.ts`'s `withStableIds`.
+   */
   environmentId?: string;
   environmentLabel?: string;
 }
@@ -143,16 +143,16 @@ function timestamp(value: unknown): number {
 }
 
 function latestChatTimestamp(chat: ChatUIState): number {
-// archive#1795: seeded with the chat's own creation time, not a literal
-// 0. A chat with no messages yet (neither array populated) used to bottom
-// out the reduce at 0, sorting it dead last and rendering as epoch-age
-// ("20668d") in "Earlier" — see the `ChatUIState.createdAt` doc comment
-// for why that stamp is a stable creation floor rather than a live
-// `Date.now` read here (which would re-inflate recency on every
-// render, the archive#1311 bug). `createdAt` is optional only for
- // pre-archive#1795 persisted/test fixtures that never carried it; those already
-// have real message timestamps once they have any messages at all, so
-// falling back to 0 there changes nothing.
+  // archive#1795: seeded with the chat's own creation time, not a literal
+  // 0. A chat with no messages yet (neither array populated) used to bottom
+  // out the reduce at 0, sorting it dead last and rendering as epoch-age
+  // ("20668d") in "Earlier" — see the `ChatUIState.createdAt` doc comment
+  // for why that stamp is a stable creation floor rather than a live
+  // `Date.now` read here (which would re-inflate recency on every
+  // render, the archive#1311 bug). `createdAt` is optional only for
+  // pre-archive#1795 persisted/test fixtures that never carried it; those already
+  // have real message timestamps once they have any messages at all, so
+  // falling back to 0 there changes nothing.
   const latestMessageTimestamp = [
     ...(chat.messages ?? []),
     ...(chat.ephemeralMessages ?? []),
@@ -160,11 +160,11 @@ function latestChatTimestamp(chat: ChatUIState): number {
     (latest, message) => Math.max(latest, timestamp(message.timestamp)),
     chat.createdAt ?? 0,
   );
-// archive#1295: an in-flight streaming turn is the most recent activity a
-// chat can have, but `streamingMessage` carries no timestamp of its own
-// (it is replaced wholesale by each delta, not appended to `messages`
-// until finalize) — without this, a chat streaming right now could still
-// sort behind one that merely finished a while ago.
+  // archive#1295: an in-flight streaming turn is the most recent activity a
+  // chat can have, but `streamingMessage` carries no timestamp of its own
+  // (it is replaced wholesale by each delta, not appended to `messages`
+  // until finalize) — without this, a chat streaming right now could still
+  // sort behind one that merely finished a while ago.
   if (chat.streamingMessage) {
     return Math.max(latestMessageTimestamp, Date.now());
   }
@@ -224,7 +224,7 @@ export interface RemoteHomeEnvironmentSessions {
  * Turns a model id into what a person reads. Supplied by a caller that holds
  * the model catalog (Home does, via `useModelPickerCatalogQuery`); the default
  * has no catalog and therefore prettifies the id rather than inventing a name
-* what it must never do is hand back the bare internal id, which is the
+ * what it must never do is hand back the bare internal id, which is the
  * defect archive#3391 records.
  */
 export type ResolveModelLabel = (modelId: string | null | undefined) => string;
@@ -246,22 +246,22 @@ export function buildHomeWorkItems({
   sessions: OrchestrationSessionSummary[];
   tasks?: TaskRecord[];
   agents: AgentSummary[];
-/**
- * archive#1097 /: optional remote-session read augmentation, never a
-* precondition — omitting it (or passing `[]`, its default) returns
-* exactly the local-only result `mergeHomeWorkItems` always produced
-* (the local-first invariant). Callers fetch this independently of
-* `sessions`/`tasks` (see `HomeView.tsx`) so a slow/unreachable remote
-* environment can never delay or gate the local list.
-*/
+  /**
+   * archive#1097 /: optional remote-session read augmentation, never a
+   * precondition — omitting it (or passing `[]`, its default) returns
+   * exactly the local-only result `mergeHomeWorkItems` always produced
+   * (the local-first invariant). Callers fetch this independently of
+   * `sessions`/`tasks` (see `HomeView.tsx`) so a slow/unreachable remote
+   * environment can never delay or gate the local list.
+   */
   remoteEnvironments?: RemoteHomeEnvironmentSessions[];
   chatItems?: HomeWorkItem[];
   resolveModelLabel?: ResolveModelLabel;
   currentSessionIdByConversation?: ReadonlyMap<string, string>;
 }): HomeWorkItem[] {
-// Sessions carry the server's turn fold; the chat store only carries a
-// coarse process status, so chat items borrow the fold for any session they
-// correlate with (see buildActiveChatTaskItems).
+  // Sessions carry the server's turn fold; the chat store only carries a
+  // coarse process status, so chat items borrow the fold for any session they
+  // correlate with (see buildActiveChatTaskItems).
   const chatItems =
     suppliedChatItems ??
     buildActiveChatTaskItems({ chats, agents, sessions, resolveModelLabel });
@@ -279,12 +279,12 @@ export function buildHomeWorkItems({
     currentSessionIdByConversation,
   );
   if (remoteEnvironments.length === 0) return localItems;
-// Remote items never participate in `mergeHomeWorkItems`'s chat/task/
-// session correlation — they have no local chat or durable Task to
-// correlate with — so they are appended and the combined list is
-// re-sorted by the same recency comparator `mergeHomeWorkItems` already
-// used (a stable, deterministic total order, so this changes nothing
-// about the local-only ordering above).
+  // Remote items never participate in `mergeHomeWorkItems`'s chat/task/
+  // session correlation — they have no local chat or durable Task to
+  // correlate with — so they are appended and the combined list is
+  // re-sorted by the same recency comparator `mergeHomeWorkItems` already
+  // used (a stable, deterministic total order, so this changes nothing
+  // about the local-only ordering above).
   const remoteItems = buildRemoteSessionItems(
     remoteEnvironments,
     agents,
@@ -298,7 +298,7 @@ function buildSessionWorkItem(
   agents: AgentSummary[],
   id: string,
   resolveModelLabel: ResolveModelLabel,
-/** Set only for a remote session — see `HomeWorkItem.environmentId`'s docblock. */
+  /** Set only for a remote session — see `HomeWorkItem.environmentId`'s docblock. */
   provenance?: { environmentId: string; environmentLabel: string },
 ): HomeWorkItem {
   const resolvedAgentLabel = safeAgentLabel({
@@ -314,25 +314,25 @@ function buildSessionWorkItem(
     .slice(-2)
     .join('/');
   const lifecycleLabel = orchestrationLifecycleLabel(session);
-// archive#1783: the serving Station's own observation, read off the
-// summary's required decoration (ADR 0012) and never recomputed here.
-//
-// BOUND TO THE LABEL, both directions. The first version computed this
-// unconditionally, so every normally-finished detached session rendered
-// `✓ Done` with "Unanswerable by the serving Station (the session cannot
-// resume)" underneath it — the review's blocking finding, and the exact
-// shape the field's own docstring warns about. The notice exists to say
-// WHY the row reads `'Unanswerable'`; where it does not, there is nothing
-// to explain. `home-view-model.test.ts` pins the iff in both directions.
+  // archive#1783: the serving Station's own observation, read off the
+  // summary's required decoration (ADR 0012) and never recomputed here.
+  //
+  // BOUND TO THE LABEL, both directions. The first version computed this
+  // unconditionally, so every normally-finished detached session rendered
+  // `✓ Done` with "Unanswerable by the serving Station (the session cannot
+  // resume)" underneath it — the review's blocking finding, and the exact
+  // shape the field's own docstring warns about. The notice exists to say
+  // WHY the row reads `'Unanswerable'`; where it does not, there is nothing
+  // to explain. `home-view-model.test.ts` pins the iff in both directions.
   const unanswerableNotice =
     lifecycleLabel === 'Unanswerable'
       ? unanswerableRequestNotice(session.answerability, {
           provider: session.provider,
         })
       : null;
-// `terminalAttribution.detail` is already a bounded first-line projection
-// from the server. Home does not read `blockedReason` or infer a cause from
-// lifecycle/transport state, because either can be raw or misleading.
+  // `terminalAttribution.detail` is already a bounded first-line projection
+  // from the server. Home does not read `blockedReason` or infer a cause from
+  // lifecycle/transport state, because either can be raw or misleading.
   const failureNotice =
     lifecycleLabel === 'Failed' || lifecycleLabel === 'Stopped'
       ? session.terminalAttribution?.detail
@@ -344,29 +344,29 @@ function buildSessionWorkItem(
       : {}),
     kind: provenance ? 'remote-session' : 'orchestration',
     kindLabel: provenance ? 'Remote session' : 'Session',
-// archive#3227 A2: `sessionTitle` is the one name a session is listed
-// under, and its contract is that no branch may return a raw thread id.
-// Home carried a private copy with a different taskId regex that
-// Title-Cased the result ("Delegated Review" against the canonical
-// "Worker task · delegated review") and fell back to `${agentLabel} task`
-// so one attached Claude session read "Claude Code task" on Home and
-// "Claude Code session" one click away in the list.
+    // archive#3227 A2: `sessionTitle` is the one name a session is listed
+    // under, and its contract is that no branch may return a raw thread id.
+    // Home carried a private copy with a different taskId regex that
+    // Title-Cased the result ("Delegated Review" against the canonical
+    // "Worker task · delegated review") and fell back to `${agentLabel} task`
+    // so one attached Claude session read "Claude Code task" on Home and
+    // "Claude Code session" one click away in the list.
     title: sessionTitle(session),
-// archive#3227 A3: `session.projectSlug || 'No project'` DROPPED
-// `delegation.projectSlug` entirely and, worse, rendered the literal
-// "No project" for an AMBIGUOUS session — a claim
-// `packages/contracts/src/orchestration.ts` explicitly forbids, because
-// "no project" and "too many projects" are different facts.
-// `sessionProjectLabel` is the helper every other project-naming surface
-// already reads. `null` (nothing known at all) is the only case that
-// still folds to Home's own copy, which is a display fallback for an
-// absent value rather than a second derivation of it.
+    // archive#3227 A3: `session.projectSlug || 'No project'` DROPPED
+    // `delegation.projectSlug` entirely and, worse, rendered the literal
+    // "No project" for an AMBIGUOUS session — a claim
+    // `packages/contracts/src/orchestration.ts` explicitly forbids, because
+    // "no project" and "too many projects" are different facts.
+    // `sessionProjectLabel` is the helper every other project-naming surface
+    // already reads. `null` (nothing known at all) is the only case that
+    // still folds to Home's own copy, which is a display fallback for an
+    // absent value rather than a second derivation of it.
     projectLabel: sessionProjectLabel(session) ?? 'No project',
     agentLabel: resolvedAgentLabel,
-// `model` is only the adapter's direct session field. A restored
-// orchestration row can instead carry its durable resolved identity in
-// `effectiveModel`; prefer it so a completed chat does not lose its
-// selected model merely because the local tab was discarded on reload.
+    // `model` is only the adapter's direct session field. A restored
+    // orchestration row can instead carry its durable resolved identity in
+    // `effectiveModel`; prefer it so a completed chat does not lose its
+    // selected model merely because the local tab was discarded on reload.
     modelLabel: resolveModelLabel(
       session.reportedModel ?? session.effectiveModel ?? session.model,
     ),
@@ -379,23 +379,23 @@ function buildSessionWorkItem(
       timestamp(session.createdAt),
     ),
     lifecycleLabel,
-// The basis behind an `'Unanswerable'` chip. Carried on the item rather
-// than recomputed at render so the row and the label come from one read
-// of one decoration.
+    // The basis behind an `'Unanswerable'` chip. Carried on the item rather
+    // than recomputed at render so the row and the label come from one read
+    // of one decoration.
     ...(unanswerableNotice ? { unanswerableNotice } : {}),
     ...(failureNotice ? { failureNotice } : {}),
-// Deliberately NOT set for a remote item: `orchestrationThreadId` here
-// is the same raw `session.threadId` a LOCAL orchestration item also
-// uses as an identity key (see `home-lane-model.ts`'s
-// `identityKeysFor`). A remote Station's threadId is a UUID from a
-// disjoint keyspace, but structurally guaranteeing "can never collide"
- // means never emitting that raw value as an identity key from a
-// remote item at all — only the already-namespaced `id`
-// (`remote:<environmentId>:<threadId>`, see `buildRemoteSessionItems`)
-// is exposed. A remote item's `agentSlug`/`projectSlug`/`controlMode`
-// are similarly inert — the row-open policy never reaches its
-// rehydrate branch without `orchestrationThreadId` — but are still
-// carried for a local item so it can be rehydrated (archive#1297).
+    // Deliberately NOT set for a remote item: `orchestrationThreadId` here
+    // is the same raw `session.threadId` a LOCAL orchestration item also
+    // uses as an identity key (see `home-lane-model.ts`'s
+    // `identityKeysFor`). A remote Station's threadId is a UUID from a
+    // disjoint keyspace, but structurally guaranteeing "can never collide"
+    // means never emitting that raw value as an identity key from a
+    // remote item at all — only the already-namespaced `id`
+    // (`remote:<environmentId>:<threadId>`, see `buildRemoteSessionItems`)
+    // is exposed. A remote item's `agentSlug`/`projectSlug`/`controlMode`
+    // are similarly inert — the row-open policy never reaches its
+    // rehydrate branch without `orchestrationThreadId` — but are still
+    // carried for a local item so it can be rehydrated (archive#1297).
     agentSlug: session.assignedAgentSlug,
     projectSlug: session.projectSlug,
     controlMode: session.controlMode,
@@ -428,7 +428,7 @@ export function buildOrchestrationItems(
 }
 
 /**
-* archive#1097: every remote item's `id` is namespaced
+ * archive#1097: every remote item's `id` is namespaced
  * (`remote:<environmentId>:<threadId>`) — distinct from every local id
  * shape (`task:*` durable Tasks aside, a local chat/session id is a bare
  * conversationId/threadId, never `remote:`-prefixed) — so a remote item can
@@ -477,9 +477,9 @@ function mergeHomeWorkItems(
   for (const item of taskItems) {
     combined.set(`task:${item.id}`, item);
   }
-// Resolve execution lineage before merging local tab recency. Opening a tab
-// stamps local activity newer than every persisted Session; merging that
-// timestamp into a predecessor first would make it defeat its own child.
+  // Resolve execution lineage before merging local tab recency. Opening a tab
+  // stamps local activity newer than every persisted Session; merging that
+  // timestamp into a predecessor first would make it defeat its own child.
   for (const item of [...orchestrationItems, ...chatItems]) {
     if (isPersistedTaskCorrelation(item, taskIdBySessionId)) {
       continue;
@@ -503,25 +503,25 @@ function mergeHomeWorkItems(
         existing.conversationId ?? item.conversationId ?? '',
       ),
     );
- // archive#1297 note: a merged row is based on `chat` (spread
-// below) and does not need the orchestration variant's `controlMode` —
-// a merged row always keeps `chatSessionId` (chat items always carry
-// it), so `resolveWorkItemOpenAction` (`work-item-open-policy.ts`) takes
-// the `'focus'` branch immediately and never reaches the fields that
-// only matter for the `'rehydrate'` branch.
-//
-// `agentSlug`/`projectSlug` were dropped here for that same reason, and
-// that stopped being harmless once Home started DISPLAYING them: the row
-// draws the agent's icon and the activity chart offers the project. The
-// missing agent slug may fall back to the orchestration record, but two
-// populated, different slugs are conflicting identity claims. The row
-// must carry no agent slug in that case: an icon cannot honestly name an
-// executor Station cannot derive. This remains inert for the open policy.
+    // archive#1297 note: a merged row is based on `chat` (spread
+    // below) and does not need the orchestration variant's `controlMode` —
+    // a merged row always keeps `chatSessionId` (chat items always carry
+    // it), so `resolveWorkItemOpenAction` (`work-item-open-policy.ts`) takes
+    // the `'focus'` branch immediately and never reaches the fields that
+    // only matter for the `'rehydrate'` branch.
+    //
+    // `agentSlug`/`projectSlug` were dropped here for that same reason, and
+    // that stopped being harmless once Home started DISPLAYING them: the row
+    // draws the agent's icon and the activity chart offers the project. The
+    // missing agent slug may fall back to the orchestration record, but two
+    // populated, different slugs are conflicting identity claims. The row
+    // must carry no agent slug in that case: an icon cannot honestly name an
+    // executor Station cannot derive. This remains inert for the open policy.
     const newest = item.updatedAt > existing.updatedAt ? item : existing;
-// A local error/actionable queue is still a current user-visible fact,
-// even if the server execution has not caught up. Otherwise the newest
-// execution owns this conversation's status: predecessor sessions must
-// not keep a completed/failed chip after a later handoff child runs.
+    // A local error/actionable queue is still a current user-visible fact,
+    // even if the server execution has not caught up. Otherwise the newest
+    // execution owns this conversation's status: predecessor sessions must
+    // not keep a completed/failed chip after a later handoff child runs.
     const mergedLifecycleLabel =
       chat && isLocalActionableLifecycle(chat)
         ? moreImportantLifecycle(
@@ -529,12 +529,12 @@ function mergeHomeWorkItems(
             orchestration?.lifecycleLabel ?? newest.lifecycleLabel,
           )
         : (orchestration?.lifecycleLabel ?? newest.lifecycleLabel);
-// archive#3724: the notice's iff contract must survive the
-// merge. The spread carried the CHAT side's notice regardless of which
-// side's label won — an errored chat under a winning 'Needs attention'
-// kept failure prose beneath a non-Failed chip. Recompute against the
-// winner: present iff the merged label is Failed or Stopped, from
-// whichever side recorded one.
+    // archive#3724: the notice's iff contract must survive the
+    // merge. The spread carried the CHAT side's notice regardless of which
+    // side's label won — an errored chat under a winning 'Needs attention'
+    // kept failure prose beneath a non-Failed chip. Recompute against the
+    // winner: present iff the merged label is Failed or Stopped, from
+    // whichever side recorded one.
     const mergedFailureNotice =
       mergedLifecycleLabel === 'Failed' || mergedLifecycleLabel === 'Stopped'
         ? (chat?.failureNotice ?? orchestration?.failureNotice)
@@ -544,9 +544,9 @@ function mergeHomeWorkItems(
     combined.set(key, {
       ...display,
       id: key,
-// A chat's title is the durable conversation projection. The current
-// execution can supply Agent/model/status without replacing it with a
-// child-session fallback such as "Claude Code session" after handoff.
+      // A chat's title is the durable conversation projection. The current
+      // execution can supply Agent/model/status without replacing it with a
+      // child-session fallback such as "Claude Code session" after handoff.
       title:
         chat?.title && chat.title !== 'New chat' ? chat.title : display.title,
       ...(existing.conversationId || item.conversationId
@@ -560,9 +560,9 @@ function mergeHomeWorkItems(
       failureNotice: mergedFailureNotice,
       orchestrationThreadId: orchestration?.orchestrationThreadId,
       ...(lineage.length > 0 ? { orchestrationThreadIds: lineage } : {}),
-// A handoff's newest server execution is the only authoritative answer
-// to "who/model/status is this conversation on now?". The local chat
-// copy remains for focus/open continuity, not as a competing executor.
+      // A handoff's newest server execution is the only authoritative answer
+      // to "who/model/status is this conversation on now?". The local chat
+      // copy remains for focus/open continuity, not as a competing executor.
       agentSlug:
         lineage.length > 1
           ? (orchestration?.agentSlug ?? chat?.agentSlug)
@@ -656,9 +656,9 @@ function isLocalActionableLifecycle(item: HomeWorkItem): boolean {
   return [
     'Failed',
     'Needs attention',
-// A local send precedes the server's first state event. Preserve that
-// current optimistic turn instead of letting a prior Ready projection
-// hide it.
+    // A local send precedes the server's first state event. Preserve that
+    // current optimistic turn instead of letting a prior Ready projection
+    // hide it.
     'Running',
   ].includes(item.lifecycleLabel);
 }
@@ -770,23 +770,23 @@ function chatLifecycleLabel(
   }
   if (
     chat.pendingApprovals?.length ||
- // archive#1224 (offline): a queued (offline) turn needs an
-// actionable label — it won't resolve on its own without the connection
-// coming back.
+    // archive#1224 (offline): a queued (offline) turn needs an
+    // actionable label — it won't resolve on its own without the connection
+    // coming back.
     chat.status === 'queued' ||
     chat.orchestrationStatus === 'awaiting-approval'
   )
     return 'Needs attention';
   if (chat.status === 'sending') return 'Running';
   if (chat.orchestrationStatus !== 'running') return 'Recent';
-// Mirrors mergeHomeWorkItems' own key (`chat.conversationId || id`) exactly:
-// the store key is a fallback for a MISSING conversationId, never a second
-// guess when a present one simply doesn't correlate. Retrying the store key
-// there could borrow an unrelated session's fold for a chat the merge would
- // never pair with it (archive#1075).
+  // Mirrors mergeHomeWorkItems' own key (`chat.conversationId || id`) exactly:
+  // the store key is a fallback for a MISSING conversationId, never a second
+  // guess when a present one simply doesn't correlate. Retrying the store key
+  // there could borrow an unrelated session's fold for a chat the merge would
+  // never pair with it (archive#1075).
   const correlationKey = chat.conversationId || sessionId;
-// No correlated session means no better signal than the chat store itself —
-// notably chats on non-orchestration send paths, which never have one.
+  // No correlated session means no better signal than the chat store itself —
+  // notably chats on non-orchestration send paths, which never have one.
   if (!turnByThread.has(correlationKey)) return 'Running';
   return turnByThread.get(correlationKey) ? 'Running' : 'Recent';
 }
@@ -799,12 +799,12 @@ export function buildActiveChatTaskItems({
 }: {
   chats: Record<string, ChatUIState>;
   agents: AgentSummary[];
-/**
-* Optional: when a chat correlates with an orchestration session, that
-* session's `hasActiveTurn` fold decides whether the chat is "Running".
-* Callers without session data (the project sidebar) keep the previous
-* chat-only behaviour.
-*/
+  /**
+   * Optional: when a chat correlates with an orchestration session, that
+   * session's `hasActiveTurn` fold decides whether the chat is "Running".
+   * Callers without session data (the project sidebar) keep the previous
+   * chat-only behaviour.
+   */
   sessions?: OrchestrationSessionSummary[];
   resolveModelLabel?: ResolveModelLabel;
 }): HomeWorkItem[] {
@@ -826,23 +826,23 @@ export function buildActiveChatTaskItems({
       ...(chat.conversationId ? { conversationId: chat.conversationId } : {}),
       kind: 'chat' as const,
       kindLabel: 'Direct chat' as const,
-// Match the dock session-title convention (useDerivedSessions):
-// untitled chats read "<Agent> Chat", not the bare agent name —
-// title is not persisted across reloads, so this fallback is the
-// steady-state name for rehydrated sessions.
+      // Match the dock session-title convention (useDerivedSessions):
+      // untitled chats read "<Agent> Chat", not the bare agent name —
+      // title is not persisted across reloads, so this fallback is the
+      // steady-state name for rehydrated sessions.
       title: chat.title?.trim() || (agentLabel ? `${agentLabel} Chat` : 'Task'),
       projectLabel: chat.projectName || chat.projectSlug || 'No project',
       agentLabel,
       modelLabel: resolveModelLabel(chat.orchestrationModel || chat.model),
-// archive#3391: the id itself, not only its label — the label is a
-// derivation of this, and a consumer that needs the model (reopen)
-// must not have to parse a display string back into one.
+      // archive#3391: the id itself, not only its label — the label is a
+      // derivation of this, and a consumer that needs the model (reopen)
+      // must not have to parse a display string back into one.
       model: chat.orchestrationModel || chat.model,
       updatedAt: latestChatTimestamp(chat),
       lifecycleLabel: chatLifecycleLabel(chat, id, turnByThread),
-// Bound to the label in both directions, like unanswerableNotice: a
-// notice may exist only under a 'Failed' chip, and a 'Failed' chip
-// shows its reason whenever one was recorded.
+      // Bound to the label in both directions, like unanswerableNotice: a
+      // notice may exist only under a 'Failed' chip, and a 'Failed' chip
+      // shows its reason whenever one was recorded.
       ...(chatLifecycleLabel(chat, id, turnByThread) === 'Failed' &&
       chatFailureNotice(chat)
         ? { failureNotice: chatFailureNotice(chat) as string }
@@ -851,16 +851,16 @@ export function buildActiveChatTaskItems({
       ...(chat.currentSessionId
         ? { currentSessionId: chat.currentSessionId }
         : {}),
-// Identity facts, not display ones — see the field docblocks. Both
-// are inert for the open policy (`chatSessionId` above short-circuits
-// it) and are read by Home's row icon and its activity chart.
+      // Identity facts, not display ones — see the field docblocks. Both
+      // are inert for the open policy (`chatSessionId` above short-circuits
+      // it) and are read by Home's row icon and its activity chart.
       ...(chat.agentSlug ? { agentSlug: chat.agentSlug } : {}),
       ...(chat.projectSlug ? { projectSlug: chat.projectSlug } : {}),
     };
   });
-// A handoff replaces the execution Session while retaining one durable
-// Conversation. Every consumer of this adapter must therefore see the
-// newest child identity, never an arbitrary predecessor map entry.
+  // A handoff replaces the execution Session while retaining one durable
+  // Conversation. Every consumer of this adapter must therefore see the
+  // newest child identity, never an arbitrary predecessor map entry.
   return [
     ...items
       .reduce((current, item) => {

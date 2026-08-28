@@ -103,7 +103,7 @@ describe('probeServerConnection', () => {
         null,
         new AbortController().signal,
       );
-// Nothing should abort before the shared timeout elapses.
+      // Nothing should abort before the shared timeout elapses.
       await vi.advanceTimersByTimeAsync(HEALTH_PROBE_TIMEOUT_MS - 1);
       await vi.advanceTimersByTimeAsync(1);
 
@@ -113,15 +113,15 @@ describe('probeServerConnection', () => {
     }
   });
 
-/**
-* archive#3297, the reported defect. A phone measured, at the moment of
-* failure: handshake 200, `/api/system/status` 401, `/health` 403 — and was
-* told "Can't reach station. It may be off, asleep, or on another network."
-*
-* These four cases are the ones `if (!handshakeResponse.ok) return
-* { reason: 'unreachable' }` collapsed. Every one of them starts with a
-* response having arrived, so none of them may read as unreachable.
-*/
+  /**
+   * archive#3297, the reported defect. A phone measured, at the moment of
+   * failure: handshake 200, `/api/system/status` 401, `/health` 403 — and was
+   * told "Can't reach station. It may be off, asleep, or on another network."
+   *
+   * These four cases are the ones `if (!handshakeResponse.ok) return
+   * { reason: 'unreachable' }` collapsed. Every one of them starts with a
+   * response having arrived, so none of them may read as unreachable.
+   */
   describe('a host that answers is never reported as unreachable (station#3297)', () => {
     it('reads a 401 on the public handshake as a rejected device', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
@@ -171,8 +171,8 @@ describe('probeServerConnection', () => {
     });
 
     it('reads a 200 whose body is not JSON as something else answering', async () => {
-// A captive portal or proxy. This used to throw out of `.json` into
-// the catch block and be reported as a transport failure.
+      // A captive portal or proxy. This used to throw out of `.json` into
+      // the catch block and be reported as a transport failure.
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
         new Response('<html>Sign in to the network</html>', {
           status: 200,
@@ -225,7 +225,7 @@ describe('probeServerConnection', () => {
     });
 
     it('still reports a genuine transport failure as unreachable', async () => {
-// The reason keeps its meaning: nothing answered.
+      // The reason keeps its meaning: nothing answered.
       vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
         new TypeError('Failed to fetch'),
       );
@@ -255,8 +255,8 @@ describe('probeServerConnection', () => {
   });
 
   it('flags a live host that no longer serves clients this old', async () => {
-// A host upgraded under a running client. Before this, the client kept
-// reconnecting happily and then misbehaved with no signal at all.
+    // A host upgraded under a running client. Before this, the client kept
+    // reconnecting happily and then misbehaved with no signal at all.
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       Response.json({
         ...handshake,
@@ -278,7 +278,7 @@ describe('probeServerConnection', () => {
       ok: false,
       reason: 'unsupported-capability-version',
     });
-// Refused before any credentialed request went out.
+    // Refused before any credentialed request went out.
     expect(vi.mocked(fetch)).toHaveBeenCalledOnce();
   });
 
@@ -343,11 +343,11 @@ describe('probeServerConnection', () => {
     ).resolves.toEqual({ ok: true, bootId: 'boot-3' });
   });
 
-/**
-* archive#1713 — same recognition as `checkServerHealthDetailed` below,
-* proven against this probe's own catch block: a native invoke-layer
-* refusal must not collapse into 'unreachable' or 'timeout' here either.
-*/
+  /**
+   * archive#1713 — same recognition as `checkServerHealthDetailed` below,
+   * proven against this probe's own catch block: a native invoke-layer
+   * refusal must not collapse into 'unreachable' or 'timeout' here either.
+   */
   it('classifies a native invoke-layer refusal as authentication-failed, not unreachable (station#1713)', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
       Object.assign(
@@ -386,12 +386,12 @@ describe('probeServerConnection', () => {
     ).resolves.toEqual({ ok: false, reason: 'awaiting-approval' });
   });
 
-/**
- * The coordinator's -1 correction: a profile that was never
-* configured here at all (nothing pending, no approval was ever
-* requested) must not read as `awaiting-approval` — that would leave the
-* UI saying "Waiting for approval…" forever with nothing on its way.
-*/
+  /**
+   * The coordinator's -1 correction: a profile that was never
+   * configured here at all (nothing pending, no approval was ever
+   * requested) must not read as `awaiting-approval` — that would leave the
+   * UI saying "Waiting for approval…" forever with nothing on its way.
+   */
   it('classifies a native Station that was never configured here as authentication-failed, not awaiting-approval (station#1713)', async () => {
     vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
       Object.assign(
@@ -414,9 +414,9 @@ describe('probeServerConnection', () => {
 
 describe('checkServerHealthDetailed (401 must not read as unreachable)', () => {
   it('reports a rejected credential as authentication-failed, not unreachable', async () => {
-// A reachable Station that rejects the saved credential answers 401.
-// Collapsing that to "unreachable" told the user to check the host when the
-// host was fine and the credential was what needed replacing.
+    // A reachable Station that rejects the saved credential answers 401.
+    // Collapsing that to "unreachable" told the user to check the host when the
+    // host was fine and the credential was what needed replacing.
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response('', { status: 401 })),
@@ -427,8 +427,8 @@ describe('checkServerHealthDetailed (401 must not read as unreachable)', () => {
   });
 
   it('does NOT treat origin policy as an auth failure — pairing cannot fix it', async () => {
-// Classifying it as a credential problem would point the user at a fix
-// that cannot work. It is equally not "unreachable" — the host answered.
+    // Classifying it as a credential problem would point the user at a fix
+    // that cannot work. It is equally not "unreachable" — the host answered.
     vi.stubGlobal(
       'fetch',
       vi.fn(
@@ -446,12 +446,12 @@ describe('checkServerHealthDetailed (401 must not read as unreachable)', () => {
     ).resolves.toEqual({ ok: false, reason: 'origin-not-allowed' });
   });
 
-/**
-* archive#3297 — the correction to this probe's own comment. It asserted
-* this server returns 403 "never for a rejected credential"; `runtime-http.ts`
-* answers 403 `insufficient_scope` for a credential it recognized and will
-* not accept, at four separate sites.
-*/
+  /**
+   * archive#3297 — the correction to this probe's own comment. It asserted
+   * this server returns 403 "never for a rejected credential"; `runtime-http.ts`
+   * answers 403 `insufficient_scope` for a credential it recognized and will
+   * not accept, at four separate sites.
+   */
   it('treats a recognized-but-insufficient credential as an auth failure', async () => {
     vi.stubGlobal(
       'fetch',
@@ -492,12 +492,12 @@ describe('checkServerHealthDetailed (401 must not read as unreachable)', () => {
     ).resolves.toEqual({ ok: false, reason: 'unreachable' });
   });
 
-/**
-* archive#1713 — the miscategorization that cost hours of debugging: the
-* desktop native transport's invoke-layer refusal (an ordinary thrown
-* `Error`, indistinguishable by shape from a real transport failure) used
-* to collapse into 'unreachable' here. It must not — the host is fine.
-*/
+  /**
+   * archive#1713 — the miscategorization that cost hours of debugging: the
+   * desktop native transport's invoke-layer refusal (an ordinary thrown
+   * `Error`, indistinguishable by shape from a real transport failure) used
+   * to collapse into 'unreachable' here. It must not — the host is fine.
+   */
   it('classifies a native invoke-layer refusal as authentication-failed, not unreachable (station#1713)', async () => {
     vi.stubGlobal(
       'fetch',

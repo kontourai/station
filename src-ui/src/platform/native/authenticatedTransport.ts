@@ -1,5 +1,5 @@
 /**
-* Desktop's authenticated HTTP bridge.  The WebView receives response bytes
+ * Desktop's authenticated HTTP bridge.  The WebView receives response bytes
  * and status only; the selected Station's bearer is resolved by Rust for each
  * request and is deliberately absent from this module's API.
  */
@@ -12,9 +12,9 @@ type ClientAuthenticatedTransport = (
 ) => Promise<Response>;
 
 type NativeAuthenticatedTransportInit = RequestInit & {
-/** SDK-owned, non-secret guard captured with this request's authority. */
+  /** SDK-owned, non-secret guard captured with this request's authority. */
   authorityGuard?: () => void;
-/** Opaque Rust-issued binding for a scoped request; never a credential. */
+  /** Opaque Rust-issued binding for a scoped request; never a credential. */
   expectedBindingId?: string;
 };
 
@@ -88,36 +88,36 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
       },
     });
     const cleanup = () => signal?.removeEventListener('abort', abort);
-// Android WebViews can throw if a controller has already become terminal
-// between broker messages. The broker's typed transport error is the
-// useful contract, never that DOM implementation detail.
+    // Android WebViews can throw if a controller has already become terminal
+    // between broker messages. The broker's typed transport error is the
+    // useful contract, never that DOM implementation detail.
     const completeStream = (error?: Error) => {
       try {
         if (error) streamController?.error(error);
         else streamController?.close();
       } catch {
-// The controller was already terminal.
+        // The controller was already terminal.
       }
     };
-// archive#1818: `code` is the stable machine contract
-// (`classifyNativeTransportRefusal` reads it), while `detail` is
-// human/log text only. `fail` builds the SAME kind of `Error` shape for
-// both the channel's out-of-band codes ('cancelled', 'transport',
-// 'response_too_large', the vestigial 'credential_missing') and a
-// structured `NativeCommandError` rejection unwrapped below — one seam,
-// one shape, so `classifyNativeTransportRefusal` never has to guess
-// which path produced the `Error` it is given.
-//
- // archive#1818 1 : `code` is `string | undefined`,
-// not defaulted to the raw message text, on purpose. A command not yet
-// converted to `NativeCommandError` rejects with a bare, uncoded
-// string — passing THAT string through as `.code` would let arbitrary
-// English prose masquerade as a code, reopening exactly the
-// FFI-boundary prose-matching this whole mechanism replaced (a future
-// `switch (error.code)` consumer could accidentally match on a
-// sentence). Leaving `.code` unset for the uncoded case is what keeps
-// `classifyNativeTransportRefusal`'s "no code" path — the one it
-// already falls back to conservatively — honest.
+    // archive#1818: `code` is the stable machine contract
+    // (`classifyNativeTransportRefusal` reads it), while `detail` is
+    // human/log text only. `fail` builds the SAME kind of `Error` shape for
+    // both the channel's out-of-band codes ('cancelled', 'transport',
+    // 'response_too_large', the vestigial 'credential_missing') and a
+    // structured `NativeCommandError` rejection unwrapped below — one seam,
+    // one shape, so `classifyNativeTransportRefusal` never has to guess
+    // which path produced the `Error` it is given.
+    //
+    // archive#1818 1 : `code` is `string | undefined`,
+    // not defaulted to the raw message text, on purpose. A command not yet
+    // converted to `NativeCommandError` rejects with a bare, uncoded
+    // string — passing THAT string through as `.code` would let arbitrary
+    // English prose masquerade as a code, reopening exactly the
+    // FFI-boundary prose-matching this whole mechanism replaced (a future
+    // `switch (error.code)` consumer could accidentally match on a
+    // sentence). Leaving `.code` unset for the uncoded case is what keeps
+    // `classifyNativeTransportRefusal`'s "no code" path — the one it
+    // already falls back to conservatively — honest.
     const fail = (code: string | undefined, detail?: string) => {
       if (finished) return;
       finished = true;
@@ -186,8 +186,8 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
       cleanup();
       throw error;
     }
-// Body serialization can await a Blob read; never dispatch a stale
-// authority after that wait.
+    // Body serialization can await a Blob read; never dispatch a stale
+    // authority after that wait.
     authorityGuard?.();
     if (!finished) {
       void invoke('station_native_http_request', {
@@ -201,14 +201,14 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
         },
         channel,
       }).catch((error) => {
-// archive#1818: this used to be `fail(String(error))`, which
-// stringified a `NativeCommandError` rejection object to
-// `"[object Object]"` and discarded its `code` either way — the
-// exact reason `credential_missing` /
-// `credential_store_unreadable` never reached
-// `classifyNativeTransportRefusal`. `readNativeCommandError`
-// preserves both the code (when the command has been converted to
-// carry one) and the human text.
+        // archive#1818: this used to be `fail(String(error))`, which
+        // stringified a `NativeCommandError` rejection object to
+        // `"[object Object]"` and discarded its `code` either way — the
+        // exact reason `credential_missing` /
+        // `credential_store_unreadable` never reached
+        // `classifyNativeTransportRefusal`. `readNativeCommandError`
+        // preserves both the code (when the command has been converted to
+        // carry one) and the human text.
         const { code, message } = readNativeCommandError(error);
         fail(code, message);
       });

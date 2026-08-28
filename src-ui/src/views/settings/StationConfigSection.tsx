@@ -51,7 +51,7 @@ export function StationConfigSection({
   config: AppConfig;
   provenance?: Record<string, SettingProvenanceEntry>;
   onChange: (config: AppConfig) => void;
-/** Host owns the page heading; preserve the Settings route's default. */
+  /** Host owns the page heading; preserve the Settings route's default. */
   embedded?: boolean;
 }) {
   return (
@@ -67,13 +67,13 @@ export function StationConfigSection({
           definition,
           value: config[key],
           provenance: provenance?.[key as string],
-// `value` is passed through verbatim (never coerced to
-// `undefined`) — an explicit `null` is the documented "clear this
-// field" signal at the PUT layer (`sanitizeAppConfigUpdate`), and
-// for `builtinAgentEngineConnectionId` specifically `null` is a
-// distinct STORED value ("explicitly Station") from absent
-// ("re-derived each boot") — coercing it away would silently
-// change which of those two states a save actually persists.
+          // `value` is passed through verbatim (never coerced to
+          // `undefined`) — an explicit `null` is the documented "clear this
+          // field" signal at the PUT layer (`sanitizeAppConfigUpdate`), and
+          // for `builtinAgentEngineConnectionId` specifically `null` is a
+          // distinct STORED value ("explicitly Station") from absent
+          // ("re-derived each boot") — coercing it away would silently
+          // change which of those two states a save actually persists.
           onChange: (value) =>
             onChange({ ...config, [key]: value } as AppConfig),
         });

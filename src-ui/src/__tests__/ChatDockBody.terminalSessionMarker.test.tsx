@@ -23,7 +23,7 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
-// archive#3764: the empty-transcript filler renders `ChatEmptyState`.
+  // archive#3764: the empty-transcript filler renders `ChatEmptyState`.
   useAgentsLoaded: () => true,
 }));
 
@@ -210,24 +210,24 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
 
     renderDock(session, onNewChat);
 
-// Plain-language headline, not the raw prose.
+    // Plain-language headline, not the raw prose.
     expect(await screen.findByText(/history is gone/i)).toBeTruthy();
-// The raw engine text is present (the disclosure) but not as a heading —
-// it renders inside the marker's own body text.
+    // The raw engine text is present (the disclosure) but not as a heading —
+    // it renders inside the marker's own body text.
     expect(await screen.findByText(RAW_MESSAGE, { exact: false })).toBeTruthy();
 
-// The recovery affordance is "Start new chat", not "Send again" — a
-// dead engine binding cannot be retried into the same thread.
+    // The recovery affordance is "Start new chat", not "Send again" — a
+    // dead engine binding cannot be retried into the same thread.
     const actionButton = await screen.findByRole('button', {
       name: 'New chat',
     });
     expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
 
     fireEvent.click(actionButton);
-// The recovery is async since archive#3385 — it resolves any attachment
-// the failed turn carried before handing the draft on, so that a turn
-// whose bytes are gone is refused rather than migrated without them. The
-// payload it eventually delivers must still be exactly the old one.
+    // The recovery is async since archive#3385 — it resolves any attachment
+    // the failed turn carried before handing the draft on, so that a turn
+    // whose bytes are gone is refused rather than migrated without them. The
+    // payload it eventually delivers must still be exactly the old one.
     await waitFor(() =>
       expect(onNewChat).toHaveBeenCalledWith('are you still there?', []),
     );
@@ -374,14 +374,14 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     );
   });
 
-/**
- * archive#3764: the filler keeps archive#2467's flex fill AND carries the real
-* chat empty state. It used to hold a generic `Empty label="No messages
-* yet"` — a true sentence that is not the reason nothing can be sent, and
-* which made the guided zero-provider rescue unreachable from the dock
-* because `ChatMessageList` (the only other renderer of `ChatEmptyState`)
-* is mounted only once the transcript already has a message.
-*/
+  /**
+   * archive#3764: the filler keeps archive#2467's flex fill AND carries the real
+   * chat empty state. It used to hold a generic `Empty label="No messages
+   * yet"` — a true sentence that is not the reason nothing can be sent, and
+   * which made the guided zero-provider rescue unreachable from the dock
+   * because `ChatMessageList` (the only other renderer of `ChatEmptyState`)
+   * is mounted only once the transcript already has a message.
+   */
   test('an empty conversation renders the flex filler so the composer stays bottom-pinned', () => {
     const session = buildSession({ messages: [] });
     renderDock(session, vi.fn());

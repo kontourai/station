@@ -33,12 +33,12 @@ export function agentEngineDescriptor(agent: {
 }): EngineDescriptor | null {
   if (agent.engineConnectionType === 'acp') {
     const resolvedName = agent.connectionName ?? agent.name ?? 'Custom engine';
-// acp-manager-view.ts falls back the live-model field to the
-// connection's own name/id when no current model has been reported yet
-// (`model: modelConfig?.currentValue || config?.name || id`) — that
-// fallback must never render as a self-referential "Kiro · Kiro" chip
- //so suppress a model that's falsy or duplicates the name we
-// just resolved or the raw connection id.
+    // acp-manager-view.ts falls back the live-model field to the
+    // connection's own name/id when no current model has been reported yet
+    // (`model: modelConfig?.currentValue || config?.name || id`) — that
+    // fallback must never render as a self-referential "Kiro · Kiro" chip
+    //so suppress a model that's falsy or duplicates the name we
+    // just resolved or the raw connection id.
     const connectionId = agent.execution?.agentConnectionId;
     const isRedundantModel =
       !agent.model ||

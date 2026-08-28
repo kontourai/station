@@ -11,7 +11,7 @@ const ENVELOPE_KEY = 'station-device-settings-v1';
  * The store is a module-level singleton (mirrors `onboarding-setup-store.ts`)
  * whose one-time prior-setting migration runs in its constructor — so getting a
  * "fresh" instance per scenario means seeding real jsdom `localStorage`
-* before re-importing the module after `vi.resetModules`, the same
+ * before re-importing the module after `vi.resetModules`, the same
  * pattern `active-chats-store.test.ts` uses for its own module-singleton
  * store (there via an injectable storage; here the store has none, so the
  * real global is seeded directly instead).
@@ -201,12 +201,12 @@ describe('device-settings-store', () => {
   });
 
   describe('v1 -> v2 backfill migration for already-upgraded devices (slice 3 review finding 1)', () => {
- // The real bug: (already live on main before) writes an
-// empty v1 envelope on EVERY device's first boot, so a device that
-// upgrades straight to this slice already has a v1 envelope present —
-// `migrateFromPriorStorage` (which only runs when the envelope key is
-// entirely ABSENT) never fires for it, and without the v1->v2 ladder
-// step its `station.device-settings` root would orphan forever.
+    // The real bug: (already live on main before) writes an
+    // empty v1 envelope on EVERY device's first boot, so a device that
+    // upgrades straight to this slice already has a v1 envelope present —
+    // `migrateFromPriorStorage` (which only runs when the envelope key is
+    // entirely ABSENT) never fires for it, and without the v1->v2 ladder
+    // step its `station.device-settings` root would orphan forever.
     test('a pre-existing v1 envelope alongside a populated prior settings root backfills on construction, preserves unrelated values, and removes the prior settings root', async () => {
       localStorage.setItem(
         ENVELOPE_KEY,
@@ -235,12 +235,12 @@ describe('device-settings-store', () => {
       expect(
         deviceSettingsStore.get('modelPickerPreferences').favorites,
       ).toEqual(['provider-model']);
-// Unrelated pre-existing values survive the backfill untouched.
+      // Unrelated pre-existing values survive the backfill untouched.
       expect(deviceSettingsStore.get('theme')).toBe('light');
       expect(deviceSettingsStore.get('diffWrap')).toBe(true);
-// The prior settings root is fully consumed and removed.
+      // The prior settings root is fully consumed and removed.
       expect(localStorage.getItem('station.device-settings')).toBeNull();
-// The backfill was actually persisted, not just held in memory.
+      // The backfill was actually persisted, not just held in memory.
       const persisted = JSON.parse(
         localStorage.getItem(ENVELOPE_KEY) as string,
       );
@@ -295,26 +295,26 @@ describe('device-settings-store', () => {
 
       const { deviceSettingsStore } = await freshStore();
 
-// Degraded but lossless: the backfilled value is served from memory
-// this session even though the write never landed.
+      // Degraded but lossless: the backfilled value is served from memory
+      // this session even though the write never landed.
       expect(deviceSettingsStore.get('shortcutOverrides')).toEqual({
         'app.settings': { key: 's', modifiers: ['cmd'] },
       });
 
       setItemSpy.mockRestore();
 
-// The prior settings root was NOT removed, since the write was never confirmed.
+      // The prior settings root was NOT removed, since the write was never confirmed.
       expect(localStorage.getItem('station.device-settings')).not.toBeNull();
     });
   });
 
-// archive#settings-revamp NOTE: `Number('')` and
-// `Number('   ')` both coerce to `0`, not `NaN` — an unguarded number-kind
-// `parsePriorValue` would silently resolve an empty/whitespace prior raw
-// value to `0` instead of the setting's real default. Currently dead code
-// in production (no number-kind device setting has a `priorStorageKey`
-// yet) — this test exercises the exported function directly so the guard
-// has a pinned regression test before the first one lands.
+  // archive#settings-revamp NOTE: `Number('')` and
+  // `Number('   ')` both coerce to `0`, not `NaN` — an unguarded number-kind
+  // `parsePriorValue` would silently resolve an empty/whitespace prior raw
+  // value to `0` instead of the setting's real default. Currently dead code
+  // in production (no number-kind device setting has a `priorStorageKey`
+  // yet) — this test exercises the exported function directly so the guard
+  // has a pinned regression test before the first one lands.
   describe("parsePriorValue('number') empty/whitespace guard (dead code today, guarded for the first number-kind prior key)", () => {
     test('an empty string falls back to defaultValue, not 0', async () => {
       const { parsePriorValue } = await freshStore();
@@ -413,10 +413,10 @@ describe('device-settings-store', () => {
   });
 
   test('envelope version ladder scaffold: an already-current envelope passes through unchanged', async () => {
-// CURRENT_ENVELOPE_VERSION is 2 (archive#settings-revamp
- //) — seed a v2 envelope directly to test the "already current,
-// no ladder step runs" case; v1-envelope upgrade behavior is covered by
-// the dedicated "v1 -> v2 backfill migration" describe block above.
+    // CURRENT_ENVELOPE_VERSION is 2 (archive#settings-revamp
+    //) — seed a v2 envelope directly to test the "already current,
+    // no ladder step runs" case; v1-envelope upgrade behavior is covered by
+    // the dedicated "v1 -> v2 backfill migration" describe block above.
     localStorage.setItem(
       ENVELOPE_KEY,
       JSON.stringify({ version: 2, values: { theme: 'light' } }),
@@ -523,12 +523,12 @@ describe('device-settings-store', () => {
       expect(resolveBootTheme('{not valid json', null)).toBe('dark');
     });
 
-// Review omission item: prove the real module-import-order sequence
-// (`main.tsx` imports this module for `resolveBootTheme`, which runs the
-// singleton's migrating constructor as an ES-module side effect BEFORE
-// any of the module's exports are called) actually gives the fast path
-// a correct value from the envelope alone on the very first post-
-// upgrade load — not just via the prior-setting branch.
+    // Review omission item: prove the real module-import-order sequence
+    // (`main.tsx` imports this module for `resolveBootTheme`, which runs the
+    // singleton's migrating constructor as an ES-module side effect BEFORE
+    // any of the module's exports are called) actually gives the fast path
+    // a correct value from the envelope alone on the very first post-
+    // upgrade load — not just via the prior-setting branch.
     test('on the first post-upgrade load, the envelope the migration just wrote already carries the value main.tsx reads', async () => {
       localStorage.setItem('theme', 'light');
 
@@ -558,15 +558,15 @@ describe('device-settings-store', () => {
 
       const { deviceSettingsStore } = await freshStore();
 
-// Degraded but lossless: served from memory even though the write
-// never landed.
+      // Degraded but lossless: served from memory even though the write
+      // never landed.
       expect(deviceSettingsStore.get('theme')).toBe('light');
       expect(deviceSettingsStore.get('accentColor')).toBe('#112233');
 
       setItemSpy.mockRestore();
 
-// The prior keys were NOT removed, since the write was never
-// confirmed to have landed.
+      // The prior keys were NOT removed, since the write was never
+      // confirmed to have landed.
       expect(localStorage.getItem('theme')).toBe('light');
       expect(localStorage.getItem('station-accent-color')).toBe('#112233');
       expect(localStorage.getItem(ENVELOPE_KEY)).toBeNull();
@@ -599,9 +599,9 @@ describe('device-settings-store', () => {
       const { deviceSettingsStore, DeviceSettingsImportVersionError } =
         await freshStore();
 
- // CURRENT_ENVELOPE_VERSION is 2 (archive#settings-revamp
- //) — version 3 is the one genuinely newer than this
-// app understands.
+      // CURRENT_ENVELOPE_VERSION is 2 (archive#settings-revamp
+      //) — version 3 is the one genuinely newer than this
+      // app understands.
       expect(() =>
         deviceSettingsStore.importEnvelope({
           version: 3,
@@ -740,17 +740,17 @@ describe('device-settings-store', () => {
 
       deviceSettingsStore.set('theme', 'light');
 
-// Simulate another tab writing a DIFFERENT key directly, without
-// going through this tab's in-memory store at all.
+      // Simulate another tab writing a DIFFERENT key directly, without
+      // going through this tab's in-memory store at all.
       const outOfBand = JSON.parse(
         localStorage.getItem(ENVELOPE_KEY) as string,
       );
       outOfBand.values.diffWrap = true;
       localStorage.setItem(ENVELOPE_KEY, JSON.stringify(outOfBand));
 
-// This tab, unaware of the direct write, sets an unrelated key. A
-// blind overwrite from this tab's stale in-memory envelope would
-// have reverted diffWrap back to false.
+      // This tab, unaware of the direct write, sets an unrelated key. A
+      // blind overwrite from this tab's stale in-memory envelope would
+      // have reverted diffWrap back to false.
       deviceSettingsStore.set('chatDockAutoHide', true);
 
       const persisted = JSON.parse(
@@ -807,8 +807,8 @@ describe('device-settings-store', () => {
       expect(deviceSettingsStore.get('chatShowToolDetails')).toBe(true);
       expect(deviceSettingsStore.get('chatFontSize')).toBeNull();
       expect(deviceSettingsStore.get('dockSlotPlacement')).toBe('bottom');
-// No prior key exists for any of these — the migration must not
-// conjure a raw-string read for a key that was never registered.
+      // No prior key exists for any of these — the migration must not
+      // conjure a raw-string read for a key that was never registered.
       const envelope = deviceSettingsStore.getEnvelope();
       expect(Object.hasOwn(envelope.values, 'chatShowReasoning')).toBe(false);
       expect(Object.hasOwn(envelope.values, 'chatFontSize')).toBe(false);
@@ -861,14 +861,14 @@ describe('device-settings-store', () => {
       expect(deviceSettingsStore.get('chatFontSize')).toBeNull();
     });
 
-// archive#settings-revamp: the number case
-// ignored `descriptor.min`/`max`/`integer` entirely — an imported
-// `chatFontSize: 5000` (or `-12`, or `3.7` against `integer: true`)
-// landed unclamped into a real inline `fontSize` style (ChatSettingsPanel's
-// A−/A+ clamp is client-side only, never re-applied to an imported
-// value). Out-of-bounds/non-integer must be dropped, not silently
-// clamped, matching the established import contract for every other
-// kind.
+    // archive#settings-revamp: the number case
+    // ignored `descriptor.min`/`max`/`integer` entirely — an imported
+    // `chatFontSize: 5000` (or `-12`, or `3.7` against `integer: true`)
+    // landed unclamped into a real inline `fontSize` style (ChatSettingsPanel's
+    // A−/A+ clamp is client-side only, never re-applied to an imported
+    // value). Out-of-bounds/non-integer must be dropped, not silently
+    // clamped, matching the established import contract for every other
+    // kind.
     test('importEnvelope() drops an out-of-range chatFontSize (over max) rather than clamping it', async () => {
       const { deviceSettingsStore } = await freshStore();
 
@@ -951,11 +951,11 @@ describe('device-settings-store', () => {
     test('importEnvelope() rejects null for a non-nullable number-kind field the same way it rejects null strings', async () => {
       const { deviceSettingsStore } = await freshStore();
 
-// No non-nullable number-kind device setting exists yet other than the
-// nullable chatFontSize itself, so this proves the general rule using
-// a value shape check instead: a bogus key is simply dropped by
-// `sanitizeImportedValues` (untouched behavior), confirmed here so a
-// future non-nullable number field inherits the right default.
+      // No non-nullable number-kind device setting exists yet other than the
+      // nullable chatFontSize itself, so this proves the general rule using
+      // a value shape check instead: a bogus key is simply dropped by
+      // `sanitizeImportedValues` (untouched behavior), confirmed here so a
+      // future non-nullable number field inherits the right default.
       const result = deviceSettingsStore.importEnvelope({
         version: 2,
         values: { dockSlotPlacement: null },
@@ -1018,15 +1018,15 @@ describe('device-settings-store', () => {
     });
   });
 
-/**
-* A document whose storage access is denied — an opaque origin (a sandboxed
-* iframe without `allow-same-origin`, an `about:blank` document) or a
-* browser configured to block site data — throws `SecurityError` when the
-* `window.localStorage` PROPERTY is read, before any `getItem` runs. The
-* store is a module-scope singleton, so a probe that propagates that throw
-* takes down every bundle importing this module at import time. jsdom always
-* grants storage, so the denial is modelled by replacing the accessor.
-*/
+  /**
+   * A document whose storage access is denied — an opaque origin (a sandboxed
+   * iframe without `allow-same-origin`, an `about:blank` document) or a
+   * browser configured to block site data — throws `SecurityError` when the
+   * `window.localStorage` PROPERTY is read, before any `getItem` runs. The
+   * store is a module-scope singleton, so a probe that propagates that throw
+   * takes down every bundle importing this module at import time. jsdom always
+   * grants storage, so the denial is modelled by replacing the accessor.
+   */
   describe('a document that denies storage access', () => {
     async function withDeniedStorage<T>(run: () => Promise<T>): Promise<T> {
       const original = Object.getOwnPropertyDescriptor(window, 'localStorage');

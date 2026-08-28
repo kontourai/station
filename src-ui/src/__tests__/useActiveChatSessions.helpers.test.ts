@@ -41,7 +41,7 @@ describe('useActiveChatSessions helpers', () => {
         {
           role: 'user',
           content: 'hello',
-// archive#1293: a stable client-only id for rollback-by-id.
+          // archive#1293: a stable client-only id for rollback-by-id.
           clientId: expect.any(String),
           contentParts: [
             { type: 'text', content: 'hello' },
@@ -70,9 +70,9 @@ describe('useActiveChatSessions helpers', () => {
     expect(currentMessages).toEqual([{ role: 'assistant', content: 'hi' }]);
   });
 
-// archive#1295: no normal write path stamped a user-send message before —
-// pin that the outgoing message now carries a real timestamp so a healthy
-// chat's inbox recency isn't derived from an epoch 0.
+  // archive#1295: no normal write path stamped a user-send message before —
+  // pin that the outgoing message now carries a real timestamp so a healthy
+  // chat's inbox recency isn't derived from an epoch 0.
   it('stamps the outgoing user message with a real timestamp, not 0', () => {
     const result = buildOutgoingUserMessage(undefined, 'hello');
     expect(result.messages[result.messages.length - 1].timestamp).toBe(
@@ -122,9 +122,9 @@ describe('useActiveChatSessions helpers', () => {
     ).toBe('unexpected');
   });
 
-// archive#1295: the backend rarely supplies a per-message timestamp today
-// (no normal write path persisted one), but when it does, the mapper must
-// prefer it over the batch fallback rather than overwriting it.
+  // archive#1295: the backend rarely supplies a per-message timestamp today
+  // (no normal write path persisted one), but when it does, the mapper must
+  // prefer it over the batch fallback rather than overwriting it.
   it('prefers a real backend timestamp over the fallback when present', () => {
     const result = buildPostSendState([
       {
@@ -138,13 +138,13 @@ describe('useActiveChatSessions helpers', () => {
     );
   });
 
-// archive#1295 regression: fixtures used to hardcode plausible stamps —
-// this pins the genuinely-absent case, which is the actual historical
- // shape (no write path ever set `timestamp`). archive#1311 update:
-// with no `conversationUpdatedAt` anchor supplied, the fallback is still
-// "now" for the newest message (never 0), but earlier un-timestamped
-// messages back off from it to stay in order rather than all sharing one
-// instant.
+  // archive#1295 regression: fixtures used to hardcode plausible stamps —
+  // this pins the genuinely-absent case, which is the actual historical
+  // shape (no write path ever set `timestamp`). archive#1311 update:
+  // with no `conversationUpdatedAt` anchor supplied, the fallback is still
+  // "now" for the newest message (never 0), but earlier un-timestamped
+  // messages back off from it to stay in order rather than all sharing one
+  // instant.
   it('falls back to now (not 0) when the backend message has no timestamp at all and no anchor is given', () => {
     const result = normalizeConversationMessages([
       { role: 'user', content: 'hi' },
@@ -156,12 +156,12 @@ describe('useActiveChatSessions helpers', () => {
     expect(result[1].timestamp).not.toBe(0);
   });
 
-// archive#1311: normalizing the SAME
-// backend messages hours apart used to yield a newer `Date.now` stamp
-// each time — an old, already-read conversation would jump to the top of
-// recency on nothing more than a reopen or an SSE-reconnect catchup
-// sweep. Anchoring to the conversation's real `updatedAt` (resolved by
-// the caller, see `resolveConversationUpdatedAt`) makes this idempotent.
+  // archive#1311: normalizing the SAME
+  // backend messages hours apart used to yield a newer `Date.now` stamp
+  // each time — an old, already-read conversation would jump to the top of
+  // recency on nothing more than a reopen or an SSE-reconnect catchup
+  // sweep. Anchoring to the conversation's real `updatedAt` (resolved by
+  // the caller, see `resolveConversationUpdatedAt`) makes this idempotent.
   describe("anchoring to the conversation's real updatedAt (station#1311 review)", () => {
     const backendMessages = [
       { role: 'user', content: 'hi' },
@@ -191,8 +191,8 @@ describe('useActiveChatSessions helpers', () => {
       expect(second[second.length - 1].timestamp).toEqual(
         first[first.length - 1].timestamp,
       );
-// Neither call re-inflated recency toward whatever `Date.now`
-// happened to be at call time.
+      // Neither call re-inflated recency toward whatever `Date.now`
+      // happened to be at call time.
       expect(first[first.length - 1].timestamp).not.toBe(
         Date.parse('2026-01-01T05:00:00.000Z'),
       );
@@ -211,9 +211,9 @@ describe('useActiveChatSessions helpers', () => {
         [{ role: 'user', content: 'recent' }] as any,
         Date.parse('2026-01-01T00:00:00.000Z'),
       );
-// Old stays older than recent regardless of how many times either is
-// re-normalized, or when — no Date.now read leaks into the result
-// when a real anchor is supplied.
+      // Old stays older than recent regardless of how many times either is
+      // re-normalized, or when — no Date.now read leaks into the result
+      // when a real anchor is supplied.
       vi.setSystemTime(new Date('2026-07-29T00:00:00.000Z'));
       const oldConversationAgain = normalizeConversationMessages(
         [{ role: 'user', content: 'old' }] as any,

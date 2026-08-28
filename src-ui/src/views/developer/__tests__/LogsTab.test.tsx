@@ -51,15 +51,15 @@ describe('LogsTab', () => {
   test('on a paired device it says where the full logs are, beside the read it still renders', () => {
     devicePresentation = { deviceClass: 'paired', hostName: 'workshop' };
     render(<LogsTab />);
-// Not a degraded page: the entries the device IS entitled to still render.
+    // Not a degraded page: the entries the device IS entitled to still render.
     expect(screen.getByLabelText('Server logs')).toBeTruthy();
     expect(screen.getByText(/booted/)).toBeTruthy();
     expect(screen.getByText(REDACTED_SENTENCE)).toBeTruthy();
   });
 
   test('the empty read still says where the full logs are', () => {
-// "No matching logs" from a paired device is exactly the state that reads
-// as broken without the sentence.
+    // "No matching logs" from a paired device is exactly the state that reads
+    // as broken without the sentence.
     logsState.data = { entries: [] };
     devicePresentation = { deviceClass: 'paired', hostName: 'workshop' };
     render(<LogsTab />);
@@ -75,8 +75,8 @@ describe('LogsTab', () => {
   });
 
   test('the search field no longer claims the read is redacted regardless of who is asking', () => {
-// A local operator receives UNREDACTED bytes; "Search redacted logs" was
-// a state word nothing on this page derived.
+    // A local operator receives UNREDACTED bytes; "Search redacted logs" was
+    // a state word nothing on this page derived.
     devicePresentation = { deviceClass: 'host', hostName: 'workshop' };
     render(<LogsTab />);
     expect(screen.getByPlaceholderText('Search logs')).toBeTruthy();

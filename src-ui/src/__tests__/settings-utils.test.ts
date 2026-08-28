@@ -56,9 +56,9 @@ describe('settings utils', () => {
 
   describe('export/import (station#settings-revamp slice 2)', () => {
     beforeEach(() => {
-// The device-settings store is a module singleton — clear it back to
-// an empty envelope between tests rather than letting one test's
-// import leak into the next's assertions.
+      // The device-settings store is a module singleton — clear it back to
+      // an empty envelope between tests rather than letting one test's
+      // import leak into the next's assertions.
       deviceSettingsStore.importEnvelope({ version: 1, values: {} });
       localStorage.clear();
     });
@@ -67,11 +67,11 @@ describe('settings utils', () => {
       const config = {
         region: 'us-east-1',
         logLevel: 'debug',
-// Internal, runtime-derived — never in APP_SETTINGS_REGISTRY, must
-// never appear in an exported file.
+        // Internal, runtime-derived — never in APP_SETTINGS_REGISTRY, must
+        // never appear in an exported file.
         mcpUiFrameOrigin: 'http://127.0.0.1:1234',
         managedChatOrchestration: true,
-// Not a registered AppConfig field at all.
+        // Not a registered AppConfig field at all.
         someUnknownField: 'x',
       } as unknown as AppConfig;
 
@@ -98,7 +98,7 @@ describe('settings utils', () => {
 
       const payload = buildSettingsExportPayload(config);
 
-// Simulate a fresh browser: clear the device store before importing.
+      // Simulate a fresh browser: clear the device store before importing.
       deviceSettingsStore.importEnvelope({ version: 1, values: {} });
       expect(deviceSettingsStore.get('theme')).toBe('dark');
 
@@ -178,7 +178,7 @@ describe('settings utils', () => {
       });
     });
 
-// archive#settings-revamp.
+    // archive#settings-revamp.
     test('a device envelope from a newer Station (future version) is rejected, not imported unchanged', async () => {
       const futureFile = {
         version: 2,
@@ -189,7 +189,7 @@ describe('settings utils', () => {
       await expect(
         parseImportedSettingsFile(jsonFile(futureFile)),
       ).rejects.toThrow(DeviceSettingsImportVersionError);
-// Nothing was adopted from the rejected file.
+      // Nothing was adopted from the rejected file.
       expect(deviceSettingsStore.get('theme')).toBe('dark');
     });
 
@@ -269,9 +269,9 @@ describe('settings utils', () => {
     await parseImportedSettingsFile(file);
 
     expect(listener).toHaveBeenCalledTimes(1);
- // archive#settings-revamp (archive#1359 convergence): the shared
-// `station.device-settings` root is migrated into the envelope's own
-// `shortcutOverrides` entry rather than written back verbatim.
+    // archive#settings-revamp (archive#1359 convergence): the shared
+    // `station.device-settings` root is migrated into the envelope's own
+    // `shortcutOverrides` entry rather than written back verbatim.
     expect(localStorage.getItem('station.device-settings')).toBeNull();
     expect(deviceSettingsStore.get('shortcutOverrides')).toEqual({
       'chat.new': { key: 'n', modifiers: ['cmd'] },

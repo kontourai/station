@@ -36,8 +36,8 @@ vi.mock('../../contexts/DeviceSettingsContext', () => ({
     chatDockHeight: 320,
     chatDockWidth: 400,
   }),
-// `DockShell` (archive#4460) owns dock chrome now, including the
-// drag-end device-settings commit `useChatDockState` used to own.
+  // `DockShell` (archive#4460) owns dock chrome now, including the
+  // drag-end device-settings commit `useChatDockState` used to own.
   useDeviceSettingsActions: () => ({ setDeviceSetting: () => {} }),
 }));
 
@@ -199,13 +199,13 @@ test('ambient dock renderPane mounts the canonical chat occupant through a chrom
     screen.queryByTestId('ambient-chat-occupant'),
     'ambient dock renderPane must mount the canonical chat occupant',
   ).not.toBeNull();
-// `WorkspacePaneHost` itself still contributes no chrome and no element
-// (its "chromeless" contract) — the labelled "Workspace panes" container
-// belongs to a tab strip's group of panes; there is no group here. What
-// DOES wrap the occupant now is `DockShell` (archive#4460): the one
-// `.chat-dock` root every occupant shares, a real element by design (it
-// owns the shell's root box, resize handle and geometry). The occupant is
-// a DIRECT descendant of it, not buried under a second host-owned wrapper.
+  // `WorkspacePaneHost` itself still contributes no chrome and no element
+  // (its "chromeless" contract) — the labelled "Workspace panes" container
+  // belongs to a tab strip's group of panes; there is no group here. What
+  // DOES wrap the occupant now is `DockShell` (archive#4460): the one
+  // `.chat-dock` root every occupant shares, a real element by design (it
+  // owns the shell's root box, resize handle and geometry). The occupant is
+  // a DIRECT descendant of it, not buried under a second host-owned wrapper.
   expect(screen.queryByLabelText('Workspace panes')).toBeNull();
   expect(screen.queryByRole('tablist')).toBeNull();
   expect(container.querySelector('.workspace-pane-host')).toBeNull();
@@ -248,7 +248,7 @@ test('the published dock action reports EXACTLY the ambient scope derivation', (
  * replace FUNCTION straight to a state setter, which React treats as an
  * updater — the stored state became `controller.replace(null)` (a boolean),
  * so the published action was permanently null. The docked-slot unit test
-* captured the authority with a `vi.fn` and never saw it. This test goes
+ * captured the authority with a `vi.fn` and never saw it. This test goes
  * through the REAL mounted host and the REAL App-facing callback.
  */
 test('the mounted ambient host publishes a live dock action, not null forever', async () => {
@@ -282,8 +282,8 @@ test('a non-canonical Home occurrence is refused: the dock admits nothing', asyn
   act(() => {
     action.dockPane(WORKSPACE_HOME_PANE_DESCRIPTOR, impostorHomeInstance);
   });
-// The refusal is synchronous; the occupant and its persistence are
-// untouched, so there is nothing to wait for — assert stability.
+  // The refusal is synchronous; the occupant and its persistence are
+  // untouched, so there is nothing to wait for — assert stability.
   await act(async () => {
     await Promise.resolve();
   });
@@ -539,8 +539,8 @@ test('the dock-slot header names the occupant and carries no fixed Chat return a
   await waitFor(() => {
     expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
   });
-// archive#4460: Home now renders through the SAME shared `ChatDockHeader`
-// Chat does (`.chat-dock__header`), not a separate `.dock-slot__header`.
+  // archive#4460: Home now renders through the SAME shared `ChatDockHeader`
+  // Chat does (`.chat-dock__header`), not a separate `.dock-slot__header`.
   const header = document.querySelector('.chat-dock__header');
   expect(header).not.toBeNull();
   expect(

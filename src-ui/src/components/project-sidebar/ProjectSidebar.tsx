@@ -42,7 +42,7 @@ const loadProjectSidebarStatus = () =>
   }));
 
 /** archive#3314: shared-inbox-row list, lazy so the row module (and its stylesheet)
-*  stays out of the entry chunk this sidebar belongs to. */
+ *  stays out of the entry chunk this sidebar belongs to. */
 const loadSidebarOpenChats = () =>
   import('./SidebarOpenChats').then((module) => ({
     default: module.SidebarOpenChats,
@@ -61,8 +61,8 @@ export function ProjectSidebar() {
     useNavigation();
   const branding = useBranding();
   const platformProfile = usePlatformProfile();
-// The sidebar is the primary installed-app chrome. Native package identity
-// must win here so a selected remote Station cannot rename Beta/Nightly.
+  // The sidebar is the primary installed-app chrome. Native package identity
+  // must win here so a selected remote Station cannot rename Beta/Nightly.
   const appName = platformProfile.isTauri
     ? platformProfile.productName || 'Station'
     : branding.appName;
@@ -77,16 +77,16 @@ export function ProjectSidebar() {
   const openChats = useOpenChats(agents);
   const recentTasks = openChats.slice(0, OPEN_CHATS_SIDEBAR_CAP);
   const openChatsOverflow = openChats.length - recentTasks.length;
- // archive#3314: per-section collapse + removal, persisted device-side alongside
-// `projectSidebarCollapsed` (restore for a removed section lives in
-// Settings → Appearance).
+  // archive#3314: per-section collapse + removal, persisted device-side alongside
+  // `projectSidebarCollapsed` (restore for a removed section lives in
+  // Settings → Appearance).
   const { sidebarSections } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const setSidebarSection = (patch: Partial<typeof sidebarSections>) =>
     setDeviceSetting('sidebarSections', { ...sidebarSections, ...patch });
-// Drafts are composed from the same store the composer writes and the same
-// active-chat identity that the dock can focus. Do not synthesize a sidebar
-// copy: opening one must restore the exact persisted composer value.
+  // Drafts are composed from the same store the composer writes and the same
+  // active-chat identity that the dock can focus. Do not synthesize a sidebar
+  // copy: opening one must restore the exact persisted composer value.
   const unsentDrafts = useMemo(
     () =>
       Object.entries(drafts)
@@ -102,8 +102,8 @@ export function ProjectSidebar() {
         }),
     [activeChats, drafts],
   );
-// Allocate the accent palette across the whole sorted project set so every
-// color is used before any repeats, stable regardless of API order.
+  // Allocate the accent palette across the whole sorted project set so every
+  // color is used before any repeats, stable regardless of API order.
   const accentBySlug = useMemo(
     () => projectAccents(projects.map((project) => project.slug)),
     [projects],
@@ -112,8 +112,8 @@ export function ProjectSidebar() {
     () => projects.map((project) => project.slug),
     [projects],
   );
-// archive#3315: server-owned order. The list arrives pre-sorted by the
-// persisted positions; a commit sends the full desired slug order back.
+  // archive#3315: server-owned order. The list arrives pre-sorted by the
+  // persisted positions; a commit sends the full desired slug order back.
   const reorderProjectsMutation = useReorderProjectsMutation();
   const { rowReorderProps, announcement: reorderAnnouncement } =
     useProjectListReorder(
@@ -124,12 +124,12 @@ export function ProjectSidebar() {
           projects.find((project) => project.slug === slug)?.name ?? slug,
       },
     );
-// archive#3202: the badge's number is now the Sessions list's own live lanes
-// scoped to one project (`project-live-work-model.ts`) — the same function
-// the project page's Live work section renders from, so the count and the
-// list it sends the reader to cannot disagree. The badge previously folded
-// the conversation inventory here inline; see that module for what changed
-// and why.
+  // archive#3202: the badge's number is now the Sessions list's own live lanes
+  // scoped to one project (`project-live-work-model.ts`) — the same function
+  // the project page's Live work section renders from, so the count and the
+  // list it sends the reader to cannot disagree. The badge previously folded
+  // the conversation inventory here inline; see that module for what changed
+  // and why.
   const liveLanesByProject = useMemo(
     () =>
       projectLiveLanesBySlug({
@@ -152,13 +152,13 @@ export function ProjectSidebar() {
   const wasMobileOpen = useRef(false);
   const returnFocusRef = useRef<HTMLElement[]>([]);
 
-// The mobile drawer's return focus goes through the shared module
-// (archive#1245). Its own copy was `if (trigger?.isConnected) trigger.focus`
-// the exact archive#1126 shape: `isConnected` answers "is it in the document", not
-// "can it take focus", and there was no fallback when the trigger did not
-// survive. The drawer navigates, so the header button that opened it can be
-// replaced by the destination's own header, and a hamburger inside a
-// collapsed section is connected but unfocusable.
+  // The mobile drawer's return focus goes through the shared module
+  // (archive#1245). Its own copy was `if (trigger?.isConnected) trigger.focus`
+  // the exact archive#1126 shape: `isConnected` answers "is it in the document", not
+  // "can it take focus", and there was no fallback when the trigger did not
+  // survive. The drawer navigates, so the header button that opened it can be
+  // replaced by the destination's own header, and a hamburger inside a
+  // collapsed section is connected but unfocusable.
   useEffect(() => {
     if (!isMobile) {
       wasMobileOpen.current = false;
@@ -166,9 +166,9 @@ export function ProjectSidebar() {
     }
     if (mobileOpen) {
       wasMobileOpen.current = true;
-// Captured while the trigger and its ancestors are all still attached:
-// React detaches a removed row on its own, which nulls `parentElement`
-// and leaves nothing to walk at restore time.
+      // Captured while the trigger and its ancestors are all still attached:
+      // React detaches a removed row on its own, which nulls `parentElement`
+      // and leaves nothing to walk at restore time.
       returnFocusRef.current = captureReturnFocus(mobileTriggerRef.current);
       const frame = requestAnimationFrame(() => {
         navigationRef.current
@@ -283,7 +283,7 @@ export function ProjectSidebar() {
             <span aria-hidden="true">⌂</span>
             <span className="sidebar__project-name">Home</span>
           </button>
- {/* archive#3314: Open chats is a mini-inbox — shared inbox rows (compact
+          {/* archive#3314: Open chats is a mini-inbox — shared inbox rows (compact
               variant), collapsible with the nav groups' disclosure anatomy
               (aria-expanded + aria-controls + hidden), and removable
               (restore in Settings → Appearance). */}
@@ -342,10 +342,10 @@ export function ProjectSidebar() {
                     type="button"
                     className="sidebar__recent-task sidebar__recent-more"
                     onClick={() => {
-// Which surface holds the unbounded list depends on the
-// dock's chrome, so `openCollection` owns that routing —
- // the sidebar must not decide it from here (archive#3314
- //).
+                      // Which surface holds the unbounded list depends on the
+                      // dock's chrome, so `openCollection` owns that routing —
+                      // the sidebar must not decide it from here (archive#3314
+                      //).
                       openChatsStore.openCollection();
                       if (isMobile) setMobileOpen(false);
                     }}
@@ -434,7 +434,7 @@ export function ProjectSidebar() {
           </div>
           {isLoading && projects.length === 0
             ? // Cold start: hold the list shape with pulsing rows instead of a
-// blank gap until projects resolve.
+              // blank gap until projects resolve.
               Array.from({ length: 3 }, (_, i) => (
                 <div className="sidebar__project-skeleton" key={i}>
                   <Skeleton
@@ -472,7 +472,7 @@ export function ProjectSidebar() {
               />
             );
           })}
-{/* A keyboard reorder is otherwise silent: the rows swap with no
+          {/* A keyboard reorder is otherwise silent: the rows swap with no
               announcement and no visible change a screen reader can report.
               Keyboard-only — a pointer drag already shows what it did. */}
           <span

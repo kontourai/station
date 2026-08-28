@@ -139,11 +139,11 @@ describe('the double-empty rule (station#4463 slice 2)', () => {
     viewModel = baseViewModel();
   });
 
-// 's own fix for this was itself inverted: `PluginEmptyState` was
-// passed unconditionally as `SplitPaneLayout`'s `emptyContent`, which
-// bypasses the shell's own double-empty guard, and its "Nothing selected"
-// rendered anyway when the list was genuinely empty — beside the list
-// pane's own "No plugins installed yet".
+  // 's own fix for this was itself inverted: `PluginEmptyState` was
+  // passed unconditionally as `SplitPaneLayout`'s `emptyContent`, which
+  // bypasses the shell's own double-empty guard, and its "Nothing selected"
+  // rendered anyway when the list was genuinely empty — beside the list
+  // pane's own "No plugins installed yet".
   test('no plugins installed renders one empty message, not "Nothing selected" too', () => {
     render(<PluginManagementView onNavigate={vi.fn()} />);
 
@@ -162,11 +162,11 @@ describe('the double-empty rule (station#4463 slice 2)', () => {
     expect(screen.getByText('Nothing selected')).toBeTruthy();
   });
 
- // Fix round : `PluginManagementView` never passed `searchValue`, so
-// `SplitPaneLayout`'s FilteredEmpty branch was production-unreachable — a
-// search matching no installed plugin fell through to the list's
-// genuinely-empty title, "No plugins installed yet", which is false when
-// plugins ARE installed and merely filtered off-screen.
+  // Fix round : `PluginManagementView` never passed `searchValue`, so
+  // `SplitPaneLayout`'s FilteredEmpty branch was production-unreachable — a
+  // search matching no installed plugin fell through to the list's
+  // genuinely-empty title, "No plugins installed yet", which is false when
+  // plugins ARE installed and merely filtered off-screen.
   test('plugins installed + a non-matching search renders exactly the FilteredEmpty message', () => {
     viewModel = baseViewModel({
       plugins: [{ name: 'alpha' }],

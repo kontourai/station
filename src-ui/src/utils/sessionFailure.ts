@@ -83,13 +83,13 @@ type TranscriptMessageText = {
   content?: string;
   contentParts?: ReadonlyArray<{
     content?: string;
-/**
-* archive#3769: stamped by the durable event projection on the row it
-* writes for a `runtime.error`. See `rendersAsFailureSurface`.
-*/
+    /**
+     * archive#3769: stamped by the durable event projection on the row it
+     * writes for a `runtime.error`. See `rendersAsFailureSurface`.
+     */
     runtimeError?: boolean;
   }> | null;
-/** Stamped by `createEphemeralMessageState`; the dock renders every one. */
+  /** Stamped by `createEphemeralMessageState`; the dock renders every one. */
   ephemeral?: boolean;
 };
 
@@ -97,7 +97,7 @@ type TranscriptMessageText = {
  * archive#3299: whether the rendered transcript already carries this failure
  * ON A SURFACE THE READER CAN SEE — the arbitration input for which surface
  * owns a failure's presentation. See `rendersAsFailureSurface` for why mere
-* text presence is not that test. No visible carrier
+ * text presence is not that test. No visible carrier
  * means the
  * transcript says nothing about this failure and the session banner remains
  * the only surface that can (archive#3213's cold arrival).
@@ -128,7 +128,7 @@ function messageText(message: TranscriptMessageText): string {
 }
 
 /**
-* ownership is about whether the reader will SEE a
+ * ownership is about whether the reader will SEE a
  * reason, not about whether the text exists somewhere in state.
  *
  * The predicate above used to answer "does any message contain this string",
@@ -140,19 +140,19 @@ function messageText(message: TranscriptMessageText): string {
  * simply stopped, with the reason nowhere on screen.
  *
  * Three shapes actually render a failure the reader can see here:
-*  - an ephemeral system notice (`createEphemeralMessageState` stamps
-*    `ephemeral: true`; the dock renders every one of them);
-*  - a `[SYSTEM_EVENT] [CHAT_ERROR…]` marker, which `ChatDockBody` renders as
-*    a `SystemEventMessage` card with its retry/new-chat affordance;
-*  - a durable-projection error row (archive#3769): a thread cold-opened from
-*    its event window replays `runtime.error` through
-*    `runtime-event-projection.ts`, which writes the cause as an ordinary
-*    assistant text part. That part renders — the reader sees the cause under
-*    the turn — so the banner must defer to it exactly as it does to the live
-*    marker, or one incident is described twice in two vocabularies. It is
-*    recognised by the projection's own `runtimeError` flag, never by the
-*    `⚠️` its display text starts with: a prefix is presentation, and a
-*    predicate that reads presentation breaks the moment the copy changes.
+ *  - an ephemeral system notice (`createEphemeralMessageState` stamps
+ *    `ephemeral: true`; the dock renders every one of them);
+ *  - a `[SYSTEM_EVENT] [CHAT_ERROR…]` marker, which `ChatDockBody` renders as
+ *    a `SystemEventMessage` card with its retry/new-chat affordance;
+ *  - a durable-projection error row (archive#3769): a thread cold-opened from
+ *    its event window replays `runtime.error` through
+ *    `runtime-event-projection.ts`, which writes the cause as an ordinary
+ *    assistant text part. That part renders — the reader sees the cause under
+ *    the turn — so the banner must defer to it exactly as it does to the live
+ *    marker, or one incident is described twice in two vocabularies. It is
+ *    recognised by the projection's own `runtimeError` flag, never by the
+ *    `⚠️` its display text starts with: a prefix is presentation, and a
+ *    predicate that reads presentation breaks the moment the copy changes.
  * Anything else — a streaming part, an ordinary assistant row — leaves the
  * banner as the only surface that can speak, which is what it is for.
  */
@@ -177,7 +177,7 @@ export function isChatErrorMarker(message: TranscriptMessageText): boolean {
 /**
  * Drops failure cards that belong to a turn other than `currentTurnId`.
  *
-* a marker is a statement about ONE turn,
+ * a marker is a statement about ONE turn,
  * but nothing ever removed it — a later successful turn appended its answer
  * beside the old failure card, and a second failure left two cards with
  * different wording claiming the same conversation. Every terminal for a turn

@@ -66,8 +66,8 @@ test('capability enabled but server says NOT eligible: stays on the consent page
   fetchMock.mockResolvedValue(eligibilityResponse(false));
   const { result } = renderHook(() => useNativeConsentBroker());
 
-// Let the adapter + eligibility promises settle before asserting absence,
-// or this test would pass on timing rather than on the decision.
+  // Let the adapter + eligibility promises settle before asserting absence,
+  // or this test would pass on timing rather than on the decision.
   await waitFor(() => expect(fetchMock).toHaveBeenCalled());
   await waitFor(() => expect(result.current).toBeNull());
 });
@@ -100,9 +100,9 @@ test('switching connections drops the previous authority before the new answer a
   const { result, rerender } = renderHook(() => useNativeConsentBroker());
   await waitFor(() => expect(result.current).not.toBeNull());
 
-// A Station that refuses. The old reviewer must not survive the switch —
-// it would invoke native review with the NEW connection's credential,
- // which enforcement refuses with no fallback ( 2).
+  // A Station that refuses. The old reviewer must not survive the switch —
+  // it would invoke native review with the NEW connection's credential,
+  // which enforcement refuses with no fallback ( 2).
   let releaseSecond: (value: Response) => void = () => {};
   fetchMock.mockReset();
   fetchMock.mockImplementation(
@@ -114,7 +114,7 @@ test('switching connections drops the previous authority before the new answer a
   connection.apiBase = 'http://remote.station:3141';
   rerender();
 
-// Cleared while the new answer is still in flight, not after it lands.
+  // Cleared while the new answer is still in flight, not after it lands.
   await waitFor(() => expect(result.current).toBeNull());
   expect(fetchMock).toHaveBeenCalledWith(
     'http://remote.station:3141/api/consent/native-eligibility',

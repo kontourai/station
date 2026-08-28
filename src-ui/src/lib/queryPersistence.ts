@@ -8,23 +8,23 @@
  * wins the moment the server is reachable — see `useQueryCacheReconnectSync`.
  *
  * Production wiring lives in `main.tsx`: the app renders inside
-* `<PersistQueryClientProvider persistOptions={buildPersistOptions}>`
+ * `<PersistQueryClientProvider persistOptions={buildPersistOptions}>`
  * rather than a plain `<QueryClientProvider>` — see `buildPersistOptions`'s
-* doc comment for why a bare `persistQueryClient` call isn't enough.
+ * doc comment for why a bare `persistQueryClient` call isn't enough.
  *
  * SAFETY (non-negotiable, archive#1223):
-*  - Default-deny whitelist by queryKey prefix (`PERSISTED_QUERY_KEY_PREFIXES`).
-*    Nothing persists unless it is explicitly listed here.
-* - Never persists mutations (`shouldDehydrateMutation: => false`) — the
-*    outbound queue is a separate, not-yet-built slice (archive#1224).
-*  - Never persists errored or pending queries (only `status === 'success'`).
-*  - IndexedDB (async) rather than localStorage (sync): the whitelisted cache
-*    can exceed localStorage's ~5MB quota, and synchronous writes on every
-*    cache update would jank the main thread. `idb-keyval` keeps this to a
-*    handful of lines instead of hand-rolling IndexedDB boilerplate.
-*  - A restore that throws (e.g. IndexedDB unavailable in Safari private
-*    mode) degrades gracefully rather than crashing or hanging first paint —
-*    see `buildPersistOptions`/`setupQueryPersistence`'s handling below.
+ *  - Default-deny whitelist by queryKey prefix (`PERSISTED_QUERY_KEY_PREFIXES`).
+ *    Nothing persists unless it is explicitly listed here.
+ * - Never persists mutations (`shouldDehydrateMutation: => false`) — the
+ *    outbound queue is a separate, not-yet-built slice (archive#1224).
+ *  - Never persists errored or pending queries (only `status === 'success'`).
+ *  - IndexedDB (async) rather than localStorage (sync): the whitelisted cache
+ *    can exceed localStorage's ~5MB quota, and synchronous writes on every
+ *    cache update would jank the main thread. `idb-keyval` keeps this to a
+ *    handful of lines instead of hand-rolling IndexedDB boilerplate.
+ *  - A restore that throws (e.g. IndexedDB unavailable in Safari private
+ *    mode) degrades gracefully rather than crashing or hanging first paint —
+ *    see `buildPersistOptions`/`setupQueryPersistence`'s handling below.
  */
 import { PERSISTED_QUERY_GC_TIME_MS } from '@kontourai/station-sdk';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
@@ -47,41 +47,41 @@ import { buildInfo } from '../build-info';
  * anything not explicitly listed — is excluded by default.
  *
  * Included (safe, useful, and asked for by archive#1223):
-*  - 'agents', 'agent', 'agent-tools' — agent list/detail/tools
-*  - 'conversations' — conversation summaries (NOT `messages`, which holds
-*    full message bodies; kept out of scope for this slice, see report)
-*  - 'projects' — project list/detail, including the nested layouts/
-*    icon-candidate queries under the same prefix (still shell metadata,
-*    not file contents)
-*  - 'runs' — scheduled run list/detail
-*  - 'system-status' — server/system status (build info, capabilities).
-*    Contains one deliberately-accepted inconsistency: `SystemStatus.acp`
-*    (connection id + status strings, no secrets) is the same kind of
-*    point-in-time connection state the `acp-connections`/`connections` keys
-*    are excluded for elsewhere. It stays in because splitting it out of
-*    `system-status` would need a per-query dehydrate transform (react-query's
-*    `serializeData` is global, not per-key) for a field that already carries
-*    no sensitive data — the reconnect-invalidation below and the 24h maxAge
-*    both bound how stale it can be shown, same as the rest of this
-*    whitelist. Revisit if `acp` ever grows a sensitive field.
-*  - 'config' — app config (`/config/app`; UI-level settings, not secrets)
-*  - 'model-catalog', 'model-picker-catalog' — model metadata and the deliberately
-*    credential-free connection projection used by offline model pickers
+ *  - 'agents', 'agent', 'agent-tools' — agent list/detail/tools
+ *  - 'conversations' — conversation summaries (NOT `messages`, which holds
+ *    full message bodies; kept out of scope for this slice, see report)
+ *  - 'projects' — project list/detail, including the nested layouts/
+ *    icon-candidate queries under the same prefix (still shell metadata,
+ *    not file contents)
+ *  - 'runs' — scheduled run list/detail
+ *  - 'system-status' — server/system status (build info, capabilities).
+ *    Contains one deliberately-accepted inconsistency: `SystemStatus.acp`
+ *    (connection id + status strings, no secrets) is the same kind of
+ *    point-in-time connection state the `acp-connections`/`connections` keys
+ *    are excluded for elsewhere. It stays in because splitting it out of
+ *    `system-status` would need a per-query dehydrate transform (react-query's
+ *    `serializeData` is global, not per-key) for a field that already carries
+ *    no sensitive data — the reconnect-invalidation below and the 24h maxAge
+ *    both bound how stale it can be shown, same as the rest of this
+ *    whitelist. Revisit if `acp` ever grows a sensitive field.
+ *  - 'config' — app config (`/config/app`; UI-level settings, not secrets)
+ *  - 'model-catalog', 'model-picker-catalog' — model metadata and the deliberately
+ *    credential-free connection projection used by offline model pickers
  *
  * Deliberately excluded (sensitive or volatile — never persist):
-*  - 'auth-status', 'connections' — auth/credential state
-*  - 'orchestration-*', 'flow-run-console', 'flow-runs', 'flow-definitions',
-*    'attention', 'scheduler', 'monitoring-*', 'core-update-check',
-*    'acp-connections' — live/volatile, SSE-refreshed, or point-in-time
-*    operational state that would be actively misleading if shown stale
-*  - 'messages' — full conversation message bodies (large, can carry
-*    pasted secrets/sensitive content; out of scope for this slice)
-*  - 'knowledge', 'mcp-tool-ui*', 'git-*', 'ssh-environments',
-*    'coding-repos', 'host-compatibility' — large blobs / file contents or
-*    connection-specific probes, not "last-loaded shell data"
-*  - 'plugins', 'plugin-updates', 'plugin-providers' — plugin registry
-*    state; re-derives cheaply and can reflect only-just-installed,
-*    machine-local state that shouldn't be replayed from an older cache
+ *  - 'auth-status', 'connections' — auth/credential state
+ *  - 'orchestration-*', 'flow-run-console', 'flow-runs', 'flow-definitions',
+ *    'attention', 'scheduler', 'monitoring-*', 'core-update-check',
+ *    'acp-connections' — live/volatile, SSE-refreshed, or point-in-time
+ *    operational state that would be actively misleading if shown stale
+ *  - 'messages' — full conversation message bodies (large, can carry
+ *    pasted secrets/sensitive content; out of scope for this slice)
+ *  - 'knowledge', 'mcp-tool-ui*', 'git-*', 'ssh-environments',
+ *    'coding-repos', 'host-compatibility' — large blobs / file contents or
+ *    connection-specific probes, not "last-loaded shell data"
+ *  - 'plugins', 'plugin-updates', 'plugin-providers' — plugin registry
+ *    state; re-derives cheaply and can reflect only-just-installed,
+ *    machine-local state that shouldn't be replayed from an older cache
  */
 export const PERSISTED_QUERY_KEY_PREFIXES = [
   'agents',
@@ -158,7 +158,7 @@ export function shouldPersistQuery(
  * calls — grep `PERSISTED_QUERY_GC_TIME_MS` in `packages/sdk`) pass an
  * explicit `gcTime` value on every call (even a caller-omitted one resolves
  * to a concrete fallback), and react-query's option-merge order
-* (`{...clientDefaults,...queryKeyDefaults,...explicitOptions}`) lets that
+ * (`{...clientDefaults,...queryKeyDefaults,...explicitOptions}`) lets that
  * explicit value always outrank both the client's global default AND
  * `setQueryDefaults`. The SDK hooks that back this whitelist already read
  * `queryClient.getQueryDefaults(queryKey)` (via `useApiQuery`) or hardcode
@@ -210,9 +210,9 @@ export type QueryPersistOptions = Omit<
  * provider and any lower-level/test use (`setupQueryPersistence` below)
  * can't drift apart.
  *
-* `<PersistQueryClientProvider>` over a bare `persistQueryClient` call is
+ * `<PersistQueryClientProvider>` over a bare `persistQueryClient` call is
  * the fix for a real race: restoring from IndexedDB is async, so a query
-* mounted on first render (e.g. `useQuery(['agents'],...)`) would otherwise
+ * mounted on first render (e.g. `useQuery(['agents'],...)`) would otherwise
  * see an empty in-memory cache and fire its network fetch immediately,
  * racing the restore — `refetchOnMount: false` (station's global default)
  * only suppresses refetching data that's *already* in the cache, it does
@@ -230,18 +230,18 @@ export function buildPersistOptions(options?: {
   const persister = createAsyncStoragePersister({
     storage: options?.storage ?? createIdbQueryStorage(),
     key: QUERY_PERSISTENCE_STORAGE_KEY,
-// Coalesces bursts of cache writes into at most one disk write per
-// second in production. Tests inject a near-zero value so simulated
-// save/restore round trips don't have to wait on real wall-clock time.
+    // Coalesces bursts of cache writes into at most one disk write per
+    // second in production. Tests inject a near-zero value so simulated
+    // save/restore round trips don't have to wait on real wall-clock time.
     throttleTime: options?.throttleTime ?? 1000,
   });
 
   const dehydrateOptions: DehydrateOptions = {
     shouldDehydrateQuery: shouldPersistQuery,
-// Never persist mutations in this slice — the outbound queue is
-// archive#1224. Explicit rather than relying on the (isPaused-only)
-// default, so a future paused-mutation-while-offline path elsewhere in
-// the client can never leak into this persister by accident.
+    // Never persist mutations in this slice — the outbound queue is
+    // archive#1224. Explicit rather than relying on the (isPaused-only)
+    // default, so a future paused-mutation-while-offline path elsewhere in
+    // the client can never leak into this persister by accident.
     shouldDehydrateMutation: () => false,
   };
 
@@ -254,15 +254,15 @@ export function buildPersistOptions(options?: {
 }
 
 export interface QueryPersistenceHandle {
-/** Stops persisting further cache changes. Does not clear already-written data. */
+  /** Stops persisting further cache changes. Does not clear already-written data. */
   unsubscribe: () => void;
-/** Resolves once the initial restore attempt (hydrated, discarded, or errored) settles. */
+  /** Resolves once the initial restore attempt (hydrated, discarded, or errored) settles. */
   restored: Promise<void>;
 }
 
 /**
  * Lower-level, non-React imperative equivalent of wrapping the app in
-* `<PersistQueryClientProvider persistOptions={buildPersistOptions}>`.
+ * `<PersistQueryClientProvider persistOptions={buildPersistOptions}>`.
  * Production uses the provider (it also gates fetches during restore — see
  * `buildPersistOptions`'s doc comment); this remains for direct unit tests
  * of the dehydrate/hydrate mechanics (whitelist, buster, maxAge) without
@@ -270,11 +270,11 @@ export interface QueryPersistenceHandle {
  *
  * A storage that throws on restore (e.g. IndexedDB unavailable in Safari
  * private mode) rejects `persistQueryClientRestore` internally; that
-* rejection is deliberately given a no-op `.catch` here so a caller who
+ * rejection is deliberately given a no-op `.catch` here so a caller who
  * never awaits `restored` doesn't produce an unhandled promise rejection —
  * the app continues without a persisted cache rather than crashing. The
  * *same* underlying promise is still returned, so a caller that does want
-* to observe failure can still `await`/`.catch` it themselves.
+ * to observe failure can still `await`/`.catch` it themselves.
  */
 export function setupQueryPersistence(
   queryClient: QueryClient,
@@ -286,8 +286,8 @@ export function setupQueryPersistence(
     ...persistOptions,
   });
   restored.catch(() => {
-// See doc comment above: prevents an unhandled-rejection warning only;
-// does not consume the rejection for any other `.catch`/`await`.
+    // See doc comment above: prevents an unhandled-rejection warning only;
+    // does not consume the rejection for any other `.catch`/`await`.
   });
   return { unsubscribe, restored };
 }

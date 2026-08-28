@@ -204,27 +204,27 @@ describe('ChatDockBody ephemeral render gate (station#1292)', () => {
       </QueryClientProvider>,
     );
 
-// The notice text renders...
+    // The notice text renders...
     expect(await screen.findByText('Something went wrong: Retry')).toBeTruthy();
-//.through the real EphemeralMessage component (dismiss button present,
-// ephemeral-message styling class applied) rather than as an ordinary
-// MessageBubble, which has no dismiss affordance at all.
+    //.through the real EphemeralMessage component (dismiss button present,
+    // ephemeral-message styling class applied) rather than as an ordinary
+    // MessageBubble, which has no dismiss affordance at all.
     const notice = screen
       .getByText('Something went wrong: Retry')
       .closest('.ephemeral-message');
     expect(notice).toBeTruthy();
     expect(notice?.querySelector('button[title="Dismiss"]')).toBeTruthy();
 
-// The real messages still render as ordinary bubbles.
+    // The real messages still render as ordinary bubbles.
     expect(await screen.findByText('hello')).toBeTruthy();
     expect(await screen.findByText('hi there')).toBeTruthy();
 
-// archive#1424 ("the unpinned owner hop"):
-// ChatDockBody.tsx resolves `owner` from `useAuth` and threads it into
-// `<ChatMessageList owner={owner} />` — asserted here through this
-// file's real (non-overridden) assistant row so deleting that prop at
-// the ChatDockBody call site fails this test, not just a narrower unit
-// that never exercises ChatDockBody's own wiring.
+    // archive#1424 ("the unpinned owner hop"):
+    // ChatDockBody.tsx resolves `owner` from `useAuth` and threads it into
+    // `<ChatMessageList owner={owner} />` — asserted here through this
+    // file's real (non-overridden) assistant row so deleting that prop at
+    // the ChatDockBody call site fails this test, not just a narrower unit
+    // that never exercises ChatDockBody's own wiring.
     expect(await screen.findByText(/via /)).toBeTruthy();
   });
 });

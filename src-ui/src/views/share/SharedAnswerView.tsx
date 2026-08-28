@@ -18,16 +18,16 @@ import './SharedAnswerView.css';
  * A standalone surface, mounted above the app shell in `main.tsx`, and that
  * is a decision rather than a shortcut:
  *
-*  - **No app shell.** The viewer is not this Station's operator. A sidebar
-*    of the operator's projects, a header with their agents, and connection
-*    recovery chrome are all things a share holder has no business seeing.
-*  - **No react-query, no persisted cache.** The repo's data-fetching rule
-*    exists for the operator's app; this page deliberately sits outside
-*    `PersistQueryClientProvider`, because that provider writes fetched data
-*    to the browser's IndexedDB. A share viewer's browser must not end up
-*    holding a persisted slice of someone else's Station. One `fetch`, no
-*    cache, no storage — the same posture `packages/connect` takes for its
-*    own pre-credential surfaces.
+ *  - **No app shell.** The viewer is not this Station's operator. A sidebar
+ *    of the operator's projects, a header with their agents, and connection
+ *    recovery chrome are all things a share holder has no business seeing.
+ *  - **No react-query, no persisted cache.** The repo's data-fetching rule
+ *    exists for the operator's app; this page deliberately sits outside
+ *    `PersistQueryClientProvider`, because that provider writes fetched data
+ *    to the browser's IndexedDB. A share viewer's browser must not end up
+ *    holding a persisted slice of someone else's Station. One `fetch`, no
+ *    cache, no storage — the same posture `packages/connect` takes for its
+ *    own pre-credential surfaces.
  *
  * The token is read from the URL FRAGMENT and sent in a POST body, so it
  * never reaches the server's access log, a proxy log, or a `Referer` header.
@@ -68,7 +68,7 @@ const REFUSAL_DETAIL: Record<AnswerShareRefusalReason, string> = {
 };
 
 /**
-*`reason` arrives off the wire, so it is NOT necessarily a member of
+ *`reason` arrives off the wire, so it is NOT necessarily a member of
  * the union its type claims — a newer Station sends a reason this build has
  * never heard of, and a hostile or corrupt response can send `constructor`.
  * Indexing a closed `Record` with either is the defect: the first renders an
@@ -102,8 +102,8 @@ function describeRefusal(reason: AnswerShareRefusalReason): {
 function describeWhen(reason: AnswerShareRefusalReason, when?: string): string {
   if (!when) return '';
   const parsed = Date.parse(when);
-// An unparseable timestamp is dropped rather than printed raw or coerced to
-// an epoch date — a wrong date is a claim, and a missing one is not.
+  // An unparseable timestamp is dropped rather than printed raw or coerced to
+  // an epoch date — a wrong date is a claim, and a missing one is not.
   if (!Number.isFinite(parsed)) return '';
   const verb = reason === 'share-expired' ? 'Expired' : 'Revoked';
   return `${verb} ${new Date(parsed).toLocaleString()}.`;
@@ -141,7 +141,7 @@ const CHANNEL_UNAVAILABLE_DETAIL: Record<
 };
 
 /**
- * Same `Object.hasOwn` guard as {@link describeRefusal}, and for the same 
+ * Same `Object.hasOwn` guard as {@link describeRefusal}, and for the same
  * reason: `reason` arrives off the wire, so a newer Station's reason or a
  * hostile `constructor` must not index a closed `Record` and return a
  * prototype member as a React child.
@@ -227,17 +227,17 @@ async function loadShare(token: string): Promise<ViewState> {
     };
   }
   if (result.state === 'ok') {
-// A payload from a newer Station is reported as unreadable rather than
-// partially rendered — the same rule the provenance envelope holds, and
-// for the same reason: a half-understood claim is worse than an admitted
-// gap.
-//
-// MEMBERSHIP, not equality (archive#1598). This was
-// `=== ANSWER_SHARE_SCHEMA_VERSION`, which is correct exactly while one
-// version exists: the moment a payload carrying a channel status declares
-// v2, an equality check against either constant refuses half of what this
-// build reads perfectly well — every legacy v1 share would have rendered
-// the "cannot read this format" notice.
+    // A payload from a newer Station is reported as unreadable rather than
+    // partially rendered — the same rule the provenance envelope holds, and
+    // for the same reason: a half-understood claim is worse than an admitted
+    // gap.
+    //
+    // MEMBERSHIP, not equality (archive#1598). This was
+    // `=== ANSWER_SHARE_SCHEMA_VERSION`, which is correct exactly while one
+    // version exists: the moment a payload carrying a channel status declares
+    // v2, an equality check against either constant refuses half of what this
+    // build reads perfectly well — every legacy v1 share would have rendered
+    // the "cannot read this format" notice.
     return isReadableAnswerShareSchemaVersion(result.schemaVersion)
       ? {
           phase: 'ok',
@@ -252,10 +252,10 @@ export function SharedAnswerView() {
   const [state, setState] = useState<ViewState>({ phase: 'loading' });
 
   useEffect(() => {
-// Reads the token, remembers it for the page's lifetime, and clears the
-// fragment (off the screen, out of session history and session
-// restore). `reloadSharePage` puts it back before any deliberate reload,
-// so the clearing never costs the recipient their recovery path.
+    // Reads the token, remembers it for the page's lifetime, and clears the
+    // fragment (off the screen, out of session history and session
+    // restore). `reloadSharePage` puts it back before any deliberate reload,
+    // so the clearing never costs the recipient their recovery path.
     const token = captureShareToken();
     if (!token) {
       setState({ phase: 'no-token' });
@@ -287,9 +287,9 @@ export function SharedAnswerView() {
 function SharedAnswerBody({ state }: { state: ViewState }) {
   switch (state.phase) {
     case 'loading':
-// one loading vocabulary. The wait names itself in the
-// skeleton's `label` rather than in a sentence that agrees with no
-// other wait in the app on casing, ellipsis or noun.
+      // one loading vocabulary. The wait names itself in the
+      // skeleton's `label` rather than in a sentence that agrees with no
+      // other wait in the app on casing, ellipsis or noun.
       return (
         <SkeletonBlock
           count={2}
@@ -299,11 +299,11 @@ function SharedAnswerBody({ state }: { state: ViewState }) {
       );
     case 'no-token':
       return (
-// this state is reached BOTH by a genuinely truncated link and
-// by a manual refresh after this page deliberately cleared the token
-// from the address bar. Blaming the recipient for "copying only part
-// of the link" is wrong in the second case and unhelpful in the
-// first, so the copy names both and asks for the original link.
+        // this state is reached BOTH by a genuinely truncated link and
+        // by a manual refresh after this page deliberately cleared the token
+        // from the address bar. Blaming the recipient for "copying only part
+        // of the link" is wrong in the second case and unhelpful in the
+        // first, so the copy names both and asks for the original link.
         <SharedAnswerNotice
           title="This page no longer has the share token"
           detail="Station clears the token out of the address bar once it has been read, so reopening or refreshing this address on its own cannot find it again. Open the original share link — the part after the # is what carries it."
@@ -369,8 +369,8 @@ function SharedAnswerContent({
           result.answer.blocks.map((block, index) => (
             <p
               className="shared-answer__block"
-// Blocks have no ids of their own and their order is the
-// answer's order; the list never reorders or mutates.
+              // Blocks have no ids of their own and their order is the
+              // answer's order; the list never reorders or mutates.
               key={index}
             >
               {block.text}
@@ -394,7 +394,7 @@ function SharedAnswerContent({
         <TurnProvenanceCard provenance={result.provenance} />
       )}
 
-{/* Absent only when the payload came from a Station older than
+      {/* Absent only when the payload came from a Station older than
           station#1598. Rendering a panel then would mean inventing a status
           on the client, which is the read-time derivation this slice
           refuses. */}

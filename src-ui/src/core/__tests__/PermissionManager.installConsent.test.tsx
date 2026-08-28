@@ -78,8 +78,8 @@ function ask(permissions = TRUSTED_AND_ACTIVE) {
 
 beforeEach(() => {
   fetchMock.mockReset();
-// Any call at all is the defect: if the prompt reached a server surface it
-// would be granting against a plugin that is not installed.
+  // Any call at all is the defect: if the prompt reached a server surface it
+  // would be granting against a plugin that is not installed.
   fetchMock.mockImplementation(() => {
     throw new Error('the pre-install prompt must not call the server');
   });
@@ -96,8 +96,8 @@ test('names the plugin as not yet installed, and offers Install rather than Appr
   expect(screen.queryByRole('button', { name: 'Review trusted access' })).toBe(
     null,
   );
-// The trusted note says where that tier is actually decided, which is not
-// here: this prompt cannot authorize it.
+  // The trusted note says where that tier is actually decided, which is not
+  // here: this prompt cannot authorize it.
   expect(
     screen.getByText(/after the install, a separate host-owned review page/),
   ).toBeTruthy();
@@ -146,7 +146,7 @@ test('renders the pre-install copy when the only pending permission is trusted',
 
   fireEvent.click(screen.getByRole('button', { name: 'Install' }));
   await waitFor(() => expect(results).toEqual([true]));
-// Approving an install decision grants nothing — least of all the trusted
-// tier this prompt just said it cannot decide.
+  // Approving an install decision grants nothing — least of all the trusted
+  // tier this prompt just said it cannot decide.
   expect(fetchMock).not.toHaveBeenCalled();
 });

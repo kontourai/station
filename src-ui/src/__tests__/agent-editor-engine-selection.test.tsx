@@ -12,7 +12,7 @@ import {
 } from '../views/agent-editor/agentsViewUtils';
 
 /**
-* archive#3662: the engine picker is the surface that decides
+ * archive#3662: the engine picker is the surface that decides
  * how "runs on Station's own engine" is SPELLED in the form, and it used to
  * spell it as a managed-runtime connection id. That made the one shape a
  * Station-engine Agent is supposed to persist — no binding at all — render as
@@ -77,8 +77,8 @@ describe('the engine picker: radio pair, with Station spelled as its own choice 
     const markup = markupFor(form);
     expect(markup).toContain('Use a model connection');
     expect(markup).toContain('Use an installed agent CLI');
-// The model-connection choice describes Station's own engine, never a
-// managed-runtime id presented as "Station".
+    // The model-connection choice describes Station's own engine, never a
+    // managed-runtime id presented as "Station".
     expect(markup).toContain('Station’s own engine runs the agent');
     expect(markup).not.toContain('value="bedrock-runtime"');
   });
@@ -90,9 +90,9 @@ describe('the engine picker: radio pair, with Station spelled as its own choice 
       execution: { agentConnectionId: 'codex' },
     } as never);
     const markup = markupFor(form, 'cli');
-// archive#3728: a bare any-input-checked regex would pass with
-// ANY row checked. Associate checkedness with the Codex row: the checked
-// input and the Codex label text must sit inside one label element.
+    // archive#3728: a bare any-input-checked regex would pass with
+    // ANY row checked. Associate checkedness with the Codex row: the checked
+    // input and the Codex label text must sit inside one label element.
     const rows = markup.split('<label');
     const checkedRows = rows.filter(
       (row) => row.includes('name="ae-cli-engine"') && row.includes('checked'),
@@ -102,14 +102,14 @@ describe('the engine picker: radio pair, with Station spelled as its own choice 
   });
 
   test('choosing the model radio binds the selectable Station-engine connection, and the CLI radio clears it (#3721 contract)', () => {
-// archive#3728: the earlier rewrite never invoked a handler, so
- // nothing pinned what the choices WRITE. archive#3721's engine-first contract:
-// the model radio binds `stationConnectionId` (the managed-runtime
-// connection Station's engine runs on) and the CLI radio binds '' until
- // a CLI is explicitly named. archive#3662's storage shape ("Station = no
-// connection") is superseded by that contract; its surviving half is
-// presentational — no managed-runtime id is ever PRESENTED as "Station"
-// and is pinned above.
+    // archive#3728: the earlier rewrite never invoked a handler, so
+    // nothing pinned what the choices WRITE. archive#3721's engine-first contract:
+    // the model radio binds `stationConnectionId` (the managed-runtime
+    // connection Station's engine runs on) and the CLI radio binds '' until
+    // a CLI is explicitly named. archive#3662's storage shape ("Station = no
+    // connection") is superseded by that contract; its surviving half is
+    // presentational — no managed-runtime id is ever PRESENTED as "Station"
+    // and is pinned above.
     const form = formFromAgent({ slug: 'writer', name: 'Writer' } as never);
     const renderWithKind = (engineKind: 'model' | 'cli', writes: string[]) =>
       render(
@@ -132,8 +132,8 @@ describe('the engine picker: radio pair, with Station spelled as its own choice 
         } as never),
       );
 
-// A checked radio's click fires no change event, so each direction is
-// driven from the OTHER kind.
+    // A checked radio's click fires no change event, so each direction is
+    // driven from the OTHER kind.
     const modelWrites: string[] = [];
     const first = renderWithKind('cli', modelWrites);
     fireEvent.click(
@@ -147,7 +147,7 @@ describe('the engine picker: radio pair, with Station spelled as its own choice 
     fireEvent.click(
       screen.getByRole('radio', { name: /Use an installed agent CLI/ }),
     );
-// The CLI choice must NOT auto-bind a CLI — an explicit step by design.
+    // The CLI choice must NOT auto-bind a CLI — an explicit step by design.
     expect(cliWrites).toEqual(['']);
   });
 });
@@ -201,16 +201,16 @@ describe('the CLI list carries the retired engine picker’s outstanding propert
   }
 
   test('the CLI list offers every enabled engine CLI and keeps a non-ready one present but unselectable, saying why', () => {
-// Intent, unchanged from the retired picker: an unready engine is
-// OFFERED and explains itself, rather than vanishing (which reads as
-// "not installed") or being silently selectable.
+    // Intent, unchanged from the retired picker: an unready engine is
+    // OFFERED and explains itself, rather than vanishing (which reads as
+    // "not installed") or being silently selectable.
     renderSelection(formFromAgent({ slug: 'coder', name: 'Coder' } as never));
 
     const list = screen.getByRole('radiogroup', {
       name: 'Installed agent CLI',
     });
-// Station is not a peer entry in this list — it is the sibling
-// engine-kind radio — so the list is exactly the external engines.
+    // Station is not a peer entry in this list — it is the sibling
+    // engine-kind radio — so the list is exactly the external engines.
     expect(
       within(list)
         .getAllByRole('radio')
@@ -262,9 +262,9 @@ describe('the CLI list carries the retired engine picker’s outstanding propert
   });
 
   test('an agent bound to a connection that no longer exists is not silently remapped onto Station', () => {
-// The retired picker rendered a disabled "Unavailable" option for this.
-// The surviving invariant is the one that matters: a vanished binding
-// must not read as a choice the person never made.
+    // The retired picker rendered a disabled "Unavailable" option for this.
+    // The surviving invariant is the one that matters: a vanished binding
+    // must not read as a choice the person never made.
     renderSelection(
       formFromAgent({
         slug: 'coder',
@@ -310,10 +310,10 @@ describe('the built-in Agent states its engine, it does not pick one (#3662 delt
     markupFor(formFromAgent({ slug: 'station', name: 'Station' } as never));
 
   test('no engine control is offered for the reserved identity', () => {
-// `AppConfig.builtinAgentEngineConnectionId` owns this identity's engine
-// and it is resolved per boot; the record never carries the result
-// (agent-engine-unification.md 7.1.1). A picker here would have written a
-// value no reader consults and the write boundary drops.
+    // `AppConfig.builtinAgentEngineConnectionId` owns this identity's engine
+    // and it is resolved per boot; the record never carries the result
+    // (agent-engine-unification.md 7.1.1). A picker here would have written a
+    // value no reader consults and the write boundary drops.
     const markup = stationMarkup();
     expect(markup).not.toContain('<select');
     expect(markup).not.toContain('id="ae-engine"');
@@ -326,8 +326,8 @@ describe('the built-in Agent states its engine, it does not pick one (#3662 delt
   });
 
   test('it names the external engine the runtime resolved', () => {
-// The catalog projects the runtime binding onto this identity, so the
-// form receives it — and must report it rather than claiming Station.
+    // The catalog projects the runtime binding onto this identity, so the
+    // form receives it — and must report it rather than claiming Station.
     const markup = markupFor(
       formFromAgent({
         slug: 'station',

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
-* archive#1294: `useChatInput`'s send-failure
+ * archive#1294: `useChatInput`'s send-failure
  * `onError` callback used to suppress its generic toast whenever the
  * session merely EXISTED in the store — but store existence isn't
  * visibility. A send failing while the owning dock/tab is collapsed or in

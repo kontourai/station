@@ -88,7 +88,7 @@ export function isSplitPaneMobile(width: number): boolean {
  * A single-segment trail whose only segment restates the title is that name
  * printed twice, one line apart — the literal "double header" reported in
  * archive#2931, reproduced in the shipped UI as `SESSIONS` above **Sessions**
-* and ` QUEUE` above **Review Queue**. It also carries no navigation: a
+ * and ` QUEUE` above **Review Queue**. It also carries no navigation: a
  * one-crumb trail has no ancestor to return to.
  *
  * Deliberately narrow. A MULTI-segment trail is a real breadcrumb whose last

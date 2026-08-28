@@ -5,7 +5,7 @@ import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
-* archive#4052: the session detail honors the `focus=evidence` route
+ * archive#4052: the session detail honors the `focus=evidence` route
  * intent EXACTLY ONCE per activation token. A reveal is a navigation outcome,
  * not a standing rule — later renders (events streaming in, queries settling)
  * must never scroll the reader back to a region they have since left, and a
@@ -100,8 +100,8 @@ function renderDetail(
 }
 
 describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
-// jsdom implements no scrolling; the component guards the call, so a
-// prototype spy is what makes the scroll half of the reveal observable.
+  // jsdom implements no scrolling; the component guards the call, so a
+  // prototype spy is what makes the scroll half of the reveal observable.
   const scrollIntoView = vi.fn();
 
   beforeEach(() => {
@@ -130,8 +130,8 @@ describe('MutableSessionDetail evidence reveal (station#4052 slice 3)', () => {
     const view = renderDetail({ threadId: 'station:thread-1', token: 1 });
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
 
-// The reader moves on; a re-render with the same standing prop (new
-// events, a settled query) must not drag them back.
+    // The reader moves on; a re-render with the same standing prop (new
+    // events, a settled query) must not drag them back.
     const region = screen.getByTestId('session-evidence-region');
     region.blur();
     view.rerenderReveal({ threadId: 'station:thread-1', token: 1 });

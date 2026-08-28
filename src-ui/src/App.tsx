@@ -71,7 +71,7 @@ const loadShortcutsCheatsheet = () =>
  * mounting it at startup so its global shortcut and event listener remain
  * available as soon as the small lazy chunk resolves.
  *
-* archive#2652: the guided first run rides this SAME boundary
+ * archive#2652: the guided first run rides this SAME boundary
  * rather than adding its own — a second lazy boundary cost the entry chunk 131
  * gzip bytes of chunk-registration metadata, far more than the feature's own
  * eager bytes. See `DeferredAppOverlays`.
@@ -140,9 +140,9 @@ function stripProjectSelectParam(): void {
 
 function App() {
   const { apiBase: API_BASE } = useApiBase();
-// The saved connection's display identity for unavailable-state copy —
-// `connectionFailureCopy`'s contract wants the short name the user saved,
- // with the URL as the address it actually tried (archive#3713).
+  // The saved connection's display identity for unavailable-state copy —
+  // `connectionFailureCopy`'s contract wants the short name the user saved,
+  // with the URL as the address it actually tried (archive#3713).
   const { activeConnection } = useConnections();
   const activeConnectionName = activeConnection?.name;
   const activeConnectionUrl = activeConnection?.url;
@@ -155,18 +155,18 @@ function App() {
       pollInterval: 10_000,
     });
 
-// archive#1912: point the operator at anything blocking on them, at the OS
-// level, on desktop hosts. In-app surfaces are unchanged.
+  // archive#1912: point the operator at anything blocking on them, at the OS
+  // level, on desktop hosts. In-app surfaces are unchanged.
   useApprovalOsAlerts();
-// SSE event stream — replaces all polling for ACP status, agent changes, etc.
+  // SSE event stream — replaces all polling for ACP status, agent changes, etc.
   useServerEvents();
-// archive#1223: invalidate the persisted (cache-first) query whitelist the
-// moment the connection is confirmed reachable, so restored/stale data is
-// immediately followed by a fresh refetch.
+  // archive#1223: invalidate the persisted (cache-first) query whitelist the
+  // moment the connection is confirmed reachable, so restored/stale data is
+  // immediately followed by a fresh refetch.
   useQueryCacheReconnectSync();
- // archive#1224 (offline): drain the outbound turn queue the
-// moment the connection is confirmed reachable (and once on mount, for a
-// queue that survived a restart into an already-reachable server).
+  // archive#1224 (offline): drain the outbound turn queue the
+  // moment the connection is confirmed reachable (and once on mount, for a
+  // queue that survived a restart into an already-reachable server).
   const {
     lastProject,
     lastProjectLayout,
@@ -198,7 +198,7 @@ function App() {
     return resolveCurrentLocation({ lastProject, lastProjectLayout });
   });
 
-// Navigation functions (declared early so useEffect closures can reference them)
+  // Navigation functions (declared early so useEffect closures can reference them)
   const navigateToView = useCallback(
     (view: NavigationView) => {
       setCurrentView(view);
@@ -222,7 +222,7 @@ function App() {
     navigate('/');
   }, [navigate]);
 
-// Listen for path changes (back/forward navigation)
+  // Listen for path changes (back/forward navigation)
   useEffect(() => {
     const handlePathChange = () => {
       setCurrentView(
@@ -235,10 +235,10 @@ function App() {
     return () => {
       window.removeEventListener('popstate', handlePathChange);
     };
-// eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastProject, lastProjectLayout]);
 
-// Setup auth callback
+  // Setup auth callback
   useEffect(() => {
     const authCallback = async () => Promise.resolve(false);
     setAuthCallback(authCallback);
@@ -251,28 +251,28 @@ function App() {
 
   const handleAuthError = async (): Promise<boolean> => Promise.resolve(false);
 
-// Sessions are loaded automatically via ConversationsContext
+  // Sessions are loaded automatically via ConversationsContext
 
   useEffect(() => {
-// Agents auto-load via context
+    // Agents auto-load via context
   }, []);
 
-// Sync font size from config - handled by ChatDock
+  // Sync font size from config - handled by ChatDock
 
-// Auto-scroll to bottom when new messages arrive - handled by ChatDock
+  // Auto-scroll to bottom when new messages arrive - handled by ChatDock
 
-// ⌘, (settings) and ⌘N (new project) are registered through the keyboard
-// registry below (`app.settings` / `app.newLayout`) — a second raw window
-// listener here double-fired them (⌘, toggled settings twice → no-op), so it
-// was removed. Chat shortcuts are handled by ChatDock.
+  // ⌘, (settings) and ⌘N (new project) are registered through the keyboard
+  // registry below (`app.settings` / `app.newLayout`) — a second raw window
+  // listener here double-fired them (⌘, toggled settings twice → no-op), so it
+  // was removed. Chat shortcuts are handled by ChatDock.
 
-// Mark sessions as read - handled by ChatDock
+  // Mark sessions as read - handled by ChatDock
 
-// Drag handling - handled by ChatDock
+  // Drag handling - handled by ChatDock
 
- // A `/?project=<name>` deep-link from the `station` launcher (archive#1986) pre-
-// selects a project. Read the selector once at mount (the launcher opens a
-// fresh page with it); an empty value is treated as absent.
+  // A `/?project=<name>` deep-link from the `station` launcher (archive#1986) pre-
+  // selects a project. Read the selector once at mount (the launcher opens a
+  // fresh page with it); an empty value is treated as absent.
   const requestedProject = useMemo(
     () =>
       new URLSearchParams(window.location.search).get(
@@ -280,9 +280,9 @@ function App() {
       ) || null,
     [],
   );
-// Match the selector against the loaded projects by slug or display name. A
-// matched deep-link is preferred over the persisted `lastProject`; no match
-// falls through to the normal first-project auto-select (never an error).
+  // Match the selector against the loaded projects by slug or display name. A
+  // matched deep-link is preferred over the persisted `lastProject`; no match
+  // falls through to the normal first-project auto-select (never an error).
   const matchedRequestedProject = useMemo(() => {
     if (!requestedProject) return undefined;
     return projects.find(
@@ -291,10 +291,10 @@ function App() {
     );
   }, [requestedProject, projects]);
 
-// Determine which project the home route loads layouts for: the deep-linked
-// match when present, otherwise the first project. Keeping this one slug in
-// lockstep with the layouts query, `resolveHomeSurface`, and the retry
-// handler means the pre-selected project's first layout is the one applied.
+  // Determine which project the home route loads layouts for: the deep-linked
+  // match when present, otherwise the first project. Keeping this one slug in
+  // lockstep with the layouts query, `resolveHomeSurface`, and the retry
+  // handler means the pre-selected project's first layout is the one applied.
   const firstProjectSlug =
     matchedRequestedProject?.slug || projects[0]?.slug || '';
   const {
@@ -305,10 +305,10 @@ function App() {
     enabled: !!firstProjectSlug,
   });
 
-// Apply the `/?project=<name>` deep-link exactly once, after projects (and,
-// when matched, that project's layouts) have loaded. On a match this uses
-// `setLayout` so the selection persists like any other project navigation;
-// with no match it just consumes the param and lets auto-select proceed.
+  // Apply the `/?project=<name>` deep-link exactly once, after projects (and,
+  // when matched, that project's layouts) have loaded. On a match this uses
+  // `setLayout` so the selection persists like any other project navigation;
+  // with no match it just consumes the param and lets auto-select proceed.
   const projectSelectApplied = useRef(false);
   useEffect(() => {
     if (projectSelectApplied.current) return;
@@ -321,12 +321,12 @@ function App() {
       return;
     }
 
-// Wait for the matched project's layouts before choosing the target.
+    // Wait for the matched project's layouts before choosing the target.
     if (firstProjectLayoutsLoading) return;
 
     projectSelectApplied.current = true;
-// Strip BEFORE navigating: `navigate` preserves existing search params, so
-// the selector must be gone before it builds the project URL.
+    // Strip BEFORE navigating: `navigate` preserves existing search params, so
+    // the selector must be gone before it builds the project URL.
     stripProjectSelectParam();
     const targetLayout = firstProjectLayouts[0]?.slug;
     if (targetLayout) {
@@ -344,11 +344,11 @@ function App() {
     navigate,
   ]);
 
- // Single pre-render resolution point for what `/` means (archive#223 fix). Pure
-// + unit-tested in resolve-home-surface.test.ts — this is the only place
-// that decides the home route; `resolveViewFromPath`'s root-path branch
-// (routing.ts) stays a URL-parse convenience only, no longer trusted for
-// this render decision (see the comment at routing.ts's root branch).
+  // Single pre-render resolution point for what `/` means (archive#223 fix). Pure
+  // + unit-tested in resolve-home-surface.test.ts — this is the only place
+  // that decides the home route; `resolveViewFromPath`'s root-path branch
+  // (routing.ts) stays a URL-parse convenience only, no longer trusted for
+  // this render decision (see the comment at routing.ts's root branch).
   const homeSurface = useMemo(
     () =>
       resolveHomeSurface({
@@ -392,20 +392,20 @@ function App() {
   const { data: selectedLayout, isLoading: selectedLayoutLoading } =
     useProjectLayoutQuery(selectedLayoutProjectSlug, selectedLayoutSlug);
   const isChatWorkspaceLayout = selectedLayout?.type === 'chat';
-// A layout route waits for its type before mounting the ambient controller.
-// This prevents even a loading frame from owning both the dock and the
-// full-screen Chat layout's event listeners/state machine.
+  // A layout route waits for its type before mounting the ambient controller.
+  // This prevents even a loading frame from owning both the dock and the
+  // full-screen Chat layout's event listeners/state machine.
   const showAmbientChatDock =
     displayCurrentView.type !== 'layout' ||
     (!selectedLayoutLoading && !isChatWorkspaceLayout);
-/**
-* A full-screen mobile dock owns the whole viewport (archive#4460: any
-* occupant, not just Chat — `ChatDockMobileHeader` already carries the app
-* chrome for the docked case, and the shared `DockShell` behaves
-* identically regardless of occupant). A project layout owns the visible
-* view instead, even while a persisted dock snap is being restored on
-* navigation.
-*/
+  /**
+   * A full-screen mobile dock owns the whole viewport (archive#4460: any
+   * occupant, not just Chat — `ChatDockMobileHeader` already carries the app
+   * chrome for the docked case, and the shared `DockShell` behaves
+   * identically regardless of occupant). A project layout owns the visible
+   * view instead, even while a persisted dock snap is being restored on
+   * navigation.
+   */
   const isAmbientMobileDockFullscreen = isMobileDockFullscreenState({
     isMobile: isMobileViewport,
     isDockOpen,
@@ -428,7 +428,7 @@ function App() {
     showToast('Settings saved successfully');
   };
 
-// Keyboard shortcuts
+  // Keyboard shortcuts
   useKeyboardShortcut(
     'developer.open',
     'd',
@@ -489,7 +489,7 @@ function App() {
     -100,
   );
 
-// Determine current layout key for sessionStorage override
+  // Determine current layout key for sessionStorage override
   const currentLayoutKey =
     displayCurrentView.type === 'layout' ? 'coding' : null;
 
@@ -517,9 +517,9 @@ function App() {
     ]),
   );
 
-// `.content-view` is the shell's one scroll container, so its
-// scroll memory belongs here rather than in any route. Keyed on pathname —
-// the same key an in-app navigation and a browser Back both land on.
+  // `.content-view` is the shell's one scroll container, so its
+  // scroll memory belongs here rather than in any route. Keyed on pathname —
+  // the same key an in-app navigation and a browser Back both land on.
   const contentViewRef = useRef<HTMLDivElement>(null);
   useScrollRestoration(contentViewRef, window.location.pathname);
 
@@ -527,11 +527,11 @@ function App() {
     <ProjectsProvider>
       <WorkspacePaneDockContext.Provider value={ambientDockAction}>
         <ChatAuthRecoveryProvider onRequestAuth={handleAuthError}>
-{/* Mobile store builds can wait days for review, so check their selected
+          {/* Mobile store builds can wait days for review, so check their selected
           Station's release channel at launch. The Settings surface consumes
           this same React Query key and renders the cached result/action
           without a duplicate request. */}
- {/* archive#2773: a rejected chunk is cached by React forever, and these mount
+          {/* archive#2773: a rejected chunk is cached by React forever, and these mount
           above the whole shell — an unguarded 404 after a deploy rebuilt
           dist-ui would blank the app rather than lose one piece of chrome. */}
           <LazyBoundary
@@ -545,7 +545,7 @@ function App() {
             componentProps={{ apiBase: API_BASE }}
           />
           <div className="app app--with-sidebar">
-{/* : the shell chrome is already first in DOM order
+            {/* : the shell chrome is already first in DOM order
               (measured: sidebar → toolbar → route → dock), so the keyboard
               defect was not the order — it was that there is no way PAST the
               chrome. This is the first focusable element in the document and
@@ -597,7 +597,7 @@ function App() {
                 />
               )}
 
-{/* : the route outlet had no `main` landmark at all — a
+              {/* : the route outlet had no `main` landmark at all — a
                 screen reader's landmark list held only the sidebar's `nav`
                 and the toolbar's `header`. `tabIndex={-1}` makes it a
                 programmatic focus target for the skip control without adding
@@ -657,7 +657,7 @@ function App() {
                 componentProps={{}}
                 pending={null}
               />
-{/* Single floating voice affordance: the S2S pill. The separate STT
+              {/* Single floating voice affordance: the S2S pill. The separate STT
               FAB (GlobalVoiceButton) was removed — having both rendered two
               floating mics (opposite corners) whenever voice was enabled. STT
               while typing remains available via the inline VoiceOrb in the chat
@@ -683,21 +683,21 @@ function HomeRouteHostUnavailable({
   address,
 }: {
   reason: ConnectionFailureReason | null;
-/** The saved connection's short name when one exists, else the URL —
- * `connectionFailureCopy`'s own display contract (archive#3713:
-* "http://localhost:3141 isn't accepting this device" should name the
-* Station the user saved). */
+  /** The saved connection's short name when one exists, else the URL —
+   * `connectionFailureCopy`'s own display contract (archive#3713:
+   * "http://localhost:3141 isn't accepting this device" should name the
+   * Station the user saved). */
   host: string;
   address: string;
 }) {
-// archive#3711: this used to say "Workspace unavailable while offline" for
-// EVERY non-connected state — an authentication rejection or a version
-// mismatch became a false device-network claim. The connection layer
- // already derives a typed reason with actionable per-reason copy (archive#3297);
-// render that. `awaiting-approval` is not a failure to explain
-// (environmentProfiles' own contract) and null means no probe has produced
-// a verdict yet — both fall back to copy that claims nothing beyond
-// "unavailable to this app right now".
+  // archive#3711: this used to say "Workspace unavailable while offline" for
+  // EVERY non-connected state — an authentication rejection or a version
+  // mismatch became a false device-network claim. The connection layer
+  // already derives a typed reason with actionable per-reason copy (archive#3297);
+  // render that. `awaiting-approval` is not a failure to explain
+  // (environmentProfiles' own contract) and null means no probe has produced
+  // a verdict yet — both fall back to copy that claims nothing beyond
+  // "unavailable to this app right now".
   const copy =
     reason && reason !== 'awaiting-approval'
       ? connectionFailureCopy(reason, host, address)

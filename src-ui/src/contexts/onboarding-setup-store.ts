@@ -17,30 +17,30 @@ type Listener = () => void;
  * derivation — mirrors the `activeChatsStore`/`conversationsStore` pattern.
  */
 class OnboardingSetupStore {
-/**
-* In-memory only, deliberately: navigating into Connections has to get the
-* blocking launcher out of the way, but it is not evidence that setup
-* succeeded. Persisting it there was how the launcher came to vanish for
-* good the moment a user went to *do* the setup — while Connections still
-* read "chat: setup needed" and New Chat still offered no Station agent, and
-* the launcher's own copy promised it "disappears automatically once chat is
- * ready" (archive#794). Deferred state dies with the page, so a reload with chat
-* still unready brings the launcher back, which is what that copy claims.
-*/
+  /**
+   * In-memory only, deliberately: navigating into Connections has to get the
+   * blocking launcher out of the way, but it is not evidence that setup
+   * succeeded. Persisting it there was how the launcher came to vanish for
+   * good the moment a user went to *do* the setup — while Connections still
+   * read "chat: setup needed" and New Chat still offered no Station agent, and
+   * the launcher's own copy promised it "disappears automatically once chat is
+   * ready" (archive#794). Deferred state dies with the page, so a reload with chat
+   * still unready brings the launcher back, which is what that copy claims.
+   */
   private deferredState = false;
   private listeners = new Set<Listener>();
 
   constructor() {
-// archive#settings-revamp: `dismissedState` used
-// to be copied out of the device store ONCE at construction and never
-// read again, so an import (or a cross-tab change forwarded by the
-// device store's own `storage` listener) that flips
-// `onboardingSetupDismissed` never reached this store's subscribers —
-// the launcher's visibility silently went stale. `getSnapshot` now
-// reads the device store live on every call (cheap — it's just a
-// resolved-snapshot property read), and this subscription forwards the
-// device store's own change notifications to this store's listeners so
-// `useSyncExternalStore` actually re-renders on that path too.
+    // archive#settings-revamp: `dismissedState` used
+    // to be copied out of the device store ONCE at construction and never
+    // read again, so an import (or a cross-tab change forwarded by the
+    // device store's own `storage` listener) that flips
+    // `onboardingSetupDismissed` never reached this store's subscribers —
+    // the launcher's visibility silently went stale. `getSnapshot` now
+    // reads the device store live on every call (cheap — it's just a
+    // resolved-snapshot property read), and this subscription forwards the
+    // device store's own change notifications to this store's listeners so
+    // `useSyncExternalStore` actually re-renders on that path too.
     deviceSettingsStore.subscribe(() => this.notify());
   }
 
@@ -54,29 +54,29 @@ class OnboardingSetupStore {
 
   dismiss = () => {
     if (deviceSettingsStore.get('onboardingSetupDismissed')) return;
-// `deviceSettingsStore.set` notifies its own subscribers synchronously,
-// which (via the constructor's subscription above) already calls this
-// store's `notify` — no separate call needed here.
+    // `deviceSettingsStore.set` notifies its own subscribers synchronously,
+    // which (via the constructor's subscription above) already calls this
+    // store's `notify` — no separate call needed here.
     deviceSettingsStore.set('onboardingSetupDismissed', true);
   };
 
-/**
-* Hide the launcher while the user is off completing setup, without
-* claiming readiness.
-*/
+  /**
+   * Hide the launcher while the user is off completing setup, without
+   * claiming readiness.
+   */
   defer = () => {
     if (this.deferredState) return;
     this.deferredState = true;
     this.notify();
   };
 
-/**
-* Undo a deferral once the user has left the surface they were sent to.
-* Without this the launcher stays hidden for the whole session — a user who
-* abandons setup partway and navigates elsewhere would never see it again
-* even though chat is still unready, which is a session-scoped version of
- * the same bug (archive#794). A persisted `dismiss` is untouched.
-*/
+  /**
+   * Undo a deferral once the user has left the surface they were sent to.
+   * Without this the launcher stays hidden for the whole session — a user who
+   * abandons setup partway and navigates elsewhere would never see it again
+   * even though chat is still unready, which is a session-scoped version of
+   * the same bug (archive#794). A persisted `dismiss` is untouched.
+   */
   rearm = () => {
     if (!this.deferredState) return;
     this.deferredState = false;
@@ -86,9 +86,9 @@ class OnboardingSetupStore {
   reset = () => {
     const wasHidden =
       deviceSettingsStore.get('onboardingSetupDismissed') || this.deferredState;
-// A no-op device-store reset (already at default) does not notify on
-// its own, so `deferredState`'s clear below still needs its own
-// unconditional notify when anything was actually hidden.
+    // A no-op device-store reset (already at default) does not notify on
+    // its own, so `deferredState`'s clear below still needs its own
+    // unconditional notify when anything was actually hidden.
     deviceSettingsStore.reset('onboardingSetupDismissed');
     this.deferredState = false;
     if (!wasHidden) return;
@@ -103,7 +103,7 @@ class OnboardingSetupStore {
 export const onboardingSetupStore = new OnboardingSetupStore();
 
 /**
- * Whether Home's first-run chapter currently owns the screen 
+ * Whether Home's first-run chapter currently owns the screen
  *
  * ONE piece of state, read by both first-run overlays, so at most one of them
  * can exist. The chapter used to consult `isBlockingFullScreen` only at its
@@ -145,50 +145,50 @@ export function useFirstRunChapterOpen(): boolean {
 }
 
 export interface OnboardingSetupState {
-/** Whether the setup banner content should currently render at all. */
+  /** Whether the setup banner content should currently render at all. */
   visible: boolean;
-/**
-* True only for the true first-run case (`visible && !dismissed`) — today
-* the only setup-banner presentation is the full-screen `SetupLauncher`,
-* so this is identical to `visible`. Kept as its own field so a future
-* non-blocking banner variant can diverge from it without another
-* readiness derivation.
-*/
+  /**
+   * True only for the true first-run case (`visible && !dismissed`) — today
+   * the only setup-banner presentation is the full-screen `SetupLauncher`,
+   * so this is identical to `visible`. Kept as its own field so a future
+   * non-blocking banner variant can diverge from it without another
+   * readiness derivation.
+   */
   isBlockingFullScreen: boolean;
-/**
-* What the PROBE says about the launcher, before the first-run chapter's
- * suppression is applied 
-*
-* The chapter's own auto-open gate reads this, not `visible`: `visible` is
-* false *because the chapter is open*, so gating on it would be circular.
-* Nothing else should — a consumer asking "is the launcher on screen" wants
-* `visible`, which is the one that can answer honestly.
-*/
+  /**
+   * What the PROBE says about the launcher, before the first-run chapter's
+   * suppression is applied
+   *
+   * The chapter's own auto-open gate reads this, not `visible`: `visible` is
+   * false *because the chapter is open*, so gating on it would be circular.
+   * Nothing else should — a consumer asking "is the launcher on screen" wants
+   * `visible`, which is the one that can answer honestly.
+   */
   launcherWouldShow: boolean;
   content: SetupBannerContent | null;
-/**
-* Connect is genuinely FINISHED — the user made a durable choice to skip it,
-* or the system reports setup complete.
-*
- * Deliberately NOT `!visible` (archive#2652). `visible`
-* is also false for a `defer`, and `defer` is what the launcher's own
-* "Open Connections" / action-target buttons call — the user who is actively
-* DOING the setup. Reading hidden as resolved therefore fires on the primary
-* setup path, mid-setup. It is also false while `status` is momentarily
-* absent, which is a loading state, not a resolution.
-*
-* Anything that gates on "the first-run connect chapter is behind us" must
-* read this, not the launcher's visibility.
-*/
+  /**
+   * Connect is genuinely FINISHED — the user made a durable choice to skip it,
+   * or the system reports setup complete.
+   *
+   * Deliberately NOT `!visible` (archive#2652). `visible`
+   * is also false for a `defer`, and `defer` is what the launcher's own
+   * "Open Connections" / action-target buttons call — the user who is actively
+   * DOING the setup. Reading hidden as resolved therefore fires on the primary
+   * setup path, mid-setup. It is also false while `status` is momentarily
+   * absent, which is a loading state, not a resolution.
+   *
+   * Anything that gates on "the first-run connect chapter is behind us" must
+   * read this, not the launcher's visibility.
+   */
   resolved: boolean;
-/** Persisted "do not show me this again". */
+  /** Persisted "do not show me this again". */
   dismiss: () => void;
-/**
-* Hide the launcher while the user completes setup elsewhere, which must not
- * be recorded as if setup had succeeded (archive#794).
-*/
+  /**
+   * Hide the launcher while the user completes setup elsewhere, which must not
+   * be recorded as if setup had succeeded (archive#794).
+   */
   defer: () => void;
- /** Undo a deferral once the user has left that surface (archive#794). */
+  /** Undo a deferral once the user has left that surface (archive#794). */
   rearm: () => void;
 }
 
@@ -226,11 +226,11 @@ export function shouldRenderSetupLauncher({
  * unreadable (reproduced live). Two things follow:
  *
  * - On a `pending` home the disclosure is the first STEP of the first-run
-*   chapter (`UsageTelemetryDisclosureStep`), so this modal must not exist at
-*   all; mounting it would be the same interruption by another route.
+ *   chapter (`UsageTelemetryDisclosureStep`), so this modal must not exist at
+ *   all; mounting it would be the same interruption by another route.
  * - Everywhere else — an upgraded home, a deferred one, a completed one — the
-*   modal is exactly what shipped, except that it waits for the launcher and
-*   for a chapter opened from Home's card to be out of the way first.
+ *   modal is exactly what shipped, except that it waits for the launcher and
+ *   for a chapter opened from Home's card to be out of the way first.
  */
 export function shouldRenderUsageTelemetryDisclosure({
   firstRunStatus,
@@ -255,18 +255,18 @@ export function useOnboardingSetupState(): OnboardingSetupState {
   const chapterOpen = useFirstRunChapterOpen();
   const launcherWouldShow =
     !!status && shouldShowSetupBanner(status) && !dismissed;
-// AT MOST ONE FIRST-RUN OVERLAY. The chapter is the newer, modal surface and
-// it is already on top; a launcher rendered under its scrim is unreachable,
-// which is worse than not rendering it at all. When the chapter closes this
-// flips back, so a Station that genuinely still needs connecting gets its
-// launcher the moment the chapter is out of the way.
+  // AT MOST ONE FIRST-RUN OVERLAY. The chapter is the newer, modal surface and
+  // it is already on top; a launcher rendered under its scrim is unreachable,
+  // which is worse than not rendering it at all. When the chapter closes this
+  // flips back, so a Station that genuinely still needs connecting gets its
+  // launcher the moment the chapter is out of the way.
   const visible = launcherWouldShow && !chapterOpen;
   const content = status ? buildSetupBannerContent(status) : null;
-// Read the DURABLE dismissal, not `dismissed` above — that one folds in the
-// page-lifetime `deferredState`, which is exactly the mid-setup signal this
-// must not treat as a resolution. Reading the device store here is live and
-// reactive: this hook already re-renders on its changes via the
-// `useSyncExternalStore` subscription above.
+  // Read the DURABLE dismissal, not `dismissed` above — that one folds in the
+  // page-lifetime `deferredState`, which is exactly the mid-setup signal this
+  // must not treat as a resolution. Reading the device store here is live and
+  // reactive: this hook already re-renders on its changes via the
+  // `useSyncExternalStore` subscription above.
   const resolved =
     deviceSettingsStore.get('onboardingSetupDismissed') === true ||
     (!!status && !shouldShowSetupBanner(status));

@@ -117,9 +117,9 @@ describe('ACPAddConnectionModal', () => {
     ).toBeTruthy();
   });
 
-// the result panel said only "This provider needs more setup before
-// it can run work" and offered two buttons that both walk away. The probe's
-// own failure is on the connection; the panel now reads it.
+  // the result panel said only "This provider needs more setup before
+  // it can run work" and offered two buttons that both walk away. The probe's
+  // own failure is on the connection; the panel now reads it.
   test('a non-ready result names the observed failure and the action that fixes it', async () => {
     const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(
@@ -159,9 +159,9 @@ describe('ACPAddConnectionModal', () => {
     expect(status.textContent).toContain('make it runnable on this computer');
   });
 
-// The action is derived from the phase: after `initialize` the command IS
-// running, so telling the operator to install it would be wrong advice
-// (observed live against a real cursor-agent auth refusal).
+  // The action is derived from the phase: after `initialize` the command IS
+  // running, so telling the operator to install it would be wrong advice
+  // (observed live against a real cursor-agent auth refusal).
   test('a post-spawn failure points at the provider, not at installing it', async () => {
     const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(
@@ -363,8 +363,8 @@ describe('ACPAddConnectionModal', () => {
     await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(2));
     expect(screen.getByRole('status').textContent).toContain('Checking');
 
-// A successful retry waits for a result from the connection query. Start
-// over to prove the same safe draft also survives an explicit edit.
+    // A successful retry waits for a result from the connection query. Start
+    // over to prove the same safe draft also survives an explicit edit.
     fireEvent.click(screen.getByRole('button', { name: 'Close add provider' }));
   });
 

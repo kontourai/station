@@ -55,39 +55,39 @@ export function DelegatedTaskCoordinator({
     onSuccess: onTaskChanged,
   });
 
-// archive#3139: this card rendered `lifecycleState` verbatim, so the wire
-// identifier (`needs_input`, `review_pending`) was the status a user read.
-// archive#3227 A1: routing through `sessionLifecycleLabel` fixed the
-// vocabulary but not the FACT — that helper knows nothing about
-// `hasActiveTurn`, `status: 'closed'` or answerability, so this card could
-// say "Running" for a task the Sessions list had already filed under
-// Recently finished. `sessionStatusWord` is the shared fold every session
-// surface now prints; there is no second spelling of a session's state.
+  // archive#3139: this card rendered `lifecycleState` verbatim, so the wire
+  // identifier (`needs_input`, `review_pending`) was the status a user read.
+  // archive#3227 A1: routing through `sessionLifecycleLabel` fixed the
+  // vocabulary but not the FACT — that helper knows nothing about
+  // `hasActiveTurn`, `status: 'closed'` or answerability, so this card could
+  // say "Running" for a task the Sessions list had already filed under
+  // Recently finished. `sessionStatusWord` is the shared fold every session
+  // surface now prints; there is no second spelling of a session's state.
   const state = sessionStatusWord(task);
   const isStreaming = isStreamingSession(task);
   const isTerminal = isTerminalSession(task);
-// archive#1781: `needsReview` is the raw fold, and since archive#1791 it
-// stays true forever for a session nothing can answer. `liveReview` is the
-// one that may drive an affordance; `needsReview` still drives the copy,
-// because the request IS still open and saying otherwise would be the
-// silent filtering ADR 0012 forbids.
+  // archive#1781: `needsReview` is the raw fold, and since archive#1791 it
+  // stays true forever for a session nothing can answer. `liveReview` is the
+  // one that may drive an affordance; `needsReview` still drives the copy,
+  // because the request IS still open and saying otherwise would be the
+  // silent filtering ADR 0012 forbids.
   const needsReview =
     task.pendingReview || task.lifecycleState === 'review_pending';
-// Scoped to a review that is actually pending, and to a non-terminal task
-// (review's blocking finding). `answerability` answers a question about an
-// OPEN REQUEST: a detached `completed` task takes the `past_resume` arm, so
-// after any restart every cleanly-finished delegated task reads
-// `answerable: false`. Reading it unscoped annotated all of them with "the
-// session cannot resume" — true, and about nothing the user asked for.
+  // Scoped to a review that is actually pending, and to a non-terminal task
+  // (review's blocking finding). `answerability` answers a question about an
+  // OPEN REQUEST: a detached `completed` task takes the `past_resume` arm, so
+  // after any restart every cleanly-finished delegated task reads
+  // `answerable: false`. Reading it unscoped annotated all of them with "the
+  // session cannot resume" — true, and about nothing the user asked for.
   const answerability = sessionAnswerabilityView(task);
   const isUnanswerable = answerability.status === 'unanswerable';
-// Both derive from the same independent facts. Deriving `liveReview` from
-// `unanswerableNotice === null` instead made the terminal case lie: the
-// `!isTerminal` term forced the notice to null before `answerability` was
-// consulted, so a stale-`pendingReview` completed task read as "not
-// unanswerable" and rendered a live "waiting for your response" plus an
-// active Review request — the exact false attention claim this scoping
-// exists to remove, and with the View task fallback suppressed too.
+  // Both derive from the same independent facts. Deriving `liveReview` from
+  // `unanswerableNotice === null` instead made the terminal case lie: the
+  // `!isTerminal` term forced the notice to null before `answerability` was
+  // consulted, so a stale-`pendingReview` completed task read as "not
+  // unanswerable" and rendered a live "waiting for your response" plus an
+  // active Review request — the exact false attention claim this scoping
+  // exists to remove, and with the View task fallback suppressed too.
   const unanswerableNotice =
     needsReview && !isTerminal && isUnanswerable ? answerability.notice : null;
   const liveReview = needsReview && !isTerminal && !isUnanswerable;
@@ -105,7 +105,7 @@ export function DelegatedTaskCoordinator({
       <header className="sessions-coordinator__header">
         <div>
           <p className="sessions-coordinator__eyebrow">Delegated work</p>
-{/*
+          {/*
             station#3227 C1: this was `humanizeId(taskId ?? threadId)`, and
             `humanizeId` is a NO-OP on a content-derived thread id — so a
             delegated session with no `taskId` put a raw hash in this heading
@@ -153,7 +153,7 @@ export function DelegatedTaskCoordinator({
         </p>
       )}
 
-{/* archive#1781: gated on `liveReview`, not `needsReview`. A request
+      {/* archive#1781: gated on `liveReview`, not `needsReview`. A request
           nothing can answer no longer owns the response affordance, so
           suppressing the composer for it left the card with no way to act at
           all. Sending still round-trips and fails loudly server-side —
@@ -197,7 +197,7 @@ export function DelegatedTaskCoordinator({
             {stopTask.isPending ? 'Stopping…' : 'Stop active task'}
           </Button>
         )}
-{/* archive#1781: navigation stays available for an unanswerable
+        {/* archive#1781: navigation stays available for an unanswerable
             task — the annotation replaces the action, not the route to it. */}
         {!liveReview && (
           <Button variant="secondary" onClick={() => onOpen(task.threadId)}>

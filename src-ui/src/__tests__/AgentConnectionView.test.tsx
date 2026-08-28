@@ -223,24 +223,24 @@ describe('AgentConnectionView', () => {
     window.localStorage.clear();
   });
 
-// /connections/providers and /connections/engines both rendered the
- // "Providers" and the breadcrumb CONNECTIONS / PROVIDERS, so four paths
-// produced one indistinguishable title. The engines route owns the noun the
-// redirect table already treats as canonical.
-/**
-* archive#3981, reported from an upgraded Nightly: engines detected and
-* ready, `Connections -> Engines` rendering zero rows, and `Add engine`
-* claiming every provider was already listed. No UI path existed to persist
-* a detected engine.
-*
-* The two surfaces read the same inventory and subtract it differently. The
-* list drops `setup.state === 'available'` rows (right: `available` means
-* supported-but-not-yet-added, so it is not a configured engine). The Add
-* catalogue then subtracts EVERY id in that same inventory — including the
-* rows the list just dropped — so an `available` engine is removed from
-* both, and the emptied catalogue asserts the opposite of what the reader
-* can see beside it.
-*/
+  // /connections/providers and /connections/engines both rendered the
+  // "Providers" and the breadcrumb CONNECTIONS / PROVIDERS, so four paths
+  // produced one indistinguishable title. The engines route owns the noun the
+  // redirect table already treats as canonical.
+  /**
+   * archive#3981, reported from an upgraded Nightly: engines detected and
+   * ready, `Connections -> Engines` rendering zero rows, and `Add engine`
+   * claiming every provider was already listed. No UI path existed to persist
+   * a detected engine.
+   *
+   * The two surfaces read the same inventory and subtract it differently. The
+   * list drops `setup.state === 'available'` rows (right: `available` means
+   * supported-but-not-yet-added, so it is not a configured engine). The Add
+   * catalogue then subtracts EVERY id in that same inventory — including the
+   * rows the list just dropped — so an `available` engine is removed from
+   * both, and the emptied catalogue asserts the opposite of what the reader
+   * can see beside it.
+   */
   test('an engine the list drops as not-yet-added is still offered in Add', () => {
     agentConnections = [
       ...DEFAULT_AGENT_CONNECTIONS,
@@ -276,15 +276,15 @@ describe('AgentConnectionView', () => {
     ];
 
     const { rerender } = render(<AgentConnectionView onNavigate={vi.fn()} />);
-// Not a configured engine, so the list is right to omit it.
+    // Not a configured engine, so the list is right to omit it.
     expect(screen.queryByText('Muse')).toBeNull();
 
     rerender(
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
-//.which makes Add the only place it can be reached. Being absent from
-// both is the reported dead end.
+    //.which makes Add the only place it can be reached. Being absent from
+    // both is the reported dead end.
     expect(screen.getByText('Muse')).toBeTruthy();
     expect(
       screen.queryByText('Every supported provider is already listed'),
@@ -292,8 +292,8 @@ describe('AgentConnectionView', () => {
   });
 
   test('the already-listed claim is reserved for a catalogue nothing is missing from', () => {
-// Every catalogue entry really is a configured engine here, so the
-// sentence is true and must still render.
+    // Every catalogue entry really is a configured engine here, so the
+    // sentence is true and must still render.
     agentConnections = [
       {
         id: 'claude',
@@ -323,16 +323,16 @@ describe('AgentConnectionView', () => {
 
     expect(screen.getByRole('heading', { name: 'Engines' })).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Providers' })).toBeNull();
-// The breadcrumb reads CONNECTIONS / ENGINES too; nothing on this route
-// says "Providers" any more.
+    // The breadcrumb reads CONNECTIONS / ENGINES too; nothing on this route
+    // says "Providers" any more.
     expect(screen.queryAllByText('Providers')).toHaveLength(0);
     expect(screen.getAllByText('Engines').length).toBeGreaterThan(1);
   });
 
-// archive#771 regression: `useAgentConnectionsQuery`'s isLoading was
-// consulted by `SplitPaneLayout`'s `loading` prop but its error was never
-// passed through, so a settled read failure rendered the same "no engines"
-// empty state as a host with none configured — no error, no retry.
+  // archive#771 regression: `useAgentConnectionsQuery`'s isLoading was
+  // consulted by `SplitPaneLayout`'s `loading` prop but its error was never
+  // passed through, so a settled read failure rendered the same "no engines"
+  // empty state as a host with none configured — no error, no retry.
   test('renders the engines list error state with retry when the connections query fails', () => {
     agentConnections = [];
     agentConnectionsQueryError = new Error('engines unavailable');
@@ -346,9 +346,9 @@ describe('AgentConnectionView', () => {
     expect(refetchAgentConnections).toHaveBeenCalledTimes(1);
   });
 
-// The section frame owns this section's single add action and reaches the
-// catalogue by route (`/connections/engines/new`), not by an in-view button
-// so the route is what these two drive now.
+  // The section frame owns this section's single add action and reaches the
+  // catalogue by route (`/connections/engines/new`), not by an in-view button
+  // so the route is what these two drive now.
   test('keeps available apps in Add and hides the managed Station engine', () => {
     const { rerender } = render(<AgentConnectionView onNavigate={vi.fn()} />);
 
@@ -541,7 +541,7 @@ describe('AgentConnectionView', () => {
       name: /Run sessions in a Station-managed app home/,
     });
     expect((appHomeCheckbox as HTMLInputElement).checked).toBe(false);
-// Import stays hidden until the toggle is on — never a silent action.
+    // Import stays hidden until the toggle is on — never a silent action.
     expect(
       screen.queryByRole('button', {
         name: 'Import a snapshot of your global Claude Code settings',
@@ -565,7 +565,7 @@ describe('AgentConnectionView', () => {
     });
   });
 
-// archive#896: codex-runtime joins the app-home opt-in.
+  // archive#896: codex-runtime joins the app-home opt-in.
   test('codex-runtime shows the app-home opt-in, off by default, that saves the toggle', () => {
     connectionQueryData = {
       id: 'codex',
@@ -594,7 +594,7 @@ describe('AgentConnectionView', () => {
       name: /Run sessions in a Station-managed app home/,
     });
     expect((appHomeCheckbox as HTMLInputElement).checked).toBe(false);
-// Import stays hidden until the toggle is on — never a silent action.
+    // Import stays hidden until the toggle is on — never a silent action.
     expect(
       screen.queryByRole('button', {
         name: 'Import a snapshot of your global Codex settings',
@@ -618,7 +618,7 @@ describe('AgentConnectionView', () => {
     });
   });
 
-// archive#896: bounded profile GC — usage report + explicit clear.
+  // archive#896: bounded profile GC — usage report + explicit clear.
   test('the app home clear action confirms before calling the clear mutation', () => {
     connectionQueryData = {
       id: 'claude',
@@ -652,13 +652,13 @@ describe('AgentConnectionView', () => {
     );
 
     fireEvent.click(screen.getByText('Advanced'));
-// Disabled while the toggle is on — must be turned off and saved first.
+    // Disabled while the toggle is on — must be turned off and saved first.
     const clearButton = screen.getByRole('button', {
       name: 'Clear this app home',
     });
     expect((clearButton as HTMLButtonElement).disabled).toBe(true);
 
-// Turn the toggle off (unsaved) to enable the clear action.
+    // Turn the toggle off (unsaved) to enable the clear action.
     fireEvent.click(
       screen.getByRole('checkbox', {
         name: /Run sessions in a Station-managed app home/,
@@ -667,8 +667,8 @@ describe('AgentConnectionView', () => {
     expect((clearButton as HTMLButtonElement).disabled).toBe(false);
 
     fireEvent.click(clearButton);
-// Never window.confirm — a ConfirmModal renders and calling the
-// mutation is gated on its own explicit confirm click.
+    // Never window.confirm — a ConfirmModal renders and calling the
+    // mutation is gated on its own explicit confirm click.
     expect(clearMutate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     expect(clearMutate).toHaveBeenCalledWith('claude');
@@ -734,8 +734,8 @@ describe('AgentConnectionView', () => {
       automatic: true,
     });
 
-// Every form control has an accessible label, and the profile ref is
-// displayed as an opaque handle rather than a filesystem location.
+    // Every form control has an accessible label, and the profile ref is
+    // displayed as an opaque handle rather than a filesystem location.
     expect(
       screen.getByRole('textbox', { name: 'Credential entry reference' }),
     ).toBeTruthy();
@@ -801,9 +801,9 @@ describe('AgentConnectionView', () => {
     ).toBe(true);
   });
 
-// archive#771 regression: a settled credential-recovery error used to fall
-// through to the same management UI a genuinely-empty response renders
-// ("No credential entries added yet."), with no indication the read failed.
+  // archive#771 regression: a settled credential-recovery error used to fall
+  // through to the same management UI a genuinely-empty response renders
+  // ("No credential entries added yet."), with no indication the read failed.
   test('renders an error state with retry when the credential-recovery query fails', () => {
     connectionQueryData = {
       id: 'codex',

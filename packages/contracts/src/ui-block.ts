@@ -58,9 +58,9 @@ export interface UIBlockBase {
    * see {@link assertUIBlockProvenanceAccepted}, the refusal gate every
    * emission path calls before a data-bearing block is accepted.
    *
- * Stored as the normalized SOURCE LIST, not only its digest, so a later
- * consumer can compute narrowing (a re-render dropping sources) vs. adding
- * (a re-render claiming a new one) without re-deriving it from a hash.
+   * Stored as the normalized SOURCE LIST, not only its digest, so a later
+   * consumer can compute narrowing (a re-render dropping sources) vs. adding
+   * (a re-render claiming a new one) without re-deriving it from a hash.
    */
   derivedFrom?: UIBlockProvenanceSourceRef[];
   /**

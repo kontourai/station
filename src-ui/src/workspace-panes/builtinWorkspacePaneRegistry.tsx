@@ -128,7 +128,7 @@ const LazyFilePreviewPane = lazy(() =>
 export interface BuiltinWorkspacePaneProps {
   descriptor: WorkspacePaneDescriptor;
   instance: WorkspacePaneInstance;
-/** Catalog-resolved only; never inferred by a renderer from platform globals. */
+  /** Catalog-resolved only; never inferred by a renderer from platform globals. */
   browserPreviewAvailability?: WorkspacePaneAvailability;
 }
 
@@ -145,7 +145,7 @@ function useResolvedPaneIdentity(
 
 function FlowRunConsolePane({ instance }: BuiltinWorkspacePaneProps) {
   const identity = useResolvedPaneIdentity(instance, false);
- // The console's own missing-descriptor check is intentionally left to archive#3261's follow-up.
+  // The console's own missing-descriptor check is intentionally left to archive#3261's follow-up.
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   return <FlowRunConsole projectSlug={identity.project.slug} />;
@@ -296,9 +296,9 @@ function CodingFileBrowserPane({ instance }: BuiltinWorkspacePaneProps) {
   const openFile = useCallback(
     (intent: OpenFilePreviewIntent) => {
       setSelectedPath(intent.path);
-// Compact pane navigation unmounts inactive renderers. Keep the selected
-// file in the navigation contract so returning to this pane restores the
-// exact row while the host independently opens the preview occurrence.
+      // Compact pane navigation unmounts inactive renderers. Keep the selected
+      // file in the navigation contract so returning to this pane restores the
+      // exact row while the host independently opens the preview occurrence.
       setLayout(projectSlug, layoutSlug, { openFilePreviewIntent: intent });
       if (!paneHostOpen) {
         return;

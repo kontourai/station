@@ -29,12 +29,12 @@ interface ConversationStatsModalProps {
   stats: ConversationStatsSnapshot | null;
   isVisible: boolean;
   isLoading: boolean;
-/**
- * The stats READ failed  `stats === null` is true for a failed
-* read and for a settled empty one alike, so without this the modal drew
-* "No stats available" — a measurement claim — over a request that never
-* answered.
-*/
+  /**
+   * The stats READ failed  `stats === null` is true for a failed
+   * read and for a settled empty one alike, so without this the modal drew
+   * "No stats available" — a measurement claim — over a request that never
+   * answered.
+   */
   error?: unknown;
   onRetry?: () => void;
   onToggle: () => void;
@@ -99,18 +99,18 @@ export function ConversationStatsModal({
       )
     : null;
 
-/**
-* Cache honesty (archive#4196). The provider is only meaningful on an
-* engine-events view — Station's own memory accounting has no cache
-* concept and keeps its plain labels. The two derivations below return a
-* number ONLY when the provider's declared inclusivity ('disjoint') backs
-* summing input + cacheRead + cacheWrite; for an 'unverified'/'subset'/
-* undeclared provider they return `undefined` and the card renders the
-* provider's own figures unsummed, with cache as separate rows. The
-* "(uncached)" qualifier on the In rows is likewise shown only when the
-* declaration backs it — a label must never claim more than the declared
-* inclusivity does.
-*/
+  /**
+   * Cache honesty (archive#4196). The provider is only meaningful on an
+   * engine-events view — Station's own memory accounting has no cache
+   * concept and keeps its plain labels. The two derivations below return a
+   * number ONLY when the provider's declared inclusivity ('disjoint') backs
+   * summing input + cacheRead + cacheWrite; for an 'unverified'/'subset'/
+   * undeclared provider they return `undefined` and the card renders the
+   * provider's own figures unsummed, with cache as separate rows. The
+   * "(uncached)" qualifier on the In rows is likewise shown only when the
+   * declaration backs it — a label must never claim more than the declared
+   * inclusivity does.
+   */
   const usageProvider =
     stats?.measurement?.source === 'engine-events'
       ? stats.measurement.provider
@@ -294,7 +294,7 @@ export function ConversationStatsModal({
                 label={cacheInclusivity === 'disjoint' ? 'In (uncached)' : 'In'}
                 value={formatMeasuredTokens(stats.inputTokens)}
               />
-{/* Cache rows render only when the engine reported the figure —
+              {/* Cache rows render only when the engine reported the figure —
                   an absent field gets no row rather than an invented zero
                   (station#3201). */}
               {stats.cacheReadTokens !== undefined && (
@@ -319,7 +319,7 @@ export function ConversationStatsModal({
                 label="Out"
                 value={formatMeasuredTokens(stats.outputTokens)}
               />
-{/* When the declared inclusivity backs it, the total includes
+              {/* When the declared inclusivity backs it, the total includes
                   cache; otherwise this is the provider's own figure,
                   unsummed. */}
               <div>

@@ -111,7 +111,7 @@ export function useChatDockKeyboardShortcuts({
     }, [activeSessionId, sessions, focusSession, removeChat]),
   );
 
-// Session switching shortcuts (⌘1-9)
+  // Session switching shortcuts (⌘1-9)
   useDockShortcut(
     'dock.session1',
     '1',
@@ -200,11 +200,11 @@ export function useChatDockKeyboardShortcuts({
     ['ctrl'],
     'Cancel request',
     useCallback(() => {
-// The same one derivation the composer's Stop control reads.
+      // The same one derivation the composer's Stop control reads.
       if (!activeSession || !isTurnInFlight(activeSession)) return;
       const sessionId = activeSession.id;
- // Same derivation as the composer's Stop button : report
-// what the stop settled as, never the intent that started it.
+      // Same derivation as the composer's Stop button : report
+      // what the stop settled as, never the intent that started it.
       void cancelMessage(sessionId).then((outcome) => {
         if (outcome.kind === 'not-running') return;
         addEphemeralMessage(sessionId, {

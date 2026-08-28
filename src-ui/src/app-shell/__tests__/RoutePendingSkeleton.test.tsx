@@ -147,13 +147,13 @@ describe('routePendingShape — read off the destination’s own frame', () => {
   afterEach(() => {
     sessionStorage.clear();
     localStorage.clear();
-// Restoring jsdom's own absence of matchMedia, hence delete.
+    // Restoring jsdom's own absence of matchMedia, hence delete.
     delete (window as { matchMedia?: unknown }).matchMedia;
   });
 
   test('a split-pane route’s placeholder is a split pane', () => {
-// Asserted through the REAL route table, not a hand-written spec: the
-// claim is about what Review, Plugins and Agents are declared to be.
+    // Asserted through the REAL route table, not a hand-written spec: the
+    // claim is about what Review, Plugins and Agents are declared to be.
     expect(shapeOf({ type: 'review-queue' })).toBe('split-pane');
     expect(shapeOf({ type: 'plugins' })).toBe('split-pane');
     expect(shapeOf({ type: 'agents' })).toBe('split-pane');
@@ -162,8 +162,8 @@ describe('routePendingShape — read off the destination’s own frame', () => {
   test('a single-column route’s placeholder is a region', () => {
     expect(shapeOf({ type: 'settings' })).toBe('region');
     expect(shapeOf({ type: 'schedule' })).toBe('region');
-// `fill` without `flush`: a board owns its height but is not a list rail
-// beside a detail pane.
+    // `fill` without `flush`: a board owns its height but is not a list rail
+    // beside a detail pane.
     expect(shapeOf({ type: 'registry' })).toBe('region');
   });
 
@@ -174,21 +174,21 @@ describe('routePendingShape — read off the destination’s own frame', () => {
 
   describe('Guidance — one frame, three tabs, two layouts', () => {
     test('the Commands tab is a region, from the URL', () => {
-// `guidance` always carries the shared SPLIT_PANE spec, and Skills is a
-// split pane — but Commands renders a single-column PageRow list, so the
-// spec alone classifies part of the route wrongly.
+      // `guidance` always carries the shared SPLIT_PANE spec, and Skills is a
+      // split pane — but Commands renders a single-column PageRow list, so the
+      // spec alone classifies part of the route wrongly.
       expect(shapeOf({ type: 'guidance', tab: 'commands' })).toBe('region');
       expect(shapeOf({ type: 'guidance', tab: 'skills' })).toBe('split-pane');
       expect(shapeOf({ type: 'guidance', tab: 'skills' })).toBe('split-pane');
     });
 
     test('and from the session memory when the URL does not say', () => {
-// The same memory `GuidanceView` opens on. A placeholder that ignored it
-// would draw a rail for a user whose remembered tab is Commands.
+      // The same memory `GuidanceView` opens on. A placeholder that ignored it
+      // would draw a rail for a user whose remembered tab is Commands.
       sessionStorage.setItem(GUIDANCE_TAB_MEMORY_KEY, 'commands');
       expect(shapeOf({ type: 'guidance' })).toBe('region');
-// A retired tab an older build could have left behind reads as the
-// default, which is a split pane.
+      // A retired tab an older build could have left behind reads as the
+      // default, which is a split pane.
       sessionStorage.setItem(GUIDANCE_TAB_MEMORY_KEY, 'playbooks');
       expect(shapeOf({ type: 'guidance' })).toBe('split-pane');
       sessionStorage.clear();
@@ -203,8 +203,8 @@ describe('routePendingShape — read off the destination’s own frame', () => {
 
   describe('below the mobile breakpoint a split pane shows one side', () => {
     test('a route that names a record opens on its detail', () => {
-// `SplitPaneLayout` picks the detail from `selectedId`, so an editor
-// route arrives as a full-width sheet, not as a list.
+      // `SplitPaneLayout` picks the detail from `selectedId`, so an editor
+      // route arrives as a full-width sheet, not as a list.
       expect(shapeOf({ type: 'agent-edit', slug: 'a' }, true)).toBe(
         'detail-sheet',
       );
@@ -237,8 +237,8 @@ describe('routePendingShape — read off the destination’s own frame', () => {
     });
 
     test('the same routes on a desktop viewport keep both panes', () => {
-// The discriminating half: without this, "always detail-sheet" would
-// pass every assertion above.
+      // The discriminating half: without this, "always detail-sheet" would
+      // pass every assertion above.
       expect(shapeOf({ type: 'agent-edit', slug: 'a' })).toBe('split-pane');
       expect(shapeOf({ type: 'activity', sessionId: 's' })).toBe('split-pane');
     });
@@ -253,8 +253,8 @@ describe('routePendingShape — read off the destination’s own frame', () => {
     }
 
     test('the placeholder draws no rail for it', () => {
-// `SplitPaneLayout` restores this on mount, so a placeholder that always
-// drew a 280px rail would be a 252px jump the moment the chunk landed.
+      // `SplitPaneLayout` restores this on mount, so a placeholder that always
+      // drew a 280px rail would be a 252px jump the moment the chunk landed.
       persistCollapsed('agents');
       expect(shapeOf({ type: 'agents' })).toBe('detail-sheet');
       expect(shapeOf({ type: 'agent-edit', slug: 'a' })).toBe('detail-sheet');
@@ -269,8 +269,8 @@ describe('routePendingShape — read off the destination’s own frame', () => {
     test('one pane’s collapse says nothing about another’s', () => {
       persistCollapsed('agents');
       expect(shapeOf({ type: 'connections-providers' })).toBe('split-pane');
-// Review persists nothing at all — it mounts its pane without an id, so
-// it always starts expanded.
+      // Review persists nothing at all — it mounts its pane without an id, so
+      // it always starts expanded.
       expect(shapeOf({ type: 'review-queue' })).toBe('split-pane');
     });
 
@@ -284,24 +284,24 @@ describe('routePendingShape — read off the destination’s own frame', () => {
       expect(shapeOf({ type: 'agents' })).toBe('split-pane');
     });
 
-/**
-* A source assertion, deliberately.
-*
-* The fact under test is that ONE string decides which persisted entry a
-* pane writes and which one the placeholder reads. Rendering a view proves
-* the pair agrees for whatever that view happens to pass today; it cannot
-* prove nobody re-typed the literal in the next view, which is the only way
-* this drifts — and it drifts silently, because a placeholder reading a key
-* nobody writes just looks like a pane that was never collapsed.
-*
-* Checked in both directions: no literal anywhere, AND every shared
-* constant actually reaching a `paneId`, so deleting the pane ids cannot
-* turn this green.
-*/
+    /**
+     * A source assertion, deliberately.
+     *
+     * The fact under test is that ONE string decides which persisted entry a
+     * pane writes and which one the placeholder reads. Rendering a view proves
+     * the pair agrees for whatever that view happens to pass today; it cannot
+     * prove nobody re-typed the literal in the next view, which is the only way
+     * this drifts — and it drifts silently, because a placeholder reading a key
+     * nobody writes just looks like a pane that was never collapsed.
+     *
+     * Checked in both directions: no literal anywhere, AND every shared
+     * constant actually reaching a `paneId`, so deleting the pane ids cannot
+     * turn this green.
+     */
     test('every persisted pane id comes from the shared constant, never a literal', () => {
-// `import.meta.url` is an http: URL under the jsdom environment, so this
-// resolves from the run root instead — which `test:focused` pins and
-// verifies before any test runs.
+      // `import.meta.url` is an http: URL under the jsdom environment, so this
+      // resolves from the run root instead — which `test:focused` pins and
+      // verifies before any test runs.
       const srcRoot = join(process.cwd(), 'src-ui', 'src');
       const files: string[] = [];
       const walk = (dir: string) => {
@@ -349,7 +349,7 @@ describe('routePendingShape — read off the destination’s own frame', () => {
 describe('RoutePendingSkeleton renders the shape it resolved', () => {
   afterEach(() => {
     localStorage.clear();
-// Restoring jsdom's own absence of matchMedia, hence delete.
+    // Restoring jsdom's own absence of matchMedia, hence delete.
     delete (window as { matchMedia?: unknown }).matchMedia;
   });
 
@@ -394,17 +394,17 @@ describe('RoutePendingSkeleton renders the shape it resolved', () => {
   });
 
   test('a region inside a flush frame keeps the frame’s x-origin', () => {
-// Guidance's Commands tab is the one route that is both `flush` (declared
-// for a rail that runs to the frame edge) and railless, so without this the
-// placeholder sat 24px left of the list that replaced it.
+    // Guidance's Commands tab is the one route that is both `flush` (declared
+    // for a rail that runs to the frame edge) and railless, so without this the
+    // placeholder sat 24px left of the list that replaced it.
     const commands = renderFor({ type: 'guidance', tab: 'commands' });
     expect(
       commands.container.querySelector('.route-pending--inset'),
     ).not.toBeNull();
     commands.unmount();
 
-// A region in an ordinary frame is already inside the frame's padding, and
-// a second inset would indent it twice.
+    // A region in an ordinary frame is already inside the frame's padding, and
+    // a second inset would indent it twice.
     const settings = renderFor({ type: 'settings' });
     expect(settings.container.querySelector('.skeleton-block')).not.toBeNull();
     expect(
@@ -444,34 +444,34 @@ describe('the body while a route chunk is in flight (#3660)', () => {
       <AppViewContent {...baseProps} currentView={{ type: 'review-queue' }} />,
     );
 
- // The header already names the arriving route (that is archive#3659, and it is
-// the half that made the body's disagreement visible).
+    // The header already names the arriving route (that is archive#3659, and it is
+    // the half that made the body's disagreement visible).
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
       'Review',
     );
 
-// The departing page is off screen. It is still in the DOM — React hid it
-// rather than unmounting it — so this must be a visibility assertion.
+    // The departing page is off screen. It is still in the DOM — React hid it
+    // rather than unmounting it — so this must be a visibility assertion.
     expect(container.textContent).toContain('Installed plugins list');
     expect(visibleText(container)).not.toContain('Installed plugins list');
 
-//.and what replaced it holds the shape Review will arrive in: a list
-// rail beside a detail pane, not a generic full-width row list.
+    //.and what replaced it holds the shape Review will arrive in: a list
+    // rail beside a detail pane, not a generic full-width row list.
     const placeholder = container.querySelector('.route-pending--split-pane');
     expect(placeholder).not.toBeNull();
     expect(placeholder?.querySelector('.route-pending__rail')).not.toBeNull();
     expect(placeholder?.querySelector('.route-pending__detail')).not.toBeNull();
 
-// Exactly one live region announces the wait, and it names the wait rather
-// than the route (the header already named the route).
+    // Exactly one live region announces the wait, and it names the wait rather
+    // than the route (the header already named the route).
     const statuses = container.querySelectorAll(
       '[role="status"][aria-busy="true"]',
     );
     expect(statuses).toHaveLength(1);
     expect(statuses[0].getAttribute('aria-label')).toBe('Loading view');
 
-// The suspension published itself, which is what makes the warm case's
-// silence below evidence rather than an inert channel.
+    // The suspension published itself, which is what makes the warm case's
+    // silence below evidence rather than an inert channel.
     expect(published.filter(Boolean)).not.toHaveLength(0);
 
     await act(async () => {
@@ -485,10 +485,10 @@ describe('the body while a route chunk is in flight (#3660)', () => {
   });
 
   test('warm: a chunk already in memory swaps with no placeholder at all', async () => {
-// Warm the SAME lazy component this file's cold case uses, here rather
-// than by inheriting the cold test's leftovers — React caches a resolved
-// `lazy` for the life of the module, so this really is the warm path,
-// and the test still is one when run on its own.
+    // Warm the SAME lazy component this file's cold case uses, here rather
+    // than by inheriting the cold test's leftovers — React caches a resolved
+    // `lazy` for the life of the module, so this really is the warm path,
+    // and the test still is one when run on its own.
     const warmUp = render(
       <AppViewContent {...baseProps} currentView={{ type: 'review-queue' }} />,
     );
@@ -511,9 +511,9 @@ describe('the body while a route chunk is in flight (#3660)', () => {
 
     expect(screen.getByText('Review queue detail')).toBeTruthy();
     expect(visibleText(container)).not.toContain('Installed plugins list');
-// No skeleton flashed. The fallback publishes on mount, so an empty
-// publication log is the same fact as an absent placeholder, observed a
-// second way.
+    // No skeleton flashed. The fallback publishes on mount, so an empty
+    // publication log is the same fact as an absent placeholder, observed a
+    // second way.
     expect(container.querySelector('.route-pending')).toBeNull();
     expect(
       container.querySelector('[role="status"][aria-busy="true"]'),
@@ -522,9 +522,9 @@ describe('the body while a route chunk is in flight (#3660)', () => {
   });
 
   test('cold: Guidance’s Commands tab holds a region, not a rail (#3660 review M1)', async () => {
-// `guidance` carries the shared SPLIT_PANE spec whatever the tab, so the
-// frame alone would have drawn a rail here and then jumped to a
-// single-column list. The tab is in the URL before the chunk exists.
+    // `guidance` carries the shared SPLIT_PANE spec whatever the tab, so the
+    // frame alone would have drawn a rail here and then jumped to a
+    // single-column list. The tab is in the URL before the chunk exists.
     const { container, rerender } = render(
       <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
     );
@@ -549,14 +549,14 @@ describe('the body while a route chunk is in flight (#3660)', () => {
   });
 
   test('the placeholder replaces the departing body because navigation is URGENT (#3660 review L)', async () => {
-// What the "no stale body" claim actually rests on. Station navigates with
-// a plain `setCurrentView` — ordinary clicks and `popstate` alike
-// (`App.tsx`) — and React shows a Suspense fallback for an urgent update
-// that suspends, hiding the previous children. Wrapped in
-// `startTransition` React does the opposite: it keeps the departing content
-// revealed and shows no fallback at all. Both halves are asserted, so a
-// future change that wraps navigation in a transition reddens here with the
- // reason rather than silently restoring the archive#3660 symptom.
+    // What the "no stale body" claim actually rests on. Station navigates with
+    // a plain `setCurrentView` — ordinary clicks and `popstate` alike
+    // (`App.tsx`) — and React shows a Suspense fallback for an urgent update
+    // that suspends, hiding the previous children. Wrapped in
+    // `startTransition` React does the opposite: it keeps the departing content
+    // revealed and shows no fallback at all. Both halves are asserted, so a
+    // future change that wraps navigation in a transition reddens here with the
+    // reason rather than silently restoring the archive#3660 symptom.
     const { container, rerender } = render(
       <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
     );

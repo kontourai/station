@@ -107,10 +107,10 @@ export const LIFECYCLE_CHIP_LABELS = new Set<HomeLifecycleLabel>([
   'Stopped',
   'Running',
   'Completed',
-// archive#1783: chipped so the row says WHY it dropped down the list —
-// silently demoting it and rendering nothing would be de-prioritization
-// without the fact, which is the filtering ADR 0012 forbids wearing a
-// different hat. The chip renders in the neutral treatment, not a fourth
-// colour meaning: nothing is broken and nothing needs acting on.
+  // archive#1783: chipped so the row says WHY it dropped down the list —
+  // silently demoting it and rendering nothing would be de-prioritization
+  // without the fact, which is the filtering ADR 0012 forbids wearing a
+  // different hat. The chip renders in the neutral treatment, not a fourth
+  // colour meaning: nothing is broken and nothing needs acting on.
   'Unanswerable',
 ]);

@@ -12,7 +12,7 @@ import './AgentReadinessCell.css';
  * SAME row: the same state word, the same tone, the same single fixing verb.
  * They used to render two — the list a `StatusBadge` with its own label
  * mapping, the picker a warning chip with a `resolveNewChatAgentRemedy` label
-* over the same `agentRunnability` answer, which is precisely how two
+ * over the same `agentRunnability` answer, which is precisely how two
  * surfaces one click apart end up disagreeing about the same agent. There is
  * one presentation of that answer now, and both surfaces mount it.
  *
@@ -71,9 +71,9 @@ export function agentReadinessState(agent: ReadinessAgent): {
 } {
   const runnability = agentRunnability(agent);
   if (runnability.runnable) return { label: 'Ready', tone: 'positive' };
-// `enable` is a server-produced authorization that this engine alias has
-// no authored Agent yet and can be materialized. It is not inferred from
-// `engineDefault`, so a disconnected alias keeps the server's concrete need.
+  // `enable` is a server-produced authorization that this engine alias has
+  // no authored Agent yet and can be materialized. It is not inferred from
+  // `engineDefault`, so a disconnected alias keeps the server's concrete need.
   if (agent.enable) return { label: 'Not set up', tone: 'neutral' };
   return { label: `Needs: ${runnability.reason}`, tone: 'caution' };
 }
@@ -82,7 +82,7 @@ export function agentReadinessState(agent: ReadinessAgent): {
  * The COMPACT form of `agentReadinessState`, for a context that cannot host
  * a full server sentence inline (archive#4521: the agent editor's page
  * header, beside the title) but still must not read as merely informational
-* dropping the caution chip entirely there once made an unrunnable agent
+ * dropping the caution chip entirely there once made an unrunnable agent
  * look no different from a ready one. This shortens the label to chip-native
  * vocabulary while KEEPING the tone, so a caution row still reads caution at
  * a glance; the full sentence stays available where there is room for one
@@ -142,38 +142,38 @@ export function AgentReadinessCell({
   part = 'both',
 }: {
   agent: ReadinessAgent;
-/** Names the action for assistive tech when several rows are on screen. */
+  /** Names the action for assistive tech when several rows are on screen. */
   agentName?: string;
-/**
- * Which machine is reading the row (archive#3843). "Set up" sends you to
-* Connections, which a paired device can browse — so this row keeps its ONE
-* verb (`tests/agents-readiness-board.spec.ts`) and the engine's machine is
-* named in the action's accessible name instead. Adding a second control,
-* or a helper line per row, would break the contract this rail was built on.
-*/
+  /**
+   * Which machine is reading the row (archive#3843). "Set up" sends you to
+   * Connections, which a paired device can browse — so this row keeps its ONE
+   * verb (`tests/agents-readiness-board.spec.ts`) and the engine's machine is
+   * named in the action's accessible name instead. Adding a second control,
+   * or a helper line per row, would break the contract this rail was built on.
+   */
   devicePresentation?: DevicePresentation | undefined;
-/**
-* A host that knows something the server's reason does not may pick a
-* different verb from the SAME three (archive#3027: an engine whose connection
-* is broken cannot be Enabled into working — the connection is what needs
-* setting up). It may not invent a fourth.
-*/
+  /**
+   * A host that knows something the server's reason does not may pick a
+   * different verb from the SAME three (archive#3027: an engine whose connection
+   * is broken cannot be Enabled into working — the connection is what needs
+   * setting up). It may not invent a fourth.
+   */
   fixLabel?: 'Enable' | 'Connect' | 'Set up' | 'Edit agent';
-/** The repair is already running; the affordance says so. */
+  /** The repair is already running; the affordance says so. */
   fixDisabled?: boolean;
-/** Omitted where the ROW itself is the chat action (the New Chat picker). */
+  /** Omitted where the ROW itself is the chat action (the New Chat picker). */
   onChat?: () => void;
   onFix?: (route: AgentFixRoute) => void;
   className?: string;
-/**
-* Shorten the status badge to chip-native vocabulary (`agentReadinessCompactState`)
-* rather than the server's full reason sentence — for a context with no
-* room for one (archive#4521: the editor page header, beside the title).
-* The full sentence stays available wherever this is NOT set (the list
-* row's action name, and any banner rendering the reason directly).
-*/
+  /**
+   * Shorten the status badge to chip-native vocabulary (`agentReadinessCompactState`)
+   * rather than the server's full reason sentence — for a context with no
+   * room for one (archive#4521: the editor page header, beside the title).
+   * The full sentence stays available wherever this is NOT set (the list
+   * row's action name, and any banner rendering the reason directly).
+   */
   compact?: boolean;
-/** Render only the shared inline state badge or only the trailing action. */
+  /** Render only the shared inline state badge or only the trailing action. */
   part?: 'status' | 'action' | 'both';
 }) {
   const state = compact
@@ -183,10 +183,10 @@ export function AgentReadinessCell({
   const fixLabel = derivedFixLabel
     ? (fixLabelOverride ?? derivedFixLabel)
     : undefined;
-// Console Kit's `.status` is a tone BLOCK (display: grid, a 4-unit
-// min-width) meant for card corners. Inline beside a row name it stretches
-// to the name's full width (caught by eye in this lane's 1440 capture), so
-// the cell renders the compact variant — one rule, both hosts.
+  // Console Kit's `.status` is a tone BLOCK (display: grid, a 4-unit
+  // min-width) meant for card corners. Inline beside a row name it stretches
+  // to the name's full width (caught by eye in this lane's 1440 capture), so
+  // the cell renders the compact variant — one rule, both hosts.
   const status = (
     <StatusBadge
       status={state.label}
@@ -194,8 +194,8 @@ export function AgentReadinessCell({
       className="agent-readiness__status"
     />
   );
-// The trailing clause is empty on the host and for every verb whose repair
-// is not the host's engine setup, so the accessible name is unchanged there.
+  // The trailing clause is empty on the host and for every verb whose repair
+  // is not the host's engine setup, so the accessible name is unchanged there.
   const hostClause =
     fixLabel === 'Set up'
       ? hostActionCopy('agent-engine-setup', devicePresentation)
@@ -207,9 +207,9 @@ export function AgentReadinessCell({
     <button
       type="button"
       className={className ?? 'agent-readiness__action'}
-// `enable` and `remedy` are the two shapes a repair takes — one
-// creates the missing Agent, the other sends you to the connection
-// that has to be fixed first.
+      // `enable` and `remedy` are the two shapes a repair takes — one
+      // creates the missing Agent, the other sends you to the connection
+      // that has to be fixed first.
       data-agent-action={
         fixLabel === 'Enable'
           ? 'enable'
@@ -218,8 +218,8 @@ export function AgentReadinessCell({
             : 'remedy'
       }
       aria-label={actionName}
-// Same one string, made readable by pointer as well. Only present when
-// there is a host to name — no tooltip appears on the host.
+      // Same one string, made readable by pointer as well. Only present when
+      // there is a host to name — no tooltip appears on the host.
       {...(hostClause ? { title: actionName } : {})}
       disabled={fixDisabled}
       onClick={(event) => {

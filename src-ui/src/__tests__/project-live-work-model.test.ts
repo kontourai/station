@@ -22,11 +22,11 @@ function session(
   overrides: Partial<OrchestrationSessionSummary> &
     Pick<OrchestrationSessionSummary, 'threadId'>,
 ): OrchestrationSessionSummary {
-// archive#3241: no cast — the old summary-typed assertion was hiding three
-// values the wire shape does not admit (`controlMode: 'managed'`,
-// `status: 'open'`, an unbranded agent slug). The fixture now compiles
-// against the contract, so a future wire-shape move fails here instead of
-// asserting a session that cannot occur.
+  // archive#3241: no cast — the old summary-typed assertion was hiding three
+  // values the wire shape does not admit (`controlMode: 'managed'`,
+  // `status: 'open'`, an unbranded agent slug). The fixture now compiles
+  // against the contract, so a future wire-shape move fails here instead of
+  // asserting a session that cannot occur.
   return {
     provider: 'claude',
     controlMode: 'station-owned',
@@ -111,14 +111,14 @@ describe('projectLiveLanes', () => {
   });
 
   test('a finished session is not live work and appears in no lane here', () => {
-// Recently finished / Earlier are the Sessions list's job; the project
-// page shows what is in flight, not an archive.
+    // Recently finished / Earlier are the Sessions list's job; the project
+    // page shows what is in flight, not an archive.
     expect(lanesFor([finished])).toEqual([]);
   });
 
   test('a run that finished seconds ago is still not live work', () => {
-// The reachable form of the leg above: this session IS in the partition's
-// `recentlyFinished` bucket, so only the lane filter keeps it out of here.
+    // The reachable form of the leg above: this session IS in the partition's
+    // `recentlyFinished` bucket, so only the lane filter keeps it out of here.
     expect(lanesFor([justFinished])).toEqual([]);
     expect(projectLiveCount(lanesFor([justFinished, running]))).toBe(1);
     expect(projectLiveLabel(lanesFor([justFinished, running]))).toBe(
@@ -145,10 +145,10 @@ describe('projectLiveLanes', () => {
   });
 
   test('an ambiguously attributed session appears under every candidate', () => {
-// `matchesProjectFilter`'s rule, reused rather than restated: a filter
-// never hides a session it cannot prove is unrelated, so a working
-// directory configured as two projects is counted by both rather than
-// filed under an arbitrary winner.
+    // `matchesProjectFilter`'s rule, reused rather than restated: a filter
+    // never hides a session it cannot prove is unrelated, so a working
+    // directory configured as two projects is counted by both rather than
+    // filed under an arbitrary winner.
     const ambiguous = session({
       threadId: 'ambiguous',
       projectSlug: undefined,
@@ -168,8 +168,8 @@ describe('projectLiveLanes', () => {
 
 describe('the badge number and the section list are one derivation', () => {
   test('the count is the total length of the lanes rendered', () => {
-// Deliberately UNEVEN — two rows in one lane, one in the other — so a
-// count that secretly returns the number of lanes cannot pass.
+    // Deliberately UNEVEN — two rows in one lane, one in the other — so a
+    // count that secretly returns the number of lanes cannot pass.
     const lanes = lanesFor([
       waiting,
       alsoWaiting,

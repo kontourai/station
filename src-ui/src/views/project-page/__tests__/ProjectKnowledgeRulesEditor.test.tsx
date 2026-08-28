@@ -27,10 +27,10 @@ describe('ProjectKnowledgeRulesEditor (#771)', () => {
     expect(container.querySelector('textarea')).toBeNull();
   });
 
-// archive#771: the first pass only threaded a
-// boolean, so every failure rendered the same generic title with no
-// specific text — unlike the other 12 fixed sites, all of which run their
-// error through `describeReadFailure`. Assert the actual message surfaces.
+  // archive#771: the first pass only threaded a
+  // boolean, so every failure rendered the same generic title with no
+  // specific text — unlike the other 12 fixed sites, all of which run their
+  // error through `describeReadFailure`. Assert the actual message surfaces.
   test('renders an error state with retry and the specific failure text instead of an empty editable textarea', () => {
     const onRetryRules = vi.fn();
     render(

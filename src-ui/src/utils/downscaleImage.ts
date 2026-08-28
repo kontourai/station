@@ -46,7 +46,7 @@ const QUALITY_LADDER = [0.85, 0.6] as const;
 const LOSSLESS_QUALITY = 1;
 
 export interface DownscaleAttempt {
-/** Longest edge to fit within. A smaller source is never enlarged. */
+  /** Longest edge to fit within. A smaller source is never enlarged. */
   maxEdge: number;
   mimeType: ChatImageMimeType;
   quality: number;
@@ -77,7 +77,7 @@ export type ImageReencoder = (
 export interface DecodedImage {
   readonly width: number;
   readonly height: number;
-/** Released once the ladder is done with it. */
+  /** Released once the ladder is done with it. */
   close(): void;
 }
 
@@ -86,11 +86,11 @@ export type ImageDecoder = (file: Blob) => Promise<DecodedImage | null>;
 export interface DownscaledImage {
   dataUrl: string;
   mimeType: ChatImageMimeType;
-/**
-* Decoded byte count of `dataUrl`, read back off the encoded string rather
-* than taken from the blob. It is the number the attachment's `size` must
-* carry, and the server independently re-derives it the same way.
-*/
+  /**
+   * Decoded byte count of `dataUrl`, read back off the encoded string rather
+   * than taken from the blob. It is the number the attachment's `size` must
+   * carry, and the server independently re-derives it the same way.
+   */
   bytes: number;
   width: number;
   height: number;
@@ -202,9 +202,9 @@ const browserReencoder: ImageReencoder = async (source, attempt) => {
   const blob = await new Promise<Blob | null>((resolve) => {
     canvas.toBlob(resolve, attempt.mimeType, attempt.quality);
   });
-// `toBlob` answers a PNG for any type it cannot encode, without saying so.
-// Accepting that blob would ship a format nothing above asked for, under
-// the mime type that was asked for.
+  // `toBlob` answers a PNG for any type it cannot encode, without saying so.
+  // Accepting that blob would ship a format nothing above asked for, under
+  // the mime type that was asked for.
   if (!blob || blob.type !== attempt.mimeType) return null;
   return { blob, width, height };
 };

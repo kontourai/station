@@ -31,9 +31,9 @@ const box = vi.hoisted(() => ({
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: box.apiBase }),
-// The real hook returns undefined when no credential evidence exists —
-// exactly this jsdom environment's state (main gained the export at
-// module level; a mock without it fails the whole file at import).
+  // The real hook returns undefined when no credential evidence exists —
+  // exactly this jsdom environment's state (main gained the export at
+  // module level; a mock without it fails the whole file at import).
   useHostRequestAuthorityScope: () => undefined,
 }));
 vi.mock('../contexts/ToastContext', () => ({
@@ -104,11 +104,11 @@ async function expectNoHammeringAfter401(
       new Response('', { status: 401 }),
   );
   vi.stubGlobal('fetch', fetchMock);
-// Matched on BOTH the stream's own URL substring and the
-// `Accept: text/event-stream` header `fetchSSE` always sets — some
-// consumers (MonitoringContext) also issue a plain REST GET at the exact
-// same path (with a query string) to hydrate history, which must not be
-// conflated with the live-stream attempt count this asserts on.
+  // Matched on BOTH the stream's own URL substring and the
+  // `Accept: text/event-stream` header `fetchSSE` always sets — some
+  // consumers (MonitoringContext) also issue a plain REST GET at the exact
+  // same path (with a query string) to hydrate history, which must not be
+  // conflated with the live-stream attempt count this asserts on.
   const matchingAttempts = () =>
     fetchMock.mock.calls.filter(([input, init]) => {
       if (!String(input).includes(streamPathSubstring)) return false;
@@ -125,14 +125,14 @@ async function expectNoHammeringAfter401(
     await vi.advanceTimersByTimeAsync(120_000);
   });
   expect(matchingAttempts().length).toBe(1);
- // archive#3378: the `Accept` filter above cannot see a REST hot-loop
-// BY CONSTRUCTION — it excludes every non-stream request a consumer makes,
-// which is exactly where a history-window poll would live. A consumer that
-// stopped hammering its stream while hammering an endpoint beside it would
-// have satisfied this helper completely. Bound everything the consumer sends
-// to this origin, not just the frames: the only legitimate growth here is
-// `useSessionEventStream`'s capability re-probe, whose own budget
-// (`MAX_AUTOMATIC_CAPABILITY_RECOVERIES`) is 3.
+  // archive#3378: the `Accept` filter above cannot see a REST hot-loop
+  // BY CONSTRUCTION — it excludes every non-stream request a consumer makes,
+  // which is exactly where a history-window poll would live. A consumer that
+  // stopped hammering its stream while hammering an endpoint beside it would
+  // have satisfied this helper completely. Bound everything the consumer sends
+  // to this origin, not just the frames: the only legitimate growth here is
+  // `useSessionEventStream`'s capability re-probe, whose own budget
+  // (`MAX_AUTOMATIC_CAPABILITY_RECOVERIES`) is 3.
   const requestsDuringWait = fetchMock.mock.calls.length - requestsBeforeWait;
   expect(requestsDuringWait).toBeLessThanOrEqual(nonStreamRequestBudget);
 }
@@ -142,13 +142,13 @@ interface ConsumerCase {
   streamPathSubstring: string;
   origin: string;
   mount: (apiBase: string) => void;
-/**
-* Non-stream requests this consumer may still send in the 120s after a 401.
-* Default 3 — `useSessionEventStream`'s capability re-probe budget
-* (`MAX_AUTOMATIC_CAPABILITY_RECOVERIES`), the only legitimate source. A
-* case that raises it is declaring a REST loop the SSE terminal stop does
-* not reach, and must say why.
-*/
+  /**
+   * Non-stream requests this consumer may still send in the 120s after a 401.
+   * Default 3 — `useSessionEventStream`'s capability re-probe budget
+   * (`MAX_AUTOMATIC_CAPABILITY_RECOVERIES`), the only legitimate source. A
+   * case that raises it is declaring a REST loop the SSE terminal stop does
+   * not reach, and must say why.
+   */
   nonStreamRequestBudget?: number;
 }
 
@@ -193,11 +193,11 @@ const CASES: ConsumerCase[] = [
       _setApiBase(apiBase);
       renderHook(() => useMonitoring(), { wrapper: queryWrapper });
     },
-// archive#3436: the REST stats poll beside the SSE stream now derives
-// its own terminal stop from the same `isTerminalConnectionStatus`
-// vocabulary (`resolveMonitoringStatsRefetchInterval`), so this case no
-// longer needs a widened budget — the default (the capability re-probe's
-// own ceiling) covers it like every other consumer.
+    // archive#3436: the REST stats poll beside the SSE stream now derives
+    // its own terminal stop from the same `isTerminalConnectionStatus`
+    // vocabulary (`resolveMonitoringStatsRefetchInterval`), so this case no
+    // longer needs a widened budget — the default (the capability re-probe's
+    // own ceiling) covers it like every other consumer.
   },
 ];
 
@@ -253,16 +253,16 @@ async function expectBoundedRetriesWhileFailing(
  * because its reconnect is governed by a different mechanism.
  *
  * Precisely: its `onError` does NOT close the stream — it calls
-* `negotiateWindow`, which re-probes the session-event-window capability and
+ * `negotiateWindow`, which re-probes the session-event-window capability and
  * closes the stream only when that probe comes back not-capable, scheduling
  * recovery at `SESSION_EVENT_WINDOW_CAPABILITY_RETRY_MS` (30s) /
  * `SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS` (60s). So which mechanism bounds
  * this consumer depends on whether the capability probe is also failing, and
  * both branches are pinned below rather than assumed:
-*  - capability probe ALSO failing (everything 503): the stream is closed and
-*    recovery runs on the capability cadence.
-*  - capability probe HEALTHY, stream failing: nothing closes the stream, so
-*    it rides `fetchSSE`'s ladder like every other consumer.
+ *  - capability probe ALSO failing (everything 503): the stream is closed and
+ *    recovery runs on the capability cadence.
+ *  - capability probe HEALTHY, stream failing: nothing closes the stream, so
+ *    it rides `fetchSSE`'s ladder like every other consumer.
  */
 const LADDER_CASES = CASES.filter(
   (streamCase) => !streamCase.streamPathSubstring.includes('?threadId='),
@@ -277,9 +277,9 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
   it.each(LADDER_CASES)(
     '$name',
     async ({ streamPathSubstring, origin, mount }) => {
-// A distinct origin per describe: `ensureOrchestrationEventStream` holds
-// a module-level single-flight map keyed by `apiBase`, so reusing the
- // archive#1094 origin here would make whichever block runs second a no-op.
+      // A distinct origin per describe: `ensureOrchestrationEventStream` holds
+      // a module-level single-flight map keyed by `apiBase`, so reusing the
+      // archive#1094 origin here would make whichever block runs second a no-op.
       const laddered = origin.replace('https://', 'https://backoff-');
       box.apiBase = laddered;
       await expectBoundedRetriesWhileFailing(streamPathSubstring, () =>
@@ -311,20 +311,20 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
     await act(async () => {
       await vi.waitFor(() => expect(attempts().length).toBe(1));
     });
-// Climb to the ceiling, so the stream is now inside a 30s wait — the
-// window in which a `station upgrade` restart used to leave a live feed
-// frozen beside freshly refetched react-query lists.
+    // Climb to the ceiling, so the stream is now inside a 30s wait — the
+    // window in which a `station upgrade` restart used to leave a live feed
+    // frozen beside freshly refetched react-query lists.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(61_000);
     });
     const beforeWake = attempts().length;
 
-// Direction 1 — an online event BEFORE one base interval has elapsed is
-// ignored. Stated precisely: the floor means a flapping adapter or a user
-// switching tabs can at worst restore the BASE interval, and only while it
-// keeps emitting signals — that is the pre-fix flat rate, not better than
-// it. It is not a regression either, because the ladder's own value keeps
-// doubling underneath, so the wait is already long once the signals stop.
+    // Direction 1 — an online event BEFORE one base interval has elapsed is
+    // ignored. Stated precisely: the floor means a flapping adapter or a user
+    // switching tabs can at worst restore the BASE interval, and only while it
+    // keeps emitting signals — that is the pre-fix flat rate, not better than
+    // it. It is not a regression either, because the ladder's own value keeps
+    // doubling underneath, so the wait is already long once the signals stop.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500);
       window.dispatchEvent(new Event('online'));
@@ -332,8 +332,8 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
     });
     expect(attempts().length).toBe(beforeWake);
 
-// Direction 2 — past the floor, the same event reconnects immediately
-// rather than sitting out the rest of a 30s wait.
+    // Direction 2 — past the floor, the same event reconnects immediately
+    // rather than sitting out the rest of a 30s wait.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2_500);
     });
@@ -370,18 +370,18 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
     await act(async () => {
       await vi.waitFor(() => expect(attempts().length).toBe(1));
     });
-// Climb to the ceiling, then move past the base-interval floor so the
-// ONLY thing separating the two dispatches below is `document.hidden`.
+    // Climb to the ceiling, then move past the base-interval floor so the
+    // ONLY thing separating the two dispatches below is `document.hidden`.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(61_000);
       await vi.advanceTimersByTimeAsync(2_500);
     });
     const beforeWake = attempts().length;
 
-// `visibilitychange` fires on the tab LEAVING as well as returning, so
-// without the hidden guard a backgrounded tab reconnects on its way out —
-// the wake that is least likely to find a recovered server, and the one a
-// user is not there to benefit from.
+    // `visibilitychange` fires on the tab LEAVING as well as returning, so
+    // without the hidden guard a backgrounded tab reconnects on its way out —
+    // the wake that is least likely to find a recovered server, and the one a
+    // user is not there to benefit from.
     const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
     await act(async () => {
       document.dispatchEvent(new Event('visibilitychange'));
@@ -389,7 +389,7 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
     });
     expect(attempts().length).toBe(beforeWake);
 
-// The same event once the tab is visible again does wake it.
+    // The same event once the tab is visible again does wake it.
     hidden.mockReturnValue(false);
     await act(async () => {
       document.dispatchEvent(new Event('visibilitychange'));
@@ -402,20 +402,20 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
   it('useSessionEventStream rides the ladder when the history window fails under a healthy capability probe', async () => {
     vi.useFakeTimers();
     const origin = 'https://backoff-session-capable.example.test';
-// The variant the other fixture cannot express: the capability probe
-// SUCCEEDS. This assertion is the inverse of the one it replaced.
-//
-// It used to pin a defect (archive#3378): with the probe healthy,
-// `onOpen` (which fires even for a 503 response) starts hydration, the
-// bounded history window fetch also fails, and `recoverPersistedEvents`'s
-// catch called `authenticatedStream.close` — so the consumer STOPPED at
-// two attempts, and no timer, wake or reconnect ever brought the session's
-// live feed back. Bounded, but by a teardown, not by backoff, and a blip
-// in ONE endpoint was enough to trigger it.
-//
-// A transient history failure no longer tears the stream down, so this
-// consumer now backs off on `fetchSSE`'s shared ladder like every other
-// one in the table above, and retries the history read on its own.
+    // The variant the other fixture cannot express: the capability probe
+    // SUCCEEDS. This assertion is the inverse of the one it replaced.
+    //
+    // It used to pin a defect (archive#3378): with the probe healthy,
+    // `onOpen` (which fires even for a 503 response) starts hydration, the
+    // bounded history window fetch also fails, and `recoverPersistedEvents`'s
+    // catch called `authenticatedStream.close` — so the consumer STOPPED at
+    // two attempts, and no timer, wake or reconnect ever brought the session's
+    // live feed back. Bounded, but by a teardown, not by backoff, and a blip
+    // in ONE endpoint was enough to trigger it.
+    //
+    // A transient history failure no longer tears the stream down, so this
+    // consumer now backs off on `fetchSSE`'s shared ladder like every other
+    // one in the table above, and retries the history read on its own.
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, _init?: RequestInit) => {
         if (String(input).includes(PUBLIC_STATION_HANDSHAKE_PATH)) {
@@ -451,17 +451,17 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
       await vi.advanceTimersByTimeAsync(120_000);
     });
 
-// The history window was attempted MORE THAN ONCE — the single fact the
-// pre-fix code could not produce, and the one the user-visible contract
-// rests on: a session whose history read blipped gets another chance
-// without a remount. `>= 2` rather than an exact count because two
-// independent schedules drive it (this hook's own history backoff, and a
-// fresh hydration on each reconnect the ladder below performs).
+    // The history window was attempted MORE THAN ONCE — the single fact the
+    // pre-fix code could not produce, and the one the user-visible contract
+    // rests on: a session whose history read blipped gets another chance
+    // without a remount. `>= 2` rather than an exact count because two
+    // independent schedules drive it (this hook's own history backoff, and a
+    // fresh hydration on each reconnect the ladder below performs).
     expect(windowAttempts().length).toBeGreaterThanOrEqual(2);
-// The same bounds `expectBoundedRetriesWhileFailing` holds every other
-// consumer to. The lower bound is what fails if the teardown ever comes
-// back (it read exactly 2); the upper bound is what fails if this
-// consumer's own retry ever escaped into a flat poll.
+    // The same bounds `expectBoundedRetriesWhileFailing` holds every other
+    // consumer to. The lower bound is what fails if the teardown ever comes
+    // back (it read exactly 2); the upper bound is what fails if this
+    // consumer's own retry ever escaped into a flat poll.
     const streams = streamAttempts().length;
     expect(streams).toBeGreaterThanOrEqual(4);
     expect(streams).toBeLessThanOrEqual(12);
@@ -470,16 +470,16 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
   it('useSessionEventStream stops the history ladder on a 401 whose body is not JSON', async () => {
     vi.useFakeTimers();
     const origin = 'https://backoff-session-nonjson-401.example.test';
-// archive#3378. `unwrapOrchestrationResponse` reached its
-// `StationHttpError` throw only after `response.json` SUCCEEDED, so a
-// 401 with a non-JSON body — what a reverse proxy, tunnel or access
-// gateway in front of Station returns — surfaced as a bare `Error` and
-// classified transient. The history ladder then polled an endpoint that
-// can never clear, forever: the archive#1094 hot-loop class, reintroduced
-// on a REST endpoint by the very fix that stopped the permanent freeze.
-//
-// The capability probe answers healthy so the window fetch actually runs;
-// that is the only configuration in which the defect is reachable.
+    // archive#3378. `unwrapOrchestrationResponse` reached its
+    // `StationHttpError` throw only after `response.json` SUCCEEDED, so a
+    // 401 with a non-JSON body — what a reverse proxy, tunnel or access
+    // gateway in front of Station returns — surfaced as a bare `Error` and
+    // classified transient. The history ladder then polled an endpoint that
+    // can never clear, forever: the archive#1094 hot-loop class, reintroduced
+    // on a REST endpoint by the very fix that stopped the permanent freeze.
+    //
+    // The capability probe answers healthy so the window fetch actually runs;
+    // that is the only configuration in which the defect is reachable.
     const fetchMock = vi.fn(
       async (input: RequestInfo | URL, _init?: RequestInit) => {
         if (String(input).includes(PUBLIC_STATION_HANDSHAKE_PATH)) {
@@ -512,9 +512,9 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
       await vi.advanceTimersByTimeAsync(120_000);
     });
 
-// Exact, not a ceiling. A transient classification produces the geometric
-// ladder's ~9 attempts over this span; a terminal one produces the single
-// attempt that discovered the credential failure.
+    // Exact, not a ceiling. A transient classification produces the geometric
+    // ladder's ~9 attempts over this span; a terminal one produces the single
+    // attempt that discovered the credential failure.
     expect(windowAttempts().length).toBe(1);
   });
 
@@ -545,9 +545,9 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
       await vi.advanceTimersByTimeAsync(120_000);
     });
 
-// Bounded by the 30s/60s capability recovery cadence, not by a ladder —
-// an unbounded value here would mean this consumer had grown its own
-// reconnect loop and escaped the shared transport's accounting.
+    // Bounded by the 30s/60s capability recovery cadence, not by a ladder —
+    // an unbounded value here would mean this consumer had grown its own
+    // reconnect loop and escaped the shared transport's accounting.
     expect(streamAttempts().length).toBeLessThanOrEqual(6);
   });
 });

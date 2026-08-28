@@ -5,16 +5,16 @@
  * `buildUserProfileContextBlock` enforces at the data edge:
  *
  * - **Nothing is preselected.** No role and no comfort level is checked when
-*   the step opens, so "the user chose Engineer" and "the user did not answer"
-*   are never the same state.
+ *   the step opens, so "the user chose Engineer" and "the user did not answer"
+ *   are never the same state.
  * - **Skipping writes nothing.** "Skip" persists no profile at all, rather than
-*   writing an empty or default one, so the server sees absent and injects
-*   nothing.
+ *   writing an empty or default one, so the server sees absent and injects
+ *   nothing.
  * - **The preview is the payload.** The block shown under the questions is the
-*   exact string `buildUserProfileContextBlock` returns — the same derivation
-*   the server injects — so the preview cannot flatter what is actually sent.
+ *   exact string `buildUserProfileContextBlock` returns — the same derivation
+ *   the server injects — so the preview cannot flatter what is actually sent.
  * - **The reach is stated, not implied.** `USER_PROFILE_ENGINE_REACH_NOTE` says
-*   that external engines build their own context and this has no effect there.
+ *   that external engines build their own context and this has no effect there.
  *
  * WHERE THIS RENDERS. The second step of `FirstRunHomeChapter`'s dialog, on
  * Home. It used to be a fixed bottom-right card at `--layer-notice`, preceded
@@ -41,19 +41,19 @@ import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
 import './AboutYouStep.css';
 
 export interface AboutYouStepProps {
-/** Persisted answers, if this step is being revisited. */
+  /** Persisted answers, if this step is being revisited. */
   initial?: UserProfileSettings;
-/** Called with the answers to persist. Never called for a skip. */
+  /** Called with the answers to persist. Never called for a skip. */
   onSave: (profile: UserProfileSettings) => void | Promise<void>;
-/** Move on without persisting anything. */
+  /** Move on without persisting anything. */
   onSkip: () => void;
-/** The save is in flight. */
+  /** The save is in flight. */
   saving?: boolean;
-/**
-* The save FAILED and nothing was persisted. Rendered in place of the
-* preview's promise, because "Exactly what Station will add" is false once
- * the write did not land 
-*/
+  /**
+   * The save FAILED and nothing was persisted. Rendered in place of the
+   * preview's promise, because "Exactly what Station will add" is false once
+   * the write did not land
+   */
   error?: string | null;
 }
 
@@ -75,7 +75,7 @@ export function AboutYouStep({
 
   return (
     <div className="first-run-about" data-testid="first-run-about-you">
-{/* No heading of its own: the dialog header this step renders inside
+      {/* No heading of its own: the dialog header this step renders inside
           already names it, and a second copy of the same sentence is the
           screen printed twice (`docs/design/shell-skeletons.md` §2.1's rule,
           applied to a dialog). */}
@@ -166,8 +166,8 @@ export function AboutYouStep({
           className="editor-btn editor-btn--primary"
           disabled={!preview || saving}
           onClick={() => {
-// Guarded by `disabled`, and re-checked here so a programmatic
-// click cannot persist an empty profile.
+            // Guarded by `disabled`, and re-checked here so a programmatic
+            // click cannot persist an empty profile.
             if (!preview) return;
             void onSave({
               ...(role ? { role } : {}),

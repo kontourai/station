@@ -19,12 +19,12 @@ import { triggerHaptic } from '../platform/native/haptics';
 type GuidedConnectPanel = 'pair-device' | 'request-access' | 'add';
 
 interface GuidedConnectProps {
-/** Called after a pairing exchange has committed a usable browser session. */
+  /** Called after a pairing exchange has committed a usable browser session. */
   onSessionEstablished?: () => void;
-/**
- * archive#2652 / archive#1772: open the unpaired sample workspace so a reviewer
-* can take the receipts tour without a Station host.
-*/
+  /**
+   * archive#2652 / archive#1772: open the unpaired sample workspace so a reviewer
+   * can take the receipts tour without a Station host.
+   */
   onExploreSample?: () => void;
 }
 

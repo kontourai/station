@@ -77,8 +77,8 @@ export function usePluginManagementViewModel() {
     deselect: deselectPlugin,
   } = useUrlSelection('/plugins');
 
- // `error`/`refetch` too, or a failed read renders the definitive
-// "No plugins installed yet" over plugins Station simply could not read.
+  // `error`/`refetch` too, or a failed read renders the definitive
+  // "No plugins installed yet" over plugins Station simply could not read.
   const {
     data: plugins = [],
     error: pluginsError,
@@ -143,18 +143,18 @@ export function usePluginManagementViewModel() {
   const addLayoutFromPluginMutation = useAddProjectLayoutFromPluginMutation();
   const reloadPluginsMutation = useReloadPluginsMutation();
   const revokePermissionMutation = useRevokePluginPermissionMutation();
-// archive#3815: the permission being withdrawn, so its own row shows the
-// pending state instead of the whole section going busy.
- // A SET, not one string : the UI deliberately leaves every
-// other row actionable, so two removals can be in flight at once. With a
-// single slot the second replaced the first, and whichever settled first
-// cleared the pending state of the one still running.
+  // archive#3815: the permission being withdrawn, so its own row shows the
+  // pending state instead of the whole section going busy.
+  // A SET, not one string : the UI deliberately leaves every
+  // other row actionable, so two removals can be in flight at once. With a
+  // single slot the second replaced the first, and whichever settled first
+  // cleared the pending state of the one still running.
   const [revokingPermissions, setRevokingPermissions] = useState<Set<string>>(
     () => new Set(),
   );
-// A trusted grant is cheap to remove and expensive to restore (the
-// isolated host review page), so that one asks first. The others do not:
-// making the safe direction slow is how people stop taking it.
+  // A trusted grant is cheap to remove and expensive to restore (the
+  // isolated host review page), so that one asks first. The others do not:
+  // making the safe direction slow is how people stop taking it.
   const [revokeConfirm, setRevokeConfirm] = useState<{
     pluginName: string;
     permission: string;
@@ -231,17 +231,17 @@ export function usePluginManagementViewModel() {
       return;
     }
 
-// archive#4288. The gate, and the reason it is HERE rather than in
-// `onSuccess`: `installMutation.mutate` is the mutation. Asking after it
-// resolves asks about a plugin that is already on disk — and for the
-// contributions that run in the browser, already able to have run. So the
-// decision is taken first, and it travels with the request as the thing
-// the server refuses to mutate without.
-//
-// `previewData` is the whole basis: the server derived it from the copy it
-// staged, and it carries the digest that binds the answer to those bytes.
-// No preview, no basis, no install — the client cannot assemble a decision
-// it never showed anyone.
+    // archive#4288. The gate, and the reason it is HERE rather than in
+    // `onSuccess`: `installMutation.mutate` is the mutation. Asking after it
+    // resolves asks about a plugin that is already on disk — and for the
+    // contributions that run in the browser, already able to have run. So the
+    // decision is taken first, and it travels with the request as the thing
+    // the server refuses to mutate without.
+    //
+    // `previewData` is the whole basis: the server derived it from the copy it
+    // staged, and it carries the digest that binds the answer to those bytes.
+    // No preview, no basis, no install — the client cannot assemble a decision
+    // it never showed anyone.
     const basis = previewData;
     if (!basis?.contentDigest || !basis.permissions) {
       setInstallMessage({
@@ -386,10 +386,10 @@ export function usePluginManagementViewModel() {
         permissions: [permission],
       });
     } catch (error) {
-// A failed withdrawal used to be silent: the row stopped spinning, the
-// confirmation closed, and the permission was still there (
- //). Nothing is more misleading on a permission surface than a
-// removal that looks like it happened.
+      // A failed withdrawal used to be silent: the row stopped spinning, the
+      // confirmation closed, and the permission was still there (
+      //). Nothing is more misleading on a permission surface than a
+      // removal that looks like it happened.
       setMessage({
         type: 'error',
         text:

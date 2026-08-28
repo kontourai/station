@@ -36,7 +36,7 @@ describe('ui block helpers', () => {
         tone: undefined,
         fields: undefined,
         id: undefined,
- // no fields → decorative, no data claim (archive#1399).
+        // no fields → decorative, no data claim (archive#1399).
         attestationState: 'decorative',
       },
       {
@@ -46,8 +46,8 @@ describe('ui block helpers', () => {
         caption: undefined,
         id: undefined,
         title: undefined,
-// rows → data-bearing, but no derivedFrom was supplied: rendered
-// (never dropped) and marked unattested, not silently 'attested'.
+        // rows → data-bearing, but no derivedFrom was supplied: rendered
+        // (never dropped) and marked unattested, not silently 'attested'.
         derivedFrom: undefined,
         provenanceDigest: undefined,
         attestationState: 'unattested',
@@ -59,22 +59,22 @@ describe('ui block helpers', () => {
         language: 'json',
         code: '{ "mcpUiHost": true }',
         id: undefined,
-// code is inert text, not structured data → always decorative.
+        // code is inert text, not structured data → always decorative.
         attestationState: 'decorative',
       },
     ]);
   });
 
-// archive#1399, (independent review —, confirmed by
-// triage): this test used to ENSHRINE the exact bug the review caught —
-// it supplied a `derivedFrom` array and a completely fabricated
-// `provenanceDigest` ('a'.repeat(64), not a hash of anything) with no
-// `attestationState` claim at all, and asserted BOTH survived as
-// `attested` + the forged digest verbatim. That is exactly how a tool
-// this module has no way to trust could paint an unverified claim with
-// Station's own "checked" visual. Inverted per the ruling: a supplied
-// digest/derivedFrom with no matching attestationState claim MUST NOT
-// mint 'attested', and the forged digest MUST NOT survive.
+  // archive#1399, (independent review —, confirmed by
+  // triage): this test used to ENSHRINE the exact bug the review caught —
+  // it supplied a `derivedFrom` array and a completely fabricated
+  // `provenanceDigest` ('a'.repeat(64), not a hash of anything) with no
+  // `attestationState` claim at all, and asserted BOTH survived as
+  // `attested` + the forged digest verbatim. That is exactly how a tool
+  // this module has no way to trust could paint an unverified claim with
+  // Station's own "checked" visual. Inverted per the ruling: a supplied
+  // digest/derivedFrom with no matching attestationState claim MUST NOT
+  // mint 'attested', and the forged digest MUST NOT survive.
   test('a data-bearing block with derivedFrom but no attestationState claim is unattested — the forged digest does not survive', () => {
     const [block] = extractUIBlocks({
       uiBlocks: [
@@ -83,9 +83,9 @@ describe('ui block helpers', () => {
           columns: ['Metric', 'Value'],
           rows: [['Coverage', 98]],
           derivedFrom: [{ kind: 'toolCallId', toolCallId: 'call_1' }],
-// A fabricated digest — not a real hash of anything, and no tool
-// output can independently prove it is. Mere presence must not
-// mint 'attested' anymore.
+          // A fabricated digest — not a real hash of anything, and no tool
+          // output can independently prove it is. Mere presence must not
+          // mint 'attested' anymore.
           provenanceDigest: 'a'.repeat(64),
         },
       ],
@@ -95,22 +95,22 @@ describe('ui block helpers', () => {
     expect(block?.provenanceDigest).not.toBe('a'.repeat(64));
   });
 
- // archive#1399 fix, : this test does NOT
-// prove a forged tuple can't reach the UI — the reviewer's own probe
-// showed the opposite, that a WELL-SHAPED forged tuple (real derivedFrom
-// + fake digest + attestationState already 'attested', all mutually
-// consistent) sails straight through this mirror, because this module
-// cannot independently verify a digest. It only proves this module's
-// DESIGNED behavior: it trusts server-sanitized input by design, and
-// relies ENTIRELY on the server (`safeSanitizeUIBlockEventProvenance` at
-// the write/publish seams, `sanitizeConversationMessagesUIBlockProvenance`
-// at the message-serve boundary — both in
-// `src-server/runtime/conversation/ui-block-provenance.ts`) to have
-// already made the claim true before this code ever runs. The actual
-// "does a forged tuple survive" proof lives server-side, in
-// `ui-block-provenance.test.ts`'s
-// "a well-shaped forged tuple served from the FileMemory store does NOT
-// survive serving".
+  // archive#1399 fix, : this test does NOT
+  // prove a forged tuple can't reach the UI — the reviewer's own probe
+  // showed the opposite, that a WELL-SHAPED forged tuple (real derivedFrom
+  // + fake digest + attestationState already 'attested', all mutually
+  // consistent) sails straight through this mirror, because this module
+  // cannot independently verify a digest. It only proves this module's
+  // DESIGNED behavior: it trusts server-sanitized input by design, and
+  // relies ENTIRELY on the server (`safeSanitizeUIBlockEventProvenance` at
+  // the write/publish seams, `sanitizeConversationMessagesUIBlockProvenance`
+  // at the message-serve boundary — both in
+  // `src-server/runtime/conversation/ui-block-provenance.ts`) to have
+  // already made the claim true before this code ever runs. The actual
+  // "does a forged tuple survive" proof lives server-side, in
+  // `ui-block-provenance.test.ts`'s
+  // "a well-shaped forged tuple served from the FileMemory store does NOT
+  // survive serving".
   test('trusts a server-sanitized attested claim by design — the client cannot verify a digest itself', () => {
     const [block] = extractUIBlocks({
       uiBlocks: [
@@ -135,7 +135,7 @@ describe('ui block helpers', () => {
           type: 'table',
           columns: ['Metric', 'Value'],
           rows: [['Coverage', 98]],
-// No real derivedFrom, but the tool output lies about its state.
+          // No real derivedFrom, but the tool output lies about its state.
           attestationState: 'attested',
         },
       ],
@@ -143,14 +143,14 @@ describe('ui block helpers', () => {
     expect(block?.attestationState).toBe('unattested');
   });
 
- //  — the reverse override, observed at THIS layer.
-// The full host-derived correction (self-declared decorative/unattested
-// on a genuinely valid data-bearing block gets corrected UP to 'attested')
-// is server-only — this module cannot independently verify a digest, so
-// its authority is downgrade-only: a self-declared non-'attested' claim on
-// data-bearing content with real sources still reads 'unattested' here,
-// never silently promoted. The upgrade correction is covered server-side
-// in `ui-block-provenance.test.ts`'s "reverse override" test.
+  //  — the reverse override, observed at THIS layer.
+  // The full host-derived correction (self-declared decorative/unattested
+  // on a genuinely valid data-bearing block gets corrected UP to 'attested')
+  // is server-only — this module cannot independently verify a digest, so
+  // its authority is downgrade-only: a self-declared non-'attested' claim on
+  // data-bearing content with real sources still reads 'unattested' here,
+  // never silently promoted. The upgrade correction is covered server-side
+  // in `ui-block-provenance.test.ts`'s "reverse override" test.
   test('a self-declared decorative claim on a data-bearing block with real sources is not promoted here (downgrade-only authority)', () => {
     const [block] = extractUIBlocks({
       uiBlocks: [
@@ -219,7 +219,7 @@ describe('ui block helpers', () => {
             options: undefined,
           },
         ],
-// form fields are input definitions, not asserted facts → decorative.
+        // form fields are input definitions, not asserted facts → decorative.
         attestationState: 'decorative',
       },
     ]);

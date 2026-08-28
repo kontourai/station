@@ -41,12 +41,12 @@ describe('local self-provision boot path drives the real stranded profile shape 
           schemaVersion: 1,
           name: 'kontour',
           endpoint: 'http://127.0.0.1:3141',
-// Exactly the incident's shape: both fields already recorded and
-// "healthy"-looking. The credential itself is unreadable (a
-// keychain ACL mismatch after a bundle swap) — a fact this
-// process cannot observe from the profile document alone, which
-// is the entire point of routing this to the Rust command instead
-// of pre-empting it here.
+          // Exactly the incident's shape: both fields already recorded and
+          // "healthy"-looking. The credential itself is unreadable (a
+          // keychain ACL mismatch after a bundle swap) — a fact this
+          // process cannot observe from the profile document alone, which
+          // is the entire point of routing this to the Rust command instead
+          // of pre-empting it here.
           credentialRef: { kind: 'station-bearer', id: 'kontour-token' },
           configurationState: 'configured',
           localService: {
@@ -74,11 +74,11 @@ describe('local self-provision boot path drives the real stranded profile shape 
         if (command === 'station_profile_store_read') {
           return JSON.stringify(strandedProfileStore) as T;
         }
-// The real Rust-side decision is proven separately, against the
-// real OS keychore taxonomy, by station-desktop's own
-// fault-injected unit tests
-// (profile_already_locally_provisioned_observes_an_unreadable_credential_as_not_provisioned).
-// This fake only needs to prove the CALL itself is reached.
+        // The real Rust-side decision is proven separately, against the
+        // real OS keychore taxonomy, by station-desktop's own
+        // fault-injected unit tests
+        // (profile_already_locally_provisioned_observes_an_unreadable_credential_as_not_provisioned).
+        // This fake only needs to prove the CALL itself is reached.
         return undefined as T;
       },
     };
@@ -86,7 +86,7 @@ describe('local self-provision boot path drives the real stranded profile shape 
     const storage = new NativeStationProfileStorage(bridge);
     await storage.hydrate();
 
-// The exact two lines OnboardingGate.tsx's boot effect runs.
+    // The exact two lines OnboardingGate.tsx's boot effect runs.
     const pendingProfileName = storage.pendingLocalSelfProvisionProfileName();
     expect(pendingProfileName).toBe('kontour');
     const provisioned = await attemptLocalSelfProvisionOnce({

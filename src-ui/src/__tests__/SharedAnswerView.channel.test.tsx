@@ -22,7 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * ("this Station reports…"), and the words "verified" and "proven" must not
  * appear in it until the signing slice lands. It is asserted here rather than
  * as a repo-wide grep because `verified` is a legitimate identifier elsewhere
-* `channel-assurance.ts` has a field by that name — and a blunt gate would
+ * `channel-assurance.ts` has a field by that name — and a blunt gate would
  * flag it.
  */
 
@@ -87,9 +87,9 @@ afterEach(() => {
 
 describe('trap 1 / AC5 — the version gate is a SET, not an equality', () => {
   it('renders a legacy version-1 payload rather than the unsupported notice', async () => {
-// The defect this pins: bumping the minted constant to 2 while the viewer
-// compared for equality against it made EVERY existing share render "this
-// page cannot read this format".
+    // The defect this pins: bumping the minted constant to 2 while the viewer
+    // compared for equality against it made EVERY existing share render "this
+    // page cannot read this format".
     await renderShare(payload());
     expect(screen.getByText('The shared answer.')).toBeTruthy();
     expect(screen.queryByText(/format this page cannot read/i)).toBeNull();
@@ -169,9 +169,9 @@ describe('AC8 — the channel panel is producer-asserted L0 copy', () => {
   it.each(STATUSES)(
     '$name never says "verified" or "proven"',
     async (entry) => {
-// "because 'we did not check' must never render as 'it verified'"
-// (`receipt-chain.ts`). Nothing in this slice is signed, so nothing in
-// this panel may claim to have been checked from outside.
+      // "because 'we did not check' must never render as 'it verified'"
+      // (`receipt-chain.ts`). Nothing in this slice is signed, so nothing in
+      // this panel may claim to have been checked from outside.
       await renderShare(payload({ schemaVersion: 2, channel: entry.channel }));
       expect(channelPanel().textContent ?? '').not.toMatch(/verified|proven/i);
     },
@@ -205,9 +205,9 @@ describe('AC8 — the channel panel is producer-asserted L0 copy', () => {
   });
 
   it('an unrecognised reason still says something, and claims nothing', async () => {
-//`reason` arrives off the wire, so a newer Station's reason must
-// not index a closed Record — and `constructor` must not return a
-// prototype member as a React child.
+    //`reason` arrives off the wire, so a newer Station's reason must
+    // not index a closed Record — and `constructor` must not return a
+    // prototype member as a React child.
     for (const reason of ['invented-by-a-newer-station', 'constructor']) {
       vi.unstubAllGlobals();
       await renderShare(
@@ -225,8 +225,8 @@ describe('AC8 — the channel panel is producer-asserted L0 copy', () => {
   });
 
   it('renders no panel at all when the payload carries no channel field', async () => {
- // A Station older than archive#1598. Inventing a status on the client would be
-// the read-time derivation this slice refuses.
+    // A Station older than archive#1598. Inventing a status on the client would be
+    // the read-time derivation this slice refuses.
     await renderShare(payload());
     expect(screen.queryByLabelText('Channel log')).toBeNull();
   });

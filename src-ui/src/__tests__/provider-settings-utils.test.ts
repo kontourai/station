@@ -46,10 +46,10 @@ describe('provider-settings utils', () => {
   });
 
   test('filterModelProviders searches the inventory it is given', () => {
-// archive#3747: membership is the model inventory route's answer now
-// (`isLlmModelConnection`, asserted at the service), so this helper only
-// searches. It used to re-derive membership here, and a second derivation
-// of a server fact is exactly what that issue removed.
+    // archive#3747: membership is the model inventory route's answer now
+    // (`isLlmModelConnection`, asserted at the service), so this helper only
+    // searches. It used to re-derive membership here, and a second derivation
+    // of a server fact is exactly what that issue removed.
     expect(filterModelProviders(providers, '')).toHaveLength(2);
     expect(filterModelProviders(providers, 'aws')).toHaveLength(1);
     expect(filterModelProviders(providers, 'aws')[0]?.id).toBe('bedrock');

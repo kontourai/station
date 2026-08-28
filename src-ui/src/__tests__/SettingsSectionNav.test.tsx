@@ -1,14 +1,14 @@
 /**
  * @vitest-environment jsdom
  *
-* archive#4463: the audit's named bug was Settings' all-caps
+ * archive#4463: the audit's named bug was Settings' all-caps
  * `STATION`/`DEFAULTS` group labels rendering inline in the same row as its
  * Title-case links — two label vocabularies colliding in one control.
  * `settingsSectionNavItems` is the fix's contract: a flat `SectionNavItem[]`
  * with no group-label item type at all, using `dividerAfter` to mark a scope
  * boundary instead. This tests that contract directly, and separately
-* renders it through the real `SectionNav` primitive (: NOT `Tabs`
-* these are real deep-linkable URL sections, not an in-place tab widget,
+ * renders it through the real `SectionNav` primitive (: NOT `Tabs`
+ * these are real deep-linkable URL sections, not an in-place tab widget,
  * see `components/SectionNav.tsx`) to prove the nav's DOM never re-admits a
  * group-label node sharing the row.
  */
@@ -30,11 +30,11 @@ describe('settingsSectionNavItems', () => {
   });
 
   test('renders no item that is not a real leaf section or Overview — no separate group-label pseudo-item', () => {
-// The real guard: item count is EXACTLY Overview + one per leaf section
-// (asserted above). This adds the complementary check that every group
-// name appears at most as a leaf section's own title (e.g. the sole
-// Defaults-group section is itself titled "Defaults") and never as an
-// EXTRA item with no corresponding `SETTINGS_SECTIONS` entry.
+    // The real guard: item count is EXACTLY Overview + one per leaf section
+    // (asserted above). This adds the complementary check that every group
+    // name appears at most as a leaf section's own title (e.g. the sole
+    // Defaults-group section is itself titled "Defaults") and never as an
+    // EXTRA item with no corresponding `SETTINGS_SECTIONS` entry.
     const items = settingsSectionNavItems(hrefForSection);
     const sectionIds = new Set<string>(SETTINGS_SECTIONS.map((s) => s.id));
     for (const item of items.slice(1)) {
@@ -67,7 +67,7 @@ describe('settingsSectionNavItems', () => {
     }
     expect(byId.get('overview')?.dividerAfter).toBeFalsy();
 
-// Every non-boundary item must be undefined/false, not just the ones checked above.
+    // Every non-boundary item must be undefined/false, not just the ones checked above.
     const dividerKeys = items
       .filter((item) => item.dividerAfter)
       .map((item) => item.key);
@@ -87,8 +87,8 @@ describe('Settings section nav rendered through SectionNav', () => {
     );
     const nav = screen.getByRole('navigation', { name: 'Settings sections' });
     const links = screen.getAllByRole('link');
-// Every DIRECT non-divider child of the nav is a link — no interposed
-// group-label element, and no unaccounted-for child at all.
+    // Every DIRECT non-divider child of the nav is a link — no interposed
+    // group-label element, and no unaccounted-for child at all.
     const nonDividerChildren = Array.from(nav.children).filter(
       (child) => !child.classList.contains('section-nav__divider'),
     );

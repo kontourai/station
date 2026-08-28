@@ -49,8 +49,8 @@ describe('handleOrchestrationEvent — station#1301 slice 1 ingest seam', () => 
     );
 
     expect(ingestSpy).toHaveBeenCalledTimes(1);
-// The store actually bound the delegate — proof this isn't just a
-// pass-through call that the guard immediately discarded downstream.
+    // The store actually bound the delegate — proof this isn't just a
+    // pass-through call that the guard immediately discarded downstream.
     expect(
       backgroundTasksStore.getSnapshot().delegateParents[
         'task:delegate-untracked'
@@ -193,9 +193,9 @@ describe('handleOrchestrationEvent — station#3451 finding 7 (queue drain on ru
   const threadId = 'thread-runtime-error-drain';
 
   beforeEach(() => {
-// Real timers would let drainQueuedMessageOnTurnCompleted's setTimeout
-// fire later and reach the real network-touching sendExecutionMessage;
-// fake timers left un-advanced means it never fires in this test.
+    // Real timers would let drainQueuedMessageOnTurnCompleted's setTimeout
+    // fire later and reach the real network-touching sendExecutionMessage;
+    // fake timers left un-advanced means it never fires in this test.
     vi.useFakeTimers();
     activeChatsStore.removeChat(threadId);
     activeChatsStore.initChat(threadId, {
@@ -219,8 +219,8 @@ describe('handleOrchestrationEvent — station#3451 finding 7 (queue drain on ru
       event('runtime.error', { threadId, message: 'boom' }),
     );
 
-// drainQueuedMessageOnTurnCompleted shifts the queue head synchronously,
-// before its setTimeout-deferred send — proof this listener is wired.
+    // drainQueuedMessageOnTurnCompleted shifts the queue head synchronously,
+    // before its setTimeout-deferred send — proof this listener is wired.
     expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([]);
   });
 
@@ -236,12 +236,12 @@ describe('handleOrchestrationEvent — station#3451 finding 7 (queue drain on ru
     ).toEqual([]);
   });
 
-// archive#3451: the discriminating case — a codex
-// deferred-retriable runtime.error (willRetry: true) must NOT drain, since
-// codex may still resolve this same turn without a new turn.started. The
-// earlier "drains on a runtime.error" test above uses provider: 'claude'
-// (the event helper's default), so it never actually exercised this
-// gate — it would have passed identically with no gate at all.
+  // archive#3451: the discriminating case — a codex
+  // deferred-retriable runtime.error (willRetry: true) must NOT drain, since
+  // codex may still resolve this same turn without a new turn.started. The
+  // earlier "drains on a runtime.error" test above uses provider: 'claude'
+  // (the event helper's default), so it never actually exercised this
+  // gate — it would have passed identically with no gate at all.
   test('a codex deferred-retriable runtime.error does NOT drain a queued message', () => {
     activeChatsStore.updateChat(threadId, {
       queuedMessages: ['queued follow-up'],
@@ -262,8 +262,8 @@ describe('handleOrchestrationEvent — station#3451 finding 7 (queue drain on ru
     ]);
   });
 
-// Negative control: a DEFINITIVE (non-retriable) codex runtime.error is
-// NOT deferred and must still drain.
+  // Negative control: a DEFINITIVE (non-retriable) codex runtime.error is
+  // NOT deferred and must still drain.
   test('a definitive (non-retriable) codex runtime.error still drains', () => {
     activeChatsStore.updateChat(threadId, {
       queuedMessages: ['queued follow-up'],

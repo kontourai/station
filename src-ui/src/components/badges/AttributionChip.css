@@ -24,7 +24,7 @@
   line-height: 1.4;
   background: var(--bg-tertiary);
   color: var(--text-muted);
- /* archive#1424 fix : a long owner display name must truncate
+  /* archive#1424 fix : a long owner display name must truncate
      inside the message bubble's own 70%-width cap on a narrow dock, not
      overflow it — `flex-shrink: 0` (the previous rule) prevented exactly
      that shrink. */

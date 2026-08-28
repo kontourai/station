@@ -21,17 +21,17 @@
  * case, from inside a `useCallback` body — a plain async function over the
  * store singletons (`conversationsStore`, `activeChatsStore`) works for both.
  *
-* archive#1225 `queryClient` is threaded through as an
+ * archive#1225 `queryClient` is threaded through as an
  * explicit param, NOT dropped — `conversationsStore.fetchMessages` uses it
  * to look up the cached `['agentTools', agentSlug]` query and build
  * `toolMappings`, the fallback for a persisted tool-call part that lacks its
  * own server/toolName/originalName (without it, those render raw internal
  * tool names instead of the resolved display name). Both callers supply it
-* from a real hook boundary: `useRehydrateSessions` calls `useQueryClient`
+ * from a real hook boundary: `useRehydrateSessions` calls `useQueryClient`
  * directly; the reconnect path threads it down from `useOrchestration`'s
-* `useQueryClient` call through `ensureOrchestrationEventStream` ->
+ * `useQueryClient` call through `ensureOrchestrationEventStream` ->
  * `applyOrchestrationSnapshot` (neither of which is a hook, so neither can
-* call `useQueryClient` itself).
+ * call `useQueryClient` itself).
  */
 import type { QueryClient } from '@tanstack/react-query';
 import type { ChatUIState } from '../../contexts/active-chats-state';
@@ -46,20 +46,20 @@ import {
 } from '../useActiveChatSessions.helpers';
 
 export interface RehydrateChatSessionOptions {
-/**
-* `true` bypasses `conversationsStore`'s in-flight/cached fetch guard
-* (`refreshMessages`) so a known-stale transcript is genuinely
-* re-fetched. `false`/omitted uses the cheaper `fetchMessages` path
-* (`useRehydrateSessions`'s mount-time behavior, unchanged).
-*/
+  /**
+   * `true` bypasses `conversationsStore`'s in-flight/cached fetch guard
+   * (`refreshMessages`) so a known-stale transcript is genuinely
+   * re-fetched. `false`/omitted uses the cheaper `fetchMessages` path
+   * (`useRehydrateSessions`'s mount-time behavior, unchanged).
+   */
   force?: boolean;
-/**
-* The mounted app's `QueryClient`, when the caller has one available (see
-* the file-header note) — forwarded verbatim to
-* `conversationsStore.fetchMessages`/`refreshMessages` for the
-* `toolMappings` cache lookup. Omitted only where no hook boundary is
-* reachable at all; every real call site in this app has one.
-*/
+  /**
+   * The mounted app's `QueryClient`, when the caller has one available (see
+   * the file-header note) — forwarded verbatim to
+   * `conversationsStore.fetchMessages`/`refreshMessages` for the
+   * `toolMappings` cache lookup. Omitted only where no hook boundary is
+   * reachable at all; every real call site in this app has one.
+   */
   queryClient?: QueryClient;
 }
 
@@ -86,9 +86,9 @@ export async function rehydrateChatSession(
 ): Promise<void> {
   const { agentSlug, conversationId } = chat;
   if (!agentSlug || !conversationId) return;
-// Station-owned threads hydrate through the bounded event-window reader in
-// ChatDock. Reading /messages here would recreate an unbounded second
-// transcript authority during every reconnect.
+  // Station-owned threads hydrate through the bounded event-window reader in
+  // ChatDock. Reading /messages here would recreate an unbounded second
+  // transcript authority during every reconnect.
   if (chat.orchestrationSessionStarted) return;
 
   if (options.force) {
@@ -111,11 +111,11 @@ export async function rehydrateChatSession(
   const backendMessages = (conversationsStore.getSnapshot().messages[
     messagesKey
   ] || []) as ActiveChatConversationMessage[];
- // archive#1311: this path is BOTH the mount-time rehydrate AND the
-// reconnect-fallback catchup sweep (see file header) — the latter can run
-// for every tracked chat on every SSE reconnect, so re-normalizing the
-// SAME backend messages here must not re-inflate recency to "now" each
-// time. Anchor to the conversation's real `updatedAt` when resolvable.
+  // archive#1311: this path is BOTH the mount-time rehydrate AND the
+  // reconnect-fallback catchup sweep (see file header) — the latter can run
+  // for every tracked chat on every SSE reconnect, so re-normalizing the
+  // SAME backend messages here must not re-inflate recency to "now" each
+  // time. Anchor to the conversation's real `updatedAt` when resolvable.
   const conversationUpdatedAt = resolveConversationUpdatedAt(
     options.queryClient,
     agentSlug,

@@ -42,9 +42,9 @@ describe('ThemeToggle', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
   });
 
-// archive#settings-revamp: the DOM side effect is
-// keyed on the store VALUE (a `useEffect`), so it fires however the value
-// changed — not only through this component's own click handler.
+  // archive#settings-revamp: the DOM side effect is
+  // keyed on the store VALUE (a `useEffect`), so it fires however the value
+  // changed — not only through this component's own click handler.
   test('an out-of-band store change (e.g. an Import Settings action) updates data-theme even though it never went through this component', () => {
     render(<ThemeToggle />);
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');

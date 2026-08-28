@@ -73,11 +73,11 @@ vi.mock('../hooks/useScheduler', () => ({
   useRunJob: () => runMutation,
   useToggleJob: () => ({ mutate: vi.fn() }),
   useDeleteJob: () => ({ mutate: vi.fn() }),
-// Added when useScheduler gained it and the view adopted it. This
-// factory must name EVERY export the view reaches, so each new hook
-// reds this suite until listed (archive#4292). The partial-mock form
-// vitest suggests does not work here as-is: falling through to the
-// real hooks needs a QueryClientProvider around the render.
+  // Added when useScheduler gained it and the view adopted it. This
+  // factory must name EVERY export the view reaches, so each new hook
+  // reds this suite until listed (archive#4292). The partial-mock form
+  // vitest suggests does not work here as-is: falling through to the
+  // real hooks needs a QueryClientProvider around the render.
   useRestartJobMonitor: () => ({ mutate: vi.fn(), mutateAsync: vi.fn() }),
   useResolveIndeterminateJobMonitor: () => ({
     mutate: vi.fn(),
@@ -183,8 +183,8 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
   });
 
   test('a 500 naming a repair command shows that command, not connection advice', async () => {
-// The exact body src-server/routes/operations/scheduler.ts writes when a
-// corrupt ledger surfaces (archive#3220).
+    // The exact body src-server/routes/operations/scheduler.ts writes when a
+    // corrupt ledger surfaces (archive#3220).
     const error = await schedulerClientErrorFor(
       JSON.stringify({
         success: false,
@@ -202,7 +202,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
         'The scheduler service answered with HTTP 500: The scheduler ledger is corrupt. Run `station home restore` to recover it.',
       ),
     ).toBeTruthy();
-// The defect this issue is about: advice about a server that answered.
+    // The defect this issue is about: advice about a server that answered.
     expect(screen.queryByText(/Check that the server is running/)).toBeNull();
   });
 
@@ -223,9 +223,9 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
   });
 
   test('when only one query was answered, that answer is what the user reads', async () => {
-// /jobs never reached the server; /status did and explained itself. The
-// answered one is the only error carrying what the server said, so an
-// ordering that just preferred `jobs` would bury the repair instruction.
+    // /jobs never reached the server; /status did and explained itself. The
+    // answered one is the only error carrying what the server said, so an
+    // ordering that just preferred `jobs` would bury the repair instruction.
     schedulerHooks.jobs = {
       data: [],
       isLoading: false,
@@ -397,7 +397,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     expect(
       screen.getByText(/That scheduled run isn’t available/i),
     ).toBeTruthy();
-// The promise this message exists for: no substitution (archive#3965).
+    // The promise this message exists for: no substitution (archive#3965).
     expect(
       screen.getByText(/won’t open a different one in its place/i),
     ).toBeTruthy();
@@ -443,8 +443,8 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     const { rerender } = render(<ScheduleView />);
     expect(runButton('nightly-digest').disabled).toBe(false);
 
-// React Query reports the in-flight mutation's own variables; the button
-// state is scoped to the job that was actually asked to run.
+    // React Query reports the in-flight mutation's own variables; the button
+    // state is scoped to the job that was actually asked to run.
     runMutation.isPending = true;
     runMutation.variables = 'nightly-digest';
     rerender(<ScheduleView />);
@@ -467,11 +467,11 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
   });
 
   test('an auth failure whose body is an object never renders [object Object]', async () => {
-// The runtime's own auth boundary answers 401/403/429 and the containment
-// 500 with `{ error: { code: … } }` (runtime-http.ts:95, :340, :446), and
-// both scheduler reads are pairing-scope gated — so this is the shape a
-// paired device with a narrower scope actually receives. `error` is
- // DECLARED string and computed by nobody (archive#3252).
+    // The runtime's own auth boundary answers 401/403/429 and the containment
+    // 500 with `{ error: { code: … } }` (runtime-http.ts:95, :340, :446), and
+    // both scheduler reads are pairing-scope gated — so this is the shape a
+    // paired device with a narrower scope actually receives. `error` is
+    // DECLARED string and computed by nobody (archive#3252).
     const error = await schedulerClientErrorFor(
       JSON.stringify({ error: { code: 'insufficient_scope' } }),
       { status: 403, headers: { 'content-type': 'application/json' } },

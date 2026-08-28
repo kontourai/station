@@ -37,7 +37,7 @@ function parseTopLevelBlocks(css: string): Block[] {
   let index = 0;
 
   while (index < lines.length) {
-// Collect a selector list that may span lines, ending at its `{`.
+    // Collect a selector list that may span lines, ending at its `{`.
     const selectorParts: string[] = [];
     let cursor = index;
     while (cursor < lines.length) {
@@ -55,9 +55,9 @@ function parseTopLevelBlocks(css: string): Block[] {
       const tokens = new Map<string, string>();
       let body = cursor + 1;
       while (body < lines.length && !lines[body].trim().startsWith('}')) {
-// Accumulate until the `;`: biome wraps long values across lines, and a
-// single-line regex would silently stop covering a token the moment its
-// value crossed the print width.
+        // Accumulate until the `;`: biome wraps long values across lines, and a
+        // single-line regex would silently stop covering a token the moment its
+        // value crossed the print width.
         let declarationText = lines[body];
         while (!declarationText.includes(';') && body + 1 < lines.length) {
           body += 1;
@@ -92,7 +92,7 @@ function parseTopLevelBlocks(css: string): Block[] {
  * three `:root.is-dev-build*` rules (index.css:28/39/43), so a token added to one
  * of those below the light block is a realistic edit, not a hypothetical.
  *
-* Descendant forms (`:root.thing`) are excluded: those target a different
+ * Descendant forms (`:root.thing`) are excluded: those target a different
  * element, not the root, so they cannot shadow a root-level token.
  *
  * `BARE_LIGHT` stays strict — it identifies *where the light block is*, and a
@@ -114,10 +114,10 @@ describe('theme token cascade (#1062)', () => {
   const blocks = parseTopLevelBlocks(css);
 
   test('the parser finds the theme blocks it is meant to police', () => {
-// Guards the test itself. Counting blocks is not enough — an unrelated
-// `:root` rule satisfies that while the theme blocks go unparsed (a comment
-// inside a selector list is enough to hide one). So assert the tokens that
-// must be in scope are actually in scope.
+    // Guards the test itself. Counting blocks is not enough — an unrelated
+    // `:root` rule satisfies that while the theme blocks go unparsed (a comment
+    // inside a selector list is enough to hide one). So assert the tokens that
+    // must be in scope are actually in scope.
     const rootTokens = new Set(
       blocks
         .filter((b) => ROOT_MATCHING.test(b.selector))

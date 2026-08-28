@@ -23,36 +23,36 @@ interface ConsentRequest {
   pluginName: string;
   displayName: string;
   permissions: PermissionRequest[];
-/**
-* archive#4288. `true` when the plugin is NOT installed yet and the answer
-* decides whether it gets installed at all. Approving records nothing here:
-* there is no tree to bind a grant to, and grants bind to content. The
-* decision travels with `POST /install`, which grants what it covers once
-* the tree is final.
-*/
+  /**
+   * archive#4288. `true` when the plugin is NOT installed yet and the answer
+   * decides whether it gets installed at all. Approving records nothing here:
+   * there is no tree to bind a grant to, and grants bind to content. The
+   * decision travels with `POST /install`, which grants what it covers once
+   * the tree is final.
+   */
   decisionOnly: boolean;
   resolve: (granted: boolean) => void;
 }
 
 interface PermissionContextType {
-/** Show consent modal for a plugin's permissions. Returns true if user approved. */
+  /** Show consent modal for a plugin's permissions. Returns true if user approved. */
   requestConsent: (
     pluginName: string,
     displayName: string,
     permissions: PermissionRequest[],
   ) => Promise<boolean>;
-/**
-* Ask BEFORE installing (archive#4288). Same chrome, but it only returns
-* the decision — no grant is written and no host approval is opened,
-* because the plugin does not exist yet. The caller carries the answer into
-* the install, which is what refuses to mutate without it.
-*/
+  /**
+   * Ask BEFORE installing (archive#4288). Same chrome, but it only returns
+   * the decision — no grant is written and no host approval is opened,
+   * because the plugin does not exist yet. The caller carries the answer into
+   * the install, which is what refuses to mutate without it.
+   */
   requestInstallConsent: (
     pluginName: string,
     displayName: string,
     permissions: PermissionRequest[],
   ) => Promise<boolean>;
-/** Grant permissions on the server */
+  /** Grant permissions on the server */
   grantPermissions: (
     pluginName: string,
     permissions: string[],
@@ -82,9 +82,9 @@ const wait = (milliseconds: number) =>
 export function PermissionManager({ children }: { children: ReactNode }) {
   const { apiBase } = useApiBase();
   const [pending, setPending] = useState<ConsentRequest | null>(null);
-// archive#3677: a Tauri host reviews trusted approvals in native OS
-// chrome — the WebView cannot reach the distinct-origin consent page on
-// some targets, and the native dialog is unscriptable by design.
+  // archive#3677: a Tauri host reviews trusted approvals in native OS
+  // chrome — the WebView cannot reach the distinct-origin consent page on
+  // some targets, and the native dialog is unscriptable by design.
   const reviewNatively = useNativeConsentBroker();
 
   const requestConsent = useCallback(
@@ -163,10 +163,10 @@ export function PermissionManager({ children }: { children: ReactNode }) {
       }
 
       if (reviewNatively) {
-// The native host reviews and decides with its OWN local-grant
-// credential; the returned status is the server-settled decision.
-// No popup exists on this path, so nothing here needs transient
-// activation.
+        // The native host reviews and decides with its OWN local-grant
+        // credential; the returned status is the server-settled decision.
+        // No popup exists on this path, so nothing here needs transient
+        // activation.
         const outcome = await reviewNatively(body.approval.id);
         if (outcome.status !== 'ok') {
           throw new Error(
@@ -176,20 +176,20 @@ export function PermissionManager({ children }: { children: ReactNode }) {
         return outcome.value.status === 'approved';
       }
 
-// No browser way in, and no native path to take instead: the consent
-// listener is down for a caller that needed it (archive#3731). Say so
-// rather than opening a popup at nothing.
+      // No browser way in, and no native path to take instead: the consent
+      // listener is down for a caller that needed it (archive#3731). Say so
+      // rather than opening a popup at nothing.
       if (!body.approval.reviewUrl) {
         throw new Error(
           'The consent review page is unavailable, so nothing was granted.',
         );
       }
 
-// archive#3677: the server mints an ABSOLUTE review URL on the
-// distinct-origin consent listener (same hostname, its own port) —
-// deliberately NOT this app's origin, so plugin code sharing our origin
-// cannot script the review page. `apiBase` stays only as the base for a
-// hypothetical relative URL; an absolute one passes through unchanged.
+      // archive#3677: the server mints an ABSOLUTE review URL on the
+      // distinct-origin consent listener (same hostname, its own port) —
+      // deliberately NOT this app's origin, so plugin code sharing our origin
+      // cannot script the review page. `apiBase` stays only as the base for a
+      // hypothetical relative URL; an absolute one passes through unchanged.
       const reviewTarget = new URL(body.approval.reviewUrl, apiBase);
       if (
         reviewTarget.protocol !== 'http:' &&
@@ -230,9 +230,9 @@ export function PermissionManager({ children }: { children: ReactNode }) {
   const handleApprove = async () => {
     if (!pending) return;
     if (pending.decisionOnly) {
-// Nothing to write: the plugin is not installed, and a grant binds to
-// the content of an installed tree. The answer is the whole product of
-// this prompt.
+      // Nothing to write: the plugin is not installed, and a grant binds to
+      // the content of an installed tree. The answer is the whole product of
+      // this prompt.
       pending.resolve(true);
       setPending(null);
       return;
@@ -269,12 +269,12 @@ export function PermissionManager({ children }: { children: ReactNode }) {
     setPending(null);
   };
 
-// archive#3796: one memoised value per provider — a fresh object literal
-// here republishes the context to every consumer on any render of this
-// provider, whatever the render was actually about.
-// This provider owns the consent modal's own state, so it re-renders on
-// every consent open/close and every native-broker resolution — none of
-// which changes what it PUBLISHES.
+  // archive#3796: one memoised value per provider — a fresh object literal
+  // here republishes the context to every consumer on any render of this
+  // provider, whatever the render was actually about.
+  // This provider owns the consent modal's own state, so it re-renders on
+  // every consent open/close and every native-broker resolution — none of
+  // which changes what it PUBLISHES.
   const value = useMemo(
     () => ({ requestConsent, requestInstallConsent, grantPermissions }),
     [requestConsent, requestInstallConsent, grantPermissions],
@@ -295,8 +295,8 @@ export function PermissionManager({ children }: { children: ReactNode }) {
             zIndex: 10000,
           }}
         >
-{/* biome-ignore lint/a11y/noStaticElementInteractions: this dialog surface only shields backdrop dismissal; it is not an interactive control. */}
-{/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users do not need to activate a propagation shield. */}
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: this dialog surface only shields backdrop dismissal; it is not an interactive control. */}
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard users do not need to activate a propagation shield. */}
           <div
             style={{
               background: 'var(--bg-primary, #1a1a2e)',

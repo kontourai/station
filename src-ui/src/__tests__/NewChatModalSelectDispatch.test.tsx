@@ -64,8 +64,8 @@ const selectionModelState = {
     | { slug: string; name: string; workingDirectory?: string }
     | undefined,
   agents: [AGENT] as AgentData[],
- // Enable's FIND scope (archive#3027). `null` mirrors the default: the scoped
-// set equals the rendered agents.
+  // Enable's FIND scope (archive#3027). `null` mirrors the default: the scoped
+  // set equals the rendered agents.
   scopedAgents: null as AgentData[] | null,
   agentConnections: [] as unknown[],
 };
@@ -184,8 +184,8 @@ function renderForkModal(
 }
 
 function clickAgent(slug: string) {
-// Two buttons carry the agent's accessible name (the row and its model
-// configurator); target the row by its slug attribute.
+  // Two buttons carry the agent's accessible name (the row and its model
+  // configurator); target the row by its slug attribute.
   const row = document.querySelector(
     `button[data-agent-slug="${slug}"]`,
   ) as HTMLButtonElement;
@@ -262,10 +262,10 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
   });
 
   test('non-global context with an unresolved project must not be silent', () => {
- // The live archive#3013 state: context names a project the projects list cannot
-// resolve. Dispatching would target a workspace the server cannot
-// resolve either — so no dispatch — but the user must be TOLD, not
-// ignored.
+    // The live archive#3013 state: context names a project the projects list cannot
+    // resolve. Dispatching would target a workspace the server cannot
+    // resolve either — so no dispatch — but the user must be TOLD, not
+    // ignored.
     selectionModelState.isGlobal = false;
     selectionModelState.selectedProject = undefined;
     const onSelect = renderModal();
@@ -276,8 +276,8 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
   });
 
   test('Enter on an unavailable agent speaks instead of silently returning', () => {
-// The keyboard path reaches handleSelect with no availability filter; the
-// pointer path cannot (the row button is disabled). Review.
+    // The keyboard path reaches handleSelect with no availability filter; the
+    // pointer path cannot (the row button is disabled). Review.
     selectionModelState.agents = [UNAVAILABLE_AGENT];
     const onSelect = renderModal();
     fireEvent.keyDown(screen.getByPlaceholderText(/search/i), {
@@ -294,8 +294,8 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     const onSelect = renderModal();
     const row = clickAgent('downed');
     expect(row).toHaveProperty('disabled', true);
-// One visible statement of the refusal (the shared readiness chip) and
-// one accessible description carrying the server's sentence.
+    // One visible statement of the refusal (the shared readiness chip) and
+    // one accessible description carrying the server's sentence.
     expect(screen.getByText('Needs: connection offline')).toBeTruthy();
     expect(onSelect).not.toHaveBeenCalled();
   });
@@ -317,15 +317,15 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
       ) as HTMLButtonElement,
     );
 
-// Never-silent invariant: progress is announced before the write lands.
+    // Never-silent invariant: progress is announced before the write lands.
     expect(screen.getByRole('alert').textContent).toMatch(/setting up codex/i);
-// Only the engine binding crosses the wire: the modal no longer invents
-// a "<engine> Agent" name, which is what produced a duplicate row.
+    // Only the engine binding crosses the wire: the modal no longer invents
+    // a "<engine> Agent" name, which is what produced a duplicate row.
     expect(materializeMock).toHaveBeenCalledWith('codex');
     expect(onSelect).not.toHaveBeenCalled();
 
-// Selection keys off the CREATE RESPONSE — the agents list may lag
-// minutes behind (deferred activation + last-stable catalog).
+    // Selection keys off the CREATE RESPONSE — the agents list may lag
+    // minutes behind (deferred activation + last-stable catalog).
     await act(async () => {
       resolveCreate({ data: AUTHORED_CODEX });
     });
@@ -334,9 +334,9 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
   });
 
   test('a project-owned result is announced, not smuggled into this context (#3027 M2)', async () => {
-// The server's find-or-create is scope-blind by design. If what it
-// returns belongs to a DIFFERENT project than this context, selecting it
-// would do exactly what the scoped FIND exists to prevent.
+    // The server's find-or-create is scope-blind by design. If what it
+    // returns belongs to a DIFFERENT project than this context, selecting it
+    // would do exactly what the scoped FIND exists to prevent.
     selectionModelState.agents = [ENABLEABLE_ALIAS];
     materializeMock.mockResolvedValueOnce({
       data: { ...AUTHORED_CODEX, project: 'elsewhere' },
@@ -374,13 +374,13 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     ) as HTMLButtonElement;
     fireEvent.click(enableButton);
     fireEvent.click(enableButton);
-// The keyboard path is guarded by the same ref.
+    // The keyboard path is guarded by the same ref.
     fireEvent.keyDown(screen.getByPlaceholderText(/search/i), {
       key: 'Enter',
     });
 
     expect(materializeMock).toHaveBeenCalledTimes(1);
-// The visible affordance is disabled while in flight.
+    // The visible affordance is disabled while in flight.
     expect(enableButton.disabled).toBe(true);
 
     await act(async () => {
@@ -390,9 +390,9 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
   });
 
   test('an out-of-scope authored Agent is not silently selected — Enable creates instead (#3027 M2)', async () => {
-// The bound authored Agent exists in the raw catalog but NOT in the
-// scoped set (owned by another project / excluded by the project's
-// agents filter): FIND must not reach it.
+    // The bound authored Agent exists in the raw catalog but NOT in the
+    // scoped set (owned by another project / excluded by the project's
+    // agents filter): FIND must not reach it.
     selectionModelState.agents = [ENABLEABLE_ALIAS, AUTHORED_CODEX];
     selectionModelState.scopedAgents = [ENABLEABLE_ALIAS];
     materializeMock.mockResolvedValueOnce({ data: AUTHORED_CODEX });
@@ -410,8 +410,8 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
 
   test('a connection remedy suppresses Enable — fix the connection first (#3027 M1)', () => {
     selectionModelState.agents = [ENABLEABLE_ALIAS];
-// The server, which observed the broken binding, changes the repair kind.
-// Enable over a dead connection would overclaim.
+    // The server, which observed the broken binding, changes the repair kind.
+    // Enable over a dead connection would overclaim.
     selectionModelState.agents = [
       {
         ...ENABLEABLE_ALIAS,
@@ -427,7 +427,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
       document.querySelector('button[data-agent-action="remedy"]'),
     ).toBeTruthy();
 
-// Enter speaks the reason instead of enabling.
+    // Enter speaks the reason instead of enabling.
     fireEvent.keyDown(screen.getByPlaceholderText(/search/i), {
       key: 'Enter',
     });
@@ -486,11 +486,11 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
     expect(onSelect.mock.calls[0][0].slug).toBe('codex-agent');
   });
 
-// archive#3027(c). The owner's report: "text in new chat modal is way way
-// too long.. and doesn't really indicate an issue to me". Each engine
-// default without an authored Agent printed the whole server sentence
-// inline; five engines made the picker a wall of amber prose that read as
-// an explanation rather than a state.
+  // archive#3027(c). The owner's report: "text in new chat modal is way way
+  // too long.. and doesn't really indicate an issue to me". Each engine
+  // default without an authored Agent printed the whole server sentence
+  // inline; five engines made the picker a wall of amber prose that read as
+  // an explanation rather than a state.
   describe('unavailable rows read as a state, not a paragraph', () => {
     const SERVER_REASON =
       "Agent 'codex' has no authored Agent definition, so Station cannot start new sessions or continue existing conversations with it. Enable this engine by creating an Agent for it — new chats will run as that Agent; existing conversations stay readable.";
@@ -509,15 +509,15 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
       renderModal();
 
       expect(screen.getByText('Not set up')).toBeTruthy();
-// The sentence is not a visible node: its only occurrence carries the
-// screen-reader-only class.
+      // The sentence is not a visible node: its only occurrence carries the
+      // screen-reader-only class.
       const reason = reasonNode('codex');
       expect(reason?.textContent).toBe(SERVER_REASON);
       expect(reason?.className).toContain(
         'new-chat-modal__agent-reason--assistive',
       );
-// Every node in the picker that carries the sentence is the muted one —
-// no group header, selection feedback, or second copy prints it.
+      // Every node in the picker that carries the sentence is the muted one —
+      // no group header, selection feedback, or second copy prints it.
       const carriers = Array.from(document.querySelectorAll('*')).filter(
         (element) => element.textContent === SERVER_REASON,
       );
@@ -537,8 +537,8 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
       expect(document.getElementById(describedBy as string)?.textContent).toBe(
         SERVER_REASON,
       );
-// Sighted parity: the hover title on the row carries it too (the row
-// button is disabled, so a title there would never surface).
+      // Sighted parity: the hover title on the row carries it too (the row
+      // button is disabled, so a title there would never surface).
       expect(
         row.closest('.new-chat-modal__agent-row')?.getAttribute('title'),
       ).toBe(SERVER_REASON);
@@ -553,7 +553,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
         key: 'Enter',
       });
 
-// Never-silent invariant survives the copy change.
+      // Never-silent invariant survives the copy change.
       expect(screen.getByRole('alert').textContent).toMatch(
         /setting up codex/i,
       );
@@ -576,19 +576,19 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
       const enable = container.querySelector('[data-agent-action="enable"]');
 
       expect(chip?.textContent).toContain('Not set up');
-// Inline with the name means the same row, immediately after the name
-// element — not inside it (the name element carries only the name) and
-// not in the quiet meta line below.
+      // Inline with the name means the same row, immediately after the name
+      // element — not inside it (the name element carries only the name) and
+      // not in the quiet meta line below.
       expect(name?.nextElementSibling).toBe(chip);
       expect(side?.contains(enable as Node)).toBe(true);
       expect(select.contains(chip as Node)).toBe(true);
     });
 
- // DESIGN.md §5: EVERY non-ready row carries a state, in the same words
-// the Agents list uses — the row that "kept its reason and got no chip"
-// was the one case the picker and the list described differently. The
-// sentence is now always the row's accessible description, and the chip
-// is always the visible statement.
+    // DESIGN.md §5: EVERY non-ready row carries a state, in the same words
+    // the Agents list uses — the row that "kept its reason and got no chip"
+    // was the one case the picker and the list described differently. The
+    // sentence is now always the row's accessible description, and the chip
+    // is always the visible statement.
     test('a row with no enable signal states its need and keeps the sentence for a11y', () => {
       selectionModelState.agents = [UNAVAILABLE_AGENT];
       renderModal();
@@ -633,8 +633,8 @@ describe('shouldRouteScopedChatProject (#3013 routing seam)', () => {
   });
 
   test('a missing layout slug must NOT claim the route', () => {
- // The live archive#3013 defect: claiming true here made every caller return on
-// a navigation that never happened — no chat, no modal close, no error.
+    // The live archive#3013 defect: claiming true here made every caller return on
+    // a navigation that never happened — no chat, no modal close, no error.
     expect(
       shouldRouteScopedChatProject({ ...base, layoutSlug: undefined }),
     ).toBe(false);

@@ -292,7 +292,7 @@ export function ACPConnectionCatalogStage({
 }
 
 /**
-* / — what "Connect this provider" actually does, before it does
+ * / — what "Connect this provider" actually does, before it does
  * it: a persistent connection is written to this Station's config, and the
  * engine also gains an agent of its own (`materializeEngineAgent`), which the
  * old one-click path never mentioned anywhere.
@@ -385,12 +385,12 @@ export function ACPConnectionSetupStatus({
   stage: ACPConnectionSetupStage;
   label?: string;
   error: string | null;
-/**
-* the probe's own most recent failure, when it has one. "This
-* provider needs more setup before it can run work" named nothing and both
-* buttons walked away from the problem; this is the observation that says
-* what actually happened.
-*/
+  /**
+   * the probe's own most recent failure, when it has one. "This
+   * provider needs more setup before it can run work" named nothing and both
+   * buttons walked away from the problem; this is the observation that says
+   * what actually happened.
+   */
   reason?: { message: string; phase: string } | null;
   pending: boolean;
 }) {
@@ -425,7 +425,7 @@ export function ACPConnectionSetupStatus({
               {`${reason.phase}: ${reason.message}`}
             </span>
             <span className="acp-add-dialog__result-action">
-{/*
+              {/*
                 Derived from the phase the probe actually failed in, not
                 guessed from the message: before `initialize` the command
                 never ran, and after it the command is running and answering.

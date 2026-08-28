@@ -13,12 +13,12 @@ interface MonitoringLogStreamProps {
   events: any[];
   filteredEvents: any[];
   isLoading: boolean;
-/**
-* archive#3658: the historical read's failure, when it had one. `null` and
-* "the read came back with nothing" are different facts and get different
-* states — the empty state below is a claim about this Station's activity
-* and must not be drawn over a request that never succeeded.
-*/
+  /**
+   * archive#3658: the historical read's failure, when it had one. `null` and
+   * "the read came back with nothing" are different facts and get different
+   * states — the empty state below is a claim about this Station's activity
+   * and must not be drawn over a request that never succeeded.
+   */
   readError: unknown;
   onRetryRead: () => void;
   newEventIds: Set<string>;
@@ -82,17 +82,17 @@ export function MonitoringLogStream({
           <Skeleton variant="block" />
         </div>
       ) : readError ? (
-// The failed read comes FIRST and the empty state is withheld
-// entirely: "No events yet · Waiting for agent activity…" is a
-// statement about this Station, and it was being made on the strength
-// of a request that failed. Any events the live stream has already
-// delivered still render below it — an unreadable history does not
-// make the events in hand disappear.
-//
- // "Unable to load events" overstated it for exactly
-// that reason — the live stream can be healthy and rendering events
-// directly beneath the message. What failed is the HISTORY read, and
-// that is the fact the server computed.
+        // The failed read comes FIRST and the empty state is withheld
+        // entirely: "No events yet · Waiting for agent activity…" is a
+        // statement about this Station, and it was being made on the strength
+        // of a request that failed. Any events the live stream has already
+        // delivered still render below it — an unreadable history does not
+        // make the events in hand disappear.
+        //
+        // "Unable to load events" overstated it for exactly
+        // that reason — the live stream can be healthy and rendering events
+        // directly beneath the message. What failed is the HISTORY read, and
+        // that is the fact the server computed.
         <>
           <ErrorState
             variant="compact"

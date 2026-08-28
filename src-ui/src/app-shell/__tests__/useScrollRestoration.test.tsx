@@ -12,11 +12,11 @@ import {
 /**
  *measured on the audited build:
  *
-* | step |.content-view.scrollTop |
-* | /settings scrolled (scrollHeight 8428) | 3000                    |
-* | → /registry                            | 0                       |
-* | → back to /settings                    | 0  ← position lost      |
-* | browser Back → /registry               | 0                       |
+ * | step |.content-view.scrollTop |
+ * | /settings scrolled (scrollHeight 8428) | 3000                    |
+ * | → /registry                            | 0                       |
+ * | → back to /settings                    | 0  ← position lost      |
+ * | browser Back → /registry               | 0                       |
  *
  * EVERY test here runs against a container that CLAMPS `scrollTop` to what it
  * can currently hold, because a real one does and jsdom does not. That is not
@@ -64,17 +64,17 @@ function clampingScroller(container: HTMLElement) {
   });
   return {
     element,
-/** Route content arrived, or was swapped out (0). */
+    /** Route content arrived, or was swapped out (0). */
     setCapacity(next: number) {
       capacity = next;
       position = Math.min(position, capacity);
     },
-/** The user scrolls, which a browser reports with a `scroll` event. */
+    /** The user scrolls, which a browser reports with a `scroll` event. */
     userScrollTo(next: number) {
       element.scrollTop = next;
       element.dispatchEvent(new Event('scroll'));
     },
-/** Code scrolls the container. A browser dispatches `scroll` LATER. */
+    /** Code scrolls the container. A browser dispatches `scroll` LATER. */
     programmaticScrollTo(next: number) {
       element.scrollTop = next;
     },
@@ -91,7 +91,7 @@ function poll(times = 1) {
 }
 
 /** Captures the ResizeObserver callbacks so a content-size signal can be fired
-*  without waiting for the poll — jsdom has no ResizeObserver at all. */
+ *  without waiting for the poll — jsdom has no ResizeObserver at all. */
 function installResizeObserver() {
   const callbacks: Array<() => void> = [];
   class FakeResizeObserver {
@@ -104,7 +104,7 @@ function installResizeObserver() {
   }
   vi.stubGlobal('ResizeObserver', FakeResizeObserver);
   return {
-/** Content resized — what a real observer reports, after layout. */
+    /** Content resized — what a real observer reports, after layout. */
     fire() {
       act(() => {
         for (const callback of callbacks) callback();
@@ -131,15 +131,15 @@ describe('useScrollRestoration', () => {
     scroller.userScrollTo(3000);
     expect(scroller.element.scrollTop).toBe(3000);
 
-// Leaving: React replaces the route with a skeleton, so the container has
-// nothing left to scroll.
+    // Leaving: React replaces the route with a skeleton, so the container has
+    // nothing left to scroll.
     scroller.setCapacity(0);
     rerender(<Harness routeKey="/registry" />);
     scroller.setCapacity(972);
     poll();
     expect(scroller.element.scrollTop).toBe(0);
 
-// Returning: the route mounts empty and fills in over several seconds.
+    // Returning: the route mounts empty and fills in over several seconds.
     scroller.setCapacity(0);
     rerender(<Harness routeKey="/settings" />);
     poll(2);
@@ -151,10 +151,10 @@ describe('useScrollRestoration', () => {
   });
 
   test('restores on a content-size signal without waiting for the poll', () => {
- // the restore used to write AND read `scrollTop` every animation
-// frame until the content could hold it — a forced layout up to ~60x/s
-// for up to eight seconds, precisely while the route was assembling. It
-// now waits for the content to say it grew.
+    // the restore used to write AND read `scrollTop` every animation
+    // frame until the content could hold it — a forced layout up to ~60x/s
+    // for up to eight seconds, precisely while the route was assembling. It
+    // now waits for the content to say it grew.
     const resize = installResizeObserver();
     const { container, rerender } = render(<Harness routeKey="/settings" />);
     const scroller = clampingScroller(container);
@@ -170,13 +170,13 @@ describe('useScrollRestoration', () => {
 
     scroller.setCapacity(8428);
     resize.fire();
-// No timer was advanced at any point in this test.
+    // No timer was advanced at any point in this test.
     expect(scroller.element.scrollTop).toBe(3000);
   });
 
   test('never writes a scrollTop the container cannot hold', () => {
-// The capacity check is what removes the write-then-read-back probe: a
-// write that would be clamped is never issued at all.
+    // The capacity check is what removes the write-then-read-back probe: a
+    // write that would be clamped is never issued at all.
     const { container, rerender } = render(<Harness routeKey="/settings" />);
     const scroller = clampingScroller(container);
     scroller.setCapacity(8428);
@@ -210,12 +210,12 @@ describe('useScrollRestoration', () => {
   });
 
   test('saves the position on navigation intent, before the route swap', () => {
- // the scroll listener was the only save path, and a browser
-// dispatches `scroll` asynchronously. Code that scrolls the container and
-// navigates in the same task therefore navigated before the save could
-// happen. `navigationStore.navigate` dispatches `popstate` synchronously
-// while the outgoing route is still mounted, so that is where the last
-// position is caught.
+    // the scroll listener was the only save path, and a browser
+    // dispatches `scroll` asynchronously. Code that scrolls the container and
+    // navigates in the same task therefore navigated before the save could
+    // happen. `navigationStore.navigate` dispatches `popstate` synchronously
+    // while the outgoing route is still mounted, so that is where the last
+    // position is caught.
     const { container, rerender } = render(<Harness routeKey="/settings" />);
     const scroller = clampingScroller(container);
     scroller.setCapacity(8428);

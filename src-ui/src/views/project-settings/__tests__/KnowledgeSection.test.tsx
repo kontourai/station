@@ -89,7 +89,7 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
     ).toBeTruthy();
   });
 
- // archive#settings-revamp 1.
+  // archive#settings-revamp 1.
   describe('unsaved-guard wiring for the cross-links', () => {
     it('"Open Settings → My knowledge store" navigates with the section param when the page is not dirty', () => {
       navigateMock.mockClear();

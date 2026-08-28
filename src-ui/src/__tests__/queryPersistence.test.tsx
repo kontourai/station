@@ -179,10 +179,10 @@ describe('setupQueryPersistence — save/restore round trip (simulated reload)',
     await handleA.restored;
 
     clientA.setQueryData(['agents'], [{ slug: 'writer' }]);
-// A paused mutation is the ONE case react-query's *default*
-// shouldDehydrateMutation persists (`mutation.state.isPaused`) — this
-// proves our explicit ` => false` override actually wins over that
-// default rather than merely happening to not exercise it.
+    // A paused mutation is the ONE case react-query's *default*
+    // shouldDehydrateMutation persists (`mutation.state.isPaused`) — this
+    // proves our explicit ` => false` override actually wins over that
+    // default rather than merely happening to not exercise it.
     clientA
       .getMutationCache()
       .build(clientA, { mutationKey: ['rename-agent'] }, {
@@ -206,7 +206,7 @@ describe('setupQueryPersistence — save/restore round trip (simulated reload)',
   it('discards the persisted cache when the buster does not match the running build', async () => {
     const { storage, data } = createMemoryStorage();
 
-// Seed storage as if a *different* build had persisted this cache.
+    // Seed storage as if a *different* build had persisted this cache.
     const seedClient = new QueryClient();
     seedClient.setQueryData(['agents'], [{ slug: 'stale-build' }]);
     const seedPersister = createAsyncStoragePersister({
@@ -229,8 +229,8 @@ describe('setupQueryPersistence — save/restore round trip (simulated reload)',
     await handleB.restored;
 
     expect(clientB.getQueryData(['agents'])).toBeUndefined();
-// The mismatched cache is discarded from storage entirely, not just
-// ignored in memory (persistQueryClientRestore's busted-cache path).
+    // The mismatched cache is discarded from storage entirely, not just
+    // ignored in memory (persistQueryClientRestore's busted-cache path).
     expect(data.size).toBe(0);
   });
 
@@ -280,8 +280,8 @@ describe('applyPersistedQueryGcTimeDefaults — gcTime >= persister maxAge', () 
   });
 
   it("keeps a whitelisted query resident well past the app's ordinary 10-minute gcTime", () => {
-// Mirrors main.tsx's real global default — the bug this guards against
-// is exactly this default silently winning for whitelisted keys too.
+    // Mirrors main.tsx's real global default — the bug this guards against
+    // is exactly this default silently winning for whitelisted keys too.
     const queryClient = new QueryClient({
       defaultOptions: { queries: { gcTime: 10 * 60 * 1000 } },
     });
@@ -292,8 +292,8 @@ describe('applyPersistedQueryGcTimeDefaults — gcTime >= persister maxAge', () 
       if (event.type === 'removed') removed(event.query.queryKey);
     });
 
-// No observer ever mounts for this key — matches the real scenario: a
-// view that loaded agents, then navigated away, with nobody watching.
+    // No observer ever mounts for this key — matches the real scenario: a
+    // view that loaded agents, then navigated away, with nobody watching.
     queryClient.setQueryData(['agents'], [{ slug: 'writer' }]);
 
     vi.advanceTimersByTime(11 * 60 * 1000); // past the ordinary 10-minute gcTime
@@ -319,9 +319,9 @@ describe('applyPersistedQueryGcTimeDefaults — gcTime >= persister maxAge', () 
 });
 
 describe('<PersistQueryClientProvider> — isRestoring gates fetches during async restore', () => {
-/** A persister whose restoreClient resolves only when the test calls
-* `resolveRestore` — simulates the real IndexedDB gap between mount and
-* an async restore actually landing. */
+  /** A persister whose restoreClient resolves only when the test calls
+   * `resolveRestore` — simulates the real IndexedDB gap between mount and
+   * an async restore actually landing. */
   function createControllableRestorePersister() {
     let resolveRestore!: (value: PersistedClient | undefined) => void;
     const restorePromise = new Promise<PersistedClient | undefined>(
@@ -368,13 +368,13 @@ describe('<PersistQueryClientProvider> — isRestoring gates fetches during asyn
       </PersistQueryClientProvider>,
     );
 
-// Mid-restore: the observer must not have subscribed/fetched yet.
+    // Mid-restore: the observer must not have subscribed/fetched yet.
     expect(screen.getByTestId('probe').textContent).toBe('idle');
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(queryFn).not.toHaveBeenCalled();
 
-// Restore completes (empty cache, nothing to hydrate) — only now should
-// the observer subscribe and the query actually fetch.
+    // Restore completes (empty cache, nothing to hydrate) — only now should
+    // the observer subscribe and the query actually fetch.
     resolveRestore(undefined);
     await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(1));
     await waitFor(() =>
@@ -453,18 +453,18 @@ describe('restore failure degrades gracefully', () => {
 
     try {
       const queryClient = new QueryClient();
-// Deliberately do NOT touch `handle.restored` here (no await/.then/
-//catch) before checking for an unhandled rejection below — a caller
-// that never inspects it is exactly the real fire-and-forget shape
-// this guards against. Awaiting it first would attach our OWN
-// handler and mask a missing internal `.catch`.
+      // Deliberately do NOT touch `handle.restored` here (no await/.then/
+      //catch) before checking for an unhandled rejection below — a caller
+      // that never inspects it is exactly the real fire-and-forget shape
+      // this guards against. Awaiting it first would attach our OWN
+      // handler and mask a missing internal `.catch`.
       setupQueryPersistence(queryClient, {
         storage: throwingStorage,
         throttleTime: 0,
       });
 
-// Give the rejection's microtask/macrotask turn a chance to fire so
-// Node can flag it as unhandled if nothing caught it internally.
+      // Give the rejection's microtask/macrotask turn a chance to fire so
+      // Node can flag it as unhandled if nothing caught it internally.
       await new Promise((resolve) => setTimeout(resolve, 0));
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(unhandled).not.toHaveBeenCalled();
@@ -507,8 +507,8 @@ describe('restore failure degrades gracefully', () => {
       </PersistQueryClientProvider>,
     );
 
-// Restore fails, but the app recovers: isRestoring flips false and the
-// query fetches normally instead of hanging forever mid-restore.
+    // Restore fails, but the app recovers: isRestoring flips false and the
+    // query fetches normally instead of hanging forever mid-restore.
     await waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(1));
     await waitFor(() =>

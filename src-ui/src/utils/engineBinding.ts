@@ -1,5 +1,5 @@
 /**
-* archive#1194: the pure logic behind BOTH surfaces
+ * archive#1194: the pure logic behind BOTH surfaces
  * that talk about the built-in assistant's engine binding — the picker
  * (`components/EnginePicker.tsx`) and the Settings row that opens it
  * (`views/settings/BuiltinEngineRow.tsx`).
@@ -11,7 +11,7 @@
  * into the Settings bundle eagerly, defeating the split.
  *
  * Everything here reads `@kontourai/station-contracts/engine-capability-matrix`
-* the same matrix the agent editor's own engine picker reads (archive#975)
+ * the same matrix the agent editor's own engine picker reads (archive#975)
  * and the same one `session-agent-resolution.ts` keys its station-control
  * exemption on — so no surface here ever hardcodes a per-engine-id branch.
  */
@@ -29,16 +29,16 @@ import {
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 
 export interface EnginePickerOption {
-/** `null` names Station's own engine — every other engine names its live connection id. */
+  /** `null` names Station's own engine — every other engine names its live connection id. */
   connectionId: EngineConnectionId | null;
   name: string;
   capability: EngineControlPlaneCapability;
   matrix: EngineCapabilityMatrix;
-/**
-* archive#1549: this connection's own live-handshake evidence, carried
-* alongside the matrix so every downstream caller re-derives the
-* capability from the SAME two inputs the server bootstrap used.
-*/
+  /**
+   * archive#1549: this connection's own live-handshake evidence, carried
+   * alongside the matrix so every downstream caller re-derives the
+   * capability from the SAME two inputs the server bootstrap used.
+   */
   controlPlaneObservation?: ControlPlaneObservation;
 }
 
@@ -95,9 +95,9 @@ export function readyEngineOptions(input: {
     options.push({
       connectionId: connection.id,
       name: connection.name,
-// archive#1549: subject-aware. For every engine whose cell declares a
- // static mechanism this is byte-identical to the pre-archive#1549 call; only
-// an observation-based cell reads the second argument.
+      // archive#1549: subject-aware. For every engine whose cell declares a
+      // static mechanism this is byte-identical to the pre-archive#1549 call; only
+      // an observation-based cell reads the second argument.
       capability: engineControlPlaneCapability(
         matrix,
         connection.controlPlaneObservation,
@@ -135,13 +135,13 @@ export function capableEngineOptions(
  * because no successful handshake has ever been observed for this specific
  * connection.
  *
-* ## Reachability, stated honestly (an earlier revision of
+ * ## Reachability, stated honestly (an earlier revision of
  * this comment had it backwards)
  *
  * For an ACP connection this state is currently NOT reachable, and the
  * reason is worth writing down rather than rediscovering: `readyEngineOptions`
  * above skips any connection whose `status !== 'ready'`, and an ACP
-* connection is `ready` iff `probe.isAvailable` iff a `initialize` +
+ * connection is `ready` iff `probe.isAvailable` iff a `initialize` +
  * `session/new` handshake has already succeeded — which is the same event
  * that records the observation. So during the boot window the connection is
  * not `ready` and is filtered out BEFORE it can be pending; by the time it is
@@ -203,7 +203,7 @@ export interface BuiltinEngineDisplay {
 }
 
 export function builtinEngineDisplay(input: {
-/** The persisted (or drafted) `builtinAgentEngineConnectionId` verbatim. */
+  /** The persisted (or drafted) `builtinAgentEngineConnectionId` verbatim. */
   value: EngineConnectionId | null | undefined;
   stationChatReady: boolean;
   connections: AgentConnectionView[];
@@ -230,9 +230,9 @@ export function builtinEngineDisplay(input: {
       })),
   });
 
-// `null` from the resolver means Station's own engine — the same
-// convention every other engine-identity resolution in the matrix module
-// uses.
+  // `null` from the resolver means Station's own engine — the same
+  // convention every other engine-identity resolution in the matrix module
+  // uses.
   const boundOption = binding
     ? options.find((option) => option.connectionId === binding.connectionId)
     : undefined;
@@ -241,26 +241,26 @@ export function builtinEngineDisplay(input: {
     : 'Station';
 
   if (input.value === undefined) {
-// Nothing pinned: this is whatever the resolver derives each boot, and
-// it can change when connections change. Say so — the name alone would
-// read as a deliberate choice.
+    // Nothing pinned: this is whatever the resolver derives each boot, and
+    // it can change when connections change. Say so — the name alone would
+    // read as a deliberate choice.
     return { name, note: 'Auto-detected' };
   }
   if (input.value === null) return { name };
   if (binding?.connectionId === input.value) return { name };
 
-// The saved choice did not resolve. The resolver leaves the config
-// untouched (a re-appearing or newly-capable engine binds again with no
-// user action), so the choice is still real — but it is NOT what is
-// running, and this row must not imply otherwise.
+  // The saved choice did not resolve. The resolver leaves the config
+  // untouched (a re-appearing or newly-capable engine binds again with no
+  // user action), so the choice is still real — but it is NOT what is
+  // running, and this row must not imply otherwise.
   const savedReady = options.find(
     (option) => option.connectionId === input.value,
   );
   if (savedReady) {
-// archive#1549: a saved choice that is merely UNOBSERVED must not be
-// reported as incapable. "Can't run the built-in assistant" is a verdict;
-// Station has not reached one. Saying it anyway would tell the user to
-// go change a setting that is about to start working on its own.
+    // archive#1549: a saved choice that is merely UNOBSERVED must not be
+    // reported as incapable. "Can't run the built-in assistant" is a verdict;
+    // Station has not reached one. Saying it anyway would tell the user to
+    // go change a setting that is about to start working on its own.
     if (savedReady.capability === 'observation-required') {
       return {
         name,

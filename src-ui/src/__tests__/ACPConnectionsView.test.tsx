@@ -81,8 +81,8 @@ describe('ACPConnectionsView', () => {
 
     const header = document.querySelector('.page-frame__header');
     expect(header?.textContent).toContain('Connections');
-// The title, not the eyebrow, says 'Provider setup' — archive#4463 slice
-// 1 retired the breadcrumb-as-eyebrow that restated it a second time.
+    // The title, not the eyebrow, says 'Provider setup' — archive#4463 slice
+    // 1 retired the breadcrumb-as-eyebrow that restated it a second time.
     expect(document.querySelector('.page__label')?.textContent?.trim()).toBe(
       'Connections',
     );
@@ -94,13 +94,13 @@ describe('ACPConnectionsView', () => {
     ).toBeTruthy();
     expect(screen.queryByText(/\bACP\b/i)).toBeNull();
 
-// Fix round (arbiter decision #4): `/connections` is a redirect-only
-// resolver, so a click on its eyebrow would be a no-op or a sibling jump
-// dressed up as "go up" — worse than no affordance. Plain text, not a
-// link: no `.page__label-link`, and clicking the word does nothing.
+    // Fix round (arbiter decision #4): `/connections` is a redirect-only
+    // resolver, so a click on its eyebrow would be a no-op or a sibling jump
+    // dressed up as "go up" — worse than no affordance. Plain text, not a
+    // link: no `.page__label-link`, and clicking the word does nothing.
     expect(document.querySelector('.page__label-link')).toBeNull();
-// Clicking the word is inert: the component takes no navigation callback
-// at all since the, so there is nothing a click could reach.
+    // Clicking the word is inert: the component takes no navigation callback
+    // at all since the, so there is nothing a click could reach.
     fireEvent.click(screen.getByText('Connections'));
   });
 
@@ -129,9 +129,9 @@ describe('ACPConnectionsView', () => {
     expect(screen.getByRole('button', { name: /Kiro CLI/i })).toBeTruthy();
   });
 
-// the hub card that routes here reads as a status ("Found, not
-// connected"), and one click used to write a persistent connection and mint
-// an agent with nothing asked and nothing said.
+  // the hub card that routes here reads as a status ("Found, not
+  // connected"), and one click used to write a persistent connection and mint
+  // an agent with nothing asked and nothing said.
   it('a routed detected provider confirms before creating anything', async () => {
     acpRegistryState.data = [
       {
@@ -146,7 +146,7 @@ describe('ACPConnectionsView', () => {
 
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(installRegistryEntry).not.toHaveBeenCalled();
-// The confirmation names both durable effects, not just the connection.
+    // The confirmation names both durable effects, not just the connection.
     expect(
       screen.getByText(/Saves a connection to Kiro CLI on this computer\./),
     ).toBeTruthy();

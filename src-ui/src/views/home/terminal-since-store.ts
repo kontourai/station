@@ -1,5 +1,5 @@
 /**
- * Persists "when did this item first go terminal" (archive#1099, 
+ * Persists "when did this item first go terminal" (archive#1099,
  * fix). Without this, `terminalSinceRef` was in-memory only — a reload
  * re-anchored every currently-terminal item's linger clock to "now", so a
  * long-settled item would re-linger in the active lane for another
@@ -48,6 +48,6 @@ export function writeTerminalSince(map: TerminalSinceMap): void {
   try {
     localStorage.setItem(TERMINAL_SINCE_STORAGE_KEY, JSON.stringify(map));
   } catch {
-/* ignore — source timestamps still classify historical work correctly */
+    /* ignore — source timestamps still classify historical work correctly */
   }
 }

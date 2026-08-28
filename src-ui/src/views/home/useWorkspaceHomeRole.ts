@@ -37,17 +37,17 @@ export function useWorkspaceHomeRoleStatus():
   | WorkspaceHomeRoleStatus
   | undefined {
   const queryClient = useQueryClient();
-// One retry, not the client-wide three-with-backoff default: this read is
-// an AUTHORITY projection, and every second spent retrying is a second a
-// cached `granted` keeps mounting code the server can no longer vouch
-// for. One retry absorbs a transient blip; after that the floor renders
-// (the honest, always-safe direction) until a later read succeeds.
+  // One retry, not the client-wide three-with-backoff default: this read is
+  // an AUTHORITY projection, and every second spent retrying is a second a
+  // cached `granted` keeps mounting code the server can no longer vouch
+  // for. One retry absorbs a transient blip; after that the floor renders
+  // (the honest, always-safe direction) until a later read succeeds.
   const query = useWorkspaceHomeRoleQuery({ retry: 1 });
   useEffect(() => {
-// A plugin registry reload (install, uninstall, update, reload) is
-// exactly when the server's derivation can change; refetch so an
-// uninstalled or replaced plugin cannot keep rendering out of a stale
-// status for longer than one reload cycle.
+    // A plugin registry reload (install, uninstall, update, reload) is
+    // exactly when the server's derivation can change; refetch so an
+    // uninstalled or replaced plugin cannot keep rendering out of a stale
+    // status for longer than one reload cycle.
     const unsubscribe = pluginRegistry.subscribe(() => {
       queryClient.invalidateQueries({
         queryKey: [...WORKSPACE_HOME_ROLE_QUERY_KEY],
@@ -57,8 +57,8 @@ export function useWorkspaceHomeRoleStatus():
       unsubscribe();
     };
   }, [queryClient]);
-// The authority projection is fail-closed: an errored read means the
-// server could not affirm the cached value, so nothing is affirmed.
+  // The authority projection is fail-closed: an errored read means the
+  // server could not affirm the cached value, so nothing is affirmed.
   if (query.isError) return undefined;
   return query.data;
 }

@@ -58,16 +58,16 @@ describe('CredentialUsageSection (station#3552)', () => {
     expect(screen.getByText('Max')).toBeTruthy();
     expect(screen.getByText('20%')).toBeTruthy();
     expect(screen.getByText('resets in 3h')).toBeTruthy();
-// A real <meter> carries its value natively, so assert the element's own
-// attributes rather than a hand-maintained aria triple.
+    // A real <meter> carries its value natively, so assert the element's own
+    // attributes rather than a hand-maintained aria triple.
     const meter = screen.getByRole('meter', { name: /5-hour limit used/i });
     expect(meter.tagName).toBe('METER');
     expect(meter.getAttribute('value')).toBe('20');
     expect(meter.getAttribute('max')).toBe('100');
   });
 
-// The defect this whole surface exists to avoid: a failed read must not
-// render as an empty meter, which a user reads as "nothing used".
+  // The defect this whole surface exists to avoid: a failed read must not
+  // render as an empty meter, which a user reads as "nothing used".
   test('an unknown reading shows its reason and NO meter', () => {
     byEngine.codex = [
       {
@@ -86,9 +86,9 @@ describe('CredentialUsageSection (station#3552)', () => {
     expect(screen.queryByRole('meter')).toBeNull();
   });
 
-// `exhausted` is the provider's own verdict. A 100% window that the provider
-// says is still allowed must NOT be badged as limit-reached, and a low
-// percentage the provider says IS exhausted must be.
+  // `exhausted` is the provider's own verdict. A 100% window that the provider
+  // says is still allowed must NOT be badged as limit-reached, and a low
+  // percentage the provider says IS exhausted must be.
   test('the limit-reached badge follows the provider, not the percentage', () => {
     byEngine.claude = [
       {
@@ -137,8 +137,8 @@ describe('CredentialUsageSection (station#3552)', () => {
     expect(screen.getByText(/read just now/i)).toBeTruthy();
   });
 
-// An engine with no accounts, or one whose route 404s, renders nothing —
-// better than a card that never fills.
+  // An engine with no accounts, or one whose route 404s, renders nothing —
+  // better than a card that never fills.
   test('renders nothing for an engine with no accounts or an errored read', () => {
     byEngine.claude = [];
     const { container } = render(<CredentialUsageSection />);
@@ -179,7 +179,7 @@ describe('an exhausted account with no percentages', () => {
     render(<CredentialUsageSection />);
     expect(screen.getByText('Limit reached')).toBeTruthy();
     expect(screen.getByText(/did not report usage percentages/i)).toBeTruthy();
-// The contradictory sentence must not appear beneath a limit-reached badge.
+    // The contradictory sentence must not appear beneath a limit-reached badge.
     expect(
       screen.queryByText(/reported no limits for this account/i),
     ).toBeNull();

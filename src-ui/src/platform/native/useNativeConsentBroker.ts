@@ -13,14 +13,14 @@ export type NativeConsentReviewer = (
  * the answer say yes (archive#3677):
  *
  * - the HOST capability (`native-consent-broker`): can this shell draw an OS
-*   dialog at all? Web hosts cannot.
+ *   dialog at all? Web hosts cannot.
  * - the SERVER's eligibility answer for THIS connection: may this credential
-*   decide? Only a local-grant-minted credential may, and a shell cannot
-*   know its own mint — a phone, or a desktop app connected to a REMOTE
-*   Station, reports the capability while pairing through the ordinary
-*   exchange, which stamps no mint at all. In practice that scopes the
-*   native dialog to the desktop app talking to the Station on its own
-*   machine; every other caller keeps using the consent page.
+ *   decide? Only a local-grant-minted credential may, and a shell cannot
+ *   know its own mint — a phone, or a desktop app connected to a REMOTE
+ *   Station, reports the capability while pairing through the ordinary
+ *   exchange, which stamps no mint at all. In practice that scopes the
+ *   native dialog to the desktop app talking to the Station on its own
+ *   machine; every other caller keeps using the consent page.
  *
  * `null` means "use the distinct-origin consent page", a function means
  * "hand the transaction to native OS chrome", and consumers read it
@@ -42,9 +42,9 @@ export function useNativeConsentBroker(): NativeConsentReviewer | null {
   const [reviewer, setReviewer] = useState<NativeConsentReviewer | null>(null);
   useEffect(() => {
     let disposed = false;
-// Drop any previous connection's authority IMMEDIATELY, before this
-// connection's answer is known. Anything else keeps an approve-capable
-// function alive across a switch the server would refuse.
+    // Drop any previous connection's authority IMMEDIATELY, before this
+    // connection's answer is known. Anything else keeps an approve-capable
+    // function alive across a switch the server would refuse.
     setReviewer(null);
     void (async () => {
       const adapter = await nativePlatformPromise;
@@ -62,8 +62,8 @@ export function useNativeConsentBroker(): NativeConsentReviewer | null {
           eligible = body.eligible === true;
         }
       } catch {
-// Unreachable or refused: stay on the consent page rather than
-// assume an authority the server never granted.
+        // Unreachable or refused: stay on the consent page rather than
+        // assume an authority the server never granted.
         eligible = false;
       }
       if (disposed) return;

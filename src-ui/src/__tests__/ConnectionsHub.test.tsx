@@ -123,9 +123,9 @@ describe('the /connections resolver', () => {
   });
 
   test('resolves to the SAME section the rail dots, for a state only the rail used to see', () => {
-// Knowledge with no vector store is the case the old resolver was blind
-// to: it had no `knowledge` branch, so it fell through to Models while
-// the rail put a warn dot on Knowledge.
+    // Knowledge with no vector store is the case the old resolver was blind
+    // to: it had no `knowledge` branch, so it fell through to Models while
+    // the rail put a warn dot on Knowledge.
     state.knowledge = {
       vectorDb: null,
       embedding: null,
@@ -144,10 +144,10 @@ describe('the /connections resolver', () => {
   });
 
   test('resolves Engines from the engine list, not from every agent-kind connection record', () => {
-// The old resolver read `/api/connections` and filtered `kind: 'agent'`;
-// the rail reads `/api/connections/agents`. A disabled engine present in
-// one and absent from the other made them disagree about whether
-// anything needed attention at all.
+    // The old resolver read `/api/connections` and filtered `kind: 'agent'`;
+    // the rail reads `/api/connections/agents`. A disabled engine present in
+    // one and absent from the other made them disagree about whether
+    // anything needed attention at all.
     state.engines = [
       { id: 'codex', name: 'Codex', enabled: false, status: 'ready' },
     ];

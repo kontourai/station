@@ -13,14 +13,14 @@ interface NewProjectLayoutBrowserBodyProps {
   selectedId: string | null;
   onRetry: () => void;
   onSelect: (id: string) => void;
-/**
-* Returns to the project draft form without closing the New Project modal
-* this is ALSO what the header's own close button does here
- * (archive#1825 2): the old nested dialog's close
-* button was already scoped this way ("Close layout browser", never
-* "Close new project") — fully exiting the flow is only reachable one
-* step back, from the draft form's own close button.
-*/
+  /**
+   * Returns to the project draft form without closing the New Project modal
+   * this is ALSO what the header's own close button does here
+   * (archive#1825 2): the old nested dialog's close
+   * button was already scoped this way ("Close layout browser", never
+   * "Close new project") — fully exiting the flow is only reachable one
+   * step back, from the draft form's own close button.
+   */
   onBack: () => void;
 }
 
@@ -52,11 +52,11 @@ export function NewProjectLayoutBrowserBody({
 }: NewProjectLayoutBrowserBodyProps) {
   const headingRef = useRef<HTMLHeadingElement>(null);
 
-// The modal frame itself doesn't remount when swapping bodies (unlike the
-// old nested-dialog approach, which got a fresh focus trap for free) — move
-// focus onto the new heading so screen reader / keyboard users land inside
-// the content that just replaced the form instead of on a stale target.
-// `NewProjectModalContent` mirrors this for the reverse transition.
+  // The modal frame itself doesn't remount when swapping bodies (unlike the
+  // old nested-dialog approach, which got a fresh focus trap for free) — move
+  // focus onto the new heading so screen reader / keyboard users land inside
+  // the content that just replaced the form instead of on a stale target.
+  // `NewProjectModalContent` mirrors this for the reverse transition.
   useLayoutEffect(() => {
     headingRef.current?.focus();
   }, []);

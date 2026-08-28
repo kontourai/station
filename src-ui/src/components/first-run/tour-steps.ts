@@ -5,20 +5,20 @@
  * Two rules this module exists to hold:
  *
  * 1. **No step spells a route.** Each step names the canonical surface as a
-*    `NavigationView`, and `tourStepPath` derives the path through
-*    `getPathForView` — the same helper `OnboardingGate`, the header, and the
+ *    `NavigationView`, and `tourStepPath` derives the path through
+ *    `getPathForView` — the same helper `OnboardingGate`, the header, and the
  * sidebar already navigate with. Post-archive#2678 the repo has exactly one
-*    spelling per surface plus a central retirement table
-*    (`getLegacyPathRedirect`); a tour that hardcoded `/connections/models`
-*    would still "work" via that redirect and would quietly reintroduce the
-*    retired name. `__tests__/tour-steps.test.ts` asserts every derived path
-*    against the routing module for exactly this reason.
+ *    spelling per surface plus a central retirement table
+ *    (`getLegacyPathRedirect`); a tour that hardcoded `/connections/models`
+ *    would still "work" via that redirect and would quietly reintroduce the
+ *    retired name. `__tests__/tour-steps.test.ts` asserts every derived path
+ *    against the routing module for exactly this reason.
  *
  * 2. **Every anchor is a real surface.** `anchor` is a `data-first-run-anchor`
-*    value present in shipped UI, not a coordinate or a synthetic panel the
-*    tour renders for itself. When the element is genuinely absent (a surface
-*    still loading, a host that does not render the sidebar), `Coachmark`
-*    falls back to an unanchored card rather than pointing at nothing.
+ *    value present in shipped UI, not a coordinate or a synthetic panel the
+ *    tour renders for itself. When the element is genuinely absent (a surface
+ *    still loading, a host that does not render the sidebar), `Coachmark`
+ *    falls back to an unanchored card rather than pointing at nothing.
  */
 
 import { getPathForView } from '../../app-shell/routing';
@@ -27,11 +27,11 @@ import type { NavigationView } from '../../types';
 export interface FirstRunTourStep {
   id: string;
   title: string;
-/** One sentence. Why the evidence is here, not what the button does. */
+  /** One sentence. Why the evidence is here, not what the button does. */
   body: string;
-/** The canonical surface this step is about. */
+  /** The canonical surface this step is about. */
   view: NavigationView;
-/** `data-first-run-anchor` value on that surface. */
+  /** `data-first-run-anchor` value on that surface. */
   anchor: string;
 }
 
@@ -50,11 +50,11 @@ export const FIRST_RUN_TOUR_STEPS = [
     title: 'Every run keeps its own evidence',
     body: 'Each session holds the events that produced its result, so an answer can be traced back to the work behind it instead of being taken on trust.',
     view: { type: 'activity' },
-// The Activity page root, via `SplitPaneLayout`'s `firstRunAnchor` prop:
-// the surface no longer has a sidebar entry (it moved under Home), and
-// `SessionsView` renders a bare `SplitPaneLayout` with no root element of
-// its own to hang the attribute on. The layout root is present whether or
-// not any session exists yet.
+    // The Activity page root, via `SplitPaneLayout`'s `firstRunAnchor` prop:
+    // the surface no longer has a sidebar entry (it moved under Home), and
+    // `SessionsView` renders a bare `SplitPaneLayout` with no root element of
+    // its own to hang the attribute on. The layout root is present whether or
+    // not any session exists yet.
     anchor: 'activity',
   },
   {
@@ -93,7 +93,7 @@ export function tourStepPath(step: FirstRunTourStep): string | null {
  * position is indistinguishable from a real one to the person reading it.
  */
 /**
-* archive#3280: `tourStepId` is DURABLE resume state
+ * archive#3280: `tourStepId` is DURABLE resume state
  * (device-settings.ts), so a step rename must keep every previously
  * persisted id resolving to the renamed step — not silently to step 0.
  */

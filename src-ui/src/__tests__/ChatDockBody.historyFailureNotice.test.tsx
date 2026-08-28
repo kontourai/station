@@ -39,7 +39,7 @@ vi.mock('@kontourai/station-connect', () => ({
 
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => agentsMock.current,
-// archive#3764: the empty-transcript filler renders `ChatEmptyState`.
+  // archive#3764: the empty-transcript filler renders `ChatEmptyState`.
   useAgentsLoaded: () => true,
 }));
 
@@ -230,9 +230,9 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
   test('renders the recorded cause verbatim, with the shared secondary-button Retry affordance', () => {
     transcriptStateMock.current.enabled = true;
     transcriptStateMock.current.error = new Error('ECONNREFUSED host:8443');
-// The banner (as opposed to the empty-state variant handed to the
-// lazy-loaded message list) renders only once the pane already has
-// history to sit above — a subsequent page failing, not a cold arrival.
+    // The banner (as opposed to the empty-state variant handed to the
+    // lazy-loaded message list) renders only once the pane already has
+    // history to sit above — a subsequent page failing, not a cold arrival.
     transcriptStateMock.current.messages = [
       { role: 'user', content: 'hi', timestamp: 1 },
     ] as any;
@@ -245,9 +245,9 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     );
 
     const retry = screen.getByRole('button', { name: 'Retry' });
-// The shared class the rest of this surface's affordances use
-// (`.session-history-controls__more` two rules above in index.css) —
-// not a bespoke, unhovered button.
+    // The shared class the rest of this surface's affordances use
+    // (`.session-history-controls__more` two rules above in index.css) —
+    // not a bespoke, unhovered button.
     expect(retry.className).toContain('button--secondary');
 
     fireEvent.click(retry);

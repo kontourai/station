@@ -98,7 +98,7 @@ function useStationTheme(): StationTheme {
       attributes: true,
       attributeFilter: ['data-theme'],
     });
-// Sync once in case the attribute changed before the observer attached.
+    // Sync once in case the attribute changed before the observer attached.
     setTheme(readStationTheme());
     return () => observer.disconnect();
   }, []);
@@ -125,7 +125,7 @@ function DiffWorkerThemeSync({ themeName }: { themeName: string }) {
         if (current.theme === themeName) return;
         await workerPool.setRenderOptions({ ...current, theme: themeName });
       } catch {
-// Theme sync is best-effort; the diff still renders.
+        // Theme sync is best-effort; the diff still renders.
       }
     })();
   }, [themeName, workerPool]);
@@ -262,9 +262,9 @@ export function diffFileKind(
   if (fileDiff.hunks.length > 0) return 'lines';
   if (isBinary) return 'binary';
   if (fileDiff.type === 'rename-pure') return 'renamed';
-// A hunkless, non-binary, non-renamed file — e.g. a newly-added empty
-// file, or a pure file-mode change. No line count applies and it isn't a
-// rename or binary, so say so rather than implying "no change" with 0/0.
+  // A hunkless, non-binary, non-renamed file — e.g. a newly-added empty
+  // file, or a pure file-mode change. No line count applies and it isn't a
+  // rename or binary, so say so rather than implying "no change" with 0/0.
   return 'unknown';
 }
 
@@ -317,7 +317,7 @@ export function DiffPanel({
   } = useCodingDiffQuery(workingDir, apiBase);
   const error = queryError?.message || null;
 
-// Inline review comments are only available when a project owns the diff.
+  // Inline review comments are only available when a project owns the diff.
   const commentsEnabled = !!projectSlug;
   const { data: comments = [] } = useDiffCommentsQuery(projectSlug, {
     enabled: commentsEnabled,
@@ -329,9 +329,9 @@ export function DiffPanel({
   const theme = useStationTheme();
   const diffTheme = DIFF_THEME_NAMES[theme];
 
-// Sticky view preferences, persisted via the device-settings store
- // (archive#settings-revamp — previously their own raw
-// `station.diff.style`/`station.diff.wrap` localStorage keys).
+  // Sticky view preferences, persisted via the device-settings store
+  // (archive#settings-revamp — previously their own raw
+  // `station.diff.style`/`station.diff.wrap` localStorage keys).
   const { diffStyle, diffWrap: wrap } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   const setDiffStyle = useCallback(
@@ -343,24 +343,24 @@ export function DiffPanel({
     [setDeviceSetting],
   );
 
-// On the main-thread fallback (no worker) the shared highlighter must be
-// warmed for the active theme; the worker pool warms its own highlighter.
+  // On the main-thread fallback (no worker) the shared highlighter must be
+  // warmed for the active theme; the worker pool warms its own highlighter.
   useEffect(() => {
     if (WORKER_SUPPORTED) return;
     void preloadHighlighter({ themes: [diffTheme], langs: [] }).catch(() => {
-// Highlighter preload is best-effort; CodeView still renders plain text.
+      // Highlighter preload is best-effort; CodeView still renders plain text.
     });
   }, [diffTheme]);
 
   const files = useMemo(() => parseDiffFiles(diff), [diff]);
 
-// archive#3170 — file names @pierre/diffs' parser drops when a file is
-// binary (see `binaryFileNames`'s docblock).
+  // archive#3170 — file names @pierre/diffs' parser drops when a file is
+  // binary (see `binaryFileNames`'s docblock).
   const binaryNames = useMemo(() => binaryFileNames(diff), [diff]);
 
-// Per-file addition/deletion counts, keyed by the same id CodeView items
-// use. Derived straight from the parsed hunks (see `diffFileChangeCounts`)
-// never a separate scan of the raw patch text.
+  // Per-file addition/deletion counts, keyed by the same id CodeView items
+  // use. Derived straight from the parsed hunks (see `diffFileChangeCounts`)
+  // never a separate scan of the raw patch text.
   const fileCounts = useMemo(() => {
     const map = new Map<string, DiffChangeCounts>();
     files.forEach((fileDiff, index) => {
@@ -368,8 +368,8 @@ export function DiffPanel({
     });
     return map;
   }, [files]);
-// Per-file kind (archive#3170) — whether a hunkless file's header should
-// read "renamed"/"binary" instead of a misleading "+0 −0".
+  // Per-file kind (archive#3170) — whether a hunkless file's header should
+  // read "renamed"/"binary" instead of a misleading "+0 −0".
   const fileKinds = useMemo(() => {
     const map = new Map<string, DiffFileKind>();
     files.forEach((fileDiff, index) => {
@@ -381,21 +381,21 @@ export function DiffPanel({
     return map;
   }, [files, binaryNames]);
   const totalCounts = useMemo(() => diffTotalChangeCounts(files), [files]);
-// Per-file collapse choices (manual toggles + collapse/expand-all)
-// deliberately live in component state rather than the device-settings
-// store diffStyle/diffWrap use. That store holds durable, low-cardinality
-// view preferences; collapse state is keyed by per-file identity that only
-// exists for the lifetime of the diff currently on screen — the file set
-// (and even the file count) changes on every agent turn. Persisting it
-// would mean growing an unbounded keyed store and replaying stale
-// per-file choices onto an unrelated diff next time this panel opens.
-// React state already satisfies the "survives a re-render" requirement.
+  // Per-file collapse choices (manual toggles + collapse/expand-all)
+  // deliberately live in component state rather than the device-settings
+  // store diffStyle/diffWrap use. That store holds durable, low-cardinality
+  // view preferences; collapse state is keyed by per-file identity that only
+  // exists for the lifetime of the diff currently on screen — the file set
+  // (and even the file count) changes on every agent turn. Persisting it
+  // would mean growing an unbounded keyed store and replaying stale
+  // per-file choices onto an unrelated diff next time this panel opens.
+  // React state already satisfies the "survives a re-render" requirement.
   const [collapseOverrides, setCollapseOverrides] = useState<
     Map<string, boolean>
   >(() => new Map());
-// Collapse/expand is itself a rendered diff-surface commit even though the
-// content-free receipt below does not inspect the override map.
-// biome-ignore lint/correctness/useExhaustiveDependencies: trigger-only dependency described above.
+  // Collapse/expand is itself a rendered diff-surface commit even though the
+  // content-free receipt below does not inspect the override map.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: trigger-only dependency described above.
   useLayoutEffect(() => {
     if (
       import.meta.env.MODE !== 'test' &&
@@ -411,10 +411,10 @@ export function DiffPanel({
       committedEpochMs: browserEpochMs(),
     });
   }, [collapseOverrides, diff, error, files.length, loading, workingDir]);
-// A freshly loaded diff starts from the size-based default, not whatever
-// per-file choices were made on the previous diff. `diff` is the
-// intentional reset trigger even though the effect body doesn't read it.
-// biome-ignore lint/correctness/useExhaustiveDependencies: see comment above.
+  // A freshly loaded diff starts from the size-based default, not whatever
+  // per-file choices were made on the previous diff. `diff` is the
+  // intentional reset trigger even though the effect body doesn't read it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above.
   useEffect(() => {
     setCollapseOverrides(new Map());
   }, [diff]);
@@ -448,7 +448,7 @@ export function DiffPanel({
     });
   }, [files]);
 
-// Comments grouped by file → "side:line" → comments, for O(1) annotation lookup.
+  // Comments grouped by file → "side:line" → comments, for O(1) annotation lookup.
   const commentsByFile = useMemo(() => {
     const byFile = new Map<string, Map<string, DiffComment[]>>();
     for (const comment of comments) {
@@ -460,15 +460,15 @@ export function DiffPanel({
     return byFile;
   }, [comments]);
 
-// @pierre/diffs' controlled CodeView only refreshes an item's internal
-// record — including re-invoking renderHeaderPrefix/renderHeaderMetadata —
-// when `item.version` changes (components/CodeView.js's `syncItemRecord`:
-// "Matching versions mean CodeView keeps the current record snapshot").
-// Passing a fresh object with the same id/version is otherwise silently
-// ignored, which would leave the collapse toggle's header content
-// permanently stale after the first click. Bump a shared counter on every
-// genuine `items` recompute so CodeView always treats a real update
-// (collapse toggle, new comment annotation) as a version change.
+  // @pierre/diffs' controlled CodeView only refreshes an item's internal
+  // record — including re-invoking renderHeaderPrefix/renderHeaderMetadata —
+  // when `item.version` changes (components/CodeView.js's `syncItemRecord`:
+  // "Matching versions mean CodeView keeps the current record snapshot").
+  // Passing a fresh object with the same id/version is otherwise silently
+  // ignored, which would leave the collapse toggle's header content
+  // permanently stale after the first click. Bump a shared counter on every
+  // genuine `items` recompute so CodeView always treats a real update
+  // (collapse toggle, new comment annotation) as a version change.
   const itemsRevisionRef = useRef(0);
 
   const items = useMemo<CodeViewDiffItem<DiffCommentAnnotation>[]>(() => {
@@ -478,7 +478,7 @@ export function DiffPanel({
       const id = diffItemId(fileDiff, index);
       const filePath = fileDiff.name;
       const lineComments = commentsByFile.get(filePath);
-// Annotate every line that has comments, plus the active composer line.
+      // Annotate every line that has comments, plus the active composer line.
       const keys = new Set<string>(lineComments ? lineComments.keys() : []);
       if (composer && composer.filePath === filePath) {
         keys.add(sideLineKey(composer.side, composer.lineNumber));
@@ -586,14 +586,14 @@ export function DiffPanel({
     );
   };
 
-// Per-file collapse/expand affordance, rendered into @pierre/diffs'
-// `header-prefix` slot (a real light-DOM element, not shadow content — see
-// renderDiffChildren in @pierre/diffs' react layer), so it's a normal,
-// keyboard-reachable <button> like the existing gutter "add comment"
-// control above. Collapsing a file only hides its rendered lines
-// (@pierre/diffs still renders the file header when `collapsed` is set,
-// see components/FileDiff.js's `shouldRenderHeader`), so the counts in
-// renderHeaderMetadata below stay visible either way.
+  // Per-file collapse/expand affordance, rendered into @pierre/diffs'
+  // `header-prefix` slot (a real light-DOM element, not shadow content — see
+  // renderDiffChildren in @pierre/diffs' react layer), so it's a normal,
+  // keyboard-reachable <button> like the existing gutter "add comment"
+  // control above. Collapsing a file only hides its rendered lines
+  // (@pierre/diffs still renders the file header when `collapsed` is set,
+  // see components/FileDiff.js's `shouldRenderHeader`), so the counts in
+  // renderHeaderMetadata below stay visible either way.
   const renderHeaderPrefix = useCallback(
     (item: CodeViewItem<DiffCommentAnnotation>): ReactNode => {
       if (item.type !== 'diff') return null;
@@ -618,18 +618,18 @@ export function DiffPanel({
     [toggleFileCollapsed],
   );
 
-// Per-file addition/deletion counts, rendered into the `header-metadata`
-// slot next to the filename — visible whether or not the file is
-// collapsed, and whether or not anything is ever expanded at all.
+  // Per-file addition/deletion counts, rendered into the `header-metadata`
+  // slot next to the filename — visible whether or not the file is
+  // collapsed, and whether or not anything is ever expanded at all.
   const renderHeaderMetadata = useCallback(
     (item: CodeViewItem<DiffCommentAnnotation>): ReactNode => {
       if (item.type !== 'diff') return null;
       const counts = fileCounts.get(item.id);
       if (!counts) return null;
       const kind = fileKinds.get(item.id) ?? 'lines';
-// archive#3170 — a hunkless file (rename or binary) has no line
-// counts to sum, so `+0 −0` would read as "nothing changed" for a
-// file that did. Render what kind of hunkless change it was instead.
+      // archive#3170 — a hunkless file (rename or binary) has no line
+      // counts to sum, so `+0 −0` would read as "nothing changed" for a
+      // file that did. Render what kind of hunkless change it was instead.
       if (kind !== 'lines') {
         return (
           <span className="diff-file-stat diff-file-stat--kind">
@@ -652,8 +652,8 @@ export function DiffPanel({
 
   const codeView = (
     <CodeView<DiffCommentAnnotation>
-// The fallback re-tokenizes on theme change via remount; the worker pool
-// re-themes in place (see DiffWorkerThemeSync), so no key is needed there.
+      // The fallback re-tokenizes on theme change via remount; the worker pool
+      // re-themes in place (see DiffWorkerThemeSync), so no key is needed there.
       key={WORKER_SUPPORTED ? undefined : diffTheme}
       disableWorkerPool={!WORKER_SUPPORTED}
       items={items}

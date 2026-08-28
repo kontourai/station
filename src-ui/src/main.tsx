@@ -202,9 +202,9 @@ const queryPersistOptions = buildPersistOptions();
 if (!isSharedAnswerPath && !isNativeShell) {
   void import('../../packages/sdk/src/boot')
     .then(async ({ fetchAndSeedBootPayload }) => {
-// This joins LocalUiSessionGate's page-memoized resolution, including a
-// launcher-token exchange. Never seed protected boot data before that
-// resolution has earned an authenticated browser session.
+      // This joins LocalUiSessionGate's page-memoized resolution, including a
+      // launcher-token exchange. Never seed protected boot data before that
+      // resolution has earned an authenticated browser session.
       const resolution = await resolveLocalUiSession(localUiApiBase);
       if (resolution.kind === 'authenticated') {
         await fetchAndSeedBootPayload(queryClient);
@@ -239,7 +239,7 @@ function renderApp(): void {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     isSharedAnswerPath ? (
       <React.StrictMode>
-{/* The boundary is eager (it must exist to catch the page's own chunk
+        {/* The boundary is eager (it must exist to catch the page's own chunk
           failing to load) and carries no stylesheet, so the entry cost is a
           few hundred bytes rather than the share page's CSS. */}
         <SharedAnswerBoundary>
@@ -256,11 +256,11 @@ function renderApp(): void {
                 client={queryClient}
                 persistOptions={queryPersistOptions}
                 onError={() => {
-// Degrade gracefully: IndexedDB can be unavailable (Safari private
-// mode) or throw; the provider's internal restore already discards
-// the persisted cache in that case (see persistQueryClientRestore's
-// catch), so this is disclosure only — the app continues without a
-// persisted cache rather than crashing or hanging first paint.
+                  // Degrade gracefully: IndexedDB can be unavailable (Safari private
+                  // mode) or throw; the provider's internal restore already discards
+                  // the persisted cache in that case (see persistQueryClientRestore's
+                  // catch), so this is disclosure only — the app continues without a
+                  // persisted cache rather than crashing or hanging first paint.
                   if (import.meta.env.DEV) {
                     console.warn(
                       '[queryPersistence] restore failed; continuing without a persisted cache',
@@ -302,10 +302,10 @@ function renderApp(): void {
                           id="connection-recovery"
                           load={loadOnboardingGate}
                           copy={{
-// The title renders as the banner's badge, which
-// is uppercased and sits beside two-word badges —
-// a sentence here reads as shouting. The full
-// statement is the message below.
+                            // The title renders as the banner's badge, which
+                            // is uppercased and sits beside two-word badges —
+                            // a sentence here reads as shouting. The full
+                            // statement is the message below.
                             failureTitle: 'Recovery unavailable',
                             failure:
                               'Saved-Station recovery did not start. The workspace stays usable; reload to verify or restore saved Stations.',

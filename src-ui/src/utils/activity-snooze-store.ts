@@ -31,8 +31,8 @@ export function readSnoozes(now: number): SnoozeMap {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return {};
     }
-// Lapsed entries are dropped on read so the store cannot grow without
-// bound and a stale snooze never outlives its window.
+    // Lapsed entries are dropped on read so the store cannot grow without
+    // bound and a stale snooze never outlives its window.
     return Object.fromEntries(
       Object.entries(parsed as Record<string, unknown>).filter(
         (entry): entry is [string, number] =>
@@ -49,7 +49,7 @@ export function writeSnooze(id: string, until: number, now: number): SnoozeMap {
   try {
     localStorage.setItem(SNOOZE_STORAGE_KEY, JSON.stringify(next));
   } catch {
-/* ignore — snooze is a convenience, not state worth failing over */
+    /* ignore — snooze is a convenience, not state worth failing over */
   }
   return next;
 }
@@ -60,13 +60,13 @@ export function clearSnooze(id: string, now: number): SnoozeMap {
   try {
     localStorage.setItem(SNOOZE_STORAGE_KEY, JSON.stringify(next));
   } catch {
-/* ignore */
+    /* ignore */
   }
   return next;
 }
 
 /**
-* archive#1311 a chat's `HomeWorkItem.id` is
+ * archive#1311 a chat's `HomeWorkItem.id` is
  * `conversationId || storeKey` — before a brand-new chat's first send
  * assigns a server `conversationId`, `id` reads as the local store key, and
  * a snooze set during that window is written under it. The moment
@@ -92,7 +92,7 @@ export function migrateSnoozeKey(
   try {
     localStorage.setItem(SNOOZE_STORAGE_KEY, JSON.stringify(current));
   } catch {
-/* ignore — snooze is a convenience, not state worth failing over */
+    /* ignore — snooze is a convenience, not state worth failing over */
   }
   return current;
 }

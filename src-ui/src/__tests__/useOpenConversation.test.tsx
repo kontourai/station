@@ -107,14 +107,14 @@ describe('useOpenConversation fetch-failure handling', () => {
     );
 
     expect(sessionId).toBeNull();
-// The tab was created (initChat) before the fetch resolved...
+    // The tab was created (initChat) before the fetch resolved...
     expect(mocks.initChat).toHaveBeenCalledTimes(1);
     expect(mocks.initChat).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ title: 'New chat' }),
     );
     const createdSessionId = mocks.initChat.mock.calls[0][0];
-//.and then torn back down — no orphan tab left in the store.
+    //.and then torn back down — no orphan tab left in the store.
     expect(mocks.removeChat).toHaveBeenCalledWith(createdSessionId);
     expect(mocks.updateChat).not.toHaveBeenCalled();
   });

@@ -257,7 +257,7 @@ function StarterLinkRetry({ task }: { task: TaskRecord }) {
       role="status"
       aria-label="Starter work link"
     >
-{/* archive#3965: led with `NOT_VERIFIED` and buried the fact the reader
+      {/* archive#3965: led with `NOT_VERIFIED` and buried the fact the reader
           cares about — the task exists. Outcome first, then the gap. */}
       <p>
         Your task was created. We couldn’t confirm it is linked to your
@@ -340,11 +340,11 @@ function TaskWorkspaceContent({
   graph: TaskGraph;
 }) {
   const references = useMemo(() => taskReferences(graph), [graph]);
- // AW-4: the list is derived from what this Station has actually
-// installed, not from a hardcoded filter. An optional experience appears
-// only when an installed, ENABLED plugin declares it provides that
-// contract; everything else stays behind the one Add capabilities
-// affordance.
+  // AW-4: the list is derived from what this Station has actually
+  // installed, not from a hardcoded filter. An optional experience appears
+  // only when an installed, ENABLED plugin declares it provides that
+  // contract; everything else stays behind the one Add capabilities
+  // affordance.
   const { data: plugins = [] } = usePluginsQuery() as {
     data: Array<{ enabled?: boolean; manifest?: { capabilities?: string[] } }>;
   };
@@ -500,10 +500,10 @@ function TaskRoomWorkspaceSection({
     retainedCapabilities.current = undefined;
   if (capabilities)
     retainedCapabilities.current = { taskId: task.id, value: capabilities };
-// Once this Task has proved a readable room contract, keep its historical
-// surface mounted through a reconnect or later authorization loss. The pane
-// children re-check live capability and become read-only; unmounting here
-// would discard the exact async context they are designed to preserve.
+  // Once this Task has proved a readable room contract, keep its historical
+  // surface mounted through a reconnect or later authorization loss. The pane
+  // children re-check live capability and become read-only; unmounting here
+  // would discard the exact async context they are designed to preserve.
   const workspaceCapabilities =
     capabilities ?? retainedCapabilities.current?.value;
   const composition = composeTaskRoomWorkspace({
@@ -959,10 +959,10 @@ function InspectionContent(
         description="Station does not read opaque external references as local files."
       />
     );
-// Two causes, and the condition that used to name both at once already
-// separates them: with no bound workspace there is nothing to resolve a
-// reference against, which is a property of the Task, not of the reference
-// the user just picked (archive#3158).
+  // Two causes, and the condition that used to name both at once already
+  // separates them: with no bound workspace there is nothing to resolve a
+  // reference against, which is a property of the Task, not of the reference
+  // the user just picked (archive#3158).
   if (!props.directory)
     return (
       <Empty
@@ -972,9 +972,9 @@ function InspectionContent(
       />
     );
   const path = referencePath(props.reference, props.directory);
-// What remains is the one thing `referencePath` actually decided: no safe
-// relative path inside the workspace. It does not report WHY (opaque
-// target, outside the workspace, unsafe segments), so this does not guess.
+  // What remains is the one thing `referencePath` actually decided: no safe
+  // relative path inside the workspace. It does not report WHY (opaque
+  // target, outside the workspace, unsafe segments), so this does not guess.
   if (!path)
     return (
       <Empty

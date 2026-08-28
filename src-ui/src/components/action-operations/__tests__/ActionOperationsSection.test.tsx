@@ -121,14 +121,14 @@ describe('ActionOperationsSection', () => {
     expect(mutate).toHaveBeenCalledWith('running');
   });
 
-/**
- * Audit / : the initial read used to render a bare
-* "Connecting…" sentence — the exact one-off-loading-string shape
-*  banned in favor of SkeletonList/SkeletonBlock. Not covered by
-* any existing test (the reconnecting case below only exercises the
-* HEADER's "Reconnecting…" chip, which requires cached `data`) — this
-* pins the fix.
-*/
+  /**
+   * Audit / : the initial read used to render a bare
+   * "Connecting…" sentence — the exact one-off-loading-string shape
+   *  banned in favor of SkeletonList/SkeletonBlock. Not covered by
+   * any existing test (the reconnecting case below only exercises the
+   * HEADER's "Reconnecting…" chip, which requires cached `data`) — this
+   * pins the fix.
+   */
   test('renders a skeleton, not a bespoke sentence, for the initial read', () => {
     useActionOperationsQuery.mockReturnValue({
       data: undefined,
@@ -150,18 +150,18 @@ describe('ActionOperationsSection', () => {
     );
   });
 
-/**
-* archive#4474: a SECOND skeleton for "error, no cached
-* data, isFetching" used to alternate with the static "unavailable" line
-* on the query's 5s `refetchInterval`, oscillating indefinitely and
-* displacing every row below the pane — a real-Chromium geometry test
-* (ActionOperationsSection.reflow.test.tsx) pins the zero-displacement
-* property directly; this pins the simpler, cheaper invariant at the
-* component level: the SAME static line renders regardless of
-* `isFetching`, so there is nothing left to oscillate between. An
-* automatic background retry is not news (archive#3297's stance for
-* ConnectionBannerSource, applied here too).
-*/
+  /**
+   * archive#4474: a SECOND skeleton for "error, no cached
+   * data, isFetching" used to alternate with the static "unavailable" line
+   * on the query's 5s `refetchInterval`, oscillating indefinitely and
+   * displacing every row below the pane — a real-Chromium geometry test
+   * (ActionOperationsSection.reflow.test.tsx) pins the zero-displacement
+   * property directly; this pins the simpler, cheaper invariant at the
+   * component level: the SAME static line renders regardless of
+   * `isFetching`, so there is nothing left to oscillate between. An
+   * automatic background retry is not news (archive#3297's stance for
+   * ConnectionBannerSource, applied here too).
+   */
   test.each([true, false])(
     'renders the same static "unavailable" line regardless of isFetching (isFetching=%s)',
     (isFetching) => {

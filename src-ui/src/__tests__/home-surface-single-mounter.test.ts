@@ -3,7 +3,7 @@ import { join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 /**
-* Epic archive#4142: a route is a PLACEMENT of a pane, not a second
+ * Epic archive#4142: a route is a PLACEMENT of a pane, not a second
  * identity. `/` renders Home through the pane path — `HomeWorkspacePane`
  * with the canonical occurrence — and the ambient dock renders the SAME
  * pane. That leaves `HomeSurface` with exactly one mounter reachable from
@@ -39,14 +39,14 @@ function* sourceFiles(dir: string): Generator<string> {
 
 /**
  * A VALUE import of the `HomeSurface` binding from the HomeSurface module.
-* `import type {... }` and `type HomeViewModel` specifiers are erased at
+ * `import type {... }` and `type HomeViewModel` specifiers are erased at
  * build time and cannot mount anything, so they are not counted; a mixed
  * import that carries the value binding (`{ HomeSurface, type X }`) is.
  */
 function importsHomeSurfaceValue(source: string): boolean {
-// The clause of an import statement can never contain a quote, which is
-// what stops this pattern spanning from one import statement into a later
-// one that happens to end in /HomeSurface.
+  // The clause of an import statement can never contain a quote, which is
+  // what stops this pattern spanning from one import statement into a later
+  // one that happens to end in /HomeSurface.
   const importPattern =
     /import\s+([^'"]*?)from\s+['"][^'"]*\/HomeSurface(?:\.js)?['"]/g;
   for (const match of source.matchAll(importPattern)) {
@@ -68,7 +68,7 @@ function importsHomeSurfaceValue(source: string): boolean {
       return true;
     }
   }
-// A re-export is a second doorway to the same component.
+  // A re-export is a second doorway to the same component.
   return /export\s+(?:{[^}]*\bHomeSurface\b[^}]*}|\*)\s+from\s+['"][^'"]*\/HomeSurface(?:\.js)?['"]/.test(
     source,
   );
@@ -80,7 +80,7 @@ describe('HomeSurface has exactly one mounter reachable from the shell', () => {
     const mountSites: string[] = [];
     for (const file of sourceFiles(SRC)) {
       const path = relative(SRC, file);
-// The module's own definition is not a mounter of itself.
+      // The module's own definition is not a mounter of itself.
       if (path === 'views/home/HomeSurface.tsx') continue;
       const source = readFileSync(file, 'utf8');
       if (importsHomeSurfaceValue(source)) importers.push(path);

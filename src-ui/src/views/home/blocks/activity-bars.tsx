@@ -23,18 +23,18 @@ export interface HeatCell {
 
 export interface HeatRow {
   project: string;
-/**
-* The project slug EVERY item folded into this row is bound to, or `null`.
-*
-* `project` above is `projectLabel` — a display string that also covers
-* `'No project'`, `'Project unavailable'`, and the ambiguous/unverified
-* variants `sessionProjectLabel` produces. Turning that string back into a
-* project would be a guess, so the slug is carried from the items instead
-* and only when they agree: one distinct slug, present on all of them.
-* A row whose items disagree, or where any item carries no slug at all,
-* reports `null` — the caller then has nothing to navigate to and must
-* render the label as text rather than invent a destination for it.
-*/
+  /**
+   * The project slug EVERY item folded into this row is bound to, or `null`.
+   *
+   * `project` above is `projectLabel` — a display string that also covers
+   * `'No project'`, `'Project unavailable'`, and the ambiguous/unverified
+   * variants `sessionProjectLabel` produces. Turning that string back into a
+   * project would be a guess, so the slug is carried from the items instead
+   * and only when they agree: one distinct slug, present on all of them.
+   * A row whose items disagree, or where any item carries no slug at all,
+   * reports `null` — the caller then has nothing to navigate to and must
+   * render the label as text rather than invent a destination for it.
+   */
   projectSlug: string | null;
   cells: HeatCell[];
   total: number;
@@ -46,22 +46,22 @@ export interface HeatRow {
  */
 export function buildHeatRows(items: HomeWorkItem[], now: number): HeatRow[] {
   const byProject = new Map<string, HeatRow>();
-/** Per row: every distinct slug seen, and whether any item carried none. */
+  /** Per row: every distinct slug seen, and whether any item carried none. */
   const slugAgreement = new Map<
     string,
     { slugs: Set<string>; anyMissing: boolean }
   >();
   for (const item of items) {
-// Clock skew between a client and the station server makes the NEWEST
-// items future-dated — exactly what this block exists to show.
-//
-// This clamp is load-bearing, not tidiness: a negative age yields
-// `bucket = BUCKET_COUNT`, `row.cells[BUCKET_COUNT]` is undefined, and the
-// `cell.count` read below throws — taking the whole Home route down to
-// its error boundary for one skewed timestamp. 
-//
-// It also keeps this agreeing with `bucketByRecency`, the sibling time
-// function Home renders below it, which files a future item under Today.
+    // Clock skew between a client and the station server makes the NEWEST
+    // items future-dated — exactly what this block exists to show.
+    //
+    // This clamp is load-bearing, not tidiness: a negative age yields
+    // `bucket = BUCKET_COUNT`, `row.cells[BUCKET_COUNT]` is undefined, and the
+    // `cell.count` read below throws — taking the whole Home route down to
+    // its error boundary for one skewed timestamp.
+    //
+    // It also keeps this agreeing with `bucketByRecency`, the sibling time
+    // function Home renders below it, which files a future item under Today.
     const age = Math.max(0, now - item.updatedAt);
     const bucket = BUCKET_COUNT - 1 - Math.floor(age / BUCKET_MS);
     if (bucket < 0) continue;
@@ -132,24 +132,24 @@ export function ActivityBars({
 }: {
   rows: HeatRow[];
   onOpen: (item: HomeWorkItem) => void;
-/**
-* Returns the opener for a row's project, or `null` when this row has no
-* project to open. Supplied by the host, which is the only layer that
-* knows the configured project catalog; a `null` answer renders the label
-* as plain text rather than a control that goes somewhere unrelated.
-*/
+  /**
+   * Returns the opener for a row's project, or `null` when this row has no
+   * project to open. Supplied by the host, which is the only layer that
+   * knows the configured project catalog; a `null` answer renders the label
+   * as plain text rather than a control that goes somewhere unrelated.
+   */
   resolveProjectOpen?: (row: HeatRow) => (() => void) | null;
 }) {
-/**
-* archive#3768: a twelve-column chart cannot hold twelve 44px targets in a
-* phone-width row — twelve buttons at ~18px wide are not a small control,
-* they are an unhittable one, and a transparent 44px hit area would make
-* them overlap each other four deep. On a coarse pointer the chart is
-* therefore what it reads as: a picture. Every destination it offers is
-* still on this page — the row's project is on the sidebar and in the
-* project switcher, and the work itself is the Recent-work list below,
-* whose rows already carry a 64px floor.
-*/
+  /**
+   * archive#3768: a twelve-column chart cannot hold twelve 44px targets in a
+   * phone-width row — twelve buttons at ~18px wide are not a small control,
+   * they are an unhittable one, and a transparent 44px hit area would make
+   * them overlap each other four deep. On a coarse pointer the chart is
+   * therefore what it reads as: a picture. Every destination it offers is
+   * still on this page — the row's project is on the sidebar and in the
+   * project switcher, and the work itself is the Recent-work list below,
+   * whose rows already carry a 64px floor.
+   */
   const isTouch = useIsMobile();
   const peak = Math.max(
     1,

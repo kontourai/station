@@ -190,7 +190,7 @@ describe('ApprovalModeChip', () => {
     fireEvent.click(option(/^Auto/));
 
     expect(onChange).toHaveBeenCalledWith('auto');
-// The sheet closes on a non-escalating pick.
+    // The sheet closes on a non-escalating pick.
     expect(screen.queryByRole('radiogroup')).toBeNull();
   });
 
@@ -208,8 +208,8 @@ describe('ApprovalModeChip', () => {
     await openSheet();
     fireEvent.click(option(/Never ask \(full access\)/));
 
-// Picking 'never' does not apply it yet — the option list is replaced by an
-// explicit confirm step.
+    // Picking 'never' does not apply it yet — the option list is replaced by an
+    // explicit confirm step.
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.queryByRole('radiogroup')).toBeNull();
     const confirmButton = screen.getByRole('button', {
@@ -237,8 +237,8 @@ describe('ApprovalModeChip', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(onChange).not.toHaveBeenCalled();
-// Back to the option list, still showing the pre-escalation value — the
-// mode never silently changed.
+    // Back to the option list, still showing the pre-escalation value — the
+    // mode never silently changed.
     expect(option(/^Ask every time/).getAttribute('aria-checked')).toBe('true');
   });
 
@@ -395,17 +395,17 @@ describe('ApprovalModeChip', () => {
     );
 
     await openSheet();
-// The description is visible text in the sheet now, not an <option> title —
-// it was previously reachable only by hovering a native select option.
+    // The description is visible text in the sheet now, not an <option> title —
+    // it was previously reachable only by hovering a native select option.
     const autoDescription =
       'Agent asks at its own discretion; file writes sandboxed to the workspace.';
     expect(screen.getByText(autoDescription)).toBeTruthy();
-// `option` now resolves the native `<input type="radio">` itself (real
-// radio semantics, archive#996) — a leaf element with no text-node
-// children of its own; the visible label/description text lives in
-// sibling `<span>`s inside the same `<label>` row. `.closest('label')`
-// is the equivalent "same option row" scope the original `.textContent`
-// check on the (then content-bearing) `<button>` was expressing.
+    // `option` now resolves the native `<input type="radio">` itself (real
+    // radio semantics, archive#996) — a leaf element with no text-node
+    // children of its own; the visible label/description text lives in
+    // sibling `<span>`s inside the same `<label>` row. `.closest('label')`
+    // is the equivalent "same option row" scope the original `.textContent`
+    // check on the (then content-bearing) `<button>` was expressing.
     expect(option(/^Auto/).closest('label')?.textContent).toContain(
       autoDescription,
     );
@@ -427,13 +427,13 @@ describe('ApprovalModeChip', () => {
   });
 
   test('narrowing the visible chip does not narrow what it discloses', async () => {
-// The policy half is hidden below 480px because the two labels together
-// overflowed the composer row on a phone (archive#3151). That is only
-// defensible while the full pairing survives in the accessible name and
-// the tooltip — approvals are a security-relevant readout, and a user
-// deciding whether to let an engine run unattended has to be able to
-// reach "Station is not the thing governing this". So: the element may
-// shrink, the disclosure may not.
+    // The policy half is hidden below 480px because the two labels together
+    // overflowed the composer row on a phone (archive#3151). That is only
+    // defensible while the full pairing survives in the accessible name and
+    // the tooltip — approvals are a security-relevant readout, and a user
+    // deciding whether to let an engine run unattended has to be able to
+    // reach "Station is not the thing governing this". So: the element may
+    // shrink, the disclosure may not.
     render(
       <ApprovalModeChip
         engineConnectionId="acp"
@@ -456,8 +456,8 @@ describe('ApprovalModeChip', () => {
     expect(chip.getAttribute('title')).toContain(
       'Station approvals partly apply',
     );
-// The class the media query keys off has to exist, or the rule targets
-// nothing and the overflow returns silently.
+    // The class the media query keys off has to exist, or the rule targets
+    // nothing and the overflow returns silently.
     expect(
       chip.querySelector('.chat-input__approval-chip-policy'),
     ).toBeTruthy();
@@ -476,14 +476,14 @@ describe('ApprovalModeChip', () => {
     expect(screen.getByText('Set by engine')).toBeTruthy();
   });
 
-/**
-* archive#1010. `config.approvalMode` is a generic connection-config bag
-* field with no server-side gate (nothing restricts it to the two adapters
-* that read it), so a no-knob connection carrying one used to make the inert
-* chip announce a governing posture — "Ask every time — default" — that the
-* adapter provably ignores. An inert control asserting a security posture
-* nothing enforces is worse than one asserting nothing.
-*/
+  /**
+   * archive#1010. `config.approvalMode` is a generic connection-config bag
+   * field with no server-side gate (nothing restricts it to the two adapters
+   * that read it), so a no-knob connection carrying one used to make the inert
+   * chip announce a governing posture — "Ask every time — default" — that the
+   * adapter provably ignores. An inert control asserting a security posture
+   * nothing enforces is worse than one asserting nothing.
+   */
   test('an inert chip never reports a mode, even when the connection carries an approvalMode default', async () => {
     render(
       <ApprovalModeChip
@@ -524,17 +524,17 @@ describe('ApprovalModeChip', () => {
     expect(note.getAttribute('aria-label')).toContain(
       'Station cannot set approvals for this engine',
     );
-// Inert treatment is what makes the absence of a click safe to ship: it
-// must not be a button, and it must not advertise a popup.
+    // Inert treatment is what makes the absence of a click safe to ship: it
+    // must not be a button, and it must not advertise a popup.
     expect(note.tagName).toBe('SPAN');
     expect(note.getAttribute('aria-haspopup')).toBeNull();
   });
 
-/**
-* archive#1010. The pill is ~150px of a 390px composer; the descriptive
-* label clipped its own caret at that width. The short form goes in the
-* pill, the full label stays on the accessible name.
-*/
+  /**
+   * archive#1010. The pill is ~150px of a 390px composer; the descriptive
+   * label clipped its own caret at that width. The short form goes in the
+   * pill, the full label stays on the accessible name.
+   */
   test('the chip shows a short label while the accessible name keeps the full one', async () => {
     render(
       <ApprovalModeChip
@@ -574,12 +574,12 @@ describe('ApprovalModeChip', () => {
     ).toBe('Ask');
   });
 
-// WCAG 2.5.3 Label in Name: a speech-input user says what they see, so the
-// visible pill text has to appear in the accessible name. Shortening the pill
- // (archive#1010) broke this for the pending state — visible "Full access ·
-// pending" was not a substring of "Never ask (full access) — pending next
-// turn" — and no assertion noticed, because every test pinned one string or
-// the other rather than their relationship.
+  // WCAG 2.5.3 Label in Name: a speech-input user says what they see, so the
+  // visible pill text has to appear in the accessible name. Shortening the pill
+  // (archive#1010) broke this for the pending state — visible "Full access ·
+  // pending" was not a substring of "Never ask (full access) — pending next
+  // turn" — and no assertion noticed, because every test pinned one string or
+  // the other rather than their relationship.
   for (const [name, sessionOverride] of [
     ['default', undefined],
     ['override', 'auto'],

@@ -31,7 +31,7 @@ let bindPending = false;
  * ran and the whole refusal path — the point of the slice — was untested: the
  * `refusal` state, the "That checkout was not recorded" block, its reset, and
  * the pending label would every one of them still have passed this suite if
-* deleted (archive#1502).
+ * deleted (archive#1502).
  */
 interface CapturedBindOptions {
   onSuccess?: (outcome: unknown, path: string) => void;
@@ -92,7 +92,7 @@ function backing(
     resources,
     primary:
       primary ??
-// `ambiguous` names no resource, so a primary cannot name it either.
+      // `ambiguous` names no resource, so a primary cannot name it either.
       (first === undefined || first.resourceId.length === 0
         ? { named: false, reason: 'no single resource is the primary' }
         : { named: true, resourceId: first.resourceId }),
@@ -177,12 +177,12 @@ describe('ResourcesSection — one arm per state (§3.6)', () => {
     expect(screen.getByText(/has no binding on this Station/)).toBeTruthy();
     const input = container.querySelector('input') as HTMLInputElement;
     expect(input).toBeTruthy();
-// Nothing to pre-fill: `unbound` carries no record and no path.
+    // Nothing to pre-fill: `unbound` carries no record and no path.
     expect(input.value).toBe('');
     expect(
       screen.getByRole('button', { name: 'Point at checkout' }),
     ).toBeTruthy();
-// No slot of any kind renders — there is no path to put in one.
+    // No slot of any kind renders — there is no path to put in one.
     for (const label of Object.values(RESOURCE_SLOT_LABELS)) {
       expect(screen.queryByText(label)).toBeNull();
     }
@@ -192,7 +192,7 @@ describe('ResourcesSection — one arm per state (§3.6)', () => {
     const { container } = renderResource(MISSING);
 
     expect(screen.getByText('The recorded location is gone')).toBeTruthy();
-// Which record — "re-point or re-clone" is unactionable without it.
+    // Which record — "re-point or re-clone" is unactionable without it.
     expect(screen.getByText(/the recorded binding/)).toBeTruthy();
     expect(screen.getByText(RESOURCE_SLOT_LABELS.declared)).toBeTruthy();
     expect(screen.getByText('~/code/api')).toBeTruthy();
@@ -221,9 +221,9 @@ describe('ResourcesSection — one arm per state (§3.6)', () => {
     expect(screen.getByText(RESOURCE_SLOT_LABELS.observation)).toBeTruthy();
     expect(screen.getByText('/Users/dev/code/other')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Re-point' })).toBeTruthy();
- // §3.6 says "confirm the new identity or re-point"; confirming would
-// rewrite the manifest's canonicalRemote and no such verb exists, so the
-// operator is never told to confirm anything.
+    // §3.6 says "confirm the new identity or re-point"; confirming would
+    // rewrite the manifest's canonicalRemote and no such verb exists, so the
+    // operator is never told to confirm anything.
     expect(screen.queryByText(/confirm/i)).toBeNull();
   });
 
@@ -233,13 +233,13 @@ describe('ResourcesSection — one arm per state (§3.6)', () => {
     expect(screen.getByText('Could not be verified just now')).toBeTruthy();
     expect(screen.getByText(RESOURCE_SLOT_LABELS.observation)).toBeTruthy();
     expect(screen.getByText('/Users/dev/code/api')).toBeTruthy();
-// Its wording differs from `drifted`'s even though the slot is the same.
+    // Its wording differs from `drifted`'s even though the slot is the same.
     expect(
       screen.getByText(/Station could not confirm which repository is in it/),
     ).toBeTruthy();
-// NOT "the check did not run": the resolver emits `stale` when
-// `readCheckoutRemotes` answers `ok: false`, i.e. the check ran and
-// FAILED, which is the common case (archive#1502).
+    // NOT "the check did not run": the resolver emits `stale` when
+    // `readCheckoutRemotes` answers `ok: false`, i.e. the check ran and
+    // FAILED, which is the common case (archive#1502).
     expect(screen.queryByText(/did not run/)).toBeNull();
 
     const reverify = screen.getByRole('button', { name: 'Re-verify' });
@@ -251,7 +251,7 @@ describe('ResourcesSection — one arm per state (§3.6)', () => {
     const { container } = renderResource(AMBIGUOUS);
 
     expect(screen.getByText(/Two resources declare role primary/)).toBeTruthy();
-// Its resourceId is required EMPTY by contract; nothing renders an id.
+    // Its resourceId is required EMPTY by contract; nothing renders an id.
     expect(container.querySelector('code')).toBeNull();
     expect(container.querySelector('input')).toBeNull();
     expect(container.querySelector('button')).toBeNull();
@@ -263,12 +263,12 @@ describe('ResourcesSection — one arm per state (§3.6)', () => {
     expect(screen.getByText('Access was denied')).toBeTruthy();
     expect(screen.getByText(/github\.com\/acme\/api/)).toBeTruthy();
     expect(screen.getByText(/was denied\./)).toBeTruthy();
- // §3.6 rule 3: no path, branch, or content is disclosed.
+    // §3.6 rule 3: no path, branch, or content is disclosed.
     expect(container.textContent ?? '').not.toMatch(PATH_LIKE);
     for (const label of Object.values(RESOURCE_SLOT_LABELS)) {
       expect(screen.queryByText(label)).toBeNull();
     }
-// "Nothing local; the gap is upstream" — so no local action is offered.
+    // "Nothing local; the gap is upstream" — so no local action is offered.
     expect(container.querySelector('input')).toBeNull();
     expect(container.querySelector('button')).toBeNull();
   });
@@ -296,7 +296,7 @@ describe('trap 1 — `missing` and `unbound` must not render alike', () => {
     const missingText = missing.container.textContent ?? '';
 
     expect(missingText).not.toBe(unboundText);
-// Different HEADLINE.
+    // Different HEADLINE.
     expect(unboundText).toContain('Not set up on this Station');
     expect(missingText).toContain('The recorded location is gone');
     expect(missingText).not.toContain('Not set up on this Station');
@@ -319,7 +319,7 @@ describe('trap 1 — `missing` and `unbound` must not render alike', () => {
     expect(unboundText).not.toContain('the recorded binding');
     expect(unboundText).not.toContain("the project's working directory");
     expect(unboundText).not.toContain(RESOURCE_SLOT_LABELS.declared);
-// No path of any kind: `unbound` has nothing recorded to name.
+    // No path of any kind: `unbound` has nothing recorded to name.
     expect(unboundText).not.toMatch(PATH_LIKE);
   });
 });
@@ -381,23 +381,23 @@ describe('§4.1 — the not-backing path shows none of the five forbidden things
     const text = container.textContent ?? '';
     expect(text).toContain("This Station isn't backing this project");
 
-// 1. no repair prompt
+    // 1. no repair prompt
     expect(container.querySelector('input')).toBeNull();
     expect(container.querySelector('button')).toBeNull();
     expect(container.querySelector('form')).toBeNull();
-// 2. no "unresolvable for you" badge
+    // 2. no "unresolvable for you" badge
     expect(text.toLowerCase()).not.toContain('unresolvable');
     expect(text.toLowerCase()).not.toContain('denied');
-// 3. no per-resource row / state table
+    // 3. no per-resource row / state table
     expect(container.querySelector('.resources-section__row')).toBeNull();
     expect(container.querySelector('table')).toBeNull();
     for (const label of Object.values(RESOURCE_SLOT_LABELS)) {
       expect(text).not.toContain(label);
     }
-// 4. no clone call-to-action — and nothing that names an action the
-//    surface cannot perform (the contract carries no remote to clone).
+    // 4. no clone call-to-action — and nothing that names an action the
+    //    surface cannot perform (the contract carries no remote to clone).
     expect(text.toLowerCase()).not.toContain('clone');
-// 5. nothing that reads as an incomplete setup
+    // 5. nothing that reads as an incomplete setup
     expect(text.toLowerCase()).not.toContain('incomplete');
     expect(text.toLowerCase()).not.toContain('finish setting up');
     expect(text).not.toMatch(PATH_LIKE);
@@ -431,8 +431,8 @@ describe('the repair action is an explicit operator act', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Point at checkout' }));
 
     expect(bindMutate).toHaveBeenCalledTimes(1);
-// archive#1503: the mutation carries WHICH resource it repairs, so a
-// multi-repo project's third row cannot write the primary's binding.
+    // archive#1503: the mutation carries WHICH resource it repairs, so a
+    // multi-repo project's third row cannot write the primary's binding.
     expect(bindMutate).toHaveBeenCalledWith({
       path: '/Users/dev/code/api',
       resourceId: 'github.com/acme/api',
@@ -455,7 +455,7 @@ describe('the repair action is an explicit operator act', () => {
     expect(
       screen.getByText(/checks the directory before it records anything/),
     ).toBeTruthy();
-// "never silently re-bind" — the copy must not promise Station will fix it.
+    // "never silently re-bind" — the copy must not promise Station will fix it.
     const form = screen
       .getByRole('button', { name: 'Re-point' })
       .closest('form') as HTMLFormElement;
@@ -497,8 +497,8 @@ describe('MEDIUM-4 — the refusal path, driven through the real callbacks', () 
     act(() => bindOptions?.onError?.(new Error(reason), '/Users/dev/code/api'));
 
     expect(screen.getByText('That checkout was not recorded')).toBeTruthy();
-// Verbatim: a refusal reason is the whole value of an honest unavailable,
-// so it is never summarized, retried, or replaced.
+    // Verbatim: a refusal reason is the whole value of an honest unavailable,
+    // so it is never summarized, retried, or replaced.
     expect(screen.getByText(reason)).toBeTruthy();
   });
 
@@ -560,7 +560,7 @@ describe('MEDIUM-4 — the refusal path, driven through the real callbacks', () 
     );
 
     expect(screen.getByText(gap)).toBeTruthy();
-// The false negative this exists to prevent.
+    // The false negative this exists to prevent.
     expect(screen.queryByText('That checkout was not recorded')).toBeNull();
   });
 });
@@ -573,17 +573,17 @@ describe('HIGH-3 — the `missing` repair is branched on the RECORD', () => {
       declaredPath: '~/code/elsewhere',
     });
 
-// `bindProjectResource` writes a BINDING row keyed by the manifest's
-// resource. For a manifest-less project it is refused 409 every time, so
-// the form was a guaranteed dead end — and it named the working directory
-// while writing something else.
+    // `bindProjectResource` writes a BINDING row keyed by the manifest's
+    // resource. For a manifest-less project it is refused 409 every time, so
+    // the form was a guaranteed dead end — and it named the working directory
+    // while writing something else.
     expect(container.querySelector('form')).toBeNull();
     expect(container.querySelector('input')).toBeNull();
     const link = container.querySelector('a') as HTMLAnchorElement;
     expect(link).toBeTruthy();
     expect(link.getAttribute('href')).toBe('#section-workspace');
-// The path the record declares is still named — the repair is unactionable
-// without it.
+    // The path the record declares is still named — the repair is unactionable
+    // without it.
     expect(screen.getByText('~/code/elsewhere')).toBeTruthy();
   });
 
@@ -606,10 +606,10 @@ describe('LOW-1 — a state transition remounts the repair form', () => {
       (view.container.querySelector('input') as HTMLInputElement).value,
     ).toBe('~/code/api');
 
-// `missing` → `drifted`: both render a `PointAtCheckoutForm`, so without a
-// key they reconcile POSITIONALLY and the mounted form keeps its
-// `useState(initialPath)` — showing the previous state's declaredPath as
-// though it belonged to this one.
+    // `missing` → `drifted`: both render a `PointAtCheckoutForm`, so without a
+    // key they reconcile POSITIONALLY and the mounted form keeps its
+    // `useState(initialPath)` — showing the previous state's declaredPath as
+    // though it belonged to this one.
     queryState = { data: backing([DRIFTED]) };
     view.rerender(<ResourcesSection slug="acme" />);
 
@@ -633,11 +633,11 @@ describe('LOW-1 — a state transition remounts the repair form', () => {
 });
 
 describe('LOW-2 — the three slots are visually distinct, not just textually', () => {
-// The CSS comment CLAIMS this; `--observation` and `--declared` shared one
-// identical rule block, so the claim was unpinned and false. Pinned here so
-// it cannot become false again silently.
-// `process.cwd` and not `import.meta.url`: this file runs under jsdom,
-// where `import.meta.url` is an http URL that `readFileSync` refuses.
+  // The CSS comment CLAIMS this; `--observation` and `--declared` shared one
+  // identical rule block, so the claim was unpinned and false. Pinned here so
+  // it cannot become false again silently.
+  // `process.cwd` and not `import.meta.url`: this file runs under jsdom,
+  // where `import.meta.url` is an http URL that `readFileSync` refuses.
   const css = readFileSync(
     join(process.cwd(), 'src-ui/src/views/ProjectSettingsView.css'),
     'utf-8',
@@ -661,7 +661,7 @@ describe('LOW-2 — the three slots are visually distinct, not just textually', 
   });
 
   it('no rule block groups two slot kinds under one selector', () => {
-// The exact shape of the defect: `--observation, --declared { … }`.
+    // The exact shape of the defect: `--observation, --declared { … }`.
     expect(css).not.toMatch(
       /\.resources-section__slot--\w+\s*,\s*\n?\s*\.resources-section__slot--\w+\s*\{/,
     );
@@ -705,14 +705,14 @@ describe('LOW-5 — the transient compat id is never shown as the thing that res
     });
 
     expect(container.textContent).not.toContain('local:acme');
-// The body names no resource id at all; the only `code` left is the
-// ANSWER slot's path.
+    // The body names no resource id at all; the only `code` left is the
+    // ANSWER slot's path.
     expect(container.querySelector('.resources-section__body code')).toBeNull();
     expect(
       screen.getByText(/This project's working directory resolves here/),
     ).toBeTruthy();
-// The ANSWER slot still carries the verified path — nothing is suppressed
-// except the id.
+    // The ANSWER slot still carries the verified path — nothing is suppressed
+    // except the id.
     expect(screen.getByText('/Users/dev/code/acme')).toBeTruthy();
   });
 
@@ -726,10 +726,10 @@ describe('LOW-5 — the transient compat id is never shown as the thing that res
 });
 
 describe('AC5 stand-in — the local-only vocabulary guard', () => {
- // The unit-level substitute for `tests/first-run-live.spec.ts`'s §4.6 pin,
-// which this slice does not run (no e2e this pass). It asserts the same
-// property that pin exists for: a purely local Station never sees
-// collaboration vocabulary on a resolving project.
+  // The unit-level substitute for `tests/first-run-live.spec.ts`'s §4.6 pin,
+  // which this slice does not run (no e2e this pass). It asserts the same
+  // property that pin exists for: a purely local Station never sees
+  // collaboration vocabulary on a resolving project.
   it('a bound project renders no member/manifest/contribution vocabulary', () => {
     const { container } = renderResource(BOUND);
     expect(container.textContent ?? '').not.toMatch(
@@ -763,10 +763,10 @@ describe('a partially-bound multi-repo project is LEGIBLE', () => {
     );
     const text = container.textContent ?? '';
 
-// The tally is DERIVED from the rows, so it cannot disagree with them.
+    // The tally is DERIVED from the rows, so it cannot disagree with them.
     expect(text).toContain('2 of 3');
     expect(text).toContain('resources resolve');
-// Every resource is named, and the unbound one keeps its own repair form.
+    // Every resource is named, and the unbound one keeps its own repair form.
     for (const id of [
       'github.com/acme/api',
       'github.com/acme/web',
@@ -799,7 +799,7 @@ describe('a partially-bound multi-repo project is LEGIBLE', () => {
     const inputs = container.querySelectorAll('input');
     expect(inputs).toHaveLength(2);
 
-// The `missing` row is pre-filled with what ITS record declares.
+    // The `missing` row is pre-filled with what ITS record declares.
     fireEvent.click(screen.getByRole('button', { name: 'Re-point' }));
     expect(bindMutate).toHaveBeenCalledWith({
       path: '~/code/web',
@@ -833,16 +833,16 @@ describe('a partially-bound multi-repo project is LEGIBLE', () => {
   });
 
   it('says nothing about a tally for a single-resource project', () => {
-// "1 of 1" above one row is noise that trains a reader to skip the place
-// the real count will one day appear.
+    // "1 of 1" above one row is noise that trains a reader to skip the place
+    // the real count will one day appear.
     const { container } = renderView(backing([API_BOUND]));
     expect(container.textContent ?? '').not.toContain('1 of 1');
   });
 
   it('renders the PRIMARY gap — the fact per-resource rows would otherwise silence', () => {
-// Every row can read healthy while nothing can be started in the project:
-// the session cwd, the knowledge scan and the task workspace all ask
-// WITHOUT a resource id, and that question has no answer here.
+    // Every row can read healthy while nothing can be started in the project:
+    // the session cwd, the knowledge scan and the task workspace all ask
+    // WITHOUT a resource id, and that question has no answer here.
     const { container } = renderView(
       backing([API_BOUND, WEB_BOUND], {
         named: false,
@@ -854,7 +854,7 @@ describe('a partially-bound multi-repo project is LEGIBLE', () => {
 
     expect(text).toContain("No single resource is this project's primary");
     expect(text).toContain('declare role "primary"');
-// The rows are still there — the project is not reported as broken wholesale.
+    // The rows are still there — the project is not reported as broken wholesale.
     expect(text).toContain('github.com/acme/api');
   });
 

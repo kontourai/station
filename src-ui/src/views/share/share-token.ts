@@ -54,7 +54,7 @@ export function capturedShareToken(): string | undefined {
 
 /**
  * Restores the fragment and reloads. The only supported way to reload this
-* page: a bare `location.reload` after {@link captureShareToken} has run
+ * page: a bare `location.reload` after {@link captureShareToken} has run
  * would drop the token and land on the missing-token state, which is a
  * recovery affordance that guarantees its own failure.
  */

@@ -58,17 +58,17 @@ export interface AgentSummary {
   source?: AgentSource;
   ui?: AgentUIConfig;
   commands?: AgentCommands;
-/**
-* Derived, not restated. A hand-listed copy of this shape once omitted a
-* field the contract defined, which is how the editor silently destroyed it
-* on every save (archive#2693) — a type that claims to BE the whole tools
-* object has to come from the contract.
-*/
+  /**
+   * Derived, not restated. A hand-listed copy of this shape once omitted a
+   * field the contract defined, which is how the editor silently destroyed it
+   * on every save (archive#2693) — a type that claims to BE the whole tools
+   * object has to come from the contract.
+   */
   toolsConfig?: Partial<AgentTools>;
   execution?: AgentExecutionConfig;
   workflowWarnings?: string[];
   modelOptions?: Array<{ id: string; name: string; originalId: string }> | null;
- /** Owning project slug; absent = global scope (agent-engine-unification.md §3.3). */
+  /** Owning project slug; absent = global scope (agent-engine-unification.md §3.3). */
   project?: string;
 }
 
@@ -79,24 +79,24 @@ export interface FileAttachment {
   size: number;
   data: string; // base64 or URL
   preview?: string; // For images
-/**
-* Present only when the composer shrank the image to fit the attachment caps
-* (archive#3375). `name`, `type`, `size` and `data` all describe what will
-* actually be sent; this describes what the user chose, so the composer can
-* say the image was resized instead of implying the original went out.
-*/
+  /**
+   * Present only when the composer shrank the image to fit the attachment caps
+   * (archive#3375). `name`, `type`, `size` and `data` all describe what will
+   * actually be sent; this describes what the user chose, so the composer can
+   * say the image was resized instead of implying the original went out.
+   */
   resized?: {
-/** Decoded byte count of the file the user selected or pasted. */
+    /** Decoded byte count of the file the user selected or pasted. */
     fromBytes: number;
     fromMimeType: string;
     width: number;
     height: number;
   };
-/**
-* Byte-free local provenance for an image that changed containers before it
- * entered the archive#4134 staging seam. It contains digests and bounded metadata,
-* never source bytes, EXIF, a path, or a native capability grant.
-*/
+  /**
+   * Byte-free local provenance for an image that changed containers before it
+   * entered the archive#4134 staging seam. It contains digests and bounded metadata,
+   * never source bytes, EXIF, a path, or a native capability grant.
+   */
   transformation?: TransformationReceipt;
 }
 
@@ -115,37 +115,37 @@ export interface ComposerAttachmentStageSnapshot {
     | 'uploading'
     | 'retryable'
     | 'complete'
-/** Server accepted the bound turn; its upload bytes were deliberately released. */
+    /** Server accepted the bound turn; its upload bytes were deliberately released. */
     | 'accepted'
     | 'cancelled'
     | 'failed';
   progress: number;
   stageId?: string;
   reference?: StagedAttachmentReference;
-/** Older validated Station hosts intentionally use inline delivery. */
+  /** Older validated Station hosts intentionally use inline delivery. */
   delivery?: 'legacy-inline' | 'staged';
-/** A reload has retained the stage reference but cannot retain File bytes. */
+  /** A reload has retained the stage reference but cannot retain File bytes. */
   needsFile?: boolean;
   error?: string;
-/** Retained provenance is safe across reload; source bytes are never retained. */
+  /** Retained provenance is safe across reload; source bytes are never retained. */
   transformation?: TransformationReceipt;
 }
 
 export interface ChatMessage {
-/** Stable server/event identity when the projection can provide one. */
+  /** Stable server/event identity when the projection can provide one. */
   id?: string;
-/** Stable client identity while an optimistic user row awaits persistence. */
+  /** Stable client identity while an optimistic user row awaits persistence. */
   clientId?: string;
-/** Durable event identity on a rehydrated authored user row, never optimistic. */
+  /** Durable event identity on a rehydrated authored user row, never optimistic. */
   sourceEventId?: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   model?: string;
   modelOptions?: Record<string, string | number | boolean>;
-/** archive#1292: set only on entries in `ChatUIState.ephemeralMessages` — the
-* dismissible transcript notice flag. Every notice is created through
-* `addEphemeralMessage`/`createEphemeralMessageState`, which always sets
-* this; there is no writer that sets it on any other message. */
+  /** archive#1292: set only on entries in `ChatUIState.ephemeralMessages` — the
+   * dismissible transcript notice flag. Every notice is created through
+   * `addEphemeralMessage`/`createEphemeralMessageState`, which always sets
+   * this; there is no writer that sets it on any other message. */
   ephemeral?: boolean;
   showContinue?: boolean;
   timestamp?: number;
@@ -161,14 +161,14 @@ export interface ChatMessage {
       | 'ui-block'
       | 'flow-run-attached'
       | 'flow-gate-verdict'
-// Persisted SDK refresh parts arrive as `tool-<toolName>`.
+      // Persisted SDK refresh parts arrive as `tool-<toolName>`.
       | (string & {});
     content?: string;
     image?: string;
     mediaType?: string;
     url?: string;
     name?: string;
-// Flat `tool-invocation` tool-part fields — the single chat tool vocabulary.
+    // Flat `tool-invocation` tool-part fields — the single chat tool vocabulary.
     toolName?: string;
     server?: string;
     originalName?: string;
@@ -190,8 +190,8 @@ export interface ChatMessage {
       | 'policy-denied';
     activityAt?: string;
     progressMessage?: string;
-/** archive#3769: the durable projection's own runtime.error marker — see
-* `MessagePart.runtimeError` in `packages/shared/src/conversation-message.ts`. */
+    /** archive#3769: the durable projection's own runtime.error marker — see
+     * `MessagePart.runtimeError` in `packages/shared/src/conversation-message.ts`. */
     runtimeError?: boolean;
     uiBlock?: UIBlock;
     toolCallId?: string;
@@ -209,28 +209,28 @@ export interface ChatMessage {
     state?: string;
     error?: string;
   }>;
-/** archive#1410: the canonical turn this assistant row projects, when known. */
+  /** archive#1410: the canonical turn this assistant row projects, when known. */
   turnId?: string;
-/** Execution Session that produced this historical assistant row. */
+  /** Execution Session that produced this historical assistant row. */
   sessionId?: string;
-/**
-* Agent selected by the execution Session that produced this row.  This is
-* transcript lineage, not the current conversation selection: after a
-* handoff those are intentionally different facts.
-*/
+  /**
+   * Agent selected by the execution Session that produced this row.  This is
+   * transcript lineage, not the current conversation selection: after a
+   * handoff those are intentionally different facts.
+   */
   agentSlug?: AgentId;
   agentDisplayName?: string;
   agentIcon?: string;
-/** True only for a normally completed assistant turn. */
+  /** True only for a normally completed assistant turn. */
   answerEligible?: boolean;
-/**
-* archive#1410: the turn's provenance envelope exactly as the server sent
-* it. Untyped on purpose — see `TurnProvenanceCard`, which narrows it
-* through `isSupportedTurnProvenanceEnvelope` so an envelope this build
-* does not understand degrades to an honest unavailable state.
-*/
+  /**
+   * archive#1410: the turn's provenance envelope exactly as the server sent
+   * it. Untyped on purpose — see `TurnProvenanceCard`, which narrows it
+   * through `isSupportedTurnProvenanceEnvelope` so an envelope this build
+   * does not understand degrades to an honest unavailable state.
+   */
   provenance?: unknown;
-/** Workspace effect between this turn's captured baseline and settle. */
+  /** Workspace effect between this turn's captured baseline and settle. */
   changedFiles?: TurnChangedFiles;
 }
 
@@ -254,7 +254,7 @@ export interface UnsentMessageRecord {
 export interface ChatSession {
   id: string;
   conversationId?: string;
-/** Replaceable execution context beneath this durable conversation. */
+  /** Replaceable execution context beneath this durable conversation. */
   currentSessionId?: string;
   agentSlug: AgentId;
   agentName: string;
@@ -265,9 +265,9 @@ export interface ChatSession {
   input: string;
   attachments: FileAttachment[];
   queuedMessages: string[];
-/** See ChatUIState.queuedMessageFailure (active-chats-state.ts) — persisted. */
+  /** See ChatUIState.queuedMessageFailure (active-chats-state.ts) — persisted. */
   queuedMessageFailure?: { message: string; code?: string; at: number };
-/** See ChatUIState.unsentMessages (archive#3706) — persisted, not a queue. */
+  /** See ChatUIState.unsentMessages (archive#3706) — persisted, not a queue. */
   unsentMessages?: UnsentMessageRecord[];
   outboundQueuedTurns?: Array<{
     clientTurnId: string;
@@ -285,9 +285,9 @@ export interface ChatSession {
   hasUnread: boolean;
   provider?: ProviderKind;
   providerOptions?: Record<string, unknown>;
-/** See ChatUIState.lastAppliedApprovalMode (active-chats-state.ts) — not persisted. */
+  /** See ChatUIState.lastAppliedApprovalMode (active-chats-state.ts) — not persisted. */
   lastAppliedApprovalMode?: ApprovalMode;
-/** See ChatUIState.stopPending (active-chats-state.ts) — not persisted. */
+  /** See ChatUIState.stopPending (active-chats-state.ts) — not persisted. */
   stopPending?: boolean;
   model?: string;
   modelSource?: EffectiveModelSource;
@@ -299,15 +299,15 @@ export interface ChatSession {
   orchestrationProvider?: ProviderKind;
   orchestrationModel?: string;
   orchestrationStatus?: string;
-/** This tab's transcript is served by the bounded orchestration window. */
+  /** This tab's transcript is served by the bounded orchestration window. */
   orchestrationSessionStarted?: boolean;
-/** Authoritative live-turn fold; it stays true while approval is pending. */
+  /** Authoritative live-turn fold; it stays true while approval is pending. */
   orchestrationTurnOpen?: boolean;
-/** The one current turn whose streaming row must remain unfolded. */
+  /** The one current turn whose streaming row must remain unfolded. */
   openTurnId?: string;
-/** See ChatUIState.openTurnShellSuperseded (active-chats-state.ts). */
+  /** See ChatUIState.openTurnShellSuperseded (active-chats-state.ts). */
   openTurnShellSuperseded?: boolean;
-/** Incremented only when bounded persisted history must reconcile. */
+  /** Incremented only when bounded persisted history must reconcile. */
   orchestrationHistoryRevision?: number;
   inputHistory: string[];
   abortController?: AbortController;
@@ -324,11 +324,11 @@ export interface ChatSession {
   pendingApprovals?: string[];
   isProcessingStep?: boolean;
   flowRun?: FlowRunBinding | null;
-/** See ChatUIState.activityHint — transient streaming-indicator hint. */
+  /** See ChatUIState.activityHint — transient streaming-indicator hint. */
   activityHint?: ChatActivityHint;
-/** See ChatUIState.backgroundTasks — live provider background tasks. */
+  /** See ChatUIState.backgroundTasks — live provider background tasks. */
   backgroundTasks?: ChatBackgroundTask[];
-/** Latest provider-reported usage observation for the live context meter. */
+  /** Latest provider-reported usage observation for the live context meter. */
   liveUsage?: ChatLiveUsage;
 }
 
@@ -364,7 +364,7 @@ export type NavigationView =
   | {
       type: 'guidance';
       tab?: 'skills' | 'commands';
-/** Narrows the Skills list; see `views/guidance-tab.ts`. */
+      /** Narrows the Skills list; see `views/guidance-tab.ts`. */
       filter?: 'commands';
       selectedId?: string;
       redirectFromAlias?: boolean;
@@ -386,13 +386,13 @@ export type NavigationView =
   | {
       type: 'activity';
       sessionId?: string;
-/**
-* One-shot route intent: land the reader on the selected session's
-* evidence region (receipts/diagnostics). Only meaningful alongside
-* `sessionId`; consumed and cleared by the Activity surface after it is
-* honored, following the `openFilePreviewIntent` idiom
-* (`navigation-store.ts`).
-*/
+      /**
+       * One-shot route intent: land the reader on the selected session's
+       * evidence region (receipts/diagnostics). Only meaningful alongside
+       * `sessionId`; consumed and cleared by the Activity surface after it is
+       * honored, following the `openFilePreviewIntent` idiom
+       * (`navigation-store.ts`).
+       */
       focus?: 'evidence';
     }
   | { type: 'developer'; tab?: DeveloperTab }
@@ -401,8 +401,8 @@ export type NavigationView =
   | { type: 'profile' }
   | { type: 'notifications' }
   | { type: 'task'; taskId: string }
-// archive#4079: the board face, reached by URL only (no sidebar
-// item this slice — see docs/design/... and page-frame-registry.ts).
+  // archive#4079: the board face, reached by URL only (no sidebar
+  // item this slice — see docs/design/... and page-frame-registry.ts).
   | { type: 'board'; reference: BoardReference }
   | { type: 'project'; slug: string }
   | { type: 'project-session-board'; slug: string }
@@ -412,13 +412,13 @@ export type NavigationView =
       projectSlug: string;
       descriptorId: string;
       instanceId: string;
-/** Present only for a pane whose renderer is bound to a Project layout. */
+      /** Present only for a pane whose renderer is bound to a Project layout. */
       layoutSlug?: string;
     }
   | { type: 'project-new' }
   | { type: 'project-edit'; slug: string }
-// `tab` is the layout tab named by the third path segment
-// (`/projects/<p>/layouts/<l>/<tabId>`), the shape `setLayoutTab` writes.
+  // `tab` is the layout tab named by the third path segment
+  // (`/projects/<p>/layouts/<l>/<tabId>`), the shape `setLayoutTab` writes.
   | { type: 'layout'; projectSlug: string; layoutSlug: string; tab?: string }
   | { type: 'not-found'; path: string };
 

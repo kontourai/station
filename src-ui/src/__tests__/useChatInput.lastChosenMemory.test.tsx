@@ -6,12 +6,12 @@
  * the far more common way to change models, taught the next New Chat
  * nothing. These pin the new wiring in useChatInput:
  * - picker intent does not become remembered choice until an accepted server
-*   event confirms the model was actually applied
-*   (external agents only, mirroring NewChatModal's PROVIDER_MANAGED gate)
+ *   event confirms the model was actually applied
+ *   (external agents only, mirroring NewChatModal's PROVIDER_MANAGED gate)
  * - handleModelReset clears the remembered choice (resetting IS choosing
-*   the default)
+ *   the default)
  * - Station (provider-managed) agents never write the memory: their
-*   admin-configured default must not be shadowed by a stale choice.
+ *   admin-configured default must not be shadowed by a stale choice.
  */
 
 import {
@@ -139,10 +139,10 @@ function renderChatInput(options?: {
 describe('useChatInput last-chosen model memory', () => {
   beforeEach(() => {
     localStorage.clear();
-// updateChat silently no-ops for sessions that don't exist — the
-// session must be CREATED via initChat or every state-dependent gate
-// in the hook runs against null and tests pass for the wrong reason
-// (this suite's first draft did exactly that).
+    // updateChat silently no-ops for sessions that don't exist — the
+    // session must be CREATED via initChat or every state-dependent gate
+    // in the hook runs against null and tests pass for the wrong reason
+    // (this suite's first draft did exactly that).
     activeChatsStore.removeChat(SESSION_ID);
     activeChatsStore.initChat(SESSION_ID, {
       agentSlug: 'claude',
@@ -157,9 +157,9 @@ describe('useChatInput last-chosen model memory', () => {
     vi.clearAllMocks();
   });
 
-// The two directions share one fixture whose runtime session options make
-// the catalog conjunct TRUE (supportsFastMode), so the matrix gate is the
-// ONLY discriminator between them.
+  // The two directions share one fixture whose runtime session options make
+  // the catalog conjunct TRUE (supportsFastMode), so the matrix gate is the
+  // ONLY discriminator between them.
   const fastModel: SelectableModel = {
     id: 'engine-model',
     name: 'Engine Model',
@@ -289,7 +289,7 @@ describe('useChatInput last-chosen model memory', () => {
     mockAgent = externalAgent;
     const { result } = renderChatInput();
     const key = buildLastChosenModelBindingKey(externalAgent);
-// A second binding's memory must survive the reset.
+    // A second binding's memory must survive the reset.
     localStorage.setItem(
       'station.newChat.lastModelByBinding',
       JSON.stringify({ [key]: 'claude-sonnet-5', other: 'gpt-5-codex' }),
@@ -339,8 +339,8 @@ describe('useChatInput last-chosen model memory', () => {
     );
     const { result } = renderChatInput({ defaultModelSource: 'last chosen' });
 
-// Resetting to a 'last chosen' default re-affirms the memory; clearing
-// it would contradict the "Model reset to last chosen" notice.
+    // Resetting to a 'last chosen' default re-affirms the memory; clearing
+    // it would contradict the "Model reset to last chosen" notice.
     act(() => result.current.handleModelReset());
 
     expect(getLastChosenModelMap()).toEqual({ [key]: 'claude-opus-5' });

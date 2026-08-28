@@ -51,8 +51,8 @@ describe('handleRuntimeErrorEvent — station#1827 terminal engine session', () 
       .join('\n');
 
     expect(bubbleText).toMatch(/history is gone/i);
-// The raw engine text is present (the disclosure), but strictly AFTER
-// the translated headline — never itself the headline.
+    // The raw engine text is present (the disclosure), but strictly AFTER
+    // the translated headline — never itself the headline.
     expect(bubbleText).toContain(RAW_MESSAGE);
     expect(bubbleText!.indexOf(RAW_MESSAGE)).toBeGreaterThan(
       bubbleText!.indexOf('history is gone'),
@@ -121,9 +121,9 @@ describe('handleRuntimeErrorEvent — station#1827 terminal engine session', () 
 // this reconcile never fired for any of them.
 describe('handleRuntimeErrorEvent — station#3451 finding 8 durable turn reconciliation', () => {
   async function flushDynamicImport(): Promise<void> {
-// reconcileDurableTurn does `void import(...).then(...)` — a dynamic
-// import resolves over several microtask turns even when the module is
-// already cached; two macrotask ticks is enough headroom.
+    // reconcileDurableTurn does `void import(...).then(...)` — a dynamic
+    // import resolves over several microtask turns even when the module is
+    // already cached; two macrotask ticks is enough headroom.
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setTimeout(resolve, 0));
   }

@@ -72,7 +72,7 @@ export function AgentEditorLoadFailureState({
 }
 
 /**
-* A detected engine that has no Agent file yet. The list row says the
+ * A detected engine that has no Agent file yet. The list row says the
  * same two words with the same reason — both read `agentRunnability`.
  *
  * This is deliberately NOT a disabled editor. The previous shape rendered all
@@ -91,7 +91,7 @@ export function AgentEditorNotSetUpState({
 }: {
   name: string;
   reason: string;
-/** Absent when nothing this pane can do would fix it. */
+  /** Absent when nothing this pane can do would fix it. */
   actionLabel?: string;
   onAction?: () => void;
   actionPending?: boolean;
@@ -155,7 +155,7 @@ export function AgentEditorStartingPoints({
   onStartModel: () => void;
   onStartCli: () => void;
   onCopy: () => void;
-/** No agent exists to copy yet. */
+  /** No agent exists to copy yet. */
   copyDisabled: boolean;
 }) {
   return (

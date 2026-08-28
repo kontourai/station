@@ -105,12 +105,12 @@ describe('useChatDockVerticalDrag mobile bar', () => {
     expect(onSnap).not.toHaveBeenCalled();
   });
 
- // archive#795: the original input released at clientY 260 — a 584px body,
-// which is *exactly* the Half/Full midpoint. Keeping that input and
-// asserting the corrected outcome is the honest regression guard, so it has
-// its own test below; this one keeps the same gesture but releases somewhere
-// unambiguous, because its actual subject is that non-interactive bar space
-// starts a drag at all.
+  // archive#795: the original input released at clientY 260 — a 584px body,
+  // which is *exactly* the Half/Full midpoint. Keeping that input and
+  // asserting the corrected outcome is the honest regression guard, so it has
+  // its own test below; this one keeps the same gesture but releases somewhere
+  // unambiguous, because its actual subject is that non-interactive bar space
+  // starts a drag at all.
   test('non-interactive bar space drags upward to full', () => {
     const onSnap = vi.fn<(snap: DockSnap) => void>();
     render(<MobileDockBar onSnap={onSnap} />);
@@ -131,9 +131,9 @@ describe('useChatDockVerticalDrag mobile bar', () => {
     expect(onSnap).toHaveBeenCalledWith('full');
   });
 
- // archive#795: the exact-midpoint release the original assertion used. A tie
-// in `nearestDockSnap` favours the smaller state, so this is Half — the
-// behaviour that replaced "any upward drag means Full".
+  // archive#795: the exact-midpoint release the original assertion used. A tie
+  // in `nearestDockSnap` favours the smaller state, so this is Half — the
+  // behaviour that replaced "any upward drag means Full".
   test('a release exactly on the Half/Full midpoint resolves to Half, not Full', () => {
     const onSnap = vi.fn<(snap: DockSnap) => void>();
     render(<MobileDockBar onSnap={onSnap} />);
@@ -154,16 +154,16 @@ describe('useChatDockVerticalDrag mobile bar', () => {
     expect(onSnap).toHaveBeenCalledWith('half');
   });
 
- // archive#751: the gesture that opens the dock must also be able to put it away —
-// dragging the header down clearly past Half no longer dead-ends there.
+  // archive#751: the gesture that opens the dock must also be able to put it away —
+  // dragging the header down clearly past Half no longer dead-ends there.
   test('dragging the header down clearly below the Half band collapses the dock', () => {
     const onSnap = vi.fn<(snap: DockSnap) => void>();
     render(<MobileDockBar snap="half" onSnap={onSnap} />);
     const bar = withPointerCapture(screen.getByTestId('bar'));
 
-// visualViewport.height is 844, collapsedHeight is 52: Half is ~380px, so
-// the Collapsed/Half midpoint is ~216px — a release at clientY 700 (a
-// ~144px body) sits well below it.
+    // visualViewport.height is 844, collapsedHeight is 52: Half is ~380px, so
+    // the Collapsed/Half midpoint is ~216px — a release at clientY 700 (a
+    // ~144px body) sits well below it.
     fireEvent.pointerDown(screen.getByTestId('drag-space'), {
       pointerId: 1,
       clientY: 400,
@@ -202,30 +202,30 @@ describe('useChatDockVerticalDrag mobile bar', () => {
     );
     withPointerCapture(screen.getByTestId('bar'));
 
-// visualViewport.height is 844, collapsedHeight is 52: Half is ~380px, so
-// the Collapsed/Half midpoint is ~216px. Adversarial-review regression:
-// reopening from Collapsed necessarily *starts* the drag near the
-// Collapsed pixel height, so even a realistic, modest thumb swipe up
-// (~120px total, well short of the Half band) must still OPEN — it must
-// never be reinterpreted as "collapse" just because the final height is
- // numerically below that midpoint. Since archive#795 it opens to Half rather
-// than jumping to Full: a modest drag gets a modest result, and the
-// never-collapse invariant this test exists for is unchanged.
+    // visualViewport.height is 844, collapsedHeight is 52: Half is ~380px, so
+    // the Collapsed/Half midpoint is ~216px. Adversarial-review regression:
+    // reopening from Collapsed necessarily *starts* the drag near the
+    // Collapsed pixel height, so even a realistic, modest thumb swipe up
+    // (~120px total, well short of the Half band) must still OPEN — it must
+    // never be reinterpreted as "collapse" just because the final height is
+    // numerically below that midpoint. Since archive#795 it opens to Half rather
+    // than jumping to Full: a modest drag gets a modest result, and the
+    // never-collapse invariant this test exists for is unchanged.
     fireEvent.pointerDown(screen.getByTestId('drag-space'), {
       pointerId: 1,
       clientY: 800,
     });
     expect(onSnap).not.toHaveBeenCalled();
 
-// Crossing the tap threshold starts a live preview. It must not commit the
-// Half snap while the pointer is still down — that state change races the
-// live height and makes the sheet animate away from the user's finger.
+    // Crossing the tap threshold starts a live preview. It must not commit the
+    // Half snap while the pointer is still down — that state change races the
+    // live height and makes the sheet animate away from the user's finger.
     fireEvent.pointerMove(window, { pointerId: 1, clientY: 780 });
     expect(onSnap).not.toHaveBeenCalled();
     expect(onLiveHeight).toHaveBeenLastCalledWith(64);
 
-// A modest ~120px upward drag (800 → 680), released well below the
-// Collapsed/Half midpoint (~216px) but heading up, not down.
+    // A modest ~120px upward drag (800 → 680), released well below the
+    // Collapsed/Half midpoint (~216px) but heading up, not down.
     fireEvent.pointerMove(window, { pointerId: 1, clientY: 680 });
     fireEvent.pointerUp(window, { pointerId: 1, clientY: 680 });
 
@@ -235,12 +235,12 @@ describe('useChatDockVerticalDrag mobile bar', () => {
 });
 
 describe('drag passthrough (data-dock-drag-passthrough)', () => {
-/**
-* The mobile dock header is almost entirely covered by one large identity
-* button. Marking it a passthrough lets the bar be dragged from it, but a
-* stationary tap must still reach the button's own click — that is the whole
-* reason capture and drag-state are deferred for these targets.
-*/
+  /**
+   * The mobile dock header is almost entirely covered by one large identity
+   * button. Marking it a passthrough lets the bar be dragged from it, but a
+   * stationary tap must still reach the button's own click — that is the whole
+   * reason capture and drag-state are deferred for these targets.
+   */
   function renderPassthroughSurface() {
     const onDragStateChange = vi.fn();
     const onSnap = vi.fn();
@@ -293,9 +293,9 @@ describe('drag passthrough (data-dock-drag-passthrough)', () => {
       pointerId: 7,
       clientY: 500,
     });
-// Captured before ANY movement: the deferred-capture shape left the
-// WebView owning the gesture between press and threshold, which is where
-// real-device drags starting on header controls died.
+    // Captured before ANY movement: the deferred-capture shape left the
+    // WebView owning the gesture between press and threshold, which is where
+    // real-device drags starting on header controls died.
     expect(bar.setPointerCapture).toHaveBeenCalledWith(7);
 
     fireEvent.pointerUp(window, { pointerId: 7, clientY: 500 });
@@ -309,8 +309,8 @@ describe('drag passthrough (data-dock-drag-passthrough)', () => {
     fireEvent.pointerMove(window, { pointerId: 1, clientY: 300 });
     fireEvent.pointerUp(window, { pointerId: 1, clientY: 300 });
 
-// Native context-menu behavior stays the browser's; the hook synthesizes
-// nothing from a non-primary button.
+    // Native context-menu behavior stays the browser's; the hook synthesizes
+    // nothing from a non-primary button.
     expect(onClick).not.toHaveBeenCalled();
     expect(onDragStateChange).not.toHaveBeenCalled();
     expect(onSnap).not.toHaveBeenCalled();
@@ -323,9 +323,9 @@ describe('drag passthrough (data-dock-drag-passthrough)', () => {
     fireEvent.pointerDown(identity, { pointerId: 1, clientY: 500 });
     fireEvent.pointerUp(window, { pointerId: 1, clientY: 500 });
 
-// No browser click was simulated: with capture retargeting the native
-// click away from the control, the hook's own replay is the only path —
-// and it must fire exactly once.
+    // No browser click was simulated: with capture retargeting the native
+    // click away from the control, the hook's own replay is the only path —
+    // and it must fire exactly once.
     expect(onClick).toHaveBeenCalledTimes(1);
     expect(onDragStateChange).not.toHaveBeenCalled();
   });
@@ -339,7 +339,7 @@ describe('drag passthrough (data-dock-drag-passthrough)', () => {
     pointerClick(identity);
 
     expect(onClick).toHaveBeenCalledTimes(1);
-// Never announced, so never un-announced either.
+    // Never announced, so never un-announced either.
     expect(onDragStateChange).not.toHaveBeenCalled();
     expect(onSnap).not.toHaveBeenCalled();
   });
@@ -399,8 +399,8 @@ describe('drag passthrough (data-dock-drag-passthrough)', () => {
     fireEvent.pointerDown(identity, { pointerId: 1, clientY: 600 });
     fireEvent.pointerMove(window, { pointerId: 1, clientY: 180 });
     fireEvent.pointerUp(window, { pointerId: 1, clientY: 180 });
-// Real touch drags commonly do not produce a compatibility click. The next
-// independent press must not inherit suppression from that old gesture.
+    // Real touch drags commonly do not produce a compatibility click. The next
+    // independent press must not inherit suppression from that old gesture.
     fireEvent.pointerDown(identity, { pointerId: 2, clientY: 300 });
     fireEvent.pointerUp(window, { pointerId: 2, clientY: 300 });
     pointerClick(identity);
@@ -416,20 +416,20 @@ describe('drag passthrough (data-dock-drag-passthrough)', () => {
     const { onClick } = renderPassthroughSurface();
     const identity = screen.getByTestId('identity');
 
-// Arm suppression with a drag that emits no compatibility click, the same
-// way a real touch drag leaves it armed.
+    // Arm suppression with a drag that emits no compatibility click, the same
+    // way a real touch drag leaves it armed.
     fireEvent.pointerDown(identity, { pointerId: 1, clientY: 600 });
     fireEvent.pointerMove(window, { pointerId: 1, clientY: 180 });
     fireEvent.pointerUp(window, { pointerId: 1, clientY: 180 });
 
-// Enter/Space on a focused control produces a click with `detail: 0` and
-// no pointerdown, so it can never be the gesture click the guard exists
-// for — and nothing else would retire the flag for a keyboard user.
+    // Enter/Space on a focused control produces a click with `detail: 0` and
+    // no pointerdown, so it can never be the gesture click the guard exists
+    // for — and nothing else would retire the flag for a keyboard user.
     fireEvent.click(identity, { detail: 0 });
     expect(onClick).toHaveBeenCalledOnce();
 
-// The pointer click the guard DOES exist for is still swallowed, so the
-// fixture binds in both directions.
+    // The pointer click the guard DOES exist for is still swallowed, so the
+    // fixture binds in both directions.
     pointerClick(identity);
     expect(onClick).toHaveBeenCalledOnce();
   });
@@ -554,11 +554,11 @@ describe('whole-header drag surface', () => {
 
 describe('useChatDockVerticalDrag viewport stability', () => {
   beforeEach(() => {
-// Runs the frame synchronously AND reports "no frame pending" (the hook
-// guards on `rafId === null`). Returning a real id here would make the
-// hook believe a flush was still queued and silently drop every move
-// after the first — which is exactly what a live-height assertion needs
-// to not be fooled by.
+    // Runs the frame synchronously AND reports "no frame pending" (the hook
+    // guards on `rafId === null`). Returning a real id here would make the
+    // hook believe a flush was still queued and silently drop every move
+    // after the first — which is exactly what a live-height assertion needs
+    // to not be fooled by.
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       callback(0);
       return null as unknown as number;
@@ -599,18 +599,18 @@ describe('useChatDockVerticalDrag viewport stability', () => {
     fireEvent.pointerMove(window, { pointerId: 1, clientY: 500 });
     expect(onLiveHeight).toHaveBeenLastCalledWith(344);
 
-// Android collapses its URL bar during exactly this gesture, so
-// visualViewport grows mid-drag. Reading it live re-based every subsequent
-// measurement and the dock jumped out from under a finger that had not
-// moved between the two frames.
+    // Android collapses its URL bar during exactly this gesture, so
+    // visualViewport grows mid-drag. Reading it live re-based every subsequent
+    // measurement and the dock jumped out from under a finger that had not
+    // moved between the two frames.
     Object.defineProperty(window, 'visualViewport', {
       configurable: true,
       value: { height: 950 },
     });
 
     fireEvent.pointerMove(window, { pointerId: 1, clientY: 400 });
-// 844 - 400. Reading the viewport live would report 550 for the same
-// finger position: a 106px jump the user never asked for.
+    // 844 - 400. Reading the viewport live would report 550 for the same
+    // finger position: a 106px jump the user never asked for.
     expect(onLiveHeight).toHaveBeenLastCalledWith(444);
     fireEvent.pointerUp(window, { pointerId: 1, clientY: 400 });
   });
@@ -643,7 +643,7 @@ describe('useChatDockVerticalDrag viewport stability', () => {
     });
     fireEvent.pointerMove(window, { pointerId: 1, clientY: 500 });
 
-// Visible bottom is 44 + 700. Height-only math would report 200px.
+    // Visible bottom is 44 + 700. Height-only math would report 200px.
     expect(onLiveHeight).toHaveBeenLastCalledWith(244);
     fireEvent.pointerUp(window, { pointerId: 1, clientY: 500 });
   });

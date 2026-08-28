@@ -70,29 +70,29 @@ interface SplitPaneItem {
   name: string;
   subtitle?: React.ReactNode;
   icon?: React.ReactNode;
-/** Small inline marker rendered next to the name (e.g. an agent-type badge). */
+  /** Small inline marker rendered next to the name (e.g. an agent-type badge). */
   badge?: React.ReactNode;
-/**
-* Row-level content rendered OUTSIDE the row button, on its trailing edge.
-*
-* Outside, because `badge`/`icon` render inside a `<button>` and a button
-* may not contain interactive content — a control here (the Sessions list's
-* project-filter pill, archive#3027) has to be a sibling of the row button,
-* not a descendant. A row without this prop renders exactly the markup it
-* always did; the flex wrapper only appears when there is something to put
-* in it.
-*/
+  /**
+   * Row-level content rendered OUTSIDE the row button, on its trailing edge.
+   *
+   * Outside, because `badge`/`icon` render inside a `<button>` and a button
+   * may not contain interactive content — a control here (the Sessions list's
+   * project-filter pill, archive#3027) has to be a sibling of the row button,
+   * not a descendant. A row without this prop renders exactly the markup it
+   * always did; the flex wrapper only appears when there is something to put
+   * in it.
+   */
   trailing?: React.ReactNode;
   section?: string;
-/**
-* Optional presentation-only collapsible group. A group is emitted by a
-* caller as contiguous items; rows outside a group retain the original
-* markup path exactly.
-*/
+  /**
+   * Optional presentation-only collapsible group. A group is emitted by a
+   * caller as contiguous items; rows outside a group retain the original
+   * markup path exactly.
+   */
   group?: {
     id: string;
     label: string;
-/** Optional compact actions rendered beside the group toggle. */
+    /** Optional compact actions rendered beside the group toggle. */
     renderSummary?: (
       focusMember: (memberId: string) => void,
     ) => React.ReactNode;
@@ -100,15 +100,15 @@ interface SplitPaneItem {
 }
 
 interface SplitPaneLayoutProps {
-/** Stable id for skeleton-owned resize/collapse persistence. */
+  /** Stable id for skeleton-owned resize/collapse persistence. */
   paneId?: string;
-/**
-* `data-first-run-anchor` value for the layout root, so a view whose whole
-* body is this skeleton (no root element of its own to hang an anchor on)
-* can still be a first-run tour target. Omitted → no attribute rendered.
-*/
+  /**
+   * `data-first-run-anchor` value for the layout root, so a view whose whole
+   * body is this skeleton (no root element of its own to hang an anchor on)
+   * can still be a first-run tour target. Omitted → no attribute rendered.
+   */
   firstRunAnchor?: string;
-// Left panel
+  // Left panel
   items: SplitPaneItem[];
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -118,87 +118,87 @@ interface SplitPaneLayoutProps {
   searchPlaceholder?: string;
   onAdd?: () => void;
   addLabel?: string;
-/**
-* Extra actions rendered next to the Add button in the sidebar footer —
-* below the list, pinned outside its scroll region.
-*
-* Accepts a render function for the same reason `listIntro` does: a footer
-* that starts new work needs to select the row it just created, and going
-* through the skeleton's own `selectItem` keeps the mobile return-focus
-* capture (archive#1259) that a raw `onSelect` call would skip.
-*/
+  /**
+   * Extra actions rendered next to the Add button in the sidebar footer —
+   * below the list, pinned outside its scroll region.
+   *
+   * Accepts a render function for the same reason `listIntro` does: a footer
+   * that starts new work needs to select the row it just created, and going
+   * through the skeleton's own `selectItem` keeps the mobile return-focus
+   * capture (archive#1259) that a raw `onSelect` call would skip.
+   */
   sidebarActions?:
     | React.ReactNode
     | ((selectItem: (id: string) => void) => React.ReactNode);
-/**
-* Page-level actions for this collection (a secondary "Browse Registry", a
-* "Run independent review"). They render beside the Add button in the page
-* header's action cell when the route is framed, and in the list footer
-* when it is not. Anything that is list chrome rather than a page action
-* belongs in `sidebarActions`.
-*/
+  /**
+   * Page-level actions for this collection (a secondary "Browse Registry", a
+   * "Run independent review"). They render beside the Add button in the page
+   * header's action cell when the route is framed, and in the list footer
+   * when it is not. Anything that is list chrome rather than a page action
+   * belongs in `sidebarActions`.
+   */
   headerActions?: React.ReactNode;
-/** Show loading spinner in list panel instead of items */
+  /** Show loading spinner in list panel instead of items */
   loading?: boolean;
-/**
-* The list READ failed.
-*
-* Every split-pane route derives its list from a query, and a failed query
-* settles with no data — which `items.length === 0` cannot tell apart from
-* a genuinely empty collection. Guidance therefore asserted "No installed
- * skills yet" over a 500  Error is not empty: when this is
-* truthy AND `items` is empty, the list pane renders `ErrorState` with a
-* Retry instead of the empty branch below.
-*
-* archive#771: this used to outrank `items`
-* unconditionally, so a REFETCH failure with cached items still on hand
- * blanked a working list behind an error card — the exact regression archive#769
-* exists to prevent (`ProjectPage` renders cached data with no banner on a
-* refetch failure). A non-empty `items` now always wins: the list keeps
-* rendering, silently, exactly as it did before the query re-fired.
-*
-* Typed `unknown` because callers hand it React Query's `error` directly;
-* only its truthiness and (if it is an `Error`) its message are read.
-*/
+  /**
+   * The list READ failed.
+   *
+   * Every split-pane route derives its list from a query, and a failed query
+   * settles with no data — which `items.length === 0` cannot tell apart from
+   * a genuinely empty collection. Guidance therefore asserted "No installed
+   * skills yet" over a 500  Error is not empty: when this is
+   * truthy AND `items` is empty, the list pane renders `ErrorState` with a
+   * Retry instead of the empty branch below.
+   *
+   * archive#771: this used to outrank `items`
+   * unconditionally, so a REFETCH failure with cached items still on hand
+   * blanked a working list behind an error card — the exact regression archive#769
+   * exists to prevent (`ProjectPage` renders cached data with no banner on a
+   * refetch failure). A non-empty `items` now always wins: the list keeps
+   * rendering, silently, exactly as it did before the query re-fired.
+   *
+   * Typed `unknown` because callers hand it React Query's `error` directly;
+   * only its truthiness and (if it is an `Error`) its message are read.
+   */
   error?: unknown;
-/** Retry handler for the list-read failure above (usually `refetch`). */
+  /** Retry handler for the list-read failure above (usually `refetch`). */
   onRetry?: () => void;
-/** Optional custom title for the list-read failure. */
+  /** Optional custom title for the list-read failure. */
   listErrorTitle?: string;
-/** Optional custom empty-state copy for the left list panel */
+  /** Optional custom empty-state copy for the left list panel */
   listEmptyTitle?: string;
   listEmptyDescription?: string;
   listFilteredEmptyNoun?: string;
-/**
-* True when the caller's UNFILTERED collection is itself empty — not
-* merely that a search/filter currently matches nothing. When true, an
-* empty `items` always renders the plain list-empty state (never
-* `FilteredEmpty`), even while `searchValue` holds a typed query.
-*
-* Without this, a route whose collection is genuinely empty AND has a
-* stale/typed query attributed the emptiness to the query — "Nothing in
-* X matches your search" with a "Clear filter" action that fixes
-* nothing, because there is nothing regardless of the filter (archive#4463
-*). Defaults to `false`
-* (unset callers keep exactly their current behavior).
-*/
+  /**
+   * True when the caller's UNFILTERED collection is itself empty — not
+   * merely that a search/filter currently matches nothing. When true, an
+   * empty `items` always renders the plain list-empty state (never
+   * `FilteredEmpty`), even while `searchValue` holds a typed query.
+   *
+   * Without this, a route whose collection is genuinely empty AND has a
+   * stale/typed query attributed the emptiness to the query — "Nothing in
+   * X matches your search" with a "Clear filter" action that fixes
+   * nothing, because there is nothing regardless of the filter (archive#4463
+   *). Defaults to `false`
+   * (unset callers keep exactly their current behavior).
+   */
   collectionEmpty?: boolean;
-/** Optional task-first guidance rendered before list items on every viewport. */
+  /** Optional task-first guidance rendered before list items on every viewport. */
   listIntro?:
     | React.ReactNode
     | ((selectItem: (id: string) => void) => React.ReactNode);
-// Right panel
+  // Right panel
   children: React.ReactNode;
   emptyIcon?: React.ReactNode;
   emptyTitle?: string;
   emptyDescription?: string;
-/** Custom empty state content — replaces the default icon/title/desc */
+  /** Custom empty state content — replaces the default icon/title/desc */
   emptyContent?: React.ReactNode;
-/** Open custom emptyContent as the mobile detail sheet (for create flows). */
+  /** Open custom emptyContent as the mobile detail sheet (for create flows). */
   unselectedDetailOpen?: boolean;
-// Header
+  // Header
   label: string;
-/** Map of breadcrumb segment text → click handler. Segments not in this map are plain text. */
+  /** Map of breadcrumb segment text → click handler. Segments not in this map are plain text. */
   breadcrumbLinks?: Record<string, () => void>;
   title: string;
   subtitle?: string;
@@ -217,10 +217,10 @@ function SplitPaneListSkeleton() {
 
 function SplitPaneDetailSkeleton() {
   return (
-// No role/aria-busy on this wrapper: the header lines below are each
-// already `aria-hidden` (Skeleton's own contract), and `SkeletonBlock`
-// below is itself a `role="status"` region. A second status landmark
-// here would double-announce the same wait to a screen reader.
+    // No role/aria-busy on this wrapper: the header lines below are each
+    // already `aria-hidden` (Skeleton's own contract), and `SkeletonBlock`
+    // below is itself a `role="status"` region. A second status landmark
+    // here would double-announce the same wait to a screen reader.
     <div className="split-pane__detail-skeleton">
       <div className="split-pane__detail-skeleton-header">
         <Skeleton
@@ -229,7 +229,7 @@ function SplitPaneDetailSkeleton() {
         />
         <Skeleton variant="line" className="split-pane__detail-skeleton-meta" />
       </div>
-{/* The header above is item-specific chrome with no shared equivalent;
+      {/* The header above is item-specific chrome with no shared equivalent;
           the body is exactly the region-shaped wait `SkeletonBlock` already
           owns, so it delegates rather than repeating three hand-placed
           `<Skeleton variant="block">`s. */}
@@ -296,15 +296,15 @@ export function SplitPaneLayout({
   const mobileDetailWasShownRef = useRef(false);
   const mobileDetailWasLogicallyOpenRef = useRef(false);
   const externalMobileReturnFocus = useSplitPaneExternalReturnFocus();
-/**
-* archive#1259. Only the `'return'` half of the mobile effect below is
-* return-focus; the element it returns to is a list row, and the detail pane
-* the sheet opened is free to delete, rename or filter that row out while it
-* is on screen. A bare ref to the button was then a detached node, and
-* `.focus` on one is a silent no-op that leaves `<body>` focused — the
-* archive#1126 outcome. Capture the row *and its ancestors* while all of them
-* are still attached so the restore has somewhere to fall back to.
-*/
+  /**
+   * archive#1259. Only the `'return'` half of the mobile effect below is
+   * return-focus; the element it returns to is a list row, and the detail pane
+   * the sheet opened is free to delete, rename or filter that row out while it
+   * is on screen. A bare ref to the button was then a detached node, and
+   * `.focus` on one is a silent no-op that leaves `<body>` focused — the
+   * archive#1126 outcome. Capture the row *and its ancestors* while all of them
+   * are still attached so the restore has somewhere to fall back to.
+   */
   const mobileFocusReturnRef = useRef<HTMLElement[]>([]);
   const [paneState, setPaneState] = useState(() => {
     if (!paneId || typeof window === 'undefined') {
@@ -321,8 +321,8 @@ export function SplitPaneLayout({
     string | null
   >(null);
 
-// A route can select a child before the reader opens its run. Selection is
-// an explicit request to reveal that row, so it wins over collapsed chrome.
+  // A route can select a child before the reader opens its run. Selection is
+  // an explicit request to reveal that row, so it wins over collapsed chrome.
   useEffect(() => {
     const selectedGroupId = items.find((item) => item.id === selectedId)?.group
       ?.id;
@@ -339,10 +339,10 @@ export function SplitPaneLayout({
     if (!pendingGroupMemberFocus) return;
     const target = itemButtonRefs.current.get(pendingGroupMemberFocus);
     if (!target) {
- // a missed target (member unmounted between activation and
-// commit) must clear the pending id — leaving it set makes the NEXT
-// activation of the same member a same-value setState that React bails
-// out on, so the effect never re-runs and focus silently dies forever.
+      // a missed target (member unmounted between activation and
+      // commit) must clear the pending id — leaving it set makes the NEXT
+      // activation of the same member a same-value setState that React bails
+      // out on, so the effect never re-runs and focus silently dies forever.
       setPendingGroupMemberFocus(null);
       return;
     }
@@ -375,27 +375,27 @@ export function SplitPaneLayout({
   const [detailPortalPlacement, setDetailPortalPlacement] =
     useState<DetailPortalPlacement>('bootstrap');
   const wantsMobilePortal = isMobile && framed && showMobileDetailSheet;
-// Placement is state, rather than a parentNode read during render: an
-// imperative reparent in layout effect otherwise leaves inert/focus one
-// render behind the actual sheet.
+  // Placement is state, rather than a parentNode read during render: an
+  // imperative reparent in layout effect otherwise leaves inert/focus one
+  // render behind the actual sheet.
   const mobileDetailPortaled =
     detailPortalPlacement === 'portaled' &&
     wantsMobilePortal &&
     Boolean(mobileDetailSlot);
-// Only a rendered portal makes its owning PageFrame inert. A framed route
-// whose slot has not mounted yet renders no inline fallback, so it cannot
-// briefly publish a transformed mobile sheet.
+  // Only a rendered portal makes its owning PageFrame inert. A framed route
+  // whose slot has not mounted yet renders no inline fallback, so it cannot
+  // briefly publish a transformed mobile sheet.
   useRegisterPageFrameMobileDetailSheet(mobileDetailPortaled);
   const mobileDetailRendered =
     showMobileDetailSheet &&
     (mobileDetailPortaled || (!framed && detailPortalPlacement === 'inline'));
 
-/*
-* Detail children have one React portal target for their entire lifetime.
-* We move that target rather than asking React to switch between an inline
-* subtree and a portal (or between portal targets), which would remount form
-* state whenever the browser crosses the mobile breakpoint.
-*/
+  /*
+   * Detail children have one React portal target for their entire lifetime.
+   * We move that target rather than asking React to switch between an inline
+   * subtree and a portal (or between portal targets), which would remount form
+   * state whenever the browser crosses the mobile breakpoint.
+   */
   useIsomorphicLayoutEffect(() => {
     const inlineHost = detailInlineHostRef.current;
     if (!inlineHost) return;
@@ -428,9 +428,9 @@ export function SplitPaneLayout({
     wantsMobilePortal,
   ]);
 
-// This is intentionally separate from the reconciliation effect above:
-// changing a slot/breakpoint only reparents; actual component unmount is the
-// one time the unmanaged root is removed. StrictMode reuses the same ref.
+  // This is intentionally separate from the reconciliation effect above:
+  // changing a slot/breakpoint only reparents; actual component unmount is the
+  // one time the unmanaged root is removed. StrictMode reuses the same ref.
   useIsomorphicLayoutEffect(
     () => () => {
       detailPortalRootRef.current?.remove();
@@ -450,10 +450,10 @@ export function SplitPaneLayout({
         cancelAnimationFrame(mobileReturnFocusFrameRef.current);
         mobileReturnFocusFrameRef.current = null;
       }
-// A section can unmount while its routed mobile detail is still open.
-// That is navigation away, not a sheet close within this list, so it
-// must abandon its local return intent rather than restore into another
-// section (or leave the old opener available to a later mount).
+      // A section can unmount while its routed mobile detail is still open.
+      // That is navigation away, not a sheet close within this list, so it
+      // must abandon its local return intent rather than restore into another
+      // section (or leave the old opener available to a later mount).
       pendingMobileFocusRef.current = null;
       mobileFocusReturnRef.current = [];
       returningFromMobileDetailRef.current = false;
@@ -473,13 +473,13 @@ export function SplitPaneLayout({
     }
   }, [paneState.collapsed]);
 
-// Two different jobs share this effect. `'dismiss'` is a *control swap*:
-// the sheet just opened and focus moves forward onto its back button, the
-// same shape as the collapse/reopen pair above. `'return'` is the only
-// return-focus move in this file — the sheet closed and focus goes back to
-// whatever opened it. They must not be conflated: a control swap targets a
-// control that exists because the surface is open, so it can never have been
-// destroyed by the surface's own action.
+  // Two different jobs share this effect. `'dismiss'` is a *control swap*:
+  // the sheet just opened and focus moves forward onto its back button, the
+  // same shape as the collapse/reopen pair above. `'return'` is the only
+  // return-focus move in this file — the sheet closed and focus goes back to
+  // whatever opened it. They must not be conflated: a control swap targets a
+  // control that exists because the surface is open, so it can never have been
+  // destroyed by the surface's own action.
   useEffect(() => {
     const wasMobileDetailShown = mobileDetailWasShownRef.current;
     const wasMobileDetailLogicallyOpen =
@@ -495,11 +495,11 @@ export function SplitPaneLayout({
       }
       pendingMobileFocusRef.current ??= 'dismiss';
     }
-// Closing a routed detail (history, Cancel, or another owner changing the
-// route) removes the mobile sheet without invoking its Back handler. It
-// still closes this split pane's surface, so use the same one-shot return
-// path. A desktop breakpoint is only a reparenting transition and must not
-// consume or restore the mobile chain.
+    // Closing a routed detail (history, Cancel, or another owner changing the
+    // route) removes the mobile sheet without invoking its Back handler. It
+    // still closes this split pane's surface, so use the same one-shot return
+    // path. A desktop breakpoint is only a reparenting transition and must not
+    // consume or restore the mobile chain.
     if (
       isMobile &&
       wasMobileDetailShown &&
@@ -509,10 +509,10 @@ export function SplitPaneLayout({
       returningFromMobileDetailRef.current = true;
       pendingMobileFocusRef.current = 'return';
     }
-// A breakpoint preserves an open detail and its prospective return chain,
-// but closing that detail while desktop owns it has no mobile sheet to
-// return from. Abandon the old intent before a later mobile deep link can
-// mistake it for this surface's opener.
+    // A breakpoint preserves an open detail and its prospective return chain,
+    // but closing that detail while desktop owns it has no mobile sheet to
+    // return from. Abandon the old intent before a later mobile deep link can
+    // mistake it for this surface's opener.
     if (
       !isMobile &&
       wasMobileDetailLogicallyOpen &&
@@ -530,9 +530,9 @@ export function SplitPaneLayout({
     mobileDetailWasLogicallyOpenRef.current = mobileDetailLogicallyOpen;
     const pendingFocus = pendingMobileFocusRef.current;
     if (pendingFocus === 'dismiss' && mobileDetailRendered) {
-// A framed sheet first waits for its page-level portal ref. Keep the
-// pending request until the Back control exists; otherwise a commit
-// would clear it before the portal's child has mounted.
+      // A framed sheet first waits for its page-level portal ref. Keep the
+      // pending request until the Back control exists; otherwise a commit
+      // would clear it before the portal's child has mounted.
       if (!mobileBackButtonRef.current) return;
       mobileBackButtonRef.current.focus();
       pendingMobileFocusRef.current = null;
@@ -542,11 +542,11 @@ export function SplitPaneLayout({
       !showMobileDetailSheet
     ) {
       const returnChain = mobileFocusReturnRef.current;
-// Removing the focused Back button can make the browser synchronously
-// rehome focus on `.content-view` before this passive effect. For this
-// explicit Back return, that is the preserved surface's teardown/route
-// fallback, not an unrelated actor claiming focus. Focus outside this
-// content view still retains applyReturnFocus's normal veto.
+      // Removing the focused Back button can make the browser synchronously
+      // rehome focus on `.content-view` before this passive effect. For this
+      // explicit Back return, that is the preserved surface's teardown/route
+      // fallback, not an unrelated actor claiming focus. Focus outside this
+      // content view still retains applyReturnFocus's normal veto.
       const closingSurface =
         returnChain.length > 0 && returningFromMobileDetailRef.current
           ? (paneRef.current?.closest<HTMLElement>('.content-view') ??
@@ -555,9 +555,9 @@ export function SplitPaneLayout({
             ) ??
             null)
           : detailPortalRootRef.current;
-// PageFrame removes inert in its own state transition. Wait one frame
-// so the row/list chain is focusable again rather than silently walking
-// it while inert and falling through to `.content-view`.
+      // PageFrame removes inert in its own state transition. Wait one frame
+      // so the row/list chain is focusable again rather than silently walking
+      // it while inert and falling through to `.content-view`.
       mobileReturnFocusFrameRef.current =
         returnChain.length > 0
           ? restoreReturnFocus(returnChain, closingSurface)
@@ -586,9 +586,9 @@ export function SplitPaneLayout({
 
   function selectItem(id: string) {
     if (isMobile) {
-// `listIntro` can call this for a row that has no button of its own; the
-// capture then falls back to whatever the user actually activated, which
-// is the control focus belongs on either way.
+      // `listIntro` can call this for a row that has no button of its own; the
+      // capture then falls back to whatever the user actually activated, which
+      // is the control focus belongs on either way.
       mobileFocusReturnRef.current = captureReturnFocus(
         itemButtonRefs.current.get(id),
       );
@@ -671,26 +671,26 @@ export function SplitPaneLayout({
     }));
   }
 
-/**
-* Framed, the eyebrow is the page header's: `framedBreadcrumbSegments`
-* drops the trailing crumb that restates the frame's own `<h1>`
- * unconditionally (archive#4463 — the 
-* retired the self-referential eyebrow this used to render, e.g.
-* `SCHEDULE` above `Schedule`), leaving only real ancestors — none for a
-* top-level route, the parent for a subpage. Unframed, the old dedup
-* stands — there the eyebrow sits directly above the same word at nearly
-* the same size, which is the case it exists to suppress.
-*/
+  /**
+   * Framed, the eyebrow is the page header's: `framedBreadcrumbSegments`
+   * drops the trailing crumb that restates the frame's own `<h1>`
+   * unconditionally (archive#4463 — the
+   * retired the self-referential eyebrow this used to render, e.g.
+   * `SCHEDULE` above `Schedule`), leaving only real ancestors — none for a
+   * top-level route, the parent for a subpage. Unframed, the old dedup
+   * stands — there the eyebrow sits directly above the same word at nearly
+   * the same size, which is the case it exists to suppress.
+   */
   const breadcrumbSegments = framed
     ? framedBreadcrumbSegments(label, title)
     : visibleBreadcrumbSegments(label, title, breadcrumbLinks);
-/**
-* Handlers are read through refs at click time, not captured, so the
-* memoised node below can stay referentially stable across renders while
-* still calling the current `breadcrumbLinks` entry. Capturing them would
-* make the node identity change every render, and `usePageHeader` settles
-* only on values that are `Object.is`-stable.
-*/
+  /**
+   * Handlers are read through refs at click time, not captured, so the
+   * memoised node below can stay referentially stable across renders while
+   * still calling the current `breadcrumbLinks` entry. Capturing them would
+   * make the node identity change every render, and `usePageHeader` settles
+   * only on values that are `Object.is`-stable.
+   */
   const breadcrumbLinksRef = useRef(breadcrumbLinks);
   breadcrumbLinksRef.current = breadcrumbLinks;
   const navigateRef = useRef(navigate);
@@ -703,23 +703,23 @@ export function SplitPaneLayout({
     const segs = segmentsKey ? segmentsKey.split(' / ') : [];
     return segs.map((seg, i, arr) => {
       const isLast = i === arr.length - 1;
-// The last segment of whatever trail actually gets rendered is
-// terminal and stays inert text unless the view wired an explicit
-// link to it. This is deliberately UNCONDITIONAL on `framed`.
-//
-// archive#4463: an earlier version of this made
-// every framed segment "an ancestor by construction" on the theory
-// that `framedBreadcrumbSegments` already drops the one naming the
-// current page — but that only holds when the trailing segment
-// literally restates the title. `framedBreadcrumbSegments` KEEPS the
-// last segment whenever it does NOT restate the title (a real
-// multi-level trail, e.g. an entity slug ahead of an editor tab), and
-// that kept segment is not necessarily a real top-level route —
-// auto-linking it fabricated live `/edit`, `/detail`, `/tools`
-// destinations on the first branch that unsuppressed one. A kept
-// terminal crumb is exactly as uncertain framed as it is unframed, so
-// it gets the same treatment: inert unless `breadcrumbLinks` says
-// otherwise.
+      // The last segment of whatever trail actually gets rendered is
+      // terminal and stays inert text unless the view wired an explicit
+      // link to it. This is deliberately UNCONDITIONAL on `framed`.
+      //
+      // archive#4463: an earlier version of this made
+      // every framed segment "an ancestor by construction" on the theory
+      // that `framedBreadcrumbSegments` already drops the one naming the
+      // current page — but that only holds when the trailing segment
+      // literally restates the title. `framedBreadcrumbSegments` KEEPS the
+      // last segment whenever it does NOT restate the title (a real
+      // multi-level trail, e.g. an entity slug ahead of an editor tab), and
+      // that kept segment is not necessarily a real top-level route —
+      // auto-linking it fabricated live `/edit`, `/detail`, `/tools`
+      // destinations on the first branch that unsuppressed one. A kept
+      // terminal crumb is exactly as uncertain framed as it is unframed, so
+      // it gets the same treatment: inert unless `breadcrumbLinks` says
+      // otherwise.
       const isTerminal = isLast;
       const hasExplicit = linkedKey[i] === '1';
       const handler =
@@ -748,14 +748,14 @@ export function SplitPaneLayout({
       );
     });
   }, [segmentsKey, linkedKey]);
-/**
-* Framed, the collection's title belongs to the page header — the pane
-* keeps its search and its list and stops rendering a page-level heading
-* of its own. This is the whole of 's split-pane fork: eight routes
-* substituted a 14.7px panel title for a page header, and no route can do
-* that any more because the layout that made it possible now publishes
-* upward instead.
-*/
+  /**
+   * Framed, the collection's title belongs to the page header — the pane
+   * keeps its search and its list and stops rendering a page-level heading
+   * of its own. This is the whole of 's split-pane fork: eight routes
+   * substituted a 14.7px panel title for a page header, and no route can do
+   * that any more because the layout that made it possible now publishes
+   * upward instead.
+   */
   const headerContent = useMemo(
     () =>
       framed
@@ -780,9 +780,9 @@ export function SplitPaneLayout({
       <span aria-hidden="true">‹</span>
     </button>
   );
-// Framed, this is the page's primary action and renders as the one shared
-// Button; unframed it keeps the list-pane treatment it has always had. The
-// page-scoped button family it used to reach for has been retired.
+  // Framed, this is the page's primary action and renders as the one shared
+  // Button; unframed it keeps the list-pane treatment it has always had. The
+  // page-scoped button family it used to reach for has been retired.
   const addButton = onAdd ? (
     framed ? (
       <Button variant="primary" size="sm" onClick={activateAdd}>
@@ -798,25 +798,25 @@ export function SplitPaneLayout({
       </button>
     )
   ) : null;
-/**
-* The collection's primary action. Framed, it renders in the page header's
-* action cell — the same place Schedule's `+ Add Job` has always been —
-* through a portal, so `activateAdd`'s mobile return-focus capture
-* (archive#1259) is the same code on the same element wherever it lands.
-* Unframed it stays in the list footer, exactly as before.
-*
-* `sidebarActions` deliberately does NOT travel with it: those are list
-* chrome (Activity's delegated-work card), not page actions, and a card in
-* a header cell is how the audit's five primary-button treatments happened.
-*
-* The inline branch below is keyed on `framed`, not on whether a cell is
-* available: inside a frame the action is the page header's, and the two
-* moments when there is no cell to portal into — before the header's ref
-* has published one, and after this view's route has been left — are both
-* moments when putting it back in the list footer would be wrong. The first
-* showed as a visible relocation on mount; the second would leave a
-* departed page's button on screen.
-*/
+  /**
+   * The collection's primary action. Framed, it renders in the page header's
+   * action cell — the same place Schedule's `+ Add Job` has always been —
+   * through a portal, so `activateAdd`'s mobile return-focus capture
+   * (archive#1259) is the same code on the same element wherever it lands.
+   * Unframed it stays in the list footer, exactly as before.
+   *
+   * `sidebarActions` deliberately does NOT travel with it: those are list
+   * chrome (Activity's delegated-work card), not page actions, and a card in
+   * a header cell is how the audit's five primary-button treatments happened.
+   *
+   * The inline branch below is keyed on `framed`, not on whether a cell is
+   * available: inside a frame the action is the page header's, and the two
+   * moments when there is no cell to portal into — before the header's ref
+   * has published one, and after this view's route has been left — are both
+   * moments when putting it back in the list footer would be wrong. The first
+   * showed as a visible relocation on mount; the second would leave a
+   * departed page's button on screen.
+   */
   const framedActions = framed && actionsSlot;
   const headerActionBlock =
     addButton || headerActions ? (
@@ -837,13 +837,13 @@ export function SplitPaneLayout({
           ← Back to list
         </button>
       )}
-{/*
-* Everything rendered in the detail slot is at ITEM level: the list
-* pane's page-level heading above already owns the collection title
- * (archive#2931, docs/design/shell-skeletons.md §2.1). `DetailHeader`
-* reads this and renders one level down, so a view cannot stack a
-* second page-level title on the collection's by forgetting the rule.
-*/}
+      {/*
+       * Everything rendered in the detail slot is at ITEM level: the list
+       * pane's page-level heading above already owns the collection title
+       * (archive#2931, docs/design/shell-skeletons.md §2.1). `DetailHeader`
+       * reads this and renders one level down, so a view cannot stack a
+       * second page-level title on the collection's by forgetting the rule.
+       */}
       <DetailPaneContext.Provider value={DETAIL_PANE_CONTEXT}>
         {loading ? (
           <SplitPaneDetailSkeleton />
@@ -852,17 +852,17 @@ export function SplitPaneLayout({
         ) : emptyContent ? (
           emptyContent
         ) : items.length === 0 && !unselectedDetailOpen ? /*
- * archive#4463 (the double-empty rule): the list pane just
-* above already rendered its own "nothing here" — either `Empty`
-* (truly empty) or `FilteredEmpty` (search matched nothing). An
-* empty list has no item to select, so "Select an item" here is not
-* a second fact, it is the same fact restated — Review's queue
-* showed both side by side (SHELL audit). The detail
-* pane defers to the list's message instead of repeating it.
-* `emptyContent` is a caller's own surface (an install/add flow, a
-* create-first-run card) and is trusted as-is; `unselectedDetailOpen`
-* is an explicit request to show it regardless of the list.
-*/
+         * archive#4463 (the double-empty rule): the list pane just
+         * above already rendered its own "nothing here" — either `Empty`
+         * (truly empty) or `FilteredEmpty` (search matched nothing). An
+         * empty list has no item to select, so "Select an item" here is not
+         * a second fact, it is the same fact restated — Review's queue
+         * showed both side by side (SHELL audit). The detail
+         * pane defers to the list's message instead of repeating it.
+         * `emptyContent` is a caller's own surface (an install/add flow, a
+         * create-first-run card) and is trusted as-is; `unselectedDetailOpen`
+         * is an explicit request to show it regardless of the list.
+         */
         null : (
           <Empty
             variant="prominent"
@@ -874,9 +874,9 @@ export function SplitPaneLayout({
       </DetailPaneContext.Provider>
     </>
   );
-// Before the client has an unmanaged root, keep the server/hydration output
-// inline. This bootstrap-only wrapper is never used again after the layout
-// effect establishes the stable portal target.
+  // Before the client has an unmanaged root, keep the server/hydration output
+  // inline. This bootstrap-only wrapper is never used again after the layout
+  // effect establishes the stable portal target.
   const bootstrapDetail = (
     <div
       className={detailRootClassName(
@@ -924,8 +924,8 @@ export function SplitPaneLayout({
                 )}
                 <h2
                   className={`split-pane__title ${selectedId && onDeselect ? 'split-pane__title--clickable' : ''}`}
-// Only a control when there is a selection to clear — the
-// same condition the --clickable class already keys on.
+                  // Only a control when there is a selection to clear — the
+                  // same condition the --clickable class already keys on.
                   {...activatable(
                     selectedId && onDeselect ? onDeselect : undefined,
                   )}
@@ -967,10 +967,10 @@ export function SplitPaneLayout({
               }
             />
           ) : items.length === 0 ? (
- // a typed query over an ALREADY-empty
-// collection is not what emptied it — `collectionEmpty` says so
-// explicitly, so this never misattributes "nothing here" to the
-// search (and never offers a "Clear filter" that fixes nothing).
+            // a typed query over an ALREADY-empty
+            // collection is not what emptied it — `collectionEmpty` says so
+            // explicitly, so this never misattributes "nothing here" to the
+            // search (and never offers a "Clear filter" that fixes nothing).
             !collectionEmpty && searchValue?.trim() ? (
               <FilteredEmpty
                 query={searchValue}
@@ -1098,11 +1098,11 @@ export function SplitPaneLayout({
         : null}
 
       {!isMobile && !paneState.collapsed && (
-// The suggested <hr> is a decorative rule: not focusable, not
-// operable, and unable to carry aria-valuenow. This is a window
-// splitter — a real button that resizes with the arrow keys
-// (resizeWithKeyboard) and reports its position.
-// biome-ignore lint/a11y/useSemanticElements: an <hr> cannot be a focusable, operable splitter.
+        // The suggested <hr> is a decorative rule: not focusable, not
+        // operable, and unable to carry aria-valuenow. This is a window
+        // splitter — a real button that resizes with the arrow keys
+        // (resizeWithKeyboard) and reports its position.
+        // biome-ignore lint/a11y/useSemanticElements: an <hr> cannot be a focusable, operable splitter.
         <button
           type="button"
           className="split-pane__divider"

@@ -95,9 +95,9 @@ test('does not mount the builtin when the selector refuses Home', () => {
 });
 
 test('does not mount the builtin when the selected renderer is not the builtin primary', () => {
-// A contributed Home reaches this route through the same call. Mounting
-// the builtin for it would be the Pane system's worst failure: a renderer
-// running under a declaration that did not name it.
+  // A contributed Home reaches this route through the same call. Mounting
+  // the builtin for it would be the Pane system's worst failure: a renderer
+  // running under a declaration that did not name it.
   selection.result = {
     state: 'selected',
     candidate: {

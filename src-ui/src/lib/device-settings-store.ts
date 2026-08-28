@@ -67,12 +67,12 @@ export interface DeviceSettingsEnvelope {
 }
 
 export interface DeviceSettingsImportResult {
-/**
-* Registered keys present in the imported file whose value failed
- * descriptor validation (archive#settings-revamp 
-* 2) — dropped rather than merged. Every other present, valid key was
-* merged into the store.
-*/
+  /**
+   * Registered keys present in the imported file whose value failed
+   * descriptor validation (archive#settings-revamp
+   * 2) — dropped rather than merged. Every other present, valid key was
+   * merged into the store.
+   */
   droppedKeys: (keyof DeviceSettings)[];
 }
 
@@ -97,20 +97,20 @@ export class DeviceSettingsImportVersionError extends Error {
 type Listener = () => void;
 
 function hasLocalStorage(): boolean {
-// Defensive `typeof window` guard matching existing patterns
-// (onboarding-setup-store.ts, useFeatureSettings.ts) — this module runs in
-// test environments (Node, no DOM) as well as the browser, never SSR.
-//
-// Reading `window.localStorage` is itself a throwing operation in a document
-// whose storage access is denied — an opaque origin (a sandboxed iframe
-// without `allow-same-origin`, an `about:blank` document) or a browser
-// configured to block site data raises `SecurityError` on the PROPERTY, not
-// on the later `getItem`. A probe whose whole job is to answer "can I use
-// storage?" must answer it rather than propagate; the throw used to escape
-// the two call sites that are not already inside a try (the constructor's
-// `storage` listener, and the prior-settings event dispatch), which takes
-// down the module-scope `deviceSettingsStore` singleton — and with it every
-// bundle that imports it — at import time.
+  // Defensive `typeof window` guard matching existing patterns
+  // (onboarding-setup-store.ts, useFeatureSettings.ts) — this module runs in
+  // test environments (Node, no DOM) as well as the browser, never SSR.
+  //
+  // Reading `window.localStorage` is itself a throwing operation in a document
+  // whose storage access is denied — an opaque origin (a sandboxed iframe
+  // without `allow-same-origin`, an `about:blank` document) or a browser
+  // configured to block site data raises `SecurityError` on the PROPERTY, not
+  // on the later `getItem`. A probe whose whole job is to answer "can I use
+  // storage?" must answer it rather than propagate; the throw used to escape
+  // the two call sites that are not already inside a try (the constructor's
+  // `storage` listener, and the prior-settings event dispatch), which takes
+  // down the module-scope `deviceSettingsStore` singleton — and with it every
+  // bundle that imports it — at import time.
   try {
     return typeof window !== 'undefined' && !!window.localStorage;
   } catch {
@@ -133,8 +133,8 @@ function writeRaw(key: string, value: string): boolean {
     window.localStorage.setItem(key, value);
     return true;
   } catch {
-// Storage can be unavailable (privacy modes) or full (quota) — the
-// caller decides what "best-effort" means for it.
+    // Storage can be unavailable (privacy modes) or full (quota) — the
+    // caller decides what "best-effort" means for it.
     return false;
   }
 }
@@ -144,7 +144,7 @@ function removeRaw(key: string): void {
     if (!hasLocalStorage()) return;
     window.localStorage.removeItem(key);
   } catch {
-// Best-effort — see writeRaw.
+    // Best-effort — see writeRaw.
   }
 }
 
@@ -182,10 +182,10 @@ export function parsePriorValue<K extends keyof DeviceSettings>(
 ): DeviceSettings[K] {
   switch (descriptor.kind) {
     case 'boolean':
-// Earlier writers use two different truthy encodings across keys
-// ('true'/'false' for chatDockAutoHide/inboxOpen, '1'/'0' for
-// diffWrap) — both are accepted here since each field's real writer
-// only ever used one of them; this generic OR covers both losslessly.
+      // Earlier writers use two different truthy encodings across keys
+      // ('true'/'false' for chatDockAutoHide/inboxOpen, '1'/'0' for
+      // diffWrap) — both are accepted here since each field's real writer
+      // only ever used one of them; this generic OR covers both losslessly.
       return (raw === 'true' || raw === '1') as DeviceSettings[K];
     case 'enum':
       return (
@@ -196,13 +196,13 @@ export function parsePriorValue<K extends keyof DeviceSettings>(
     case 'string':
       return raw as DeviceSettings[K];
     case 'number': {
-// archive#settings-revamp note: `Number('')` and
-// `Number('   ')` both coerce to `0`, not NaN — an empty/whitespace
-// raw value must fall back to `defaultValue` explicitly rather than
-// silently landing on 0 for a setting whose real default is
-// something else. (Currently dead code: no number-kind device
-// setting has a `priorStorageKey` yet — guarded now rather than
-// left as a footgun for the first one that does.)
+      // archive#settings-revamp note: `Number('')` and
+      // `Number('   ')` both coerce to `0`, not NaN — an empty/whitespace
+      // raw value must fall back to `defaultValue` explicitly rather than
+      // silently landing on 0 for a setting whose real default is
+      // something else. (Currently dead code: no number-kind device
+      // setting has a `priorStorageKey` yet — guarded now rather than
+      // left as a footgun for the first one that does.)
       const trimmed = raw.trim();
       if (trimmed === '') return defaultValue;
       const parsed = Number(trimmed);
@@ -247,7 +247,7 @@ export function parsePriorValue<K extends keyof DeviceSettings>(
  * order` as a string, or a `shortcutOverrides` binding with a non-string
  * `key`) persist and later crash a real consumer
  * (`SessionModelPicker.tsx`'s `preferences.order.map`,
-* `KeyboardShortcutsSection.tsx`'s `shortcut.key.toUpperCase`).
+ * `KeyboardShortcutsSection.tsx`'s `shortcut.key.toUpperCase`).
  */
 const COMPOSITE_BOOLEAN_FIELDS: Readonly<Record<string, readonly string[]>> = {
   featureSettings: [
@@ -300,7 +300,7 @@ function validateFeatureSettings(
 /**
  * Validates an imported `shortcutOverrides` composite: EVERY entry must be
  * a valid binding or `null` (`normalizePriorShortcutBinding` — shared with
-* the prior-root migration reader, archive#settings-revamp
+ * the prior-root migration reader, archive#settings-revamp
  *) or the whole value is rejected, matching the field-level
  * (not per-entry) drop granularity every other composite in this module
  * uses. Valid imports are re-normalized (modifier de-dup) rather than
@@ -377,9 +377,9 @@ function validateImportedValue<K extends keyof DeviceSettings>(
         : { valid: false };
     case 'string':
       if (candidate === null) {
-// `accentColor` and `chatDockProjectSlug` are the nullable
-// string-kind device settings — `null` is each one's legitimate
-// "no override"/"no project bound" value (archive#4525).
+        // `accentColor` and `chatDockProjectSlug` are the nullable
+        // string-kind device settings — `null` is each one's legitimate
+        // "no override"/"no project bound" value (archive#4525).
         return definition.key === 'accentColor' ||
           definition.key === 'chatDockProjectSlug'
           ? { valid: true, value: null as DeviceSettings[K] }
@@ -390,9 +390,9 @@ function validateImportedValue<K extends keyof DeviceSettings>(
         : { valid: false };
     case 'number': {
       if (candidate === null) {
-// `chatFontSize` is the one nullable number-kind device setting —
-// `null` is its legitimate "follow the Station default" value (see
-// the field doc on `DeviceSettings.chatFontSize`).
+        // `chatFontSize` is the one nullable number-kind device setting —
+        // `null` is its legitimate "follow the Station default" value (see
+        // the field doc on `DeviceSettings.chatFontSize`).
         return definition.key === 'chatFontSize'
           ? { valid: true, value: null as DeviceSettings[K] }
           : { valid: false };
@@ -400,14 +400,14 @@ function validateImportedValue<K extends keyof DeviceSettings>(
       if (typeof candidate !== 'number' || !Number.isFinite(candidate)) {
         return { valid: false };
       }
-// archive#settings-revamp: an in-bounds
-// check was missing entirely — an imported `chatFontSize: 5000` (or
-// `-12`, or `3.7` against an `integer: true` descriptor) landed
-// unclamped into an inline `fontSize` style (ChatSettingsPanel's A−/A+
-// clamp is client-side only, not re-applied to an imported value).
-// Out-of-bounds/non-integer is dropped into `droppedKeys` — the
-// established import contract (every other kind fails the whole value
-// rather than silently coercing it into range).
+      // archive#settings-revamp: an in-bounds
+      // check was missing entirely — an imported `chatFontSize: 5000` (or
+      // `-12`, or `3.7` against an `integer: true` descriptor) landed
+      // unclamped into an inline `fontSize` style (ChatSettingsPanel's A−/A+
+      // clamp is client-side only, not re-applied to an imported value).
+      // Out-of-bounds/non-integer is dropped into `droppedKeys` — the
+      // established import contract (every other kind fails the whole value
+      // rather than silently coercing it into range).
       if (descriptor.integer && !Number.isInteger(candidate)) {
         return { valid: false };
       }
@@ -565,11 +565,11 @@ function migrateEnvelopeV1ToV2(
   const backfilled: Partial<DeviceSettings> = {};
   const consumedPriorKeys = new Set<string>();
   for (const definition of missingPriorReadDefinitions) {
-// Every `priorRead`-bearing entry declares its shared `priorStorageKey`
-// (see that field's doc comment) — this guard is only for the type
- // (archive#settings-revamp made the field optional for the
-// no-prior-key entries added that slice, none of which declare
-// `priorRead`).
+    // Every `priorRead`-bearing entry declares its shared `priorStorageKey`
+    // (see that field's doc comment) — this guard is only for the type
+    // (archive#settings-revamp made the field optional for the
+    // no-prior-key entries added that slice, none of which declare
+    // `priorRead`).
     const priorStorageKey = definition.priorStorageKey;
     if (!priorStorageKey) continue;
     if (!sharedRootCache.has(priorStorageKey)) {
@@ -591,7 +591,7 @@ function migrateEnvelopeV1ToV2(
     values: { ...envelope.values, ...backfilled },
   };
 
-// Nothing recovered from a prior settings root — a clean version bump, no I/O.
+  // Nothing recovered from a prior settings root — a clean version bump, no I/O.
   if (consumedPriorKeys.size === 0) {
     return migrated;
   }
@@ -640,21 +640,21 @@ class DeviceSettingsStore {
   private hydratedState: boolean;
 
   constructor() {
-// Hydration is synchronous in this environment (localStorage reads are
-// sync, there is no SSR boundary) — the flag still exists as its own
-// piece of state so consumers have an explicit "have we resolved
-// storage yet" signal rather than assuming it, and so a future
-// genuinely-async source (e.g. a native bridge) has somewhere to report
-// through without changing the public shape.
+    // Hydration is synchronous in this environment (localStorage reads are
+    // sync, there is no SSR boundary) — the flag still exists as its own
+    // piece of state so consumers have an explicit "have we resolved
+    // storage yet" signal rather than assuming it, and so a future
+    // genuinely-async source (e.g. a native bridge) has somewhere to report
+    // through without changing the public shape.
     this.hydratedState = false;
     this.envelope = this.loadOrMigrate();
     this.snapshot = this.resolve();
     this.hydratedState = true;
 
-// Cross-tab live sync + migration self-heal. Per spec (and
-// MDN), the `storage` event never fires in the document that made the
-// write — only in OTHER same-origin tabs/windows/iframes — so this
-// cannot loop on our own writes; no self-write guard is needed.
+    // Cross-tab live sync + migration self-heal. Per spec (and
+    // MDN), the `storage` event never fires in the document that made the
+    // write — only in OTHER same-origin tabs/windows/iframes — so this
+    // cannot loop on our own writes; no self-write guard is needed.
     if (hasLocalStorage() && typeof window.addEventListener === 'function') {
       window.addEventListener('storage', this.handleStorageEvent);
     }
@@ -672,34 +672,34 @@ class DeviceSettingsStore {
     return this.migrateFromPriorStorage();
   }
 
-/**
-* One-time: fold every present prior key into a new envelope. Prior
-* keys are removed ONLY once the envelope write is confirmed to have
- * landed (archive#settings-revamp) — `writeRaw`
-* used to be called and its result ignored, so a quota-full browser lost
-* every migrated setting permanently the moment this ran: the envelope
-* silently failed to persist, then the prior keys were deleted anyway.
-* On a failed write the prior keys stay in place (so the next boot's
-* migration retries from scratch) and this session still serves the
-* parsed values from memory via the returned envelope — degraded (every
-* write this session likely keeps failing for the same reason) but
-* lossless.
-*/
+  /**
+   * One-time: fold every present prior key into a new envelope. Prior
+   * keys are removed ONLY once the envelope write is confirmed to have
+   * landed (archive#settings-revamp) — `writeRaw`
+   * used to be called and its result ignored, so a quota-full browser lost
+   * every migrated setting permanently the moment this ran: the envelope
+   * silently failed to persist, then the prior keys were deleted anyway.
+   * On a failed write the prior keys stay in place (so the next boot's
+   * migration retries from scratch) and this session still serves the
+   * parsed values from memory via the returned envelope — degraded (every
+   * write this session likely keeps failing for the same reason) but
+   * lossless.
+   */
   private migrateFromPriorStorage(): DeviceSettingsEnvelope {
     const values: Partial<DeviceSettings> = {};
-// A Set: entries sharing one priorStorageKey (archive#settings-revamp
- // archive#1359 convergence — `shortcutOverrides`/`modelPickerPreferences`
-// both read `station.device-settings`) must only queue that key once.
+    // A Set: entries sharing one priorStorageKey (archive#settings-revamp
+    // archive#1359 convergence — `shortcutOverrides`/`modelPickerPreferences`
+    // both read `station.device-settings`) must only queue that key once.
     const migratedPriorKeys = new Set<string>();
-// Parsed-once cache for shared-root (`priorRead`) keys, keyed by
-// `priorStorageKey` — avoids re-reading/re-parsing the same raw value
-// once per sharer.
+    // Parsed-once cache for shared-root (`priorRead`) keys, keyed by
+    // `priorStorageKey` — avoids re-reading/re-parsing the same raw value
+    // once per sharer.
     const sharedRootCache = new Map<string, Record<string, unknown> | null>();
 
     for (const definition of DEVICE_SETTINGS_REGISTRY) {
- // archive#settings-revamp: a setting with neither `priorRead`
-// nor `priorStorageKey` was never persisted pre-unification (e.g.
-// `chatShowReasoning`, `chatFontSize`) — nothing to migrate for it.
+      // archive#settings-revamp: a setting with neither `priorRead`
+      // nor `priorStorageKey` was never persisted pre-unification (e.g.
+      // `chatShowReasoning`, `chatFontSize`) — nothing to migrate for it.
       if (!definition.priorRead && !definition.priorStorageKey) continue;
 
       if (definition.priorRead) {
@@ -742,7 +742,7 @@ class DeviceSettingsStore {
     return envelope;
   }
 
- /** Re-reads the persisted envelope fresh ('s read-merge-write basis); falls back to the in-memory envelope when storage has nothing (or nothing readable) yet — e.g. a still-failing quota-full write from `migrateFromPriorStorage`. */
+  /** Re-reads the persisted envelope fresh ('s read-merge-write basis); falls back to the in-memory envelope when storage has nothing (or nothing readable) yet — e.g. a still-failing quota-full write from `migrateFromPriorStorage`. */
   private readPersistedEnvelope(): DeviceSettingsEnvelope {
     const raw = readRaw(ENVELOPE_STORAGE_KEY);
     if (raw === null) return this.envelope;
@@ -776,19 +776,19 @@ class DeviceSettingsStore {
 
   private notify(): void {
     this.listeners.forEach((listener) => listener());
- // archive#settings-revamp (archive#1359 convergence): archive#1359's own
-// window-event name, kept as a generic "envelope changed" broadcast so
-// pre-convergence consumers that still listen for it directly
-// (`KeyboardShortcutsContext.tsx`, `modelPickerPreferences.ts`'s
-// `subscribe`) via
-// `shortcutPreferences.ts`/`modelPickerPreferences.ts` re-exports need
-// no changes.
+    // archive#settings-revamp (archive#1359 convergence): archive#1359's own
+    // window-event name, kept as a generic "envelope changed" broadcast so
+    // pre-convergence consumers that still listen for it directly
+    // (`KeyboardShortcutsContext.tsx`, `modelPickerPreferences.ts`'s
+    // `subscribe`) via
+    // `shortcutPreferences.ts`/`modelPickerPreferences.ts` re-exports need
+    // no changes.
     if (hasLocalStorage() && typeof window.dispatchEvent === 'function') {
       window.dispatchEvent(new Event(PRIOR_DEVICE_SETTINGS_EVENT));
     }
   }
 
-/** Adopts a freshly-computed envelope: sets it as current, re-resolves the snapshot, persists, and notifies. The one mutation path every public writer funnels through. */
+  /** Adopts a freshly-computed envelope: sets it as current, re-resolves the snapshot, persists, and notifies. The one mutation path every public writer funnels through. */
   private applyEnvelope(envelope: DeviceSettingsEnvelope): void {
     this.envelope = envelope;
     this.snapshot = this.resolve();
@@ -812,17 +812,17 @@ class DeviceSettingsStore {
     this.notify();
   };
 
-/**
-* Re-read the envelope from localStorage (running migration if the
-* envelope is absent), replace the in-memory state, and notify. This is
-* the same refresh the cross-tab `storage` listener performs, exposed for
-* callers that mutate localStorage outside the store's own API — chiefly
-* consumer TESTS that isolate with `localStorage.clear` in beforeEach:
-* the old per-key readers re-read localStorage on every mount, so
-* `clear` alone reset them, but this module-singleton's in-memory state
-* survives across tests unless explicitly reloaded (found via
- * ChatDockInboxPanel.test.tsx after the archive#1311 snooze tests landed).
-*/
+  /**
+   * Re-read the envelope from localStorage (running migration if the
+   * envelope is absent), replace the in-memory state, and notify. This is
+   * the same refresh the cross-tab `storage` listener performs, exposed for
+   * callers that mutate localStorage outside the store's own API — chiefly
+   * consumer TESTS that isolate with `localStorage.clear` in beforeEach:
+   * the old per-key readers re-read localStorage on every mount, so
+   * `clear` alone reset them, but this module-singleton's in-memory state
+   * survives across tests unless explicitly reloaded (found via
+   * ChatDockInboxPanel.test.tsx after the archive#1311 snooze tests landed).
+   */
   reloadFromStorage = (): void => {
     this.envelope = this.loadOrMigrate();
     this.snapshot = this.resolve();
@@ -840,15 +840,15 @@ class DeviceSettingsStore {
 
   getEnvelope = (): DeviceSettingsEnvelope => this.envelope;
 
-/**
- * Adopts an imported envelope wholesale : throws
-* `DeviceSettingsImportVersionError` for a version newer than this app
-* understands rather than importing it unchanged; every present,
-* registry-known value is validated against its descriptor — invalid
-* ones (wrong type, `null` for a non-nullable field, a malformed
-* composite) are dropped rather than merged, and returned in the result
-* so the caller can report them.
-*/
+  /**
+   * Adopts an imported envelope wholesale : throws
+   * `DeviceSettingsImportVersionError` for a version newer than this app
+   * understands rather than importing it unchanged; every present,
+   * registry-known value is validated against its descriptor — invalid
+   * ones (wrong type, `null` for a non-nullable field, a malformed
+   * composite) are dropped rather than merged, and returned in the result
+   * so the caller can report them.
+   */
   importEnvelope = (input: unknown): DeviceSettingsImportResult => {
     const candidateVersion = isPlainObject(input) ? input.version : undefined;
     if (
@@ -863,7 +863,7 @@ class DeviceSettingsStore {
     return { droppedKeys };
   };
 
- /** Shallow-merges a partial value set into the FRESHLY-read persisted envelope (: read-merge-write, not a blind overwrite from this tab's stale snapshot). */
+  /** Shallow-merges a partial value set into the FRESHLY-read persisted envelope (: read-merge-write, not a blind overwrite from this tab's stale snapshot). */
   merge = (partial: Partial<DeviceSettings>): void => {
     const fresh = this.readPersistedEnvelope();
     this.applyEnvelope({
@@ -875,7 +875,7 @@ class DeviceSettingsStore {
   get = <K extends keyof DeviceSettings>(key: K): DeviceSettings[K] =>
     this.snapshot[key];
 
- /** Read-merge-write; a value equal to the current FRESH value is a true no-op — no snapshot replacement, no persist, no notify. */
+  /** Read-merge-write; a value equal to the current FRESH value is a true no-op — no snapshot replacement, no persist, no notify. */
   set = <K extends keyof DeviceSettings>(
     key: K,
     value: DeviceSettings[K],
@@ -890,7 +890,7 @@ class DeviceSettingsStore {
     });
   };
 
-/** Clears an explicit override, falling back to the registry default. Read-merge-write. */
+  /** Clears an explicit override, falling back to the registry default. Read-merge-write. */
   reset = <K extends keyof DeviceSettings>(key: K): void => {
     const fresh = this.readPersistedEnvelope();
     if (!Object.hasOwn(fresh.values, key)) return;
@@ -920,7 +920,7 @@ export function resolveBootTheme(
       const theme = parsed?.values?.theme;
       if (theme === 'light' || theme === 'dark') return theme;
     } catch {
-// Fall through to the prior/default path below.
+      // Fall through to the prior/default path below.
     }
   }
   if (priorRaw === 'light' || priorRaw === 'dark') return priorRaw;
@@ -943,7 +943,7 @@ export function resolveBootAccentColor(
       if (typeof accentColor === 'string' && accentColor) return accentColor;
       if (Object.hasOwn(parsed?.values ?? {}, 'accentColor')) return null;
     } catch {
-// Fall through to the prior/default path below.
+      // Fall through to the prior/default path below.
     }
   }
   return priorRaw || null;

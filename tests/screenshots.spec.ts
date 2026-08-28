@@ -784,11 +784,11 @@ function seedActiveChatSession(
      * only skips deleting an entry it cannot durably verify when
      * `conversationId === sessionId` AND `provider` is set (and not
      * `'bedrock'`) — otherwise it tries to durably confirm the entry via
-      * `fetchAgentConversationPage(agentSlug, …)` against the REAL backend
-      * (a fixture `agentSlug` matches nothing there) and PRUNES it within
-      * the first render pass — the seeded chat then vanishes from
-      * sessionStorage before the shot, and the mismatch state never
-      * renders at all.
+     * `fetchAgentConversationPage(agentSlug, …)` against the REAL backend
+     * (a fixture `agentSlug` matches nothing there) and PRUNES it within
+     * the first render pass — the seeded chat then vanishes from
+     * sessionStorage before the shot, and the mismatch state never
+     * renders at all.
      */
     conversationId: string;
     agentSlug: string;

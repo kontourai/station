@@ -4,7 +4,7 @@
  * WHAT THIS IS NOW, AND WHAT IT WAS. This used to be the whole guided run:
  * connect → "which agents do you use?" → about you → tour, all four chapters
  * rendered as fixed bottom-right cards at `--layer-notice` from an app-level
-* mount, on whatever route the user happened to be on. The (
+ * mount, on whatever route the user happened to be on. The (
  * ) found both halves of that broken — the run either never started or
  * started ten seconds into someone's work, and the cards occluded page content
  * and out-stacked modal scrims. The questions moved to `FirstRunHomeChapter`,
@@ -53,10 +53,10 @@ export function FirstRunFlow() {
   const progress = useFirstRunProgress();
   const { navigate } = useNavigation();
 
-// `active` is state, not derived from `progress`, precisely so a finished
-// tour stays finished until someone explicitly asks for it again. A cold
-// boot that stopped mid-tour resumes it; every other chapter value means
-// the tour is not what is on screen.
+  // `active` is state, not derived from `progress`, precisely so a finished
+  // tour stays finished until someone explicitly asks for it again. A cold
+  // boot that stopped mid-tour resumes it; every other chapter value means
+  // the tour is not what is on screen.
   const [active, setActive] = useState(() => progress.chapter === 'tour');
   const [stepIndex, setStepIndex] = useState(
     () => resolveResumePoint(progress).stepIndex,
@@ -64,8 +64,8 @@ export function FirstRunFlow() {
   const lastNavigatedStep = useRef<string | null>(null);
   const returnFocusRef = useRef<HTMLElement[]>([]);
   const restoreFrameRef = useRef<number | null>(null);
-// Discard a scheduled restore if this component goes away before the frame
-// runs, matching `CommandPalette`'s cancel-on-cleanup.
+  // Discard a scheduled restore if this component goes away before the frame
+  // runs, matching `CommandPalette`'s cancel-on-cleanup.
   useEffect(
     () => () => {
       if (restoreFrameRef.current !== null) {
@@ -75,27 +75,27 @@ export function FirstRunFlow() {
     [],
   );
 
-/**
-* Capture the return target at the moment the tour is *asked* for — before
-* our own surface mounts and focuses itself, which is why this cannot be
-* done in an effect.
-*
- * WHAT THIS ACTUALLY CAPTURES (archive#2652). We are
-* usually invoked FROM an overlay: `CommandPalette.runCommand` is `close;
-* command.run;`, and `close` is a batched `setOpen(false)` that has not
-* flushed when `run` calls us — so `document.activeElement` is still the
-* palette's own `<input>`, which unmounts a tick later. At restore time
-* `applyReturnFocus` skips that disconnected node and walks to the nearest
-* surviving ancestor. That is the shared module's documented "sensible
- * substitute" tier, not the archive#1126 focus-to-body defect, and the palette
-* separately restores the true trigger on its own close. Started from a
-* persistent control, we do return to that control exactly.
-*
-* The capture reads `activeRef` and runs in the event handler, NOT inside a
-* `setActive` updater. A state updater must be pure — React may invoke it
-* twice under StrictMode and calls it during render, so capturing there
-* would read `document.activeElement` at an unpredictable moment.
-*/
+  /**
+   * Capture the return target at the moment the tour is *asked* for — before
+   * our own surface mounts and focuses itself, which is why this cannot be
+   * done in an effect.
+   *
+   * WHAT THIS ACTUALLY CAPTURES (archive#2652). We are
+   * usually invoked FROM an overlay: `CommandPalette.runCommand` is `close;
+   * command.run;`, and `close` is a batched `setOpen(false)` that has not
+   * flushed when `run` calls us — so `document.activeElement` is still the
+   * palette's own `<input>`, which unmounts a tick later. At restore time
+   * `applyReturnFocus` skips that disconnected node and walks to the nearest
+   * surviving ancestor. That is the shared module's documented "sensible
+   * substitute" tier, not the archive#1126 focus-to-body defect, and the palette
+   * separately restores the true trigger on its own close. Started from a
+   * persistent control, we do return to that control exactly.
+   *
+   * The capture reads `activeRef` and runs in the event handler, NOT inside a
+   * `setActive` updater. A state updater must be pure — React may invoke it
+   * twice under StrictMode and calls it during render, so capturing there
+   * would read `document.activeElement` at an unpredictable moment.
+   */
   const activeRef = useRef(active);
   activeRef.current = active;
   const beginRun = useCallback((next: () => void) => {
@@ -105,30 +105,30 @@ export function FirstRunFlow() {
     next();
   }, []);
 
- // Downgrade safety (archive#2652). `firstRunProgress` is a
-// composite device setting persisted verbatim, so a chapter written by a
-// newer Station survives a downgrade — and this build renders nothing for
-// it. `resolveResumePoint`'s documented "restart rather than crash"
-// fallback could not help while nothing read its chapter; this is what
-// reads it.
+  // Downgrade safety (archive#2652). `firstRunProgress` is a
+  // composite device setting persisted verbatim, so a chapter written by a
+  // newer Station survives a downgrade — and this build renders nothing for
+  // it. `resolveResumePoint`'s documented "restart rather than crash"
+  // fallback could not help while nothing read its chapter; this is what
+  // reads it.
   useEffect(() => {
     if (isKnownFirstRunChapter(progress.chapter)) return;
     firstRunStore.enterChapter(resolveResumePoint(progress).chapter);
   }, [progress]);
 
-// The only way in: `requestFirstRunTour`, from the command palette or from
-// `FirstRunHomeChapter` completing. The action says "Take the tour", so it
-// opens the TOUR — `resolveTourEntryPoint`, not the general resume rule,
-// which would reopen a chapter the user already left 
+  // The only way in: `requestFirstRunTour`, from the command palette or from
+  // `FirstRunHomeChapter` completing. The action says "Take the tour", so it
+  // opens the TOUR — `resolveTourEntryPoint`, not the general resume rule,
+  // which would reopen a chapter the user already left
   useEffect(() => {
     const start = () => {
       const entry = resolveTourEntryPoint(firstRunStore.getSnapshot());
       beginRun(() => {
         firstRunStore.enterChapter(entry.chapter);
         setStepIndex(entry.stepIndex);
-// a previous run left this pinned to the step it ended on,
-// so re-entry at that same step would skip its own navigation and
-// render an unanchored coachmark over whatever page the user is on.
+        // a previous run left this pinned to the step it ended on,
+        // so re-entry at that same step would skip its own navigation and
+        // render an unanchored coachmark over whatever page the user is on.
         lastNavigatedStep.current = null;
       });
     };
@@ -139,18 +139,18 @@ export function FirstRunFlow() {
   const inTour = active && progress.chapter === 'tour';
   const step = inTour ? FIRST_RUN_TOUR_STEPS[stepIndex] : undefined;
 
-// Take the user to the surface a step is about, then let `Coachmark` find
-// the anchor there. Navigating once per step (not per render) keeps the tour
-// from fighting a user who clicks something else on the page.
+  // Take the user to the surface a step is about, then let `Coachmark` find
+  // the anchor there. Navigating once per step (not per render) keeps the tour
+  // from fighting a user who clicks something else on the page.
   useEffect(() => {
     if (!step) return;
     if (lastNavigatedStep.current === step.id) return;
     lastNavigatedStep.current = step.id;
     firstRunStore.recordTourStep(step.id);
     const path = tourStepPath(step);
-// `null` means the step names a view the router cannot serialize — an
-// authoring mistake the tour tests fail on. Skip the navigation rather
-// than sending the user to a guessed route.
+    // `null` means the step names a view the router cannot serialize — an
+    // authoring mistake the tour tests fail on. Skip the navigation rather
+    // than sending the user to a guessed route.
     if (path) navigate(path);
   }, [step, navigate]);
 

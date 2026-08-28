@@ -39,10 +39,10 @@ describe('useProjects().isConfirmedLoaded (station#4525 review HIGH-1)', () => {
     expect(result.current.isConfirmedLoaded).toBe(false);
   });
 
- // The exact discriminating case: `isLoading: false` (settled) but
-// via an ERROR, not a success — `data` is folded to `[]`, identical to a
-// genuine empty/confirmed list. A guard reading only `!isLoading` cannot
-// tell these apart; `isConfirmedLoaded` must.
+  // The exact discriminating case: `isLoading: false` (settled) but
+  // via an ERROR, not a success — `data` is folded to `[]`, identical to a
+  // genuine empty/confirmed list. A guard reading only `!isLoading` cannot
+  // tell these apart; `isConfirmedLoaded` must.
   test('the error shape (settled, but errored) is never confirmed loaded, even though projects reads empty', async () => {
     projectsQueryState = {
       data: undefined,
@@ -59,10 +59,10 @@ describe('useProjects().isConfirmedLoaded (station#4525 review HIGH-1)', () => {
     ).toBe(false);
   });
 
- // placeholderData forces status to "success" while the
-// real fetch is still pending — placeholder contents must never read as a
-// confirmed load. Latent today (no caller opts into keepPreviousData on the
-// projects query); this pins the derivation against a future opt-in.
+  // placeholderData forces status to "success" while the
+  // real fetch is still pending — placeholder contents must never read as a
+  // confirmed load. Latent today (no caller opts into keepPreviousData on the
+  // projects query); this pins the derivation against a future opt-in.
   test('the placeholder shape (success status, placeholder contents) is never confirmed loaded', async () => {
     projectsQueryState = {
       data: [],

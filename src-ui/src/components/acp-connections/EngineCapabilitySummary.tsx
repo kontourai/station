@@ -28,10 +28,10 @@ const CAPABILITY_CHIPS: ReadonlyArray<{
     | 'modelSelection';
   label: string;
 }> = [
-// "System prompt", not "Prompt": the retired Prompts surface's noun is
-// gate-banned as a standalone capital-P word (noun-consistency-gate), and
-// the capability IS the system prompt, so the precise name is also the
-// passing one.
+  // "System prompt", not "Prompt": the retired Prompts surface's noun is
+  // gate-banned as a standalone capital-P word (noun-consistency-gate), and
+  // the capability IS the system prompt, so the precise name is also the
+  // passing one.
   { key: 'systemPrompt', label: 'System prompt' },
   { key: 'toolServers', label: 'Tool servers' },
   { key: 'skills', label: 'Skills' },
@@ -61,9 +61,9 @@ const TOOL_CATEGORY_LABELS: Record<BuiltInToolCategory, string> = {
  *
  * - `station-configured` — the Station engine has no toolbox of its own.
  * - `documented` — the cell's evidence-backed categories, named in user
-*   words ("shell commands, file editing"). This is the answer to the
-*   owner's original question ("does it have bash and file access?"), and
-*   it renders only where a matrix cell cites a real observation seam.
+ *   words ("shell commands, file editing"). This is the answer to the
+ *   owner's original question ("does it have bash and file access?"), and
+ *   it renders only where a matrix cell cites a real observation seam.
  * - `unenumerated` — Station cannot list the toolbox; say so.
  *
  * The archive#3726 caught the pre-audit version contradicting the chip row
@@ -85,8 +85,8 @@ export function deriveToolsOwnership(
           .map((category) => TOOL_CATEGORY_LABELS[category])
           .join(', ')}.`
       : // Conditional on purpose (#3728 review): for an unenumerated engine
-// Station cannot establish that any built-ins EXIST — only that it
-// has no inventory of whatever the engine may provide.
+        // Station cannot establish that any built-ins EXIST — only that it
+        // has no inventory of whatever the engine may provide.
         `Station cannot enumerate any built-in tools ${connectionName} may provide.`;
   return matrix.toolServers.state !== 'unsupported'
     ? `${base} Station can additionally supply the tool servers configured here.`
@@ -107,14 +107,14 @@ export function deriveToolControlSummary(
 ): string | null {
   switch (matrix.builtInToolControl.state) {
     case 'station-owned':
-// Redundant with the ownership sentence for the Station engine — the
-// tools ARE the configuration — so no second sentence.
+      // Redundant with the ownership sentence for the Station engine — the
+      // tools ARE the configuration — so no second sentence.
       return null;
     case 'none':
-// The absolute phrasing is earned only where built-ins are PROVEN to
-// exist (a documented cell); an unenumerated engine gets conditional
-// wording, or the control sentence would assert the very inventory
- // the tools row just said Station cannot establish (archive#3728).
+      // The absolute phrasing is earned only where built-ins are PROVEN to
+      // exist (a documented cell); an unenumerated engine gets conditional
+      // wording, or the control sentence would assert the very inventory
+      // the tools row just said Station cannot establish (archive#3728).
       return matrix.builtInTools.state === 'documented'
         ? 'Its built-in tools cannot be switched off from Station.'
         : 'Station cannot switch off any built-in tools it may provide.';
@@ -144,13 +144,13 @@ export function EngineCapabilitySummary({
   matrix,
   connectionName,
 }: {
-/**
-* The resolved matrix for the engine being described. Callers resolve it
-* (`resolveEngineCapabilityMatrix`, or a literal entry for a surface that
-* is one engine class by construction) — the resolver's unknown-engine
-* default is itself the honest floor, so there is no guessed-row case
-* left for this component to defend against.
-*/
+  /**
+   * The resolved matrix for the engine being described. Callers resolve it
+   * (`resolveEngineCapabilityMatrix`, or a literal entry for a surface that
+   * is one engine class by construction) — the resolver's unknown-engine
+   * default is itself the honest floor, so there is no guessed-row case
+   * left for this component to defend against.
+   */
   matrix: EngineCapabilityMatrix;
   connectionName: string;
 }) {

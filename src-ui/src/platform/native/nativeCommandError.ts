@@ -12,7 +12,7 @@
  * (`packages/connect/src/core/connectionFailureClassification.ts`'s
  * `classifyNativeTransportRefusal` reads `.code` off a thrown `Error`).
  *
-* This is the one seam both files funnel a raw `invoke` rejection through
+ * This is the one seam both files funnel a raw `invoke` rejection through
  * before wrapping it back into a JS `Error` for callers. A command not yet
  * converted to `NativeCommandError` (or an older bundle) still rejects with
  * a bare string — that shape is preserved as `message` with `code`

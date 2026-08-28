@@ -60,9 +60,9 @@ describe('ChatDockProjectContext', () => {
       vi.fn<(projectSlug: string, projectName: string) => void>();
     const onHeaderToggle = overrides.onHeaderToggle ?? vi.fn<() => void>();
     render(
-// The wrapper stands in for the dock header's toggle surface: any
-// event that escapes the row lands here, like a real bubbled toggle.
-// biome-ignore lint/a11y/noStaticElementInteractions: test stand-in for the dock header's toggle surface.
+      // The wrapper stands in for the dock header's toggle surface: any
+      // event that escapes the row lands here, like a real bubbled toggle.
+      // biome-ignore lint/a11y/noStaticElementInteractions: test stand-in for the dock header's toggle surface.
       <div onClick={onHeaderToggle} onKeyDown={onHeaderToggle}>
         <ChatDockProjectContext
           projectSlug="alpha"
@@ -104,7 +104,7 @@ describe('ChatDockProjectContext', () => {
         .getAttribute('aria-expanded'),
     ).toBe('true');
     await screen.findByRole('dialog', { name: 'Switch project' });
-// The dock header's toggle surface must NOT see the activation.
+    // The dock header's toggle surface must NOT see the activation.
     expect(onHeaderToggle).not.toHaveBeenCalled();
   });
 
@@ -229,7 +229,7 @@ describe('ChatDockProjectContext — clearable badge (chat-dock-maximize-readine
       />,
     );
 
-// Exactly one project name surface, plus one clear affordance.
+    // Exactly one project name surface, plus one clear affordance.
     expect(screen.getByText('Operations')).toBeTruthy();
     const clear = screen.getByLabelText('Clear project chat scope');
     fireEvent.click(clear);
@@ -260,12 +260,12 @@ describe('ChatDockProjectContext — session/badge mismatch label (station#4525 
       />,
     );
 
-// The badge still names the BOUND project ("Alpha"), not the session's.
+    // The badge still names the BOUND project ("Alpha"), not the session's.
     expect(screen.getByRole('button', { name: 'Alpha' })).toBeTruthy();
     const label = screen.getByText('Beta ·');
     expect(label.className).toContain('chat-dock__project-session-name');
- // the session's own facts (here, its directory) still render —
-// never suppressed by the mismatch.
+    // the session's own facts (here, its directory) still render —
+    // never suppressed by the mismatch.
     expect(screen.getByText('beta-checkout')).toBeTruthy();
   });
 

@@ -118,7 +118,7 @@ function renderChapter(
       onGiveUp={onGiveUp}
     />,
   );
-/** Re-render with a fresh catalog answer, as a `['agents']` refetch does. */
+  /** Re-render with a fresh catalog answer, as a `['agents']` refetch does. */
   const update = (
     nextEngines: ExternalEngineReadinessProjection[],
     nextAgents: AgentData[] = [],
@@ -177,7 +177,7 @@ describe('the checklist', () => {
     renderChapter([CODEX, KIRO]);
     expect(checkbox('codex')?.checked).toBe(true);
     expect(row('codex').textContent).toContain('Enable Codex');
-// A row Station cannot act on is a STATE and a REASON, never a control.
+    // A row Station cannot act on is a STATE and a REASON, never a control.
     expect(checkbox('kiro')).toBeNull();
     expect(row('kiro').textContent).toContain('Kiro');
     expect(screen.getByText('Sign in to Kiro to use it here.')).toBeTruthy();
@@ -194,18 +194,18 @@ describe('the checklist', () => {
         } as AgentData,
       ],
     );
-// The copy states the state (: the old card rendered "Already set
-// up as X" beside an unticked box and a "Set up 2" button).
+    // The copy states the state (: the old card rendered "Already set
+    // up as X" beside an unticked box and a "Set up 2" button).
     expect(row('codex').textContent).toContain('Ready — Codex');
     expect(checkbox('codex')).toBeNull();
     expect(screen.getByText(/Already set up as/)).toBeTruthy();
   });
 
   test('a locked row keeps its reason in the document, not behind a disabled control', () => {
-// The note IS the reason the row is locked. Rendering that row as a
-// `disabled` checkbox would drop it out of the tab order and out of a
-// keyboard user's reach; rendering it as text keeps it readable and makes
-// the refusal structural rather than an attribute.
+    // The note IS the reason the row is locked. Rendering that row as a
+    // `disabled` checkbox would drop it out of the tab order and out of a
+    // keyboard user's reach; rendering it as text keeps it readable and makes
+    // the refusal structural rather than an attribute.
     renderChapter([KIRO]);
     expect(checkbox('kiro')).toBeNull();
     expect(screen.getByText('Sign in to Kiro to use it here.')).toBeTruthy();
@@ -213,10 +213,10 @@ describe('the checklist', () => {
   });
 
   test('a tickable row is a plain, editable checkbox', () => {
-// Playwright's check/uncheck actionability treats a readOnly or disabled
-// input as not editable, so a tickable row that carried either would be
-// untickable from the browser suite while every jsdom test still passed —
-// and that bucket does not run per-PR.
+    // Playwright's check/uncheck actionability treats a readOnly or disabled
+    // input as not editable, so a tickable row that carried either would be
+    // untickable from the browser suite while every jsdom test still passed —
+    // and that bucket does not run per-PR.
     renderChapter([CODEX, KIRO]);
     const tickable = checkbox('codex') as HTMLInputElement;
     expect(tickable.readOnly).toBe(false);
@@ -242,8 +242,8 @@ describe('the checklist', () => {
   test('keeps undetected engines out of the main list', () => {
     renderChapter([CODEX, OPENCODE]);
     expect(screen.getByText('Station also works with')).toBeTruthy();
-// Present as information, but with no control at all — an unchecked box
-// for something the user cannot install from here would be a dead action.
+    // Present as information, but with no control at all — an unchecked box
+    // for something the user cannot install from here would be a dead action.
     expect(
       screen.getByTestId('first-run-engine-opencode').querySelector('input'),
     ).toBeNull();
@@ -333,18 +333,18 @@ describe('confirming the checklist', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Set up 2' }));
     });
     expect(materializeEngineAgent).toHaveBeenCalledTimes(2);
-// Only the engine binding crosses the wire. The chapter used to send a
-// name it invented, and that name became a SECOND row per engine.
+    // Only the engine binding crosses the wire. The chapter used to send a
+    // name it invented, and that name became a SECOND row per engine.
     expect(materializeEngineAgent).toHaveBeenNthCalledWith(1, 'codex');
     expect(materializeEngineAgent).toHaveBeenNthCalledWith(2, 'claude');
-// A clean batch has nothing to read, so it advances the run itself.
+    // A clean batch has nothing to read, so it advances the run itself.
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
     expect(screen.queryByTestId('first-run-engines-report')).toBeNull();
   });
 
   test('creates nothing for an engine that already has an Agent', async () => {
-// The row is ticked — that is what "already enabled" looks like — so this
-// is the second-run duplicate the chapter must never produce.
+    // The row is ticked — that is what "already enabled" looks like — so this
+    // is the second-run duplicate the chapter must never produce.
     const { onDone } = renderChapter(
       [CODEX],
       [
@@ -374,9 +374,9 @@ describe('confirming the checklist', () => {
   });
 
   test('"Not now" materialises nothing and defers the whole chapter', () => {
-// Distinct from `onDone`: this is the decision the chapter WRITES DOWN, so
-// it is never confused with "the engine step finished". It replaces the
-// "Skip" that dismissed the old notice-layer card and completed the run.
+    // Distinct from `onDone`: this is the decision the chapter WRITES DOWN, so
+    // it is never confused with "the engine step finished". It replaces the
+    // "Skip" that dismissed the old notice-layer card and completed the run.
     const { onDone, onDefer } = renderChapter([CODEX]);
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
     expect(materializeEngineAgent).not.toHaveBeenCalled();
@@ -385,9 +385,9 @@ describe('confirming the checklist', () => {
   });
 
   test('a second activation cannot double-create', async () => {
-// The confirm is `aria-disabled` while the batch runs, not `disabled`, so
-// it is genuinely still clickable — the refusal is the handler's, not the
-// browser's.
+    // The confirm is `aria-disabled` while the batch runs, not `disabled`, so
+    // it is genuinely still clickable — the refusal is the handler's, not the
+    // browser's.
     let release: (value: unknown) => void = () => {};
     materializeEngineAgent.mockImplementation(
       () => new Promise((resolve) => (release = resolve)),
@@ -417,9 +417,9 @@ describe('the batch is legible while it runs and when it lands', () => {
   }
 
   test('the live region exists before there is anything to say', () => {
-// A `role="status"` inserted with its content already in it is not
-// reliably announced; this one is in the DOM from first render and only
-// its text changes.
+    // A `role="status"` inserted with its content already in it is not
+    // reliably announced; this one is in the DOM from first render and only
+    // its text changes.
     renderChapter([CODEX]);
     const status = screen.getByTestId('first-run-engines-status');
     expect(status.getAttribute('role')).toBe('status');
@@ -440,17 +440,17 @@ describe('the batch is legible while it runs and when it lands', () => {
   });
 
   test('the announced count is the BATCH, not a catalog that moves under it (delta review MEDIUM-B)', async () => {
-// Each create invalidates ['agents']; each refetch that lands flips a
-// finished row to `enabled` (`selectable: false`). Deriving the count from
-// the current options therefore shrank it mid-batch — and in a live region
-// that RE-ANNOUNCES: "Setting up 2 agents…", then "Setting up 1 agent…",
-// while two were running the whole time.
+    // Each create invalidates ['agents']; each refetch that lands flips a
+    // finished row to `enabled` (`selectable: false`). Deriving the count from
+    // the current options therefore shrank it mid-batch — and in a live region
+    // that RE-ANNOUNCES: "Setting up 2 agents…", then "Setting up 1 agent…",
+    // while two were running the whole time.
     const { release, update } = startSlowBatch();
     expect(screen.getByTestId('first-run-engines-status').textContent).toBe(
       'Setting up 2 agents…',
     );
 
-// The first create lands and its row goes from available to enabled.
+    // The first create lands and its row goes from available to enabled.
     update(
       [CODEX, CLAUDE],
       [
@@ -471,8 +471,8 @@ describe('the batch is legible while it runs and when it lands', () => {
   });
 
   test('the user can still leave while the batch runs', async () => {
-// Focus must not fall to <body> mid-batch, and a chapter that traps
-// someone in a running batch would be blocking Home.
+    // Focus must not fall to <body> mid-batch, and a chapter that traps
+    // someone in a running batch would be blocking Home.
     const { release, onDefer } = startSlowBatch();
     const defer = screen.getByRole('button', { name: 'Not now' });
     expect((defer as HTMLButtonElement).disabled).toBe(false);
@@ -498,8 +498,8 @@ describe('the batch is legible while it runs and when it lands', () => {
   });
 
   test('each outcome carries its severity as data, not only as wording', async () => {
-// The colour rule keys off this attribute (`EnginesStep.css`), so the
-// three kinds cannot all render as the same muted grey again.
+    // The colour rule keys off this attribute (`EnginesStep.css`), so the
+    // three kinds cannot all render as the same muted grey again.
     materializeEngineAgent
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce({
@@ -540,9 +540,9 @@ describe('reporting what actually happened', () => {
       'Codex: could not be set up. name already taken',
     );
     expect(report.textContent).toContain('Claude Code: set up as');
-// A failure has to be read, so the run waits for the user here — and the
-// way out is "continue WITHOUT them", which is not the completing exit
- //  This used to be a plain Continue that called `onDone`.
+    // A failure has to be read, so the run waits for the user here — and the
+    // way out is "continue WITHOUT them", which is not the completing exit
+    //  This used to be a plain Continue that called `onDone`.
     expect(onDone).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('first-run-engines-give-up'));
     expect(onGiveUp).toHaveBeenCalledTimes(1);
@@ -620,9 +620,9 @@ describe('useFirstRunEngineOptions — when the inputs can be trusted', () => {
   });
 
   test('a FAILED agent catalog settles with no options rather than stalling', () => {
-// Without the catalog the chapter cannot tell an enabled engine from a
-// new one, and waiting forever would strand the whole guided run at
-// Connect. Both failure modes are worse than skipping the chapter.
+    // Without the catalog the chapter cannot tell an enabled engine from a
+    // new one, and waiting forever would strand the whole guided run at
+    // Connect. Both failure modes are worse than skipping the chapter.
     agentsState.loaded = false;
     agentsState.settled = true;
     statusState.data = { externalEngines: [CODEX] };
@@ -657,9 +657,9 @@ describe('the lede describes the list, so it needs one', () => {
   });
 
   test('no lede when Station has nothing to offer', () => {
-// `externalEngines` is empty on a home with no engine connections even
-// where the CLIs are installed, so this state is reachable and its copy
-// must not claim Station "found these".
+    // `externalEngines` is empty on a home with no engine connections even
+    // where the CLIs are installed, so this state is reachable and its copy
+    // must not claim Station "found these".
     renderChapter([]);
     expect(
       screen.queryByText(/Station found these on this machine/),
@@ -677,10 +677,10 @@ describe('the lede describes the list, so it needs one', () => {
 
 describe('seeding the selection when the catalog arrives in pieces', () => {
   test('an empty answer does not latch the seed at nothing', () => {
-// `/api/system/status` reports `externalEngines: []` in one window and the
-// real rows in the next. Seeding on the first settled answer latched `[]`,
-// so three enable-able engines rendered unticked with a primary action
-// reading "Continue" — seen live on a fresh temp home.
+    // `/api/system/status` reports `externalEngines: []` in one window and the
+    // real rows in the next. Seeding on the first settled answer latched `[]`,
+    // so three enable-able engines rendered unticked with a primary action
+    // reading "Continue" — seen live on a fresh temp home.
     const { update } = renderChapter([]);
     expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
 
@@ -691,7 +691,7 @@ describe('seeding the selection when the catalog arrives in pieces', () => {
   });
 
   test('a later answer never re-ticks a box the user cleared', () => {
-// The other direction, and the reason this is seeded rather than derived.
+    // The other direction, and the reason this is seeded rather than derived.
     const { update } = renderChapter([CODEX, CLAUDE]);
     fireEvent.click(checkbox('claude-code') as HTMLInputElement);
     expect(checkbox('claude-code')?.checked).toBe(false);
@@ -702,8 +702,8 @@ describe('seeding the selection when the catalog arrives in pieces', () => {
   });
 
   test('clearing everything survives a refetch', () => {
-// The strongest form: an EMPTY selection is a decision too, and the seed
-// guard must not read it as "not seeded yet".
+    // The strongest form: an EMPTY selection is a decision too, and the seed
+    // guard must not read it as "not seeded yet".
     const { update } = renderChapter([CODEX]);
     fireEvent.click(checkbox('codex') as HTMLInputElement);
     expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
@@ -716,9 +716,9 @@ describe('seeding the selection when the catalog arrives in pieces', () => {
 
 describe('H1 — a batch that FAILED does not offer a plain "Continue"', () => {
   test('a failure offers retry and continue-without, never acknowledgement', async () => {
-// The defect: the report's single Continue advanced the run, About-you's
-// Skip then wrote `completed`, and the home recorded a finished first run
-// for engines that were never enabled.
+    // The defect: the report's single Continue advanced the run, About-you's
+    // Skip then wrote `completed`, and the home recorded a finished first run
+    // for engines that were never enabled.
     materializeEngineAgent.mockRejectedValue(new Error('offline'));
     const { onDone, onGiveUp } = renderChapter([CODEX]);
     await act(async () => {
@@ -743,8 +743,8 @@ describe('H1 — a batch that FAILED does not offer a plain "Continue"', () => {
     fireEvent.click(screen.getByTestId('first-run-engines-give-up'));
 
     expect(onGiveUp).toHaveBeenCalledTimes(1);
-// `onDone` is the "everything the user asked for exists" exit, and this is
-// not it. Calling both would put the run back on the path that completes.
+    // `onDone` is the "everything the user asked for exists" exit, and this is
+    // not it. Calling both would put the run back on the path that completes.
     expect(onDone).not.toHaveBeenCalled();
   });
 
@@ -770,19 +770,19 @@ describe('H1 — a batch that FAILED does not offer a plain "Continue"', () => {
       fireEvent.click(screen.getByTestId('first-run-engines-retry'));
     });
 
-// Exactly one more materialise — the engine that failed, addressed by the
-// only thing the endpoint takes (its connection id). The engine that
-// already succeeded is not re-materialised.
+    // Exactly one more materialise — the engine that failed, addressed by the
+    // only thing the endpoint takes (its connection id). The engine that
+    // already succeeded is not re-materialised.
     expect(materializeEngineAgent).toHaveBeenCalledTimes(3);
     expect(materializeEngineAgent).toHaveBeenLastCalledWith('codex');
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
   });
 
   test('an engine that was ALREADY materialised is a success, not a failure', async () => {
-// `materialize-engine` is find-or-create, so a second confirm (or a second
-// device) answers `created: false` with the existing Agent. That is the
-// run doing what it offered to do — it must not land in the failed set,
-// and it must not hold the run at a report with no plain way on.
+    // `materialize-engine` is find-or-create, so a second confirm (or a second
+    // device) answers `created: false` with the existing Agent. That is the
+    // run doing what it offered to do — it must not land in the failed set,
+    // and it must not hold the run at a report with no plain way on.
     materializeEngineAgent.mockResolvedValue({
       data: { slug: 'codex', name: 'Codex' },
       created: false,
@@ -792,15 +792,15 @@ describe('H1 — a batch that FAILED does not offer a plain "Continue"', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Set up 1' }));
     });
 
-// No report at all: nothing needs acknowledging, so the run advances.
+    // No report at all: nothing needs acknowledging, so the run advances.
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
     expect(screen.queryByTestId('first-run-engines-report')).toBeNull();
     expect(onGiveUp).not.toHaveBeenCalled();
   });
 
   test('an already-materialised engine is reported as such beside a failure', async () => {
-// The report's wording is derived from the endpoint's own answer: this run
-// created nothing for Codex, so it may not say it did.
+    // The report's wording is derived from the endpoint's own answer: this run
+    // created nothing for Codex, so it may not say it did.
     materializeEngineAgent
       .mockResolvedValueOnce({
         data: { slug: 'codex', name: 'Codex' },
@@ -820,12 +820,12 @@ describe('H1 — a batch that FAILED does not offer a plain "Continue"', () => {
   });
 
   test('a retry whose engine has LEFT the catalog does not complete the run', async () => {
- // The empty-plan shortcut, which is again by another door. `runBatch`
-// re-plans a retry from the CURRENT options; an engine that dropped out of
-// `externalEngines` (or flipped to blocked under a flapping probe) yields
-// no plan entry at all, and `plan.length === 0` used to take the
-// "everything the user asked for exists" exit — completing a run over the
-// one engine that never worked.
+    // The empty-plan shortcut, which is again by another door. `runBatch`
+    // re-plans a retry from the CURRENT options; an engine that dropped out of
+    // `externalEngines` (or flipped to blocked under a flapping probe) yields
+    // no plan entry at all, and `plan.length === 0` used to take the
+    // "everything the user asked for exists" exit — completing a run over the
+    // one engine that never worked.
     materializeEngineAgent.mockRejectedValue(new Error('offline'));
     const { onDone, onGiveUp, update } = renderChapter([CODEX]);
     await act(async () => {
@@ -833,7 +833,7 @@ describe('H1 — a batch that FAILED does not offer a plain "Continue"', () => {
     });
     await screen.findByTestId('first-run-engines-report');
 
-// Codex is gone from the catalog between the failure and the retry.
+    // Codex is gone from the catalog between the failure and the retry.
     update([CLAUDE]);
     await act(async () => {
       fireEvent.click(screen.getByTestId('first-run-engines-retry'));
@@ -851,9 +851,9 @@ describe('H1 — a batch that FAILED does not offer a plain "Continue"', () => {
   });
 
   test('a selection that has become unplannable before the first confirm reports it', async () => {
-// The same shortcut on the way IN: the checklist seeds once, so a ready
-// engine that goes `blocked` while the user reads the list stays ticked
-// and stays counted — and then plans to nothing.
+    // The same shortcut on the way IN: the checklist seeds once, so a ready
+    // engine that goes `blocked` while the user reads the list stays ticked
+    // and stays counted — and then plans to nothing.
     const { onDone, onGiveUp, update } = renderChapter([CODEX, CLAUDE]);
     expect(checkbox('codex')?.checked).toBe(true);
 
@@ -865,8 +865,8 @@ describe('H1 — a batch that FAILED does not offer a plain "Continue"', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Set up 1' }));
     });
 
-// Claude still ran; Codex is reported as the failure it is, carrying the
-// row's OWN reason rather than a guess.
+    // Claude still ran; Codex is reported as the failure it is, carrying the
+    // row's OWN reason rather than a guess.
     expect(materializeEngineAgent).toHaveBeenCalledTimes(1);
     expect(materializeEngineAgent).toHaveBeenCalledWith('claude');
     const report = await screen.findByTestId('first-run-engines-report');
@@ -880,10 +880,10 @@ describe('H1 — a batch that FAILED does not offer a plain "Continue"', () => {
   });
 
   test('an empty request still finishes — the shortcut is not simply removed', async () => {
-// The discriminating half. Nothing was ASKED for, so there is nothing
-// unresolved and the run may move on; only a request that cannot be
-// planned is a failure. Without this the fix would strand every machine
-// Station has nothing to offer on.
+    // The discriminating half. Nothing was ASKED for, so there is nothing
+    // unresolved and the run may move on; only a request that cannot be
+    // planned is a failure. Without this the fix would strand every machine
+    // Station has nothing to offer on.
     const { onDone, onGiveUp } = renderChapter([KIRO]);
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
@@ -895,8 +895,8 @@ describe('H1 — a batch that FAILED does not offer a plain "Continue"', () => {
   });
 
   test('a warning is not a failure and keeps the plain acknowledgement', async () => {
-// A warned create SAVED — the Agent exists. Treating it as a failure would
-// block a run that did what it said it would.
+    // A warned create SAVED — the Agent exists. Treating it as a failure would
+    // block a run that did what it said it would.
     materializeEngineAgent.mockResolvedValue({
       data: { slug: 'codex', name: 'Codex' },
       created: true,

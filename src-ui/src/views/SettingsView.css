@@ -1017,7 +1017,7 @@
 /* ── Floating Save Pill ── */
 .settings__save-pill {
   position: fixed;
-/* archive#1831: the pill must clear the chat dock at ANY dock height — the
+  /* archive#1831: the pill must clear the chat dock at ANY dock height — the
      dock is resizable, so a fixed offset cannot work. `--dock-slot-size` is
      the live dock footprint (kept current by useChatDockState, including
      per-frame during a drag; 0px when the dock is a desktop side panel), so
@@ -1289,7 +1289,7 @@
 
 .settings__connections-link {
   padding: 12px;
-/* --border-subtle until archive#1254 (re-seeded here by archive#1359) — a
+  /* --border-subtle until archive#1254 (re-seeded here by archive#1359) — a
      token that does not exist, so these cards had no outline.
      --border-primary is the subtle line. */
   border: 1px solid var(--border-primary);
@@ -1319,7 +1319,7 @@
 
 /* ── Mobile touch targets ── */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-/* Single column: key, type, value, and remove each get the full row width so
+  /* Single column: key, type, value, and remove each get the full row width so
      the key input no longer truncates (e.g. "AGENT_NAM" → "AGENT_NAME"). */
   .settings__var-row {
     grid-template-columns: 1fr;
@@ -1358,13 +1358,13 @@
     align-items: center;
     justify-content: center;
   }
-/* The Hide/Details toggle is a text link inside the env strip; give it
+  /* The Hide/Details toggle is a text link inside the env strip; give it
      horizontal padding so the 44px tap area is comfortable, not cramped. */
   .settings__env-toggle {
     padding: 0 0.5rem;
   }
 
-/* Floating save pill: keep it inside narrow viewports (<=390px) instead of
+  /* Floating save pill: keep it inside narrow viewports (<=390px) instead of
      letting the "Unsaved changes" label + two buttons overflow past the screen
      edges. Span (almost) the full width and let the label flex/truncate while
      the action buttons stay tappable. */
@@ -1375,7 +1375,7 @@
     max-width: none;
     box-sizing: border-box;
     justify-content: flex-end;
-/* The shared entrance keyframe slides in via translateX(-50%); that conflicts
+    /* The shared entrance keyframe slides in via translateX(-50%); that conflicts
        with the full-width left/right anchoring used on mobile, so drop the
        animation here and let the pill simply appear in place. */
     animation: none;

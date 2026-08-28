@@ -36,15 +36,15 @@ interface CreatedProject {
 interface UseNewProjectSubmitOptions {
   apiBase: string;
   isOpen: boolean;
-/** The slug the draft currently derives; a refusal older than it is stale. */
+  /** The slug the draft currently derives; a refusal older than it is stale. */
   derivedSlug: string;
   normalizedDirectory: string;
   resolveLayoutId: () => Promise<string | null>;
-/**
-* Re-reads the project list from the SERVER and returns the sentence to show
-* if the slug is still taken, or `null` to proceed. Anything it cannot
- * establish must be `null`: the POST is the authority 
-*/
+  /**
+   * Re-reads the project list from the SERVER and returns the sentence to show
+   * if the slug is still taken, or `null` to proceed. Anything it cannot
+   * establish must be `null`: the POST is the authority
+   */
   verifySlugAvailability?: (candidate: {
     name: string;
     slug: string;
@@ -93,16 +93,16 @@ export function useNewProjectSubmit({
     }
   }, [isOpen]);
 
-/**
-* 4-HOME-008. Returns the message to show against the Working Directory
-* field, or `null` when the folder was confirmed to exist.
-*
-* Every branch answers with a sentence. The old code did
-* `if (result.error) throw result.error`, which left two silent exits — a
-* settled query with neither data nor an error, and an `error` that was not
-* an `Error` — and submitting a nonexistent folder produced no POST, no
-* message, and no field state at all.
-*/
+  /**
+   * 4-HOME-008. Returns the message to show against the Working Directory
+   * field, or `null` when the folder was confirmed to exist.
+   *
+   * Every branch answers with a sentence. The old code did
+   * `if (result.error) throw result.error`, which left two silent exits — a
+   * settled query with neither data nor an error, and an `error` that was not
+   * an `Error` — and submitting a nonexistent folder produced no POST, no
+   * message, and no field state at all.
+   */
   async function checkDirectory(): Promise<string | null> {
     const result = await validateDirectory();
     if (result.error) {
@@ -111,8 +111,8 @@ export function useNewProjectSubmit({
         : String(result.error);
     }
     if (result.data !== undefined) return null;
-// Neither an answer nor a reason: say exactly that rather than claim the
-// folder is missing (or, as before, say nothing).
+    // Neither an answer nor a reason: say exactly that rather than claim the
+    // folder is missing (or, as before, say nothing).
     return 'Station could not check this folder. Try again.';
   }
 
@@ -149,8 +149,8 @@ export function useNewProjectSubmit({
           setRejectedSlug(null);
         }
 
-// Resolve before creating so every failure before this point remains a
-// normal validation failure, never a duplicate-create retry hazard.
+        // Resolve before creating so every failure before this point remains a
+        // normal validation failure, never a duplicate-create retry hazard.
         const layoutId = await resolveLayoutId();
         const created = await createProjectMutation.mutateAsync(draft);
         project = { slug: created.slug, layoutId };
@@ -176,21 +176,21 @@ export function useNewProjectSubmit({
   return {
     hasCreatedProject: createdProject !== null,
     error,
-/**
-* The folder this submission proved does not exist (or could not be
-* checked), and what to say about it. Read as a field error only while the
-* typed directory is still that same path — editing the field makes the
-* verdict stale, and a stale verdict must not keep Create disabled.
-*/
+    /**
+     * The folder this submission proved does not exist (or could not be
+     * checked), and what to say about it. Read as a field error only while the
+     * typed directory is still that same path — editing the field makes the
+     * verdict stale, and a stale verdict must not keep Create disabled.
+     */
     directoryError:
       rejectedDirectory && rejectedDirectory.path === normalizedDirectory
         ? rejectedDirectory.message
         : null,
-/**
-* A duplicate refusal that a REFRESHED project list actually supported,
-* scoped to the slug it was made about — editing the name makes it stale,
-* and a stale refusal must not keep Create disabled.
-*/
+    /**
+     * A duplicate refusal that a REFRESHED project list actually supported,
+     * scoped to the slug it was made about — editing the name makes it stale,
+     * and a stale refusal must not keep Create disabled.
+     */
     slugError:
       rejectedSlug && rejectedSlug.slug === derivedSlug
         ? rejectedSlug.message

@@ -81,10 +81,10 @@ export function workspacePaneOperationalOccurrenceId(
   document: WorkspacePaneHostDocumentV1,
   instance: WorkspacePaneInstance,
 ): string {
-// An ambient host has no project/layout pair to hash. Its marker keeps the
-// two-segment shape with an empty second segment, which no project or task
-// scope can produce (a layoutId is never empty), so the existing hashes stay
-// byte-identical and cannot collide with the new one.
+  // An ambient host has no project/layout pair to hash. Its marker keeps the
+  // two-segment shape with an empty second segment, which no project or task
+  // scope can produce (a layoutId is never empty), so the existing hashes stay
+  // byte-identical and cannot collide with the new one.
   const scope = document.scope;
   const identity =
     scope.kind === 'ambient'
@@ -160,7 +160,7 @@ export class WorkspacePaneOperationalEventTracker {
       for (const item of stored.slice(-CHECKPOINT_LIMIT))
         if (typeof item === 'string' && item.length <= 96) this.seen.add(item);
     } catch {
-// Corrupt optional dedup state is never authority; emit safely.
+      // Corrupt optional dedup state is never authority; emit safely.
     }
   }
 
@@ -171,7 +171,7 @@ export class WorkspacePaneOperationalEventTracker {
         JSON.stringify([...this.seen].slice(-CHECKPOINT_LIMIT)),
       );
     } catch {
-// Sink delivery must remain fail-soft when browser storage is unavailable.
+      // Sink delivery must remain fail-soft when browser storage is unavailable.
     }
   }
 
@@ -225,7 +225,7 @@ export class WorkspacePaneOperationalEventTracker {
     try {
       this.sink.emit(event);
     } catch {
-// Observability cannot disrupt the visible pane lifecycle.
+      // Observability cannot disrupt the visible pane lifecycle.
     }
     return event;
   }

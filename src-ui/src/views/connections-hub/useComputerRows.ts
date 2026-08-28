@@ -39,7 +39,7 @@ import {
 
 export interface UseComputerRowsResult {
   rows: ComputerRowModel[];
-/** The folded identities behind the rows, for callers that need the source. */
+  /** The folded identities behind the rows, for callers that need the source. */
   environments: KnownEnvironment[];
   sshEnvironments: SshEnvironmentView[];
   isLoading: boolean;
@@ -52,11 +52,11 @@ export function useComputerRows(
     hideEndpoint?: (endpointUrl: string, kind: string) => boolean;
   } = {},
 ): UseComputerRowsResult {
-// The ONE registry instance for the app. A component constructing its own
-// subscribes to listeners nobody else notifies, so a Station added from the
-// dialog stayed invisible here until the next remount — the exact failure
-// `known-environment-registry.ts` was written to prevent, in the one place
-// that had not adopted it.
+  // The ONE registry instance for the app. A component constructing its own
+  // subscribes to listeners nobody else notifies, so a Station added from the
+  // dialog stayed invisible here until the next remount — the exact failure
+  // `known-environment-registry.ts` was written to prevent, in the one place
+  // that had not adopted it.
   const registry = knownEnvironmentRegistry();
   const manual = useSyncExternalStore(
     (onChange) => registry.subscribe(onChange),
@@ -106,8 +106,8 @@ export function useComputerRows(
           const byConnection = connectionId
             ? pairedAuthorization.byConnectionId.get(connectionId)
             : undefined;
-// No lookup entry at all — conservative default: not evidenced as
-// authorized, so do not claim control.
+          // No lookup entry at all — conservative default: not evidenced as
+          // authorized, so do not claim control.
           return byConnection ?? false;
         },
         ...(hideEndpoint ? { hideEndpoint } : {}),

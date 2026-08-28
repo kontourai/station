@@ -28,11 +28,11 @@ describe('AccentColorPicker', () => {
     ).toBe('');
   });
 
-// archive#settings-revamp: previously this DOM
-// side effect only ran inside the click handler, so an accent imported
-// (or changed on another tab) while this component was mounted updated
-// the store's state but left the DOM untouched. It is now a `useEffect`
-// keyed on the store value, so it fires however the value changed.
+  // archive#settings-revamp: previously this DOM
+  // side effect only ran inside the click handler, so an accent imported
+  // (or changed on another tab) while this component was mounted updated
+  // the store's state but left the DOM untouched. It is now a `useEffect`
+  // keyed on the store value, so it fires however the value changed.
   test('an out-of-band store change (e.g. an Import Settings action) applies --accent-primary even though it never went through this component', () => {
     render(<AccentColorPicker />);
 
@@ -75,13 +75,13 @@ describe('AccentColorPicker', () => {
     ).toBe('#ec4899');
   });
 
-// archive#3305: --text-on-accent is a static alias of the
-// BUILT-IN brand's contrast partner (#ffffff under [data-theme="light"]),
-// so applying an accent without it moved the background under every
-// --text-on-accent foreground and left the foreground behind — the shipped
-// #6366f1 preset landed at 4.47:1 there. This component is one of the two
-// application sites; lib/__tests__/accent-contrast.test.ts owns the
-// derivation, and these pin that this site actually goes through it.
+  // archive#3305: --text-on-accent is a static alias of the
+  // BUILT-IN brand's contrast partner (#ffffff under [data-theme="light"]),
+  // so applying an accent without it moved the background under every
+  // --text-on-accent foreground and left the foreground behind — the shipped
+  // #6366f1 preset landed at 4.47:1 there. This component is one of the two
+  // application sites; lib/__tests__/accent-contrast.test.ts owns the
+  // derivation, and these pin that this site actually goes through it.
   test('stamps the accent contrast partner alongside the accent', () => {
     const { getByLabelText } = render(<AccentColorPicker />);
     fireEvent.click(getByLabelText('Accent color #8b5cf6'));

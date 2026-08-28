@@ -172,14 +172,14 @@ describe('useChatInput engine capability model gate', () => {
     });
     activeChatsStore.updateChat(SESSION_ID, {
       executionMode: EXECUTION_MODE.STATION,
-// A model connection id is user-named ('ollama-local', not the
-// 'ollama-runtime' the resolver's managed-id allowlist expects) and
-// names no engine; Station-engine-ness lives on the execution mode.
+      // A model connection id is user-named ('ollama-local', not the
+      // 'ollama-runtime' the resolver's managed-id allowlist expects) and
+      // names no engine; Station-engine-ness lives on the execution mode.
       agentConnectionId: 'ollama-local',
       provider: 'ollama',
       model: 'llama3.2',
     });
-// bindingStatus the way the dock builds it: with the model connection.
+    // bindingStatus the way the dock builds it: with the model connection.
     const bindingStatus = resolveBindingStatus({
       agent: null,
       chatState: activeChatsStore.getSnapshot()[SESSION_ID],
@@ -211,8 +211,8 @@ describe('useChatInput engine capability model gate', () => {
       provider: 'opencode-runtime',
     });
     const { result } = renderChatInput({ runtimeConnection: null });
-// Without engine identity the unknown matrix must still refuse — the
-// fix adds identity, it must not invent capability.
+    // Without engine identity the unknown matrix must still refuse — the
+    // fix adds identity, it must not invent capability.
     expect(result.current.canModelSelect).toBe(false);
   });
 });

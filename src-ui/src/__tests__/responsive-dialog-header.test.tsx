@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
-* archive#1825: the project switcher's (and five sibling sheets')
+ * archive#1825: the project switcher's (and five sibling sheets')
  * title/close-button header used to be hand-rolled markup styled by
  * `.session-model-picker__header`, a class defined only in
  * `SessionModelPicker.css` — a stylesheet Vite lazy-chunks alongside
@@ -27,12 +27,12 @@
  *
  * Known limits of the CSS-source checks below (both are textual, not a real
  * cascade/specificity engine): the `index.css` check reads the LAST bare
-* `.responsive-dialog-header {... }` block in the file (matching CSS's own
+ * `.responsive-dialog-header {... }` block in the file (matching CSS's own
  * equal-specificity "last one wins" behavior for a repeated bare selector),
  * but cannot detect a HIGHER-specificity selector elsewhere in the same file
  * overriding it regardless of source order. The lazy-sheet check matches any
  * selector that mentions `.responsive-dialog-header` at all — including a
-* scoped/compound one like `.session-model-picker.responsive-dialog-header
+ * scoped/compound one like `.session-model-picker.responsive-dialog-header
  * { display: block }` — not only a bare redeclaration, but it is still a
  * textual scan of one file, not a build-time cascade resolution.
  */
@@ -61,13 +61,13 @@ const HEADER_CONSUMERS = [
   'components/chat-dock/ComposerActionsMenu.tsx',
   'components/project-sidebar/ProjectSidebarStatus.tsx',
   'components/badges/ComposerModeSheet.tsx',
-// archive#4254 extracted the model picker's dialog chrome into
-// ModelPickerDialogFrame so the new-chat flow could reuse it. The header
-// moved with it, so this entry follows the code to where the guarantee now
-// lives rather than being dropped — dropping it would have retired the
-// check for BOTH consumers (SessionModelPicker and NewChatModal), which
-// each render their body through this one frame and no longer own a header
-// of their own.
+  // archive#4254 extracted the model picker's dialog chrome into
+  // ModelPickerDialogFrame so the new-chat flow could reuse it. The header
+  // moved with it, so this entry follows the code to where the guarantee now
+  // lives rather than being dropped — dropping it would have retired the
+  // check for BOTH consumers (SessionModelPicker and NewChatModal), which
+  // each render their body through this one frame and no longer own a header
+  // of their own.
   'components/session/ModelPickerDialogFrame.tsx',
 ];
 
@@ -90,10 +90,10 @@ describe('shared dialog header (station#1825 item 1)', () => {
     expect(mainEntry).toMatch(/^import ['"]\.\/index\.css['"];?$/m);
 
     const indexCss = readSource('index.css');
-// Global, and reads the LAST match: a bare `.responsive-dialog-header`
-// selector repeated later in the same file wins the cascade at equal
-// specificity, so checking only the first occurrence (as this used to)
-// would pass even if a later, conflicting block reintroduced the bug.
+    // Global, and reads the LAST match: a bare `.responsive-dialog-header`
+    // selector repeated later in the same file wins the cascade at equal
+    // specificity, so checking only the first occurrence (as this used to)
+    // would pass even if a later, conflicting block reintroduced the bug.
     const rules = [
       ...indexCss.matchAll(/\.responsive-dialog-header\s*\{([^}]*)\}/g),
     ];
@@ -105,16 +105,16 @@ describe('shared dialog header (station#1825 item 1)', () => {
     expect(body).toMatch(/display:\s*flex/);
     expect(body).toMatch(/justify-content:\s*space-between/);
 
-// The title block must be allowed to shrink so a long title/subtitle
-// wraps or truncates instead of pushing the close button out of the row
-// at narrow widths — the "never collide at any width" requirement.
+    // The title block must be allowed to shrink so a long title/subtitle
+    // wraps or truncates instead of pushing the close button out of the row
+    // at narrow widths — the "never collide at any width" requirement.
     const titleBlockRule = indexCss.match(
       /\.responsive-dialog-header > div\s*\{([^}]*)\}/,
     );
     expect(titleBlockRule).toBeTruthy();
     expect(titleBlockRule![1]).toMatch(/min-width:\s*0/);
 
-// The close button itself must never shrink out of the row.
+    // The close button itself must never shrink out of the row.
     const closeButtonRule = indexCss.match(
       /\.responsive-dialog-close\s*\{([^}]*)\}/,
     );
@@ -124,19 +124,19 @@ describe('shared dialog header (station#1825 item 1)', () => {
 
   test('the header class is NOT redefined in the lazy-loaded SessionModelPicker.css chunk (the actual pre-fix defect)', () => {
     const lazyCss = readSource('components/session/SessionModelPicker.css');
-// Strip /* */ comments first — this file's own explanatory comment
-// legitimately names both classes in prose, and without stripping,
-// `[^{]*` below would run straight through the comment and match the
-// NEXT unrelated rule's opening brace, producing a false failure.
+    // Strip /* */ comments first — this file's own explanatory comment
+    // legitimately names both classes in prose, and without stripping,
+    // `[^{]*` below would run straight through the comment and match the
+    // NEXT unrelated rule's opening brace, producing a false failure.
     const codeOnly = lazyCss.replace(/\/\*[\s\S]*?\*\//g, '');
-// Matches any selector that mentions the class before an opening brace —
-// not only a bare `.responsive-dialog-header {` redeclaration, but also
-// a scoped/compound selector like `.session-model-picker
-//responsive-dialog-header { display: block }`, which would reintroduce
-// the bug just as effectively while slipping past an exact-selector
-// check. Still a textual scan, not a real selector parser, so this is a
-// "the class name is not used as a selector at all in this file" check,
-// not a full disproof of every possible reintroduction.
+    // Matches any selector that mentions the class before an opening brace —
+    // not only a bare `.responsive-dialog-header {` redeclaration, but also
+    // a scoped/compound selector like `.session-model-picker
+    //responsive-dialog-header { display: block }`, which would reintroduce
+    // the bug just as effectively while slipping past an exact-selector
+    // check. Still a textual scan, not a real selector parser, so this is a
+    // "the class name is not used as a selector at all in this file" check,
+    // not a full disproof of every possible reintroduction.
     expect(codeOnly).not.toMatch(/\.responsive-dialog-header[^{]*\{/);
     expect(codeOnly).not.toMatch(/\.session-model-picker__header[^{]*\{/);
   });
@@ -154,9 +154,9 @@ describe('shared dialog header (station#1825 item 1)', () => {
       .closest('.responsive-dialog-header') as HTMLElement;
     expect(header).toBeTruthy();
     expect(header.children).toHaveLength(2);
-// The close button must be the LAST child — the title's own wrapper div
-// is first — so a shared `justify-content: space-between` unambiguously
-// pins the button to the trailing edge instead of an arbitrary position.
+    // The close button must be the LAST child — the title's own wrapper div
+    // is first — so a shared `justify-content: space-between` unambiguously
+    // pins the button to the trailing edge instead of an arbitrary position.
     expect(header.children[1].tagName).toBe('BUTTON');
     expect(header.children[1].getAttribute('aria-label')).toBe(
       'Close project switcher',

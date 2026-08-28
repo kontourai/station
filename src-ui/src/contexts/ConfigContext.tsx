@@ -24,29 +24,29 @@ export const CONFIG_DEFAULTS = {
 
 export interface ConfigSnapshot {
   config: ConfigData | null;
-/**
-* The config READ failed.
-*
- * this hook logged the error and returned `config: null`, which
-* is also what an in-flight read looks like — so `SettingsView`'s
-* `if (!configData)` skeleton was permanent whenever the initial read
-* failed. A page that cannot say "this failed" says "still loading" forever.
-* `null` when the read has not failed.
-*/
+  /**
+   * The config READ failed.
+   *
+   * this hook logged the error and returned `config: null`, which
+   * is also what an in-flight read looks like — so `SettingsView`'s
+   * `if (!configData)` skeleton was permanent whenever the initial read
+   * failed. A page that cannot say "this failed" says "still loading" forever.
+   * `null` when the read has not failed.
+   */
   error: unknown;
-/** Re-runs the config read (the Retry action behind `error`). */
+  /** Re-runs the config read (the Retry action behind `error`). */
   retry: () => void;
-/**
-* React Query's fetch generation for `['config']` — the epoch millisecond
-* stamp of the last successful fetch, bumped on every fetch even when the
-* payload is byte-identical.
-*
-* A consumer reconciling server truth against local edits needs to know
-* *when* a snapshot was fetched, not just what it contains: a value-only
-* comparison cannot tell "the same cached response again" from "the server
-* changed away and back", and it cannot tell a snapshot that predates a
-* local write from one that supersedes it. `0` while no fetch has succeeded.
-*/
+  /**
+   * React Query's fetch generation for `['config']` — the epoch millisecond
+   * stamp of the last successful fetch, bumped on every fetch even when the
+   * payload is byte-identical.
+   *
+   * A consumer reconciling server truth against local edits needs to know
+   * *when* a snapshot was fetched, not just what it contains: a value-only
+   * comparison cannot tell "the same cached response again" from "the server
+   * changed away and back", and it cannot tell a snapshot that predates a
+   * local write from one that supersedes it. `0` while no fetch has succeeded.
+   */
   dataUpdatedAt: number;
 }
 
@@ -90,8 +90,8 @@ export function useConfigActions() {
   const updateMutation = useUpdateConfigMutation({
     onError: (error) => log.api('Failed to update config:', error),
   });
-// A transition, not a setting: `PUT /config/app` refuses `firstRun` outright
- //and this is the only way to record one.
+  // A transition, not a setting: `PUT /config/app` refuses `firstRun` outright
+  //and this is the only way to record one.
   const firstRunMutation = useRecordFirstRunDecisionMutation({
     onError: (error) => log.api('Failed to record first-run decision:', error),
   });

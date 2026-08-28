@@ -75,12 +75,12 @@ const CONNECTIONS_EYEBROW = (
 export function KnowledgeConnectionView({
   embedded = false,
 }: {
-/**
-* When embedded inside another route-owning view (the /developer Storage
-* tab), skip this view's own page chrome (breadcrumb + DetailHeader) and its
-* Escape/close binding so it does not double-render the header or hijack the
-* host's route-level Escape fallback.
-*/
+  /**
+   * When embedded inside another route-owning view (the /developer Storage
+   * tab), skip this view's own page chrome (breadcrumb + DetailHeader) and its
+   * Escape/close binding so it does not double-render the header or hijack the
+   * host's route-level Escape fallback.
+   */
   embedded?: boolean;
 } = {}) {
   const { navigate } = useNavigation();
@@ -126,12 +126,12 @@ export function KnowledgeConnectionView({
   });
 
   const stats = status?.stats;
-/**
-* the index result is the receipt, and a zero is the most important
-* one to show — hiding the section until something had been indexed left
-* the surrounding "knowledge is on" copy standing next to nothing a reader
-* could check. Present whenever the server answered.
-*/
+  /**
+   * the index result is the receipt, and a zero is the most important
+   * one to show — hiding the section until something had been indexed left
+   * the surrounding "knowledge is on" copy standing next to nothing a reader
+   * could check. Present whenever the server answered.
+   */
   const hasUsage = Boolean(stats);
   const knowledgeSections = hasUsage
     ? (['vector-database', 'embedding-model', 'usage'] as const)
@@ -142,19 +142,19 @@ export function KnowledgeConnectionView({
     dataDir !== null && dataDir !== (vectorDb?.config.dataDir as string);
   const { guard, DiscardModal } = useUnsavedGuard(dirty);
   useCloseShortcut(() => guard(() => navigate('/connections')), !embedded);
-/**
-* Embedded in a Settings section this view is not a page, so it publishes
-* nothing — the host page keeps its own title. Standalone, the frame
-* renders the title this view used to draw itself.
-*
-* archive#4463: the eyebrow is the parent only
-* ('Connections'), unlinked — not the retired 'Connections / Knowledge
-* infrastructure' breadcrumb-as-eyebrow, which restated the title (the
-* host's own page heading) one line above it. Unlinked because
-* `/connections` is a redirect-only resolver: a click would be a no-op or
-* a sibling jump dressed up as "go up", the same call made for the five
-* `ConnectionsSectionFrame` sections.
-*/
+  /**
+   * Embedded in a Settings section this view is not a page, so it publishes
+   * nothing — the host page keeps its own title. Standalone, the frame
+   * renders the title this view used to draw itself.
+   *
+   * archive#4463: the eyebrow is the parent only
+   * ('Connections'), unlinked — not the retired 'Connections / Knowledge
+   * infrastructure' breadcrumb-as-eyebrow, which restated the title (the
+   * host's own page heading) one line above it. Unlinked because
+   * `/connections` is a redirect-only resolver: a click would be a no-op or
+   * a sibling jump dressed up as "go up", the same call made for the five
+   * `ConnectionsSectionFrame` sections.
+   */
   usePageHeader(embedded ? null : { eyebrow: CONNECTIONS_EYEBROW });
 
   return (
@@ -196,7 +196,7 @@ export function KnowledgeConnectionView({
           onNavigate={navigateToSection}
         />
 
-{/* Vector Database */}
+        {/* Vector Database */}
         <PageSection
           id="section-vector-database"
           className="knowledge-view__section"
@@ -306,15 +306,15 @@ export function KnowledgeConnectionView({
               </div>
             </div>
           ) : status?.vectorDb ? (
-/*
-* this panel resolved only through `/api/connections`, and
-* the built-in store (`lancedb-builtin`) is not a persisted
-* connection record on a real home — so the section rendered as a
-* blank bordered box while the server was reporting a working
-* store. It now falls back to the same knowledge-status payload
-* every other surface reads. Read-only on purpose: there is no
-* connection record behind it to edit.
-*/
+            /*
+             * this panel resolved only through `/api/connections`, and
+             * the built-in store (`lancedb-builtin`) is not a persisted
+             * connection record on a real home — so the section rendered as a
+             * blank bordered box while the server was reporting a working
+             * store. It now falls back to the same knowledge-status payload
+             * every other surface reads. Read-only on purpose: there is no
+             * connection record behind it to edit.
+             */
             <div className="knowledge-view__card">
               <PageRow
                 className="knowledge-view__card-header"
@@ -358,7 +358,7 @@ export function KnowledgeConnectionView({
           )}
         </PageSection>
 
-{/* Embedding Provider */}
+        {/* Embedding Provider */}
         <PageSection
           id="section-embedding-model"
           className="knowledge-view__section"
@@ -428,7 +428,7 @@ export function KnowledgeConnectionView({
           )}
         </PageSection>
 
-{/* Stats */}
+        {/* Stats */}
         {hasUsage && stats && (
           <PageSection
             id="section-usage"

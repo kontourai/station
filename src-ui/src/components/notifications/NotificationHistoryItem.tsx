@@ -38,18 +38,18 @@ export function NotificationHistoryItem({
   onDismiss: (notificationId: string) => void;
 }) {
   const detail = notificationDetail(notification);
-// Only an OBSERVED negative disables anything. `unknown` renders its gap
-// and leaves the buttons alone: a surface that could not look has no
-// standing to gate an action, and enforcement is server-side regardless.
+  // Only an OBSERVED negative disables anything. `unknown` renders its gap
+  // and leaves the buttons alone: a surface that could not look has no
+  // standing to gate an action, and enforcement is server-side regardless.
   const unanswerable = answerability.status === 'unanswerable';
   const notice =
     answerability.status === 'unanswerable' ||
     answerability.status === 'unknown'
       ? answerability.notice
       : null;
-// archive#1780: a disabled button announces only "dimmed" to a screen
-// reader. The reason is on screen for a sighted reader and was inaudible to
-// everyone else — the same "renders the basis" contract, one modality over.
+  // archive#1780: a disabled button announces only "dimmed" to a screen
+  // reader. The reason is on screen for a sighted reader and was inaudible to
+  // everyone else — the same "renders the basis" contract, one modality over.
   const noticeId = notice
     ? `notification-answerability-${notification.id}`
     : undefined;

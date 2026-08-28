@@ -54,13 +54,13 @@ export function BoardWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   const identity = useWorkspacePaneBoundIdentity(instance, false);
   const project = identity.state === 'resolved' ? identity.project : null;
   const projectSlug = project?.slug;
-// 4-HOME-016: the board's own header sat under the notice stack with the
-// page's padding reset to 0 by `.page--full`. The frame owns both now.
+  // 4-HOME-016: the board's own header sat under the notice stack with the
+  // page's padding reset to 0 by `.page--full`. The frame owns both now.
   usePageHeader(project ? { title: 'Board', subtitle: project.name } : null);
 
-// Derived from the SAME expressions the early returns below branch on, so
-// the host's notion of "the pane is on screen" cannot drift from whether
-// this component actually renders it and its `confirmChrome`.
+  // Derived from the SAME expressions the early returns below branch on, so
+  // the host's notion of "the pane is on screen" cannot drift from whether
+  // this component actually renders it and its `confirmChrome`.
   const instanceIsCanonical = isCanonicalWorkspaceBoardPaneInstance(instance);
   const { host, confirmChrome } = useInProcessWorkspacePaneHost({
     projectSlug,

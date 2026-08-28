@@ -151,30 +151,30 @@ export function ActionOperationsSection() {
       </p>
     );
   }
- // Audit / : a bare "Connecting…" sentence read as debug output
-// in the Activity list pane — the canonical loading vocabulary is
-// SkeletonList/SkeletonBlock (src-ui/src/components/state), never a new
-// one-off string. Row-shaped, to mirror the operation rows this pane shows
-// once the read resolves. Scoped to the genuine initial load only
-// (`isLoading` — no data has ever been read, no error has been recorded)
-// see the below for why the error branch does NOT get
-// the same treatment.
+  // Audit / : a bare "Connecting…" sentence read as debug output
+  // in the Activity list pane — the canonical loading vocabulary is
+  // SkeletonList/SkeletonBlock (src-ui/src/components/state), never a new
+  // one-off string. Row-shaped, to mirror the operation rows this pane shows
+  // once the read resolves. Scoped to the genuine initial load only
+  // (`isLoading` — no data has ever been read, no error has been recorded)
+  // see the below for why the error branch does NOT get
+  // the same treatment.
   if (isLoading) {
     return <SkeletonList count={2} label="Connecting to operation status" />;
   }
-// archive#4474: this used to branch again on `isFetching` and
-// show a SECOND SkeletonList ("Reconnecting…") while an error persists
-// with no cached data. `useActionOperationsQuery` retries on a 5s
-// `refetchInterval`, so `isFetching` flips true/false indefinitely while
-// the error never clears — that made the pane alternate between a ~114px
-// skeleton and a ~13px line forever, displacing every row below it twice
-// a cycle (measured with a real Chromium page at 390px). An automatic
-// background retry is not news (the same "auto-retry doesn't banner"
-// stance ConnectionBannerSource already takes for transient reachability,
-// archive#3297) — so both arms of "error, no data" now render the SAME
-// static line regardless of `isFetching`, which is what makes the
-// in-flight state invisible to this pane's own layout instead of merely
-// quieter.
+  // archive#4474: this used to branch again on `isFetching` and
+  // show a SECOND SkeletonList ("Reconnecting…") while an error persists
+  // with no cached data. `useActionOperationsQuery` retries on a 5s
+  // `refetchInterval`, so `isFetching` flips true/false indefinitely while
+  // the error never clears — that made the pane alternate between a ~114px
+  // skeleton and a ~13px line forever, displacing every row below it twice
+  // a cycle (measured with a real Chromium page at 390px). An automatic
+  // background retry is not news (the same "auto-retry doesn't banner"
+  // stance ConnectionBannerSource already takes for transient reachability,
+  // archive#3297) — so both arms of "error, no data" now render the SAME
+  // static line regardless of `isFetching`, which is what makes the
+  // in-flight state invisible to this pane's own layout instead of merely
+  // quieter.
   if (error && !data) {
     return (
       <p className="action-operations__state" role="alert">

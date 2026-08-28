@@ -79,9 +79,9 @@ describe('RunBoardSummary', () => {
     expect(board.textContent).not.toContain('Unanswerable');
   });
 
- // 'Ready' was the one state no assertion pinned — the exact
-// unguarded hole the derived order closes. Every SessionStateLabel member
-// must appear in board order (derivation makes it so; this test proves it).
+  // 'Ready' was the one state no assertion pinned — the exact
+  // unguarded hole the derived order closes. Every SessionStateLabel member
+  // must appear in board order (derivation makes it so; this test proves it).
   test('covers every canonical state, Ready included', () => {
     const members = [
       session('ready', { lifecycleState: 'running', hasActiveTurn: false }),
@@ -92,9 +92,9 @@ describe('RunBoardSummary', () => {
     ]);
   });
 
- // a STALE observation (turn no longer active) must not
-// emphasize the board — the member rows gate on hasActiveTurn and the
-// board uses the same shared gate, so they can never contradict on screen.
+  // a STALE observation (turn no longer active) must not
+  // emphasize the board — the member rows gate on hasActiveTurn and the
+  // board uses the same shared gate, so they can never contradict on screen.
   test('a stale quiet observation on an inactive turn does not emphasize', () => {
     const board = summarizeRunBoard([
       session('stale-quiet', {
@@ -116,8 +116,8 @@ describe('RunBoardSummary', () => {
     ]);
   });
 
- // activation of a quiet-driven cluster lands on the member that
-// CAUSED the emphasis, and its accessible name says why.
+  // activation of a quiet-driven cluster lands on the member that
+  // CAUSED the emphasis, and its accessible name says why.
   test('a quiet-driven cluster names and targets the quiet member', () => {
     const healthy = session('healthy-first');
     const quiet = session('quiet-cause', {
@@ -149,8 +149,8 @@ describe('RunBoardSummary', () => {
       />,
     );
     const cluster = screen.getByTestId('run-board-cluster-Running');
-// The user's words for the observation (ProgressSilenceObservation's
-// copy family), never the internal 'quiet' term.
+    // The user's words for the observation (ProgressSilenceObservation's
+    // copy family), never the internal 'quiet' term.
     expect(cluster.getAttribute('aria-label')).toBe(
       'Focus running member with no recent progress (2 running)',
     );

@@ -114,17 +114,17 @@ describe('Developer tabs render exactly one h1 (station#2645)', () => {
     expect(screen.queryByText('Station configuration')).toBeNull();
   });
 
-// archive#2645's contract is unchanged; its OWNER moved. The Developer
-// route's title is now the page frame's `<h1>` (published per tab by
-// `DeveloperView`), so each tab must contribute exactly zero of its own and
-// the framed total must still be exactly one.
-//
-// `spec.eyebrow: 'Developer'` below is a FIXTURE for this describe block's
-// own contract (a tab body contributes no heading of its own) — it does not
-// exercise `DeveloperView`, which is not mounted here, so it is not a claim
-// about `DeveloperView`'s real eyebrow (a linked `PageEyebrowTrail`,
-// archive#4463). That behavior is asserted directly in
-// `DeveloperView.test.tsx`, the file that actually mounts the component.
+  // archive#2645's contract is unchanged; its OWNER moved. The Developer
+  // route's title is now the page frame's `<h1>` (published per tab by
+  // `DeveloperView`), so each tab must contribute exactly zero of its own and
+  // the framed total must still be exactly one.
+  //
+  // `spec.eyebrow: 'Developer'` below is a FIXTURE for this describe block's
+  // own contract (a tab body contributes no heading of its own) — it does not
+  // exercise `DeveloperView`, which is not mounted here, so it is not a claim
+  // about `DeveloperView`'s real eyebrow (a linked `PageEyebrowTrail`,
+  // archive#4463). That behavior is asserted directly in
+  // `DeveloperView.test.tsx`, the file that actually mounts the component.
   for (const [name, load] of TABS) {
     test(`${name} tab`, async () => {
       const { default: Tab } = await load();
@@ -148,7 +148,7 @@ describe('Developer tabs render exactly one h1 (station#2645)', () => {
       expect(h1s.length).toBe(1);
       expect(h1s[0].textContent).toBe(name);
       expect(h1s[0].classList.contains('page__title')).toBe(true);
-// The tab body itself contributes none.
+      // The tab body itself contributes none.
       expect(container.querySelectorAll('.page-frame__body h1').length).toBe(0);
     });
   }

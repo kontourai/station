@@ -51,9 +51,9 @@ export const AMBIENT_DOCK_RENDERABLE_PANES: readonly {
   {
     descriptor: WORKSPACE_CHAT_PANE_DESCRIPTOR,
     isCanonicalInstance: isCanonicalWorkspaceChatPaneInstance,
-// Non-null assertion for the same reason `createAmbientChatDockPaneDocument`
-// throws: both inputs are code-owned constants, so a failure is a build
-// that shipped an invalid built-in, not a runtime condition.
+    // Non-null assertion for the same reason `createAmbientChatDockPaneDocument`
+    // throws: both inputs are code-owned constants, so a failure is a build
+    // that shipped an invalid built-in, not a runtime condition.
     canonicalInstance: () => createWorkspaceChatPaneInstance()!,
   },
   {

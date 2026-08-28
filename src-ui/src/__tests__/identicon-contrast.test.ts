@@ -5,7 +5,7 @@ import { whiteOnHslContrast } from '../utils/color-contrast';
 
 /**
  * Gates the identicon swatch's actual CSS tokens against WCAG AA (station
-* archive#1424 3) — reads `BrandIcon.css` itself rather than
+ * archive#1424 3) — reads `BrandIcon.css` itself rather than
  * duplicating its numbers here, so a future edit to those tokens is caught
  * by THIS test instead of silently reintroducing the low-contrast defect
  * (archive#1125/archive#1167 precedent: nothing previously gated this class of bug).

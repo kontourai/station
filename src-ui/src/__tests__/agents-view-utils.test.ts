@@ -133,9 +133,9 @@ describe('agents view utils', () => {
         available: ['server-1_tool-a'],
         autoApprove: ['server-1_tool-a'],
       },
-// The spec's tools object verbatim, so a save can tell an ABSENT key
-// from an authored-empty one and can carry through fields the form does
-// not model (archive#2693).
+      // The spec's tools object verbatim, so a save can tell an ABSENT key
+      // from an authored-empty one and can carry through fields the form does
+      // not model (archive#2693).
       toolsOriginal: {
         mcpServers: ['server-1'],
         available: ['server-1_tool-a'],
@@ -262,9 +262,9 @@ describe('agents view utils', () => {
           available: [],
           autoApprove: [],
         },
-// The spec's tools object verbatim, so a save can tell an ABSENT key
-// from an authored-empty one and can carry through fields the form
-// does not model (archive#2693).
+        // The spec's tools object verbatim, so a save can tell an ABSENT key
+        // from an authored-empty one and can carry through fields the form
+        // does not model (archive#2693).
         toolsOriginal: { mcpServers: ['server-1'] },
         execution: {
           agentConnectionId: 'runtime-1',
@@ -283,11 +283,11 @@ describe('agents view utils', () => {
       region: 'us-east-1',
       guardrails: undefined,
       maxSteps: 12,
-// Only the key the spec authored. This previously asserted
-// `available: []`, which PINNED a defect: the runtime reads
-// `available || ['*']` and [] is truthy, so persisting an empty
-// allow-list where the key was absent turns "all tools" into "no tools"
-// (archive#2693).
+      // Only the key the spec authored. This previously asserted
+      // `available: []`, which PINNED a defect: the runtime reads
+      // `available || ['*']` and [] is truthy, so persisting an empty
+      // allow-list where the key was absent turns "all tools" into "no tools"
+      // (archive#2693).
       tools: {
         mcpServers: ['server-1'],
       },
@@ -344,15 +344,15 @@ describe('agents view utils', () => {
       name: 'Global Agent',
     });
     expect(global.project).toBe('');
-// Update: an empty select is the explicit ownership-clearing signal.
-// `execution: null` is the same shape for the engine binding since
-// archive#3662 — this Agent carries no execution state at all, and an
-// omitted block would mean "leave whatever is persisted alone".
+    // Update: an empty select is the explicit ownership-clearing signal.
+    // `execution: null` is the same shape for the engine binding since
+    // archive#3662 — this Agent carries no execution state at all, and an
+    // omitted block would mean "leave whatever is persisted alone".
     expect(buildAgentPayload(global)).toMatchObject({
       project: null,
       execution: null,
     });
-// Create: an empty select is simply omitted (JSON drops `undefined`).
+    // Create: an empty select is simply omitted (JSON drops `undefined`).
     expect(buildAgentPayload(global, { isCreating: true })).not.toHaveProperty(
       'project',
     );
@@ -391,10 +391,10 @@ describe('agents view utils', () => {
   });
 
   test('leaves an absent allow-list absent instead of writing an empty one', () => {
-// The runtime reads `spec.tools.available || ['*']` and [] is TRUTHY, so
-// persisting an empty array where the key was absent turns "every tool is
-// allowed" into "no tool is allowed" — silently, with the Tools tab still
-// rendering every tool as checked.
+    // The runtime reads `spec.tools.available || ['*']` and [] is TRUTHY, so
+    // persisting an empty array where the key was absent turns "every tool is
+    // allowed" into "no tool is allowed" — silently, with the Tools tab still
+    // rendering every tool as checked.
     const form = formFromAgent({
       slug: 'planner',
       toolsConfig: { mcpServers: ['github'] },
@@ -404,9 +404,9 @@ describe('agents view utils', () => {
   });
 
   test('leaves an absent mcpServers absent (authored-empty disables every server)', () => {
-// An authored `mcpServers: []` is an explicit "disable every tool server"
-// and ships strictMcpConfig:true to external engines, suppressing their own
-// MCP discovery. An unrelated edit must not manufacture that.
+    // An authored `mcpServers: []` is an explicit "disable every tool server"
+    // and ships strictMcpConfig:true to external engines, suppressing their own
+    // MCP discovery. An unrelated edit must not manufacture that.
     const form = formFromAgent({
       slug: 'planner',
       toolsConfig: { autoApprove: ['Read'] },
@@ -425,8 +425,8 @@ describe('agents view utils', () => {
   });
 
   test('carries through tools fields the form does not model', () => {
-// `tools.env` is in the persisted schema but not in the contract type or
-// this form; replacing the whole tools object destroyed it on every save.
+    // `tools.env` is in the persisted schema but not in the contract type or
+    // this form; replacing the whole tools object destroyed it on every save.
     const form = formFromAgent({
       slug: 'planner',
       toolsConfig: {
@@ -440,10 +440,10 @@ describe('agents view utils', () => {
   });
 
   test('persists clearing the last integration, because the key was authored', () => {
- // emptying the form previously produced `tools: undefined`,
-// which means "no change" server-side — the integration came back on the
-// next load while the editor reported the save as successful. An emptied
-// key that the spec HAD authored is now sent as empty, so the clear sticks.
+    // emptying the form previously produced `tools: undefined`,
+    // which means "no change" server-side — the integration came back on the
+    // next load while the editor reported the save as successful. An emptied
+    // key that the spec HAD authored is now sent as empty, so the clear sticks.
     const form = formFromAgent({
       slug: 'planner',
       toolsConfig: { mcpServers: ['github'], available: ['github_run'] },
@@ -459,9 +459,9 @@ describe('agents view utils', () => {
   });
 
   test('sends tool configuration that carries no MCP servers', () => {
-// Regression: the payload gated `tools` on mcpServers.length > 0, so an
-// agent with only available/autoApprove/aliases had those fields dropped
-// while the editor reported the save as successful.
+    // Regression: the payload gated `tools` on mcpServers.length > 0, so an
+    // agent with only available/autoApprove/aliases had those fields dropped
+    // while the editor reported the save as successful.
     const form = formFromAgent({
       slug: 'planner',
       toolsConfig: { mcpServers: [], autoApprove: ['builtin_read'] },
@@ -480,9 +480,9 @@ describe('the Station Agent round-trips as UNBOUND (#3662 review HIGH-2)', () =>
   };
 
   test('an absent binding stays absent in the form — no id is invented', () => {
-// The defect: `formFromAgent(agent, defaultManagedRuntimeId)` replaced an
-// absent binding with the managed-runtime connection id, so simply
-// OPENING the healed Station Agent put a connection id into the form.
+    // The defect: `formFromAgent(agent, defaultManagedRuntimeId)` replaced an
+    // absent binding with the managed-runtime connection id, so simply
+    // OPENING the healed Station Agent put a connection id into the form.
     expect(formFromAgent(STATION).execution.agentConnectionId).toBe('');
   });
 
@@ -493,13 +493,13 @@ describe('the Station Agent round-trips as UNBOUND (#3662 review HIGH-2)', () =>
       execution: Record<string, unknown> | null;
     };
     expect(payload.execution).toBeNull();
-// Whatever shape it takes, it must never NAME a connection.
+    // Whatever shape it takes, it must never NAME a connection.
     expect(JSON.stringify(payload)).not.toContain('agentConnectionId');
   });
 
   test('a Station-engine model pin survives, still with no binding', () => {
-// The old payload gated the whole `execution` block on the binding, so an
-// unbound Agent could not persist a model pin at all.
+    // The old payload gated the whole `execution` block on the binding, so an
+    // unbound Agent could not persist a model pin at all.
     const form = formFromAgent({
       ...STATION,
       execution: { modelId: 'claude-sonnet-4' },
@@ -526,8 +526,8 @@ describe('the Station Agent round-trips as UNBOUND (#3662 review HIGH-2)', () =>
   });
 
   test('switching an external Agent to Station CLEARS the binding', () => {
-// `undefined` here would be "leave whatever is persisted alone", which is
-// how a visible engine change silently keeps the old connection.
+    // `undefined` here would be "leave whatever is persisted alone", which is
+    // how a visible engine change silently keeps the old connection.
     const external = formFromAgent({
       slug: 'coder',
       name: 'Coder',
@@ -570,10 +570,10 @@ describe('station model binding', () => {
     config: {},
   } as never;
 
-// The defect: "Chat with a model" pressed before the connections query
-// resolved captured an empty id, and nothing backfilled it. The picker went
-// on listing the connection as Ready while Create stayed disabled and
-// nothing said why.
+  // The defect: "Chat with a model" pressed before the connections query
+  // resolved captured an empty id, and nothing backfilled it. The picker went
+  // on listing the connection as Ready while Create stayed disabled and
+  // nothing said why.
   test('an unset choice resolves the way a launched chat resolves it', () => {
     const binding = resolveStationModelBinding({
       modelConnectionId: '',
@@ -598,9 +598,9 @@ describe('station model binding', () => {
     );
   });
 
-// archive#3740 was reported as "disabling the built-in vector store stops
-// Station's engine chatting". A vector store is not a chat model, and the
-// binding must not change when one is toggled either way.
+  // archive#3740 was reported as "disabling the built-in vector store stops
+  // Station's engine chatting". A vector store is not a chat model, and the
+  // binding must not change when one is toggled either way.
   test('a vector store is never the engine, present or absent', () => {
     const withVectorDb = resolveStationModelBinding({
       modelConnectionId: '',
@@ -638,8 +638,8 @@ describe('station model binding', () => {
     });
   });
 
-// An unresolved binding always carries the sentence the picker prints, so
-// a disabled Create can never be silent.
+  // An unresolved binding always carries the sentence the picker prints, so
+  // a disabled Create can never be silent.
   test('a named connection that cannot serve says so in its own words', () => {
     expect(
       resolveStationModelBinding({

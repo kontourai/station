@@ -142,9 +142,9 @@ describe('LayoutRenderer component dispatch', () => {
   });
 
   test('names the remote-isolation refusal for a plugin view instead of claiming it is uninstalled', () => {
-// The plugin IS installed server-side; its bundle was refused by policy.
-// The slot must say so (archive#2539 phone report) — and render without a
-// NavigationProvider (the action is simply absent then).
+    // The plugin IS installed server-side; its bundle was refused by policy.
+    // The slot must say so (archive#2539 phone report) — and render without a
+    // NavigationProvider (the action is simply absent then).
     registryLoadStatus = {
       state: 'degraded',
       failedPluginNames: [],
@@ -181,9 +181,9 @@ describe('LayoutRenderer component dispatch', () => {
   });
 
   test('a live registry reload swaps a mounted fallback for the registered layout', () => {
-// Consent granted without a page reload: the registry re-initializes,
-// registers the plugin, and notifies — the stranded fallback must
-// re-resolve into the real component.
+    // Consent granted without a page reload: the registry re-initializes,
+    // registers the plugin, and notifies — the stranded fallback must
+    // re-resolve into the real component.
     registryLoadStatus = {
       state: 'degraded',
       failedPluginNames: [],
@@ -335,11 +335,11 @@ describe('LayoutRenderer component dispatch', () => {
     expect(view.querySelector('pre')?.textContent).toContain('<untrusted-kit>');
     expect(mcpToolUIFrameMock).not.toHaveBeenCalled();
   });
-// The chain a tab quick action travels: LayoutView maps the stored config to
-// `tabs[].skills`, LayoutRenderer hands that to LayoutHeader, and the header
-// opens a dropdown for it. The rename broke the middle of that chain and
-// nothing noticed, because a missing quick action renders as nothing at all
- // 
+  // The chain a tab quick action travels: LayoutView maps the stored config to
+  // `tabs[].skills`, LayoutRenderer hands that to LayoutHeader, and the header
+  // opens a dropdown for it. The rename broke the middle of that chain and
+  // nothing noticed, because a missing quick action renders as nothing at all
+  //
   test('a tab skill is offered as a quick action', () => {
     const layout: LayoutDefinition = {
       name: 'Quick Action Layout',
@@ -374,7 +374,7 @@ describe('LayoutRenderer component dispatch', () => {
     ).toBeTruthy();
   });
 
-// The retired key must not keep working by accident.
+  // The retired key must not keep working by accident.
   test('a tab still carrying the retired prompts key offers no quick actions', () => {
     const layout = {
       name: 'Retired Key Layout',

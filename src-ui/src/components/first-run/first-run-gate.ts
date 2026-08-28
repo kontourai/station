@@ -1,6 +1,6 @@
 /**
  * first-run-gate — the one derivation that decides whether the guided first
-* run is offered, and how.
+ * run is offered, and how.
  *
  * WHAT IT REPLACED. The run used to activate from `sawSetupLauncher`: "only a
  * session that actually SAW the connect launcher is a first run". The
@@ -32,17 +32,17 @@ import type {
 } from '@kontourai/station-contracts/config';
 
 export interface FirstRunOffer {
-/**
-* Open the chapter without being asked. True only for a home that has never
-* answered — a deferral is a decision, and re-opening over it is how a
-* first-run experience gets resented.
-*/
+  /**
+   * Open the chapter without being asked. True only for a home that has never
+   * answered — a deferral is a decision, and re-opening over it is how a
+   * first-run experience gets resented.
+   */
   autoOpen: boolean;
-/**
-* Home shows its "Set up Station" card. True while the run is unanswered OR
-* deferred: the card is the durable way back in, which is what makes "Not
-* now" safe to click.
-*/
+  /**
+   * Home shows its "Set up Station" card. True while the run is unanswered OR
+   * deferred: the card is the durable way back in, which is what makes "Not
+   * now" safe to click.
+   */
   offered: boolean;
 }
 

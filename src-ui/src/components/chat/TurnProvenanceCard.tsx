@@ -27,30 +27,30 @@ import './TurnProvenanceCard.css';
  * Three rules it holds to, each of which is a defect if broken:
  *
  * - **No zeroes for absence.** A missing token count renders as a named gap,
-*   never `0`; a turn with no observed tool events renders as a named gap,
-*   never "0 tools". `0` is a measurement, and Station rarely has one.
+ *   never `0`; a turn with no observed tool events renders as a named gap,
+ *   never "0 tools". `0` is a measurement, and Station rarely has one.
  * - **No omission.** Every field of the envelope gets a row, including the
-*   ones that are always gaps today (routing receipt, sources). A field the
-*   card silently skipped would read as "nothing to report here."
+ *   ones that are always gaps today (routing receipt, sources). A field the
+ *   card silently skipped would read as "nothing to report here."
  * - **No partial decoding.** An envelope whose version this build does not
-*   understand renders as one honest unavailable row rather than a
-* best-effort read of the fields that happen to look familiar. The
-*   surrounding transcript is unaffected either way.
+ *   understand renders as one honest unavailable row rather than a
+ * best-effort read of the fields that happen to look familiar. The
+ *   surrounding transcript is unaffected either way.
  *
  * archive#1802 adds a fourth rule, about presentation rather than data:
  *
  * - **Four kinds of row read as four different things.** An *earned claim*
-*   (this turn's engine, model, cost) is the product's whole point and leads
-*   the collapsed line. A *meaningful absence* ("Tools: not reported by this
-*   engine") is a real property of the engine and stays in the checkable
-*   list, visually distinct from an earned claim but not styled as a defect.
-*   Station's OWN gaps ("not captured by Station yet") read identically
-*   under every answer forever — that is not per-answer information, so it
-*   is demoted to its own "Not yet captured" block, kept (not deleted, see
-*   the no-omission rule above) but out of the badge and out of the
-*   checkable list. Correlation ids (the turn UUID) are metadata, not a
-*   claim — they live in their own block with a copy control, not mixed in
-*   with the facts a reader is meant to check.
+ *   (this turn's engine, model, cost) is the product's whole point and leads
+ *   the collapsed line. A *meaningful absence* ("Tools: not reported by this
+ *   engine") is a real property of the engine and stays in the checkable
+ *   list, visually distinct from an earned claim but not styled as a defect.
+ *   Station's OWN gaps ("not captured by Station yet") read identically
+ *   under every answer forever — that is not per-answer information, so it
+ *   is demoted to its own "Not yet captured" block, kept (not deleted, see
+ *   the no-omission rule above) but out of the badge and out of the
+ *   checkable list. Correlation ids (the turn UUID) are metadata, not a
+ *   claim — they live in their own block with a copy control, not mixed in
+ *   with the facts a reader is meant to check.
  *
  * Kontour-facing surface, so it consumes Console Kit `--k-*` tokens like the
  * trust panel, readiness panel, and gate verdict cards (see the scoping rule
@@ -64,9 +64,9 @@ const UNAVAILABLE_TEXT: Record<TurnProvenanceUnavailableReason, string> = {
     'This engine reports it per session, not per answer',
   'usage-scope-undeclared':
     'This engine has not declared whether its figures are per answer',
-// archive#1423. Says who is restricted and that the record exists — a
-// share viewer must not read this as "Station has nothing", which is what
-// every other reason here means.
+  // archive#1423. Says who is restricted and that the record exists — a
+  // share viewer must not read this as "Station has nothing", which is what
+  // every other reason here means.
   'restricted-for-this-viewer':
     'Recorded, but this share does not authorize opening it',
 };
@@ -81,11 +81,11 @@ const UNRECOGNIZED_REASON_TEXT =
   "Reported unavailable for a reason this version doesn't recognize";
 
 function unavailableText(reason: TurnProvenanceUnavailableReason): string {
-// `Object.hasOwn`, not `??`: a reason of `toString` or `constructor` finds a
-// truthy value on the prototype chain, so `??` never fires and the cell
-// renders a stringified function (or, after coercion, nothing useful).
-// Attacker-supplied or not, an envelope field must only ever match a key
-// this object actually declares.
+  // `Object.hasOwn`, not `??`: a reason of `toString` or `constructor` finds a
+  // truthy value on the prototype chain, so `??` never fires and the cell
+  // renders a stringified function (or, after coercion, nothing useful).
+  // Attacker-supplied or not, an envelope field must only ever match a key
+  // this object actually declares.
   return Object.hasOwn(UNAVAILABLE_TEXT, reason)
     ? UNAVAILABLE_TEXT[reason]
     : UNRECOGNIZED_REASON_TEXT;
@@ -103,16 +103,16 @@ const STATION_BACKLOG_REASON: TurnProvenanceUnavailableReason =
 
 interface ProvenanceRow {
   label: string;
-/** Rendered value when observed/referenced; `null` means "show the gap". */
+  /** Rendered value when observed/referenced; `null` means "show the gap". */
   value: string | null;
   gap: TurnProvenanceUnavailableReason | null;
   trustReportRef?: TurnProvenanceTrustReportRef;
-/**
-* archive#2649: an informational line that is neither an earned claim nor
-* a gap — today only the Context row's "Managed by <engine>", derived from
-* the observed engine binding rather than from a context observation.
-* Rendered in the absence style: it reports what Station did NOT do.
-*/
+  /**
+   * archive#2649: an informational line that is neither an earned claim nor
+   * a gap — today only the Context row's "Managed by <engine>", derived from
+   * the observed engine binding rather than from a context observation.
+   * Rendered in the absence style: it reports what Station did NOT do.
+   */
   note?: string;
 }
 
@@ -125,8 +125,8 @@ function slotRow<TValue>(
     return { label, value: null, gap: slot.reason };
   }
   const value = render(slot.value);
-// A slot that claimed to be observed but renders to nothing is reported as
-// a gap rather than an empty row — an empty row reads like a zero.
+  // A slot that claimed to be observed but renders to nothing is reported as
+  // a gap rather than an empty row — an empty row reads like a zero.
   return value
     ? { label, value, gap: null }
     : { label, value: null, gap: 'not-reported-by-engine' };
@@ -157,10 +157,10 @@ function usageText(
   if (usage.inputTokens !== undefined) parts.push(`${usage.inputTokens} in`);
   if (usage.outputTokens !== undefined) parts.push(`${usage.outputTokens} out`);
   if (usage.totalTokens !== undefined) {
-// archive#4196: for a provider DECLARED 'disjoint', its reported total is
-// input + output and excludes the cache fields named beside it — calling
-// that figure "total" in the same sentence contradicts the collapsed
-// line's cache-inclusive figure. Name it what the declaration says it is.
+    // archive#4196: for a provider DECLARED 'disjoint', its reported total is
+    // input + output and excludes the cache fields named beside it — calling
+    // that figure "total" in the same sentence contradicts the collapsed
+    // line's cache-inclusive figure. Name it what the declaration says it is.
     parts.push(
       providerPromptCacheInclusivity(provider) === 'disjoint'
         ? `${usage.totalTokens} in+out`
@@ -188,13 +188,13 @@ function headlineUsageText(
   usage: TurnProvenanceUsage,
   provider: string | undefined,
 ): string | null {
-// archive#4196: when the provider's declared cache-inclusivity backs the
-// sum ('disjoint' — Claude, whose totalTokens is input + output and
-// excludes cache), the one-line figure includes cache read/write, because
-// "N tokens" beside a detail row listing thousands of cache tokens was a
-// cache-exclusive figure under a cache-inclusive label. For an
-// 'unverified'/'subset'/undeclared provider the derivation returns
-// `undefined` and the provider's own total stands, unsummed.
+  // archive#4196: when the provider's declared cache-inclusivity backs the
+  // sum ('disjoint' — Claude, whose totalTokens is input + output and
+  // excludes cache), the one-line figure includes cache read/write, because
+  // "N tokens" beside a detail row listing thousands of cache tokens was a
+  // cache-exclusive figure under a cache-inclusive label. For an
+  // 'unverified'/'subset'/undeclared provider the derivation returns
+  // `undefined` and the provider's own total stands, unsummed.
   const inclusiveTotal = cacheInclusiveTotalTokens(provider, usage);
   if (inclusiveTotal !== undefined) {
     return `${inclusiveTotal} tokens`;
@@ -264,13 +264,13 @@ function contextInjectionText(record: TurnProvenanceContextInjection): string {
   if (record.ambient) {
     parts.push(`Ambient (~${record.ambient.approxTokens} tokens)`);
   }
-// An observed EMPTY record is an earned fact, not a gap: Station's engine
-// ran this turn and nothing it composed reached the model (archive#2649
-// honesty rule). Distinct from an unavailable slot, which says Station
-// recorded nothing either way. The wording names the record's actual
-// scope — Station-composed context — because the system prompt, tool
-// schemas, and prior history are assembled elsewhere and are never
-// counted here.
+  // An observed EMPTY record is an earned fact, not a gap: Station's engine
+  // ran this turn and nothing it composed reached the model (archive#2649
+  // honesty rule). Distinct from an unavailable slot, which says Station
+  // recorded nothing either way. The wording names the record's actual
+  // scope — Station-composed context — because the system prompt, tool
+  // schemas, and prior history are assembled elsewhere and are never
+  // counted here.
   return parts.length > 0 ? parts.join(' · ') : 'No Station-composed context';
 }
 
@@ -279,15 +279,15 @@ function contextInjectionText(record: TurnProvenanceContextInjection): string {
  * model input. Three honest shapes, never a fourth:
  *
  * - **Observed record** → the itemized blocks (or "No retrieved context"
-*   for an observed-empty record).
+ *   for an observed-empty record).
  * - **No record, external engine** → "Managed by <engine>", derived from
-*   the OBSERVED engine slot, not from a fabricated context observation —
-*   Claude Code/Codex/ACP runtimes own their context end-to-end and a
-*   Station context section here would claim an injection Station never
-*   performed.
+ *   the OBSERVED engine slot, not from a fabricated context observation —
+ *   Claude Code/Codex/ACP runtimes own their context end-to-end and a
+ *   Station context section here would claim an injection Station never
+ *   performed.
  * - **No record, Station engine (or engine unknown)** → the slot's own gap
-*   reason; an envelope persisted before this slice has no slot at all and
-*   reads as `not-captured-by-station`, which is exactly true.
+ *   reason; an envelope persisted before this slice has no slot at all and
+ *   reads as `not-captured-by-station`, which is exactly true.
  */
 function contextRow(envelope: TurnProvenanceEnvelope): ProvenanceRow {
   const slot = envelope.contextInjection;
@@ -363,11 +363,11 @@ function buildRows(envelope: TurnProvenanceEnvelope): ProvenanceRow[] {
     refRow('Routing receipt', envelope.routingReceipt, (ref) => ref.receiptId),
     refRow('Sources', envelope.sources, (ref) => ref.snapshotId),
     {
-// archive#1558: `referenced` is unreachable in production today —
-// nothing writes `metadata.trustReport`. The row stays because the
-// contract keeps the slot defined-and-unimplemented rather than
-// deleted, so a producer landing later needs no UI change; every real
-// turn renders the honest gap. See `TURN_PROVENANCE_REF_SLOTS`.
+      // archive#1558: `referenced` is unreachable in production today —
+      // nothing writes `metadata.trustReport`. The row stays because the
+      // contract keeps the slot defined-and-unimplemented rather than
+      // deleted, so a producer landing later needs no UI change; every real
+      // turn renders the honest gap. See `TURN_PROVENANCE_REF_SLOTS`.
       ...refRow(
         'Trust report',
         envelope.trustReport,
@@ -480,10 +480,10 @@ function turnFindings(envelope: TurnProvenanceEnvelope): string[] {
     let unresolved = 0;
     for (const use of envelope.tools.value.uses) {
       failed += use.failed + use.cancelled;
-// A `tool.started` with no matching terminal event yet — review
-// finding (archive#1802): a genuine per-answer anomaly (this turn's
-// own tool call never resolved), distinct from `failed`/`cancelled`,
-// which both name an event Station DID observe.
+      // A `tool.started` with no matching terminal event yet — review
+      // finding (archive#1802): a genuine per-answer anomaly (this turn's
+      // own tool call never resolved), distinct from `failed`/`cancelled`,
+      // which both name an event Station DID observe.
       const resolved = use.succeeded + use.failed + use.cancelled;
       if (use.started > resolved) unresolved += use.started - resolved;
     }
@@ -511,9 +511,9 @@ function RowValue({ row }: { row: ProvenanceRow }) {
     );
   }
   if (row.note) {
-// archive#2649: informational, styled as an absence — it reports what
-// Station did NOT do (inject context into an external engine's turn),
-// so it must not read as an earned per-turn observation.
+    // archive#2649: informational, styled as an absence — it reports what
+    // Station did NOT do (inject context into an external engine's turn),
+    // so it must not read as an earned per-turn observation.
     return (
       <dd className="turn-provenance__value turn-provenance__value--absence">
         {row.note}
@@ -526,7 +526,7 @@ function RowValue({ row }: { row: ProvenanceRow }) {
       {row.trustReportRef && (
         <>
           {' '}
-{/* Names where the link actually goes: the project's Trust
+          {/* Names where the link actually goes: the project's Trust
               panel, which hosts this bundle. There is no deep link to a
               single bundle yet, and a label promising one would be the lie
               this card exists to avoid. */}
@@ -555,8 +555,8 @@ function TurnIdRow({ turnId }: { turnId: string }) {
       await navigator.clipboard.writeText(turnId);
       setCopyState('copied');
     } catch {
-// Never claim a copy that failed — a browser can refuse the
-// clipboard outright (same discipline as ShareAnswerButton).
+      // Never claim a copy that failed — a browser can refuse the
+      // clipboard outright (same discipline as ShareAnswerButton).
       setCopyState('failed');
     }
   };
@@ -579,14 +579,14 @@ function TurnIdRow({ turnId }: { turnId: string }) {
 }
 
 export interface TurnProvenanceCardProps {
-/**
-* The envelope exactly as the server sent it. Deliberately `unknown`: this
-* component owns the decision about whether it is readable at all.
-*/
+  /**
+   * The envelope exactly as the server sent it. Deliberately `unknown`: this
+   * component owns the decision about whether it is readable at all.
+   */
   provenance: unknown;
-/** See `TurnProvenanceStatedInRow`. Omitted means the row states nothing. */
+  /** See `TurnProvenanceStatedInRow`. Omitted means the row states nothing. */
   statedInRow?: TurnProvenanceStatedInRow;
-/** Display name of the human accountable for this Station, if available. */
+  /** Display name of the human accountable for this Station, if available. */
   accountableHuman?: string | null;
 }
 
@@ -601,9 +601,9 @@ export function TurnProvenanceCard({
   if (provenance === undefined || provenance === null) return null;
 
   if (!isSupportedTurnProvenanceEnvelope(provenance)) {
- // a version this build does not understand is reported as one
-// honest unavailable row. Nothing is parsed out of it, and the
-// transcript around it renders normally.
+    // a version this build does not understand is reported as one
+    // honest unavailable row. Nothing is parsed out of it, and the
+    // transcript around it renders normally.
     return (
       <section
         className="turn-provenance turn-provenance--unreadable"
@@ -618,10 +618,10 @@ export function TurnProvenanceCard({
   }
 
   const rows = buildRows(provenance);
-// archive#1802: Station's own unimplemented slots are demoted out of the
-// checkable list and out of the badge — see STATION_BACKLOG_REASON's
-// docblock. Everything else (earned claims and meaningful absences) stays
-// in the checkable list together; RowValue is what tells them apart.
+  // archive#1802: Station's own unimplemented slots are demoted out of the
+  // checkable list and out of the badge — see STATION_BACKLOG_REASON's
+  // docblock. Everything else (earned claims and meaningful absences) stays
+  // in the checkable list together; RowValue is what tells them apart.
   const checkableRows = rows.filter(
     (row) => row.gap !== STATION_BACKLOG_REASON,
   );
@@ -629,8 +629,8 @@ export function TurnProvenanceCard({
   const findings = turnFindings(provenance);
 
   return (
-// A transcript holds many of these; an identical label on every one
-// makes them indistinguishable to a screen reader, so each names its turn.
+    // A transcript holds many of these; an identical label on every one
+    // makes them indistinguishable to a screen reader, so each names its turn.
     <section
       className="turn-provenance"
       aria-label={`Answer provenance for turn ${provenance.turnId}`}
@@ -651,11 +651,11 @@ export function TurnProvenanceCard({
           {summaryText(provenance, statedInRow)}
         </span>
         {findings.length > 0 && (
-// Per-answer standing, not a backlog tally: only findings that can
-// actually differ between two answers from the same engine ever
-// reach here (turnFindings). Muted rather than a warning colour —
-// one flag among many healthy turns is meant to draw the eye, but
-// it is still a fact, not an alarm.
+          // Per-answer standing, not a backlog tally: only findings that can
+          // actually differ between two answers from the same engine ever
+          // reach here (turnFindings). Muted rather than a warning colour —
+          // one flag among many healthy turns is meant to draw the eye, but
+          // it is still a fact, not an alarm.
           <span className="turn-provenance__badge">{findings.join(' · ')}</span>
         )}
         <span aria-hidden="true" className="turn-provenance__chevron">
@@ -676,7 +676,7 @@ export function TurnProvenanceCard({
 
           {backlogRows.length > 0 && (
             <>
-{/* archive#1802: kept (not deleted — see the module docblock's
+              {/* archive#1802: kept (not deleted — see the module docblock's
                   no-omission rule) but visually demoted into its own block,
                   out of the checkable facts and out of the badge. This is
                   Station's roadmap, not a finding about this answer. */}

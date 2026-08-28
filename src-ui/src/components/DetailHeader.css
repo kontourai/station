@@ -167,7 +167,7 @@
  */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   :root {
-/* One 44px tap target, its padding, and the rule above it. */
+    /* One 44px tap target, its padding, and the rule above it. */
     --detail-header-mobile-footer-height: calc(44px + var(--space-3) * 2 + 1px);
     --detail-body-bottom-clearance: calc(
       var(--detail-header-mobile-footer-height) +
@@ -179,7 +179,7 @@
   .detail-header__mobile-footer {
     position: fixed;
     right: 0;
-/*
+    /*
 * The dock does not sit at the layout viewport's bottom edge when the
 * software keyboard or Android system chrome shortens the VISIBLE
 * viewport — it re-anchors to that edge, and this bar has to move with it.
@@ -203,7 +203,7 @@
     background: var(--bg-primary);
   }
 
-/* Standing mobile rule: every tap target on a touched surface is >= 44px. */
+  /* Standing mobile rule: every tap target on a touched surface is >= 44px. */
   .detail-header__mobile-footer > button,
   .detail-header__mobile-footer > a {
     min-height: 44px;

@@ -48,46 +48,46 @@ const SessionModelPicker = React.lazy(() =>
 );
 
 interface ChatInputAreaProps {
-// Session info
-/**
-* The active chat session's stable identity (thread id) — used only to
-* key the approval-mode chip so its local confirm state resets on a
-* session switch instead of leaking onto the newly active session
-* (archive#727 3). Not otherwise read by this component.
-*/
+  // Session info
+  /**
+   * The active chat session's stable identity (thread id) — used only to
+   * key the approval-mode chip so its local confirm state resets on a
+   * session switch instead of leaking onto the newly active session
+   * (archive#727 3). Not otherwise read by this component.
+   */
   sessionId?: string;
-// Input state
+  // Input state
   input: string;
   attachments: FileAttachment[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-// Status
+  // Status
   disabled: boolean;
   isSending: boolean;
-/**
-* A turn is outstanding — see `isTurnInFlight` (active-chats-state.ts) for
- * the derivation. Renamed from `hasAbortController` in the fix:
-* the old name WAS the defect, because holding a browser abort controller
-* stopped being true seconds into a turn that ran for minutes.
-*/
+  /**
+   * A turn is outstanding — see `isTurnInFlight` (active-chats-state.ts) for
+   * the derivation. Renamed from `hasAbortController` in the fix:
+   * the old name WAS the defect, because holding a browser abort controller
+   * stopped being true seconds into a turn that ran for minutes.
+   */
   turnInFlight: boolean;
-/**
- * a Stop request is in flight. The control stays visible (the
-* turn is still the thing on screen) but is disabled and labelled with what
-* is actually happening, so a second press cannot dispatch a second cancel.
-*/
+  /**
+   * a Stop request is in flight. The control stays visible (the
+   * turn is still the thing on screen) but is disabled and labelled with what
+   * is actually happening, so a second press cannot dispatch a second cancel.
+   */
   stopPending?: boolean;
   modelSupportsAttachments: boolean;
   fileAttachmentsSupported?: boolean;
-/**
-* Why images can't be attached here (archive#3344) — the engine's own
-* `imageInput` reason or the selected model's. Shown at paste time so the
-* refusal names something actionable instead of a generic line.
-*/
+  /**
+   * Why images can't be attached here (archive#3344) — the engine's own
+   * `imageInput` reason or the selected model's. Shown at paste time so the
+   * refusal names something actionable instead of a generic line.
+   */
   modelProviderLabel?: string;
-// Display
+  // Display
   fontSize: number;
   dockHeight: number;
-// Model selector
+  // Model selector
   currentModel?: string;
   currentModelSource?: EffectiveModelSource;
   canModelSelect: boolean;
@@ -102,15 +102,15 @@ interface ChatInputAreaProps {
   modelQuery: string | null;
   agentConnectionId?: string;
   modelRuntimeOptions?: Record<string, unknown>;
- // Approval mode (archive#727) — External-agent sessions only
+  // Approval mode (archive#727) — External-agent sessions only
   executionMode?: ExecutionMode;
   approvalModeConnectionDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
   lastAppliedApprovalMode?: unknown;
-// Slash commands
+  // Slash commands
   commandQuery: string | null;
   slashCommands: SlashCommand[];
-// Handlers
+  // Handlers
   onInputChange: (value: string) => void;
   onSend: () => Promise<void>;
   onCancel: () => void;
@@ -139,19 +139,19 @@ interface ChatInputAreaProps {
   onHistoryDown: () => void;
   updateFromInput: (value: string) => void;
   closeAll: () => void;
-// Voice mode (optional — omit to hide the mic button)
+  // Voice mode (optional — omit to hide the mic button)
   voiceState?: VoiceState;
   voiceSupported?: boolean;
   onVoiceStart?: () => void;
   onVoiceStop?: () => void;
-/**
-* Delegate / Commands / Files / Task-context grouped into one "+" menu
- * (docs/design/chat-composer.md §3.2). Omitted when the active session has
-* no project (those actions are project-scoped) — the composer then shows
-* just attach + mic + model + Send.
-*/
+  /**
+   * Delegate / Commands / Files / Task-context grouped into one "+" menu
+   * (docs/design/chat-composer.md §3.2). Omitted when the active session has
+   * no project (those actions are project-scoped) — the composer then shows
+   * just attach + mic + model + Send.
+   */
   secondaryActions?: ComposerActionsMenuProps;
-/** The visible, context-preserving Agent handoff entry point. */
+  /** The visible, context-preserving Agent handoff entry point. */
   agentLabel?: string;
   onOpenAgentHandoff?: () => void;
   agentHandoffTriggerRef?: React.RefObject<HTMLButtonElement | null>;
@@ -237,7 +237,7 @@ export function ChatInputArea({
   onStartNewChat,
 }: ChatInputAreaProps) {
   const isComposing = useRef(false);
- // Anchors the model picker popover to its trigger on desktop (archive#999).
+  // Anchors the model picker popover to its trigger on desktop (archive#999).
   const modelButtonRef = useRef<HTMLButtonElement>(null);
   const visualViewport = useMobileVisualViewport();
   const isOverride = currentModelSource === 'session override';
@@ -245,11 +245,11 @@ export function ChatInputArea({
   const effectiveModelInfo = availableModels.find(
     (model) => model.id === effectiveModelId,
   );
- // archive#1012: an alias/default entry hides which model the engine actually runs
-// ("Default (recommended)" told the owner nothing while an outdated host
-// silently ran an old model). When the engine reports a resolution, the
-// pill shows the concrete model; the alias identity stays in the accessible
-// label/title below.
+  // archive#1012: an alias/default entry hides which model the engine actually runs
+  // ("Default (recommended)" told the owner nothing while an outdated host
+  // silently ran an old model). When the engine reports a resolution, the
+  // pill shows the concrete model; the alias identity stays in the accessible
+  // label/title below.
   const resolvedLabel = resolvedModelLabel(effectiveModelInfo, availableModels);
   const aliasLabel =
     effectiveModelInfo?.name || effectiveModelId || 'Model & effort';
@@ -258,15 +258,15 @@ export function ChatInputArea({
     currentModelSource ??
     defaultModelSource ??
     (agentDefaultModel ? 'agent default' : 'unknown');
-// Accessible name must carry the active selection, not just the control's
-// static role name — a screen reader user landing on this button by role
-// otherwise has no way to tell which model/connection is active
- // (docs/design/chat-composer.md §3.3; the visible identity spans below
-// are aria-hidden since they're presentational chips, not a name source).
-// The visible pill dropped its source subline (it was the second line that
-// made this control two rows tall on a phone). The source is still carried
-// here, and the override state is still visible via the pill's variant, so
-// no information is lost — only vertical space.
+  // Accessible name must carry the active selection, not just the control's
+  // static role name — a screen reader user landing on this button by role
+  // otherwise has no way to tell which model/connection is active
+  // (docs/design/chat-composer.md §3.3; the visible identity spans below
+  // are aria-hidden since they're presentational chips, not a name source).
+  // The visible pill dropped its source subline (it was the second line that
+  // made this control two rows tall on a phone). The source is still carried
+  // here, and the override state is still visible via the pill's variant, so
+  // no information is lost — only vertical space.
   const fullModelIdentity = resolvedLabel
     ? `${aliasLabel} → ${resolvedLabel}`
     : modelLabel;
@@ -281,9 +281,9 @@ export function ChatInputArea({
     .join(' ');
   const safeMaxHeight = Math.max(dockHeight - 200, 120);
   const isMobile = useIsMobile();
-// A turn is in flight, so this send queues behind it rather than starting
-// one. Say so in the placeholder instead of letting "Type a message" imply
-// the agent is idle — Station really does queue (see QueuedMessages).
+  // A turn is in flight, so this send queues behind it rather than starting
+  // one. Say so in the placeholder instead of letting "Type a message" imply
+  // the agent is idle — Station really does queue (see QueuedMessages).
   const placeholder = workspaceRefused
     ? 'This conversation continues from its original workspace — start a new chat to work here'
     : turnInFlight
@@ -292,16 +292,16 @@ export function ChatInputArea({
         ? 'Type a message...'
         : 'Type a message... (Enter to send, Shift+Enter for new line)';
 
-// archive#2807: the draft's size against the same limit every server
-// turn-starting schema derives from (chatSchema AND the orchestration
-// seam this composer actually posts to). A courtesy check only — the
-// server is the authority — but it lets the composer say exactly how
-// much to remove instead of letting the turn fail as a provider error.
+  // archive#2807: the draft's size against the same limit every server
+  // turn-starting schema derives from (chatSchema AND the orchestration
+  // seam this composer actually posts to). A courtesy check only — the
+  // server is the authority — but it lets the composer say exactly how
+  // much to remove instead of letting the turn fail as a provider error.
   const overLimitBy = input.length - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
 
   useLayoutEffect(() => {
-// Value changes are a resize trigger even though the measurement reads DOM.
+    // Value changes are a resize trigger even though the measurement reads DOM.
     void input;
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -317,9 +317,9 @@ export function ChatInputArea({
     resize();
   }, [dockHeight, input, textareaRef, visualViewport.height]);
 
-// A producer that unmounts while focused never fires blur; without this
-// the context stays true globally and every {not:'composerFocused'}
-// shortcut stays dead.
+  // A producer that unmounts while focused never fires blur; without this
+  // the context stays true globally and every {not:'composerFocused'}
+  // shortcut stays dead.
   useEffect(() => () => setShortcutContext('composerFocused', false), []);
 
   return (
@@ -335,9 +335,9 @@ export function ChatInputArea({
         >
           {availableModels.length === 0 ? (
             modelsLoading ? (
-// The wrapper keeps its class: index.css uses it to supply the
-// popover's border/radius/shadow while the picker's own chunk
-// (and chat.css) is still loading.
+              // The wrapper keeps its class: index.css uses it to supply the
+              // popover's border/radius/shadow while the picker's own chunk
+              // (and chat.css) is still loading.
               <div className="session-model-picker__loading">
                 <SkeletonList
                   count={3}
@@ -383,7 +383,7 @@ export function ChatInputArea({
         </ResponsiveDialogSurface>
       )}
 
-{/* Session state, as pills above the input rather than peers of Send.
+      {/* Session state, as pills above the input rather than peers of Send.
           The rail scrolls instead of wrapping — wrapping is what used to push
           Send onto a fourth row and off the bottom of a phone screen. */}
       <div className="chat-input__meta">
@@ -416,10 +416,10 @@ export function ChatInputArea({
           aria-haspopup="dialog"
           aria-expanded={modelQuery !== null && !input.startsWith('/model ')}
           aria-label={modelAccessibleLabel}
-// archive#3969: "this binding" was our word for the agent and
-// engine behind this chat. The fallback states the fact without
-// inventing a cause — `modelSelectionReason` is where a specific
-// one belongs.
+          // archive#3969: "this binding" was our word for the agent and
+          // engine behind this chat. The fallback states the fact without
+          // inventing a cause — `modelSelectionReason` is where a specific
+          // one belongs.
           title={
             !canModelSelect
               ? (modelSelectionReason ??
@@ -457,10 +457,10 @@ export function ChatInputArea({
         )}
         {executionMode === EXECUTION_MODE.EXTERNAL && (
           <ApprovalModeChip
-// Structural reset (not blur-dependent) for the chip's local
-// confirm state when the active session changes — this
-// subtree persists across session switches with no natural
-// remount otherwise (archive#727 3).
+            // Structural reset (not blur-dependent) for the chip's local
+            // confirm state when the active session changes — this
+            // subtree persists across session switches with no natural
+            // remount otherwise (archive#727 3).
             key={sessionId}
             engineConnectionId={agentConnectionId}
             toolPolicyDelivery={toolPolicyDelivery}

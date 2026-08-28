@@ -45,16 +45,16 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
- // Keep the real module (see MonitoringView.test.tsx's fix-round note):
-// `StationHttpError` is imported as a runtime value elsewhere in this tree,
-// and this file deliberately throws one.
+  // Keep the real module (see MonitoringView.test.tsx's fix-round note):
+  // `StationHttpError` is imported as a runtime value elsewhere in this tree,
+  // and this file deliberately throws one.
   const actual =
     await importOriginal<typeof import('@kontourai/station-sdk')>();
   return {
     ...actual,
-// The one transport under test. The store's own hydration logic — the
-// abort/generation guards, the loading flag, the new error slot — is the
-// real thing.
+    // The one transport under test. The store's own hydration logic — the
+    // abort/generation guards, the loading flag, the new error slot — is the
+    // real thing.
     fetchMonitoringEvents: fetchHistorical,
     fetchSSE,
     useMonitoringStatsQuery: () => ({ data: undefined }),
@@ -137,8 +137,8 @@ describe('Monitoring historical read failure (station#3658)', () => {
   });
 
   beforeEach(() => {
-// The store cache is keyed by apiBase and lives for the module's
-// lifetime; a fresh key per test is a fresh store.
+    // The store cache is keyed by apiBase and lives for the module's
+    // lifetime; a fresh key per test is a fresh store.
     apiBaseBox.apiBase = `https://monitoring-read-failure-${Math.random()}.example.test`;
   });
 
@@ -159,14 +159,14 @@ describe('Monitoring historical read failure (station#3658)', () => {
     await waitFor(() =>
       expect(screen.getByText('Unable to load event history')).toBeTruthy(),
     );
-// The server's own sentence, not a shrug — `describeReadFailure`.
+    // The server's own sentence, not a shrug — `describeReadFailure`.
     expect(
       screen.getByText('Monitoring events request rejected with HTTP 500'),
     ).toBeTruthy();
-// The defect itself: the empty state is withheld, not merely joined.
+    // The defect itself: the empty state is withheld, not merely joined.
     expect(screen.queryByText('No events yet')).toBeNull();
     expect(screen.queryByText('Waiting for agent activity...')).toBeNull();
-// Announced, not just drawn — `ErrorState` carries `role="alert"`.
+    // Announced, not just drawn — `ErrorState` carries `role="alert"`.
     expect(
       screen
         .getAllByRole('alert')

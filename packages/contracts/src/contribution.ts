@@ -464,9 +464,9 @@ export type ContributionParticipation =
    * distinction IS carried, in `diagnostics[]` as
    * `contribution-unavailable-resource` vs `contribution-source-unreadable`,
    * and because a fifth state would have to be named before any consumer exists
- * to route on it. If a future consumer needs to retry an unreadable
- * source and not a dead one, that is the moment to split — from a consumer's
- * need, not from symmetry.
+   * to route on it. If a future consumer needs to retry an unreadable
+   * source and not a dead one, that is the moment to split — from a consumer's
+   * need, not from symmetry.
    */
   | 'contributed-unavailable';
 

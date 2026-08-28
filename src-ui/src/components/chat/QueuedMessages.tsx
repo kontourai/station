@@ -9,14 +9,14 @@ interface QueuedMessagesProps {
   messages: string[];
   canSteer?: boolean;
   onSteer?: (message: string) => Promise<boolean>;
-/**
-* Why the last attempt to drain the head of this queue failed, as the
-* server described it. Rendered beside the message it is holding back and
-* persisted with the queue, so a reload does not leave a retained follow-up
-* with no explanation.
-*/
+  /**
+   * Why the last attempt to drain the head of this queue failed, as the
+   * server described it. Rendered beside the message it is holding back and
+   * persisted with the queue, so a reload does not leave a retained follow-up
+   * with no explanation.
+   */
   failure?: { message: string; code?: string; at: number };
-/** Retry the head of the queue now, rather than waiting for the next turn. */
+  /** Retry the head of the queue now, rather than waiting for the next turn. */
   onRetry?: () => void;
 }
 
@@ -89,7 +89,7 @@ export function QueuedMessages({
                   : 'Retry the queued message'
               }
             >
-{/* The label names what the action DOES. A plain "Retry" on an
+              {/* The label names what the action DOES. A plain "Retry" on an
                   unbound-workspace refusal would resubmit the same workspace
                   and reproduce the same refusal (UX audit T3 review). */}
               {failure.code === 'continuation_workspace_unbound'
@@ -148,7 +148,7 @@ export function QueuedMessages({
                   >
                     {msg}
                   </span>
-{/* The list renders reversed (newest on top, next-to-drain
+                  {/* The list renders reversed (newest on top, next-to-drain
                       at the bottom), so the VISUAL up direction corresponds
                       to a HIGHER real array index (drains later): ▲ calls
                       moveDown(realIdx) and ▼ calls moveUp(realIdx). Review

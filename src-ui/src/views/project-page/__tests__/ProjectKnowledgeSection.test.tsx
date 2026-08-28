@@ -51,7 +51,7 @@ function renderSection() {
 }
 
 /**
-* archive#771 (independent verifier finding): the presentational
+ * archive#771 (independent verifier finding): the presentational
  * `ProjectKnowledgeRulesEditor` test drives the error state through direct
  * props, and the only other importer of `ProjectKnowledgeSection` mocks it
  * to `<div/>` — nothing exercised the CONTAINER wiring that reads

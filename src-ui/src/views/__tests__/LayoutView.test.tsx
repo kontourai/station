@@ -93,12 +93,12 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     renderedLayout.value = undefined;
   });
 
-/**
-* The audit watched `/projects/audit-alpha/layouts/coding` rotate whimsical
-* loading phrases indefinitely while the API had already answered 404 three
-* times. The old code called `navigate` from inside render and returned a
-* loader; this asserts an answered 404 produces an ANSWER.
-*/
+  /**
+   * The audit watched `/projects/audit-alpha/layouts/coding` rotate whimsical
+   * loading phrases indefinitely while the API had already answered 404 three
+   * times. The old code called `navigate` from inside render and returned a
+   * loader; this asserts an answered 404 produces an ANSWER.
+   */
   test('a 404 renders the not-found state with a way back, and never a loader', () => {
     layoutQueryState.error = new StationHttpError(404, 'Layout not found');
     localStorage.setItem(LAST_PROJECT_LAYOUT_KEY, 'coding');
@@ -111,9 +111,9 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     expect(
       screen.getByRole('button', { name: 'Back to project' }),
     ).toBeTruthy();
-// The dead layout stops being the restore target for `/`.
+    // The dead layout stops being the restore target for `/`.
     expect(localStorage.getItem(LAST_PROJECT_LAYOUT_KEY)).toBeNull();
-//.and it is not a silent redirect: the broken deep link stays visible.
+    //.and it is not a silent redirect: the broken deep link stays visible.
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
@@ -157,10 +157,10 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
 
     expect(screen.getByTestId('full-screen-loader')).toBeTruthy();
   });
-// LayoutView maps the STORED config into the shape the renderer reads. The
-// `tabs[].prompts` -> `tabs[].skills` rename moved the contract and the
-// renderer but not this mapper, so a correctly authored quick action arrived
- // as `undefined` and vanished with no error anywhere 
+  // LayoutView maps the STORED config into the shape the renderer reads. The
+  // `tabs[].prompts` -> `tabs[].skills` rename moved the contract and the
+  // renderer but not this mapper, so a correctly authored quick action arrived
+  // as `undefined` and vanished with no error anywhere
   test('a tab skill survives the map into the renderer shape', () => {
     layoutQueryState.data = {
       slug: 'coding',
@@ -184,7 +184,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     expect(renderedLayout.value.tabs[0].skills).toEqual([
       expect.objectContaining({ label: 'Summarise the day' }),
     ]);
-// The retired key must not be re-emitted alongside it.
+    // The retired key must not be re-emitted alongside it.
     expect(renderedLayout.value.tabs[0].prompts).toBeUndefined();
   });
 

@@ -3,12 +3,12 @@
  *
  * and for the Agents view model.
  *
-* after Create, the list must already contain the new Agent and it must
+ * after Create, the list must already contain the new Agent and it must
  * be the selected one, with no reload; and "Loading agent…" must be BOUNDED.
  * A detail read that never resolves used to leave that line on screen forever
  * with nothing to press.
  *
-* `engineDefault` is no longer a lock. It used to be, and a fresh
+ * `engineDefault` is no longer a lock. It used to be, and a fresh
  * install's only four agents therefore opened as a six-tab editor with every
  * field disabled, a dead Delete, and a Save styled as an active primary that
  * could never save. The Skills tab's `+ Add` keys off the same `locked`, which
@@ -217,8 +217,8 @@ describe('AC5 — a created Agent is in the list and selected, with no reload', 
   });
 
   test('the created slug comes from the response, not the typed form', async () => {
-// The server owns slug assignment; keying selection off the form would
-// select a slug that may not be the one persisted.
+    // The server owns slug assignment; keying selection off the form would
+    // select a slug that may not be the one persisted.
     createAgent.mockResolvedValue({ data: { slug: 'writer-2' } });
     const { result } = render();
     act(() => {
@@ -230,17 +230,17 @@ describe('AC5 — a created Agent is in the list and selected, with no reload', 
         slug: 'writer',
         name: 'Writer',
         prompt: 'Write.',
-// A ready engine binding: `validate` refuses to save without one.
+        // A ready engine binding: `validate` refuses to save without one.
         execution: { ...form.execution, agentConnectionId: 'claude' },
       }));
     });
-// The navigation is DEFERRED past the unsaved-changes guard on purpose
-// (see `handleSave`): inside the save handler the form still reads dirty,
-// `navigationStore.navigate` hands the navigation to the discard prompt,
-// and the app sits on `/agents/new` with the create form already torn
-// down. Asserting only that it eventually happens would not catch a
-// revert to the synchronous call, so this pins BOTH: nothing during the
-// save, then the created slug once the form is clean.
+    // The navigation is DEFERRED past the unsaved-changes guard on purpose
+    // (see `handleSave`): inside the save handler the form still reads dirty,
+    // `navigationStore.navigate` hands the navigation to the discard prompt,
+    // and the app sits on `/agents/new` with the create form already torn
+    // down. Asserting only that it eventually happens would not catch a
+    // revert to the synchronous call, so this pins BOTH: nothing during the
+    // save, then the created slug once the form is clean.
     await act(async () => {
       await result.current.handleSave();
       expect(navigate).not.toHaveBeenCalled();
@@ -256,7 +256,7 @@ describe('AC5 — a created Agent is in the list and selected, with no reload', 
   test('the refreshed catalog renders the new row without a reload', async () => {
     const { result, rerender } = render();
     expect(result.current.listItems).toHaveLength(0);
-// What the create mutation's `['agents']` invalidation delivers.
+    // What the create mutation's `['agents']` invalidation delivers.
     state.agents = [agent({ slug: 'writer', name: 'Writer' })];
     rerender();
     await waitFor(() =>
@@ -268,18 +268,18 @@ describe('AC5 — a created Agent is in the list and selected, with no reload', 
 });
 
 describe('AC5 — a tools read that lands mid-activation is a wait, not an error', () => {
-// A create now returns as soon as its write is durable, so opening the new
-// Agent immediately can outrun its activation and the tools read answers
-// 503. Showing an empty tool list would read as "this Agent has no tools",
-// and an error would name a failure that has not happened.
+  // A create now returns as soon as its write is durable, so opening the new
+  // Agent immediately can outrun its activation and the tools read answers
+  // 503. Showing an empty tool list would read as "this Agent has no tools",
+  // and an error would name a failure that has not happened.
   const activating = { activating: true };
 
   test('while the retry is in flight the pane reports activating, not failure', () => {
     state.agents = [agent({ slug: 'writer', name: 'Writer' })];
     state.selectedId = 'writer';
     state.detail = { slug: 'writer', name: 'Writer' };
-// react-query keeps `error` null while it is still retrying; the last
-// attempt's reason is the only signal that says "still trying".
+    // react-query keeps `error` null while it is still retrying; the last
+    // attempt's reason is the only signal that says "still trying".
     state.toolsFailureReason = activating;
     const { result } = render();
     expect(result.current.toolsActivating).toBe(true);
@@ -298,9 +298,9 @@ describe('AC5 — a tools read that lands mid-activation is a wait, not an error
   });
 
   test('an abandoned activation surfaces the reason and a retry', () => {
-// The catalog carries the runtime's own record. "Hasn't finished
-// activating" was true for a while and then became a lie; this is the
-// state that replaces it, and it has an action.
+    // The catalog carries the runtime's own record. "Hasn't finished
+    // activating" was true for a while and then became a lie; this is the
+    // state that replaces it, and it has an action.
     state.agents = [
       agent({
         slug: 'writer',
@@ -333,8 +333,8 @@ describe('AC5 — a tools read that lands mid-activation is a wait, not an error
   });
 
   test('a non-activating tools failure claims neither state', () => {
-// A 409 is a real answer about a genuinely inactive Agent; retrying it or
-// calling it "activating" would both be wrong.
+    // A 409 is a real answer about a genuinely inactive Agent; retrying it or
+    // calling it "activating" would both be wrong.
     state.agents = [agent({ slug: 'writer', name: 'Writer' })];
     state.selectedId = 'writer';
     state.detail = { slug: 'writer', name: 'Writer' };
@@ -359,8 +359,8 @@ describe('AC5 — "Loading agent…" is bounded', () => {
       vi.advanceTimersByTime(9_000);
     });
     rerender();
-// The spinner stops claiming progress it is not making, and the pane
-// gets an error state with Retry / Back instead.
+    // The spinner stops claiming progress it is not making, and the pane
+    // gets an error state with Retry / Back instead.
     expect(result.current.isLoading).toBe(false);
     expect(result.current.loadError).toMatch(/longer than expected/i);
   });
@@ -387,7 +387,7 @@ describe('AC5 — "Loading agent…" is bounded', () => {
 
 describe('AC7 — engineDefault is not a lock', () => {
   test('a materialized engine agent is editable, deletable, and can add skills', async () => {
-// `locked` gates Save, Delete, and the Skills tab's `+ Add`.
+    // `locked` gates Save, Delete, and the Skills tab's `+ Add`.
     state.agents = [
       agent({
         slug: 'claude-code',
@@ -402,8 +402,8 @@ describe('AC7 — engineDefault is not a lock', () => {
   });
 
   test('`locked` is blind to engineDefault — the same Agent locks the same either way', () => {
-// The property, stated so re-adding the flag to `locked` cannot pass:
-// ownership (plugin / ACP connection) decides, and nothing else.
+    // The property, stated so re-adding the flag to `locked` cannot pass:
+    // ownership (plugin / ACP connection) decides, and nothing else.
     const base = {
       slug: 'claude-code',
       name: 'Claude Code',
@@ -433,8 +433,8 @@ describe('AC7 — engineDefault is not a lock', () => {
       }),
     ];
     state.selectedId = 'claude';
-// The detail read 404s for an identity with no file; that must not read
-// as "Agent not found".
+    // The detail read 404s for an identity with no file; that must not read
+    // as "Agent not found".
     state.detailError = new Error('Agent not found');
     const { result } = render();
     expect(result.current.selectedIsUnmaterializedEngine).toBe(true);
@@ -467,7 +467,7 @@ describe('AC7 — engineDefault is not a lock', () => {
       expect(materializeEngineAgent).toHaveBeenCalledWith('claude'),
     );
     expect(select).toHaveBeenLastCalledWith('claude-code');
-// The picker's Enable posts the same thing — see NewChatModal's suite.
+    // The picker's Enable posts the same thing — see NewChatModal's suite.
     expect(createAgent).not.toHaveBeenCalled();
   });
 
@@ -491,10 +491,10 @@ describe('AC7 — engineDefault is not a lock', () => {
 });
 
 /**
-* archive#4521: does the editor actually let the user SET the
+ * archive#4521: does the editor actually let the user SET the
  * agent's model/provider binding — read from a loaded agent, and written
  * back through the real agent-update contract on Save, mocked at the route
-* seam (`useAgentActions.updateAgent`, the same seam every other save
+ * seam (`useAgentActions.updateAgent`, the same seam every other save
  * assertion in this file uses).
  */
 describe('the Model connection binding round-trips through Save (station#4521 item 2)', () => {
@@ -514,11 +514,11 @@ describe('the Model connection binding round-trips through Save (station#4521 it
     state.detail = {
       slug: 'station',
       name: 'Station',
-// archive#4521: the exact wire shape reported — `execution`
-// OMITTED entirely, not an object with empty strings. A Station agent
-// that has never had its execution configured has no `spec.execution`
-// at all; `formFromAgent` already reads it with optional chaining, so
-// this omission is what actually exercises that path.
+      // archive#4521: the exact wire shape reported — `execution`
+      // OMITTED entirely, not an object with empty strings. A Station agent
+      // that has never had its execution configured has no `spec.execution`
+      // at all; `formFromAgent` already reads it with optional chaining, so
+      // this omission is what actually exercises that path.
       available: false,
       unavailableReason: 'No enabled LLM provider connection is configured.',
       unavailableFix: { kind: 'model-connection' },

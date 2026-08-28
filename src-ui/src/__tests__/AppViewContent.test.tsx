@@ -174,8 +174,8 @@ describe('AppViewContent — R3 un-stacking', () => {
     render(
       <AppViewContent {...baseProps} currentView={{ type: 'schedule' }} />,
     );
-// The route's title is the page frame's `<h1>` now, not the view's own
-// markup — the eyebrow above it carries the same word, so match the role.
+    // The route's title is the page frame's `<h1>` now, not the view's own
+    // markup — the eyebrow above it carries the same word, so match the role.
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Schedule' }),
     ).toBeTruthy();
@@ -189,8 +189,8 @@ describe('AppViewContent — R3 un-stacking', () => {
     expect(container.querySelector('.page-frame__header')).not.toBeNull();
     unmount();
 
- // `home` is the recorded exception: its own is a prompt, so the shell
-// must not put a page header above it.
+    // `home` is the recorded exception: its own is a prompt, so the shell
+    // must not put a page header above it.
     const home = render(
       <AppViewContent {...baseProps} currentView={{ type: 'home' }} />,
     );
@@ -211,10 +211,10 @@ describe('AppViewContent — R3 un-stacking', () => {
   });
 
   test('wraps every route in the shared entrance, split-pane routes included', async () => {
-// the entrance used to live on `.page`, which the eight
-// split-pane routes never render — Agents is one of them, so it had no
-// page-level entrance at all. The wrapper is the seam every route passes
-// through, which is what makes that inherited rather than re-declared.
+    // the entrance used to live on `.page`, which the eight
+    // split-pane routes never render — Agents is one of them, so it had no
+    // page-level entrance at all. The wrapper is the seam every route passes
+    // through, which is what makes that inherited rather than re-declared.
     const { rerender } = render(
       <AppViewContent {...baseProps} currentView={{ type: 'agents' }} />,
     );
@@ -231,9 +231,9 @@ describe('AppViewContent — R3 un-stacking', () => {
   });
 
   test('remounts the entrance wrapper on a route change so it replays', async () => {
-// A cached route chunk swaps synchronously; without a keyed remount the
-// wrapper element survives and a CSS animation that already ran does not
-// run again, so the second visit to a route would enter with no motion.
+    // A cached route chunk swaps synchronously; without a keyed remount the
+    // wrapper element survives and a CSS animation that already ran does not
+    // run again, so the second visit to a route would enter with no motion.
     const { rerender } = render(
       <AppViewContent {...baseProps} currentView={{ type: 'schedule' }} />,
     );
@@ -333,9 +333,9 @@ describe('AppViewContent — R3 un-stacking', () => {
   });
 
   test('renders NewProjectModal on /connections, where the launcher is suppressed by pathname', async () => {
-// The launcher's `/connections` exception is part of the SHARED predicate,
-// so the gate has to honour it too — otherwise the route it suppresses
-// renders nothing while nothing covers the screen.
+    // The launcher's `/connections` exception is part of the SHARED predicate,
+    // so the gate has to honour it too — otherwise the route it suppresses
+    // renders nothing while nothing covers the screen.
     isBlockingFullScreen = true;
     credentialRequired = false;
     window.history.replaceState({}, '', '/connections');
@@ -367,10 +367,10 @@ describe('AppViewContent — R3 un-stacking', () => {
 });
 
 describe('AppViewContent — the page header while a route loads', () => {
-// The frame is above Suspense, so on a cold load the header renders before
-// the view that would publish its title exists. Both assertions below are
-// deliberately made SYNCHRONOUSLY, before the lazy chunk resolves — that
-// window is the whole subject.
+  // The frame is above Suspense, so on a cold load the header renders before
+  // the view that would publish its title exists. Both assertions below are
+  // deliberately made SYNCHRONOUSLY, before the lazy chunk resolves — that
+  // window is the whole subject.
   test('names the route from the first paint, before its chunk resolves', () => {
     render(
       <AppViewContent
@@ -381,8 +381,8 @@ describe('AppViewContent — the page header while a route loads', () => {
 
     expect(screen.getByText('Loading route')).toBeTruthy();
     const heading = screen.getByRole('heading', { level: 1 });
-// The sidebar's own word for this surface, from `surface-registry.ts`,
-// not a second copy written into the frame table.
+    // The sidebar's own word for this surface, from `surface-registry.ts`,
+    // not a second copy written into the frame table.
     expect(heading.textContent).toBe('Connections');
   });
 
@@ -402,8 +402,8 @@ describe('AppViewContent — the page header while a route loads', () => {
       <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
     );
 
-// Plugins' chunk has not resolved yet: the header must already say
-// Plugins rather than keep naming the page the user just left.
+    // Plugins' chunk has not resolved yet: the header must already say
+    // Plugins rather than keep naming the page the user just left.
     expect(screen.getByText('Loading route')).toBeTruthy();
     const heading = screen.getByRole('heading', { level: 1 });
     expect(heading.textContent).not.toBe('Providers');

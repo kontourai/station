@@ -32,9 +32,9 @@ describe('deriveVoiceWsUrl (#198)', () => {
     expect(() =>
       deriveVoiceWsUrl('', 'http://localhost:5274/settings', 5276),
     ).not.toThrow();
-// With an empty apiBase, the host comes from the *page* href (the
-// resolved same-origin default in a real app); the port always comes
-// from the fetched voicePort, never from apiBase/page arithmetic.
+    // With an empty apiBase, the host comes from the *page* href (the
+    // resolved same-origin default in a real app); the port always comes
+    // from the fetched voicePort, never from apiBase/page arithmetic.
     expect(deriveVoiceWsUrl('', 'http://localhost:5274/settings', 5276)).toBe(
       'ws://localhost:5276/?agent=station-voice',
     );
@@ -47,15 +47,15 @@ describe('deriveVoiceWsUrl (#198)', () => {
   });
 
   it('code review H2 regression: a plain default `station start` (UI port !== server port) resolves the REAL server-derived voice port, not apiBase-port-plus-2', () => {
-// The exact scenario the review proved broken: no STATION_API_BASE
-// override configured, so apiBase resolves to the UI's own
-// same-origin origin (window.location.origin) — the UI port
-// (`--ui-port`, default 3000), which is independent of the server
-// port (default 3141) that Voice's dedicated WS server actually binds
-// at (`serverPort + 2` = 3143). The old `apiBase-port + 2` arithmetic
-// would have computed 3002 here — silently wrong. `voicePort` must
-// come from the backend-queried value (`fetchVoicePort`, see
-// `useVoiceSession.ts`), never from apiBase's own port.
+    // The exact scenario the review proved broken: no STATION_API_BASE
+    // override configured, so apiBase resolves to the UI's own
+    // same-origin origin (window.location.origin) — the UI port
+    // (`--ui-port`, default 3000), which is independent of the server
+    // port (default 3141) that Voice's dedicated WS server actually binds
+    // at (`serverPort + 2` = 3143). The old `apiBase-port + 2` arithmetic
+    // would have computed 3002 here — silently wrong. `voicePort` must
+    // come from the backend-queried value (`fetchVoicePort`, see
+    // `useVoiceSession.ts`), never from apiBase's own port.
     const uiOriginApiBase = 'http://localhost:3000'; // UI port, NOT server port
     const realVoicePortFromBackend = 3143; // serverPort (3141) + 2
     const result = deriveVoiceWsUrl(
@@ -64,7 +64,7 @@ describe('deriveVoiceWsUrl (#198)', () => {
       realVoicePortFromBackend,
     );
     expect(result).toBe('ws://localhost:3143/?agent=station-voice');
-// Explicitly not the old broken arithmetic result.
+    // Explicitly not the old broken arithmetic result.
     expect(result).not.toBe('ws://localhost:3002/?agent=station-voice');
   });
 });

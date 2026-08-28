@@ -176,10 +176,10 @@ export function renderSettingRow({
       );
 
     case 'composite':
-// Never a generic editor (see module doc comment) — a key reaching
-// here is either explicitly deferred (render nothing) or an
-// unclassified drift that `registry-row.test.tsx`'s completeness
-// test catches before merge; render nothing defensively either way.
+      // Never a generic editor (see module doc comment) — a key reaching
+      // here is either explicitly deferred (render nothing) or an
+      // unclassified drift that `registry-row.test.tsx`'s completeness
+      // test catches before merge; render nothing defensively either way.
       if (!DEFERRED_COMPOSITE_KEYS.includes(key)) {
         console.warn(
           `renderSettingRow: composite key "${key}" is not in COMPOSITE_EDITORS or DEFERRED_COMPOSITE_KEYS`,

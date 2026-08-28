@@ -14,7 +14,7 @@ import type { HomeViewNavigation } from './useHomeViewModel';
  * descriptor is inert data, and a host handing a renderer a live model
  * through it would make every contributed Pane's data surface a property of
  * the declaration rather than of the grant. Home's model therefore reaches
-* its renderer the same way `useNavigation` and `useProjectLayoutQuery`
+ * its renderer the same way `useNavigation` and `useProjectLayoutQuery`
  * reach the Project built-ins: through context owned by the route that has
  * the data, read by the renderer that needs it.
  *
@@ -25,7 +25,7 @@ import type { HomeViewNavigation } from './useHomeViewModel';
  */
 export interface HomeWorkspacePaneBinding {
   model: HomeViewModel;
-/** Best safe project continuation, or null when there is nothing to resume. */
+  /** Best safe project continuation, or null when there is nothing to resume. */
   continuation: HomeViewNavigation | null;
   onNavigate: (view: NavigationView) => void;
 }

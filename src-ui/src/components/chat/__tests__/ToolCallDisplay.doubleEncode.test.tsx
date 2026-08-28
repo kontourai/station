@@ -7,18 +7,18 @@
  * right depends on whether `result` is already a string:
  *
  * - live path (`streamHandlers.ts`'s `handleToolCompletedEvent`) sets
-*   `result: event.output` — the raw object, so `JSON.stringify` is the
-*   first and only encoding.
+ *   `result: event.output` — the raw object, so `JSON.stringify` is the
+ *   first and only encoding.
  * - restored path (an event-window read) hands down a string: the load-
-*   bearing derivation is `runtime-event-projection.ts`'s `resultText`, which
-*   returns a string for EVERY tool result unconditionally — a non-string
-*   `output` is JSON-serialised there, a string `output` passes through
-*   as-is — so restored `result` is always a string, never sometimes.
-*   `event-store.ts`'s `snapshotEvent` upstream also JSON-serialises a
-*   structured `output` before it reaches the client (archive#3462), but
-*   `resultText` is what actually guarantees the string-ness this component
-*   sees. Stringifying that string a second time wraps it in an extra layer
-*   of quotes and escapes.
+ *   bearing derivation is `runtime-event-projection.ts`'s `resultText`, which
+ *   returns a string for EVERY tool result unconditionally — a non-string
+ *   `output` is JSON-serialised there, a string `output` passes through
+ *   as-is — so restored `result` is always a string, never sometimes.
+ *   `event-store.ts`'s `snapshotEvent` upstream also JSON-serialises a
+ *   structured `output` before it reaches the client (archive#3462), but
+ *   `resultText` is what actually guarantees the string-ness this component
+ *   sees. Stringifying that string a second time wraps it in an extra layer
+ *   of quotes and escapes.
  *
  * Fix round (same issue): `ToolCallDetails`'s Arguments section had the
  * identical bug three lines above the Response fix — `argsJson` stringified
@@ -34,8 +34,8 @@ import { ToolCallDisplay } from '../ToolCallDisplay';
 afterEach(cleanup);
 
 function expand(_toolName: string) {
-// The collapsed row itself is the disclosure button (archive#2652
-// redesign); its accessible name is its visible verb-first label.
+  // The collapsed row itself is the disclosure button (archive#2652
+  // redesign); its accessible name is its visible verb-first label.
   fireEvent.click(document.querySelector('button.tool-call__line')!);
 }
 
@@ -88,18 +88,18 @@ describe('ToolCallDisplay result rendering (station#3507)', () => {
     );
     expand('ls');
 
-// The pre-fix behavior wraps a string result in an extra layer of
-// quotes/escapes (`"[{\"type\":...}]"`); the fix renders the string
-// unchanged.
+    // The pre-fix behavior wraps a string result in an extra layer of
+    // quotes/escapes (`"[{\"type\":...}]"`); the fix renders the string
+    // unchanged.
     expect(responseText()).toBe(preSerialized);
     expect(responseText()).not.toContain('\\"');
   });
 
-// Named to say what the fix does, not "either way" — that phrasing would
-// read as "regardless of the fix," which is false: the pre-fix code wraps
-// this exact fixture in quotes too (proven by the 's fault
-// injection, which reddened this test along with the restored-path one
-// above), so it only holds once the type check exists.
+  // Named to say what the fix does, not "either way" — that phrasing would
+  // read as "regardless of the fix," which is false: the pre-fix code wraps
+  // this exact fixture in quotes too (proven by the 's fault
+  // injection, which reddened this test along with the restored-path one
+  // above), so it only holds once the type check exists.
   test('a plain string result (e.g. a shell tool) is not wrapped in quotes by the fix', () => {
     render(
       <ToolCallDisplay
@@ -155,7 +155,7 @@ describe('ToolCallDisplay args rendering (station#3507 fix round)', () => {
 });
 
 /**
-* Independent review of this branch (archive#3559): the
+ * Independent review of this branch (archive#3559): the
  * old collapsed header's `argsPreview` had the SAME string-args hazard as
  * `argsJson` above — `Object.keys('git commit -m "fix"')` returns index keys
  * ('0', '1', '2', …), so a string tool-call argument rendered as `0: "g",
@@ -181,13 +181,13 @@ describe('ToolCallDisplay collapsed row label (station#3559 defect class)', () =
       />,
     );
 
-// Bare infinitive, not "Ran": this fixture carries no terminal state, so
-// nothing observed the command finish. These tests pin the ARGS preview;
-// they previously demanded past tense here and so held the overclaim in
- // place (archive#3690) — the tense contract itself is asserted in
-// `ToolCallDisplay.test.tsx`.
+    // Bare infinitive, not "Ran": this fixture carries no terminal state, so
+    // nothing observed the command finish. These tests pin the ARGS preview;
+    // they previously demanded past tense here and so held the overclaim in
+    // place (archive#3690) — the tense contract itself is asserted in
+    // `ToolCallDisplay.test.tsx`.
     expect(labelText()).toBe('Run git commit -m "fix"');
-// The pre-fix defect: index-keyed characters, not the command text.
+    // The pre-fix defect: index-keyed characters, not the command text.
     expect(labelText()).not.toMatch(/0: /);
   });
 
@@ -217,9 +217,9 @@ describe('ToolCallDisplay collapsed row label (station#3559 defect class)', () =
       />,
     );
 
-// No detail exists, so no disclosure is promised: no button, no chevron,
-// no tab stop — just the labelled line. Verb is the infinitive because
-// this fixture never reached a terminal state (see the note above).
+    // No detail exists, so no disclosure is promised: no button, no chevron,
+    // no tab stop — just the labelled line. Verb is the infinitive because
+    // this fixture never reached a terminal state (see the note above).
     expect(labelText()).toBe('Use noop');
     expect(document.querySelector('button.tool-call__line')).toBeNull();
     expect(document.querySelector('.tool-call__chevron')).toBeNull();

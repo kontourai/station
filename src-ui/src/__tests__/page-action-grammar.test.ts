@@ -62,11 +62,11 @@ function extractScheduleAddLabel(file: string): string {
     '<PageFrameActions>',
     '</PageFrameActions>',
   );
-// The JSX tag's closing `>` must be matched precisely: a naive `[\s\S]*?>`
-// stops at the FIRST `>` in the block, which is the one inside
-// `onClick={ => setShowAddForm(true)}` — an arrow function, not the tag
-// close. Requiring the `>` to sit alone on its own (whitespace-only) line,
-// as this file's formatting always renders it, disambiguates the two.
+  // The JSX tag's closing `>` must be matched precisely: a naive `[\s\S]*?>`
+  // stops at the FIRST `>` in the block, which is the one inside
+  // `onClick={ => setShowAddForm(true)}` — an arrow function, not the tag
+  // close. Requiring the `>` to sit alone on its own (whitespace-only) line,
+  // as this file's formatting always renders it, disambiguates the two.
   const match = actionsBlock.match(
     /<Button\b[\s\S]*?\n\s*variant="primary"[\s\S]*?\n\s*>\s*\n\s*([^<{\n]+?)\s*\n\s*<\/Button>/,
   );

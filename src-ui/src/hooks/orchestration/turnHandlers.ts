@@ -51,9 +51,9 @@ function reconcileDurableTurn(sessionId: string, providerTurnId: string): void {
 export function handleTurnStartedEvent(
   event: Extract<OrchestrationEvent, { method: 'turn.started' }>,
 ) {
-// Durable per-turn confirmation of the actually-applied approval mode
-// (archive#727 3) — clears/updates the pending-apply chip
-// state once the adapter has genuinely resolved this turn's posture.
+  // Durable per-turn confirmation of the actually-applied approval mode
+  // (archive#727 3) — clears/updates the pending-apply chip
+  // state once the adapter has genuinely resolved this turn's posture.
   const approvalMode = isApprovalMode(event.metadata?.approvalMode)
     ? event.metadata.approvalMode
     : undefined;
@@ -101,28 +101,28 @@ export function handleTurnStartedEvent(
       .catch(() => undefined);
   }
   activeChatsStore.updateChat(event.threadId, {
-// The dispatch this turn came from has started; the pre-start cancel
- // window it named is over 
+    // The dispatch this turn came from has started; the pre-start cancel
+    // window it named is over
     pendingClientTurnId: undefined,
     status: 'sending',
     orchestrationTurnOpen: true,
-// archive#1410: the identity of the turn whose text is about to be
-// buffered, so a terminal event for a DIFFERENT turn cannot attach its
-// provenance to this one.
+    // archive#1410: the identity of the turn whose text is about to be
+    // buffered, so a terminal event for a DIFFERENT turn cannot attach its
+    // provenance to this one.
     openTurnId: event.turnId,
-// archive#3352: the shell below is this turn's first and only copy, so it
-// is authoritative again — a reconnect catch-up for the PREVIOUS turn must
-// not leave the projection rendering this one alongside it.
+    // archive#3352: the shell below is this turn's first and only copy, so it
+    // is authoritative again — a reconnect catch-up for the PREVIOUS turn must
+    // not leave the projection rendering this one alongside it.
     openTurnShellSuperseded: false,
     isProcessingStep: false,
-// Optimistic: the turn has started, so the session is running. Without
-// this, a stale `orchestrationStatus: 'idle'` from the previous turn
-// suppresses the streaming indicator until the provider's
-// session.state-changed round-trips (the "chat looks idle while the
-// agent thinks" bug). The server event remains authoritative and will
-// confirm or correct this value.
+    // Optimistic: the turn has started, so the session is running. Without
+    // this, a stale `orchestrationStatus: 'idle'` from the previous turn
+    // suppresses the streaming indicator until the provider's
+    // session.state-changed round-trips (the "chat looks idle while the
+    // agent thinks" bug). The server event remains authoritative and will
+    // confirm or correct this value.
     orchestrationStatus: 'running',
-// A fresh turn must not inherit the previous turn's activity hint.
+    // A fresh turn must not inherit the previous turn's activity hint.
     activityHint: undefined,
     streamingMessage: {
       role: 'assistant',
@@ -162,24 +162,24 @@ export function handleTurnStartedEvent(
 export function handleTurnCompletedEvent(
   apiBase: string,
   event: Extract<OrchestrationEvent, { method: 'turn.completed' }>,
-/** archive#1410: envelope carried beside this frame, when the server sent one. */
+  /** archive#1410: envelope carried beside this frame, when the server sent one. */
   provenance?: unknown,
 ) {
-// archive#1410: attach the sidecar only when this terminal event
-// closes the turn whose text is actually buffered.
-//
-// Adapters emit a terminal for an EARLIER turn after the next one has
-// started streaming. `finalizeAssistantTurn` commits whatever is in the
-// streaming shell, so an unconditional stamp would publish turn B's text
-// under turn A's envelope — wrong engine, model, tools and usage, stated
-// with full confidence — and a later reload (where the server-side
-// projection applies the same guard) would silently disagree with what the
-// user was shown live.
-//
-// No known open id means the turn's `turn.started` fell outside this
-// connection's window; the terminal is then the only identity available
-// and adopting it is correct. This mirrors `adoptTerminalIdentity` in
-// `runtime-event-projection.ts` exactly.
+  // archive#1410: attach the sidecar only when this terminal event
+  // closes the turn whose text is actually buffered.
+  //
+  // Adapters emit a terminal for an EARLIER turn after the next one has
+  // started streaming. `finalizeAssistantTurn` commits whatever is in the
+  // streaming shell, so an unconditional stamp would publish turn B's text
+  // under turn A's envelope — wrong engine, model, tools and usage, stated
+  // with full confidence — and a later reload (where the server-side
+  // projection applies the same guard) would silently disagree with what the
+  // user was shown live.
+  //
+  // No known open id means the turn's `turn.started` fell outside this
+  // connection's window; the terminal is then the only identity available
+  // and adopting it is correct. This mirrors `adoptTerminalIdentity` in
+  // `runtime-event-projection.ts` exactly.
   const openTurnId = activeChatsStore.getChatForExecutionSession(
     event.threadId,
   )?.openTurnId;
@@ -202,8 +202,8 @@ export function handleTurnCompletedEvent(
   activeChatsStore.updateChat(event.threadId, {
     orchestrationHistoryRevision: historyRevision + 1,
   });
-// Queue settlement is independent of the live streaming shell: provider
-// turn identity is exact evidence even for a delayed terminal event.
+  // Queue settlement is independent of the live streaming shell: provider
+  // turn identity is exact evidence even for a delayed terminal event.
   const chatKey =
     activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
     event.threadId;
@@ -223,17 +223,17 @@ export function handleTurnAbortedEvent(
       ?.orchestrationHistoryRevision ?? 0;
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
   activeChatsStore.updateChat(chatKey, {
-// A late provider abort revokes a previously committed same-turn answer.
-// Keeping it would leave Add to Task on an answer the lifecycle rejects.
+    // A late provider abort revokes a previously committed same-turn answer.
+    // Keeping it would leave Add to Task on an answer the lifecycle rejects.
     ...(chat
       ? {
           messages: (chat.messages ?? []).map((message) => {
             if (
               !(
                 message.turnId === event.turnId &&
-// Row-scoped Session identity protects a predecessor answer
-// that happens to reuse the provider's turn id. Untagged
-// legacy rows remain safe only inside this one Session store.
+                // Row-scoped Session identity protects a predecessor answer
+                // that happens to reuse the provider's turn id. Untagged
+                // legacy rows remain safe only inside this one Session store.
                 (message.sessionId === event.threadId ||
                   message.sessionId === undefined)
               )
@@ -264,17 +264,17 @@ export function handleTurnAbortedEvent(
 export function handleRuntimeErrorEvent(
   event: Extract<OrchestrationEvent, { method: 'runtime.error' }>,
 ) {
-// archive#3451 ( : corrected wording, not code):
-// `RuntimeErrorEvent extends CanonicalRuntimeEventBase`, which carries an
-// optional TOP-LEVEL `turnId` — publishers set it there (muse-adapter.ts,
-// bedrock-adapter.ts's `publishTurnFailure`, codex's `'error'`/
-// `turn.status:'failed'` sites all do), never inside `details`. Reading
-// only `event.details?.turnId` meant this reconcile never fired for any of
-// them, so a turn dispatched through the durable offline queue stayed
-// `accepted` forever. `event.details?.turnId` is checked FIRST below — no
-// `src-server` producer ever sets it, so keeping it primary is harmless —
-// and `event.turnId` is the fallback that actually closes the gap for
-// every real producer.
+  // archive#3451 ( : corrected wording, not code):
+  // `RuntimeErrorEvent extends CanonicalRuntimeEventBase`, which carries an
+  // optional TOP-LEVEL `turnId` — publishers set it there (muse-adapter.ts,
+  // bedrock-adapter.ts's `publishTurnFailure`, codex's `'error'`/
+  // `turn.status:'failed'` sites all do), never inside `details`. Reading
+  // only `event.details?.turnId` meant this reconcile never fired for any of
+  // them, so a turn dispatched through the durable offline queue stayed
+  // `accepted` forever. `event.details?.turnId` is checked FIRST below — no
+  // `src-server` producer ever sets it, so keeping it primary is harmless —
+  // and `event.turnId` is the fallback that actually closes the gap for
+  // every real producer.
   const terminalTurnId = event.details?.turnId ?? event.turnId;
   if (typeof terminalTurnId === 'string') {
     reconcileDurableTurn(
@@ -284,26 +284,26 @@ export function handleRuntimeErrorEvent(
     );
   }
   const chat = activeChatsStore.getChatForExecutionSession(event.threadId);
-// Surface the error inline (mirroring the durable projection, which renders
-// runtime errors as a text part so a failed turn does not
-// render blank and the message survives turn finalization.
+  // Surface the error inline (mirroring the durable projection, which renders
+  // runtime errors as a text part so a failed turn does not
+  // render blank and the message survives turn finalization.
   const streamingMessage =
     chat?.streamingMessage || createAssistantStreamingMessage();
-// A repeat is only compacted after this handler closed the current turn.
-// `turn.started` opens it again, so identical errors from a later turn
-// remain distinct and retain their retry marker boundary. Dedup always
-// compares the RAW `event.message` — independent of how it is displayed
-// below — so a terminal-session classification's translated text does not
-// change what counts as "the same failure repeating".
+  // A repeat is only compacted after this handler closed the current turn.
+  // `turn.started` opens it again, so identical errors from a later turn
+  // remain distinct and retain their retry marker boundary. Dedup always
+  // compares the RAW `event.message` — independent of how it is displayed
+  // below — so a terminal-session classification's translated text does not
+  // change what counts as "the same failure repeating".
   const repeatsCurrentTurn =
     !chat?.orchestrationTurnOpen && chat?.error === event.message;
-// archive#1827: the streaming bubble is literally "the chat's only
-// content" a dead engine binding used to leave behind (the ticket's
-// reported symptom) — translate it through the same table
-// `ChatDockBody`'s marker rendering already uses, instead of showing the
-// engine's raw prose as if it were an ordinary reply. Every other
-// `runtime.error` (no code, or a different code) keeps today's exact raw
-// `event.message` display — unchanged.
+  // archive#1827: the streaming bubble is literally "the chat's only
+  // content" a dead engine binding used to leave behind (the ticket's
+  // reported symptom) — translate it through the same table
+  // `ChatDockBody`'s marker rendering already uses, instead of showing the
+  // engine's raw prose as if it were an ordinary reply. Every other
+  // `runtime.error` (no code, or a different code) keeps today's exact raw
+  // `event.message` display — unchanged.
   const translation =
     event.code === ENGINE_SESSION_BINDING_DEAD_CODE
       ? translateChatError({ message: event.message, code: event.code })
@@ -330,29 +330,29 @@ export function handleRuntimeErrorEvent(
           ...(streamingMessage.contentParts || []),
           { type: 'text' as const, content: errorPartPrefix },
         ];
-// archive#1827: the code rides along in the marker (`[CHAT_ERROR:code]`)
-// so `ChatDockBody`'s marker rendering can classify it the same way
-// without re-deriving from prose — see that file's parsing of this exact
-// shape. Absent code keeps the original `[CHAT_ERROR]` shape byte-for-byte.
+  // archive#1827: the code rides along in the marker (`[CHAT_ERROR:code]`)
+  // so `ChatDockBody`'s marker rendering can classify it the same way
+  // without re-deriving from prose — see that file's parsing of this exact
+  // shape. Absent code keeps the original `[CHAT_ERROR]` shape byte-for-byte.
   const markerPrefix = `[SYSTEM_EVENT] [CHAT_ERROR${
     event.code ? `:${event.code}` : ''
   }] ${event.message}`;
-// the turn this failure is ABOUT. An attributed
-// error names it; an unattributed one ends whichever turn was open when it
-// arrived, which is the honest attribution and the one the transcript's
-// pruning reads. `undefined` (a failure with no turn context at all) leaves
-// the marker unscoped, and unscoped markers are never pruned.
-//
-// The third fallback matters: this handler CLOSES the turn it reports on
-// (`openTurnId: undefined` below), so a second error for that same turn —
-// the repeat-compaction case — arrives with no open turn to inherit. The
-// latest existing card's turn is the one still being talked about.
+  // the turn this failure is ABOUT. An attributed
+  // error names it; an unattributed one ends whichever turn was open when it
+  // arrived, which is the honest attribution and the one the transcript's
+  // pruning reads. `undefined` (a failure with no turn context at all) leaves
+  // the marker unscoped, and unscoped markers are never pruned.
+  //
+  // The third fallback matters: this handler CLOSES the turn it reports on
+  // (`openTurnId: undefined` below), so a second error for that same turn —
+  // the repeat-compaction case — arrives with no open turn to inherit. The
+  // latest existing card's turn is the one still being talked about.
   const latestMarkerTurnId = [...(chat?.messages ?? [])]
     .reverse()
     .find((message) => isChatErrorMarker(message))?.turnId;
   const failedTurnId = event.turnId ?? chat?.openTurnId ?? latestMarkerTurnId;
-// Markers for EARLIER turns are no longer about this conversation's latest
-// failure: a second failure must replace the first card, not sit beside it.
+  // Markers for EARLIER turns are no longer about this conversation's latest
+  // failure: a second failure must replace the first card, not sit beside it.
   const priorMessages = pruneStaleFailureMarkers(
     chat?.messages || [],
     failedTurnId,
@@ -386,27 +386,27 @@ export function handleRuntimeErrorEvent(
     status: 'error',
     error: event.message,
     orchestrationStatus: 'errored',
-// Mirrors the server fold: no adapter emits a terminal turn event on
- // failure, so runtime.error closes the turn (archive#761).
+    // Mirrors the server fold: no adapter emits a terminal turn event on
+    // failure, so runtime.error closes the turn (archive#761).
     orchestrationTurnOpen: false,
     openTurnId: undefined,
     streamingMessage: {
       ...streamingMessage,
       contentParts: nextParts,
     },
-// archive#1207: this event is also how a silent stall on the
-// station-agent adapter's inner /chat bridge surfaces (no dedicated
-// `turn.failed` method exists — `runtime.error` IS the terminal-failure
-// signal for this path, see `failTurn` in `station-agent-adapter.ts`).
-// Append the exact `[SYSTEM_EVENT] [CHAT_ERROR]` marker shape the direct
-// `/chat` path persists server-side (`chat-lifecycle.ts`) so
-// `ChatDockBody`'s ALREADY-WORKING "Send again" rendering
- // (`findPrecedingUserTurn`, archive#797) picks it up for free instead of a
-// second bespoke retry mechanism — this module has no access to
-// `sendMessage` (a hook closure), but `ChatDockBody` already does.
-// Client/session-only (not server-persisted like the direct path's
-// marker), so unlike that path it does not survive a reload — disclosed
-// gap, tracked as follow-up.
+    // archive#1207: this event is also how a silent stall on the
+    // station-agent adapter's inner /chat bridge surfaces (no dedicated
+    // `turn.failed` method exists — `runtime.error` IS the terminal-failure
+    // signal for this path, see `failTurn` in `station-agent-adapter.ts`).
+    // Append the exact `[SYSTEM_EVENT] [CHAT_ERROR]` marker shape the direct
+    // `/chat` path persists server-side (`chat-lifecycle.ts`) so
+    // `ChatDockBody`'s ALREADY-WORKING "Send again" rendering
+    // (`findPrecedingUserTurn`, archive#797) picks it up for free instead of a
+    // second bespoke retry mechanism — this module has no access to
+    // `sendMessage` (a hook closure), but `ChatDockBody` already does.
+    // Client/session-only (not server-persisted like the direct path's
+    // marker), so unlike that path it does not survive a reload — disclosed
+    // gap, tracked as follow-up.
     messages,
     orchestrationHistoryRevision: (chat?.orchestrationHistoryRevision ?? 0) + 1,
   });
@@ -417,11 +417,11 @@ export function handleRuntimeWarningEvent(
 ) {
   toastStore.show(event.message, event.threadId, 5000);
 
- // archive#727 item 1b (CRITICAL): a mid-session escalation to 'never'
-// that the adapter rejected (no allowDangerouslySkipPermissions granted
-// at spawn) must not leave the composer chip showing a posture that
-// never actually applied. The adapter reports which mode IS actually in
-// effect; revert the client's stored override to match reality.
+  // archive#727 item 1b (CRITICAL): a mid-session escalation to 'never'
+  // that the adapter rejected (no allowDangerouslySkipPermissions granted
+  // at spawn) must not leave the composer chip showing a posture that
+  // never actually applied. The adapter reports which mode IS actually in
+  // effect; revert the client's stored override to match reality.
   if (event.code === APPROVAL_ESCALATION_REQUIRES_RESTART_CODE) {
     const revertTo = event.details?.revertToApprovalMode;
     if (isApprovalMode(revertTo)) {

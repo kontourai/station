@@ -61,20 +61,20 @@ function describeEvent(event: OrchestrationEvent): string {
 }
 
 export interface DiagnosticsEntry {
-/** Merge identity only (`${method}:${itemId}` for delta groups) — deliberately
-* NOT unique across the whole log, since two different turns can both open
-* with `itemId: "0"` in streaming protocols that reset ids per turn. Never
-* use this as a React list key (see `renderKey`). */
+  /** Merge identity only (`${method}:${itemId}` for delta groups) — deliberately
+   * NOT unique across the whole log, since two different turns can both open
+   * with `itemId: "0"` in streaming protocols that reset ids per turn. Never
+   * use this as a React list key (see `renderKey`). */
   key: string;
- /** (archive#1170): React list keys must be unique across the
-* WHOLE list, not just adjacent entries — `key` above collides whenever a
-* non-adjacent group reuses the same `(method, itemId)` pair (a common
-* streaming-protocol shape), which produced a real
-* "Encountered two children with the same key" warning and undefined
-* render behavior. `renderKey` suffixes `key` with this entry's final
-* position in the entries array (unique and stable — the array is only
-* ever rebuilt from the full `events` list, never reordered), so it stays
-* unique even when `key` repeats. */
+  /** (archive#1170): React list keys must be unique across the
+   * WHOLE list, not just adjacent entries — `key` above collides whenever a
+   * non-adjacent group reuses the same `(method, itemId)` pair (a common
+   * streaming-protocol shape), which produced a real
+   * "Encountered two children with the same key" warning and undefined
+   * render behavior. `renderKey` suffixes `key` with this entry's final
+   * position in the entries array (unique and stable — the array is only
+   * ever rebuilt from the full `events` list, never reordered), so it stays
+   * unique even when `key` repeats. */
   renderKey: string;
   method: string;
   body: string;

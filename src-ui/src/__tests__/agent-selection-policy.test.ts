@@ -119,7 +119,7 @@ describe('selectFirstChatTarget (station#1004 review MED)', () => {
 });
 
 /**
-* archive#3309: the header's pinned New chat button
+ * archive#3309: the header's pinned New chat button
  * decides between opening a chat directly and opening the picker. Nothing
  * covered that decision — no test can render `ChatDock`, so the rule is named
  * here and driven across all three populations.

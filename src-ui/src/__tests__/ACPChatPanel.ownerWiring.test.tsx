@@ -14,8 +14,8 @@ import { describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-sdk', () => ({
   useAgentConnectionsQuery: () => ({ data: [] }),
-// MessageRating (rendered by the real MessageBubble this test exercises)
-// needs these three — not under test here.
+  // MessageRating (rendered by the real MessageBubble this test exercises)
+  // needs these three — not under test here.
   useFeedbackRatingsQuery: () => ({ data: [] }),
   useSaveFeedbackRatingMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteFeedbackRatingMutation: () => ({
@@ -30,8 +30,8 @@ const connectionState = vi.hoisted(() => ({
   } | null,
 }));
 vi.mock('../build-info', () => ({
-// The dev fallback: a provenance chip must render NOTHING here, never a
- // fabricated 'Station v0.0.0 · dev' (archive#2585 P1).
+  // The dev fallback: a provenance chip must render NOTHING here, never a
+  // fabricated 'Station v0.0.0 · dev' (archive#2585 P1).
   verifiedBuildLabel: null,
 }));
 vi.mock('@kontourai/station-connect', () => ({

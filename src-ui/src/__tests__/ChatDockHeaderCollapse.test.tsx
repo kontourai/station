@@ -70,10 +70,10 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
     dockMode = 'bottom';
   });
 
-// `is-collapsed` and `is-maximized` are independent classes. Carrying the
-// maximized flag through a collapse left the dock at full height with an
-// emptied body — a blank full-screen shell that only Restore or a reload
-// recovered.
+  // `is-collapsed` and `is-maximized` are independent classes. Carrying the
+  // maximized flag through a collapse left the dock at full height with an
+  // emptied body — a blank full-screen shell that only Restore or a reload
+  // recovered.
   test('collapsing a maximized dock clears the maximized flag', () => {
     renderHeader();
 
@@ -93,9 +93,9 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
     expect(onDockSnap).toHaveBeenCalledWith('half');
   });
 
- // archive#795: the reopened dock takes its height from the persisted snap,
-// so expanding after a Full-height collapse used to come back full height
-// with its own Maximize button still reading "Maximize".
+  // archive#795: the reopened dock takes its height from the persisted snap,
+  // so expanding after a Full-height collapse used to come back full height
+  // with its own Maximize button still reading "Maximize".
   test('expanding restores Maximized when the persisted size was Full', () => {
     isDockOpen = false;
     isDockMaximized = false;
@@ -131,14 +131,14 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     fireEvent.click(control);
 
     expect(onNewChat).toHaveBeenCalledTimes(1);
-// Starting a chat must not double as a dock toggle.
+    // Starting a chat must not double as a dock toggle.
     expect(setDockState).not.toHaveBeenCalled();
   });
 
- // archive#800: the header renders unconditionally, so without an open-state
-// guard the dock-open-and-empty state showed two identical "Start a chat"
-// controls — the header's and the body's — and any role-based query would
-// resolve to both.
+  // archive#800: the header renders unconditionally, so without an open-state
+  // guard the dock-open-and-empty state showed two identical "Start a chat"
+  // controls — the header's and the body's — and any role-based query would
+  // resolve to both.
   test('yields to the body CTA once the dock is open', () => {
     isDockOpen = true;
     isDockMaximized = false;
@@ -174,7 +174,7 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     expect(onDockSnap).toHaveBeenCalledWith('full');
 
     isDockMaximized = true;
-// Re-rendering represents navigation state after the snap owner applies Full.
+    // Re-rendering represents navigation state after the snap owner applies Full.
     renderHeader();
     fireEvent.click(screen.getByLabelText('Restore chat dock'));
     expect(onDockSnap).toHaveBeenLastCalledWith('half');
@@ -236,10 +236,10 @@ describe('occupant picker (station#4460)', () => {
   });
 
   test('renders when supplied, naming the current occupant', () => {
-// archive#4460: `occupantPicker` is a PRE-RENDERED node (built
-// by the ambient host's lazy chunk), not `{current, onChoose}` data —
-// this test constructs the real `DockOccupantPicker` element itself,
-// the same way the host does.
+    // archive#4460: `occupantPicker` is a PRE-RENDERED node (built
+    // by the ambient host's lazy chunk), not `{current, onChoose}` data —
+    // this test constructs the real `DockOccupantPicker` element itself,
+    // the same way the host does.
     render(
       <ChatDockHeader
         chatControls={{

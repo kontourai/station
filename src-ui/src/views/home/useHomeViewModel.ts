@@ -29,12 +29,12 @@ export type HomeViewNavigation = Extract<
 
 interface HomeWorkData {
   projects: ReturnType<typeof useProjectsQuery>['data'];
-/**
-* The agent catalog, exposed because Home's rows draw an agent icon and
-* that icon must resolve against the SAME catalog the rows' labels were
-* built from (`buildHomeWorkItems` already receives it). A row component
-* fetching its own would be a second read that can disagree.
-*/
+  /**
+   * The agent catalog, exposed because Home's rows draw an agent icon and
+   * that icon must resolve against the SAME catalog the rows' labels were
+   * built from (`buildHomeWorkItems` already receives it). A row component
+   * fetching its own would be a second read that can disagree.
+   */
   agents: ReturnType<typeof useAgents>;
   defaultSelection: ReturnType<
     typeof useNewChatSelectionModel
@@ -59,21 +59,21 @@ function useHomeWorkData(): HomeWorkData {
   const tasks = useTasksQuery();
   const { data: remoteSessionsResult } = useRemoteSessionsQuery();
   const agents = useAgents();
-// archive#3391. Home's rows name a model; the New Chat surfaces name the
-// same model through `resolveEffectiveModel`, which reads a connection's
-// catalog. Home read the stored id instead, so one session was "Selected
-// Test Model" on one card and `model-selected` on the card beside it. This
-// is that catalog, unioned across every connection this Station knows —
-// a Home row can belong to any of them, not only the default agent's.
+  // archive#3391. Home's rows name a model; the New Chat surfaces name the
+  // same model through `resolveEffectiveModel`, which reads a connection's
+  // catalog. Home read the stored id instead, so one session was "Selected
+  // Test Model" on one card and `model-selected` on the card beside it. This
+  // is that catalog, unioned across every connection this Station knows —
+  // a Home row can belong to any of them, not only the default agent's.
   const { data: pickerCatalog } = useModelPickerCatalogQuery();
-// Union, so first-match wins if two connections publish the SAME model id
- // under different names (archive#3391). Left as-is deliberately:
-// de-duplicating would have to pick a winner, and the honest winner is the
-// connection the SESSION runs on — which is a per-row lookup this hook does
-// not have and the rows do not carry. Accepted because the case needs two
-// connections to disagree about one id's display name, and because the
-// failure mode is a right-shaped name from the wrong connection rather than
-// the internal id this replaced.
+  // Union, so first-match wins if two connections publish the SAME model id
+  // under different names (archive#3391). Left as-is deliberately:
+  // de-duplicating would have to pick a winner, and the honest winner is the
+  // connection the SESSION runs on — which is a per-row lookup this hook does
+  // not have and the rows do not carry. Accepted because the case needs two
+  // connections to disagree about one id's display name, and because the
+  // failure mode is a right-shaped name from the wrong connection rather than
+  // the internal id this replaced.
   const resolveModelLabel = useMemo(() => {
     const catalog = [
       ...(pickerCatalog?.agentConnections ?? []),
@@ -199,12 +199,12 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
   const acknowledge = useAcknowledgeConversationMutation();
   return {
     ...data,
-/**
-* Whether the card can honestly recommend anything. False on a home where
-* no Agent is runnable — a fresh install, or one whose engines all need
-* setting up — and the card becomes a set-up CTA rather than naming an
-* Agent the New Chat picker would refuse one click later.
-*/
+    /**
+     * Whether the card can honestly recommend anything. False on a home where
+     * no Agent is runnable — a fresh install, or one whose engines all need
+     * setting up — and the card becomes a set-up CTA rather than naming an
+     * Agent the New Chat picker would refuse one click later.
+     */
     startReady: data.defaultSelection.agent !== undefined,
     startIdentity: data.defaultSelection.agent
       ? `${data.defaultSelection.agent.name} · ${data.defaultSelection.effectiveModel.label}`

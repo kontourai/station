@@ -983,10 +983,10 @@ describe('TaskWorkspaceView', () => {
     expect(screen.queryByText(/session-answer|turn-answer/)).toBeNull();
   });
 
- // AW-4: the three optional experiences used to be filtered out by a
-// hardcoded `id === 'direct'` — collapsed, but not driven by anything. An
-// installed, ENABLED producer that declares the contract must make its
-// experience appear.
+  // AW-4: the three optional experiences used to be filtered out by a
+  // hardcoded `id === 'direct'` — collapsed, but not driven by anything. An
+  // installed, ENABLED producer that declares the contract must make its
+  // experience appear.
   test('shows an optional experience once an installed plugin declares it', () => {
     pluginsResult.data = [
       {
@@ -1000,7 +1000,7 @@ describe('TaskWorkspaceView', () => {
       screen.getByRole('heading', { name: 'Task experiences' }),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: /Deliver/i })).toBeTruthy();
-// The other two still have no producer and stay behind the affordance.
+    // The other two still have no producer and stay behind the affordance.
     expect(screen.queryByRole('button', { name: /^Learn/i })).toBeNull();
   });
 
@@ -1028,8 +1028,8 @@ describe('TaskWorkspaceView', () => {
     expect(screen.getAllByText('Inspect the workspace')).toHaveLength(2);
     expect(screen.getByText('Task ID')).toBeTruthy();
     expect(screen.getByText('Git top-level/repository root')).toBeTruthy();
-// Missing workspace facts remain visibly unavailable; the hidden items
-// are only the three product experiences that cannot actually open.
+    // Missing workspace facts remain visibly unavailable; the hidden items
+    // are only the three product experiences that cannot actually open.
     expect(screen.getAllByText('Unavailable')).toHaveLength(3);
     expect(screen.getByText('/task')).toBeTruthy();
   });
@@ -1179,8 +1179,8 @@ describe('TaskWorkspaceView', () => {
     expect(screen.queryByTestId('file-content')).toBeNull();
   });
 
-// archive#3158: one message used to cover both, so a Task with no workspace
-// read as a problem with whichever reference the user happened to click.
+  // archive#3158: one message used to cover both, so a Task with no workspace
+  // read as a problem with whichever reference the user happened to click.
   test('names the missing workspace rather than blaming the reference', () => {
     queryResult.data = graph({
       workspaceBinding: { availability: 'unavailable' },
@@ -1197,8 +1197,8 @@ describe('TaskWorkspaceView', () => {
         'This Task has no available workspace, so Station cannot resolve any reference to a local file.',
       ),
     ).toBeTruthy();
-// The same reference resolves cleanly when a workspace IS bound, so the
-// message above is about the Task, not about this reference.
+    // The same reference resolves cleanly when a workspace IS bound, so the
+    // message above is about the Task, not about this reference.
     expect(
       screen.queryByText(
         'Station could not resolve this reference to a safe file path inside the exact Task workspace.',

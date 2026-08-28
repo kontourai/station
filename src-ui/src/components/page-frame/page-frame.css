@@ -17,7 +17,7 @@
   display: flex;
   flex-direction: column;
   font-family: var(--font-sans);
-/* Same entrance `.page` has always applied, so a route that moved into the
+  /* Same entrance `.page` has always applied, so a route that moved into the
      frame keeps the motion it had — and the split-pane routes, which were
      never `.page` descendants, finally get it (SHELL-05). */
   animation: page-fade-in var(--motion-slow) var(--ease-out);

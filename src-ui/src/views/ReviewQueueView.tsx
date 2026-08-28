@@ -43,10 +43,10 @@ const REVIEW_UNAVAILABLE_REASON_COPY: Record<
   ReviewEvidenceUnavailableReason,
   string
 > = {
-// Deliberately not "locked by another Station process": the read only knows
-// the lock was held past its wait, which a slow index repair produces as
-// readily as a second process, and sending the operator to hunt a process
-// that may not exist is worse than naming what was observed.
+  // Deliberately not "locked by another Station process": the read only knows
+  // the lock was held past its wait, which a slow index repair produces as
+  // readily as a second process, and sending the operator to hunt a process
+  // that may not exist is worse than naming what was observed.
   'lock-unavailable': 'contended — another Station process or a long repair',
   'workspace-unreadable': 'workspace path unreadable',
   'receipts-unreadable': 'receipts unreadable',
@@ -54,7 +54,7 @@ const REVIEW_UNAVAILABLE_REASON_COPY: Record<
 
 /** Same rule for the Flow-review feed's own per-project unavailability
  * (archive#3322): a new reason is a type error here until it has its own copy,
-*  rather than silently rendering under the wrong remedy. */
+ *  rather than silently rendering under the wrong remedy. */
 const SURVEY_UNAVAILABLE_REASON_COPY: Record<
   SurveyFlowReviewUnavailableReason,
   string
@@ -65,7 +65,7 @@ const SURVEY_UNAVAILABLE_REASON_COPY: Record<
 };
 
 /** Selected diff-comment list ids are namespaced so they can't collide with a
-*  proposed-change id in the shared selection state. */
+ *  proposed-change id in the shared selection state. */
 const COMMENT_PREFIX = 'comment:';
 const SURVEY_PREFIX = 'survey:';
 const REVIEW_EVIDENCE_PREFIX = 'evidence:';
@@ -130,20 +130,20 @@ export function ReviewQueueView() {
   } = useReviewEvidenceQuery();
   const reviewReceipts = reviewEvidence?.receipts ?? [];
   const unavailableReviewProjects = reviewEvidence?.unavailableProjects ?? [];
-// A failed source must never read as an empty queue: `data = []` on error
-// rendered "Nothing to review" — absence-as-success on the one surface
-// whose job is making pending approvals visible. Errors are scoped per
-// source so one failing fetch does not paint the others as broken either.
+  // A failed source must never read as an empty queue: `data = []` on error
+  // rendered "Nothing to review" — absence-as-success on the one surface
+  // whose job is making pending approvals visible. Errors are scoped per
+  // source so one failing fetch does not paint the others as broken either.
   const failedSources = [
     changesError ? 'proposed changes' : null,
     commentsError ? 'review comments' : null,
     surveyError ? 'flow reviews' : null,
     reviewEvidenceError ? 'independent review evidence' : null,
   ].filter((source): source is string => source !== null);
-// Review evidence is additionally scoped per project. A partial result is
-// not a failed source — the source DID load — so it gets its own copy,
-// naming each unavailable project with its reason (the remedy differs:
-// a lock means find the second process; an unreadable path means fix it).
+  // Review evidence is additionally scoped per project. A partial result is
+  // not a failed source — the source DID load — so it gets its own copy,
+  // naming each unavailable project with its reason (the remedy differs:
+  // a lock means find the second process; an unreadable path means fix it).
   const partialReviewEvidenceNotice =
     !reviewEvidenceError && unavailableReviewProjects.length > 0
       ? `Independent review evidence is partial — ${unavailableReviewProjects.length} project${unavailableReviewProjects.length === 1 ? '' : 's'} unavailable: ${unavailableReviewProjects.map((project) => `${project.projectSlug} (${REVIEW_UNAVAILABLE_REASON_COPY[project.reason]})`).join(', ')}.`
@@ -186,7 +186,7 @@ export function ReviewQueueView() {
             .includes(query),
         )
       : comments;
-// Group each project's comments together so section headers stay coherent.
+    // Group each project's comments together so section headers stay coherent.
     return [...scoped].sort(
       (a, b) =>
         a.projectId.localeCompare(b.projectId) ||
@@ -330,14 +330,14 @@ export function ReviewQueueView() {
         onDeselect={() => setSelectedId(null)}
         onSearch={setSearch}
         searchValue={search}
- // Review was the last route on the
-// shared "items" placeholder noun — and the branch's own proving
- // case (archive#4463 's double-empty test lives here).
+        // Review was the last route on the
+        // shared "items" placeholder noun — and the branch's own proving
+        // case (archive#4463 's double-empty test lives here).
         listFilteredEmptyNoun="review items"
- // the four sources are each independently empty/non-empty; the
-// collection as a whole is empty only when ALL of them are, which is
-// exactly when a typed search should never be blamed for the empty
-// queue (nothing exists regardless of the query).
+        // the four sources are each independently empty/non-empty; the
+        // collection as a whole is empty only when ALL of them are, which is
+        // exactly when a typed search should never be blamed for the empty
+        // queue (nothing exists regardless of the query).
         collectionEmpty={
           changes.length === 0 &&
           comments.length === 0 &&
@@ -370,9 +370,9 @@ export function ReviewQueueView() {
         sidebarActions={
           <>
             {sourceNotices.length > 0 ? (
-// Present with or without items: a partial failure while
-// other sections still render must not be invisible — that
-// is the same absence-as-success failure, one level down.
+              // Present with or without items: a partial failure while
+              // other sections still render must not be invisible — that
+              // is the same absence-as-success failure, one level down.
               <p className="review-queue__sources-error" role="alert">
                 {sourceNotices.join(' ')}
               </p>
@@ -888,11 +888,11 @@ function ReviewCommentDetail({
   onResolve: () => void;
 }) {
   const { setLayout } = useNavigation();
-// Resolve the comment's project coding layout so the reviewer can jump from
-// the queue straight into the workspace for that file. The comment only
-// carries a projectId, so the coding layout slug is looked up from the
-// project's layouts (type === 'coding'); the action is hidden when the
-// project has no coding layout rather than navigating nowhere.
+  // Resolve the comment's project coding layout so the reviewer can jump from
+  // the queue straight into the workspace for that file. The comment only
+  // carries a projectId, so the coding layout slug is looked up from the
+  // project's layouts (type === 'coding'); the action is hidden when the
+  // project has no coding layout rather than navigating nowhere.
   const { data: layouts = [] } = useProjectLayoutsQuery(comment.projectId);
   const codingLayout = (layouts as LayoutConfig[]).find(
     (layout) => layout.type === 'coding',
@@ -913,8 +913,8 @@ function ReviewCommentDetail({
         </div>
         <div className="review-queue-detail__actions">
           {codingLayout && (
-// Jump to the comment's Project coding workspace with its exact,
-// inclusive one-line File Preview intent.
+            // Jump to the comment's Project coding workspace with its exact,
+            // inclusive one-line File Preview intent.
             <Button
               variant="secondary"
               onClick={() =>

@@ -30,11 +30,11 @@ export function DefaultModelField({
   onChange,
 }: {
   id: string;
-/**
-* The connection form calls this the connection's DEFAULT model; an agent
-* page renting the same control is naming one model for one agent, and
-* "Default model" there is a different claim. Same control, host's noun.
-*/
+  /**
+   * The connection form calls this the connection's DEFAULT model; an agent
+   * page renting the same control is naming one model for one agent, and
+   * "Default model" there is a different claim. Same control, host's noun.
+   */
   label?: string;
   value: string;
   options: Array<{ id: string; name: string }>;
@@ -147,7 +147,7 @@ export function ProviderConnectionForm({
   onSetConfigField: (key: string, value: unknown) => void;
   onTypeChange: (type: string) => void;
   onTestConnection: (id: string) => void;
- /** : what "Check to load" only ever named. */
+  /** : what "Check to load" only ever named. */
   onLoadModels?: () => void;
 }) {
   const fieldId = useId();
@@ -176,15 +176,15 @@ export function ProviderConnectionForm({
   }, [modelOptions, modelPreferences.order, selectedProviderId]);
   const apiKeyConfigured = form.config.apiKeyConfigured === true;
 
-/*
-* "Ready" used to come from `form.status`, which for a model
-* connection is `statusFromPrerequisites` and whose only required
-* prerequisite is "a non-empty string is saved in the key box". A
-* knowingly-invalid key therefore read Ready, and clicking Test Connection
-* printed "✗ Connection failed" while Status still said Ready and Last
-* check still said Not checked. This is the same resolver the hub cards and
-* the list rail read, fed the server's own readiness evidence.
-*/
+  /*
+   * "Ready" used to come from `form.status`, which for a model
+   * connection is `statusFromPrerequisites` and whose only required
+   * prerequisite is "a non-empty string is saved in the key box". A
+   * knowingly-invalid key therefore read Ready, and clicking Test Connection
+   * printed "✗ Connection failed" while Status still said Ready and Last
+   * check still said Not checked. This is the same resolver the hub cards and
+   * the list rail read, fed the server's own readiness evidence.
+   */
   const presentation = resolveProviderPresentation({
     id: selectedProviderId ?? 'new',
     kind: 'model',
@@ -200,12 +200,12 @@ export function ProviderConnectionForm({
     href: '',
   });
   const verified = !isNew && presentation.readiness === 'Ready';
-/*
-* the rail was three static spans with the first hardcoded
-* complete, so it read "Choose" forever no matter what the user did. Each
-* step is now the fact it names: the connection exists on the server, and
-* something has actually reached the provider.
-*/
+  /*
+   * the rail was three static spans with the first hardcoded
+   * complete, so it read "Choose" forever no matter what the user did. Each
+   * step is now the fact it names: the connection exists on the server, and
+   * something has actually reached the provider.
+   */
   const steps = [
     { label: 'Choose', complete: true },
     { label: 'Connect', complete: !isNew },
@@ -255,9 +255,9 @@ export function ProviderConnectionForm({
               className={`provider-detail__progress-step${
                 step.complete ? ' provider-detail__progress-step--complete' : ''
               }`}
-// The step the connection is actually on, announced rather than
-// left to a colour and a private class name (review test-gap
-// note). Exactly one step carries it: the first incomplete one.
+              // The step the connection is actually on, announced rather than
+              // left to a colour and a private class name (review test-gap
+              // note). Exactly one step carries it: the first incomplete one.
               aria-current={
                 !step.complete && steps.slice(0, index).every((s) => s.complete)
                   ? 'step'
@@ -294,12 +294,12 @@ export function ProviderConnectionForm({
           {modelOptions.length > 0 ? (
             <strong>{modelOptions.length}</strong>
           ) : (
-/*
- * "Check to load" was instruction-shaped copy with no
-* control anywhere near it, and Test Connection neither populated
-* this nor changed the label. The catalogue load is a real
-* request; this is the button that makes it.
-*/
+            /*
+             * "Check to load" was instruction-shaped copy with no
+             * control anywhere near it, and Test Connection neither populated
+             * this nor changed the label. The catalogue load is a real
+             * request; this is the button that makes it.
+             */
             <button
               type="button"
               className="editor-btn"
@@ -320,7 +320,7 @@ export function ProviderConnectionForm({
         </div>
       </div>
 
- {/* : an unreachable endpoint carries a reason the
+      {/* : an unreachable endpoint carries a reason the
           operator needs just as much as a refusal does — "Station could not
           reach this provider" with what it tried, not a silent card. */}
       {!isNew &&
@@ -536,15 +536,15 @@ export function ProviderConnectionForm({
               </div>
             )}
           </div>
-{/*
- * archive#3652 — the check's own failure text asks for a default model
-* ("Set a default model on this connection … so Station can verify
-* chat directly"), and this form had nowhere to set one: the field
-* was API-only. A server with no `/models` route is exactly the
-* connection that needs it, because the one-token chat request is
-* the ONLY evidence that can take it past "Reachable — no model
-* catalog".
-*/}
+          {/*
+           * archive#3652 — the check's own failure text asks for a default model
+           * ("Set a default model on this connection … so Station can verify
+           * chat directly"), and this form had nowhere to set one: the field
+           * was API-only. A server with no `/models` route is exactly the
+           * connection that needs it, because the one-token chat request is
+           * the ONLY evidence that can take it past "Reachable — no model
+           * catalog".
+           */}
           <DefaultModelField
             id={defaultModelId}
             value={(form.config.defaultModel as string) ?? ''}
@@ -583,13 +583,13 @@ export function ProviderConnectionForm({
               </button>
             </div>
           )}
-{/*
- * the chat probe reads `config.defaultModel` for every
-* model provider, so an Anthropic or Google connection whose
-* catalogue comes back empty or unsupported is told to set a default
-* model too — and this form could only set an API key, which made
-* that instruction another API-only remediation.
-*/}
+          {/*
+           * the chat probe reads `config.defaultModel` for every
+           * model provider, so an Anthropic or Google connection whose
+           * catalogue comes back empty or unsupported is told to set a default
+           * model too — and this form could only set an API key, which made
+           * that instruction another API-only remediation.
+           */}
           <DefaultModelField
             id={defaultModelId}
             value={(form.config.defaultModel as string) ?? ''}
@@ -717,14 +717,14 @@ export function ProviderConnectionForm({
             </div>
           )}
 
-{/*
- * archive#3654 — an IAM policy may grant bedrock:InvokeModel and withhold
-* bedrock:ListFoundationModels, which is classified as "reachable,
-* no catalog" so the explicit test can go on to the one minimal chat
-* request that could still prove the connection works. That request
-* needs a model, and it is the same field the runtime already
-* resolves a model from when an agent names none.
-*/}
+          {/*
+           * archive#3654 — an IAM policy may grant bedrock:InvokeModel and withhold
+           * bedrock:ListFoundationModels, which is classified as "reachable,
+           * no catalog" so the explicit test can go on to the one minimal chat
+           * request that could still prove the connection works. That request
+           * needs a model, and it is the same field the runtime already
+           * resolves a model from when an agent names none.
+           */}
           <DefaultModelField
             id={defaultModelId}
             value={(form.config.defaultModel as string) ?? ''}
@@ -772,7 +772,7 @@ export function ProviderConnectionForm({
           >
             {isTesting ? 'Testing…' : 'Test Connection'}
           </button>
- {/* : the contract used to call this non-billable,
+          {/* : the contract used to call this non-billable,
               and the button said nothing at all. It asks the provider for its
               model list, and when there is no list to ask for it sends one
               minimal chat request — which some providers bill. Say so before
@@ -802,7 +802,7 @@ export function ProviderConnectionForm({
                 </>
               ) : (
                 <>
- {/* : "✗ Connection failed" with no reason, no HTTP
+                  {/* : "✗ Connection failed" with no reason, no HTTP
                       code and no remediation. The provider's own refusal
                       comes back with the result. */}
                   <CloseGlyph /> Connection failed

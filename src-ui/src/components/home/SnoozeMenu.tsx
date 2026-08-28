@@ -22,7 +22,7 @@ export interface SnoozeMenuProps {
  * already share (see the note above `.composer-mode-sheet__option` in
  * index.css) — so this menu adds zero new CSS. Loaded via `React.lazy` from
  * HomeView: the presets menu opens rarely enough that its weight does not
-* belong in the entry bundle.
+ * belong in the entry bundle.
  */
 export default function SnoozeMenu({
   itemTitle,

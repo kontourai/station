@@ -30,7 +30,7 @@ vi.mock('../../contexts/AgentsContext', async () => {
 import { buildAgentsViewItems } from '../agent-editor/agentsViewHelpers';
 
 /** An agent the server has NOT said anything about; `agentRunnability` reads
-*  an absent `available` as runnable, which is the "provisional Ready". */
+ *  an absent `available` as runnable, which is the "provisional Ready". */
 const AGENT = {
   slug: 'writer',
   name: 'Writer',
@@ -56,8 +56,8 @@ describe('the Agents rail during the cold-start readiness window', () => {
   });
 
   test('a reconciling catalog states no readiness at all', () => {
-// The whole point: no state word from a projection the server has not
-// recomputed for the runtime as it is now.
+    // The whole point: no state word from a projection the server has not
+    // recomputed for the runtime as it is now.
     expect(badgeOf(false)).not.toContain('Ready');
   });
 

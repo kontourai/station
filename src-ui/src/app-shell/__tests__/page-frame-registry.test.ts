@@ -73,7 +73,7 @@ describe('page-frame registry', () => {
     const types = ROUTES.map((route) => route.type);
     expect(new Set(types).size).toBe(types.length);
     for (const route of ROUTES) {
-// `undefined` would mean an unlisted route silently rendering unframed.
+      // `undefined` would mean an unlisted route silently rendering unframed.
       expect(resolvePageFrame(route)).not.toBeUndefined();
     }
   });
@@ -86,12 +86,12 @@ describe('page-frame registry', () => {
   });
 
   it('resolves a title for every framed route, so no header can paint empty', () => {
-// The frame renders above Suspense, so the window between a route being
-// requested and its chunk arriving is a window in which nothing has
-// published a title. A route reaching that window without one renders an
-// `<h1>` with nothing in it. This is the derivation that closes it: no
-// route type is exempt, so a new route cannot be added with a header and
-// no name for it.
+    // The frame renders above Suspense, so the window between a route being
+    // requested and its chunk arriving is a window in which nothing has
+    // published a title. A route reaching that window without one renders an
+    // `<h1>` with nothing in it. This is the derivation that closes it: no
+    // route type is exempt, so a new route cannot be added with a header and
+    // no name for it.
     for (const route of ROUTES) {
       const spec = resolvePageFrame(route);
       if (!spec) continue;
@@ -100,17 +100,17 @@ describe('page-frame registry', () => {
   });
 
   it('takes each fallback title from the surface the sidebar highlights', () => {
-// One source for the word: the header a route paints while it loads is
-// the label of the surface row the user just clicked, not a second copy
-// maintained in the frame table. A route whose title the VIEW publishes
-// (a remembered tab, the active Developer tab) still overrides it once
-// the view mounts — this is only what shows before that.
+    // One source for the word: the header a route paints while it loads is
+    // the label of the surface row the user just clicked, not a second copy
+    // maintained in the frame table. A route whose title the VIEW publishes
+    // (a remembered tab, the active Developer tab) still overrides it once
+    // the view mounts — this is only what shows before that.
     for (const route of ROUTES) {
       const spec = resolvePageFrame(route);
       const surface = APP_SURFACE_REGISTRY.getSurfaceForView(route);
       if (!spec || !surface) continue;
-// Routes that state their own title in the table keep it (Connections'
-// hub is 'Connections'; the ACP sub-routes are 'Provider setup').
+      // Routes that state their own title in the table keep it (Connections'
+      // hub is 'Connections'; the ACP sub-routes are 'Provider setup').
       const stated = new Set([
         'connections',
         'connections-acp',
@@ -128,8 +128,8 @@ describe('page-frame registry', () => {
   });
 
   it('names the two framed routes the sidebar has no surface for', () => {
-// Reached from inside a project, not from a sidebar row, so there is no
-// surface label to derive from — and no view has run yet to publish one.
+    // Reached from inside a project, not from a sidebar row, so there is no
+    // surface label to derive from — and no view has run yet to publish one.
     expect(
       resolvePageFrame({ type: 'project-session-board', slug: 's' })?.title,
     ).toBe('Board');
@@ -159,9 +159,9 @@ describe('page-frame registry', () => {
   });
 
   it('uses the same origin for narrow routes as full ones', () => {
-// `narrow` may only change the measure. Anything else here (a margin, a
-// centring rule) is how Notifications ended up at x=665 with a 400px
-// gutter beside every other page's x=264.
+    // `narrow` may only change the measure. Anything else here (a margin, a
+    // centring rule) is how Notifications ended up at x=665 with a 400px
+    // gutter beside every other page's x=264.
     for (const route of ROUTES) {
       const spec = resolvePageFrame(route);
       if (!spec) continue;
@@ -169,11 +169,11 @@ describe('page-frame registry', () => {
     }
   });
 
-// archive#4463: a top-level nav page gets
-// NO eyebrow. Every one of these routes IS the surface the sidebar links
-// to (not reached under a parent), so a static eyebrow here could only ever
-// restate the route's own title — the retired `GUIDANCE`-over-**Guidance**
-// pattern.
+  // archive#4463: a top-level nav page gets
+  // NO eyebrow. Every one of these routes IS the surface the sidebar links
+  // to (not reached under a parent), so a static eyebrow here could only ever
+  // restate the route's own title — the retired `GUIDANCE`-over-**Guidance**
+  // pattern.
   it('gives every top-level nav route no static eyebrow', () => {
     for (const type of [
       'agents',
@@ -196,10 +196,10 @@ describe('page-frame registry', () => {
     }
   });
 
-// Developer's eyebrow is a real parent (the title is the active tab's
-// name, never 'Developer' itself), so it is kept — but a subpage's static
-// eyebrow must be the parent ONLY, never the retired
-// 'Connections / <section>' breadcrumb-as-eyebrow that restated the title.
+  // Developer's eyebrow is a real parent (the title is the active tab's
+  // name, never 'Developer' itself), so it is kept — but a subpage's static
+  // eyebrow must be the parent ONLY, never the retired
+  // 'Connections / <section>' breadcrumb-as-eyebrow that restated the title.
   it('gives every subpage with a static eyebrow just its parent, not a breadcrumb trail', () => {
     expect(resolvePageFrame({ type: 'developer' })?.eyebrow).toBe('Developer');
     for (const route of [

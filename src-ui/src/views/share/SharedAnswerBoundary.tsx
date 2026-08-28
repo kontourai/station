@@ -4,7 +4,7 @@ import { reloadSharePage } from './share-token';
 
 /**
  * Crash and chunk-load boundary for the shared-answer permalink page
-* (archive#1423).
+ * (archive#1423).
  *
  * The share page is mounted ABOVE the app shell, so none of the app's own
  * boundaries sit between it and the root. Without this, a failed lazy-chunk
@@ -72,7 +72,7 @@ class SharedAnswerErrorBoundary extends Component<
             perfectly valid — nothing about the answer is being shown, because
             nothing was successfully read.
           </p>
-{/* : `reloadSharePage`, never a bare `location.reload`. The
+          {/* : `reloadSharePage`, never a bare `location.reload`. The
               page clears the token out of the address bar as soon as it has
               read it, so a plain reload would land on the missing-token
               state — a recovery button guaranteed to fail. */}

@@ -261,10 +261,10 @@ describe('useActiveChatTranscript', () => {
   });
 
   test('carries an attachment reference through to the rendered part (#3385)', async () => {
-// The exact shape a byte-budgeted window returns after archive#3374: the
-// attachment's identity plus a content reference, and no bytes. If the
-// reference is dropped anywhere along this mapping, the chip can never
-// become a picture again and nothing else in the suite notices.
+    // The exact shape a byte-budgeted window returns after archive#3374: the
+    // attachment's identity plus a content reference, and no bytes. If the
+    // reference is dropped anywhere along this mapping, the chip can never
+    // become a picture again and nothing else in the suite notices.
     const blobRef = `sha256-${'a'.repeat(64)}`;
     fetchWindow.mockResolvedValueOnce({
       protocolVersion: 1,
@@ -301,7 +301,7 @@ describe('useActiveChatTranscript', () => {
       mediaType: 'image/png',
       name: 'screen.png',
     });
-// No bytes came down this path; the reference is the only way back to them.
+    // No bytes came down this path; the reference is the only way back to them.
     expect(filePart?.url).toBeUndefined();
   });
 
@@ -1152,9 +1152,9 @@ describe('useActiveChatTranscript live failure marker (UX audit V3)', () => {
     ).toBe(true);
   });
 
-// dedupe was global text matching, so a
-// second turn failing the same way had its card suppressed by the FIRST
-// turn's projected row. Turn identity is what decides.
+  // dedupe was global text matching, so a
+  // second turn failing the same way had its card suppressed by the FIRST
+  // turn's projected row. Turn identity is what decides.
   test('keeps a second turn failure the projection renders only for the first turn', async () => {
     fetchWindow.mockResolvedValue({
       protocolVersion: 1,

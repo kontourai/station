@@ -45,8 +45,8 @@ export function prettifyModelId(modelId: string): string {
     .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
     .join(' ');
   const label = oneM ? `${base} (1M)` : base;
-// 'claude-' prettifies to '' — a stripped prefix and nothing else. A blank
- // Home card is worse than the raw id (archive#3391).
+  // 'claude-' prettifies to '' — a stripped prefix and nothing else. A blank
+  // Home card is worse than the raw id (archive#3391).
   return label.trim() || id;
 }
 
@@ -73,9 +73,9 @@ export function modelDisplayLabel(
   const known = catalog.find(
     (model) => model.id === id || model.originalId === id,
   );
-// `|| id` is the last guard: a catalog entry with an empty `name` would
-// otherwise render blank, and an entry that exists is not a reason to show
-// nothing.
+  // `|| id` is the last guard: a catalog entry with an empty `name` would
+  // otherwise render blank, and an entry that exists is not a reason to show
+  // nothing.
   return known?.name || prettifyModelId(id) || id;
 }
 
@@ -103,7 +103,7 @@ export function resolvedModelLabel(
 
 export type NewChatModelChoice = {
   modelId?: string;
-/** Exact Station model-connection instance selected before launch. */
+  /** Exact Station model-connection instance selected before launch. */
   providerId?: string;
   providerType?: string;
   providerOptions: Record<string, unknown>;

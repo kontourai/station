@@ -36,29 +36,29 @@ const loadShareAnswerPairingPrompt = () =>
  *
  * Two honest-state rules this button holds:
  *
-*  - It reads the session and turn ids from the ENVELOPE, never from the
-*    surrounding row's props. The envelope's ids are the exact correlation
+ *  - It reads the session and turn ids from the ENVELOPE, never from the
+ *    surrounding row's props. The envelope's ids are the exact correlation
  * archive#1410 establishes; a positional or prop-derived id could mint a
-*    permalink to a different answer than the one the operator clicked.
-*  - **The permalink is composed HERE, from `window.location.origin`**, and
-*    the server never sends one. It cannot: the browser talks to the UI port,
-*    whose proxy rewrites `Host` to the backend before forwarding, and the
-*    backend serves neither the SPA nor the `/share` route — so a
-*    server-composed link is dead on arrival. `window.location.origin` is the
-*    address the operator is demonstrably reaching Station on, which is the
-*    only origin that can be true.
-*  - The result is reported inline and STAYS on screen, not in a toast. The
-*    token exists exactly once — the server keeps only its digest — so a
-*    notification that dismisses itself could take the only copy of a
-*    capability with it. For the same reason a failed clipboard write is
-*    never reported as a copy: the link is shown either way, and the
-*    sentence says which happened.
+ *    permalink to a different answer than the one the operator clicked.
+ *  - **The permalink is composed HERE, from `window.location.origin`**, and
+ *    the server never sends one. It cannot: the browser talks to the UI port,
+ *    whose proxy rewrites `Host` to the backend before forwarding, and the
+ *    backend serves neither the SPA nor the `/share` route — so a
+ *    server-composed link is dead on arrival. `window.location.origin` is the
+ *    address the operator is demonstrably reaching Station on, which is the
+ *    only origin that can be true.
+ *  - The result is reported inline and STAYS on screen, not in a toast. The
+ *    token exists exactly once — the server keeps only its digest — so a
+ *    notification that dismisses itself could take the only copy of a
+ *    capability with it. For the same reason a failed clipboard write is
+ *    never reported as a copy: the link is shown either way, and the
+ *    sentence says which happened.
  */
 
 export interface ShareAnswerButtonProps {
-/** The same value the sibling provenance card receives. */
+  /** The same value the sibling provenance card receives. */
   provenance: unknown;
-/** Defaults to the live UI origin; injectable for deterministic host tests. */
+  /** Defaults to the live UI origin; injectable for deterministic host tests. */
   uiOrigin?: string;
 }
 
@@ -79,16 +79,16 @@ export function ShareAnswerButton({
     permalink: string;
     copied: boolean;
   } | null>(null);
-// archive#2652 redesign: the unshareable-origin explanation is USEFUL, but
-// printing it under every answer forever made the share affordance the
-// loudest thing in the turn. It now appears when the user actually reaches
-// for the control — the moment the sentence answers a question they have.
+  // archive#2652 redesign: the unshareable-origin explanation is USEFUL, but
+  // printing it under every answer forever made the share affordance the
+  // loudest thing in the turn. It now appears when the user actually reaches
+  // for the control — the moment the sentence answers a question they have.
   const [showUnavailable, setShowUnavailable] = useState(false);
   const ids = idsFrom(provenance);
   const origin = deriveShareUiOrigin(uiOrigin);
 
-// An envelope this build cannot read cannot be correlated to a turn, and a
-// share of an uncorrelated turn is a link to nothing. No button.
+  // An envelope this build cannot read cannot be correlated to a turn, and a
+  // share of an uncorrelated turn is a link to nothing. No button.
   if (!ids) return null;
 
   const share = () => {
@@ -105,8 +105,8 @@ export function ShareAnswerButton({
           await navigator.clipboard.writeText(permalink);
           copied = true;
         } catch {
-// Reported below as "not copied", never swallowed into a claim
-// that it was: a browser can refuse the clipboard outright.
+          // Reported below as "not copied", never swallowed into a claim
+          // that it was: a browser can refuse the clipboard outright.
           copied = false;
         }
         setMinted({ permalink, copied });
@@ -116,7 +116,7 @@ export function ShareAnswerButton({
 
   return (
     <span className="share-answer">
-{/* An unverified origin keeps the control focusable (`aria-disabled`,
+      {/* An unverified origin keeps the control focusable (`aria-disabled`,
           not `disabled`) so activating it can EXPLAIN itself — a disabled
           button can neither be reached by keyboard nor say why it does
           nothing. The explanation is NOT an always-visible alert beside every
@@ -150,7 +150,7 @@ export function ShareAnswerButton({
           {errorText(mint.error)}
         </span>
       )}
- {/* archive#1423 put minting behind a presented credential, so an
+      {/* archive#1423 put minting behind a presented credential, so an
           operator whose browser was never paired hits the auth boundary
           rather than the route. Only the 401 gets the pairing path: a 403
           means a credential WAS presented and refused, and telling that
@@ -170,7 +170,7 @@ export function ShareAnswerButton({
               ? 'Share link copied. It expires in 7 days, and you can revoke it in Settings.'
               : 'Share link created. This browser would not let Station copy it, so copy it from here — Station keeps no second copy.'}
           </span>
-{/* Shown once and never re-fetchable: the server stores only a
+          {/* Shown once and never re-fetchable: the server stores only a
               digest of the token, so this element is the only place the link
               exists after the response is gone. */}
           <output className="share-answer__permalink">

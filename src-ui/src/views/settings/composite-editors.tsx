@@ -41,41 +41,41 @@ export const COMPOSITE_EDITORS: Readonly<
  * Composite-kind `APP_SETTINGS_REGISTRY` keys deliberately left with no
  * Settings UI this slice:
  * - `agentConnections`: per-agent connection override dictionary — belongs
-*   with the entity it configures (docs/design/settings-architecture.md's
+ *   with the entity it configures (docs/design/settings-architecture.md's
  * "Entity" scope rule), not the global Station scope section.
  * - `templateVariables`: already has a working bespoke editor in
-*   `AgentDefaultsSection.tsx` (not routed through the generic registry-row
-*   path at all) — deferred here only for this completeness classification,
-*   not because it lacks UI.
+ *   `AgentDefaultsSection.tsx` (not routed through the generic registry-row
+ *   path at all) — deferred here only for this completeness classification,
+ *   not because it lacks UI.
  * - `firstRun`: progress state the first-run chapter writes about itself
-*   (`FirstRunHomeChapter.tsx`), not a preference. A JSON editor here would
-*   let an operator declare the run completed without it having run, which is
-*   a label nothing derived; re-offering the run has its own control (Home's
-*   "Set up Station" card).
+ *   (`FirstRunHomeChapter.tsx`), not a preference. A JSON editor here would
+ *   let an operator declare the run completed without it having run, which is
+ *   a label nothing derived; re-offering the run has its own control (Home's
+ *   "Set up Station" card).
  * - `userProfile`: already has its purpose-built first-run editor in
-*   `AboutYouStep.tsx`; exposing a generic composite editor here would bypass
-*   its role/comfort vocabulary and reach disclosure.
+ *   `AboutYouStep.tsx`; exposing a generic composite editor here would bypass
+ *   its role/comfort vocabulary and reach disclosure.
  * - `fleetContribution` (archive#1398): the opt-in ships ahead of
-*   any surface that can present it honestly. Its per-connection toggle
-*   belongs next to the model connections it names — global Station scope
-*   is the wrong home for a per-entity allowlist (same rule as
-*   `agentConnections`) — and the degraded states it produces are rendered
+ *   any surface that can present it honestly. Its per-connection toggle
+ *   belongs next to the model connections it names — global Station scope
+ *   is the wrong home for a per-entity allowlist (same rule as
+ *   `agentConnections`) — and the degraded states it produces are rendered
  * by, which owns "the §4.5 diagnostic codes rendered wherever
-*   fleet models appear". A generic composite JSON editor here would let an
-*   operator name a connection with no feedback about whether it is
-*   actually being offered.
-* - `contribution` (archive#1500.5): the scoped contribution contract
+ *   fleet models appear". A generic composite JSON editor here would let an
+ *   operator name a connection with no feedback about whether it is
+ *   actually being offered.
+ * - `contribution` (archive#1500.5): the scoped contribution contract
  * ships with NO consumer at all — owns the authenticated projection
-* route, and.5's acceptance criteria exclude a UI on purpose. A
-*   generic composite JSON editor here would be worse than nothing twice over:
-*   it would let an operator offer a repo, an agent, or a billable model
-*   connection to a project with no feedback about whether anything is being
-*   offered (`fleetContribution`'s reason, one axis wider), and it would do so
+ * route, and.5's acceptance criteria exclude a UI on purpose. A
+ *   generic composite JSON editor here would be worse than nothing twice over:
+ *   it would let an operator offer a repo, an agent, or a billable model
+ *   connection to a project with no feedback about whether anything is being
+ *   offered (`fleetContribution`'s reason, one axis wider), and it would do so
  * for a per-space allowlist whose home is the space — §4.6 is explicit that
-*   the contribution question is asked "at the moment you first join or create
-*   a shared space", never as a global settings row. This entry DECLARES the
-*   absence rather than leaving the key unclassified, which is what this gate
-*   exists to prevent.
+ *   the contribution question is asked "at the moment you first join or create
+ *   a shared space", never as a global settings row. This entry DECLARES the
+ *   absence rather than leaving the key unclassified, which is what this gate
+ *   exists to prevent.
  */
 export const DEFERRED_COMPOSITE_KEYS: readonly string[] = [
   'agentConnections',

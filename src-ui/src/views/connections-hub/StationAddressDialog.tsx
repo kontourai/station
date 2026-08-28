@@ -1,5 +1,5 @@
 /**
-* "Reach another Station" — the chooser's second branch.
+ * "Reach another Station" — the chooser's second branch.
  *
  * This is the old inline "Add Station" form, which sat unlabelled directly
  * below the "Add computer" button and bypassed the very chooser whose copy
@@ -25,7 +25,7 @@ import { knownEnvironmentRegistry } from './known-environment-registry';
  * Non-negotiable: the add itself never waits on this, and a failed, slow or
  * malformed response degrades the entry to silently unidentified rather than
  * surfacing an error — reachability is never a precondition for the
-* local-first add path.
+ * local-first add path.
  */
 async function verifyAndAttachIdentity(
   registry: KnownEnvironmentRegistry,
@@ -46,7 +46,7 @@ async function verifyAndAttachIdentity(
       registry.attachEnvironmentDescriptor(id, environmentId);
     }
   } catch {
-// Unreachable, slow, or malformed — leave the entry unidentified.
+    // Unreachable, slow, or malformed — leave the entry unidentified.
   }
 }
 
@@ -65,7 +65,7 @@ export function StationAddressDialog({ onClose }: { onClose: () => void }) {
         httpBaseUrl: httpBaseUrl.trim(),
         source: 'manual',
       });
-// Fire-and-forget: the add above already committed synchronously.
+      // Fire-and-forget: the add above already committed synchronously.
       void verifyAndAttachIdentity(
         registry,
         created.id,

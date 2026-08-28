@@ -19,7 +19,7 @@ import { ActivityWorkspacePaneBindingProvider } from './activity/ActivityWorkspa
  *
  * A route is a placement, not an identity (`docs/design/pane-or-shell.md`):
  * this host mounts the pane renderer with the canonical occurrence directly
-* no `WorkspacePaneHost`, because a standalone route placement has exactly
+ * no `WorkspacePaneHost`, because a standalone route placement has exactly
  * one code-determined occupant and no user-arrangeable document. The
  * built-in renders because `selectClientWorkspacePaneRenderer` admitted it
  * for this build's fixed Activity descriptor, not because this file names a
@@ -50,11 +50,11 @@ export function ActivityView({
       instance: WORKSPACE_ACTIVITY_PANE_INSTANCE,
     },
   );
-// While Activity's canonical occurrence occupies the ambient dock, this
-// route renders the away state instead of a second live copy of the pane
- // (archive#4090). Derived from the host's own published occupant state
-// through `isAmbientDockOccupant` — never a route-local flag — so choosing
-// another dock occupant clears this state without route-side bookkeeping.
+  // While Activity's canonical occurrence occupies the ambient dock, this
+  // route renders the away state instead of a second live copy of the pane
+  // (archive#4090). Derived from the host's own published occupant state
+  // through `isAmbientDockOccupant` — never a route-local flag — so choosing
+  // another dock occupant clears this state without route-side bookkeeping.
   if (isAmbientDockOccupant(dock, WORKSPACE_ACTIVITY_PANE_INSTANCE)) {
     return (
       <WorkspacePaneAwayState
@@ -67,8 +67,8 @@ export function ActivityView({
     selection.candidate.source === 'primary' &&
     selection.candidate.renderer.kind === 'builtin-component';
   if (!builtinSelected) {
-// No fallback when selection refuses, deliberately (Home's stance):
-// rendering the surface anyway would make the selection decorative.
+    // No fallback when selection refuses, deliberately (Home's stance):
+    // rendering the surface anyway would make the selection decorative.
     return (
       <ErrorState
         title="Activity is unavailable"

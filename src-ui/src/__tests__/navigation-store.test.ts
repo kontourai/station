@@ -213,7 +213,7 @@ describe('normalizeDockMode (legacy persisted-value migration, #1043)', () => {
 /**
  * archive#settings-revamp (docs/design/settings-architecture.md §3
  * "Chat/session", §6): `parseUrl`'s `dockMode` resolution gains
-* a device-scope fallback, and `setDockMode` (the convergence point for
+ * a device-scope fallback, and `setDockMode` (the convergence point for
  * both ⌘⇧M and the chat settings panel) writes it on every explicit choice.
  * Precedence pinned here: URL param > device setting > registry default.
  */
@@ -277,8 +277,8 @@ describe('navigationStore dockMode device-scope fallback', () => {
   test('a later navigation with no URL param and no in-memory override picks up the persisted device default (last-set-wins-across-sessions)', () => {
     navigationStore.setDockMode('right');
 
-// Simulate a fresh navigation with neither an explicit URL param nor a
-// layout's quiet override in play (e.g. a reload of a non-layout route).
+    // Simulate a fresh navigation with neither an explicit URL param nor a
+    // layout's quiet override in play (e.g. a reload of a non-layout route).
     navigationStore.dockModeOverride = null;
     navigationStore.navigate('/', { dockSlotPlacement: null });
 
@@ -287,7 +287,7 @@ describe('navigationStore dockMode device-scope fallback', () => {
 });
 
 /**
-* archive#settings-revamp: `parseUrl` only ran
+ * archive#settings-revamp: `parseUrl` only ran
  * at navigation time, so an external device-store change (Settings →
  * Import, or a cross-tab write) never reached a mounted view's `dockMode`
  * until the next unrelated navigation happened to re-run it. `navigationStore`
@@ -333,7 +333,7 @@ describe('navigationStore dockMode subscribes to live device-store changes (slic
 
     deviceSettingsStore.set('dockSlotPlacement', 'bottom');
 
-// dockModeOverride still governs — unaffected by the device-store write.
+    // dockModeOverride still governs — unaffected by the device-store write.
     expect(navigationStore.getSnapshot().dockMode).toBe('right');
   });
 
@@ -360,7 +360,7 @@ describe('navigationStore dockMode subscribes to live device-store changes (slic
   });
 
   test('a same-value device-store change does not notify subscribers (no-op propagates from the store)', () => {
-// Registry default is already 'bottom' — set is a true no-op.
+    // Registry default is already 'bottom' — set is a true no-op.
     const listener = vi.fn();
     const unsubscribe = navigationStore.subscribe(listener);
 
@@ -378,12 +378,12 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
   });
 
   test('drops the source route’s params when the pathname changes', () => {
-// Measured, three independent instances in one run:
-//   /settings?view=notifications  → /notifications?view=notifications
-//   /settings?view=knowledge      → /connections/knowledge?view=knowledge
-//   /settings?view=developer-tools → ⌘K → /activity?view=developer-tools
-// Harmless only while the destination ignores what it inherited;
-// /notifications already reads ?category= from the URL.
+    // Measured, three independent instances in one run:
+    //   /settings?view=notifications  → /notifications?view=notifications
+    //   /settings?view=knowledge      → /connections/knowledge?view=knowledge
+    //   /settings?view=developer-tools → ⌘K → /activity?view=developer-tools
+    // Harmless only while the destination ignores what it inherited;
+    // /notifications already reads ?category= from the URL.
     window.history.replaceState({}, '', '/settings?view=notifications');
     navigationStore.navigate('/notifications');
     expect(window.location.pathname + window.location.search).toBe(
@@ -404,8 +404,8 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
   });
 
   test('keeps shell-scoped params, which describe the dock and not the route', () => {
-// The chat dock is persistent chrome: it does not close, un-maximize or
-// change font size because the page behind it changed.
+    // The chat dock is persistent chrome: it does not close, un-maximize or
+    // change font size because the page behind it changed.
     window.history.replaceState(
       {},
       '',

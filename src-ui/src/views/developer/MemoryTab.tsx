@@ -84,8 +84,8 @@ export default function MemoryTab() {
         <Tabs
           id={TABS_ID}
           aria-label="Knowledge roots"
-// Automatic activation: switching the selected root is a cheap
-// in-place re-render (no route push), matching Guidance/Registry.
+          // Automatic activation: switching the selected root is a cheap
+          // in-place re-render (no route push), matching Guidance/Registry.
           activation="automatic"
           items={roots.map((root) => ({
             key: root.id,
@@ -97,16 +97,16 @@ export default function MemoryTab() {
       ) : null}
 
       {(() => {
-// archive#771: `!rootId`/`graph` falsy also cover a settled query
-// error, which used to render as "no memory stores are configured" /
-// "no recall graph available" — a fabricated negative fact, not the
-// read failure that actually happened.
-//
-// archive#771: both error branches are now
-// gated on the data ALSO being absent — a refetch failure with
-// cached roots/graph on hand must keep rendering them, never blank a
- // working tab behind an error card (the archive#769 contract: ProjectPage
-// renders cached data with no banner on a refetch failure).
+        // archive#771: `!rootId`/`graph` falsy also cover a settled query
+        // error, which used to render as "no memory stores are configured" /
+        // "no recall graph available" — a fabricated negative fact, not the
+        // read failure that actually happened.
+        //
+        // archive#771: both error branches are now
+        // gated on the data ALSO being absent — a refetch failure with
+        // cached roots/graph on hand must keep rendering them, never blank a
+        // working tab behind an error card (the archive#769 contract: ProjectPage
+        // renders cached data with no banner on a refetch failure).
         const detail = rootsLoading ? (
           <Skeleton variant="block" />
         ) : rootsError && roots.length === 0 ? (
@@ -144,8 +144,8 @@ export default function MemoryTab() {
         ) : (
           <p>The selected memory store has no recall graph available.</p>
         );
-// Only a real tab (roots.length > 1) gets a tabpanel — with one
-// root there is no tablist for it to be a panel OF.
+        // Only a real tab (roots.length > 1) gets a tabpanel — with one
+        // root there is no tablist for it to be a panel OF.
         if (roots.length <= 1 || !activeRoot) return detail;
         return (
           <div

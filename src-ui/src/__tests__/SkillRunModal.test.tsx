@@ -74,8 +74,8 @@ describe('SkillRunModal', () => {
     expect(onRun).toHaveBeenCalledWith('Ship ABC-1 to staging', 'station');
   });
 
-// clearing a field means "use the default" — the value the
-// placeholder shows — not "suppress the default until the modal reopens".
+  // clearing a field means "use the default" — the value the
+  // placeholder shows — not "suppress the default until the modal reopens".
   test('a cleared field falls back to its declared default', () => {
     const onRun = vi.fn();
     const defaulted = { name: 'release-check', body: 'Ship to {{env}}' };

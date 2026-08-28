@@ -152,8 +152,8 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
         ],
       }),
     );
-// The model-picker query is still the loading authority for an external
-// runtime catalog, even while the unrelated global list is settled.
+    // The model-picker query is still the loading authority for an external
+    // runtime catalog, even while the unrelated global list is settled.
     expect(externalResult.result.current.modelsLoading).toBe(true);
 
     queryState.agentConnections = [
@@ -195,10 +195,10 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
   });
 
   test('bindingStatus and effectiveModels keep referential identity across an unrelated re-render', () => {
-// `availableModels`/`agents`/`sessions` module-level arrays are passed by
-// the same reference on rerender — this is the case a parent re-render
-// that doesn't touch any of this hook's real inputs (e.g. a resize
-// drag's per-frame render) reproduces.
+    // `availableModels`/`agents`/`sessions` module-level arrays are passed by
+    // the same reference on rerender — this is the case a parent re-render
+    // that doesn't touch any of this hook's real inputs (e.g. a resize
+    // drag's per-frame render) reproduces.
     const { result, rerender } = renderVM('s1');
     const firstBinding = result.current.bindingStatus;
     const firstModels = result.current.effectiveModels;
@@ -252,14 +252,14 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
     queryState.agentConnections = [];
   });
 
-// archive#3344. The composer's image gate used to be
-// `selectedModelSupportsImages || runtimeConnection.capabilities.includes(
-// 'image-input') || agent.supportsAttachments`, and an ordinary Station
-// chat satisfies none of those: no AWS credentials means an empty Bedrock
-// model catalog, an unbound Station agent has no engine connection at all,
-// and nothing on the server ever wrote `supportsAttachments`. The engine
-// that relays images to /chat (archive#1885) was the one engine whose
-// pastes were refused.
+  // archive#3344. The composer's image gate used to be
+  // `selectedModelSupportsImages || runtimeConnection.capabilities.includes(
+  // 'image-input') || agent.supportsAttachments`, and an ordinary Station
+  // chat satisfies none of those: no AWS credentials means an empty Bedrock
+  // model catalog, an unbound Station agent has no engine connection at all,
+  // and nothing on the server ever wrote `supportsAttachments`. The engine
+  // that relays images to /chat (archive#1885) was the one engine whose
+  // pastes were refused.
   test('a Station-engine chat with no engine connection can attach images', () => {
     queryState.agentConnections = [];
     queryState.modelImageSupport = 'unknown';
@@ -269,11 +269,11 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
     expect(result.current.imageAttachmentRefusal).toBeUndefined();
   });
 
-// A live Station chat carries an `agentConnectionId` that names no loaded
-// engine connection — the shape the browser fixture reproduced. The
-// connection-record resolver answers `unknown` there, which is right for a
-// connected engine whose record is missing and wrong for Station, whose
-// engine the session names itself.
+  // A live Station chat carries an `agentConnectionId` that names no loaded
+  // engine connection — the shape the browser fixture reproduced. The
+  // connection-record resolver answers `unknown` there, which is right for a
+  // connected engine whose record is missing and wrong for Station, whose
+  // engine the session names itself.
   test('a Station-engine chat whose agentConnectionId matches no loaded connection can still attach images', () => {
     queryState.agentConnections = [];
     queryState.modelImageSupport = 'unknown';
@@ -538,12 +538,12 @@ describe('useChatDockViewModel — station#1146 session directory', () => {
     expect(result.current.sessionDisplayCwd).toBe('~/dev/project-root');
   });
 
-/**
-* archive#3213: the same correlation now also carries the session's
-* lifecycle to `ChatDockBody`'s failure banner. Without this the dock has no
-* record to fold and renders nothing on a cold arrival at a failed session —
-* the reported defect.
-*/
+  /**
+   * archive#3213: the same correlation now also carries the session's
+   * lifecycle to `ChatDockBody`'s failure banner. Without this the dock has no
+   * record to fold and renders nothing on a cold arrival at a failed session —
+   * the reported defect.
+   */
   test('exposes the correlated server session record, not just its cwd', () => {
     const failed = {
       threadId: chatSession.id,
@@ -567,11 +567,11 @@ describe('useChatDockViewModel — station#1146 session directory', () => {
     expect(result.current.activeOrchestrationSession).toBeNull();
   });
 
- // `orchestrationSessions` is `[]` while the query is pending
-// and while it has failed, so "not in this array" answered a different
-// question from "the serving Station has no such session". The dock read
-// the first as the second and claimed "Session record missing" on every
-// reload of a healthy session.
+  // `orchestrationSessions` is `[]` while the query is pending
+  // and while it has failed, so "not in this array" answered a different
+  // question from "the serving Station has no such session". The dock read
+  // the first as the second and claimed "Session record missing" on every
+  // reload of a healthy session.
   test.each([
     ['pending', 'pending'],
     ['error', 'error'],

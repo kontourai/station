@@ -18,8 +18,8 @@ async function awaitNativePairingExchange<T>(
       request,
       new Promise<never>((_, reject) => {
         abort = () => {
-// Cancellation is best effort at the IPC boundary. The operation id
-// remains host-owned, so this cannot cancel an unrelated exchange.
+          // Cancellation is best effort at the IPC boundary. The operation id
+          // remains host-owned, so this cannot cancel an unrelated exchange.
           void invoke('station_native_pairing_exchange_cancel', {
             operationId,
           }).catch(() => undefined);
@@ -65,11 +65,11 @@ async function awaitNativePairingExchange<T>(
  */
 function toPairingTransportError(error: unknown): Error {
   const { code, message } = readNativeCommandError(error);
- // archive#1818 1 : `code` stays `undefined` for an
-// uncoded (not-yet-converted, or legacy) rejection rather than falling
-// back to the raw message text — putting prose in `.code` would let a
-// future `.code`-switching consumer accidentally match on a sentence,
-// reopening the FFI-boundary prose-matching this mechanism replaced.
+  // archive#1818 1 : `code` stays `undefined` for an
+  // uncoded (not-yet-converted, or legacy) rejection rather than falling
+  // back to the raw message text — putting prose in `.code` would let a
+  // future `.code`-switching consumer accidentally match on a sentence,
+  // reopening the FFI-boundary prose-matching this mechanism replaced.
   const wrapped = Object.assign(
     new Error(message),
     code === undefined ? {} : { code },

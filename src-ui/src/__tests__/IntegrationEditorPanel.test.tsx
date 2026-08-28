@@ -249,10 +249,10 @@ describe('IntegrationEditorPanel', () => {
     ).toBeTruthy();
   });
 
-// Audit : `station-docs`/`station-control` persist as `kind: 'mcp'`,
-// so the panel's `kind === 'builtin'` test was false for them and it
-// offered a Delete the runtime silently undid on its next start. The
-// built-in fact is now server-derived (`builtin`).
+  // Audit : `station-docs`/`station-control` persist as `kind: 'mcp'`,
+  // so the panel's `kind === 'builtin'` test was false for them and it
+  // offered a Delete the runtime silently undid on its next start. The
+  // built-in fact is now server-derived (`builtin`).
   test('a runtime-registered built-in is tagged and cannot be deleted', () => {
     render(
       <IntegrationEditorPanel
@@ -320,8 +320,8 @@ describe('IntegrationEditorPanel', () => {
     expect(screen.queryByText('Built in')).toBeNull();
   });
 
-// the live catalogue is empty until a session opens a client, so a
-// server could report "1 tool" that no surface could ever name.
+  // the live catalogue is empty until a session opens a client, so a
+  // server could report "1 tool" that no surface could ever name.
   test('names the tools the last probe saw when the live catalogue is empty', () => {
     render(
       <IntegrationEditorPanel

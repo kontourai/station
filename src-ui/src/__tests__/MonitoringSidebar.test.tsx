@@ -104,12 +104,12 @@ describe('MonitoringSidebar', () => {
     );
   }
 
-// These cards were selectable by mouse only. They are the filter control
-// for the whole monitoring view, so a keyboard user could not filter at
-// all. The keyboard control is the agent-header ROW, not the card: the
-// running card contains the conversation controls, and a button role on
-// the card would flatten them to presentational in accessibility APIs
-// 
+  // These cards were selectable by mouse only. They are the filter control
+  // for the whole monitoring view, so a keyboard user could not filter at
+  // all. The keyboard control is the agent-header ROW, not the card: the
+  // running card contains the conversation controls, and a button role on
+  // the card would flatten them to presentational in accessibility APIs
+  //
   test('the agent-header row is the keyboard control, and Shift carries through', () => {
     const onAgentClick =
       vi.fn<(agentSlug: string, event: ActivateEvent) => void>();
@@ -119,8 +119,8 @@ describe('MonitoringSidebar', () => {
     );
 
     const card = screen.getByText('Runtime Agent').closest('.agent-card');
-// The card is a mouse convenience surface, NOT a button — a button here
-// would swallow the conversation controls nested inside it.
+    // The card is a mouse convenience surface, NOT a button — a button here
+    // would swallow the conversation controls nested inside it.
     expect(card?.getAttribute('role')).toBeNull();
     expect(card?.getAttribute('tabindex')).toBeNull();
 
@@ -132,8 +132,8 @@ describe('MonitoringSidebar', () => {
     expect(onAgentClick).toHaveBeenCalledTimes(1);
     expect(onAgentClick.mock.calls[0][0]).toBe('runtime-agent');
 
-// handleAgentClick branches on shiftKey to add to the selection rather
-// than replace it; the keyboard path must be able to reach that branch.
+    // handleAgentClick branches on shiftKey to add to the selection rather
+    // than replace it; the keyboard path must be able to reach that branch.
     fireEvent.keyDown(header as Element, { key: 'Enter', shiftKey: true });
     expect(onAgentClick.mock.calls[1][1].shiftKey).toBe(true);
   });
@@ -146,9 +146,9 @@ describe('MonitoringSidebar', () => {
       vi.fn<(conversationId: string, agentSlug: string) => void>(),
     );
 
-// The card's own onClick covers clicks anywhere on it; the header's
-// activation stops propagation so a click there is one selection, not a
-// select-then-immediately-deselect toggle.
+    // The card's own onClick covers clicks anywhere on it; the header's
+    // activation stops propagation so a click there is one selection, not a
+    // select-then-immediately-deselect toggle.
     fireEvent.click(
       screen.getByText('Runtime Agent').closest('.agent-header') as Element,
     );
@@ -162,10 +162,10 @@ describe('MonitoringSidebar', () => {
       vi.fn<(conversationId: string, agentSlug: string) => void>();
     renderSidebar(onAgentClick, onConversationClick);
 
-// The conversation item sits inside the card's mouse click surface, so
-// an activation that failed to stop propagation would fire both
-// handlers. Mouse clicks already guarded this; the keyboard path has to
-// guard it too.
+    // The conversation item sits inside the card's mouse click surface, so
+    // an activation that failed to stop propagation would fire both
+    // handlers. Mouse clicks already guarded this; the keyboard path has to
+    // guard it too.
     fireEvent.keyDown(
       screen.getByText('abc12345...').closest('.conversation-item') as Element,
       { key: 'Enter' },
@@ -184,9 +184,9 @@ describe('MonitoringSidebar', () => {
       vi.fn<(conversationId: string, agentSlug: string) => void>(),
     );
 
-// The regression this guards: an ancestor with role="button" flattens
-// descendants to presentational, so "Active Chats" and its conversation
-// controls would never be announced.
+    // The regression this guards: an ancestor with role="button" flattens
+    // descendants to presentational, so "Active Chats" and its conversation
+    // controls would never be announced.
     let node = screen
       .getByText('abc12345...')
       .closest('.conversation-item')?.parentElement;

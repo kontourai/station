@@ -35,7 +35,7 @@ function claimFirstSight(id: string): boolean {
   if (revealedIds.has(id)) return false;
   revealedIds.add(id);
   if (revealedIds.size > REVEALED_IDS_CAP) {
-// FIFO eviction: drop the oldest-seen identity.
+    // FIFO eviction: drop the oldest-seen identity.
     const oldest = revealedIds.values().next().value;
     if (oldest !== undefined) revealedIds.delete(oldest);
   }
@@ -63,9 +63,9 @@ export function resetRevealedIdsForTest(): void {
  * entrance is skipped rather than replayed — the safe failure direction.
  */
 export function useRevealOnce(id: string | undefined): string {
-// Latched per id so a recycled component instance re-used for a DIFFERENT
-// row (virtualizer) re-evaluates, while re-renders for the same id stay
-// stable.
+  // Latched per id so a recycled component instance re-used for a DIFFERENT
+  // row (virtualizer) re-evaluates, while re-renders for the same id stay
+  // stable.
   const claimedByIdRef = useRef<Map<string, boolean>>(new Map());
   if (!id) return '';
   let claimed = claimedByIdRef.current.get(id);

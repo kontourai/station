@@ -25,7 +25,7 @@ import { describe, expect, test } from 'vitest';
  * version, so a third fork fails here instead of shipping a restyle.
  *
  * Deliberately TOP-LEVEL only. An app-level override inside an `@media` block
-* e.g. index.css raising `.workspace-header__prompt-btn` to a 44px touch
+ * e.g. index.css raising `.workspace-header__prompt-btn` to a 44px touch
  * target on coarse pointers — is real layering, not a fork: it adds a property
  * the package sheet never sets, and it is meant to sit on top.
  */
@@ -75,7 +75,7 @@ function topLevelSelectors(css: string): Set<string> {
       if (depth === 0) {
         const head = buf.trim();
         if (head.startsWith('@')) {
-// Entering an at-rule block; everything inside is layered, not forked.
+          // Entering an at-rule block; everything inside is layered, not forked.
           atRuleDepth = depth;
         } else {
           for (const sel of head.split(',')) {

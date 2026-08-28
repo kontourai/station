@@ -61,21 +61,21 @@ const orchestrationSessionsFixture: {
 } = { data: [], status: 'success', refetch: () => {} };
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
- // fix-round : `FleetRoutingReceipts.tsx` imports `StationHttpError` as a
-// runtime value (`error instanceof StationHttpError`) — a bare mock
-// factory leaves that binding `undefined`, which throws on `instanceof`
-// the moment any fixture here becomes an error state. Keep the real module
-// for everything except the two hooks this file stubs.
+  // fix-round : `FleetRoutingReceipts.tsx` imports `StationHttpError` as a
+  // runtime value (`error instanceof StationHttpError`) — a bare mock
+  // factory leaves that binding `undefined`, which throws on `instanceof`
+  // the moment any fixture here becomes an error state. Keep the real module
+  // for everything except the two hooks this file stubs.
   const actual =
     await importOriginal<typeof import('@kontourai/station-sdk')>();
   return {
     ...actual,
-// archive#1398: the view now renders `FleetRoutingReceipts`, which
-// reads this hook. Stubbed as a successful empty page by default — this
-// describe block is about the shell's page root, and a receipt panel
-// that threw would be caught by `MonitoringErrorBoundary` and blank the
-// whole assertion. One test below deliberately overrides this into an
-// error state.
+    // archive#1398: the view now renders `FleetRoutingReceipts`, which
+    // reads this hook. Stubbed as a successful empty page by default — this
+    // describe block is about the shell's page root, and a receipt panel
+    // that threw would be caught by `MonitoringErrorBoundary` and blank the
+    // whole assertion. One test below deliberately overrides this into an
+    // error state.
     useFleetRoutingReceiptsQuery: () => fleetRoutingReceiptsFixture,
     useFleetServeReceiptsQuery: () => ({
       data: {
@@ -90,9 +90,9 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
       },
       isLoading: false,
     }),
- // the view's Active/Running numbers are derived from this
-// read-model — the same one the chat dock reads — so it must be stubbed
-// here, not left to a QueryClient this shell test does not provide.
+    // the view's Active/Running numbers are derived from this
+    // read-model — the same one the chat dock reads — so it must be stubbed
+    // here, not left to a QueryClient this shell test does not provide.
     useOrchestrationSessionsQuery: () => orchestrationSessionsFixture,
     useMonitoringMetricsQuery: () => ({
       data: [
@@ -150,7 +150,7 @@ vi.mock('../contexts/MonitoringContext', async (importOriginal) => ({
         'gen_ai.conversation.id': 'conversation:alpha-123456',
         'station.input.chars': 420,
       },
-// Carries the tool result whose copy button archive#3341 migrates.
+      // Carries the tool result whose copy button archive#3341 migrates.
       {
         timestamp: '2026-04-26T16:00:01.100Z',
         'timestamp.ms': 1100,
@@ -186,8 +186,8 @@ describe('MonitoringView shell port', () => {
 
   afterEach(() => {
     cleanup();
-// Restore the default success fixture — see the error-state test below,
-// which deliberately mutates this module-level fixture.
+    // Restore the default success fixture — see the error-state test below,
+    // which deliberately mutates this module-level fixture.
     fleetRoutingReceiptsFixture.data = {
       schemaVersion: 'station.fleet-routing-receipt/v1',
       receipts: [],
@@ -204,9 +204,9 @@ describe('MonitoringView shell port', () => {
     orchestrationSessionsFixture.refetch = vi.fn();
   });
 
- // review : `data` is undefined while the read is
-// pending and while it failed; defaulting that to `[]` reported an
-// authoritative `0 / 0` — the same false-zero discrepancy in a new costume.
+  // review : `data` is undefined while the read is
+  // pending and while it failed; defaulting that to `[]` reported an
+  // authoritative `0 / 0` — the same false-zero discrepancy in a new costume.
   test('reports no count at all while the session read is pending', () => {
     orchestrationSessionsFixture.data = undefined;
     orchestrationSessionsFixture.status = 'pending';
@@ -236,10 +236,10 @@ describe('MonitoringView shell port', () => {
     expect(orchestrationSessionsFixture.refetch).toHaveBeenCalledTimes(1);
   });
 
- // Monitoring reported `Active: 0 / Running: 0` while a real
-// Claude Code turn was visibly running in the chat dock, because its
-// numbers came from the monitoring event store's own agent fold rather than
-// from the session projection the dock reads. Same projection now.
+  // Monitoring reported `Active: 0 / Running: 0` while a real
+  // Claude Code turn was visibly running in the chat dock, because its
+  // numbers came from the monitoring event store's own agent fold rather than
+  // from the session projection the dock reads. Same projection now.
   test('counts a running orchestration session the dock can see', () => {
     orchestrationSessionsFixture.data = [
       { lifecycleState: 'running', hasActiveTurn: true },
@@ -273,8 +273,8 @@ describe('MonitoringView shell port', () => {
   test('renders inside the shared frame with contract-shaped monitoring data', () => {
     const { container } = render(<MonitoringViewWithBoundary />);
 
-// The page root is `PageFrame`'s now; this view hosts a full-height child
-// inside it (`.pane-host`) and renders no page header or root of its own.
+    // The page root is `PageFrame`'s now; this view hosts a full-height child
+    // inside it (`.pane-host`) and renders no page header or root of its own.
     const root = container.firstElementChild;
     expect(Array.from(root?.classList ?? [])).toContain('pane-host');
     expect(Array.from(root?.classList ?? [])).toContain('monitoring-page');
@@ -290,17 +290,17 @@ describe('MonitoringView shell port', () => {
     expect(screen.getByText('METRICS')).toBeTruthy();
   });
 
-/**
-* fix-round : the bare `vi.mock('@kontourai/station-sdk',...)` factory
-* this file used to have does not export `StationHttpError`, so
-* `FleetRoutingReceipts.tsx`'s `error instanceof StationHttpError` check
-* throws the moment the fixture becomes an error state — a class of crash
-* only reachable once the fixture leaves the success shape every other
-* test here uses. Proves the `importOriginal`-and-spread fix is
-* load-bearing, not decorative: the panel renders its error copy instead
-* of throwing (which `MonitoringErrorBoundary` would otherwise mask as a
-* blanked assertion, not a passing one).
-*/
+  /**
+   * fix-round : the bare `vi.mock('@kontourai/station-sdk',...)` factory
+   * this file used to have does not export `StationHttpError`, so
+   * `FleetRoutingReceipts.tsx`'s `error instanceof StationHttpError` check
+   * throws the moment the fixture becomes an error state — a class of crash
+   * only reachable once the fixture leaves the success shape every other
+   * test here uses. Proves the `importOriginal`-and-spread fix is
+   * load-bearing, not decorative: the panel renders its error copy instead
+   * of throwing (which `MonitoringErrorBoundary` would otherwise mask as a
+   * blanked assertion, not a passing one).
+   */
   test('survives the fleet-routing-receipts panel entering an error state (StationHttpError must resolve)', async () => {
     fleetRoutingReceiptsFixture.data = undefined;
     fleetRoutingReceiptsFixture.error = new StationHttpError(
@@ -310,8 +310,8 @@ describe('MonitoringView shell port', () => {
 
     const { container } = render(<MonitoringViewWithBoundary />);
 
-// Did not fall into the error boundary's fallback — the panel itself
-// handled the error state.
+    // Did not fall into the error boundary's fallback — the panel itself
+    // handled the error state.
     expect(container.textContent).not.toMatch(/something went wrong/i);
     expect(screen.getByRole('heading', { name: 'Fleet routing' })).toBeTruthy();
     expect(screen.getByRole('alert')).toBeTruthy();

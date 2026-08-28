@@ -60,7 +60,7 @@ const SessionModelPicker = React.lazy(() =>
 
 export interface NewChatModalMode {
   kind: 'fork';
-/** The current Agent is the default target; alternates are explicit. */
+  /** The current Agent is the default target; alternates are explicit. */
   preferredAgentSlug: string;
   sourceModel?: string;
   disclosure: string;
@@ -107,19 +107,19 @@ export function NewChatModal({
     resolveNewChatInitialContext(activeProjectSlug, projects),
   );
   const [contextSearch, setContextSearch] = useState('');
- // archive#3013: a click that neither dispatches nor explains itself is
-// indistinguishable from a broken app. Every handleSelect path either
-// calls onSelect or sets this.
+  // archive#3013: a click that neither dispatches nor explains itself is
+  // indistinguishable from a broken app. Every handleSelect path either
+  // calls onSelect or sets this.
   const [selectFeedback, setSelectFeedbackState] = useState<{
     text: string;
     nonce: number;
   } | null>(null);
-// Nonce: re-setting the SAME message must still remount the alert node so
-// role=alert announces again — React bails on identical state otherwise
- // (archive#3013).
-// useCallback so the setter is referentially stable and can be an honest
- // effect dependency (archive#3021) — the previous render-scoped arrow forced a
-// reasoned lint suppression on the effect below.
+  // Nonce: re-setting the SAME message must still remount the alert node so
+  // role=alert announces again — React bails on identical state otherwise
+  // (archive#3013).
+  // useCallback so the setter is referentially stable and can be an honest
+  // effect dependency (archive#3021) — the previous render-scoped arrow forced a
+  // reasoned lint suppression on the effect below.
   const setSelectFeedback = useCallback(
     (text: string | null) =>
       setSelectFeedbackState((current) =>
@@ -127,16 +127,16 @@ export function NewChatModal({
       ),
     [],
   );
-// The remedy for stale-context feedback is picking a workspace; doing so
- // must retire the instruction (archive#3013). The trigger read is
- // explicit so the dependency list is honest rather than suppressed (archive#3021).
+  // The remedy for stale-context feedback is picking a workspace; doing so
+  // must retire the instruction (archive#3013). The trigger read is
+  // explicit so the dependency list is honest rather than suppressed (archive#3021).
   useEffect(() => {
     void selectedContext;
     setSelectFeedback(null);
   }, [selectedContext, setSelectFeedback]);
-// archive#3027: one Enable create at a time. The ref is the guard (two
-// activations in one frame both read pre-render state); the state disables
-// the button for the visible affordance.
+  // archive#3027: one Enable create at a time. The ref is the guard (two
+  // activations in one frame both read pre-render state); the state disables
+  // the button for the visible affordance.
   const enableInFlightRef = useRef(false);
   const [enableInFlight, setEnableInFlight] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
@@ -155,9 +155,9 @@ export function NewChatModal({
 
   const {
     viewModel,
-// Defaulted: not every consumer/test double of the selection model
-// supplies this list, and a missing engine-connection list must degrade to
-// "no connection directory known", never to a render crash.
+    // Defaulted: not every consumer/test double of the selection model
+    // supplies this list, and a missing engine-connection list must degrade to
+    // "no connection directory known", never to a render crash.
     acpConnections = [],
     runtimeLoading,
     modelsLoading,
@@ -187,13 +187,13 @@ export function NewChatModal({
     filteredContextOptions,
     groups,
     flatList,
-// Defaulted for the same test-double reason as acpConnections above; a
-// missing scoped list must degrade to "create", never a render crash.
+    // Defaulted for the same test-double reason as acpConnections above; a
+    // missing scoped list must degrade to "create", never a render crash.
     scopedAgents = [],
     compatibilityMessage,
   } = viewModel;
-// A fork starts on the current Agent even when recency would normally put
-// another row first. The user may still choose any other eligible row.
+  // A fork starts on the current Agent even when recency would normally put
+  // another row first. The user may still choose any other eligible row.
   useEffect(() => {
     if (!mode || agentSearch) return;
     const preferredIndex = flatList.findIndex(
@@ -201,16 +201,16 @@ export function NewChatModal({
     );
     if (preferredIndex >= 0) setSelectedAgentIndex(preferredIndex);
   }, [agentSearch, flatList, mode]);
-// archive#1089: the directory the highlighted agent will actually be
-// launched in. Derived from the agent, not just the project, because an
-// engine connection's own Working Directory outranks `$HOME` for a project
-// that names no directory — see resolveNewChatWorkspaceHint.
+  // archive#1089: the directory the highlighted agent will actually be
+  // launched in. Derived from the agent, not just the project, because an
+  // engine connection's own Working Directory outranks `$HOME` for a project
+  // that names no directory — see resolveNewChatWorkspaceHint.
   const workspaceHint = resolveNewChatWorkspaceHint({
     agent: flatList[selectedAgentIndex],
     project: selectedProject,
     acpConnections,
   });
-// Close context dropdown on outside click
+  // Close context dropdown on outside click
   useEffect(() => {
     if (!contextOpen) return;
     const handler = (e: MouseEvent) => {
@@ -221,24 +221,24 @@ export function NewChatModal({
     return () => document.removeEventListener('mousedown', handler);
   }, [contextOpen]);
 
-// Focus agent input on mount and when context dropdown closes
+  // Focus agent input on mount and when context dropdown closes
   useEffect(() => {
-// Opening a picker must never summon the software keyboard before a phone
-// user asks to type. Desktop keeps the fast keyboard-first flow.
+    // Opening a picker must never summon the software keyboard before a phone
+    // user asks to type. Desktop keeps the fast keyboard-first flow.
     if (!isMobile && !contextOpen) agentInputRef.current?.focus();
   }, [contextOpen, isMobile]);
 
-// Mobile sheet focus management. The sheet is a DOM sibling of the trigger
-// button (both children of `contextRef`), not a descendant of it, and
-// mobile deliberately skips autofocusing the filter input (see above) to
-// avoid a keyboard-driven viewport jump. Without an explicit focus move,
-// keyboard focus stays on the trigger button when the sheet opens, so
-// Escape bubbles straight past the sheet's own handler to
-// ResponsiveDialogSurface's dialog-wide Escape trap and closes the entire
-// New Chat modal instead of just the sheet. Move focus onto the sheet
-// panel itself (not the filter input) on open, and explicitly return it to
-// the trigger button on close rather than relying on browser default focus
-// (which would otherwise fall back to <body>).
+  // Mobile sheet focus management. The sheet is a DOM sibling of the trigger
+  // button (both children of `contextRef`), not a descendant of it, and
+  // mobile deliberately skips autofocusing the filter input (see above) to
+  // avoid a keyboard-driven viewport jump. Without an explicit focus move,
+  // keyboard focus stays on the trigger button when the sheet opens, so
+  // Escape bubbles straight past the sheet's own handler to
+  // ResponsiveDialogSurface's dialog-wide Escape trap and closes the entire
+  // New Chat modal instead of just the sheet. Move focus onto the sheet
+  // panel itself (not the filter input) on open, and explicitly return it to
+  // the trigger button on close rather than relying on browser default focus
+  // (which would otherwise fall back to <body>).
   useEffect(() => {
     if (!isMobile) return;
     if (contextOpen) {
@@ -286,15 +286,15 @@ export function NewChatModal({
 
   const handleSelect = (agent: AgentData) => {
     if (mode?.pending) return;
-// Keyboard selection (Enter on the filtered list) reaches here with no
-// availability filter, so this must speak rather than return silently —
-// the pointer path never arrives (the row button is disabled).
+    // Keyboard selection (Enter on the filtered list) reaches here with no
+    // availability filter, so this must speak rather than return silently —
+    // the pointer path never arrives (the row button is disabled).
     if (agent.available === false) {
-// archive#3027: Enter on an enableable alias row triggers Enable, the
-// same action its visible button offers; non-enableable rows keep
-// speaking their reason. A connection remedy outranks Enable on the
-// keyboard path too (mirrors the row's rendering): fix the connection
-// first.
+      // archive#3027: Enter on an enableable alias row triggers Enable, the
+      // same action its visible button offers; non-enableable rows keep
+      // speaking their reason. A connection remedy outranks Enable on the
+      // keyboard path too (mirrors the row's rendering): fix the connection
+      // first.
       if (
         resolveNewChatAgentEnable(agent) &&
         agentFixRoute(agent) === 'enable'
@@ -311,8 +311,8 @@ export function NewChatModal({
     try {
       trackRecentAgent(agent.slug);
     } catch {
-// Storage may be unavailable (quota, private browsing) — recency
-// tracking is best-effort and must never block starting the chat.
+      // Storage may be unavailable (quota, private browsing) — recency
+      // tracking is best-effort and must never block starting the chat.
     }
     const draftItems =
       draftContext?.items.filter((item) =>
@@ -331,9 +331,9 @@ export function NewChatModal({
     const modelSource = choice?.modelId
       ? ('session override' as const)
       : defaultEffectiveModel.source;
- // archive#3013: dispatch is guarded because `onSelect` is the parent's handler —
-// a throw there (a failed lazy chunk, a broken route) previously vanished,
-// which from the user's seat is identical to the silent fall-through.
+    // archive#3013: dispatch is guarded because `onSelect` is the parent's handler —
+    // a throw there (a failed lazy chunk, a broken route) previously vanished,
+    // which from the user's seat is identical to the silent fall-through.
     const dispatch = (projectSlug?: string, projectName?: string) => {
       try {
         void Promise.resolve(
@@ -370,10 +370,10 @@ export function NewChatModal({
     } else if (selectedProject) {
       dispatch(selectedProject.slug, selectedProject.name);
     } else {
-// The selected context names a project this modal cannot resolve
-// (mid-refetch, or a stale slug the reset effect has not caught yet).
-// Dispatching would target a workspace the server cannot resolve
-// either; swallowing the click is worse. Say what to do.
+      // The selected context names a project this modal cannot resolve
+      // (mid-refetch, or a stale slug the reset effect has not caught yet).
+      // Dispatching would target a workspace the server cannot resolve
+      // either; swallowing the click is worse. Say what to do.
       setSelectFeedback(
         'This chat needs a workspace — pick one from the Workspace menu above, or choose "No workspace".',
       );
@@ -430,9 +430,9 @@ export function NewChatModal({
   const modelPickerDefault = modelPickerAgent
     ? defaultEffectiveModelForAgent(modelPickerAgent)
     : undefined;
-// A pending global catalog must not obscure an already-resolved ACP or
-// Agent-local catalog. When this Agent has no resolved models yet, keep the
-// shared picker mounted so it still owns focus, Escape, and the close action.
+  // A pending global catalog must not obscure an already-resolved ACP or
+  // Agent-local catalog. When this Agent has no resolved models yet, keep the
+  // shared picker mounted so it still owns focus, Escape, and the close action.
   const modelPickerLoading =
     !!modelPickerAgent && modelsLoading && modelPickerModels.length === 0;
   const modelPickerProviders = Array.from(
@@ -443,9 +443,9 @@ export function NewChatModal({
           const connection = modelConnections.find(
             (candidate) => candidate.id === model.providerId,
           );
-// The rail represents a connection, not whichever model entry was
-// last encountered. Station-mode choices are eligibility-filtered in
-// the selection hook; external catalogs retain their own status.
+          // The rail represents a connection, not whichever model entry was
+          // last encountered. Station-mode choices are eligibility-filtered in
+          // the selection hook; external catalogs retain their own status.
           const available = connection
             ? connection.enabled && connection.status === 'ready'
             : model.available !== false;
@@ -469,29 +469,29 @@ export function NewChatModal({
     ).values(),
   );
 
-// archive#3027: one-click Enable for an engine-default alias row — then
-// behave as if the user picked the resulting Agent. Every path either
- // dispatches or speaks through the selectFeedback alert channel (archive#3013
-// invariant); nothing here may fail silently or reject unhandled.
-//
-// The find-or-create itself is the SERVER's, not this component's. Enable
-// used to POST a draft named "<engine> Agent", which landed as a second
-// row beside the engine's own — so the create half now posts the engine id
-// to `/agents/materialize-engine`, the one path boot adoption, ACP
-// connect, and first run's batch also take. The local FIND below stays: it
-// short-circuits WITHOUT a write and, unlike the server, knows this
-// context's scope.
+  // archive#3027: one-click Enable for an engine-default alias row — then
+  // behave as if the user picked the resulting Agent. Every path either
+  // dispatches or speaks through the selectFeedback alert channel (archive#3013
+  // invariant); nothing here may fail silently or reject unhandled.
+  //
+  // The find-or-create itself is the SERVER's, not this component's. Enable
+  // used to POST a draft named "<engine> Agent", which landed as a second
+  // row beside the engine's own — so the create half now posts the engine id
+  // to `/agents/materialize-engine`, the one path boot adoption, ACP
+  // connect, and first run's batch also take. The local FIND below stays: it
+  // short-circuits WITHOUT a write and, unlike the server, knows this
+  // context's scope.
   const handleEnable = async (agent: AgentData) => {
     const enable = resolveNewChatAgentEnable(agent);
     if (!enable) return;
-// In-flight guard (ref, not just state: two clicks in one frame both see
-// the pre-render state). The second activation is deliberately ignored —
-// progress was already announced by the first.
+    // In-flight guard (ref, not just state: two clicks in one frame both see
+    // the pre-render state). The second activation is deliberately ignored —
+    // progress was already announced by the first.
     if (enableInFlightRef.current) return;
-// FIND runs over the SAME scope-filtered set the view model derives
-// from, never the raw agents prop: an out-of-scope authored Agent
-// (owned by another project, or excluded by the project's agents
- // filter) must not be silently selected into this context (archive#3027).
+    // FIND runs over the SAME scope-filtered set the view model derives
+    // from, never the raw agents prop: an out-of-scope authored Agent
+    // (owned by another project, or excluded by the project's agents
+    // filter) must not be silently selected into this context (archive#3027).
     const existing = findAuthoredAgentForEngineConnection(
       scopedAgents,
       enable.engineConnectionId,
@@ -505,19 +505,19 @@ export function NewChatModal({
     setEnableInFlight(true);
     setSelectFeedback(`Setting up ${engineLabel}…`);
     try {
-// Selection keys off the RESPONSE (the full spec), not the agents
-// list: the enriched catalog activates deferred and its last-stable
-// cache may lag minutes behind this write. The mutation already
-// invalidates the agents query for eventual consistency.
+      // Selection keys off the RESPONSE (the full spec), not the agents
+      // list: the enriched catalog activates deferred and its last-stable
+      // cache may lag minutes behind this write. The mutation already
+      // invalidates the agents query for eventual consistency.
       const { data } = await materializeEngineAgent.mutateAsync(
         enable.engineConnectionId,
       );
       const materialized = data as AgentData;
-// The server's find-or-create is scope-blind by design (identity is
-// global). If what it returned is owned by a DIFFERENT project than
-// this context, selecting it would smuggle an out-of-scope Agent into
- // the chat the same way a raw catalog FIND would (archive#3027) — say so
-// instead.
+      // The server's find-or-create is scope-blind by design (identity is
+      // global). If what it returned is owned by a DIFFERENT project than
+      // this context, selecting it would smuggle an out-of-scope Agent into
+      // the chat the same way a raw catalog FIND would (archive#3027) — say so
+      // instead.
       if (
         materialized.project !== undefined &&
         materialized.project !== selectedProject?.slug
@@ -567,7 +567,7 @@ export function NewChatModal({
           </div>
         )}
 
-{/* Context picker */}
+        {/* Context picker */}
         <div className="new-chat-modal__context-picker" ref={contextRef}>
           <span className="new-chat-modal__context-label-text">Workspace</span>
           <button
@@ -668,7 +668,7 @@ export function NewChatModal({
           )}
         </div>
 
-{/* Agent search */}
+        {/* Agent search */}
         <input
           ref={agentInputRef}
           type="text"
@@ -760,9 +760,9 @@ export function NewChatModal({
               <SkeletonList count={4} label="Loading agents" />
             </div>
           ) : runtimeError || modelsError ? (
-// archive#771: a settled error here used to fall straight
-// through to "Nothing to chat with yet" — indistinguishable from
-// a host with no connections at all.
+            // archive#771: a settled error here used to fall straight
+            // through to "Nothing to chat with yet" — indistinguishable from
+            // a host with no connections at all.
             <ErrorState
               variant="compact"
               title="Couldn't load engines or models"
@@ -802,9 +802,9 @@ export function NewChatModal({
           <React.Fragment key={group.label}>
             <div
               className={`new-chat-modal__group-label ${group.glyph === 'plug' ? 'new-chat-modal__group-label--acp' : ''} ${
-// The rule between groups was an inline border; it is a class
-// now so the header's hairline is declared beside the row
-// hairlines it has to line up with.
+                // The rule between groups was an inline border; it is a class
+                // now so the header's hairline is declared beside the row
+                // hairlines it has to line up with.
                 gi > 0 ? 'new-chat-modal__group-label--divided' : ''
               }`.trim()}
             >
@@ -834,25 +834,25 @@ export function NewChatModal({
                     fixRoute === 'enable' && enable ? enableInFlight : undefined
                   }
                   onFix={(route) => {
-// Only the server's `engine-disabled` repair may enable
-// an alias. Broken and missing connections arrive as
-// their own unavailableFix kinds and route below.
+                    // Only the server's `engine-disabled` repair may enable
+                    // an alias. Broken and missing connections arrive as
+                    // their own unavailableFix kinds and route below.
                     if (route === 'enable' && enable) {
                       if (!enableInFlight) void handleEnable(agent);
                       return;
                     }
-// Close before routing so the picker cannot obscure the
-// server-selected repair destination.
+                    // Close before routing so the picker cannot obscure the
+                    // server-selected repair destination.
                     onClose();
                     if (route === 'edit') {
                       navigationStore.navigate(
                         `/agents/${encodeURIComponent(agent.slug)}`,
                       );
                     } else {
-// Connections sections are canonical paths, not a
-// `?section=` selection on the hub. The latter is
-// normalized away and silently lands on whichever
-// section the hub last remembered.
+                      // Connections sections are canonical paths, not a
+                      // `?section=` selection on the hub. The latter is
+                      // normalized away and silently lands on whichever
+                      // section the hub last remembered.
                       navigationStore.navigate(
                         route === 'models'
                           ? '/connections/models'
@@ -1077,15 +1077,15 @@ function AgentRow({
   modelUnavailable: boolean;
   onOpenModel: () => void;
   interactionDisabled?: boolean;
-/** Set when this host knows Enable cannot be the repair — see the cell. */
+  /** Set when this host knows Enable cannot be the repair — see the cell. */
   fixLabel?: 'Enable' | 'Connect' | 'Set up';
   fixDisabled?: boolean;
   onFix: (route: AgentFixRoute) => void;
 }) {
   const unavailability = resolveNewChatAgentUnavailability(agent);
-// archive#3843: the picker and the Agents list mount the SAME cell, so they
-// must also read the same device projection — a row that named the host in
- // one surface and not the other would be the exact divergence §5 forbids.
+  // archive#3843: the picker and the Agents list mount the SAME cell, so they
+  // must also read the same device projection — a row that named the host in
+  // one surface and not the other would be the exact divergence §5 forbids.
   const devicePresentation = useDevicePresentation();
   const engine = agentEngineDescriptor(agent);
   const repeatsAgent =
@@ -1094,10 +1094,10 @@ function AgentRow({
   return (
     <div
       className="new-chat-modal__agent-row"
-// The full server sentence, on the ROW rather than the button: the row
-// button is disabled whenever there is a reason to show, and a disabled
-// button receives no hover in Chromium, so a title there would never
-// appear. Sighted parity for the sentence the chip stands in for.
+      // The full server sentence, on the ROW rather than the button: the row
+      // button is disabled whenever there is a reason to show, and a disabled
+      // button receives no hover in Chromium, so a title there would never
+      // appear. Sighted parity for the sentence the chip stands in for.
       title={unavailability?.description}
     >
       <button
@@ -1116,11 +1116,11 @@ function AgentRow({
           <AgentIcon agent={agent} size="small" />
           <span
             className={`new-chat-modal__agent-name ${
-// archive#3027(d). A row that cannot start drops its NAME
-// a rung so absence reads as absence before the chip is read.
-// TO REVERT: delete this conditional class — the dimming lives
-// entirely in `.new-chat-modal__agent-name--dimmed`'s one
-// `color:` declaration.
+              // archive#3027(d). A row that cannot start drops its NAME
+              // a rung so absence reads as absence before the chip is read.
+              // TO REVERT: delete this conditional class — the dimming lives
+              // entirely in `.new-chat-modal__agent-name--dimmed`'s one
+              // `color:` declaration.
               agent.available === false
                 ? 'new-chat-modal__agent-name--dimmed'
                 : ''
@@ -1130,12 +1130,12 @@ function AgentRow({
           </span>
           <AgentReadinessCell agent={agent} part="status" />
         </div>
-{/* One quiet line beneath the name carrying what the row IS: the
+        {/* One quiet line beneath the name carrying what the row IS: the
             engine (and model, when the descriptor resolves one) plus the
             agent's own description. Both were already in the row — the engine
             chip competed with the name on line one, and the description sat at
             the name's own rung. */}
- {/* Y1, in §5 as well as §2: a chip that only repeats the name is the
+        {/* Y1, in §5 as well as §2: a chip that only repeats the name is the
             engine word printed twice — every seeded engine row read
             "Claude Code" with a "Claude Code" chip beneath it. */}
         {!repeatsAgent && (
@@ -1144,14 +1144,14 @@ function AgentRow({
           </div>
         )}
         {unavailability && (
-// Always rendered, always complete: the chip replaces the paragraph
-// VISUALLY, never in the accessibility tree. `--assistive` clips this
-// node to a screen-reader-only box so the aria-describedby target
-// still resolves to the whole sentence.
-// ALWAYS assistive now: `AgentReadinessCell` is the visible
-// statement of this row's state, so painting the sentence here too
-// printed the same refusal twice (the badge read `Needs: connection
-// offline` beside a paragraph reading `connection offline`).
+          // Always rendered, always complete: the chip replaces the paragraph
+          // VISUALLY, never in the accessibility tree. `--assistive` clips this
+          // node to a screen-reader-only box so the aria-describedby target
+          // still resolves to the whole sentence.
+          // ALWAYS assistive now: `AgentReadinessCell` is the visible
+          // statement of this row's state, so painting the sentence here too
+          // printed the same refusal twice (the badge read `Needs: connection
+          // offline` beside a paragraph reading `connection offline`).
           <div
             id={`agent-${agent.slug}-unavailable`}
             className="new-chat-modal__agent-reason new-chat-modal__agent-reason--assistive"
@@ -1160,7 +1160,7 @@ function AgentRow({
           </div>
         )}
       </button>
-{/* State and action, together and right-aligned. The controls used to be
+      {/* State and action, together and right-aligned. The controls used to be
           bare siblings of a full-width button with no layout of their own, so
           every row wrapped them onto a second, left-aligned line under the
           name — the picker's dominant source of height. The row is a two-column
@@ -1180,7 +1180,7 @@ function AgentRow({
         >
           Model · {modelLabel}
         </button>
-{/*
+        {/*
           DESIGN.md §5: the SAME readiness cell the Agents list row renders.
           The picker used to draw its own chip ("Not set up" behind a warning
           glyph, and nothing at all for a reason-kind refusal) beside its own

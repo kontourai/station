@@ -46,15 +46,15 @@ describe('computeStableActiveOrder (AC1 ordering invariant)', () => {
       updatedAt: now - 2000,
     });
 
-// Initial mount: no previous order, so items enter recency-ordered.
+    // Initial mount: no previous order, so items enter recency-ordered.
     let order = computeStableActiveOrder([], [a, b, c]);
     expect(order).toEqual(['a', 'b', 'c']);
 
-// Feed a sequence of status flips on the SAME set of ids. None of these
-// transitions leave the active lane (Running/Ready/Needs attention are
-// all still "active"), so the row order must not move even though the
-// recency-based comparator that seeded initial order would reshuffle
-// them if re-applied.
+    // Feed a sequence of status flips on the SAME set of ids. None of these
+    // transitions leave the active lane (Running/Ready/Needs attention are
+    // all still "active"), so the row order must not move even though the
+    // recency-based comparator that seeded initial order would reshuffle
+    // them if re-applied.
     const flips: HomeLaneItem[][] = [
       [
         { ...a, lifecycleLabel: 'Needs attention', updatedAt: now + 1 },
@@ -90,7 +90,7 @@ describe('computeStableActiveOrder (AC1 ordering invariant)', () => {
     order = computeStableActiveOrder(order, [a, b, d]);
     expect(order).toEqual(['d', 'a', 'b']);
 
-// A further status flip on all three must still not reorder them.
+    // A further status flip on all three must still not reorder them.
     order = computeStableActiveOrder(order, [
       { ...a, lifecycleLabel: 'Running', updatedAt: now + 1 },
       { ...b, lifecycleLabel: 'Needs attention', updatedAt: now + 2 },
@@ -107,11 +107,11 @@ describe('computeStableActiveOrder (AC1 ordering invariant)', () => {
     let order = computeStableActiveOrder([], [a, b, c]);
     expect(order).toEqual(['a', 'b', 'c']);
 
-// b leaves the lane (settled/snoozed elsewhere).
+    // b leaves the lane (settled/snoozed elsewhere).
     order = computeStableActiveOrder(order, [a, c]);
     expect(order).toEqual(['a', 'c']);
 
-// If b later returns (e.g. woke from snooze) it re-enters as new, at top.
+    // If b later returns (e.g. woke from snooze) it re-enters as new, at top.
     order = computeStableActiveOrder(order, [a, c, b]);
     expect(order).toEqual(['b', 'a', 'c']);
   });
@@ -255,7 +255,7 @@ describe('partitionHomeWorkItems (AC3 linger + snooze partition)', () => {
  * thing. Desktop Home partitions through `partitionHomeWorkItems`; the mobile
  * switcher/inbox groups through `groupMobileActivity`, which used to carry a
  * private `Running`/`Needs attention` predicate and its own 10-minute window
-* so one device read "Active now 14" on Home and "Active now 1" on the
+ * so one device read "Active now 14" on Home and "Active now 1" on the
  * switcher, with the difference filed under "Just finished" having finished
  * nothing. These tests pin the INVARIANT (bucket-for-bucket agreement on a
  * mixed fixture, and one shared linger window), not spot values, so any
@@ -265,9 +265,9 @@ describe('desktop/mobile lane agreement (station#3227 A6)', () => {
   const now = 10_000_000;
   const HOUR = 60 * 60 * 1000;
 
-// One of everything: every non-terminal label, terminal work on both sides
-// of the linger window, conversation-backed terminal work in both
-// acknowledgement states, and a live snooze.
+  // One of everything: every non-terminal label, terminal work on both sides
+  // of the linger window, conversation-backed terminal work in both
+  // acknowledgement states, and a live snooze.
   const mixed: HomeWorkItem[] = [
     item({ id: 'running', lifecycleLabel: 'Running', updatedAt: now }),
     item({
@@ -276,9 +276,9 @@ describe('desktop/mobile lane agreement (station#3227 A6)', () => {
       updatedAt: now,
     }),
     item({ id: 'ready', lifecycleLabel: 'Ready', updatedAt: now - HOUR }),
-// The audit's exact symptom: an idle-but-open chat, an hour old. The old
-// mobile grouping filed it under "Just finished"/"Earlier"; it finished
-// nothing.
+    // The audit's exact symptom: an idle-but-open chat, an hour old. The old
+    // mobile grouping filed it under "Just finished"/"Earlier"; it finished
+    // nothing.
     item({
       id: 'idle-recent',
       lifecycleLabel: 'Recent',
@@ -322,8 +322,8 @@ describe('desktop/mobile lane agreement (station#3227 A6)', () => {
   const snoozeWake = now + 60_000;
 
   function desktopPartition() {
-// The same wiring `useHomeWorkLanes` performs, with the store-less
-// `terminalSince` proxy both surfaces share on a fresh load.
+    // The same wiring `useHomeWorkLanes` performs, with the store-less
+    // `terminalSince` proxy both surfaces share on a fresh load.
     return partitionHomeWorkItems({
       items: withStableIds(mixed, new Map()),
       now,
@@ -366,14 +366,14 @@ describe('desktop/mobile lane agreement (station#3227 A6)', () => {
   });
 
   it('both surfaces settle non-conversation terminal work at the SAME shared linger boundary', () => {
-// Just under the window: "Just finished" on both. The old mobile
-// 10-minute window would already have filed this under "Earlier".
+    // Just under the window: "Just finished" on both. The old mobile
+    // 10-minute window would already have filed this under "Earlier".
     const justUnder = item({
       id: 'done',
       lifecycleLabel: 'Completed',
       updatedAt: now - (TERMINAL_LINGER_MS - 1),
     });
-// At the window: settled/"Earlier" on both.
+    // At the window: settled/"Earlier" on both.
     const atBoundary = item({
       id: 'done',
       lifecycleLabel: 'Completed',
@@ -509,13 +509,13 @@ describe('withStableIds (AC1 identity-alias fix, review finding)', () => {
     expect(aliasMap.size).toBe(0);
   });
 
-// archive#1097: a remote-session item's `id` is namespaced
-// (`remote:<environmentId>:<threadId>`) and it never sets
-// `orchestrationThreadId`/`chatSessionId`/`taskSessionId` (see
-// `home-view-model.ts`'s `buildSessionWorkItem`), so even a raw threadId
-// collision between a local orchestration item and a remote one — which
-// this test forces on purpose — can never alias the two under a shared
-// stable id.
+  // archive#1097: a remote-session item's `id` is namespaced
+  // (`remote:<environmentId>:<threadId>`) and it never sets
+  // `orchestrationThreadId`/`chatSessionId`/`taskSessionId` (see
+  // `home-view-model.ts`'s `buildSessionWorkItem`), so even a raw threadId
+  // collision between a local orchestration item and a remote one — which
+  // this test forces on purpose — can never alias the two under a shared
+  // stable id.
   it('never aliases a remote-session item with a local item that happens to share the same raw thread id', () => {
     const aliasMap = new Map<string, string>();
     const [local, remote] = withStableIds(

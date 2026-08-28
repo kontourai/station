@@ -57,9 +57,9 @@ describe('native consent broker host capability', () => {
       status: 'ok',
       value: { status: 'approved' },
     });
-// Both halves are the contract with src-desktop/src/lib.rs: the command
-// is `station_native_consent_review` and its one parameter arrives as
-// `requestId` (serde renames `request_id` camelCase).
+    // Both halves are the contract with src-desktop/src/lib.rs: the command
+    // is `station_native_consent_review` and its one parameter arrives as
+    // `requestId` (serde renames `request_id` camelCase).
     expect(calls).toContainEqual({
       command: 'station_native_consent_review',
       args: { requestId: 'txn-42' },

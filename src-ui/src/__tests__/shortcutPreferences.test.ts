@@ -44,8 +44,8 @@ describe('shortcut device settings', () => {
       'app.settings': { key: 's', modifiers: ['cmd'] },
       'chat.new': { key: 'n', modifiers: ['cmd'] },
     });
-// The shared legacy root is fully retired — the envelope is the only
-// home for shortcut overrides now.
+    // The shared legacy root is fully retired — the envelope is the only
+    // home for shortcut overrides now.
     expect(window.localStorage.getItem('station.device-settings')).toBeNull();
     expect(
       window.localStorage.getItem('station-device-settings-v1'),

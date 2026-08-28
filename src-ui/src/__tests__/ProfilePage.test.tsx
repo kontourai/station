@@ -123,10 +123,10 @@ describe('ProfilePage', () => {
     expect(screen.getByText(/No usage data yet/i)).toBeTruthy();
   });
 
-// `useAnalytics` already derived the usage read's error and this
-// page ignored it, so a failed read settled with no stats and was drawn as
-// "No usage data yet" — a claim about the user's own activity made over a
-// request that never answered.
+  // `useAnalytics` already derived the usage read's error and this
+  // page ignored it, so a failed read settled with no stats and was drawn as
+  // "No usage data yet" — a claim about the user's own activity made over a
+  // request that never answered.
   test('renders the read failure, not "No usage data yet", when the usage read errors', () => {
     analyticsState.usageStats = null;
     analyticsState.error = new Error('usage read failed');
@@ -136,9 +136,9 @@ describe('ProfilePage', () => {
     expect(screen.queryByText(/No usage data yet/i)).toBeNull();
     expect(screen.getByText('Unable to load profile')).toBeTruthy();
     expect(screen.getByText('usage read failed')).toBeTruthy();
-// Header first, in a failure exactly as in a wait (6-): the page
-// title is the frame's (page-frame-registry.ts) and never depended on
-// the read, so the page itself renders only the failure here.
+    // Header first, in a failure exactly as in a wait (6-): the page
+    // title is the frame's (page-frame-registry.ts) and never depended on
+    // the read, so the page itself renders only the failure here.
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refreshAnalytics).toHaveBeenCalledTimes(1);

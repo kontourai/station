@@ -67,11 +67,11 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   useProjectsQuery: () => ({ data: projectsMock }),
   useSkillsQuery: () => ({ data: skillsMock }),
   useMessageSearchQuery: () => ({ data: messageSearchMock }),
-// Pane availability consumes deployment facts through the public SDK; this
-// palette test deliberately keeps that independent query inert.
+  // Pane availability consumes deployment facts through the public SDK; this
+  // palette test deliberately keeps that independent query inert.
   useServerCapabilitiesQuery: () => ({ data: undefined }),
-// archive#3313: surface visibility flags read the previews query; keep it
-// inert (no previews enabled) rather than letting the real hook fetch.
+  // archive#3313: surface visibility flags read the previews query; keep it
+  // inert (no previews enabled) rather than letting the real hook fetch.
   useFeaturePreviewsQuery: () => ({
     data: [],
     isLoading: false,
@@ -118,9 +118,9 @@ vi.mock('../contexts/KeyboardShortcutsContext', () => ({
         handler: registeredCommand,
         ...registeredShortcutAvailability,
       },
-// The real registry always carries these nine, whatever the session
-// count is — that is exactly 's defect, so the harness has to
-// reproduce it or the assertion below proves nothing.
+      // The real registry always carries these nine, whatever the session
+      // count is — that is exactly 's defect, so the harness has to
+      // reproduce it or the assertion below proves nothing.
       ...Array.from({ length: 9 }, (_, index) => ({
         id: `dock.session${index + 1}`,
         key: String(index + 1),
@@ -212,8 +212,8 @@ async function streamTokensCommitted(sessionId: string, count: number) {
 }
 
 function open() {
-// The captured ⌘K handler sets state outside an event; wrap in act so the
-// re-render flushes before assertions.
+  // The captured ⌘K handler sets state outside an event; wrap in act so the
+  // re-render flushes before assertions.
   act(() => {
     openHandler?.();
   });
@@ -303,10 +303,10 @@ describe('rankCommands', () => {
   });
 
   test('a typed label outranks another command that claims it as a keyword', () => {
-// 6-, measured: typing `monitor` returned ["Activity",
-// "Monitoring"] and Enter navigated to Activity — Activity's `keywords`
-// include monitoring terms and scored an exact 1000, while the surface
-// literally named Monitoring only scored a label prefix.
+    // 6-, measured: typing `monitor` returned ["Activity",
+    // "Monitoring"] and Enter navigated to Activity — Activity's `keywords`
+    // include monitoring terms and scored an exact 1000, while the surface
+    // literally named Monitoring only scored a label prefix.
     const monitorish: PaletteCommand[] = [
       {
         id: 'activity',
@@ -327,8 +327,8 @@ describe('rankCommands', () => {
       'monitoring',
       'activity',
     ]);
-// An exact label match still wins outright, and the keyword route still
-// finds a command whose label does not match at all.
+    // An exact label match still wins outright, and the keyword route still
+    // finds a command whose label does not match at all.
     expect(rankCommands('activity', monitorish)[0].id).toBe('activity');
     expect(rankCommands('metrics', monitorish)[0].id).toBe('monitoring');
   });
@@ -347,10 +347,10 @@ describe('rankCommands', () => {
 // --- component behavior ----------------------------------------------------
 
 describe('openChatIdentitiesSnapshot', () => {
-// The reference stability the palette's `useSyncExternalStore` depends on:
-// React bails out of an update when `getSnapshot` returns the same value,
-// so an identity-only projection that reallocated every call would defeat
-// the whole point of narrowing the subscription.
+  // The reference stability the palette's `useSyncExternalStore` depends on:
+  // React bails out of an update when `getSnapshot` returns the same value,
+  // so an identity-only projection that reallocated every call would defeat
+  // the whole point of narrowing the subscription.
   test('keeps its reference until an identity or label actually changes', () => {
     activeChatsStore.initChat('session-alpha', {
       agentSlug: 'claude',
@@ -459,18 +459,18 @@ describe('CommandPalette', () => {
     expect(screen.getByText(/cobalt albatross/)).toBeTruthy();
     expect(screen.getByText(/Project: No project/)).toBeTruthy();
     expect(screen.getByText(/Engine: claude/)).toBeTruthy();
-// A React text node, not parsed model HTML: the hostile string is visible
-// verbatim and creates no image element.
+    // A React text node, not parsed model HTML: the hostile string is visible
+    // verbatim and creates no image element.
     expect(screen.getByText(/<img src=x/)).toBeTruthy();
     expect(document.querySelector('img')).toBeNull();
   });
 
   test('advertises the chats that exist, not nine static session slots', async () => {
-//measured: the palette listed "Switch to session 1" …
-// "Switch to session 9" as static commands with ONE session open, and
-// eight of those rows ran a handler that returns without doing anything.
-// "New chat" also appeared twice — once from ⌘T, once as an Action whose
-// `run` was byte-identical to "Open chat dock".
+    //measured: the palette listed "Switch to session 1" …
+    // "Switch to session 9" as static commands with ONE session open, and
+    // eight of those rows ran a handler that returns without doing anything.
+    // "New chat" also appeared twice — once from ⌘T, once as an Action whose
+    // `run` was byte-identical to "Open chat dock".
     activeChatsStore.initChat('session-alpha', {
       agentSlug: 'claude',
       agentName: 'Claude',
@@ -508,7 +508,7 @@ describe('CommandPalette', () => {
   });
 
   test('lists no chat rows when no chat is open', async () => {
-// The negative half of the derivation: a row exists iff a chat does.
+    // The negative half of the derivation: a row exists iff a chat does.
     await renderCommandPalette();
     open();
     expect(
@@ -520,10 +520,10 @@ describe('CommandPalette', () => {
   });
 
   test('a streaming chat does not rebuild the command index while the palette is closed', async () => {
- // `activeChatsStore` notifies per streamed token, and the palette used
-// to subscribe to that whole snapshot — so every token of every streaming
-// chat rebuilt, reranked and regrouped the entire command index, then the
-// component returned `null` because the palette was shut.
+    // `activeChatsStore` notifies per streamed token, and the palette used
+    // to subscribe to that whole snapshot — so every token of every streaming
+    // chat rebuilt, reranked and regrouped the entire command index, then the
+    // component returned `null` because the palette was shut.
     activeChatsStore.initChat('session-alpha', {
       agentSlug: 'claude',
       agentName: 'Claude',
@@ -531,7 +531,7 @@ describe('CommandPalette', () => {
     });
     try {
       await renderCommandPalette();
-// Deliberately NOT opened.
+      // Deliberately NOT opened.
       const baseline = indexRebuilds.count;
 
       await streamTokensCommitted('session-alpha', 25);
@@ -553,11 +553,11 @@ describe('CommandPalette', () => {
       open();
       const afterOpen = indexRebuilds.count;
 
-// Message-shaped churn: not part of a chat's identity.
+      // Message-shaped churn: not part of a chat's identity.
       await streamTokensCommitted('session-alpha', 25);
       expect(indexRebuilds.count).toBe(afterOpen);
 
-// A title change IS an identity change, and must reach the row.
+      // A title change IS an identity change, and must reach the row.
       await act(async () => {
         activeChatsStore.updateChat('session-alpha', {
           title: 'Renamed chat',
@@ -688,7 +688,7 @@ describe('CommandPalette', () => {
     await renderCommandPalette();
     open();
     const input = screen.getByRole('combobox');
-// Filter down to a single nav command so the highlight is deterministic.
+    // Filter down to a single nav command so the highlight is deterministic.
     fireEvent.change(input, { target: { value: 'schedule' } });
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' });
     expect(navigateMock).toHaveBeenCalledWith('/schedule');
@@ -782,8 +782,8 @@ describe('CommandPalette', () => {
     });
     expect(option.getAttribute('aria-disabled')).toBeNull();
 
-// Mutation-power proof: availability changes after the row was indexed.
-// A projection-only fix would still call the raw handler here.
+    // Mutation-power proof: availability changes after the row was indexed.
+    // A projection-only fix would still call the raw handler here.
     shortcutWhenEnabled = false;
     fireEvent.click(option);
     expect(registeredCommand).not.toHaveBeenCalled();
@@ -840,17 +840,17 @@ describe('CommandPalette', () => {
     };
     await renderCommandPalette();
     open();
-// Exact-prefix match: the palette now also contains a "Feature Previews"
- // navigation entry (archive#2961), which the loose /Preview/ regex matched too.
-// Anchored to the pane row's own accessible name ("Preview Temporarily
-// unavailable: … Workspace panes"): the palette also contains a "Feature
- // Previews" navigation entry (archive#2961), which the original loose /Preview/
-// regex matched as well.
+    // Exact-prefix match: the palette now also contains a "Feature Previews"
+    // navigation entry (archive#2961), which the loose /Preview/ regex matched too.
+    // Anchored to the pane row's own accessible name ("Preview Temporarily
+    // unavailable: … Workspace panes"): the palette also contains a "Feature
+    // Previews" navigation entry (archive#2961), which the original loose /Preview/
+    // regex matched as well.
     const option = screen.getByRole('option', {
-// Anchored to the pane row's accessible name (label + unavailability
-// note; accessible-name computation joins the spans without a space):
-// the palette also contains a "Feature Previews" navigation entry
- // (archive#2961), which the original loose /Preview/ regex matched as well.
+      // Anchored to the pane row's accessible name (label + unavailability
+      // note; accessible-name computation joins the spans without a space):
+      // the palette also contains a "Feature Previews" navigation entry
+      // (archive#2961), which the original loose /Preview/ regex matched as well.
       name: /^Preview ?Temporarily unavailable/,
     });
     expect(option.getAttribute('aria-disabled')).toBeNull();
@@ -1071,7 +1071,7 @@ describe('CommandPalette active-option announcement', () => {
 
     const first = input.getAttribute('aria-activedescendant');
     expect(first).toBeTruthy();
-// It must name a node that exists — a dangling id announces nothing.
+    // It must name a node that exists — a dangling id announces nothing.
     expect(document.getElementById(first as string)).toBeTruthy();
     expect(
       document.getElementById(first as string)?.getAttribute('aria-selected'),
@@ -1102,7 +1102,7 @@ describe('CommandPalette active-option announcement', () => {
 // --- return focus (archive#1245) -------------------------------------------
 
 /**
-* The palette's restore was `previouslyFocused.current.focus?.` with no
+ * The palette's restore was `previouslyFocused.current.focus?.` with no
  * `isConnected` guard at all — worse than the shape archive#1126 was filed
  * against — and nothing in this file covered it. It now goes through
  * `@kontourai/station-shared/return-focus`.
@@ -1114,7 +1114,7 @@ describe('CommandPalette active-option announcement', () => {
  * `packages/shared/src/__tests__/return-focus.test.ts` (jsdom), and the
  * "did the focus actually land?" verification in
  * `tests/dialog-return-focus.spec.ts` (Chromium), which jsdom structurally
-* cannot see because it reports `.focus` on a hidden node as successful.
+ * cannot see because it reports `.focus` on a hidden node as successful.
  */
 describe('CommandPalette return focus (station#1245)', () => {
   function stubFrame() {
@@ -1143,13 +1143,13 @@ describe('CommandPalette return focus (station#1245)', () => {
     document.body.innerHTML = '';
   });
 
-/**
-* Also the regression test for *when* the chain is captured. The palette's
-* input carries `autoFocus`, which React applies while committing the
-* palette's DOM — before any effect runs — so capturing inside the `open`
-* effect records the palette's own input and this assertion lands on
-* `<body>`.
-*/
+  /**
+   * Also the regression test for *when* the chain is captured. The palette's
+   * input carries `autoFocus`, which React applies while committing the
+   * palette's DOM — before any effect runs — so capturing inside the `open`
+   * effect records the palette's own input and this assertion lands on
+   * `<body>`.
+   */
   test('restores focus to the element that opened it', async () => {
     const frame = stubFrame();
     const { list, trigger } = mountTrigger();
@@ -1168,11 +1168,11 @@ describe('CommandPalette return focus (station#1245)', () => {
     list.remove();
   });
 
-/**
-* The palette's characteristic case: every command navigates, so the control
-* that opened it is routinely unmounted by the command it just ran. Pre-fix
-* this left `activeElement` on `<body>` — archive#1126, with no guard at all.
-*/
+  /**
+   * The palette's characteristic case: every command navigates, so the control
+   * that opened it is routinely unmounted by the command it just ran. Pre-fix
+   * this left `activeElement` on `<body>` — archive#1126, with no guard at all.
+   */
   test('falls back to a surviving ancestor when the command unmounted the trigger', async () => {
     const frame = stubFrame();
     const { list, row, trigger } = mountTrigger();
@@ -1182,7 +1182,7 @@ describe('CommandPalette return focus (station#1245)', () => {
     const input = screen.getByRole('combobox');
     fireEvent.change(input, { target: { value: 'schedule' } });
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter' });
-// The destination view replaced the row the trigger lived on.
+    // The destination view replaced the row the trigger lived on.
     row.remove();
     act(() => {
       frame.callback?.(0);
@@ -1195,7 +1195,7 @@ describe('CommandPalette return focus (station#1245)', () => {
     list.remove();
   });
 
-/** Gap 1: the destination's own initial focus must not be overridden. */
+  /** Gap 1: the destination's own initial focus must not be overridden. */
   test('leaves focus alone when the destination already claimed it', async () => {
     const frame = stubFrame();
     const { list, row } = mountTrigger();

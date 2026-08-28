@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * AT MOST ONE FIRST-RUN OVERLAY 
+ * AT MOST ONE FIRST-RUN OVERLAY
  *
  * `OnboardingGate`'s `SetupLauncher` and Home's first-run chapter both decide
  * from the same flapping `/api/system/status`, and they used to decide
@@ -80,10 +80,10 @@ vi.mock('../platform/PlatformProfileContext', () => ({
     isDesktop: false,
     supervisesBundledServer: false,
   }),
-// OnboardingGate reads this; a mock missing it throws before any assertion
-// in this file runs, which is how all nine cases were red on origin/main.
-// undefined is the honest value here: these cases are a web target, which
-// never has a native bootstrap to recover.
+  // OnboardingGate reads this; a mock missing it throws before any assertion
+  // in this file runs, which is how all nine cases were red on origin/main.
+  // undefined is the honest value here: these cases are a web target, which
+  // never has a native bootstrap to recover.
   nativeProfileBootstrapRecoveryError: () => undefined,
 }));
 vi.mock('../platform/native/tauriInvoke', () => ({
@@ -144,8 +144,8 @@ vi.mock('../contexts/AgentsContext', () => ({
 vi.mock('@kontourai/station-sdk', () => ({
   authenticatedFetch: vi.fn(),
   useDevicePresentation: () => undefined,
-// The engines step's one enable path (archive#3627). Nothing here confirms
-// a batch; it exists so the step can mount.
+  // The engines step's one enable path (archive#3627). Nothing here confirms
+  // a batch; it exists so the step can mount.
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
   useForceRefetchSystemStatus: () => forceRefetch,
   useAgentConnectionsQuery: () => ({ data: [] }),
@@ -232,8 +232,8 @@ describe('the two first-run overlays are mutually exclusive', () => {
     const view = renderBoth();
     expect(overlayCounts()).toEqual({ launcher: 0, chapter: 1, disclosure: 0 });
 
-// `ready → cannot_verify`: exactly the transition the audit measured, and
-// the one that used to mount the launcher under the chapter's scrim.
+    // `ready → cannot_verify`: exactly the transition the audit measured, and
+    // the one that used to mount the launcher under the chapter's scrim.
     currentStatus = status();
     view.rerender(
       <OnboardingGate>
@@ -259,9 +259,9 @@ describe('the two first-run overlays are mutually exclusive', () => {
   });
 
   test('closing the chapter hands the screen back to the launcher', () => {
-// The suppression is not a permanent silencing: a Station that genuinely
-// still needs connecting gets its launcher the moment the chapter is out
-// of the way.
+    // The suppression is not a permanent silencing: a Station that genuinely
+    // still needs connecting gets its launcher the moment the chapter is out
+    // of the way.
     const view = renderBoth();
     currentStatus = status();
     view.rerender(
@@ -283,8 +283,8 @@ describe('the two first-run overlays are mutually exclusive', () => {
   });
 
   test('a launcher already up keeps the chapter from opening over it', () => {
-// The other direction of the same rule, integrated: this is what the
-// chapter's own auto-open gate is for.
+    // The other direction of the same rule, integrated: this is what the
+    // chapter's own auto-open gate is for.
     currentStatus = status();
     renderBoth();
     expect(overlayCounts()).toEqual({ launcher: 1, chapter: 0, disclosure: 0 });
@@ -311,7 +311,7 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
       chapter: 0,
       disclosure: 0,
     });
-// Step one of three, and the engines step is genuinely behind it.
+    // Step one of three, and the engines step is genuinely behind it.
     expect(screen.getByText('Step 1 of 3')).toBeTruthy();
     screen.getByTestId('first-run-disclosure').click();
     view.rerender(
@@ -324,16 +324,16 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
   });
 
   test('a pending home is not offered the modal even with the chapter closed', () => {
-// THE DISCRIMINATING CASE for the `pending` rule, and the one a fault
-// injection found missing: while the chapter is up the modal is already
-// withheld by the one-overlay rule, so a test that only looks at an OPEN
-// chapter cannot tell the two reasons apart.
-//
-// A chapter that has just been closed is the gap that leaves. "Not now"
-// is fire-and-forget, so `firstRun` still reads `pending` until the write
-// lands and the config query refetches — and the launcher is not wanted
-// here either. Without the `pending` rule the modal takes that window and
-// fills the screen the instant the person dismissed the run.
+    // THE DISCRIMINATING CASE for the `pending` rule, and the one a fault
+    // injection found missing: while the chapter is up the modal is already
+    // withheld by the one-overlay rule, so a test that only looks at an OPEN
+    // chapter cannot tell the two reasons apart.
+    //
+    // A chapter that has just been closed is the gap that leaves. "Not now"
+    // is fire-and-forget, so `firstRun` still reads `pending` until the write
+    // lands and the config query refetches — and the launcher is not wanted
+    // here either. Without the `pending` rule the modal takes that window and
+    // fills the screen the instant the person dismissed the run.
     const view = renderBoth();
     expect(overlayCounts()).toEqual({
       launcher: 0,
@@ -348,7 +348,7 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
       </OnboardingGate>,
     );
 
-// Still `pending`: the durable write has not come back yet.
+    // Still `pending`: the durable write has not come back yet.
     expect(configValue.firstRun).toEqual({ status: 'pending' });
     expect(overlayCounts()).toEqual({
       launcher: 0,
@@ -358,8 +358,8 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
   });
 
   test('an upgraded home keeps the standalone modal', () => {
-// No `firstRun` record at all: a home that predates the field, which is
-// the population the standalone modal was shipped for.
+    // No `firstRun` record at all: a home that predates the field, which is
+    // the population the standalone modal was shipped for.
     configValue.firstRun = undefined;
     renderBoth();
 
@@ -380,7 +380,7 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
       disclosure: 0,
     });
 
-// And it takes the screen the moment the launcher is answered.
+    // And it takes the screen the moment the launcher is answered.
     onboardingSetupStore.dismiss();
     view.rerender(
       <OnboardingGate>
@@ -395,9 +395,9 @@ describe('the usage-telemetry disclosure is the third overlay under the same rul
   });
 
   test('a chapter re-opened from Home’s card suppresses it while it is up', () => {
-// A deferred home carries BOTH: the card offers the run, and the modal is
-// mounted because the home is no longer `pending`. Opening the run from
-// the card must not leave the modal stacked on top of it.
+    // A deferred home carries BOTH: the card offers the run, and the modal is
+    // mounted because the home is no longer `pending`. Opening the run from
+    // the card must not leave the modal stacked on top of it.
     configValue.firstRun = { status: 'skipped' };
     const view = renderBoth();
     expect(overlayCounts()).toEqual({

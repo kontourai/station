@@ -38,7 +38,7 @@ describe('buildHeatRows', () => {
     expect(rows.map((r) => r.project)).toEqual(['Station', 'Flow']);
     expect(rows[0].total).toBe(3);
     expect(rows[0].cells).toHaveLength(12);
-// Newest column is last; the two 10/20-minute items share it.
+    // Newest column is last; the two 10/20-minute items share it.
     expect(rows[0].cells[11].count).toBe(2);
   });
 
@@ -113,15 +113,15 @@ describe('buildHeatRows project slug agreement', () => {
 });
 
 describe('buildHeatRows clock skew', () => {
-/**
-* A client whose clock trails the server's receives future-dated items —
-* and they are the NEWEST ones, exactly what this block exists to show.
-* Without the clamp a negative age indexes one past the last bucket, the
-* cell is undefined, and reading `.count` throws: one skewed timestamp
-* takes the whole Home route down to its error boundary. The clamp was
-* untested until the independent verifier's injection sweep found that
-* removing it left every suite green.
-*/
+  /**
+   * A client whose clock trails the server's receives future-dated items —
+   * and they are the NEWEST ones, exactly what this block exists to show.
+   * Without the clamp a negative age indexes one past the last bucket, the
+   * cell is undefined, and reading `.count` throws: one skewed timestamp
+   * takes the whole Home route down to its error boundary. The clamp was
+   * untested until the independent verifier's injection sweep found that
+   * removing it left every suite green.
+   */
   test('a future-dated item lands in the newest bucket rather than throwing', () => {
     const future = { ...item('skewed', 'Station', 0), updatedAt: NOW + 90_000 };
     expect(() => buildHeatRows([future], NOW)).not.toThrow();
@@ -158,8 +158,8 @@ describe('barHeight', () => {
 });
 
 describe('bucketLabel', () => {
-/** The grid this replaced had twelve unnamed columns; a cell said how many
-* but never when. */
+  /** The grid this replaced had twelve unnamed columns; a cell said how many
+   * but never when. */
   test('names the window each column covers, newest last', () => {
     expect(bucketLabel(11)).toBe('in the last 4 hours');
     expect(bucketLabel(10)).toBe('about 4 hours ago');

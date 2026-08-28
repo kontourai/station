@@ -76,7 +76,7 @@ test('with no grant, the root renders the built-in Home exactly as stage 2 did',
   roleSeam.status = { state: 'none' };
   render(<HomeView continuation={null} onNavigate={() => undefined} />);
   expect(screen.getByTestId('home-surface')).toBeTruthy();
-// No role chrome of any kind exists without a grant.
+  // No role chrome of any kind exists without a grant.
   expect(screen.queryByTestId('home-role-pane')).toBeNull();
 });
 
@@ -99,10 +99,10 @@ test('with a granted status, the role component receives the grant, the built-in
     onRevoke: () => void;
   };
   expect(props.grant).toBe(grant);
-// The floor handed down is the real built-in Home element.
+  // The floor handed down is the real built-in Home element.
   expect(screen.getByTestId('role-floor')).toBeTruthy();
   expect(screen.getByTestId('home-surface')).toBeTruthy();
-// Revocation is the server store's mutation, not a local approximation.
+  // Revocation is the server store's mutation, not a local approximation.
   expect(props.onRevoke).toBe(roleSeam.revoke);
 });
 
@@ -125,9 +125,9 @@ test('a lapsed status renders the floor with the derived reason — the role com
 });
 
 test('a grant record planted in localStorage — the self-grant attack — mounts nothing', () => {
-// Before the re-scope the grant lived at this key, where same-origin
-// plugin code could write it. Nothing may read it any more: the ONLY seam
-// into the role render is the server-derived status.
+  // Before the re-scope the grant lived at this key, where same-origin
+  // plugin code could write it. Nothing may read it any more: the ONLY seam
+  // into the role render is the server-derived status.
   window.localStorage.setItem(
     'station:workspace-home-role',
     JSON.stringify({

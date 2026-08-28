@@ -6,7 +6,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { BuiltinEngineRow } from '../views/settings/BuiltinEngineRow';
 
 /**
-* archive#settings-revamp: this row lives inside
+ * archive#settings-revamp: this row lives inside
  * SettingsView's batched draft/Save/Discard page — choosing an engine must
  * update the draft (via `onChange`) rather than saving immediately
  * underneath the page, which would let the next Save silently revert it.
@@ -25,8 +25,8 @@ vi.mock('@kontourai/station-sdk', () => ({
   useAgentConnectionsQuery: () => ({ data: connectionsData }),
   useConfigQuery: () => ({ data: configData }),
   useUpdateConfigMutation: () => ({ mutate, isPending: false }),
-// archive#1549: the lazily-loaded EnginePicker this row opens now probes
-// not-yet-observed connections on open.
+  // archive#1549: the lazily-loaded EnginePicker this row opens now probes
+  // not-yet-observed connections on open.
   useReconnectACPConnectionMutation: () => ({
     mutateAsync: vi.fn().mockResolvedValue(true),
   }),
@@ -89,9 +89,9 @@ describe('BuiltinEngineRow', () => {
         onChange={vi.fn()}
       />,
     );
-// Nothing pinned and nothing capable connected: the binding resolves to
-// Station, and that is what runs — "Auto-detected" alone said nothing
-// about which engine is actually in effect.
+    // Nothing pinned and nothing capable connected: the binding resolves to
+    // Station, and that is what runs — "Auto-detected" alone said nothing
+    // about which engine is actually in effect.
     expect(screen.getByText('Station')).toBeTruthy();
     expect(screen.getByText('Auto-detected')).toBeTruthy();
   });
@@ -111,19 +111,19 @@ describe('BuiltinEngineRow', () => {
   });
 
   test('a saved choice Station has not yet observed says so, and does NOT claim it is incapable', () => {
-// The assert-then-retract defect this fixes: the resolver already fails
-// an unbindable choice safe to Station without touching the config, so
-// rendering the persisted id made Settings display "Kiro" while the
-// runtime was on Station.
-//
-// archive#1684: the `acp` matrix cell is now
-// `basis: 'runtime_observation'`, so an ACP connection with NO
-// `controlPlaneObservation` derives `observation-required`, not
-// `chat-only`. This test used to assert the incapable copy here; that
-// copy is a VERDICT Station has not reached about an unobserved
-// connection — exactly the unearned label this branch exists to remove
- // (`engineBinding.ts`'s archive#1549 branch). The observed-NO path keeps its
-// own coverage in the next test.
+    // The assert-then-retract defect this fixes: the resolver already fails
+    // an unbindable choice safe to Station without touching the config, so
+    // rendering the persisted id made Settings display "Kiro" while the
+    // runtime was on Station.
+    //
+    // archive#1684: the `acp` matrix cell is now
+    // `basis: 'runtime_observation'`, so an ACP connection with NO
+    // `controlPlaneObservation` derives `observation-required`, not
+    // `chat-only`. This test used to assert the incapable copy here; that
+    // copy is a VERDICT Station has not reached about an unobserved
+    // connection — exactly the unearned label this branch exists to remove
+    // (`engineBinding.ts`'s archive#1549 branch). The observed-NO path keeps its
+    // own coverage in the next test.
     connectionsData = [acpConnection()];
     statusData = { providers: { configuredChatReady: false } };
     render(
@@ -142,15 +142,15 @@ describe('BuiltinEngineRow', () => {
         "Your saved choice (Kiro) can't run the built-in assistant.",
       ),
     ).toBeNull();
-// The engine that is NOT running must not be presented as the value.
+    // The engine that is NOT running must not be presented as the value.
     expect(screen.queryByText('Kiro')).toBeNull();
   });
 
   test('a saved choice Station HAS observed and that answered no shows Station and says it cannot run the assistant', () => {
-// The observed-NO half of the pair above, and this component's only
-// incapable-path assertion. `mcpHttp: false` is a real answer from a
-// real handshake (`ControlPlaneObservation`, engine-capability-matrix.ts),
-// so "can't run the built-in assistant" IS earned here.
+    // The observed-NO half of the pair above, and this component's only
+    // incapable-path assertion. `mcpHttp: false` is a real answer from a
+    // real handshake (`ControlPlaneObservation`, engine-capability-matrix.ts),
+    // so "can't run the built-in assistant" IS earned here.
     connectionsData = [
       acpConnection({
         controlPlaneObservation: {
@@ -252,10 +252,10 @@ describe('BuiltinEngineRow', () => {
   });
 
   test('the modal never claims it rebinds Voice — the server deliberately refuses to', () => {
-// `rebindBuiltinAgents` (station-runtime.ts) leaves `station-voice`
-// alone on purpose: Voice is speech-to-speech and never reads an engine
- // binding. archive#1441's copy said this reassigns "Station's default agent and
-// voice", promising a rebind that never happens.
+    // `rebindBuiltinAgents` (station-runtime.ts) leaves `station-voice`
+    // alone on purpose: Voice is speech-to-speech and never reads an engine
+    // binding. archive#1441's copy said this reassigns "Station's default agent and
+    // voice", promising a rebind that never happens.
     connectionsData = [codexConnection()];
     statusData = { providers: { configuredChatReady: false } };
     configData = undefined;

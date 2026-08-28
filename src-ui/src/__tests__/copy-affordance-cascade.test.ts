@@ -50,10 +50,10 @@ const ADOPTERS: ReadonlyArray<{
     stylesheet: 'components/coding-layout/CodingLayout.css',
   },
   {
-// The Connections hub page (and its stylesheet) is gone; its copy
-// affordance moved to the Computers section, which uses the SHARED
-// Button primitive — so the paired rule now lives beside `.button` in
-// the sheet that owns it, and covers every shared-Button adopter.
+    // The Connections hub page (and its stylesheet) is gone; its copy
+    // affordance moved to the Computers section, which uses the SHARED
+    // Button primitive — so the paired rule now lives beside `.button` in
+    // the sheet that owns it, and covers every shared-Button adopter.
     component: 'ComputersSection',
     buttonClass: 'button',
     stylesheet: 'index.css',
@@ -91,9 +91,9 @@ describe('copy affordance failed-state cascade (station#3341)', () => {
   );
 
   test('the shared marker declares no colour of its own', () => {
-// A bare `.copy-affordance--failed { color:... }` is the defect this
-// fix removed: it reads as working, and is inert wherever the component's
-// own rule lands later. The marker exists only to be paired.
+    // A bare `.copy-affordance--failed { color:... }` is the defect this
+    // fix removed: it reads as working, and is inert wherever the component's
+    // own rule lands later. The marker exists only to be paired.
     const entry = read('index.css');
     const bare = /(^|[\s,{}])\.copy-affordance--failed\s*\{([^}]*)\}/m.exec(
       entry,
@@ -102,8 +102,8 @@ describe('copy affordance failed-state cascade (station#3341)', () => {
   });
 
   test('every component that renders the marker is listed here', () => {
-// Guards the list itself: a seventh adopter added without a paired rule
-// would otherwise be covered by nothing.
+    // Guards the list itself: a seventh adopter added without a paired rule
+    // would otherwise be covered by nothing.
     const rendered = new Set(ADOPTERS.map((a) => a.component));
     const sources = [
       'components/chat-dock/ChatDockActiveIdentity.tsx',

@@ -79,34 +79,34 @@ export interface MCPToolUIFrameProps {
   component: MCPToolUILayoutComponentRef;
   fallbackComponent?: FallbackComponent;
   fallbackComponentName?: string;
-/**
-* Observes a terminal resolver result without changing the hardened MCP
-* rendering path. Hosts may use this fact to select a separately declared,
-* inert alternative; they never receive resource contents or an approval
-* bypass through this callback.
-*/
+  /**
+   * Observes a terminal resolver result without changing the hardened MCP
+   * rendering path. Hosts may use this fact to select a separately declared,
+   * inert alternative; they never receive resource contents or an approval
+   * bypass through this callback.
+   */
   onResolutionStatus?: (resolution: {
     ref: string;
     status: 'missing_resource' | 'render_revoked';
   }) => void;
-/**
-* Immutable host-supplied identity for this resolution attempt. It scopes
-* React Query's resolver result to the exact pane declaration that asked for
-* it, so a lifecycle replacement cannot reuse an earlier terminal result.
-*/
+  /**
+   * Immutable host-supplied identity for this resolution attempt. It scopes
+   * React Query's resolver result to the exact pane declaration that asked for
+   * it, so a lifecycle replacement cannot reuse an earlier terminal result.
+   */
   resolutionIdentity?: string;
-/** Exact host occurrence; display requests may change presentation only. */
+  /** Exact host occurrence; display requests may change presentation only. */
   paneIdentity?: MCPAppPanePresentationIdentity;
   currentDisplayMode?: 'inline' | 'fullscreen';
   hostAvailableDisplayModes?: readonly ('inline' | 'fullscreen')[];
   onRequestDisplayMode?: (mode: 'inline' | 'fullscreen') => boolean;
-/** Receipt seam for host policy/operational evidence. */
+  /** Receipt seam for host policy/operational evidence. */
   onDisplayModeDecision?: (decision: MCPAppDisplayModeDecision) => void;
   apiBase?: string;
-/**
-* Code-issued only: permits the exact continuation call for Station's whole
-* Task Basis App. This is intentionally not expressible in a layout manifest.
-*/
+  /**
+   * Code-issued only: permits the exact continuation call for Station's whole
+   * Task Basis App. This is intentionally not expressible in a layout manifest.
+   */
   basisReadSession?: {
     serverId: 'station-control';
     toolName: 'get_task_basis';
@@ -176,7 +176,7 @@ export function MCPToolUIFrame({
   const config = useConfig();
   const platform = usePlatformProfile();
   const nativeIframeBlocked = platform.isTauri;
-// MCP-UI host renders by default; operators opt out with `mcpUiHost: false`.
+  // MCP-UI host renders by default; operators opt out with `mcpUiHost: false`.
   const hostEnabled = config?.mcpUiHost !== false;
   const baseUrl = apiBase ?? apiContext.apiBase;
   const refParts = parseMcpToolRef(component.ref);
@@ -202,8 +202,8 @@ export function MCPToolUIFrame({
       (status !== 'missing_resource' && status !== 'render_revoked')
     )
       return;
-// A read-only pin has another eligible, hardened presentation path. Its
-// resolver result becomes terminal only if that embedded path also fails.
+    // A read-only pin has another eligible, hardened presentation path. Its
+    // resolver result becomes terminal only if that embedded path also fails.
     if (shouldTryEmbeddedPresentation) return;
     onResolutionStatus?.({ ref: component.ref, status });
   }, [
@@ -259,12 +259,12 @@ export function MCPToolUIFrame({
 
   const data = resolution.data;
 
-// mcp-ui.dev embedded-dialect fallback. A SEP-1865 resolve needs a declared
-// `_meta.ui.resourceUri`; servers shipping the older mcp-ui.dev convention
-// (UI returned inside a tool result) resolve to `missing_resource`. When the
-// host flag is on AND the operator pinned the tool read-only — asserting it is
-// safe to call for display — render by calling the tool and extracting its
-// embedded UI. Embedded mode is srcdoc-only (the dedicated origin is SEP-1865).
+  // mcp-ui.dev embedded-dialect fallback. A SEP-1865 resolve needs a declared
+  // `_meta.ui.resourceUri`; servers shipping the older mcp-ui.dev convention
+  // (UI returned inside a tool result) resolve to `missing_resource`. When the
+  // host flag is on AND the operator pinned the tool read-only — asserting it is
+  // safe to call for display — render by calling the tool and extracting its
+  // embedded UI. Embedded mode is srcdoc-only (the dedicated origin is SEP-1865).
   if (shouldTryEmbeddedPresentation && refParts) {
     return (
       <MCPToolUISandbox
@@ -427,12 +427,12 @@ export function mcpUiHostAppearance(
 
 /**
  * Decide how a View-initiated tool call is gated by the layout's approvalPolicy:
-* - `read-only`  → `deny`: blocks every call (client-side, before any request).
-* - `require`    → `server-gate`: the server blocks on a real inbox approval
-*   ("never direct execution"); no client prompt, so we don't double-prompt.
+ * - `read-only`  → `deny`: blocks every call (client-side, before any request).
+ * - `require`    → `server-gate`: the server blocks on a real inbox approval
+ *   ("never direct execution"); no client prompt, so we don't double-prompt.
  * - `inherit`/unspecified → `prompt`: client-side confirm (today's behavior;
-*   `inherit` will defer to the agent's autoApprove policy once an agent
-*   context is wired — until then the local confirm is the safe default).
+ *   `inherit` will defer to the agent's autoApprove policy once an agent
+ *   context is wired — until then the local confirm is the safe default).
  */
 export function mcpUiToolCallDecision(
   approvalPolicy?: 'inherit' | 'require' | 'read-only',
@@ -465,8 +465,8 @@ function MCPToolUISandbox({
   baseUrl: string;
   resourceUri?: string;
   frameOrigin?: string;
-// 'declared' = SEP-1865 (resolved resourceUri, may use the dedicated origin);
-// 'embedded' = mcp-ui.dev (call the tool, extract its embedded UI; srcdoc-only).
+  // 'declared' = SEP-1865 (resolved resourceUri, may use the dedicated origin);
+  // 'embedded' = mcp-ui.dev (call the tool, extract its embedded UI; srcdoc-only).
   mode?: 'declared' | 'embedded';
   onTerminalResolution?: MCPToolUIFrameProps['onResolutionStatus'];
   resolutionIdentity?: string;
@@ -512,14 +512,14 @@ function MCPToolUISandbox({
   }, []);
   const hostDisplayModeCapabilityKey = `${paneIdentityKey}:${hostAvailableDisplayModes.join(':')}:${onRequestDisplayMode ? 'mediated' : 'unmediated'}`;
   const embedded = mode === 'embedded';
-// Declared Apps use the proxy only when its origin is verifiably different
-// from Station. The embedded compatibility path remains srcdoc-only.
+  // Declared Apps use the proxy only when its origin is verifiably different
+  // from Station. The embedded compatibility path remains srcdoc-only.
   const useDistinctOrigin = !embedded && isDistinctFrameOrigin(frameOrigin);
   const frameSrc =
     useDistinctOrigin && frameOrigin ? `${frameOrigin}/mcp-ui/proxy` : null;
-// Every mode reads the resource before mounting. The stable web-host flow
-// sends raw HTML and authoritative resource policy to the different-origin
-// sandbox proxy only after it reports ready.
+  // Every mode reads the resource before mounting. The stable web-host flow
+  // sends raw HTML and authoritative resource policy to the different-origin
+  // sandbox proxy only after it reports ready.
   const resource = useQuery<MCPToolUIResourceContent>({
     queryKey: [
       'mcp-tool-ui-resource',
@@ -547,15 +547,15 @@ function MCPToolUISandbox({
     resource.isError,
     resource.isLoading,
   ]);
-// The Apps spec puts policy on resource content and requires hosts to ignore
-// tool-level csp/permissions. Missing policy therefore stays deny-by-default.
+  // The Apps spec puts policy on resource content and requires hosts to ignore
+  // tool-level csp/permissions. Missing policy therefore stays deny-by-default.
   const effectiveCsp = resource.data?.ui?.csp;
   const effectivePermissions = resource.data?.ui?.permissions;
   const appsPermissions = effectivePermissions as Parameters<
     typeof buildAllowAttribute
   >[0];
-// Permission-policy `allow` from the app's declared permissions (camera, etc.)
-// via the official helper; empty string when none declared.
+  // Permission-policy `allow` from the app's declared permissions (camera, etc.)
+  // via the official helper; empty string when none declared.
   const allow = buildAllowAttribute(appsPermissions);
   const [pendingCall, setPendingCall] = useState<{
     toolName: string;
@@ -563,8 +563,8 @@ function MCPToolUISandbox({
     reject: () => void;
   } | null>(null);
   const readOnly = component.approvalPolicy === 'read-only';
-// Stable primitives so the bridge effect doesn't re-run on every render (the
-// refParts object identity changes each render in the parent).
+  // Stable primitives so the bridge effect doesn't re-run on every render (the
+  // refParts object identity changes each render in the parent).
   const { serverId, toolName } = refParts;
   const initialArgumentsKey = canonicalToolArguments(
     component.initialArguments,
@@ -583,15 +583,15 @@ function MCPToolUISandbox({
     return wrapResourceHtml(text, buildMcpUiCsp(effectiveCsp));
   }, [resource.data?.text, effectiveCsp]);
 
-// Wire the host bridge as soon as the iframe is mounted — NOT on its `load`
-// event. The View (ext-apps `App`) sends `ui/initialize` the instant its
-// document runs, which for a srcdoc frame is before `load` fires; gating on
-// `load` would register the host's postMessage listener too late and the
-// handshake would be silently lost. The iframe's WindowProxy is stable across
-// the srcdoc document swap, so capturing `contentWindow` early is valid. A
-// static HTML resource that doesn't speak the protocol simply never
-// handshakes — the iframe still renders. AppBridge is created without an MCP
-// client (no tool/resource forwarding) until Phase C.
+  // Wire the host bridge as soon as the iframe is mounted — NOT on its `load`
+  // event. The View (ext-apps `App`) sends `ui/initialize` the instant its
+  // document runs, which for a srcdoc frame is before `load` fires; gating on
+  // `load` would register the host's postMessage listener too late and the
+  // handshake would be silently lost. The iframe's WindowProxy is stable across
+  // the srcdoc document swap, so capturing `contentWindow` early is valid. A
+  // static HTML resource that doesn't speak the protocol simply never
+  // handshakes — the iframe still renders. AppBridge is created without an MCP
+  // client (no tool/resource forwarding) until Phase C.
   const frameContentReady = useDistinctOrigin
     ? !!frameSrc && typeof resource.data?.text === 'string'
     : !!srcDoc;
@@ -617,8 +617,8 @@ function MCPToolUISandbox({
     let disposed = false;
     let lifecycle: 'initializing' | 'active' | 'tearing-down' = 'initializing';
     let initialResultSent = false;
-// These remain per effect/mount. A replacement frame must never inherit a
-// capability completed by a previous frame after it was torn down.
+    // These remain per effect/mount. A replacement frame must never inherit a
+    // capability completed by a previous frame after it was torn down.
     let basisOccurrenceId: string | null = null;
     let basisContinuationToken: string | null = null;
     const isCurrentInitialSubject = () => !disposed && lifecycle === 'active';
@@ -634,9 +634,9 @@ function MCPToolUISandbox({
             openLinks: {},
             logging: {},
             serverResources: {},
-// Only advertise tool-call proxying when the policy permits it, so a
-// well-behaved read-only View hides its tool affordances. Calls are
-// also enforced in the handler below regardless.
+            // Only advertise tool-call proxying when the policy permits it, so a
+            // well-behaved read-only View hides its tool affordances. Calls are
+            // also enforced in the handler below regardless.
             ...(!readOnly || basisReadSession ? { serverTools: {} } : {}),
             sandbox: {
               csp: effectiveCsp,
@@ -657,9 +657,9 @@ function MCPToolUISandbox({
           if (typeof html !== 'string') return;
           bridge?.sendSandboxResourceReady({
             html,
-// The outer proxy has the stable-spec allow-same-origin grant; the
-// untrusted inner View stays opaque so it cannot take over the
-// proxy and impersonate its WindowProxy to Station.
+            // The outer proxy has the stable-spec allow-same-origin grant; the
+            // untrusted inner View stays opaque so it cannot take over the
+            // proxy and impersonate its WindowProxy to Station.
             sandbox: 'allow-scripts',
             csp: effectiveCsp,
             permissions: appsPermissions,
@@ -697,8 +697,8 @@ function MCPToolUISandbox({
                   return;
                 }
                 if (!isCurrentInitialSubject()) {
-// Open completed after teardown/replacement. It was never
-// installed locally, so revoke the server-owned occurrence.
+                  // Open completed after teardown/replacement. It was never
+                  // installed locally, so revoke the server-owned occurrence.
                   void proxyBasisDispose(
                     baseUrl,
                     basisReadSession,
@@ -762,7 +762,7 @@ function MCPToolUISandbox({
             setHeight(clampHeight(params.height));
           }
         };
-// Resource reads are side-effect-free → always proxied (even read-only).
+        // Resource reads are side-effect-free → always proxied (even read-only).
         bridge.onreadresource = async (params: { uri: string }) => {
           const content = await proxyResourceRead(
             baseUrl,
@@ -781,9 +781,9 @@ function MCPToolUISandbox({
             ],
           } as ReadResourceResult;
         };
-// Tool calls are gated by approvalPolicy: read-only denies up front; a
-// `require` policy is gated server-side (blocks on an inbox approval, so
-// no client prompt); everything else gets a local confirm prompt.
+        // Tool calls are gated by approvalPolicy: read-only denies up front; a
+        // `require` policy is gated server-side (blocks on an inbox approval, so
+        // no client prompt); everything else gets a local confirm prompt.
         bridge.oncalltool = async (params: {
           name: string;
           arguments?: Record<string, unknown>;
@@ -818,9 +818,9 @@ function MCPToolUISandbox({
               });
             });
           }
-// 'server-gate' falls through with no client prompt — the POST blocks
-// on the inbox approval and returns the spec result (or a protocol
-// error on deny/timeout), which the iframe simply awaits.
+          // 'server-gate' falls through with no client prompt — the POST blocks
+          // on the inbox approval and returns the spec result (or a protocol
+          // error on deny/timeout), which the iframe simply awaits.
           const result = basisCall
             ? await proxyBasisContinuation(
                 baseUrl,
@@ -854,9 +854,9 @@ function MCPToolUISandbox({
           }
           return result as CallToolResult;
         };
-// Start the transport listener before navigating to the proxy. The
-// proxy emits sandbox-proxy-ready immediately, so rendering `src`
-// first would leave a race where that one-shot notification is lost.
+        // Start the transport listener before navigating to the proxy. The
+        // proxy emits sandbox-proxy-ready immediately, so rendering `src`
+        // first would leave a race where that one-shot notification is lost.
         const connected = bridge.connect(new PostMessageTransport(win, win));
         bridgeRef.current = bridge;
         if (useDistinctOrigin && frameSrc) {
@@ -864,13 +864,13 @@ function MCPToolUISandbox({
         }
         await connected;
       } catch {
-// Bridge unavailable (e.g. a static resource over an opaque origin) —
-// the rendered HTML is still useful; tool data just isn't pushed.
+        // Bridge unavailable (e.g. a static resource over an opaque origin) —
+        // the rendered HTML is still useful; tool data just isn't pushed.
       }
     };
 
-// Wire now if the frame already has a window; otherwise wait for it to
-// exist (jsdom and some timings expose contentWindow only after `load`).
+    // Wire now if the frame already has a window; otherwise wait for it to
+    // exist (jsdom and some timings expose contentWindow only after `load`).
     if (iframe.contentWindow) {
       void wire();
     } else {
@@ -891,14 +891,14 @@ function MCPToolUISandbox({
       basisContinuationToken = null;
       basisOccurrenceId = null;
       if (bridgeRef.current === bridge) bridgeRef.current = null;
-// teardownResource sends a `ui/resource-teardown` request the View may
-// never answer once we close the transport; swallow its rejection so it
-// doesn't surface as an unhandled "Connection closed" rejection.
+      // teardownResource sends a `ui/resource-teardown` request the View may
+      // never answer once we close the transport; swallow its rejection so it
+      // doesn't surface as an unhandled "Connection closed" rejection.
       void bridge.teardownResource?.({}).catch(() => {});
       try {
         bridge.close();
       } catch {
-// best-effort transport close
+        // best-effort transport close
       }
     };
   }, [
@@ -919,8 +919,8 @@ function MCPToolUISandbox({
     basisReadSession,
   ]);
 
-// Host commands may maximize/restore without a View request. Notify the
-// existing bridge; never remount the iframe or create parallel state.
+  // Host commands may maximize/restore without a View request. Notify the
+  // existing bridge; never remount the iframe or create parallel state.
   useEffect(() => {
     if (!hostDisplayModeCapabilityKey) return;
     void bridgeRef.current?.sendHostContextChange({
@@ -933,8 +933,8 @@ function MCPToolUISandbox({
     hostDisplayModeCapabilityKey,
   ]);
 
-// Loading/error states apply only to mode 1, where we fetch and inline the
-// resource HTML. Mode 2's dedicated origin renders (or 404s) on its own.
+  // Loading/error states apply only to mode 1, where we fetch and inline the
+  // resource HTML. Mode 2's dedicated origin renders (or 404s) on its own.
   if (resource.isLoading) {
     return <MCPToolUIStatus status="loading" ref={component.ref} />;
   }
@@ -968,16 +968,16 @@ function MCPToolUISandbox({
       <iframe
         ref={iframeRef}
         className="mcp-tool-ui-frame__iframe"
-// Mode 2 grants allow-same-origin ONLY because frameSrc is a verified
-// distinct origin (isDistinctFrameOrigin) — "same-origin" scopes to that
-// isolated origin, never Station's. Mode 1 is opaque-origin: scripts run
-// but the frame can't reach Station's origin (DOM, cookies, storage).
+        // Mode 2 grants allow-same-origin ONLY because frameSrc is a verified
+        // distinct origin (isDistinctFrameOrigin) — "same-origin" scopes to that
+        // isolated origin, never Station's. Mode 1 is opaque-origin: scripts run
+        // but the frame can't reach Station's origin (DOM, cookies, storage).
         sandbox={
           useDistinctOrigin
             ? 'allow-scripts allow-same-origin'
             : 'allow-scripts'
         }
-// Permission-policy from the app's declared _meta.ui.permissions only.
+        // Permission-policy from the app's declared _meta.ui.permissions only.
         allow={allow || undefined}
         {...(useDistinctOrigin && frameSrc
           ? { src: 'about:blank' }
@@ -1005,10 +1005,10 @@ async function proxyToolCall(
   args: Record<string, unknown>,
   approvalPolicy?: 'inherit' | 'require' | 'read-only',
 ): Promise<{ content: unknown }> {
-// `approvalPolicy` lets the server apply the same gate it was rendered under
-// (notably block-on-inbox for `require`). A non-2xx/`success:false` response
-// (e.g. a denied/timed-out approval) makes apiRequest/unwrapApiData throw,
-// which the bridge surfaces to the iframe as a standard protocol error.
+  // `approvalPolicy` lets the server apply the same gate it was rendered under
+  // (notably block-on-inbox for `require`). A non-2xx/`success:false` response
+  // (e.g. a denied/timed-out approval) makes apiRequest/unwrapApiData throw,
+  // which the bridge surfaces to the iframe as a standard protocol error.
   const envelope = await apiRequest<ApiEnvelope<{ content: unknown }>>(
     `${apiBase}/integrations/${encodeURIComponent(serverId)}/ui/call`,
     {
@@ -1149,8 +1149,8 @@ async function proxyResourceRead(
   toolName: string,
   _uri: string,
 ): Promise<MCPToolUIResourceContent> {
-// The server proxy reads only the tool's resolved resourceUri, so the View's
-// requested uri is advisory — the pinned server/tool determines what is read.
+  // The server proxy reads only the tool's resolved resourceUri, so the View's
+  // requested uri is advisory — the pinned server/tool determines what is read.
   return fetchMCPToolUIResource(apiBase, { serverId, toolName });
 }
 
@@ -1176,13 +1176,13 @@ function clampHeight(value: number): number {
 }
 
 function wrapResourceHtml(html: string, csp: string): string {
-// Do not copy Station's shell nonce into untrusted srcdoc content. A script
-// can read its effective nonce and reuse it on an undeclared remote script,
-// bypassing the MCP resource-domain allowlist. Interactive MCP Apps run
-// through the sandbox proxy; opaque-origin srcdoc is a static fallback.
+  // Do not copy Station's shell nonce into untrusted srcdoc content. A script
+  // can read its effective nonce and reuse it on an undeclared remote script,
+  // bypassing the MCP resource-domain allowlist. Interactive MCP Apps run
+  // through the sandbox proxy; opaque-origin srcdoc is a static fallback.
   const meta = `<meta http-equiv="Content-Security-Policy" content="${csp}">`;
-// Keep the policy before every byte of untrusted markup. A resource may put a
-// script before its own <head>; inserting into that head would be too late.
+  // Keep the policy before every byte of untrusted markup. A resource may put a
+  // script before its own <head>; inserting into that head would be too late.
   return `<!doctype html><html><head>${meta}</head><body>${html}</body></html>`;
 }
 
@@ -1309,8 +1309,8 @@ async function fetchMCPToolUIResource(
   refParts: MCPToolRefParts,
   mode: 'declared' | 'embedded' = 'declared',
 ): Promise<MCPToolUIResourceContent> {
-// 'declared' reads the SEP-1865 resource (resources/read); 'embedded' calls
-// the tool and extracts its mcp-ui.dev embedded UI resource.
+  // 'declared' reads the SEP-1865 resource (resources/read); 'embedded' calls
+  // the tool and extracts its mcp-ui.dev embedded UI resource.
   const path = mode === 'embedded' ? 'embedded' : 'resource';
   const envelope = await apiRequest<ApiEnvelope<MCPToolUIResourceContent>>(
     `${apiBase}/integrations/${encodeURIComponent(refParts.serverId)}/ui/${encodeURIComponent(refParts.toolName)}/${path}`,

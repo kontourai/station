@@ -16,13 +16,13 @@ export interface PaneCloseConfirmationProps {
   message: string;
   confirmLabel: string;
   variant: 'danger';
-/**
-* `alertdialog`, not `dialog`. This prompt interrupts to guard unsaved
-* work; ARIA distinguishes the two and assistive tech announces them
-* differently. The hand-rolled markup this replaced had it right, and
-* reusing ConfirmModal silently downgraded it until the pane host's own
-* test caught the missing role (archive#3157).
-*/
+  /**
+   * `alertdialog`, not `dialog`. This prompt interrupts to guard unsaved
+   * work; ARIA distinguishes the two and assistive tech announces them
+   * differently. The hand-rolled markup this replaced had it right, and
+   * reusing ConfirmModal silently downgraded it until the pane host's own
+   * test caught the missing role (archive#3157).
+   */
   role: 'alertdialog';
 }
 
@@ -36,8 +36,8 @@ export function paneCloseConfirmationProps(
         ? 'This pane has unsaved changes.'
         : 'This pane has pending work.',
     confirmLabel: 'Close pane',
-// Closing discards work in BOTH branches — pending work is lost the same
-// way unsaved work is — so the destructive treatment is unconditional.
+    // Closing discards work in BOTH branches — pending work is lost the same
+    // way unsaved work is — so the destructive treatment is unconditional.
     variant: 'danger',
     role: 'alertdialog',
   };

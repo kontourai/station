@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * over the Station, `access:manage` included — so the host-side approve step
  * follows a public access request and never creates protected-route authority
  * from a loopback position.
-* Auto-confirming here would functionally reopen.
+ * Auto-confirming here would functionally reopen.
  */
 
 const requestCurrentStationAccess = vi.fn();
@@ -57,7 +57,7 @@ describe('ShareAnswerPairingPrompt', () => {
       endpoint: 'http://station.test:3141',
       deviceName: 'This browser',
     });
-// The confirm/exchange half must not be reachable from here at all.
+    // The confirm/exchange half must not be reachable from here at all.
     expect(
       await screen.findByText(/will not grant anything until you approve it/),
     ).toBeTruthy();
