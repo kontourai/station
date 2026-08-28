@@ -3,7 +3,6 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { createNightlyDesktopConfig } from '../lib/nightly-build-identity.mjs';
 import {
   assertRepositoryVersion,
   createNativeReleaseConfig,
@@ -16,6 +15,7 @@ import {
   taggedStoreIdentity,
   updaterPluginConfig,
 } from '../lib/native-release-config.mjs';
+import { createNightlyDesktopConfig } from '../lib/nightly-build-identity.mjs';
 
 describe('native release configuration', () => {
   test.each([
