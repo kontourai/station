@@ -1306,7 +1306,7 @@ export async function pairSavedStation(
     cleanupCompleted = false;
   }
   stdout(
-    `Paired with ${origin} (environment ${result.environmentId}). ` +
+    `Paired with ${origin} (environment ${sanitizeUntrustedEnvironmentId(result.environmentId)}). ` +
       `Credential stored in the OS credential store. Saved as Station "${registration.profile.name}".`,
   );
   if (!cleanupCompleted) {
