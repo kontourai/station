@@ -1,29 +1,17 @@
 /**
  * station#1552 — an attestation claim may not state a suite count as prose.
  *
- * `delivery/kontourai-station-558/trust.bundle` asserts, in the field a human
- * reads:
- *
- *   "Node 24 ci:fast passed: … 539/539 unit files with 3822 passed/7
- *    skipped, 151/151 dogfood-reconcile, …"
- *
- * on a claim carrying `check_kind: "external"` and `evidenceType:
- * "attestation"`. **The metadata is honest** — that vocabulary is the
- * ratified way to say "session-local, not CI-reconcilable", and a machine
- * consumer reads it correctly. The sentence is not: a precise, falsifiable
- * count sitting in the human-readable field of a claim that substantiates
- * none of it. The two audiences get different answers from one artifact, and
- * the audience that gets the wrong one is the human.
+ * A public synthetic `trust.bundle` fixture asserts a pass count on an
+ * attestation claim. The evidence class is honest; the reader-facing prose
+ * must be too. It either names the count as session-local attestation evidence
+ * or omits it, because an attestation does not substantiate CI output.
  *
  * An earlier attempt at this went after the metadata, which was already
  * correct, and had to be abandoned on review. The metadata was never the lie.
  *
- * The fix is writer discipline, and the exemplar needs no code:
- * `flow-agents/delivery/codex-capture-false-pass-470/` handles the identical
- * situation by naming what it is — "recorded as a session-local attestation,
- * not a CI-reconcilable test_output claim". This test is the ratchet under
- * that discipline: state the result AS an attestation, or omit the count. A
- * count is a claim about an execution and belongs on a claim that has one.
+ * This test is the ratchet under that discipline: state the result as an
+ * attestation, or omit the count. A count is a claim about an execution and
+ * belongs on a claim that has supporting evidence.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -33,7 +21,11 @@ import { describe, expect, it } from 'vitest';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, '..', '..');
-const DELIVERY_ROOT = join(REPO_ROOT, 'delivery');
+const FIXTURE_ROOT = join(HERE, 'fixtures', 'trust-bundle-claim-prose');
+const EXPECTED_FIXTURE_BUNDLES = [
+  'scripts/__tests__/fixtures/trust-bundle-claim-prose/disclosed-attestation/trust.bundle',
+  'scripts/__tests__/fixtures/trust-bundle-claim-prose/grandfathered-undisclosed-count/trust.bundle',
+];
 
 interface BundleEvidence {
   claimId?: string;
@@ -57,24 +49,17 @@ interface TrustBundle {
 }
 
 /**
- * Committed bundles that predate this rule.
+ * Committed public fixtures that model records predating this rule.
  *
- * They are GRANDFATHERED, not tolerated: `delivery/README.md` records what
- * each sentence overstates. They are not reworded because a claim's `id` is
- * derived from its `fieldOrBehavior` — `trust.checkpoint.json` keys its
- * per-claim verdicts by that id, and the bundles carry an event chain — so
- * editing the prose would silently orphan the checkpoint. Rewriting history
- * to look better is the wrong fix for a bundle whose whole purpose is to be
- * a record.
+ * They are GRANDFATHERED, not tolerated. The fixture keeps an undisclosed
+ * count so the exemption mechanism remains observable and removable without
+ * carrying any private historical record into this public repository.
  *
  * The list is asserted EXACT below: an entry that stops violating is stale
  * and fails, and a new violation cannot be absorbed by appending to it
  * without a reviewer seeing the diff.
  */
-const GRANDFATHERED_CLAIM_IDS = [
-  'kontourai-station-333-responsive-action-surface.flow-agents-workflow.responsive-action-inventory-passes-at-50-action-surfaces-16-covered-direct-desktop-row-and-pixel-44px-trigger-geometry-passed-in-focused-playwright-5-5',
-  'kontourai-station-558-responsive-foundation-ci-fast.flow-agents-workflow.node-24-ci-fast-passed-responsive-ratchet-biome-warnings-only-typescript-539-539-unit-files-with-3822-passed-7-skipped-151-151-dogfood-reconcile-server-ui-production-builds-and-bundle-budgets',
-];
+const GRANDFATHERED_CLAIM_IDS = ['fixture.grandfathered-undisclosed-count'];
 
 /**
  * Phrases that make a count honest by naming what backs it. Present in the
@@ -122,42 +107,77 @@ interface Violation {
   fieldOrBehavior: string;
 }
 
-function collectViolations(): Violation[] {
-  const violations: Violation[] = [];
-  for (const path of findBundles(DELIVERY_ROOT)) {
-    const bundle = JSON.parse(readFileSync(path, 'utf8')) as TrustBundle;
-    const attestationClaimIds = new Set(
-      (bundle.evidence ?? [])
-        .filter((entry) => entry.evidenceType === 'attestation')
-        .map((entry) => entry.claimId),
-    );
-    for (const claim of bundle.claims ?? []) {
-      const policyIsAttestation =
-        claim.verificationPolicyId?.endsWith(':attestation') === true;
-      const classified =
-        attestationClaimIds.has(claim.id) || policyIsAttestation;
-      if (!classified) continue;
-
-      const text = claim.fieldOrBehavior ?? '';
-      if (!statesResultCount(text)) continue;
-      if (ATTESTATION_DISCLOSURES.test(text)) continue;
-
-      violations.push({
+function collectBundleViolations(
+  bundle: TrustBundle,
+  path: string,
+): Violation[] {
+  const attestationClaimIds = new Set(
+    (bundle.evidence ?? [])
+      .filter((entry) => entry.evidenceType === 'attestation')
+      .map((entry) => entry.claimId),
+  );
+  return (bundle.claims ?? []).flatMap((claim) => {
+    const policyIsAttestation =
+      claim.verificationPolicyId?.endsWith(':attestation') === true;
+    const classified = attestationClaimIds.has(claim.id) || policyIsAttestation;
+    const text = claim.fieldOrBehavior ?? '';
+    if (
+      !classified ||
+      !statesResultCount(text) ||
+      ATTESTATION_DISCLOSURES.test(text)
+    )
+      return [];
+    return [
+      {
         bundle: relative(REPO_ROOT, path),
         claimId: claim.id ?? '(unnamed claim)',
         fieldOrBehavior: text,
-      });
-    }
-  }
-  return violations;
+      },
+    ];
+  });
+}
+
+function collectViolations(root = FIXTURE_ROOT): Violation[] {
+  return findBundles(root).flatMap((path) =>
+    collectBundleViolations(
+      JSON.parse(readFileSync(path, 'utf8')) as TrustBundle,
+      path,
+    ),
+  );
 }
 
 describe('a trust-bundle claim does not state more than its evidence class supports', () => {
-  it('finds bundles to check', () => {
+  it('finds the exact nonzero public fixture inventory', () => {
     // Vacuous green is the failure mode this whole cluster of issues is
     // about; a corpus scan that silently found nothing would be an instance
     // of it.
-    expect(findBundles(DELIVERY_ROOT).length).toBeGreaterThan(0);
+    expect(
+      findBundles(FIXTURE_ROOT)
+        .map((path) => relative(REPO_ROOT, path))
+        .sort(),
+    ).toEqual([...EXPECTED_FIXTURE_BUNDLES].sort());
+  });
+
+  it('accepts a disclosed session-local attestation count', () => {
+    const positive = join(
+      FIXTURE_ROOT,
+      'disclosed-attestation',
+      'trust.bundle',
+    );
+    expect(
+      collectBundleViolations(
+        JSON.parse(readFileSync(positive, 'utf8')) as TrustBundle,
+        positive,
+      ),
+    ).toEqual([]);
+  });
+
+  it('identifies the public undisclosed count fixture before its explicit grandfather exemption', () => {
+    expect(collectViolations()).toEqual([
+      expect.objectContaining({
+        claimId: 'fixture.grandfathered-undisclosed-count',
+      }),
+    ]);
   });
 
   it('carries no un-disclosed pass/fail count on an attestation claim', () => {
@@ -184,6 +204,25 @@ describe('a trust-bundle claim does not state more than its evidence class suppo
     // rule quietly repealed. Both fail here.
     const violating = collectViolations().map((violation) => violation.claimId);
     expect([...GRANDFATHERED_CLAIM_IDS].sort()).toEqual([...violating].sort());
+  });
+
+  it('fails mutations that hide an attestation count or rely only on policy classification', () => {
+    const positivePath = join(
+      FIXTURE_ROOT,
+      'disclosed-attestation',
+      'trust.bundle',
+    );
+    const positive = JSON.parse(
+      readFileSync(positivePath, 'utf8'),
+    ) as TrustBundle;
+    const hiddenCount = structuredClone(positive);
+    hiddenCount.claims![0]!.fieldOrBehavior = 'Fixture run passed: 12/12.';
+    expect(collectBundleViolations(hiddenCount, positivePath)).toHaveLength(1);
+
+    const unsupported = structuredClone(positive);
+    unsupported.evidence = [];
+    unsupported.claims![0]!.fieldOrBehavior = 'Fixture run passed: 18/18.';
+    expect(collectBundleViolations(unsupported, positivePath)).toHaveLength(1);
   });
 
   it('does not fire on dates, issue numbers, or digests', () => {
