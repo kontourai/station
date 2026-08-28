@@ -41,6 +41,8 @@ import {
 import { createOwnedRunner } from '../lib/verification-execution-lifecycle.mjs';
 import { buildHostPressureSample } from '../lib/verification-host-pressure.mjs';
 import { createVerificationRequest } from '../lib/verification-receipt.mjs';
+import { prepareCoordinatorContext } from '../lib/verification-request-context.mjs';
+import { STATION_VERIFICATION_HISTORY_REF } from '../lib/verification-request-environment.mjs';
 import { outputDirectory } from '../lib/verification-request-identity.mjs';
 import {
   createWslQuarantinedTest,
@@ -386,6 +388,30 @@ function collectFixtureChild(child: ReturnType<typeof spawn>) {
 }
 
 describe('verification coordinator', () => {
+  test('binds execution history to the derived request head and overwrites inheritance', () => {
+    const temp = fixture();
+    try {
+      const context = prepareCoordinatorContext({
+        laneId: 'test-changed',
+        root: temp.root,
+        cwd: process.cwd(),
+        collectProvenance: () =>
+          boundCoordinatorProvenance(
+            process.cwd(),
+            'request-history-environment',
+          ),
+        env: { ...process.env, [STATION_VERIFICATION_HISTORY_REF]: 'HEAD' },
+      });
+
+      expect(context.env[STATION_VERIFICATION_HISTORY_REF]).toBe(
+        context.request.headSha,
+      );
+      expect(context.request.headSha).toBe('b'.repeat(40));
+    } finally {
+      temp.remove();
+    }
+  });
+
   test('keeps coordinator authorities behind acyclic bounded modules', () => {
     const libraryRoot = join(process.cwd(), 'scripts/lib');
     const coordinator = readFileSync(
