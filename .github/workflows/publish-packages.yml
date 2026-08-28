@@ -516,7 +516,15 @@ jobs:
           version-script: npm run version-packages
           pr-title: 'chore: version packages'
           commit-message: 'chore: version packages'
-        # No step `env:` at all, deliberately — each absence below is a
+        env:
+          # Self-hosted runners cannot produce sigstore provenance: npm's
+          # trusted publishing auto-attaches it and the registry rejects the
+          # publish with E422 ("Only github-hosted runners are supported").
+          # Disabling provenance leaves OIDC trusted-publishing auth intact —
+          # only the attestation is dropped. Restoring real provenance means
+          # moving this job to a github-hosted runner (#683).
+          NPM_CONFIG_PROVENANCE: 'false'
+        # Exactly ONE env var above, deliberately — each absence below is a
         # decision:
         #
         # No GITHUB_TOKEN: v2 takes the token through the `github-token`
