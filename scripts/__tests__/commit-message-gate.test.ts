@@ -305,7 +305,7 @@ describe('pre-push range parsing is push-only', () => {
     ]);
   });
 
-  it('enumerates only remote..local for a tracked ref', () => {
+  it('enumerates tracked branch commits while excluding protected base history', () => {
     const seen: string[][] = [];
     const commits = pushedCommits(
       { localSha: 'local1', remoteSha: 'remote1', baseSha: 'base1' },
@@ -314,7 +314,13 @@ describe('pre-push range parsing is push-only', () => {
         return 'aaa0000000000000000000000000000000000000\0fix(dock): subject one\nbbb0000000000000000000000000000000000000\0bad subject two';
       },
     );
-    expect(seen[0]).toEqual(['log', '--format=%H%x00%s', 'remote1..local1']);
+    expect(seen[0]).toEqual([
+      'log',
+      '--format=%H%x00%s',
+      'remote1..local1',
+      '--not',
+      'base1',
+    ]);
     expect(commits).toEqual([
       {
         sha: 'aaa0000000000000000000000000000000000000',
@@ -325,6 +331,18 @@ describe('pre-push range parsing is push-only', () => {
         subject: 'bad subject two',
       },
     ]);
+  });
+
+  it('keeps the tracked remote range when the protected base cannot be resolved', () => {
+    const seen: string[][] = [];
+    pushedCommits(
+      { localSha: 'local1', remoteSha: 'remote1', baseSha: null },
+      (args) => {
+        seen.push(args);
+        return '';
+      },
+    );
+    expect(seen[0]).toEqual(['log', '--format=%H%x00%s', 'remote1..local1']);
   });
 
   it('for a brand-new ref, enumerates commits not on the base — never history', () => {
@@ -352,6 +370,78 @@ describe('pre-push range parsing is push-only', () => {
         () => '',
       ),
     ).toEqual([]);
+  });
+
+  it('excludes a nonconforming protected-main commit after a tracked branch merges current main while retaining new branch commits', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-commit-range-'));
+    const git = (...args: string[]) =>
+      execFileSync('git', args, {
+        cwd: root,
+        encoding: 'utf8',
+        windowsHide: true,
+      }).trim();
+    const commit = (subject: string, path = 'fixture.txt') => {
+      writeFileSync(join(root, path), `${subject}\n`);
+      git('add', path);
+      git('commit', '-qm', subject);
+      return git('rev-parse', 'HEAD');
+    };
+    try {
+      git('init', '-q');
+      git('config', 'user.email', 'gate@test.invalid');
+      git('config', 'user.name', 'commit gate');
+      commit('fix: establish protected base');
+      git('branch', '-M', 'main');
+      git('checkout', '-qb', 'feature');
+      const remoteFeature = commit('feat: tracked branch baseline');
+      git('checkout', '-q', 'main');
+      const protectedBase = commit(
+        'Protected main subject that does not conform',
+        'protected-main.txt',
+      );
+      git('checkout', '-q', 'feature');
+      git('merge', '--no-ff', '-qm', 'merge main', 'main');
+      const branchBad = commit('branch owned bad subject', 'branch-bad.txt');
+      const branchGood = commit(
+        'fix: retain branch-owned validation',
+        'branch-good.txt',
+      );
+      const commits = pushedCommits(
+        {
+          localSha: branchGood,
+          remoteSha: remoteFeature,
+          baseSha: protectedBase,
+        },
+        (args) =>
+          execFileSync('git', args, {
+            cwd: root,
+            encoding: 'utf8',
+            windowsHide: true,
+          }),
+      );
+
+      expect(commits.map((entry) => entry.subject)).toContain(
+        'branch owned bad subject',
+      );
+      expect(commits.map((entry) => entry.subject)).toContain(
+        'fix: retain branch-owned validation',
+      );
+      expect(commits.map((entry) => entry.subject)).not.toContain(
+        'Protected main subject that does not conform',
+      );
+      expect(
+        validateSubject(
+          commits.find((entry) => entry.sha === branchBad)?.subject,
+        ).ok,
+      ).toBe(false);
+      expect(
+        validateSubject(
+          commits.find((entry) => entry.sha === branchGood)?.subject,
+        ).ok,
+      ).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

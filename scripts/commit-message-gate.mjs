@@ -14,8 +14,8 @@
  *   .githooks/pre-push    — refuses a push whose NEW commits carry bad subjects
  *
  * Enforcement is FORWARD-ONLY. The push-range path validates exactly the
- * commits being pushed (`remote_sha..local_sha`, or `local_sha --not
- * origin/main` for a brand-new ref); the commit-msg path validates one
+ * commits being pushed (`remote_sha..local_sha --not origin/main`, or
+ * `local_sha --not origin/main` for a brand-new ref); the commit-msg path validates one
  * message being written right now. Neither ever walks history. The repo's
  * measured residue (last 1500 commits, 2026-08-28, non-merge = parent
  * count < 2): 1132/1147 non-merge subjects already conform or are exempt;
@@ -124,6 +124,30 @@ export const FROZEN_IMMUTABLE_HISTORY_RECORDS = Object.freeze([
       'Reconcile stale desktop sidecar before runtime preparation (#635)',
     reason:
       'published immutable desktop-sidecar merge predating pull-request title enforcement',
+  }),
+  Object.freeze({
+    sha: '1e5c8d769fa866874288c481e4aba2b6bb502681',
+    parents:
+      'df1f4cbcc26df4deadbe08959ccd2d2e74e0513e 61e7765d7ef5fbf8b53e293205a39778e4ca57d0',
+    subject: 'Sanitize paired environment ID for terminal output (#544)',
+    reason:
+      'published immutable paired-environment merge predating pull-request title enforcement',
+  }),
+  Object.freeze({
+    sha: '4c132726026ebced202e3bd3b2b8cfec76d20df7',
+    parents:
+      'e4943eea158e5d56fb850ed7149e39beafd83283 89082901d5ccd70d985ab4ec927b4d54ea0959fa',
+    subject: 'Fix lazy native tray service selection (#663)',
+    reason:
+      'published immutable native-tray merge predating pull-request title enforcement',
+  }),
+  Object.freeze({
+    sha: '677d997817f167482df3f31cb699d12cefa8e709',
+    parents:
+      'a81e9d257bd11327a5330f74c3198c70fcafec05 3fd2e4b6d7f56c61db0101f9b5c70d9c05ac51af',
+    subject: 'Retain and isolate native tray polling (#663)',
+    reason:
+      'published immutable native-tray polling merge predating pull-request title enforcement',
   }),
 ]);
 
@@ -305,7 +329,7 @@ export function parsePrepushLines(lines) {
 
 /**
  * The commits a push would introduce, as {sha, subject} pairs, in push order.
- * For a tracked ref: `remoteSha..localSha`. For a new ref (zero remote OID):
+ * For a tracked ref: `remoteSha..localSha --not baseSha`. For a new ref (zero remote OID):
  * everything reachable from localSha but not from the base ref — the same
  * containment contract `check-merge-base-fresh.mjs` already enforces, so a
  * branch that does not contain the base never reaches this code.
@@ -313,7 +337,9 @@ export function parsePrepushLines(lines) {
 export function pushedCommits({ localSha, remoteSha, baseSha }, run = git) {
   const range =
     remoteSha && !/^0+$/.test(remoteSha)
-      ? `${remoteSha}..${localSha}`
+      ? baseSha
+        ? [`${remoteSha}..${localSha}`, '--not', baseSha]
+        : `${remoteSha}..${localSha}`
       : baseSha
         ? [localSha, '--not', baseSha]
         : null;
