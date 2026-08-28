@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest';
+import { selectSessionInventoryLiveNow } from '../../components/chat-dock/sessionInventoryLiveProjection';
 import type {
   OrchestrationEvent,
   OrchestrationSnapshotPayload,
@@ -528,6 +529,76 @@ describe('selectChatBackgroundTasks — provider-task dedup by toolCallId', () =
     );
     const view = selectChatBackgroundTasks(state, 'chat-1', undefined);
     expect(view.running.map((entry) => entry.id)).toEqual(['call-1']);
+  });
+});
+
+describe('selectSessionInventoryLiveNow', () => {
+  test('admits only running raw entries from the exact captured Session', () => {
+    const state = {
+      entries: {
+        exact: {
+          id: 'exact',
+          kind: 'tool' as const,
+          source: 'tool-event' as const,
+          chatThreadId: 'session-a',
+          title: 'Exact',
+          startedAt: 1,
+          state: 'running' as const,
+        },
+        other: {
+          id: 'other',
+          kind: 'tool' as const,
+          source: 'tool-event' as const,
+          chatThreadId: 'conversation-a',
+          title: 'Wrong identity',
+          startedAt: 2,
+          state: 'running' as const,
+        },
+        settled: {
+          id: 'settled',
+          kind: 'tool' as const,
+          source: 'tool-event' as const,
+          chatThreadId: 'session-a',
+          title: 'Settled',
+          startedAt: 3,
+          state: 'completed' as const,
+        },
+      },
+      delegateParents: {},
+    };
+    expect(
+      selectSessionInventoryLiveNow(state, 'session-a', undefined).map(
+        (row) => row.id,
+      ),
+    ).toEqual(['exact']);
+    expect(selectSessionInventoryLiveNow(state, null, undefined)).toEqual([]);
+  });
+
+  test('requires a same-Session toolCallId join before admitting a provider task', () => {
+    const state = {
+      entries: {
+        'call-a': {
+          id: 'call-a',
+          kind: 'tool' as const,
+          source: 'tool-event' as const,
+          chatThreadId: 'session-a',
+          title: 'Raw',
+          startedAt: 1,
+          state: 'running' as const,
+        },
+      },
+      delegateParents: {},
+    };
+    expect(
+      selectSessionInventoryLiveNow(state, 'session-a', [
+        { taskId: 'provider-a', toolCallId: 'call-a', description: 'Joined' },
+        {
+          taskId: 'provider-b',
+          toolCallId: 'unknown',
+          description: 'Unjoined',
+        },
+      ]).map((row) => row.id),
+    ).toEqual(['provider-a']);
   });
 });
 

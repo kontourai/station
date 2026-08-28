@@ -21,7 +21,12 @@ export type SessionInventoryViewItem = {
   relation: 'Contributed to this answer' | 'Context from this Session';
   classification: 'current' | 'kept';
   actions: readonly SessionInventoryAction[];
-  row: SessionInventoryRow;
+  row?: SessionInventoryRow;
+};
+export type SessionInventoryLiveItem = {
+  key: string;
+  kind: 'tool' | 'agent' | 'approval';
+  label: string;
 };
 export type SessionInventoryViewGroup = {
   id: SessionInventoryGroupId;
@@ -204,6 +209,7 @@ export function buildSessionInventoryViewModel(
   projection: SessionInventoryProjection,
   selection: SessionInventorySelection,
   density: SessionInventoryDensity = 'full',
+  liveItems: readonly SessionInventoryLiveItem[] = [],
 ): SessionInventoryViewModel {
   const byId = new Map(projection.groups.map((group) => [group.id, group]));
   const groups = SESSION_INVENTORY_GROUP_IDS.map((id) => {
@@ -214,17 +220,29 @@ export function buildSessionInventoryViewModel(
       items: [],
       gaps: [{ kind: 'not-captured' as const }],
     };
-    const items = group.items.map((row) => toItem(row, id));
+    const items =
+      id === 'live-now' && liveItems.length
+        ? liveItems.map((live) => ({
+            key: `session-inventory:live:${live.kind}:${live.key}`,
+            label: live.label,
+            relation: 'Context from this Session' as const,
+            classification: 'current' as const,
+            actions: [],
+          }))
+        : group.items.map((row) => toItem(row, id));
     return {
       id,
       key: `session-inventory:group:${id}`,
       label: labels[id],
-      count: group.count
-        ? group.count.kind === 'exact'
-          ? String(group.count.value)
-          : `${group.count.value}+`
-        : null,
-      state: group.state,
+      count:
+        id === 'live-now' && liveItems.length
+          ? String(liveItems.length)
+          : group.count
+            ? group.count.kind === 'exact'
+              ? String(group.count.value)
+              : `${group.count.value}+`
+            : null,
+      state: id === 'live-now' && liveItems.length ? 'available' : group.state,
       stateCopy: stateCopy(group, labels[id]),
       gaps: group.gaps
         .map((gap) => gapCopy(gap.kind))

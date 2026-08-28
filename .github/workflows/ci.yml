@@ -34,7 +34,7 @@ jobs:
       container: ${{ steps.classify.outputs.container }}
       classification: ${{ steps.classify.outputs.classification }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -87,7 +87,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fast-feedback]
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Veritas binds evidence to the PR base/head diff; a depth-1 merge
           # checkout cannot resolve those exact revisions.
@@ -172,7 +172,7 @@ jobs:
 
       - name: Upload bounded fast-feedback diagnostics
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         # Diagnostics: a storage/quota failure here is an infrastructure
         # condition, not a verdict on the code. It must not redden a job
         # whose work passed (station#2218).
@@ -201,7 +201,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -243,7 +243,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -369,7 +369,7 @@ jobs:
 
       - name: Upload full-regression diagnostics
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         # Diagnostics: a storage/quota failure here is an infrastructure
         # condition, not a verdict on the code. It must not redden a job
         # whose work passed (station#2218).
@@ -394,7 +394,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -430,7 +430,7 @@ jobs:
 
       - name: Upload browser-smoke diagnostics
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         # Diagnostics: a storage/quota failure here is an infrastructure
         # condition, not a verdict on the code. It must not redden a job
         # whose work passed (station#2218).

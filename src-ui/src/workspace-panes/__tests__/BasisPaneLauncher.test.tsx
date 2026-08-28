@@ -5,7 +5,18 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useRef } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { useBasisPaneLauncher } from '../BasisPaneLauncher';
+import { readSessionInventorySelection } from '../sessionInventorySelection';
 import { WorkspacePaneHostOpenContext } from '../WorkspacePaneHostOpenContext';
+
+const authority = {
+  apiBase: 'http://station.test',
+  authorityKey: 'basis-launcher-test',
+  isCurrent: () => true,
+};
+
+vi.mock('../../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => authority,
+}));
 
 vi.mock('../BasisPaneFallbackContent', () => ({
   ConnectedBasisFallbackPane: ({
@@ -95,5 +106,44 @@ describe('Basis Pane launcher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Session' }));
     expect(await screen.findByText('Session renderer session')).toBeTruthy();
     expect(screen.queryByText('Shared Basis renderer')).toBeNull();
+  });
+
+  test('prepares an exact Session scope before synchronous host admission', () => {
+    const open = vi.fn(() => true);
+    function ExactScopeHarness() {
+      const { openBasis } = useBasisPaneLauncher();
+      return (
+        <button
+          type="button"
+          onClick={(event) =>
+            openBasis(
+              createDirectAnswerBasisPaneInstance('project', 'session', 'turn'),
+              {
+                kind: 'session-inventory',
+                sessionId: 'session',
+                initialScope: {
+                  kind: 'current-answer',
+                  sessionId: 'session',
+                  turnId: 'turn',
+                },
+              },
+              event.currentTarget,
+            )
+          }
+        >
+          Open exact
+        </button>
+      );
+    }
+    render(
+      <WorkspacePaneHostOpenContext.Provider value={{ open }}>
+        <ExactScopeHarness />
+      </WorkspacePaneHostOpenContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open exact' }));
+    expect(open).toHaveBeenCalledOnce();
+    expect(
+      readSessionInventorySelection({ ...authority, sessionId: 'session' }),
+    ).toMatchObject({ scope: { kind: 'current-answer', turnId: 'turn' } });
   });
 });

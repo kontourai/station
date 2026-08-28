@@ -20,12 +20,21 @@ import {
 import { useKeepSessionOutputMutation } from '@kontourai/station-sdk/session-output-actions';
 import { buildBasisPanelViewModel } from '@kontourai/surface/basis/view';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  releaseSessionInventoryLiveBinding,
+  useSessionInventoryLiveBinding,
+} from '../components/chat-dock/sessionInventoryLiveBinding';
+import {
+  sessionInventoryLiveItems,
+  useSessionInventoryLive,
+} from '../components/chat-dock/useSessionInventoryLive';
 import { SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import {
   clearSessionInventorySelectionsForAuthority,
   commitSessionInventorySelection,
   readSessionInventoryKnownScopes,
+  readSessionInventorySelection,
   useSessionInventorySelection,
 } from './sessionInventorySelection';
 import './SessionInventory.css';
@@ -46,9 +55,12 @@ const LazySessionInventoryTaskPicker = lazy(() =>
 export function ConnectedSessionInventory({
   sessionId,
   currentProjectId,
+  initialScope,
 }: {
   sessionId: string;
   currentProjectId?: string;
+  /** A caller-captured occurrence is authoritative over this surface's old whole-session default. */
+  initialScope?: SessionInventoryScope;
 }) {
   const requestScope = useHostRequestAuthorityScope();
   const previousAuthority = useRef(requestScope);
@@ -77,6 +89,7 @@ export function ConnectedSessionInventory({
       key={`${requestScope.apiBase}\u0000${requestScope.authorityKey}\u0000${sessionId}`}
       sessionId={sessionId}
       currentProjectId={currentProjectId}
+      initialScope={initialScope}
       requestScope={requestScope}
     />
   );
@@ -86,22 +99,64 @@ function ConnectedSessionInventorySurface({
   sessionId,
   currentProjectId,
   requestScope,
+  initialScope,
 }: {
   sessionId: string;
   currentProjectId?: string;
   requestScope: { apiBase: string; authorityKey: string };
+  initialScope?: SessionInventoryScope;
 }) {
-  const initial: SessionInventorySelection = {
-    scope: { kind: 'whole-session', sessionId },
-    groupId: 'inputs',
-  };
+  const initial = useMemo<SessionInventorySelection>(
+    () => ({
+      scope: initialScope ?? { kind: 'whole-session', sessionId },
+      groupId: 'inputs',
+    }),
+    [initialScope, sessionId],
+  );
   const selectionKey = useMemo(
     () => ({ ...requestScope, sessionId }),
     [requestScope, sessionId],
   );
-  const selection = useSessionInventorySelection(selectionKey, initial);
+  const observedSelection = useSessionInventorySelection(selectionKey, initial);
+  const storedSelection = readSessionInventorySelection(selectionKey);
+  // A caller-provided exact scope replaces a previous scope before any query
+  // sees it; the ordinary whole-session default and a same-scope reopen both
+  // preserve the existing group and item.
+  const selection =
+    !initialScope ||
+    (storedSelection &&
+      scopeKey(storedSelection.scope) === scopeKey(initial.scope))
+      ? observedSelection
+      : initial;
+  useEffect(() => {
+    if (
+      initialScope &&
+      (!storedSelection ||
+        scopeKey(storedSelection.scope) !== scopeKey(initial.scope))
+    )
+      commitSessionInventorySelection(selectionKey, initial);
+  }, [initial, initialScope, selectionKey, storedSelection]);
   const [focusGroupToken, setFocusGroupToken] = useState(0);
   const inventory = useSessionInventoryQuery(selection.scope, { requestScope });
+  const registryBinding = useSessionInventoryLiveBinding(
+    requestScope,
+    sessionId,
+  );
+  useEffect(() => {
+    if (!registryBinding?.hostId.startsWith('hosted:')) return;
+    return () =>
+      releaseSessionInventoryLiveBinding(
+        requestScope.apiBase,
+        requestScope.authorityKey,
+        sessionId,
+        registryBinding,
+      );
+  }, [registryBinding, requestScope, sessionId]);
+  const live = useSessionInventoryLive(
+    requestScope,
+    sessionId,
+    registryBinding?.chatStoreId,
+  );
   const [nextPage, setNextPage] = useState<{
     groupId: SessionInventoryGroupId;
     continuation: string;
@@ -139,7 +194,12 @@ function ConnectedSessionInventorySurface({
   }, [nextPage?.continuation, page.data, selectedScopeKey]);
   const projection = mergePages(inventory.data, loadedPages, selection.scope);
   const model = projection
-    ? buildSessionInventoryViewModel(projection, selection, 'full')
+    ? buildSessionInventoryViewModel(
+        projection,
+        selection,
+        'full',
+        sessionInventoryLiveItems(live),
+      )
     : null;
   useEffect(() => {
     if (model?.repairedSelection)
@@ -328,7 +388,7 @@ function OutputAction({
   requestScope: { apiBase: string; authorityKey: string };
   onUnavailable(): void;
 }) {
-  const row = item.row.kind === 'station-session-output' ? item.row : null;
+  const row = item.row?.kind === 'station-session-output' ? item.row : null;
   const trigger = useRef<HTMLButtonElement>(null);
   const [inspectOpen, setInspectOpen] = useState(false);
   if (!row) return null;

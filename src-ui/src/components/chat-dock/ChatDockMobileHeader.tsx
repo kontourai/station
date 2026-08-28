@@ -39,6 +39,11 @@ export interface ChatDockMobileOverflowActions {
   openProjectName: string | null;
   onOpenProfile: () => void;
   onOpenAppSettings: () => void;
+  /** Plain captured identity; the lazy actions sheet owns the full fallback. */
+  sessionInventory?: {
+    sessionId: string;
+    chatStoreId: string;
+  };
   /**
    * Dock-height controls. The header carries one visible expand/collapse
    * toggle (#1052 follow-up — the earlier drag-only direction was reversed on
@@ -251,6 +256,7 @@ export function ChatDockMobileHeader({
   // controls in this bar — descriptions are matched by neither.
   const titleDescriptionId = useId();
   const switcherTriggerRef = useRef<HTMLButtonElement>(null);
+  const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
 
   // The project owns its own visible switcher below, matching desktop's
   // named project badge. Keep the identity eyebrow for supporting branch
@@ -399,6 +405,7 @@ export function ChatDockMobileHeader({
           </span>
         </button>
         <button
+          ref={chatActionsTriggerRef}
           type="button"
           className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
           aria-haspopup="menu"
@@ -489,7 +496,12 @@ export function ChatDockMobileHeader({
         <LazyBoundary
           load={loadChatDockMobileOverflowSheet}
           pending={null}
-          componentProps={{ overflow, projectScope, onClose: closeOverflow }}
+          componentProps={{
+            overflow,
+            projectScope,
+            returnFocusTarget: chatActionsTriggerRef.current,
+            onClose: closeOverflow,
+          }}
         />
       )}
     </div>

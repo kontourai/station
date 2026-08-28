@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import {
+  admitMacosAppBundle,
   createMacosNotarizedArtifacts,
   outerAppDesignatedRequirement,
 } from './macos-notarized-artifacts.mjs';
@@ -13,13 +14,20 @@ const LEGACY_CODESIGN_OUTPUT = `Designated Requirement=${CERTIFICATE_BACKED_REQU
 function fixture({
   files = ['Station.app'],
   reject = false,
+  app = '/app/Station.app',
+  canonicalApp = '/app/Station.app',
+  appExists = true,
+  appDirectory = true,
+  appSymbolicLink = false,
   designatedRequirement = CURRENT_CODESIGN_OUTPUT,
-  entitlementOutput = { status: 0, stdout: '', stderr: 'Executable=/app/Station.app\n' },
+  entitlementOutput = { status: 0, stdout: '', stderr: 'Executable=/app/Station.app/Contents/MacOS/station\n' },
 } = {}) {
   const calls = []; let signed = false; const removed = [];
   const fs = {
-    existsSync: (file) => file === '/app/Station.app' || file === '/key' || (signed && file.endsWith('.sig')),
+    existsSync: (file) => (appExists && (file === app || file === canonicalApp)) || file === '/key' || (signed && file.endsWith('.sig')),
+    lstatSync: () => ({ isDirectory: () => appDirectory, isSymbolicLink: () => appSymbolicLink }),
     mkdirSync() {}, mkdtempSync: () => '/scratch', readdirSync: () => files,
+    realpathSync: () => canonicalApp,
     rmSync: (file) => removed.push(file),
   };
   const run = (program, args, capture) => {
@@ -32,7 +40,7 @@ function fixture({
     if (program === 'npx') signed = true;
     return '';
   };
-  const options = { app: '/app/Station.app', identity: 'Developer ID', notaryKey: '/key', notaryKeyId: 'key', notaryIssuer: 'issuer', assetsDir: '/assets', releaseTag: 'v1.2.3', architecture: 'aarch64', bundleId: 'io.kontourai.station' };
+  const options = { app, identity: 'Developer ID', notaryKey: '/key', notaryKeyId: 'key', notaryIssuer: 'issuer', assetsDir: '/assets', releaseTag: 'v1.2.3', architecture: 'aarch64', bundleId: 'io.kontourai.station' };
   return { calls, fs, options, removed, run };
 }
 
@@ -71,8 +79,63 @@ test('uses the supported empty-entitlements output target for the outer app', ()
   ]);
 });
 
+test('admits the workflow-relative discovery path and an absolute path to one canonical app', () => {
+  const workflowRelativeApp = 'src-desktop/target/aarch64-apple-darwin/release/bundle/macos/Station.app';
+  for (const app of [workflowRelativeApp, '/app/Station.app']) {
+    const { calls, fs, options, run } = fixture({ app });
+    createMacosNotarizedArtifacts(options, {
+      fs,
+      run,
+      path: { resolve: () => '/app/Station.app' },
+    });
+    expect(calls).toContainEqual([
+      'codesign',
+      ['-d', '--entitlements', '-', '--xml', '/app/Station.app'],
+      true,
+    ]);
+    expect(calls).toContainEqual([
+      'node',
+      ['ops/nightly/macos-embedded-signing.mjs', '/app/Station.app', 'Developer ID'],
+      undefined,
+    ]);
+  }
+});
+
+test('rejects an entitlement diagnostic that names the relative input instead of the canonical app', () => {
+  const app = 'src-desktop/target/aarch64-apple-darwin/release/bundle/macos/Station.app';
+  const { calls, fs, options, run } = fixture({
+    app,
+    entitlementOutput: { status: 0, stdout: '', stderr: `Executable=${app}/Contents/MacOS/station\n` },
+  });
+  expect(() => createMacosNotarizedArtifacts(options, {
+    fs,
+    run,
+    path: { resolve: () => '/app/Station.app' },
+  })).toThrow(/unexpected entitlements/i);
+  expect(calls.some(([program]) => program === 'xcrun')).toBe(false);
+});
+
+test('rejects missing, non-app, symlinked, newline, and escaping app paths before signing', () => {
+  const cases = [
+    fixture({ app: '/app/missing.app', appExists: false }),
+    fixture({ app: '/app/Station-not-an-app', canonicalApp: '/app/Station-not-an-app' }),
+    fixture({ app: '/app/Station.app', canonicalApp: '/elsewhere/Station.app' }),
+    fixture({ app: '/app/Station.app', appSymbolicLink: true }),
+    fixture({ app: '/app/Station.app\n' }),
+  ];
+  for (const { calls, fs, options, run } of cases) {
+    expect(() => createMacosNotarizedArtifacts(options, { fs, run })).toThrow(/staged app|application bundle|unambiguous/i);
+    expect(calls).toEqual([]);
+  }
+});
+
+test('rejects a non-directory app bundle before signing', () => {
+  const { fs } = fixture({ appDirectory: false });
+  expect(() => admitMacosAppBundle('/app/Station.app', fs)).toThrow(/application bundle/i);
+});
+
 test('rejects deprecated-warning and non-exact outer empty-entitlements output before submission', () => {
-  const executable = 'Executable=/app/Station.app\n';
+  const executable = 'Executable=/app/Station.app/Contents/MacOS/station\n';
   const variants = [
     {
       status: 0,

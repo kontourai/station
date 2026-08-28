@@ -446,6 +446,24 @@ export function reconcileBackgroundTasksSnapshot(
       };
     }
   }
+  // A snapshot is authoritative for liveness.  Do not leave raw tools or
+  // delegates visible merely because their terminal SSE event was missed.
+  const sessionsByThread = new Map(
+    payload.sessions.map((session) => [session.threadId, session]),
+  );
+  const stale = Object.values(next.entries).filter((entry) => {
+    if (entry.state !== 'running') return false;
+    if (entry.kind === 'agent')
+      return !sessionsByThread.has(entry.delegateThreadId ?? entry.id);
+    const parent = sessionsByThread.get(entry.chatThreadId);
+    return !parent || parent.hasActiveTurn === false;
+  });
+  if (stale.length) {
+    const entries = { ...next.entries };
+    for (const entry of stale)
+      entries[entry.id] = { ...entry, state: 'stopped', endedAt: Date.now() };
+    next = { ...next, entries };
+  }
   return next;
 }
 
