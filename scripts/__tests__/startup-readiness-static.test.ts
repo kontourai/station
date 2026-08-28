@@ -19,7 +19,7 @@ describe('desktop startup readiness static boundary', () => {
     }
   });
 
-  it('uses one native reveal authority and does not add updater or window-state plugins', () => {
+  it('uses one native reveal authority and does not add window-state plugins', () => {
     const lib = read('src-desktop/src/lib.rs');
     const tray = read('src-desktop/src/tray.rs');
     const mainWindowActions = [
@@ -47,7 +47,46 @@ describe('desktop startup readiness static boundary', () => {
       /RunEvent::Reopen[\s\S]{0,180}request_main_window_activation/,
     );
     expect(lib).not.toContain('tauri_plugin_window_state');
-    expect(lib).not.toContain('tauri_plugin_updater');
+  });
+
+  it('registers the updater exactly once only for usable release configuration', () => {
+    const lib = read('src-desktop/src/lib.rs');
+    const configurationStart = lib.indexOf(
+      'fn desktop_updater_plugin_configured',
+    );
+    const updaterRegistration = 'tauri_plugin_updater::Builder::new().build()';
+    const updaterRegistrationIndex = lib.indexOf(updaterRegistration);
+    const configuredDerivation =
+      'let updater_configured = desktop_updater_plugin_configured';
+    const configuredDerivationIndex = lib.indexOf(configuredDerivation);
+    const configuration = lib.slice(
+      configurationStart,
+      updaterRegistrationIndex,
+    );
+
+    expect(configurationStart).toBeGreaterThanOrEqual(0);
+    expect(configuredDerivationIndex).toBeGreaterThan(configurationStart);
+    expect(updaterRegistrationIndex).toBeGreaterThan(configurationStart);
+    expect(updaterRegistrationIndex).toBeGreaterThan(configuredDerivationIndex);
+    expect(configuration).toMatch(
+      /plugins\s*\.get\("updater"\)[\s\S]*\.get\("pubkey"\)[\s\S]*!value\.trim\(\)\.is_empty\(\)[\s\S]*\.get\("endpoints"\)[\s\S]*!endpoints\.is_empty\(\)[\s\S]*endpoints\.iter\(\)\.all\(/,
+    );
+    expect([
+      ...lib.matchAll(/tauri_plugin_updater::Builder::new\(\)\.build\(\)/g),
+    ]).toHaveLength(1);
+    const updaterGuard = lib.match(
+      /if updater_configured \{\s*builder = builder\.plugin\(tauri_plugin_updater::Builder::new\(\)\.build\(\)\);\s*\}/,
+    );
+    expect(updaterGuard?.index).toBeGreaterThan(configuredDerivationIndex);
+    const processPlugin =
+      'builder = builder.plugin(tauri_plugin_process::init());';
+    const processPluginIndex = lib.indexOf(processPlugin);
+    expect([...lib.matchAll(/tauri_plugin_process::init\(\)/g)]).toHaveLength(
+      1,
+    );
+    expect(processPluginIndex).toBeGreaterThan(
+      (updaterGuard?.index ?? -1) + (updaterGuard?.[0].length ?? 0),
+    );
   });
 
   it('fails its structural probes when a direct reveal or Apple-event route is removed', () => {
