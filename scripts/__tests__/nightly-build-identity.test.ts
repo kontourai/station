@@ -775,7 +775,16 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     'utf8',
   );
   const jobStart = workflow.indexOf('\n  nightly-desktop:');
-  const desktopJob = workflow.slice(jobStart);
+  // Bounded to the NEXT top-level (2-space-indented) job key, not EOF: a
+  // future job appended after this one must not silently leak its steps
+  // into every indexOf-based assertion below.
+  const nextJob = workflow
+    .slice(jobStart + 1)
+    .match(/\n {2}[A-Za-z0-9_-]+:\s*\n/);
+  const jobEnd = nextJob
+    ? jobStart + 1 + (nextJob.index ?? 0)
+    : workflow.length;
+  const desktopJob = workflow.slice(jobStart, jobEnd);
 
   it('exists as its own job, gated identically to the Android job', () => {
     expect(jobStart).toBeGreaterThan(0);
@@ -833,30 +842,153 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     expect(desktopJob).not.toContain('allocate-nightly-version-code.mjs');
   });
 
-  it('publishes a rolling prerelease and uploads latest.json last, after the binary assets', () => {
+  it('publishes the prerelease, THEN advances the rolling tag, THEN records the ledger (station#575 HIGH-1)', () => {
+    // Android's own ordering: the tag suppresses tomorrow's build, so
+    // moving it before a publish that can still fail would assert a ship
+    // that never happened — and desktop has no rebuild input to recover
+    // with, so a hand-deleted tag would be the only fix.
+    const publish = desktopJob.indexOf(
+      'name: Publish the rolling desktop nightly prerelease',
+    );
+    const advance = desktopJob.indexOf(
+      'name: Advance the rolling desktop nightly tag',
+    );
+    const ledger = desktopJob.indexOf('name: Record the nightly desktop ship');
+    expect(publish).toBeGreaterThanOrEqual(0);
+    expect(advance).toBeGreaterThan(publish);
+    expect(ledger).toBeGreaterThan(advance);
+  });
+
+  it('refuses to upload into an existing draft release, and drops the dead --target (station#575 L5)', () => {
     const publish = desktopJob.slice(
-      desktopJob.indexOf('Publish the rolling desktop nightly prerelease'),
-      desktopJob.indexOf('Record the nightly desktop ship'),
+      desktopJob.indexOf(
+        'name: Publish the rolling desktop nightly prerelease',
+      ),
+      desktopJob.indexOf('name: Advance the rolling desktop nightly tag'),
+    );
+    expect(publish).toContain('--json isDraft');
+    expect(publish).toMatch(/grep -qx true/);
+    expect(publish).toMatch(/::error::[^\n]*draft[^\n]*\n\s+exit 1/i);
+    // --target on `gh release create` only mattered when the tag was
+    // pre-pushed; now that the advance runs after publish, the flag is
+    // dead weight the create call never needs.
+    expect(publish).not.toContain('--target');
+  });
+
+  it('uploads latest.json as its OWN gh release upload invocation, after the binaries invocation completes (station#575 MED-3)', () => {
+    const publish = desktopJob.slice(
+      desktopJob.indexOf(
+        'name: Publish the rolling desktop nightly prerelease',
+      ),
+      desktopJob.indexOf('name: Advance the rolling desktop nightly tag'),
     );
     expect(publish).toContain('--prerelease');
     expect(publish).toContain('--clobber');
-    const dmgUpload = publish.indexOf(
-      'station-nightly-desktop-macos-aarch64.dmg',
+    const invocations =
+      publish.match(/gh release upload nightly-desktop/g) ?? [];
+    // Exactly two: merging latest.json into the binaries' command (which
+    // uploads its arguments concurrently) would collapse this to one.
+    expect(invocations).toHaveLength(2);
+    // The second invocation is a single physical line naming ONLY
+    // latest.json — no trailing `\` continuation and no binary asset name
+    // on that line — so it cannot be the same shell command as the
+    // binaries' multi-line upload above it.
+    const manifestUploadLine = publish
+      .split('\n')
+      .find(
+        (line) =>
+          line.includes('gh release upload nightly-desktop') &&
+          line.includes('latest.json'),
+      );
+    expect(manifestUploadLine).toBeDefined();
+    expect(manifestUploadLine).not.toContain('\\');
+    expect(manifestUploadLine).not.toContain('.dmg');
+    expect(manifestUploadLine).not.toContain('.app.tar.gz');
+    const binariesIndex = publish.indexOf(
+      'gh release upload nightly-desktop --repo "$' +
+        '{{ github.repository }}" --clobber \\\n            release-assets/station-nightly-desktop-macos-aarch64.dmg',
     );
-    const manifestUpload = publish.lastIndexOf('release-assets/latest.json');
-    expect(dmgUpload).toBeGreaterThanOrEqual(0);
-    expect(manifestUpload).toBeGreaterThan(dmgUpload);
+    const manifestIndex = publish.lastIndexOf(manifestUploadLine ?? '');
+    expect(binariesIndex).toBeGreaterThanOrEqual(0);
+    expect(manifestIndex).toBeGreaterThan(binariesIndex);
+  });
+
+  it('agrees on one release tag across the notarize step, the manifest step, and the upload asset names (station#575 MED-2)', () => {
+    const notarize = desktopJob.slice(
+      desktopJob.indexOf('name: Seal, notarize'),
+      desktopJob.indexOf('name: Assemble the signed updater manifest'),
+    );
+    expect(notarize).toContain('--release-tag nightly-desktop');
+    const manifestStep = desktopJob.slice(
+      desktopJob.indexOf('name: Assemble the signed updater manifest'),
+      desktopJob.indexOf(
+        'name: Publish the rolling desktop nightly prerelease',
+      ),
+    );
+    expect(manifestStep).toContain('--release-tag nightly-desktop');
+    expect(manifestStep).toContain(
+      '/releases/download/nightly-desktop/station-nightly-desktop-macos-aarch64.app.tar.gz',
+    );
+    const publish = desktopJob.slice(
+      desktopJob.indexOf(
+        'name: Publish the rolling desktop nightly prerelease',
+      ),
+      desktopJob.indexOf('name: Advance the rolling desktop nightly tag'),
+    );
+    expect(publish).toContain('station-nightly-desktop-macos-aarch64.dmg');
+    expect(publish).toContain(
+      'station-nightly-desktop-macos-aarch64.app.tar.gz',
+    );
+  });
+
+  it('verifies the nightly product name and bundle id on the notarized app (station#575 L6)', () => {
+    const notarize = desktopJob.slice(
+      desktopJob.indexOf('name: Seal, notarize'),
+      desktopJob.indexOf('name: Assemble the signed updater manifest'),
+    );
+    expect(notarize).toContain('CFBundleShortVersionString');
+    expect(notarize).toContain('CFBundleName');
+    expect(notarize).toContain(
+      '$' + '{{ steps.identity.outputs.product_name }}',
+    );
+    expect(notarize).toContain('CFBundleIdentifier');
+    expect(notarize).toContain('io.kontourai.station.nightly');
+  });
+
+  it('scopes secret access to native-release and fails loud on any missing secret, all nine, no shortcut (station#575 L1)', () => {
+    expect(desktopJob).toContain('environment: native-release');
+    const identityStep = desktopJob.slice(
+      desktopJob.indexOf(
+        'name: Fail closed and create the desktop nightly updater configuration',
+      ),
+      desktopJob.indexOf('name: Import macOS Developer ID certificate'),
+    );
+    for (const name of [
+      'TAURI_SIGNING_PRIVATE_KEY',
+      'TAURI_SIGNING_PRIVATE_KEY_PASSWORD',
+      'TAURI_SIGNING_PUBLIC_KEY',
+      'APPLE_DEVELOPER_ID_CERTIFICATE_BASE64',
+      'APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD',
+      'APPLE_DEVELOPER_ID_SIGNING_IDENTITY',
+      'APPLE_API_KEY_ID',
+      'APPLE_API_ISSUER_ID',
+      'APPLE_API_PRIVATE_KEY',
+    ]) {
+      expect(identityStep).toContain(name);
+    }
+    expect(identityStep).toContain('test -n "$' + '{!name}"');
+    expect(identityStep).toContain('exit 1');
   });
 
   it('records the desktop ship in the deploy ledger after publish, at the decided SHA', () => {
     const publish = desktopJob.indexOf(
-      'Publish the rolling desktop nightly prerelease',
+      'name: Publish the rolling desktop nightly prerelease',
     );
-    const ledger = desktopJob.indexOf('Record the nightly desktop ship');
+    const ledger = desktopJob.indexOf('name: Record the nightly desktop ship');
     expect(ledger).toBeGreaterThan(publish);
     const ledgerStep = desktopJob.slice(
       ledger,
-      desktopJob.indexOf('Retain this run'),
+      desktopJob.indexOf('name: Retain this run'),
     );
     expect(ledgerStep).toContain('--channel nightly-desktop');
     expect(ledgerStep).toContain(

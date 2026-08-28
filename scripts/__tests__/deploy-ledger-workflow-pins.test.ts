@@ -158,7 +158,17 @@ describe('the nightly workflow records what it ships', () => {
 });
 
 describe('the desktop nightly workflow records what it ships (station#575)', () => {
-  const desktopJob = nightly.slice(nightly.indexOf('\n  nightly-desktop:'));
+  // Bounded to the next top-level job key, not EOF (station#575 fix round
+  // L8): a future job appended after this one must not leak into these
+  // indexOf-based assertions.
+  const desktopJobStart = nightly.indexOf('\n  nightly-desktop:');
+  const desktopNextJob = nightly
+    .slice(desktopJobStart + 1)
+    .match(/\n {2}[A-Za-z0-9_-]+:\s*\n/);
+  const desktopJobEnd = desktopNextJob
+    ? desktopJobStart + 1 + (desktopNextJob.index ?? 0)
+    : nightly.length;
+  const desktopJob = nightly.slice(desktopJobStart, desktopJobEnd);
 
   it('records the desktop ship only after the rolling prerelease publish', () => {
     const publish = desktopJob.indexOf(
