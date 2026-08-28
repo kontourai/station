@@ -30,6 +30,7 @@ import {
   currentScheduledPrincipal,
   currentScheduledRunId,
 } from '../agents/scheduled-principal-context.js';
+import { currentAuthorizedTurnCorrelation } from '../conversation/authorized-turn-correlation.js';
 import { createConfiguredDispatchModel } from '../conversation/dispatch-model-policy.js';
 import * as MCPManager from '../mcp/mcp-manager.js';
 import {
@@ -637,9 +638,21 @@ function voltAgentInvocationContext(
   },
   options?: Record<string, unknown>,
 ): InvocationContext {
+  const correlation = currentAuthorizedTurnCorrelation();
+  const exactSession =
+    correlation && correlation.sessionId === context.conversationId
+      ? correlation
+      : undefined;
   return {
     agentSlug: slug,
     conversationId: context.conversationId,
+    ...(exactSession
+      ? {
+          sessionId: exactSession.sessionId,
+          turnId: exactSession.turnId,
+          principalId: exactSession.accountId,
+        }
+      : {}),
     userId: context.userId,
     traceId: currentScheduledRunId() ?? context.traceId,
     delegation: (options?.delegation ??

@@ -16,6 +16,7 @@ import type {
   DispatchEvidenceSource,
   IAgentFramework,
 } from '../types.js';
+import type { WorkItemCapture } from '../work-item-capture.js';
 import { type AgentHooksDeps, createAgentHooks } from './agent-hooks.js';
 
 interface RuntimeAgentBuilderContext {
@@ -67,6 +68,7 @@ interface RuntimeAgentBuilderContext {
   replaceTemplateVariables: (text: string, agentName?: string) => string;
   /** Optional for hook-only/test callers; production bootstrap supplies it. */
   resolveUnattendedGrant?: AgentHooksDeps['resolveUnattendedGrant'];
+  workItemCapture?: WorkItemCapture;
 }
 
 export type RuntimeAgentPreparationState = Pick<
@@ -145,6 +147,7 @@ export async function prepareRuntimeAgentInstance(
           ) === true
       : undefined,
     toolNameMapping: preparationState.toolNameMapping,
+    workItemCapture: context.workItemCapture,
     logger: context.logger,
   });
 

@@ -14,6 +14,7 @@ import type { Logger } from '../../utils/logger.js';
 import { BUILTIN_STATION_DOCS_TOOL_SERVER_ID } from '../bootstrap/station-control-runtime-env.js';
 import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
 import type { IAgentFramework } from '../types.js';
+import type { WorkItemCapture } from '../work-item-capture.js';
 import type { AgentHooksDeps } from './agent-hooks.js';
 import { createAgentHooks } from './agent-hooks.js';
 
@@ -73,6 +74,7 @@ interface RuntimeDefaultAgentContext {
    * binding" decision.
    */
   builtinEngineBinding?: BuiltinAgentEngineBinding | null;
+  workItemCapture?: WorkItemCapture;
 }
 
 /**
@@ -311,6 +313,9 @@ export async function bootstrapRuntimeDefaultAgent(
     approvalGuardian: context.approvalGuardian,
     resolveUnattendedGrant: context.resolveUnattendedGrant,
     toolNameMapping: context.toolNameMapping ?? new Map(),
+    workItemCapture: context.workItemCapture,
+    isCurrentRuntimeGeneration: (candidate) =>
+      context.agentHooksMap?.get('default') === candidate,
     logger: context.logger,
   });
 

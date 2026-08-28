@@ -317,6 +317,10 @@ import type {
   RuntimeContext,
 } from '../types.js';
 import {
+  createEventStoreWorkItemPrincipalLiveness,
+  WorkItemCapture,
+} from '../work-item-capture.js';
+import {
   assertHostedPersistenceBeforeSchemaSync,
   prepareHostedPersistenceAfterSchemaSync,
 } from './hosted-persistence-boundary.js';
@@ -2635,6 +2639,10 @@ export class StationRuntime {
       mcpToolProvenanceGeneration: this.mcpToolProvenanceGeneration,
       agentFixedTokens: this.agentFixedTokens,
       agentHooksMap: this.agentHooksMap,
+      workItemCapture: new WorkItemCapture(
+        this.orchestrationEventStore,
+        createEventStoreWorkItemPrincipalLiveness(this.orchestrationEventStore),
+      ),
       // archive#1834 review round 2: the same guardian composition
       // runtime-agent-builder gives every persisted agent.
       approvalGuardian: new ApprovalGuardianService({
@@ -3499,6 +3507,10 @@ export class StationRuntime {
         this.getStableAgentConfigurationRevision() !== null &&
         this.agentHooksMap.get(slug) === hooks,
       resolveUnattendedGrant: this.resolveUnattendedGrant,
+      workItemCapture: new WorkItemCapture(
+        this.orchestrationEventStore,
+        createEventStoreWorkItemPrincipalLiveness(this.orchestrationEventStore),
+      ),
       guardTools: (tools: any[]) =>
         this.guardAgentGenerationTools(agentSlug, tools),
       replaceTemplateVariables: (text: string, agentName?: string) =>

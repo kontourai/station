@@ -203,6 +203,10 @@ export type UnattendedPrincipal =
 export interface InvocationContext {
   agentSlug: string;
   conversationId?: string;
+  /** Exact Session/turn/principal exist only on an authorized orchestration relay. */
+  sessionId?: string;
+  turnId?: string;
+  principalId?: string;
   userId?: string;
   traceId?: string;
   delegation?: AgentDelegationContext;

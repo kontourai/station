@@ -124,6 +124,10 @@ import {
 } from '../plugins/runtime-provider-resolution.js';
 import { SC_READ_ONLY_TOOLS } from '../tools/runtime-control-tools.js';
 import type { IAgentFramework } from '../types.js';
+import {
+  createEventStoreWorkItemPrincipalLiveness,
+  WorkItemCapture,
+} from '../work-item-capture.js';
 import { composeAgentExecutionConfigLoader } from './agent-execution-config-loader.js';
 import {
   scheduleRuntimeDailyReload,
@@ -844,6 +848,10 @@ export async function initializeRuntime(
         mcpToolProvenanceGeneration: deps.mcpToolProvenanceGeneration,
         agentFixedTokens: deps.agentFixedTokens,
         agentHooksMap: deps.agentHooksMap as any,
+        workItemCapture: new WorkItemCapture(
+          orchestrationEventStore,
+          createEventStoreWorkItemPrincipalLiveness(orchestrationEventStore),
+        ),
         resolveUnattendedGrant: deps.resolveUnattendedGrant,
         // archive#1834 review round 2: the same guardian composition
         // runtime-agent-builder gives every persisted agent.
