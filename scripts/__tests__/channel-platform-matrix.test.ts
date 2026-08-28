@@ -7,6 +7,11 @@ import {
   ANDROID_CHANNEL_IDENTITY,
   applyAndroidChannelIcons,
 } from '../apply-android-channel-icons.mjs';
+import {
+  devPairingDeepLinkScheme,
+  pairingSchemeForChannel,
+  readChannelPlatformMatrix,
+} from '../channel-platform-matrix.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const matrix = JSON.parse(
@@ -29,6 +34,7 @@ describe('cross-platform release channel matrix', () => {
       );
       expect(entry.serverPort).toBe(ports[channel].serverPort);
       expect(entry.uiPort).toBe(ports[channel].uiPort);
+      expect(entry.pairingDeepLinkScheme).toBe(`station-${channel}`);
       expect(entry.desktopIconSource).toMatch(
         `src-desktop/icons${channel === 'stable' ? '' : `/${channel}`}`,
       );
@@ -54,7 +60,46 @@ describe('cross-platform release channel matrix', () => {
           `icons/${channel}/icon.ico`,
         ]),
       );
+      expect(config.plugins['deep-link'].desktop.schemes).toEqual([
+        matrix[channel].pairingDeepLinkScheme,
+      ]);
     }
+  });
+
+  test('binds every release Tauri registration and generated native consumer to the matrix', () => {
+    const authority = readChannelPlatformMatrix();
+    for (const channel of ['stable', 'beta', 'nightly']) {
+      const file =
+        channel === 'stable' ? 'tauri.conf.json' : `tauri.${channel}.conf.json`;
+      const config = JSON.parse(
+        readFileSync(resolve(root, 'src-desktop', file), 'utf8'),
+      );
+      const scheme = pairingSchemeForChannel(authority, channel);
+      expect(config.plugins['deep-link'].desktop.schemes).toEqual([scheme]);
+      expect(config.plugins['deep-link'].mobile[0].scheme).toEqual([scheme]);
+    }
+    const generatedTs = readFileSync(
+      resolve(
+        root,
+        'packages/connect/src/core/pairingDeepLinkChannels.generated.ts',
+      ),
+      'utf8',
+    );
+    const generatedRust = readFileSync(
+      resolve(root, 'src-desktop/src/pairing_deep_link_channels_generated.rs'),
+      'utf8',
+    );
+    for (const channel of ['stable', 'beta', 'nightly']) {
+      expect(generatedTs).toContain(
+        pairingSchemeForChannel(authority, channel),
+      );
+      expect(generatedRust).toContain(
+        pairingSchemeForChannel(authority, channel),
+      );
+    }
+    expect(devPairingDeepLinkScheme('Dev.Release.7')).toBe(
+      'station-dev-dev-release-7',
+    );
   });
 
   test('keeps every shipped channel icon visually distinct', () => {

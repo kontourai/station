@@ -291,6 +291,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   );
   usePairingDeepLink({
     enabled: profile.isTauri,
+    clientChannel: profile.channel,
+    devScheme: profile.pairingDeepLinkScheme,
     onPairingPayload: openPairingPayload,
     onError: reportPairingLinkError,
   });

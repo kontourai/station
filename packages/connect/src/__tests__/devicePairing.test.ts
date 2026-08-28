@@ -89,6 +89,21 @@ describe('device pairing QR payload', () => {
       decodeDevicePairingPayload(encodeDevicePairingPayload(readOnly)),
     ).toMatchObject({ scope: 'orchestration:read' });
   });
+
+  test('keeps raw scanner decoding additive while a caller may request strict credential rejection', () => {
+    const source = { ...offer(), credential: 'additive-field' };
+    const encoded = btoa(JSON.stringify(source))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+    const payload = `station-pairing:v1:${encoded}`;
+    expect(decodeDevicePairingPayload(payload)).toMatchObject({
+      environmentId: source.environmentId,
+    });
+    expect(
+      decodeDevicePairingPayload(payload, { rejectCredentialFields: true }),
+    ).toBeNull();
+  });
 });
 
 describe('pairing client-instance identity', () => {

@@ -28,6 +28,10 @@ import {
   savePendingExchange,
 } from '../core/devicePairing';
 import { normalizeHostInput } from '../core/hostInput';
+import {
+  encodePairingDeepLink,
+  type PairingDeepLinkChannel,
+} from '../core/pairingDeepLink';
 import { completePendingPairing } from '../core/pendingPairingCompletionLoader';
 import { PairedDeviceList } from './connection-manager-modal/PairedDeviceList';
 import {
@@ -933,12 +937,15 @@ export function HostDevicePairingPanel({
   getCredential,
   request = fetch,
   onCancel,
+  initialClientChannel = 'stable',
 }: {
   apiBase: string;
   publicEndpoint: string;
   getCredential: () => string | undefined;
   request?: typeof fetch;
   onCancel: () => void;
+  /** Host-facing route selector; it never constrains the paired backend. */
+  initialClientChannel?: Exclude<PairingDeepLinkChannel, 'dev'>;
 }) {
   const [offer, setOffer] = useState<DevicePairingOffer | null>(null);
   const [requests, setRequests] = useState<DevicePairingRequest[]>([]);
@@ -948,6 +955,8 @@ export function HostDevicePairingPanel({
   const [scopePreset, setScopePreset] = useState<PairingScopePreset>(
     DEFAULT_PAIRING_SCOPE_PRESET,
   );
+  const [clientChannel, setClientChannel] =
+    useState<Exclude<PairingDeepLinkChannel, 'dev'>>(initialClientChannel);
   const [requestActionIds, setRequestActionIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -961,6 +970,11 @@ export function HostDevicePairingPanel({
   const payload = useMemo(
     () => (offer ? encodeDevicePairingPayload(offer) : ''),
     [offer],
+  );
+  const pairingLink = useMemo(
+    () =>
+      payload ? encodePairingDeepLink({ payload, clientChannel }) : undefined,
+    [clientChannel, payload],
   );
 
   const authenticatedFetch = useCallback(
@@ -1358,6 +1372,37 @@ export function HostDevicePairingPanel({
           </small>
           <small>
             Expires {new Date(offer.expiresAt).toLocaleTimeString()}
+          </small>
+          <label style={{ display: 'grid', gap: 6, width: '100%' }}>
+            Open this installed Station client
+            <select
+              aria-label="Pairing client channel"
+              value={clientChannel}
+              onChange={(event) =>
+                setClientChannel(
+                  event.target.value as Exclude<PairingDeepLinkChannel, 'dev'>,
+                )
+              }
+              style={inputStyle}
+            >
+              <option value="stable">Station</option>
+              <option value="beta">Station Beta</option>
+              <option value="nightly">Station Nightly</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() =>
+              void navigator.clipboard?.writeText(pairingLink ?? '')
+            }
+            style={secondaryBtnStyle}
+          >
+            Copy pairing link
+          </button>
+          <small style={{ color: 'var(--text-secondary, #999)' }}>
+            The QR code remains the raw pairing payload for scanners. If no app
+            handles the copied custom scheme, install the selected channel,
+            select another channel, or paste the raw payload into Join.
           </small>
         </div>
       )}

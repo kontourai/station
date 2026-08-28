@@ -152,12 +152,21 @@ export function encodeDevicePairingPayload(offer: DevicePairingOffer): string {
 
 export function decodeDevicePairingPayload(
   value: string,
+  options: { rejectCredentialFields?: boolean } = {},
 ): ScannedPairingOffer | null {
   if (!value.startsWith(PAYLOAD_PREFIX)) return null;
   try {
     const payload = JSON.parse(
       decodeBase64Url(value.slice(PAYLOAD_PREFIX.length)),
     ) as Partial<ScannedPairingOffer>;
+    if (
+      options.rejectCredentialFields &&
+      Object.keys(payload).some((key) =>
+        /(?:credential|bearer|token|secret|password|authorization)/i.test(key),
+      )
+    ) {
+      return null;
+    }
     if (
       payload.protocolVersion !== DEVICE_PAIRING_PROTOCOL_VERSION ||
       typeof payload.scope !== 'string' ||

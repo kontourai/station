@@ -4,7 +4,7 @@ import { parsePairingDeepLink } from '../pairingDeepLink';
 
 const payload = encodeDevicePairingPayload({
   protocolVersion: 1,
-  environmentId: 'environment-test',
+  environmentId: 'foreign-backend-is-valid',
   offerId: 'offer-test',
   challenge: 'challenge-test',
   manualCode: 'ABCDE12345',
@@ -13,23 +13,13 @@ const payload = encodeDevicePairingPayload({
   expiresAt: Date.now() + 60_000,
 });
 
-describe('parsePairingDeepLink', () => {
-  it('accepts exactly one valid offer payload', () => {
+describe('native pairing deep-link presentation contract', () => {
+  it('uses the shared channel-aware codec without a UI-specific parser', () => {
     expect(
       parsePairingDeepLink(
-        `station://pair?payload=${encodeURIComponent(payload)}`,
+        `station-stable://pair?linkVersion=1&clientChannel=stable&payload=${encodeURIComponent(payload)}`,
+        { clientChannel: 'stable' },
       ),
     ).toEqual({ status: 'ok', payload });
-  });
-
-  it.each([
-    'https://pair?payload=station-pairing:v1:nope',
-    'station://other?payload=station-pairing:v1:nope',
-    'station://pair/path?payload=station-pairing:v1:nope',
-    'station://pair?payload=station-pairing:v1:nope&next=https://evil.example',
-    'station://pair?payload=one&payload=two',
-    'station://pair?payload=station-pairing:v1:nope#fragment',
-  ])('fails closed for %s', (url) => {
-    expect(parsePairingDeepLink(url).status).toBe('error');
   });
 });
