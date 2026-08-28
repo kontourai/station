@@ -46,6 +46,7 @@ function root(): string {
 function legacyFixture(
   stationRoot: string,
   installedAt = '',
+  manifestOverrides: Readonly<Record<string, unknown>> = {},
 ): {
   home: string;
   manifest: string;
@@ -69,6 +70,7 @@ function legacyFixture(
       serverPort: 3141,
       uiPort: 3000,
       unitPath: '',
+      ...manifestOverrides,
     }),
     { mode: 0o600 },
   );
@@ -300,6 +302,44 @@ describe('instance registry bridge legacy manifest transaction (station#4457)', 
     expect(entries.some((entry) => entry.endsWith('.receipt.json'))).toBe(true);
     expect(prepareRuntime(home, stationRoot)).toEqual({ kind: 'already' });
   });
+
+  test('quarantines the redacted owner-preserved qualified-label/null-features legacy shape', () => {
+    const stationRoot = root();
+    const fixture = legacyFixture(stationRoot, '', {
+      // The values that distinguish this historical shape are intentionally
+      // non-sensitive; all owner-specific paths and timestamps stay fixture
+      // local/redacted.
+      label: 'io.kontourai.station.default',
+      features: null,
+    });
+
+    expect(prepareRuntime(fixture.home, stationRoot)).toEqual({ kind: 'new' });
+    expect(existsSync(fixture.manifest)).toBe(false);
+    expect(readdirSync(legacyQuarantine(fixture.home))).toHaveLength(3);
+  });
+
+  test.each([
+    [
+      'an unknown qualified label',
+      { label: 'io.kontourai.station.default.unrecognized', features: null },
+    ],
+    ['array features', { label: 'io.kontourai.station.default', features: [] }],
+    [
+      'numeric features',
+      { label: 'io.kontourai.station.default', features: 0 },
+    ],
+  ] as const)(
+    'refuses the qualified-label legacy near miss with %s',
+    (_description, manifestOverrides) => {
+      const stationRoot = root();
+      const fixture = legacyFixture(stationRoot, '', manifestOverrides);
+
+      expect(prepareRuntime(fixture.home, stationRoot)).toEqual({
+        kind: 'refused',
+      });
+      expect(existsSync(fixture.manifest)).toBe(true);
+    },
+  );
 
   test('uses the supplied shared root, not cwd, and leaves a different home untouched', () => {
     const stationRoot = root();
