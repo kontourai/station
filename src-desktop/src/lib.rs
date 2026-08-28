@@ -4219,14 +4219,21 @@ fn read_credential_for_eligibility(reference: &NativeCredentialReference) -> Cre
 /// bypasses the probe: it may mean a restart or a transient server policy,
 /// neither of which proves that revoking and replacing the grant is safe.
 #[cfg(not(mobile))]
-fn profile_already_locally_provisioned(profile: &CredentialProfile) -> bool {
+/// Applies the profile-state and credential-read halves of local provisioning
+/// eligibility. Keeping the read as an explicit one-shot operation gives the
+/// profile-level decision a deterministic test seam without changing the
+/// production credential-store behavior.
+fn profile_already_locally_provisioned(
+    profile: &CredentialProfile,
+    read_credential: impl FnOnce(&NativeCredentialReference) -> CredentialReadOutcome,
+) -> bool {
     let Some(reference) = profile.credential_ref.as_ref() else {
         return false;
     };
     if profile.configuration_state != "configured" {
         return false;
     }
-    credential_provisioned_from_read_outcome(read_credential_for_eligibility(reference))
+    credential_provisioned_from_read_outcome(read_credential(reference))
 }
 
 /// The local half of the eligibility decision. A readable keychain item must
@@ -4741,7 +4748,7 @@ fn station_local_self_provision(
         station_profile_authorize_active_internal(&app, &authority, &profile_name)?;
         Ok(())
     };
-    if profile_already_locally_provisioned(profile) {
+    if profile_already_locally_provisioned(profile, read_credential_for_eligibility) {
         // A readable keychain item is only locally healthy. Before retaining
         // it, ask one bounded protected same-origin endpoint from Rust. This
         // reaches neither the WebView nor the generic connection scheduler,
@@ -10590,7 +10597,9 @@ mod tests {
         // live-boot bug: it originally read this as "done, skip it"). This
         // short-circuits before any keychain read (no `credential_ref` to
         // even look up), so it stays a pure, deterministic test.
-        assert!(!profile_already_locally_provisioned(local));
+        assert!(!profile_already_locally_provisioned(local, |_| {
+            CredentialReadOutcome::Readable
+        }));
 
         // A credential_ref stranded at requires-auth (an interrupted
         // attempt) is never trusted as "done" either — must stay eligible
@@ -10602,7 +10611,9 @@ mod tests {
             id: "local-grant:stranded".to_string(),
         });
         stranded.configuration_state = "requires-auth".to_string();
-        assert!(!profile_already_locally_provisioned(&stranded));
+        assert!(!profile_already_locally_provisioned(&stranded, |_| {
+            CredentialReadOutcome::Readable
+        }));
     }
 
     /// station#1818 — THE regression this whole fix exists to prove: a
@@ -10610,18 +10621,12 @@ mod tests {
     /// is `"configured"` (exactly what a stranded profile looks like after
     /// a nightly bundle swap invalidates its keychain ACL) must now read as
     /// NOT provisioned when the credential cannot actually be read back —
-    /// the opposite of what this file asserted before this fix. This
-    /// exercises the REAL OS credential store (not an injected outcome):
-    /// `"local-grant:station-1818-eligibility-probe"` is guaranteed never
-    /// to have been written by anything, on any machine, so
-    /// `entry.get_password()` deterministically returns `NoEntry` — no
-    /// write, no OS auth prompt, safe to run in CI or on a developer
-    /// machine. This is the fault-injection proof: reverting the production
-    /// change (restoring the old `credential_ref.is_some() &&
-    /// configuration_state == "configured"` predicate) turns this assertion
-    /// false, because the old code never asks the keychain anything.
+    /// the opposite of what this file asserted before this fix. The profile
+    /// seam injects `Absent` so the test never depends on a developer or CI
+    /// keychain, while still proving that the exact recorded reference is
+    /// consulted once.
     #[test]
-    fn profile_already_locally_provisioned_observes_an_unreadable_credential_as_not_provisioned() {
+    fn profile_already_locally_provisioned_observes_an_absent_credential_as_not_provisioned() {
         let store = local_self_provision_fixture_store();
         let local = store
             .profiles
@@ -10633,29 +10638,41 @@ mod tests {
             kind: "station-bearer".to_string(),
             id: "local-grant:station-1818-eligibility-probe".to_string(),
         });
-        // The premise "a working store reports this never-written item absent"
-        // only holds where a secret-service provider is running. Headless
-        // hosts (CI runners, bare WSL) answer StoreUnavailable instead, and
-        // the documented fail-closed contract for an uninspectable store is
-        // "provisioned" (see readable_credential_reaches_authority_probe...):
-        // do not mint another grant beside an item we cannot inspect. Assert
-        // the correct contract for whichever world this test observes, so it
-        // is red only when the CONTRACT breaks, not when the environment
-        // lacks a keyring daemon (station#609).
-        match read_credential_for_eligibility(
-            with_unwritten_credential.credential_ref.as_ref().unwrap(),
-        ) {
-            CredentialReadOutcome::StoreUnavailable => {
-                assert!(profile_already_locally_provisioned(
-                    &with_unwritten_credential
-                ));
-            }
-            _ => {
-                assert!(!profile_already_locally_provisioned(
-                    &with_unwritten_credential
-                ));
-            }
-        }
+        let expected_reference = with_unwritten_credential.credential_ref.clone().unwrap();
+        let mut consulted_references = Vec::new();
+
+        assert!(!profile_already_locally_provisioned(
+            &with_unwritten_credential,
+            |reference| {
+                consulted_references.push(reference.clone());
+                CredentialReadOutcome::Absent
+            },
+        ));
+        assert_eq!(consulted_references, vec![expected_reference]);
+    }
+
+    #[test]
+    fn profile_already_locally_provisioned_applies_store_and_stale_item_outcomes() {
+        let store = local_self_provision_fixture_store();
+        let local = store
+            .profiles
+            .iter()
+            .find(|profile| profile.name == "local")
+            .unwrap();
+        let mut configured_with_credential = local.clone();
+        configured_with_credential.credential_ref = Some(NativeCredentialReference {
+            kind: "station-bearer".to_string(),
+            id: "local-grant:outcome-reducer".to_string(),
+        });
+
+        assert!(profile_already_locally_provisioned(
+            &configured_with_credential,
+            |_| CredentialReadOutcome::StoreUnavailable,
+        ));
+        assert!(!profile_already_locally_provisioned(
+            &configured_with_credential,
+            |_| CredentialReadOutcome::StaleItemAccess,
+        ));
     }
 
     /// Local keychain readability is only the first gate. A readable item
