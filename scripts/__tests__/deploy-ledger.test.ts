@@ -292,20 +292,24 @@ describe('markdown regeneration', () => {
     expect(first).toBe(second);
   });
 
-  it('documents the JSON location and schema without unreadable-URL claims (MED-8)', () => {
+  it('documents the JSON location and schema with an honest, currently-reachable raw URL (station#575 L7)', () => {
     const markdown = renderLedgerMarkdown({
       entries: [entry()],
       githubRepo: 'kontourai/station',
     });
     expect(markdown).toContain(DEPLOY_LEDGER_JSON_PATH);
-    // The repository is private: an unauthenticated raw.githubusercontent
-    // fetch 404s, so the generated header must not CLAIM a readable raw
-    // URL. Naming the mechanism while declaring it unreadable is fine;
-    // printing a github.com .../raw/... URL as if fetchable is not.
-    expect(markdown).not.toMatch(/github\.com\/[^\s]*\/raw\//);
-    expect(markdown).toMatch(/repository is private/);
-    expect(markdown).toMatch(/404/);
-    // The consumption mechanism is explicitly undecided until the site PR.
+    // The repository is public (verified live: raw.githubusercontent 200s),
+    // so the header claims a readable raw URL rather than declaring one
+    // unreadable — the inverse of the prior (now-false) private-repo claim.
+    expect(markdown).toMatch(/repository is public/);
+    expect(markdown).toContain(
+      `https://raw.githubusercontent.com/kontourai/station/main/${DEPLOY_LEDGER_JSON_PATH}`,
+    );
+    expect(markdown).not.toMatch(/repository is private/);
+    expect(markdown).not.toMatch(/\b404\b/);
+    // The CONSUMPTION MECHANISM (which of several reachable options the
+    // site actually uses) is still undecided until the site PR — only the
+    // reachability claim changed, not this.
     expect(markdown).toMatch(/decided in the site PR/);
     for (const channel of DEPLOY_LEDGER_CHANNELS) {
       expect(markdown).toContain(`\`${channel}\``);
