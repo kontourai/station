@@ -20,7 +20,7 @@ export type SessionWorkItemAssociation = {
   provider: { id: 'github'; host: 'github.com' };
   workItemRef: `github:${string}/${string}#${number}`;
   repository: GithubWorkItemRepository;
-  /** Provider-native immutable node identity, never a result/body payload. */
+  /** Provider-native immutable database/fullDatabase identity, never a result/body payload. */
   nativeId: string;
   observedAt: string;
 };
