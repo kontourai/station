@@ -111,6 +111,9 @@ test('Whole Task resource interoperates with an independent official AppBridge h
   test.setTimeout(90_000);
   const collection = basisInteropCollection();
   const expected = buildBasisPanelViewModel(collection.answers[0]!.projection);
+  const secondExpected = buildBasisPanelViewModel(
+    collection.answers[1]!.projection,
+  );
   let ownerReads = 0;
   let enabled = true;
   let pendingOwnerRead: Promise<void> | undefined;
@@ -230,7 +233,10 @@ test('Whole Task resource interoperates with an independent official AppBridge h
     if (!content || !('text' in content) || typeof content.text !== 'string')
       throw new Error('Real MCP resource did not contain text');
     const html = content.text;
-    expect(Buffer.byteLength(html)).toBeLessThanOrEqual(500 * 1024);
+    // The production refusal remains 500 KiB. Keep a meaningful payload
+    // margin here so a restored full Surface custom-element bundle cannot
+    // silently consume the whole limit again.
+    expect(Buffer.byteLength(html)).toBeLessThanOrEqual(480 * 1024);
     expect(content._meta).toMatchObject({
       ui: { csp: { connectDomains: [], resourceDomains: [] } },
     });
@@ -318,7 +324,8 @@ test('Whole Task resource interoperates with an independent official AppBridge h
         exact: true,
       }),
     ).toBeVisible();
-    const panel = app.locator('surface-trust-panel');
+    await expect(app.locator('surface-trust-panel')).toHaveCount(0);
+    const panel = app.locator('section[aria-label="Basis"]');
     await expect(panel.getByRole('status')).toContainText(
       expected.standing.label,
     );
@@ -347,6 +354,31 @@ test('Whole Task resource interoperates with an independent official AppBridge h
           .boundingBox()
       )?.height,
     ).toBeGreaterThanOrEqual(44);
+    const firstAnswer = app.getByRole('button', {
+      name: 'fixture-answer-0',
+      exact: true,
+    });
+    const secondAnswer = app.getByRole('button', {
+      name: 'fixture-answer-1',
+      exact: true,
+    });
+    await secondAnswer.click();
+    await expect(firstAnswer).toHaveAttribute('aria-pressed', 'false');
+    await expect(secondAnswer).toHaveAttribute('aria-pressed', 'true');
+    await expect(panel.getByRole('status')).toContainText(
+      secondExpected.standing.label,
+    );
+    await expect(
+      panel.getByText('No Surface assessment is available.', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      panel.getByText('A visible owner-declared fixture gap.', {
+        exact: false,
+      }),
+    ).toHaveCount(0);
+    await expect(
+      panel.getByRole('heading', { name: 'Evidence', exact: true }),
+    ).toHaveCount(0);
     await nextPage.click();
     await expect(
       app.getByRole('button', { name: /^fixture-answer-8/ }),

@@ -52,6 +52,10 @@ describe('local iOS release preflight', () => {
       resolve(import.meta.dirname, '..', 'check-ios-store-profile.mjs'),
       resolve(root, 'check-ios-store-profile.mjs'),
     );
+    cpSync(
+      resolve(import.meta.dirname, '..', 'product-version.mjs'),
+      resolve(root, 'product-version.mjs'),
+    );
     cpSync(resolve(import.meta.dirname, '..', 'lib'), resolve(root, 'lib'), {
       recursive: true,
     });

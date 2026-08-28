@@ -76,6 +76,13 @@ const LEGACY_MANIFEST_KEYS = [
   'uiPort',
   'unitPath',
 ] as const;
+// These are the only two labels emitted by the pre-channel service installer.
+// Do not accept label prefixes or future channel identifiers here: this
+// transaction is allowed to move only an already-obsolete, exact record.
+const LEGACY_MANIFEST_LABELS = [
+  'default',
+  'io.kontourai.station.default',
+] as const;
 
 export type LegacyServiceManifestDisposition =
   | 'absent'
@@ -317,11 +324,11 @@ function isExactLegacyManifest(value: unknown, stationRoot: string): boolean {
     Array.isArray(value.allowedOrigins) &&
     value.allowedOrigins.every((entry) => boundedString(entry, 1024)) &&
     value.baseDir === stationRoot &&
-    boundedString(value.features) &&
+    (value.features === null || boundedString(value.features)) &&
     value.host === '127.0.0.1' &&
     boundedString(value.installedAt) &&
     value.instanceId === 'default' &&
-    value.label === 'default' &&
+    LEGACY_MANIFEST_LABELS.some((label) => value.label === label) &&
     boundedString(value.nodePath) &&
     (value.platform === 'darwin' ||
       value.platform === 'linux' ||

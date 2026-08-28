@@ -1,11 +1,11 @@
+import { parseStationTaskBasisMcpPage } from '@kontourai/station-contracts/task-basis-mcp';
 import {
   App,
   applyDocumentTheme,
   applyHostFonts,
   applyHostStyleVariables,
 } from '@modelcontextprotocol/ext-apps';
-import '@kontourai/surface/trust-panel/element';
-import { parseStationTaskBasisMcpPage } from '@kontourai/station-contracts/task-basis-mcp';
+import { renderBasisPanel } from './basis-panel-dom';
 import type { StationTaskBasisCollectionGateEvaluationView } from './task-basis-collection-view';
 import { buildStationTaskBasisCollectionView } from './task-basis-collection-view';
 
@@ -241,22 +241,19 @@ function render(state: State | null) {
   const answers = document.createElement('div');
   answers.className = 'task-basis__answers';
   answers.setAttribute('aria-label', 'Kept answers');
-  const panel = document.createElement('surface-trust-panel') as HTMLElement & {
-    basisProjection?: unknown;
-  };
-  panel.setAttribute('mode', 'basis');
+  const panel = document.createElement('section');
   const select = (answer: {
     answerReferenceId: string;
-    projection: unknown;
+    panel: Parameters<typeof renderBasisPanel>[1];
   }) => {
     for (const button of Array.from(answers.querySelectorAll('button')))
       button.setAttribute(
         'aria-pressed',
         String(button.dataset.answer === answer.answerReferenceId),
       );
-    panel.basisProjection = answer.projection;
+    renderBasisPanel(panel, answer.panel);
   };
-  for (const answer of page.answers) {
+  for (const answer of view.answers) {
     const button = document.createElement('button');
     button.type = 'button';
     button.dataset.answer = answer.answerReferenceId;
@@ -265,12 +262,12 @@ function render(state: State | null) {
     button.addEventListener('click', () => select(answer));
     answers.append(button);
   }
-  if (!page.answers.length) {
+  if (!view.answers.length) {
     const empty = document.createElement('p');
     empty.textContent = 'No kept answers are on this page.';
     answers.append(empty);
   }
-  if (page.answers[0]) select(page.answers[0]);
+  if (view.answers[0]) select(view.answers[0]);
   root.append(answers, panel);
   if (view.unassociated.length) {
     const unassociated = document.createElement('section');
