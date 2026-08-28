@@ -14,6 +14,7 @@ import {
 } from '../run-changed-verification.mjs';
 import {
   E2E_CONTRACT_BOUNDARIES,
+  TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
 } from '../test-impact-manifest.mjs';
@@ -333,6 +334,17 @@ describe('changed verification selection', () => {
     expect(selection.tests.map((entry) => entry.path)).toContain(
       'src-server/security/__tests__/pairing-route-scopes.test.ts',
     );
+  });
+  test('bounds the Tailscale public-ingress resolver to its parser and device-pairing route contracts', () => {
+    const selection = selectChangedVerification([
+      'src-server/services/tailscale/public-ingress-origin.ts',
+    ]);
+    expect(selection).toMatchObject({ escalated: false, lanes: [] });
+    expect(selection.relatedPaths).toEqual([]);
+    expect(selection.tests.map((entry) => entry.path)).toEqual([
+      'src-server/runtime/__tests__/device-pairing-routes.test.ts',
+      'src-server/services/tailscale/__tests__/public-ingress-origin.test.ts',
+    ]);
   });
   test('bounds the acknowledgement repair to the SDK barrel and pairing guards', () => {
     const paths = [
@@ -1130,6 +1142,54 @@ describe('changed verification selection', () => {
       expect(validateTestImpactManifest(withoutBoundary)).toContain(
         `required impact edge missing: ${boundary}`,
       );
+    },
+  );
+  test.each([
+    [
+      'removal',
+      TEST_IMPACT_MANIFEST.filter(
+        (edge) =>
+          edge.pattern !== TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern,
+      ),
+      `required Tailscale ingress impact edge must be unique: ${TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern} (found 0)`,
+    ],
+    [
+      'narrowing',
+      TEST_IMPACT_MANIFEST.map((edge) =>
+        edge.pattern === TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern
+          ? {
+              ...edge,
+              tests: [TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.tests[0]],
+            }
+          : edge,
+      ),
+      `required Tailscale ingress impact edge must select exactly resolver and device-pairing route tests: ${TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern}`,
+    ],
+    [
+      'related-only',
+      TEST_IMPACT_MANIFEST.map((edge) =>
+        edge.pattern === TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern
+          ? { ...edge, tests: undefined, related: true }
+          : edge,
+      ),
+      `required Tailscale ingress impact edge must select exactly resolver and device-pairing route tests: ${TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern}`,
+    ],
+    [
+      'conflicting duplicate',
+      [
+        ...TEST_IMPACT_MANIFEST,
+        {
+          pattern: TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern,
+          tests: ['scripts/__tests__/changed-verification.test.ts'],
+          reason: 'conflicting duplicate',
+        },
+      ],
+      `required Tailscale ingress impact edge must be unique: ${TAILSCALE_PUBLIC_INGRESS_IMPACT_BOUNDARY.pattern} (found 2)`,
+    ],
+  ] as const)(
+    'rejects Tailscale ingress boundary %s',
+    (_name, manifest, expected) => {
+      expect(validateTestImpactManifest(manifest)).toContain(expected);
     },
   );
   test.each(E2E_CONTRACT_BOUNDARIES)(
