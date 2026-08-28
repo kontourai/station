@@ -88,6 +88,12 @@ describe('device pairing panels', () => {
     );
 
     expect(screen.getByText('Review pairing offer')).toBeTruthy();
+    expect(screen.getByText('Backend environment identity')).toBeTruthy();
+    expect(screen.getByText('environment-link')).toBeTruthy();
+    expect(screen.getByText('Endpoint')).toBeTruthy();
+    expect(screen.getByText('https://station.example.ts.net')).toBeTruthy();
+    expect(screen.getByText('Expires at')).toBeTruthy();
+    expect(screen.queryByLabelText('Pairing client channel')).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());

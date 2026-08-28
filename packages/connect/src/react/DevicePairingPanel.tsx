@@ -659,10 +659,27 @@ export function JoinDevicePairingPanel({
     return (
       <div style={{ display: 'grid', gap: 12 }}>
         <strong>Review pairing offer</strong>
-        <span style={{ color: 'var(--text-secondary, #999)', fontSize: 13 }}>
-          Request access to {reviewOffer.endpoint}. This offer expires at{' '}
-          {new Date(reviewOffer.expiresAt).toLocaleTimeString()}.
-        </span>
+        <dl
+          aria-label="Pairing offer details"
+          style={{
+            color: 'var(--text-secondary, #999)',
+            display: 'grid',
+            fontSize: 13,
+            gap: 4,
+            margin: 0,
+          }}
+        >
+          <dt>Backend environment identity</dt>
+          <dd style={{ margin: 0 }}>
+            <code>{reviewOffer.environmentId}</code>
+          </dd>
+          <dt>Endpoint</dt>
+          <dd style={{ margin: 0 }}>{reviewOffer.endpoint}</dd>
+          <dt>Expires at</dt>
+          <dd style={{ margin: 0 }}>
+            {new Date(reviewOffer.expiresAt).toLocaleTimeString()}
+          </dd>
+        </dl>
         <button
           type="button"
           onClick={() => void begin(reviewOffer)}
