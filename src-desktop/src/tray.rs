@@ -617,10 +617,19 @@ fn tray_context(app: &AppHandle) -> TrayContext {
     };
     TrayContext {
         snapshot,
-        service: has_trusted_manifest
-            .then_some(service.expect("trusted manifest came from service")),
+        service: service_for_trusted_manifest(has_trusted_manifest, || service),
         api_origin,
     }
+}
+
+/// Preserve the discovered service only when it produced the trusted manifest.
+/// `bool::then_some` eagerly evaluates its argument, so it is unsafe here: a
+/// healthy sidecar intentionally has no runtime-owned service to retain.
+fn service_for_trusted_manifest<T>(
+    has_trusted_manifest: bool,
+    service: impl FnOnce() -> Option<T>,
+) -> Option<T> {
+    has_trusted_manifest.then(service).flatten()
 }
 
 fn open_station_connections(app: &AppHandle) {
@@ -1260,6 +1269,22 @@ mod tests {
         );
         assert_eq!(ambiguous_snapshot.kind, TrayBackendKind::Unavailable);
         assert_eq!(ambiguous_snapshot.label, "Backend: unavailable");
+    }
+
+    #[test]
+    fn no_trusted_service_does_not_evaluate_an_absent_service() {
+        let selected = service_for_trusted_manifest::<()>(false, || {
+            panic!("a healthy sidecar has no runtime-owned service")
+        });
+        assert_eq!(selected, None);
+    }
+
+    #[test]
+    fn trusted_service_selection_retains_the_discovered_service() {
+        assert_eq!(
+            service_for_trusted_manifest(true, || Some("runtime-owned service")),
+            Some("runtime-owned service")
+        );
     }
 
     #[test]
