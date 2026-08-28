@@ -4,6 +4,7 @@ import {
   applyHostStyleVariables,
 } from '@modelcontextprotocol/ext-apps';
 import { parseStationSessionInventoryMcpEnvelope } from '@kontourai/station-contracts/session-inventory-mcp';
+import { SESSION_INVENTORY_GROUP_IDS } from '@kontourai/station-contracts/session-inventory';
 import { buildBasisPanelViewModel } from '@kontourai/surface/basis/view';
 import {
   buildSessionInventoryViewModel,
@@ -37,9 +38,11 @@ function readCapability(value: unknown) {
     const item = entry as Record<string, unknown>;
     if (
       typeof item.groupId !== 'string' ||
+      !SESSION_INVENTORY_GROUP_IDS.includes(item.groupId as any) ||
       typeof item.continuationToken !== 'string' ||
       item.continuationToken.length < 16 ||
-      item.continuationToken.length > 1024
+      item.continuationToken.length > 1024 ||
+      continuations.has(item.groupId)
     )
       return null;
     continuations.set(item.groupId, item.continuationToken);
@@ -80,6 +83,7 @@ function render() {
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = group.label;
+    button.dataset.groupId = group.id;
     button.setAttribute('aria-pressed', String(group.id === groupId));
     button.addEventListener('click', () => {
       groupId = group.id;
@@ -130,7 +134,9 @@ function render() {
         };
         capability = next;
         render();
-        root.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus();
+        root
+          .querySelector<HTMLElement>(`section[data-group-id="${groupId}"] h2`)
+          ?.focus();
       } catch {
         current = null;
         capability = null;
