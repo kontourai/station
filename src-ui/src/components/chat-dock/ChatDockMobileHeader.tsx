@@ -40,7 +40,11 @@ export interface ChatDockMobileOverflowActions {
   onOpenProfile: () => void;
   onOpenAppSettings: () => void;
   /** Plain captured identity; the lazy actions sheet owns the full fallback. */
-  sessionInventory?: { sessionId: string; projectId?: string };
+  sessionInventory?: {
+    sessionId: string;
+    chatStoreId: string;
+    projectId?: string;
+  };
   /**
    * Dock-height controls. The header carries one visible expand/collapse
    * toggle (#1052 follow-up — the earlier drag-only direction was reversed on

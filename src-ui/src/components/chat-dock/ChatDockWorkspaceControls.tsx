@@ -35,20 +35,23 @@ export function ChatDockWorkspaceControls(props: Controls) {
   const authority = useHostRequestAuthorityScope();
   const hostId = useRef(`session-inventory:${crypto.randomUUID()}`).current;
   const inventory = props.sessionInventory;
+  const authorityKey = authority?.authorityKey;
+  const chatStoreId = inventory?.chatStoreId;
+  const executionId = inventory?.executionId;
   const occurrence = useSessionInventoryOccurrence(hostId);
   useEffect(
     () =>
       registerSessionInventoryHost(
         hostId,
-        authority && inventory
+        authorityKey && chatStoreId && executionId
           ? {
-              authorityKey: authority.authorityKey,
-              chatStoreId: inventory.chatStoreId,
-              executionId: inventory.executionId,
+              authorityKey,
+              chatStoreId,
+              executionId,
             }
           : null,
       ),
-    [authority, hostId, inventory],
+    [authorityKey, chatStoreId, executionId, hostId],
   );
   const toggleInventory = (trigger: HTMLElement) => {
     if (!inventory || !authority) return;

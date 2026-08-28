@@ -48,6 +48,7 @@ export function ChatDockMobileOverflowSheet({
             sessionId: overflow.sessionInventory.sessionId,
           },
           projectId: overflow.sessionInventory.projectId,
+          chatStoreId: overflow.sessionInventory.chatStoreId,
           trigger: returnFocusTarget ?? null,
           forceFallback: true,
           onClose: () => {

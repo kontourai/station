@@ -1,6 +1,6 @@
 import { createSessionInventoryBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import type { SessionInventoryScope } from '@kontourai/station-contracts/session-inventory';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useBasisPaneLauncher } from '../../workspace-panes/BasisPaneLauncher';
 import {
@@ -31,6 +31,19 @@ export function SessionInventoryFullFallback({
 }) {
   const { openBasis, fallback } = useBasisPaneLauncher();
   const authority = useHostRequestAuthorityScope();
+  const mobileBindingId = useRef(`mobile:${crypto.randomUUID()}`).current;
+  useEffect(
+    () =>
+      forceFallback && authority && chatStoreId
+        ? registerSessionInventoryLiveBinding(
+            authority.apiBase,
+            authority.authorityKey,
+            scope.sessionId,
+            { hostId: mobileBindingId, chatStoreId },
+          )
+        : undefined,
+    [authority, chatStoreId, forceFallback, mobileBindingId, scope.sessionId],
+  );
   useEffect(() => {
     // A workspace-pane instance only names Project and Session. Commit the
     // exact captured scope before host admission, so a synchronous host.open

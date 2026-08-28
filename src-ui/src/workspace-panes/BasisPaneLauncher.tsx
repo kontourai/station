@@ -7,6 +7,11 @@ import {
   ResponsiveDialogSurface,
 } from '../components/ResponsiveDialogSurface';
 import { SkeletonBlock } from '../components/state';
+import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import {
+  commitSessionInventorySelection,
+  readSessionInventorySelection,
+} from './sessionInventorySelection';
 import { useWorkspacePaneHostOpenAction } from './WorkspacePaneHostOpenContext';
 import './BasisPaneLauncher.css';
 
@@ -43,6 +48,7 @@ export function useBasisPaneLauncher(): {
   fallback: ReactNode;
 } {
   const host = useWorkspacePaneHostOpenAction();
+  const authority = useHostRequestAuthorityScope();
   const [fallbackState, setFallbackState] = useState<FallbackState | null>(
     null,
   );
@@ -53,6 +59,21 @@ export function useBasisPaneLauncher(): {
       trigger: HTMLElement | null,
       onFallbackClose?: () => void,
     ) => {
+      if (
+        scope.kind === 'session-inventory' &&
+        scope.initialScope &&
+        authority
+      ) {
+        const key = { ...authority, sessionId: scope.sessionId };
+        const current = readSessionInventorySelection(key);
+        if (
+          JSON.stringify(current?.scope) !== JSON.stringify(scope.initialScope)
+        )
+          commitSessionInventorySelection(key, {
+            scope: scope.initialScope,
+            groupId: 'inputs',
+          });
+      }
       if (instance && host?.open(instance)) return 'host';
       setFallbackState({
         scope: { ...scope },
@@ -62,7 +83,7 @@ export function useBasisPaneLauncher(): {
       });
       return 'fallback';
     },
-    [host],
+    [authority, host],
   );
   const closeFallback = useCallback(() => {
     const closing = fallbackState;
