@@ -12,7 +12,7 @@ use std::io::Read;
 use std::net::IpAddr;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -43,6 +43,7 @@ struct TrayState {
     status: MenuItem<Wry>,
     tray: TrayIcon<Wry>,
     connected_clients_in_flight: Arc<AtomicBool>,
+    connected_clients_generation: Arc<AtomicU64>,
 }
 
 /// Supervisor transitions wake this receiver; they never write a webview
@@ -217,6 +218,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         status,
         tray,
         connected_clients_in_flight: Arc::new(AtomicBool::new(false)),
+        connected_clients_generation: Arc::new(AtomicU64::new(0)),
     }) {
         return Err(std::io::Error::other("Station tray state was already initialized").into());
     }
@@ -917,6 +919,11 @@ fn update_once(app: &AppHandle) -> ServiceHealth {
     let context = tray_context(app);
     let health = context.snapshot.health;
     let snapshot = context.snapshot.clone();
+    // Advance for every primary context, including when the previous optional
+    // projection is still waiting on Keychain or HTTP. Its eventual result
+    // must never overwrite a newer owner/backend presentation.
+    let projection_generation =
+        advance_connected_clients_generation(&state.connected_clients_generation);
     let primary_app = app.clone();
     let primary_state = state.clone();
     let projection_app = app.clone();
@@ -932,7 +939,14 @@ fn update_once(app: &AppHandle) -> ServiceHealth {
             }));
             crate::emit_service_status(&primary_app);
         },
-        move || schedule_connected_clients_projection(projection_app, state, context),
+        move || {
+            schedule_connected_clients_projection(
+                projection_app,
+                state,
+                context,
+                projection_generation,
+            )
+        },
     );
     health
 }
@@ -950,7 +964,20 @@ where
     projection();
 }
 
-fn schedule_connected_clients_projection(app: AppHandle, state: TrayState, context: TrayContext) {
+fn advance_connected_clients_generation(generation: &AtomicU64) -> u64 {
+    generation.fetch_add(1, Ordering::SeqCst).wrapping_add(1)
+}
+
+fn projection_is_current(generation: &AtomicU64, expected: u64) -> bool {
+    generation.load(Ordering::SeqCst) == expected
+}
+
+fn schedule_connected_clients_projection(
+    app: AppHandle,
+    state: TrayState,
+    context: TrayContext,
+    generation: u64,
+) {
     if state
         .connected_clients_in_flight
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -960,6 +987,7 @@ fn schedule_connected_clients_projection(app: AppHandle, state: TrayState, conte
     }
     let in_flight = state.connected_clients_in_flight.clone();
     let worker_in_flight = in_flight.clone();
+    let worker_generation = state.connected_clients_generation.clone();
     let spawn = thread::Builder::new()
         .name("station-tray-connected-clients".into())
         .spawn(move || {
@@ -971,15 +999,51 @@ fn schedule_connected_clients_projection(app: AppHandle, state: TrayState, conte
                     "Connected clients: unavailable".to_string()
                 }
             };
-            worker_in_flight.store(false, Ordering::SeqCst);
-            record_dispatch_result(
-                app.run_on_main_thread(move || apply_connected_clients(&state, connected_clients)),
+            let schedule = schedule_projection_callback(
+                move |callback| app.run_on_main_thread(callback),
+                worker_in_flight,
+                move || {
+                    if projection_is_current(&worker_generation, generation) {
+                        apply_connected_clients(&state, connected_clients);
+                    } else {
+                        log::debug!(
+                            "Station tray discarded stale connected-client projection generation {generation}"
+                        );
+                    }
+                },
             );
+            if let Err(error) = schedule {
+                log::debug!("Station tray connected-client projection deferred: {error}");
+            }
         });
     if let Err(error) = spawn {
         in_flight.store(false, Ordering::SeqCst);
         log::error!("Station tray connected-client projection could not start: {error}");
     }
+}
+
+/// The in-flight bit remains set until the main-thread callback applies or
+/// discards its generation. That admits one worker and one queued callback at
+/// a time; if native scheduling rejects it, clear the bit so a later primary
+/// convergence can recover instead of wedging the optional projection.
+fn schedule_projection_callback<E, S, C>(
+    schedule: S,
+    in_flight: Arc<AtomicBool>,
+    callback: C,
+) -> Result<(), E>
+where
+    S: FnOnce(Box<dyn FnOnce() + Send>) -> Result<(), E>,
+    C: FnOnce() + Send + 'static,
+{
+    let callback_in_flight = in_flight.clone();
+    let result = schedule(Box::new(move || {
+        callback();
+        callback_in_flight.store(false, Ordering::SeqCst);
+    }));
+    if result.is_err() {
+        in_flight.store(false, Ordering::SeqCst);
+    }
+    result
 }
 
 fn apply_poller_failure(app: &AppHandle) {
@@ -1271,6 +1335,90 @@ mod tests {
             .send(())
             .expect("unblock optional projection");
         worker.join().expect("projection worker exits");
+    }
+
+    #[test]
+    fn blocked_projection_cannot_overwrite_a_newer_primary_context() {
+        let generation = Arc::new(AtomicU64::new(0));
+        let in_flight = Arc::new(AtomicBool::new(true));
+        let rendered_label = Arc::new(Mutex::new("Connected clients: context B".to_string()));
+        let generation_a = advance_connected_clients_generation(&generation);
+        let (projection_started, worker_started) = channel();
+        let (release_worker, worker_release) = channel();
+        let worker_generation = generation.clone();
+        let worker_in_flight = in_flight.clone();
+        let worker_label = rendered_label.clone();
+        let worker = thread::spawn(move || {
+            projection_started
+                .send(())
+                .expect("A projection reaches its blocked dependency");
+            worker_release
+                .recv()
+                .expect("release the old projection result");
+            schedule_projection_callback(
+                |callback| {
+                    callback();
+                    Ok::<(), ()>(())
+                },
+                worker_in_flight,
+                move || {
+                    if projection_is_current(&worker_generation, generation_a) {
+                        *worker_label.lock().expect("label lock") =
+                            "1 client connected".to_string();
+                    }
+                },
+            )
+            .expect("A callback is scheduled after its dependency returns");
+        });
+
+        worker_started
+            .recv_timeout(Duration::from_millis(100))
+            .expect("old optional projection is blocked");
+        // A supervisor Listening kick produces primary context B while A is
+        // still in flight. It advances the same generation source used by the
+        // main-thread callback, so A must be discarded when it returns.
+        let generation_b = advance_connected_clients_generation(&generation);
+        assert_ne!(generation_a, generation_b);
+        assert!(
+            in_flight.load(Ordering::SeqCst),
+            "the single-worker slot remains owned until A's main-thread callback discards"
+        );
+        release_worker.send(()).expect("finish old projection");
+        worker.join().expect("old projection exits");
+
+        assert_eq!(
+            rendered_label.lock().expect("label lock").as_str(),
+            "Connected clients: context B"
+        );
+        assert!(
+            !in_flight.load(Ordering::SeqCst),
+            "discarding A releases the single-worker slot for a later B projection"
+        );
+    }
+
+    #[test]
+    fn projection_scheduling_failure_releases_the_single_worker_slot() {
+        let in_flight = Arc::new(AtomicBool::new(true));
+        let callback_ran = Arc::new(AtomicBool::new(false));
+        let callback_ran_from_callback = callback_ran.clone();
+        let result: Result<(), &str> = schedule_projection_callback(
+            |_callback| Err("main thread unavailable"),
+            in_flight.clone(),
+            move || callback_ran_from_callback.store(true, Ordering::SeqCst),
+        );
+
+        assert_eq!(result, Err("main thread unavailable"));
+        assert!(!callback_ran.load(Ordering::SeqCst));
+        assert!(
+            !in_flight.load(Ordering::SeqCst),
+            "a rejected callback cannot wedge future projections"
+        );
+        assert!(
+            in_flight
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok(),
+            "the next primary tray update can claim the slot"
+        );
     }
 
     #[test]
