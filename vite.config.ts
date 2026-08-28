@@ -298,6 +298,10 @@ export default defineConfig(({ command }) => {
           __dirname,
           './packages/connect/src/core/knownEnvironmentRegistry.ts',
         ),
+        '@kontourai/station-connect/pairing-deep-link': path.resolve(
+          __dirname,
+          './packages/connect/src/core/pairingDeepLink.ts',
+        ),
         '@kontourai/station-connect': path.resolve(
           __dirname,
           './packages/connect/src/index.ts',

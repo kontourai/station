@@ -24,7 +24,7 @@ host.
 | PWA share URL intake | enabled | n/a | Preserves `share`, `text`, `url`, and `title` query parameters and removes them after delivery. |
 | Native host-event bridge | unsupported | enabled | The adapter listens for typed `station://share-received` events only. |
 | Native share receiver | n/a | disabled | Generic OS share intake remains off; it has a different untrusted-content boundary. |
-| Pairing deep link | unsupported | enabled | Only `station://pair?payload=station-pairing:v1:...` is registered. It opens Join for explicit confirmation, never navigates or fetches a supplied URL. |
+| Pairing deep link | unsupported | enabled | One channel-specific scheme is registered (`station-stable`, `station-beta`, or `station-nightly`). It accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
 | Compile-target report | unsupported | enabled | Rust reports target and Station-enabled state. |
 | Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (station#1954). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
 | Remote push wakeup | unsupported | unsupported | No provisioned FCM/APNs application or server delivery credentials. The capability report names this explicitly; the dormant local poller cannot wake a frozen or closed app (#917/#1225). |
@@ -69,8 +69,8 @@ The static `native-platform:ratchet` blocks `@tauri-apps/api` imports and
 ### Pairing deep-link threat review (station#1957)
 
 The `tauri-plugin-deep-link` association is limited to the custom
-`station://pair` scheme on Android, iOS, and desktop. The adapter accepts one
-`payload` query parameter only: no credentials, URLs to open, arbitrary paths,
+channel-specific pairing scheme configured for a native build. The adapter accepts exactly
+one each of `linkVersion`, `clientChannel`, and `payload`: no credentials, URLs to open, arbitrary paths,
 fragments, duplicate fields, user info, or ports are accepted. The value must
 pass the same `station-pairing:v1:` decoder used by the QR scanner, including
 offer expiry, scope, and HTTPS/loopback endpoint validation. The link merely
@@ -87,7 +87,7 @@ exists.
 
 | Upstream Tauri capability | Official support boundary | Station state |
 | --- | --- | --- |
-| Deep linking | Partial on Android, iOS, and macOS: schemes must be registered in configuration; runtime registration is not supported. | `tauri-plugin-deep-link` 2.4.9 is enabled only for reviewed `station://pair` links; generic share intake remains disabled. |
+| Deep linking | Schemes are build-time configuration, not runtime registration. | `tauri-plugin-deep-link` 2.4.9 is enabled only for reviewed channel-specific pairing links; generic share intake remains disabled. |
 | Local notifications | Supported across listed Tauri targets. | enabled, but cannot wake a frozen or closed mobile app. |
 | Single instance | Desktop only (Windows mutex, Linux session D-Bus, macOS `/tmp` Unix socket keyed on the app identifier). | `tauri-plugin-single-instance` 2.4.3 with the `deep-link` feature, registered as the first plugin so a second launch exits before any other plugin or setup side effect (one benign pre-builder log-dir write probe still runs) and its argv (a pairing URL on Windows/Linux) is forwarded to the running app; the primary focuses its existing window (station#2904). Best-effort, not a hard mutex — the home-scoped sidecar claim remains the cross-surface guard. Known limits, accepted: a squatted macOS socket is an availability-only concern — the squatter also sees the launching process's argv/cwd, but no pairing secret transits argv on macOS (Apple Events); once a stable release ships this, a dev build (`tauri dev`, same identifier) will focus the installed app instead of starting. |
 | Remote push | Platform support requires FCM on Android and APNs on iOS. | unsupported pending the provider/privacy decision and provisioning tracked by #917; #1225 remains open. |

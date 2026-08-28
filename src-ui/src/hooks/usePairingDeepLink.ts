@@ -1,9 +1,14 @@
+import {
+  type PairingDeepLinkChannel,
+  parsePairingDeepLink,
+} from '@kontourai/station-connect/pairing-deep-link';
 import { useEffect } from 'react';
 import { nativePlatformPromise } from '../platform/native';
-import { parsePairingDeepLink } from '../platform/native/pairingDeepLink';
 
 interface UsePairingDeepLinkOptions {
   enabled: boolean;
+  clientChannel?: PairingDeepLinkChannel;
+  devScheme?: string;
   onPairingPayload: (payload: string) => void;
   onError: (message: string) => void;
 }
@@ -11,11 +16,13 @@ interface UsePairingDeepLinkOptions {
 /** Bridges only the reviewed native pairing association into the Join UI. */
 export function usePairingDeepLink({
   enabled,
+  clientChannel,
+  devScheme,
   onPairingPayload,
   onError,
 }: UsePairingDeepLinkOptions): void {
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !clientChannel) return;
     let disposed = false;
     let disposeSubscription: (() => void) | undefined;
     void nativePlatformPromise
@@ -28,7 +35,10 @@ export function usePairingDeepLink({
         }
         const subscription = platform.subscribeToPairingDeepLinks(
           ({ url }) => {
-            const parsed = parsePairingDeepLink(url);
+            const parsed = parsePairingDeepLink(url, {
+              clientChannel,
+              devScheme,
+            });
             if (parsed.status === 'ok') onPairingPayload(parsed.payload);
             else onError(parsed.message);
           },
@@ -43,5 +53,5 @@ export function usePairingDeepLink({
       disposed = true;
       disposeSubscription?.();
     };
-  }, [enabled, onError, onPairingPayload]);
+  }, [clientChannel, devScheme, enabled, onError, onPairingPayload]);
 }

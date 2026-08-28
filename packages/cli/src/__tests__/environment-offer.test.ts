@@ -193,6 +193,9 @@ describe('environment offer', () => {
     expect(output).toContain('Endpoint: http://127.0.0.1:43141');
     expect(output).toContain('Expires: ');
     expect(output).toContain('station-pairing:v1:');
+    expect(output).toContain(
+      'station-stable://pair?linkVersion=1&clientChannel=stable&payload=',
+    );
     expect(output).toContain('QR-BLOCKS');
     expect(output).toContain('phone cannot reach it directly');
     expect(request).toHaveBeenCalledTimes(3);
@@ -235,6 +238,41 @@ describe('environment offer', () => {
     expect(output.startsWith('station-pairing:v1:')).toBe(true);
     expect(output).not.toContain('\n');
     expect(deps.offer.renderQr).not.toHaveBeenCalled();
+  });
+
+  test('prints a separately routed link for the selected client while payload-only remains raw', async () => {
+    const request = vi
+      .fn<OperatorJsonRequest>()
+      .mockImplementation(async (_apiBase, path, init?: RequestInit) => {
+        if (path === '/.well-known/station/v1')
+          return { environmentId: SNAPSHOT.environmentId };
+        if (path === '/.well-known/station/v1/proof') {
+          return proofFor(JSON.parse(String(init?.body)).nonce);
+        }
+        if (path === '/api/pairing/offers') {
+          return {
+            protocolVersion: DEVICE_PAIRING_PROTOCOL_VERSION,
+            environmentId: SNAPSHOT.environmentId,
+            offerId: 'beta-offer',
+            challenge: 'challenge',
+            manualCode: 'PAIRME2345',
+            endpoint: API_BASE,
+            scope: pairingScopePresetString('standard'),
+            expiresAt: Date.now() + 60_000,
+          };
+        }
+        throw new Error(`unexpected path ${path}`);
+      });
+    const deps = dependencies(request);
+    await runEnvironmentCommand(['offer', '--client-channel=beta'], deps);
+    expect(deps.stdout.mock.calls[0]?.[0]).toContain(
+      'station-beta://pair?linkVersion=1&clientChannel=beta&payload=',
+    );
+    await runEnvironmentCommand(
+      ['offer', '--payload-only', '--client-channel=nightly'],
+      deps,
+    );
+    expect(deps.stdout.mock.calls[1]?.[0]).toMatch(/^station-pairing:v1:/);
   });
 
   test('fails loudly before contacting an untracked or stopped local listener', async () => {

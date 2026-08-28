@@ -18,6 +18,9 @@
     "paths": {
       "@/*": ["./src/*"],
       "@shared/*": ["../src-shared/*"],
+      "@kontourai/station-connect/pairing-deep-link": [
+        "../packages/connect/src/core/pairingDeepLink.ts"
+      ],
       "@kontourai/station-sdk/task-outputs": [
         "../packages/sdk/src/task-outputs.ts"
       ],

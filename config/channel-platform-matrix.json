@@ -4,6 +4,7 @@
     "development": {
       "appName": "Station Dev (<worktree>)",
       "desktopIdentifier": "io.kontourai.station.dev.<worktree>",
+      "pairingDeepLinkScheme": "station-dev-<worktree-id>",
       "androidIdentifier": "io.kontourai.station.debug",
       "iosIdentifier": null,
       "runtimeDirectory": "instances/dev/<worktree-id>",
@@ -17,6 +18,7 @@
     "stable": {
       "appName": "Station",
       "desktopIdentifier": "io.kontourai.station",
+      "pairingDeepLinkScheme": "station-stable",
       "androidIdentifier": "io.kontourai.station",
       "iosIdentifier": "io.kontourai.station",
       "runtimeDirectory": "instances/stable",
@@ -30,6 +32,7 @@
     "beta": {
       "appName": "Station Beta",
       "desktopIdentifier": "io.kontourai.station.beta",
+      "pairingDeepLinkScheme": "station-beta",
       "androidIdentifier": "io.kontourai.station.beta",
       "iosIdentifier": "io.kontourai.station.beta",
       "runtimeDirectory": "instances/beta",
@@ -43,6 +46,7 @@
     "nightly": {
       "appName": "Station Nightly",
       "desktopIdentifier": "io.kontourai.station.nightly",
+      "pairingDeepLinkScheme": "station-nightly",
       "androidIdentifier": "io.kontourai.station.nightly",
       "iosIdentifier": "io.kontourai.station.nightly",
       "runtimeDirectory": "instances/nightly",

@@ -46,6 +46,8 @@ export type NativeCompileTarget =
 export interface NativeCapabilityReport {
   platform: NativeCompileTarget;
   channel?: 'stable' | 'dev' | 'beta' | 'nightly';
+  /** The one custom scheme registered by this native client channel. */
+  pairingDeepLinkScheme?: string;
   capabilities: NativeCapabilityStatus[];
   /**
    * True for a development build. Absent from older hosts, so treat a missing
@@ -295,7 +297,7 @@ export interface NativePlatformAdapter {
     listener: (event: NativeShareEvent) => void,
     onError?: (error: NativePlatformError) => void,
   ): NativeEventSubscription;
-  /** Receive only URLs opened through the reviewed `station://pair` association. */
+  /** Receive URLs opened through this client's reviewed pairing association. */
   subscribeToPairingDeepLinks(
     listener: (event: NativePairingDeepLinkEvent) => void,
     onError?: (error: NativePlatformError) => void,
