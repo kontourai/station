@@ -334,6 +334,17 @@ describe('changed verification selection', () => {
       'src-server/security/__tests__/pairing-route-scopes.test.ts',
     );
   });
+  test('bounds the Tailscale public-ingress resolver to its parser and device-pairing route contracts', () => {
+    const selection = selectChangedVerification([
+      'src-server/services/tailscale/public-ingress-origin.ts',
+    ]);
+    expect(selection).toMatchObject({ escalated: false, lanes: [] });
+    expect(selection.relatedPaths).toEqual([]);
+    expect(selection.tests.map((entry) => entry.path)).toEqual([
+      'src-server/runtime/__tests__/device-pairing-routes.test.ts',
+      'src-server/services/tailscale/__tests__/public-ingress-origin.test.ts',
+    ]);
+  });
   test('bounds the acknowledgement repair to the SDK barrel and pairing guards', () => {
     const paths = [
       'packages/sdk/src/index.ts',

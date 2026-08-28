@@ -654,6 +654,15 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'pairing-scope route leaf declaration',
   },
   {
+    pattern: 'src-server/services/tailscale/public-ingress-origin.ts',
+    tests: [
+      'src-server/services/tailscale/__tests__/public-ingress-origin.test.ts',
+      'src-server/runtime/__tests__/device-pairing-routes.test.ts',
+    ],
+    reason:
+      'public Tailscale ingress resolver and device-pairing route contract',
+  },
+  {
     pattern: 'packages/contracts/src/workspace-pane.ts',
     tests: [
       'packages/contracts/src/__tests__/workspace-pane.test.ts',
