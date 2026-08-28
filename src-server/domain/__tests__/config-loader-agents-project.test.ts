@@ -177,6 +177,26 @@ describe('config-loader-agents — project ownership (station#1004, unification 
     expect(updated.project).toBe('real-project');
   });
 
+  it('lists persisted description and prompt independently after an editor-style update', async () => {
+    writeAgent('editor-agent', {
+      name: 'Editor Agent',
+      description: 'Before',
+      prompt: 'Before prompt',
+    });
+    await updateAgentConfig(home, 'editor-agent', {
+      description: 'Persisted description',
+      prompt: 'Persisted prompt',
+    });
+
+    const listed = (await listAgentConfigs(home)).find(
+      (agent) => agent.slug === 'editor-agent',
+    );
+    expect(listed).toMatchObject({
+      description: 'Persisted description',
+      prompt: 'Persisted prompt',
+    });
+  });
+
   it('serializes concurrent distinct agent edits against a fresh read', async () => {
     writeAgent('concurrent-agent', {
       name: 'Concurrent Agent',

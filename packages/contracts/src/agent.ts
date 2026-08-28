@@ -301,6 +301,7 @@ export interface AgentMetadata {
   model?: string;
   updatedAt: string;
   description?: string;
+  prompt?: string;
   plugin?: string;
   /** Owning project slug; absent = global scope (agent-engine-unification.md §3.3). */
   project?: string;

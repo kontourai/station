@@ -545,7 +545,8 @@ export async function listAgentConfigs(
         name: spec.name,
         model: spec.model,
         updatedAt: stats.mtime.toISOString(),
-        description: spec.prompt,
+        description: spec.description,
+        prompt: spec.prompt,
         plugin: pluginName,
         ui: spec.ui,
         workflowWarnings:
