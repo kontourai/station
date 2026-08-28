@@ -1,0 +1,41 @@
+.session-inventory-compact {
+  min-width: 0;
+  max-width: 100%;
+  overflow: auto;
+  isolation: isolate;
+}
+.session-inventory-compact--aside {
+  flex: 0 1 22rem;
+  width: min(22rem, 100%);
+  max-width: 26rem;
+  order: 0;
+  padding: 1rem;
+  border-inline-end: 1px solid var(--border-primary, #d0d7de);
+}
+.session-inventory-compact--card {
+  flex: 1 1 auto;
+  width: auto;
+  margin: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border-primary, #d0d7de);
+  border-radius: 0.5rem;
+}
+.session-inventory-compact button {
+  min-height: 44px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.session-inventory-compact__groups {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.session-inventory-compact__groups button[aria-pressed="true"] {
+  outline: 2px solid var(--accent-primary, #2563eb);
+}
+.session-inventory-compact__previews {
+  padding-inline-start: 1.25rem;
+}
+.session-inventory-compact__previews bdi {
+  overflow-wrap: anywhere;
+}
