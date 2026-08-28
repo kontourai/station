@@ -253,7 +253,6 @@ export function ChatDockMobileHeader({
   // controls in this bar — descriptions are matched by neither.
   const titleDescriptionId = useId();
   const switcherTriggerRef = useRef<HTMLButtonElement>(null);
-  const overflowTriggerRef = useRef<HTMLButtonElement>(null);
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
 
   // The project owns its own visible switcher below, matching desktop's
@@ -312,7 +311,6 @@ export function ChatDockMobileHeader({
 
       {showDrawerToggle && (
         <button
-          ref={overflowTriggerRef}
           type="button"
           className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
           aria-label="Toggle menu"

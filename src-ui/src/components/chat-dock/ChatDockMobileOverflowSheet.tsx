@@ -4,7 +4,12 @@ import {
 } from '../ResponsiveDialogSurface';
 import { useState } from 'react';
 import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
-import { SessionInventoryFullFallback } from './SessionInventoryFullFallback';
+import { LazyBoundary } from '../LazyBoundary';
+
+const loadSessionInventoryFullFallback = () =>
+  import('./SessionInventoryFullFallback').then((module) => ({
+    default: module.SessionInventoryFullFallback,
+  }));
 
 /**
  * The mobile header's overflow sheet.
@@ -34,17 +39,21 @@ export function ChatDockMobileOverflowSheet({
 
   if (inventoryOpen && overflow.sessionInventory)
     return (
-      <SessionInventoryFullFallback
-        scope={{
-          kind: 'whole-session',
-          sessionId: overflow.sessionInventory.sessionId,
-        }}
-        projectId={overflow.sessionInventory.projectId}
-        trigger={returnFocusTarget ?? null}
-        forceFallback
-        onClose={() => {
-          setInventoryOpen(false);
-          onClose();
+      <LazyBoundary
+        load={loadSessionInventoryFullFallback}
+        pending={null}
+        componentProps={{
+          scope: {
+            kind: 'whole-session' as const,
+            sessionId: overflow.sessionInventory.sessionId,
+          },
+          projectId: overflow.sessionInventory.projectId,
+          trigger: returnFocusTarget ?? null,
+          forceFallback: true,
+          onClose: () => {
+            setInventoryOpen(false);
+            onClose();
+          },
         }}
       />
     );
