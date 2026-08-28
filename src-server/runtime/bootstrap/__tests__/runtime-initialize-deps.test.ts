@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
+import { createMCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
 import { createRuntimeInitializationDeps } from '../runtime-initialize-deps.js';
 
 describe('createRuntimeInitializationDeps', () => {
@@ -20,6 +21,7 @@ describe('createRuntimeInitializationDeps', () => {
     const onCoreConfigReady = vi.fn();
     const onRouteServicesReady = vi.fn();
     const onVoltAgentCreated = vi.fn();
+    const mcpToolProvenanceGeneration = createMCPToolProvenanceGeneration();
 
     const deps = createRuntimeInitializationDeps({
       port: 4123,
@@ -73,6 +75,7 @@ describe('createRuntimeInitializationDeps', () => {
         ],
       ]),
       toolNameReverseMapping: new Map([['tool', 'tool']]),
+      mcpToolProvenanceGeneration,
       eventLog: { persist: vi.fn(async () => {}) } as any,
       bedrockAdapter: { kind: 'bedrock' } as any,
       claudeAdapter: { kind: 'claude' } as any,
@@ -106,6 +109,7 @@ describe('createRuntimeInitializationDeps', () => {
     expect(deps.onCoreConfigReady).toBe(onCoreConfigReady);
     expect(deps.onRouteServicesReady).toBe(onRouteServicesReady);
     expect(deps.onVoltAgentCreated).toBe(onVoltAgentCreated);
+    expect(deps.mcpToolProvenanceGeneration).toBe(mcpToolProvenanceGeneration);
 
     await expect(deps.checkBedrockCredentials()).resolves.toBe(true);
     await expect(deps.createDefaultSkillRegistryProvider()).resolves.toEqual({

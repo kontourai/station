@@ -30,7 +30,12 @@ function open() {
   return store;
 }
 
-function capture(store: EventStore, isPrincipalCurrent = () => true) {
+function capture(
+  store: EventStore,
+  isPrincipalCurrent: NonNullable<
+    ConstructorParameters<typeof WorkItemCapture>[1]
+  > = () => true,
+) {
   return new WorkItemCapture(store, isPrincipalCurrent);
 }
 

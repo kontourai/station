@@ -68,7 +68,11 @@ function complete(store: EventStore) {
 function managedHooks(store: EventStore) {
   return createAgentHooks({
     spec: { tools: { autoApprove: ['github_createIssue'] } } as any,
-    appConfig: {},
+    appConfig: {
+      defaultModel: 'test-default',
+      invokeModel: 'test-invoke',
+      structureModel: 'test-structure',
+    },
     configLoader: {} as any,
     agentFixedTokens: new Map(),
     memoryAdapters: new Map(),

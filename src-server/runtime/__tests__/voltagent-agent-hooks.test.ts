@@ -228,9 +228,11 @@ describe('VoltAgent lifecycle hooks', () => {
       options: toolOptions('call-provenance'),
     });
     await hooks.onToolEnd!({
+      agent: {} as any,
       tool,
       context,
       output,
+      error: undefined,
       options: toolOptions('call-provenance'),
     });
 

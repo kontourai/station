@@ -37,12 +37,34 @@ const { isTrustedNativeStationControlTool } = await import(
 );
 
 /** Tests name their provenance issuer explicitly rather than using production fallback. */
-function loadAgentTools(...args: any[]) {
+type LoadAgentToolsFixtureArgs = [
+  Parameters<typeof loadAgentToolsImplementation>[0],
+  Parameters<typeof loadAgentToolsImplementation>[1],
+  Parameters<typeof loadAgentToolsImplementation>[2],
+  Parameters<typeof loadAgentToolsImplementation>[3],
+  Parameters<typeof loadAgentToolsImplementation>[4],
+  Parameters<typeof loadAgentToolsImplementation>[5],
+  Parameters<typeof loadAgentToolsImplementation>[6],
+  Parameters<typeof loadAgentToolsImplementation>[7],
+  Parameters<typeof loadAgentToolsImplementation>[8],
+  Parameters<typeof loadAgentToolsImplementation>[9]?,
+  Parameters<typeof loadAgentToolsImplementation>[11]?,
+];
+
+function loadAgentTools(...args: LoadAgentToolsFixtureArgs) {
   return loadAgentToolsImplementation(
-    ...args.slice(0, 9),
+    args[0],
+    args[1],
+    args[2],
+    args[3],
+    args[4],
+    args[5],
+    args[6],
+    args[7],
+    args[8],
     args[9],
     createMCPToolProvenanceGeneration(),
-    ...args.slice(10),
+    args[10],
   );
 }
 

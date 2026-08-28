@@ -6,6 +6,7 @@ import {
   createSessionInventoryModule,
   withTaskKeptRows,
 } from '../session-inventory-module.js';
+import type { SessionWorkItemModule } from '../session-work-item-module.js';
 
 const authority = sessionReadAuthorityFromRequest(
   'owner',
@@ -173,7 +174,10 @@ describe('SessionInventoryModule', () => {
           ? { conversationId: 'conversation-a' }
           : undefined,
       sessionWorkItems: {
-        read: ({ sessionId, conversationId }) =>
+        read: ({
+          sessionId,
+          conversationId,
+        }: Parameters<SessionWorkItemModule['read']>[0]) =>
           sessionId === 'session-a' && conversationId === 'conversation-a'
             ? {
                 status: 'found',
