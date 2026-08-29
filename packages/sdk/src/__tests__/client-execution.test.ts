@@ -57,6 +57,42 @@ describe('client execution', () => {
     );
   });
 
+  test('uses the fixed automatic background route without sending an intent field', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            conversationId: 'conv-background',
+            sessionId: 'session-background',
+            providerTurnId: 'turn-background',
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await sendExecutionMessage('http://station.test', {
+      message: 'Replay later',
+      target: {
+        environment: { kind: 'current' },
+        agent: agentId('station'),
+      },
+      automaticBackground: true,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://station.test/api/orchestration/chat/background',
+      expect.objectContaining({
+        body: JSON.stringify({
+          message: 'Replay later',
+          target: { environment: { kind: 'current' }, agent: 'station' },
+        }),
+      }),
+    );
+  });
+
   test('never treats a receipt without provider turn evidence as accepted', async () => {
     vi.stubGlobal(
       'fetch',

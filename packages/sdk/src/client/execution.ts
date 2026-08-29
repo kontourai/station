@@ -34,6 +34,8 @@ export interface ForegroundMessageInput {
   clientTurnId?: string;
   /** Opaque one-shot capability returned by a sustained-critical challenge. */
   resourceAdmissionOverrideToken?: string;
+  /** Uses the fixed, more-restrictive automatic replay route. */
+  automaticBackground?: boolean;
 }
 
 export interface ForegroundMessageReceipt {
@@ -210,11 +212,12 @@ export async function sendExecutionMessage(
   input: ForegroundMessageInput,
   opts?: ClientRequestOptions,
 ): Promise<ForegroundMessageReceipt> {
+  const { automaticBackground, ...body } = input;
   const response = await mutateJson(
-    `${apiBase}/api/orchestration/chat`,
+    `${apiBase}/api/orchestration/chat${automaticBackground ? '/background' : ''}`,
     'POST',
     opts,
-    input,
+    body,
   );
   const result = (await response.json()) as ExecutionErrorResponse;
   return readExecutionReceipt(response, result);

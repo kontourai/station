@@ -274,6 +274,7 @@ export function useSendMessage(
           clientTurnId: resolvedTurnId,
           resourceAdmissionOverrideToken:
             options?.resourceAdmissionOverrideToken,
+          automaticBackground: Boolean(options?.dispatch),
           signal: abortController.signal,
         });
 
@@ -437,7 +438,9 @@ export function useSendMessage(
           ? false
           : (translated as ChatErrorTranslation).terminalSession;
         const dispatchClaim = options?.dispatch;
-        if (dispatchClaim) {
+        const dispatchDeferred =
+          Boolean(dispatchClaim) && err.code === 'resource_posture_deferred';
+        if (dispatchClaim && !dispatchDeferred) {
           // Once the foreground call has begun, neither an abort, a network
           // error, nor an HTTP/receipt error proves the provider did nothing.
           // Latch durable evidence before any observer or return path can
@@ -459,7 +462,13 @@ export function useSendMessage(
           // non-error and let the persisted server lifecycle name it. The
           // refusal itself is carried by the ephemeral notice below, which
           // already suppresses Retry for exactly this case.
-          status: foregroundIndeterminate || terminalSession ? 'idle' : 'error',
+          status:
+            foregroundIndeterminate ||
+            terminalSession ||
+            dispatchDeferred ||
+            err.code === 'resource_posture_override_required'
+              ? 'idle'
+              : 'error',
           error: err.message,
           abortController: undefined,
           ...(foregroundIndeterminate
@@ -535,6 +544,12 @@ export function useSendMessage(
           onActiveSessionChange?.(sessionId);
         }
         clearStreamingMessage(sessionId);
+        if (dispatchDeferred) {
+          return {
+            kind: 'deferred',
+            reason: translated.title,
+          } satisfies OutboundDispatchTransportResult;
+        }
         if (foregroundIndeterminate || dispatchClaim) throw err;
         if (options?.dispatch) {
           return {

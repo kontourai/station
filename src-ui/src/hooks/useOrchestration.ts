@@ -49,6 +49,7 @@ export async function sendExecutionMessage(input: {
   ambientContext?: string;
   clientTurnId?: string;
   resourceAdmissionOverrideToken?: string;
+  automaticBackground?: boolean;
   signal?: AbortSignal;
 }): Promise<ForegroundMessageReceipt> {
   return sendExecutionMessageRequest(
@@ -62,6 +63,7 @@ export async function sendExecutionMessage(input: {
       ambientContext: input.ambientContext,
       clientTurnId: input.clientTurnId,
       resourceAdmissionOverrideToken: input.resourceAdmissionOverrideToken,
+      automaticBackground: input.automaticBackground,
     },
     { signal: input.signal },
   );

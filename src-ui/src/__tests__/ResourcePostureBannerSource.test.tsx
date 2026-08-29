@@ -107,7 +107,7 @@ describe('ResourcePostureBannerSource', () => {
     renderChrome();
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toMatch(/at capacity/i);
+    expect(alert.textContent).toMatch(/very busy/i);
     expect(alert.textContent).toMatch(/97% CPU busy/);
     expect(alert.textContent).toMatch(/averaged across 5 samples/i);
     expect(alert.textContent).toMatch(/observed 3s ago/i);
@@ -131,7 +131,7 @@ describe('ResourcePostureBannerSource', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toMatch(/busy/i);
     expect(alert.textContent).toMatch(/90% CPU busy/);
-    expect(alert.textContent).not.toMatch(/at capacity/i);
+    expect(alert.textContent).not.toMatch(/very busy/i);
     expect(alert.textContent).not.toMatch(/new engine starts are refused/i);
     expect(alert.textContent).toMatch(/automatic work is paused/i);
   });

@@ -451,6 +451,19 @@ export const foregroundMessageObjectSchema = z.object({
   resourceAdmissionOverrideToken: z.string().min(1).max(128).optional(),
 });
 
+const agentDelegationContextSchema = z.object({
+  mode: z.literal('isolated-child'),
+  depth: z.number().int().min(1).max(64),
+  maxDepth: z.number().int().min(1).max(64),
+  parentAgentSlug: z.string().min(1).max(64),
+  parentConversationId: z.string().min(1).max(512).optional(),
+  rootAgentSlug: z.string().min(1).max(64),
+  rootConversationId: z.string().min(1).max(512).optional(),
+  allowedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
+  blockedTools: z.array(z.string().min(1).max(256)).max(256).optional(),
+  denyApprovals: z.boolean().optional(),
+});
+
 function requireMessageOrAttachment(
   value: {
     message: string;
@@ -484,6 +497,9 @@ function requireMessageOrAttachment(
 const foregroundMessageSchema = foregroundMessageObjectSchema.superRefine(
   requireMessageOrAttachment,
 );
+const delegatedForegroundMessageSchema = foregroundMessageObjectSchema
+  .extend({ delegation: agentDelegationContextSchema })
+  .superRefine(requireMessageOrAttachment);
 
 // Exported (archive#2831) for the structural derivation pin in
 // __tests__/orchestration-chat-input-limits.test.ts: this continuation body
@@ -1028,7 +1044,7 @@ export function createOrchestrationRoutes(
     return c.json({ success: true, data });
   });
 
-  app.post('/chat', validate(foregroundMessageSchema), async (c) => {
+  const handleForegroundMessage = async (c: Context) => {
     if (!deps.executeForegroundMessage) {
       return c.json(
         { success: false, error: 'Foreground Agent execution is unavailable' },
@@ -1036,7 +1052,12 @@ export function createOrchestrationRoutes(
       );
     }
     try {
-      const body = getBody(c);
+      const body = getBody(c) as z.infer<
+        typeof foregroundMessageObjectSchema
+      > & {
+        delegation?: z.infer<typeof agentDelegationContextSchema>;
+        automaticBackground?: true;
+      };
       const { principal, userId } = resolveActorPrincipal(deps, c);
       const stagedAttachments = body.attachmentRefs as
         | StagedAttachmentReference[]
@@ -1062,7 +1083,7 @@ export function createOrchestrationRoutes(
           ? body.target.workspace.projectSlug
           : undefined;
       let stagedBinding: { threadId: string; clientTurnId: string } | undefined;
-      const data = await deps.executeForegroundMessage({
+      const foregroundRequest = {
         ...body,
         ...(stagedAttachments?.length
           ? {
@@ -1092,7 +1113,8 @@ export function createOrchestrationRoutes(
         // `turn.started` carries the dispatching principal at emit time.
         principal,
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
-      });
+      } as ForegroundMessageRequest;
+      const data = await deps.executeForegroundMessage(foregroundRequest);
       if (!isForegroundDispatchHandle(data)) {
         // The foreground Interface cannot honestly call this accepted without
         // the exact provider turn identity needed for terminal settlement.
@@ -1186,6 +1208,17 @@ export function createOrchestrationRoutes(
         unreachableWorkspace ? 503 : override ? 409 : 400,
       );
     }
+  };
+  app.post('/chat', validate(foregroundMessageSchema), handleForegroundMessage);
+  app.post(
+    '/chat/delegated',
+    validate(delegatedForegroundMessageSchema),
+    handleForegroundMessage,
+  );
+  app.post('/chat/background', validate(foregroundMessageSchema), async (c) => {
+    const body = getBody(c);
+    c.set('body' as never, { ...body, automaticBackground: true });
+    return await handleForegroundMessage(c);
   });
 
   app.post(

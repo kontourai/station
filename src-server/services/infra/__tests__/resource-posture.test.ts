@@ -237,17 +237,34 @@ describe('runtime resource posture', () => {
   });
 
   test('uses the sampler-provided degraded threshold in stateful classification', async () => {
+    let clock = 5_000;
+    const values = [80, 68, 66, 64];
     const controller = createRuntimeResourcePostureController({
       sample: async () => ({
         ...healthyObservation,
+        sampledAt: clock,
         thresholdPercent: 75,
-        busyPercent: 80,
+        busyPercent: values.shift()!,
       }),
+      now: () => clock,
+      cacheMs: 0,
     });
     await expect(controller.observe()).resolves.toMatchObject({
       kind: 'degraded',
       busyPercent: 80,
       smoothedBusyPercent: 80,
+      thresholdPercent: 75,
+    });
+    for (let index = 0; index < 2; index += 1) {
+      clock += 1;
+      await expect(controller.observe()).resolves.toMatchObject({
+        kind: 'degraded',
+      });
+    }
+    clock += 1;
+    await expect(controller.observe()).resolves.toMatchObject({
+      kind: 'healthy',
+      smoothedBusyPercent: 67,
       thresholdPercent: 75,
     });
   });

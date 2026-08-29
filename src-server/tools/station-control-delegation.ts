@@ -87,6 +87,7 @@ interface ApiEnvelope<T> {
   receipt?: unknown;
   receiptStatus?: unknown;
   session?: unknown;
+  resourceAdmissionOverride?: unknown;
 }
 
 interface StationHandshake {
@@ -916,7 +917,27 @@ async function postForegroundMessage(
     );
   }
   if (!response.ok || !payload.success || payload.data === undefined) {
-    throw new Error(payload.error || unavailableMessage);
+    const error = new Error(payload.error || unavailableMessage) as Error & {
+      status?: number;
+      code?: string;
+      resourceAdmissionOverride?: { token: string; expiresAt: number };
+    };
+    error.status = response.status;
+    if (typeof payload.code === 'string') error.code = payload.code;
+    const override = payload.resourceAdmissionOverride;
+    if (
+      payload.code === 'resource_posture_override_required' &&
+      typeof override === 'object' &&
+      override !== null &&
+      typeof (override as { token?: unknown }).token === 'string' &&
+      typeof (override as { expiresAt?: unknown }).expiresAt === 'number'
+    ) {
+      error.resourceAdmissionOverride = {
+        token: (override as { token: string }).token,
+        expiresAt: (override as { expiresAt: number }).expiresAt,
+      };
+    }
+    throw error;
   }
   if (
     typeof payload.data.providerTurnId !== 'string' ||
@@ -3174,11 +3195,16 @@ export async function executeExecutionTargetMessage(
       selectedTarget,
       input.target,
     );
+    const { automaticBackground: _automaticBackground, ...remoteInput } = input;
     return postForegroundMessage(
       selectedTarget,
-      '/api/orchestration/chat',
+      input.delegation
+        ? '/api/orchestration/chat/delegated'
+        : input.automaticBackground
+          ? '/api/orchestration/chat/background'
+          : '/api/orchestration/chat',
       {
-        ...input,
+        ...remoteInput,
         target: { ...pinnedTarget, environment: { kind: 'current' } },
       },
       'The selected Station could not execute the Agent message',
@@ -3422,11 +3448,13 @@ export async function executeExecutionTargetMessage(
         dispatchContextForAuthority(readAuthority),
         {
           ...(ephemeral ? { ephemeralSessionVisibility: true } : {}),
-          resourceAdmissionIntent: ephemeral
-            ? 'webhook'
-            : startInput.metadata?.delegation
-              ? 'delegated_background'
-              : 'interactive_user',
+          resourceAdmissionIntent:
+            startContext?.resourceAdmissionIntent ??
+            (ephemeral
+              ? 'webhook'
+              : startInput.metadata?.delegation
+                ? 'delegated_background'
+                : 'interactive_user'),
           ...(startContext?.resourceAdmissionOverrideToken
             ? {
                 resourceAdmissionOverrideToken:

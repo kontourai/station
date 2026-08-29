@@ -375,6 +375,8 @@ function installRemoteStationFetch(
   canonicalPath:
     | '/api/orchestration/delegations'
     | '/api/orchestration/chat'
+    | '/api/orchestration/chat/delegated'
+    | '/api/orchestration/chat/background'
     | '/api/orchestration/chat/conversation-1/continue',
   responseData: unknown,
   discovery?: {
@@ -925,6 +927,76 @@ describe('Station Control canonical Environment + Agent execution', () => {
     });
   });
 
+  test('uses the fixed delegated route for a cross-Station child message', async () => {
+    const handle = foregroundHandle();
+    installRemoteStationFetch('/api/orchestration/chat/delegated', handle);
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    const delegation = {
+      mode: 'isolated-child' as const,
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: 'parent' as never,
+      rootAgentSlug: 'root' as never,
+    };
+
+    await expect(
+      executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'Delegated remote work',
+        conversationId: 'conversation-delegated-remote',
+        delegation,
+      }),
+    ).resolves.toEqual(handle);
+
+    const call = fetchMock.mock.calls.find(
+      ([url]) =>
+        String(url) === `${REMOTE_API}/api/orchestration/chat/delegated`,
+    );
+    expect(bodyOf(call!)).toMatchObject({ delegation });
+  });
+
+  test('preserves a remote one-shot override capability for the controlling UI', async () => {
+    installRemoteStationFetch('/api/orchestration/chat', {});
+    const baseImplementation = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) => {
+      if (String(input) === `${REMOTE_API}/api/orchestration/chat`) {
+        return json(
+          {
+            success: false,
+            error: 'This Station remains busy.',
+            code: 'resource_posture_override_required',
+            resourceAdmissionOverride: {
+              token: 'remote-override-1',
+              expiresAt: 123_456,
+            },
+          },
+          409,
+        );
+      }
+      return baseImplementation(input, init);
+    });
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await expect(
+      executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'Start remotely',
+        conversationId: 'conversation-remote-override',
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: 'resource_posture_override_required',
+      resourceAdmissionOverride: {
+        token: 'remote-override-1',
+        expiresAt: 123_456,
+      },
+    });
+  });
+
   test('preserves detail-less remote foreground indeterminacy and ambiguous responses', async () => {
     installRemoteStationFetch('/api/orchestration/chat', {});
     const baseImplementation = fetchMock.getMockImplementation()!;
@@ -1423,6 +1495,29 @@ describe('Station Control canonical Environment + Agent execution', () => {
 
     expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
       resourceAdmissionIntent: 'delegated_background',
+    });
+  });
+
+  test('derives queued/background admission from the fixed background route seam', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await executeExecutionTargetMessage(
+      {
+        target: currentTarget(),
+        message: 'Queued replay',
+        conversationId: 'conversation-background',
+        automaticBackground: true,
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+
+    expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
+      resourceAdmissionIntent: 'queued_background',
     });
   });
 

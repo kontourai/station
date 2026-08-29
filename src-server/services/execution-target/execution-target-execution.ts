@@ -70,6 +70,8 @@ export interface ForegroundMessageInput {
   clientTurnId?: string;
   /** Opaque, expiring capability returned by a critical admission challenge. */
   resourceAdmissionOverrideToken?: string;
+  /** Server-owned fixed-route identity for durable automatic queue replay. */
+  automaticBackground?: true;
   delegation?: AgentDelegationContext;
   userId?: string;
   /**
@@ -261,7 +263,10 @@ export interface ExecutionTargetExecutionDependencies
   startSession: (
     access: EnvironmentAccess,
     input: ProviderSessionStartInput,
-    context?: { resourceAdmissionOverrideToken?: string },
+    context?: {
+      resourceAdmissionOverrideToken?: string;
+      resourceAdmissionIntent?: 'queued_background';
+    },
   ) => Promise<{ commandId: string; sessionId: string } | undefined>;
   sendTurn: (
     access: EnvironmentAccess,
@@ -655,10 +660,20 @@ export async function executeForegroundMessage(
             : {}),
         },
       };
-      const startReceipt = await (input.resourceAdmissionOverrideToken
+      const startContext = {
+        ...(input.resourceAdmissionOverrideToken
+          ? {
+              resourceAdmissionOverrideToken:
+                input.resourceAdmissionOverrideToken,
+            }
+          : {}),
+        ...(input.automaticBackground
+          ? { resourceAdmissionIntent: 'queued_background' as const }
+          : {}),
+      };
+      const startReceipt = await (Object.keys(startContext).length > 0
         ? deps.startSession(resolved.access, sessionStartInput, {
-            resourceAdmissionOverrideToken:
-              input.resourceAdmissionOverrideToken,
+            ...startContext,
           })
         : deps.startSession(resolved.access, sessionStartInput));
       if (continuation?.contextBoundary) {

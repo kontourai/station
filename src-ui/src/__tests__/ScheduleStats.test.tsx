@@ -34,7 +34,7 @@ describe('ScheduleStats', () => {
       />,
     );
 
-    expect(screen.getByText('Paused — host at capacity')).toBeTruthy();
+    expect(screen.getByText('Paused — host very busy')).toBeTruthy();
     expect(screen.queryByText('● Healthy')).toBeNull();
   });
 
@@ -54,7 +54,7 @@ describe('ScheduleStats', () => {
     );
 
     expect(screen.getByText('Paused — host busy')).toBeTruthy();
-    expect(screen.queryByText('Paused — host at capacity')).toBeNull();
+    expect(screen.queryByText('Paused — host very busy')).toBeNull();
     expect(screen.queryByText('● Healthy')).toBeNull();
   });
 });

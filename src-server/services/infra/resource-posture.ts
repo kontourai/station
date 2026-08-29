@@ -293,12 +293,15 @@ export function createRuntimeResourcePostureController(
       ) {
         next = 'critical';
       } else if (effectiveKind === 'degraded') {
+        const degradedExitPercent = Math.min(
+          RUNTIME_RESOURCE_POSTURE_DEGRADED_EXIT_BUSY_PERCENT,
+          observed.thresholdPercent - 5,
+        );
         if (
           tailEvery(
             smoothedHistory,
             RUNTIME_RESOURCE_POSTURE_RECOVERY_SAMPLES,
-            (value) =>
-              value <= RUNTIME_RESOURCE_POSTURE_DEGRADED_EXIT_BUSY_PERCENT,
+            (value) => value <= degradedExitPercent,
           )
         )
           next = 'healthy';
@@ -466,6 +469,7 @@ export class InteractiveResourceOverrideRequiredError extends Error {
 
 export type RuntimeEngineStartIntent =
   | 'interactive_user'
+  | 'queued_background'
   | 'delegated_background'
   | 'webhook'
   | 'recovery';

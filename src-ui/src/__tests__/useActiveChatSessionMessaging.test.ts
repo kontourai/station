@@ -435,6 +435,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       .getSnapshot()
       [sessionId]?.ephemeralMessages?.at(-1)?.action;
     expect(action?.label).toBe('Start anyway');
+    expect(activeChatsStore.getSnapshot()[sessionId]?.status).toBe('idle');
 
     await act(async () => {
       await action?.handler();
@@ -950,6 +951,40 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       activeChatsStore.getSnapshot()[sessionId]?.ephemeralMessages?.at(-1)
         ?.action,
     ).toBeUndefined();
+  });
+
+  it('routes durable queue replay as background and defers without possible-effect evidence', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(
+        409,
+        'Automatic work is paused while this Station is busy.',
+        'resource_posture_deferred',
+      ),
+    );
+    const claim = { indeterminate: vi.fn(async () => 'applied' as const) };
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await expect(
+      result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'send after recovery',
+        undefined,
+        undefined,
+        'queued-background-turn',
+        { skipInMemoryQueueOnBusy: true, dispatch: claim },
+      ),
+    ).resolves.toEqual({
+      kind: 'deferred',
+      reason: expect.any(String),
+    });
+
+    expect(sendExecutionMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ automaticBackground: true }),
+    );
+    expect(claim.indeterminate).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId]?.status).toBe('idle');
   });
 
   it('queues a network-level failure without rolling back the optimistic turn', async () => {
