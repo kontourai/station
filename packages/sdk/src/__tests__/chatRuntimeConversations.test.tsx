@@ -6,9 +6,9 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { _setApiBase } from '../api-core';
+import { resolveConversationOpen } from '../conversation-open';
 import {
   fetchSessionSummary,
-  resolveConversationOpen,
   useConversationInventoryQuery,
   useConversationsQuery,
   useDeleteConversationMutation,

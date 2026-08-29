@@ -65,6 +65,7 @@ import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
 import { ErrorState, SkeletonList } from '../state';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
+import { conversationCanMutate } from './conversationOpenPolicy';
 import {
   type RetryAttachment,
   resolveRetryAttachments,
@@ -82,6 +83,11 @@ const loadOutboundQueuedMessages = () =>
       default: OutboundQueuedMessages,
     }),
   );
+
+const loadConversationOpenRecoveryNotice = () =>
+  import('./ConversationOpenRecoveryNotice').then((module) => ({
+    default: module.ConversationOpenRecoveryNotice,
+  }));
 
 const loadQueuedMessages = () =>
   import('../chat/QueuedMessages').then(({ QueuedMessages }) => ({
@@ -498,12 +504,7 @@ export function ChatDockBody({
   // A reopened conversation retains the admission decision that opened this
   // tab. Provider/model availability today cannot convert a recovery view
   // into a writable continuation of a different child session.
-  const readOnlyOpen =
-    activeSession.conversationOpenPending === true ||
-    activeSession.conversationOpenFailed === true ||
-    (activeSession.conversationOpenState !== undefined &&
-      (activeSession.conversationOpenState.status !== 'resolved' ||
-        !activeSession.conversationOpenState.canContinue));
+  const readOnlyOpen = !conversationCanMutate(activeSession);
 
   // TTS readback when streaming ends
   const prevStatusRef = useRef(isExecutionActive);
@@ -1059,42 +1060,38 @@ export function ChatDockBody({
           </div>
         )}
       {readOnlyOpen ? (
-        <div className="session-history-error" role="alert">
-          <strong>
-            {activeSession.conversationOpenState?.conversation.title ??
-              activeSession.title}{' '}
-            is read-only.
-          </strong>
-          <span className="session-history-error__detail">
-            {' '}
-            {activeSession.conversationOpenPending
-              ? 'Station is resolving its current session.'
+        <LazyBoundary
+          load={loadConversationOpenRecoveryNotice}
+          componentProps={{
+            title:
+              activeSession.conversationOpenState?.conversation.title ??
+              activeSession.title,
+            state: activeSession.conversationOpenPending
+              ? 'resolving'
               : activeSession.conversationOpenState?.status ===
                   'missing-session'
-                ? 'Its execution session is no longer available.'
-                : 'Station could not prove a writable continuation for its current session.'}
-          </span>
-          {onRetryConversationOpen ? (
-            <button
-              type="button"
-              className="button button--secondary session-history-error__retry"
-              onClick={() => void onRetryConversationOpen()}
-            >
-              Retry
-            </button>
-          ) : null}
-          {onNewChat ? (
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={() =>
-                void Promise.resolve(onNewChat()).catch(surfaceRecoveryFailure)
-              }
-            >
-              Start new chat
-            </button>
-          ) : null}
-        </div>
+                ? 'missing-session'
+                : activeSession.conversationOpenState?.status ===
+                    'transcript-only'
+                  ? 'transcript-only'
+                  : 'unavailable',
+            onRetry: onRetryConversationOpen
+              ? () => void onRetryConversationOpen()
+              : undefined,
+            onStartNew: onNewChat
+              ? () =>
+                  void Promise.resolve(onNewChat()).catch(
+                    surfaceRecoveryFailure,
+                  )
+              : undefined,
+          }}
+          pending={
+            <div className="session-history-error" role="status">
+              Conversation recovery is loading. This conversation remains
+              read-only.
+            </div>
+          }
+        />
       ) : null}
       {/*
         #765 A2/A3: the turn-stall watchdog's projection, surfaced IN the
@@ -1142,7 +1139,7 @@ export function ChatDockBody({
             </button>
             .
           </div>
-         )}
+        )}
       <ChatInputArea
         sessionId={activeSession.id}
         input={chatInput.input}

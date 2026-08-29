@@ -1,7 +1,3 @@
-import type {
-  ConversationListItem,
-  ConversationOpenResolution,
-} from '@kontourai/station-contracts/orchestration';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
@@ -128,6 +124,8 @@ import {
   beginConversationHandoffUiState,
   refuseConversationHandoffUiState,
 } from './conversationHandoffUiState';
+import type { ConversationOpenRecovery } from './conversationOpenController';
+import { conversationCanMutate as canMutateConversation } from './conversationOpenPolicy';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
 import type { MobileTaskSwitcherMode } from './MobileTaskSwitcher';
 import { isDockOwnedViewType, isMobileDockFullscreen } from './mobile-chrome';
@@ -266,6 +264,16 @@ const loadConversationContextResetDialog = () =>
   import('./ConversationContextResetDialog').then((module) => ({
     default: module.ConversationContextResetDialog,
   }));
+const loadConversationOpenRecoveryNotice = () =>
+  import('./ConversationOpenRecoveryNotice').then((module) => ({
+    default: module.ConversationOpenRecoveryNotice,
+  }));
+const loadConversationOpenController = () =>
+  import('./conversationOpenController');
+const loadConversationOpenRevalidator = () =>
+  import('./ConversationOpenRevalidator').then((module) => ({
+    default: module.ConversationOpenRevalidator,
+  }));
 
 /**
  * The pane-host machinery is ~17KB of entry budget the dock does not need at
@@ -391,15 +399,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const taskSwitcherTriggerRef = useRef<HTMLButtonElement>(null);
   // Get data from contexts
   const { apiBase } = useApiBase();
-  const resolveConversationOpenAuthoritatively = useCallback(
-    async (conversationId: string) => {
-      const { resolveConversationOpen } = await import(
-        '@kontourai/station-sdk'
-      );
-      return resolveConversationOpen(conversationId, apiBase);
-    },
-    [apiBase],
-  );
   const sessionInventoryMountRef = useRef<HTMLDivElement>(null);
   const {
     isDockOpen,
@@ -678,10 +677,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // A non-tab recovery is still committed UI state (not a toast). It is used
   // only when Station cannot safely hydrate an existing transcript into a
   // tab; once a tab exists its `conversationOpenState` is the canonical copy.
-  const [conversationOpenRecovery, setConversationOpenRecovery] = useState<{
-    conversation: ConversationListItem;
-    status: 'missing-session' | 'unavailable' | 'transcript-only' | 'error';
-  } | null>(null);
+  const [conversationOpenRecovery, setConversationOpenRecovery] =
+    useState<ConversationOpenRecovery | null>(null);
 
   // station#1301 slice 1: the active session's running-background-task count,
   // for the tab bar's badge and the mobile switcher's row label.
@@ -779,12 +776,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     orchestrationSessionsStatus,
   });
   const inventoryChatStoreId = activeSession?.id;
-  const conversationCanMutate =
-    activeSession?.conversationOpenPending !== true &&
-    activeSession?.conversationOpenFailed !== true &&
-    (activeSession?.conversationOpenState === undefined ||
-      (activeSession.conversationOpenState.status === 'resolved' &&
-        activeSession.conversationOpenState.canContinue));
+  const conversationCanMutate = activeSession
+    ? canMutateConversation(activeSession)
+    : false;
   const inventoryExecutionId = conversationCanMutate
     ? (activeSession?.currentSessionId ?? inventoryChatStoreId)
     : undefined;
@@ -1491,177 +1485,39 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [openConversationInScopedPane, setActiveProjectSlug],
   );
-  /**
-   * Commits the server result before the picker disappears. In particular, a
-   * resolved result binds the returned current child onto the tab before the
-   * composer can be used; every other result becomes an explicit read-only
-   * recovery surface rather than falling through to New chat.
-   */
-  const commitConversationOpenResolution = useCallback(
-    async (resolution: ConversationOpenResolution): Promise<boolean> => {
-      const conversation = resolution.conversation;
-      if (
-        resolution.status === 'missing-session' ||
-        resolution.status === 'unavailable'
-      ) {
-        setConversationOpenRecovery({
-          conversation,
-          status: resolution.status,
-        });
-        return true;
-      }
-      const opened = await openUserSelectedConversationInScopedPane(
-        conversation.id,
-        conversation.agentSlug,
-        conversation.projectSlug,
-        projects.find((project) => project.slug === conversation.projectSlug)
-          ?.name,
-        conversation.model,
-        conversation.updatedAt,
-        conversation.acceptedModel,
-        { hydrateMessages: true },
-      );
-      if (!opened) {
-        setConversationOpenRecovery({
-          conversation,
-          status:
-            resolution.status === 'resolved'
-              ? 'unavailable'
-              : resolution.status,
-        });
-        return true;
-      }
-      const tab = Object.entries(activeChatsStore.getSnapshot()).find(
-        ([, chat]) => chat.conversationId === conversation.id,
-      );
-      if (!tab) {
-        // `openConversation` has just returned true, so this is a local store
-        // invariant fault. Do not allow an unbound tab to become writable.
-        setConversationOpenRecovery({ conversation, status: 'unavailable' });
-        return true;
-      }
-      updateChat(tab[0], {
-        title: conversation.title,
-        conversationOpenState: resolution,
-        ...(resolution.status === 'resolved'
-          ? {
-              currentSessionId: resolution.currentSessionId,
-              orchestrationSessionStarted: true,
-            }
-          : {}),
+  const openConversationForDock = useCallback(
+    async (conversation: ConversationOpenRecovery['conversation']) => {
+      const controller = await loadConversationOpenController();
+      return controller.openConversationForDock(conversation, {
+        apiBase,
+        open: openUserSelectedConversationInScopedPane,
+        projectName: (slug) =>
+          projects.find((project) => project.slug === slug)?.name,
+        findTab: (conversationId) =>
+          Object.entries(activeChatsStore.getSnapshot()).find(
+            ([, chat]) => chat.conversationId === conversationId,
+          )?.[0],
+        updateChat,
+        setRecovery: setConversationOpenRecovery,
       });
-      setConversationOpenRecovery(null);
-      return true;
     },
-    [openUserSelectedConversationInScopedPane, projects, updateChat],
+    [apiBase, openUserSelectedConversationInScopedPane, projects, updateChat],
   );
   const retryActiveConversationOpen = useCallback(async () => {
     if (!activeSession?.conversationId) return;
-    try {
-      const resolution = await resolveConversationOpenAuthoritatively(
-        activeSession.conversationId,
-      );
-      if (resolution.status !== 'resolved') {
-        updateChat(activeSession.id, {
-          conversationOpenState: resolution,
-          currentSessionId: undefined,
-          orchestrationSessionStarted: false,
-        });
-        return;
-      }
-      updateChat(activeSession.id, {
-        title: resolution.conversation.title,
-        currentSessionId: resolution.currentSessionId,
-        orchestrationSessionStarted: true,
-        conversationOpenState: resolution,
-      });
-    } catch {
-      // The existing committed recovery surface stays visible; a transport
-      // fault is not permission to clear it or expose the composer.
-      showToast('Conversation resolution is unavailable. Try again.');
-    }
-  }, [
-    activeSession,
-    resolveConversationOpenAuthoritatively,
-    showToast,
-    updateChat,
-  ]);
-  // Reload restores only durable identities. Before a persisted tab regains
-  // any mutation or Basis/inventory affordance, ask the server again for the
-  // current child and its lifecycle decision.
-  useEffect(() => {
-    if (
-      !activeSession?.conversationId ||
-      !activeSession.conversationOpenPending
-    )
-      return;
-    let cancelled = false;
-    void resolveConversationOpenAuthoritatively(activeSession.conversationId)
-      .then((resolution) => {
-        if (cancelled) return;
-        updateChat(activeSession.id, {
-          conversationOpenPending: false,
-          conversationOpenFailed: false,
-          conversationOpenState: resolution,
-          title: resolution.conversation.title,
-          currentSessionId: undefined,
-          orchestrationSessionStarted: false,
-          ...(resolution.status === 'resolved'
-            ? {
-                currentSessionId: resolution.currentSessionId,
-                orchestrationSessionStarted: true,
-              }
-            : {}),
-        });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        updateChat(activeSession.id, {
-          conversationOpenPending: false,
-          conversationOpenFailed: true,
-        });
-        setConversationOpenRecovery({
-          conversation: {
-            id: activeSession.conversationId!,
-            source: 'runtime',
-            agentSlug: activeSession.agentSlug,
-            title: activeSession.title,
-            createdAt: new Date(activeSession.createdAt).toISOString(),
-            updatedAt: new Date(activeSession.updatedAt).toISOString(),
-            messageCount: activeSession.messages.length,
-            mutable: false,
-            answerability: {
-              answerable: false,
-              qualification: 'past_resume',
-              observedBy: 'client-reload',
-              observedAt: new Date().toISOString(),
-            },
-          },
-          status: 'error',
-        });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeSession, resolveConversationOpenAuthoritatively, updateChat]);
+    const controller = await loadConversationOpenController();
+    await controller.retryActiveConversationForDock(
+      activeSession.id,
+      activeSession.conversationId,
+      apiBase,
+      updateChat,
+      () => showToast('Conversation resolution is unavailable. Try again.'),
+    );
+  }, [activeSession, apiBase, showToast, updateChat]);
   const retryConversationOpenRecovery = useCallback(async () => {
     if (!conversationOpenRecovery) return;
-    try {
-      const resolution = await resolveConversationOpenAuthoritatively(
-        conversationOpenRecovery.conversation.id,
-      );
-      await commitConversationOpenResolution(resolution);
-    } catch {
-      // Preserve the original title and recovery panel across a retry fault.
-      setConversationOpenRecovery((current) =>
-        current ? { ...current, status: 'error' } : current,
-      );
-    }
-  }, [
-    commitConversationOpenResolution,
-    conversationOpenRecovery,
-    resolveConversationOpenAuthoritatively,
-  ]);
+    await openConversationForDock(conversationOpenRecovery.conversation);
+  }, [conversationOpenRecovery, openConversationForDock]);
   const startNewFromConversationRecovery = useCallback(() => {
     // Direct-new creates and selects a replacement synchronously. If a picker
     // is required it creates nothing, so keep the failed recovery visible
@@ -2385,35 +2241,24 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 <div className="chat-dock__conversation-surface">
                   <div ref={sessionInventoryMountRef} />
                   {conversationOpenRecovery ? (
-                    <div className="session-history-error" role="alert">
-                      <strong>
-                        {conversationOpenRecovery.conversation.title} is
-                        available read-only.
-                      </strong>
-                      <span className="session-history-error__detail">
-                        {' '}
-                        {conversationOpenRecovery.status === 'missing-session'
-                          ? 'Its execution session is missing.'
-                          : conversationOpenRecovery.status ===
-                              'transcript-only'
-                            ? 'Its transcript is available, but continuation is not authorized.'
-                            : 'Station could not resolve its exact current session.'}
-                      </span>
-                      <button
-                        type="button"
-                        className="button button--secondary session-history-error__retry"
-                        onClick={() => void retryConversationOpenRecovery()}
-                      >
-                        Retry
-                      </button>
-                      <button
-                        type="button"
-                        className="button button--secondary"
-                        onClick={startNewFromConversationRecovery}
-                      >
-                        Start new chat
-                      </button>
-                    </div>
+                    <LazyBoundary
+                      load={loadConversationOpenRecoveryNotice}
+                      componentProps={{
+                        title: conversationOpenRecovery.conversation.title,
+                        state:
+                          conversationOpenRecovery.status === 'error'
+                            ? 'unavailable'
+                            : conversationOpenRecovery.status,
+                        onRetry: () => void retryConversationOpenRecovery(),
+                        onStartNew: startNewFromConversationRecovery,
+                      }}
+                      pending={
+                        <div className="session-history-error" role="status">
+                          Conversation recovery is loading. This conversation
+                          remains read-only.
+                        </div>
+                      }
+                    />
                   ) : null}
                   {!conversationOpenRecovery ? (
                     <ChatDockContentArea
@@ -3035,27 +2880,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 }
               : undefined,
           onCloseSessionPicker: () => setShowSessionPicker(false),
-          onSessionPickerSelect: async (row) => {
-            // Picker discovery is not proof that a writable Session exists.
-            // Resolve under the server's one authority before routing or
-            // creating a tab; recovery states deliberately do not fall
-            // through to the old "New chat" hydration path.
-            try {
-              const resolved = await resolveConversationOpenAuthoritatively(
-                row.id,
-              );
-              return await commitConversationOpenResolution(resolved);
-            } catch {
-              // Commit the error surface before allowing the picker to close.
-              // The selected row is metadata only; it cannot hydrate or enable
-              // a guessed session while the point read is unavailable.
-              setConversationOpenRecovery({
-                conversation: row,
-                status: 'error',
-              });
-              return true;
-            }
-          },
+          // Discovery is not proof that a writable Session exists. The lazy
+          // controller resolves, opens, and binds this row as one command.
+          onSessionPickerSelect: openConversationForDock,
           onChatFontSizeChange: setChatFontSize,
           onShowReasoningChange: setShowReasoning,
           onShowToolDetailsChange: setShowToolDetails,
@@ -3064,6 +2891,20 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         }}
         pending={null}
       />
+
+      {activeSession?.conversationId &&
+      activeSession.conversationOpenPending ? (
+        <LazyBoundary
+          load={loadConversationOpenRevalidator}
+          componentProps={{
+            sessionId: activeSession.id,
+            conversationId: activeSession.conversationId,
+            apiBase,
+            updateChat,
+          }}
+          pending={null}
+        />
+      ) : null}
 
       <ShareIntakeController />
     </>

@@ -436,7 +436,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     ).toContain('Last message you sent: ship the release notes');
   });
 
-  test('#749 keeps the composer disabled while a reloaded conversation is resolving', () => {
+  test('#749 keeps the composer disabled while a reloaded conversation is resolving', async () => {
     renderDock({
       session: buildSession({
         conversationId: 'cool',
@@ -446,11 +446,11 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
 
     expect(chatInputPropsMock.current?.disabled).toBe(true);
     expect(
-      screen.getByText('Station is resolving its current session.'),
+      await screen.findByText('Station is resolving its current session.'),
     ).toBeTruthy();
   });
 
-  test('#749 transport failure remains read-only and exposes recovery actions', () => {
+  test('#749 transport failure remains read-only and exposes recovery actions', async () => {
     const onRetryConversationOpen = vi.fn();
     const onNewChat = vi.fn();
     render(
@@ -476,8 +476,10 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       </QueryClientProvider>,
     );
     expect(chatInputPropsMock.current?.disabled).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Start new chat' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Start new chat' }),
+    );
     expect(onRetryConversationOpen).toHaveBeenCalledOnce();
     expect(onNewChat).toHaveBeenCalledOnce();
   });
