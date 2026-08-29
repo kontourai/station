@@ -176,7 +176,7 @@
   font-family: var(--font-mono);
   font-size: var(--text-base);
   color: var(--text-muted);
-  transition: color 0.15s;
+  transition: color var(--motion-fast);
   overflow: hidden;
   white-space: nowrap;
   min-width: 0;
@@ -213,7 +213,7 @@
   align-items: center;
   font-size: var(--text-sm);
   color: var(--text-muted);
-  transition: color 0.15s;
+  transition: color var(--motion-fast);
   flex-shrink: 0;
 }
 
@@ -757,7 +757,7 @@
   font-size: var(--text-base);
   resize: vertical;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color var(--motion-fast);
   box-sizing: border-box;
   margin-bottom: 8px;
 }
@@ -796,7 +796,7 @@
   font-size: var(--text-base);
   font-family: inherit;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color var(--motion-fast);
 }
 
 .project-page__ns-config-input:focus {
@@ -831,7 +831,7 @@
   border-radius: 5px;
   font-size: var(--text-base);
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background var(--motion-fast);
 }
 
 .project-page__doc:hover {
@@ -981,7 +981,7 @@
   color: inherit;
   font-size: var(--text-md);
   text-align: left;
-  transition: background 0.15s;
+  transition: background var(--motion-fast);
 }
 
 .project-page__doc-group-header:hover {
@@ -1110,7 +1110,7 @@
   padding: 0 2px;
   line-height: 1;
   opacity: 0;
-  transition: opacity 0.1s;
+  transition: opacity var(--motion-fast);
 }
 
 .project-page__doc:hover .project-page__doc-remove {
@@ -1177,7 +1177,7 @@
   font-size: var(--text-base);
   font-family: var(--font-mono);
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color var(--motion-fast);
 }
 
 .project-page__scan-input:focus {

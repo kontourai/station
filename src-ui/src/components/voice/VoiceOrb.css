@@ -29,10 +29,10 @@
   background: var(--vo-idle-bg);
   color: var(--text-muted);
   transition:
-    background 0.15s,
-    outline 0.15s,
-    transform 0.2s,
-    z-index 0s;
+    background var(--motion-fast),
+    outline var(--motion-fast),
+    transform var(--motion-base),
+    z-index var(--motion-instant);
   outline: 2px solid transparent;
   z-index: 1;
 }
@@ -65,7 +65,8 @@
   inset: -4px;
   border-radius: 50%;
   border: 2px solid var(--vo-active-bg);
-  animation: voice-orb-pulse 1s ease-in-out infinite;
+  animation: voice-orb-pulse var(--motion-status-pulse) var(--ease-standard)
+    infinite;
   pointer-events: none;
 }
 

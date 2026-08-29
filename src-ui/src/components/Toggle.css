@@ -16,7 +16,7 @@
   cursor: pointer;
   background: var(--border-primary);
   border-radius: 999px;
-  transition: background 0.2s;
+  transition: background var(--motion-base);
   flex-shrink: 0;
 }
 .station-toggle:disabled {
@@ -31,7 +31,7 @@
   display: block;
   background: #fff;
   border-radius: 50%;
-  transition: transform 0.2s;
+  transition: transform var(--motion-base);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
