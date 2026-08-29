@@ -65,6 +65,10 @@ export function probeExactProcessIdentity(
   pid: number,
   dependencies?: ProcessIdentityDependencies,
 ): ExactProcessIdentityProbe;
+export function resolveOwnProcessIdentity(
+  pid: number,
+  dependencies?: ProcessIdentityDependencies,
+): ExactProcessIdentityProbe;
 export function exactProcessIdentity(
   pid: number,
   dependencies?: ProcessIdentityDependencies,

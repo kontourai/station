@@ -4,6 +4,70 @@ import { readFileSync } from 'node:fs';
 // Keep this small and plain-JS so the verification scripts can use the exact
 // same probe when they are launched by node rather than tsx.
 export const PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS = 1_500;
+export const WINDOWS_PROCESS_BIRTH_ATTEMPTS = 3;
+
+// The Windows Job guard accepts this exact representation in its BOUND record.
+// Keep the process-identity authority equally strict: accepting a locale-shaped
+// or offset-bearing value here would let the coordinator and guard disagree
+// about the same live process.
+const WINDOWS_ROUND_TRIP_UTC_ISO =
+  /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{7}Z$/;
+
+function isWindowsRoundTripUtcIso(value) {
+  const match = WINDOWS_ROUND_TRIP_UTC_ISO.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [
+    31,
+    leapYear ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  return day <= daysInMonth[month - 1];
+}
+
+function windowsCreationDateCommand(pid) {
+  // CreationDate is surfaced as a DateTime by CIM on supported PowerShell
+  // hosts. Format it explicitly rather than relying on PowerShell's output
+  // formatting or DateTime's Kind-dependent round-trip `o` format.
+  return [
+    `$process = Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}'`,
+    'if ($null -eq $process -or $null -eq $process.CreationDate) { exit 3 }',
+    '$created = ([datetime]$process.CreationDate).ToUniversalTime()',
+    "$created.ToString('yyyy-MM-ddTHH:mm:ss.fffffffZ', [System.Globalization.CultureInfo]::InvariantCulture)",
+  ].join('; ');
+}
+
+function windowsCreationDateFingerprint(pid, exec) {
+  const output = exec(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      windowsCreationDateCommand(pid),
+    ],
+    {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+      timeout: PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+      killSignal: 'SIGKILL',
+    },
+  ).trim();
+  return isWindowsRoundTripUtcIso(output) ? output : null;
+}
 
 /**
  * Does a recorded birth fingerprint PROVE this pid was reused?
@@ -67,24 +131,7 @@ export function lookupProcessBirthFingerprint(
 ) {
   try {
     if (platform === 'win32') {
-      return (
-        exec(
-          'powershell.exe',
-          [
-            '-NoProfile',
-            '-NonInteractive',
-            '-Command',
-            `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CreationDate.ToUniversalTime().ToString('o', [cultureinfo]::InvariantCulture)`,
-          ],
-          {
-            encoding: 'utf8',
-            stdio: ['ignore', 'pipe', 'ignore'],
-            windowsHide: true,
-            timeout: PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
-            killSignal: 'SIGKILL',
-          },
-        ).trim() || null
-      );
+      return windowsCreationDateFingerprint(pid, exec);
     }
     if (platform === 'linux') {
       const stat = readFile(`/proc/${pid}/stat`, 'utf8').trim();
@@ -268,7 +315,7 @@ export function lookupProcessBirthFingerprintCachedAsync(
  * round-trip UTC CIM CreationDate cannot be read is unavailable, never dead:
  * callers must retain the fence rather than reclaiming a possibly-live owner.
  */
-export function probeExactProcessIdentity(pid, dependencies = {}) {
+function probeExactProcessIdentityWithAttempts(pid, dependencies, attempts) {
   if (!Number.isInteger(pid) || pid < 1) return { state: 'dead' };
   const alive =
     dependencies.alive ??
@@ -276,9 +323,42 @@ export function probeExactProcessIdentity(pid, dependencies = {}) {
   const liveness = alive(pid);
   if (liveness === 'dead') return { state: 'dead' };
   if (liveness !== 'alive') return { state: 'unavailable' };
-  const birth = (dependencies.lookup ?? lookupProcessBirthFingerprint)(pid);
+  const lookup = dependencies.lookup ?? lookupProcessBirthFingerprint;
+  let birth = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    birth = lookup(pid);
+    if (birth) break;
+    // Retry only while the same PID is still live. A retry never turns a
+    // missing or unobservable birth into PID-only ownership: exhausted or
+    // ambiguous probes remain unavailable below.
+    if (attempt + 1 < attempts && alive(pid) !== 'alive') break;
+  }
   if (!birth) return { state: 'unavailable' };
   return { state: 'exact', identity: { pid, start: birth } };
+}
+
+/**
+ * Observe an arbitrary process once. Claimant/reclaim decisions deliberately
+ * do not retry: an unavailable birth must retain the existing fence rather
+ * than spend more synchronous probe time while deciding whether to take it.
+ */
+export function probeExactProcessIdentity(pid, dependencies = {}) {
+  return probeExactProcessIdentityWithAttempts(pid, dependencies, 1);
+}
+
+/**
+ * Resolve this coordinator's own process identity before it publishes a new
+ * lease. Windows may spend a bounded three attempts here because the caller
+ * has not created an ownership record yet; retries are never used to reclaim
+ * or challenge somebody else's lease.
+ */
+export function resolveOwnProcessIdentity(pid, dependencies = {}) {
+  const platform = dependencies.platform ?? process.platform;
+  return probeExactProcessIdentityWithAttempts(
+    pid,
+    dependencies,
+    platform === 'win32' ? WINDOWS_PROCESS_BIRTH_ATTEMPTS : 1,
+  );
 }
 
 export function exactProcessIdentity(pid, dependencies = {}) {
