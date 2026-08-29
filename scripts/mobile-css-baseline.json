@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 100,
+  "pageLocalMediaQueryCeiling": 99,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -210,8 +210,8 @@
       "reason": "The session detail pane's compact ladder, including a viewport-HEIGHT rung (620px) for an open software keyboard, and the `--viewport-compact` variant that collapses only non-identity chrome (station#1170/#3305)."
     },
     "src-ui/src/views/SettingsView.css": {
-      "count": 4,
-      "reason": "The overview grid, the section-nav scroller at 600px, single-column env-var rows, the floating save pill's full-width mobile anchoring, and the reduced-motion outline that substitutes for the highlight pulse."
+      "count": 3,
+      "reason": "The overview hero grid, single-column env-var rows, and the reduced-motion outline that substitutes for the highlight pulse. (Recorded 4->3 in station#753's lane: the section-nav scroller block was removed upstream without lowering the record; count verified against origin/main.)"
     },
     "src-ui/src/views/TaskWorkspaceView.css": {
       "count": 1,

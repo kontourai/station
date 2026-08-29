@@ -219,7 +219,20 @@ export function AppViewContent(props: AppViewContentProps) {
         {/* The entrance lives here, at the one seam every route passes through,
             instead of on `.page` — which eight split-pane routes never render.
             `key` remounts it on an actual surface transition; Connections
-            list/edit routes intentionally share a section surface. */}
+            list/edit routes intentionally share a section surface.
+
+            station#753 item 4 (skeleton -> content fade) was tried here as a
+            second, nested `.route-outlet-content` wrapper keyed the same as
+            this div — review found it was a no-op key (identical to the
+            parent's) wrapping an animation that COMPOUNDS with `route-enter`
+            below rather than resolving ahead of it: opacity is the PRODUCT of
+            both curves, so content is measurably LATER at 25ms (0.031 vs
+            0.359), the opposite of what both this comment and the CSS
+            comment claimed. The Suspense boundary above is OUTSIDE
+            `.route-transition`, so a skeleton->content reveal and a route
+            entrance remount TOGETHER here — `route-enter` already IS the
+            item-4 fade for every route this seam covers. Removed; do not
+            re-add without re-deriving the actual composed opacity curve. */}
         <div className="route-transition" key={surfaceKey}>
           <AppViewContentBody {...props} />
         </div>

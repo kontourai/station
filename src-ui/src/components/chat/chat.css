@@ -1032,7 +1032,17 @@
   cursor: pointer;
   transition:
     background var(--motion-base) var(--ease-standard),
-    opacity var(--motion-base) var(--ease-standard);
+    opacity var(--motion-base) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+/* station#753 item 5: press micro-feedback for the composer's primary action.
+   Scoped to Send only (not Stop, which the shared selector above only
+   covers for geometry) — Send is the "primary action button" the design
+   names; Stop is a distinct, always-enabled control. */
+.chat-input__send-btn:active:not(:disabled) {
+  transform: scale(0.97);
+  transition: transform var(--motion-instant) var(--ease-standard);
 }
 
 .chat-input__send-btn--active {

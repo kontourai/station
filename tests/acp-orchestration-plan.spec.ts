@@ -49,6 +49,7 @@ async function seedAcpChatState(page: Page): Promise<void> {
     conversationLookups: {
       [CONVERSATION_ID]: {
         id: CONVERSATION_ID,
+        currentSessionId: SESSION_ID,
         agentSlug: ACP_AGENT_SLUG,
         projectSlug: 'dev',
         title: 'Kiro Chat',

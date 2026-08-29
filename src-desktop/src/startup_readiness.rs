@@ -33,6 +33,12 @@ pub struct StartupReadiness {
     pub current_generation: Option<u64>,
     pub owned_sidecar: bool,
     pub ticket: Option<StartupTicket>,
+    /// Native identity/recovery proof for the current readiness epoch. This is
+    /// deliberately independent from renderer liveness: a page-start callback
+    /// is not evidence that React mounted a usable application tree.
+    pub identity_committed: bool,
+    /// A post-React-layout commit from the exact main WebView.
+    pub renderer_mounted: bool,
     /// A current ticket gets one non-disruptive reprobe. If it does not commit
     /// before the next deadline, the next explicit retry clears it and takes
     /// the ordinary owned-sidecar restart path.
@@ -50,8 +56,15 @@ pub enum ReadinessInput {
         owned_sidecar: bool,
     },
     ServerTicket(StartupTicket),
-    RendererCommitted(StartupTicket),
+    /// Native host identity proof. It never implies that React mounted.
+    NativeIdentityCommitted(StartupTicket),
+    /// Native recovery proof for an attached/non-sidecar owner. It never
+    /// implies that React mounted.
+    NativeRecoveryCommitted,
+    /// Compatibility renderer recovery commit; the caller is mounted.
     RecoveryUiCommitted,
+    RendererPageStarted,
+    RendererMounted,
     ServerLost {
         generation: u64,
     },
@@ -94,6 +107,8 @@ impl Default for StartupReadiness {
             current_generation: None,
             owned_sidecar: false,
             ticket: None,
+            identity_committed: false,
+            renderer_mounted: false,
             reprobe_attempted: false,
             activation_pending: false,
             diagnostic_shown: false,
@@ -108,6 +123,7 @@ fn restart_readiness(next: &mut StartupReadiness, now_ms: u64, timeout_ms: u64) 
     next.deadline_ms = now_ms.saturating_add(timeout_ms);
     next.activation_pending = false;
     next.diagnostic_shown = false;
+    next.identity_committed = false;
     if next.owned_sidecar && next.ticket.is_some() && !next.reprobe_attempted {
         next.reprobe_attempted = true;
         ReadinessEffect::ReprobeCurrentTicket
@@ -118,6 +134,15 @@ fn restart_readiness(next: &mut StartupReadiness, now_ms: u64, timeout_ms: u64) 
         ReadinessEffect::RestartOwnedSidecar
     } else {
         ReadinessEffect::RecommitRecoverySurface
+    }
+}
+
+fn maybe_reveal(next: &mut StartupReadiness, effects: &mut Vec<ReadinessEffect>) {
+    let phase_admits = matches!(next.phase, ReadinessPhase::Waiting)
+        || (!next.owned_sidecar && matches!(next.phase, ReadinessPhase::Failed));
+    if phase_admits && next.identity_committed && next.renderer_mounted {
+        next.phase = ReadinessPhase::Ready;
+        effects.push(ReadinessEffect::RevealMainWindow);
     }
 }
 
@@ -139,6 +164,8 @@ pub fn transition(
             next.deadline_ms = now_ms.saturating_add(timeout_ms);
             next.timeout_ms = timeout_ms;
             next.ticket = None;
+            next.identity_committed = false;
+            next.renderer_mounted = false;
             next.reprobe_attempted = false;
             next.current_generation = None;
             next.owned_sidecar = owned_sidecar;
@@ -159,31 +186,55 @@ pub fn transition(
                     .current_generation
                     .is_none_or(|current| ticket.generation >= current)
             {
+                if next.ticket.as_ref() != Some(&ticket) {
+                    next.identity_committed = false;
+                }
                 next.current_generation = Some(ticket.generation);
                 next.ticket = Some(ticket);
             }
         }
-        ReadinessInput::RendererCommitted(ticket) => {
+        ReadinessInput::NativeIdentityCommitted(ticket) => {
             if matches!(next.phase, ReadinessPhase::Waiting)
                 && next.ticket.as_ref() == Some(&ticket)
             {
-                next.phase = ReadinessPhase::Ready;
-                effects.push(ReadinessEffect::RevealMainWindow);
+                next.identity_committed = true;
+                maybe_reveal(&mut next, &mut effects);
+            }
+        }
+        ReadinessInput::NativeRecoveryCommitted => {
+            if matches!(next.phase, ReadinessPhase::Waiting | ReadinessPhase::Failed)
+                && !next.owned_sidecar
+            {
+                next.identity_committed = true;
+                maybe_reveal(&mut next, &mut effects);
             }
         }
         ReadinessInput::RecoveryUiCommitted => {
             if matches!(next.phase, ReadinessPhase::Waiting | ReadinessPhase::Failed)
                 && !next.owned_sidecar
             {
-                next.phase = ReadinessPhase::Ready;
-                effects.push(ReadinessEffect::RevealMainWindow);
+                next.identity_committed = true;
+                next.renderer_mounted = true;
+                maybe_reveal(&mut next, &mut effects);
             }
+        }
+        ReadinessInput::RendererPageStarted
+            if !matches!(next.phase, ReadinessPhase::Ready | ReadinessPhase::Bypassed) =>
+        {
+            next.renderer_mounted = false;
+        }
+        ReadinessInput::RendererMounted
+            if !matches!(next.phase, ReadinessPhase::Ready | ReadinessPhase::Bypassed) =>
+        {
+            next.renderer_mounted = true;
+            maybe_reveal(&mut next, &mut effects);
         }
         ReadinessInput::ServerLost { generation } => {
             if matches!(next.phase, ReadinessPhase::Waiting | ReadinessPhase::Failed)
                 && next.current_generation == Some(generation)
             {
                 next.ticket = None;
+                next.identity_committed = false;
             }
         }
         ReadinessInput::DeadlineElapsed { epoch, now_ms }
@@ -252,6 +303,18 @@ mod tests {
         )
         .0
     }
+    fn commit(
+        state: &StartupReadiness,
+        ticket: StartupTicket,
+    ) -> (StartupReadiness, Vec<ReadinessEffect>) {
+        let (state, mut effects) = transition(
+            state,
+            ReadinessInput::NativeIdentityCommitted(ticket),
+        );
+        let (state, mount_effects) = transition(&state, ReadinessInput::RendererMounted);
+        effects.extend(mount_effects);
+        (state, effects)
+    }
     #[test]
     fn commits_only_the_exact_ticket() {
         let (s, _) = transition(
@@ -264,10 +327,78 @@ mod tests {
             },
         );
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
-        let (s, effects) = transition(&s, ReadinessInput::RendererCommitted(ticket(2)));
+        let (s, effects) = commit(&s, ticket(2));
         assert_eq!(s.phase, ReadinessPhase::Waiting);
         assert!(effects.is_empty());
-        let (s, effects) = transition(&s, ReadinessInput::RendererCommitted(ticket(1)));
+        let (s, effects) = commit(&s, ticket(1));
+        assert_eq!(s.phase, ReadinessPhase::Ready);
+        assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
+    }
+
+    #[test]
+    fn native_identity_and_react_mount_are_independent_reveal_prerequisites() {
+        let s = begin(true);
+        let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
+        let (s, effects) = transition(&s, ReadinessInput::NativeIdentityCommitted(ticket(1)));
+        assert!(s.identity_committed);
+        assert!(!s.renderer_mounted);
+        assert_eq!(s.phase, ReadinessPhase::Waiting);
+        assert!(effects.is_empty());
+
+        let (s, effects) = transition(&s, ReadinessInput::RendererMounted);
+        assert_eq!(s.phase, ReadinessPhase::Ready);
+        assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
+
+        let s = begin(true);
+        let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
+        let (s, effects) = transition(&s, ReadinessInput::RendererMounted);
+        assert!(s.renderer_mounted);
+        assert!(!s.identity_committed);
+        assert!(effects.is_empty());
+        let (s, effects) = transition(&s, ReadinessInput::NativeIdentityCommitted(ticket(1)));
+        assert_eq!(s.phase, ReadinessPhase::Ready);
+        assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
+    }
+
+    #[test]
+    fn page_restart_and_server_loss_invalidate_only_the_prerequisite_they_own() {
+        let s = begin(true);
+        let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
+        let (s, _) = transition(&s, ReadinessInput::RendererMounted);
+        let (s, _) = transition(&s, ReadinessInput::RendererPageStarted);
+        assert!(!s.renderer_mounted);
+
+        let (s, _) = transition(&s, ReadinessInput::NativeIdentityCommitted(ticket(1)));
+        let (s, _) = transition(&s, ReadinessInput::RendererMounted);
+        assert_eq!(s.phase, ReadinessPhase::Ready);
+        let (s, effects) = transition(&s, ReadinessInput::RendererPageStarted);
+        assert_eq!(s.phase, ReadinessPhase::Ready);
+        assert!(s.renderer_mounted);
+        assert!(effects.is_empty());
+
+        let s = begin(true);
+        let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
+        let (s, _) = transition(&s, ReadinessInput::RendererMounted);
+        let (s, _) = transition(&s, ReadinessInput::ServerLost { generation: 1 });
+        assert!(!s.identity_committed);
+        assert!(s.renderer_mounted);
+
+        let s = begin(true);
+        let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
+        let (s, _) = transition(&s, ReadinessInput::NativeIdentityCommitted(ticket(1)));
+        let (s, _) = transition(&s, ReadinessInput::ServerLost { generation: 1 });
+        assert!(!s.identity_committed);
+        assert!(!s.renderer_mounted);
+    }
+
+    #[test]
+    fn native_attached_recovery_waits_for_the_react_mount() {
+        let s = begin(false);
+        let (s, effects) = transition(&s, ReadinessInput::NativeRecoveryCommitted);
+        assert!(s.identity_committed);
+        assert!(!s.renderer_mounted);
+        assert!(effects.is_empty());
+        let (s, effects) = transition(&s, ReadinessInput::RendererMounted);
         assert_eq!(s.phase, ReadinessPhase::Ready);
         assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
     }
@@ -336,7 +467,7 @@ mod tests {
         );
         assert_eq!(effects, vec![ReadinessEffect::ReprobeCurrentTicket]);
         assert_eq!(s.ticket, Some(ticket(1)));
-        let (s, effects) = transition(&s, ReadinessInput::RendererCommitted(ticket(1)));
+        let (s, effects) = commit(&s, ticket(1));
         assert_eq!(s.phase, ReadinessPhase::Ready);
         assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
     }
@@ -437,7 +568,7 @@ mod tests {
             ]
         );
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
-        let (s, _) = transition(&s, ReadinessInput::RendererCommitted(ticket(1)));
+        let (s, _) = commit(&s, ticket(1));
         let (_, effects) = transition(&s, ReadinessInput::ActivationRequested);
         assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
     }
@@ -479,7 +610,7 @@ mod tests {
             !effects.contains(&ReadinessEffect::RevealMainWindow),
             "a timeout recovery may only ask the renderer to prove the exact ticket"
         );
-        let (_, effects) = transition(&s, ReadinessInput::RendererCommitted(ticket(1)));
+        let (_, effects) = commit(&s, ticket(1));
         assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
     }
     #[test]
@@ -531,10 +662,10 @@ mod tests {
         );
         assert!(stale_deadline.is_empty());
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(2)));
-        let (s, stale_ticket) = transition(&s, ReadinessInput::RendererCommitted(ticket(1)));
+        let (s, stale_ticket) = commit(&s, ticket(1));
         assert!(stale_ticket.is_empty());
         assert_eq!(s.phase, ReadinessPhase::Waiting);
-        let (_, effects) = transition(&s, ReadinessInput::RendererCommitted(ticket(2)));
+        let (_, effects) = commit(&s, ticket(2));
         assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
     }
     #[test]

@@ -13,7 +13,6 @@ let previousRoot: string | undefined;
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'station-setup-root-'));
   home = join(root, 'instances', 'stable');
-  mkdirSync(home, { recursive: true, mode: 0o700 });
   previousHome = process.env.STATION_HOME;
   previousRoot = process.env.STATION_ROOT;
   process.env.STATION_HOME = home;
@@ -68,6 +67,25 @@ describe('station setup', () => {
           configurationState: 'configured',
         },
       ],
+    });
+  });
+
+  it('publishes shared profile genesis before local setup populates its runtime', async () => {
+    const deps = dependencies();
+    deps.installLocalService.mockImplementationOnce(async () => {
+      expect(readProfileStore()).toMatchObject({ revision: 0, profiles: [] });
+      mkdirSync(join(home, 'service-state'), { recursive: true, mode: 0o700 });
+      writeFileSync(join(home, 'service-state', 'installed'), 'yes', {
+        mode: 0o600,
+      });
+      return { rollback: vi.fn() };
+    });
+
+    await runSetupCommand(['local'], deps);
+    expect(readProfileStore()).toMatchObject({
+      revision: 1,
+      defaultProfile: 'kontour',
+      profiles: [expect.objectContaining({ name: 'kontour' })],
     });
   });
 
