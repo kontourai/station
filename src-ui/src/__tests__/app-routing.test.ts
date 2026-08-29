@@ -37,6 +37,9 @@ const LEGACY_PATH_CASES = [
   // #765 D2: bare /tasks has no collection view; tasks surface on Home.
   ['/tasks', '/'],
   ['/tasks/', '/'],
+  // #765 residue (D2 class): nav label "Review", canonical route /review-queue.
+  ['/review', '/review-queue'],
+  ['/review/', '/review-queue'],
   ['/manage/agents', '/agents'],
   ['/manage/agents/planner', '/agents/planner'],
   ['/manage/prompts', '/guidance?tab=skills'],

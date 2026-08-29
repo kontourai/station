@@ -693,6 +693,10 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const connectedNotice: ReactNode = setupLauncherVisible ? (
     <SetupLauncher
       content={setupBannerContent}
+      firstRun={
+        config?.firstRun?.status === 'pending' ||
+        config?.firstRun?.status === 'skipped'
+      }
       onOpenTarget={() => {
         // Going to Connections to *do* the setup is not evidence the setup
         // worked — defer for this page lifetime instead of recording a
@@ -875,11 +879,22 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
  */
 function SetupLauncher({
   content,
+  firstRun,
   onOpenTarget,
   onOpenHub,
   onDismiss,
 }: {
   content: ReturnType<typeof buildSetupBannerContent>;
+  /**
+   * #765 B2: "First run" was a hard-coded literal here, with no relation to
+   * the home's durable `config.firstRun.status` — so a readiness flap could
+   * stamp FIRST RUN on a home whose first run finished an hour ago, minutes
+   * into a working session. The eyebrow now derives from the one durable
+   * fact: `pending`/`skipped` homes are genuinely mid-first-run; a
+   * `completed` (or pre-field, already-used) home gets the claim this card
+   * can actually support — setup needs attention.
+   */
+  firstRun: boolean;
   onOpenTarget: () => void;
   onOpenHub: () => void;
   onDismiss: () => void;
@@ -888,10 +903,12 @@ function SetupLauncher({
     <aside
       className="onboarding-setup-launcher"
       data-testid="setup-launcher"
-      aria-label="First-run setup reminder"
+      aria-label={firstRun ? 'First-run setup reminder' : 'Setup reminder'}
     >
       <div className="onboarding-setup-launcher__panel" role="status">
-        <div className="onboarding-setup-launcher__eyebrow">First run</div>
+        <div className="onboarding-setup-launcher__eyebrow">
+          {firstRun ? 'First run' : 'Setup needed'}
+        </div>
         <div className="onboarding-setup-launcher__header">
           <div>
             <div className="onboarding-setup-launcher__title">
