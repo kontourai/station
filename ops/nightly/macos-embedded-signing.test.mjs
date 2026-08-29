@@ -104,6 +104,16 @@ test('pre-filters by Mach-O magic, then confirms only candidates with file', () 
   ).toBe(true);
 });
 
+test('emits one progress heartbeat per candidate so a slow batch is not read as a hang', () => {
+  const { run } = fixture();
+  const lines = [];
+  sealEmbeddedMacosMachO('/app', 'Developer ID', {
+    ...options(run),
+    progress: (line) => lines.push(line),
+  });
+  expect(lines).toEqual(['[embedded sealing] 1/1']);
+});
+
 test('preserves valid timestamped Developer ID metadata emitted on stderr byte-for-byte', () => {
   const developerMetadata =
     'Authority=Developer ID Application: Anthropic, PBC (Q6L2SF6YDW)\nTimestamp=Aug 5\nRuntime Version=13.0.0\n';

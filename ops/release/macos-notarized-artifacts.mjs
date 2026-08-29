@@ -15,6 +15,12 @@ const MAX_CODESIGN_REQUIREMENT_STREAM_BYTES = 64 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES = 64 * 1024;
 export const DEFAULT_COMMAND_TIMEOUT_MS = 2 * 60 * 1000;
 export const SIGNING_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
+// The embedded pass re-signs EVERY Mach-O in the bundle serially, each with a
+// network --timestamp round trip; its ceiling must scale with the batch, not
+// share one command's budget. A hosted runner's first nightly-desktop run
+// exceeded 5 minutes with hundreds of embedded binaries while making steady
+// progress.
+export const EMBEDDED_SEALING_TIMEOUT_MS = 30 * 60 * 1000;
 export const NOTARY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 export const COMMAND_TERMINATION_GRACE_MS = 10 * 1000;
 export const MAX_RETRY_ATTEMPTS = 2;
@@ -554,7 +560,7 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
       'embedded sealing',
       'node',
       ['ops/nightly/macos-embedded-signing.mjs', app, identity],
-      SIGNING_COMMAND_TIMEOUT_MS,
+      EMBEDDED_SEALING_TIMEOUT_MS,
     );
     const outerSigningArgs = [
       '--force',
