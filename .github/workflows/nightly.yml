@@ -1024,9 +1024,10 @@ jobs:
         run: |
           set +e
           node ops/release/macos-signing-readiness.mjs cleanup --keychain "$RUNNER_TEMP/station-developer-id.keychain-db" --state "$RUNNER_TEMP/station-developer-id-search-state.json"
-          status=$?
+          helper_status=$?
           rm -f "$RUNNER_TEMP/station-developer-id.p12" "$RUNNER_TEMP/station-developer-id-probe"
-          exit "$status"
+          rm_status=$?
+          test "$helper_status" -eq 0 && test "$rm_status" -eq 0
 
       - name: Assemble the signed updater manifest
         if: steps.decide.outputs.build == 'true'

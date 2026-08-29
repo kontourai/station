@@ -60,6 +60,7 @@ export async function prepareMacosSigningKeychain({
   await security('set partition list', ['set-key-partition-list', '-S', 'apple-tool:,apple:', '-s', '-k', password, keychain], run);
   const matches = exactIdentityMatches((await security('validate identity', ['find-identity', '-v', '-p', 'codesigning', keychain], run)).stdout, identity);
   if (matches !== 1) throw new Error('Configured Developer ID signing identity is not uniquely available.');
+  writeFileSync(state, JSON.stringify({ keychain, previous, stage: 'search-restore-required' }), { mode: 0o600 });
   await security('set search list', ['list-keychains', '-d', 'user', '-s', keychain], run);
   writeFileSync(state, JSON.stringify({ keychain, previous, stage: 'search-set' }), { mode: 0o600 });
 }
@@ -96,7 +97,7 @@ export async function cleanupMacosSigningKeychain({ keychain, state, run }) {
   try {
     const parsed = JSON.parse(readFileSync(state, 'utf8'));
     const { previous, stage } = parsed;
-    if (stage === 'search-set' && Array.isArray(previous))
+    if (['search-restore-required', 'search-set'].includes(stage) && Array.isArray(previous))
       await security('restore search list', ['list-keychains', '-d', 'user', '-s', ...previous], run);
     else if (!['captured', 'created'].includes(stage)) failures.push('state');
   } catch { if (prepared) failures.push('restore'); }
