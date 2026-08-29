@@ -99,6 +99,47 @@ describe('source availability driver', () => {
     expect(api.addLabel).toHaveBeenCalledWith(1, 'stage:source');
     expect(api.closingIssuesForPull).toHaveBeenCalledWith(7);
   });
+  test('projects a multi-commit merge push whose commits each return their own pull object', async () => {
+    // pullsForCommit yields a DISTINCT object per commit for the same pull;
+    // deriving facts over the raw array left duplicates without
+    // closingIssues and failed every merge-commit push.
+    const mergeSha = sha;
+    const branchSha = 'c'.repeat(40);
+    const pullFor = () => ({
+      number: 7,
+      merged_at: 'x',
+      merge_commit_sha: mergeSha,
+      base: { ref: 'main', repo: { full_name: 'kontourai/station' } },
+    });
+    const api = {
+      pullsForCommit: vi.fn().mockImplementation(async () => [pullFor()]),
+      closingIssuesForPull: vi
+        .fn()
+        .mockResolvedValue([
+          { number: 1, repository: { full_name: 'kontourai/station' } },
+        ]),
+      getIssue: vi
+        .fn()
+        .mockResolvedValueOnce({ labels: [] })
+        .mockResolvedValueOnce({ labels: ['stage:source'] }),
+      addLabel: vi.fn(),
+      removeLabel: vi.fn(),
+    };
+    const exec = vi.fn().mockReturnValue(`${mergeSha}\n${branchSha}`);
+    await expect(
+      runSourceAvailability(
+        {
+          repository: { full_name: 'kontourai/station' },
+          ref: 'refs/heads/main',
+          before: 'b'.repeat(40),
+          after: mergeSha,
+        },
+        { api, exec, checkedOutSha: mergeSha },
+      ),
+    ).resolves.toMatchObject({ kind: 'projected' });
+    expect(api.closingIssuesForPull).toHaveBeenCalledTimes(1);
+  });
+
   test('makes label conflicts and failed readback fail the run', async () => {
     const api = {
       pullsForCommit: vi.fn().mockResolvedValue([

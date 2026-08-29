@@ -92,7 +92,14 @@ export async function runSourceAvailability(
       return { kind: 'unavailable' };
     pulls.push(...page);
   }
-  for (const pr of new Map(pulls.map((pr) => [pr.number, pr])).values()) {
+  // pullsForCommit returns a SEPARATE object per commit for the same pull, so
+  // a multi-commit merge push yields duplicates. Deduplicate ONCE and use the
+  // same instances for both the closing-issue fetch and the facts derivation:
+  // fetching onto deduped instances while deriving over the raw array left
+  // every duplicate without closingIssues, failing every merge-commit push
+  // (squash pushes, one commit and one object, never hit it).
+  const uniquePulls = [...new Map(pulls.map((pr) => [pr.number, pr])).values()];
+  for (const pr of uniquePulls) {
     if (!Number.isSafeInteger(pr?.number) || pr.number < 1)
       return { kind: 'unavailable' };
     let closingIssues;
@@ -106,7 +113,7 @@ export async function runSourceAvailability(
     pr.closingIssues = closingIssues;
   }
   const issues = mergedIssueFacts({
-    pulls,
+    pulls: uniquePulls,
     commits,
     owner: 'kontourai',
     repo: 'station',
@@ -197,5 +204,16 @@ if (process.argv[1]?.endsWith('source-availability-driver.mjs')) {
     api,
     checkedOutSha: process.env.GITHUB_SHA,
   });
-  if (result.kind === 'unavailable') process.exitCode = 1;
+  if (result.kind === 'unavailable') {
+    // A silent exit 1 made this gate undiagnosable from CI for hours; the
+    // outcome list, when present, names which issue projection failed.
+    console.error(
+      `source availability could not be derived for this push${
+        result.outcomes
+          ? `; outcomes: ${JSON.stringify(result.outcomes)}`
+          : ' (facts stage: commits, pulls, or closing issues unresolvable)'
+      }`,
+    );
+    process.exitCode = 1;
+  }
 }
