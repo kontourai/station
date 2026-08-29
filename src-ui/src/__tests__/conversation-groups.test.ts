@@ -29,7 +29,9 @@ function summary(
   } as OrchestrationSessionSummary;
 }
 
-function flat(session: OrchestrationSessionSummary): ActivitySessionPresentation {
+function flat(
+  session: OrchestrationSessionSummary,
+): ActivitySessionPresentation {
   return { kind: 'session', session };
 }
 
@@ -50,7 +52,9 @@ describe('foldConversationTurns', () => {
     ]);
 
     expect(
-      fold.presentations.map((p) => (p.kind === 'session' ? p.session.threadId : p)),
+      fold.presentations.map((p) =>
+        p.kind === 'session' ? p.session.threadId : p,
+      ),
     ).toEqual(['conv-a:session:3', 'thread-solo']);
     expect(fold.turnCounts.get('conv-a:session:3')).toBe(3);
     // A single-session conversation records no count at all — the row must

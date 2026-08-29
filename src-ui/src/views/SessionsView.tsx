@@ -50,8 +50,8 @@ import {
   sessionTitle,
 } from '../utils/sessionDisplay';
 import { isTerminalLifecycle } from './home/home-lane-model';
-import { RunBoardSummary } from './sessions/RunBoardSummary';
 import { foldConversationTurns } from './sessions/conversation-groups';
+import { RunBoardSummary } from './sessions/RunBoardSummary';
 import { groupDelegatedSessionRuns } from './sessions/run-groups';
 import {
   matchesProjectFilter,
