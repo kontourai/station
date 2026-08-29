@@ -6,5 +6,10 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": ["tests/**/*", "playwright.config.ts"],
-  "exclude": ["node_modules"]
+  // The fresh-home walkthrough runs under tsx and imports src-ui routing
+  // tables directly; pulling that graph into this project would typecheck
+  // @kontourai/station-sdk's source-first .tsx exports without jsx support.
+  // The walkthrough is plain JS (allowJs, checkJs off), so exclusion loses
+  // no checking the config performed before.
+  "exclude": ["node_modules", "tests/live/fresh-home-walkthrough*.mjs"]
 }
