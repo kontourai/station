@@ -1086,7 +1086,9 @@ describe('System Routes', () => {
     expect(body.capabilities.chat.ready).toBe(false);
     expect(body.capabilities.chat.source).toBe(null);
     expect(body.recommendation.code).toBe('configured-no-chat');
-    expect(body.recommendation.actionLabel).toBe('Choose a default provider');
+    expect(body.recommendation.actionLabel).toBe(
+      'Choose a default model connection',
+    );
     expect(body.recommendation.detail).not.toContain('ollama');
     expect(body.recommendation.detail).not.toContain('anthropic');
   });
@@ -1120,7 +1122,9 @@ describe('System Routes', () => {
 
     const body = await json(await app.request('/status'));
     expect(body.capabilities.chat.ready).toBe(false);
-    expect(body.recommendation.actionLabel).toBe('Choose a default provider');
+    expect(body.recommendation.actionLabel).toBe(
+      'Choose a default model connection',
+    );
     expect(body.recommendation.detail).not.toContain('ollama');
   });
 

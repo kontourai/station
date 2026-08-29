@@ -69,7 +69,7 @@ export function EnvironmentStatus({ apiBase }: { apiBase: string }) {
       >
         <div {...settingsRow('host-runtime')} tabIndex={-1} role="status">
           {loading
-            ? 'Checking provider software on the Station host…'
+            ? 'Checking CLI software on the Station host…'
             : 'Host runtime status is unavailable. Try again when the Station host is reachable.'}
         </div>
       </PageSection>
@@ -160,7 +160,7 @@ export function EnvironmentStatus({ apiBase }: { apiBase: string }) {
           Station host
         </>
       }
-      description="Provider software detected on the computer running this Station. On a remote client, this describes the Station host—not your device."
+      description="CLI software detected on the computer running this Station. On a remote client, this describes the Station host—not your device."
     >
       <div {...settingsRow('host-runtime')} tabIndex={-1}>
         {hasRequiredUnmet && (
@@ -186,7 +186,7 @@ export function EnvironmentStatus({ apiBase }: { apiBase: string }) {
               {allRequiredMet ? '●' : '○'}
             </span>
             <span className="host-runtime__summary-label">
-              Detected provider software
+              Detected CLI software
             </span>
           </summary>
           <div className="host-runtime__panel settings__env-panel">

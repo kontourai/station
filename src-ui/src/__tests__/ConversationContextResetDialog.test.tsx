@@ -84,7 +84,7 @@ describe('ConversationContextResetDialog', () => {
       status: 'reserved',
     });
     renderDialog();
-    expect(screen.getByText(/provider-native history/)).toBeTruthy();
+    expect(screen.getByText(/engine-native history/)).toBeTruthy();
     fireEvent.click(
       screen.getByRole('button', { name: 'Replace engine context' }),
     );

@@ -549,17 +549,17 @@ export async function doctor(): Promise<void> {
     `  Runtime readiness: ${report.runtimeReady ? 'ready' : 'setup needed'}`,
   );
   console.log(
-    `  Effective provider: ${report.providerState.effective ?? 'none'}`,
+    `  Effective connection: ${report.providerState.effective ?? 'none'}`,
   );
   console.log(
-    `  Configured providers: ${
+    `  Configured connections: ${
       report.providerState.configured.length > 0
         ? report.providerState.configured.join(', ')
         : 'none'
     }`,
   );
   console.log(
-    `  Detected providers: ${
+    `  Detected connections: ${
       report.providerState.detected.length > 0
         ? report.providerState.detected.join(', ')
         : 'none'

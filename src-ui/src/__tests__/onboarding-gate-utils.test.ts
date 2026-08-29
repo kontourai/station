@@ -45,7 +45,8 @@ describe('onboardingGateUtils', () => {
     expect(configuredLlmProviders(status)).toEqual([]);
     expect(buildSetupBannerContent(status)).toEqual({
       title: 'Choose what powers Station',
-      description: 'Add a provider for chat, agents, or both.',
+      description:
+        'Add a model connection or engine for chat, agents, or both.',
       actionLabel: 'Open Connections',
       badges: [],
       actionTarget: 'providers',
@@ -66,9 +67,9 @@ describe('onboardingGateUtils', () => {
       recommendation: {
         code: 'runtime-only',
         type: 'runtimes',
-        actionLabel: 'Review providers',
-        title: 'An agent provider is available',
-        detail: 'Station found a ready provider that can start a chat.',
+        actionLabel: 'Review engines',
+        title: 'An engine is available',
+        detail: 'Station found a ready engine that can start a chat.',
       },
       ready: true,
     });
@@ -245,7 +246,8 @@ describe('onboardingGateUtils', () => {
     expect(setupBannerVariant(status)).toBe('unconfigured');
     expect(buildSetupBannerContent(status)).toEqual({
       title: 'Choose what powers Station',
-      description: 'Add a provider for chat, agents, or both.',
+      description:
+        'Add a model connection or engine for chat, agents, or both.',
       actionLabel: 'Open Connections',
       badges: [],
       actionTarget: 'providers',
@@ -361,9 +363,9 @@ describe('onboardingGateUtils', () => {
     expect(configuredLlmProviders(status)).toEqual([]);
     expect(setupBannerVariant(status)).toBe('configured-no-chat');
     expect(buildSetupBannerContent(status)).toEqual({
-      title: 'A provider needs attention',
+      title: 'The default model connection needs attention',
       description:
-        'Choose or repair a provider in Connections before starting a chat.',
+        'Choose or repair the default model connection in Connections before starting a chat.',
       actionLabel: 'Manage Connections',
       badges: ['Disabled: Amazon Bedrock'],
       actionTarget: 'providers',
@@ -406,15 +408,15 @@ describe('onboardingGateUtils', () => {
     ]);
   });
 
-  test('an already-available agent runtime hides setup', () => {
+  test('an already-available agent engine hides setup', () => {
     const status = createStatus({
       recommendation: {
         code: 'runtime-only',
         type: 'runtimes',
-        actionLabel: 'Review runtimes',
-        title: 'A runtime is available before chat is configured',
+        actionLabel: 'Review engines',
+        title: 'An engine is available before chat is configured',
         detail:
-          'Connected runtimes are detectable, but there is still no explicit chat-capable model connection configured.',
+          'Connected engines are detectable, but there is still no explicit chat-capable model connection configured.',
       },
       clis: {
         codex: true,
