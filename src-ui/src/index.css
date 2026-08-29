@@ -9311,6 +9311,20 @@ button.tool-call__line:hover {
     padding-top: var(--safe-top);
   }
 
+  /* station#541: a framed route (Connections, Settings, ...) publishes its
+     eyebrow/title through `page-frame.css`'s `.page-frame__header`, not
+     `.workspace-tabs__header` — a different route family hitting the same
+     missing-inset defect. With the toolbar hidden (this class's own rule
+     above), nothing else pads that header below Android's status bar, so a
+     maximized dock left a sliver of the underlying eyebrow/title painting
+     under it. Extends the SAME mechanism as the two rules around it: layer
+     the toolbar's contributed safe-area on top of the header's own top
+     padding (2rem, 1.5rem under page-frame.css's 640px breakpoint) rather
+     than replace it. */
+  .app__main--mobile-dock-fullscreen .page-frame__header {
+    padding-top: calc(var(--safe-top) + 2rem);
+  }
+
   .app__main--mobile-dock-fullscreen > .chat-dock .chat-dock__mobile-header {
     padding-top: calc(var(--space-1) + var(--safe-top, 0px));
   }
@@ -9349,6 +9363,24 @@ button.tool-call__line:hover {
   .chat-dock.is-dragging .chat-dock__resize-handle::after {
     opacity: 1;
     background: var(--accent-primary);
+  }
+}
+
+/* station#541: `page-frame.css`'s OWN 640px breakpoint drops
+   `.page-frame__header`'s base padding from 2rem to 1.5rem — this mirrors
+   that narrower number for the fullscreen-safe-area addition above so the
+   two stay proportionate. Declared here, after the 768px block above (not
+   nested inside it, and not inside `page-frame.css`): the selector is
+   identical to the rule it overrides
+   (`.app__main--mobile-dock-fullscreen .page-frame__header`, same
+   specificity), so — same technique `page-frame.css` itself documents for
+   its own mobile title-size rule — source order, not specificity, is what
+   must decide the tie, and keeping both declarations in this one file
+   makes that order unambiguous rather than depending on cross-file
+   bundling order. */
+@media (max-width: 640px) {
+  .app__main--mobile-dock-fullscreen .page-frame__header {
+    padding-top: calc(var(--safe-top) + 1.5rem);
   }
 }
 

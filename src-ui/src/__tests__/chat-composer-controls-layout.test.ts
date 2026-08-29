@@ -44,4 +44,38 @@ describe('composer Agent/Model controls layout', () => {
       /\.chat-input__meta\s+\.chat-input__agent-btn\s*\{\s*min-width:\s*44px;\s*min-height:\s*44px;/s,
     );
   });
+
+  /**
+   * station#541: the readonly approval chip's tool-policy half
+   * (`.chat-input__approval-chip-policy`, e.g. "Station approvals do not
+   * apply") used to be plain, unbounded text. `text-overflow: ellipsis` has
+   * no effect on a flex CONTAINER's overflowing children (only a single
+   * text node) — so when the chip shrank at the narrow-width rail above
+   * (`flex: 1 1 12rem`), the sentence hard-clipped mid-word with no "…"
+   * marker, rendering as a dangling fragment rather than a legible
+   * truncation. Both spans need `min-width: 0` too: a flex item's default
+   * `min-width: auto` refuses to shrink below its content size, which
+   * silently disables ellipsis the same way.
+   */
+  test('the approval chip label AND its policy half both ellipsize, not just hard-clip', () => {
+    for (const selector of [
+      '.chat-input__approval-chip-label',
+      '.chat-input__approval-chip-policy',
+    ]) {
+      const rule = chatCss.match(
+        new RegExp(`${selector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`),
+      )?.[1];
+      expect(rule, `${selector} rule not found`).toBeDefined();
+      expect(rule).toMatch(/min-width:\s*0/);
+      expect(rule).toMatch(/overflow:\s*hidden/);
+      expect(rule).toMatch(/text-overflow:\s*ellipsis/);
+      expect(rule).toMatch(/white-space:\s*nowrap/);
+    }
+  });
+
+  test('the policy half still drops out entirely below 480px (station#3151, unchanged)', () => {
+    expect(chatCss).toMatch(
+      /@media \(max-width: 480px\) \{[\s\S]*?\.chat-input__approval-chip-policy\s*\{\s*display:\s*none;/,
+    );
+  });
 });

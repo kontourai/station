@@ -360,6 +360,34 @@ describe('the toolbar replacement carries the inset the toolbar owned', () => {
     expect(body).toMatch(/padding-top:\s*var\(--safe-top\)/);
   });
 
+  it('pads a PageFrame route header the same way (station#541)', () => {
+    // A framed route (Connections, Settings, ...) publishes its eyebrow/
+    // title through `.page-frame__header`, not `.workspace-tabs__header` —
+    // a different route family, the same missing-inset defect: with the
+    // toolbar hidden nothing else accounts for the status-bar inset before
+    // it. Layered on top of the header's own padding (page-frame.css),
+    // not a replacement — `padding-top` alone, so the base horizontal/
+    // bottom padding survives.
+    const bodies = ruleBodies(
+      css,
+      '.app__main--mobile-dock-fullscreen .page-frame__header',
+    );
+    expect(
+      bodies.length,
+      '.page-frame__header fullscreen rule (both breakpoints) not found',
+    ).toBe(2);
+    // The 641-768px rule adds the inset to page-frame.css's 2rem base...
+    expect(bodies[0]).toMatch(
+      /padding-top:\s*calc\(var\(--safe-top\)\s*\+\s*2rem\)/,
+    );
+    // ...and the <=640px rule (declared AFTER it, so the tie between two
+    // identical-specificity selectors resolves by source order) adds it to
+    // page-frame.css's narrower 1.5rem base instead.
+    expect(bodies[1]).toMatch(
+      /padding-top:\s*calc\(var\(--safe-top\)\s*\+\s*1\.5rem\)/,
+    );
+  });
+
   it('anchors a mobile dock to the visible viewport bottom', () => {
     const [body] = ruleBodies(css, '.app__main > .chat-dock');
     expect(body).toContain('--chat-visual-viewport-bottom');
