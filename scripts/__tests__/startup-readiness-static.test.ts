@@ -25,6 +25,11 @@ describe('desktop startup readiness static boundary', () => {
     const platformBootstrap = read(
       'src-ui/src/platform/PlatformProfileContext.tsx',
     );
+    const rendererLiveness = read(
+      'src-ui/src/platform/native/rendererLiveness.tsx',
+    );
+    const readiness = read('src-desktop/src/startup_readiness.rs');
+    const main = read('src-ui/src/main.tsx');
     const mainWindowActions = [
       ...lib.matchAll(
         /get_webview_window\("main"\)[\s\S]{0,320}?(?:\.show\(\)|\.unminimize\(\)|\.set_focus\(\))/g,
@@ -75,6 +80,24 @@ describe('desktop startup readiness static boundary', () => {
     );
     expect(lib).toContain('event == PageLoadEvent::Started');
     expect(lib).toContain('label == "main"');
+    expect(lib).toContain('fn commit_renderer_mount');
+    expect(lib).toContain('commit_renderer_mount,');
+    expect(lib).toContain('renderer_mount_label_admitted(window.label())');
+    expect(rendererLiveness).toContain('useLayoutEffect');
+    expect(rendererLiveness).toContain('adapter.commitRendererMount()');
+    expect(rendererLiveness).toContain("['linux', 'macos', 'windows']");
+    expect(rendererLiveness).not.toContain('setTimeout');
+    expect(rendererLiveness).not.toContain('localStorage');
+    expect(readiness).toContain('NativeIdentityCommitted(StartupTicket)');
+    expect(readiness).toContain('RendererMounted');
+    expect(readiness).toContain(
+      'next.identity_committed && next.renderer_mounted',
+    );
+    const renderApp = main.slice(main.indexOf('function renderApp'));
+    expect(renderApp.indexOf('<NativeRendererMountCommit />')).toBeLessThan(
+      renderApp.indexOf('<PlatformBootstrap>'),
+    );
+    expect(lib).not.toContain('clear_all_browsing_data');
     expect(lib).not.toContain('NATIVE_STARTUP_BOOTSTRAP_SCRIPT');
     expect(lib).not.toContain("invoke('renderer_startup_ready')");
     expect(platformBootstrap).not.toContain('startStartupReadinessProof');
@@ -132,7 +155,7 @@ describe('desktop startup readiness static boundary', () => {
     expect(readinessManagement).toBeGreaterThan(handler);
     expect(replay).toBeGreaterThan(readinessManagement);
     expect(nativePageReplay).toBeGreaterThan(readinessManagement);
-    expect(lib).toContain('commit_startup_recovery_ui_for_app(app)');
+    expect(lib).toContain('commit_native_startup_recovery_for_app(app)');
     expect(lib).toContain('request_or_defer_main_window_activation(');
     expect(lib).toContain('request_main_window_activation(app);');
   });

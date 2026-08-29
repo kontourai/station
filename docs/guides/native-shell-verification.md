@@ -72,11 +72,14 @@ service needs a durable home.
 
 The truth-bearing startup source is
 [`src-desktop/src/startup_readiness.rs`](../../src-desktop/src/startup_readiness.rs):
-the native host may reveal only after Tauri's native page-start callback observes
-the exact main WebView without waiting for browser timers or application chunks, and its authenticated proof commits the ticket matching
-the current generation, instance ID, boot ID, and API base. The native host arms one
-30-second deadline, shows Retry/Exit once per epoch, and routes Retry according
-to ownership in [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs).
+the main window may reveal only after two independent prerequisites converge.
+Tauri's native page-start callback observes the exact main WebView and permits
+the host to begin its authenticated ticket proof; a post-React-layout mount
+commit from that main WebView proves renderer liveness. Page start alone is not
+renderer readiness. The ticket still binds the current generation, instance
+ID, boot ID, and API base. The native host arms one 30-second deadline, shows
+Retry/Exit once per epoch, and routes Retry according to ownership in
+[`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs).
 
 The sidecar supervisor in
 [`src-desktop/src/bundled_server_state.rs`](../../src-desktop/src/bundled_server_state.rs)
@@ -91,15 +94,18 @@ Interpret evidence narrowly:
 | Observation | It establishes | It does not establish |
 | --- | --- | --- |
 | Rust readiness/supervisor test passes | State-machine transition contract | Tauri window visibility, dialog rendering, real process lifetime, or package behavior |
-| Renderer startup-readiness test passes | Browser-side ticket/identity proof logic | Authenticated IPC behavior inside a Tauri WebView |
+| Renderer startup-readiness test passes | Browser-side ticket/identity proof logic and post-layout mount invocation | Authenticated IPC behavior inside a Tauri WebView or correct pixels |
 | Browser hostile-plugin spec passes | Isolated browser-frame containment | Native plugin IPC denial or a release-shell sandbox |
 | Sidecar status reaches `failed` after five attempts | Supervisor exhausted automatic sidecar restarts | Cause of the child failure or renderer recovery |
 | `STATION_HOME_RESET_REQUIRED` is logged | An incompatible home blocked sidecar startup | Which files may safely be deleted; use backup/reset policy before acting |
 
 There is no current command that kills a Tauri renderer mid-session, no
-bounded native renderer-reload implementation, no EPIPE recovery test, and no
-packaged startup/retry/Exit harness. Do not invent a `tauri-driver` command or
-claim that the browser test exercises those features. Those gaps are [#2006](https://github.com/kontourai/station/issues/2006).
+physically proved bounded native renderer-reload implementation, no EPIPE
+recovery test, and no packaged startup/retry/Exit harness. A missing mount stays
+behind the native cover and reaches the existing Retry/Exit surface; it never
+authorizes WebsiteData deletion or a CSP bypass.
+Do not invent a `tauri-driver` command or claim that the browser test exercises those features.
+Those gaps are [#2006](https://github.com/kontourai/station/issues/2006).
 
 ## Logs and diagnosis boundary
 

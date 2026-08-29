@@ -71,6 +71,7 @@ export type NativeCommandName =
   | 'open-workspace-pane-pop-out'
   | 'open-desktop-tray-menu'
   | 'restart-bundled-server'
+  | 'commit-renderer-mount'
   | 'commit-startup-readiness'
   | 'commit-startup-recovery-ui'
   | 'review-consent-natively';
@@ -318,6 +319,8 @@ export interface NativePlatformAdapter {
   ): NativeEventSubscription;
   /** Ask the native host to start the configured durable service. */
   restartBundledServer(): Promise<NativeCommandResult<void>>;
+  /** Commit one post-React-layout mount from the exact main WebView. */
+  commitRendererMount(): Promise<NativeCommandResult<void>>;
   /** Recheck and reveal the main window after the renderer commits its exact proof. */
   commitStartupReadiness(
     ticket: NativeStartupReadinessTicket,
