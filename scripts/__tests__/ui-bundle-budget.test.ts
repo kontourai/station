@@ -14,6 +14,7 @@ import {
   assertBundleDependencyProvenance,
   evaluateBundleBudget,
   measureEntryBundle,
+  normalizeViteContentHashEntropy,
   shouldEnforceUiBundleBudget,
 } from '../ui-bundle-budget.mjs';
 
@@ -112,6 +113,26 @@ describe('bundle dependency provenance', () => {
 });
 
 describe('initial UI bundle budget', () => {
+  it('normalizes only Vite content-hash entropy while preserving reference length', () => {
+    const first =
+      'import("./WorkspacePaneHost-Ab12_cdE.js");url("./font-Z9yX8wV7.woff2")';
+    const second =
+      'import("./WorkspacePaneHost-qR45-Tu6.js");url("./font-a1B2c3D4.woff2")';
+
+    expect(
+      normalizeViteContentHashEntropy(first, ['Ab12_cdE', 'Z9yX8wV7']),
+    ).toBe(normalizeViteContentHashEntropy(second, ['qR45-Tu6', 'a1B2c3D4']));
+    expect(
+      normalizeViteContentHashEntropy(first, ['Ab12_cdE', 'Z9yX8wV7']),
+    ).toHaveLength(first.length);
+    expect(normalizeViteContentHashEntropy('module-station.js', [])).toBe(
+      'module-station.js',
+    );
+    expect(
+      normalizeViteContentHashEntropy('fixture-deadbeef.js', ['unrelated']),
+    ).toBe('fixture-deadbeef.js');
+  });
+
   it('excludes only the explicit reference diagnostic build', () => {
     expect(shouldEnforceUiBundleBudget({})).toBe(true);
     expect(
@@ -259,6 +280,34 @@ describe('measureEntryBundle (station#1218)', () => {
     const second = measureEntryBundle(dir);
 
     expect(second).toEqual(first);
+  });
+
+  it('does not treat path-sensitive Vite hash churn as JavaScript growth', () => {
+    const dir = stageOutputDir();
+    writeAsset(
+      dir,
+      'entry.js',
+      'import("./lazy-Ab12_cdE.js");import("./other-Ab12_cdE.js");',
+    );
+    writeAsset(dir, 'lazy-Ab12_cdE.js', 'export {};');
+    writeAsset(dir, 'main.css', 'body { color: black; }');
+    writeFileSync(
+      join(dir, 'index.html'),
+      '<script src="/entry.js"></script><link rel="stylesheet" href="/main.css">',
+    );
+    const first = measureEntryBundle(dir);
+
+    writeAsset(
+      dir,
+      'entry.js',
+      'import("./lazy-qR45-Tu6.js");import("./other-a1B2c3D4.js");',
+    );
+    writeAsset(dir, 'lazy-qR45-Tu6.js', 'export {};');
+    writeAsset(dir, 'other-a1B2c3D4.js', 'export {};');
+    const second = measureEntryBundle(dir);
+
+    expect(second.entryJsGzipBytes).toBe(first.entryJsGzipBytes);
+    expect(second.entryJsRawGzipBytes).not.toBe(first.entryJsRawGzipBytes);
   });
 
   // AC1 gzip judgment call: per-file gzip summed, never concatenate-then-gzip.
