@@ -2337,6 +2337,47 @@ describe('AcpAdapter', () => {
     await adapter.stopAll();
   });
 
+  test('station#895 wave C (instructionsInFirstTurn): a first-turn-composed authored prompt reaches the ACP text content block, and turn.started persists only the typed text', async () => {
+    // ACP has no native systemPrompt channel (its matrix's `systemPrompt`
+    // cell is `unsupported`); `instructionsInFirstTurn` is what the matrix
+    // claims instead, on the strength of exactly this property — the SAME
+    // ambientContext choke point that carries ordinary context (proven
+    // above) is what orchestration-service.ts uses to prepend the authored
+    // prompt into the session's first turn, and this adapter has no
+    // separate code path for it: composed `input` always becomes the
+    // outgoing `{type:'text'}` content block, whatever text is in it.
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-first-turn-prompt',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+
+    await adapter.sendTurn({
+      threadId: 'thread-first-turn-prompt',
+      input: 'Be terse.\nHello',
+      displayInput: 'Hello',
+    });
+
+    const turnStarted = await nextEvent(iterator, 'turn.started');
+    expect(turnStarted).toMatchObject({
+      method: 'turn.started',
+      prompt: 'Hello',
+    });
+    expect(processes[0].promptContents[0]).toEqual([
+      { type: 'text', text: 'Be terse.\nHello' },
+    ]);
+
+    processes[0].resolvePrompt('end_turn');
+    await nextEvent(iterator, 'turn.completed');
+    await adapter.stopAll();
+  });
+
   test('maps validated image attachments to ACP image content blocks', async () => {
     const { adapter, processes } = createAdapter();
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();

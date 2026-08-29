@@ -2099,6 +2099,73 @@ describe('CodexAdapter', () => {
     await adapter.stopAll();
   });
 
+  test('station#895 wave C (instructionsInFirstTurn): a first-turn-composed authored prompt reaches turn/start verbatim, and turn.started persists only the typed text', async () => {
+    // Codex's `systemPrompt` cell stays `unsupported` (no version signal to
+    // gate `developerInstructions` on); `instructionsInFirstTurn` is the
+    // fallback the matrix claims instead, on the strength of exactly this
+    // property — `codex-adapter.ts` always sends `text: input.input` on
+    // `turn/start`, so whatever orchestration-service.ts's ambientContext
+    // choke point composes into the session's first turn reaches the wire
+    // unchanged, with no separate system-prompt-shaped path at all.
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => processHandle!,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    const startSessionPromise = adapter.startSession({
+      provider: 'codex',
+      threadId: 'thread-first-turn-prompt',
+      cwd: '/tmp/project',
+      modelId: 'gpt-5-codex',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-first-turn-prompt', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-first-turn-prompt', {
+      id: '2',
+      result: { thread: { id: 'codex-first-turn' }, model: 'gpt-5-codex' },
+    });
+    await withTimeout(startSessionPromise, 'startSession');
+    await flushIo();
+
+    const sendTurnPromise = adapter.sendTurn({
+      threadId: 'thread-first-turn-prompt',
+      input: 'Be terse.\nHello',
+      displayInput: 'Hello',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-first-turn-prompt', {
+      id: '3',
+      result: { turn: { id: 'turn-first-turn-prompt' } },
+    });
+    await withTimeout(sendTurnPromise, 'sendTurn');
+
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turnStarted = await nextEvent(iterator, 'turn.started');
+    expect(turnStarted).toMatchObject({
+      method: 'turn.started',
+      prompt: 'Hello',
+    });
+
+    const turnStart = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'turn/start');
+    expect(turnStart?.params?.input).toEqual([
+      {
+        type: 'text',
+        text: 'Be terse.\nHello',
+        text_elements: [],
+      },
+    ]);
+
+    await adapter.stopAll();
+  });
+
   test('maps validated image attachments to Codex app-server image inputs', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({

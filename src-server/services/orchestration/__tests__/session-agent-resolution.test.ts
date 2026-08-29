@@ -558,7 +558,7 @@ describe('createSessionAgentResolver', () => {
     expect(loadAgentSpec).not.toHaveBeenCalled();
   });
 
-  test('station#1195: a codex session still receipts systemPrompt/skills engine-unsupported (unchanged), but toolServers is now delivered (matrix flip)', async () => {
+  test('station#1195/#895 wave C: a codex session still receipts skills engine-unsupported (unchanged), the prompt now receipts channel first-turn instead of dropping, and toolServers is delivered (matrix flip)', async () => {
     const toolDef: ToolDef = {
       id: 'filesystem',
       kind: 'mcp',
@@ -597,16 +597,16 @@ describe('createSessionAgentResolver', () => {
     const report = result.metadata?.[
       SESSION_CAPABILITY_DELIVERY_METADATA_KEY
     ] as any;
+    // #895 wave C: codex has no native systemPrompt channel, but its matrix
+    // names `instructionsInFirstTurn` — the prompt is no longer dropped; it
+    // is receipted pending delivery on the first-turn fallback, and NOT
+    // attached to `result.agent` (there is no native field for it to ride).
     expect(report.systemPrompt).toEqual({
       source: 'agent',
       requested: ['agent-prompt'],
-      undelivered: [
-        {
-          capability: 'systemPrompt',
-          id: 'agent-prompt',
-          reason: 'engine-unsupported',
-        },
-      ],
+      undelivered: [],
+      channel: 'first-turn',
+      firstTurnInstructions: 'You are a codex-bound agent.',
     });
     expect(report.toolServers).toEqual({
       source: 'agent',
@@ -770,7 +770,7 @@ describe('createSessionAgentResolver', () => {
     expect(report.systemPrompt).toBeUndefined();
   });
 
-  test('an authored prompt on an acp session is receipted engine-unsupported and not attached', async () => {
+  test('#895 wave C: an authored prompt on an acp session receipts channel first-turn and is not attached to result.agent', async () => {
     const resolver = createSessionAgentResolver({
       loadAgentSpec: async () =>
         agentSpec({ prompt: 'You are an ACP-bound agent.' }),
@@ -780,6 +780,9 @@ describe('createSessionAgentResolver', () => {
 
     const result = await resolver(baseInput({ provider: 'acp' }));
 
+    // ACP has no native systemPrompt channel, but its matrix names
+    // `instructionsInFirstTurn` — there is still no native field to ride,
+    // but the prompt is no longer dropped.
     expect(result.agent?.systemPrompt).toBeUndefined();
     const report = result.metadata?.[
       SESSION_CAPABILITY_DELIVERY_METADATA_KEY
@@ -787,13 +790,9 @@ describe('createSessionAgentResolver', () => {
     expect(report.systemPrompt).toEqual({
       source: 'agent',
       requested: ['agent-prompt'],
-      undelivered: [
-        {
-          capability: 'systemPrompt',
-          id: 'agent-prompt',
-          reason: 'engine-unsupported',
-        },
-      ],
+      undelivered: [],
+      channel: 'first-turn',
+      firstTurnInstructions: 'You are an ACP-bound agent.',
     });
   });
 

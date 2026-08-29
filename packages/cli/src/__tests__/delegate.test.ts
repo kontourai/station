@@ -1739,4 +1739,76 @@ describe('station delegate over HTTP', () => {
     expect(text).not.toContain('not delivered');
     expect(text).not.toContain('agent prompt');
   });
+
+  // ── first-turn prompt delivery disclosure (station#895 wave C) ──
+  // `instructionsInFirstTurn` engines (muse, codex, acp) never carry the
+  // prompt on the engine's own system-prompt channel — the disclosure must
+  // still tell the operator it will arrive, or has arrived, rather than
+  // reading like a drop.
+
+  test('human output: create renders the pending first-turn prompt summary before any turn', async () => {
+    const { runCli } = await import('../cli.js');
+
+    createDeliveryFixture = {
+      provider: 'muse',
+      capabilityDelivery: {
+        prompt: { channel: 'first-turn', status: 'pending' },
+        dropped: [],
+      },
+    };
+    try {
+      await runCli([
+        'delegate',
+        '--agent=muse-agent',
+        'Ship it',
+        `--api-base=${apiBase}`,
+      ]);
+
+      const text = printedText();
+      expect(text).toContain(
+        'agent prompt delivers with the first turn (muse)',
+      );
+    } finally {
+      createDeliveryFixture = undefined;
+    }
+  });
+
+  test('human output: status renders the delivered first-turn prompt summary once a turn has run', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'Ship it',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    statusDeliveryFixture = {
+      provider: 'acp',
+      capabilityDelivery: {
+        prompt: { channel: 'first-turn', status: 'delivered' },
+        dropped: [],
+      },
+    };
+    try {
+      await runCli([
+        'delegate',
+        'status',
+        created.data.taskId,
+        `--api-base=${apiBase}`,
+      ]);
+
+      const text = printedText();
+      expect(text).toContain(
+        'agent prompt delivered (first-turn instructions, acp)',
+      );
+    } finally {
+      statusDeliveryFixture = undefined;
+    }
+  });
 });

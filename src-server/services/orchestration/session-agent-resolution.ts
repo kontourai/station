@@ -6,8 +6,10 @@
  * when the session is starting as a real on-disk agent (a canonical
  * `metadata.agentSlug`) whose
  * provider has at least one session-delivery channel this wave (ACP tool
- * servers; Claude skills and, as of wave B, the authored system prompt;
- * codex and ACP prompts are receipted `engine-unsupported`). An authored
+ * servers; Claude skills and, as of wave B, the authored system prompt; as
+ * of wave C, muse/codex/ACP without a native systemPrompt channel receipt
+ * the prompt `channel: 'first-turn'` instead of dropping it — see
+ * `instructionsInFirstTurn` on `EngineCapabilityMatrix`). An authored
  * field — including an authored empty array — is the source of truth for
  * that capability and overrides the connection-level default the adapter
  * would otherwise apply; an unauthored field stays `undefined` so the
@@ -422,6 +424,25 @@ export function createSessionAgentResolver(
             source: 'agent',
             requested: [SYSTEM_PROMPT_CAPABILITY_ID],
             undelivered: [],
+          };
+        } else if (
+          ENGINE_CAPABILITY_MATRICES[input.provider]?.instructionsInFirstTurn
+            ?.state === 'session'
+        ) {
+          // archive#895 wave C: no native systemPrompt channel this wave, but
+          // this engine's matrix names the `instructionsInFirstTurn`
+          // fallback — deliver the authored prompt by prepending it into the
+          // session's first turn instead (orchestration-service.ts's
+          // ambientContext choke point reads this exact receipt off the
+          // durable session.started metadata). NOT attached to `definition`:
+          // there is no native field for it to ride, only the report's
+          // pending marker.
+          report.systemPrompt = {
+            source: 'agent',
+            requested: [SYSTEM_PROMPT_CAPABILITY_ID],
+            undelivered: [],
+            channel: 'first-turn',
+            firstTurnInstructions: authoredPrompt,
           };
         } else {
           const undelivered: CapabilityUndelivered[] = [

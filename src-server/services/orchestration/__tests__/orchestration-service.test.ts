@@ -9157,6 +9157,134 @@ describe('OrchestrationService', () => {
     );
   });
 
+  test('instructionsInFirstTurn (#895 wave C): a pending first-turn receipt is prepended once, never re-prepended, and the persisted turn keeps only the typed prompt (so a continuation transcript seed built from it can never duplicate it)', async () => {
+    // Muse has no native systemPrompt channel — session-agent-resolution.ts
+    // falls back to `channel: 'first-turn'` for it (see the matrix's
+    // `instructionsInFirstTurn` cell). This adapter double is a minimal
+    // stand-in for muse-adapter.ts's own real behavior: it spreads
+    // `input.metadata` into `session.started` (so the receipt lands
+    // durably), and stamps `turn.started`'s `prompt` from
+    // `input.displayInput ?? input.input` (so it persists the TYPED text
+    // only) — both mirror the production adapter exactly.
+    const museFirstTurn = new FakeAdapter('muse');
+    museFirstTurn.startSession.mockImplementation(async (input) => {
+      const now = new Date().toISOString();
+      museFirstTurn.events.push({
+        eventId: randomUUID(),
+        provider: 'muse',
+        threadId: input.threadId,
+        createdAt: now,
+        method: 'session.started',
+        sessionId: input.threadId,
+        initialState: 'created',
+        metadata: { ...input.metadata },
+      });
+      return {
+        provider: 'muse',
+        threadId: input.threadId,
+        status: 'ready',
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+    let turnCounter = 0;
+    museFirstTurn.sendTurn.mockImplementation(async (input) => {
+      turnCounter += 1;
+      const turnId = `muse-turn-${turnCounter}`;
+      museFirstTurn.events.push({
+        eventId: randomUUID(),
+        provider: 'muse',
+        threadId: input.threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        prompt: input.displayInput ?? input.input,
+      });
+      return { threadId: input.threadId, turnId };
+    });
+
+    const resolveSessionAgent = createSessionAgentResolver({
+      loadAgentSpec: async () => ({
+        name: 'Muse Agent',
+        prompt: 'Be terse.',
+      }),
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+    });
+    const museService = new OrchestrationService({
+      adapterRegistry: createRegistry([museFirstTurn]),
+      eventBus,
+      eventStore,
+      resolveSessionAgent,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'thread-muse-first-turn-instructions';
+
+    await museService.dispatch({
+      type: 'startSession',
+      input: {
+        threadId,
+        provider: 'muse',
+        modelId: 'muse-spark-1.2-contributor',
+        metadata: { agentSlug: 'muse-agent' },
+      },
+    });
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) => events.some((event) => event.method === 'session.started'),
+    );
+
+    await museService.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Hello' },
+    });
+
+    // The composed model input carries the authored prompt ahead of the
+    // typed text; the typed text alone remains the transcript-facing value.
+    expect(museFirstTurn.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: 'Be terse.\nHello',
+        displayInput: 'Hello',
+      }),
+    );
+
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) => events.some((event) => event.method === 'turn.started'),
+    );
+    const firstTurnStarted = eventStore
+      .listEvents(threadId)
+      .find((event) => event.method === 'turn.started');
+    expect(firstTurnStarted).toBeDefined();
+    // The persisted transcript prompt is the TYPED text only. #895 wave C's
+    // conversation-lineage.ts `continuationTranscriptSeed` builds a
+    // continuation child's seed exclusively from this same persisted field
+    // (user/assistant `part.text`, never `ambientContext`), so a fresh child
+    // session's own first-turn receipt is the ONLY place the authored prompt
+    // can ever appear in its composed input — never twice from a
+    // transcript that already baked it in once.
+    expect((firstTurnStarted!.payload as { prompt?: string }).prompt).toBe(
+      'Hello',
+    );
+
+    museFirstTurn.sendTurn.mockClear();
+    await museService.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Again' },
+    });
+
+    // A second turn on the SAME session: current.events already carries the
+    // first turn.started, so the receipt is never re-read as pending.
+    expect(museFirstTurn.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ input: 'Again' }),
+    );
+    expect(museFirstTurn.sendTurn).not.toHaveBeenCalledWith(
+      expect.objectContaining({ input: expect.stringContaining('Be terse.') }),
+    );
+
+    await museService.shutdown();
+  });
+
   test('sendTurn validates attachments before dispatch and records successful bytes', async () => {
     await service.dispatch({
       type: 'startSession',

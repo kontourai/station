@@ -361,6 +361,43 @@ describe('MuseAdapter', () => {
     expect(await harness.adapter.hasSession('thread-multi')).toBe(true);
   });
 
+  test('station#895 wave C (instructionsInFirstTurn): a first-turn-composed prompt reaches the spawned exec argv verbatim', async () => {
+    // Muse's matrix cell (`instructionsInFirstTurn`) claims delivery on the
+    // strength of this exact property: `sendTurn` forwards `input.input`
+    // straight into `buildMuseExecArgs({ prompt: input.input, ... })` with
+    // no system-prompt field of its own. Orchestration's ambientContext
+    // choke point (orchestration-service.ts) is what prepends the authored
+    // prompt into that string before this adapter ever sees it — this test
+    // pins the adapter's half: whatever composed first-turn text arrives,
+    // the CLI invocation carries it byte-for-byte, and `displayInput`
+    // (the typed text alone) is what the adapter persists as the turn's
+    // transcript-facing prompt.
+    const harness = createHarness();
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-first-turn-prompt',
+      cwd: '/tmp/project',
+      modelId: 'muse-spark-1.2-contributor',
+    });
+
+    await harness.adapter.sendTurn({
+      threadId: 'thread-first-turn-prompt',
+      input: 'Be terse.\nHello',
+      displayInput: 'Hello',
+    });
+
+    expect(harness.spawnArgs[0][harness.spawnArgs[0].length - 1]).toBe(
+      'Be terse.\nHello',
+    );
+
+    await writeLines(harness.processes[0], MUSE_META_RUN_TERMINAL);
+    harness.processes[0].exit(0);
+    await flushIo();
+    const events = await drain(harness.iterator, 4, 'first-turn-prompt');
+    const started = events.find((event) => event.method === 'turn.started');
+    expect(started.prompt).toBe('Hello');
+  });
+
   test('a child exit without run_terminal still closes the turn, and is never a session exit', async () => {
     const harness = createHarness();
     await harness.adapter.startSession({
