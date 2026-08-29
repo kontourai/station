@@ -4335,13 +4335,14 @@ export function configureDevicePairingPublicRoutes(
      * (station#3379/#3645). Consulted when the UI proxy attested the hop OR
      * when the request's Host merely looks like a tailnet authority — the
      * latter proves nothing, which is why consultation is not selection:
-     * the resolved value is USED only when that Host equals the origin the
-     * daemon itself published for one of our ports. Only the pairing
-     * endpoint is derived from it, and in the access-request flow that value
-     * never reaches the device at all. Absent (or unresolvable) leaves the
-     * previous request-derived behaviour untouched.
+     * a direct request uses only the daemon-published origin whose authority
+     * exactly equals its Host. A proxy-attested request has had that authority
+     * rewritten to loopback, so it uses the resolver's canonical first origin.
+     * Only the pairing endpoint is derived from it, and in the access-request
+     * flow that value never reaches the device at all. Absent (or
+     * unresolvable) leaves the previous request-derived behaviour untouched.
      */
-    resolvePublicIngressOrigin?: () => Promise<string | undefined>;
+    resolvePublicIngressOrigin?: () => Promise<readonly string[] | undefined>;
   } = {},
 ): void {
   if (options.authFailureAudit && !options.authFailureSourceId) {
@@ -4733,15 +4734,21 @@ export function configureDevicePairingPublicRoutes(
       // trust Host.
       const mayBeOwnIngress =
         ingressIdentity !== null || requestUrl.hostname.endsWith('.ts.net');
-      const resolvedIngressOrigin = mayBeOwnIngress
+      const resolvedIngressOrigins = mayBeOwnIngress
         ? await options.resolvePublicIngressOrigin?.()
         : undefined;
-      const requestOrigin =
-        resolvedIngressOrigin &&
-        (ingressIdentity ||
-          requestUrl.host === new URL(resolvedIngressOrigin).host)
-          ? resolvedIngressOrigin
-          : requestUrl.origin;
+      // A direct Serve hop retains the public Host. Select only the exact
+      // daemon-validated listener that accepted it; a configured second
+      // listener must not be shadowed by the canonical default. The UI proxy
+      // necessarily rewrites Host to loopback, so its ingress identity is the
+      // proof of topology and the resolver's deterministic first origin is
+      // the only safe selection rule. Forwarded headers remain untrusted.
+      const directIngressOrigin = resolvedIngressOrigins?.find(
+        (origin) => requestUrl.host === new URL(origin).host,
+      );
+      const requestOrigin = ingressIdentity
+        ? (resolvedIngressOrigins?.[0] ?? requestUrl.origin)
+        : (directIngressOrigin ?? requestUrl.origin);
       const accessInput = {
         endpoint: requestOrigin,
         deviceName: body.deviceName,

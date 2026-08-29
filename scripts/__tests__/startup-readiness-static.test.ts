@@ -47,6 +47,15 @@ describe('desktop startup readiness static boundary', () => {
     expect(nativeCover).toContain('ViewWidthSizable');
     expect(nativeCover).toContain('ViewHeightSizable');
     expect(nativeCover).toContain('isKindOfClass(NSBox::class())');
+    expect(nativeCover).toContain('NSUserInterfaceItemIdentification');
+    expect(nativeCover).toContain(
+      'cover.setIdentifier(Some(cover_identifier))',
+    );
+    expect(nativeCover).toContain(
+      'identifier.isEqualToString(cover_identifier)',
+    );
+    expect(nativeCover).not.toContain('viewWithTag');
+    expect(nativeCover).not.toContain('setTag:');
     expect(nativeCover).toContain('ns_window.deminiaturize(None)');
     expect(nativeCover).toContain('ns_window.makeKeyAndOrderFront(None)');
     expect(nativeCover).not.toContain('.eval(');
