@@ -118,3 +118,27 @@ export function ambientDockOccupantChoices(): readonly {
       : [];
   });
 }
+
+/**
+ * station#520 (review round 2, M3): which `NavigationView['type']` a given
+ * ambient-dockable pane's OWN route renders as its main view. `Home`'s
+ * standalone placement is `/` (`{ type: 'home' }`); `Activity`'s is
+ * `/activity` (`{ type: 'activity' }`) — see `app-shell/routing.ts`'s
+ * `resolveViewFromPath`. `DockOccupantPicker`'s onChoose seam uses this to
+ * tell "picking this occupant would strand the main area behind it" (the
+ * route we are ALREADY on) from "picking this occupant switches away from
+ * something else entirely" (no stranding — the main area keeps showing
+ * whatever it already shows).
+ *
+ * `Chat` has no entry: it is the ambient dock's baseline occupant, not any
+ * route's main view, and choosing the CURRENT occupant is already a no-op
+ * `DockOccupantPicker` guards separately.
+ */
+export function ambientDockOccupantRouteViewType(
+  descriptor: WorkspacePaneDescriptor,
+): string | null {
+  if (descriptor.id === WORKSPACE_HOME_PANE_DESCRIPTOR.id) return 'home';
+  if (descriptor.id === WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id)
+    return 'activity';
+  return null;
+}

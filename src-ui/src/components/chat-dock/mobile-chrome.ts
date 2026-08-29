@@ -79,3 +79,30 @@ export function shouldMaximizeAfterDockingAsOnlyContent(
 ): boolean {
   return isMobile && docked;
 }
+
+/**
+ * station#520 (review round 2, M3): `DockOccupantPicker`'s onChoose seam.
+ * Closing the picker's own gap in the mobile dock-and-empty contract — a
+ * picker choice is a different call site from "Dock this pane"
+ * (`WorkspacePaneDockAction`), but picking Home from the picker WHILE
+ * standing on `/` reproduces the exact same stranding: the main area is
+ * already `/`'s route, and docking Home there makes it the away-state
+ * placeholder with nothing else behind it.
+ *
+ * True only when the device is mobile AND the picked pane's OWN route
+ * (`ambientDockOccupantRouteViewType`) is the CURRENT route
+ * (`currentViewType`, from `resolveViewFromPath(pathname).type`) — i.e. the
+ * main area IS that pane's route right now, so docking it would strand
+ * that same area behind the dock. Picking Home while standing on
+ * `/settings`, or Chat (whose `pickedViewType` is always `null` — it has no
+ * route of its own), never matches.
+ */
+export function shouldMaximizeOnOccupantChoice(
+  isMobile: boolean,
+  currentViewType: string,
+  pickedViewType: string | null,
+): boolean {
+  return (
+    isMobile && pickedViewType !== null && pickedViewType === currentViewType
+  );
+}

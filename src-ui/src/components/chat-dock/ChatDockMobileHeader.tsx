@@ -1,4 +1,8 @@
 import type {
+  WorkspacePaneDescriptor,
+  WorkspacePaneInstance,
+} from '@kontourai/station-contracts/workspace-pane';
+import type {
   MouseEvent as ReactMouseEvent,
   ReactNode,
   PointerEvent as ReactPointerEvent,
@@ -60,6 +64,24 @@ export interface ChatDockMobileOverflowActions {
   isDockMaximized: boolean;
   /** Full-screen layout placement has no ambient dock geometry to control. */
   dockControls?: boolean;
+  /**
+   * station#524 (review round 2, H2): the occupant picker (the header's
+   * `occupantPicker` prop) hides in the maximized bar at <=430px — the
+   * bar's own slot math doesn't fit an eighth control there even with the
+   * agent avatar already dropped. This is the fallback reachable path at
+   * that width: the plain `dockPane` action (not the mobile-maximizing
+   * `dockPaneAsOnlyContent` — switching occupant from an ALREADY-maximized
+   * bar cannot strand anything behind it, since the dock still covers the
+   * whole screen either way). `null` for the full-screen Chat placement,
+   * which has no ambient occupant to switch away from (mirrors
+   * `occupantPicker` itself being absent there).
+   */
+  onSwitchOccupant:
+    | ((
+        descriptor: WorkspacePaneDescriptor,
+        instance: WorkspacePaneInstance,
+      ) => void)
+    | null;
 }
 
 /**

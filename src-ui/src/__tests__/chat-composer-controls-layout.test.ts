@@ -73,9 +73,55 @@ describe('composer Agent/Model controls layout', () => {
     }
   });
 
-  test('the policy half still drops out entirely below 480px (station#3151, unchanged)', () => {
-    expect(chatCss).toMatch(
-      /@media \(max-width: 480px\) \{[\s\S]*?\.chat-input__approval-chip-policy\s*\{\s*display:\s*none;/,
+  /**
+   * review round 2 (M2/L5): `.chat-input__approval-chip-policy` is a
+   * security-relevant NEGATION ("Station approvals do not apply"), and the
+   * ellipsis fix above means it can now truncate to "Station approvals
+   * do…" — read as the OPPOSITE — anywhere its `flex: 1 1 12rem` basis
+   * (chat-composer-controls-layout's own "wraps ... within the narrow-width
+   * rail" test above) can be squeezed below that. That basis lives in the
+   * WIDE mobile block (`@media (max-width: 768px), (max-height: 540px) and
+   * (pointer: coarse)`), not only the narrower 480px arm station#3151
+   * originally scoped the hide to — so the hide moved to cover the whole
+   * wide block, visible only genuinely outside it (desktop, never
+   * width-constrained).
+   */
+  test('the policy half drops out for the WHOLE width-constrained block, not just <=480px (station#3151 + review round 2)', () => {
+    // Brace-aware, not a loose regex spanning `[\s\S]*?`: a text match that
+    // does not respect nesting can span past the block's own closing brace
+    // and "confirm" a rule that actually lives somewhere else entirely —
+    // exactly the anchoring gap review round 2 (L2) flagged. This extracts
+    // the wide block's OWN body first, so moving the declaration out of it
+    // (even into a plausible-looking neighbour) fails here.
+    const opener =
+      '@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {';
+    const start = chatCss.indexOf(opener);
+    expect(start, 'wide mobile block not found in chat.css').toBeGreaterThan(
+      -1,
+    );
+    const bodyStart = start + opener.length;
+    let depth = 1;
+    let i = bodyStart;
+    for (; i < chatCss.length && depth > 0; i += 1) {
+      if (chatCss[i] === '{') depth += 1;
+      else if (chatCss[i] === '}') depth -= 1;
+    }
+    expect(depth, 'wide mobile block never closes').toBe(0);
+    const wideBlockBody = chatCss.slice(bodyStart, i - 1);
+
+    expect(wideBlockBody).toMatch(
+      /\.chat-input__approval-chip-policy\s*\{\s*display:\s*none;/,
+    );
+
+    // And the narrower 480px block no longer carries its own copy — see
+    // that block's own comment for why a second declaration there would be
+    // dead by construction (480 is a subset of the wide block's condition).
+    const narrowMatch = /@media \(max-width: 480px\) \{([\s\S]*?)\n\}/.exec(
+      chatCss,
+    );
+    expect(narrowMatch, '480px block not found in chat.css').not.toBeNull();
+    expect(narrowMatch?.[1]).not.toMatch(
+      /\.chat-input__approval-chip-policy\s*\{/,
     );
   });
 });

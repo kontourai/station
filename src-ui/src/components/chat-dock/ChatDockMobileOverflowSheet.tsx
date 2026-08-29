@@ -1,10 +1,28 @@
+import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
 import { useState } from 'react';
+import { ambientDockOccupantChoices } from '../../workspace-panes/ambientDockOccupants';
 import { LazyBoundary } from '../LazyBoundary';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
+
+/**
+ * station#524 (review round 2, H2): every OTHER pane the ambient dock
+ * admits — this sheet only ever mounts as part of Chat's own mobile header
+ * (`ChatDockMobileHeader`), so Chat is always the current occupant here and
+ * never needs its own menu item (picking the current occupant is already a
+ * no-op in `DockOccupantPicker`, which this mirrors). The derivation is the
+ * SAME `ambientDockOccupantChoices()` the picker itself reads — not a
+ * curated list — so a pane admitted/refused there is admitted/refused here
+ * too, with no second edit.
+ */
+function otherAmbientOccupants() {
+  return ambientDockOccupantChoices().filter(
+    (choice) => choice.descriptor.id !== WORKSPACE_CHAT_PANE_DESCRIPTOR.id,
+  );
+}
 
 const loadSessionInventoryFullFallback = () =>
   import('./SessionInventoryFullFallback').then((module) => ({
@@ -175,6 +193,34 @@ export function ChatDockMobileOverflowSheet({
             Collapse chat
           </button>
         )}
+        {/* station#524 (review round 2, H2): the header's own occupant
+            picker hides in the maximized bar at <=430px — the bar's slot
+            math doesn't fit an eighth control there even with the agent
+            avatar already dropped. This is the fallback: same derivation
+            the picker itself reads, so a pane it admits/refuses is
+            admitted/refused here too. Switching occupant while ALREADY
+            maximized cannot strand the main area (the dock still covers
+            the whole screen either way), so this stays on the plain
+            `onSwitchOccupant` action, not a mobile-maximizing one. */}
+        {overflow.onSwitchOccupant &&
+          otherAmbientOccupants().map((choice) => (
+            <button
+              key={choice.descriptor.id}
+              type="button"
+              role="menuitem"
+              className="composer-actions-menu__item"
+              onClick={() =>
+                run(() =>
+                  overflow.onSwitchOccupant?.(
+                    choice.descriptor,
+                    choice.instance,
+                  ),
+                )
+              }
+            >
+              Switch to {choice.descriptor.name}
+            </button>
+          ))}
         {projectScope && (
           <button
             type="button"

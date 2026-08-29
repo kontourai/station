@@ -1,11 +1,16 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
+import { WORKSPACE_HOME_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-home-pane';
 import { describe, expect, it } from 'vitest';
 import {
   isDockOwnedViewType,
   isMobileDockFullscreen,
   shouldMaximizeAfterDockingAsOnlyContent,
+  shouldMaximizeOnOccupantChoice,
 } from '../components/chat-dock/mobile-chrome';
+import { ambientDockOccupantRouteViewType } from '../workspace-panes/ambientDockOccupants';
 import { ruleBodiesFor } from './helpers/css-rules';
 
 /**
@@ -366,11 +371,16 @@ describe('the toolbar replacement carries the inset the toolbar owned', () => {
     // title through `.page-frame__header`, not `.workspace-tabs__header` —
     // a different route family, the same missing-inset defect: with the
     // toolbar hidden nothing else accounts for the status-bar inset before
-    // it. Layered on top of the header's own padding (page-frame.css),
-    // not a replacement — `padding-top` alone, so the base horizontal/
-    // bottom padding survives.
+    // it. Layered on top of the header's own padding, not a replacement —
+    // `padding-top` alone, so the base horizontal/bottom padding survives.
+    //
+    // Review round 2: this rule now lives IN page-frame.css itself (a
+    // mobile-css-ratchet PRIMITIVE_ALLOWLIST entry — it renders every page
+    // header, so it already owns this header's one mobile treatment),
+    // beside the base padding it layers onto, rather than in index.css.
+    const pageFrameCss = read('components/page-frame/page-frame.css');
     const bodies = ruleBodies(
-      css,
+      pageFrameCss,
       '.app__main--mobile-dock-fullscreen .page-frame__header',
     );
     expect(
@@ -422,28 +432,67 @@ describe('the mobile collapsed-dock header height matches the shared header (sta
    * old `52px` was 1px short, and `.chat-dock.is-collapsed` sets
    * `overflow: hidden`, so that header's own bottom border/padding clipped.
    */
-  it('sums to the real box: 44px control + 2x --space-2 padding + 1px border', () => {
-    expect(read('tokens.css')).toMatch(/--space-2:\s*4px;/);
+  it('sums to the real box: control min-height + 2x --space-2 padding + border-bottom width', () => {
+    // review round 2 (L1): every number below is EXTRACTED from the CSS
+    // text the assertions already matched against, not restated as a
+    // literal — a hardcoded `44 + 2 * 4 + 1` would stay green even if any
+    // one of those numbers drifted from what the stylesheets actually say.
+
+    const spaceTwoMatch = /--space-2:\s*(\d+)px;/.exec(read('tokens.css'));
+    expect(spaceTwoMatch, '--space-2 token not found').not.toBeNull();
+    const spaceTwo = Number(spaceTwoMatch?.[1]);
 
     const headerRules = ruleBodiesFor(chatCss, '.chat-dock__header');
+    const paddingBody = headerRules.find((body) =>
+      /padding:\s*var\(--space-2\)\s+var\(--space-3\)/.test(body),
+    );
     expect(
-      headerRules.some((body) =>
-        /padding:\s*var\(--space-2\)\s+var\(--space-3\)/.test(body),
-      ),
+      paddingBody,
       '.chat-dock__header mobile padding rule not found',
-    ).toBe(true);
+    ).toBeDefined();
 
     const maximizeBtnRules = ruleBodiesFor(chatCss, '.chat-dock__maximize-btn');
+    const controlBody = maximizeBtnRules.find((body) =>
+      /min-height:\s*(\d+)px/.test(body),
+    );
     expect(
-      maximizeBtnRules.some((body) => /min-height:\s*44px/.test(body)),
+      controlBody,
       '.chat-dock__maximize-btn 44px mobile floor not found',
-    ).toBe(true);
+    ).toBeDefined();
+    const controlHeight = Number(
+      /min-height:\s*(\d+)px/.exec(controlBody ?? '')?.[1],
+    );
 
-    // Base rule (index.css): 1px border-bottom on `.chat-dock__header`.
+    // Base rule (index.css): border-bottom on `.chat-dock__header`.
     const [baseHeaderBody] = ruleBodiesFor(css, '.chat-dock__header');
-    expect(baseHeaderBody).toMatch(/border-bottom:\s*1px solid/);
+    const borderMatch = /border-bottom:\s*(\d+)px solid/.exec(
+      baseHeaderBody ?? '',
+    );
+    expect(
+      borderMatch,
+      '.chat-dock__header border-bottom not found',
+    ).not.toBeNull();
+    const borderWidth = Number(borderMatch?.[1]);
 
-    expect(44 + 2 * 4 + 1).toBe(53);
+    // The token this whole derivation exists to justify. Two declarations
+    // exist (the desktop default near the top of the file, and this
+    // mobile override inside the responsive block) — the LAST one in
+    // source order is the mobile-scoped value (cascade order), which is
+    // the one this box math is about.
+    const headerHeightMatches = [
+      ...css.matchAll(/--chat-dock-header-height:\s*(\d+)px;/g),
+    ];
+    expect(
+      headerHeightMatches.length,
+      '--chat-dock-header-height literal not found',
+    ).toBeGreaterThan(0);
+    const recordedHeaderHeight = Number(
+      headerHeightMatches[headerHeightMatches.length - 1][1],
+    );
+
+    expect(controlHeight + 2 * spaceTwo + borderWidth).toBe(
+      recordedHeaderHeight,
+    );
   });
 });
 
@@ -581,6 +630,35 @@ describe('the mobile dock-and-empty contract derivation (station#520)', () => {
       'a REFUSED dock request must never force Full over nothing',
     ).toBe(false);
     expect(shouldMaximizeAfterDockingAsOnlyContent(false, false)).toBe(false);
+  });
+
+  /** review round 2, M3: `DockOccupantPicker`'s onChoose seam. */
+  it('shouldMaximizeOnOccupantChoice matches only mobile + picked-pane-is-current-route', () => {
+    expect(shouldMaximizeOnOccupantChoice(true, 'home', 'home')).toBe(true);
+    expect(
+      shouldMaximizeOnOccupantChoice(false, 'home', 'home'),
+      'desktop already has room beside the dock',
+    ).toBe(false);
+    expect(
+      shouldMaximizeOnOccupantChoice(true, 'settings', 'home'),
+      'the main area is already showing something else — nothing stranded',
+    ).toBe(false);
+    expect(
+      shouldMaximizeOnOccupantChoice(true, 'home', null),
+      'Chat has no route of its own (null) and never matches',
+    ).toBe(false);
+  });
+
+  it('ambientDockOccupantRouteViewType maps Home/Activity to their routes and Chat to null', () => {
+    expect(
+      ambientDockOccupantRouteViewType(WORKSPACE_HOME_PANE_DESCRIPTOR),
+    ).toBe('home');
+    expect(
+      ambientDockOccupantRouteViewType(WORKSPACE_ACTIVITY_PANE_DESCRIPTOR),
+    ).toBe('activity');
+    expect(
+      ambientDockOccupantRouteViewType(WORKSPACE_CHAT_PANE_DESCRIPTOR),
+    ).toBeNull();
   });
 });
 

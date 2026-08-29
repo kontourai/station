@@ -1287,11 +1287,11 @@
     justify-content: flex-start;
   }
 
-  /* Below 480px there is no room for the policy half at all (station#3151);
-     hiding it outright still leaves it in the chip's accessible name. */
-  .chat-input__approval-chip-policy {
-    display: none;
-  }
+  /* station#3151's `.chat-input__approval-chip-policy { display: none }`
+     rule that used to live here moved (review round 2, M2/L5) to the wider
+     mobile block below — 480px is a subset of that block's condition, so a
+     second, narrower copy of the same declaration here could never change
+     a computed value. See that rule's comment for the full reasoning. */
 }
 
 .chat-input__meta .chat-input__approval-chip--default {
@@ -2034,6 +2034,25 @@
   .chat-input__meta .chat-input__approval-chip {
     flex: 1 1 12rem;
     max-width: 100%;
+  }
+  /* review round 2 (M2/L5): `.chat-input__approval-chip-policy` (e.g.
+     "Station approvals do not apply") is a security-relevant NEGATION — a
+     read that truncates to "Station approvals do…" reads as the OPPOSITE
+     of what it says, which is worse than the pre-fix hard-clip this file
+     already fixed once. The chip's `flex: 1 1 12rem` right above means it
+     CAN shrink below its 12rem basis anywhere in THIS block's condition —
+     every width this rule reaches, `max-width: 768px` OR the landscape
+     `(max-height: 540px) and (pointer: coarse)` arm — not only below the
+     480px this used to be scoped to (the reported fragment can only have
+     come from the 481-768px arm or landscape-coarse; the label span's own
+     ellipsis is unaffected and stays fine to truncate). Hides the whole
+     block's span here instead of narrowing the old 480px rule, so it is
+     visible ONLY outside this media query entirely — genuine desktop,
+     where the chip is never width-constrained in the first place and the
+     12rem basis always fits untruncated. The full string stays in the
+     chip's `aria-label`/`title` regardless (archive#1010). */
+  .chat-input__approval-chip-policy {
+    display: none;
   }
   .chat-input__meta .chat-input__agent-btn {
     min-width: 44px;

@@ -368,19 +368,28 @@ export function AmbientChatDockPaneHost({
   // yields a viewport whose only content is the placeholder card"
   // (`WorkspacePaneAwayState`). The crisp version of that — does the route
   // behind the dock have OTHER meaningful content — needs the current
-  // route's composition, which this ambient, occupant-agnostic host cannot
-  // see (it has no `pathname`/`NavigationView`). The fallback this ships
-  // instead: `WorkspacePaneDockAction` ("Dock this pane") is rendered BY the
-  // pane's own content, so every call through it is, by construction,
-  // "dock the pane that is CURRENTLY the main viewport's only content" — the
-  // exact composition the away-state placeholder would otherwise sit alone
-  // in. On mobile, docking THAT pane opens the dock MAXIMIZED instead of
-  // whatever snap it already had, so the dock itself — not an empty main
-  // area behind it — occupies the screen. `DockOccupantPicker`'s switches
-  // (a different call site, chosen from the dock's own chrome rather than
-  // from route content) keep the plain `dockPane` above and are NOT covered
-  // by this — picking an occupant while its own route happens to be on
-  // screen is a real remaining gap, disclosed, not derived away.
+  // route's composition, which THIS FILE still cannot see: it is ambient,
+  // occupant-agnostic infrastructure with no `pathname`/`NavigationView` of
+  // its own (review round 2 correction: that is true of this file, not of
+  // every caller — see below). Two callers reach this function, each
+  // deriving what it can honestly know:
+  //
+  // - `WorkspacePaneDockAction` ("Dock this pane") is rendered BY the pane's
+  //   own content, so every call through it is, by construction, "dock the
+  //   pane that is CURRENTLY the main viewport's only content" — no route
+  //   lookup needed, the caller already IS that content.
+  // - `DockOccupantPicker`'s onChoose seam IS a real component (unlike this
+  //   file) and reads `useNavigation()`/`resolveViewFromPath` itself,
+  //   calling this function instead of plain `dockPane` exactly when the
+  //   PICKED pane's own route is the route already on screen
+  //   (`shouldMaximizeOnOccupantChoice`) — closing what was a disclosed gap.
+  //
+  // Either way, on mobile this opens the dock MAXIMIZED instead of whatever
+  // snap it already had, so the dock itself — not an empty main area behind
+  // it — occupies the screen. Remaining scope (a choice, not an inability):
+  // both derivations are route-IDENTITY matches, not full route-composition
+  // awareness — see the fuller writeup on `WorkspacePaneDockContext.tsx`'s
+  // `dockPaneAsOnlyContent`.
   const dockPaneAsOnlyContent = useCallback(
     (descriptor: WorkspacePaneDescriptor, instance: WorkspacePaneInstance) => {
       const docked = attemptDockPane(descriptor, instance);
@@ -454,7 +463,11 @@ export function AmbientChatDockPaneHost({
           ...shellChrome,
           dockPane,
           occupantPicker: (
-            <DockOccupantPicker current={current} onChoose={dockPane} />
+            <DockOccupantPicker
+              current={current}
+              onChoose={dockPane}
+              onChooseAsOnlyContent={dockPaneAsOnlyContent}
+            />
           ),
         });
         return (

@@ -2,6 +2,10 @@
  * @vitest-environment jsdom
  */
 
+import {
+  WORKSPACE_HOME_PANE_DESCRIPTOR,
+  WORKSPACE_HOME_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-home-pane';
 import { fireEvent, screen } from '@testing-library/react';
 import { createRef, type ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -46,6 +50,9 @@ function renderHeader(
     onOpenProject?: (() => void) | null;
     openProjectName?: string | null;
     occupantPicker?: ReactNode;
+    onSwitchOccupant?:
+      | ((descriptor: unknown, instance: unknown) => void)
+      | null;
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
@@ -106,6 +113,7 @@ function renderHeader(
         onExpandDock: vi.fn(),
         onRestoreDock: vi.fn(),
         isDockMaximized: false,
+        onSwitchOccupant: overrides.onSwitchOccupant ?? null,
       }}
       occupantPicker={overrides.occupantPicker}
     />,
@@ -444,5 +452,55 @@ describe('ChatDockMobileHeader occupant picker (station#524)', () => {
     expect(
       header.querySelector('.chat-dock__mobile-occupant-picker'),
     ).toBeNull();
+  });
+});
+
+/**
+ * station#524 (review round 2, H2): the header's own occupant picker hides
+ * in the maximized bar at <=430px (the bar's slot math doesn't fit an
+ * eighth control there even with the agent avatar dropped) — the ⋯
+ * overflow sheet's occupant-switch items are the fallback that keeps
+ * switching occupant reachable at that width.
+ */
+describe('ChatDockMobileHeader overflow sheet occupant switch (station#524 review round 2, H2)', () => {
+  test('lists every other ambient occupant when onSwitchOccupant is supplied', async () => {
+    renderHeader({ onSwitchOccupant: vi.fn() });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
+    expect(
+      await screen.findByRole('menuitem', { name: 'Switch to Home' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('menuitem', { name: 'Switch to Activity' }),
+    ).toBeTruthy();
+    // Chat is the current occupant of this header — never its own item.
+    expect(
+      screen.queryByRole('menuitem', { name: 'Switch to Chat' }),
+    ).toBeNull();
+  });
+
+  test('calls onSwitchOccupant with the picked descriptor/instance and closes the sheet', async () => {
+    const onSwitchOccupant = vi.fn();
+    renderHeader({ onSwitchOccupant });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
+    const item = await screen.findByRole('menuitem', {
+      name: 'Switch to Home',
+    });
+    fireEvent.click(item);
+
+    expect(onSwitchOccupant).toHaveBeenCalledWith(
+      WORKSPACE_HOME_PANE_DESCRIPTOR,
+      WORKSPACE_HOME_PANE_INSTANCE,
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('renders no switch items when onSwitchOccupant is absent (full-screen placement)', async () => {
+    renderHeader({ onSwitchOccupant: null });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
+    await screen.findByRole('menuitem', { name: 'Chat settings' });
+    expect(screen.queryByRole('menuitem', { name: /^Switch to/ })).toBeNull();
   });
 });

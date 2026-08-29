@@ -3,7 +3,14 @@ import type {
   WorkspacePaneInstance,
 } from '@kontourai/station-contracts/workspace-pane';
 import { useEffect, useRef, useState } from 'react';
-import { ambientDockOccupantChoices } from './ambientDockOccupants';
+import { resolveViewFromPath } from '../app-shell/routing';
+import { shouldMaximizeOnOccupantChoice } from '../components/chat-dock/mobile-chrome';
+import { useNavigation } from '../contexts/NavigationContext';
+import { useIsMobile } from '../hooks/useIsMobile';
+import {
+  ambientDockOccupantChoices,
+  ambientDockOccupantRouteViewType,
+} from './ambientDockOccupants';
 
 /**
  * The dock-slot header's occupant picker (archive#4090).
@@ -23,13 +30,37 @@ import { ambientDockOccupantChoices } from './ambientDockOccupants';
  * closes (choosing is also leaving — focus returns to the trigger rather than
  * to whatever the removed item's neighbour happened to be). Choosing the
  * current occupant is a no-op that closes the menu.
+ *
+ * station#520 (review round 2, M3): this is also the mobile
+ * dock-and-empty contract's SECOND entry point, not just
+ * `WorkspacePaneDockAction`'s "Dock this pane". Picking Home here while the
+ * main area is ALREADY `/` reproduces the exact same stranding "Dock this
+ * pane" refuses — the main area becomes Home's away-state placeholder with
+ * nothing else behind it. `shouldMaximizeOnOccupantChoice` derives that
+ * from the live route (`useNavigation().pathname` +
+ * `resolveViewFromPath` + `ambientDockOccupantRouteViewType`) and routes
+ * through `onChooseAsOnlyContent` (the mobile-maximizing action) instead of
+ * the plain `onChoose` when it matches.
  */
 export function DockOccupantPicker({
   current,
   onChoose,
+  onChooseAsOnlyContent,
 }: {
   current: WorkspacePaneDescriptor;
   onChoose: (
+    descriptor: WorkspacePaneDescriptor,
+    instance: WorkspacePaneInstance,
+  ) => void;
+  /**
+   * station#520: the SAME action `WorkspacePaneDockAction` uses
+   * (`dockPaneAsOnlyContent` on `WorkspacePaneDockContext`) — maximizes the
+   * dock on mobile rather than preserving whatever snap it already had.
+   * Called instead of `onChoose` exactly when
+   * `shouldMaximizeOnOccupantChoice` says the picked pane's own route is
+   * the one the main area is already showing.
+   */
+  onChooseAsOnlyContent: (
     descriptor: WorkspacePaneDescriptor,
     instance: WorkspacePaneInstance,
   ) => void;
@@ -37,6 +68,8 @@ export function DockOccupantPicker({
   const [menuOpen, setMenuOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const isMobile = useIsMobile();
+  const { pathname } = useNavigation();
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -107,8 +140,23 @@ export function DockOccupantPicker({
                 // The current occupant is already placed: choosing it again
                 // is a no-op that closes the menu, not a replace that churns
                 // the persisted document.
-                if (choice.descriptor.id !== current.id)
-                  onChoose(choice.descriptor, choice.instance);
+                if (choice.descriptor.id !== current.id) {
+                  // station#520 (review round 2, M3): route through the
+                  // maximizing action exactly when picking this occupant
+                  // would strand the main area behind it — the picked
+                  // pane's own route is the one already on screen.
+                  if (
+                    shouldMaximizeOnOccupantChoice(
+                      isMobile,
+                      resolveViewFromPath(pathname).type,
+                      ambientDockOccupantRouteViewType(choice.descriptor),
+                    )
+                  ) {
+                    onChooseAsOnlyContent(choice.descriptor, choice.instance);
+                  } else {
+                    onChoose(choice.descriptor, choice.instance);
+                  }
+                }
                 setMenuOpen(false);
                 triggerRef.current?.focus();
               }}

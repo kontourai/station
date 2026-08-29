@@ -380,12 +380,21 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // pre-rendered node the ambient host already built (review round M4) —
   // Chat renders it as-is, the same way Home/Activity do, instead of
   // importing `DockOccupantPicker` into this eager module itself.
-  const { chrome, occupantPicker } =
+  // station#524 (review round 2, H2): `dockPane` alongside `occupantPicker`,
+  // same reasoning — the mobile overflow sheet's occupant-switch fallback
+  // (reachable when the header's own picker hides at <=430px) needs the
+  // RAW action, not the pre-rendered picker node.
+  const { chrome, occupantPicker, occupantSwitchDockPane } =
     props.placement === 'fullscreen'
-      ? { chrome: localShellChrome, occupantPicker: undefined }
+      ? {
+          chrome: localShellChrome,
+          occupantPicker: undefined,
+          occupantSwitchDockPane: null,
+        }
       : {
           chrome: props.shellChrome,
           occupantPicker: props.shellChrome.occupantPicker,
+          occupantSwitchDockPane: props.shellChrome.dockPane,
         };
   const recoverAuth = useChatAuthRecovery();
   const requestAuth = onRequestAuth ?? recoverAuth;
@@ -2041,6 +2050,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 onRestoreDock: () => applyDockSnap('half'),
                 isDockMaximized: isPaneMaximized,
                 dockControls: !isFullscreenPlacement,
+                onSwitchOccupant: occupantSwitchDockPane,
               }}
             />
           ) : (

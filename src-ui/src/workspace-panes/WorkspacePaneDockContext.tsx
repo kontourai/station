@@ -41,25 +41,45 @@ export interface WorkspacePaneDockAction {
    * only viewport content" is refused by construction, never detected and
    * patched up after the fact.
    *
-   * THE DERIVATION SHIPPED: deciding "would leave no meaningful content"
-   * honestly needs the current route's composition (does it have other
-   * content besides this pane?), which the ambient dock host cannot see —
-   * it is occupant-agnostic infrastructure with no `pathname`/
-   * `NavigationView`. The fallback this method encodes: call it ONLY from
-   * the exact place a pane's own content offers to dock itself
-   * (`WorkspacePaneDockAction`, "Dock this pane") — every call arriving
-   * there is, by construction, "dock the pane the main viewport currently,
-   * entirely renders", because the button is part of that pane's own
-   * rendered output. On mobile, `dockPaneAsOnlyContent` opens the dock
-   * MAXIMIZED rather than preserving whatever snap it already had, so the
-   * dock itself covers the screen instead of leaving a collapsed/half bar
-   * over an otherwise-empty main area.
+   * THE DERIVATION: deciding "would leave no meaningful content" honestly
+   * needs the current route's composition — does it have other content
+   * besides this pane? — which nothing here derives crisply for every
+   * caller. What IS derived, from two call sites, each with what it can
+   * honestly know:
    *
-   * DISCLOSED GAP: `DockOccupantPicker`'s occupant switch is a different
-   * call site (chosen from the dock's own chrome, not from route content)
-   * and stays on plain `dockPane` — picking an occupant whose route happens
-   * to already be the main view can still reproduce the empty composition.
-   * Not derived away; a real remaining gap.
+   * - `WorkspacePaneDockAction` ("Dock this pane") is rendered BY the pane's
+   *   own content, so every call through it is, by construction, "dock the
+   *   pane the main viewport currently, entirely renders" — no route lookup
+   *   needed, the caller already IS that content. THE ENFORCEMENT BOUNDARY
+   *   (review round 2, M4): that "by construction" holds only because every
+   *   render site of `WorkspacePaneDockAction` today is a full-viewport pane
+   *   host (`HomeWorkspacePane`, `ActivityWorkspacePane`) — a future
+   *   multi-pane placement (e.g. two panes side by side) would render the
+   *   SAME action while genuinely not being the viewport's only content,
+   *   and nothing here would stop it from inheriting this method's
+   *   maximize-on-mobile behavior anyway.
+   * - `DockOccupantPicker`'s onChoose seam is a REAL React component (not
+   *   occupant-agnostic infrastructure), so it reads `useNavigation()` and
+   *   `resolveViewFromPath` directly and calls this method exactly when the
+   *   PICKED pane's own canonical route (`ambientDockOccupantRouteViewType`)
+   *   is the route already on screen (`shouldMaximizeOnOccupantChoice`) —
+   *   picking Home from the picker while standing on `/` reproduces the
+   *   same stranding "Dock this pane" refuses, and now refuses it too.
+   *
+   * Both paths open the dock MAXIMIZED on mobile rather than preserving
+   * whatever snap it already had, so the dock itself covers the screen
+   * instead of leaving a collapsed/half bar over an otherwise-empty main
+   * area.
+   *
+   * KNOWN REMAINING SCOPE (a choice, not an inability): this covers "the
+   * picked/docked pane's OWN route is the current route" — a route-identity
+   * match, not full route-composition awareness. A route whose main view is
+   * something else entirely but which ALSO happens to render nothing of
+   * substance (an edge case neither call site can see) is out of scope by
+   * the same reasoning `WorkspacePaneDockAction`'s docblock states: a crisp
+   * "does the route have other content" derivation needs more than either
+   * seam owns, and this ships the identity-match version rather than block
+   * on that.
    */
   dockPaneAsOnlyContent(
     descriptor: WorkspacePaneDescriptor,

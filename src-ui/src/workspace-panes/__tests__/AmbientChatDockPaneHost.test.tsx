@@ -62,12 +62,19 @@ vi.mock('../../hooks/useIsMobile', async (importOriginal) => {
   return { ...actual, useIsMobile: () => mobileFlag.isMobile };
 });
 
+// station#520 (review round 2, M3): `DockOccupantPicker`'s onChoose seam now
+// reads `pathname` too — mutable so the picker tests below can exercise
+// both "on this pane's own route" and "somewhere else" without a real
+// router.
+const pathnameFlag = vi.hoisted(() => ({ pathname: '/' }));
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     dockMode: 'bottom',
     isDockOpen: true,
     isDockMaximized: false,
-    pathname: '/',
+    get pathname() {
+      return pathnameFlag.pathname;
+    },
     setDockState: navigationMock.setDockState,
     setDockMode: () => {},
     collapseMaximizedDock: () => {},
@@ -139,6 +146,7 @@ const AMBIENT_DOCK_STORAGE_KEY =
  */
 beforeEach(() => {
   mobileFlag.isMobile = false;
+  pathnameFlag.pathname = '/';
   navigationMock.setDockState.mockClear();
   Object.defineProperty(globalThis.navigator, 'locks', {
     configurable: true,
@@ -570,6 +578,31 @@ async function dockHomeAndOpenPicker() {
   };
 }
 
+async function dockActivityAndOpenPicker() {
+  const feed = mountedDockActionFeed();
+  await waitFor(() => {
+    expect(feed.published.some((action) => action !== null)).toBe(true);
+  });
+  act(() => {
+    feed
+      .latest()
+      .dockPane(
+        WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+        WORKSPACE_ACTIVITY_PANE_INSTANCE,
+      );
+  });
+  await waitFor(() => {
+    expect(screen.queryByTestId('ambient-activity-occupant')).not.toBeNull();
+  });
+  const trigger = screen.getByRole('button', { name: 'Docked pane: Activity' });
+  fireEvent.click(trigger);
+  return {
+    feed,
+    trigger,
+    menu: screen.getByRole('menu', { name: 'Docked pane' }),
+  };
+}
+
 /**
  * The menu's list is the DERIVATION — every pane `ambientDockDescriptorFor`
  * admits, i.e. the same `workspacePaneModesSatisfiableBy` fold over the
@@ -804,10 +837,12 @@ test('mobile: a REFUSED dockPaneAsOnlyContent (non-canonical instance) never req
   ).not.toHaveBeenCalled();
 });
 
-test('mobile: the occupant-picker path (plain dockPane) does not auto-maximize', async () => {
-  // Disclosed gap (see the `dockPaneAsOnlyContent` doc): choosing an
-  // occupant from the dock's own picker is a different call site than
-  // "Dock this pane", and stays on the plain, non-maximizing `dockPane`.
+test('mobile: the plain dockPane action never auto-maximizes on its own', async () => {
+  // The published action's plain `dockPane` (as opposed to
+  // `dockPaneAsOnlyContent`) is what `DockOccupantPicker` falls back to
+  // when its own onChoose derivation does NOT match — see the
+  // `shouldMaximizeOnOccupantChoice` tests below (station#520 review round
+  // 2, M3) for the picker's actual UI-driven behavior, now route-aware.
   mobileFlag.isMobile = true;
   const feed = mountedDockActionFeed();
   await waitFor(() => {
@@ -822,4 +857,61 @@ test('mobile: the occupant-picker path (plain dockPane) does not auto-maximize',
     expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
   });
   expect(navigationMock.setDockState).not.toHaveBeenCalledWith(true, true);
+});
+
+/* ------------------------------------------------------------------ *
+ * station#520 review round 2, M3: `DockOccupantPicker`'s onChoose seam
+ * closes the picker's own gap in the mobile dock-and-empty contract.
+ * Reviewer's reproduction: on `/`, picking Home from the picker used to
+ * render `WorkspacePaneAwayState` as the entire main area — the SAME
+ * stranding "Dock this pane" already refuses, just from a different call
+ * site (chosen from the dock's own chrome instead of route content).
+ * ------------------------------------------------------------------ */
+
+test("mobile + on the picked pane's own route: picking it from the REAL picker maximizes", async () => {
+  mobileFlag.isMobile = true;
+  pathnameFlag.pathname = '/'; // Home's own canonical route.
+  const { menu } = await dockActivityAndOpenPicker();
+
+  fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Home' }));
+
+  await waitFor(() => {
+    expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
+  });
+  expect(
+    navigationMock.setDockState,
+    'picking Home while standing on `/` must maximize, same as "Dock this pane"',
+  ).toHaveBeenCalledWith(true, true);
+});
+
+test("mobile + NOT on the picked pane's own route: picking it does not maximize", async () => {
+  mobileFlag.isMobile = true;
+  pathnameFlag.pathname = '/settings'; // Not Home's route.
+  const { menu } = await dockActivityAndOpenPicker();
+
+  fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Home' }));
+
+  await waitFor(() => {
+    expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
+  });
+  expect(
+    navigationMock.setDockState,
+    'the main area is already showing something else (Settings) — nothing is stranded',
+  ).not.toHaveBeenCalledWith(true, true);
+});
+
+test("desktop + on the picked pane's own route: picking it does not maximize", async () => {
+  mobileFlag.isMobile = false;
+  pathnameFlag.pathname = '/';
+  const { menu } = await dockActivityAndOpenPicker();
+
+  fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Home' }));
+
+  await waitFor(() => {
+    expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
+  });
+  expect(
+    navigationMock.setDockState,
+    'desktop already has room beside the dock — station#520 is phone-only',
+  ).not.toHaveBeenCalledWith(true, true);
 });
