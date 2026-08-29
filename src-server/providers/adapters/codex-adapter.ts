@@ -598,6 +598,13 @@ export class CodexAdapter implements ProviderAdapterShape {
           ),
         ),
       );
+      // #774: same door as the catalog one-shot — a stdin write after the
+      // reader is gone EPIPEs on the stdin stream, not the ChildProcess.
+      processHandle.stdin.on('error', (error) =>
+        fail(
+          new Error(`Codex app-server stdin write failed: ${error.message}`),
+        ),
+      );
       const send = (method: string, params?: unknown) => {
         const id = String(++requestId);
         const response = new Promise<unknown>((resolve, reject) =>
@@ -949,6 +956,16 @@ export class CodexAdapter implements ProviderAdapterShape {
     processHandle.on('error', (error) => {
       failPending(
         new Error(`Codex app-server failed to start: ${error.message}`),
+      );
+    });
+    // #774: a write landing after the child's stdin reader is gone emits
+    // 'error' (EPIPE) on the stdin stream itself — not on the ChildProcess.
+    // Unhandled, it crashes the whole server; route it through the same
+    // failPending door (idempotent: `pending` is cleared by whichever of
+    // exit/error fires first).
+    processHandle.stdin.on('error', (error) => {
+      failPending(
+        new Error(`Codex app-server stdin write failed: ${error.message}`),
       );
     });
 

@@ -385,6 +385,109 @@ describe('CodexAdapterTransport', () => {
     expect(record.activeTurnId).toBeUndefined();
   });
 
+  // #774: a stdin write landing after the reader is gone emits 'error'
+  // (EPIPE) on the stdin stream — not the ChildProcess. It must run the same
+  // teardown door as a process error, and stay idempotent when the process
+  // 'exit' fires too (kernel reality: both usually arrive).
+  test('a stdin EPIPE mid-turn rejects pending RPCs and synthesizes the terminal exactly once when exit also fires', async () => {
+    const transport = new CodexAdapterTransport(
+      () => new Date('2026-04-11T00:00:00Z'),
+    );
+    const processHandle = new FakeCodexProcess();
+    const record = createCodexSessionRecord({
+      externalThreadId: 'thread-stdin-epipe',
+      process: processHandle,
+      provider: 'codex',
+      threadId: 'thread-stdin-epipe',
+      model: 'gpt-5-codex',
+      nowIso: () => '2026-04-11T00:00:00Z',
+    });
+    record.activeTurnId = 'turn-mid-flight-epipe';
+    transport.registerSession(record);
+    transport.handleProcess(record);
+    const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+
+    const rpc = transport.sendRequest(record, 'turn/start', {});
+    const rpcRejection = expect(rpc).rejects.toThrow(
+      'Codex app-server stdin write failed: write EPIPE',
+    );
+
+    // stdin-first: EPIPE arrives, then the process exit for the same death.
+    processHandle.stdin.emit(
+      'error',
+      Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }),
+    );
+    await rpcRejection;
+    processHandle.exitCode = 1;
+    processHandle.emit('exit', 1);
+
+    expect(
+      await nextEvent(iterator, 'synthesized runtime.error'),
+    ).toMatchObject({
+      method: 'runtime.error',
+      severity: 'error',
+      turnId: 'turn-mid-flight-epipe',
+      threadId: 'thread-stdin-epipe',
+    });
+    expect(await nextEvent(iterator, 'session.exited')).toMatchObject({
+      method: 'session.exited',
+      reason: 'process-error',
+    });
+    expect(record.activeTurnId).toBeUndefined();
+    expect(transport.hasSession('thread-stdin-epipe')).toBe(false);
+    // No duplicate session.exited/terminal from the exit half of the
+    // double fire.
+    expect(await drainEvents(iterator)).toEqual([]);
+  });
+
+  // Reverse order of the same double fire: the exit door settles everything
+  // (and unregisters the session) before the stdin EPIPE is observed — the
+  // stdin handler must recognize the completed teardown and stay silent.
+  test('a stdin EPIPE after a completed exit teardown does not duplicate session.exited', async () => {
+    const transport = new CodexAdapterTransport(
+      () => new Date('2026-04-11T00:00:00Z'),
+    );
+    const processHandle = new FakeCodexProcess();
+    const record = createCodexSessionRecord({
+      externalThreadId: 'thread-exit-then-epipe',
+      process: processHandle,
+      provider: 'codex',
+      threadId: 'thread-exit-then-epipe',
+      model: 'gpt-5-codex',
+      nowIso: () => '2026-04-11T00:00:00Z',
+    });
+    record.activeTurnId = 'turn-mid-flight-exit-first';
+    transport.registerSession(record);
+    transport.handleProcess(record);
+    const iterator = transport.streamEvents()[Symbol.asyncIterator]();
+
+    const rpc = transport.sendRequest(record, 'turn/start', {});
+    const rpcRejection = expect(rpc).rejects.toThrow(
+      'Codex app-server exited before responding (code: 1)',
+    );
+    processHandle.exitCode = 1;
+    processHandle.emit('exit', 1);
+    await rpcRejection;
+    // Let finalizeUnexpectedExit finish (terminate + unregister) before the
+    // late stdin EPIPE lands.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    processHandle.stdin.emit(
+      'error',
+      Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }),
+    );
+
+    const events = await drainEvents(iterator);
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({
+      method: 'runtime.error',
+      turnId: 'turn-mid-flight-exit-first',
+    });
+    expect(events[1]).toMatchObject({
+      method: 'session.exited',
+      reason: 'process-exit',
+    });
+  });
+
   // Double-terminal guard: a turn already closed by a real notification
   // (record.activeTurnId already cleared) must not get a second terminal
   // event synthesized on top of it.
