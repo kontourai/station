@@ -250,7 +250,15 @@ describe('ChatDock project-binding wiring (station#4525/#4524, minimal call-site
     const nonForkBody = extractBalancedBody(source, 'onSelectNewChat: (');
     expect(
       nonForkBody,
-      'the non-fork new-chat path must still sync an explicit project choice',
+      'the non-fork new-chat path must route the explicit project choice through the scoped opener',
+    ).toMatch(/openChatForAgentInScopedPane/);
+    const scopedOpenBody = extractBalancedBody(
+      source,
+      'const openChatForAgentInScopedPane = useCallback(',
+    );
+    expect(
+      scopedOpenBody,
+      'the shared non-fork opener must still sync an explicit project choice',
     ).toMatch(/setActiveProjectSlug/);
   });
 });

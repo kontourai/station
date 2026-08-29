@@ -1,11 +1,17 @@
 /** @vitest-environment jsdom */
 
 import { createDirectAnswerBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
+import {
+  parseWorkspacePaneInstance,
+  type WorkspacePaneInstance,
+} from '@kontourai/station-contracts/workspace-pane';
+import type { WorkspacePaneHostDocumentV1 } from '@kontourai/station-contracts/workspace-pane-host';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { useBasisPaneLauncher } from '../BasisPaneLauncher';
 import { readSessionInventorySelection } from '../sessionInventorySelection';
+import { WorkspacePaneHost } from '../WorkspacePaneHost';
 import { WorkspacePaneHostOpenContext } from '../WorkspacePaneHostOpenContext';
 
 const authority = {
@@ -77,6 +83,86 @@ function SessionHarness() {
   );
 }
 
+function ExistingPaneHarness() {
+  const { openBasis, focusBasis, fallback } = useBasisPaneLauncher();
+  const [focused, setFocused] = useState<boolean | null>(null);
+  const instance = createDirectAnswerBasisPaneInstance(
+    'project',
+    'session',
+    'turn',
+  )!;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(event) =>
+          openBasis(
+            instance,
+            { kind: 'direct-answer', sessionId: 'session', turnId: 'turn' },
+            event.currentTarget,
+          )
+        }
+      >
+        Open existing
+      </button>
+      <button type="button" onClick={() => setFocused(focusBasis(instance))}>
+        Focus existing
+      </button>
+      {focused !== null ? <output>{String(focused)}</output> : null}
+      {fallback}
+    </>
+  );
+}
+
+const nestedBasisInstance = createDirectAnswerBasisPaneInstance(
+  'project',
+  'session',
+  'turn',
+)!;
+const nestedSourceInstance = parseWorkspacePaneInstance({
+  version: '1.0',
+  descriptorId: 'Launcher source',
+  instanceId: 'launcher-source',
+  stateKey: 'launcher-source',
+})!;
+const nestedHostDocument: WorkspacePaneHostDocumentV1 = {
+  version: '1.1',
+  id: 'basis-launcher-nested',
+  scope: { kind: 'project', projectId: 'project', layoutId: 'layout' },
+  instances: [nestedSourceInstance, nestedBasisInstance],
+  activeInstanceId: nestedSourceInstance.instanceId,
+  root: {
+    type: 'tabs',
+    id: 'root',
+    instanceIds: [
+      nestedSourceInstance.instanceId,
+      nestedBasisInstance.instanceId,
+    ],
+    selectedInstanceId: nestedSourceInstance.instanceId,
+  },
+};
+
+function NestedHostLauncher() {
+  const { openBasis, fallback } = useBasisPaneLauncher();
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(event) =>
+          openBasis(
+            nestedBasisInstance,
+            { kind: 'direct-answer', sessionId: 'session', turnId: 'turn' },
+            event.currentTarget,
+          )
+        }
+      >
+        Open duplicate Basis
+      </button>
+      {fallback}
+    </>
+  );
+}
+
 describe('Basis Pane launcher', () => {
   test('uses the Workspace Pane host when available', () => {
     const open = vi.fn(() => true);
@@ -88,6 +174,63 @@ describe('Basis Pane launcher', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
     expect(open).toHaveBeenCalledOnce();
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('focuses an existing host pane before attempting a new open', () => {
+    const open = vi.fn(() => false);
+    const focusExisting = vi.fn(() => true);
+    render(
+      <WorkspacePaneHostOpenContext.Provider value={{ open, focusExisting }}>
+        <ExistingPaneHarness />
+      </WorkspacePaneHostOpenContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open existing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Focus existing' }));
+
+    expect(open).not.toHaveBeenCalled();
+    expect(focusExisting).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('true')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('a nested real host selects an existing deterministic Basis pane without fallback', async () => {
+    const onDocumentChange = vi.fn();
+    render(
+      <WorkspacePaneHost
+        document={nestedHostDocument}
+        lockManager={{
+          request: async (_name, _options, callback) => callback({}),
+        }}
+        onDocumentChange={onDocumentChange}
+        renderPane={(instance: WorkspacePaneInstance) =>
+          instance.instanceId === nestedSourceInstance.instanceId ? (
+            <NestedHostLauncher />
+          ) : (
+            <p>Existing Basis pane</p>
+          )
+        }
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Open duplicate Basis' }),
+      ).toBeTruthy(),
+    );
+    onDocumentChange.mockClear();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open duplicate Basis' }),
+    );
+
+    await waitFor(() =>
+      expect(onDocumentChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          activeInstanceId: nestedBasisInstance.instanceId,
+        }),
+      ),
+    );
+    expect(screen.getByText('Existing Basis pane')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Basis' })).toBeNull();
   });
 
   test('uses the same renderer in a dismissible responsive fallback', async () => {

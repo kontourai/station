@@ -55,7 +55,12 @@ export function ChatDockWorkspaceControls(props: Controls) {
   );
   const toggleInventory = (trigger: HTMLElement) => {
     if (!inventory || !authority) return;
-    if (occurrence) return closeSessionInventoryOccurrence(hostId);
+    if (occurrence)
+      return (
+        (
+          trigger as HTMLElement & { focusFullBasis?: () => boolean }
+        ).focusFullBasis?.() || closeSessionInventoryOccurrence(hostId)
+      );
     openSessionInventoryOccurrence({
       hostId,
       authorityKey: authority.authorityKey,
