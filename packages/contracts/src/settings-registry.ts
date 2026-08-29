@@ -350,9 +350,8 @@ export const APP_SETTINGS_REGISTRY = [
     key: 'defaultLLMProvider',
     scope: 'station',
     descriptor: { kind: 'string' },
-    label: 'Default LLM provider',
-    description:
-      'Default connected provider used to resolve LLM model options.',
+    label: 'Default model connection',
+    description: 'Default model connection used to resolve LLM model options.',
   }),
   defineSetting({
     key: 'defaultEmbeddingProvider',

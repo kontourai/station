@@ -263,7 +263,7 @@ export function ConversationContextResetDialog({
         </label>
         {policy === 'empty-next-cold-start' && (
           <p>
-            Omitted: provider-native history, tool state, and session approvals.
+            Omitted: engine-native history, tool state, and session approvals.
             Preserved: Agent and safety policy, tools/skills, and your next
             message.
           </p>

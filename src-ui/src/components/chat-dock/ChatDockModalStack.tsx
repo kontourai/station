@@ -7,7 +7,7 @@ import { LazyBoundary } from '../LazyBoundary';
 import type { NewChatModalMode } from '../modals/NewChatModal';
 
 export const FORK_REPLAY_ONLY_DISCLOSURE =
-  'Station replays the selected transcript only. Provider cursor, tool state, and approval state do not carry.';
+  'Station replays the selected transcript only. Engine cursor, tool state, and approval state do not carry.';
 
 // Both pickers are already mount-gated on a boolean that only a click flips,
 // so their bodies (agent grouping, context search, session lists) load with
