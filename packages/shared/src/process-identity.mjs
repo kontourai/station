@@ -5,6 +5,15 @@ import { readFileSync } from 'node:fs';
 // same probe when they are launched by node rather than tsx.
 export const PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS = 1_500;
 export const WINDOWS_PROCESS_BIRTH_ATTEMPTS = 3;
+export const WINDOWS_PROCESS_BIRTH_RETRY_DELAY_MS = 100;
+export const WINDOWS_PROCESS_BIRTH_DEADLINE_MS =
+  WINDOWS_PROCESS_BIRTH_ATTEMPTS * PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS +
+  (WINDOWS_PROCESS_BIRTH_ATTEMPTS - 1) * WINDOWS_PROCESS_BIRTH_RETRY_DELAY_MS;
+
+const retryWaitArray = new Int32Array(new SharedArrayBuffer(4));
+function waitSynchronously(delayMs) {
+  Atomics.wait(retryWaitArray, 0, 0, delayMs);
+}
 
 // The Windows Job guard accepts this exact representation in its BOUND record.
 // Keep the process-identity authority equally strict: accepting a locale-shaped
@@ -326,6 +335,13 @@ function probeExactProcessIdentityWithAttempts(pid, dependencies, attempts) {
   if (liveness === 'dead') return { state: 'dead' };
   if (liveness !== 'alive') return { state: 'unavailable' };
   const lookup = dependencies.lookup ?? lookupProcessBirthFingerprint;
+  const now = dependencies.now ?? Date.now;
+  const wait = dependencies.wait ?? waitSynchronously;
+  const retryDelayMs =
+    dependencies.retryDelayMs ?? WINDOWS_PROCESS_BIRTH_RETRY_DELAY_MS;
+  const deadlineMs =
+    dependencies.deadlineMs ?? WINDOWS_PROCESS_BIRTH_DEADLINE_MS;
+  const startedAt = now();
   let birth = null;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     birth = lookup(pid);
@@ -333,7 +349,11 @@ function probeExactProcessIdentityWithAttempts(pid, dependencies, attempts) {
     // Retry only while the same PID is still live. A retry never turns a
     // missing or unobservable birth into PID-only ownership: exhausted or
     // ambiguous probes remain unavailable below.
-    if (attempt + 1 < attempts && alive(pid) !== 'alive') break;
+    if (attempt + 1 >= attempts) break;
+    const remainingMs = deadlineMs - (now() - startedAt);
+    if (remainingMs <= 0) break;
+    wait(Math.min(retryDelayMs, remainingMs));
+    if (now() - startedAt >= deadlineMs || alive(pid) !== 'alive') break;
   }
   if (!birth) return { state: 'unavailable' };
   return { state: 'exact', identity: { pid, start: birth } };

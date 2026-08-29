@@ -173,11 +173,13 @@ describe('birthProvesReuse (station#2904)', () => {
       .mockReturnValueOnce(null)
       .mockReturnValueOnce('2026-08-29T16:16:27.1234567Z');
     const alive = vi.fn(() => 'alive' as const);
+    const wait = vi.fn();
     expect(
       resolveOwnProcessIdentity(42, {
         platform: 'win32',
         lookup,
         alive,
+        wait,
       }),
     ).toEqual({
       state: 'exact',
@@ -185,16 +187,21 @@ describe('birthProvesReuse (station#2904)', () => {
     });
     expect(lookup).toHaveBeenCalledTimes(2);
     expect(alive).toHaveBeenCalledTimes(2);
+    expect(wait).toHaveBeenCalledOnce();
+    expect(wait).toHaveBeenCalledWith(100);
 
     const unavailable = vi.fn(() => null);
+    wait.mockClear();
     expect(
       resolveOwnProcessIdentity(42, {
         platform: 'win32',
         lookup: unavailable,
         alive: () => 'alive',
+        wait,
       }),
     ).toEqual({ state: 'unavailable' });
     expect(unavailable).toHaveBeenCalledTimes(3);
+    expect(wait).toHaveBeenCalledTimes(2);
   });
 
   test('does not retry a Windows birth probe after the PID stops being live', () => {
@@ -203,21 +210,50 @@ describe('birthProvesReuse (station#2904)', () => {
       .fn<() => 'alive' | 'dead'>()
       .mockReturnValueOnce('alive')
       .mockReturnValueOnce('dead');
+    const wait = vi.fn();
     expect(
-      resolveOwnProcessIdentity(42, { platform: 'win32', lookup, alive }),
+      resolveOwnProcessIdentity(42, {
+        platform: 'win32',
+        lookup,
+        alive,
+        wait,
+      }),
     ).toEqual({ state: 'unavailable' });
     expect(lookup).toHaveBeenCalledTimes(1);
+    expect(wait).toHaveBeenCalledOnce();
+  });
+
+  test('bounds own-process retry spacing by one total deadline', () => {
+    const lookup = vi.fn(() => null);
+    const wait = vi.fn();
+    const times = [0, 4_700];
+    const now = vi.fn(() => times.shift() ?? 4_700);
+
+    expect(
+      resolveOwnProcessIdentity(42, {
+        platform: 'win32',
+        lookup,
+        alive: () => 'alive',
+        now,
+        wait,
+      }),
+    ).toEqual({ state: 'unavailable' });
+    expect(lookup).toHaveBeenCalledOnce();
+    expect(wait).not.toHaveBeenCalled();
   });
 
   test('keeps claimant and reclaim identity probes single-attempt on Windows', () => {
     const lookup = vi.fn(() => null);
+    const wait = vi.fn();
     expect(
       probeExactProcessIdentity(42, {
         platform: 'win32',
         lookup,
         alive: () => 'alive',
+        wait,
       }),
     ).toEqual({ state: 'unavailable' });
     expect(lookup).toHaveBeenCalledTimes(1);
+    expect(wait).not.toHaveBeenCalled();
   });
 });
