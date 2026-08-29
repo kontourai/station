@@ -292,6 +292,7 @@ export function AgentConnectionView({
   return (
     <SplitPaneLayout
       paneId={CONNECTIONS_ENGINES_PANE_ID}
+      listClassName="entrance-stagger"
       label={
         selectedRuntimeId
           ? 'Connections / Engines / Detail'

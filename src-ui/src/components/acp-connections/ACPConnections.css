@@ -13,8 +13,8 @@
   background: var(--bg-secondary);
   cursor: pointer;
   transition:
-    border-color 0.2s ease,
-    opacity 0.2s ease;
+    border-color var(--motion-base) var(--ease-standard),
+    opacity var(--motion-base) var(--ease-standard);
 }
 
 .acp-connection-card:hover {
@@ -136,7 +136,8 @@
 }
 
 .acp-connection-card__status-dot--pulse {
-  animation: acp-connection-card-pulse 1.5s ease-in-out infinite;
+  animation: acp-connection-card-pulse var(--motion-status-pulse)
+    var(--ease-standard) infinite;
 }
 
 @keyframes acp-connection-card-pulse {

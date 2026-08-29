@@ -39,7 +39,7 @@
 @keyframes route-enter {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -58,3 +58,16 @@
     transform: none;
   }
 }
+
+/* station#753 item 4 (skeleton -> content fade) was tried here as a second,
+   nested `.route-outlet-content` wrapper, opacity-only at `--motion-fast`,
+   on the theory that it would resolve BEFORE `.route-transition`'s own
+   opacity+transform glide finished settling. Review proved the opposite:
+   nested opacity animations COMPOSE MULTIPLICATIVELY (the rendered opacity
+   is the PRODUCT of both curves), so the content was measurably LATER, not
+   earlier — 0.031 vs 0.359 at 25ms into the entrance. Separately, the
+   Suspense boundary this fade was meant to react to sits OUTSIDE
+   `.route-transition` (see AppViewContent.tsx), so a skeleton->content
+   reveal and a route/surface entrance remount TOGETHER for every route this
+   seam covers — `route-enter` above already IS the item-4 fade; there was
+   no case where the extra wrapper did anything but compound. Removed. */

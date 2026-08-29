@@ -482,6 +482,7 @@ export function ProviderSettingsView({
   return (
     <SplitPaneLayout
       paneId={CONNECTIONS_MODELS_PANE_ID}
+      listClassName="entrance-stagger"
       label={
         selectedProviderId && !isCreatingSelection
           ? 'Connections / Models / Edit'

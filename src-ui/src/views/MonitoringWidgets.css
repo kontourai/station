@@ -30,7 +30,8 @@
   height: 8px;
   border-radius: 50%;
   background: var(--health-success);
-  animation: statusPulse 2s ease-in-out infinite;
+  animation: statusPulse var(--motion-status-breathe) var(--ease-standard)
+    infinite;
 }
 
 .status-dot-connecting {
@@ -411,7 +412,8 @@
 
 .agent-card.status-running {
   border-left-color: var(--success-text);
-  animation: pulseBackground 2s ease-in-out infinite;
+  animation: pulseBackground var(--motion-status-breathe) var(--ease-standard)
+    infinite;
 }
 
 .agent-card.historical {
@@ -449,7 +451,7 @@
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
-  animation: pulse 3s ease-in-out infinite;
+  animation: pulse var(--motion-status-breathe) var(--ease-standard) infinite;
 }
 
 @keyframes pulse {
@@ -493,7 +495,7 @@
 .agent-status.running {
   background: var(--bg-tertiary);
   color: var(--success-text);
-  animation: pulse 2s ease-in-out infinite;
+  animation: pulse var(--motion-status-breathe) var(--ease-standard) infinite;
 }
 .agent-status.historical-status {
   background: var(--text-tertiary);
@@ -521,7 +523,7 @@
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--border-primary);
-  animation: slideDown 0.3s ease-out;
+  animation: slideDown var(--motion-slow) var(--ease-out);
 }
 
 @keyframes slideDown {
@@ -850,7 +852,8 @@
 }
 
 .live-mode-toggle.active .live-dot {
-  animation: livePulse 2s ease-in-out infinite;
+  animation: livePulse var(--motion-status-breathe) var(--ease-standard)
+    infinite;
 }
 
 @keyframes livePulse {
@@ -996,20 +999,36 @@
   margin-left: 0.25rem;
 }
 
+/* station#753 item 6: was `5s`, with keyframe stops at 0%/5%/100% — the
+   entrance actually completed at the 5% mark (250ms into the original 5s),
+   and the remaining 95% held the SAME from/opacity values with no
+   fill-mode, so there was nothing left for it to hold: the element had
+   already reverted to its own unanimated state (opacity 1, no transform —
+   identical to the keyframe's `to`) well before the hold segment even
+   started. That was dead time the literal duration existed only to produce;
+   deleting it and keying the entrance directly to `--motion-base` is the
+   "delete dead rules" half of the migration, not a behavior change to the
+   visible slide-in.
+
+   The `new-event` class itself is NOT list-position-derived — MonitoringView
+   .tsx:189-200 computes it from a set-diff on event identity and clears it
+   with `setTimeout(() => setNewEventIds(new Set()), 5000)`. That timer is
+   unrelated to this animation's duration and was never coupled to it (the
+   animation was already finished, dead-holding, at the 250ms mark even under
+   the original 5s literal). One consequence worth flagging as a follow-up,
+   not fixed here: `.log-entry.new-event` now stays on the row for the full
+   5000ms with no visual effect after the first ~200ms, where it previously
+   at least matched the class's own literal duration by coincidence. */
 .log-entry.new-event {
-  animation: slideInFade 5s ease-out;
+  animation: slideInFade var(--motion-base) var(--ease-out);
 }
 
 @keyframes slideInFade {
-  0% {
+  from {
     transform: translateX(-10px);
     opacity: 0;
   }
-  5% {
-    transform: translateX(0);
-    opacity: 1;
-  }
-  100% {
+  to {
     transform: translateX(0);
     opacity: 1;
   }
@@ -1177,7 +1196,7 @@
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
-  transition: opacity 0.2s;
+  transition: opacity var(--motion-base);
 }
 
 .export-btn:hover {
