@@ -2,8 +2,10 @@ import type { FlowConsoleGateProjection } from '@kontourai/flow';
 import type {
   AttentionItem,
   AttentionProjection,
+  DevicePairingAttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-contracts/attention';
+import type { DevicePairingRequest } from '@kontourai/station-contracts/environment-security';
 import type { Notification } from '@kontourai/station-contracts/notification';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
@@ -16,6 +18,7 @@ import {
   isSessionLifecycleStateStopped,
 } from '@kontourai/station-contracts/session-lifecycle';
 import {
+  isHostedSessionReadAuthority,
   type SessionReadAuthority,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
@@ -35,6 +38,7 @@ import type { NotificationService } from '../notifications/notification-service.
 import type { ConversationAcknowledgementStore } from '../orchestration/conversation-acknowledgement-store.js';
 import { collectOpenRequests } from '../orchestration/open-requests.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
+import { DEVICE_PAIRING_NOTIFICATION_SOURCE } from '../ssh/device-pairing-notifications.js';
 
 const ACTIVE_NOTIFICATION_STATUSES = ['delivered', 'pending'];
 
@@ -119,6 +123,17 @@ export class AttentionProjectionService {
      * have a real per-user identity may inject one.
      */
     private readonly getUserId: () => string = () => 'default',
+    /**
+     * #765 D5: pending inbound device-pairing requests, resolved per read
+     * for the same reason `DevicePairingNotificationProvider` resolves its
+     * source per poll — the pairing service is created when the environment
+     * initialises, and its accessor throws before then. Optional so every
+     * existing caller/test keeps compiling with pairing attention simply
+     * unavailable.
+     */
+    private readonly resolvePairingRequests?: () => {
+      listRequests(): DevicePairingRequest[];
+    } | null,
   ) {}
 
   /**
@@ -147,14 +162,14 @@ export class AttentionProjectionService {
       sessions.map((session) => [session.threadId, session]),
     );
 
-    const approvalNotifications = (
+    const activeNotifications = (
       await this.notificationService.list({
         status: ACTIVE_NOTIFICATION_STATUSES,
       })
-    )
-      .filter((notification) =>
-        ACTIVE_NOTIFICATION_STATUSES.includes(notification.status),
-      )
+    ).filter((notification) =>
+      ACTIVE_NOTIFICATION_STATUSES.includes(notification.status),
+    );
+    const approvalNotifications = activeNotifications
       .filter(isApprovalNotification)
       // A notification with a session reference is session-derived content,
       // not a tenant-neutral inbox item. In hosted mode a missing row after
@@ -222,11 +237,22 @@ export class AttentionProjectionService {
       )
     ).filter((item): item is AttentionItem => item !== null);
 
+    const pairingItems = this.projectDevicePairingItems(
+      readAuthority,
+      activeNotifications,
+    );
+
+    const undecorated = [
+      ...approvals,
+      ...lifecycle,
+      ...gateItems,
+      ...pairingItems,
+    ];
     const decorated = this.acknowledgementStore
-      ? [...approvals, ...lifecycle, ...gateItems].map((item) =>
+      ? undecorated.map((item) =>
           this.decorateAcknowledgement(item, readAuthority.userId),
         )
-      : [...approvals, ...lifecycle, ...gateItems];
+      : undecorated;
     const items = decorated.sort(compareAttentionItems);
     // Acked items stay IN `items` (history, never deleted) but drop out of
     // the actionable count — the whole point of archive#1914's
@@ -679,6 +705,70 @@ export class AttentionProjectionService {
       },
       actions: notification.actions ?? [],
     };
+  }
+
+  /**
+   * #765 D5: a pending inbound pairing request "needs you" until it is
+   * approved, denied, or expired — before this it surfaced only as a passive
+   * activity notification with a Dismiss button while "Needs attention" read
+   * "Nothing needs you right now".
+   *
+   * Derived from the pairing service's own request list, never the mirror
+   * notification, so a resolution (CLI approve/deny included) is visible on
+   * the very next read instead of waiting out the notification provider's
+   * status-sync poll. The active notification, when present, is joined in as
+   * `source.notificationId` so inbox surfaces can suppress the duplicate
+   * activity row — the same dedupe `approval` items get via their
+   * notification-backed source.
+   *
+   * Hosted mode projects nothing: device pairing is host-local surface, and
+   * a tenant-scoped read has no standing to see (or decide) who may pair
+   * with the host — the same posture the session-less-notification filter in
+   * `list()` takes for hosted reads.
+   */
+  private projectDevicePairingItems(
+    authority: SessionReadAuthority,
+    activeNotifications: Notification[],
+  ): DevicePairingAttentionItem[] {
+    if (isHostedSessionReadAuthority(authority)) return [];
+    const pairing = this.resolvePairingRequests?.();
+    if (!pairing) return [];
+    const now = Date.now();
+    return (
+      pairing
+        .listRequests()
+        // A `confirmed` request is already decided (waiting on the device's
+        // exchange), and an expired one cannot be approved — neither needs
+        // the user. Same filters `DevicePairingNotificationProvider.poll`
+        // applies before announcing a request.
+        .filter((request) => request.status === 'pending')
+        .filter((request) => request.expiresAt > now)
+        .map((request) => {
+          const timestamp = new Date(request.createdAt).toISOString();
+          const notificationId = activeNotifications.find(
+            (notification) =>
+              notification.source === DEVICE_PAIRING_NOTIFICATION_SOURCE &&
+              notification.metadata?.requestId === request.requestId,
+          )?.id;
+          return {
+            id: `device-pairing:${request.requestId}`,
+            kind: 'device-pairing' as const,
+            title: 'A device is asking to pair',
+            body: `${request.deviceName} is waiting for approval on this Station.`,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            deviceName: request.deviceName,
+            // The Connections hub is where pairing/device management lives;
+            // the decision itself happens through this item's own
+            // Approve/Deny, which call the gated `/api/pairing` routes.
+            openHref: '/connections',
+            source: {
+              requestId: request.requestId,
+              ...(notificationId ? { notificationId } : {}),
+            },
+          };
+        })
+    );
   }
 
   /**

@@ -24,11 +24,22 @@ interface PairingRequestSource {
  * "credential required" while the approving surface gave no signal at all.
  *
  * These notifications are **pointers, not authorisations**. They carry no
- * approve action, and deliberately so — approving a device has to happen from
- * a session the Station already trusts, and putting an approve button on a
- * notification would make the notification itself the authority. Everything a
+ * notification ACTION (`Notification.actions` stays empty), and deliberately
+ * so — `POST /notifications/:id/action/:actionId` sits at the ordinary
+ * `orchestration:operate` tier, so an action here would let any
+ * standard-scoped paired device trigger a pairing approval the pairing
+ * family's own authorization (`/api/pairing/**`: operator credential or an
+ * `access:approve`-promoted device) would refuse it directly. Everything a
  * recipient needs to find the request is in the metadata; the decision stays
  * where the trust check is.
+ *
+ * #765 D5: the actionable surface is the ATTENTION projection instead —
+ * `AttentionProjectionService.projectDevicePairingItems` projects the same
+ * pending requests as needs-attention items whose Approve/Deny call the
+ * existing gated `/api/pairing/requests/:requestId` routes (the same service
+ * calls `station environment access approve|deny` makes), so the HTTP
+ * boundary keeps deciding who may approve. This notification remains the
+ * passive activity/history record.
  */
 export class DevicePairingNotificationProvider
   implements INotificationProvider
