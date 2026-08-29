@@ -764,13 +764,24 @@ jobs:
       # exception; the script's header states why re-deriving on retry is
       # safe). Two steps means two commits; both subjects are docs(ledger):
       # and excluded from every changelog slice.
+      # Ledger commits push directly to main, which the require-green ruleset
+      # blocks for GITHUB_TOKEN; the release app is a ruleset bypass actor.
+      - name: Mint the ledger push token
+        id: ledger_token
+        if: ${{ always() && steps.decide.outputs.build == 'true' && (steps.play_upload.outcome == 'success' || steps.cli_npm_publish.outcome == 'success') }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
       - name: Record the nightly Android ship in the deploy ledger
         # always() so no later-step failure suppresses the record of a
         # publish that happened; the outcome gate keeps a failed or skipped
         # publish from recording.
         if: ${{ always() && steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != '' && steps.play_upload.outcome == 'success' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
           DEPLOY_LEDGER_SHA: ${{ steps.decide.outputs.head_sha }}
           DEPLOY_LEDGER_VERSION: ${{ steps.identity.outputs.version }}
           DEPLOY_LEDGER_VERSION_CODE: ${{ steps.identity.outputs.version_code }}
@@ -778,6 +789,7 @@ jobs:
           DEPLOY_LEDGER_ARTIFACT_OUTCOME: ${{ steps.nightly_artifact.outcome }}
         run: |
           set -euo pipefail
+          [ -n "$GITHUB_TOKEN" ] || { echo "::error::ledger token mint failed; the record cannot push"; exit 1; }
           record=(node scripts/deploy-ledger.mjs
             --channel nightly-android
             --version "$DEPLOY_LEDGER_VERSION"
@@ -801,11 +813,12 @@ jobs:
         # always() + outcome gate, as on the Android record above.
         if: ${{ always() && steps.decide.outputs.build == 'true' && steps.cli_npm_publish.outcome == 'success' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
           DEPLOY_LEDGER_SHA: ${{ steps.decide.outputs.head_sha }}
           DEPLOY_LEDGER_VERSION: ${{ steps.cli_identity.outputs.version }}
         run: |
           set -euo pipefail
+          [ -n "$GITHUB_TOKEN" ] || { echo "::error::ledger token mint failed; the record cannot push"; exit 1; }
           node scripts/lib/deploy-ledger-commit.mjs \
             --commit-subject "docs(ledger): record nightly-npm $DEPLOY_LEDGER_VERSION from run $GITHUB_RUN_ID" \
             --summary-line "- recorded: \`nightly-npm $DEPLOY_LEDGER_VERSION\` at \`$DEPLOY_LEDGER_SHA\`" \
@@ -1104,15 +1117,25 @@ jobs:
       # Publish-first-then-ledger (station#4572): runs only after the publish
       # step above succeeded; its own failure reddens the job without
       # un-shipping anything.
+      - name: Mint the ledger push token
+        id: ledger_token
+        if: ${{ always() && steps.decide.outputs.build == 'true' && steps.desktop_publish.outcome == 'success' }}
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
       - name: Record the nightly desktop ship in the deploy ledger
         # always() + outcome gate, as on the Android job's ledger records.
         if: ${{ always() && steps.decide.outputs.build == 'true' && steps.desktop_publish.outcome == 'success' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
           DEPLOY_LEDGER_SHA: ${{ steps.decide.outputs.head_sha }}
           DEPLOY_LEDGER_VERSION: ${{ steps.identity.outputs.version }}
         run: |
           set -euo pipefail
+          [ -n "$GITHUB_TOKEN" ] || { echo "::error::ledger token mint failed; the record cannot push"; exit 1; }
           node scripts/lib/deploy-ledger-commit.mjs \
             --commit-subject "docs(ledger): record nightly-desktop $DEPLOY_LEDGER_VERSION from run $GITHUB_RUN_ID" \
             --summary-line "- recorded: \`nightly-desktop $DEPLOY_LEDGER_VERSION\` at \`$DEPLOY_LEDGER_SHA\`" \

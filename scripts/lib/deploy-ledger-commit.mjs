@@ -51,13 +51,18 @@
  *
  * - The push is `--no-verify`: `npm run dependencies:ci` arms `.githooks`,
  *   and no repo gate may run inside a generated-docs push.
- * - GITHUB_TOKEN-pushed commits trigger no further workflow runs (GitHub
- *   suppresses them by design), so this push can never loop.
- * - OWNER DECISION POINT: branch protection on main may reject
- *   GITHUB_TOKEN pushes; then this fails loudly after the publish (never
- *   blocking it) and the entry survives in the artifact and job summary.
- *   The remedy is a deliberate credential-policy choice, not something this
- *   script may decide silently.
+ * - The push credential is a GitHub App token (the require-green ruleset's
+ *   bypass actor), whose pushes DO dispatch workflows. Loop safety is
+ *   structural, not credential-based: no push-triggered workflow can reach
+ *   a ledger record (publish-packages gates on PUBLISH_RUN, dispatch-only;
+ *   nightly and publish-release have no push trigger). The push-triggered
+ *   CI runs each ledger commit does start are an accepted cost — they
+ *   verify the commit like any other.
+ * - If the ruleset ever rejects this push (e.g. the app loses bypass),
+ *   this fails loudly after the publish (never blocking it) and the entry
+ *   survives in the artifact and job summary. The remedy is a deliberate
+ *   credential-policy choice, not something this script may decide
+ *   silently.
  *
  * Interface:
  *   node scripts/lib/deploy-ledger-commit.mjs \
