@@ -208,21 +208,28 @@ export function ProviderTypePicker({
                 choice above does) — never the OpenAI-compatible custom MODEL
                 connection, which lives under "More" and stays a model
                 connection.
+
+                Gated on `onChooseCommand` itself, not an inert `?.()`
+                fallthrough: a caller that renders this group for its agent
+                choices alone (no command handoff wired) must not offer a
+                button whose click does nothing.
               */}
-              <button
-                type="button"
-                className="provider-overview__quickstart-btn"
-                onClick={() => onChooseCommand?.('custom')}
-              >
-                <div>
-                  <div className="provider-overview__quickstart-name">
-                    Custom engine
+              {onChooseCommand && (
+                <button
+                  type="button"
+                  className="provider-overview__quickstart-btn"
+                  onClick={() => onChooseCommand('custom')}
+                >
+                  <div>
+                    <div className="provider-overview__quickstart-name">
+                      Custom engine
+                    </div>
+                    <div className="provider-overview__quickstart-meta">
+                      Connect an engine that runs from a local command
+                    </div>
                   </div>
-                  <div className="provider-overview__quickstart-meta">
-                    Connect an engine that runs from a local command
-                  </div>
-                </div>
-              </button>
+                </button>
+              )}
             </div>
           </>
         )}

@@ -12,6 +12,7 @@ import {
 } from '../../hooks/useACPConnections';
 import type { AgentSummary } from '../../types';
 import { Button } from '../Button';
+import { useSplitPaneExternalReturnFocus } from '../split-pane-return-focus-context';
 import { describeReadFailure, Empty, ErrorState, SkeletonList } from '../state';
 import { ACPAddConnectionModal } from './ACPAddConnectionModal';
 import { ACPConnectionCard } from './ACPConnectionCard';
@@ -61,6 +62,24 @@ export function ACPConnectionsSection({
   // provider already named (`/connections/engines/new/<id>`) is therefore
   // the only way this modal opens.
   const [showAddModal, setShowAddModal] = useState(Boolean(initialProviderId));
+  const splitPaneReturnFocus = useSplitPaneExternalReturnFocus();
+  // Review fix (#592 slice 2, M2): the catalogue row that used to sit in
+  // this component and own its own `returnTriggerRef` no longer exists —
+  // choosing an ACP engine is a route change into a fresh mount of this
+  // component, so nothing local survives to focus back to.
+  // `ConnectionsSectionFrame` already captures its one "Add engine" button
+  // into `SplitPaneReturnFocusProvider` before navigating here
+  // (`ConnectionsSectionFrame.tsx`'s `add` handler), and that provider is
+  // not remounted by this route change (it wraps the whole Engines section,
+  // both the catalogue's route and this one). Taken once, on mount, so a
+  // later re-render of this same instance cannot re-read an already-consumed
+  // chain. `chain[0]` — the captured trigger itself — is what
+  // `ACPAddConnectionModal` re-derives its own ancestor chain from; an empty
+  // chain (no capture happened, e.g. a direct deep link) falls through to
+  // `ResponsiveDialogSurface`'s own `document.activeElement` fallback.
+  const [returnFocusChain] = useState<HTMLElement[]>(
+    () => splitPaneReturnFocus?.takeExternalReturnFocus() ?? [],
+  );
   const [selectedConnId, setSelectedConnId] = useState<string | null>(null);
   // Derived (not a snapshot) so the detail modal reflects the connection's
   // latest `provideToolServers` selection immediately after a mutation.
@@ -118,6 +137,7 @@ export function ACPConnectionsSection({
           onInstallRegistryEntry={installRegistryEntry}
           onRefreshConnections={refetchConnections}
           onCancel={() => setShowAddModal(false)}
+          returnFocusTarget={returnFocusChain[0] ?? null}
           initialProviderId={initialProviderId}
         />
       )}
@@ -163,7 +183,9 @@ export function ACPConnectionsSection({
       {!connectionQueryPending &&
         !connectionQueryIsError &&
         connections.length === 0 && (
-          /* empty-state action: Add provider is adjacent */
+          /* empty-state action: the frame's one "Add engine" action is
+             adjacent (this section owns no add action of its own — #592
+             slice 2) */
           <Empty
             variant="compact"
             label="Add an engine to get started"

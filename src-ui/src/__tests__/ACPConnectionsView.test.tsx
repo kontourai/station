@@ -68,7 +68,7 @@ describe('ACPConnectionsView', () => {
   it('publishes an unlinked Connections eyebrow (parent-context text only) into the page frame', () => {
     render(
       <PageFrame
-        routeIdentity="connections-acp"
+        routeIdentity="connections-acp-new"
         spec={{
           title: 'Provider setup',
           subtitle: 'Connect providers that run as local apps or commands.',

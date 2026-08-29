@@ -198,9 +198,20 @@ export function AgentConnectionView({
     const addedIds = new Set(
       externalAgentApps.filter(isAddedEngine).map(({ id }) => id),
     );
-    return catalog
-      .filter((connection) => connectionEngineId(connection) !== 'station')
-      .filter((connection) => !addedIds.has(connection.id));
+    return (
+      catalog
+        .filter((connection) => connectionEngineId(connection) !== 'station')
+        // Review fix (#592 slice 2, M1): the catalog endpoint is not
+        // registration-authoritative — it can carry entries this Station
+        // already considers 'ready'/'configured' (an adapter the runtime
+        // inventory hasn't registered yet). Only a genuinely `available` row
+        // belongs in the Add catalogue; `isAddedEngine` is the one place that
+        // question is answered, so the negation of it — not "not yet in
+        // addedIds" — is the filter, mirroring
+        // ProviderSettingsView.tsx's `agentChoices` derivation.
+        .filter((connection) => !isAddedEngine(connection))
+        .filter((connection) => !addedIds.has(connection.id))
+    );
   }, [catalog, externalAgentApps]);
   const addedAgentApps = useMemo(
     () => externalAgentApps.filter(isAddedEngine),
@@ -854,6 +865,11 @@ function EngineAddCatalog({
                 className="editor-btn"
                 disabled={pendingId === connection.id}
                 onClick={() => onAdd(connection)}
+                aria-label={
+                  pendingId === connection.id
+                    ? `Adding ${connection.name}`
+                    : `Add ${connection.name}`
+                }
               >
                 {pendingId === connection.id ? 'Adding…' : 'Add'}
               </button>
@@ -891,6 +907,7 @@ function EngineAddCatalog({
                 type="button"
                 className="editor-btn"
                 onClick={() => onChooseCommand(entry)}
+                aria-label={`${presentation.actionLabel} ${entry.name}`}
               >
                 {presentation.actionLabel}
               </button>
@@ -907,6 +924,7 @@ function EngineAddCatalog({
           <button
             type="button"
             className="editor-btn"
+            aria-label="Set up custom engine"
             onClick={() => onChooseCommand('custom')}
           >
             Set up

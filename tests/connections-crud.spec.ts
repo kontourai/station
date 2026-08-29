@@ -1035,7 +1035,7 @@ test.describe('Connections CRUD', () => {
     await expect(kiroRow).toContainText(
       'Found on this computer — not yet connected to this Station.',
     );
-    const kiro = kiroRow.getByRole('button', { name: 'Connect' });
+    const kiro = kiroRow.getByRole('button', { name: 'Connect Kiro CLI' });
 
     // Enter proves the catalog choice is a keyboard-reachable action.
     await kiro.focus();
@@ -1165,11 +1165,13 @@ test.describe('Connections CRUD', () => {
       const kiroRow = page
         .locator('.plugins__registry-item')
         .filter({ hasText: 'Kiro CLI' });
-      const kiro = kiroRow.getByRole('button', { name: 'Connect' });
+      const kiro = kiroRow.getByRole('button', { name: 'Connect Kiro CLI' });
       const customRow = page
         .locator('.plugins__registry-item')
         .filter({ hasText: 'Custom engine' });
-      const custom = customRow.getByRole('button', { name: 'Set up' });
+      const custom = customRow.getByRole('button', {
+        name: 'Set up custom engine',
+      });
       for (const control of [kiro, custom]) {
         expect(
           (await control.boundingBox())?.height ?? 0,
@@ -1180,6 +1182,17 @@ test.describe('Connections CRUD', () => {
         .locator('.pane-host.connections-section-frame')
         .evaluate((element) => element.scrollWidth > element.clientWidth);
       expect(overflowsX).toBe(false);
+
+      // `.editor-btn` animates `color`/`background-color`
+      // (accessibility-core.spec.ts documents the hazard this causes: a
+      // measurement taken right after the `data-theme` flip can read the
+      // PREVIOUS theme's rendered color, and `expect.poll` returns on its
+      // first *passing* read, so a broken light-theme ratio can hide behind
+      // a still-settling dark-theme one). Killing transitions makes each
+      // iteration measure the theme it names.
+      await page.addStyleTag({
+        content: '*, *::before, *::after { transition: none !important; }',
+      });
 
       for (const theme of ['light', 'dark'] as const) {
         await page.evaluate((value) => {

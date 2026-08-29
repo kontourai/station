@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const save = vi.fn();
@@ -328,6 +328,41 @@ describe('AgentConnectionView', () => {
     expect(
       screen.getByText('Every supported engine is already listed'),
     ).toBeTruthy();
+    // #592 slice 2, review M4b: the manual escape hatch is not part of the
+    // "supported engine" claim above — it must still be there, and usable,
+    // when both catalog populations are exhausted.
+    expect(screen.getByText('Custom engine')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Set up custom engine' }),
+    ).toBeTruthy();
+  });
+
+  // #592 slice 2, review M4a: `hasCatalogEntries` reads
+  // `connections.length > 0 || commandEntries.length > 0` — a rewrite that
+  // silently dropped the `commandEntries` term (checking only the native
+  // population) would still pass every OTHER test in this file, since none
+  // of them exercises "native empty, ACP non-empty" on its own. This is the
+  // one that would catch it.
+  test('the empty-state claim requires both populations exhausted, not just the native one', () => {
+    agentCatalog = [];
+    acpRegistryEntries = [
+      {
+        id: 'kiro',
+        name: 'Kiro CLI',
+        command: 'kiro',
+        installed: false,
+        detected: true,
+      },
+    ];
+
+    render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
+    );
+
+    expect(
+      screen.queryByText('Every supported engine is already listed'),
+    ).toBeNull();
+    expect(screen.getByText('Kiro CLI')).toBeTruthy();
   });
 
   test('titles the engines route Engines, not Providers', () => {
@@ -381,11 +416,49 @@ describe('AgentConnectionView', () => {
     expect(screen.getByText('Found, not connected')).toBeTruthy();
     expect(screen.queryByText('Station engine')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: /^Add$/ }));
+    // #592 slice 2 review M3: bare "Add" is ambiguous with more than one row
+    // in the catalogue — the accessible name carries the engine's own name.
+    fireEvent.click(screen.getByRole('button', { name: 'Add Claude Code' }));
     expect(save).toHaveBeenCalledWith({
       connection: expect.objectContaining({ id: 'claude' }),
       isNew: false,
     });
+  });
+
+  // #592 slice 2, review M1: the catalog endpoint is not
+  // registration-authoritative (`AgentConnectionView.tsx`'s own
+  // `isAddedEngine` doc comment) — it can carry a row this Station already
+  // treats as usable that the runtime inventory has no record of adding yet.
+  // Before this fix, `availableAgentApps` only excluded rows already in
+  // `addedIds`; it never required the catalog row's OWN `setup.state` to be
+  // `'available'`, so a `'ready'` row rendered here beside an "Add" button.
+  test('a catalog row that already reads ready is not offered as an Add choice', () => {
+    agentCatalog = [
+      ...DEFAULT_AGENT_CATALOG,
+      {
+        id: 'already-ready',
+        kind: 'agent',
+        type: 'already-ready-runtime',
+        name: 'Already Ready',
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+        prerequisites: [],
+        config: { executionClass: 'connected' },
+        // Reads 'ready' on the catalog's own copy — never in
+        // `agentConnections`, so nothing in the runtime inventory says this
+        // is added either.
+        setup: { state: 'ready', detected: true, configured: true },
+      },
+    ];
+
+    render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
+    );
+
+    expect(screen.getByText('Claude Code')).toBeTruthy();
+    expect(screen.queryByText('Already Ready')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Already Ready/ })).toBeNull();
   });
 
   // #592 slice 2: the catalogue that used to live only inside the ACP add
@@ -439,20 +512,15 @@ describe('AgentConnectionView', () => {
     // The always-available manual escape hatch.
     expect(screen.getByText('Custom engine')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    // #592 slice 2 review M3: bare "Connect"/"Set up" are ambiguous across
+    // rows — the accessible name carries the engine's own name too.
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
     expect(onNavigate).toHaveBeenCalledWith({
       type: 'connections-acp-new',
       providerId: 'kiro',
     });
 
-    // Two 'Set up' actions exist (OpenCode and the trailing Custom engine
-    // entry); scope to OpenCode's own row.
-    const openCodeRow = screen
-      .getByText('OpenCode')
-      .closest('.plugins__registry-item') as HTMLElement;
-    fireEvent.click(
-      within(openCodeRow).getByRole('button', { name: 'Set up' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Set up OpenCode' }));
     expect(onNavigate).toHaveBeenCalledWith({
       type: 'connections-acp-new',
       providerId: 'opencode',
@@ -467,9 +535,9 @@ describe('AgentConnectionView', () => {
     );
 
     expect(screen.getByText('Custom engine')).toBeTruthy();
-    // No registry entries in this test, so 'Set up' names only the trailing
-    // custom entry's own action.
-    fireEvent.click(screen.getByRole('button', { name: 'Set up' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Set up custom engine' }),
+    );
     expect(onNavigate).toHaveBeenCalledWith({
       type: 'connections-acp-new',
       providerId: 'custom',
@@ -482,7 +550,7 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /^Add$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Claude Code' }));
 
     expect(screen.getByText('Could not add Claude Code')).toBeTruthy();
   });
