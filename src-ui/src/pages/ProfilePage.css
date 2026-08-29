@@ -15,7 +15,7 @@
   padding: 2rem;
   position: relative;
   overflow: hidden;
-  transition: border-color 0.3s ease;
+  transition: border-color var(--motion-slow) var(--ease-standard);
 }
 
 .profile-card:hover {
@@ -73,8 +73,8 @@
     0 0 0 5px color-mix(in srgb, var(--accent-primary) 25%, transparent),
     0 8px 24px rgba(0, 0, 0, 0.2);
   transition:
-    transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 0.4s ease;
+    transform var(--motion-slow) var(--ease-emphasized),
+    box-shadow var(--motion-slow) var(--ease-standard);
 }
 
 .profile-card:hover .profile-card__avatar {
@@ -144,8 +144,8 @@
   text-decoration: none;
   border-bottom: 1px dashed var(--border-primary);
   transition:
-    color 0.2s,
-    border-color 0.2s;
+    color var(--motion-base),
+    border-color var(--motion-base);
 }
 
 .profile-card__alias-btn:hover {
@@ -160,7 +160,7 @@
   color: inherit;
   font-size: inherit;
   padding: 0;
-  transition: opacity 0.15s;
+  transition: opacity var(--motion-fast);
 }
 
 .profile-card__copy-btn:hover {
@@ -310,8 +310,8 @@
   border-radius: 8px;
   letter-spacing: 0.01em;
   transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
+    transform var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard);
 }
 
 .profile-badge:hover {
@@ -342,9 +342,9 @@
   padding: 0;
   background: var(--bg-secondary);
   transition:
-    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 0.3s ease,
-    box-shadow 0.3s ease;
+    transform var(--motion-slow) var(--ease-emphasized),
+    border-color var(--motion-slow) var(--ease-standard),
+    box-shadow var(--motion-slow) var(--ease-standard);
 }
 
 .profile-stats-grid > .profile-card:hover {
@@ -360,7 +360,7 @@
   border-radius: 12px;
   padding: 2rem;
   position: relative;
-  transition: border-color 0.3s ease;
+  transition: border-color var(--motion-slow) var(--ease-standard);
 }
 
 .profile-timeline:hover {

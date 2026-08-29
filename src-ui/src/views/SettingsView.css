@@ -32,7 +32,7 @@
   border-radius: 0.375rem;
   cursor: pointer;
   white-space: nowrap;
-  transition: opacity 0.15s;
+  transition: opacity var(--motion-fast);
 }
 .settings__save-btn:disabled {
   opacity: 0.35;
@@ -52,8 +52,8 @@
   border-radius: 0.375rem;
   cursor: pointer;
   transition:
-    border-color 0.15s,
-    color 0.15s;
+    border-color var(--motion-fast),
+    color var(--motion-fast);
 }
 .settings__secondary-btn:hover {
   border-color: var(--accent-primary);
@@ -524,7 +524,7 @@
   border-radius: 50%;
   border: 2px solid transparent;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: border-color var(--motion-fast);
 }
 .settings__accent-swatch:hover {
   border-color: var(--text-secondary);
@@ -700,7 +700,7 @@
   color: inherit;
   font: inherit;
   text-align: left;
-  transition: border-color 0.15s;
+  transition: border-color var(--motion-fast);
 }
 .settings__toggle-row:hover {
   border-color: var(--accent-primary);
@@ -775,8 +775,8 @@
   cursor: pointer;
   font-size: 0.8rem;
   transition:
-    border-color 0.15s,
-    background 0.15s;
+    border-color var(--motion-fast),
+    background var(--motion-fast);
 }
 .settings__threshold--active {
   border-color: var(--accent-primary);
@@ -823,7 +823,7 @@
   border: 1px solid color-mix(in srgb, var(--error-text) 25%, transparent);
   border-radius: 0.25rem;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--motion-fast);
 }
 .settings__var-remove:hover {
   background: color-mix(in srgb, var(--error-text) 10%, transparent);
@@ -840,8 +840,8 @@
   margin-top: 0.25rem;
   align-self: flex-start;
   transition:
-    border-color 0.15s,
-    color 0.15s;
+    border-color var(--motion-fast),
+    color var(--motion-fast);
 }
 .settings__var-add:hover {
   border-color: var(--accent-primary);
@@ -953,7 +953,7 @@
   border-radius: 0.25rem;
   cursor: pointer;
   border: 1px solid;
-  transition: opacity 0.15s;
+  transition: opacity var(--motion-fast);
 }
 .settings__update-btn:disabled {
   opacity: 0.4;
@@ -1008,7 +1008,7 @@
   border: 1px solid color-mix(in srgb, var(--error-text) 30%, transparent);
   border-radius: 0.25rem;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--motion-fast);
 }
 .settings__danger-btn:hover {
   background: color-mix(in srgb, var(--error-text) 8%, transparent);
@@ -1037,7 +1037,7 @@
   border-radius: 2rem;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
   z-index: var(--layer-floating-action);
-  animation: settings-pill-in 0.2s ease-out;
+  animation: settings-pill-in var(--motion-base) var(--ease-out);
 }
 @keyframes settings-pill-in {
   from {
@@ -1065,8 +1065,8 @@
   border-radius: 1rem;
   cursor: pointer;
   transition:
-    color 0.15s,
-    border-color 0.15s;
+    color var(--motion-fast),
+    border-color var(--motion-fast);
 }
 .settings__save-pill-discard:hover {
   color: var(--text-primary);
@@ -1082,7 +1082,7 @@
   border: none;
   border-radius: 1rem;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: opacity var(--motion-fast);
 }
 .settings__save-pill-btn:disabled {
   opacity: 0.4;

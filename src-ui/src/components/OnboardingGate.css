@@ -36,7 +36,7 @@
   text-align: center;
   position: relative;
   z-index: 1;
-  animation: onboarding-fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: onboarding-fade-up var(--motion-slow) var(--ease-emphasized);
 }
 
 @keyframes onboarding-fade-up {
@@ -71,7 +71,8 @@
   border-radius: 50%;
   border: 1.5px solid transparent;
   border-top-color: var(--accent-primary);
-  animation: onboarding-spin 1.8s linear infinite;
+  animation: onboarding-spin var(--motion-status-spin) var(--ease-linear)
+    infinite;
 }
 
 @keyframes onboarding-spin {
@@ -89,7 +90,8 @@
     rgba(74, 158, 255, 0.08) 0%,
     transparent 70%
   );
-  animation: onboarding-pulse 2.5s ease-in-out infinite;
+  animation: onboarding-pulse var(--motion-status-pulse) var(--ease-standard)
+    infinite;
 }
 
 @keyframes onboarding-pulse {
@@ -123,7 +125,7 @@
 
 /* Dot animation */
 .onboarding-loading__dots span {
-  animation: onboarding-dot-blink 1.4s infinite;
+  animation: onboarding-dot-blink var(--motion-status-pulse) infinite;
   opacity: 0;
 }
 .onboarding-loading__dots span:nth-child(1) {

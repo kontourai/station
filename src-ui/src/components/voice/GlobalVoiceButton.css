@@ -21,8 +21,8 @@
   touch-action: none;
   user-select: none;
   transition:
-    background 0.15s,
-    outline 0.15s;
+    background var(--motion-fast),
+    outline var(--motion-fast);
   outline: 2px solid transparent;
 }
 
@@ -74,7 +74,7 @@ body:has([class*="__overlay"]) .gvb {
   inset: -6px;
   border-radius: 50%;
   border: 2px solid var(--gvb-active-bg);
-  animation: gvb-pulse 1s ease-out infinite;
+  animation: gvb-pulse var(--motion-status-pulse) var(--ease-out) infinite;
   pointer-events: none;
 }
 
