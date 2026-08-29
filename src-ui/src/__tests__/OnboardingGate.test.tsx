@@ -523,6 +523,34 @@ describe('OnboardingGate', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
+  // #765 B2: "First run" was a hard-coded literal on the launcher, so a
+  // readiness flap could stamp FIRST RUN on a home whose first run finished
+  // long ago. The eyebrow must derive from the durable `config.firstRun`
+  // fact, not from the launcher happening to render.
+  test('claims First run only while the home first run is genuinely unanswered', () => {
+    configData = { firstRun: { status: 'completed' } };
+    const { unmount } = render(
+      <OnboardingGate>
+        <div>App</div>
+      </OnboardingGate>,
+    );
+    const launcher = screen.getByTestId('setup-launcher');
+    expect(launcher.getAttribute('aria-label')).toBe('Setup reminder');
+    expect(launcher.textContent).toContain('Setup needed');
+    expect(launcher.textContent).not.toContain('First run');
+    unmount();
+
+    configData = { firstRun: { status: 'pending' } };
+    render(
+      <OnboardingGate>
+        <div>App</div>
+      </OnboardingGate>,
+    );
+    expect(screen.getByTestId('setup-launcher').textContent).toContain(
+      'First run',
+    );
+  });
+
   test('keeps the first-run launcher dismissed when recommendations change', () => {
     const { rerender } = render(
       <OnboardingGate>

@@ -354,4 +354,60 @@ test.describe('Project forms', () => {
       ).toBe(true);
     });
   }
+
+  /**
+   * #765 residue (F7-class): two independent audit passes saw real pointer
+   * clicks on Create ignored while a programmatic click "worked". The state
+   * half — a verdict-less directory check disabling Create under "Try
+   * again." copy — is pinned in NewProjectModal.test.tsx. This pins the
+   * geometry half at the audit's exact viewport: with the path-suggestion
+   * dropdown open (the historical over-painting suspect,
+   * PathAutocomplete.tsx s202 Wave 4), the footer controls must own their
+   * own centers (`elementFromPoint` answers "who paints here", the trial
+   * click answers "who would receive the event"), and a REAL coordinate
+   * click on Create must submit.
+   */
+  test('new project footer receives real pointer clicks at 1440x900 with the path dropdown open', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/projects/new');
+    await expect(
+      page.getByRole('heading', { name: 'New Project' }),
+    ).toBeVisible();
+
+    // A trailing slash keeps every mocked suggestion eligible, so the
+    // dropdown is genuinely open when the pointer goes for the footer.
+    await fillStable(page, 'input[placeholder="/path/to/project"]', '/tmp/');
+    await expect(page.locator('.path-autocomplete__option')).toBeVisible();
+    await expect(page.locator('input[placeholder="My Project"]')).toHaveValue(
+      'Tmp',
+    );
+
+    for (const name of ['Cancel', 'Create']) {
+      const control = page.getByRole('button', { name, exact: true });
+      const box = await control.boundingBox();
+      expect(box, `${name} rendered no box`).toBeTruthy();
+      const owner = await page.evaluate(
+        ([x, y]) => {
+          const element = document.elementFromPoint(x, y);
+          return (
+            element?.closest('button')?.textContent ??
+            (element instanceof HTMLElement ? element.className : 'nothing')
+          );
+        },
+        [box!.x + box!.width / 2, box!.y + box!.height / 2] as const,
+      );
+      expect(owner, `who paints at ${name}'s center`).toContain(name);
+      await control.click({ trial: true, timeout: 3_000 });
+    }
+
+    const create = page.getByRole('button', { name: 'Create', exact: true });
+    const createBox = (await create.boundingBox())!;
+    await page.mouse.click(
+      createBox.x + createBox.width / 2,
+      createBox.y + createBox.height / 2,
+    );
+    await expect(page).toHaveURL(/\/projects\/tmp$/);
+  });
 });
