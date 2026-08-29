@@ -5,14 +5,15 @@ import {
   useReconnectACPConnectionMutation,
   useUpdateACPConnectionMutation,
 } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import { restoreReturnFocus } from '@kontourai/station-shared/return-focus';
+import { useRef, useState } from 'react';
 import {
   useACPConnectionRegistry,
   useACPConnections,
 } from '../../hooks/useACPConnections';
 import type { AgentSummary } from '../../types';
 import { Button } from '../Button';
-import { useSplitPaneExternalReturnFocus } from '../split-pane-return-focus-context';
+import { usePageFrameActionsSlot } from '../page-frame';
 import { describeReadFailure, Empty, ErrorState, SkeletonList } from '../state';
 import { ACPAddConnectionModal } from './ACPAddConnectionModal';
 import { ACPConnectionCard } from './ACPConnectionCard';
@@ -62,24 +63,50 @@ export function ACPConnectionsSection({
   // provider already named (`/connections/engines/new/<id>`) is therefore
   // the only way this modal opens.
   const [showAddModal, setShowAddModal] = useState(Boolean(initialProviderId));
-  const splitPaneReturnFocus = useSplitPaneExternalReturnFocus();
-  // Review fix (#592 slice 2, M2): the catalogue row that used to sit in
-  // this component and own its own `returnTriggerRef` no longer exists —
-  // choosing an ACP engine is a route change into a fresh mount of this
-  // component, so nothing local survives to focus back to.
-  // `ConnectionsSectionFrame` already captures its one "Add engine" button
-  // into `SplitPaneReturnFocusProvider` before navigating here
-  // (`ConnectionsSectionFrame.tsx`'s `add` handler), and that provider is
-  // not remounted by this route change (it wraps the whole Engines section,
-  // both the catalogue's route and this one). Taken once, on mount, so a
-  // later re-render of this same instance cannot re-read an already-consumed
-  // chain. `chain[0]` — the captured trigger itself — is what
-  // `ACPAddConnectionModal` re-derives its own ancestor chain from; an empty
-  // chain (no capture happened, e.g. a direct deep link) falls through to
-  // `ResponsiveDialogSurface`'s own `document.activeElement` fallback.
-  const [returnFocusChain] = useState<HTMLElement[]>(
-    () => splitPaneReturnFocus?.takeExternalReturnFocus() ?? [],
-  );
+  // Review fix round 2 (#592 slice 2, M2): a captured DOM node cannot cross
+  // this boundary — `connections-acp-new`'s surface identity is per-provider
+  // (`route-identity.ts`'s `routeSurfaceIdentity` never folds it into
+  // `connections-engines`), so `AppViewContent`'s `key={surfaceKey}` entrance
+  // wrapper remounts everything from `ConnectionsSectionFrame` down on EVERY
+  // arrival here — the `SplitPaneReturnFocusProvider` a prior round captured
+  // the catalogue's "Add engine" button into does not survive either, and
+  // `PageFrame`'s `.page__actions` cell is independently torn down and
+  // recreated by its own `key={routeIdentity}` the moment the cell's route
+  // identity changes (`PageFrame.tsx`, pinned by
+  // `PageFrame.test.tsx`'s "replaces the action cell itself" case) — so the
+  // captured button is off-document by the time this component exists to
+  // read it. There is no target from the OLD route to carry forward.
+  //
+  // The fix resolves the target on THIS route, AT CLOSE TIME, not by
+  // carrying a node: `PageFrame` itself (`FramedPage`) is not remounted by
+  // the same boundary — only its `.page__actions` child cell is, and
+  // `FramedPage` keeps that cell's current DOM node live in
+  // `PageFrameContext` regardless. Since `ConnectionsSectionFrame` always
+  // renders exactly one primary-action `Button` into that cell
+  // (`PageFrameActions`' documented contract), the current route's OWN "Add
+  // engine" button — not the one that was clicked, which never exists in
+  // this tree — is the one real, always-connected, on-this-route substitute.
+  //
+  // NOT threaded through `ACPAddConnectionModal`'s `returnFocusTarget` prop:
+  // `.page__actions`'s cell swap does not settle in the render that mounts
+  // this component — it settles over several renders (proven live: a render
+  // reads the OLD, about-to-be-orphaned button before its removal even
+  // commits; the very next reads the freshly emptied cell; only a LATER
+  // render sees the real new button attached), and that settling can land in
+  // the SAME commit as the close action itself. A value fed into
+  // `returnFocusTarget` is captured once, reactively, by an effect keyed to
+  // that prop — exactly the "carry a node across a boundary" failure mode
+  // this fix exists to remove, just moved from a route boundary to a render
+  // boundary. Reading `usePageFrameActionsSlot()`'s result imperatively,
+  // inside `onCancel`, is what "at close time" means: by the moment a real
+  // user can click Cancel, the cell has already settled (at least one
+  // browser paint separates "dialog opened" from "user clicked inside it"),
+  // so the read is never stale in practice. No chain, nothing consumed once,
+  // so `SplitPaneLayout`'s own one-shot read of `SplitPaneReturnFocusProvider`
+  // (its mobile detail sheet, unrelated to this component) can never race it.
+  const currentActionsNode = usePageFrameActionsSlot();
+  const currentActionsNodeRef = useRef<HTMLElement | null>(null);
+  currentActionsNodeRef.current = currentActionsNode;
   const [selectedConnId, setSelectedConnId] = useState<string | null>(null);
   // Derived (not a snapshot) so the detail modal reflects the connection's
   // latest `provideToolServers` selection immediately after a mutation.
@@ -136,8 +163,14 @@ export function ACPConnectionsSection({
           onAdd={addConnection}
           onInstallRegistryEntry={installRegistryEntry}
           onRefreshConnections={refetchConnections}
-          onCancel={() => setShowAddModal(false)}
-          returnFocusTarget={returnFocusChain[0] ?? null}
+          onCancel={() => {
+            setShowAddModal(false);
+            // Read now, at the moment of closing — not passed as
+            // `returnFocusTarget` (see the comment above `currentActionsNodeRef`).
+            const button =
+              currentActionsNodeRef.current?.querySelector('button') ?? null;
+            if (button) restoreReturnFocus([button]);
+          }}
           initialProviderId={initialProviderId}
         />
       )}
