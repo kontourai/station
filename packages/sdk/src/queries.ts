@@ -214,6 +214,7 @@ export {
   regenerateConversationTitle,
   renameCodingFile,
   renameConversation,
+  resolveConversationOpen,
   resolveOrchestrationRequest,
   SESSION_SUMMARY_GENERATE_MUTATION_KEY,
   type SessionBoardItem,

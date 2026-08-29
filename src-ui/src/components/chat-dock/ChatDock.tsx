@@ -3,6 +3,7 @@ import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspa
 import {
   conversationQueries,
   orchestrationQueries,
+  resolveConversationOpen,
   telemetry,
   useAcknowledgeConversationMutation,
   useAgentConnectionsQuery,
@@ -2783,7 +2784,26 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 }
               : undefined,
           onCloseSessionPicker: () => setShowSessionPicker(false),
-          onSessionPickerSelect: openUserSelectedConversationInScopedPane,
+          onSessionPickerSelect: async (row) => {
+            // Picker discovery is not proof that a writable Session exists.
+            // Resolve under the server's one authority before routing or
+            // creating a tab; recovery states deliberately do not fall
+            // through to the old "New chat" hydration path.
+            const resolved = await resolveConversationOpen(row.id, apiBase);
+            if (resolved?.status !== 'resolved') return;
+            const conversation = resolved.conversation;
+            await openUserSelectedConversationInScopedPane(
+              conversation.id,
+              conversation.agentSlug,
+              conversation.projectSlug,
+              projects.find(
+                (project) => project.slug === conversation.projectSlug,
+              )?.name,
+              conversation.model,
+              conversation.updatedAt,
+              conversation.acceptedModel,
+            );
+          },
           onChatFontSizeChange: setChatFontSize,
           onShowReasoningChange: setShowReasoning,
           onShowToolDetailsChange: setShowToolDetails,

@@ -606,6 +606,7 @@ export {
   requestSystemStatus,
   rescanAnalytics,
   resetUsageStats,
+  resolveConversationOpen,
   resolveFleetReceiptsRefetchInterval,
   resolveMonitoringStatsRefetchInterval,
   resolveOrchestrationRequest,

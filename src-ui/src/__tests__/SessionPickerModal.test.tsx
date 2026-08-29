@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
@@ -29,7 +29,7 @@ beforeAll(() => {
 });
 
 describe('SessionPickerModal', () => {
-  test('uses canonical inventory and restores the selected conversation project', () => {
+  test('uses canonical inventory and restores the selected conversation project', async () => {
     vi.mocked(sdk.useConversationInventoryQuery).mockReturnValue({
       data: [
         {
@@ -66,13 +66,14 @@ describe('SessionPickerModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Codex Beta history/ }));
 
     expect(onSelect).toHaveBeenCalledWith(
-      'conversation-beta',
-      'codex',
-      'beta',
-      'Beta Project',
-      'gpt-5-codex',
+      expect.objectContaining({
+        id: 'conversation-beta',
+        agentSlug: 'codex',
+        projectSlug: 'beta',
+        model: 'gpt-5-codex',
+      }),
     );
-    expect(onClose).toHaveBeenCalledOnce();
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
     expect(sdk.useConversationInventoryQuery).toHaveBeenCalledWith({
       enabled: true,
     });

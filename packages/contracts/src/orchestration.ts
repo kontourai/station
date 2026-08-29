@@ -959,6 +959,54 @@ export interface ConversationListItem {
   };
 }
 
+/**
+ * Server-authoritative result of opening one inventory row.  Consumers must
+ * branch on `status`; they must not infer a writable Session from an Agent or
+ * provider decoration on the inventory row.
+ */
+export type ConversationOpenResolution =
+  | {
+      status: 'resolved';
+      conversation: ConversationListItem;
+      currentSessionId: string;
+      transcript: {
+        available: true;
+        owner: 'runtime';
+        messages: readonly unknown[];
+      };
+      canContinue: true;
+      answerability: RequestAnswerability;
+      recoveryActions: readonly [];
+    }
+  | {
+      status: 'transcript-only';
+      conversation: ConversationListItem;
+      transcript: {
+        available: true;
+        owner: 'store' | 'runtime';
+        messages: readonly unknown[];
+      };
+      canContinue: false;
+      answerability: RequestAnswerability;
+      recoveryActions: readonly ('retry' | 'start-new')[];
+    }
+  | {
+      status: 'missing-session';
+      conversation: ConversationListItem;
+      transcript: { available: false; owner: 'runtime' };
+      canContinue: false;
+      answerability: RequestAnswerability;
+      recoveryActions: readonly ('retry' | 'start-new' | 'restore')[];
+    }
+  | {
+      status: 'unavailable';
+      conversation: ConversationListItem;
+      transcript: { available: false; owner: 'runtime' | 'store' };
+      canContinue: false;
+      answerability: RequestAnswerability;
+      recoveryActions: readonly ('retry' | 'start-new')[];
+    };
+
 export interface ConversationForkProvenance {
   sourceConversationId: string;
   targetConversationId: string;

@@ -13,13 +13,8 @@ import { type AutoSelectItem, AutoSelectModal } from './AutoSelectModal';
 interface SessionPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (
-    conversationId: string,
-    agentSlug: string,
-    projectSlug?: string,
-    projectName?: string,
-    model?: string,
-  ) => void;
+  /** The selected row is the input to server-authoritative open resolution. */
+  onSelect: (conversation: ConversationListItem) => void | Promise<void>;
   agents: Array<{ slug: string; name: string }>;
   projects: Array<{ slug: string; name: string }>;
   activeConversationIds?: string[];
@@ -100,18 +95,9 @@ export function SessionPickerModal({
           ? 'Could not load conversations. Close and reopen to try again.'
           : 'No conversations found'
       }
-      onSelect={(item) => {
+      onSelect={async (item) => {
         const conversation = item.metadata!;
-        const project = projects.find(
-          (candidate) => candidate.slug === conversation.projectSlug,
-        );
-        onSelect(
-          item.id,
-          conversation.agentSlug,
-          conversation.projectSlug,
-          project?.name,
-          conversation.model,
-        );
+        await onSelect(conversation);
         onClose();
       }}
       onClose={onClose}

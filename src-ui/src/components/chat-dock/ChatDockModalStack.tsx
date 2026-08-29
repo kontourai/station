@@ -1,3 +1,4 @@
+import type { ConversationListItem } from '@kontourai/station-sdk';
 import type { AgentData } from '../../contexts/AgentsContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import type { ChatSession, DockMode } from '../../types';
@@ -60,12 +61,8 @@ interface ChatDockModalStackProps {
   onCloseSettings: () => void;
   onCloseSessionPicker: () => void;
   onSessionPickerSelect: (
-    conversationId: string,
-    agentSlug: string,
-    projectSlug?: string,
-    projectName?: string,
-    model?: string,
-  ) => void;
+    conversation: ConversationListItem,
+  ) => void | Promise<void>;
   onChatFontSizeChange: (fn: (prev: number) => number) => void;
   onShowReasoningChange: (show: boolean) => void;
   onShowToolDetailsChange: (show: boolean) => void;

@@ -11,7 +11,10 @@ import {
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import { CONVERSATION_INTENT_SUMMARY_MAX_ITEMS } from '@kontourai/station-contracts/conversation-intent-summary';
-import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
+import type {
+  ConversationListItem,
+  ConversationOpenResolution,
+} from '@kontourai/station-contracts/orchestration';
 import { agentAvailableInProject } from '@kontourai/station-contracts/project-reference-integrity';
 import { parseConversationStatsResponse } from '@kontourai/station-contracts/runtime';
 import {
@@ -2239,6 +2242,12 @@ export function createGlobalConversationRoutes(
       hasMore: boolean;
       nextCursor?: string;
     }>;
+    conversationOpenResolver?: {
+      resolve(input: {
+        conversation: ConversationListItem;
+        authority: SessionReadAuthority;
+      }): Promise<ConversationOpenResolution>;
+    };
   },
   getUserId: () => string = () => getCachedUser().alias,
   acknowledgementStore?: ConversationAcknowledgementStore,
@@ -2499,6 +2508,82 @@ export function createGlobalConversationRoutes(
       updatedAt: new Date(parsedUpdatedAt).toISOString(),
     });
     return c.json({ success: true });
+  });
+
+  // Resolve a picker row before a tab exists.  This keeps discovery,
+  // lineage/current-child selection, transcript, and recovery under one
+  // request-derived authority rather than producing an inventory success and
+  // a later Session 404 that the client can accidentally make writable.
+  app.get('/:id/open', async (c) => {
+    try {
+      const id = parseConversationIdSegment(param(c, 'id'));
+      if (!id)
+        return c.json(
+          { success: false, error: 'Invalid conversation identity' },
+          400,
+        );
+      const authority = authorityFor(c.req.raw);
+      const runtimePage =
+        await sessionConversationReader.listConversationHistoryPage(authority, {
+          limit: 100,
+        });
+      const runtime = runtimePage.items.find((item) => item.id === id);
+      if (runtime && sessionConversationReader.conversationOpenResolver) {
+        return c.json({
+          success: true,
+          data: await sessionConversationReader.conversationOpenResolver.resolve(
+            {
+              conversation: runtime,
+              authority,
+            },
+          ),
+        });
+      }
+      if (!isHostedSessionReadAuthority(authority)) {
+        for (const [slug, adapter] of memoryAdapters) {
+          const record = await adapter.getConversation(id);
+          if (!record) continue;
+          const messages = await adapter.getMessages(record.userId, record.id);
+          const metadata =
+            record.metadata &&
+            typeof record.metadata === 'object' &&
+            !Array.isArray(record.metadata)
+              ? (record.metadata as Record<string, unknown>)
+              : undefined;
+          const conversation: ConversationListItem = {
+            id: record.id,
+            source: 'store',
+            agentSlug: publicAgentIdFromRuntimeKey(record.resourceId || slug),
+            ...(typeof metadata?.projectSlug === 'string'
+              ? { projectSlug: metadata.projectSlug }
+              : {}),
+            title: record.title,
+            createdAt: record.createdAt,
+            updatedAt: record.updatedAt,
+            messageCount: messages.length,
+            mutable: true,
+            answerability: { answerable: true },
+          };
+          const resolution: ConversationOpenResolution = {
+            status: 'transcript-only',
+            conversation,
+            transcript: { available: true, owner: 'store', messages },
+            canContinue: false,
+            answerability: conversation.answerability,
+            recoveryActions: ['retry', 'start-new'],
+          };
+          return c.json({ success: true, data: resolution });
+        }
+      }
+      return c.json({ success: false, error: 'Conversation not found' }, 404);
+    } catch (error) {
+      return conversationRouteFailure(
+        c,
+        logger,
+        'Failed to resolve conversation open state',
+        error,
+      );
+    }
   });
 
   app.get('/:id', async (c) => {

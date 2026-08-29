@@ -181,6 +181,10 @@ import {
   ConversationHistoryReadService,
 } from './conversation-history-read-service.js';
 import { ConversationLineage } from './conversation-lineage.js';
+import {
+  type ConversationOpenResolver,
+  createConversationOpenResolver,
+} from './conversation-open-resolver.js';
 import { CooperativeStop } from './cooperative-stop.js';
 import { CredentialProfileRecovery } from './credential-profile-recovery.js';
 import {
@@ -507,6 +511,8 @@ interface OrchestrationServiceOptions {
    * migrate or quarantine ownerless rows before exposing them.
    */
   ownerlessSessionAccess?: 'deny' | 'single-user-compat';
+  /** Exact legacy OS-alias owner for the local-home principal migration only. */
+  legacyPersonalOwner?: string;
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
   listProjects?: () => AttachedProjectRoot[];
@@ -951,6 +957,8 @@ export class OrchestrationService {
   readonly sessionCommands: SessionCommandModule;
   private readonly sessionCommandImplementation: SessionCommandImplementation;
   readonly sessionQueries: SessionQueryModule;
+  /** Authoritative inventory-to-session open state; routes do not restitch it. */
+  readonly conversationOpenResolver: ConversationOpenResolver;
   /** Explicit declared-output inventory; separate from transcript/Basis reads. */
   readonly sessionOutputs: SessionOutputsModule;
   readonly sessionLifecycles: SessionLifecycleModule;
@@ -1155,6 +1163,9 @@ export class OrchestrationService {
         : {}),
       ...(options.ownerlessSessionAccess !== undefined
         ? { ownerlessSessionAccess: options.ownerlessSessionAccess }
+        : {}),
+      ...(options.legacyPersonalOwner !== undefined
+        ? { legacyPersonalOwner: options.legacyPersonalOwner }
         : {}),
       ...(options.sessionOwnerCacheMaxEntries !== undefined
         ? { sessionOwnerCacheMaxEntries: options.sessionOwnerCacheMaxEntries }
@@ -1529,6 +1540,29 @@ export class OrchestrationService {
       listSessionReadModel: (authority) => this.listSessionReadModel(authority),
       canReadSession: (threadId, authority) =>
         this.sessionAuthz.canReadSession(threadId, authority),
+    });
+    this.conversationOpenResolver = createConversationOpenResolver({
+      currentSessionId: (conversationId) =>
+        this.conversationLineage.currentConversationSessionId(conversationId),
+      readCurrent: async ({ conversationId, authority }) => {
+        const detail =
+          await this.conversationLineage.readCurrentConversationSession(
+            conversationId,
+            authority,
+          );
+        if (!detail) return null;
+        return {
+          messages: this.readSessionMessages(
+            detail.session.threadId,
+            authority,
+          ),
+          answerability: detail.session.answerability,
+        };
+      },
+      reportUnavailable: (error) =>
+        options.logger.warn('Conversation open resolution is unavailable', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
     });
     this.flowPolicy = new FlowPolicySidecar({
       flowRunService: () => options.flowRunService,

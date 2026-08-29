@@ -48,6 +48,14 @@ export interface SessionReadAuthority {
   readonly userId: string;
   readonly tenantExecutionContext: TenantExecutionContext | undefined;
   readonly mode: 'hosted' | 'personal';
+  /**
+   * Internal request provenance for the one personal-mode migration bridge.
+   * It is not a claim supplied by a client: runtime wiring sets it only after
+   * the credential mint proved possession of this Station home.  A local
+   * operator principal reached through an operator credential, a paired
+   * device, or a WhoIs identity deliberately does not receive this bit.
+   */
+  readonly localHomePossession?: true;
   readonly [sessionReadAuthorityBrand]: 'SessionReadAuthority';
 }
 
@@ -81,6 +89,7 @@ export function sessionReadAuthorityFromRequest(
   userId: string,
   requestContext: TenantRequestContext | undefined,
   hostedTenantRegistry: HostedTenantRegistry | undefined,
+  options?: { localHomePossession?: true },
 ): SessionReadAuthority {
   const hosted = hostedTenantRegistry !== undefined;
   if (
@@ -99,6 +108,11 @@ export function sessionReadAuthorityFromRequest(
       ? tenantExecutionContextFromRequest(requestContext)
       : undefined,
     mode: hosted ? 'hosted' : 'personal',
+    ...(hosted
+      ? {}
+      : options?.localHomePossession
+        ? { localHomePossession: true as const }
+        : {}),
   }) as SessionReadAuthority;
 }
 

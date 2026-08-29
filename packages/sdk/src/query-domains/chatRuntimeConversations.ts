@@ -1,3 +1,4 @@
+import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import {
   useInfiniteQuery,
   useMutation,
@@ -440,6 +441,26 @@ export async function fetchConversationById(
     return null;
   }
   return result.data ?? null;
+}
+
+/**
+ * Resolve an inventory selection before creating a local chat tab.  The
+ * result is total; callers render read-only recovery from its status rather
+ * than guessing a Session from the selected Agent's provider.
+ */
+export async function resolveConversationOpen(
+  conversationId: string,
+  apiBase?: string,
+): Promise<ConversationOpenResolution | null> {
+  const resolvedApiBase = await resolveApiBase(apiBase);
+  const response = await authenticatedFetch(
+    `${resolvedApiBase}/api/conversations/${encodeURIComponent(conversationId)}/open`,
+  );
+  const result = (await response.json()) as {
+    success: boolean;
+    data?: ConversationOpenResolution;
+  };
+  return result.success ? (result.data ?? null) : null;
 }
 
 export function useConversationsQuery(
