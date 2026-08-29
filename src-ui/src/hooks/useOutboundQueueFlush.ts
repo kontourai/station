@@ -13,6 +13,8 @@
  */
 import { useConnectionStatus } from '@kontourai/station-connect';
 import { useCallback, useEffect, useRef } from 'react';
+import { conversationCanMutate } from '../components/chat-dock/conversationOpenPolicy';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { checkServerHealth, probeServerConnection } from '../lib/serverHealth';
 import { useSendMessage } from './useActiveChatSessions';
 
@@ -37,6 +39,13 @@ export function useOutboundQueueFlush(apiBase: string): void {
     void import('../lib/outboundQueue')
       .then(async ({ outboundDispatch }) => {
         const outcome = await outboundDispatch.flush(async (turn, claim) => {
+          const chat = activeChatsStore.getSnapshot()[turn.sessionId];
+          if (chat && !conversationCanMutate(chat)) {
+            return {
+              kind: 'not-invoked' as const,
+              reason: 'Conversation open state is not currently mutable.',
+            };
+          }
           const result = await sendMessage(
             turn.sessionId,
             turn.agentSlug,

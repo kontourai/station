@@ -2,6 +2,7 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { contextRegistry } from '@kontourai/station-sdk';
 import { ChatHttpError } from '@kontourai/station-sdk/client';
+import { conversationCanMutate } from '../../components/chat-dock/conversationOpenPolicy';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import { buildOutgoingUserMessage } from '../useActiveChatSessions.helpers';
@@ -89,7 +90,11 @@ export function drainQueuedMessageOnTurnCompleted(
   threadId: string,
 ) {
   const chat = activeChatsStore.getSnapshot()[threadId];
-  if (!chat?.queuedMessages?.length || chat.isEditingQueue) {
+  if (
+    !chat?.queuedMessages?.length ||
+    chat.isEditingQueue ||
+    !conversationCanMutate(chat)
+  ) {
     return;
   }
 

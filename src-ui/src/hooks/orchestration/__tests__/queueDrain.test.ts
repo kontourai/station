@@ -82,6 +82,21 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     ]);
   });
 
+  test('#749 preserves queued text when a replayed terminal event arrives before open revalidation', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['do not shift'],
+      conversationOpenPending: true,
+    });
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
+      'do not shift',
+    ]);
+  });
+
   test('pops the head synchronously, then dispatches the canonical Agent target after the settle delay', async () => {
     activeChatsStore.updateChat(threadId, {
       queuedMessages: ['first', 'second'],

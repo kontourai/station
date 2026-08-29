@@ -180,7 +180,10 @@ import {
   type ConversationHistoryPage,
   ConversationHistoryReadService,
 } from './conversation-history-read-service.js';
-import { ConversationLineage } from './conversation-lineage.js';
+import {
+  ConversationLineage,
+  canResolveConversationContinuation,
+} from './conversation-lineage.js';
 import {
   type ConversationOpenResolver,
   createConversationOpenResolver,
@@ -1562,12 +1565,7 @@ export class OrchestrationService {
           // attachment, an active turn, a pending review, or a stopped child
           // does not become writable merely because the selected Agent has a
           // provider today.
-          canContinue:
-            detail.session.controlMode === 'station-owned' &&
-            detail.session.lifecycleState === 'running' &&
-            detail.session.hasActiveTurn !== true &&
-            detail.session.pendingReview !== true &&
-            detail.session.answerability.answerable,
+          canContinue: canResolveConversationContinuation(detail),
         };
       },
       reportUnavailable: (error) =>

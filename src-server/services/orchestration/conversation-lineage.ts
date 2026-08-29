@@ -34,6 +34,24 @@ import type { TurnDeduplicator } from './turn-deduplicator.js';
 
 const CONVERSATION_HISTORY_MAX_ENTRIES = 100;
 
+/**
+ * Read-only companion to resolveConversationContinuation. It intentionally
+ * does not reserve a successor: it answers only whether that command would
+ * be admissible for the current child rather than treating terminal lifecycle
+ * as a permanent read-only state.
+ */
+export function canResolveConversationContinuation(
+  detail: OrchestrationSessionDetail,
+): boolean {
+  const session = detail.session;
+  return (
+    session.controlMode === 'station-owned' &&
+    session.hasActiveTurn !== true &&
+    session.pendingReview !== true &&
+    session.answerability.answerable
+  );
+}
+
 export interface ConversationLineageDeps {
   // Value-typed deps, captured once at service construction (slice-3
   // precedent). Safe only while nothing mutates the service options
