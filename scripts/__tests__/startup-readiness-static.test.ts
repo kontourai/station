@@ -71,6 +71,12 @@ describe('desktop startup readiness static boundary', () => {
     );
     expect(lib).toContain("invoke('renderer_startup_ready')");
     expect(lib).toContain('fn renderer_startup_ready');
+    expect(lib).toContain(
+      "metadata?.currentWindow?.label !== 'main'",
+    );
+    expect(lib).toContain(
+      'if !startup_renderer_label_admitted(webview.label())',
+    );
     expect(lib).toContain('request_native_startup_commit(&app);');
     expect([
       ...lib.matchAll(/\.name\("station-native-cover-dispatcher"\.into\(\)\)/g),
