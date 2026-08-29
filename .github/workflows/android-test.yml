@@ -151,10 +151,18 @@ jobs:
           set -e
           APK=$(find apk/ -name "*.apk" | head -1)
           echo "APK: $APK"
+          # Identity is DERIVED from the artifact under test, never hardcoded:
+          # channel builds carry distinct application ids, and a hardcoded
+          # component silently tests nothing when identity work moves it.
+          AAPT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/aapt"
+          PKG=$("$AAPT" dump badging "$APK" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+          ACTIVITY=$("$AAPT" dump badging "$APK" | sed -n "s/^launchable-activity: name='\([^']*\)'.*/\1/p")
+          test -n "$PKG" && test -n "$ACTIVITY"
+          echo "Launching $PKG/$ACTIVITY"
           adb install "$APK"
-          adb shell am start -n io.kontourai.station/.MainActivity
+          adb shell am start -n "$PKG/$ACTIVITY"
           sleep 5
-          adb shell pidof io.kontourai.station | grep -q "[0-9]" && echo "App process running" || (echo "App not running" && exit 1)
+          adb shell pidof "$PKG" | grep -q "[0-9]" && echo "App process running" || (echo "App not running" && exit 1)
           adb logcat -d | grep -E "FATAL EXCEPTION|E AndroidRuntime" > crash.log || true
           if [ -s crash.log ]; then cat crash.log && exit 1; fi
           adb shell screencap -p /sdcard/smoke.png && adb pull /sdcard/smoke.png smoke-test.png
