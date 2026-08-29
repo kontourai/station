@@ -104,6 +104,88 @@ describe('shared saved Station store', () => {
     expect(() => readProfileStore()).toThrow(/corrupt/);
   });
 
+  test('never recreates a marker-backed shared store after profiles.json disappears', () => {
+    upsertProfile({
+      name: 'stable-local',
+      endpoint: 'http://127.0.0.1:18141',
+      makeDefault: true,
+    });
+    unlinkSync(profilesPath());
+    expect(() =>
+      upsertProfile({
+        name: 'beta-local',
+        endpoint: 'http://127.0.0.1:28141',
+      }),
+    ).toThrow(/missing from an initialized or in-progress shared root/);
+  });
+
+  test('refuses missing metadata beside a prior channel runtime without minting a replacement', () => {
+    mkdirSync(join(home, 'instances', 'stable', 'data'), {
+      recursive: true,
+      mode: 0o700,
+    });
+    expect(() =>
+      upsertProfile({
+        name: 'beta-local',
+        endpoint: 'http://127.0.0.1:28141',
+      }),
+    ).toThrow(/missing from an initialized or in-progress shared root/);
+    expect(() => readFileSync(profilesPath(), 'utf8')).toThrow();
+  });
+
+  test('three independent channel bootstraps converge on one shared revision chain', async () => {
+    const moduleUrl = new URL('../commands/profile-store.ts', import.meta.url);
+    const workers = [
+      ['stable-local', '18141'],
+      ['beta-local', '28141'],
+      ['nightly-local', '38141'],
+    ].map(([name, port]) => {
+      const source = `
+        import { upsertProfile } from ${JSON.stringify(moduleUrl.href)};
+        const [name, port] = process.env.STATION_PROFILE_WORKER.split(':');
+        let last;
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          try {
+            upsertProfile({ name, endpoint: 'http://127.0.0.1:' + port, setupSource: 'local', configurationState: 'configured', localService: { instanceId: 'desktop-sidecar-' + name, baseDir: process.env.STATION_HOME + '/instances/' + name.replace('-local', ''), serverPort: Number(port), uiPort: Number(port) - 141 } });
+            process.exit(0);
+          } catch (error) {
+            last = error;
+            if (!String(error).includes('changed concurrently') && !String(error).includes('store is busy')) throw error;
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+          }
+        }
+        throw last;
+      `;
+      return spawn(
+        process.execPath,
+        ['--import', 'tsx/esm', '--input-type=module', '--eval', source],
+        {
+          env: { ...process.env, STATION_HOME: home, STATION_ROOT: home, STATION_PROFILE_WORKER: `${name}:${port}` },
+          stdio: 'ignore',
+          windowsHide: true,
+        },
+      );
+    });
+    const statuses = await Promise.all(
+      workers.map(
+        (worker) =>
+          new Promise<number | null>((resolve, reject) => {
+            worker.once('error', reject);
+            worker.once('exit', resolve);
+          }),
+      ),
+    );
+    expect(statuses).toEqual([0, 0, 0]);
+    const store = readProfileStore();
+    expect(store.revision).toBe(3);
+    expect(store.profiles.map((profile) => profile.name).sort()).toEqual([
+      'beta-local',
+      'nightly-local',
+      'stable-local',
+    ]);
+    expect(JSON.stringify(store)).not.toContain('credentialRef');
+  });
+
   test.skipIf(process.platform === 'win32')(
     'rejects saved Station metadata that is symlinked or not owner-only',
     () => {

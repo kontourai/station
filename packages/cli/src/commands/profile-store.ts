@@ -9,6 +9,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -16,7 +17,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import {
   emptyStationProfileStore,
   isStationProfileStore,
@@ -64,6 +65,11 @@ export function resolveStationHome(): string {
 export const MAX_PROFILE_NAME_LENGTH = 64;
 const PROFILE_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 const PROFILE_STORE_LOCK_STALE_MS = 5 * 60 * 1_000;
+// This root-scoped record survives a missing/moved config directory. Both the
+// CLI and the native desktop check the same bytes before ever recreating the
+// shared profile document.
+const PROFILE_STORE_GENESIS_MARKER = '.station-profile-store-v1';
+const PROFILE_STORE_GENESIS_SIGNATURE = 'station-profile-store-v1\n';
 
 interface LegacyProfileStoreLock {
   schemaVersion: 1;
@@ -110,6 +116,146 @@ export interface ProfileStoreRepository {
 /** Shared native/CLI metadata location. It deliberately contains no secret. */
 export function profilesPath(home: string = resolveStationHome()): string {
   return join(home, 'config', 'profiles.json');
+}
+
+function profileStoreGenesisMarkerPath(home: string): string {
+  return join(home, PROFILE_STORE_GENESIS_MARKER);
+}
+
+function profileStoreGenesisMarkerExists(home: string): boolean {
+  const marker = profileStoreGenesisMarkerPath(home);
+  if (!existsSync(marker)) return false;
+  const info = lstatSync(marker);
+  if (
+    !info.isFile() ||
+    info.isSymbolicLink() ||
+    (typeof process.getuid === 'function' &&
+      (info.uid !== process.getuid() || (info.mode & 0o077) !== 0)) ||
+    readFileSync(marker, 'utf8') !== PROFILE_STORE_GENESIS_SIGNATURE
+  ) {
+    throw new Error('saved Station genesis marker is invalid or not owner-controlled');
+  }
+  return true;
+}
+
+/** A markerless root may be born only before any runtime/cutover state exists. */
+function profileStoreGenesisAdmissible(home: string): boolean {
+  if (!existsSync(home)) return true;
+  const root = lstatSync(home);
+  if (!root.isDirectory() || root.isSymbolicLink()) return false;
+  return readdirSync(home).every((entry) => {
+    const candidate = lstatSync(join(home, entry));
+    if (!candidate.isDirectory() || candidate.isSymbolicLink()) return false;
+    // CLI setup creates an empty config parent before first metadata
+    // publication. It is not history by itself; any content is.
+    if (entry === 'config') return readdirSync(join(home, entry)).length === 0;
+    // An explicit first `station setup` may already have selected its empty
+    // runtime leaf. Any file beneath it is durable runtime history and fences
+    // genesis; only empty direct channel scaffolding is admissible.
+    if (entry === 'instances') {
+      return readdirSync(join(home, entry)).every((channel) => {
+        const runtime = join(home, entry, channel);
+        const runtimeInfo = lstatSync(runtime);
+        return (
+          runtimeInfo.isDirectory() &&
+          !runtimeInfo.isSymbolicLink() &&
+          readdirSync(runtime).length === 0
+        );
+      });
+    }
+    return entry === 'installs';
+  });
+}
+
+function writeProfileStoreGenesisMarker(home: string): void {
+  mkdirSync(home, { recursive: true, mode: 0o700 });
+  const marker = profileStoreGenesisMarkerPath(home);
+  if (existsSync(marker)) {
+    profileStoreGenesisMarkerExists(home);
+    return;
+  }
+  const descriptor = openSync(
+    marker,
+    fsConstants.O_WRONLY |
+      fsConstants.O_CREAT |
+      fsConstants.O_EXCL |
+      (fsConstants.O_NOFOLLOW ?? 0),
+    0o600,
+  );
+  try {
+    fchmodSync(descriptor, 0o600);
+    writeFileSync(descriptor, PROFILE_STORE_GENESIS_SIGNATURE, 'utf8');
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function withProfileStoreGenesisLock<T>(home: string, callback: () => T): T {
+  const root = resolve(home);
+  const parent = dirname(root);
+  const path = join(parent, `.${basename(root)}.station-profile-store-genesis.json.lock`);
+  // The parent is the existing user-owned directory that contains the root;
+  // never create config/ merely to coordinate genesis.
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const descriptor = createExclusiveProfileStoreLock(path);
+    if (descriptor !== undefined) {
+      try {
+        return callback();
+      } finally {
+        closeSync(descriptor);
+        try {
+          unlinkSync(path);
+        } catch {
+          // A retained lock is a safe retryable fence.
+        }
+      }
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+  }
+  throw new Error('saved Station genesis is busy; retry after the other client finishes.');
+}
+
+/**
+ * Publish the empty shared document once, before a CLI/Desktop mutation can
+ * author a channel-local row. A crash after marker creation is intentionally a
+ * recovery condition, not permission to replace a potentially moved store.
+ */
+function ensureProfileStoreGenesis(home: string): void {
+  withProfileStoreGenesisLock(home, () => {
+    const path = profilesPath(home);
+    if (existsSync(path)) {
+      profileStoreGenesisMarkerExists(home) || writeProfileStoreGenesisMarker(home);
+      return;
+    }
+    const markerExists = profileStoreGenesisMarkerExists(home);
+    if (markerExists || !profileStoreGenesisAdmissible(home)) {
+      // Pre-marker installations used this exact sibling lock protocol. Let
+      // its stale-lock tests/recovery finish, but never grant that exception
+      // to a marker-backed (current) root whose profile document disappeared.
+      if (!markerExists && existsSync(lockPath(home))) return;
+      throw new Error(
+        'saved Station metadata is missing from an initialized or in-progress shared root; restore profiles.json before changing saved Stations.',
+      );
+    }
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+    writeProfileStoreGenesisMarker(home);
+    const descriptor = openSync(
+      path,
+      fsConstants.O_WRONLY |
+        fsConstants.O_CREAT |
+        fsConstants.O_EXCL |
+        (fsConstants.O_NOFOLLOW ?? 0),
+      0o600,
+    );
+    try {
+      fchmodSync(descriptor, 0o600);
+      writeFileSync(descriptor, `${JSON.stringify(emptyStationProfileStore())}\n`, 'utf8');
+      fsyncSync(descriptor);
+    } finally {
+      closeSync(descriptor);
+    }
+  });
 }
 
 function assertTrustedProfileStoreParent(path: string): void {
@@ -476,6 +622,7 @@ export function writeProfileStore(
   if (!isStationProfileStore(store)) {
     throw new Error('Refusing to write invalid saved Station metadata.');
   }
+  ensureProfileStoreGenesis(home);
   const path = profilesPath(home);
   const temporary = `${path}.${process.pid}.tmp`;
   let fd: number | undefined;

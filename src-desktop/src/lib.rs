@@ -239,6 +239,11 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
 const STATION_CREDENTIAL_SERVICE: &str = "io.kontourai.station";
 const EMPTY_STATION_PROFILE_STORE: &str =
     r#"{"schemaVersion":1,"revision":0,"defaultProfile":null,"profiles":[],"projectProfiles":{}}"#;
+/// A root-scoped birth record for the shared profile document.  It is kept
+/// *outside* `config/`: losing or moving `config/` must not make a previously
+/// initialized multi-channel root look like a first install again.
+const STATION_PROFILE_STORE_GENESIS_MARKER: &str = ".station-profile-store-v1";
+const STATION_PROFILE_STORE_GENESIS_SIGNATURE: &str = "station-profile-store-v1\n";
 const JAVASCRIPT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const NATIVE_HTTP_BODY_LIMIT: usize = 24 * 1024 * 1024;
 const NATIVE_HTTP_GLOBAL_REQUEST_LIMIT: usize = 32;
@@ -1275,6 +1280,187 @@ fn validate_station_profile_store(path: &std::path::Path) -> Result<(), String> 
         Ok(_) => Err("saved Station metadata must not be a symlink or non-file".to_string()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(format!("inspect saved Station metadata: {error}")),
+    }
+}
+
+#[cfg(not(mobile))]
+fn station_profile_store_root(path: &std::path::Path) -> Result<&std::path::Path, String> {
+    path.parent()
+        .and_then(std::path::Path::parent)
+        .ok_or_else(|| "saved Station metadata has no shared root".to_string())
+}
+
+#[cfg(not(mobile))]
+fn station_profile_store_genesis_lock_target(
+    root: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    use std::ffi::OsString;
+
+    let parent = root
+        .parent()
+        .ok_or_else(|| "saved Station root has no parent directory".to_string())?;
+    let name = root
+        .file_name()
+        .ok_or_else(|| "saved Station root has no directory name".to_string())?;
+    let mut lock_name = OsString::from(".");
+    lock_name.push(name);
+    lock_name.push(".station-profile-store-genesis.json");
+    Ok(parent.join(lock_name))
+}
+
+/// The desktop starts its sidecar only after this root-scoped genesis step.
+/// It is deliberately more conservative than a mere missing `profiles.json`:
+/// an existing runtime, cache, backup, cutover receipt, or config directory is
+/// evidence that an absent profile document could be a partial relocation, not
+/// a fresh install.  `installs/` alone is admitted because the portable
+/// installer materializes its channel release before the first desktop launch.
+#[cfg(not(mobile))]
+fn station_profile_store_genesis_admissible(root: &std::path::Path) -> Result<bool, String> {
+    match std::fs::read_dir(root) {
+        Ok(entries) => {
+            for entry in entries {
+                let entry = entry.map_err(|error| format!("inspect Station root: {error}"))?;
+                let name = entry.file_name();
+                if name != "installs" {
+                    return Ok(false);
+                }
+                let metadata = entry
+                    .metadata()
+                    .map_err(|error| format!("inspect Station install root: {error}"))?;
+                if !metadata.is_dir() {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+        Err(error) => Err(format!("inspect Station root for profile bootstrap: {error}")),
+    }
+}
+
+#[cfg(not(mobile))]
+fn profile_store_genesis_marker_path(root: &std::path::Path) -> std::path::PathBuf {
+    root.join(STATION_PROFILE_STORE_GENESIS_MARKER)
+}
+
+#[cfg(not(mobile))]
+fn validate_profile_store_genesis_marker(root: &std::path::Path) -> Result<bool, String> {
+    let marker = profile_store_genesis_marker_path(root);
+    let metadata = match std::fs::symlink_metadata(&marker) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("inspect saved Station genesis marker: {error}")),
+    };
+    if !metadata.file_type().is_file() {
+        return Err("saved Station genesis marker must be a regular file".to_string());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.mode() & 0o077 != 0 || !profile_lock_owned_by_current_user(metadata.uid()) {
+            return Err("saved Station genesis marker must be current-user owned and owner-only".to_string());
+        }
+    }
+    let contents = std::fs::read_to_string(&marker)
+        .map_err(|error| format!("read saved Station genesis marker: {error}"))?;
+    if contents != STATION_PROFILE_STORE_GENESIS_SIGNATURE {
+        return Err("saved Station genesis marker is invalid".to_string());
+    }
+    Ok(true)
+}
+
+#[cfg(not(mobile))]
+fn write_profile_store_genesis_marker(root: &std::path::Path) -> Result<(), String> {
+    #[cfg(unix)]
+    use std::os::unix::fs::OpenOptionsExt;
+
+    std::fs::create_dir_all(root)
+        .map_err(|error| format!("create Station root for saved metadata: {error}"))?;
+    let marker = profile_store_genesis_marker_path(root);
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    match options.open(&marker) {
+        Ok(mut file) => {
+            file.write_all(STATION_PROFILE_STORE_GENESIS_SIGNATURE.as_bytes())
+                .map_err(|error| format!("write saved Station genesis marker: {error}"))?;
+            file.sync_all()
+                .map_err(|error| format!("sync saved Station genesis marker: {error}"))?;
+            Ok(())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            validate_profile_store_genesis_marker(root).map(|_| ())
+        }
+        Err(error) => Err(format!("create saved Station genesis marker: {error}")),
+    }
+}
+
+#[cfg(not(mobile))]
+fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(unix)]
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| "saved Station metadata has no parent directory".to_string())?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("create saved Station directory: {error}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| format!("secure saved Station directory: {error}"))?;
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    options.mode(0o600);
+    match options.open(path) {
+        Ok(mut file) => {
+            file.write_all(EMPTY_STATION_PROFILE_STORE.as_bytes())
+                .map_err(|error| format!("write initial saved Station metadata: {error}"))?;
+            file.sync_all()
+                .map_err(|error| format!("sync initial saved Station metadata: {error}"))?;
+            Ok(())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+        Err(error) => Err(format!("create initial saved Station metadata: {error}")),
+    }
+}
+
+/// Establish the shared profile document before a desktop runtime can create
+/// channel state.  The marker is durable before the empty document: a crash
+/// can require explicit recovery, but can never silently relabel a used root
+/// as virgin and publish a credentialless replacement over its profile set.
+#[cfg(not(mobile))]
+fn ensure_station_profile_store_genesis(app: &AppHandle, root: &std::path::Path) -> Result<(), String> {
+    let path = root.join("config").join("profiles.json");
+    // This lives beside the root rather than under `config/`, so contenders
+    // serialize before either can create the directory whose presence is
+    // evidence of a non-virgin/cutover root.  A waiter always re-reads after
+    // the winner publishes; it never evaluates that transient config directory
+    // as a failed admission.
+    let _genesis_lock = lock_station_profile_store_genesis_for_app(app, root)?;
+    let marker_exists = validate_profile_store_genesis_marker(root)?;
+    match read_station_profile_store(&path) {
+        Ok(_) => {
+            if !marker_exists {
+                write_profile_store_genesis_marker(root)?;
+            }
+            Ok(())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            if marker_exists || !station_profile_store_genesis_admissible(root)? {
+                return Err("saved Station metadata is missing from an initialized or in-progress shared root; restore profiles.json before launching Station".to_string());
+            }
+            let parent = path.parent().expect("profiles path has config parent");
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("create saved Station directory: {error}"))?;
+            write_profile_store_genesis_marker(root)?;
+            write_empty_station_profile_store(&path)
+        }
+        Err(error) => Err(format!("read saved Station metadata: {error}")),
     }
 }
 
@@ -3428,6 +3614,15 @@ fn lock_station_profiles_for_app(
     lock_station_profiles_with_identity(path, &birth, &|pid| native_profile_lock_birth(app, pid))
 }
 
+#[cfg(not(mobile))]
+fn lock_station_profile_store_genesis_for_app(
+    app: &AppHandle,
+    root: &std::path::Path,
+) -> Result<StationProfileLock, String> {
+    let target = station_profile_store_genesis_lock_target(root)?;
+    lock_station_profiles_for_app(app, &target)
+}
+
 #[cfg(mobile)]
 fn lock_station_profiles_for_app(
     _app: &AppHandle,
@@ -3611,6 +3806,11 @@ fn station_profile_store_write_internal(
     }
     let next_store = parse_station_profile_store(&contents)?;
     let path = station_profiles_path(app)?;
+    #[cfg(not(mobile))]
+    {
+        let root = station_profile_store_root(&path)?;
+        ensure_station_profile_store_genesis(app, root)?;
+    }
     let parent = path
         .parent()
         .ok_or_else(|| "saved Station metadata has no parent directory".to_string())?;
@@ -3642,9 +3842,10 @@ fn station_profile_store_write_internal(
     };
     let current_store = match read_station_profile_store(&path) {
         Ok(current) => parse_station_profile_store(&current)?,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            parse_station_profile_store(EMPTY_STATION_PROFILE_STORE)?
-        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Err(
+            "saved Station metadata disappeared during a write; refusing to recreate it"
+                .to_string(),
+        ),
         Err(error) => return Err(format!("read saved Station metadata for revision: {error}")),
     };
     if current_store.revision != expected_revision {
@@ -4043,28 +4244,36 @@ fn station_ensure_bundled_local_profile(
     };
     let path = station_root.join("config").join("profiles.json");
     validate_station_profile_store(&path)?;
-    let current = match read_station_profile_store(&path) {
-        Ok(contents) => parse_station_profile_store(&contents)?,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            parse_station_profile_store(EMPTY_STATION_PROFILE_STORE)?
-        }
-        Err(error) => return Err(format!("read saved Station metadata: {error}")),
-    };
     let explicit_ui_port = std::env::var("STATION_UI_PORT").ok();
     let ui_port = resolve_bundled_profile_ui_port(explicit_ui_port.as_deref(), channel)
         .ok_or_else(|| "running Station sidecar has no UI port contract".to_string())?;
-    let (next, profile_name) = reconciled_bundled_local_profile_store(
-        &current,
-        &station_root,
-        endpoint,
-        instance_id,
-        station_home.to_string_lossy().to_string(),
-        server_port,
-        ui_port,
-        now_millis_f64()?,
-    );
-    if next.revision != current.revision {
-        station_profile_store_write_internal(
+    // Stable, Beta, and Nightly can all reach this point during their first
+    // shared-root boot.  Re-read after a lost CAS instead of retaining the
+    // empty/revision-N snapshot that made the loser overwrite or abandon the
+    // other channel's owner record.
+    for attempt in 0..3 {
+        let current = match read_station_profile_store(&path) {
+            Ok(contents) => parse_station_profile_store(&contents)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Err(
+                "saved Station metadata disappeared after shared-root admission; refusing to recreate it"
+                    .to_string(),
+            ),
+            Err(error) => return Err(format!("read saved Station metadata: {error}")),
+        };
+        let (next, profile_name) = reconciled_bundled_local_profile_store(
+            &current,
+            &station_root,
+            endpoint.clone(),
+            instance_id.clone(),
+            station_home.to_string_lossy().to_string(),
+            server_port,
+            ui_port,
+            now_millis_f64()?,
+        );
+        if next.revision == current.revision {
+            return Ok(Some(profile_name));
+        }
+        match station_profile_store_write_internal(
             &app,
             &authority,
             &pending,
@@ -4072,9 +4281,17 @@ fn station_ensure_bundled_local_profile(
                 .map_err(|_| "invalid bundled Station metadata".to_string())?,
             current.revision,
             None,
-        )?;
+        ) {
+            Ok(()) => return Ok(Some(profile_name)),
+            Err(error)
+                if error.starts_with("saved Station revision conflict:") && attempt < 2 =>
+            {
+                continue
+            }
+            Err(error) => return Err(error),
+        }
     }
-    Ok(Some(profile_name))
+    Err("saved Station metadata kept changing during bundled bootstrap; retry after the other channel finishes".to_string())
 }
 
 /// Three outcomes of asking whether a stored credential can actually be
@@ -8530,6 +8747,16 @@ If a stable instance is running, this launch will focus its window and exit.",
                 // values to the bridge rather than letting its Node process
                 // select a root/home from inherited environment or cwd.
                 let station_root = service_state::resolve_station_root();
+                if let Err(error) = ensure_station_profile_store_genesis(&app.handle(), &station_root)
+                {
+                    exit_desktop_home_preparation_failure(
+                        app,
+                        "Station could not verify its shared saved Stations",
+                        "Station refused to recreate missing shared Station metadata. Restore the saved Stations file before launching again.",
+                        &error,
+                    );
+                    return Ok(());
+                }
                 let prepared_home = prepare_desktop_station_home(
                     station_home.clone(),
                     |home| {
@@ -11470,6 +11697,48 @@ mod tests {
             .expect("new bundled profile");
         assert_eq!(bundled.endpoint, "http://127.0.0.1:28141");
         assert!(bundled.credential_ref.is_none());
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn shared_profile_genesis_refuses_runtime_or_cutover_evidence() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".station");
+        assert!(station_profile_store_genesis_admissible(&root).unwrap());
+
+        std::fs::create_dir_all(root.join("instances/stable")).unwrap();
+        assert!(
+            !station_profile_store_genesis_admissible(&root).unwrap(),
+            "a prior channel runtime must never be mistaken for a virgin root"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+
+        std::fs::create_dir_all(root.join("backups/cutover-proof")).unwrap();
+        assert!(
+            !station_profile_store_genesis_admissible(&root).unwrap(),
+            "cutover evidence must fence missing profiles.json"
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+
+        std::fs::create_dir_all(root.join("config")).unwrap();
+        assert!(
+            !station_profile_store_genesis_admissible(&root).unwrap(),
+            "a transient or withheld config directory is never genesis authority"
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_store_genesis_marker_survives_missing_config_as_a_fence() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".station");
+        std::fs::create_dir_all(&root).unwrap();
+        write_profile_store_genesis_marker(&root).unwrap();
+        assert!(validate_profile_store_genesis_marker(&root).unwrap());
+        assert!(
+            !station_profile_store_genesis_admissible(&root).unwrap(),
+            "the root marker must prevent a later missing config from becoming first-run"
+        );
     }
 
     #[cfg(unix)]
