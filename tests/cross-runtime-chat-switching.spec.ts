@@ -980,6 +980,11 @@ async function selectProductPath(page: Page, path: ProductPath) {
   const activeChat = chatList.locator('button[aria-current="true"]');
   await expect(activeChat).toBeVisible();
   await expect(activeChat).toContainText(path.runtimeName);
+  // Authoritative open resolves the current Session before its event window
+  // finishes hydrating. Establish the known one-row historical baseline
+  // before a submitted turn is measured, or that restored row is miscounted
+  // as a second response from the new turn.
+  await expect(assistantRows(page)).toHaveCount(1);
   return { activeChat, projectContext };
 }
 

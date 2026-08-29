@@ -22,6 +22,15 @@ import type { ProviderSession } from '../adapter-shape.js';
  * - Resume is NOT claimed anywhere for muse (no `resume` capability, no
  *   `adoptSession`), so an override at resume is refused rather than declared
  *   on the strength of the per-turn flag.
+ *
+ * One caveat this table cannot express, stated here so a reader of the
+ * declaration meets it: under the `echo` startup provider (#550), muse REFUSES
+ * `--model` outright (`--model requires --provider meta`, exit 2 before any
+ * JSONL; live-verified against Muse Code 1.0.1-R1848.1), so `buildMuseExecArgs` drops the selection there and this table's
+ * claims describe `meta` — muse's default and the only provider a Station
+ * deployment runs by default. `echo` is reachable only through the
+ * `STATION_E2E_MUSE_PROVIDER` test-determinism knob, whose whole purpose is a
+ * run with no model behind it.
  */
 export const MUSE_MODEL_LAUNCH: ModelLaunchCapabilities = {
   defaultAtStart: 'engine-selected',
@@ -31,6 +40,27 @@ export const MUSE_MODEL_LAUNCH: ModelLaunchCapabilities = {
   overrideAtResume: false,
   overridePerTurn: true,
 };
+
+/**
+ * The two startup providers `muse exec --provider <MODE>` accepts, exactly as
+ * `muse exec --help` spells them ("Startup provider: echo or meta (default:
+ * meta)"). Declared as a closed vocabulary because the value becomes engine
+ * ARGV: anything outside this list is refused rather than forwarded, so a
+ * hostile or fat-fingered configuration cannot inject a flag of its own into
+ * the binary's option surface (the same line `install-provenance.ts` draws
+ * before a value reaches `git ls-remote`).
+ *
+ * `meta` is muse's own default. Naming it explicitly is a no-op on the wire
+ * and is admitted only so the knob speaks muse's vocabulary rather than a
+ * Station-invented subset.
+ */
+export const MUSE_PROVIDER_MODES = ['echo', 'meta'] as const;
+
+export type MuseProviderMode = (typeof MUSE_PROVIDER_MODES)[number];
+
+export function isMuseProviderMode(value: string): value is MuseProviderMode {
+  return (MUSE_PROVIDER_MODES as readonly string[]).includes(value);
+}
 
 /**
  * Structural view of the per-turn `muse exec --json` child.

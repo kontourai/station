@@ -1011,6 +1011,16 @@ jobs:
           app="${app_candidates[0]}"
           printf '%s' "$APPLE_API_PRIVATE_KEY" > "$notary_key"
           chmod 600 "$notary_key"
+          expected_bundle_version="${{ steps.identity.outputs.bundle_version }}"
+          actual_bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")"
+          if [[ ! "$expected_bundle_version" =~ ^[0-9]+$ ]] || [[ ! "$actual_bundle_version" =~ ^[0-9]+$ ]]; then
+            echo "::error::Nightly macOS CFBundleVersion must be numeric before notarization" >&2
+            exit 1
+          fi
+          if [[ "$actual_bundle_version" != "$expected_bundle_version" ]]; then
+            echo "::error::Nightly macOS CFBundleVersion does not match the generated desktop identity" >&2
+            exit 1
+          fi
           node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir release-assets --release-tag nightly-desktop --architecture aarch64 --bundle-id io.kontourai.station.nightly --deadline-epoch "${{ steps.nightly_macos_release_deadline.outputs.epoch }}"
           # A config overlay that silently failed to apply would otherwise
           # publish a production-identified build to the nightly channel —

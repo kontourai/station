@@ -18,6 +18,7 @@ import {
   lookupProcessBirthFingerprintAsync,
   probeExactProcessIdentity,
   resolveOwnProcessIdentity,
+  WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS,
 } from '../process-identity.mjs';
 
 describe('birthProvesReuse (station#2904)', () => {
@@ -178,14 +179,16 @@ describe('birthProvesReuse (station#2904)', () => {
     ).resolves.toBeNull();
   });
 
-  test('own-process publication uses one exact probe and never grants PID-only ownership', () => {
+  test('own-process publication retries exact Windows probes and never grants PID-only ownership', () => {
     const lookup = vi.fn(() => '2026-08-29T16:16:27.1234567Z');
     const alive = vi.fn(() => 'alive' as const);
+    const wait = vi.fn();
     expect(
       resolveOwnProcessIdentity(42, {
         platform: 'win32',
         lookup,
         alive,
+        wait,
       }),
     ).toEqual({
       state: 'exact',
@@ -193,16 +196,38 @@ describe('birthProvesReuse (station#2904)', () => {
     });
     expect(lookup).toHaveBeenCalledOnce();
     expect(alive).toHaveBeenCalledOnce();
+    expect(wait).not.toHaveBeenCalled();
+
+    const delayed = vi
+      .fn<() => string | null>()
+      .mockReturnValueOnce(null)
+      .mockReturnValue('2026-08-29T16:16:27.1234567Z');
+    expect(
+      resolveOwnProcessIdentity(42, {
+        platform: 'win32',
+        lookup: delayed,
+        alive: () => 'alive',
+        wait,
+      }),
+    ).toEqual({
+      state: 'exact',
+      identity: { pid: 42, start: '2026-08-29T16:16:27.1234567Z' },
+    });
+    expect(delayed).toHaveBeenCalledTimes(2);
+    expect(wait).toHaveBeenCalledWith(WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS);
 
     const unavailable = vi.fn(() => null);
+    wait.mockClear();
     expect(
       resolveOwnProcessIdentity(42, {
         platform: 'win32',
         lookup: unavailable,
         alive: () => 'alive',
+        wait,
       }),
     ).toEqual({ state: 'unavailable' });
-    expect(unavailable).toHaveBeenCalledOnce();
+    expect(unavailable).toHaveBeenCalledTimes(3);
+    expect(wait).toHaveBeenCalledTimes(2);
   });
 
   test('gives only own-process publication the larger bounded shell-start budget', () => {

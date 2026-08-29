@@ -108,7 +108,18 @@ async function requestFileSystemBrowse(
   );
   const result = await response.json();
   if (!result.success) {
-    throw new Error(apiErrorMessage(result, 'Failed to browse filesystem'));
+    // station#765 (F7-class): the New Project directory pre-check must tell
+    // the server's VERDICT about a path (a 4xx from `pathAccessFailure` —
+    // not found / not permitted / not a folder) apart from a check that
+    // failed to HAPPEN (5xx, dead backend). The message alone cannot carry
+    // that, so the HTTP status rides on the thrown error. A transport-level
+    // failure (network refusal, non-JSON proxy response) throws before this
+    // line and carries no `status`, which consumers must read as "no
+    // verdict".
+    throw Object.assign(
+      new Error(apiErrorMessage(result, 'Failed to browse filesystem')),
+      { status: response.status },
+    );
   }
   return result.data as FileSystemBrowseResult;
 }
