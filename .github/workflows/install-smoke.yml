@@ -238,3 +238,15 @@ jobs:
             sh -s uninstall
           test ! -e "$install_root"
           test -d "$station_home"
+
+      - name: Dump Station instance logs on failure
+        if: failure()
+        env:
+          SMOKE_HOME: ${{ runner.temp }}/station-home
+        run: |
+          set -uo pipefail
+          for log in "$SMOKE_HOME"/.station/instances/*/logs/*.log /tmp/station-*.log; do
+            [ -f "$log" ] || continue
+            echo "===== $log (last 200 lines) ====="
+            tail -200 "$log"
+          done
