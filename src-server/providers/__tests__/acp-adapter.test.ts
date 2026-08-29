@@ -2363,6 +2363,7 @@ describe('AcpAdapter', () => {
       threadId: 'thread-first-turn-prompt',
       input: 'Be terse.\nHello',
       displayInput: 'Hello',
+      ambientContext: 'Be terse.',
       metadata: { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true },
     });
 
@@ -2370,6 +2371,14 @@ describe('AcpAdapter', () => {
     expect(turnStarted).toMatchObject({
       method: 'turn.started',
       prompt: 'Hello',
+      // Independent review (delta round): the HIGH-1 fix-adjacent change
+      // persists the UNCOMPOSED ambient text onto this turn's own event —
+      // this adapter used to omit it entirely, which would have made a
+      // crash-recovery replay of an ACP turn (session-recovery-coordinator.ts's
+      // `buildReplayInput`, sourced from this exact event) carry no
+      // ambient context at all, including a pending first-turn
+      // instructions receipt riding it.
+      ambientContext: 'Be terse.',
       // Independent review MEDIUM-1: the marker rides THIS turn's own
       // persisted metadata, so the delegate-seam disclosure can derive
       // 'delivered' from this turn's own record, not merely from having

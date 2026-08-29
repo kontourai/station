@@ -12,6 +12,7 @@ import {
   stationDocsRuntimeIdentity,
 } from '../../../runtime/bootstrap/station-control-runtime-env.js';
 import { agentCapabilityUndelivered } from '../../../telemetry/metrics.js';
+import { delegatedCapabilityDelivery } from '../../../tools/station-control-delegation.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -798,7 +799,7 @@ describe('createSessionAgentResolver', () => {
   });
 
   describe('independent review MEDIUM-2: first-turn stamping must not duplicate onto a resumed engine thread', () => {
-    test('a cursor continuation (resumeCursor present) does NOT re-stamp the first-turn receipt — the resumed engine thread already heard it', async () => {
+    test('a cursor continuation (resumeCursor present) emits NO systemPrompt entry at all — not first-turn, not an engine-unsupported drop', async () => {
       const resolver = createSessionAgentResolver({
         loadAgentSpec: async () =>
           agentSpec({ prompt: 'You are an ACP-bound agent.' }),
@@ -806,6 +807,8 @@ describe('createSessionAgentResolver', () => {
         resolveSkillDir: async () => null,
       });
 
+      const callsBefore = vi.mocked(agentCapabilityUndelivered.add).mock.calls
+        .length;
       const result = await resolver(
         baseInput({ provider: 'acp', resumeCursor: { nativeSession: 'x' } }),
       );
@@ -814,12 +817,24 @@ describe('createSessionAgentResolver', () => {
       const report = result.metadata?.[
         SESSION_CAPABILITY_DELIVERY_METADATA_KEY
       ] as any;
-      // Never the first-turn channel on a resumed thread — re-stamping it
-      // would prepend the authored prompt AGAIN into the resumed session's
-      // next turn (orchestration-service.ts's pendingFirstTurnInstructions
-      // reads this exact receipt).
-      expect(report.systemPrompt?.channel).not.toBe('first-turn');
-      expect(report.systemPrompt?.firstTurnInstructions).toBeUndefined();
+      // Independent review (delta round): resumeCursor covers same-thread
+      // recovery paths too (credential-profile restart, dormant-thread
+      // recovery), which publish a SECOND session.started/configured on
+      // the SAME thread. Pinning "not first-turn" alone let a regression
+      // fall through to the engine-unsupported drop branch instead — a
+      // systemPrompt key WOULD then be present (with an undelivered
+      // entry), and `capabilityDeliveryReport`'s `{...report, ...candidate}`
+      // fold would let that drop REPLACE an earlier turn's genuinely
+      // truthful 'delivered' entry. The only honest output here is NO KEY
+      // AT ALL, so the fold has nothing to overwrite with.
+      expect(report).not.toHaveProperty('systemPrompt');
+      // No refusal happened, so nothing new should be counted as one
+      // (the mock is module-scoped and accumulates across this file's
+      // tests, so a fresh call count is compared rather than "never
+      // called").
+      expect(vi.mocked(agentCapabilityUndelivered.add).mock.calls.length).toBe(
+        callsBefore,
+      );
     });
 
     test('a seed continuation (no resumeCursor — a fresh provider session bridging prior history via transcriptSeed text) still stamps normally', async () => {
@@ -847,6 +862,65 @@ describe('createSessionAgentResolver', () => {
         undelivered: [],
         channel: 'first-turn',
         firstTurnInstructions: 'You are an ACP-bound agent.',
+      });
+    });
+
+    test('independent review (delta round): a same-thread-recovery-shaped fold — the resolver output on the resumeCursor path never overwrites an earlier delivered entry at the delegate seam', async () => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({ prompt: 'You are an ACP-bound agent.' }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+
+      // The session's genuine first dispatch: fresh, no resumeCursor —
+      // stamps the pending first-turn receipt exactly like production.
+      const firstDispatch = await resolver(baseInput({ provider: 'acp' }));
+      const firstReport =
+        firstDispatch.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY];
+
+      // Same-thread recovery re-runs THIS resolver on the SAME thread with
+      // a resumeCursor now present — exactly the shape
+      // `restartCredentialProfileProviderSession` →
+      // `resolveSessionAgentForStart` and `startRecoveredOrchestrationSession`
+      // → `resolveSessionAgent` produce (orchestration-service.ts:2037/2058,
+      // orchestration-session-state.ts:1108/1133).
+      const recoveryDispatch = await resolver(
+        baseInput({
+          provider: 'acp',
+          resumeCursor: { nativeSession: 'recovered' },
+        }),
+      );
+      const recoveryReport =
+        recoveryDispatch.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY];
+
+      // The event log a real session accumulates: the original
+      // session.started (pending receipt), the turn that actually composed
+      // it (marker true), then the recovery's OWN session.started carrying
+      // whatever THIS resolver invocation just produced.
+      const events = [
+        {
+          method: 'session.started',
+          metadata: { capabilityDelivery: firstReport },
+        },
+        {
+          method: 'turn.started',
+          metadata: { firstTurnInstructionsComposed: true },
+        },
+        {
+          method: 'session.started',
+          metadata: { capabilityDelivery: recoveryReport },
+        },
+      ];
+
+      // Reverting the resumeCursor gate to 1d11acd's shape (falls through
+      // to the engine-unsupported drop branch instead of omitting the key)
+      // reproduces `recoveryReport.systemPrompt` carrying an undelivered
+      // entry, which this fold then uses to REPLACE the earlier delivered
+      // one — verified by temporary revert, see the delivery report.
+      expect(delegatedCapabilityDelivery(events)?.prompt).toEqual({
+        channel: 'first-turn',
+        status: 'delivered',
       });
     });
   });

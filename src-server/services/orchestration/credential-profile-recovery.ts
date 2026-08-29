@@ -176,6 +176,18 @@ export class CredentialProfileRecovery {
       // this call path itself creates). Composing here — the same rule,
       // not a reimplementation the two paths could drift apart on — closes
       // that gap for every recovery replay, first turn or not.
+      //
+      // Deliberately does NOT stamp FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY
+      // (MEDIUM-1) on this dispatch's own `metadata` — safe only because
+      // `input.ambientContext` here (when it carries a pending prompt at
+      // all) was read off an EARLIER `turn.started`'s own `ambientContext`
+      // (`session-recovery-coordinator.ts`'s `buildReplayInput`), an event
+      // that already carries the marker from ITS original dispatch; the
+      // delegate seam's `events.some(...)` scan finds that entry either
+      // way. A replay of a turn that never reached its own `turn.started`
+      // in the first place would under-report ('pending' rather than
+      // 'delivered') instead of falsely claiming delivery — an accepted,
+      // fail-toward-honest gap, not a silent one.
       result = await adapter.sendTurn({
         threadId: input.threadId,
         input: composeAmbientTurnText(input.ambientContext, input.input),

@@ -219,4 +219,81 @@ describe('delegatedCapabilityDelivery', () => {
       ])?.prompt,
     ).toEqual({ channel: 'first-turn', status: 'pending' });
   });
+
+  test('independent review (delta round): same-thread recovery fold preservation — a resumed session.started whose candidate omits systemPrompt entirely leaves an earlier delivered entry untouched', () => {
+    // Shape produced by session-agent-resolution.ts on the resumeCursor
+    // path (credential-profile restart, dormant-thread recovery): the
+    // resolver emits NO systemPrompt key at all rather than a drop entry,
+    // so this candidate has nothing to overwrite the existing report with.
+    const report = {
+      systemPrompt: {
+        source: 'agent',
+        requested: ['agent-prompt'],
+        undelivered: [],
+        channel: 'first-turn' as const,
+        firstTurnInstructions: 'Be terse.',
+      },
+    };
+    const events = [
+      sessionStarted(report),
+      {
+        method: 'turn.started',
+        metadata: { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true },
+      },
+      // The same-thread recovery's own session.started/configured — its
+      // capabilityDelivery report carries agentSlug (and possibly other
+      // capabilities) but NO `systemPrompt` key.
+      sessionStarted({ agentSlug: 'my-agent' }),
+    ];
+
+    expect(delegatedCapabilityDelivery(events)?.prompt).toEqual({
+      channel: 'first-turn',
+      status: 'delivered',
+    });
+  });
+
+  test('independent review (delta round), contrast: a resumed session.started candidate that DOES carry a systemPrompt key (the pre-fix engine-unsupported drop shape) replaces the earlier delivered entry — this is exactly the bug the omit-the-key fix in session-agent-resolution.ts prevents', () => {
+    const report = {
+      systemPrompt: {
+        source: 'agent',
+        requested: ['agent-prompt'],
+        undelivered: [],
+        channel: 'first-turn' as const,
+        firstTurnInstructions: 'Be terse.',
+      },
+    };
+    const events = [
+      sessionStarted(report),
+      {
+        method: 'turn.started',
+        metadata: { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true },
+      },
+      // The shape session-agent-resolution.ts's resume path produced BEFORE
+      // this fix: an engine-unsupported drop entry, because the resolver
+      // fell through to the final `else` branch instead of omitting the
+      // key. `capabilityDeliveryReport`'s `{...report, ...candidate}` fold
+      // has no way to tell "this candidate is stale" from "this candidate
+      // is a fresh refusal" — it always takes the newer key.
+      sessionStarted({
+        agentSlug: 'my-agent',
+        systemPrompt: {
+          source: 'agent',
+          requested: ['agent-prompt'],
+          undelivered: [
+            {
+              capability: 'systemPrompt',
+              id: 'agent-prompt',
+              reason: 'engine-unsupported',
+            },
+          ],
+        },
+      }),
+    ];
+
+    expect(delegatedCapabilityDelivery(events)?.prompt).toEqual({
+      channel: 'system-prompt',
+      status: 'not-delivered',
+      reason: 'engine-unsupported',
+    });
+  });
 });

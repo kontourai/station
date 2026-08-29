@@ -425,18 +425,29 @@ export function createSessionAgentResolver(
             requested: [SYSTEM_PROMPT_CAPABILITY_ID],
             undelivered: [],
           };
+        } else if (input.resumeCursor !== undefined) {
+          // Independent review MEDIUM-2 (delta round): `resumeCursor` marks
+          // every path that resumes the engine's OWN thread — not just a
+          // cross-session continuation, but SAME-THREAD recovery too
+          // (credential-profile restart via `restartCredentialProfileProviderSession`
+          // → `resolveSessionAgentForStart`; dormant-thread recovery via
+          // `startRecoveredOrchestrationSession` → `resolveSessionAgent`,
+          // reached at boot AND from an ordinary `sendTurn` dispatch). Both
+          // publish a SECOND `session.started`/`session.configured` on the
+          // SAME threadId. Emitting NO systemPrompt entry at all here —
+          // never a first-turn stamp (would duplicate into the resumed
+          // thread's next turn), never an engine-unsupported drop either —
+          // is deliberate: `capabilityDeliveryReport`'s
+          // `{...report, ...candidate}` fold only OVERWRITES a capability
+          // key when the newer event's candidate actually sets it, so
+          // omitting the key here lets same-thread recovery's fold
+          // PRESERVE whatever the thread's earlier event already said
+          // (still 'delivered' once a turn composed it). A genuinely fresh
+          // continuation child has no earlier entry to preserve, so its own
+          // fold renders honest silence — never a false claim either way.
+          // No `recordUndelivered` call: nothing was refused, so nothing
+          // should count as one.
         } else if (
-          // Independent review MEDIUM-2: `input.resumeCursor` is the
-          // discriminator this seam already has for "the engine's OWN
-          // process/thread is being resumed, not started fresh" — a
-          // resumed engine thread already heard the authored prompt on
-          // whichever earlier turn first composed it, so stamping a new
-          // pending marker here would prepend it AGAIN into the resumed
-          // session's next turn. The transcriptSeed continuation path
-          // (no resumeCursor — a fresh provider session bridging prior
-          // history via text) has no such history on the ENGINE side and
-          // must keep stamping normally.
-          input.resumeCursor === undefined &&
           ENGINE_CAPABILITY_MATRICES[input.provider]?.instructionsInFirstTurn
             ?.state === 'session'
         ) {
