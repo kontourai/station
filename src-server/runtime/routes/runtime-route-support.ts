@@ -222,15 +222,19 @@ export function configureRuntimeSupportServices(
   notificationService.addProvider(approvalInboxProvider);
   // An inbound pairing request used to surface only inside the Connections
   // modal, so a device could sit waiting with nothing telling the operator.
+  // Shared with the attention projection below (#765 D5): same source, so
+  // the activity notification and the needs-attention item cannot disagree
+  // about which requests exist.
+  const resolveDevicePairing = () => {
+    try {
+      return context.environmentSecurityService.devicePairing;
+    } catch {
+      // Environment not initialised yet; nothing is pending by definition.
+      return null;
+    }
+  };
   notificationService.addProvider(
-    new DevicePairingNotificationProvider(() => {
-      try {
-        return context.environmentSecurityService.devicePairing;
-      } catch {
-        // Environment not initialised yet; nothing is pending by definition.
-        return null;
-      }
-    }),
+    new DevicePairingNotificationProvider(resolveDevicePairing),
   );
   for (const { provider } of getNotificationProviders()) {
     notificationService.addProvider(provider);
@@ -432,6 +436,9 @@ export function configureRuntimeSupportServices(
       context.configLoader.getProjectHomeDir(),
     ),
     () => getCachedUser().alias,
+    // #765 D5: pending pairing requests project as needs-attention items,
+    // from the same resolver the notification provider polls.
+    resolveDevicePairing,
   );
   return {
     schedulerService,

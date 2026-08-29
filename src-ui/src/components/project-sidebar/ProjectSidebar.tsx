@@ -74,7 +74,13 @@ export function ProjectSidebar() {
     chatDraftsStore.getSnapshot,
   );
   const { data: sessions = [] } = useOrchestrationSessionsQuery();
-  const openChats = useOpenChats(agents);
+  // #765 A1/A2: pass the server session summaries, exactly as the dock inbox
+  // and Sessions view do. Without them `chatLifecycleLabel` has no
+  // correlated turn state and falls back to labelling every open chat
+  // "Running"/Active from local composer state alone — which is how a
+  // session the server had already folded to `failed` kept its "Active"
+  // chip in this sidebar.
+  const openChats = useOpenChats(agents, sessions);
   const recentTasks = openChats.slice(0, OPEN_CHATS_SIDEBAR_CAP);
   const openChatsOverflow = openChats.length - recentTasks.length;
   // archive#3314: per-section collapse + removal, persisted device-side alongside

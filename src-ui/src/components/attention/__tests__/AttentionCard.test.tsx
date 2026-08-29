@@ -5,6 +5,7 @@
 import type {
   ApprovalAttentionItem,
   AttentionItem,
+  DevicePairingAttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -17,6 +18,30 @@ const acknowledge = vi.fn();
 const acknowledgeAsync = vi.fn(() => Promise.resolve());
 const navigate = vi.fn();
 
+const pairingMocks = vi.hoisted(() => {
+  class MockDevicePairingRequestActionError extends Error {
+    constructor(
+      readonly status: number,
+      readonly code?: string,
+    ) {
+      super(`HTTP ${status}`);
+    }
+  }
+  return {
+    MockDevicePairingRequestActionError,
+    confirmPairing: vi.fn(),
+    denyPairing: vi.fn(),
+    confirmPairingState: {
+      isPending: false,
+      error: null as unknown,
+    },
+    denyPairingState: {
+      isPending: false,
+      error: null as unknown,
+    },
+  };
+});
+
 vi.mock('../../../utils/attentionOpen', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../utils/attentionOpen')>()),
   navigateToAttentionTarget: (href: string) => navigate(href),
@@ -24,6 +49,8 @@ vi.mock('../../../utils/attentionOpen', async (importOriginal) => ({
 
 vi.mock('@kontourai/station-sdk', () => ({
   acceptFlowException: vi.fn(),
+  DevicePairingRequestActionError:
+    pairingMocks.MockDevicePairingRequestActionError,
   evaluateFlowGate: vi.fn(),
   sendOrchestrationTurn: vi.fn(),
   useAcknowledgeAttentionItemMutation: () => ({
@@ -31,6 +58,16 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: null,
     mutate: acknowledge,
     mutateAsync: acknowledgeAsync,
+  }),
+  useConfirmDevicePairingRequestMutation: () => ({
+    isPending: pairingMocks.confirmPairingState.isPending,
+    error: pairingMocks.confirmPairingState.error,
+    mutate: pairingMocks.confirmPairing,
+  }),
+  useDenyDevicePairingRequestMutation: () => ({
+    isPending: pairingMocks.denyPairingState.isPending,
+    error: pairingMocks.denyPairingState.error,
+    mutate: pairingMocks.denyPairing,
   }),
   useDismissNotificationMutation: () => ({
     isPending: false,
@@ -52,6 +89,12 @@ beforeEach(() => {
   acknowledgeAsync.mockReset();
   acknowledgeAsync.mockResolvedValue(undefined);
   navigate.mockReset();
+  pairingMocks.confirmPairing.mockReset();
+  pairingMocks.denyPairing.mockReset();
+  pairingMocks.confirmPairingState.isPending = false;
+  pairingMocks.confirmPairingState.error = null;
+  pairingMocks.denyPairingState.isPending = false;
+  pairingMocks.denyPairingState.error = null;
 });
 
 function baseFailure(
@@ -263,6 +306,103 @@ describe('AttentionCard — a failed session says what happened (#3203)', () => 
     });
 
     expect(new Set(rows).size).toBe(3);
+  });
+});
+
+function basePairing(
+  overrides: Partial<DevicePairingAttentionItem> = {},
+): DevicePairingAttentionItem {
+  const now = new Date().toISOString();
+  return {
+    id: 'device-pairing:pair-req-1',
+    kind: 'device-pairing',
+    title: 'A device is asking to pair',
+    body: 'Test Phone is waiting for approval on this Station.',
+    createdAt: now,
+    updatedAt: now,
+    deviceName: 'Test Phone',
+    openHref: '/connections',
+    source: { requestId: 'pair-req-1' },
+    ...overrides,
+  };
+}
+
+/*
+ * #765 D5: an inbound pairing request used to be passive activity with only
+ * a Dismiss button; the host had no Approve/Deny anywhere but the CLI and
+ * the Connections modal. The card now carries the decision, wired to the
+ * SAME gated pairing routes the panel and CLI use.
+ */
+describe('AttentionCard — device pairing kind (#765 D5)', () => {
+  test('renders Approve and Deny, and Approve confirms the exact request', () => {
+    renderCard(basePairing());
+
+    expect(
+      screen.getByText('Test Phone is waiting for approval on this Station.'),
+    ).toBeTruthy();
+    screen.getByRole('button', { name: 'Approve' }).click();
+    expect(pairingMocks.confirmPairing).toHaveBeenCalledWith('pair-req-1');
+    expect(pairingMocks.denyPairing).not.toHaveBeenCalled();
+  });
+
+  test('Deny denies the exact request', () => {
+    renderCard(basePairing());
+
+    screen.getByRole('button', { name: 'Deny' }).click();
+    expect(pairingMocks.denyPairing).toHaveBeenCalledWith('pair-req-1');
+    expect(pairingMocks.confirmPairing).not.toHaveBeenCalled();
+  });
+
+  test('an in-flight decision disables both buttons — the confirmed state is the server projection resolving the item away', () => {
+    pairingMocks.confirmPairingState.isPending = true;
+    renderCard(basePairing());
+
+    expect(
+      screen.getByRole('button', { name: 'Approve' }).hasAttribute('disabled'),
+    ).toBe(true);
+    expect(
+      screen.getByRole('button', { name: 'Deny' }).hasAttribute('disabled'),
+    ).toBe(true);
+  });
+
+  test('a 403 refusal renders the trusted-session remedy, naming the CLI approve', () => {
+    pairingMocks.confirmPairingState.error =
+      new pairingMocks.MockDevicePairingRequestActionError(
+        403,
+        'approval_requires_operator',
+      );
+    renderCard(basePairing());
+
+    expect(
+      screen.getByText(
+        /needs a trusted Station session.*station environment access approve pair-req-1 --force/,
+      ),
+    ).toBeTruthy();
+  });
+
+  test('an expired request says so instead of a generic failure', () => {
+    pairingMocks.denyPairingState.error =
+      new pairingMocks.MockDevicePairingRequestActionError(410);
+    renderCard(basePairing());
+
+    expect(
+      screen.getByText(
+        'That access request has already expired or been removed.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('links to Connections and keeps the acknowledge-dismiss affordance', () => {
+    renderCard(basePairing());
+
+    expect(
+      screen
+        .getByRole('link', { name: 'Open connections' })
+        .getAttribute('href'),
+    ).toBe('/connections');
+    screen.getByRole('button', { name: 'Dismiss' }).click();
+    expect(acknowledge).toHaveBeenCalledWith('device-pairing:pair-req-1');
+    expect(dismiss).not.toHaveBeenCalled();
   });
 });
 

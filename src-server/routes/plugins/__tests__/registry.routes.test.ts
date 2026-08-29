@@ -9,6 +9,7 @@ import {
   saveIntegrationConfig,
 } from '../../../domain/config-loader-storage.js';
 import { PluginContentLockCycleError } from '../../../services/plugins/plugin-content-integrity.js';
+import { PluginConsentRefusedError } from '../../../services/plugins/plugin-install-consent.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   registryOps: { add: vi.fn() },
@@ -31,20 +32,22 @@ vi.mock('../../../providers/registries/registry.js', () => {
       ]),
     getContent: vi.fn().mockResolvedValue('# Skill content'),
   };
+  const agentProvider = {
+    listAvailable: vi.fn().mockResolvedValue([]),
+    listInstalled: vi.fn().mockResolvedValue([]),
+    install: vi.fn().mockResolvedValue({ success: true }),
+    uninstall: vi.fn().mockResolvedValue({ success: true }),
+  };
   return {
     getSkillRegistryProviders: vi
       .fn()
       .mockReturnValue([{ provider: skillProvider, source: 'test' }]),
-    getAgentRegistryProvider: vi.fn().mockReturnValue({
-      listAvailable: vi.fn().mockResolvedValue([]),
-      listInstalled: vi.fn().mockResolvedValue([]),
-      install: vi.fn().mockResolvedValue({ success: true }),
-      uninstall: vi.fn().mockResolvedValue({ success: true }),
-    }),
+    getAgentRegistryProvider: vi.fn().mockReturnValue(agentProvider),
     getIntegrationRegistryProvider: vi
       .fn()
       .mockReturnValue(integrationProvider),
     __integrationProvider: integrationProvider,
+    __agentProvider: agentProvider,
   };
 });
 
@@ -92,9 +95,10 @@ const { StationKitObservabilityHost } = await import(
 const { StationKitObservabilityRegistry } = await import(
   '../../../services/kits/kit-observability-registry.js'
 );
-// __integrationProvider is a mock-only export (see vi.mock factory above);
-// it does not exist on the real module, so the type checker sees it via `any`.
-const { __integrationProvider } = (await import(
+// __integrationProvider / __agentProvider are mock-only exports (see vi.mock
+// factory above); they do not exist on the real module, so the type checker
+// sees them via `any`.
+const { __integrationProvider, __agentProvider } = (await import(
   '../../../providers/registries/registry.js'
 )) as any;
 const {
@@ -502,6 +506,154 @@ describe('Registry Routes', () => {
         projectHomeDir: '/tmp',
       }),
     );
+  });
+
+  /**
+   * #765 D1. A JSON-manifest registry serves its plugin catalog through the
+   * agent-registry face too, and this route used to answer a plugin id with
+   * the provider's raw tree copy: no buildPlugin, no consent gate, no
+   * `plugins:installed` event. The tree landed without `dist/bundle.js`, so
+   * every layout component the plugin declared rendered as "Unsupported
+   * layout tab" forever while the install reported success. Any id the
+   * plugin registry resolves must take the one complete install pipeline.
+   */
+  test('POST /agents/install routes a registry plugin id through the consent-gated plugin pipeline, never the raw provider copy', async () => {
+    const { app } = setup();
+    vi.mocked(installPluginFromSource).mockClear();
+    __agentProvider.install.mockClear();
+
+    const body = await json(
+      await app.request('/agents/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'p1' }),
+      }),
+    );
+
+    expect(body.success).toBe(true);
+    expect(__agentProvider.install).not.toHaveBeenCalled();
+    expect(installPluginFromSource).toHaveBeenCalledWith(
+      '/tmp/registry/plugin-one',
+      [],
+      expect.objectContaining({ pluginsDir: '/tmp/plugins' }),
+      {
+        registryId: 'p1',
+        registryKey: 'test-registry',
+        // No decision travelled with this request, and the route says so
+        // rather than passing one nobody made — the installer then refuses a
+        // plugin contributing code, instead of half-installing it.
+        consent: {
+          kind: 'no-operator-decision',
+          caller: 'the plugin registry',
+        },
+      },
+    );
+  });
+
+  test('POST /agents/install falls back to the agent provider for an id the plugin registry does not resolve', async () => {
+    const { app } = setup();
+    vi.mocked(resolvePluginRegistryInstall).mockResolvedValueOnce(null);
+    vi.mocked(installPluginFromSource).mockClear();
+    __agentProvider.install.mockClear();
+
+    const body = await json(
+      await app.request('/agents/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'plain-agent' }),
+      }),
+    );
+
+    expect(body.success).toBe(true);
+    expect(__agentProvider.install).toHaveBeenCalledWith('plain-agent');
+    expect(installPluginFromSource).not.toHaveBeenCalled();
+  });
+
+  test('registry plugin installs forward the operator decision from the preview (both catalog faces)', async () => {
+    const { app } = setup();
+    const consent = {
+      permissions: ['navigation.dock'],
+      contentDigest: 'sha256:abc',
+      dependencies: [],
+    };
+
+    for (const route of ['/agents/install', '/plugins/install']) {
+      vi.mocked(installPluginFromSource).mockClear();
+      const body = await json(
+        await app.request(route, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: 'p1', consent, skip: ['layout:demo'] }),
+        }),
+      );
+      expect(body.success).toBe(true);
+      expect(installPluginFromSource).toHaveBeenCalledWith(
+        '/tmp/registry/plugin-one',
+        ['layout:demo'],
+        expect.anything(),
+        {
+          registryId: 'p1',
+          registryKey: 'test-registry',
+          consent: { kind: 'operator-decision', ...consent },
+        },
+      );
+    }
+  });
+
+  test('a consent refusal answers 400 with the refusal sentence, on both catalog faces', async () => {
+    const { app } = setup();
+    for (const route of ['/agents/install', '/plugins/install']) {
+      vi.mocked(installPluginFromSource).mockRejectedValueOnce(
+        new PluginConsentRefusedError({
+          pluginName: 'getting-started-starter',
+          reason: 'undisclosed-contributions',
+          message:
+            "Plugin 'getting-started-starter' contributes entrypoint, layout — install it from a preview.",
+        }),
+      );
+      const response = await app.request(route, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'p1' }),
+      });
+      const body = await json(response);
+      expect(response.status).toBe(400);
+      expect(body.success).toBe(false);
+      expect(body.message).toContain('getting-started-starter');
+      expect(body.consent.reason).toBe('undisclosed-contributions');
+    }
+  });
+
+  test('DELETE /agents/:id removes a registry plugin through the shared uninstall, not the raw provider delete', async () => {
+    const { app } = setup();
+    vi.mocked(uninstallInstalledPlugin).mockClear();
+    __agentProvider.uninstall.mockClear();
+
+    const body = await json(
+      await app.request('/agents/p1', { method: 'DELETE' }),
+    );
+
+    expect(body.success).toBe(true);
+    expect(__agentProvider.uninstall).not.toHaveBeenCalled();
+    expect(uninstallInstalledPlugin).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({ pluginsDir: '/tmp/plugins' }),
+    );
+  });
+
+  test('DELETE /agents/:id falls back to the agent provider for a non-plugin id', async () => {
+    const { app } = setup();
+    vi.mocked(resolvePluginRegistryInstall).mockResolvedValueOnce(null);
+    vi.mocked(uninstallInstalledPlugin).mockClear();
+    __agentProvider.uninstall.mockClear();
+
+    const body = await json(
+      await app.request('/agents/plain-agent', { method: 'DELETE' }),
+    );
+
+    expect(body.success).toBe(true);
+    expect(__agentProvider.uninstall).toHaveBeenCalledWith('plain-agent');
+    expect(uninstallInstalledPlugin).not.toHaveBeenCalled();
   });
 
   test('GET /skills returns { success, data } array with id/name', async () => {

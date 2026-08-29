@@ -902,6 +902,26 @@ function continuationLaunchContext(
   const sameExecutionIdentity =
     detail.session.provider === requested.provider &&
     sourceConnectionId === requested.connectionId;
+  // #765 A1: a predecessor started with an explicit `persistSession: false`
+  // has no durable engine transcript behind its cursor — the Claude adapter
+  // spawns such sessions with `--no-session-persistence`, so a child start
+  // that presents the cursor gets the CLI's terminal "No conversation found
+  // with session ID" and the conversation dies. The cursor is a claim the
+  // predecessor's own start posture disproves; carry the bounded transcript
+  // seed instead. `undefined` (providers that ignore the flag, e.g. Codex's
+  // always-persisted rollouts, and rows persisted before the flag existed)
+  // keeps the cursor path.
+  const cursorBackedByTranscript = detail.session.persistSession !== false;
+  // #765 A1: `dead` is the engine's own structured verdict that THIS binding
+  // can never resume (archive#1827 — e.g. Claude's `--resume` answered
+  // "No conversation found with session ID"). Reserving the next child on
+  // the same disproved cursor re-runs the identical failure forever; the
+  // transcript-seed fresh child is the recovery that actually works, and it
+  // is what makes the UI's "send your message again" claim true for
+  // conversations whose predecessor ran before persistence was fixed.
+  // `error` status deliberately keeps the cursor: archive#1090's contract is
+  // that a config-shaped failure may retry the SAME cursor once fixed.
+  const cursorDisprovenByEngine = detail.session.status === 'dead';
   // #764: `resumeSupported === false` is an observed capability absence
   // (e.g. an ACP handshake without loadSession) — take the engine-agnostic
   // transcript-seed fresh child instead of a start the adapter must refuse.
@@ -909,6 +929,8 @@ function continuationLaunchContext(
   // cannot speak for.
   return sameExecutionIdentity &&
     detail.session.resumeCursor !== undefined &&
+    cursorBackedByTranscript &&
+    !cursorDisprovenByEngine &&
     resumeSupported !== false
     ? { resumeCursor: detail.session.resumeCursor }
     : { transcriptSeed: continuationTranscriptSeed(messages) };

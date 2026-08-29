@@ -3,18 +3,24 @@ import {
   type OrchestrationSessionSummary,
   useOrchestrationCommandReceiptsQuery,
 } from '@kontourai/station-sdk';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
 import type { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { useMutableSessionDetailState } from '../../hooks/useMutableSessionDetailState';
-import { clientOriginDetail } from '../../utils/clientOrigin';
+import {
+  clientOriginDetail,
+  clientOriginSummary,
+} from '../../utils/clientOrigin';
+import { relativeTimeAgo } from '../../utils/relativeTime';
 import {
   builderRunIdentityLabel,
   builderRunMatchLabel,
   linkedFlowStateLabel,
   sidecarWriteProvenance,
 } from '../../utils/sessionDisplay';
+import { latestTurnOutputText } from '../../utils/sessionFinalOutput';
 import { Button } from '../Button';
+import { MessageContent } from '../chat/message-bubble/MessageContent';
 import { WorkflowStatusLineList } from '../flow/WorkflowStatusLine';
 import { SessionDetailAttention } from './SessionDetailAttention';
 import { SessionDetailDiagnostics } from './SessionDetailDiagnostics';
@@ -129,15 +135,31 @@ export function MutableSessionDetail({
   const receipts = useOrchestrationCommandReceiptsQuery(threadId, {
     enabled: threadId.length > 0,
   });
-  const latestOrigin = receipts.data
+  // #765 D6: the tile reads as the derived summary (actor kind · surface ·
+  // when), never the raw device UUID; the exact detail string — UUID and
+  // build included — stays reachable as the tile's tooltip.
+  const latestOriginReceipt = receipts.data
     ?.slice()
     .reverse()
-    .find((receipt) => receipt.clientOrigin !== undefined)?.clientOrigin;
+    .find((receipt) => receipt.clientOrigin !== undefined);
+  const latestOrigin = latestOriginReceipt?.clientOrigin;
   const lastUserAction = receipts.isLoading
     ? 'Loading receipt provenance…'
     : receipts.isError
       ? 'unavailable'
-      : clientOriginDetail(latestOrigin);
+      : clientOriginSummary(latestOrigin);
+  const lastUserActionAtMs = latestOriginReceipt
+    ? Date.parse(latestOriginReceipt.createdAt)
+    : Number.NaN;
+  const lastUserActionWhen =
+    latestOrigin && Number.isFinite(lastUserActionAtMs)
+      ? relativeTimeAgo(lastUserActionAtMs, Date.now())
+      : null;
+
+  // #765 D6: the task's actual final output, shown as the primary block —
+  // metadata tiles used to lead while the answer hid behind the collapsed
+  // event details.
+  const finalOutput = useMemo(() => latestTurnOutputText(events), [events]);
 
   return (
     <section
@@ -179,6 +201,28 @@ export function MutableSessionDetail({
           items={visibleAttentionItems}
         />
 
+        {/* #765 D6: the session's final answer leads; events stay collapsed
+            below. Same visual treatment as the read-only transcript's
+            assistant messages (AttachedSessionDetail). Suppressed mid-turn:
+            a superseded answer must not present as THE result while a newer
+            one is still streaming. */}
+        {finalOutput !== null && !isStreaming && (
+          <article
+            className="sessions-detail__transcript-message sessions-detail__result"
+            data-testid="session-final-output"
+          >
+            <p className="sessions-detail__transcript-role">Result</p>
+            <MessageContent
+              contentParts={[{ type: 'text', content: finalOutput }]}
+              textContent=""
+              chatFontSize={14}
+              showReasoning={false}
+              showToolDetails={false}
+              isStreamingMessage={false}
+            />
+          </article>
+        )}
+
         <dl
           className="sessions-detail__context"
           aria-label="Task context"
@@ -188,7 +232,14 @@ export function MutableSessionDetail({
         >
           <div className="sessions-detail__context-item">
             <dt>Last user action</dt>
-            <dd>{lastUserAction}</dd>
+            <dd
+              title={
+                latestOrigin ? clientOriginDetail(latestOrigin) : undefined
+              }
+            >
+              {lastUserAction}
+              {lastUserActionWhen ? ` · ${lastUserActionWhen}` : ''}
+            </dd>
           </div>
           {rows.map((row) => (
             <div className="sessions-detail__context-item" key={row.label}>

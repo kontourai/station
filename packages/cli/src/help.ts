@@ -337,11 +337,15 @@ const VERBS: Record<string, VerbSpec> = {
       'station environment show <id>',
       'station environment add --ssh=<host> --project=<remote-path> [--remote-port=<n>]',
       'station environment connect|stop|remove <id>',
+      'station environment peers list',
+      'station environment peers add --environment-id=<id> --api-base=<peer-url> --credential=<token> --scope=<space-delimited-scope> [--label=<name>]',
+      'station environment peers remove <environment-id>',
     ],
     actions: [
       'show',
       'credential',
       'reset',
+      'offer',
       'access',
       'hosts',
       'list',
@@ -349,6 +353,11 @@ const VERBS: Record<string, VerbSpec> = {
       'connect',
       'stop',
       'remove',
+      // #765 D3: `peers` was implemented and documented (docs/reference/
+      // cli.md, environment.ts's own USAGE) but hidden from this table, so
+      // `station environment --help` denied the verb the Computers page tells
+      // users to run. `offer` above had the same usage-but-not-actions gap.
+      'peers',
     ],
   },
   config: {

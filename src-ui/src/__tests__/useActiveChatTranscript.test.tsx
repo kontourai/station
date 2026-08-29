@@ -1238,4 +1238,78 @@ describe('useActiveChatTranscript live failure marker (UX audit V3)', () => {
     );
     expect(carriers).toHaveLength(1);
   });
+
+  // #765 A1: when BOTH copies of the same turn's failure exist, the element
+  // with the affordance wins. The local `[CHAT_ERROR:code]` marker renders
+  // as the translated card with a Send again/New chat action
+  // (`ChatDockBody.renderOverride`); the projected `runtimeError` part is
+  // untranslatable prose. The pre-#765 arbitration kept the projected part
+  // and hid the marker — the audit's raw
+  // "No conversation found with session ID: <uuid>" with no retry.
+  test('the actionable marker wins over the projected failure part for the same turn', async () => {
+    const rawError =
+      'No conversation found with session ID: d434e194-cc2e-4edc-8733-d8645c512fab';
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 9,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', {
+          turnId: 'dead-turn',
+          prompt: 'second turn please',
+        }),
+        event('e2', 'content.text-delta', {
+          turnId: 'dead-turn',
+          delta: 'partial words before dying',
+        }),
+        event('e3', 'runtime.error', {
+          turnId: 'dead-turn',
+          severity: 'error',
+          code: 'engine-session-binding-dead',
+          message: rawError,
+        }),
+      ],
+    });
+
+    const session: ChatSession = {
+      ...baseSession,
+      messages: [
+        {
+          role: 'user' as const,
+          content: `[SYSTEM_EVENT] [CHAT_ERROR:engine-session-binding-dead] ${rawError}`,
+          timestamp: 9,
+          turnId: 'dead-turn',
+        },
+      ] as ChatSession['messages'],
+    };
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', session),
+    );
+    await waitFor(() =>
+      expect(result.current.messages.length).toBeGreaterThan(1),
+    );
+
+    // Exactly one element carries the failure, and it is the marker card.
+    const carriers = result.current.messages.filter((message) =>
+      [
+        message.content ?? '',
+        ...(message.contentParts ?? []).map((part) => part.content ?? ''),
+      ]
+        .join('\n')
+        .includes('No conversation found'),
+    );
+    expect(carriers).toHaveLength(1);
+    expect(carriers[0]?.content ?? '').toContain(
+      '[CHAT_ERROR:engine-session-binding-dead]',
+    );
+    // The projected assistant row keeps its REAL streamed content — only the
+    // failure part was stripped, not the turn's words.
+    expect(
+      result.current.messages.some((message) =>
+        (message.contentParts ?? []).some(
+          (part) => part.content === 'partial words before dying',
+        ),
+      ),
+    ).toBe(true);
+  });
 });

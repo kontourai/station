@@ -18,7 +18,15 @@ export interface WorkspacePaneAvailabilityCatalogEntry {
   descriptor: Pick<
     WorkspacePaneDescriptor,
     'id' | 'name' | 'description' | 'icon' | 'previewImage'
-  >;
+  > &
+    /**
+     * #765 F4: optional so hosts joining partial descriptor projections keep
+     * compiling; when the full descriptor flows through (the resolved
+     * catalog), the card uses it to pick the built-in pane's real tile glyph
+     * instead of a first-letter placeholder. Display-only, exactly like
+     * `icon`/`previewImage` — never used to infer host or authorization.
+     */
+    Partial<Pick<WorkspacePaneDescriptor, 'renderer'>>;
   /** Present only after this descriptor has a real placed occurrence. */
   instance?: Pick<WorkspacePaneInstance, 'instanceId'>;
   availability: WorkspacePaneAvailability;

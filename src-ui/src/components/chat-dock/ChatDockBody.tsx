@@ -59,6 +59,7 @@ import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
 import { ConversationStats } from '../conversation-stats/ConversationStats';
+import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
 import { LazyBoundary } from '../LazyBoundary';
 import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
@@ -704,11 +705,14 @@ export function ChatDockBody({
           : (turnInterruptedMatch?.[1] ?? eventBody);
         // #797: the failed turn's own user message now survives the failure,
         // so the marker can offer to send it again — text and attachments
-        // both — rather than leaving the user to retype it. station#1827:
-        // NOT offered for a terminal engine-session failure — the native
-        // session this thread used is gone, so resending into the same
-        // thread would retry into the identical dead binding. "Start new
-        // chat" is the only action offered instead.
+        // both — rather than leaving the user to retype it. station#1827
+        // reserved "New chat" for `terminalSession` failures whose binding
+        // could never resume; #765 A1 removed that flag from the
+        // dead-engine-binding class specifically because the server's
+        // continuation seam now recovers it (fresh child session, transcript
+        // carried forward), so a resend into the same conversation is a
+        // truthful affordance again. Translations that still claim
+        // `terminalSession` keep the New-chat-only treatment.
         const retryTurn = chatErrorMatch
           ? findPrecedingUserTurn(activeSession.messages, idx)
           : null;
@@ -1092,6 +1096,53 @@ export function ChatDockBody({
           ) : null}
         </div>
       ) : null}
+      {/*
+        #765 A2/A3: the turn-stall watchdog's projection, surfaced IN the
+        chat it is about. The server has observed this silence for the
+        agent's whole stall window (`turn-progress-tracker.ts`,
+        observe-only by archive#2959 decision — Station terminates nothing),
+        and until now the only surfaces showing it were Home rows and the
+        Sessions list; the affected chat itself just said "Working…". The
+        wording is derived from the observation, never a client-side
+        re-sample, and the Stop affordance is the composer's existing
+        interrupt path — this banner adds visibility, not a new mechanism.
+        `isTurnInFlight` gates it so a stale projection read after the turn
+        settled cannot claim a live stall.
+      */}
+      {activeOrchestrationSession?.turnProgress?.progressSilence &&
+        isTurnInFlight(activeSession) && (
+          <div
+            role="status"
+            data-testid="chat-dock-turn-stall-notice"
+            style={{
+              padding: '8px 12px',
+              margin: '0 12px 8px',
+              background: 'var(--bg-warning, var(--bg-secondary))',
+              border: '1px solid var(--border-warning, var(--border-primary))',
+              borderRadius: '6px',
+              fontSize: '0.85em',
+              color: 'var(--text-muted)',
+            }}
+          >
+            <strong>The engine appears stalled.</strong>{' '}
+            <ProgressSilenceObservation
+              observation={
+                activeOrchestrationSession.turnProgress.progressSilence
+              }
+            />
+            {'. '}
+            You can wait, or{' '}
+            <button
+              type="button"
+              onClick={() => void chatInput.handleCancel()}
+              disabled={!!activeSession.stopPending}
+              style={BANNER_LINK_BUTTON_STYLE}
+            >
+              stop this turn
+            </button>
+            .
+          </div>
+         )}
       <ChatInputArea
         sessionId={activeSession.id}
         input={chatInput.input}

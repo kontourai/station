@@ -12,6 +12,10 @@ const NOTIFICATION_LABELS: Readonly<Record<string, string>> = {
   'gate-route-back': 'Route back',
   'gate-blocked': 'Gate blocked',
   'gate-exception': 'Exception pending',
+  // The attention kind and the notification category for the same fact
+  // (#765 D5) — one map so the two surfaces cannot drift.
+  'device-pairing': 'Device pairing',
+  'pairing-request': 'Device pairing',
 };
 
 export function notificationCategoryLabel(category: string): string {

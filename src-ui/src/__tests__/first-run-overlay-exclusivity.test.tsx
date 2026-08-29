@@ -67,6 +67,7 @@ vi.mock('../components/UsageTelemetryDisclosure', () => ({
     </button>
   ),
   useUsageTelemetryDisclosureState: () => disclosureState,
+  dismissUsageTelemetryDisclosure: vi.fn(),
 }));
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: vi.fn() }),

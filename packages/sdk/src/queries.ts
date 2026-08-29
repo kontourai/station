@@ -386,6 +386,7 @@ export {
   usePluginProvidersQuery,
   usePluginProviderToggleMutation,
   usePluginRegistryInstallMutation,
+  usePluginRegistryPreviewMutation,
   usePluginRemoveMutation,
   usePluginSettingsMutation,
   usePluginSettingsQuery,

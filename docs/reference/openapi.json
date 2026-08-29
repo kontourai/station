@@ -1367,11 +1367,12 @@
               "source": {
                 "type": "string",
                 "minLength": 1
+              },
+              "registryId": {
+                "type": "string",
+                "minLength": 1
               }
             },
-            "required": [
-              "source"
-            ],
             "additionalProperties": false
           }
         },

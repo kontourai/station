@@ -46,6 +46,7 @@ import {
 } from '../ResponsiveDialogSurface';
 import { SkeletonBlock } from '../state';
 import {
+  dismissUsageTelemetryDisclosure,
   UsageTelemetryDisclosureStep,
   useUsageTelemetryDisclosureState,
 } from '../UsageTelemetryDisclosure';
@@ -163,9 +164,13 @@ export function FirstRunHomeChapter() {
   const { isFetching: systemStatusUnconfirmed } = useSystemStatus();
   // Whether this run has a disclosure to make. The SAME query the standalone
   // modal reads (React Query dedupes on the key), so the two cannot disagree
-  // about whether there is anything outstanding.
-  const { settled: disclosureSettled, outstanding: disclosureOutstanding } =
-    useUsageTelemetryDisclosureState();
+  // about whether there is anything outstanding. `data` is only read for the
+  // inventory revision a dismissal is recorded against.
+  const {
+    settled: disclosureSettled,
+    outstanding: disclosureOutstanding,
+    data: disclosureData,
+  } = useUsageTelemetryDisclosureState();
 
   const [open, setOpen] = useState(false);
   const [steps, setSteps] = useState<ChapterStep[]>(CHAPTER_STEPS);
@@ -285,6 +290,15 @@ export function FirstRunHomeChapter() {
   const decided = useRef(false);
 
   const defer = useCallback(() => {
+    // Closing the run while the DISCLOSURE step is in front of the reader is
+    // the same decision as that step's own "Not now", and must leave the same
+    // record. Without it, the `skipped` write below flips the home off
+    // `pending`, `OnboardingGate` mounts the standalone disclosure modal on
+    // every route, and the just-closed dialog re-appears over `/agents` —
+    // the #765 B1 escalation, reproduced live.
+    if (step === 'disclosure') {
+      dismissUsageTelemetryDisclosure(disclosureData?.inventoryRevision);
+    }
     setOpen(false);
     if (decided.current) return;
     // Only from `pending`: re-writing `skipped` on every close of a
@@ -293,7 +307,12 @@ export function FirstRunHomeChapter() {
     if (config?.firstRun?.status !== 'pending') return;
     decided.current = true;
     writeStatus('skipped');
-  }, [config?.firstRun?.status, writeStatus]);
+  }, [
+    step,
+    disclosureData?.inventoryRevision,
+    config?.firstRun?.status,
+    writeStatus,
+  ]);
 
   /**
    * The user is leaving the run without engines that FAILED to materialise
@@ -348,6 +367,7 @@ export function FirstRunHomeChapter() {
           {step === 'disclosure' ? (
             <UsageTelemetryDisclosureStep
               onAdvance={() => setStep('engines')}
+              onDefer={defer}
             />
           ) : step === 'engines' ? (
             <>
