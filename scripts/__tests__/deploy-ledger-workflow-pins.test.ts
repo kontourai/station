@@ -129,6 +129,9 @@ describe('the nightly workflow records what it ships', () => {
     expect(step).toContain(
       "steps.android_signing.outputs.keystore_base64 != ''",
     );
+    // The push credential is the release app's token — the require-green
+    // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
+    expect(step).toContain('steps.ledger_token.outputs.token');
     // The commit subject is what the changelog exclusion rule keys on.
     expect(step).toMatch(/docs\(ledger\):/);
   });
@@ -161,6 +164,9 @@ describe('the nightly workflow records what it ships', () => {
     expect(step).toContain(
       "always() && steps.decide.outputs.build == 'true' && steps.cli_npm_publish.outcome == 'success'",
     );
+    // The push credential is the release app's token — the require-green
+    // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
+    expect(step).toContain('steps.ledger_token.outputs.token');
     expect(step).toMatch(/docs\(ledger\):/);
   });
 
@@ -215,6 +221,9 @@ describe('the desktop nightly workflow records what it ships (station#575)', () 
       'DEPLOY_LEDGER_VERSION: $' + '{{ steps.identity.outputs.version }}',
     );
     expect(step).toMatch(/docs\(ledger\):/);
+    // The push credential is the release app's token — the require-green
+    // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
+    expect(step).toContain('steps.ledger_token.outputs.token');
   });
 
   it('lets a ledger failure redden the job without blocking any ship', () => {
@@ -274,7 +283,9 @@ describe('the stable release ledger record', () => {
     expect(step).toContain('--sha "$RELEASE_SHA"');
     expect(step).not.toContain('github.sha');
     expect(step).not.toMatch(/git rev-parse/);
-    expect(step).toContain('github.token');
+    // Ledger pushes to main ride the release app's token: it is the
+    // require-green ruleset's bypass actor, which GITHUB_TOKEN cannot be.
+    expect(step).toContain('steps.ledger_token.outputs.token');
     // MED-4: the commit-back refuses before pushing anything when the
     // release SHA is not an ancestor of main — a tag cut off-main must
     // never have its commits pushed to main as a ledger side effect.
@@ -325,6 +336,9 @@ describe('the npm stable ledger record', () => {
     expect(step).not.toMatch(/git rev-parse/);
     expect(step).not.toContain('continue-on-error');
     expect(step).toMatch(/docs\(ledger\):/);
+    // The push credential is the release app's token — the require-green
+    // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
+    expect(step).toContain('steps.ledger_token.outputs.token');
   });
 
   it('retains after the record step so a failed push still uploads the files', () => {

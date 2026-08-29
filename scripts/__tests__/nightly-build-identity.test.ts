@@ -866,7 +866,8 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     );
     expect(decide).toContain('id: decide');
     expect(decide).toContain('head_sha=$(git rev-parse HEAD)');
-    expect(decide).toContain('echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"');
+    expect(decide).toContain('echo "head_sha=$head_sha"');
+    expect(decide).toContain('} >> "$GITHUB_OUTPUT"');
     expect(decide).toContain('refs/tags/nightly-desktop^{commit}');
     const build = desktopJob.slice(
       desktopJob.indexOf('Build an unsigned macOS nightly staging candidate'),

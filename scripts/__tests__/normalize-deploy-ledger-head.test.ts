@@ -24,7 +24,9 @@ function generatedLedgerCommit(parent: string, overrides = {}) {
   };
 }
 
-function graph(entries: Record<string, unknown>) {
+function graph(
+  entries: Record<string, ReturnType<typeof generatedLedgerCommit>>,
+) {
   return (sha: string) =>
     entries[sha] ?? { parents: [], subject: 'source', changedPaths: [] };
 }
