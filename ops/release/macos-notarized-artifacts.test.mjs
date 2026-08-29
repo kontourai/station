@@ -344,6 +344,46 @@ test.skipIf(process.platform === 'win32')(
   },
 );
 
+test.skipIf(process.platform === 'win32')(
+  'retains ownership when a leader exits before timeout but its descendant ignores TERM',
+  async () => {
+    const directory = mkdtempSync(
+      join(tmpdir(), 'station-notary-pretimeout-descendant-'),
+    );
+    const ready = join(directory, 'ready');
+    const survived = join(directory, 'survived');
+    const descendant = `
+      const fs = require('node:fs');
+      const [ready, survived] = process.argv.slice(1);
+      process.on('SIGTERM', () => {
+        setTimeout(() => fs.writeFileSync(survived, 'still alive'), 150);
+      });
+      fs.writeFileSync(ready, 'ready');
+      setInterval(() => {}, 1000);
+    `;
+    const leader = `
+      const { spawn } = require('node:child_process');
+      spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}, ${JSON.stringify(ready)}, ${JSON.stringify(survived)}], { stdio: 'inherit' });
+      setTimeout(() => process.exit(0), 50);
+    `;
+    try {
+      await expect(
+        runBoundedCommand(process.execPath, ['-e', leader], {
+          phase: 'DMG notarization',
+          timeoutMs: 400,
+          terminationGraceMs: 50,
+          logger: logger(),
+        }),
+      ).rejects.toMatchObject({ timedOut: true });
+      expect(existsSync(ready)).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 225));
+      expect(existsSync(survived)).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
+
 test('retries exactly once for timestamp transport failures and never for identity failures', async () => {
   const releaseLogger = logger();
   const args = ['--force', '--timestamp', '/tmp/Station.app'];

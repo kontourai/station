@@ -26,7 +26,7 @@ export const MAX_RETRY_ATTEMPTS = 2;
 // The still-live wrapper owns its own PGID through the grace period, then
 // kills that exact group before it exits and lets the release retry continue.
 const POSIX_RELEASE_TOOL_WRAPPER = `
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const [program, encodedArgs, graceRaw] = process.argv.slice(1);
 const graceMs = Number.parseInt(graceRaw, 10);
 let args;
@@ -40,6 +40,29 @@ if (!Array.isArray(args) || !Number.isSafeInteger(graceMs) || graceMs < 0) {
 } else {
   const child = spawn(program, args, { stdio: 'inherit', windowsHide: true });
   let terminating = false;
+  let childStatus = 1;
+  let drainTimer;
+  function groupHasOtherMembers() {
+    // Probe from a separate session so the probe process cannot see itself as
+    // a member of this release group. If ps cannot prove the group drained,
+    // retain the wrapper until the parent's deadline kills the owned group.
+    const probe = spawnSync('/bin/ps', ['-o', 'pid=', '-g', String(process.pid)], {
+      detached: true,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+    });
+    if (probe.status !== 0) return true;
+    return probe.stdout
+      .split(/\\s+/)
+      .filter(Boolean)
+      .some((pid) => Number.parseInt(pid, 10) !== process.pid);
+  }
+  function finishAfterGroupDrains() {
+    if (terminating || groupHasOtherMembers()) return;
+    clearInterval(drainTimer);
+    process.exitCode = childStatus;
+  }
   function finishGroup() {
     // This wrapper is still the group leader, so -process.pid cannot name a
     // reused process group. SIGKILL terminates the wrapper and every survivor.
@@ -55,10 +78,18 @@ if (!Array.isArray(args) || !Number.isSafeInteger(graceMs) || graceMs < 0) {
   process.on('SIGTERM', beginTermination);
   process.on('SIGINT', beginTermination);
   child.once('error', () => {
-    if (!terminating) process.exitCode = 127;
+    if (!terminating) {
+      childStatus = 127;
+      drainTimer = setInterval(finishAfterGroupDrains, 25);
+      finishAfterGroupDrains();
+    }
   });
   child.once('close', (status) => {
-    if (!terminating) process.exitCode = status ?? 1;
+    if (!terminating) {
+      childStatus = status ?? 1;
+      drainTimer = setInterval(finishAfterGroupDrains, 25);
+      finishAfterGroupDrains();
+    }
   });
 }
 `;
