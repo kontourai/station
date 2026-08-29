@@ -398,7 +398,6 @@ describe('ChatDockBody turn-stall notice (#765)', () => {
       controlMode: 'station-owned',
       hasActiveTurn: true,
       turnProgress: {
-        turnId: 'stalled-turn',
         lastProgressEventAt: '2026-08-29T12:00:00.000Z',
         progressSilence: {
           detectedAt: '2026-08-29T12:03:00.000Z',
