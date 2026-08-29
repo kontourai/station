@@ -178,9 +178,19 @@ export function useAgentsViewModel({
   const selectedCatalogAgent = agents.find(
     (agent) => agent.slug === selectedAgentSlug,
   );
+  // A durable Agent write deliberately returns before the runtime has rebuilt
+  // its live Agent map.  The editor used to interpret a missing catalog row as
+  // "probably Station-owned" and immediately ask the runtime-only tools
+  // endpoint.  That turns an honest, transient 503 into a browser network
+  // failure before the catalog has established which engine owns this Agent.
+  //
+  // The catalog is the seam that publishes both facts this read needs: this
+  // exact row exists, and its readiness is current rather than a reconciliation
+  // snapshot.  Do not infer either from a missing row.  Once both are known,
+  // only a Station-engine row owns a Station tools catalog; external engines
+  // own their own tools.
   const exposesStationTools =
-    selectedCatalogAgent?.engineId === 'station' ||
-    !selectedCatalogAgent?.execution?.agentConnectionId;
+    readinessKnown && selectedCatalogAgent?.engineId === 'station';
   // a create now returns as soon as its write is durable, so the first
   // tools read after one legitimately lands while the Agent is still
   // activating. The SDK retries that case (and only that case) inside a
