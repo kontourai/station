@@ -8,11 +8,13 @@ import fs, {
 } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   ensureStationHomeSchemaSync,
   migrationPath,
+  PORTABLE_INSTALL_DATA_ROOT_MARKER,
+  PORTABLE_INSTALL_DATA_ROOT_SIGNATURE,
   readRegularFileNoFollow,
   readStationHomeSchemaVersion,
   STATION_HOME_RESET_COMMAND,
@@ -99,6 +101,54 @@ describe('stationHomeSchemaNeedsReset (station#1913)', () => {
     );
 
     expect(stationHomeSchemaNeedsReset(home)).toBe(false);
+  });
+});
+
+describe('portable installer data-root claim', () => {
+  it('bootstraps a fresh home whose only content is the exact installer marker', () => {
+    const home = makeHome();
+    mkdirSync(home, { recursive: true, mode: 0o700 });
+    writeFileSync(join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER), PORTABLE_INSTALL_DATA_ROOT_SIGNATURE);
+
+    expect(stationHomeSchemaNeedsReset(home)).toBe(false);
+    ensureStationHomeSchemaSync(home, { acquireMutationLock: () => () => {} });
+    expect(existsSync(join(home, STATION_HOME_SCHEMA_FILE))).toBe(true);
+    expect(readFileSync(join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER), 'utf8')).toBe(
+      PORTABLE_INSTALL_DATA_ROOT_SIGNATURE,
+    );
+  });
+
+  it('resets a home whose installer marker is not the exact installer bytes', () => {
+    const home = makeHome();
+    mkdirSync(home, { recursive: true, mode: 0o700 });
+    writeFileSync(join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER), 'not the signature\n');
+
+    expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+    expect(() => ensureStationHomeSchemaSync(home)).toThrow(
+      StationHomeResetRequiredError,
+    );
+    expect(existsSync(join(home, STATION_HOME_SCHEMA_FILE))).toBe(false);
+  });
+
+  it('resets a home whose installer marker path is a directory', () => {
+    const home = makeHome();
+    mkdirSync(join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER), { recursive: true });
+
+    expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+  });
+
+  it('pins the marker name and signature to install.sh so neither side drifts alone', () => {
+    const installer = readFileSync(
+      resolve(import.meta.dirname, '../../../..', 'install.sh'),
+      'utf8',
+    );
+
+    expect(installer).toContain(
+      `DATA_ROOT_MARKER='${PORTABLE_INSTALL_DATA_ROOT_MARKER}'`,
+    );
+    expect(installer).toContain(
+      `DATA_ROOT_SIGNATURE='${PORTABLE_INSTALL_DATA_ROOT_SIGNATURE.trimEnd()}'`,
+    );
   });
 });
 
