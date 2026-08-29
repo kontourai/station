@@ -31,6 +31,7 @@ import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useLocale } from '../i18n/LocaleContext';
 import { isComposingKeyEvent } from '../lib/isComposingKeyEvent';
+import { requestReportProblem } from '../lib/reportProblemEvents';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
 import { presentWorkspacePaneAvailability } from '../workspace-panes/workspacePaneAvailabilityPresentation';
@@ -353,6 +354,16 @@ export function CommandPalette() {
         'guide',
       ],
       run: () => requestFirstRunTour(),
+    });
+    // #766 item 4: opens the Report-a-problem dialog (hosted by
+    // `ReportProblemHost` in the same overlays chunk), which previews the
+    // captured context before the user chooses GitHub issue or local bundle.
+    list.push({
+      id: 'action:report-problem',
+      label: 'Report a problem',
+      group: 'Actions',
+      keywords: ['report', 'problem', 'bug', 'feedback', 'issue', 'github'],
+      run: () => requestReportProblem(),
     });
     list.push({
       id: 'action:reset-command-history',
