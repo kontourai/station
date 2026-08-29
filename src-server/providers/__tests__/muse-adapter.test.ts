@@ -1415,11 +1415,49 @@ describe('Muse startup-provider override', () => {
     ]);
   });
 
-  test('a refused value is reported once, at construction, naming the vocabulary', () => {
+  /**
+   * Runs `count` turns and returns everything the adapter said while doing it.
+   *
+   * Turns, not construction: `station-runtime.ts` builds this adapter in a
+   * field initializer whose logger closure reads a `this.logger` that is still
+   * `undefined` at that moment, so a notice emitted from the constructor
+   * reaches nothing in production. These tests therefore assert what a real
+   * TURN emits — the only place the report can actually land.
+   */
+  async function noticesOverTurns(
+    env: NodeJS.ProcessEnv,
+    count = 1,
+  ): Promise<Harness['logger']> {
+    const harness = createHarness({ env });
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-notice',
+    });
+    for (let index = 0; index < count; index += 1) {
+      await harness.adapter.sendTurn({
+        threadId: 'thread-notice',
+        input: `turn ${index}`,
+      });
+      await writeLines(harness.processes[index], MUSE_META_RUN_TERMINAL);
+      harness.processes[index].exit(0);
+      await flushIo();
+    }
+    return harness.logger;
+  }
+
+  test('nothing is reported at construction, because nothing there would be heard', () => {
     const logger = { warn: vi.fn(), info: vi.fn() };
     new MuseAdapter({
       logger,
       env: { [MUSE_PROVIDER_OVERRIDE_ENV]: '--yolo' },
+    });
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+
+  test('a refused value is reported on the first turn, naming the vocabulary', async () => {
+    const logger = await noticesOverTurns({
+      [MUSE_PROVIDER_OVERRIDE_ENV]: '--yolo',
     });
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn.mock.calls[0][0]).toContain(MUSE_PROVIDER_OVERRIDE_ENV);
@@ -1427,27 +1465,38 @@ describe('Muse startup-provider override', () => {
     expect(logger.warn.mock.calls[0][1]).toEqual({ value: '--yolo' });
   });
 
-  test('an accepted value is silent, and an unset one says nothing either', () => {
-    for (const env of [
-      {},
+  test('the report is once per process, not once per turn', async () => {
+    const logger = await noticesOverTurns(
+      { [MUSE_PROVIDER_OVERRIDE_ENV]: '--yolo' },
+      3,
+    );
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  test('echo says so rather than letting a prompt echo pass for a model answer', async () => {
+    const logger = await noticesOverTurns(
       { [MUSE_PROVIDER_OVERRIDE_ENV]: 'echo' },
-      { [MUSE_PROVIDER_OVERRIDE_ENV]: 'meta' },
-    ]) {
-      const logger = { warn: vi.fn(), info: vi.fn() };
-      new MuseAdapter({ logger, env });
+      2,
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.info.mock.calls[0][0]).toContain(MUSE_PROVIDER_OVERRIDE_ENV);
+    expect(logger.info.mock.calls[0][0]).toContain('echo');
+  });
+
+  test('the untouched default paths say nothing at all', async () => {
+    for (const env of [{}, { [MUSE_PROVIDER_OVERRIDE_ENV]: 'meta' }]) {
+      const logger = await noticesOverTurns(env);
       expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.info).not.toHaveBeenCalled();
     }
   });
 
-  test('the refused value is scrubbed and bounded before it is logged', () => {
-    const logger = { warn: vi.fn(), info: vi.fn() };
-    new MuseAdapter({
-      logger,
-      env: {
-        [MUSE_PROVIDER_OVERRIDE_ENV]: `Bearer sk-not-a-provider ${'x'.repeat(
-          400,
-        )}`,
-      },
+  test('the refused value is scrubbed and bounded before it is logged', async () => {
+    const logger = await noticesOverTurns({
+      [MUSE_PROVIDER_OVERRIDE_ENV]: `Bearer sk-not-a-provider ${'x'.repeat(
+        400,
+      )}`,
     });
     const context = logger.warn.mock.calls[0][1] as { value: string };
     expect(context.value).not.toContain('sk-not-a-provider');

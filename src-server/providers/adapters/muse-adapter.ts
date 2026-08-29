@@ -166,7 +166,7 @@ export function museCredentialState(
  */
 export const MUSE_PROVIDER_OVERRIDE_ENV = 'STATION_E2E_MUSE_PROVIDER';
 
-/** Bound on the refused value echoed back in the construction-time warning. */
+/** Bound on the refused value echoed back in the first turn's warning. */
 export const MUSE_REFUSED_VALUE_MAX_CHARS = 120;
 
 /**
@@ -364,11 +364,24 @@ export class MuseAdapter implements ProviderAdapterShape {
   private readonly turnTimeoutMs: number;
   /**
    * Resolved ONCE, at construction, from {@link MUSE_PROVIDER_OVERRIDE_ENV}:
-   * one refusal warning per process instead of one per turn, and no way for a
-   * mid-run env mutation to change what a session's later turns run under.
-   * `undefined` is the default and means no `--provider` is emitted at all.
+   * a mid-run env mutation cannot change what a session's later turns run
+   * under. `undefined` is the default and means no `--provider` is emitted.
    */
   private readonly providerOverride: MuseProviderMode | undefined;
+  /**
+   * The refused raw value, held for the FIRST turn to report rather than
+   * logged where it was found.
+   *
+   * `station-runtime.ts` builds this adapter in a FIELD INITIALIZER, and its
+   * logger closure reads `this.logger` lazily precisely because the runtime's
+   * own logger is not assigned until later in its constructor body. So
+   * anything this constructor logs reaches an `undefined` logger and is
+   * dropped — a warning nothing ever emits. Deferring the report to the first
+   * turn is what makes it real, and {@link providerNoticeReported} keeps it to
+   * one per process rather than one per turn.
+   */
+  private readonly providerRefusal: string | undefined;
+  private providerNoticeReported = false;
 
   constructor(private readonly options: MuseAdapterOptions = {}) {
     this.processFactory = options.processFactory ?? createMuseProcess;
@@ -379,25 +392,49 @@ export class MuseAdapter implements ProviderAdapterShape {
     this.credentialFileExists = options.credentialFileExists ?? existsSync;
     this.findBinary = options.findBinary ?? findCliBinary;
     this.turnTimeoutMs = options.turnTimeoutMs ?? MUSE_DEFAULT_TURN_TIMEOUT_MS;
+    let refusal: string | undefined;
     this.providerOverride = resolveMuseProviderOverride(
       this.env,
       (rawValue) => {
-        options.logger?.warn?.(
-          `Ignoring ${MUSE_PROVIDER_OVERRIDE_ENV}: not one of ${MUSE_PROVIDER_MODES.join(
-            ', ',
-          )}. Muse turns keep the engine's own default provider.`,
-          // Scrubbed and bounded: the refused value is arbitrary environment
-          // content, and the point of echoing it is to show the operator their
-          // typo, not to relay whatever else was mis-assigned to the variable.
-          {
-            value: redactSecrets(rawValue).slice(
-              0,
-              MUSE_REFUSED_VALUE_MAX_CHARS,
-            ),
-          },
-        );
+        refusal = rawValue;
       },
     );
+    this.providerRefusal = refusal;
+  }
+
+  /**
+   * Says, exactly once and only when there is something to say, what provider
+   * this process's muse turns are actually running under.
+   *
+   * Both branches exist because both are surprising in a log that does not
+   * mention them: a refused value silently keeping the old default, and an
+   * accepted `echo` silently replacing the model with a prompt echo.
+   */
+  private reportProviderNoticeOnce(): void {
+    if (this.providerNoticeReported) return;
+    this.providerNoticeReported = true;
+    if (this.providerRefusal !== undefined) {
+      this.options.logger?.warn?.(
+        `Ignoring ${MUSE_PROVIDER_OVERRIDE_ENV}: not one of ${MUSE_PROVIDER_MODES.join(
+          ', ',
+        )}. Muse turns keep the engine's own default provider.`,
+        // Scrubbed and bounded: the refused value is arbitrary environment
+        // content, and the point of echoing it is to show the operator their
+        // typo, not to relay whatever else was mis-assigned to the variable.
+        {
+          value: redactSecrets(this.providerRefusal).slice(
+            0,
+            MUSE_REFUSED_VALUE_MAX_CHARS,
+          ),
+        },
+      );
+      return;
+    }
+    if (this.providerOverride === 'echo') {
+      this.options.logger?.info?.(
+        `${MUSE_PROVIDER_OVERRIDE_ENV}=echo: muse turns run its echo provider, which answers from the prompt alone. No model is selected and no model answers.`,
+      );
+    }
   }
 
   async getPrerequisites(options?: {
@@ -522,6 +559,7 @@ export class MuseAdapter implements ProviderAdapterShape {
         `Muse session already has an active turn: ${input.threadId}`,
       );
     }
+    this.reportProviderNoticeOnce();
     const turnId = crypto.randomUUID();
     const modelId = input.modelId ?? record.modelId;
     const args = buildMuseExecArgs({

@@ -113,9 +113,12 @@ async function sendTurnAndExpectEcho(
   await composer.fill(prompt);
   await composer.press('Enter');
 
-  const pane = page.locator('#chat-dock, #chat-workspace-pane').first();
+  // `allInnerTexts` rather than one element's `innerText`: the composer can be
+  // mounted in either the dock or the workspace pane, and a reply rendered as
+  // several blocks would defeat a single-element text match.
+  const panes = page.locator('#chat-dock, #chat-workspace-pane');
   await expect
-    .poll(() => pane.innerText(), {
+    .poll(async () => (await panes.allInnerTexts()).join('\n'), {
       timeout: 120_000,
       message:
         'the chat pane never showed an `echo:` reply carrying the sent token; the muse turn did not round-trip through the echo provider',

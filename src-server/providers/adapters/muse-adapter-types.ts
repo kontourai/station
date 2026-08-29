@@ -22,6 +22,15 @@ import type { ProviderSession } from '../adapter-shape.js';
  * - Resume is NOT claimed anywhere for muse (no `resume` capability, no
  *   `adoptSession`), so an override at resume is refused rather than declared
  *   on the strength of the per-turn flag.
+ *
+ * One caveat this table cannot express, stated here so a reader of the
+ * declaration meets it: under the `echo` startup provider (#550), muse REFUSES
+ * `--model` outright (`--model requires --provider meta`, exit 2 before any
+ * JSONL), so `buildMuseExecArgs` drops the selection there and this table's
+ * claims describe `meta` — muse's default and the only provider a Station
+ * deployment runs. `echo` is reachable only through the
+ * `STATION_E2E_MUSE_PROVIDER` test-determinism knob, whose whole purpose is a
+ * run with no model behind it.
  */
 export const MUSE_MODEL_LAUNCH: ModelLaunchCapabilities = {
   defaultAtStart: 'engine-selected',
