@@ -5922,6 +5922,65 @@ describe('OrchestrationService', () => {
     await restartService.shutdown();
   });
 
+  test('independent review HIGH-1: restartCredentialProfileRecoverySession composes ambientContext into the adapter wire input (a pending first-turn instructions receipt riding it must not be silently dropped on a credential-profile recovery replay)', async () => {
+    // `CredentialProfileRecovery.restartRecoverySession` used to call
+    // `adapter.sendTurn({ input: input.input, ... })` directly, bypassing
+    // the SAME ambientContext choke point (`composeAmbientSendTurnInput`)
+    // the ordinary `dispatch({type:'sendTurn'})` path composes through — so
+    // a pending first-turn instructions receipt (station#895 wave C), which
+    // rides `ambientContext` exactly like ordinary ambient context, was
+    // silently dropped on a credential-profile recovery replay while the
+    // delegate-seam receipt still read the prompt 'delivered' (derived from
+    // `turn.started` existing, which this call path itself creates).
+    const adapter = new FakeAdapter('codex');
+    const restartService = new OrchestrationService({
+      adapterRegistry: createRegistry([adapter]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'credential-restart-first-turn-instructions';
+    await restartService.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'codex' },
+    });
+    adapter.sendTurn.mockClear();
+
+    await (
+      restartService as unknown as {
+        restartCredentialProfileRecoverySession(input: {
+          threadId: string;
+          input: string;
+          ambientContext?: string;
+          recoveryCorrelationId: string;
+          signal: AbortSignal;
+          credentialProfileRef?: string;
+        }): Promise<unknown>;
+      }
+    ).restartCredentialProfileRecoverySession({
+      threadId,
+      input: 'Hello',
+      ambientContext: 'Be terse.',
+      recoveryCorrelationId: 'first-turn-restart-correlation',
+      signal: new AbortController().signal,
+      credentialProfileRef: 'canary',
+    });
+
+    expect(adapter.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // Model-facing input carries the composed text, exactly like the
+        // ordinary dispatch path (#685's composeAmbientSendTurnInput).
+        input: 'Be terse.\nHello',
+        // Transcript-facing text stays the typed text alone.
+        displayInput: 'Hello',
+        // Relay-only passthrough is preserved for the station-agent relay.
+        ambientContext: 'Be terse.',
+      }),
+    );
+
+    await restartService.shutdown();
+  });
+
   /**
    * archive#3525 fix round MEDIUM 1: the arm and the `stopSession` call now
    * get their OWN `try`/`catch`, separate from the rest of the restart. If
@@ -9155,6 +9214,150 @@ describe('OrchestrationService', () => {
         }),
       }),
     );
+  });
+
+  test('instructionsInFirstTurn (#895 wave C): a pending first-turn receipt is prepended once, never re-prepended, and the persisted turn keeps only the typed prompt (so a continuation transcript seed built from it can never duplicate it)', async () => {
+    // Muse has no native systemPrompt channel — session-agent-resolution.ts
+    // falls back to `channel: 'first-turn'` for it (see the matrix's
+    // `instructionsInFirstTurn` cell). This adapter double is a minimal
+    // stand-in for muse-adapter.ts's own real behavior: it spreads
+    // `input.metadata` into `session.started` (so the receipt lands
+    // durably), and stamps `turn.started`'s `prompt` from
+    // `input.displayInput ?? input.input` (so it persists the TYPED text
+    // only) — both mirror the production adapter exactly.
+    const museFirstTurn = new FakeAdapter('muse');
+    museFirstTurn.startSession.mockImplementation(async (input) => {
+      const now = new Date().toISOString();
+      museFirstTurn.events.push({
+        eventId: randomUUID(),
+        provider: 'muse',
+        threadId: input.threadId,
+        createdAt: now,
+        method: 'session.started',
+        sessionId: input.threadId,
+        initialState: 'created',
+        metadata: { ...input.metadata },
+      });
+      return {
+        provider: 'muse',
+        threadId: input.threadId,
+        status: 'ready',
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+    let turnCounter = 0;
+    museFirstTurn.sendTurn.mockImplementation(async (input) => {
+      turnCounter += 1;
+      const turnId = `muse-turn-${turnCounter}`;
+      museFirstTurn.events.push({
+        eventId: randomUUID(),
+        provider: 'muse',
+        threadId: input.threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        prompt: input.displayInput ?? input.input,
+      });
+      return { threadId: input.threadId, turnId };
+    });
+
+    const resolveSessionAgent = createSessionAgentResolver({
+      loadAgentSpec: async () => ({
+        name: 'Muse Agent',
+        prompt: 'Be terse.',
+      }),
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+    });
+    const museService = new OrchestrationService({
+      adapterRegistry: createRegistry([museFirstTurn]),
+      eventBus,
+      eventStore,
+      resolveSessionAgent,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'thread-muse-first-turn-instructions';
+
+    await museService.dispatch({
+      type: 'startSession',
+      input: {
+        threadId,
+        provider: 'muse',
+        modelId: 'muse-spark-1.2-contributor',
+        metadata: { agentSlug: 'muse-agent' },
+      },
+    });
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) => events.some((event) => event.method === 'session.started'),
+    );
+
+    await museService.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Hello' },
+    });
+
+    // The composed model input carries the authored prompt ahead of the
+    // typed text; the typed text alone remains the transcript-facing value.
+    // Independent review MEDIUM-1: the dispatch that genuinely composed the
+    // pending receipt ALSO stamps the server-owned
+    // firstTurnInstructionsComposed marker into the turn's own metadata —
+    // the delivering adapter carries it onto turn.started, which is what
+    // lets the delegate seam derive 'delivered' from THIS turn's own
+    // record rather than merely from a turn having started.
+    expect(museFirstTurn.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: 'Be terse.\nHello',
+        displayInput: 'Hello',
+        metadata: expect.objectContaining({
+          firstTurnInstructionsComposed: true,
+        }),
+      }),
+    );
+
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) => events.some((event) => event.method === 'turn.started'),
+    );
+    const firstTurnStarted = eventStore
+      .listEvents(threadId)
+      .find((event) => event.method === 'turn.started');
+    expect(firstTurnStarted).toBeDefined();
+    // The persisted transcript prompt is the TYPED text only. #895 wave C's
+    // conversation-lineage.ts `continuationTranscriptSeed` builds a
+    // continuation child's seed exclusively from this same persisted field
+    // (user/assistant `part.text`, never `ambientContext`), so a fresh child
+    // session's own first-turn receipt is the ONLY place the authored prompt
+    // can ever appear in its composed input — never twice from a
+    // transcript that already baked it in once.
+    expect((firstTurnStarted!.payload as { prompt?: string }).prompt).toBe(
+      'Hello',
+    );
+
+    museFirstTurn.sendTurn.mockClear();
+    await museService.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Again' },
+    });
+
+    // A second turn on the SAME session: current.events already carries the
+    // first turn.started, so the receipt is never re-read as pending — and
+    // the marker is never stamped on a turn that composed nothing.
+    expect(museFirstTurn.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ input: 'Again' }),
+    );
+    expect(museFirstTurn.sendTurn).not.toHaveBeenCalledWith(
+      expect.objectContaining({ input: expect.stringContaining('Be terse.') }),
+    );
+    const secondTurnCall = museFirstTurn.sendTurn.mock.calls.at(-1)?.[0] as
+      | { metadata?: Record<string, unknown> }
+      | undefined;
+    expect(secondTurnCall?.metadata?.firstTurnInstructionsComposed).not.toBe(
+      true,
+    );
+
+    await museService.shutdown();
   });
 
   test('sendTurn validates attachments before dispatch and records successful bytes', async () => {

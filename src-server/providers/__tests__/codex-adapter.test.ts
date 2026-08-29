@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
+import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
@@ -2095,6 +2096,130 @@ describe('CodexAdapter', () => {
         text_elements: [],
       },
     ]);
+
+    await adapter.stopAll();
+  });
+
+  test('station#895 wave C (instructionsInFirstTurn): a first-turn-composed authored prompt reaches turn/start verbatim, and turn.started persists only the typed text', async () => {
+    // Codex's `systemPrompt` cell stays `unsupported` (no version signal to
+    // gate `developerInstructions` on); `instructionsInFirstTurn` is the
+    // fallback the matrix claims instead, on the strength of exactly this
+    // property — `codex-adapter.ts` always sends `text: input.input` on
+    // `turn/start`, so whatever orchestration-service.ts's ambientContext
+    // choke point composes into the session's first turn reaches the wire
+    // unchanged, with no separate system-prompt-shaped path at all.
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => processHandle!,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    const startSessionPromise = adapter.startSession({
+      provider: 'codex',
+      threadId: 'thread-first-turn-prompt',
+      cwd: '/tmp/project',
+      modelId: 'gpt-5-codex',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-first-turn-prompt', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-first-turn-prompt', {
+      id: '2',
+      result: { thread: { id: 'codex-first-turn' }, model: 'gpt-5-codex' },
+    });
+    await withTimeout(startSessionPromise, 'startSession');
+    await flushIo();
+
+    const sendTurnPromise = adapter.sendTurn({
+      threadId: 'thread-first-turn-prompt',
+      input: 'Be terse.\nHello',
+      displayInput: 'Hello',
+      metadata: { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-first-turn-prompt', {
+      id: '3',
+      result: { turn: { id: 'turn-first-turn-prompt' } },
+    });
+    await withTimeout(sendTurnPromise, 'sendTurn');
+
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turnStarted = await nextEvent(iterator, 'turn.started');
+    expect(turnStarted).toMatchObject({
+      method: 'turn.started',
+      prompt: 'Hello',
+      // Independent review MEDIUM-1: the marker rides THIS turn's own
+      // persisted metadata, so the delegate-seam disclosure can derive
+      // 'delivered' from this turn's own record, not merely from having
+      // started.
+      metadata: expect.objectContaining({
+        [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true,
+      }),
+    });
+
+    const turnStart = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'turn/start');
+    expect(turnStart?.params?.input).toEqual([
+      {
+        type: 'text',
+        text: 'Be terse.\nHello',
+        text_elements: [],
+      },
+    ]);
+
+    await adapter.stopAll();
+  });
+
+  test('independent review MEDIUM-1: an ordinary codex turn (no composed-first-turn metadata) never carries the marker', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => processHandle!,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    const startSessionPromise = adapter.startSession({
+      provider: 'codex',
+      threadId: 'thread-ordinary-turn',
+      cwd: '/tmp/project',
+      modelId: 'gpt-5-codex',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-ordinary-turn', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-ordinary-turn', {
+      id: '2',
+      result: { thread: { id: 'codex-ordinary' }, model: 'gpt-5-codex' },
+    });
+    await withTimeout(startSessionPromise, 'startSession');
+    await flushIo();
+
+    const sendTurnPromise = adapter.sendTurn({
+      threadId: 'thread-ordinary-turn',
+      input: 'Hello',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-ordinary-turn', {
+      id: '3',
+      result: { turn: { id: 'turn-ordinary' } },
+    });
+    await withTimeout(sendTurnPromise, 'sendTurn');
+
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turnStarted = await nextEvent(iterator, 'turn.started');
+    expect(
+      (turnStarted.metadata as Record<string, unknown> | undefined)?.[
+        FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY
+      ],
+    ).not.toBe(true);
 
     await adapter.stopAll();
   });

@@ -141,6 +141,21 @@ export const SESSION_AGENT_DISPLAY_NAME_METADATA_KEY = 'agentName';
 export const SESSION_AGENT_ICON_METADATA_KEY = 'agentIcon';
 export const SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH = 100;
 export const SESSION_AGENT_ICON_MAX_LENGTH = AGENT_ICON_TOKEN_MAX_LENGTH;
+/**
+ * Independent review MEDIUM-1 (station#895 wave C): a derivation, not a
+ * label. `orchestration-service.ts`'s sendTurn dispatch stamps this `true`
+ * into the turn's OWN metadata (server-owned, added after the reserved-key
+ * strip below) at the exact moment it prepends a pending first-turn
+ * instructions receipt into the composed model input — never merely
+ * because a turn started. The delivering adapter carries it onto its
+ * published `turn.started` event's own metadata, so
+ * `station-control-delegation.ts`'s delivery disclosure can derive
+ * `'delivered'` from "this turn's own record says composition happened
+ * here", not from "some turn happened" (a label a receipt-present,
+ * composition-skipped session would otherwise satisfy for free).
+ */
+export const FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY =
+  'firstTurnInstructionsComposed';
 
 /**
  * Complete set of orchestration evidence fields a public caller may never
@@ -162,6 +177,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   ENVIRONMENT_ID_RESERVED_METADATA_KEY,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
+  FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
 ] as const;
 
 /**
@@ -704,6 +720,22 @@ export interface CapabilityDeliveryChannelReport {
    */
   runtimeProvided?: string[];
   undelivered: CapabilityUndelivered[];
+  /**
+   * Present only on the systemPrompt report when the prompt was NOT
+   * delivered on the engine's system-prompt channel but is scheduled for
+   * delivery as first-turn instructions (the `instructionsInFirstTurn`
+   * capability row): the orchestration sendTurn choke point composes the
+   * pending `firstTurnInstructions` into the conversation's first turn.
+   * Absent means the ordinary channel semantics apply.
+   */
+  channel?: 'first-turn';
+  /**
+   * The pending authored prompt for first-turn composition. Server-owned
+   * (reserved metadata key — a public caller can never forge it), present
+   * only alongside `channel: 'first-turn'` and only until the conversation's
+   * first turn composes it.
+   */
+  firstTurnInstructions?: string;
 }
 
 /**
@@ -725,6 +757,18 @@ export interface SessionCapabilityDeliveryMetadata {
     toolIdentity: 'self-reported';
     limitation: string;
   };
+  /**
+   * Agent settings augment slice B: present when this engine-bound agent
+   * (`AgentSpec.execution.agentConnectionId` set) authored the
+   * Station-engine `AgentSpec.model` field while leaving
+   * `execution.modelId` — the field an engine-bound agent's model
+   * selection actually reads — unset (or blank). `model` is read only
+   * for a Station-engine (unbound) agent, so authoring it here is a
+   * silent no-op: the session still starts, on whatever model the engine
+   * defaults to. A read-only disclosure, never a refusal; names the field
+   * that actually applies.
+   */
+  modelFieldWarning?: string;
 }
 
 export interface ProviderSessionStartInput {
