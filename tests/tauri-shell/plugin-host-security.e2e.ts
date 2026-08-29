@@ -354,11 +354,14 @@ describe('isolated plugin inside a real Tauri WebView', () => {
       ({
         remoteOrigin,
         frameOrigin,
+        pwnedKey,
       }: {
         remoteOrigin: string;
         frameOrigin: string;
+        pwnedKey: string;
       }) => {
         localStorage.setItem('station:onboarding-setup-dismissed', '1');
+        localStorage.removeItem(pwnedKey);
         localStorage.removeItem('station-connect-connections');
         localStorage.removeItem('station-connect-connections-active');
         localStorage.setItem(
@@ -367,8 +370,19 @@ describe('isolated plugin inside a real Tauri WebView', () => {
         );
         localStorage.setItem('plugin-host-frame-origin', frameOrigin);
       },
-      { remoteOrigin: remote.origin, frameOrigin: frame.origin },
+      {
+        remoteOrigin: remote.origin,
+        frameOrigin: frame.origin,
+        pwnedKey: PWNED_KEY,
+      },
     );
+
+    expect(
+      await browser.execute(
+        (key: string) => localStorage.getItem(key),
+        PWNED_KEY,
+      ),
+    ).toBeNull();
 
     await browser.refresh();
     await browser.waitUntil(
