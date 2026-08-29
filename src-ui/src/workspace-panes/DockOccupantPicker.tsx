@@ -74,7 +74,13 @@ export function DockOccupantPicker({
         aria-label={`Docked pane: ${current.name}`}
         onClick={() => setMenuOpen((open) => !open)}
       >
-        <span>{current.name}</span>
+        {/* station#524: a dedicated class so a host with less room (the
+            mobile chat header) can bound and ellipsize the current
+            occupant's name instead of forcing the row wider — matching the
+            treatment the mobile project-switcher trigger already gets. Only
+            the caret is `aria-hidden`; this name is the trigger's visible
+            label text, already covered by the `aria-label` above. */}
+        <span className="dock-occupant-picker__label">{current.name}</span>
         <span aria-hidden="true" className="dock-occupant-picker__caret">
           ⌄
         </span>

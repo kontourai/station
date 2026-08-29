@@ -1,5 +1,6 @@
 import type {
   MouseEvent as ReactMouseEvent,
+  ReactNode,
   PointerEvent as ReactPointerEvent,
   RefObject,
 } from 'react';
@@ -143,6 +144,19 @@ interface ChatDockMobileHeaderProps {
    */
   onNewChat: () => void;
   overflow: ChatDockMobileOverflowActions;
+  /**
+   * A pre-rendered `DockOccupantPicker` (station#524) — the same node
+   * `ChatDockHeader` renders for every non-Chat occupant (Home, Activity),
+   * which already renders it AT EVERY WIDTH, not just desktop. Before this,
+   * a phone could switch INTO Chat from the ambient dock but had no
+   * dock-borne way back out: the owner's "header works the same regardless
+   * of occupant" contract held for every occupant except the one whose
+   * header is this component. `undefined` for the full-screen Chat layout
+   * placement, which has no ambient occupant to switch away from (mirrors
+   * `ChatDockHeader`'s own `occupantPicker` prop, hidden there too when
+   * `fullscreen`).
+   */
+  occupantPicker?: ReactNode;
 }
 
 function ActivityGlyph() {
@@ -243,6 +257,7 @@ export function ChatDockMobileHeader({
   dockToggle,
   onNewChat,
   overflow,
+  occupantPicker,
 }: ChatDockMobileHeaderProps) {
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
   const closeOverflow = () => setIsOverflowOpen(false);
@@ -275,6 +290,13 @@ export function ChatDockMobileHeader({
     <div
       className={`chat-dock__header chat-dock__mobile-header${
         showDrawerToggle ? ' chat-dock__mobile-header--with-drawer' : ''
+      }${
+        // station#524: the occupant picker is an extra fixed 44px slot the
+        // bar's width budget (docs above `.chat-dock__mobile-agent-avatar`)
+        // never accounted for — this modifier extends that SAME "drop the
+        // avatar first" budget logic to the narrow non-maximized bar too,
+        // rather than inventing a second tightening mechanism.
+        occupantPicker ? ' chat-dock__mobile-header--with-occupant-picker' : ''
       }`}
       onPointerDown={onDragPointerDown}
       onClickCapture={onDragClickCapture}
@@ -417,6 +439,22 @@ export function ChatDockMobileHeader({
           <span aria-hidden="true">⋯</span>
         </button>
       </div>
+
+      {/* station#524: parity with `ChatDockHeader` (Home/Activity), which
+          renders this same pre-rendered node at every width. A fixed 44px
+          slot beside the identity cluster, same pattern as the project
+          switcher trigger below — `.chat-dock__mobile-identity-cluster` is
+          the row's only `flex: 1 1 auto` member, so this and every other
+          sibling slot take fixed width and the identity block is what gives
+          ground first. */}
+      {occupantPicker && (
+        <div
+          className="chat-dock__mobile-occupant-picker"
+          data-dock-drag-passthrough=""
+        >
+          {occupantPicker}
+        </div>
+      )}
 
       {projectSwitcher && (
         <button

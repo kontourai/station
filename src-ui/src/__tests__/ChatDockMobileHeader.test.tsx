@@ -3,7 +3,7 @@
  */
 
 import { fireEvent, screen } from '@testing-library/react';
-import { createRef } from 'react';
+import { createRef, type ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   type ChatDockMobileDockToggle,
@@ -45,6 +45,7 @@ function renderHeader(
     branchLabel?: string | null;
     onOpenProject?: (() => void) | null;
     openProjectName?: string | null;
+    occupantPicker?: ReactNode;
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
@@ -106,6 +107,7 @@ function renderHeader(
         onRestoreDock: vi.fn(),
         isDockMaximized: false,
       }}
+      occupantPicker={overrides.occupantPicker}
     />,
   );
   return onClear;
@@ -407,5 +409,40 @@ describe('ChatDockMobileHeader connection indicator', () => {
     } finally {
       window.removeEventListener('station:open-connections-modal', listener);
     }
+  });
+});
+
+/**
+ * station#524: `ChatDockMobileHeader` carried no occupant picker while
+ * `ChatDockHeader` (Home/Activity) rendered one at every width — a phone
+ * could switch INTO Chat but had no dock-borne way back out. `occupantPicker`
+ * is a pre-rendered node (the same contract `ChatDockHeader`'s own prop
+ * documents), so these tests drive it through a stub rather than the real
+ * `DockOccupantPicker` (that component's own behavior is pinned in
+ * `AmbientChatDockPaneHost.test.tsx`).
+ */
+describe('ChatDockMobileHeader occupant picker (station#524)', () => {
+  test('renders the pre-rendered occupant picker when supplied', () => {
+    renderHeader({
+      occupantPicker: (
+        <button type="button" aria-label="Docked pane: Chat">
+          Chat
+        </button>
+      ),
+    });
+
+    expect(
+      screen.getByRole('button', { name: 'Docked pane: Chat' }),
+    ).toBeTruthy();
+  });
+
+  test('renders nothing extra when the occupant picker is absent (full-screen Chat placement)', () => {
+    renderHeader({ occupantPicker: undefined });
+
+    expect(screen.queryByRole('button', { name: /^Docked pane:/ })).toBeNull();
+    const header = screen.getByTestId('chat-dock-mobile-header');
+    expect(
+      header.querySelector('.chat-dock__mobile-occupant-picker'),
+    ).toBeNull();
   });
 });

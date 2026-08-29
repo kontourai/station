@@ -2005,6 +2005,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // #3309: New chat is the bar's pinned far-right icon now, with
               // the same single-ready-agent shortcut the desktop New has.
               onNewChat={openNewChatDirect}
+              // station#524: the same pre-rendered occupant switcher the
+              // desktop-style header passes below (already `undefined` for
+              // the full-screen Chat placement, which has no ambient
+              // occupant to switch away from — see the `occupantPicker`
+              // derivation above).
+              occupantPicker={occupantPicker}
               overflow={{
                 onOpenConversation: () => setShowSessionPicker(true),
                 onToggleHistory: toggleHistory,

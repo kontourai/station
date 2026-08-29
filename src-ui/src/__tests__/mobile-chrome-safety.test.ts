@@ -394,6 +394,58 @@ describe('the toolbar replacement carries the inset the toolbar owned', () => {
   });
 });
 
+describe('the mobile collapsed-dock header height matches the shared header (station#524)', () => {
+  const css = read('index.css');
+  const chatCss = read('components/chat/chat.css');
+
+  /**
+   * `useDockShellChrome.ts`'s `collapsedHeight` reads this token via
+   * `getComputedStyle(...).getPropertyValue()` + `parseInt` — a custom
+   * property's computed value is the unparsed token text, so `calc()`/
+   * `var()` inside it parse to `NaN` there (documented next to
+   * `--app-toolbar-total-height` in `lib/toolbarGeometry.ts`). It must stay
+   * a bare literal, never a live expression, however it is derived.
+   */
+  it('is a literal, not a calc() JS cannot read', () => {
+    expect(css).toMatch(/--chat-dock-header-height:\s*53px;/);
+    expect(css).not.toMatch(/--chat-dock-header-height:\s*calc\(/);
+  });
+
+  /**
+   * The value itself: Home/Activity's collapsed bar is `ChatDockHeader`'s
+   * `.chat-dock__header` (not Chat's own `.chat-dock__mobile-header`). Its
+   * real mobile box is the 44px touch floor on its tallest control
+   * (`.chat-dock__icon-btn`/`.chat-dock__maximize-btn`) plus its own
+   * mobile `padding: var(--space-2) var(--space-3)` (both vertical sides
+   * `--space-2`) plus its 1px `border-bottom` — 44 + 4 + 4 + 1 = 53. The
+   * old `52px` was 1px short, and `.chat-dock.is-collapsed` sets
+   * `overflow: hidden`, so that header's own bottom border/padding clipped.
+   */
+  it('sums to the real box: 44px control + 2x --space-2 padding + 1px border', () => {
+    expect(read('tokens.css')).toMatch(/--space-2:\s*4px;/);
+
+    const headerRules = ruleBodiesFor(chatCss, '.chat-dock__header');
+    expect(
+      headerRules.some((body) =>
+        /padding:\s*var\(--space-2\)\s+var\(--space-3\)/.test(body),
+      ),
+      '.chat-dock__header mobile padding rule not found',
+    ).toBe(true);
+
+    const maximizeBtnRules = ruleBodiesFor(chatCss, '.chat-dock__maximize-btn');
+    expect(
+      maximizeBtnRules.some((body) => /min-height:\s*44px/.test(body)),
+      '.chat-dock__maximize-btn 44px mobile floor not found',
+    ).toBe(true);
+
+    // Base rule (index.css): 1px border-bottom on `.chat-dock__header`.
+    const [baseHeaderBody] = ruleBodiesFor(css, '.chat-dock__header');
+    expect(baseHeaderBody).toMatch(/border-bottom:\s*1px solid/);
+
+    expect(44 + 2 * 4 + 1).toBe(53);
+  });
+});
+
 describe('the toolbar connection chip fits the mobile action cluster', () => {
   const chatCss = read('components/chat/chat.css');
 

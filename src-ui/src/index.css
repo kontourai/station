@@ -6018,9 +6018,33 @@ button.tool-call__line:hover {
      38px the "Chat Dock" label + gear / "Start a chat" / send / chevron
      controls are cramped, so give the bar comfortable room on small screens.
      The chat-dock snap math reads this same variable (collapsedHeight), so the
-     Collapsed snap/drag-release continues to land on the actual bar height. */
+     Collapsed snap/drag-release continues to land on the actual bar height.
+
+     station#524: this used to read `52px`, tuned before every ambient
+     occupant shared one header (archive#4460). Home/Activity's collapsed
+     bar is `ChatDockHeader`'s `.chat-dock__header` (not Chat's own
+     `.chat-dock__mobile-header`), and ITS real mobile box is:
+       - `.chat-dock__icon-btn`/`.chat-dock__maximize-btn`'s 44px touch
+         floor (chat.css's mobile block) — the tallest content in the row;
+       - `.chat-dock__header`'s own mobile `padding: var(--space-2)
+         var(--space-3)` (chat.css) — `--space-2` top AND bottom;
+       - its `border-bottom: 1px solid` (base rule above).
+     52px was 1px short of that sum, and `.chat-dock.is-collapsed` sets
+     `overflow: hidden` — so Home/Activity's collapsed bar clipped its own
+     bottom border/padding by exactly 1px. Chat's own bar
+     (`.chat-dock__mobile-header`, tighter `--space-1` padding) renders
+     shorter than either number and was never clipped; the few extra
+     px here are unused slack for it, not a regression.
+
+     A literal, not `calc(44px + 2 * var(--space-2) + 1px)`: this token is
+     read by JS (`useDockShellChrome.ts`'s `collapsedHeight`, via
+     `getComputedStyle(...).getPropertyValue()` + `parseInt`), and a custom
+     property's computed value is the unparsed token text — `calc()`/`var()`
+     inside it parse to `NaN` there and silently fall back to the desktop
+     default (`toolbarGeometry.ts` documents this exact trap for
+     `--app-toolbar-total-height` next door). 44 + 4 + 4 + 1 = 53. */
   :root {
-    --chat-dock-header-height: 52px;
+    --chat-dock-header-height: 53px;
   }
 
   .app--with-sidebar {
@@ -8987,6 +9011,72 @@ button.tool-call__line:hover {
 
 @media (max-width: 430px) {
   .chat-dock__mobile-header--with-drawer .chat-dock__mobile-agent-avatar {
+    display: none;
+  }
+
+  /* station#524: the occupant picker (below) is the same class of "eighth
+     control" this file already reasons about for the maximized bar — an
+     extra fixed 44px slot the identity block pays for. Below 431px with the
+     picker present, drop the avatar here too (same sacrifice order: picture
+     before text) rather than let the picker silently reopen the overflow
+     this file's avatar gating was written to close. Not device-measured —
+     `tests/mobile-chat-composer.spec.ts` is the existing pin for this bar
+     and a Playwright run is what would confirm the exact threshold; this
+     reuses the avatar's own already-measured 430px gate rather than a new
+     unverified number. */
+  .chat-dock__mobile-header--with-occupant-picker
+  .chat-dock__mobile-agent-avatar {
+    display: none;
+  }
+}
+
+/* station#524: same reasoning, the bar's OTHER configuration — no drawer
+   toggle, but the picker is still an unbudgeted eighth slot. The
+   non-maximized bar was previously documented "healthy from 361px up" at
+   seven controls; extend the avatar's own 361px floor (nothing else fits
+   below it) so an eighth control doesn't quietly reopen that overflow. */
+@media (max-width: 361px) {
+  .chat-dock__mobile-header--with-occupant-picker
+    .chat-dock__mobile-agent-avatar {
+    display: none;
+  }
+}
+
+/* The picker's own footprint: same shrink-and-ellipsize treatment as the
+   project-switcher trigger beside it (`.chat-dock__mobile-project-trigger`
+   above), not a hard floor beyond the 44px touch target every mobile
+   trigger already carries — so a narrow phone gets a short, tappable
+   "Ch…" rather than either an overflowing full-width label or a control
+   that vanishes outright. */
+.chat-dock__mobile-occupant-picker {
+  flex: 0 1 min(28vw, 108px);
+  min-width: 44px;
+  max-width: min(28vw, 108px);
+}
+
+.chat-dock__mobile-occupant-picker .dock-occupant-picker,
+.chat-dock__mobile-occupant-picker .dock-occupant-picker__trigger {
+  width: 100%;
+  min-width: 0;
+}
+
+.chat-dock__mobile-occupant-picker .dock-occupant-picker__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Below 361px nothing else fits (the same floor the avatar and the grab
+   margin already defer to) — the maximized bar drops the picker here rather
+   than force an eighth 44px slot into a row that measured overflowing with
+   seven. DISCLOSED GAP, not a channel: at this exact width the ⋯ sheet does
+   NOT carry an occupant-switch item (station#524 follow-up), so a chat
+   maximized on a <=360px-wide device must be collapsed first (the sheet's
+   existing Collapse action) before the non-maximized bar's picker — hidden
+   only below 361px, not here — is reachable again. */
+@media (max-width: 360px) {
+  .chat-dock__mobile-header--with-drawer .chat-dock__mobile-occupant-picker {
     display: none;
   }
 }
