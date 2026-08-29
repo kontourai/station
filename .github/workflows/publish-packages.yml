@@ -517,13 +517,25 @@ jobs:
       # unrecorded ship must be visible) while the retain-artifact step
       # below still uploads the recorded files. The sha is GITHUB_SHA: the
       # dispatched main commit every published package was built from.
+      # Ledger commits push directly to main, which the require-green ruleset
+      # blocks for GITHUB_TOKEN; the release app is a ruleset bypass actor.
+      - name: Mint the ledger push token
+        id: ledger_token
+        if: env.PUBLISH_RUN == 'true' && steps.changesets.outputs.published == 'true'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
       - name: Record published npm packages in the deploy ledger
         if: env.PUBLISH_RUN == 'true' && steps.changesets.outputs.published == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
           PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.published-packages }}
         run: |
           set -euo pipefail
+          [ -n "$GITHUB_TOKEN" ] || { echo "::error::ledger token mint failed; the record cannot push"; exit 1; }
           specs="$(node scripts/lib/parse-published-packages.mjs "$PUBLISHED_PACKAGES")"
           while IFS=$'\t' read -r name version; do
             [ -n "$name" ] || continue
