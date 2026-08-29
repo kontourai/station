@@ -87,6 +87,15 @@ describe('desktop startup readiness static boundary', () => {
     ).toBeLessThan(
       nativeWake.indexOf('app.emit("station://startup-readiness-retry"'),
     );
+    const ticketWake = lib.slice(
+      lib.indexOf('fn observe_startup_ticket'),
+      lib.indexOf('fn observe_startup_loss'),
+    );
+    expect(
+      ticketWake.indexOf('request_native_startup_commit(app);'),
+    ).toBeLessThan(
+      ticketWake.indexOf('app.emit("station://startup-readiness-retry"'),
+    );
     expect([
       ...lib.matchAll(/\.name\("station-native-cover-dispatcher"\.into\(\)\)/g),
     ]).toHaveLength(1);

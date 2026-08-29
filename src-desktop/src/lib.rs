@@ -7005,10 +7005,11 @@ fn observe_startup_ticket(app: &AppHandle, ticket: startup_readiness::StartupTic
         "native startup bootstrap observed sidecar ticket generation {}",
         generation
     );
+    request_native_startup_commit(app);
     // A sidecar retry becomes reprobeable only after this exact new generation
     // is running and has published its ticket; never wake the renderer against
     // the old child during Restart.
-    notify_startup_readiness_if_waiting(app);
+    let _ = app.emit("station://startup-readiness-retry", ());
 }
 
 #[cfg(not(mobile))]
