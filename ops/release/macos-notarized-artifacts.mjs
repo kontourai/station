@@ -37,10 +37,14 @@ export const MACOS_NOTARIZED_ARTIFACTS_DEADLINE_MS = 100 * 60 * 1000;
 
 export function parseReleaseDeadlineEpoch(epoch) {
   if (typeof epoch !== 'string' || !/^[1-9][0-9]{9,10}$/.test(epoch))
-    throw new Error('macOS release deadline epoch must be an integer Unix timestamp.');
+    throw new Error(
+      'macOS release deadline epoch must be an integer Unix timestamp.',
+    );
   const seconds = Number(epoch);
   if (!Number.isSafeInteger(seconds))
-    throw new Error('macOS release deadline epoch must be an integer Unix timestamp.');
+    throw new Error(
+      'macOS release deadline epoch must be an integer Unix timestamp.',
+    );
   return seconds * 1000;
 }
 
@@ -184,7 +188,14 @@ function spawnReleaseTool(program, args, terminationGraceMs, spawn) {
   );
 }
 
-function collectStream(stream, maxBytes) {
+function collectStream(stream, maxBytes, mode = 'capture') {
+  if (mode === 'discard') {
+    // Keep flowing so a verbose inspection command cannot block on its pipe,
+    // but retain no pathname-bearing output. This is intentionally narrow:
+    // callers must opt in per stream and stderr remains bounded/captured.
+    stream.on('data', () => {});
+    return { exceeded: () => false, value: () => '' };
+  }
   const chunks = [];
   let bytes = 0;
   let exceeded = false;
@@ -219,6 +230,7 @@ export function runBoundedCommand(
     timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS,
     terminationGraceMs = COMMAND_TERMINATION_GRACE_MS,
     maxOutputBytes = MAX_COMMAND_OUTPUT_BYTES,
+    stdoutMode = 'capture',
     allowNonzero = false,
     logger = console,
     spawn = defaultSpawn,
@@ -233,7 +245,11 @@ export function runBoundedCommand(
     maxOutputBytes <= 0 ||
     maxOutputBytes > MAX_RELEASE_COMMAND_OUTPUT_BYTES
   )
-    throw new Error('Release command output limit must be a positive safe bound.');
+    throw new Error(
+      'Release command output limit must be a positive safe bound.',
+    );
+  if (!['capture', 'discard'].includes(stdoutMode))
+    throw new Error('Release command stdout mode must be capture or discard.');
   const log = loggerMethod(logger, 'log');
   const error = loggerMethod(logger, 'error');
   log(`[macOS release] ${phase}: ${program} started.`);
@@ -245,7 +261,7 @@ export function runBoundedCommand(
       reject(new ReleaseCommandError({ phase, program }));
       return;
     }
-    const stdout = collectStream(child.stdout, maxOutputBytes);
+    const stdout = collectStream(child.stdout, maxOutputBytes, stdoutMode);
     const stderr = collectStream(child.stderr, maxOutputBytes);
     let timedOut = false;
     let settled = false;
@@ -544,7 +560,9 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     options.deadlineEpoch === undefined &&
     (!Number.isSafeInteger(relativeDeadlineMs) || relativeDeadlineMs <= 0)
   )
-    throw new Error('macOS notarized artifact deadline must be a positive bound.');
+    throw new Error(
+      'macOS notarized artifact deadline must be a positive bound.',
+    );
   const deadlineAt =
     options.deadlineEpoch === undefined
       ? now() + relativeDeadlineMs
@@ -621,6 +639,7 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
   const prefix = `station-${tag}-macos-${arch}`;
   const dmg = join(assets, `${prefix}.dmg`);
   const updater = join(assets, `${prefix}.app.tar.gz`);
+  let detachNeeded = false;
   try {
     const embeddedCommand = (
       phase,
@@ -632,7 +651,10 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         phase,
         program,
         args,
-        Math.min(timeoutMs ?? EMBEDDED_MACHO_COMMAND_TIMEOUT_MS, EMBEDDED_MACHO_COMMAND_TIMEOUT_MS),
+        Math.min(
+          timeoutMs ?? EMBEDDED_MACHO_COMMAND_TIMEOUT_MS,
+          EMBEDDED_MACHO_COMMAND_TIMEOUT_MS,
+        ),
         commandOptions,
       );
     const embeddedSign = (
@@ -652,12 +674,7 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         commandOptions,
       );
     const retryEmbeddedSign = (phase, args, operation) =>
-      retryRetryableTransportFailure(
-        phase,
-        args,
-        operation,
-        logger,
-      );
+      retryRetryableTransportFailure(phase, args, operation, logger);
     await sealEmbeddedMacosMachOBounded(app, identity, {
       ...injected.embeddedMacos,
       command: embeddedCommand,
@@ -812,6 +829,7 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
       dmg,
     ]);
     fs.mkdirSync(mount, { recursive: true });
+    detachNeeded = true;
     await command('DMG mount', 'hdiutil', [
       'attach',
       '-readonly',
@@ -856,14 +874,22 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
       mounted,
     ]);
     await command('DMG detach', 'hdiutil', ['detach', mount]);
+    detachNeeded = false;
     await command('updater archive derivation', 'tar', [
       '-C',
       join(app, '..'),
       '-czf',
       updater,
+      '--',
       appName,
     ]);
-    await command('updater archive validation', 'tar', ['-tzf', updater]);
+    await command(
+      'updater archive validation',
+      'tar',
+      ['-tzf', updater],
+      DEFAULT_COMMAND_TIMEOUT_MS,
+      { stdoutMode: 'discard' },
+    );
     await command('updater signature derivation', 'npx', [
       'tauri',
       'signer',
@@ -874,10 +900,12 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
       throw new Error('Tauri updater signer did not produce a signature.');
     return { dmg, updater, signature: `${updater}.sig` };
   } finally {
-    try {
-      await command('DMG detach cleanup', 'hdiutil', ['detach', mount]);
-    } catch {
-      // There is no mounted release artifact to retain after a failed cleanup.
+    if (detachNeeded) {
+      try {
+        await command('DMG detach cleanup', 'hdiutil', ['detach', mount]);
+      } catch {
+        // Preserve the primary failure; cleanup is only best-effort here.
+      }
     }
     fs.rmSync(root, { recursive: true, force: true });
   }

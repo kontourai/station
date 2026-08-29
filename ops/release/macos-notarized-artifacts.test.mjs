@@ -1,4 +1,10 @@
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
@@ -289,6 +295,225 @@ function logger() {
   };
 }
 
+test('drains a real updater-sized tar listing without retaining its path output', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'station-updater-listing-'));
+  const payload = join(directory, 'payload');
+  const archive = join(directory, 'updater.tar.gz');
+  try {
+    mkdirSync(payload);
+    for (let index = 0; index < 1_500; index += 1) {
+      writeFileSync(
+        join(
+          payload,
+          `entry-${String(index).padStart(4, '0')}-${'x'.repeat(64)}`,
+        ),
+        '',
+      );
+    }
+    await runBoundedCommand('tar', ['-C', payload, '-czf', archive, '.'], {
+      phase: 'updater archive fixture creation',
+    });
+    await expect(
+      runBoundedCommand('tar', ['-tzf', archive], {
+        phase: 'updater archive validation',
+        stdoutMode: 'discard',
+      }),
+    ).resolves.toMatchObject({ status: 0, stderr: '', stdout: '' });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('keeps default output overflow terminal while discard retains only bounded stderr', async () => {
+  const oversized = "process.stdout.write('x'.repeat(65537));";
+  await expect(
+    runBoundedCommand(process.execPath, ['-e', oversized], {
+      maxOutputBytes: 64 * 1024,
+      phase: 'default output cap',
+    }),
+  ).rejects.toMatchObject({
+    name: 'ReleaseCommandError',
+    outputTruncated: true,
+  });
+  await expect(
+    runBoundedCommand(
+      process.execPath,
+      [
+        '-e',
+        "process.stdout.write('x'.repeat(65537)); process.stderr.write('warning');",
+      ],
+      {
+        maxOutputBytes: 64 * 1024,
+        phase: 'discarded output success',
+        stdoutMode: 'discard',
+      },
+    ),
+  ).resolves.toMatchObject({ status: 0, stderr: 'warning', stdout: '' });
+  const releaseLogger = logger();
+  const failure = await runBoundedCommand(
+    process.execPath,
+    [
+      '-e',
+      "process.stdout.write('x'.repeat(65537)); process.stderr.write('e'.repeat(32)); process.exit(1);",
+    ],
+    {
+      maxOutputBytes: 8,
+      phase: 'discarded output failure',
+      stdoutMode: 'discard',
+      logger: releaseLogger,
+    },
+  ).catch((error) => error);
+  expect(failure).toMatchObject({
+    name: 'ReleaseCommandError',
+    outputTruncated: true,
+    stderr: 'e'.repeat(8),
+    stdout: '',
+  });
+  expect(releaseLogger.entries.join('\n')).not.toContain('x'.repeat(64));
+  expect(releaseLogger.entries.join('\n')).not.toContain('e'.repeat(8));
+  expect(() =>
+    runBoundedCommand(process.execPath, ['-e', ''], {
+      phase: 'invalid stdout mode',
+      stdoutMode: 'truncate',
+    }),
+  ).toThrow(/stdout mode/);
+});
+
+test('derives, validates, then signs the updater with literal tar operands', async () => {
+  const release = fixture();
+  await createMacosNotarizedArtifacts(release.options, release);
+  const derivation = release.calls.find(
+    ([program, _args, options]) =>
+      program === 'tar' && options.phase === 'updater archive derivation',
+  );
+  const validation = release.calls.find(
+    ([program, _args, options]) =>
+      program === 'tar' && options.phase === 'updater archive validation',
+  );
+  const signer = release.calls.find(
+    ([program, _args, options]) =>
+      program === 'npx' && options.phase === 'updater signature derivation',
+  );
+  expect(derivation[1]).toEqual([
+    '-C',
+    '/app',
+    '-czf',
+    '/assets/station-v1.2.3-macos-aarch64.app.tar.gz',
+    '--',
+    'Station.app',
+  ]);
+  expect(validation[1]).toEqual([
+    '-tzf',
+    '/assets/station-v1.2.3-macos-aarch64.app.tar.gz',
+  ]);
+  expect(validation[2]).toMatchObject({ stdoutMode: 'discard' });
+  expect(release.calls.indexOf(validation)).toBeLessThan(
+    release.calls.indexOf(signer),
+  );
+});
+
+test('refuses corrupt or truncated updater archives before invoking the signer', async () => {
+  for (const diagnostics of ['archive damaged', 'unexpected end of file']) {
+    const release = fixture();
+    const baseRun = release.run;
+    release.run = (program, args, options) => {
+      if (program === 'tar' && args[0] === '-tzf') {
+        throw new ReleaseCommandError({
+          phase: options.phase,
+          program,
+          status: 1,
+          stderr: diagnostics,
+        });
+      }
+      return baseRun(program, args, options);
+    };
+    await expect(
+      createMacosNotarizedArtifacts(release.options, release),
+    ).rejects.toBeInstanceOf(ReleaseCommandError);
+    expect(
+      release.calls.some(
+        ([program, _args, options]) =>
+          program === 'npx' && options.phase === 'updater signature derivation',
+      ),
+    ).toBe(false);
+  }
+});
+
+test('tracks the DMG mount lifecycle without premature or duplicate cleanup', async () => {
+  const beforeMount = fixture();
+  const beforeMountRun = beforeMount.run;
+  beforeMount.run = (program, args, options) => {
+    if (options.phase === 'DMG Gatekeeper assessment')
+      throw new Error('primary before mount');
+    return beforeMountRun(program, args, options);
+  };
+  await expect(
+    createMacosNotarizedArtifacts(beforeMount.options, beforeMount),
+  ).rejects.toThrow('primary before mount');
+  expect(
+    beforeMount.calls.some(([_program, _args, options]) =>
+      options.phase.includes('detach cleanup'),
+    ),
+  ).toBe(false);
+
+  const success = fixture();
+  await createMacosNotarizedArtifacts(success.options, success);
+  expect(
+    success.calls.filter(([_program, _args, options]) =>
+      options.phase.includes('detach'),
+    ),
+  ).toHaveLength(1);
+  expect(
+    success.calls.find(([_program, _args, options]) =>
+      options.phase.includes('detach'),
+    )[2].phase,
+  ).toBe('DMG detach');
+
+  const afterMount = fixture();
+  const afterMountRun = afterMount.run;
+  afterMount.run = (program, args, options) => {
+    if (options.phase === 'mounted app signature verification')
+      throw new Error('primary after mount');
+    return afterMountRun(program, args, options);
+  };
+  await expect(
+    createMacosNotarizedArtifacts(afterMount.options, afterMount),
+  ).rejects.toThrow('primary after mount');
+  expect(
+    afterMount.calls.filter(([_program, _args, options]) =>
+      options.phase.includes('detach'),
+    ),
+  ).toHaveLength(1);
+  expect(
+    afterMount.calls.find(([_program, _args, options]) =>
+      options.phase.includes('detach'),
+    )[2].phase,
+  ).toBe('DMG detach cleanup');
+});
+
+test('does not replace a primary mounted-artifact failure when cleanup also fails', async () => {
+  const release = fixture();
+  const baseRun = release.run;
+  release.run = (program, args, options) => {
+    if (options.phase === 'mounted app signature verification')
+      throw new Error('primary mounted failure');
+    if (options.phase === 'DMG detach cleanup') {
+      release.calls.push([program, args, options]);
+      throw new Error('cleanup failure');
+    }
+    return baseRun(program, args, options);
+  };
+  await expect(
+    createMacosNotarizedArtifacts(release.options, release),
+  ).rejects.toThrow('primary mounted failure');
+  expect(
+    release.calls.filter(([_program, _args, options]) =>
+      options.phase.includes('detach'),
+    ),
+  ).toHaveLength(1);
+  expect(release.removed).toContain('/scratch');
+});
+
 test('terminates a hung embedded signing subprocess with its phase and program, never its arguments or output', async () => {
   const releaseLogger = logger();
   const secret = 'not-a-real-notary-secret';
@@ -352,7 +577,11 @@ test('retries a bounded embedded timestamp signing failure once without rewrappi
         stdout: '',
         stderr: 'code object is not signed at all',
       };
-    if (program === 'codesign' && args.includes('--force') && args.at(-1) === file) {
+    if (
+      program === 'codesign' &&
+      args.includes('--force') &&
+      args.at(-1) === file
+    ) {
       release.calls.push([program, args, commandOptions]);
       embeddedSignAttempts += 1;
       if (embeddedSignAttempts === 1)
@@ -381,7 +610,9 @@ test('retries a bounded embedded timestamp signing failure once without rewrappi
   expect(
     release.calls.find(
       ([program, args]) =>
-        program === 'codesign' && args.includes('--force') && args.at(-1) === file,
+        program === 'codesign' &&
+        args.includes('--force') &&
+        args.at(-1) === file,
     )?.[2].timeoutMs,
   ).toBe(EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS);
   expect(
@@ -394,7 +625,9 @@ test('retries a bounded embedded timestamp signing failure once without rewrappi
 
 test('validates absolute release epochs and reserves process-group cleanup grace after delayed setup', async () => {
   expect(parseReleaseDeadlineEpoch('1700006300')).toBe(1_700_006_300_000);
-  expect(() => parseReleaseDeadlineEpoch('not-an-epoch')).toThrow(/Unix timestamp/);
+  expect(() => parseReleaseDeadlineEpoch('not-an-epoch')).toThrow(
+    /Unix timestamp/,
+  );
   const release = fixture();
   const deadlineAt = 1_700_006_300_000;
   let now = deadlineAt - 25_000;
