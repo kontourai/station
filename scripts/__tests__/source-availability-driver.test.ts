@@ -112,12 +112,12 @@ describe('source availability driver', () => {
       base: { ref: 'main', repo: { full_name: 'kontourai/station' } },
     });
     const api = {
-      pullsForCommit: vi
+      pullsForCommit: vi.fn().mockImplementation(async () => [pullFor()]),
+      closingIssuesForPull: vi
         .fn()
-        .mockImplementation(async () => [pullFor()]),
-      closingIssuesForPull: vi.fn().mockResolvedValue([
-        { number: 1, repository: { full_name: 'kontourai/station' } },
-      ]),
+        .mockResolvedValue([
+          { number: 1, repository: { full_name: 'kontourai/station' } },
+        ]),
       getIssue: vi
         .fn()
         .mockResolvedValueOnce({ labels: [] })
