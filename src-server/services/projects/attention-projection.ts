@@ -150,7 +150,21 @@ export class AttentionProjectionService {
     );
   }
 
-  async list(authority?: SessionReadAuthority): Promise<AttentionProjection> {
+  async list(
+    authority?: SessionReadAuthority,
+    viewer?: {
+      /**
+       * #765 D5: whether the caller this read is answering could act on the
+       * pairing approve/deny routes — computed at the HTTP seam (the only
+       * layer that can see the request principal) from the boundary's own
+       * predicate, `EnvironmentSecurityService.credentialMayDecidePairingRequests`.
+       * Absent means unknown caller, which fails closed: a projection built
+       * with no caller identity must not claim decidability for whoever
+       * eventually reads it.
+       */
+      mayDecidePairingRequests?: boolean;
+    },
+  ): Promise<AttentionProjection> {
     const readAuthority = authority ?? this.defaultReadAuthority();
     attentionProjectionLoads.add(1);
     // Fetched once up front (archive#1284) so the past-resuming filter below
@@ -240,6 +254,7 @@ export class AttentionProjectionService {
     const pairingItems = this.projectDevicePairingItems(
       readAuthority,
       activeNotifications,
+      viewer?.mayDecidePairingRequests ?? false,
     );
 
     const undecorated = [
@@ -729,6 +744,7 @@ export class AttentionProjectionService {
   private projectDevicePairingItems(
     authority: SessionReadAuthority,
     activeNotifications: Notification[],
+    viewerCanDecide: boolean,
   ): DevicePairingAttentionItem[] {
     if (isHostedSessionReadAuthority(authority)) return [];
     const pairing = this.resolvePairingRequests?.();
@@ -758,6 +774,11 @@ export class AttentionProjectionService {
             createdAt: timestamp,
             updatedAt: timestamp,
             deviceName: request.deviceName,
+            // Derived at the HTTP seam from the boundary's own predicate —
+            // see `list()`'s `viewer` option. The card renders Approve/Deny
+            // only when true; a session tier that cannot pass the pairing
+            // family's authorization gets the remedy instead of dead buttons.
+            viewerCanDecide,
             // The Connections hub is where pairing/device management lives;
             // the decision itself happens through this item's own
             // Approve/Deny, which call the gated `/api/pairing` routes.

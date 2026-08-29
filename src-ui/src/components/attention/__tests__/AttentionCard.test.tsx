@@ -321,6 +321,9 @@ function basePairing(
     createdAt: now,
     updatedAt: now,
     deviceName: 'Test Phone',
+    // Most tests exercise the decision affordance, so the default fixture is
+    // a viewer the boundary would admit; the tier-gating tests below flip it.
+    viewerCanDecide: true,
     openHref: '/connections',
     source: { requestId: 'pair-req-1' },
     ...overrides,
@@ -390,6 +393,33 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
         'That access request has already expired or been removed.',
       ),
     ).toBeTruthy();
+  });
+
+  /*
+   * #765 D5 live verification: a paired browser session reads this item at
+   * `orchestration:read` while `access:approve` is operator-promotion-only,
+   * so its Approve/Deny could only ever answer 401 `authentication_required`.
+   * `viewerCanDecide: false` is the server saying so up front — the card must
+   * render the remedy, not buttons that structurally cannot work.
+   */
+  test('a session that cannot decide gets the remedy instead of dead Approve/Deny buttons', () => {
+    renderCard(basePairing({ viewerCanDecide: false }));
+
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull();
+    expect(
+      screen.getByText(
+        /needs a trusted Station session.*station environment access approve pair-req-1 --force/,
+      ),
+    ).toBeTruthy();
+    // The path that CAN act from here stays reachable.
+    expect(
+      screen
+        .getByRole('link', { name: 'Open connections' })
+        .getAttribute('href'),
+    ).toBe('/connections');
+    expect(pairingMocks.confirmPairing).not.toHaveBeenCalled();
+    expect(pairingMocks.denyPairing).not.toHaveBeenCalled();
   });
 
   test('links to Connections and keeps the acknowledge-dismiss affordance', () => {
