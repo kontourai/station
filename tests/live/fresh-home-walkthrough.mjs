@@ -57,9 +57,9 @@ const SETTLE_TIMEOUT_MS = 30_000;
  * excuses (`expectedMessageSubstring`): only a failure whose message
  * contains that substring reports EXPECTED-FAIL (visible in the summary,
  * not hidden) — any other failure for the same plugin is a REAL failure.
- * The suite reports loudly when an expected failure starts passing so the
- * entry gets removed. Keep this empty unless a tracked issue names the
- * breakage.
+ * A plugin listed here that PASSES fails the run: the entry is stale and
+ * must be removed, and letting it linger would silently excuse the next
+ * regression. Keep this empty unless a tracked issue names the breakage.
  */
 const EXPECTED_PLUGIN_FAILURES = new Map([
   // kontourai/station#765 finding D1 (Critical): the bundled Getting Started
@@ -69,7 +69,7 @@ const EXPECTED_PLUGIN_FAILURES = new Map([
   // identical message — and the same defect class hits every other bundled
   // layout plugin (their components are equally unregistered after install),
   // so each carries the same D1 reference below. Remove each entry as the fix
-  // lands; the suite reports loudly when an expected failure starts passing.
+  // lands; the run FAILS when an expected failure starts passing.
   // The tracked message quotes the forbidden on-page copy ('Unsupported
   // layout tab — Plugin layout component "…" is not installed or
   // registered.'), so that quoted fragment is the discriminating substring.
@@ -641,8 +641,8 @@ async function bundledContentSmoke(page) {
     }
     if (pluginFailures.length === 0) {
       if (EXPECTED_PLUGIN_FAILURES.has(pluginId)) {
-        console.error(
-          `NOTE: plugin ${pluginId} passed but is listed in EXPECTED_PLUGIN_FAILURES — remove the entry`,
+        fail(
+          `plugin ${pluginId} passed but is listed in EXPECTED_PLUGIN_FAILURES — remove its entry`,
         );
       }
       continue;
