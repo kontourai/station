@@ -150,11 +150,14 @@ export function ChatDockActiveIdentity({
               void copyThreadId();
             }}
           >
+            {/* #765 A7: the idle label says what pressing it does. A bare
+                "ID" chip beside the title read as a debug artifact, not as
+                the copy affordance its aria-label already named. */}
             {copyState === 'copied'
               ? 'Copied'
               : copyState === 'failed'
                 ? "Can't copy"
-                : 'ID'}
+                : 'Copy ID'}
           </button>
           {/* The button's own name is fixed, so its label change is never
               announced; this sibling carries the outcome. */}
