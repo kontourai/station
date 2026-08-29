@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,12 +9,14 @@ import {
   KEYCHAIN_UNLOCK_LIFETIME_SECONDS,
   lifetimeFromDeadline,
   PRIVATE_KEY_PROBE_TIMEOUT_MS,
+  parseMacosSigningReadinessCli,
   prepareMacosSigningKeychain,
   probeMacosPrivateKey,
   unlockMacosSigningKeychain,
 } from './macos-signing-readiness.mjs';
 
-const identity = 'Developer ID Application: Kontour AI (ABCD1234)';
+const identity = 'Developer ID Application: Kontour AI LLC (U7KHF2QAC4)';
+const fingerprint = 'A'.repeat(40);
 const fixedNow = 2_000_000_000_000;
 const deadlineEpoch = '2000000100';
 
@@ -46,7 +47,7 @@ function successRun(
     if (args[0] === 'find-identity') {
       return {
         status: 0,
-        stdout: `  1) 0123456789 ${JSON.stringify(identities)}\n`,
+        stdout: `  1) ${fingerprint} ${JSON.stringify(identities)}\n`,
         stderr: '',
       };
     }
@@ -113,6 +114,7 @@ test('prepare journals every recovery stage and orders all bounded keychain comm
   expect(stateAt(state)).toEqual({
     keychain: '/temporary.keychain-db',
     previous: ['/prior.keychain-db'],
+    schemaVersion: 1,
     stage: 'search-set',
   });
 });
@@ -170,11 +172,34 @@ test('rejects malformed, past, and insufficient signing deadlines before mutatio
   );
 });
 
+test('prepare rejects an expired deadline before reading or mutating a keychain', async () => {
+  const calls = [];
+  const state = makeStatePath();
+  await expect(
+    prepareMacosSigningKeychain({
+      certificate: '/certificate.p12',
+      deadlineEpoch: '2000000010',
+      identity,
+      keychain: '/keychain',
+      now: () => fixedNow,
+      password: 'secret',
+      run: async (program, args, options) => {
+        calls.push({ args, options, program });
+        return { status: 0, stderr: '', stdout: '' };
+      },
+      state,
+    }),
+  ).rejects.toThrow(/cleanup grace/);
+  expect(calls).toEqual([]);
+  expect(existsSync(state)).toBe(false);
+});
+
 test('requires exactly one exact well-formed identity without exposing hostile output', async () => {
   const hostile = `prefix ${identity} suffix\nsecret-passphrase\n`;
   const candidates = [
     `${identity} extra`,
-    `  1) 0123456789 ${JSON.stringify(identity)}\n  2) 9876543210 ${JSON.stringify(identity)}`,
+    `  1) ${fingerprint} ${JSON.stringify(identity)}\n  2) ${'B'.repeat(40)} ${JSON.stringify(identity)}`,
+    `  1) ${'C'.repeat(39)} ${JSON.stringify(identity)}`,
     hostile,
     '  1) malformed identity output',
   ];
@@ -229,7 +254,7 @@ test('fails safely after create, import, or identity validation while retaining 
       if (args[0] === 'find-identity')
         return {
           status: 0,
-          stdout: `  1) ABC ${JSON.stringify(identity)}\n`,
+          stdout: `  1) ${fingerprint} ${JSON.stringify(identity)}\n`,
           stderr: '',
         };
       return { status: 0, stdout: '', stderr: '' };
@@ -268,7 +293,7 @@ test('records search restoration before a failed or interrupted search-list muta
       if (args[0] === 'find-identity')
         return {
           status: 0,
-          stdout: `  1) ABC ${JSON.stringify(identity)}\n`,
+          stdout: `  1) ${fingerprint} ${JSON.stringify(identity)}\n`,
           stderr: '',
         };
       return { status: 0, stdout: '', stderr: '' };
@@ -333,7 +358,12 @@ test('cleanup restores empty and nonempty prior search lists and removes a fully
     const state = makeStatePath();
     writeFileSync(
       state,
-      JSON.stringify({ keychain: '/keychain', previous, stage: 'search-set' }),
+      JSON.stringify({
+        keychain: '/keychain',
+        previous,
+        schemaVersion: 1,
+        stage: 'search-set',
+      }),
     );
     const calls = [];
     await cleanupMacosSigningKeychain({
@@ -364,6 +394,7 @@ test('cleanup attempts restore, lock, and delete after every failure and retains
     JSON.stringify({
       keychain: '/keychain',
       previous: ['/prior'],
+      schemaVersion: 1,
       stage: 'search-set',
     }),
   );
@@ -404,6 +435,66 @@ test('cleanup is safe without a journal even if best-effort keychain removal fai
     }),
   ).resolves.toBeUndefined();
   expect(securityCommands(calls)).toEqual(['lock-keychain', 'delete-keychain']);
+});
+
+test('rejects malformed security search-list output before keychain mutation', async () => {
+  const state = makeStatePath();
+  const calls = [];
+  await expect(
+    prepareMacosSigningKeychain({
+      certificate: '/certificate.p12',
+      deadlineEpoch,
+      identity,
+      keychain: '/keychain',
+      now: () => fixedNow,
+      password: 'secret',
+      run: async (program, args, options) => {
+        calls.push({ args, options, program });
+        return { status: 0, stderr: '', stdout: '"unterminated' };
+      },
+      state,
+    }),
+  ).rejects.toThrow(/malformed/);
+  expect(securityCommands(calls)).toEqual(['list-keychains']);
+  expect(existsSync(state)).toBe(false);
+});
+
+test('rejects stale, mismatched, and hostile journals before any cleanup mutation', async () => {
+  const valid = {
+    keychain: '/keychain',
+    previous: ['/prior'],
+    schemaVersion: 1,
+    stage: 'search-set',
+  };
+  const invalidRecords = [
+    { ...valid, schemaVersion: 0 },
+    { ...valid, keychain: '/other-keychain' },
+    { ...valid, previous: ['relative.keychain-db'] },
+    { ...valid, previous: ['/prior', '/prior'] },
+    { ...valid, previous: ['/prior\u0000evil'] },
+    { ...valid, unexpected: true },
+    '{malformed json',
+  ];
+  for (const record of invalidRecords) {
+    const state = makeStatePath();
+    writeFileSync(
+      state,
+      typeof record === 'string' ? record : JSON.stringify(record),
+    );
+    const calls = [];
+    await expect(
+      cleanupMacosSigningKeychain({
+        keychain: '/keychain',
+        state,
+        run: async (program, args, options) => {
+          calls.push({ args, options, program });
+          return { status: 0, stderr: '', stdout: '' };
+        },
+      }),
+    ).rejects.toThrow('macOS signing keychain cleanup failed.');
+    expect(calls).toEqual([]);
+    expect(existsSync(state)).toBe(true);
+  }
 });
 
 test('normalizes security nonzero and timeout faults without retrying or leaking inputs', async () => {
@@ -467,6 +558,25 @@ test('runs one timestamp-free private-key probe, bounds every outcome, and remov
   }
 });
 
+test('cleans a partially copied probe when copying throws without exposing copy details', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'station-private-key-probe-'));
+  const probe = join(directory, 'partial-probe');
+  const error = await probeMacosPrivateKey({
+    copy: () => {
+      writeFileSync(probe, 'partial');
+      throw new Error('private copy detail');
+    },
+    identity,
+    probe,
+    source: process.execPath,
+  }).catch((caught) => caught);
+  expect(error.message).toBe(
+    'macOS private-key readiness probe failed before timestamp signing.',
+  );
+  expect(error.message).not.toContain('private copy detail');
+  expect(existsSync(probe)).toBe(false);
+});
+
 test('bounds a hung private-key probe through the owned process group and removes it', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'station-private-key-probe-'));
   const probe = join(directory, 'probe');
@@ -501,36 +611,95 @@ test('bounds a hung private-key probe through the owned process group and remove
   expect(existsSync(probe)).toBe(false);
 });
 
-test('CLI accepts only known unique non-secret arguments and reads secrets only from the environment', () => {
-  const script = 'ops/release/macos-signing-readiness.mjs';
-  const invoke = (args, env = {}) => {
-    try {
-      execFileSync(process.execPath, [script, ...args], {
-        cwd: process.cwd(),
-        encoding: 'utf8',
-        env: { ...process.env, ...env },
-        stdio: 'pipe',
-      });
-      return null;
-    } catch (error) {
-      return String(error.stderr);
-    }
+test('CLI requires exact mode-specific arguments and only asks each mode for the environment it needs', () => {
+  const environment = {
+    APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: 'password',
+    APPLE_DEVELOPER_ID_SIGNING_IDENTITY: identity,
   };
-  for (const args of [
-    ['prepare', '--unknown', 'value'],
-    ['prepare', '--keychain', '/one', '--keychain', '/two'],
-    ['prepare', '--keychain', '/one', '--password', 'cli-secret-value'],
-    ['prepare', '--keychain', '/one'],
-  ]) {
-    const stderr = invoke(args);
-    expect(stderr).toMatch(/Expected/);
-    expect(stderr).not.toContain('cli-secret-value');
+  const valid = {
+    cleanup: ['--keychain', '/keychain', '--state', '/state'],
+    prepare: [
+      '--certificate',
+      '/certificate',
+      '--deadline-epoch',
+      deadlineEpoch,
+      '--keychain',
+      '/keychain',
+      '--state',
+      '/state',
+    ],
+    probe: ['--keychain', '/keychain', '--probe', '/probe'],
+    unlock: ['--deadline-epoch', deadlineEpoch, '--keychain', '/keychain'],
+  };
+  for (const [mode, raw] of Object.entries(valid)) {
+    expect(
+      parseMacosSigningReadinessCli({ env: environment, mode, raw }),
+    ).toMatchObject({ mode });
+    for (let index = 0; index < raw.length; index += 2) {
+      const omitted = [...raw.slice(0, index), ...raw.slice(index + 2)];
+      expect(() =>
+        parseMacosSigningReadinessCli({ env: environment, mode, raw: omitted }),
+      ).toThrow(/exact mode-specific/);
+    }
+    expect(() =>
+      parseMacosSigningReadinessCli({
+        env: environment,
+        mode,
+        raw: [...raw, '--extra', 'value'],
+      }),
+    ).toThrow(/exact mode-specific/);
+    expect(() =>
+      parseMacosSigningReadinessCli({
+        env: environment,
+        mode,
+        raw: [...raw, raw[0], raw[1]],
+      }),
+    ).toThrow(/exact mode-specific/);
   }
-  const source = readFileSync(script, 'utf8');
-  expect(source).not.toContain('values.password');
-  expect(source).toContain(
-    'process.env.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD',
-  );
+  expect(() =>
+    parseMacosSigningReadinessCli({
+      env: environment,
+      mode: 'unknown',
+      raw: [],
+    }),
+  ).toThrow(/exact mode-specific/);
+  expect(() =>
+    parseMacosSigningReadinessCli({
+      env: {},
+      mode: 'prepare',
+      raw: valid.prepare,
+    }),
+  ).toThrow(/environment/);
+  expect(() =>
+    parseMacosSigningReadinessCli({
+      env: environment,
+      mode: 'prepare',
+      raw: valid.prepare.map((value, index) =>
+        index === 3 ? 'not-an-epoch' : value,
+      ),
+    }),
+  ).toThrow(/exact mode-specific/);
+  expect(() =>
+    parseMacosSigningReadinessCli({
+      env: { APPLE_DEVELOPER_ID_SIGNING_IDENTITY: identity },
+      mode: 'unlock',
+      raw: valid.unlock,
+    }),
+  ).toThrow(/environment/);
+  expect(
+    parseMacosSigningReadinessCli({
+      env: { APPLE_DEVELOPER_ID_SIGNING_IDENTITY: identity },
+      mode: 'probe',
+      raw: valid.probe,
+    }),
+  ).toMatchObject({ mode: 'probe' });
+  expect(
+    parseMacosSigningReadinessCli({
+      env: {},
+      mode: 'cleanup',
+      raw: valid.cleanup,
+    }),
+  ).toMatchObject({ mode: 'cleanup' });
 });
 
 test('both macOS release paths retain the required signing-readiness topology and leave iOS untouched', () => {
@@ -586,8 +755,27 @@ test('both macOS release paths retain the required signing-readiness topology an
     expect(job.steps[cleanup].run).toContain(
       'test "$helper_status" -eq 0 && test "$rm_status" -eq 0',
     );
+    if (jobName === 'nightly-desktop') {
+      const manifest = indexOfStep('Assemble the signed updater manifest');
+      const publish = indexOfStep(
+        'Publish the rolling desktop nightly prerelease',
+      );
+      expect(cleanup).toBeLessThan(manifest);
+      expect(manifest).toBeLessThan(publish);
+    } else {
+      const attestation = job.steps.findIndex(
+        (step) =>
+          step.uses ===
+          'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
+      );
+      expect(cleanup).toBeLessThan(attestation);
+    }
   }
-  const iosWorkflow = readFileSync('.github/workflows/build-ios.yml', 'utf8');
-  expect(iosWorkflow).not.toContain('macos-signing-readiness.mjs');
-  expect(iosWorkflow).not.toContain('APPLE_DEVELOPER_ID_SIGNING_IDENTITY');
+  const release = load(readFileSync('.github/workflows/release.yml', 'utf8'));
+  const helperJobs = Object.entries(release.jobs)
+    .filter(([, job]) =>
+      JSON.stringify(job).includes('macos-signing-readiness.mjs'),
+    )
+    .map(([name]) => name);
+  expect(helperJobs).toEqual(['desktop-macos']);
 });
