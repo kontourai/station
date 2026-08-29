@@ -1269,8 +1269,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // choice to make, so it preserves the current binding.
   const focusUserSelectedSessionInPane = useCallback(
     (sessionId: string) => {
-      const selected = allSessions.find((session) => session.id === sessionId);
-      if (selected?.projectSlug) setActiveProjectSlug(selected.projectSlug);
+      const selectedProjectSlug = allSessions.find(
+        (session) => session.id === sessionId,
+      )?.projectSlug;
+      if (selectedProjectSlug) setActiveProjectSlug(selectedProjectSlug);
       focusSessionInPane(sessionId);
     },
     [allSessions, focusSessionInPane, setActiveProjectSlug],
@@ -1452,38 +1454,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // or mobile task-switcher item may not be an in-memory tab yet.  Bind only
   // after its open succeeds, and only when that row names a project.
   const openUserSelectedConversationInScopedPane = useCallback(
-    async (
-      conversationId: string,
-      agentSlug: string,
-      targetProjectSlug?: string,
-      projectName?: string,
-      model?: string,
-      conversationUpdatedAt?: string,
-      acceptedModel?: string,
-      execution?: Pick<
-        OpenConversationOptions,
-        | 'modelSource'
-        | 'defaultModel'
-        | 'defaultModelSource'
-        | 'providerOptions'
-        | 'providerId'
-        | 'providerType'
-        | 'hydrateMessages'
-        | 'signal'
-      >,
-    ) => {
-      const opened = await openConversationInScopedPane(
-        conversationId,
-        agentSlug,
-        targetProjectSlug,
-        projectName,
-        model,
-        conversationUpdatedAt,
-        acceptedModel,
-        execution,
-      );
-      if (opened !== false && targetProjectSlug)
-        setActiveProjectSlug(targetProjectSlug);
+    async (...args: Parameters<typeof openConversationInScopedPane>) => {
+      const opened = await openConversationInScopedPane(...args);
+      const targetProjectSlug = args[2];
+      if (opened && targetProjectSlug) setActiveProjectSlug(targetProjectSlug);
       return opened;
     },
     [openConversationInScopedPane, setActiveProjectSlug],
