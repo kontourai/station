@@ -10,14 +10,39 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
+import {
+  EMBEDDED_MACHO_SEALING_DEADLINE_MS,
+  sealEmbeddedMacosMachOBounded,
+} from '../nightly/macos-embedded-signing.mjs';
 
 const MAX_CODESIGN_REQUIREMENT_STREAM_BYTES = 64 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES = 64 * 1024;
+const MAX_RELEASE_COMMAND_OUTPUT_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_COMMAND_TIMEOUT_MS = 2 * 60 * 1000;
 export const SIGNING_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
+// Hosted inventory showed thousands of dependencies but only a handful of
+// embedded Mach-O candidates. Inspection commands normally complete quickly;
+// this keeps a stuck per-file probe from exhausting the release budget.
+export const EMBEDDED_MACHO_COMMAND_TIMEOUT_MS = 30 * 1000;
+// Embedded dependencies are individually small. Keep a stalled timestamp
+// request from consuming the former aggregate five-minute sealing window for
+// every candidate, while still allowing one bounded transport retry.
+export const EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS = 90 * 1000;
 export const NOTARY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 export const COMMAND_TERMINATION_GRACE_MS = 10 * 1000;
 export const MAX_RETRY_ATTEMPTS = 2;
+// Standalone callers retain a bounded relative deadline. Hosted release passes
+// an absolute epoch recorded at the start of its 120-minute job instead.
+export const MACOS_NOTARIZED_ARTIFACTS_DEADLINE_MS = 100 * 60 * 1000;
+
+export function parseReleaseDeadlineEpoch(epoch) {
+  if (typeof epoch !== 'string' || !/^[1-9][0-9]{9,10}$/.test(epoch))
+    throw new Error('macOS release deadline epoch must be an integer Unix timestamp.');
+  const seconds = Number(epoch);
+  if (!Number.isSafeInteger(seconds))
+    throw new Error('macOS release deadline epoch must be an integer Unix timestamp.');
+  return seconds * 1000;
+}
 
 // The wrapper deliberately remains the process-group leader after the tool
 // receives TERM. A direct tool can exit and emit `close` while a descendant in
@@ -159,16 +184,16 @@ function spawnReleaseTool(program, args, terminationGraceMs, spawn) {
   );
 }
 
-function collectStream(stream) {
+function collectStream(stream, maxBytes) {
   const chunks = [];
   let bytes = 0;
   let exceeded = false;
   stream.on('data', (chunk) => {
     const value = Buffer.from(chunk);
-    if (bytes + value.length > MAX_COMMAND_OUTPUT_BYTES) {
-      const remaining = Math.max(0, MAX_COMMAND_OUTPUT_BYTES - bytes);
+    if (bytes + value.length > maxBytes) {
+      const remaining = Math.max(0, maxBytes - bytes);
       if (remaining > 0) chunks.push(value.subarray(0, remaining));
-      bytes = MAX_COMMAND_OUTPUT_BYTES;
+      bytes = maxBytes;
       exceeded = true;
       return;
     }
@@ -193,6 +218,8 @@ export function runBoundedCommand(
     phase,
     timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS,
     terminationGraceMs = COMMAND_TERMINATION_GRACE_MS,
+    maxOutputBytes = MAX_COMMAND_OUTPUT_BYTES,
+    allowNonzero = false,
     logger = console,
     spawn = defaultSpawn,
   } = {},
@@ -201,6 +228,12 @@ export function runBoundedCommand(
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
     throw new Error('Release command timeout must be a positive integer.');
   }
+  if (
+    !Number.isSafeInteger(maxOutputBytes) ||
+    maxOutputBytes <= 0 ||
+    maxOutputBytes > MAX_RELEASE_COMMAND_OUTPUT_BYTES
+  )
+    throw new Error('Release command output limit must be a positive safe bound.');
   const log = loggerMethod(logger, 'log');
   const error = loggerMethod(logger, 'error');
   log(`[macOS release] ${phase}: ${program} started.`);
@@ -212,8 +245,8 @@ export function runBoundedCommand(
       reject(new ReleaseCommandError({ phase, program }));
       return;
     }
-    const stdout = collectStream(child.stdout);
-    const stderr = collectStream(child.stderr);
+    const stdout = collectStream(child.stdout, maxOutputBytes);
+    const stderr = collectStream(child.stderr, maxOutputBytes);
     let timedOut = false;
     let settled = false;
     let timeout;
@@ -266,10 +299,10 @@ export function runBoundedCommand(
     child.once('error', () => fail());
     child.once('close', (status, signal) => {
       if (
-        status === 0 &&
         !timedOut &&
         !stdout.exceeded() &&
-        !stderr.exceeded()
+        !stderr.exceeded() &&
+        (status === 0 || allowNonzero)
       ) {
         finish(() => {
           log(`[macOS release] ${phase}: ${program} completed.`);
@@ -504,6 +537,25 @@ async function submit(command, file, key, keyId, issuer, logger) {
 
 export async function createMacosNotarizedArtifacts(options, injected = {}) {
   const logger = injected.logger ?? console;
+  const now = injected.now ?? Date.now;
+  const relativeDeadlineMs =
+    injected.deadlineMs ?? MACOS_NOTARIZED_ARTIFACTS_DEADLINE_MS;
+  if (
+    options.deadlineEpoch === undefined &&
+    (!Number.isSafeInteger(relativeDeadlineMs) || relativeDeadlineMs <= 0)
+  )
+    throw new Error('macOS notarized artifact deadline must be a positive bound.');
+  const deadlineAt =
+    options.deadlineEpoch === undefined
+      ? now() + relativeDeadlineMs
+      : parseReleaseDeadlineEpoch(options.deadlineEpoch);
+  if (
+    !Number.isSafeInteger(deadlineAt) ||
+    deadlineAt - now() <= COMMAND_TERMINATION_GRACE_MS
+  )
+    throw new Error(
+      'macOS notarized artifact creation lacks cleanup grace before its deadline.',
+    );
   const run =
     injected.run ??
     ((program, args, commandOptions) =>
@@ -517,7 +569,27 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     program,
     args,
     timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS,
-  ) => captured(await run(program, args, { phase, timeoutMs }));
+    commandOptions = {},
+  ) => {
+    const remainingMs = deadlineAt - now();
+    if (
+      !Number.isFinite(remainingMs) ||
+      remainingMs <= COMMAND_TERMINATION_GRACE_MS
+    )
+      throw new Error(
+        'macOS notarized artifact creation lacks cleanup grace before its deadline.',
+      );
+    return captured(
+      await run(program, args, {
+        ...commandOptions,
+        phase,
+        timeoutMs: Math.min(
+          timeoutMs,
+          remainingMs - COMMAND_TERMINATION_GRACE_MS,
+        ),
+      }),
+    );
+  };
   const fs = injected.fs ?? {
     existsSync,
     lstatSync,
@@ -550,12 +622,52 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
   const dmg = join(assets, `${prefix}.dmg`);
   const updater = join(assets, `${prefix}.app.tar.gz`);
   try {
-    await command(
-      'embedded sealing',
-      'node',
-      ['ops/nightly/macos-embedded-signing.mjs', app, identity],
-      SIGNING_COMMAND_TIMEOUT_MS,
-    );
+    const embeddedCommand = (
+      phase,
+      program,
+      args,
+      { timeoutMs, ...commandOptions } = {},
+    ) =>
+      command(
+        phase,
+        program,
+        args,
+        Math.min(timeoutMs ?? EMBEDDED_MACHO_COMMAND_TIMEOUT_MS, EMBEDDED_MACHO_COMMAND_TIMEOUT_MS),
+        commandOptions,
+      );
+    const embeddedSign = (
+      phase,
+      program,
+      args,
+      { timeoutMs, ...commandOptions } = {},
+    ) =>
+      command(
+        phase,
+        program,
+        args,
+        Math.min(
+          timeoutMs ?? EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS,
+          EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS,
+        ),
+        commandOptions,
+      );
+    const retryEmbeddedSign = (phase, args, operation) =>
+      retryRetryableTransportFailure(
+        phase,
+        args,
+        operation,
+        logger,
+      );
+    await sealEmbeddedMacosMachOBounded(app, identity, {
+      ...injected.embeddedMacos,
+      command: embeddedCommand,
+      deadlineMs: Math.min(
+        EMBEDDED_MACHO_SEALING_DEADLINE_MS,
+        deadlineAt - now() - COMMAND_TERMINATION_GRACE_MS,
+      ),
+      retrySign: retryEmbeddedSign,
+      sign: embeddedSign,
+    });
     const outerSigningArgs = [
       '--force',
       '--sign',
@@ -792,6 +904,7 @@ if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
     releaseTag: raw['--release-tag'],
     architecture: raw['--architecture'],
     bundleId: raw['--bundle-id'],
+    deadlineEpoch: raw['--deadline-epoch'],
   }).catch((error) => {
     console.error(`::error::macOS release failed: ${error.message}`);
     process.exitCode = 1;

@@ -3475,11 +3475,12 @@ describe('upgrade', () => {
       writeFileSync(
         join(release, '.station-release.json'),
         `${JSON.stringify({
-          schemaVersion: 1,
+          schemaVersion: 2,
           sha: 'b'.repeat(40),
           ref: releaseChannel === 'stable' ? 'v1.2.3' : 'v1.2.3-preview.4',
           createdAt: '2026-07-22T00:00:00.000Z',
-          channel: releaseChannel,
+          channel: runtimeChannel,
+          releaseChannel,
           prerelease: releaseChannel === 'preview',
         })}\n`,
       );
@@ -3610,11 +3611,12 @@ describe('upgrade', () => {
     writeFileSync(
       join(release, '.station-release.json'),
       `${JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         sha: 'd'.repeat(40),
         ref: 'v1.2.3-preview.4',
         createdAt: '2026-07-22T00:00:00.000Z',
-        channel: 'preview',
+        channel: 'beta',
+        releaseChannel: 'preview',
         prerelease: true,
       })}\n`,
     );
@@ -3659,11 +3661,12 @@ describe('upgrade', () => {
     writeFileSync(
       join(release, '.station-release.json'),
       `${JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         sha: 'f'.repeat(40),
         ref: 'v1.2.3',
         createdAt: '2026-07-22T00:00:00.000Z',
         channel: 'stable',
+        releaseChannel: 'stable',
         prerelease: false,
       })}\n`,
     );
@@ -5556,16 +5559,23 @@ describe('lifecycle build + restart ergonomics', () => {
 
   it('uses exact packaged release provenance when Git metadata is absent', async () => {
     ensureDir(TEST_CWD);
+    // Byte-for-byte what package-portable-release.sh writes: same key order,
+    // 2-space indent, trailing newline.
     writeFileSync(
       join(TEST_CWD, '.station-release.json'),
-      JSON.stringify({
-        schemaVersion: 1,
-        sha: 'fedcba9876543210fedcba9876543210fedcba98',
-        ref: 'v0.1.0',
-        createdAt: '2026-07-22T12:34:56.000Z',
-        channel: 'stable',
-        prerelease: false,
-      }),
+      `${JSON.stringify(
+        {
+          schemaVersion: 2,
+          sha: 'fedcba9876543210fedcba9876543210fedcba98',
+          ref: 'v0.1.0',
+          createdAt: '2026-07-22T12:34:56.000Z',
+          channel: 'stable',
+          releaseChannel: 'stable',
+          prerelease: false,
+        },
+        null,
+        2,
+      )}\n`,
     );
     const execSync = vi.fn(
       (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
@@ -5665,6 +5675,79 @@ describe('lifecycle build + restart ergonomics', () => {
       '.git is absent and .station-release.json is missing or invalid',
     );
   });
+
+  it.each([
+    {
+      description: 'the retired v1 six-key shape',
+      manifest: {
+        schemaVersion: 1,
+        sha: 'fedcba9876543210fedcba9876543210fedcba98',
+        ref: 'v0.1.0',
+        createdAt: '2026-07-22T12:34:56.000Z',
+        channel: 'stable',
+        prerelease: false,
+      },
+    },
+    {
+      description: 'a channel/releaseChannel pairing mismatch',
+      manifest: {
+        schemaVersion: 2,
+        sha: 'fedcba9876543210fedcba9876543210fedcba98',
+        ref: 'v0.1.0',
+        createdAt: '2026-07-22T12:34:56.000Z',
+        channel: 'beta',
+        releaseChannel: 'stable',
+        prerelease: false,
+      },
+    },
+  ])(
+    'rejects packaged provenance written as $description',
+    async ({ manifest }) => {
+      ensureDir(TEST_CWD);
+      writeFileSync(
+        join(TEST_CWD, '.station-release.json'),
+        JSON.stringify(manifest),
+      );
+      const execSync = vi.fn(
+        (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
+          if (command === 'npm run build:server') {
+            const serverDir = join(
+              TEST_CWD,
+              String(options?.env?.STATION_BUILD_SERVER_DIR),
+            );
+            ensureDir(serverDir);
+            writeFileSync(
+              join(serverDir, 'command-station.js'),
+              'candidate-server',
+            );
+          }
+          if (command === 'npm run build:ui') {
+            const uiDir = join(
+              TEST_CWD,
+              String(options?.env?.STATION_BUILD_UI_DIR),
+            );
+            ensureDir(uiDir);
+            writeFileSync(join(uiDir, 'index.html'), 'candidate-ui');
+          }
+          return '';
+        },
+      );
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync },
+      });
+
+      await expect(
+        lifecycle.buildApplication({
+          instanceName: 'portable-invalid',
+          baseDir: TEST_ALT_HOME,
+          serverPort: 3242,
+          uiPort: 5274,
+        }),
+      ).rejects.toThrow(
+        '.git is absent and .station-release.json is missing or invalid',
+      );
+    },
+  );
 
   it('binds both listeners and health probes to an explicit host and round-trips provenance in state', async () => {
     ensureDir(TEST_CWD);
