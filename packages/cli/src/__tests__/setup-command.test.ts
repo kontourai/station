@@ -13,7 +13,6 @@ let previousRoot: string | undefined;
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'station-setup-root-'));
   home = join(root, 'instances', 'stable');
-  mkdirSync(home, { recursive: true, mode: 0o700 });
   previousHome = process.env.STATION_HOME;
   previousRoot = process.env.STATION_ROOT;
   process.env.STATION_HOME = home;

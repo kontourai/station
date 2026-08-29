@@ -134,7 +134,7 @@ describe('shared saved Station store', () => {
   });
 
   test('refuses missing metadata beside a prior channel runtime without minting a replacement', () => {
-    mkdirSync(join(home, 'instances', 'stable', 'data'), {
+    mkdirSync(join(home, 'instances', 'stable'), {
       recursive: true,
       mode: 0o700,
     });
@@ -145,6 +145,25 @@ describe('shared saved Station store', () => {
       }),
     ).toThrow(/missing from an initialized or in-progress shared root/);
     expect(() => readFileSync(profilesPath(), 'utf8')).toThrow();
+  });
+
+  test('publishes first-install metadata beneath a lexical macOS /tmp root', () => {
+    const temporaryHome = mkdtempSync('/tmp/station-profile-genesis-');
+    try {
+      upsertProfile(
+        {
+          name: 'stable-local',
+          endpoint: 'http://127.0.0.1:18141',
+        },
+        temporaryHome,
+      );
+      expect(readProfileStore(temporaryHome)).toMatchObject({
+        revision: 1,
+        profiles: [expect.objectContaining({ name: 'stable-local' })],
+      });
+    } finally {
+      rmSync(temporaryHome, { recursive: true, force: true });
+    }
   });
 
   test('does not let a stale ordinary profile lock authorize a missing shared store', () => {

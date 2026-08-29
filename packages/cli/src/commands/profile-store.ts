@@ -210,20 +210,6 @@ function profileStoreGenesisAdmissible(home: string): boolean {
     // CLI setup creates an empty config parent before first metadata
     // publication. It is not history by itself; any content is.
     if (entry === 'config') return readdirSync(join(home, entry)).length === 0;
-    // An explicit first `station setup` may already have selected its empty
-    // runtime leaf. Any file beneath it is durable runtime history and fences
-    // genesis; only empty direct channel scaffolding is admissible.
-    if (entry === 'instances') {
-      return readdirSync(join(home, entry)).every((channel) => {
-        const runtime = join(home, entry, channel);
-        const runtimeInfo = lstatSync(runtime);
-        return (
-          runtimeInfo.isDirectory() &&
-          !runtimeInfo.isSymbolicLink() &&
-          readdirSync(runtime).length === 0
-        );
-      });
-    }
     return entry === 'installs';
   });
 }
@@ -254,7 +240,10 @@ function writeProfileStoreGenesisMarker(home: string): void {
     // POSIX. Persist both the root entry and (when the root was just born) its
     // parent before an empty profile document can follow.
     fsyncDirectorySync(home);
-    fsyncDirectorySync(dirname(home));
+    // `/tmp` is a lexical symlink to `/private/tmp` on macOS. Fsync the
+    // resolved parent so this durability step does not strand a marker with no
+    // initial document on an otherwise valid first-install root.
+    fsyncDirectorySync(realpathSync(dirname(home)));
   } finally {
     closeSync(descriptor);
   }
