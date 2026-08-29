@@ -50,8 +50,19 @@ describe('desktop startup readiness static boundary', () => {
     expect(nativeCover).toContain('ns_window.deminiaturize(None)');
     expect(nativeCover).toContain('ns_window.makeKeyAndOrderFront(None)');
     expect(nativeCover).not.toContain('.eval(');
-    expect(lib).toContain('with_native_startup_cover(&window, true)');
-    expect(lib).toContain('with_native_startup_cover(&window, false)');
+    expect(lib).toContain('fn native_cover_dispatcher');
+    expect(lib).toContain('sync_channel(1)');
+    expect(lib).toContain('apply_native_cover_until_current');
+    expect(lib).toContain('ack_rx.recv()');
+    expect(lib).toContain('with_native_startup_cover(&window, target.covered)');
+    expect(lib).toContain('request_native_cover(app, true)');
+    expect(lib).toContain('request_native_cover(app, false)');
+    expect([
+      ...lib.matchAll(/\.name\("station-native-cover-dispatcher"\.into\(\)\)/g),
+    ]).toHaveLength(1);
+    expect(lib).not.toMatch(
+      /deep_link\(\)\.on_open_url[\s\S]{0,900}with_native_startup_cover/,
+    );
     expect(tray).toMatch(
       /fn focus_station_window[\s\S]{0,260}crate::request_main_window_activation\(app\)/,
     );
