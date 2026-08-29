@@ -173,7 +173,8 @@ export function buildSetupBannerContent(
       if (!engine) {
         return {
           title: 'Choose what powers Station',
-          description: 'Add a provider for chat, agents, or both.',
+          description:
+            'Add a model connection or engine for chat, agents, or both.',
           actionLabel: 'Open Connections',
           badges: [],
           actionTarget: 'providers',
@@ -226,9 +227,9 @@ export function buildSetupBannerContent(
     }
     case 'configured-no-chat':
       return {
-        title: 'A provider needs attention',
+        title: 'No model connection is ready for chat',
         description:
-          'Choose or repair a provider in Connections before starting a chat.',
+          'Enable or repair a model connection in Connections before starting a chat.',
         actionLabel: 'Manage Connections',
         badges: dedupeBadges(
           configured.map((provider) =>
@@ -250,7 +251,8 @@ export function buildSetupBannerContent(
     default:
       return {
         title: 'Choose what powers Station',
-        description: 'Add a provider for chat, agents, or both.',
+        description:
+          'Add a model connection or engine for chat, agents, or both.',
         actionLabel: 'Open Connections',
         badges: dedupeBadges(
           enabledProviders.map(

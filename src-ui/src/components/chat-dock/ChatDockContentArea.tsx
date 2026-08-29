@@ -77,6 +77,7 @@ interface ChatDockContentAreaProps {
     attachments?: FileAttachment[],
     migratedTurnId?: string,
   ) => void | Promise<void>;
+  onRetryConversationOpen?: () => void | Promise<void>;
   /** station#1301 slice 1: opens the Background tasks sheet. */
   onOpenBackgroundTasks?: () => void;
 }
@@ -118,6 +119,7 @@ function ChatDockContentAreaImpl({
   onOpenConversation,
   onForkFromTurn,
   onNewChat,
+  onRetryConversationOpen,
   onOpenBackgroundTasks,
 }: ChatDockContentAreaProps) {
   return (
@@ -224,6 +226,7 @@ function ChatDockContentAreaImpl({
             setShowStatsPanel={onToggleStatsPanel}
             onOpenBackgroundTasks={onOpenBackgroundTasks}
             onNewChat={onNewChat}
+            onRetryConversationOpen={onRetryConversationOpen}
             onForkFromTurn={onForkFromTurn}
           />
         ) : (

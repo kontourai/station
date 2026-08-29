@@ -270,7 +270,8 @@ function buildFixCommands(input: {
       fixes.push({
         label: 'Start a local Ollama runtime',
         command: 'ollama serve',
-        reason: 'No chat-capable provider or local model runtime was detected.',
+        reason:
+          'No chat-capable model connection or local engine was detected.',
       });
     }
   }
@@ -407,12 +408,12 @@ export async function collectDoctorReport(
           : `Managed identity probe failing with a lifecycle lock present for: ${supervisorWedges.join('; ')}. Remedy per instance: station service start --instance=<id> (kickstart).`,
     },
     {
-      label: 'Configured chat providers',
+      label: 'Configured chat model connections',
       status: enabledLlmProviders.length > 0 ? 'pass' : 'warn',
       detail:
         enabledLlmProviders.length > 0
           ? `${enabledLlmProviders.length} enabled chat-capable connection(s)`
-          : 'No enabled chat-capable provider connection saved yet.',
+          : 'No enabled chat-capable model connection saved yet.',
     },
     {
       label: 'Ollama',
@@ -493,7 +494,7 @@ export async function collectDoctorReport(
         ? 'Ollama is reachable, but no saved model connection exists yet. Add an Ollama connection in Connections.'
         : awsConfigured
           ? 'AWS credentials are available. Add or enable a Bedrock model connection in Connections.'
-          : 'No chat-capable path is ready yet. Start Ollama locally or add a provider connection first.';
+          : 'No chat-capable path is ready yet. Start Ollama locally or add a model connection first.';
 
   return {
     checks,
@@ -549,17 +550,17 @@ export async function doctor(): Promise<void> {
     `  Runtime readiness: ${report.runtimeReady ? 'ready' : 'setup needed'}`,
   );
   console.log(
-    `  Effective provider: ${report.providerState.effective ?? 'none'}`,
+    `  Effective model connection: ${report.providerState.effective ?? 'none'}`,
   );
   console.log(
-    `  Configured providers: ${
+    `  Configured model connections: ${
       report.providerState.configured.length > 0
         ? report.providerState.configured.join(', ')
         : 'none'
     }`,
   );
   console.log(
-    `  Detected providers: ${
+    `  Detected model connections: ${
       report.providerState.detected.length > 0
         ? report.providerState.detected.join(', ')
         : 'none'

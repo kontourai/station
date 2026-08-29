@@ -52,6 +52,7 @@ import {
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { publicIdentityAgentSetView } from '../../routes/agents/runtime-agent-identity.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
+import { getCachedUser } from '../../routes/system/auth.js';
 import {
   assertRuntimeHttpRouteCoverage,
   credentialAuthorizedForScope,
@@ -568,6 +569,10 @@ export async function initializeRuntime(
     // sessions readable only through this explicit compatibility mode; a
     // multi-user runtime must migrate them and switch this to `deny`.
     ownerlessSessionAccess: 'single-user-compat',
+    // #749: rows written before principal ownership retain this Station
+    // process's former OS alias. SessionAuthorization admits it only for the
+    // request-derived home-possession local-operator principal.
+    legacyPersonalOwner: getCachedUser().alias,
     flowRunService,
     resourcePosture,
     listProjects: () => storageAdapter.listProjects(),

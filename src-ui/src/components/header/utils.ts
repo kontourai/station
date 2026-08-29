@@ -76,8 +76,8 @@ export function getHelpPrompts(view?: NavigationView): HeaderHelpPrompt[] {
       break;
     case 'connections-providers':
       contextual.push({
-        label: 'Configure a provider',
-        prompt: 'Help me set up a new LLM provider connection.',
+        label: 'Add a model connection',
+        prompt: 'Help me set up a new model connection.',
       });
       break;
   }

@@ -6,6 +6,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { _setApiBase } from '../api-core';
+import { resolveConversationOpen } from '../conversation-open';
 import {
   fetchSessionSummary,
   useConversationInventoryQuery,
@@ -32,6 +33,41 @@ function successResponse(): Response {
 }
 
 describe('conversation intent summary normalization', () => {
+  test('rejects hostile and unavailable conversation-open responses as typed failures', async () => {
+    _setApiBase('https://station.example.test');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              status: 'resolved',
+              canContinue: true,
+              recoveryActions: [],
+              // A guessed child must never become a valid open merely because
+              // the outer envelope says success.
+              currentSessionId: 'guessed-child',
+              conversation: { id: 'c', title: 'Cool', agentSlug: 'codex' },
+              transcript: { available: false, owner: 'runtime' },
+              answerability: { answerable: true },
+            },
+          }),
+          { headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+
+    await expect(resolveConversationOpen('c')).rejects.toMatchObject({
+      kind: 'invalid-response',
+    });
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+    await expect(resolveConversationOpen('c')).rejects.toMatchObject({
+      kind: 'network',
+    });
+  });
+
   test('preserves v2 ranges, usage, and observed references while rejecting future/corrupt payloads', async () => {
     _setApiBase('https://station.example.test');
     const payload = {

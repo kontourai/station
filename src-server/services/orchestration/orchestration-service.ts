@@ -180,7 +180,14 @@ import {
   type ConversationHistoryPage,
   ConversationHistoryReadService,
 } from './conversation-history-read-service.js';
-import { ConversationLineage } from './conversation-lineage.js';
+import {
+  ConversationLineage,
+  canResolveConversationContinuation,
+} from './conversation-lineage.js';
+import {
+  type ConversationOpenResolver,
+  createConversationOpenResolver,
+} from './conversation-open-resolver.js';
 import { CooperativeStop } from './cooperative-stop.js';
 import { CredentialProfileRecovery } from './credential-profile-recovery.js';
 import {
@@ -507,6 +514,8 @@ interface OrchestrationServiceOptions {
    * migrate or quarantine ownerless rows before exposing them.
    */
   ownerlessSessionAccess?: 'deny' | 'single-user-compat';
+  /** Exact legacy OS-alias owner for the local-home principal migration only. */
+  legacyPersonalOwner?: string;
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
   listProjects?: () => AttachedProjectRoot[];
@@ -951,6 +960,8 @@ export class OrchestrationService {
   readonly sessionCommands: SessionCommandModule;
   private readonly sessionCommandImplementation: SessionCommandImplementation;
   readonly sessionQueries: SessionQueryModule;
+  /** Authoritative inventory-to-session open state; routes do not restitch it. */
+  readonly conversationOpenResolver: ConversationOpenResolver;
   /** Explicit declared-output inventory; separate from transcript/Basis reads. */
   readonly sessionOutputs: SessionOutputsModule;
   readonly sessionLifecycles: SessionLifecycleModule;
@@ -1155,6 +1166,9 @@ export class OrchestrationService {
         : {}),
       ...(options.ownerlessSessionAccess !== undefined
         ? { ownerlessSessionAccess: options.ownerlessSessionAccess }
+        : {}),
+      ...(options.legacyPersonalOwner !== undefined
+        ? { legacyPersonalOwner: options.legacyPersonalOwner }
         : {}),
       ...(options.sessionOwnerCacheMaxEntries !== undefined
         ? { sessionOwnerCacheMaxEntries: options.sessionOwnerCacheMaxEntries }
@@ -1529,6 +1543,35 @@ export class OrchestrationService {
       listSessionReadModel: (authority) => this.listSessionReadModel(authority),
       canReadSession: (threadId, authority) =>
         this.sessionAuthz.canReadSession(threadId, authority),
+    });
+    this.conversationOpenResolver = createConversationOpenResolver({
+      currentSessionId: (conversationId) =>
+        this.conversationLineage.currentConversationSessionId(conversationId),
+      readCurrent: async ({ conversationId, authority }) => {
+        const detail =
+          await this.conversationLineage.readCurrentConversationSession(
+            conversationId,
+            authority,
+          );
+        if (!detail) return null;
+        return {
+          messages: this.readSessionMessages(
+            detail.session.threadId,
+            authority,
+          ),
+          answerability: detail.session.answerability,
+          // Continuation is a server decision over the CURRENT replaceable
+          // Session. A historical/nonmutable inventory row, a read-only
+          // attachment, an active turn, a pending review, or a stopped child
+          // does not become writable merely because the selected Agent has a
+          // provider today.
+          canContinue: canResolveConversationContinuation(detail),
+        };
+      },
+      reportUnavailable: (error) =>
+        options.logger.warn('Conversation open resolution is unavailable', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
     });
     this.flowPolicy = new FlowPolicySidecar({
       flowRunService: () => options.flowRunService,
@@ -3162,6 +3205,63 @@ export class OrchestrationService {
       threadId,
       authority,
     );
+  }
+
+  /**
+   * Exact conversation-open point read.  Unlike history inventory this never
+   * pages or derives a candidate from recency: the supplied durable
+   * conversation identity is followed only to its lineage current child and
+   * projected under the request's one authority.
+   */
+  async resolveConversationOpen(
+    conversationId: string,
+    authority: SessionReadAuthority,
+  ) {
+    this.initialize();
+    const currentSessionId = this.currentConversationSessionId(conversationId);
+    const query = await this.sessionQueries.read(
+      { type: 'conversation', threadId: currentSessionId },
+      authority,
+    );
+    if (query.status === 'unavailable') return null;
+    if (query.status !== 'found') return null;
+    // A direct legacy root may not have a lineage row. A lineage child must
+    // still prove it belongs to the requested durable conversation; otherwise
+    // an id collision cannot open a foreign Session.
+    if (
+      query.conversation.id !== conversationId &&
+      this.options.eventStore?.conversationForSession(currentSessionId)
+        ?.conversationId !== conversationId
+    ) {
+      return null;
+    }
+    const detail = await this.readCurrentConversationSession(
+      conversationId,
+      authority,
+    );
+    const conversation: ConversationListItem = {
+      id: conversationId,
+      source: 'runtime',
+      agentSlug: query.conversation
+        .agentSlug as ConversationListItem['agentSlug'],
+      ...(query.conversation.projectSlug
+        ? { projectSlug: query.conversation.projectSlug }
+        : {}),
+      title: query.conversation.title,
+      createdAt: query.conversation.createdAt,
+      updatedAt: query.conversation.updatedAt,
+      messageCount: query.conversation.messageCount,
+      mutable: false,
+      answerability: detail?.session.answerability ?? { answerable: true },
+      ...(query.conversation.model ? { model: query.conversation.model } : {}),
+      ...(query.conversation.acceptedModel
+        ? { acceptedModel: query.conversation.acceptedModel }
+        : {}),
+      ...(query.conversation.environmentId
+        ? { environmentId: query.conversation.environmentId }
+        : {}),
+    };
+    return this.conversationOpenResolver.resolve({ conversation, authority });
   }
 
   appendConversationFork(event: CanonicalRuntimeEvent): void {

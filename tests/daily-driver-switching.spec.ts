@@ -302,7 +302,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
                 branchPointTurnId: 'dd-fork-source-turn',
                 continuation: 'replay-seed',
                 disclosure:
-                  'Station replay carries the selected transcript only. Provider cursor, tool state, and approval state do not carry.',
+                  'Station replay carries the selected transcript only. Engine cursor, tool state, and approval state do not carry.',
                 idempotent: true,
               },
             }),
@@ -338,7 +338,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     await page.getByRole('button', { name: 'Fork from here' }).click();
     const dialog = page.getByRole('dialog', { name: 'Fork from here' });
     await expect(dialog).toContainText('New independent conversation');
-    await expect(dialog).toContainText('Provider cursor');
+    await expect(dialog).toContainText('Engine cursor');
     await expect(dialog).toContainText('tool state');
     await expect(dialog).toContainText('approval state do not carry');
     const sourceAgent = dialog.locator('button[data-agent-slug="claude"]');
@@ -419,7 +419,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
                 conversationId: childId,
                 continuation: 'replay-seed',
                 disclosure:
-                  'Station replay carries the selected transcript only. Provider cursor, tool state, and approval state do not carry.',
+                  'Station replay carries the selected transcript only. Engine cursor, tool state, and approval state do not carry.',
                 idempotent: false,
               },
             }),

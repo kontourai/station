@@ -599,6 +599,21 @@ Re-exported from `@tanstack/react-query` for direct cache access.
 
 Imperative API calls — use in event handlers, slash commands, or anywhere hooks aren't available.
 
+### `resolveConversationOpen(conversationId, apiBase?): Promise<ConversationOpenResolution>`
+
+Resolves one inventory row under the server's request-derived authority before
+a caller treats it as a writable Session. The discriminated result is
+`resolved`, `missing-session`, or `unavailable`; only the `resolved` arm can
+carry a current Session identity and a server-derived
+`canContinue` decision. Transport, rejection, and invalid wire failures throw a
+typed `ConversationOpenResolutionFailure` rather than degrading to an empty
+chat.
+
+Import this exceptional-path API from
+`@kontourai/station-sdk/conversation-open`. Keeping it on a dedicated subpath
+prevents the parser and transport from joining the initial application bundle
+through the root SDK barrel.
+
 ### `sendMessage(agentSlug, content, options?): Promise<any>`
 
 Sends a message to an agent (non-streaming).
