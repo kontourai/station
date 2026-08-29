@@ -446,15 +446,18 @@ describe('isolated plugin inside a real Tauri WebView', () => {
     const panePath =
       '/projects/hostile/layouts/proof/panes/hostile-pane/hostile-instance';
     await browser.execute((path: string) => {
-      (window as unknown as { __tauriShellErrors?: string[] })
-        .__tauriShellErrors = [];
+      (
+        window as unknown as { __tauriShellErrors?: string[] }
+      ).__tauriShellErrors = [];
       window.addEventListener('error', (event) => {
-        (window as unknown as { __tauriShellErrors: string[] })
-          .__tauriShellErrors.push(String(event.error ?? event.message));
+        (
+          window as unknown as { __tauriShellErrors: string[] }
+        ).__tauriShellErrors.push(String(event.error ?? event.message));
       });
       window.addEventListener('unhandledrejection', (event) => {
-        (window as unknown as { __tauriShellErrors: string[] })
-          .__tauriShellErrors.push(String(event.reason));
+        (
+          window as unknown as { __tauriShellErrors: string[] }
+        ).__tauriShellErrors.push(String(event.reason));
       });
       window.history.pushState({}, '', path);
       window.dispatchEvent(new PopStateEvent('popstate'));
@@ -482,7 +485,8 @@ describe('isolated plugin inside a real Tauri WebView', () => {
           title: entry.title,
         })),
         paneHtml:
-          document.querySelector('.project-page__workspace-pane-route')
+          document
+            .querySelector('.project-page__workspace-pane-route')
             ?.innerHTML.slice(0, 5_000) ?? null,
         errors:
           (window as unknown as { __tauriShellErrors?: string[] })

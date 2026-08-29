@@ -51,9 +51,7 @@ export function PluginRegistryBootstrap() {
   );
   const activeConnectionId = activeConnection?.id ?? 'default';
   const remoteProfile = Boolean(
-    activeConnection &&
-      !activeConnection.injected &&
-      !activeConnection.ownerId,
+    activeConnection && !activeConnection.injected && !activeConnection.ownerId,
   );
   const [allowRemoteBundles, setAllowRemoteBundles] = useState(() =>
     remotePluginBundlesAllowed(activeConnectionId, apiBase),
