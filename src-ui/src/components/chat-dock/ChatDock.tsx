@@ -135,7 +135,6 @@ import {
 } from './projectChatRequest';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockViewModel } from './useChatDockViewModel';
-import { useLatestDeferredFocus } from './useLatestDeferredFocus';
 
 /**
  * Re-open an offline queued turn from what its owning session persistently
@@ -1258,18 +1257,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       activeSessionId,
       setActiveSessionId,
     });
-  const {
-    cancel: cancelPendingProjectBindingFocus,
-    schedule: scheduleProjectBindingFocus,
-  } = useLatestDeferredFocus((sessionId) =>
-    focusSession(sessionId, !isFullscreenPlacement),
-  );
   const focusSessionInPane = useCallback(
-    (sessionId: string) => {
-      cancelPendingProjectBindingFocus();
-      focusSession(sessionId, !isFullscreenPlacement);
-    },
-    [cancelPendingProjectBindingFocus, focusSession, isFullscreenPlacement],
+    (sessionId: string) => focusSession(sessionId, !isFullscreenPlacement),
+    [focusSession, isFullscreenPlacement],
   );
   const openChatForAgentInScopedPane = useCallback(
     (
@@ -1286,7 +1276,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       providerId?: string,
       providerType?: string,
     ) => {
-      cancelPendingProjectBindingFocus();
       if (routeToScopedChatProject(targetProjectSlug)) return;
       const effectiveProjectSlug = hasImmutableProjectScope
         ? projectSlug
@@ -1312,18 +1301,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       );
       if (!hasImmutableProjectScope && effectiveProjectSlug) {
         setActiveProjectSlug(effectiveProjectSlug);
-        scheduleProjectBindingFocus(sessionId);
       }
+      return sessionId;
     },
     [
       hasImmutableProjectScope,
-      cancelPendingProjectBindingFocus,
       isFullscreenPlacement,
       openChatForAgent,
       projectSlug,
       projects,
       routeToScopedChatProject,
-      scheduleProjectBindingFocus,
       setActiveProjectSlug,
     ],
   );
@@ -2606,7 +2593,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             // Never CLEARS the binding: a modal chat started with no project
             // chosen leaves it exactly where it was (the same "new chats
             // preserve the binding" contract `openNewChatDirect` follows).
-            openChatForAgentInScopedPane(
+            const sessionId = openChatForAgentInScopedPane(
               agent,
               projectSlug,
               projectName,
@@ -2620,6 +2607,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               providerId,
               providerType,
             );
+            if (sessionId) navigate(pathname, { chat: sessionId });
             setShowNewChatModal(false);
             setNewChatProjectOverride(null);
             setHandoffSource(null);
