@@ -215,6 +215,27 @@ export interface DevicePairingAttentionItem extends AttentionItemBase {
   };
   /** The requesting device's display name, as recorded on the request. */
   deviceName: string;
+  /**
+   * Whether THE CALLER OF THIS READ could actually act on those approve/deny
+   * routes — derived per response at the HTTP seam from the same two gates
+   * the middleware applies to the request, in the same order: the pairing
+   * family's authority boundary (`EnvironmentSecurityService.
+   * credentialMayDecidePairingRequests`: operator credential or an
+   * `access:approve`-promoted device) and then the scope table's tier for
+   * the approval leaves (`requiredPairingScope`). The attested internal
+   * principal bypasses both gates and is therefore also `true`.
+   *
+   * This field exists because the affordance and the authority live in
+   * different tiers: a paired browser session can READ this item
+   * (`orchestration:read`) while `access:approve` is operator-promotion-only
+   * (in no preset, never in the default grant), so without a derivation the
+   * UI renders Approve/Deny buttons that can only ever answer
+   * `authentication_required` (#765 D5 live verification). `false` means the
+   * surface must render the remedy — approve from a trusted Station session —
+   * instead of dead buttons. Consumers that construct items outside the HTTP
+   * seam must fail closed (`false`): no caller identity, no claim.
+   */
+  viewerCanDecide: boolean;
   openHref: string;
 }
 
