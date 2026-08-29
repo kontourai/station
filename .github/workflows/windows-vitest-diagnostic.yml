@@ -13,7 +13,7 @@ concurrency:
 jobs:
   diagnostic:
     if: github.event_name != 'pull_request'
-    runs-on: windows-latest
+    runs-on: [self-hosted, Windows, X64, kontour-windows, native]
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -22,6 +22,16 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: 'E:\kontour-runner-capacity'
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "9"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
       - run: npm run dependencies:ci
       - name: Run complete serialized Windows Vitest diagnostic
         run: npm run test:windows:diagnostic

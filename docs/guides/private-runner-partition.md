@@ -1,10 +1,10 @@
 # Private runner partition
 
-Station's Linux CI, Android, container, publish, secret-scan, and generic
-Windows jobs run on GitHub-hosted images now that the repository is public.
-desktop-win remains the named native-Windows hardware-reference host for
-interactive-workspace performance and for recovering a leaked physical-host
-capacity lease.
+Station's Linux CI, Android, container, publish, and secret-scan jobs run
+on GitHub-hosted images now that the repository is public. desktop-win
+remains the named native-Windows host for interactive-workspace performance,
+the Windows portable floor, the Windows Vitest diagnostic, and recovering a
+leaked physical-host capacity lease.
 
 This is an operations plan for any remaining GitHub Actions fleet where short
 feedback must remain available while long jobs share one physical host. It

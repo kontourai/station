@@ -425,10 +425,11 @@ only for protected `main` pushes or reviewed manual dispatches; the same gate
 requires that boundary and `persist-credentials: false` on their checkouts.
 Unreviewed PR code belongs on hosted or genuinely one-job ephemeral runners.
 
-Linux CI, Android, container, publish, secret-scan, and generic Windows jobs
-run on GitHub-hosted images. desktop-win remains only for the named Windows
-hardware-reference performance lane and for recovering a leaked physical-host
-capacity lease. If a Linux job is reintroduced on that host, `ci:fast` alone
+Linux CI, Android, container, publish, and secret-scan jobs run on
+GitHub-hosted images. desktop-win remains for the named Windows
+hardware-reference performance lane, the native Windows portable floor, the
+Windows Vitest diagnostic, and recovering a leaked physical-host capacity
+lease. If a Linux job is reintroduced on that host, `ci:fast` alone
 requests `fast-feedback` and every other leased Linux job requests
 `heavy-host`. The fast listener must not carry `kontour-linux`, because GitHub
 matches a job when the runner has a *superset* of its requested labels;

@@ -21,7 +21,7 @@ COPY config/dependency-lifecycle-allowlist.json config/plugin-scaffold-dependenc
 COPY schemas/dependency-lifecycle-allowlist.schema.json schemas/
 COPY patches ./patches
 COPY scripts/node-runtime-contract.mjs scripts/dependency-lifecycle.mjs scripts/
-COPY scripts/lib/dependency-lifecycle-policy.mjs scripts/lib/
+COPY scripts/lib/dependency-lifecycle-policy.mjs scripts/lib/workspace-dependency-satisfaction.mjs scripts/lib/
 RUN npm run dependencies:ci
 
 FROM dependencies AS build

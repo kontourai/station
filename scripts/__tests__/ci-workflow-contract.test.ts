@@ -268,6 +268,16 @@ describe('CI verification workflow contracts', () => {
     expect(performance.match(/owner-lifetime-seconds: "7800"/g)).toHaveLength(
       3,
     );
+    expect(
+      workflow('windows-verification.yml').match(
+        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
+      ),
+    ).toHaveLength(1);
+    expect(
+      workflow('windows-vitest-diagnostic.yml').match(
+        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
+      ),
+    ).toHaveLength(1);
 
     for (const name of [
       'android-test.yml',
@@ -275,8 +285,6 @@ describe('CI verification workflow contracts', () => {
       'ci.yml',
       'ci-extended.yml',
       'container-smoke.yml',
-      'windows-verification.yml',
-      'windows-vitest-diagnostic.yml',
       'nightly.yml',
       'publish-packages.yml',
       'backlog-priority-policy.yml',
@@ -390,11 +398,16 @@ describe('CI verification workflow contracts', () => {
     expect(fullRegression).not.toContain('self-hosted');
     expect(fullRegression).not.toContain('physical-host-capacity@');
     const desktopWinLeaseWeights = [
-      ...workflow('interactive-workspace-performance.yml').matchAll(
-        /^\s+lease-weight: ["']?(\d+)["']?$/gm,
+      'interactive-workspace-performance.yml',
+      'windows-verification.yml',
+      'windows-vitest-diagnostic.yml',
+    ].flatMap((name) =>
+      [...workflow(name).matchAll(/^\s+lease-weight: ["']?(\d+)["']?$/gm)].map(
+        ([, weight]) => Number(weight),
       ),
-    ].map(([, weight]) => Number(weight));
-    expect(desktopWinLeaseWeights).toEqual([6, 6, 6]);
+    );
+    expect(desktopWinLeaseWeights).toEqual([6, 6, 6, 5, 9]);
+    expect(Math.max(...desktopWinLeaseWeights)).toBeLessThanOrEqual(9);
     expect(workflow('secret-scan.yml')).not.toContain('capacity-lease-weight:');
     expect(fullRegression).toContain('run: npm run full:regression');
     expect(fullRegression).toContain('run: npm run test:connected-agents');
@@ -667,6 +680,9 @@ describe('CI verification workflow contracts', () => {
 
     const performance = workflow('interactive-workspace-performance.yml');
     expect(performance).toContain(
+      'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
+    );
+    expect(workflow('windows-verification.yml')).toContain(
       'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
     );
     const recovery = workflow('recover-terminal-capacity-owner.yml');
@@ -964,8 +980,9 @@ describe('CI verification workflow contracts', () => {
     expect(windows).toContain('branches: [main]');
     expect(windows).not.toContain('pull_request:');
     expect(windows).toContain('paths:');
-    expect(windows).toContain('runs-on: windows-latest');
-    expect(windows).not.toContain('self-hosted');
+    expect(windows).toContain(
+      'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
+    );
     expect(windows).toContain('run: npm run verification:policy:gate');
     expect(windows).toContain('run: npm run typecheck');
     expect(windows).toContain('run: npm run test:windows:portable');
@@ -983,8 +1000,9 @@ describe('CI verification workflow contracts', () => {
     expect(diagnostic).toContain('workflow_dispatch:');
     expect(diagnostic).not.toContain('push:');
     expect(diagnostic).not.toContain('continue-on-error');
-    expect(diagnostic).toContain('runs-on: windows-latest');
-    expect(diagnostic).not.toContain('self-hosted');
+    expect(diagnostic).toContain(
+      'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
+    );
     expect(diagnostic).toContain('run: npm run test:windows:diagnostic');
     expect(diagnostic).toContain('if: always()');
     expect(diagnostic).toContain('.kontourai/windows-vitest/');
