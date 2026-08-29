@@ -163,6 +163,48 @@ describe('active chat state helpers', () => {
     });
   });
 
+  test('#749 reload persists only the last child identity and fails closed pending a fresh open resolution', () => {
+    const [persisted] = serializeActiveChats({
+      'chat:749': {
+        ...createDefaultChatState(),
+        agentSlug: 'planner',
+        conversationId: 'cool-conversation',
+        currentSessionId: 'cool-conversation:child:2',
+        conversationOpenState: {
+          status: 'resolved',
+          conversation: {
+            id: 'cool-conversation',
+            source: 'runtime',
+            agentSlug: 'planner' as any,
+            title: 'Cool',
+            createdAt: '2026-08-01T00:00:00.000Z',
+            updatedAt: '2026-08-01T00:01:00.000Z',
+            messageCount: 2,
+            mutable: false,
+            answerability: { answerable: true },
+          },
+          currentSessionId: 'cool-conversation:child:2',
+          transcript: { available: true, owner: 'runtime', messageCount: 2 },
+          canContinue: true,
+          answerability: { answerable: true },
+          recoveryActions: [],
+        },
+      },
+    });
+
+    expect(persisted).toMatchObject({
+      currentSessionId: 'cool-conversation:child:2',
+    });
+    expect(persisted).not.toHaveProperty('conversationOpenState');
+    expect(hydrateActiveChats([persisted])['chat:749']).toMatchObject({
+      currentSessionId: 'cool-conversation:child:2',
+      conversationOpenPending: true,
+    });
+    expect(hydrateActiveChats([persisted])['chat:749']).not.toHaveProperty(
+      'conversationOpenState',
+    );
+  });
+
   test('station#2460: picker requests survive the sessionStorage round trip', () => {
     const [persisted] = serializeActiveChats({
       'chat:1': {
