@@ -402,7 +402,7 @@ describe('PlatformProfile derivation', () => {
     });
   });
 
-  test('owns the startup readiness retry subscription for the mounted bootstrap', async () => {
+  test('leaves automatic startup readiness to the native host', async () => {
     const adapter = platformProfileAdapter({
       platform: 'tauri',
       getCapabilityReport: async () => ({
@@ -412,14 +412,6 @@ describe('PlatformProfile derivation', () => {
     });
 
     await resolveProfile(adapter);
-    await vi.waitFor(() => {
-      expect(adapter.subscribeToStartupReadinessRetry).toHaveBeenCalledOnce();
-    });
-    const subscription =
-      adapter.subscribeToStartupReadinessRetry.mock.results[0]?.value;
-
-    cleanup();
-
-    expect(subscription?.dispose).toHaveBeenCalledOnce();
+    expect(adapter.subscribeToStartupReadinessRetry).not.toHaveBeenCalled();
   });
 });
