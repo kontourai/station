@@ -35,7 +35,7 @@ use std::process::{Child, ChildStdout, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(not(mobile))]
 use std::sync::{
-    mpsc::{channel, Receiver, RecvTimeoutError, Sender},
+    mpsc::{channel, sync_channel, Receiver, RecvTimeoutError, Sender, SyncSender, TrySendError},
     Arc, Mutex,
 };
 #[cfg(not(mobile))]
@@ -6392,6 +6392,148 @@ impl PendingMainWindowActivation {
 const NATIVE_STARTUP_COVER_TAG: isize = 730_001;
 
 #[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct NativeCoverDesired {
+    generation: u64,
+    covered: bool,
+}
+
+#[cfg(target_os = "macos")]
+struct NativeCoverDispatcher {
+    desired: Arc<Mutex<NativeCoverDesired>>,
+    wake: SyncSender<()>,
+}
+
+#[cfg(target_os = "macos")]
+fn update_native_cover_desired(
+    desired: &Mutex<NativeCoverDesired>,
+    wake: &SyncSender<()>,
+    covered: bool,
+) {
+    let mut target = desired
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    target.generation = target.generation.wrapping_add(1);
+    target.covered = covered;
+    drop(target);
+
+    match wake.try_send(()) {
+        Ok(()) | Err(TrySendError::Full(())) => {}
+        Err(TrySendError::Disconnected(())) => {
+            log::error!("native cover dispatcher is unavailable");
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn apply_native_cover_until_current(
+    desired: &Mutex<NativeCoverDesired>,
+    mut apply: impl FnMut(NativeCoverDesired) -> bool,
+) -> bool {
+    loop {
+        let target = *desired
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !apply(target) {
+            return false;
+        }
+        if desired
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .generation
+            == target.generation
+        {
+            return true;
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn native_cover_dispatcher(app: AppHandle) -> Option<NativeCoverDispatcher> {
+    let desired = Arc::new(Mutex::new(NativeCoverDesired {
+        generation: 0,
+        covered: false,
+    }));
+    let (wake, receiver) = sync_channel(1);
+    let worker_desired = Arc::clone(&desired);
+    let worker = thread::Builder::new()
+        .name("station-native-cover-dispatcher".into())
+        .spawn(move || {
+            while receiver.recv().is_ok() {
+                let completed = apply_native_cover_until_current(&worker_desired, |target| {
+                    let (ack_tx, ack_rx) = sync_channel(0);
+                    let main_app = app.clone();
+                    let scheduled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        app.run_on_main_thread(move || {
+                            let task_succeeded =
+                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    let Some(window) = main_app.get_webview_window("main") else {
+                                        log::error!(
+                                            "native cover task could not find the main window"
+                                        );
+                                        return false;
+                                    };
+                                    match with_native_startup_cover(&window, target.covered) {
+                                        Ok(()) => true,
+                                        Err(error) => {
+                                            log::error!("native cover task failed: {error}");
+                                            false
+                                        }
+                                    }
+                                }))
+                                .unwrap_or_else(|_| {
+                                    log::error!("native cover main-thread task panicked");
+                                    false
+                                });
+                            if ack_tx.send(task_succeeded).is_err() {
+                                log::error!("native cover task acknowledgement was abandoned");
+                            }
+                        })
+                    }));
+                    match scheduled {
+                        Ok(Ok(())) => {}
+                        Ok(Err(error)) => {
+                            log::error!("could not schedule native cover task: {error}");
+                            return false;
+                        }
+                        Err(_) => {
+                            log::error!("native cover main-thread dispatch panicked");
+                            return false;
+                        }
+                    }
+                    match ack_rx.recv() {
+                        Ok(true) => true,
+                        Ok(false) => false,
+                        Err(_) => {
+                            log::error!("native cover main-thread task did not acknowledge");
+                            false
+                        }
+                    }
+                });
+                if !completed {
+                    // A later activation may retry a fail-closed task. The
+                    // worker itself remains bounded and available.
+                    continue;
+                }
+            }
+        });
+    if let Err(error) = worker {
+        log::error!("could not spawn native cover dispatcher: {error}");
+        return None;
+    }
+    Some(NativeCoverDispatcher { desired, wake })
+}
+
+#[cfg(target_os = "macos")]
+fn request_native_cover(app: &AppHandle, covered: bool) {
+    let Some(dispatcher) = app.try_state::<NativeCoverDispatcher>() else {
+        log::error!("native cover dispatcher state is unavailable");
+        return;
+    };
+    update_native_cover_desired(&dispatcher.desired, &dispatcher.wake, covered);
+}
+
+#[cfg(target_os = "macos")]
 fn with_native_startup_cover(
     window: &tauri::WebviewWindow,
     covered: bool,
@@ -6407,7 +6549,9 @@ fn with_native_startup_cover(
         // this callback; nothing escapes or is retained across a window close.
         let webview_view = unsafe { &*webview.inner().cast::<NSView>() };
         let ns_window = unsafe { &*webview.ns_window().cast::<objc2_app_kit::NSWindow>() };
-        let Some(content) = ns_window.contentView() else { return };
+        let Some(content) = ns_window.contentView() else {
+            return;
+        };
 
         if covered {
             let existing = content.viewWithTag(NATIVE_STARTUP_COVER_TAG);
@@ -6426,12 +6570,18 @@ fn with_native_startup_cover(
                 cover.setBoxType(NSBoxType::Custom);
                 cover.setFillColor(&NSColor::whiteColor());
                 cover.setTitle(ns_string!("Station is preparing its protected workspace…"));
-                unsafe { let _: () = objc2::msg_send![&*cover, setTag: NATIVE_STARTUP_COVER_TAG]; }
+                unsafe {
+                    let _: () = objc2::msg_send![&*cover, setTag: NATIVE_STARTUP_COVER_TAG];
+                }
                 content.addSubview(&cover);
             }
-            unsafe { let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: true]; }
+            unsafe {
+                let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: true];
+            }
             ns_window.makeFirstResponder(None);
-            unsafe { let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64]; }
+            unsafe {
+                let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64];
+            }
             ns_window.deminiaturize(None);
             ns_window.makeKeyAndOrderFront(None);
         } else {
@@ -6442,8 +6592,12 @@ fn with_native_startup_cover(
                 }
                 cover.removeFromSuperview();
             }
-            unsafe { let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: false]; }
-            unsafe { let _: () = objc2::msg_send![webview_view, setAlphaValue: 1.0f64]; }
+            unsafe {
+                let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: false];
+            }
+            unsafe {
+                let _: () = objc2::msg_send![webview_view, setAlphaValue: 1.0f64];
+            }
             ns_window.deminiaturize(None);
             ns_window.makeFirstResponder(Some(webview_view));
             ns_window.makeKeyAndOrderFront(None);
@@ -6453,11 +6607,7 @@ fn with_native_startup_cover(
 
 #[cfg(target_os = "macos")]
 fn present_startup_recovery_surface(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        if let Err(error) = with_native_startup_cover(&window, true) {
-            log::error!("could not install native startup cover before showing main window: {error}");
-        }
-    }
+    request_native_cover(app, true);
 }
 
 #[cfg(all(not(mobile), not(target_os = "macos")))]
@@ -6469,11 +6619,7 @@ fn present_startup_recovery_surface(_app: &AppHandle) {
 fn reveal_main_window(app: &AppHandle) {
     #[cfg(target_os = "macos")]
     {
-        if let Some(window) = app.get_webview_window("main") {
-            if let Err(error) = with_native_startup_cover(&window, false) {
-                log::error!("could not remove native startup cover after exact readiness commit: {error}");
-            }
-        }
+        request_native_cover(app, false);
         return;
     }
     #[cfg(not(target_os = "macos"))]
@@ -8192,6 +8338,10 @@ If a stable instance is running, this launch will focus its window and exit.",
                         owned_sidecar: owner == DesktopOwner::Sidecar,
                     },
                 );
+                #[cfg(target_os = "macos")]
+                if let Some(dispatcher) = native_cover_dispatcher(app.handle().clone()) {
+                    app.manage(dispatcher);
+                }
                 app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), ownership_checked_at: Mutex::new(Some(Instant::now())) });
                 replay_pending_main_window_activation(app.handle(), &pending_activation);
                 // The tray poll reads this managed ownership state. Starting
@@ -8354,6 +8504,74 @@ mod tests {
             repeated.request(),
             "each repeated URL after setup activates through the managed authority"
         );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn native_cover_requests_are_bounded_and_latest_state_wins_before_dispatch() {
+        let desired = Mutex::new(NativeCoverDesired {
+            generation: 0,
+            covered: false,
+        });
+        let (wake, receiver) = sync_channel(1);
+
+        update_native_cover_desired(&desired, &wake, true);
+        update_native_cover_desired(&desired, &wake, true);
+        update_native_cover_desired(&desired, &wake, false);
+
+        assert_eq!(receiver.try_iter().count(), 1, "repeated requests coalesce");
+        let mut applied = Vec::new();
+        assert!(apply_native_cover_until_current(&desired, |target| {
+            applied.push(target);
+            true
+        }));
+        assert_eq!(
+            applied,
+            vec![NativeCoverDesired {
+                generation: 3,
+                covered: false,
+            }],
+            "an unread cover must be superseded by the newer exact reveal"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn native_cover_dispatch_serializes_cover_before_a_fast_reveal() {
+        let desired = Mutex::new(NativeCoverDesired {
+            generation: 1,
+            covered: true,
+        });
+        let (wake, _receiver) = sync_channel(1);
+        let mut applied = Vec::new();
+
+        assert!(apply_native_cover_until_current(&desired, |target| {
+            applied.push(target.covered);
+            if target.covered {
+                update_native_cover_desired(&desired, &wake, false);
+            }
+            true
+        }));
+        assert_eq!(
+            applied,
+            vec![true, false],
+            "the dispatcher must acknowledge the cover before applying reveal"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn native_cover_dispatch_stops_on_a_failed_main_thread_task() {
+        let desired = Mutex::new(NativeCoverDesired {
+            generation: 1,
+            covered: true,
+        });
+        let mut attempts = 0;
+        assert!(!apply_native_cover_until_current(&desired, |_| {
+            attempts += 1;
+            false
+        }));
+        assert_eq!(attempts, 1, "a failed task must not spin or reveal content");
     }
 
     #[test]
