@@ -133,6 +133,38 @@ export type NativeBrowserPreviewHostErrorCode =
   | 'target-unreachable';
 
 /**
+ * Raw camel-cased payload emitted by Rust before the native adapter validates
+ * and normalizes it. Keep this wire type separate from the public result so a
+ * test fixture cannot fabricate a shape the host never serializes.
+ */
+export type NativeBrowserPreviewWindowResponse =
+  | {
+      status: 'opened';
+      sessionId: string;
+      observation: NativeBrowserPreviewObservation;
+    }
+  | {
+      status: 'rejected';
+      code: NativeBrowserPreviewHostErrorCode;
+      message: string;
+    };
+
+/** Raw Rust discovery/grant payload before runtime validation. */
+export type NativeBrowserPreviewGrantResponse =
+  | {
+      status: 'issued';
+      grantId: string;
+      expiresAtMs: number;
+      observation: NativeBrowserPreviewObservation;
+    }
+  | {
+      status: 'rejected';
+      code: NativeBrowserPreviewHostErrorCode;
+      message: string;
+      observation?: NativeBrowserPreviewObservation;
+    };
+
+/**
  * A separate native window can prove only admission and renderer creation.
  * It does not claim that the preview server is reachable or that a page
  * finished loading; those remain a browser-runtime observation.
