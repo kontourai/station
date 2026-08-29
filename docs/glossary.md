@@ -58,11 +58,14 @@ property of the agent rather than a permanent type chosen from a type picker.
 
 ## Connections
 
-A **Provider** is any configured service or app that can power a Station chat or
-agent. **Provider** is the single user-facing umbrella in Connections and in the
-chat model picker: Codex, Claude, Bedrock, LiteLLM, Ollama, and future compatible
-services all live together. People choose a provider first and a model second;
-they do not need to classify its implementation.
+The Connections tabs are **Models** and **Engines**, and **the tab owns the
+noun** (#592): the Models tab's user-facing objects are **Model connections**
+(list title, add flow, delete confirm — all say "model connection"); the
+Engines tab's objects are **Engines**. "Provider" is no longer a user-facing
+object name anywhere — it survives only as the brand/service word inside
+descriptive copy ("Pick the name you recognize…") and as the internal kind
+vocabulary below. People still choose the thing they recognize first and a
+model second; the tabs, not an umbrella noun, do the classifying.
 
 The internal connection model retains two kinds where execution needs the
 distinction:
@@ -72,11 +75,13 @@ distinction:
 - **Agent provider** — how Station reaches an external engine: Claude Code,
   Codex, or a custom CLI engine (OpenCode, Kiro). *(`ConnectionKind` is
   `'agent'`.)*
-- **ACP** — transport detail only, never a connection *kind* users choose or see named: how Station drives some external engines (OpenCode, Kiro) as a subprocess over the Agent Client Protocol, as opposed to a native SDK. Users see the engine's name ("OpenCode"); when a custom engine's name can't be resolved, the displayed default is **"Custom engine"**, never "ACP" and never "command-backed" — "command-backed" described the launch plumbing, which users read (wrongly) as a capability claim (owner feedback, 2026-08-22). "Custom engine" names what it is to the user: an engine they connected themselves by giving Station its command. `/connections/acp` keeps its URL (aliases are cheap); its labels don't say ACP.
+- **ACP** — transport detail only, never a connection *kind* users choose or see named: how Station drives some external engines (OpenCode, Kiro) as a subprocess over the Agent Client Protocol, as opposed to a native SDK. Users see the engine's name ("OpenCode"); when a custom engine's name can't be resolved, the displayed default is **"Custom engine"**, never "ACP" and never "command-backed" — "command-backed" described the launch plumbing, which users read (wrongly) as a capability claim (owner feedback, 2026-08-22). "Custom engine" names what it is to the user: an engine they connected themselves by giving Station its command. `/connections/acp` remains only as a URL redirect to `/connections/engines` (the route itself is retired); labels never say ACP.
 
-> **The distinction is internal, not navigation.** Ollama and Bedrock are model
-> providers; Claude Code and Codex are agent providers. The interface calls all
-> four **Providers** and reveals setup differences only when they matter.
+> **The kind vocabulary is internal.** Ollama and Bedrock are model providers
+> (`kind: 'model'`); Claude Code and Codex are agent providers
+> (`kind: 'agent'`). The interface calls the first pair **Model connections**
+> and the second pair **Engines**, and reveals setup differences only when
+> they matter.
 
 > **Choosing a model is universal — it is not what separates the two.** Every agent picks a model: an agent on Station's engine picks from its **Model** connection (`qwen3-vl`, `claude-sonnet`, `nova`…); an agent on an external engine picks from that **engine connection** (Claude Code's `sonnet`/`opus`, Codex's tiers). The dividing line is **who runs the loop**, not who has models — Station's engine drives a Model connection directly, while an external engine runs its own loop and Station hands it a model (plus effort/thinking). So "Model connection" names *where Station runs inference*, not "the connection that happens to have models."
 

@@ -633,8 +633,8 @@ function buildSystemRecommendation(input: {
       code: 'configured-no-chat',
       type: 'providers',
       actionLabel: 'Review model connections',
-      title: 'The default model connection needs attention',
-      detail: 'Choose or repair the default model connection in Connections.',
+      title: 'No model connection is ready for chat',
+      detail: 'Enable or repair a model connection in Connections.',
     };
   }
   if (detectedProvider) {

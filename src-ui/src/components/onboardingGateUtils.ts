@@ -227,9 +227,9 @@ export function buildSetupBannerContent(
     }
     case 'configured-no-chat':
       return {
-        title: 'The default model connection needs attention',
+        title: 'No model connection is ready for chat',
         description:
-          'Choose or repair the default model connection in Connections before starting a chat.',
+          'Enable or repair a model connection in Connections before starting a chat.',
         actionLabel: 'Manage Connections',
         badges: dedupeBadges(
           configured.map((provider) =>

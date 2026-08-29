@@ -363,9 +363,9 @@ describe('onboardingGateUtils', () => {
     expect(configuredLlmProviders(status)).toEqual([]);
     expect(setupBannerVariant(status)).toBe('configured-no-chat');
     expect(buildSetupBannerContent(status)).toEqual({
-      title: 'The default model connection needs attention',
+      title: 'No model connection is ready for chat',
       description:
-        'Choose or repair the default model connection in Connections before starting a chat.',
+        'Enable or repair a model connection in Connections before starting a chat.',
       actionLabel: 'Manage Connections',
       badges: ['Disabled: Amazon Bedrock'],
       actionTarget: 'providers',
@@ -406,6 +406,16 @@ describe('onboardingGateUtils', () => {
       'Configured: Ollama ×3',
       'Disabled: Amazon Bedrock',
     ]);
+    // Mirrors the server's state-accurate generic branch: this one client
+    // string covers three server branches, so it must never claim a
+    // "default" the none-enabled state does not have.
+    expect(buildSetupBannerContent(status)).toEqual(
+      expect.objectContaining({
+        title: 'No model connection is ready for chat',
+        description:
+          'Enable or repair a model connection in Connections before starting a chat.',
+      }),
+    );
   });
 
   test('an already-available agent engine hides setup', () => {

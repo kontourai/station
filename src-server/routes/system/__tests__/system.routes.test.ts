@@ -1217,6 +1217,11 @@ describe('System Routes', () => {
       expect.objectContaining({
         code: 'configured-no-chat',
         type: 'providers',
+        // State-accurate wording pinned: this branch is reached with zero
+        // ENABLED connections, where no "default" exists to repair.
+        title: 'No model connection is ready for chat',
+        detail: 'Enable or repair a model connection in Connections.',
+        actionLabel: 'Review model connections',
       }),
     );
   });

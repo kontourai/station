@@ -3181,7 +3181,7 @@ describe('collectDoctorReport', () => {
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          label: 'Configured chat providers',
+          label: 'Configured chat connections',
           status: 'pass',
         }),
       ]),
@@ -3227,7 +3227,7 @@ describe('collectDoctorReport', () => {
         expect.objectContaining({
           label: 'Start a local Ollama runtime',
           command: 'ollama serve',
-          reason: expect.stringContaining('No chat-capable provider'),
+          reason: expect.stringContaining('No chat-capable model connection'),
         }),
         expect.objectContaining({
           label: 'Review connected runtimes',
