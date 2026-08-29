@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { resolve, win32 } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
+  canonicalInstructionPath,
   escapesRoot,
   instructionGateErrors,
   resolveClaudeImports,
@@ -152,6 +153,15 @@ describe('agent instruction topology', () => {
         ...fixture({ 'src-ui/AGENTS.override.md': '# override\n' }),
       }),
     ).toContain('unsupported instruction override: src-ui/AGENTS.override.md');
+  });
+
+  test('reports unsupported overrides with canonical repository separators', () => {
+    expect(canonicalInstructionPath('src-ui\\AGENTS.override.md')).toBe(
+      'src-ui/AGENTS.override.md',
+    );
+    expect(canonicalInstructionPath('src-ui/AGENTS.override.md')).toBe(
+      'src-ui/AGENTS.override.md',
+    );
   });
 
   test('rejects broken instruction links and fragments', () => {
