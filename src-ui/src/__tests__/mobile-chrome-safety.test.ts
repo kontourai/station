@@ -1,16 +1,25 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
+import {
+  WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+  WORKSPACE_ACTIVITY_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-activity-pane';
 import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
-import { WORKSPACE_HOME_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-home-pane';
-import { describe, expect, it } from 'vitest';
+import {
+  WORKSPACE_HOME_PANE_DESCRIPTOR,
+  WORKSPACE_HOME_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-home-pane';
+import { describe, expect, it, vi } from 'vitest';
 import {
   isDockOwnedViewType,
   isMobileDockFullscreen,
   shouldMaximizeAfterDockingAsOnlyContent,
   shouldMaximizeOnOccupantChoice,
 } from '../components/chat-dock/mobile-chrome';
-import { ambientDockOccupantRouteViewType } from '../workspace-panes/ambientDockOccupants';
+import {
+  ambientDockOccupantRouteViewType,
+  chooseAmbientOccupant,
+} from '../workspace-panes/ambientDockOccupants';
 import { ruleBodiesFor } from './helpers/css-rules';
 
 /**
@@ -659,6 +668,48 @@ describe('the mobile dock-and-empty contract derivation (station#520)', () => {
     expect(
       ambientDockOccupantRouteViewType(WORKSPACE_CHAT_PANE_DESCRIPTOR),
     ).toBeNull();
+  });
+
+  it('chooseAmbientOccupant dispatches through the maximizing action when the live route would be stranded', () => {
+    const onChoose = vi.fn();
+    const onChooseAsOnlyContent = vi.fn();
+
+    chooseAmbientOccupant({
+      isMobile: true,
+      pathname: '/activity',
+      descriptor: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+      instance: WORKSPACE_ACTIVITY_PANE_INSTANCE,
+      onChoose,
+      onChooseAsOnlyContent,
+    });
+
+    expect(onChooseAsOnlyContent).toHaveBeenCalledOnce();
+    expect(onChooseAsOnlyContent).toHaveBeenCalledWith(
+      WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+      WORKSPACE_ACTIVITY_PANE_INSTANCE,
+    );
+    expect(onChoose).not.toHaveBeenCalled();
+  });
+
+  it('chooseAmbientOccupant keeps ordinary choices on the plain action', () => {
+    const onChoose = vi.fn();
+    const onChooseAsOnlyContent = vi.fn();
+
+    chooseAmbientOccupant({
+      isMobile: true,
+      pathname: '/settings',
+      descriptor: WORKSPACE_HOME_PANE_DESCRIPTOR,
+      instance: WORKSPACE_HOME_PANE_INSTANCE,
+      onChoose,
+      onChooseAsOnlyContent,
+    });
+
+    expect(onChoose).toHaveBeenCalledOnce();
+    expect(onChoose).toHaveBeenCalledWith(
+      WORKSPACE_HOME_PANE_DESCRIPTOR,
+      WORKSPACE_HOME_PANE_INSTANCE,
+    );
+    expect(onChooseAsOnlyContent).not.toHaveBeenCalled();
   });
 });
 
