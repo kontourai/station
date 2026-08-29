@@ -210,8 +210,11 @@ describe('project task room working state', () => {
           releaseCommit = resolve;
         }),
     });
+    // Match the working-state worker's own five-second response boundary.
+    // A one-second poll made process startup under the full corpus fail before
+    // the product's bounded worker contract had actually expired.
     await expect
-      .poll(() => Boolean(releaseCommit), { timeout: 1_000 })
+      .poll(() => Boolean(releaseCommit), { timeout: 5_000 })
       .toBe(true);
 
     let readSettled = false;
