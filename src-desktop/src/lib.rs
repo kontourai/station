@@ -3643,7 +3643,12 @@ fn lock_station_profiles_with_record(
 
     let lock_path = path.with_extension("json.lock");
     let mut reclaimed_stale_lock = false;
-    for _ in 0..100 {
+    // Windows hardens and verifies each newly-created lock through the ACL
+    // authority. A competing bundled channel can therefore hold the lock for
+    // longer than the old one-second poll window; keep the wait bounded to
+    // five seconds rather than turning ordinary Stable/Beta/Nightly startup
+    // contention into a false "busy" failure.
+    for _ in 0..500 {
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
