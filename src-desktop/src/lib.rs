@@ -6831,10 +6831,12 @@ fn with_native_startup_cover(
             }
             unsafe {
                 let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: true];
-                // Keep WebKit executing the readiness proof. Accessibility is
-                // isolated by the content-view child list above; alpha is now
-                // only the visual half of the protected surface.
-                let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64];
+                // The opaque native cover is the visual boundary. Do not
+                // change the WKWebView opacity beneath it: Wry/WebKit may
+                // retain a transparent compositing layer after an alpha
+                // transition, leaving a successfully revealed window blank.
+                // Accessibility remains isolated by the content-view child
+                // list above while the renderer continues to execute.
             }
             ns_window.makeFirstResponder(None);
             ns_window.deminiaturize(None);
@@ -6855,7 +6857,6 @@ fn with_native_startup_cover(
                 // the live accessibility hierarchy; a copied subview snapshot
                 // would retain stale children and omit later replacements.
                 let _: () = objc2::msg_send![&*content, setAccessibilityChildren: None::<&NSArray<NSView>>];
-                let _: () = objc2::msg_send![webview_view, setAlphaValue: 1.0f64];
             }
             ns_window.deminiaturize(None);
             ns_window.makeFirstResponder(Some(webview_view));
@@ -9093,8 +9094,10 @@ mod tests {
         assert!(cover.contains("setAccessibilityChildren: &*protected_children"));
         assert!(cover.contains("setAccessibilityChildren: None::<&NSArray<NSView>>"));
         assert!(!cover.contains("let revealed_children = content.subviews()"));
-        assert!(cover.contains("setAlphaValue: 0.0f64"));
-        assert!(cover.contains("setAlphaValue: 1.0f64"));
+        assert!(
+            !cover.contains("setAlphaValue:"),
+            "the opaque native cover must not suppress or restore the live WKWebView opacity"
+        );
         assert!(!cover.contains("webview_view.setHidden("));
     }
 

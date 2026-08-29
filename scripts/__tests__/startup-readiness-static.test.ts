@@ -39,8 +39,9 @@ describe('desktop startup readiness static boundary', () => {
     expect(nativeEnd).toBeGreaterThan(nativeStart);
     expect(nativeCover).toContain('window.with_webview');
     expect(nativeCover).toContain('content.addSubview(&cover)');
-    expect(nativeCover).toContain('setAlphaValue: 0.0f64');
-    expect(nativeCover).toContain('setAlphaValue: 1.0f64');
+    // The opaque AppKit cover owns visual protection. Changing WKWebView
+    // opacity can leave its compositing layer transparent after reveal.
+    expect(nativeCover).not.toContain('setAlphaValue:');
     expect(nativeCover).toContain('setAccessibilityHidden: true');
     expect(nativeCover).toContain('setAccessibilityHidden: false');
     expect(nativeCover).toContain('ns_window.makeFirstResponder(None)');
