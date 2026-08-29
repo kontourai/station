@@ -28,9 +28,9 @@
  * demands the direct topology and refuses the proxy one; that residual
  * disagreement lives with archive#3645's history.
  *
- * This resolves the origin. WHETHER to prefer it over the request URL is the
- * caller's decision, made against the caller's own evidence of how the
- * request arrived.
+ * This resolves every valid origin. WHETHER to select one over the request
+ * URL is the caller's decision, made against the caller's own evidence of how
+ * the request arrived.
  */
 
 import { execFile } from 'node:child_process';
@@ -133,7 +133,8 @@ function loopbackProxyPort(handler: unknown): number | undefined {
 }
 
 /**
- * The public HTTPS origin that serves one of `localPorts`, or `undefined`.
+ * The daemon-validated public HTTPS origins that serve one of `localPorts`,
+ * ordered deterministically, or `undefined`.
  *
  * Only root (`/`) handlers count: a mapping that serves this Station under a
  * subpath does not make its origin a valid pairing endpoint, because the
@@ -141,11 +142,11 @@ function loopbackProxyPort(handler: unknown): number | undefined {
  * prefix. Only mappings on the node's own MagicDNS authority count, so a
  * mapping published for some other host cannot supply the endpoint.
  */
-export function parseServePublicOrigin(
+export function parseServePublicOrigins(
   serveJson: string,
   magicDnsHost: string,
   localPorts: readonly number[],
-): string | undefined {
+): readonly string[] | undefined {
   let serve: unknown;
   try {
     serve = JSON.parse(serveJson);
@@ -198,16 +199,39 @@ export function parseServePublicOrigin(
     if (rightPort === 443) return 1;
     return leftPort - rightPort;
   });
-  return candidates[0];
-}
-
-export interface PublicIngressOriginResolver {
-  /** `undefined` whenever the origin cannot be established. Never throws. */
-  resolve(): Promise<string | undefined>;
+  return candidates;
 }
 
 /**
- * Caches the resolved origin for `ttlMs`. Pairing is rare, but the lookup
+ * The deterministic default from {@link parseServePublicOrigins}.
+ *
+ * Keep this narrow compatibility helper for callers that only need one
+ * endpoint. New routing decisions must use all origins: a direct Serve hop
+ * can prove exactly which listener accepted its request.
+ */
+export function parseServePublicOrigin(
+  serveJson: string,
+  magicDnsHost: string,
+  localPorts: readonly number[],
+): string | undefined {
+  return parseServePublicOrigins(serveJson, magicDnsHost, localPorts)?.[0];
+}
+
+export interface PublicIngressOriginResolver {
+  /**
+   * Daemon-validated origins in canonical order, or `undefined` whenever no
+   * origin can be established. Never throws.
+   *
+   * A proxy-attested request cannot retain its original authority, so its
+   * caller uses the first (default HTTPS port, then lowest port) origin. A
+   * direct request instead matches its exact request authority against this
+   * complete list.
+   */
+  resolve(): Promise<readonly string[] | undefined>;
+}
+
+/**
+ * Caches the resolved origins for `ttlMs`. Pairing is rare, but the lookup
  * spawns two processes, and an operator can change `tailscale serve` while
  * Station runs — so this re-reads periodically instead of pinning a value at
  * boot that would silently go stale.
@@ -225,10 +249,10 @@ export function createPublicIngressOriginResolver(input: {
   const ttlMs = input.ttlMs ?? 30_000;
   const now = input.now ?? Date.now;
   let cachedAt = Number.NEGATIVE_INFINITY;
-  let cached: string | undefined;
-  let inFlight: Promise<string | undefined> | undefined;
+  let cached: readonly string[] | undefined;
+  let inFlight: Promise<readonly string[] | undefined> | undefined;
 
-  const lookup = async (): Promise<string | undefined> => {
+  const lookup = async (): Promise<readonly string[] | undefined> => {
     try {
       const status = await input.cli(['status', '--json']);
       if (status.exitCode !== 0) return undefined;
@@ -236,7 +260,7 @@ export function createPublicIngressOriginResolver(input: {
       if (!host) return undefined;
       const serve = await input.cli(['serve', 'status', '--json']);
       if (serve.exitCode !== 0) return undefined;
-      return parseServePublicOrigin(serve.stdout, host, input.localPorts);
+      return parseServePublicOrigins(serve.stdout, host, input.localPorts);
     } catch {
       return undefined;
     }
