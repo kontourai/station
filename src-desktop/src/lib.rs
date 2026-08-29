@@ -6360,8 +6360,15 @@ struct NativeStartupBootstrap {
 #[cfg(not(mobile))]
 const NATIVE_STARTUP_BOOTSTRAP_SCRIPT: &str = r#"
 (() => {
+  let metadataAttemptsRemaining = 32;
   const signalReady = () => {
-    if (window.__TAURI_INTERNALS__.metadata?.currentWindow?.label !== 'main') return;
+    const label = window.__TAURI_INTERNALS__.metadata?.currentWindow?.label;
+    if (label === undefined && metadataAttemptsRemaining > 0) {
+      metadataAttemptsRemaining -= 1;
+      setTimeout(signalReady, 10);
+      return;
+    }
+    if (label !== 'main') return;
     window.__TAURI_INTERNALS__.invoke('renderer_startup_ready').catch(() => {});
   };
   setTimeout(signalReady, 0);
@@ -7304,6 +7311,7 @@ fn renderer_startup_ready(app: AppHandle, webview: WebviewWindow) -> Result<(), 
     if !startup_renderer_label_admitted(webview.label()) {
         return Err("Only the main Station renderer can signal startup readiness.".to_string());
     }
+    log::info!("native startup bootstrap observed the main renderer");
     let bootstrap = app
         .try_state::<NativeStartupBootstrap>()
         .ok_or("Native startup bootstrap is not initialized.")?;

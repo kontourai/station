@@ -73,13 +73,14 @@ describe('desktop startup readiness static boundary', () => {
       lib.indexOf('const NATIVE_STARTUP_BOOTSTRAP_SCRIPT'),
       lib.indexOf('fn startup_readiness_accepts_retry'),
     );
-    expect(bootstrapScript).toContain('setTimeout(signalReady, 0)');
+    expect(bootstrapScript).toContain('metadataAttemptsRemaining = 32');
+    expect(bootstrapScript).toContain('metadataAttemptsRemaining -= 1');
+    expect(bootstrapScript).toContain('setTimeout(signalReady, 10)');
     expect(bootstrapScript).not.toContain('DOMContentLoaded');
     expect(lib).toContain("invoke('renderer_startup_ready')");
     expect(lib).toContain('fn renderer_startup_ready');
-    expect(lib).toContain(
-      "metadata?.currentWindow?.label !== 'main'",
-    );
+    expect(bootstrapScript).toContain('metadata?.currentWindow?.label');
+    expect(bootstrapScript).toContain("if (label !== 'main') return");
     expect(lib).toContain(
       'if !startup_renderer_label_admitted(webview.label())',
     );
