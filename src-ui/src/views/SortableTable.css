@@ -11,7 +11,7 @@
   outline: none;
   width: 100%;
   max-width: 240px;
-  transition: border-color 0.2s;
+  transition: border-color var(--motion-base);
 }
 
 .sortable-table__filter-input:focus {

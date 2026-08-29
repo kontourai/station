@@ -1,33 +1,9 @@
 {
-  "hardCodedDeclarationCeiling": 100,
+  "hardCodedDeclarationCeiling": 3,
   "perFileCeilings": {
-    "src-ui/src/components/ActivityTimeline.css": 1,
-    "src-ui/src/components/Checkbox.css": 1,
-    "src-ui/src/components/GuidedConnect.css": 1,
-    "src-ui/src/components/OnboardingGate.css": 4,
-    "src-ui/src/components/PathAutocomplete.css": 1,
-    "src-ui/src/components/SplitPaneLayout.css": 4,
-    "src-ui/src/components/Toggle.css": 2,
-    "src-ui/src/components/acp-connections/ACPConnections.css": 2,
-    "src-ui/src/components/badges/AchievementsBadge.css": 2,
-    "src-ui/src/components/coding-layout/CodingInspectorPanel.css": 1,
-    "src-ui/src/components/coding-layout/CodingLayout.css": 5,
-    "src-ui/src/components/header/PageBreadcrumb.css": 1,
     "src-ui/src/components/notifications/NotificationHistory.css": 1,
-    "src-ui/src/components/project-sidebar/ProjectSidebar.css": 2,
-    "src-ui/src/components/usage-stats/UsageStatsPanel.css": 4,
-    "src-ui/src/components/voice/GlobalVoiceButton.css": 2,
-    "src-ui/src/components/voice/VoiceOrb.css": 2,
-    "src-ui/src/components/voice/VoicePill.css": 5,
-    "src-ui/src/pages/NotificationsPage.css": 2,
-    "src-ui/src/pages/ProfilePage.css": 7,
-    "src-ui/src/views/MonitoringWidgets.css": 8,
-    "src-ui/src/views/PluginManagementView.css": 8,
-    "src-ui/src/views/ProjectPage.css": 8,
-    "src-ui/src/views/SettingsView.css": 12,
-    "src-ui/src/views/SortableTable.css": 2,
-    "src-ui/src/views/editor-layout.css": 14
+    "src-ui/src/components/voice/VoicePill.css": 2
   },
-  "recordedAt": "2026-08-11T00:00:00Z",
-  "recordedBy": "station#2308 representative component migrations; regenerate only from a reviewed current-main inventory; UX audit lane C3 (SHELL-05): route entrance moved to the app-shell seam, editor-layout.css entrance migrated to tokens — global 105->103, editor-layout.css 15->14; UX audit closing lane (DRY mobile-CSS retirement): 12 redundant page-local prefers-reduced-motion blocks deleted in favour of the ONE global reset in tokens.css — global 103->100, WorkspacePaneHost.css entry removed (0 remaining; its two 0ms duration overrides were restating that reset)"
+  "recordedAt": "2026-08-29T00:00:00Z",
+  "recordedBy": "station#753 motion polish pass, item 6: migrated the remaining 25 files' 99 literal declarations to semantic tokens (a duration/easing value that had no exact token used the nearest token by ROLE — e.g. a `spin` keyframe always takes `--motion-status-spin` regardless of its original number, a recurring `cubic-bezier(0.16, 1, 0.3, 1)` settle curve took `--ease-emphasized`, `cubic-bezier(0.4, 0, 0.2, 1)` took `--ease-standard` as an exact match; MonitoringWidgets.css's `slideInFade` keyframe's dead 95%-hold segment was deleted rather than tokenized, per the 'or delete dead rules' allowance). Two declarations are left on ceilings deliberately, both coupled timing constants a token would decouple rather than express: NotificationHistory.css's `notification-dismiss-collapse` animation duration is `4s` because it visually encodes `UNDO_WINDOW_MS = 4000` in NotificationHistory.tsx; VoicePill.css's two `0.08s` transitions (`.voice-pill--listening`, `.voice-pill__ring`) smooth `--audio-scale`/`--audio-glow`, republished on every microphone frame (NovaVoiceSessionAdapter.ts `handleMicrophoneFrame`) — Direct-manipulation category, not Feedback/state; each has a local test pinning its literal (VoicePill.motion-exception.test.ts, NotificationHistory tests) per motion.md's exception-needs-a-local-test rule. Fix-round correction: the review's own count for this round (\"global ceiling 1->2\") undercounted — VoicePill.css contributes TWO declarations (its listening-state transition and its ring's transition are separate `transition:` blocks), not one, so the correct global ceiling is 1 (prior) + 2 (VoicePill) = 3, verified by running the ratchet script directly rather than counting by hand. Global ceiling 100->1 (station#753 main pass), 1->3 (this fix round)."
 }

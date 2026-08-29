@@ -187,6 +187,13 @@ interface SplitPaneLayoutProps {
   listIntro?:
     | React.ReactNode
     | ((selectItem: (id: string) => void) => React.ReactNode);
+  /**
+   * Extra class on the list container (`.split-pane__list`) — for the
+   * caller's own presentational opt-ins (e.g. `entrance-stagger`,
+   * station#753 item 2) rather than a per-surface wrapper around a
+   * component every split-pane route already shares.
+   */
+  listClassName?: string;
   // Right panel
   children: React.ReactNode;
   emptyIcon?: React.ReactNode;
@@ -265,6 +272,7 @@ export function SplitPaneLayout({
   listFilteredEmptyNoun = 'items',
   collectionEmpty = false,
   listIntro,
+  listClassName,
   children,
   emptyIcon = <DocumentGlyph />,
   emptyTitle = 'Nothing selected',
@@ -949,7 +957,11 @@ export function SplitPaneLayout({
           </div>
         </div>
 
-        <div className="split-pane__list" ref={listRef} tabIndex={-1}>
+        <div
+          className={`split-pane__list${listClassName ? ` ${listClassName}` : ''}`}
+          ref={listRef}
+          tabIndex={-1}
+        >
           {typeof listIntro === 'function' ? listIntro(selectItem) : listIntro}
           {loading ? (
             <SplitPaneListSkeleton />
