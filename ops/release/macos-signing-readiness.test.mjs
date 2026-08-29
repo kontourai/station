@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { expect, test } from 'vitest';
 import { runBoundedCommand } from './macos-notarized-artifacts.mjs';
 import { probeMacosPrivateKey } from './macos-signing-readiness.mjs';
+import { cleanupMacosSigningKeychain, lifetimeFromDeadline, prepareMacosSigningKeychain, unlockMacosSigningKeychain } from './macos-signing-readiness.mjs';
 
 test('runs one timestamp-free private-key probe and removes its scratch Mach-O', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'station-private-key-probe-'));
@@ -67,4 +68,30 @@ test('bounds a hung private-key probe through the owned process group and remove
   ).rejects.toThrow('macOS private-key readiness probe failed before timestamp signing.');
   expect(logs.join('\n')).toContain('macOS private-key readiness probe');
   expect(existsSync(probe)).toBe(false);
+});
+
+test('prepares and re-unlocks with a fresh bounded lifetime and exact identity', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'station-keychain-state-'));
+  const state = join(directory, 'state.json');
+  const calls = [];
+  const run = async (_program, args) => {
+    calls.push(args);
+    if (args[0] === 'list-keychains') return { status: 0, stdout: '"/prior.keychain-db"\n', stderr: '' };
+    if (args[0] === 'find-identity') return { status: 0, stdout: '  1) abc "Developer ID"\n', stderr: '' };
+    return { status: 0, stdout: '', stderr: '' };
+  };
+  const epoch = String(Math.floor(Date.now() / 1000) + 120);
+  await prepareMacosSigningKeychain({ certificate: '/cert', identity: 'Developer ID', keychain: '/keychain', password: 'secret', state, deadlineEpoch: epoch, run });
+  await unlockMacosSigningKeychain({ identity: 'Developer ID', keychain: '/keychain', password: 'secret', deadlineEpoch: epoch, run });
+  expect(calls.map(([command]) => command)).toContain('set-keychain-settings');
+  expect(calls.filter(([command]) => command === 'set-keychain-settings')).toHaveLength(2);
+  expect(() => lifetimeFromDeadline('bad')).toThrow(/valid/);
+});
+
+test('cleanup preserves a corrupt attempted state on failure but removes a successful empty-list state', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'station-keychain-state-'));
+  const corrupt = join(directory, 'corrupt.json');
+  await import('node:fs').then(({ writeFileSync }) => writeFileSync(corrupt, '{'));
+  await expect(cleanupMacosSigningKeychain({ keychain: '/keychain', state: corrupt, run: async () => ({ status: 0, stdout: '', stderr: '' }) })).rejects.toThrow(/cleanup failed/);
+  expect(existsSync(corrupt)).toBe(true);
 });
