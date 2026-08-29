@@ -218,8 +218,11 @@ describe('BuiltinScheduler', () => {
     expect(mockChatFn).toHaveBeenCalledTimes(1);
   });
 
-  test('records Starter resource deferral as a durable no-invocation receipt', async () => {
-    const invoke = vi.fn();
+  test('keeps an explicit Starter operation interactive under degraded posture', async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      kind: 'completed',
+      output: 'ready',
+    });
     const deferred = new BuiltinScheduler({
       ledger: createSchedulerLedger({
         directory: join(tempDir, 'starter-resource-deferral'),
@@ -243,24 +246,23 @@ describe('BuiltinScheduler', () => {
       );
       if (!prepared.activate) throw new Error('expected activation capability');
       await expect(prepared.activate()).resolves.toMatchObject({
-        outcome: 'failed',
+        outcome: 'completed',
         runId: prepared.reference.id,
       });
-      expect(invoke).not.toHaveBeenCalled();
+      expect(invoke).toHaveBeenCalledOnce();
       await expect(
         deferred.getJobLogs('station-starter-check'),
       ).resolves.toMatchObject([
         {
           id: expect.any(String),
-          state: 'failed',
-          error: 'Scheduled-check Starter was deferred before invocation.',
+          state: 'completed',
         },
       ]);
       expect(
         deferred.prepareStarterManualIntent('starter-resource-operation'),
       ).toMatchObject({
         replayed: true,
-        completion: 'failed',
+        completion: 'completed',
         reference: prepared.reference,
       });
     } finally {
@@ -736,11 +738,14 @@ describe('BuiltinScheduler', () => {
     expect(owedIds(directory)).toEqual([]);
   });
 
-  test('refuses a manual run under degraded posture and names the observation', async () => {
+  test('admits a manual run under degraded posture instead of treating it as cron', async () => {
     const ledger = createSchedulerLedger({
       directory: join(tempDir, 'manual-resource-posture'),
     });
-    const invoke = vi.fn();
+    const invoke = vi.fn().mockResolvedValue({
+      kind: 'completed',
+      output: 'manual output',
+    });
     const manualScheduler = new BuiltinScheduler({
       ledger,
       turnAdapter: { invoke },
@@ -760,13 +765,9 @@ describe('BuiltinScheduler', () => {
       await manualScheduler.addJob({ name: 'manual-posture', prompt: 'run' });
 
       await expect(manualScheduler.runJob('manual-posture')).resolves.toEqual(
-        expect.objectContaining({
-          outcome: 'refused',
-          message:
-            "Job 'manual-posture' refused: Scheduler job refused: resource posture=degraded, observed busyPercent=90",
-        }),
+        expect.objectContaining({ outcome: 'completed' }),
       );
-      expect(invoke).not.toHaveBeenCalled();
+      expect(invoke).toHaveBeenCalledOnce();
     } finally {
       await manualScheduler.stop();
     }

@@ -69,7 +69,10 @@ import { VeritasReadinessService } from '../../services/evidence/veritas-readine
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import { FlowRunService } from '../../services/flow/flow-run-service.js';
-import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
+import {
+  createEnvironmentRuntimeResourcePostureProbe,
+  type RuntimeResourcePostureProbe,
+} from '../../services/infra/resource-posture.js';
 import {
   AttachedSessionFollowService,
   resolveAttachedProjectRoots,
@@ -277,6 +280,7 @@ interface InitializeRuntimeResult {
   appConfig: AppConfig;
   framework: RuntimeFramework;
   orchestrationService: OrchestrationService;
+  resourcePosture: RuntimeResourcePostureProbe;
   attachedSessionFollowService: AttachedSessionFollowService;
   consoleBridgeService: ConsoleBridgeService;
   modelCatalog: BedrockModelCatalog;
@@ -1050,6 +1054,7 @@ export async function initializeRuntime(
     appConfig,
     framework,
     orchestrationService,
+    resourcePosture,
     attachedSessionFollowService,
     consoleBridgeService,
     modelCatalog,

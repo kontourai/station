@@ -342,6 +342,16 @@ describe('translateChatError', () => {
   // so it could not have caught the sentence blaming the wrong comparison
   // (review of archive#3120). The assertion below is now that the sentence
   // does NOT claim a threshold at all.
+  it('names a sustained-critical override as a one-start choice', () => {
+    const result = translateChatError({
+      code: 'resource_posture_override_required',
+      message: 'This Station remains busy (98% averaged CPU). Start anyway?',
+    });
+    expect(result.title).toMatch(/remains busy/i);
+    expect(result.hint).toMatch(/Start anyway/i);
+    expect(result.hint).toMatch(/one start/i);
+  });
+
   it('classifies a critical-resource-posture refusal by code, as a human sentence carrying the exact observed value', () => {
     const rawMessage =
       'Engine start refused: resource posture=critical, observed busyPercent=97, thresholdPercent=85, cpuCount=8';
