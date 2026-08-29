@@ -10,7 +10,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
 import {
+  EMBEDDED_MACHO_FIND_MAX_BUFFER,
   embeddedMacosMachOPaths,
+  sealEmbeddedMacosMachOBounded,
   sealEmbeddedMacosMachO,
 } from './macos-embedded-signing.mjs';
 
@@ -102,6 +104,87 @@ test('pre-filters by Mach-O magic, then confirms only candidates with file', () 
       ([program, args]) => program === 'codesign' && args.includes('--force'),
     ),
   ).toBe(true);
+});
+
+test('makes hosted embedded inventory, inspection, signing, and verification independently visible', async () => {
+  const { calls, run } = fixture();
+  const phases = [];
+  const invocations = [];
+  await expect(
+    sealEmbeddedMacosMachOBounded('/app', 'Developer ID', {
+      ...options(run),
+      command: async (phase, program, args, commandOptions) => {
+        phases.push(phase);
+        invocations.push([phase, program, args, commandOptions]);
+        return run(program, args);
+      },
+    }),
+  ).resolves.toEqual(['Contents/Resources/node_modules/a.node']);
+  expect(phases).toContain('embedded Mach-O inventory file scan');
+  expect(phases).toContain(
+    'embedded Mach-O Contents/Resources/node_modules/a.node: inventory',
+  );
+  expect(phases).toContain(
+    'embedded Mach-O 1/1 Contents/Resources/node_modules/a.node: inspect whole signature',
+  );
+  expect(phases).toContain(
+    'embedded Mach-O 1/1 Contents/Resources/node_modules/a.node: signing',
+  );
+  expect(phases).toContain(
+    'embedded Mach-O 1/1 Contents/Resources/node_modules/a.node: verification',
+  );
+  expect(phases.join('\n')).not.toContain('/app/');
+  expect(
+    invocations.find(
+      ([, program, args]) =>
+        program === 'find' && args.includes('f') && args.includes('-print0'),
+    )?.[3],
+  ).toEqual({ maxOutputBytes: EMBEDDED_MACHO_FIND_MAX_BUFFER });
+  expect(
+    calls.some(
+      ([program, args]) => program === 'codesign' && args.includes('--force'),
+    ),
+  ).toBe(true);
+});
+
+test('keeps an invalid hosted embedded signature terminal before any signing', async () => {
+  const { calls, run } = fixture({
+    verify: {
+      status: 1,
+      stdout: '',
+      stderr: 'a sealed resource is missing or invalid',
+    },
+  });
+  await expect(
+    sealEmbeddedMacosMachOBounded('/app', 'Developer ID', {
+      ...options(run),
+      command: async (phase, program, args) => run(program, args),
+    }),
+  ).rejects.toThrow(/invalid integrity/);
+  expect(
+    calls.some(
+      ([program, args]) => program === 'codesign' && args.includes('--force'),
+    ),
+  ).toBe(false);
+});
+
+test('refuses control characters before they can enter a hosted phase label', async () => {
+  const file = '/app/Contents/Resources/node_modules/vendor/hidden\tvalue.node';
+  const phases = [];
+  await expect(
+    sealEmbeddedMacosMachOBounded('/app', 'Developer ID', {
+      command: async (phase, program, args) => {
+        phases.push(phase);
+        if (program === 'find' && args.includes('l')) return result('');
+        if (program === 'find') return result(`${file}\0`);
+        return ok;
+      },
+      lstat: () => ({ isSymbolicLink: () => false }),
+      magic: () => true,
+      realpath: (path) => path,
+    }),
+  ).rejects.toThrow('Embedded Mach-O path contains a control character.');
+  expect(phases.join('\n')).not.toContain('hidden\tvalue');
 });
 
 test('preserves valid timestamped Developer ID metadata emitted on stderr byte-for-byte', () => {

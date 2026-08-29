@@ -506,8 +506,14 @@ describe('native release workflow topology', () => {
     expect(
       namedStep(macos, 'Build an unsigned macOS staging candidate').run,
     ).toContain('--no-sign');
-    expect(macosArtifacts).toContain('ops/nightly/macos-embedded-signing.mjs');
-    expect(macosArtifacts.indexOf('macos-embedded-signing.mjs')).toBeLessThan(
+    const embeddedSealing = macosArtifacts.indexOf(
+      'await sealEmbeddedMacosMachOBounded(app, identity, {',
+    );
+    expect(embeddedSealing).toBeGreaterThan(-1);
+    expect(embeddedSealing).toBeLessThan(
+      macosArtifacts.indexOf('const outerSigningArgs = ['),
+    );
+    expect(embeddedSealing).toBeLessThan(
       macosArtifacts.indexOf(
         'await submit(command, zip, key, keyId, issuer, logger);',
       ),

@@ -10,6 +10,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const EMBEDDED_MACHO_FIND_MAX_BUFFER = 64 * 1024 * 1024;
+export const EMBEDDED_MACHO_PHASE_LABEL_MAX_LENGTH = 160;
 
 const DEVELOPER_ID_REQUIREMENT =
   '=anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists';
@@ -162,6 +163,289 @@ function reSign(run, file, identity, architectures) {
   mustSucceed(run, 'codesign', ['--verify', '--strict', '--verbose=2', file]);
 }
 
+function captured(value) {
+  return typeof value === 'string'
+    ? { status: 0, stdout: value, stderr: '' }
+    : value;
+}
+
+async function boundedCommand(run, phase, program, args, options) {
+  const result = captured(await run(phase, program, args, options));
+  if (!result || typeof result.status !== 'number')
+    throw new Error(`${phase} did not return a structured exit status.`);
+  return {
+    ...result,
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
+  };
+}
+
+async function boundedMustSucceed(run, phase, program, args, options) {
+  const result = await boundedCommand(run, phase, program, args, options);
+  if (result.status !== 0) throw new Error(`${phase} failed.`);
+  return result;
+}
+
+function boundedRelativeLabel(canonicalApp, canonicalFile) {
+  const label = relative(canonicalApp, canonicalFile).split(sep).join('/');
+  if (
+    !label ||
+    label === '..' ||
+    label.startsWith('../') ||
+    /[\u0000-\u001f\u007f]/.test(label)
+  )
+    throw new Error('Embedded Mach-O label escaped the staged candidate.');
+  return label.length <= EMBEDDED_MACHO_PHASE_LABEL_MAX_LENGTH
+    ? label
+    : `${label.slice(0, EMBEDDED_MACHO_PHASE_LABEL_MAX_LENGTH - 1)}…`;
+}
+
+async function boundedMachOArchitectures(run, label, file) {
+  const architectures = (
+    await boundedMustSucceed(
+      run,
+      `embedded Mach-O ${label}: inspect architectures`,
+      'lipo',
+      ['-archs', file],
+    )
+  ).stdout
+    .trim()
+    .split(/\s+/);
+  if (
+    !architectures.length ||
+    architectures.some((architecture) => !/^[A-Za-z0-9_]+$/.test(architecture))
+  )
+    throw new Error('Embedded Mach-O reported invalid architecture names.');
+  return architectures;
+}
+
+async function boundedReSign(run, sign, label, file, identity, architectures) {
+  for (const architecture of architectures) {
+    const entitlements = await boundedCommand(
+      run,
+      `embedded Mach-O ${label}: inspect ${architecture} entitlements`,
+      'codesign',
+      [
+        '-d',
+        '--architecture',
+        architecture,
+        '--entitlements',
+        '-',
+        '--xml',
+        file,
+      ],
+    );
+    if (entitlements.status === 0) {
+      if (
+        entitlements.stdout ||
+        !expectedEntitlementDiagnostics(entitlements, file)
+      )
+        throw new Error(
+          'Refusing to re-sign embedded Mach-O with entitlements or invalid entitlement metadata.',
+        );
+    } else if (!isUnsigned(entitlements, file, architecture)) {
+      throw new Error('Could not inspect embedded Mach-O entitlements.');
+    }
+  }
+  await boundedMustSucceed(
+    sign,
+    `embedded Mach-O ${label}: signing`,
+    'codesign',
+    [
+      '--force',
+      '--sign',
+      identity,
+      '--options',
+      'runtime',
+      '--timestamp',
+      file,
+    ],
+  );
+  await boundedMustSucceed(
+    run,
+    `embedded Mach-O ${label}: verification`,
+    'codesign',
+    ['--verify', '--strict', '--verbose=2', file],
+  );
+}
+
+/**
+ * Seal embedded code through a caller-owned bounded command runner. This is
+ * deliberately separate from the synchronous CLI helper: hosted release jobs
+ * must make every potentially blocking child visible and independently
+ * cancellable, while local Nightly installs retain their existing interface.
+ */
+export async function sealEmbeddedMacosMachOBounded(
+  app,
+  identity,
+  {
+    command: run,
+    sign = run,
+    realpath = realpathSync,
+    lstat = lstatSync,
+    magic = hasMachOMagic,
+  } = {},
+) {
+  if (typeof run !== 'function')
+    throw new Error('A bounded embedded Mach-O command runner is required.');
+  const root = resolve(app, 'Contents/Resources/node_modules');
+  if (lstat(root).isSymbolicLink())
+    throw new Error('Embedded Mach-O dependency root must not be a symlink.');
+  const canonicalApp = realpath(app);
+  const canonicalRoot = realpath(root);
+  if (!within(canonicalApp, canonicalRoot))
+    throw new Error('Embedded Mach-O dependency root escaped the staged candidate.');
+  const symlinks = (
+    await boundedMustSucceed(
+      run,
+      'embedded Mach-O inventory symlink scan',
+      'find',
+      [root, '-type', 'l', '-print0'],
+      { maxOutputBytes: EMBEDDED_MACHO_FIND_MAX_BUFFER },
+    )
+  ).stdout
+    .split('\0')
+    .filter(Boolean);
+  if (symlinks.length)
+    throw new Error('Embedded Mach-O dependency tree contains symlink(s).');
+  const inventory = (
+    await boundedMustSucceed(
+      run,
+      'embedded Mach-O inventory file scan',
+      'find',
+      [root, '-type', 'f', '-print0'],
+      { maxOutputBytes: EMBEDDED_MACHO_FIND_MAX_BUFFER },
+    )
+  ).stdout
+    .split('\0')
+    .filter(Boolean);
+  const files = [];
+  for (const file of inventory) {
+    const canonicalFile = realpath(file);
+    if (!within(canonicalRoot, canonicalFile))
+      throw new Error('Embedded Mach-O inventory escaped the staged candidate.');
+    if (/[\u0000-\u001f\u007f]/.test(canonicalFile))
+      throw new Error('Embedded Mach-O path contains a control character.');
+    if (!magic(canonicalFile)) continue;
+    const label = boundedRelativeLabel(canonicalApp, canonicalFile);
+    const kind = await boundedMustSucceed(
+      run,
+      `embedded Mach-O ${label}: inventory`,
+      'file',
+      ['-b', canonicalFile],
+    );
+    if (kind.stdout.includes('Mach-O'))
+      files.push({ file: canonicalFile, relativeLabel: label });
+  }
+  for (const [index, entry] of files.entries()) {
+    const { file } = entry;
+    const label = `${index + 1}/${files.length} ${entry.relativeLabel}`;
+    const verified = await boundedCommand(
+      run,
+      `embedded Mach-O ${label}: inspect whole signature`,
+      'codesign',
+      ['--verify', '--strict', '--verbose=2', file],
+    );
+    const architectures = await boundedMachOArchitectures(run, label, file);
+    if (
+      verified.status !== 0 &&
+      !isUnsigned(verified, file, undefined, architectures)
+    )
+      throw new Error('Embedded Mach-O has invalid integrity.');
+    const executable = (
+      await boundedMustSucceed(
+        run,
+        `embedded Mach-O ${label}: inspect file type`,
+        'file',
+        ['-b', file],
+      )
+    ).stdout.includes('executable');
+    const signatureKinds = [];
+    for (const architecture of architectures) {
+      const sliceVerified = await boundedCommand(
+        run,
+        `embedded Mach-O ${label}: inspect ${architecture} signature`,
+        'codesign',
+        [
+          '--verify',
+          '--strict',
+          '--verbose=2',
+          '--architecture',
+          architecture,
+          file,
+        ],
+      );
+      const details = await boundedCommand(
+        run,
+        `embedded Mach-O ${label}: inspect ${architecture} metadata`,
+        'codesign',
+        ['-dvv', '--architecture', architecture, file],
+      );
+      if (sliceVerified.status !== 0) {
+        if (
+          !isUnsigned(sliceVerified, file, architecture) ||
+          !isUnsigned(details, file, architecture)
+        )
+          throw new Error(
+            'Embedded Mach-O has invalid integrity in an architecture slice.',
+          );
+        signatureKinds.push('unsigned');
+        continue;
+      }
+      if (details.status !== 0)
+        throw new Error('Could not inspect embedded Mach-O signature metadata.');
+      const developerId = await boundedCommand(
+        run,
+        `embedded Mach-O ${label}: inspect ${architecture} Developer ID requirement`,
+        'codesign',
+        [
+          '--verify',
+          '--strict',
+          '-R',
+          DEVELOPER_ID_REQUIREMENT,
+          '--architecture',
+          architecture,
+          file,
+        ],
+      );
+      if (developerId.status === 0) {
+        if (!metadataField(details, 'Timestamp'))
+          throw new Error(
+            'Embedded Mach-O Developer ID signature lacks a timestamp.',
+          );
+        if (
+          executable &&
+          !/CodeDirectory .*\(.*\bruntime\b.*\)/.test(
+            `${details.stdout}\n${details.stderr}`,
+          )
+        )
+          throw new Error(
+            'Embedded Mach-O executable Developer ID signature lacks hardened runtime.',
+          );
+        signatureKinds.push('developer-id');
+        continue;
+      }
+      if (
+        metadataField(details, 'Signature') &&
+        /(?:^|\n)Signature=adhoc(?:\n|$)/.test(
+          `${details.stdout}\n${details.stderr}`,
+        )
+      ) {
+        signatureKinds.push('adhoc');
+        continue;
+      }
+      throw new Error('Embedded Mach-O has an unrecognized valid signature.');
+    }
+    if (signatureKinds.every((kind) => kind === 'developer-id')) continue;
+    if (signatureKinds.some((kind) => kind === 'developer-id'))
+      throw new Error(
+        'Embedded Mach-O has mixed vendor and non-vendor signature classes.',
+      );
+    await boundedReSign(run, sign, label, file, identity, architectures);
+  }
+  return files.map(({ relativeLabel }) => relativeLabel);
+}
+
 export function embeddedMacosMachOPaths(
   app,
   {
@@ -198,7 +482,7 @@ export function embeddedMacosMachOPaths(
       throw new Error(
         'Embedded Mach-O inventory escaped the staged candidate.',
       );
-    if (/[\r\n]/.test(canonicalFile))
+    if (/[\u0000-\u001f\u007f]/.test(canonicalFile))
       throw new Error('Embedded Mach-O path contains a control character.');
     return magic(canonicalFile) &&
       mustSucceed(run, 'file', ['-b', canonicalFile], {
