@@ -262,6 +262,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Uses a real short-lived child that ignores SIGTERM so the notarization
   // runner proves its owned timeout escalation without relying on a mock.
   'ops/release/macos-notarized-artifacts.test.mjs',
+  'ops/release/macos-signing-readiness.test.mjs',
   // Uses real local Git repositories to prove two owned Nightly source
   // advances never reset, switch, or clean the provenance checkout.
   'ops/nightly/owned-source-checkout.test.mjs',

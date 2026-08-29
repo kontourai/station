@@ -491,6 +491,11 @@ describe('native release workflow topology', () => {
       'Seal, notarize, and derive canonical macOS artifacts',
     );
     expect(seal.run).toContain('macos-notarized-artifacts.mjs');
+    expect(seal.run).toContain('macos-signing-readiness.mjs unlock');
+    expect(seal.run).toContain('macos-signing-readiness.mjs probe');
+    expect(seal.run.indexOf('macos-signing-readiness.mjs unlock')).toBeLessThan(
+      seal.run.indexOf('macos-notarized-artifacts.mjs'),
+    );
     expect(seal.run).toContain('station-notary-api-key.p8');
     expect(seal.run).toContain('app_candidates=()');
     expect(seal.run).toContain(
@@ -533,6 +538,7 @@ describe('native release workflow topology', () => {
     expect(macosArtifacts).toContain("'DMG staple validation'");
     expect(macosArtifacts).toContain("'updater archive derivation'");
     expect(macosArtifacts).toContain('runBoundedCommand');
+    expect(release).toContain('Cleanup macOS Developer ID keychain');
   });
 
   it('admits exactly one relative macOS app discovered by the release workflow', () => {

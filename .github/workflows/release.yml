@@ -146,15 +146,13 @@ jobs:
         env:
           APPLE_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 }}
           APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_SIGNING_IDENTITY }}
         run: |
           certificate="$RUNNER_TEMP/station-developer-id.p12"
           keychain="$RUNNER_TEMP/station-developer-id.keychain-db"
+          state="$RUNNER_TEMP/station-developer-id-search-state.json"
           printf '%s' "$APPLE_DEVELOPER_ID_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
-          security create-keychain -p "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" "$keychain"
-          security unlock-keychain -p "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" "$keychain"
-          security import "$certificate" -k "$keychain" -P "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" "$keychain"
-          security list-keychains -d user -s "$keychain"
+          node ops/release/macos-signing-readiness.mjs prepare --certificate "$certificate" --keychain "$keychain" --state "$state" --deadline-epoch "${{ steps.macos_release_deadline.outputs.epoch }}"
       - name: Build an unsigned macOS staging candidate
         working-directory: src-desktop
         env:
@@ -166,10 +164,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_DEVELOPER_ID_SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_SIGNING_IDENTITY }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
         run: |
+          node ops/release/macos-signing-readiness.mjs unlock --keychain "$RUNNER_TEMP/station-developer-id.keychain-db" --deadline-epoch "${{ steps.macos_release_deadline.outputs.epoch }}"
+          node ops/release/macos-signing-readiness.mjs probe --keychain "$RUNNER_TEMP/station-developer-id.keychain-db" --probe "$RUNNER_TEMP/station-developer-id-probe"
           umask 077
           notary_key="$RUNNER_TEMP/station-notary-api-key.p8"
           trap 'rm -f "$notary_key"' EXIT
@@ -187,6 +188,15 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" = "$MACOS_BUNDLE_VERSION"
           grep -F 'app.package_info().version' src-desktop/src/tray.rs
           codesign -d --verbose=4 "$app" 2>&1 | grep -F 'flags=0x10000(runtime)'
+      - name: Cleanup macOS Developer ID keychain
+        if: always()
+        run: |
+          set +e
+          node ops/release/macos-signing-readiness.mjs cleanup --keychain "$RUNNER_TEMP/station-developer-id.keychain-db" --state "$RUNNER_TEMP/station-developer-id-search-state.json"
+          helper_status=$?
+          rm -f "$RUNNER_TEMP/station-developer-id.p12" "$RUNNER_TEMP/station-developer-id-probe"
+          rm_status=$?
+          test "$helper_status" -eq 0 && test "$rm_status" -eq 0
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: release-assets/*
