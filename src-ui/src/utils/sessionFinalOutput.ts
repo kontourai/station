@@ -12,15 +12,26 @@ import type { OrchestrationEvent } from '../hooks/orchestration/types';
  * Its own module (not `useMutableSessionDetailState`) because it is a pure
  * projection over the event feed, and the detail-state hook module is
  * routinely mocked whole by structural tests.
+ *
+ * Only the LATEST terminal turn is consulted — never an earlier one. A
+ * cancelled turn (`finishReason: 'cancelled'`, the adapter's mapping for an
+ * interrupted turn) carries whatever partial text had streamed before the
+ * abort; presenting that as the final answer would be a lie, and falling
+ * back to a previous turn's answer would present a superseded result as THE
+ * result. Both cases render nothing.
  */
 export function latestTurnOutputText(
   events: OrchestrationEvent[],
 ): string | null {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
-    if (event.method === 'turn.completed' && event.outputText?.trim()) {
-      return event.outputText;
+    if (event.method !== 'turn.completed') {
+      continue;
     }
+    if (event.finishReason === 'cancelled') {
+      return null;
+    }
+    return event.outputText?.trim() ? event.outputText : null;
   }
   return null;
 }
