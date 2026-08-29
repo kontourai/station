@@ -27,12 +27,53 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-29T07:43:10Z | nightly-android | 0.1.2-nightly.2432 | `52f9ee8` | nightly test-gate success on 52f9ee8fd785310a5d23281fa820694333c0b1ad (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33240426822) |
 | 2026-08-29T06:25:39Z | nightly-android | 0.1.2-nightly.2432 | `68cd081` | nightly test-gate success on 68cd081f90ef766268d856bbcb056624276310ae (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33237355902) |
 | 2026-08-29T02:01:11Z | nightly-android | 0.1.2-nightly.2432 | `b0ac1b7` | nightly test-gate success on b0ac1b7b186a9d8f941616938321d09930c2ad38 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33225213529) |
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-08-29T07:43:10Z · nightly-android · 0.1.2-nightly.2432
+
+- Ship SHA: `52f9ee8fd785310a5d23281fa820694333c0b1ad`
+- Artifact: play-internal-aab:io.kontourai.station.nightly@versionCode 243202
+- Artifact: workflow-artifact:station-nightly-243202 (7-day retention)
+
+### Changelog
+
+Commits since `68cd081` ([full sha](https://github.com/kontourai/station/commit/68cd081f90ef766268d856bbcb056624276310ae)):
+
+**Fixes**
+
+- [#779](https://github.com/kontourai/station/pull/779) fix(release): reserve nightly macOS deadline
+- [#779](https://github.com/kontourai/station/pull/779) fix(release): classify bounded embedded probes
+- [#779](https://github.com/kontourai/station/pull/779) fix(release): bound embedded macOS sealing
+- [#778](https://github.com/kontourai/station/pull/778) fix(release): give the embedded sealing pass a batch-scaled ceiling and a heartbeat
+- [#777](https://github.com/kontourai/station/pull/777) fix(server): review round — honest D3 comment, warn on unconfirmed reap
+- [#777](https://github.com/kontourai/station/pull/777) fix(server): handle stdin EPIPE from dead codex app-server children
+- [#775](https://github.com/kontourai/station/pull/775) fix(delegation): close round-2 review findings on #764 continuation lineage
+- [#772](https://github.com/kontourai/station/pull/772) fix(install): review round — head-sha assertion, hardened marker read, reuse-path rollback
+- [#775](https://github.com/kontourai/station/pull/775) fix(delegation): continue ACP/external-engine delegated tasks
+- [#772](https://github.com/kontourai/station/pull/772) fix(install): stop the running instance before re-starting a reused release
+- [#772](https://github.com/kontourai/station/pull/772) fix(ci): route the smoke's packaged upgrades through env for the public vars
+- [#772](https://github.com/kontourai/station/pull/772) fix(ci): point the install smoke's root mirrors at install.sh's derived roots
+- [#772](https://github.com/kontourai/station/pull/772) fix(shared): let the home schema gate bootstrap install.sh's data-root claim
+- [#772](https://github.com/kontourai/station/pull/772) fix(ci): run the install smoke through the public manifest path
+- [#772](https://github.com/kontourai/station/pull/772) fix(cli): validate the schemaVersion 2 packaged-release manifest
+- [#772](https://github.com/kontourai/station/pull/772) fix(scripts): restore ecosystem dry-run executability and the cask verifier's test-url flag
+
+**CI / workflow**
+
+- [#772](https://github.com/kontourai/station/pull/772) ci(install-smoke): dump instance logs on failure
+
+**Other**
+
+- [#775](https://github.com/kontourai/station/pull/775) refactor(server): type the resume-support bridge against its producer
+- [#772](https://github.com/kontourai/station/pull/772) test(install): discriminating unreadable-marker case; byte-length bound for the marker read
+- [#775](https://github.com/kontourai/station/pull/775) chore: suppress noTemplateCurlyInString for nightly-build-identity literal placeholder assertion
+- [#772](https://github.com/kontourai/station/pull/772) style(shared): format the installer-marker schema test
 
 ## 2026-08-29T06:25:39Z · nightly-android · 0.1.2-nightly.2432
 
