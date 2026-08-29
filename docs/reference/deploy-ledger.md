@@ -27,6 +27,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-29T10:08:01Z | nightly-android | 0.1.2-nightly.2432 | `c9968e5` | nightly test-gate success on c9968e5b096c6489e4ce17215db0e26c40924635 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33246144107) |
 | 2026-08-29T09:16:25Z | nightly-android | 0.1.2-nightly.2432 | `23478d5` | nightly test-gate success on 23478d54bdb96b7802b36ce490a7ab92b46fffac (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33244055407) |
 | 2026-08-29T07:43:10Z | nightly-android | 0.1.2-nightly.2432 | `52f9ee8` | nightly test-gate success on 52f9ee8fd785310a5d23281fa820694333c0b1ad (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33240426822) |
 | 2026-08-29T06:25:39Z | nightly-android | 0.1.2-nightly.2432 | `68cd081` | nightly test-gate success on 68cd081f90ef766268d856bbcb056624276310ae (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33237355902) |
@@ -35,6 +36,20 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-08-29T10:08:01Z · nightly-android · 0.1.2-nightly.2432
+
+- Ship SHA: `c9968e5b096c6489e4ce17215db0e26c40924635`
+- Artifact: play-internal-aab:io.kontourai.station.nightly@versionCode 243204
+- Artifact: workflow-artifact:station-nightly-243204 (7-day retention)
+
+### Changelog
+
+Commits since `23478d5` ([full sha](https://github.com/kontourai/station/commit/23478d54bdb96b7802b36ce490a7ab92b46fffac)):
+
+**Fixes**
+
+- [#786](https://github.com/kontourai/station/pull/786) fix(release): bound updater archive validation
 
 ## 2026-08-29T09:16:25Z · nightly-android · 0.1.2-nightly.2432
 

@@ -1,5 +1,32 @@
 [
   {
+    "timestampUtc": "2026-08-29T10:08:01Z",
+    "channel": "nightly-android",
+    "version": "0.1.2-nightly.2432",
+    "sha": "c9968e5b096c6489e4ce17215db0e26c40924635",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/33246144107",
+    "artifacts": [
+      "play-internal-aab:io.kontourai.station.nightly@versionCode 243204",
+      "workflow-artifact:station-nightly-243204 (7-day retention)"
+    ],
+    "gateResult": "nightly test-gate success on c9968e5b096c6489e4ce17215db0e26c40924635 (station#4539)",
+    "notes": null,
+    "changelog": {
+      "previousSha": "23478d54bdb96b7802b36ce490a7ab92b46fffac",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#786](https://github.com/kontourai/station/pull/786) fix(release): bound updater archive validation"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-08-29T09:16:25Z",
     "channel": "nightly-android",
     "version": "0.1.2-nightly.2432",
