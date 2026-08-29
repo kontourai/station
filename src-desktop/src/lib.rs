@@ -48,8 +48,8 @@ use tauri::Emitter;
 use tauri::{ipc::Channel, AppHandle, State};
 #[cfg(not(mobile))]
 use tauri::{
-    webview::{DownloadEvent, NewWindowResponse},
-    WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    webview::{DownloadEvent, NewWindowResponse, PageLoadEvent},
+    WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 #[cfg(not(mobile))]
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -6358,24 +6358,6 @@ struct NativeStartupBootstrap {
 }
 
 #[cfg(not(mobile))]
-const NATIVE_STARTUP_BOOTSTRAP_SCRIPT: &str = r#"
-(() => {
-  let metadataAttemptsRemaining = 32;
-  const signalReady = () => {
-    const label = window.__TAURI_INTERNALS__.metadata?.currentWindow?.label;
-    if (label === undefined && metadataAttemptsRemaining > 0) {
-      metadataAttemptsRemaining -= 1;
-      setTimeout(signalReady, 10);
-      return;
-    }
-    if (label !== 'main') return;
-    window.__TAURI_INTERNALS__.invoke('renderer_startup_ready').catch(() => {});
-  };
-  setTimeout(signalReady, 0);
-})();
-"#;
-
-#[cfg(not(mobile))]
 fn startup_readiness_accepts_retry(phase: startup_readiness::ReadinessPhase) -> bool {
     phase == startup_readiness::ReadinessPhase::Waiting
 }
@@ -7306,23 +7288,22 @@ fn commit_startup_readiness_blocking(
 }
 
 #[cfg(not(mobile))]
-#[tauri::command]
-fn renderer_startup_ready(app: AppHandle, webview: WebviewWindow) -> Result<(), String> {
-    if !startup_renderer_label_admitted(webview.label()) {
-        return Err("Only the main Station renderer can signal startup readiness.".to_string());
+fn observe_native_startup_page(app: &AppHandle, label: &str, event: PageLoadEvent) {
+    if !native_startup_page_admitted(label, event) {
+        return;
     }
-    log::info!("native startup bootstrap observed the main renderer");
-    let bootstrap = app
-        .try_state::<NativeStartupBootstrap>()
-        .ok_or("Native startup bootstrap is not initialized.")?;
-    bootstrap.renderer_observed.store(true, Ordering::Release);
-    request_native_startup_commit(&app);
-    Ok(())
+    let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
+        return;
+    };
+    if !bootstrap.renderer_observed.swap(true, Ordering::AcqRel) {
+        log::info!("native startup bootstrap observed the main renderer page start");
+    }
+    request_native_startup_commit(app);
 }
 
 #[cfg(not(mobile))]
-fn startup_renderer_label_admitted(label: &str) -> bool {
-    label == "main"
+fn native_startup_page_admitted(label: &str, event: PageLoadEvent) -> bool {
+    label == "main" && event == PageLoadEvent::Started
 }
 
 #[cfg(not(mobile))]
@@ -8597,7 +8578,9 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder
         .manage(NativeStartupBootstrap::default())
-        .append_invoke_initialization_script(NATIVE_STARTUP_BOOTSTRAP_SCRIPT)
+        .on_page_load(|webview, payload| {
+            observe_native_startup_page(webview.app_handle(), webview.label(), payload.event());
+        })
         .manage(NativeBrowserPreviewGrants::default())
         .manage(ssh_launcher::SshLaunches::default());
 
@@ -8626,7 +8609,6 @@ If a stable instance is running, this launch will focus its window and exit.",
         open_workspace_pane_pop_out,
         bundled_server_status,
         restart_bundled_server,
-        renderer_startup_ready,
         commit_startup_readiness,
         commit_startup_recovery_ui,
         ssh_env_probe,
@@ -9497,9 +9479,19 @@ mod tests {
             &in_flight,
             &pending,
         ));
-        assert!(startup_renderer_label_admitted("main"));
+        assert!(native_startup_page_admitted(
+            "main",
+            PageLoadEvent::Started,
+        ));
+        assert!(!native_startup_page_admitted(
+            "main",
+            PageLoadEvent::Finished,
+        ));
         for foreign in ["preview", "workspace-popout", "main-copy", ""] {
-            assert!(!startup_renderer_label_admitted(foreign));
+            assert!(!native_startup_page_admitted(
+                foreign,
+                PageLoadEvent::Started,
+            ));
         }
     }
 
