@@ -9077,8 +9077,10 @@ button.tool-call__line:hover {
    This rule applies only when React renders the slot. `mobile-chrome.ts`
    subscribes to `(min-width: 481px)` and leaves the picker DOM-absent below
    that boundary in BOTH mobile bars. That is the same 481px identity-extras
-   deferral pinned at tests/mobile-chat-composer.spec.ts:1875: below it the
-   bar cannot afford the picker alongside its legible agent/title identity,
+   deferral the eyebrow/title width assertions pin (the loop at
+   tests/mobile-chat-composer.spec.ts ~:1863-1873 over the widths at :1842 -
+   it measured the eyebrow at 0px when the picker rendered at 431px): below
+   481px the bar cannot afford the picker alongside its legible agent/title identity,
    so the ⋯ overflow sheet is the occupant-switch path. */
 .chat-dock__mobile-occupant-picker {
   flex: 0 1 min(28vw, 108px);

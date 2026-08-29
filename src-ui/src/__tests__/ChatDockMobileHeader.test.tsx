@@ -542,6 +542,9 @@ describe('ChatDockMobileHeader occupant picker (station#524)', () => {
   });
 
   test('renders nothing extra when the occupant picker is absent (full-screen Chat placement)', () => {
+    // Width gate open, so absence is attributable to the prop, not the media
+    // query defaulting the slot away.
+    pickerQueryMatches = true;
     renderHeader({ occupantPicker: undefined });
 
     expect(screen.queryByRole('button', { name: /^Docked pane:/ })).toBeNull();
