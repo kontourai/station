@@ -43,17 +43,6 @@ function pushDialogEntry(entry: DialogHistoryEntry) {
   entry.pushedUrl = window.location.href;
 }
 
-/** The live entry's state with this layer's marker removed, nothing else touched. */
-function stateWithoutMarker() {
-  const current = window.history.state;
-  if (!current || typeof current !== 'object' || Array.isArray(current)) {
-    return current;
-  }
-  const next = { ...(current as Record<string, unknown>) };
-  delete next[DIALOG_HISTORY_KEY];
-  return next;
-}
-
 function skipOrphanedMarker() {
   const marker = markerFromState(window.history.state);
   if (!marker || !orphanedMarkers.delete(marker)) return false;
@@ -133,11 +122,11 @@ export function registerDialogHistory(id: string, close: () => void) {
       // holds the pre-dialog URL. Travelling back would discard the caller's
       // navigation; collapse the layer where it stands instead, keeping the new
       // URL and leaving the entry no longer claimed by any dialog (archive#549).
-      window.history.replaceState(
-        stateWithoutMarker(),
-        '',
-        window.location.href,
-      );
+      // The marker match above already proved the live state is a plain
+      // object, so it needs no second shape guard here.
+      const kept = { ...(window.history.state as Record<string, unknown>) };
+      delete kept[DIALOG_HISTORY_KEY];
+      window.history.replaceState(kept, '', window.location.href);
     });
   };
 }
