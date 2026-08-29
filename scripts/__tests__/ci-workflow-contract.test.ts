@@ -1022,6 +1022,10 @@ describe('CI verification workflow contracts', () => {
     );
     expect(windows).toContain('run: npm run verification:policy:gate');
     expect(windows).toContain('run: npm run test:windows:portable');
+    expect(windows).toContain('name: Compile desktop Rust tests');
+    expect(windows).toContain(
+      'cargo test --manifest-path src-desktop/Cargo.toml --no-run',
+    );
     expect(windows).toContain('run: npm run typecheck');
   });
 
