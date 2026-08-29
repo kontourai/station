@@ -44,7 +44,7 @@ export function ProviderTypePicker({
   ]);
   return (
     <div className="provider-picker-modal">
-      <DetailHeader title="Add provider">
+      <DetailHeader title="Add model connection">
         <button type="button" className="editor-btn" onClick={onCancel}>
           Cancel
         </button>

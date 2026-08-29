@@ -158,7 +158,7 @@ function useSetupResult(
     else if (queryError && !queryFetching) {
       dispatch({
         type: 'error',
-        message: 'Could not refresh this provider status.',
+        message: 'Could not refresh this engine’s status.',
         kind: 'refresh',
       });
     }
@@ -208,7 +208,7 @@ function useRefreshRetry(
     } catch (error) {
       dispatch({
         type: 'error',
-        message: setupError(error, 'Could not refresh this provider status.'),
+        message: setupError(error, 'Could not refresh this engine’s status.'),
         kind: 'refresh',
       });
     }

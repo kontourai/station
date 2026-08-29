@@ -73,6 +73,8 @@ export interface WorkspacePaneHostControllerOptions {
   storage?: WorkspacePaneHostStorage;
   lockManager?: WorkspacePaneHostLockManager | null;
   admitRestoredInstance?: WorkspacePaneHostRestoredInstanceAdmission;
+  /** Refuses a new occurrence this host cannot render before persistence. */
+  admitOpenInstance?(instance: WorkspacePaneInstance): boolean;
   onInstanceRemoved?(instance: WorkspacePaneInstance): void;
   onDocumentChange?(document: WorkspacePaneHostDocumentV1): void;
   operationalEventSink?: WorkspacePaneOperationalEventSink;
@@ -95,6 +97,7 @@ export interface WorkspacePaneHostController {
     reason: 'dirty' | 'pending';
   } | null;
   select(instanceId: WorkspacePaneInstanceId): void;
+  focusExisting(instanceId: WorkspacePaneInstanceId): boolean;
   focusTab(groupId: string, instanceId: WorkspacePaneInstanceId): void;
   close(instanceId: WorkspacePaneInstanceId): Promise<void>;
   confirmClose(): Promise<void>;
@@ -122,6 +125,7 @@ export function useWorkspacePaneHostController({
   storage,
   lockManager,
   admitRestoredInstance,
+  admitOpenInstance,
   onInstanceRemoved,
   onDocumentChange,
   operationalEventSink,
@@ -157,6 +161,7 @@ export function useWorkspacePaneHostController({
   const authorityFingerprintRef = useRef(authorityFingerprint);
   const documentRef = useRef(document);
   const restoredInstanceAdmissionRef = useRef(admitRestoredInstance);
+  const openInstanceAdmissionRef = useRef(admitOpenInstance);
   const liveReferenceOwner = useRef(Symbol('workspace-pane-host'));
   const mountedRef = useRef(false);
   const persistenceStatusRef =
@@ -192,6 +197,7 @@ export function useWorkspacePaneHostController({
   stateRef.current = state;
   documentRef.current = document;
   restoredInstanceAdmissionRef.current = admitRestoredInstance;
+  openInstanceAdmissionRef.current = admitOpenInstance;
   onDocumentChangeRef.current = onDocumentChange;
   operationalEventContextRef.current = operationalEventContext;
   operationalEventSinkRef.current = operationalEventSink;
@@ -610,6 +616,19 @@ export function useWorkspacePaneHostController({
     dispatch({ type: 'select', instanceId });
     writeWorkspacePaneHostSelection(stateRef.current.document, instanceId);
   }, []);
+  const focusExisting = useCallback(
+    (instanceId: WorkspacePaneInstanceId) => {
+      const group = workspacePaneHostGroupContaining(
+        stateRef.current.document.root,
+        instanceId,
+      );
+      if (!group) return false;
+      select(instanceId);
+      focusTab(compact ? 'compact' : group.id, instanceId);
+      return true;
+    },
+    [compact, focusTab, select],
+  );
   const open = useCallback(
     (
       instance: WorkspacePaneInstance,
@@ -617,6 +636,11 @@ export function useWorkspacePaneHostController({
       placement?: WorkspacePaneHostOpenPlacement,
     ) => {
       if (!hasPersistenceLease()) return false;
+      if (
+        openInstanceAdmissionRef.current &&
+        !openInstanceAdmissionRef.current(instance)
+      )
+        return false;
       const action: Extract<
         WorkspacePaneHostAction,
         { type: 'add-existing-instance' } | { type: 'split' }
@@ -850,6 +874,7 @@ export function useWorkspacePaneHostController({
     tabRefs,
     closeConfirmation,
     select,
+    focusExisting,
     focusTab,
     close,
     confirmClose,

@@ -1,5 +1,8 @@
 /** @vitest-environment jsdom */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { createDirectAnswerBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import {
   WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
   WORKSPACE_ACTIVITY_PANE_INSTANCE,
@@ -24,11 +27,13 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { ruleBodiesFor } from '../../__tests__/helpers/css-rules';
 import {
   AmbientChatDockPaneHost,
   ambientWorkspacePaneDockAction,
   createAmbientChatDockPaneDocument,
 } from '../AmbientChatDockPaneHost';
+import { useBasisPaneLauncher } from '../BasisPaneLauncher';
 import type { WorkspacePaneDockAction } from '../WorkspacePaneDockContext';
 
 vi.mock('../../contexts/DeviceSettingsContext', () => ({
@@ -77,6 +82,11 @@ vi.mock('../../views/SessionsView', () => ({
 
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
+  useHostRequestAuthorityScope: () => null,
+}));
+
+vi.mock('../BasisPaneFallbackContent', () => ({
+  ConnectedBasisFallbackPane: () => <p>Basis fallback content</p>,
 }));
 
 // archive#4525: `DockShell` (via `useDockShellChrome`) now reads `useProjects`
@@ -143,6 +153,32 @@ function renderAmbientHost(
       )}
       onDockActionChange={onDockActionChange}
     />,
+  );
+}
+
+function ProjectBasisLauncher() {
+  const { openBasis, fallback } = useBasisPaneLauncher();
+  const instance = createDirectAnswerBasisPaneInstance(
+    'project-bound-basis',
+    'session-a',
+    'turn-a',
+  )!;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(event) =>
+          openBasis(
+            instance,
+            { kind: 'direct-answer', sessionId: 'session-a', turnId: 'turn-a' },
+            event.currentTarget,
+          )
+        }
+      >
+        Open project Basis
+      </button>
+      {fallback}
+    </>
   );
 }
 
@@ -220,6 +256,21 @@ test('ambient dock renderPane mounts the canonical chat occupant through a chrom
     ),
     'the occupant must render inside the shell, with no second host-owned wrapper around it',
   ).not.toBeNull();
+});
+
+test('the production ambient host refuses project-bound Basis so the launcher uses its fallback', async () => {
+  render(
+    <AmbientChatDockPaneHost renderChatPane={() => <ProjectBasisLauncher />} />,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Open project Basis' }));
+
+  expect(screen.getByRole('dialog', { name: 'Basis' })).toBeTruthy();
+  expect(await screen.findByText('Basis fallback content')).toBeTruthy();
+  expect(screen.queryByTestId('ambient-chat-occupant')).toBeNull();
+  expect(
+    window.localStorage.getItem(AMBIENT_DOCK_STORAGE_KEY) ?? '',
+  ).not.toContain('project-bound-basis');
 });
 
 /**
@@ -404,6 +455,58 @@ test('a persisted non-canonical Activity occupant is refused on restore: Chat re
     expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
   });
   expect(screen.queryByTestId('ambient-activity-occupant')).toBeNull();
+});
+
+/**
+ * #765 C1 regression pin. On v0.1.2, docking a non-chat pane collapsed the
+ * dock to a title-only strip: the occupant rendered outside the shared shell
+ * geometry, got no height, no internal scroll, and no ⌘M — its content
+ * (including any actions inside it) was unreachable until un-docked.
+ * archive#4460 fixed this by making `DockShell` the single geometry authority
+ * for EVERY occupant and wrapping each non-chat occupant's content in
+ * `.dock-slot__body`, the one scroll container. Nothing pinned that
+ * structure until now; both halves below are what "a docked non-chat pane is
+ * usable" derives from:
+ *
+ * 1. the occupant's content mounts INSIDE `.dock-slot__body` INSIDE the
+ *    `.chat-dock` shell root (the element whose height DockShell drives);
+ * 2. the `.dock-slot__body` stylesheet rule actually declares the
+ *    height-bearing scroll mode (`flex`, `min-height: 0`, `overflow: auto`)
+ *    — jsdom applies no layout, so the class alone proves nothing without
+ *    the declarations it binds.
+ */
+test('a docked non-chat occupant renders inside the height-bearing scroll container (#765 C1)', async () => {
+  const action = await publishedDockAction();
+  act(() => {
+    action.dockPane(
+      WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+      WORKSPACE_ACTIVITY_PANE_INSTANCE,
+    );
+  });
+  await waitFor(() => {
+    expect(screen.queryByTestId('ambient-activity-occupant')).not.toBeNull();
+  });
+
+  const occupant = screen.getByTestId('ambient-activity-occupant');
+  const body = occupant.closest('.dock-slot__body');
+  expect(
+    body,
+    'the docked non-chat occupant must render inside `.dock-slot__body`, the shared scroll container',
+  ).not.toBeNull();
+  expect(
+    body?.closest('.chat-dock'),
+    'the scroll container must sit inside the `.chat-dock` shell whose height DockShell drives',
+  ).not.toBeNull();
+
+  const css = readFileSync(join(__dirname, '../../index.css'), 'utf-8');
+  const [rule] = ruleBodiesFor(css, '.dock-slot__body');
+  expect(
+    rule,
+    'index.css must still declare the `.dock-slot__body` rule',
+  ).toBeDefined();
+  expect(rule).toMatch(/flex:\s*1 1 auto/);
+  expect(rule).toMatch(/min-height:\s*0/);
+  expect(rule).toMatch(/overflow:\s*auto/);
 });
 
 /* ------------------------------------------------------------------ *
