@@ -59,9 +59,9 @@ describe('ACPConnectionsView', () => {
   it('renders canonical Empty copy for the ACP empty state', () => {
     render(<ACPConnectionsView agents={[]} />);
 
-    expect(screen.getByText('Add a provider to get started')).toBeTruthy();
+    expect(screen.getByText('Add an engine to get started')).toBeTruthy();
     expect(
-      screen.getByText('Choose a detected provider or connect a custom one.'),
+      screen.getByText('Choose a detected engine or connect a custom one.'),
     ).toBeTruthy();
   });
 
@@ -124,7 +124,7 @@ describe('ACPConnectionsView', () => {
     render(<ACPConnectionsView agents={[]} />);
 
     expect(screen.queryByText('Kiro CLI')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Add provider' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add engine' }));
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Kiro CLI/i })).toBeTruthy();
   });
@@ -153,10 +153,10 @@ describe('ACPConnectionsView', () => {
     expect(
       screen.getByText(/Adds an agent named Kiro CLI to your Agents list\./),
     ).toBeTruthy();
-    expect(screen.queryByText('Choose a provider')).toBeNull();
+    expect(screen.queryByText('Choose an engine')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
-    await screen.findByText('Station is checking this provider now.');
+    await screen.findByText('Station is checking this engine now.');
     expect(installRegistryEntry).toHaveBeenCalledWith('kiro');
   });
 
@@ -168,7 +168,7 @@ describe('ACPConnectionsView', () => {
     acpConnectionsState.isError = true;
     render(<ACPConnectionsView agents={[]} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add provider' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add engine' }));
     const dialog = screen.getByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: /Kiro CLI/i }));
     await within(dialog).findByRole('alert');

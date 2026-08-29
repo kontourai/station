@@ -1,4 +1,3 @@
-import { nativeAuthenticatedTransport } from './authenticatedTransport';
 import type {
   BundledServerStatus,
   NativePlatformAdapter,
@@ -41,7 +40,11 @@ function waitForStartupReadinessRetry(signal?: AbortSignal): Promise<void> {
   });
 }
 
-/** Proves the current native sidecar identity through the bearer-owning transport. */
+/**
+ * Asks the native host to prove and commit its current bundled sidecar ticket.
+ * The host owns the exact channel home, saved profile, and credential; this
+ * startup boundary must not depend on the renderer's ambient profile choice.
+ */
 export async function proveAndCommitStartupReadiness(
   adapter: NativePlatformAdapter,
   signal?: AbortSignal,
@@ -67,30 +70,11 @@ export async function proveAndCommitStartupReadiness(
       if (signal?.aborted) return false;
       continue;
     }
-    try {
-      const response = await nativeAuthenticatedTransport(
-        `${ticket.apiBase}/api/system/identity`,
-        { signal },
-      );
-      if (signal?.aborted) return false;
-      if (response.status !== 200) continue;
-      const identity: unknown = await response.json();
-      if (signal?.aborted) return false;
-      if (
-        typeof identity !== 'object' ||
-        identity === null ||
-        (identity as Record<string, unknown>).instanceId !==
-          ticket.instanceId ||
-        (identity as Record<string, unknown>).bootId !== ticket.bootId
-      )
-        continue;
-      const committed = await adapter.commitStartupReadiness(ticket);
-      if (signal?.aborted) return false;
-      if (committed.status === 'ok') return true;
-    } catch {
-      if (signal?.aborted) return false;
-      /* a sidecar rotation is retryable within this bounded proof */
-    }
+    const committed = await adapter.commitStartupReadiness(ticket);
+    if (signal?.aborted) return false;
+    if (committed.status === 'ok') return true;
+    /* a sidecar rotation or native identity refusal is bounded and retryable */
+    await waitForStartupReadinessRetry(signal);
   }
   return false;
 }
@@ -107,6 +91,9 @@ export function startStartupReadinessProof(
   dispose(): void;
 } {
   let disposed = false;
+  let ready = false;
+  let rerunRequested = false;
+  let proofInFlight: Promise<void> | undefined;
   const controller = new AbortController();
   let subscription: { dispose(): void } | undefined;
   const dispose = () => {
@@ -117,10 +104,25 @@ export function startStartupReadinessProof(
     subscription?.dispose();
   };
   const prove = () => {
-    if (!disposed)
-      void proveAndCommitStartupReadiness(adapter, controller.signal).catch(
-        () => {},
-      );
+    if (disposed || ready) return;
+    if (proofInFlight) {
+      rerunRequested = true;
+      return;
+    }
+    proofInFlight = (async () => {
+      do {
+        rerunRequested = false;
+        if (await proveAndCommitStartupReadiness(adapter, controller.signal)) {
+          ready = true;
+          return;
+        }
+      } while (!disposed && rerunRequested);
+    })()
+      .catch(() => {})
+      .finally(() => {
+        proofInFlight = undefined;
+        if (!disposed && !ready && rerunRequested) prove();
+      });
   };
   subscription = adapter.subscribeToStartupReadinessRetry(prove);
   if (!parentSignal?.aborted)

@@ -32,7 +32,7 @@ describe('provider catalog presentation', () => {
         setup: { state: 'available', detected: true, configured: false },
       },
       'Found, not connected',
-      'Connect this provider',
+      'Connect',
     ],
     [{ enabled: true, status: 'degraded', setup: null }, 'Limited', 'Review'],
     [{ enabled: false, status: 'ready', setup: null }, 'Disabled', 'Enable'],

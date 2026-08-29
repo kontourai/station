@@ -1,10 +1,5 @@
 /** @vitest-environment jsdom */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const { transport } = vi.hoisted(() => ({ transport: vi.fn() }));
-vi.mock('../authenticatedTransport', () => ({
-  nativeAuthenticatedTransport: transport,
-}));
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   proveAndCommitStartupReadiness,
@@ -33,21 +28,11 @@ const adapter = (statuses: unknown[]) => ({
 });
 
 describe('desktop startup readiness proof', () => {
-  beforeEach(() => transport.mockReset());
   it('retries a status error and commits only the later exact generation', async () => {
     const native = adapter([
       { status: 'error' },
       { status: 'ok', value: running(3) },
     ]);
-    transport.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          instanceId: 'desktop-sidecar-stable',
-          bootId: 'boot-3',
-        }),
-        { status: 200 },
-      ),
-    );
     await expect(proveAndCommitStartupReadiness(native as never)).resolves.toBe(
       true,
     );
@@ -77,35 +62,19 @@ describe('desktop startup readiness proof', () => {
     );
     expect(native.commitStartupRecoveryUi).toHaveBeenCalledOnce();
   });
-  it('rejects mismatched identity and retries the current generation', async () => {
+  it('retries when the native host refuses a stale or unproved generation', async () => {
     const native = adapter([
       { status: 'ok', value: running(2) },
-      ...Array.from({ length: 4 }, () => ({ status: 'ok', value: running(3) })),
+      { status: 'ok', value: running(3) },
     ]);
-    transport
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            instanceId: 'desktop-sidecar-stable',
-            bootId: 'wrong',
-          }),
-          { status: 200 },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            instanceId: 'desktop-sidecar-stable',
-            bootId: 'boot-3',
-          }),
-          { status: 200 },
-        ),
-      );
+    native.commitStartupReadiness
+      .mockResolvedValueOnce({ status: 'error', value: undefined })
+      .mockResolvedValueOnce({ status: 'ok', value: undefined });
     await expect(proveAndCommitStartupReadiness(native as never)).resolves.toBe(
       true,
     );
-    expect(native.commitStartupReadiness).toHaveBeenCalledTimes(1);
-    expect(native.commitStartupReadiness).toHaveBeenCalledWith(
+    expect(native.commitStartupReadiness).toHaveBeenCalledTimes(2);
+    expect(native.commitStartupReadiness).toHaveBeenLastCalledWith(
       expect.objectContaining({ generation: 3 }),
     );
   });
@@ -114,15 +83,6 @@ describe('desktop startup readiness proof', () => {
       ...adapter([{ status: 'ok', value: running(4) }]),
       subscribeToStartupReadinessRetry: vi.fn(() => ({ dispose: vi.fn() })),
     };
-    transport.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          instanceId: 'desktop-sidecar-stable',
-          bootId: 'boot-4',
-        }),
-        { status: 200 },
-      ),
-    );
     const proof = startStartupReadinessProof(native as never);
     await vi.waitFor(() => {
       expect(native.commitStartupReadiness).toHaveBeenCalledWith(
@@ -130,6 +90,43 @@ describe('desktop startup readiness proof', () => {
       );
     });
     expect(native.subscribeToStartupReadinessRetry).toHaveBeenCalledOnce();
+    proof.dispose();
+  });
+  it('coalesces retry events and ignores them after one successful commit', async () => {
+    let retry: (() => void) | undefined;
+    let settleCommit:
+      | ((value: { status: 'ok'; value: undefined }) => void)
+      | undefined;
+    const native = {
+      ...adapter([{ status: 'ok', value: running(8) }]),
+      commitStartupReadiness: vi.fn(
+        () =>
+          new Promise<{ status: 'ok'; value: undefined }>((resolve) => {
+            settleCommit = resolve;
+          }),
+      ),
+      subscribeToStartupReadinessRetry: vi.fn((listener: () => void) => {
+        retry = listener;
+        return { dispose: vi.fn() };
+      }),
+    };
+    const proof = startStartupReadinessProof(native as never);
+    await vi.waitFor(() =>
+      expect(native.commitStartupReadiness).toHaveBeenCalledOnce(),
+    );
+
+    retry?.();
+    retry?.();
+    retry?.();
+    expect(native.commitStartupReadiness).toHaveBeenCalledOnce();
+
+    settleCommit?.({ status: 'ok', value: undefined });
+    await vi.waitFor(() =>
+      expect(native.commitStartupReadiness).toHaveBeenCalledOnce(),
+    );
+    retry?.();
+    await Promise.resolve();
+    expect(native.commitStartupReadiness).toHaveBeenCalledOnce();
     proof.dispose();
   });
   it('aborts an in-flight retry delay before disposing its subscription', async () => {
@@ -186,26 +183,5 @@ describe('desktop startup readiness proof', () => {
     controller.abort();
     await expect(pending).resolves.toBe(false);
     expect(native.getBundledServerStatus).toHaveBeenCalledOnce();
-  });
-  it('passes cancellation into the native transport', async () => {
-    const native = adapter([{ status: 'ok', value: running(5) }]);
-    const controller = new AbortController();
-    transport.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          instanceId: 'desktop-sidecar-stable',
-          bootId: 'boot-5',
-        }),
-        { status: 200 },
-      ),
-    );
-
-    await expect(
-      proveAndCommitStartupReadiness(native as never, controller.signal),
-    ).resolves.toBe(true);
-    expect(transport).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ signal: controller.signal }),
-    );
   });
 });

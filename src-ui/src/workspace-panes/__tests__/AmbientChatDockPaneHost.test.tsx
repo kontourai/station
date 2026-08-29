@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { createDirectAnswerBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import {
   WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
   WORKSPACE_ACTIVITY_PANE_INSTANCE,
@@ -29,6 +30,7 @@ import {
   ambientWorkspacePaneDockAction,
   createAmbientChatDockPaneDocument,
 } from '../AmbientChatDockPaneHost';
+import { useBasisPaneLauncher } from '../BasisPaneLauncher';
 import type { WorkspacePaneDockAction } from '../WorkspacePaneDockContext';
 
 vi.mock('../../contexts/DeviceSettingsContext', () => ({
@@ -77,6 +79,11 @@ vi.mock('../../views/SessionsView', () => ({
 
 vi.mock('../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
+  useHostRequestAuthorityScope: () => null,
+}));
+
+vi.mock('../BasisPaneFallbackContent', () => ({
+  ConnectedBasisFallbackPane: () => <p>Basis fallback content</p>,
 }));
 
 // archive#4525: `DockShell` (via `useDockShellChrome`) now reads `useProjects`
@@ -143,6 +150,32 @@ function renderAmbientHost(
       )}
       onDockActionChange={onDockActionChange}
     />,
+  );
+}
+
+function ProjectBasisLauncher() {
+  const { openBasis, fallback } = useBasisPaneLauncher();
+  const instance = createDirectAnswerBasisPaneInstance(
+    'project-bound-basis',
+    'session-a',
+    'turn-a',
+  )!;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(event) =>
+          openBasis(
+            instance,
+            { kind: 'direct-answer', sessionId: 'session-a', turnId: 'turn-a' },
+            event.currentTarget,
+          )
+        }
+      >
+        Open project Basis
+      </button>
+      {fallback}
+    </>
   );
 }
 
@@ -220,6 +253,21 @@ test('ambient dock renderPane mounts the canonical chat occupant through a chrom
     ),
     'the occupant must render inside the shell, with no second host-owned wrapper around it',
   ).not.toBeNull();
+});
+
+test('the production ambient host refuses project-bound Basis so the launcher uses its fallback', async () => {
+  render(
+    <AmbientChatDockPaneHost renderChatPane={() => <ProjectBasisLauncher />} />,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: 'Open project Basis' }));
+
+  expect(screen.getByRole('dialog', { name: 'Basis' })).toBeTruthy();
+  expect(await screen.findByText('Basis fallback content')).toBeTruthy();
+  expect(screen.queryByTestId('ambient-chat-occupant')).toBeNull();
+  expect(
+    window.localStorage.getItem(AMBIENT_DOCK_STORAGE_KEY) ?? '',
+  ).not.toContain('project-bound-basis');
 });
 
 /**

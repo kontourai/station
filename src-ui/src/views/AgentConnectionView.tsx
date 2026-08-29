@@ -330,7 +330,7 @@ export function AgentConnectionView({
           <div className="agent-editor__section">
             <nav
               className="provider-detail__progress"
-              aria-label="Provider setup"
+              aria-label="Engine setup"
             >
               <span className="provider-detail__progress-step provider-detail__progress-step--complete">
                 Choose
@@ -476,10 +476,10 @@ export function AgentConnectionView({
                             ? 'Can continue this execution session when its engine supports it.'
                             : 'Cannot resume an existing execution session.',
                           continuity.fork === 'native'
-                            ? 'Can create a provider-native conversation branch.'
+                            ? 'Can create an engine-native conversation branch.'
                             : continuity.fork === 'replay-seed'
-                              ? 'Can start a new conversation from Station’s transcript. It does not carry provider cursor, tool, or approval state.'
-                              : 'Cannot create a provider-native branch.',
+                              ? 'Can start a new conversation from Station’s transcript. It does not carry engine cursor, tool, or approval state.'
+                              : 'Cannot create an engine-native branch.',
                           continuity.rewind === 'in-place'
                             ? 'Can rewind this execution session in place.'
                             : 'Cannot rewind an execution session in place.',
@@ -746,7 +746,7 @@ export function AgentConnectionView({
       ) : (
         <Empty
           variant="prominent"
-          label="Select a provider to review its status and setup."
+          label="Select an engine to review its status and setup."
         />
       )}
     </SplitPaneLayout>
@@ -767,14 +767,14 @@ function AgentAppAddCatalog({
   return (
     <div className="editor-layout agent-app-catalog">
       <DetailHeader
-        title="Add provider"
+        title="Add engine"
         subtitle="Station checks local apps before showing them as ready."
       />
       {error ? <div className="editor-error">{error}</div> : null}
       {connections.length === 0 ? (
         <Empty
           variant="prominent"
-          label="Every supported provider is already listed"
+          label="Every supported engine is already listed"
           description="Detected apps that are ready appear in the main list automatically. Install another supported app and reopen this catalog to configure it."
         />
       ) : (
@@ -1296,7 +1296,7 @@ function CredentialProfileApplyConfirmation({
     <ConfirmModal
       isOpen={state.profileToApply !== null}
       title="Apply credential entry"
-      message="Station will verify this credential entry with one potentially billable provider turn before making it active. If verification fails, the previous active credential is preserved."
+      message="Station will verify this credential entry with one potentially billable engine turn before making it active. If verification fails, the previous active credential is preserved."
       confirmLabel="Apply and verify"
       cancelLabel="Cancel"
       variant="warning"
