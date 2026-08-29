@@ -275,7 +275,9 @@ describe('the web fleet routing surface', () => {
     const text = renderWith({ error: new Error('connection refused') });
     expect(text).toContain('connection refused');
     expect(text).toContain('unknown, not empty');
-    expect(screen.queryByText(/No turn has been fleet-routed/)).toBeNull();
+    expect(
+      screen.queryByText(/has been receipted on this Station yet/),
+    ).toBeNull();
   });
 
   // `!error && !data` is also true before a fetch has even
@@ -293,9 +295,49 @@ describe('the web fleet routing surface', () => {
 
   test('says nothing has been routed only when the Station said so', () => {
     const text = renderWith({
-      data: page({ receipts: [], totalRecords: 0 }),
+      // The exact page the server produces for an absent/empty log: the
+      // chain verdict's message IS the empty-state sentence
+      // (`fleet-routing-receipt-log.ts` passes it as
+      // `readChainedReceipts`'s `emptyMessage`).
+      data: page({
+        receipts: [],
+        totalRecords: 0,
+        chain: {
+          status: 'intact',
+          brokenAtReceiptId: null,
+          message: 'No fleet routing has been receipted on this Station yet.',
+        },
+      }),
     });
-    expect(text).toContain('No turn has been fleet-routed on this Station yet');
+    expect(text).toContain(
+      'No fleet routing has been receipted on this Station yet',
+    );
+    // #765 F3b: said once. The chain line is the empty state — it no longer
+    // captions a paraphrase of itself on the next line.
+    expect(
+      text.match(/has been receipted on this Station yet/g) ?? [],
+    ).toHaveLength(1);
+    expect(text).not.toContain('Chain intact');
+  });
+
+  // #765 F3b's honesty edge: dropping the duplicate must not let an
+  // unreadable log borrow the "nothing yet" caption — a non-intact verdict
+  // keeps its status prefix and makes no emptiness claim.
+  test('an empty page with a non-intact chain shows the verdict, not an emptiness claim', () => {
+    const text = renderWith({
+      data: page({
+        receipts: [],
+        totalRecords: 2,
+        chain: {
+          status: 'broken',
+          brokenAtReceiptId: 'b'.repeat(64),
+          message: 'This receipt log has been edited or truncated.',
+        },
+      }),
+    });
+    expect(text).toContain('Chain broken');
+    expect(text).toContain('edited or truncated');
+    expect(text).not.toContain('has been receipted on this Station yet');
   });
 
   test('surfaces a broken chain verdict', () => {
@@ -441,9 +483,25 @@ describe('the SERVING side is readable too (security review, M-2)', () => {
 
   test('says nothing has been served only when the Station said so', () => {
     const text = renderServe({
-      data: servePage({ receipts: [], totalRecords: 0 }),
+      // The real empty page: the server's chain verdict carries the
+      // empty-state sentence (`fleet-serve-receipt-log.ts`'s
+      // `emptyMessage`).
+      data: servePage({
+        receipts: [],
+        totalRecords: 0,
+        chain: {
+          status: 'intact',
+          brokenAtReceiptId: null,
+          message: 'This Station has not served any fleet inference yet.',
+        },
+      }),
     });
     expect(text).toContain('has not served any fleet inference yet');
+    // #765 F3b: said once, not repeated beneath a chain line.
+    expect(
+      text.match(/has not served any fleet inference yet/g) ?? [],
+    ).toHaveLength(1);
+    expect(text).not.toContain('Chain intact');
   });
 
   // archive#3444: same derivation as the routing side's copy — mirrored here
