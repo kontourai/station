@@ -4,6 +4,7 @@ import {
   createTailscaleCli,
   parseMagicDnsHost,
   parseServePublicOrigin,
+  parseServePublicOrigins,
   TAILSCALE_MACOS_APP_CLI,
   type TailscaleCliResult,
   tailscaleCliExecutableCandidates,
@@ -151,6 +152,27 @@ describe('parseServePublicOrigin', () => {
     );
   });
 
+  test('retains every daemon-validated listener targeting the same local port', () => {
+    // A live node may deliberately publish several HTTPS listeners for one
+    // Station server. The direct route must match its exact Host rather than
+    // silently selecting the canonical first listener.
+    const serve = JSON.stringify({
+      Web: {
+        [`${host}:8444`]: {
+          Handlers: { '/': { Proxy: 'http://127.0.0.1:38141' } },
+        },
+        [`${host}:3773`]: {
+          Handlers: { '/': { Proxy: 'http://127.0.0.1:38141' } },
+        },
+      },
+    });
+
+    expect(parseServePublicOrigins(serve, host, [38141])).toEqual([
+      'https://kontour.python-smelt.ts.net:3773',
+      'https://kontour.python-smelt.ts.net:8444',
+    ]);
+  });
+
   test('survives malformed serve output', () => {
     expect(parseServePublicOrigin('not json', host, [3000])).toBeUndefined();
     expect(
@@ -184,9 +206,9 @@ describe('createPublicIngressOriginResolver', () => {
       localPorts: [3141, 3000],
       cli,
     });
-    await expect(resolver.resolve()).resolves.toBe(
+    await expect(resolver.resolve()).resolves.toEqual([
       'https://kontour.python-smelt.ts.net',
-    );
+    ]);
   });
 
   test('caches within the TTL and re-reads after it', async () => {
@@ -248,7 +270,7 @@ describe('createPublicIngressOriginResolver', () => {
       resolver.resolve(),
       resolver.resolve(),
     ]);
-    expect(first).toBe('https://kontour.python-smelt.ts.net');
+    expect(first).toEqual(['https://kontour.python-smelt.ts.net']);
     expect(second).toBe(first);
     expect(calls).toHaveLength(2);
   });
@@ -344,9 +366,9 @@ describe('Tailscale CLI executable discovery', () => {
       cli,
     });
 
-    await expect(resolver.resolve()).resolves.toBe(
+    await expect(resolver.resolve()).resolves.toEqual([
       'https://kontour.python-smelt.ts.net',
-    );
+    ]);
     expect(calls).toEqual([
       `${TAILSCALE_MACOS_APP_CLI} status --json`,
       'tailscale status --json',
