@@ -827,9 +827,8 @@ async function journeyCapacityGate(browser, note, shared) {
   // the "Host remains busy" ephemeral with a Start anyway action, and the
   // retry must carry the exact one-shot token. Replayed via route interception on the MAIN
   // healthy instance because a real refusal requires a ready engine (see
-  // module docblock); the injected body is byte-shaped after
-  // orchestration.routes.test.ts "preserves a critical resource refusal
-  // code at the outer HTTP seam".
+  // module docblock); the injected body is byte-shaped after the route/SDK
+  // override contract tests.
   // Its OWN one-turn conversation, never stopped: journey 1 deliberately
   // ends its conversation in the stopped-then-continued state
   // (kontourai/station#834's recovered population) — borrowing that
