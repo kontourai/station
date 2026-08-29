@@ -8,7 +8,10 @@ import {
   rmSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { probeExactProcessIdentity } from '../../packages/shared/src/process-identity.mjs';
+import {
+  probeExactProcessIdentity,
+  resolveOwnProcessIdentity,
+} from '../../packages/shared/src/process-identity.mjs';
 import { CANONICAL_COMPLETION_LANE } from '../verification-lanes.mjs';
 import { HOST_PRESSURE_GATE_WEIGHT } from './verification-host-pressure.mjs';
 import {
@@ -93,6 +96,15 @@ function processIdentity(pid) {
       : null;
 }
 
+function ownProcessIdentity(pid) {
+  const probe = resolveOwnProcessIdentity(pid);
+  return probe.state === 'exact'
+    ? probe.identity
+    : probe.state === 'unavailable'
+      ? { pid, start: null, unavailable: true }
+      : null;
+}
+
 /** A fresh heartbeat is never enough to steal a lease; PID identity must agree. */
 export function leaseIsLive(
   lease,
@@ -135,7 +147,7 @@ function isLeaseStale(lease, options) {
 }
 
 function createOwner() {
-  const identity = processIdentity(process.pid);
+  const identity = ownProcessIdentity(process.pid);
   if (identity?.unavailable)
     throw new Error(
       'verification coordinator cannot create a lease while its round-trip UTC Windows CreationDate is unavailable',
