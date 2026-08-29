@@ -128,6 +128,7 @@ import {
   createEventStoreWorkItemPrincipalLiveness,
   WorkItemCapture,
 } from '../work-item-capture.js';
+import { acpResumeCursorSupport } from './acp-resume-cursor-support.js';
 import { composeAgentExecutionConfigLoader } from './agent-execution-config-loader.js';
 import {
   scheduleRuntimeDailyReload,
@@ -537,6 +538,17 @@ export async function initializeRuntime(
       capture: async (input) => usagePricingSnapshotCapture?.capture(input),
     },
     turnDeduplicator: orchestrationEventStore.createTurnDeduplicator(),
+    // #764: a user-requested continuation of a stopped ACP conversation must
+    // know BEFORE the child start whether the connection's observed
+    // initialize handshake advertised `loadSession`; without it the resume
+    // cursor path is a start the ACP adapter must fail-closed (A3), leaving
+    // a durable reservation the supervision read then has to look through.
+    // `undefined` (no handshake evidence, or a non-ACP provider) keeps the
+    // cursor path — the adapter's own ruling stays authoritative there.
+    // #764: derivation extracted (and unit-tested) in
+    // acp-resume-cursor-support.ts — keyed on the observed handshake, not on
+    // the presence of capabilities.
+    resumeCursorSupport: acpResumeCursorSupport(acpBridge),
     adoptionLedger,
     credentialProfileRecoveryAdapter: deps.credentialProfileRecoveryAdapter,
     requireTenantExecutionContext: isHostedTenantExecutionRequired,
