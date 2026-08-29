@@ -887,6 +887,9 @@ if [ "$previous_release" != "$release_dir" ]; then
   fi
   promoted=true
 else
+  # A reused release may still be running from the previous install; the
+  # later start must not race that live instance for its own ports.
+  stop_installed_station
   node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$staged_launcher" "$launcher" || \
     fail 'could not publish the channel launcher'
 fi
