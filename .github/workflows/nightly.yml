@@ -204,9 +204,11 @@ jobs:
           # code before this job can build it.
           head_sha=$(git rev-parse HEAD)
           last_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly^{commit}' || true)
+          normalized_head_sha=$(node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$last_sha")
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
-          if [ "$head_sha" = "$last_sha" ] && [ -z "$NIGHTLY_REBUILD_INDEX" ]; then
-            echo "::notice::main has not moved since the last nightly ($head_sha); nothing to build."
+          echo "normalized_head_sha=$normalized_head_sha" >> "$GITHUB_OUTPUT"
+          if [ "$normalized_head_sha" = "$last_sha" ] && [ -z "$NIGHTLY_REBUILD_INDEX" ]; then
+            echo "::notice::main has no source change since the last nightly ($last_sha); nothing to build."
             echo "build=false" >> "$GITHUB_OUTPUT"
           else
             echo "build=true" >> "$GITHUB_OUTPUT"
@@ -898,10 +900,14 @@ jobs:
         run: |
           head_sha=$(git rev-parse HEAD)
           last_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly-desktop^{commit}' || true)
-          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
-          echo "date=$(date -u +%Y-%m-%dT00:00:00Z)" >> "$GITHUB_OUTPUT"
-          if [ "$head_sha" = "$last_sha" ]; then
-            echo "::notice::main has not moved since the last desktop nightly ($head_sha); nothing to build."
+          normalized_head_sha=$(node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$last_sha")
+          {
+            echo "head_sha=$head_sha"
+            echo "normalized_head_sha=$normalized_head_sha"
+            echo "date=$(date -u +%Y-%m-%dT00:00:00Z)"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$normalized_head_sha" = "$last_sha" ]; then
+            echo "::notice::main has no source change since the last desktop nightly ($last_sha); nothing to build."
             echo "build=false" >> "$GITHUB_OUTPUT"
           else
             echo "build=true" >> "$GITHUB_OUTPUT"
