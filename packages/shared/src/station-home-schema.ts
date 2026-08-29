@@ -27,6 +27,16 @@ export const STATION_HOME_SCHEMA_VERSION = 1;
 export const STATION_HOME_SCHEMA_FILE = '.station-home-schema.json';
 
 /**
+ * install.sh claims a portable install's data root before any Station process
+ * exists (uninstall refuses to touch an unclaimed root). The exact marker
+ * name and signature are pinned to install.sh by a cross-file test; drift on
+ * either side must fail that test, not silently reset fresh installs.
+ */
+export const PORTABLE_INSTALL_DATA_ROOT_MARKER = '.station-portable-data-root';
+export const PORTABLE_INSTALL_DATA_ROOT_SIGNATURE =
+  'station-portable-data-root-v1\n';
+
+/**
  * A single forward home-schema migration. Future migrations belong in
  * `STATION_HOME_SCHEMA_MIGRATIONS`; the gate derives the whole path rather
  * than making a schema-version bump silently select reset.
@@ -402,6 +412,23 @@ function isBootstrapScaffolding(homeDir: string): boolean {
       entry.endsWith('.tmp')
     ) {
       continue;
+    }
+    if (entry === PORTABLE_INSTALL_DATA_ROOT_MARKER) {
+      // The installer's claim is scaffolding only when it is exactly the
+      // installer's bytes; wrong content, a directory, or a link is data the
+      // gate must keep refusing to bootstrap over. The hardened no-follow
+      // reader closes the lstat→read symlink window, and anything it
+      // refuses — including a marker removed concurrently — reads as
+      // not-scaffolding rather than a raw filesystem error.
+      try {
+        const content = readRegularFileNoFollow(homeDir, join(homeDir, entry), {
+          maxBytes: Buffer.byteLength(PORTABLE_INSTALL_DATA_ROOT_SIGNATURE),
+        });
+        if (content === PORTABLE_INSTALL_DATA_ROOT_SIGNATURE) continue;
+      } catch {
+        // fall through to the refusal below
+      }
+      return false;
     }
     if (entry !== 'config') return false;
     const path = join(homeDir, entry);
