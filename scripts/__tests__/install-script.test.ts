@@ -397,7 +397,18 @@ describe('one-line Station installer', { timeout: 15_000 }, () => {
     expect(second.result.stdout).toContain('already installed');
     const calls = readFileSync(fixture.log, 'utf8').trim().split('\n');
     expect(calls.filter((line) => line.startsWith('build '))).toHaveLength(1);
-    expect(calls.filter((line) => line.startsWith('start '))).toHaveLength(1);
+    // Reuse re-starts the release, and must stop the still-running instance
+    // first — starting over a live instance races it for its own ports.
+    const startIndices = calls.flatMap((line, index) =>
+      line.startsWith('start ') ? [index] : [],
+    );
+    const stopIndices = calls.flatMap((line, index) =>
+      line.startsWith('stop ') ? [index] : [],
+    );
+    expect(startIndices).toHaveLength(2);
+    expect(stopIndices).toHaveLength(1);
+    expect(stopIndices[0]).toBeGreaterThan(startIndices[0]);
+    expect(stopIndices[0]).toBeLessThan(startIndices[1]);
     expect(readlinkSync(current)).toMatch(/\/releases\/[0-9a-f]{64}$/);
     const statePath = join(first.installRoot, '.station-release-state.json');
     expect(JSON.parse(readFileSync(statePath, 'utf8'))).toEqual({

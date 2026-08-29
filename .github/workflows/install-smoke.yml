@@ -47,6 +47,9 @@ jobs:
         env:
           SMOKE_HOME: ${{ runner.temp }}/station-home
           RELEASE_DIR: ${{ runner.temp }}/release
+          # The sha the checkout and packager actually used; GITHUB_SHA is the
+          # base tip under pull_request_target.
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           runtime_channel="$RUNTIME_CHANNEL"
@@ -54,8 +57,11 @@ jobs:
           launcher_name=station
           if [ "$runtime_channel" = beta ]; then launcher_name=station-beta; fi
           launcher="$SMOKE_HOME/.local/bin/$launcher_name"
-          install_root="$SMOKE_HOME/.local/share/station-$runtime_channel"
-          station_home="$SMOKE_HOME/.station-$runtime_channel"
+          # Mirror install.sh's default roots for HOME=$SMOKE_HOME without
+          # overrides: $station_root/installs|instances/$runtime_channel.
+          station_root="$SMOKE_HOME/.station"
+          install_root="$station_root/installs/$runtime_channel"
+          station_home="$station_root/instances/$runtime_channel"
           mkdir -p "$SMOKE_HOME/fake-bin"
           cat >"$SMOKE_HOME/fake-bin/codex" <<'EOF'
           #!/bin/sh
@@ -73,30 +79,63 @@ jobs:
           #!/bin/sh
           echo 'rustc 1.90.0-smoke'
           EOF
+          # The public manifest path must stay unauthenticated; a reachable gh
+          # here would hide a regression back onto the authenticated path.
           cat >"$SMOKE_HOME/fake-bin/gh" <<'EOF'
           #!/bin/sh
-          if [ "$1" = auth ] || [ "$1" = attestation ]; then exit 0; fi
-          if [ "$1" = api ]; then
-            artifact_dir="${STATION_SMOKE_RELEASE_DIR:-$RELEASE_DIR}"
-            case "$*" in
-              *releases/assets/manifest*) cat "$artifact_dir/station-release-ring-$RELEASE_CHANNEL.json"; exit 0 ;;
-              *releases/assets/checksum*) cat "$artifact_dir/station-portable.tar.gz.sha256"; exit 0 ;;
-              *releases/assets/archive*) cat "$artifact_dir/station-portable.tar.gz"; exit 0 ;;
-            esac
-            case "$2" in
-              *releases?*)
-                prerelease=false
-                [ "$RELEASE_CHANNEL" = preview ] && prerelease=true
-                printf '[{"tag_name":"%s","target_commitish":"main","draft":false,"prerelease":%s,"assets":[{"name":"station-release-ring-%s.json","url":"https://api.github.com/repos/kontourai/station/releases/assets/manifest"},{"name":"station-portable.tar.gz.sha256","url":"https://api.github.com/repos/kontourai/station/releases/assets/checksum"},{"name":"station-portable.tar.gz","url":"https://api.github.com/repos/kontourai/station/releases/assets/archive"}]}]' "$RELEASE_TAG" "$prerelease" "$RELEASE_CHANNEL"
-                ;;
-              *git/ref/tags/*) printf '{"object":{"type":"commit","sha":"%s"}}' "$GITHUB_SHA" ;;
-              *) exit 1 ;;
-            esac
-            exit 0
-          fi
-          exit 1
+          echo 'gh must not run in the public installer path' >&2
+          exit 99
           EOF
           chmod +x "$SMOKE_HOME/fake-bin/"*
+
+          # install.sh's public manifest path requires three distinct fixture
+          # origins: artifacts, the signed manifest, and its verification key.
+          serve_dir="$RUNNER_TEMP/fixture-serve"
+          manifests_dir="$RUNNER_TEMP/fixture-manifests"
+          keys_dir="$RUNNER_TEMP/fixture-keys"
+          mkdir -p "$serve_dir" "$manifests_dir" "$keys_dir"
+          cp "$RELEASE_DIR/station-portable.tar.gz" "$serve_dir/"
+          provenance="$(tar -xOzf "$serve_dir/station-portable.tar.gz" station/.station-release.json)"
+          source_sha="$(printf '%s' "$provenance" | jq -r .sha)"
+          release_tag="$(printf '%s' "$provenance" | jq -r .ref)"
+          version="${release_tag#v}"
+          printf 'install-smoke macOS cask fixture\n' >"$serve_dir/station-$version-macos-universal.dmg"
+          node -e '
+            const { generateKeyPairSync } = require("node:crypto");
+            const fs = require("node:fs");
+            const [privatePath, publicPath] = process.argv.slice(1);
+            const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+            fs.writeFileSync(privatePath, privateKey.export({ format: "pem", type: "pkcs8" }));
+            fs.writeFileSync(publicPath, publicKey.export({ format: "pem", type: "spki" }));
+          ' "$RUNNER_TEMP/manifest-private.pem" "$keys_dir/public.pem"
+
+          write_manifest_payload() {
+            node -e '
+              const crypto = require("node:crypto");
+              const fs = require("node:fs");
+              const [output, serveDir, channel, version, releaseTag, sourceSha] = process.argv.slice(1);
+              const digest = (name) => crypto.createHash("sha256").update(fs.readFileSync(`${serveDir}/${name}`)).digest("hex");
+              const macos = `station-${version}-macos-universal.dmg`;
+              fs.writeFileSync(output, `${JSON.stringify({
+                schemaVersion: 1,
+                channel,
+                version,
+                releaseTag,
+                sourceSha,
+                publishedAt: new Date().toISOString(),
+                artifacts: {
+                  macos: { name: macos, url: `http://127.0.0.1:8765/${macos}`, sha256: digest(macos) },
+                  portable: { name: "station-portable.tar.gz", url: "http://127.0.0.1:8765/station-portable.tar.gz", sha256: digest("station-portable.tar.gz") },
+                },
+              }, null, 2)}\n`);
+            ' "$RUNNER_TEMP/manifest-payload.json" "$serve_dir" "$release_channel" "$version" "$release_tag" "$source_sha"
+            STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS=1 node "$GITHUB_WORKSPACE/scripts/ecosystem-manifest.mjs" create \
+              --payload "$RUNNER_TEMP/manifest-payload.json" \
+              --private-key "$RUNNER_TEMP/manifest-private.pem" \
+              --key-id station-install-smoke-v1 \
+              --output "$manifests_dir/manifest.json"
+          }
+          write_manifest_payload
 
           node -e '
             require("node:http").createServer((request, response) => {
@@ -106,30 +145,40 @@ jobs:
           ' &
           ollama_pid=$!
           python3 -m http.server 8765 --bind 127.0.0.1 \
-            --directory "$RELEASE_DIR" >/tmp/station-release-server.log 2>&1 &
-          release_pid=$!
+            --directory "$serve_dir" >/tmp/station-artifact-server.log 2>&1 &
+          artifact_pid=$!
+          python3 -m http.server 8766 --bind 127.0.0.1 \
+            --directory "$manifests_dir" >/tmp/station-manifest-server.log 2>&1 &
+          manifest_pid=$!
+          python3 -m http.server 8767 --bind 127.0.0.1 \
+            --directory "$keys_dir" >/tmp/station-key-server.log 2>&1 &
+          key_pid=$!
           cleanup() {
             "$launcher" stop --base="$station_home" >/dev/null 2>&1 || true
-            kill "$ollama_pid" "$release_pid" >/dev/null 2>&1 || true
+            kill "$ollama_pid" "$artifact_pid" "$manifest_pid" "$key_pid" >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
+
+          public_install_env=(
+            STATION_INSTALL_PUBLIC_MANIFEST_URL=http://127.0.0.1:8766/manifest.json
+            STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL=http://127.0.0.1:8767/public.pem
+            STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1
+            STATION_INSTALL_SERVER_PORT=3341
+            STATION_INSTALL_UI_PORT=3200
+          )
 
           curl -fsSL "file://$GITHUB_WORKSPACE/install.sh" | env \
             HOME="$SMOKE_HOME" \
             PATH="$SMOKE_HOME/fake-bin:$PATH" \
             STATION_CHANNEL="$RUNTIME_CHANNEL" \
-            STATION_INSTALL_ASSET_URL="http://127.0.0.1:8765/station-portable.tar.gz" \
-            STATION_INSTALL_CHECKSUM_URL="http://127.0.0.1:8765/station-portable.tar.gz.sha256" \
-            STATION_INSTALL_MANIFEST_URL="http://127.0.0.1:8765/station-release-ring-$RELEASE_CHANNEL.json" \
-            STATION_INSTALL_SERVER_PORT=3341 \
-            STATION_INSTALL_UI_PORT=3200 \
+            "${public_install_env[@]}" \
             sh
 
           previous_current=$(readlink "$install_root/current")
-          HOME="$SMOKE_HOME" \
+          env \
+            HOME="$SMOKE_HOME" \
             PATH="$SMOKE_HOME/fake-bin:$SMOKE_HOME/.local/bin:$PATH" \
-            STATION_INSTALL_SERVER_PORT=3341 \
-            STATION_INSTALL_UI_PORT=3200 \
+            "${public_install_env[@]}" \
             "$launcher" upgrade
           node -e '
             const fs = require("node:fs");
@@ -149,26 +198,14 @@ jobs:
           EOF
           chmod +x "$bad_work/station/station"
           tar -czf "$bad_release/station-portable.tar.gz" -C "$bad_work" station
-          node -e '
-            const fs = require("node:fs");
-            const crypto = require("node:crypto");
-            const [archive, checksum, sourceManifest, targetManifest] = process.argv.slice(1);
-            const digest = (path) => crypto.createHash("sha256").update(fs.readFileSync(path)).digest("hex");
-            fs.writeFileSync(checksum, `${digest(archive)}  station-portable.tar.gz\n`);
-            const manifest = JSON.parse(fs.readFileSync(sourceManifest, "utf8"));
-            manifest.archive.sha256 = digest(archive);
-            manifest.checksum.sha256 = digest(checksum);
-            fs.writeFileSync(targetManifest, `${JSON.stringify(manifest, null, 2)}\n`);
-          ' \
-            "$bad_release/station-portable.tar.gz" \
-            "$bad_release/station-portable.tar.gz.sha256" \
-            "$RELEASE_DIR/station-release-ring-$RELEASE_CHANNEL.json" \
-            "$bad_release/station-release-ring-$RELEASE_CHANNEL.json"
-          if HOME="$SMOKE_HOME" \
+          # Swap the served fixture and re-sign the manifest so the packaged
+          # upgrade verifies the bad candidate, fails its start, and rolls back.
+          cp "$bad_release/station-portable.tar.gz" "$serve_dir/station-portable.tar.gz"
+          write_manifest_payload
+          if env \
+            HOME="$SMOKE_HOME" \
             PATH="$SMOKE_HOME/fake-bin:$SMOKE_HOME/.local/bin:$PATH" \
-            STATION_SMOKE_RELEASE_DIR="$bad_release" \
-            STATION_INSTALL_SERVER_PORT=3341 \
-            STATION_INSTALL_UI_PORT=3200 \
+            "${public_install_env[@]}" \
             "$launcher" upgrade
           then
             echo "Expected failed candidate start" >&2
@@ -190,8 +227,10 @@ jobs:
           curl -fsS --retry 10 --retry-connrefused --retry-delay 1 \
             -o "$RUNNER_TEMP/station-ui.html" http://127.0.0.1:3200/
           grep -q '<div id="root"' "$RUNNER_TEMP/station-ui.html"
+          # EXPECTED_SHA, not GITHUB_SHA: under pull_request_target GITHUB_SHA
+          # is the BASE tip while the checkout and packager use the PR head.
           curl -fsS http://127.0.0.1:3200/__station/identity \
-            | jq -e --arg sha "$GITHUB_SHA" '.sha == $sha and (.bootId | length > 0)'
+            | jq -e --arg sha "$EXPECTED_SHA" '.sha == $sha and (.bootId | length > 0)'
 
           curl -fsSL "file://$GITHUB_WORKSPACE/install.sh" | env \
             HOME="$SMOKE_HOME" \
@@ -199,3 +238,15 @@ jobs:
             sh -s uninstall
           test ! -e "$install_root"
           test -d "$station_home"
+
+      - name: Dump Station instance logs on failure
+        if: failure()
+        env:
+          SMOKE_HOME: ${{ runner.temp }}/station-home
+        run: |
+          set -uo pipefail
+          for log in "$SMOKE_HOME"/.station/instances/*/logs/*.log /tmp/station-*.log; do
+            [ -f "$log" ] || continue
+            echo "===== $log (last 200 lines) ====="
+            tail -200 "$log"
+          done

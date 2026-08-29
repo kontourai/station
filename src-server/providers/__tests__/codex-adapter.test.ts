@@ -115,6 +115,32 @@ function parseLine(line: string): any {
   return JSON.parse(line);
 }
 
+/**
+ * #774 fixture child: a codex app-server stand-in that answers `initialize`
+ * and the first `model/list` page, then closes its stdin reader (fd 0 —
+ * `process.stdin.destroy()` alone does NOT close the underlying pipe fd)
+ * BEFORE delivering the page-1 result (which carries a `nextCursor`,
+ * guaranteeing the parent writes a page-2 request). That page-2 write
+ * deterministically hits the closed pipe — the EPIPE a dead/broken codex
+ * binary produces in production. The child stays alive so only the stdin
+ * door can settle the in-flight catalog read.
+ */
+const EPIPE_AFTER_FIRST_PAGE_CHILD = [
+  "const fs=require('node:fs');let b='';let n=0;",
+  "process.stdin.setEncoding('utf8');",
+  "process.stdin.on('data',c=>{",
+  'b+=c;let i;',
+  "while((i=b.indexOf('\\n'))>=0){",
+  'const l=b.slice(0,i);b=b.slice(i+1);if(!l.trim())continue;',
+  'const m=JSON.parse(l);n++;',
+  "if(n===1){process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{}})+'\\n');}",
+  'if(n===3){fs.closeSync(0);',
+  "setTimeout(()=>{process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{data:[{model:'gpt-a',displayName:'GPT A'}],nextCursor:'more'}})+'\\n');},100);}",
+  '}',
+  '});',
+  'setInterval(()=>{},1000);',
+].join('');
+
 async function flushIo(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -2770,6 +2796,37 @@ describe('CodexAdapter', () => {
       if (child?.exitCode === null && child.signalCode === null) {
         child.kill('SIGKILL');
       }
+    }
+  });
+
+  // #774: a one-shot catalog whose child closes its stdin reader (any
+  // dead/broken codex binary) must reject through the adapter's error door,
+  // never crash the process on the unhandled stdin EPIPE that the next
+  // write produces. The child answers `initialize` and the first
+  // `model/list` page (whose result carries a nextCursor, so a page-2
+  // request is guaranteed), then destroys its stdin BEFORE delivering the
+  // page-1 response — the parent's page-2 write therefore lands on a
+  // closed pipe (EPIPE) deterministically, while the child stays alive so
+  // the process 'exit' door never fires: the stdin door is the only
+  // teardown path exercised.
+  test('rejects a model catalog read whose app-server stdin closes mid-flight instead of crashing', async () => {
+    let child: ChildProcessWithoutNullStreams | undefined;
+    const adapter = new CodexAdapter({
+      processFactory: () => {
+        child = spawn(process.execPath, ['-e', EPIPE_AFTER_FIRST_PAGE_CHILD], {
+          stdio: 'pipe',
+          windowsHide: true,
+        });
+        return child;
+      },
+    });
+
+    try {
+      await expect(adapter.listModels()).rejects.toThrow(
+        'Codex app-server stdin write failed',
+      );
+    } finally {
+      child?.kill('SIGKILL');
     }
   });
 
