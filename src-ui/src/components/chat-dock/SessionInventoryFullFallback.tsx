@@ -27,7 +27,8 @@ export function SessionInventoryFullFallback({
   chatStoreId?: string;
   hostId?: string;
   onClose?(): void;
-  onHostOpened?(): void;
+  /** Re-focuses the exact already-opened Workspace Pane without recreating it. */
+  onHostOpened?(focus: () => boolean): void;
 }) {
   const { openBasis, fallback } = useBasisPaneLauncher();
   const authority = useHostRequestAuthorityScope();
@@ -77,7 +78,24 @@ export function SessionInventoryFullFallback({
             chatStoreId,
           },
         );
-      onHostOpened?.();
+      onHostOpened?.(
+        () =>
+          openBasis(
+            !forceFallback && projectId
+              ? createSessionInventoryBasisPaneInstance(
+                  projectId,
+                  scope.sessionId,
+                )
+              : null,
+            {
+              kind: 'session-inventory',
+              sessionId: scope.sessionId,
+              initialScope: scope,
+            },
+            trigger,
+            onClose,
+          ) === 'host',
+      );
     }
   }, [
     forceFallback,

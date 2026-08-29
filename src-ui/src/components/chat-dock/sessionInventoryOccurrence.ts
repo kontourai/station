@@ -9,6 +9,7 @@ type Registration = {
 const registrations = new Map<string, Registration>();
 const occurrences = new Map<string, SessionInventoryLaunch>();
 const listeners = new Map<string, Set<() => void>>();
+const fullHostFocusers = new Map<string, () => boolean>();
 const notify = (hostId: string) =>
   listeners.get(hostId)?.forEach((listener) => listener());
 
@@ -47,11 +48,30 @@ export function registerSessionInventoryHost(
     notify(hostId);
   };
 }
+/**
+ * A hosted full Basis pane outlives the compact renderer. Its host owns pane
+ * lifecycle, while this occurrence store keeps the header control from
+ * remounting a compact inventory beside that pane. Re-activating the control
+ * therefore asks the host to focus the existing pane instead.
+ */
+export function registerSessionInventoryFullHost(
+  hostId: string,
+  focus: () => boolean,
+) {
+  fullHostFocusers.set(hostId, focus);
+  return () => {
+    if (fullHostFocusers.get(hostId) === focus) fullHostFocusers.delete(hostId);
+  };
+}
+export function focusSessionInventoryFullHost(hostId: string) {
+  return fullHostFocusers.get(hostId)?.() ?? false;
+}
 export function closeSessionInventoryOccurrence(hostId?: string) {
   if (!hostId) {
     for (const id of occurrences.keys()) closeSessionInventoryOccurrence(id);
     return;
   }
+  fullHostFocusers.delete(hostId);
   occurrences.delete(hostId);
   notify(hostId);
 }

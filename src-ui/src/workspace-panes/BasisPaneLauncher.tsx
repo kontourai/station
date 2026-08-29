@@ -93,6 +93,7 @@ export function useBasisPaneLauncher(): {
   const fallback = fallbackState ? (
     <ResponsiveDialogSurface
       ariaLabel="Basis"
+      overlayClassName="basis-pane-fallback-overlay"
       panelClassName="basis-pane-fallback"
       returnFocusTarget={fallbackState.returnFocusTarget}
       onClose={closeFallback}

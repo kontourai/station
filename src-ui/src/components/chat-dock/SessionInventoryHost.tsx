@@ -1,5 +1,5 @@
 import type { SessionInventoryScope } from '@kontourai/station-contracts/session-inventory';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import type { DockMode } from '../../types';
 import {
@@ -11,6 +11,7 @@ import { SessionInventoryFullFallback } from './SessionInventoryFullFallback';
 import { resolveSessionInventoryCompactHost } from './sessionInventoryCompactHost';
 import './SessionInventoryCompact.css';
 import { registerSessionInventoryLiveBinding } from './sessionInventoryLiveBinding';
+import { registerSessionInventoryFullHost } from './sessionInventoryOccurrence';
 
 /**
  * The activation-only inventory composition seam. ChatDock deliberately only
@@ -43,6 +44,9 @@ export function SessionInventoryHost({
     trigger: HTMLElement;
     selection: SessionInventorySelection;
   } | null>(null);
+  const [focusFullHost, setFocusFullHost] = useState<(() => boolean) | null>(
+    null,
+  );
   const authority = useHostRequestAuthorityScope();
   useEffect(
     () =>
@@ -56,10 +60,28 @@ export function SessionInventoryHost({
         : undefined,
     [authority, chatStoreId, hostId, scope.sessionId],
   );
-  const close = (restoreFocus = true) => {
-    if (restoreFocus && trigger?.isConnected) trigger.focus();
-    onClose();
-  };
+  const close = useCallback(
+    (restoreFocus = true) => {
+      if (restoreFocus && trigger?.isConnected) trigger.focus();
+      onClose();
+    },
+    [onClose, trigger],
+  );
+  const onHostOpened = useCallback((focus: () => boolean) => {
+    setFocusFullHost(() => focus);
+  }, []);
+  const onFullFallbackClose = useCallback(() => {
+    setFocusFullHost(null);
+    setFullTrigger(null);
+    close();
+  }, [close]);
+  useEffect(
+    () =>
+      hostId && focusFullHost
+        ? registerSessionInventoryFullHost(hostId, focusFullHost)
+        : undefined,
+    [focusFullHost, hostId],
+  );
   const host = resolveSessionInventoryCompactHost({
     isMobile,
     dockMode,
@@ -83,36 +105,30 @@ export function SessionInventoryHost({
         }}
       />
     );
-  return (
-    <>
-      <SessionInventoryCompact
-        scope={scope}
-        density={host}
-        chatStoreId={chatStoreId}
-        onClose={close}
-        onOpenFull={(nextTrigger, selection) => {
-          if (authority)
-            commitSessionInventorySelection(
-              { ...authority, sessionId: scope.sessionId },
-              selection,
-            );
-          setFullTrigger({ trigger: nextTrigger, selection });
-        }}
-      />
-      {fullTrigger ? (
-        <SessionInventoryFullFallback
-          scope={scope}
-          projectId={projectId}
-          trigger={fullTrigger.trigger}
-          chatStoreId={chatStoreId}
-          hostId={hostId}
-          onHostOpened={() => close(false)}
-          onClose={() => {
-            setFullTrigger(null);
-            close();
-          }}
-        />
-      ) : null}
-    </>
+  return fullTrigger ? (
+    <SessionInventoryFullFallback
+      scope={scope}
+      projectId={projectId}
+      trigger={fullTrigger.trigger}
+      chatStoreId={chatStoreId}
+      hostId={hostId}
+      onHostOpened={onHostOpened}
+      onClose={onFullFallbackClose}
+    />
+  ) : (
+    <SessionInventoryCompact
+      scope={scope}
+      density={host}
+      chatStoreId={chatStoreId}
+      onClose={close}
+      onOpenFull={(nextTrigger, selection) => {
+        if (authority)
+          commitSessionInventorySelection(
+            { ...authority, sessionId: scope.sessionId },
+            selection,
+          );
+        setFullTrigger({ trigger: nextTrigger, selection });
+      }}
+    />
   );
 }
