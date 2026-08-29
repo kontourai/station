@@ -47,14 +47,19 @@ type RuntimePostureBase = {
   memoryPressure?: 'healthy' | 'critical' | 'unavailable';
 };
 
+type RuntimeObservedPosture<TKind extends 'healthy' | 'degraded' | 'critical'> =
+  RuntimePostureBase & {
+    kind: TKind;
+    /** Latest raw observation. */
+    busyPercent: number;
+    /** Median of the bounded rolling window. */
+    smoothedBusyPercent?: number;
+  };
+
 export type RuntimeResourcePosture =
-  | (RuntimePostureBase & {
-      kind: 'healthy' | 'degraded' | 'critical';
-      /** Latest raw observation. */
-      busyPercent: number;
-      /** Median of the bounded rolling window. */
-      smoothedBusyPercent?: number;
-    })
+  | RuntimeObservedPosture<'healthy'>
+  | RuntimeObservedPosture<'degraded'>
+  | RuntimeObservedPosture<'critical'>
   | (RuntimePostureBase & { kind: 'unavailable' });
 
 type HostPressureSample = {
@@ -285,16 +290,17 @@ export function createRuntimeResourcePostureController(
         effectiveKind = next;
         postureSince = observed.sampledAt ?? now();
       }
-      latest = {
+      const nextSnapshot = {
         ...observed,
         kind:
           observed.memoryPressure === 'critical' ? 'critical' : effectiveKind,
         smoothedBusyPercent: median(window),
         windowLength: window.length,
         postureSince,
-      };
+      } as RuntimeResourcePosture;
+      latest = nextSnapshot;
       refreshedAt = now();
-      return withAge(latest);
+      return withAge(nextSnapshot);
     } catch {
       const unavailable = deriveRuntimeResourcePosture(
         buildHostPressureSample({
@@ -366,13 +372,7 @@ export function createEnvironmentRuntimeResourcePostureProbe(
 
 export class CriticalResourcePostureError extends Error {
   readonly code = 'resource_posture_critical';
-  constructor(
-    readonly posture: RuntimeResourcePosture & {
-      kind: 'critical';
-      busyPercent: number;
-      smoothedBusyPercent?: number;
-    },
-  ) {
+  constructor(readonly posture: RuntimeObservedPosture<'critical'>) {
     super(
       `Engine start refused: resource posture=${posture.kind}, observed busyPercent=${posture.busyPercent}, smoothedBusyPercent=${posture.smoothedBusyPercent}, thresholdPercent=${posture.thresholdPercent}, cpuCount=${posture.cpuCount}`,
     );

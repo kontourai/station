@@ -117,8 +117,11 @@ function localService() {
     ),
   };
   const startSessionInternal = vi.fn(
-    async (command: Record<string, unknown>, context: unknown) =>
-      sessionCommands.execute(command, context),
+    async (
+      command: Record<string, unknown>,
+      context: unknown,
+      _internal?: unknown,
+    ) => sessionCommands.execute(command, context),
   );
   return {
     readSession: vi.fn(async (_sessionId?: string) => null),
