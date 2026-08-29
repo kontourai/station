@@ -79,6 +79,25 @@ function stepBlock(workflow: string, stepName: string): string {
 }
 
 describe('the nightly workflow records what it ships', () => {
+  it('normalizes ledger-only commits before Android and desktop compare their rolling tags', () => {
+    const androidDecision = stepBlock(
+      nightly,
+      'Decide whether there is anything to build',
+    );
+    const desktopStart = nightly.indexOf('\n  nightly-desktop:');
+    const desktopDecision = stepBlock(
+      nightly.slice(desktopStart),
+      'Decide whether there is a new desktop nightly to build',
+    );
+    for (const decision of [androidDecision, desktopDecision]) {
+      expect(decision).toContain(
+        'node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$last_sha"',
+      );
+      expect(decision).toContain('normalized_head_sha=$normalized_head_sha');
+      expect(decision).toContain('[ "$normalized_head_sha" = "$last_sha" ]');
+    }
+  });
+
   it('records the Android ship only after publication and the rolling tag', () => {
     const playUpload = nightly.indexOf(
       'name: Upload to Play internal testing track',

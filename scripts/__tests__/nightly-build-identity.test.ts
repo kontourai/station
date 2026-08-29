@@ -613,7 +613,10 @@ describe('the nightly workflow keeps its promises', () => {
       'NIGHTLY_REBUILD_INDEX: $' + '{{ inputs.rebuild_index }}',
     );
     expect(decide).toContain(
-      '[ "$head_sha" = "$last_sha" ] && [ -z "$NIGHTLY_REBUILD_INDEX" ]',
+      'node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$last_sha"',
+    );
+    expect(decide).toContain(
+      '[ "$normalized_head_sha" = "$last_sha" ] && [ -z "$NIGHTLY_REBUILD_INDEX" ]',
     );
   });
 
