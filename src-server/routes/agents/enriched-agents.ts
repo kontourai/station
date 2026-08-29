@@ -709,6 +709,7 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
       // but a listed slug whose spec load failed transiently keeps its
       // retries (that is precisely the mid-write case worth riding out).
       read.slugKnown &&
+      (options.slugFilter === undefined || read.agents.length === 0) &&
       attempt < CATALOG_READ_ATTEMPTS;
       attempt += 1
     ) {
@@ -731,7 +732,13 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
       }
       return { ...read, servedFromCache: false };
     }
-    const cached = cacheEntriesFor(options.slugFilter);
+    // The full catalog is a runtime picker surface: keeping its last stable
+    // availability during reconciliation preserves startability. A slug
+    // detail is also the Agent editor's authoring read, so serving its stale
+    // cached spec after a successful write would erase the just-persisted
+    // fields on reload. Return the current persisted detail with an explicit
+    // reconciling state instead.
+    const cached = options.slugFilter === undefined ? cacheEntriesFor() : null;
     if (cached && lastStableCatalog) {
       deps.logger.warn(
         'Agent catalog unstable after retries; serving the last stable catalog',
