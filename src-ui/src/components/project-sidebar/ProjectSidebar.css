@@ -9,9 +9,9 @@
   min-width: 240px;
   max-width: 240px;
   transition:
-    width 0.15s ease,
-    min-width 0.15s ease,
-    max-width 0.15s ease;
+    width var(--motion-fast) var(--ease-standard),
+    min-width var(--motion-fast) var(--ease-standard),
+    max-width var(--motion-fast) var(--ease-standard);
 }
 
 .sidebar--collapsed {
@@ -419,7 +419,7 @@
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  transition: transform 0.15s;
+  transition: transform var(--motion-fast);
   padding: 4px;
   cursor: pointer;
   border-radius: 3px;

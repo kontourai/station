@@ -46,8 +46,8 @@
   cursor: pointer;
   text-align: left;
   transition:
-    background 140ms ease,
-    transform 140ms ease;
+    background var(--motion-fast) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
 }
 
 .path-autocomplete__option:hover,
