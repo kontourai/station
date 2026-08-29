@@ -366,7 +366,7 @@ for (const viewport of [
 
     await renamedBackup.getByRole('button', { name: 'Apply manually' }).click();
     await expect(
-      page.getByText(/potentially billable provider turn/),
+      page.getByText(/potentially billable engine turn/),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Apply and verify' }).click();
     await expect(

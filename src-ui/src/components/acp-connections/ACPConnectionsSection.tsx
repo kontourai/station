@@ -100,14 +100,14 @@ export function ACPConnectionsSection({
   return (
     <>
       <div className="acp-connections-section__header">
-        <h2 className="acp-connections-section__title">Providers</h2>
+        <h2 className="acp-connections-section__title">Engines</h2>
         <button
           ref={addTriggerRef}
           type="button"
           className="button button--secondary"
           onClick={() => setShowAddModal(true)}
         >
-          Add provider
+          Add engine
         </button>
       </div>
 
@@ -147,7 +147,7 @@ export function ACPConnectionsSection({
       </div>
 
       {connectionQueryPending && (
-        <SkeletonList count={2} label="Loading providers" />
+        <SkeletonList count={2} label="Loading engines" />
       )}
       {/*
         Review H1: the failure was read, but only inside the Add-provider
@@ -159,7 +159,7 @@ export function ACPConnectionsSection({
       {!connectionQueryPending && connectionQueryIsError && (
         <ErrorState
           variant="compact"
-          title="Unable to load providers"
+          title="Unable to load engines"
           description={describeReadFailure(connectionQueryError)}
           action={
             <Button size="sm" onClick={() => void refetchConnections()}>
@@ -174,8 +174,8 @@ export function ACPConnectionsSection({
           /* empty-state action: Add provider is adjacent */
           <Empty
             variant="compact"
-            label="Add a provider to get started"
-            description="Choose a detected provider or connect a custom one."
+            label="Add an engine to get started"
+            description="Choose a detected engine or connect a custom one."
           />
         )}
 
