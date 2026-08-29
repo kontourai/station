@@ -212,23 +212,6 @@
   flex: 1;
 }
 
-.acp-connections-section__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin: 2rem 0 0.75rem;
-}
-
-.acp-connections-section__title {
-  margin: 0;
-  color: var(--accent-primary);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
 .acp-connections-section__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
@@ -402,16 +385,6 @@
 }
 
 @media (max-width: 640px) {
-  .acp-connections-section__header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .acp-connections-section__header > .button {
-    width: 100%;
-    min-height: 44px;
-  }
-
   .acp-add-dialog {
     width: 100%;
     max-height: var(--responsive-visual-viewport-height, 100vh);
