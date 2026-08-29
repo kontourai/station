@@ -154,9 +154,18 @@ jobs:
       # cannot be). nullglob + the empty check below exist because an empty
       # release-assets/ download would otherwise record a literal
       # 'release-asset:release-assets/*' artifact string.
+      # Ledger commits push directly to main, which the require-green ruleset
+      # blocks for GITHUB_TOKEN; the release app is a ruleset bypass actor.
+      - name: Mint the ledger push token
+        id: ledger_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - name: Record the stable release in the deploy ledger
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
         run: |
           set -euo pipefail
           version="${RELEASE_TAG#v}"

@@ -255,7 +255,9 @@ describe('the stable release ledger record', () => {
     expect(step).toContain('--sha "$RELEASE_SHA"');
     expect(step).not.toContain('github.sha');
     expect(step).not.toMatch(/git rev-parse/);
-    expect(step).toContain('github.token');
+    // Ledger pushes to main ride the release app's token: it is the
+    // require-green ruleset's bypass actor, which GITHUB_TOKEN cannot be.
+    expect(step).toContain('steps.ledger_token.outputs.token');
     // MED-4: the commit-back refuses before pushing anything when the
     // release SHA is not an ancestor of main — a tag cut off-main must
     // never have its commits pushed to main as a ledger side effect.
