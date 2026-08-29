@@ -1732,6 +1732,44 @@ describe('suiteStationE2EEnv', () => {
       STATION_E2E_SYSTEM_STATUS_READY: '1',
     });
   });
+
+  // #550: the muse real-turn journey needs muse's own `echo` provider, which
+  // Station only reaches when this variable names it.
+  test('gives the smoke-live server muse’s echo provider, and only that suite', () => {
+    expect(suiteStationE2EEnv('smoke-live')).toEqual({
+      STATION_E2E_SYSTEM_STATUS_READY: '1',
+      STATION_E2E_MUSE_PROVIDER: 'echo',
+    });
+
+    // station#4464: the key must be PRESENT-and-undefined in every other
+    // branch, not absent. Both consumers spread this object after
+    // `...process.env`, so an absent key lets a stray inherited
+    // STATION_E2E_MUSE_PROVIDER reach a suite that never asked for it, while
+    // an explicit `undefined` overrides it and is then dropped by `spawn`.
+    //
+    // Asserting presence is what makes this discriminate. Neither
+    // `not.toHaveProperty(...)` nor `toEqual` can: the first is SATISFIED by
+    // the omission it is meant to catch, and `toEqual` ignores
+    // undefined-valued properties, so both stay green on the leaking shape.
+    for (const suite of [
+      'product',
+      'extended',
+      'first-run',
+      'starter-clean-install',
+      'screenshot',
+      'android',
+    ]) {
+      const env = suiteStationE2EEnv(suite);
+      expect(
+        Object.keys(env),
+        `${suite} must set STATION_E2E_MUSE_PROVIDER explicitly, so a stray inherited value cannot survive into it`,
+      ).toContain('STATION_E2E_MUSE_PROVIDER');
+      expect(
+        env.STATION_E2E_MUSE_PROVIDER,
+        `${suite} must not carry the muse echo override`,
+      ).toBeUndefined();
+    }
+  });
 });
 
 describe('Starter clean-install suite routing', () => {

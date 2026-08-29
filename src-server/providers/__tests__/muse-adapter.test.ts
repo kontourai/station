@@ -16,16 +16,23 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
 import type { MuseAdapterOptions } from '../adapters/muse-adapter.js';
 import {
+  MUSE_PROVIDER_OVERRIDE_ENV,
+  MUSE_REFUSED_VALUE_MAX_CHARS,
   MUSE_STDOUT_BUFFER_MAX_CHARS,
   MuseAdapter,
   museCredentialPath,
+  resolveMuseProviderOverride,
 } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
-import { MUSE_MODEL_LAUNCH } from '../adapters/muse-adapter-types.js';
+import {
+  MUSE_MODEL_LAUNCH,
+  MUSE_PROVIDER_MODES,
+} from '../adapters/muse-adapter-types.js';
 import { expectCanonicalSessionLifecycle } from './adapter-contract-test-utils.js';
 import {
   MUSE_ECHO_OUTPUT_DELTA,
   MUSE_ECHO_RUN_STARTED,
+  MUSE_ECHO_RUN_TERMINAL,
   MUSE_ECHO_TASK_LIFECYCLE,
   MUSE_META_FULL_TEXT,
   MUSE_META_OUTPUT_DELTA_1,
@@ -1284,6 +1291,455 @@ describe('MuseAdapter', () => {
     await drain(harness.iterator, 3, 'stopAll');
     const done = await harness.iterator.next();
     expect(done.done).toBe(true);
+  });
+});
+
+/**
+ * #550 — the `STATION_E2E_MUSE_PROVIDER` knob, driven through the adapter's
+ * OWN env seam and its `processFactory`, so the real argv the adapter would
+ * spawn is what is asserted (not `buildMuseExecArgs` in isolation) and this
+ * suite stays spawn-free.
+ *
+ * Before this, Station never passed `--provider`, so every muse turn ran
+ * muse's default (`meta`) and cost a real key plus a network round trip —
+ * which is why no journey ever ran one. The whole point of the knob is that
+ * `echo` is reachable; the whole point of these tests is that nothing else is.
+ */
+describe('Muse startup-provider override', () => {
+  /**
+   * The two markers the CLI attests at spawn for a disposable E2E runtime,
+   * spelled exactly as `run-e2e-suite.mjs` mints them for smoke-live
+   * (`e2e-${suite}-${Date.now()}-${base36}`) and as
+   * `packages/cli/src/commands/lifecycle.ts` writes `STATION_HOME_SOURCE`.
+   * Without BOTH, the override is inert whatever it names.
+   */
+  const CONTAINED_MARKERS = {
+    STATION_HOME_SOURCE: '--temp-home',
+    STATION_INSTANCE_ID: 'e2e-smoke-live-1788039214298-qpssuh',
+  } as const;
+
+  /** A contained runtime naming `value` (or naming nothing). */
+  function contained(value?: string): NodeJS.ProcessEnv {
+    return {
+      ...CONTAINED_MARKERS,
+      ...(value === undefined ? {} : { [MUSE_PROVIDER_OVERRIDE_ENV]: value }),
+    };
+  }
+
+  /** Every turn's argv, from an adapter constructed with `env`. */
+  async function argvForEnv(env: NodeJS.ProcessEnv): Promise<string[]> {
+    const harness = createHarness({ env });
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-provider',
+      cwd: '/tmp/project',
+      modelId: 'muse-spark-1.2-contributor',
+    });
+    await harness.adapter.sendTurn({
+      threadId: 'thread-provider',
+      input: 'ping',
+    });
+    await writeLines(harness.processes[0], MUSE_META_RUN_TERMINAL);
+    harness.processes[0].exit(0);
+    await flushIo();
+    return harness.spawnArgs[0];
+  }
+
+  test('unset: the argv is byte-identical to the one Station has always built', async () => {
+    // The literal, not a subset — the claim is that the default path did not
+    // move, so a `--provider` appearing anywhere fails here.
+    expect(await argvForEnv({})).toEqual([
+      'exec',
+      '--json',
+      '--session-id',
+      'muse-session-fixed',
+      '--model',
+      'muse-spark-1.2-contributor',
+      '--workspace',
+      '/tmp/project',
+      '--',
+      'ping',
+    ]);
+  });
+
+  test('echo: the spawned argv carries --provider echo, and drops the model muse would refuse it with', async () => {
+    const args = await argvForEnv(contained('echo'));
+    expect(args).toEqual([
+      'exec',
+      '--json',
+      '--session-id',
+      'muse-session-fixed',
+      '--provider',
+      'echo',
+      '--workspace',
+      '/tmp/project',
+      '--',
+      'ping',
+    ]);
+    // Adjacency, not mere presence: `--provider` and its value must be one
+    // pair, or the flag would consume whatever argument follows it instead.
+    expect(args[args.indexOf('--provider') + 1]).toBe('echo');
+  });
+
+  test('meta: named explicitly, and the model selection still rides along', async () => {
+    const args = await argvForEnv(contained('meta'));
+    expect(args).toEqual([
+      'exec',
+      '--json',
+      '--session-id',
+      'muse-session-fixed',
+      '--provider',
+      'meta',
+      '--model',
+      'muse-spark-1.2-contributor',
+      '--workspace',
+      '/tmp/project',
+      '--',
+      'ping',
+    ]);
+  });
+
+  /**
+   * The value is spliced straight into the engine's option surface, so the
+   * constraint is what stands between a misconfigured environment and an argv
+   * injection into muse's own flags — `-w /etc` and `--workspace=/etc` are
+   * state-mutating, and `--yolo` disables approval and the sandbox outright.
+   */
+  test.each([
+    ['--workspace=/etc'],
+    ['-w /etc'],
+    ['--yolo'],
+    ['echo --yolo'],
+    ['Echo'],
+    ['ECHO'],
+    ['eco'],
+    ['echo; rm -rf /'],
+    ['  '],
+    [''],
+  ])('refuses %j: it never reaches argv', async (value) => {
+    const args = await argvForEnv(contained(value));
+    expect(args).not.toContain('--provider');
+    expect(args).not.toContain(value);
+    // Refused to the PRE-EXISTING default, not to some other provider: the
+    // whole invocation is the unset one.
+    expect(args).toEqual([
+      'exec',
+      '--json',
+      '--session-id',
+      'muse-session-fixed',
+      '--model',
+      'muse-spark-1.2-contributor',
+      '--workspace',
+      '/tmp/project',
+      '--',
+      'ping',
+    ]);
+  });
+
+  /**
+   * Runs `count` turns and returns everything the adapter said while doing it.
+   *
+   * Turns, not construction: `station-runtime.ts` builds this adapter in a
+   * field initializer whose logger closure reads a `this.logger` that is still
+   * `undefined` at that moment, so a notice emitted from the constructor
+   * reaches nothing in production. These tests therefore assert what a real
+   * TURN emits — the only place the report can actually land.
+   */
+  async function noticesOverTurns(
+    env: NodeJS.ProcessEnv,
+    count = 1,
+    // The terminal a turn in THIS mode really ends with, so the fixture says
+    // what the test means: a run under `echo` settles on muse's echo
+    // terminal, not on a meta one.
+    terminal: string = MUSE_META_RUN_TERMINAL,
+  ): Promise<Harness['logger']> {
+    const harness = createHarness({ env });
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-notice',
+    });
+    for (let index = 0; index < count; index += 1) {
+      await harness.adapter.sendTurn({
+        threadId: 'thread-notice',
+        input: `turn ${index}`,
+      });
+      await writeLines(harness.processes[index], terminal);
+      harness.processes[index].exit(0);
+      await flushIo();
+    }
+    return harness.logger;
+  }
+
+  test('nothing is reported at construction, because nothing there would be heard', () => {
+    const logger = { warn: vi.fn(), info: vi.fn() };
+    new MuseAdapter({ logger, env: contained('--yolo') });
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+
+  test('a refused value is reported on the first turn, naming the vocabulary', async () => {
+    const logger = await noticesOverTurns(contained('--yolo'));
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn.mock.calls[0][0]).toContain(MUSE_PROVIDER_OVERRIDE_ENV);
+    expect(logger.warn.mock.calls[0][0]).toContain('echo, meta');
+    expect(logger.warn.mock.calls[0][1]).toEqual({
+      reason: 'not-a-provider-mode',
+      value: '--yolo',
+    });
+  });
+
+  test('the report is once per process, not once per turn', async () => {
+    const logger = await noticesOverTurns(contained('--yolo'), 3);
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  test('echo says so rather than letting a prompt echo pass for a model answer', async () => {
+    const logger = await noticesOverTurns(
+      contained('echo'),
+      2,
+      MUSE_ECHO_RUN_TERMINAL,
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledTimes(1);
+    expect(logger.info.mock.calls[0][0]).toContain(MUSE_PROVIDER_OVERRIDE_ENV);
+    expect(logger.info.mock.calls[0][0]).toContain('echo');
+  });
+
+  test('the untouched default paths say nothing at all', async () => {
+    for (const env of [{}, contained(), contained('meta')]) {
+      const logger = await noticesOverTurns(env);
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.info).not.toHaveBeenCalled();
+    }
+  });
+
+  test('the refused value is scrubbed and bounded before it is logged', async () => {
+    const logger = await noticesOverTurns(
+      contained(`Bearer sk-not-a-provider ${'x'.repeat(400)}`),
+    );
+    const context = logger.warn.mock.calls[0][1] as { value: string };
+    expect(context.value).not.toContain('sk-not-a-provider');
+    expect(context.value.length).toBeLessThanOrEqual(
+      MUSE_REFUSED_VALUE_MAX_CHARS,
+    );
+  });
+
+  describe('resolveMuseProviderOverride', () => {
+    test('accepts exactly muse’s own vocabulary and nothing else', () => {
+      expect(MUSE_PROVIDER_MODES).toEqual(['echo', 'meta']);
+      for (const mode of MUSE_PROVIDER_MODES) {
+        expect(resolveMuseProviderOverride(contained(mode))).toBe(mode);
+      }
+      expect(resolveMuseProviderOverride({})).toBeUndefined();
+    });
+
+    test('trims surrounding whitespace rather than refusing a padded value', () => {
+      expect(resolveMuseProviderOverride(contained(' echo\n'))).toBe('echo');
+    });
+
+    test('reports the refusal with the raw value it refused', () => {
+      const onRefused = vi.fn();
+      expect(
+        resolveMuseProviderOverride(contained('openai'), onRefused),
+      ).toBeUndefined();
+      expect(onRefused).toHaveBeenCalledWith({
+        reason: 'not-a-provider-mode',
+        value: 'openai',
+      });
+    });
+
+    test('an absent variable is not a refusal', () => {
+      const onRefused = vi.fn();
+      expect(resolveMuseProviderOverride({}, onRefused)).toBeUndefined();
+      expect(onRefused).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * Containment. `src-server/index.ts` imports `dotenv/config`, so a `.env`
+   * file in the server's cwd can put this variable into `process.env` on a
+   * PERSISTENT home. The name must therefore not be sufficient — only the
+   * conjunction with markers the CLI attests at spawn is.
+   */
+  describe('containment: the variable alone does nothing', () => {
+    const UNCONTAINED: Array<[string, NodeJS.ProcessEnv]> = [
+      ['no markers at all', {}],
+      [
+        'a persistent home under a runner-shaped instance id',
+        { STATION_INSTANCE_ID: CONTAINED_MARKERS.STATION_INSTANCE_ID },
+      ],
+      [
+        'a temp home with no instance id',
+        { STATION_HOME_SOURCE: CONTAINED_MARKERS.STATION_HOME_SOURCE },
+      ],
+      [
+        'a temp home under a NON-runner instance id',
+        {
+          STATION_HOME_SOURCE: '--temp-home',
+          STATION_INSTANCE_ID: 'dogfood-desktop',
+        },
+      ],
+      [
+        'a runner-shaped instance id but a --home, not a temp home',
+        {
+          STATION_HOME_SOURCE: '--home',
+          STATION_INSTANCE_ID: CONTAINED_MARKERS.STATION_INSTANCE_ID,
+        },
+      ],
+      [
+        'another suite’s instance namespace',
+        {
+          STATION_HOME_SOURCE: '--temp-home',
+          STATION_INSTANCE_ID: 'e2e-product-1788039214298-qpssuh',
+        },
+      ],
+    ];
+
+    test.each(UNCONTAINED)(
+      'a perfectly spelled `echo` is inert with %s',
+      async (_label, markers) => {
+        const args = await argvForEnv({
+          ...markers,
+          [MUSE_PROVIDER_OVERRIDE_ENV]: 'echo',
+        });
+        // Byte-identical to the unset invocation, model and all.
+        expect(args).toEqual([
+          'exec',
+          '--json',
+          '--session-id',
+          'muse-session-fixed',
+          '--model',
+          'muse-spark-1.2-contributor',
+          '--workspace',
+          '/tmp/project',
+          '--',
+          'ping',
+        ]);
+        expect(args).not.toContain('--provider');
+      },
+    );
+
+    test('the full conjunction is what lets it through', async () => {
+      expect(await argvForEnv(contained('echo'))).toContain('--provider');
+    });
+
+    test('an inert override says which state refused it, not that the value was wrong', async () => {
+      const logger = await noticesOverTurns({
+        ...CONTAINED_MARKERS,
+        STATION_HOME_SOURCE: 'default',
+        [MUSE_PROVIDER_OVERRIDE_ENV]: 'echo',
+      });
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      const [message, context] = logger.warn.mock.calls[0] as [
+        string,
+        { reason: string; value: string },
+      ];
+      expect(context.reason).toBe('uncontained-environment');
+      expect(context.value).toBe('echo');
+      // The two refusals must not read alike: this one is about the RUNTIME,
+      // and pointing an operator at muse's vocabulary would misdiagnose it.
+      expect(message).toContain('disposable end-to-end runtime');
+      expect(message).not.toContain(MUSE_PROVIDER_MODES.join(', '));
+    });
+
+    test('a bad value on a CONTAINED runtime still names the vocabulary', async () => {
+      const logger = await noticesOverTurns(contained('--yolo'));
+      const [message, context] = logger.warn.mock.calls[0] as [
+        string,
+        { reason: string },
+      ];
+      expect(context.reason).toBe('not-a-provider-mode');
+      expect(message).toContain(MUSE_PROVIDER_MODES.join(', '));
+      expect(message).not.toContain('disposable end-to-end runtime');
+    });
+
+    test('containment is checked before the vocabulary, so an uncontained typo names the runtime', () => {
+      const onRefused = vi.fn();
+      expect(
+        resolveMuseProviderOverride(
+          { [MUSE_PROVIDER_OVERRIDE_ENV]: '--yolo' },
+          onRefused,
+        ),
+      ).toBeUndefined();
+      expect(onRefused).toHaveBeenCalledWith({
+        reason: 'uncontained-environment',
+        value: '--yolo',
+      });
+    });
+
+    test('an uncontained runtime with the variable UNSET is still silent', async () => {
+      const logger = await noticesOverTurns({ STATION_HOME_SOURCE: 'default' });
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.info).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * MEDIUM-1: under `echo` no `--model` is ever passed, so a session that
+   * reports a model would be asserting something nothing applied.
+   */
+  describe('the session reports the model that actually ran', () => {
+    async function sessionAfterTurn(
+      env: NodeJS.ProcessEnv,
+    ): Promise<{ started: any; afterTurn: any; listed: any }> {
+      const harness = createHarness({ env });
+      const started = await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'thread-model-claim',
+        cwd: '/tmp/project',
+        modelId: 'muse-spark-1.2-contributor',
+      });
+      await harness.adapter.sendTurn({
+        threadId: 'thread-model-claim',
+        input: 'ping',
+      });
+      await writeLines(harness.processes[0], MUSE_ECHO_RUN_TERMINAL);
+      harness.processes[0].exit(0);
+      await flushIo();
+      const listed = (await harness.adapter.listSessions())[0];
+      return { started, afterTurn: listed, listed };
+    }
+
+    test('echo: no model is claimed, because none was applied', async () => {
+      const { started, afterTurn } = await sessionAfterTurn(contained('echo'));
+      expect(started.model).toBeUndefined();
+      expect(afterTurn.model).toBeUndefined();
+    });
+
+    test('unset: the selection is reported exactly as before', async () => {
+      const { started, afterTurn } = await sessionAfterTurn({});
+      expect(started.model).toBe('muse-spark-1.2-contributor');
+      expect(afterTurn.model).toBe('muse-spark-1.2-contributor');
+    });
+
+    test('meta: naming the provider explicitly changes nothing about the claim', async () => {
+      const { afterTurn } = await sessionAfterTurn(contained('meta'));
+      expect(afterTurn.model).toBe('muse-spark-1.2-contributor');
+    });
+
+    test('echo: an INERT override still reports the model, because the model really did apply', async () => {
+      const { afterTurn } = await sessionAfterTurn({
+        [MUSE_PROVIDER_OVERRIDE_ENV]: 'echo',
+      });
+      expect(afterTurn.model).toBe('muse-spark-1.2-contributor');
+    });
+
+    test('echo: a per-turn model request is remembered but never claimed as applied', async () => {
+      const harness = createHarness({ env: contained('echo') });
+      await harness.adapter.startSession({
+        provider: 'muse',
+        threadId: 'thread-model-turn',
+      });
+      await harness.adapter.sendTurn({
+        threadId: 'thread-model-turn',
+        input: 'ping',
+        modelId: 'muse-spark-1.2-contributor',
+      });
+      // The request never reached argv…
+      expect(harness.spawnArgs[0]).not.toContain('--model');
+      // …so the session does not report it as the model that ran.
+      expect((await harness.adapter.listSessions())[0].model).toBeUndefined();
+    });
   });
 });
 
