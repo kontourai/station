@@ -761,6 +761,7 @@ describe('the nightly workflow keeps its promises', () => {
         start,
         nextStep === -1 ? workflow.length : nextStep,
       );
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: asserts the workflow's literal placeholder, not a template.
       expect(step).toContain('/git/' + '${TAG_REF}');
       expect(step).toContain('Reference does not exist');
       expect(step).toContain('ref update response mismatch');

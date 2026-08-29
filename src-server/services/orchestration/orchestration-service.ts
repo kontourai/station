@@ -480,6 +480,17 @@ interface OrchestrationServiceOptions {
   /** Adoption's deliberately composed behavioral Interface. */
   adoptionLedger?: AdoptionLedger;
   turnDeduplicator?: TurnDeduplicator;
+  /**
+   * #764: observed per-connection resume support consulted at continuation
+   * resolution, BEFORE a reserved child starts. Return `false` only for an
+   * OBSERVED capability absence (an ACP initialize handshake without
+   * `loadSession`); `undefined` keeps the resumeCursor path and leaves the
+   * adapter's own fail-closed ruling authoritative.
+   */
+  resumeCursorSupport?: (requested: {
+    provider: ProviderKind;
+    connectionId?: string;
+  }) => boolean | undefined;
   /** Real connection Adapter composed by StationRuntime; never a recovery protocol. */
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   /** Hosted deployments fail closed for direct/internal starts without a server binding. */
@@ -1447,6 +1458,9 @@ export class OrchestrationService {
     this.conversationLineage = new ConversationLineage({
       ...(options.eventStore ? { eventStore: options.eventStore } : {}),
       logger: options.logger,
+      ...(options.resumeCursorSupport
+        ? { resumeCursorSupport: options.resumeCursorSupport }
+        : {}),
       ...(this.turnDeduplicator
         ? { turnDeduplicator: this.turnDeduplicator }
         : {}),

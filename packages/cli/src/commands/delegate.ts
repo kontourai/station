@@ -243,8 +243,14 @@ function formatCreateSummary(handle: DelegatedTaskHandle): string {
   // window close. The command is what is true and useful; when it stops
   // working, `station delegate status` now says so.
   lines.push(`Status: ${handle.status}`);
+  // #764: dispatch output cannot know the follow-up window is still open —
+  // it is closed while the task is running or waiting on a supervisor
+  // (running / needs_input / review_pending / blocked) and only reopens once
+  // the task has ended (a stopped child is replaced by continuation) or is
+  // still queued. Say so instead of implying the command always works;
+  // `station delegate status` is the surface that knows.
   lines.push(
-    `Continue this conversation: ${delegateContinuationCommand(conversationId)}`,
+    `Continue this conversation (while it still accepts follow-up turns — 'station delegate status ${handle.taskId}' says when it stops): ${delegateContinuationCommand(conversationId)}`,
   );
   return lines.join('\n');
 }
