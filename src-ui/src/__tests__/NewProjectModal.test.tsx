@@ -1008,8 +1008,11 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
    * no message appeared anywhere in the modal.
    */
   test('reports a nonexistent working directory against the field and issues no POST', async () => {
+    // The SDK stamps the browse route's HTTP status on a refused check; a
+    // 404 is the server's VERDICT about the path, which is what earns the
+    // disabled Create below (#765: only a verdict may disable it).
     validateDirectoryMock.mockResolvedValue({
-      error: new Error('Folder not found'),
+      error: Object.assign(new Error('Folder not found'), { status: 404 }),
     });
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
     fireEvent.change(screen.getByLabelText('Working Directory'), {
@@ -1034,7 +1037,7 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
 
   test('re-enables Create once the refused directory is edited', async () => {
     validateDirectoryMock.mockResolvedValue({
-      error: new Error('Folder not found'),
+      error: Object.assign(new Error('Folder not found'), { status: 404 }),
     });
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
     fireEvent.change(screen.getByLabelText('Working Directory'), {
@@ -1073,6 +1076,78 @@ describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
       'Station could not check this folder. Try again.',
     );
     expect(createProjectMock).not.toHaveBeenCalled();
+    // "Try again." must be actionable: no verdict was established about the
+    // path, so Create stays enabled for the retry (#765 F7-class).
+    expect(
+      (screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
+  /**
+   * #765 residue (F7-class, observed in two independent audit passes): on a
+   * loaded host the directory pre-check can fail WITHOUT a verdict (dead
+   * backend, 5xx, network refusal). That refusal used to disable Create with
+   * copy reading "Try again." — pointer clicks silently dead against a
+   * message whose remedy the disabled button made impossible, while a later
+   * attempt (check recovered) worked. A verdict-less failure must leave
+   * Create enabled and a re-click must genuinely retry.
+   */
+  test('keeps Create clickable through a verdict-less directory-check failure, and the retry creates', async () => {
+    validateDirectoryMock.mockResolvedValueOnce({
+      error: new TypeError('Failed to fetch'),
+    });
+    validateDirectoryMock.mockResolvedValue({
+      error: null,
+      data: { entries: [] },
+    });
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    fireEvent.change(screen.getByLabelText('Working Directory'), {
+      target: { value: '/tmp/audit-loaded-host' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('My Project'), {
+      target: { value: 'Audit Alpha' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe('Failed to fetch');
+    expect(createProjectMock).not.toHaveBeenCalled();
+    // No verdict about the path: the input must not claim invalidity and the
+    // retry control must stay live.
+    expect(
+      screen.getByLabelText('Working Directory').getAttribute('aria-invalid'),
+    ).toBeNull();
+    const create = screen.getByRole('button', {
+      name: 'Create',
+    }) as HTMLButtonElement;
+    expect(create.disabled).toBe(false);
+
+    fireEvent.click(create);
+    await waitFor(() => expect(createProjectMock).toHaveBeenCalled());
+  });
+
+  test('a 5xx from the browse route is not a verdict about the path and keeps Create enabled', async () => {
+    validateDirectoryMock.mockResolvedValue({
+      error: Object.assign(new Error('Folder could not be read.'), {
+        status: 503,
+      }),
+    });
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    fireEvent.change(screen.getByLabelText('Working Directory'), {
+      target: { value: '/tmp/audit-busy' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('My Project'), {
+      target: { value: 'Audit Alpha' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await screen.findByRole('alert');
+    expect(createProjectMock).not.toHaveBeenCalled();
+    expect(
+      (screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
   });
 
   /**

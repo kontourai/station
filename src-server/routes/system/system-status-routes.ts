@@ -453,6 +453,45 @@ export async function resolveExternalEngineReadiness(
 }
 
 /**
+ * The stronger evidence wins (#765 B2). `reason: 'cannot_verify'` is not an
+ * observation — it is the shape produced when the probe ABORTED at this
+ * route's 2 s discovery budget (`STATUS_PREREQUISITES_REFRESH_BUDGET_MS`),
+ * threw, or returned an errored prerequisite whose own contract is "cannot
+ * safely establish auth state". Letting that zero-information result
+ * overwrite a previously VERIFIED `ready: true` projection is what produced
+ * the audit's contradiction: the Engines list (whose inspector probe runs
+ * with no such budget) said READY while this route's flap re-armed the
+ * first-run "Station cannot verify…" launcher minutes into a session, on a
+ * host that was busy precisely because the engine was working.
+ *
+ * So: a `cannot_verify` refresh result keeps the last verified `ready`
+ * projection for that engine. Every genuine observation — `ready`,
+ * `sign_in_required`, `missing_prerequisites`, `disabled` — still replaces
+ * it immediately, so a real regression (CLI uninstalled, signed out,
+ * connection disabled) surfaces on the first probe that actually completes.
+ * The disclosed residual: an engine whose probe never completes again keeps
+ * its last verified `ready` for this process's lifetime — indistinguishable
+ * here from the load-induced timeout this exists to absorb, and strictly
+ * less wrong than downgrading a verified observation on no evidence.
+ */
+export function reconcileExternalEngineReadiness(
+  previous: ExternalEngineReadiness | undefined,
+  next: ExternalEngineReadiness,
+): ExternalEngineReadiness {
+  if (!previous) return next;
+  const previousByEngineId = new Map(
+    previous.engines.map((engine) => [engine.engineId, engine]),
+  );
+  const engines = next.engines.map((engine) => {
+    if (engine.reason !== 'cannot_verify') return engine;
+    const prior = previousByEngineId.get(engine.engineId);
+    return prior?.ready ? prior : engine;
+  });
+  const ready = engines.find((candidate) => candidate.ready);
+  return { ready: !!ready, source: ready?.source ?? null, engines };
+}
+
+/**
  * The model connection a managed-chat claim is ABOUT: the one the engine
  * would actually select when the resolver can name it, and otherwise the
  * first that carries no refusal. Delta review H2 — naming a healthy sibling
@@ -728,7 +767,14 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         ollamaReachable,
         codexInstalled,
         claudeInstalled,
-        externalEngineReadiness,
+        // See `reconcileExternalEngineReadiness`: an aborted/errored probe
+        // (`cannot_verify`) must not overwrite an engine this cache has
+        // already verified ready — that flap is what re-armed the first-run
+        // launcher against a working engine (#765 B2).
+        externalEngineReadiness: reconcileExternalEngineReadiness(
+          snapshot?.externalEngineReadiness,
+          externalEngineReadiness,
+        ),
         prerequisites,
         developerServices,
       };
