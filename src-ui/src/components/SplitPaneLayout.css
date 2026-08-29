@@ -179,7 +179,7 @@
 
 .split-pane__label-link {
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: opacity var(--motion-fast);
 }
 
 .split-pane__label-link:hover {
@@ -254,6 +254,75 @@
   padding: 0.3rem 0;
 }
 
+/* station#753 item 2: shared list-entrance choreography, opted into by
+   `SplitPaneLayout`'s `listClassName` prop (currently three surfaces: the
+   Connections Models and Engines lists, and the Agents list — not every
+   split-pane route). Targets direct children generically (rows, section
+   headers, group headers/members all render at this level; a `React.Fragment`
+   key adds no DOM node of its own) so it works regardless of which of those
+   the list happens to render. Capped at the first 6: item 7+ get zero delay
+   so a long, freshly loaded list never holds late rows behind a queue of
+   earlier ones. */
+.entrance-stagger > * {
+  animation: entrance-stagger-item var(--motion-base) var(--ease-out) both;
+}
+
+.entrance-stagger > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.entrance-stagger > *:nth-child(2) {
+  animation-delay: 20ms;
+}
+
+.entrance-stagger > *:nth-child(3) {
+  animation-delay: 40ms;
+}
+
+.entrance-stagger > *:nth-child(4) {
+  animation-delay: 60ms;
+}
+
+.entrance-stagger > *:nth-child(5) {
+  animation-delay: 80ms;
+}
+
+.entrance-stagger > *:nth-child(6) {
+  animation-delay: 100ms;
+}
+
+.entrance-stagger > *:nth-child(n + 7) {
+  animation-delay: 0ms;
+}
+
+@keyframes entrance-stagger-item {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The global `animation-duration: 0.01ms !important` in tokens.css already
+   collapses the fade/translate itself; it does NOT touch `animation-delay`,
+   so an un-zeroed stagger would still queue rows 20ms apart under reduced
+   motion — motion.md's explicit "anything with delays must also zero its
+   delays" requirement. */
+@media (prefers-reduced-motion: reduce) {
+  .entrance-stagger > * {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .entrance-stagger > *:nth-child(n + 1) {
+    animation-delay: 0ms;
+  }
+}
+
 .split-pane__item {
   display: flex;
   align-items: center;
@@ -267,9 +336,9 @@
   border: 1px solid transparent;
   border-radius: 6px;
   transition:
-    background 0.15s,
-    border-color 0.15s,
-    color 0.15s;
+    background var(--motion-fast),
+    border-color var(--motion-fast),
+    color var(--motion-fast);
   background: transparent;
   font: inherit;
   text-align: left;
@@ -453,9 +522,9 @@
   font-family: inherit;
   cursor: pointer;
   transition:
-    border-color 0.15s,
-    color 0.15s,
-    background 0.15s;
+    border-color var(--motion-fast),
+    color var(--motion-fast),
+    background var(--motion-fast);
 }
 
 .split-pane__add-btn:hover {
@@ -569,7 +638,7 @@
     background: var(--bg-primary);
     box-shadow: 0 -12px 28px
       color-mix(in srgb, var(--bg-primary) 70%, transparent);
-    animation: split-pane-sheet-in 0.16s ease-out;
+    animation: split-pane-sheet-in var(--motion-fast) var(--ease-out);
     scroll-padding-top: var(--split-pane-mobile-back-height);
   }
 
