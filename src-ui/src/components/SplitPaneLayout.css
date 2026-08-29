@@ -260,15 +260,16 @@
    split-pane route). Targets direct children generically (rows, section
    headers, group headers/members all render at this level; a `React.Fragment`
    key adds no DOM node of its own) so it works regardless of which of those
-   the list happens to render. Capped at the first 6: item 7+ get zero delay
-   so a long, freshly loaded list never holds late rows behind a queue of
-   earlier ones. */
+   the list happens to render. Capped at the first 6: item 7+ all START
+   TOGETHER at row 6's delay (100ms), not at 0ms — a long, freshly loaded
+   list must never hold late rows behind a queue of earlier ones, but zeroing
+   their delay instead made them finish BEFORE rows 4-6, opening a visible
+   ~150ms hole in the middle of the list where later rows were already
+   settled and earlier ones were still fading in. Starting together with row
+   6 keeps every row in the initial viewport arriving in one continuous
+   sweep. */
 .entrance-stagger > * {
-  animation: entrance-stagger-item var(--motion-base) var(--ease-out) both;
-}
-
-.entrance-stagger > *:nth-child(1) {
-  animation-delay: 0ms;
+  animation: entrance-stagger-item var(--motion-base) var(--ease-out) backwards;
 }
 
 .entrance-stagger > *:nth-child(2) {
@@ -287,12 +288,9 @@
   animation-delay: 80ms;
 }
 
-.entrance-stagger > *:nth-child(6) {
-  animation-delay: 100ms;
-}
-
+.entrance-stagger > *:nth-child(6),
 .entrance-stagger > *:nth-child(n + 7) {
-  animation-delay: 0ms;
+  animation-delay: 100ms;
 }
 
 @keyframes entrance-stagger-item {

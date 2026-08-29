@@ -59,45 +59,15 @@
   }
 }
 
-/* station#753 item 4: skeleton -> content. `RoutePendingSkeleton` itself has
-   no motion (it is torn down, not faded, when React swaps the Suspense
-   fallback for real children) — this fades the arriving content in instead,
-   at the route-outlet seam every route already passes through (nested inside
-   `.route-transition`, keyed the SAME as it — see the comment at its call
-   site in AppViewContent.tsx for why a finer `routeKey` was tried first and
-   reverted). Feedback/state-adjacent, not a directional entrance: opacity
-   only, `--motion-fast`, so the content itself resolves before the outer
-   `.route-transition` glide (`--motion-base`) finishes settling. */
-.route-outlet-content {
-  /* A transparent flex passthrough — the same three declarations
-     `.route-transition` gives itself, above, plus an UNCONDITIONAL
-     `min-height: 0`. `.route-transition` only gets `min-height: 0` from its
-     OWN parent for fill frames (the `.page-frame--fill` rule above); this
-     wrapper reads that constraint at second hand through its parent's actual
-     rendered height rather than from a selector of its own, so one
-     declaration correctly participates in both the fill case (shrinks so a
-     descendant scroller can take over — the epic #4142 M3 fix this file's
-     header comment records) and the non-fill case (no upstream squeeze, so
-     it still settles to its natural content height). */
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  animation: route-outlet-content-fade var(--motion-fast) var(--ease-standard);
-}
-
-@keyframes route-outlet-content-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .route-outlet-content {
-    animation: none;
-    opacity: 1;
-  }
-}
+/* station#753 item 4 (skeleton -> content fade) was tried here as a second,
+   nested `.route-outlet-content` wrapper, opacity-only at `--motion-fast`,
+   on the theory that it would resolve BEFORE `.route-transition`'s own
+   opacity+transform glide finished settling. Review proved the opposite:
+   nested opacity animations COMPOSE MULTIPLICATIVELY (the rendered opacity
+   is the PRODUCT of both curves), so the content was measurably LATER, not
+   earlier — 0.031 vs 0.359 at 25ms into the entrance. Separately, the
+   Suspense boundary this fade was meant to react to sits OUTSIDE
+   `.route-transition` (see AppViewContent.tsx), so a skeleton->content
+   reveal and a route/surface entrance remount TOGETHER for every route this
+   seam covers — `route-enter` above already IS the item-4 fade; there was
+   no case where the extra wrapper did anything but compound. Removed. */

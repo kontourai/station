@@ -219,35 +219,22 @@ export function AppViewContent(props: AppViewContentProps) {
         {/* The entrance lives here, at the one seam every route passes through,
             instead of on `.page` — which eight split-pane routes never render.
             `key` remounts it on an actual surface transition; Connections
-            list/edit routes intentionally share a section surface. */}
+            list/edit routes intentionally share a section surface.
+
+            station#753 item 4 (skeleton -> content fade) was tried here as a
+            second, nested `.route-outlet-content` wrapper keyed the same as
+            this div — review found it was a no-op key (identical to the
+            parent's) wrapping an animation that COMPOUNDS with `route-enter`
+            below rather than resolving ahead of it: opacity is the PRODUCT of
+            both curves, so content is measurably LATER at 25ms (0.031 vs
+            0.359), the opposite of what both this comment and the CSS
+            comment claimed. The Suspense boundary above is OUTSIDE
+            `.route-transition`, so a skeleton->content reveal and a route
+            entrance remount TOGETHER here — `route-enter` already IS the
+            item-4 fade for every route this seam covers. Removed; do not
+            re-add without re-deriving the actual composed opacity curve. */}
         <div className="route-transition" key={surfaceKey}>
-          {/* station#753 item 4: the skeleton -> content fade. Keyed on
-              `surfaceKey`, the SAME key as `.route-transition` above — a
-              first attempt keyed this on the finer-grained `routeKey`
-              instead, reasoning that a list -> detail selection within one
-              surface (e.g. Connections) never replays `.route-transition`'s
-              own entrance. That broke a real contract: `key` forces a fresh
-              React mount, and "keeps a section wrapper mounted across its
-              exact list/edit routes" (AppViewContent.test.tsx) failed —
-              `ProviderSettingsView` remounted on every row click instead of
-              keeping its provider component and form state alive. Keying on
-              `surfaceKey` costs nothing beyond what `.route-transition`'s own
-              key already causes (RouteViewBoundary's Suspense only actually
-              falls back once per surface — every route in this app lazy-loads
-              per SURFACE, not per record — so there is no live case today
-              where routeKey changes without surfaceKey also changing). The
-              nesting still earns its keep: this inner fade reaches full
-              opacity at `--motion-fast` while the outer translateY glide is
-              still settling at `--motion-base`, so content doesn't stay
-              visually washed out for the whole outer entrance. Nested INSIDE
-              `.route-transition` rather than a sibling wrapper around it:
-              `.route-transition` must stay the direct child of
-              `.page-frame__body` (see `.page-frame--fill > .page-frame__body
-              > .route-transition` in route-transition.css) so an extra seam
-              here cannot break that selector. */}
-          <div className="route-outlet-content" key={surfaceKey}>
-            <AppViewContentBody {...props} />
-          </div>
+          <AppViewContentBody {...props} />
         </div>
       </RouteViewBoundary>
     </PageFrame>

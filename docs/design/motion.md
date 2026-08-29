@@ -27,18 +27,39 @@ instant, disables repeated animation, and preserves the final visible status.
 A component exception must explain why motion is essential and include a local
 test.
 
+That global rule zeroes `animation-duration` and `transition-duration`; it
+does NOT zero `animation-delay`. Anything animating with a delay (a staggered
+list entrance, for example) must also zero its own delays under reduced
+motion explicitly, or a still-mounted element sits invisible for its
+un-zeroed delay before its (now-instant) animation ever starts.
+
 ## Migration and ratchet
 
 The app shell, page navigation, Schedule surfaces, transient notifications,
 chat, and (station#753) every remaining legacy surface now consume the shared
 grammar. A migrated file has no ceiling, so a new literal duration or easing
 fails the ratchet immediately. `scripts/motion-contract-baseline.json` carries
-exactly one exception: `NotificationHistory.css`'s dismiss-collapse animation
-duration is `4s` because it visually encodes `UNDO_WINDOW_MS` (the undo
-window's actual dwell time, from `NotificationHistory.tsx`) rather than a
-motion-grammar duration — a token would decouple the animation from the timer
-it represents. Lower both the global count and the affected per-file ceiling
-whenever a future addition needs a temporary exception.
+exactly two exceptions, both coupled timing constants a token would decouple
+from what they represent rather than express:
+
+- `NotificationHistory.css`'s dismiss-collapse animation duration is `4s`
+  because it visually encodes `UNDO_WINDOW_MS` (the undo window's actual
+  dwell time, from `NotificationHistory.tsx`) rather than a motion-grammar
+  duration.
+- `VoicePill.css`'s two audio-reactive transitions (`.voice-pill--listening`,
+  `.voice-pill__ring`) are `0.08s` because `--audio-scale`/`--audio-glow` are
+  republished on every microphone frame (`NovaVoiceSessionAdapter.ts`
+  `handleMicrophoneFrame`) — Direct manipulation, not Feedback/state: the
+  duration is a signal-smoothing time constant tied to how fast the signal
+  itself updates, not a motion category. `--motion-fast` was tried and
+  reverted: at 150ms the transition restarts before completing on every new
+  frame and never resolves.
+
+Each carries a local test pinning its literal
+(`NotificationHistory.motion-exception.test.ts`,
+`VoicePill.motion-exception.test.ts`) per the exception rule above. Lower
+both the global count and the affected per-file ceiling whenever a future
+addition needs a temporary exception.
 
 ## Route entrance
 
