@@ -124,23 +124,9 @@ const JOURNEY_FILTER = (process.env.CORE_LOOP_JOURNEYS ?? '')
  * here that PASSES fails the run: the entry is stale and must be removed.
  */
 const EXPECTED_JOURNEY_FAILURES = new Map([
-  [
-    '1-multi-turn-continuity',
-    {
-      // kontourai/station#834: after the #749/#814 conversation-open model
-      // landed, a conversation whose current child was STOPPED is
-      // permanently non-continuable — the continuation eligibility gate
-      // reads a stopped, unloaded session as unanswerable, making the
-      // stopped-predecessor reserve path (the #765 A1 / PR #796 recovery)
-      // unreachable, and the authoritative open never recovers it.
-      // Reproduced by this suite on main 3cb5f1228 (2026-08-29). Turns 1-2
-      // and every other journey-1 assertion still fail REAL when they
-      // break: only this exact reopen dead-end is excused.
-      issue: 'kontourai/station#834',
-      expectedMessageSubstring:
-        'never resolved continuable via the authoritative open',
-    },
-  ],
+  // (empty since kontourai/station#834 was fixed: the continuation
+  // eligibility gate now treats a stopped, unloaded current child as
+  // continuable through the successor reserve path.)
 ]);
 
 async function runJourney(id, title, fn) {
@@ -841,12 +827,14 @@ async function journeyCapacityGate(browser, note, shared) {
   // the "Host remains busy" ephemeral with a Start anyway action, and the
   // retry must carry the exact one-shot token. Replayed via route interception on the MAIN
   // healthy instance because a real refusal requires a ready engine (see
-  // module docblock); the injected body is byte-shaped after the route/SDK
-  // override contract tests.
-  // Its OWN one-turn conversation, never stopped: kontourai/station#834
-  // makes a STOPPED conversation's composer permanently non-editable, and
-  // journey 1 deliberately ends in that state — borrowing its conversation
-  // would entangle this surface assert with that tracked defect. Driven
+  // module docblock); the injected body is byte-shaped after
+  // orchestration.routes.test.ts "preserves a critical resource refusal
+  // code at the outer HTTP seam".
+  // Its OWN one-turn conversation, never stopped: journey 1 deliberately
+  // ends its conversation in the stopped-then-continued state
+  // (kontourai/station#834's recovered population) — borrowing that
+  // conversation would entangle this surface assert with journey 1's
+  // post-stop lineage instead of a plain writable composer. Driven
   // from a FRESHLY paired page: the run-long first page's device session
   // has been observed aging into 401/429 refusals by this point (journey 4
   // learned the same lesson).
