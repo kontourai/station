@@ -260,9 +260,10 @@ describe('buildMuseExecArgs', () => {
     ]);
   });
 
-  // Live-verified against muse 0.1.0-R708.1: `muse exec --json --provider echo
-  // --model <id>` exits 2 with `--model requires --provider meta` and emits no
-  // JSONL at all, so forwarding both would produce a turn that could only die.
+  // Live-verified against Muse Code 1.0.1-R1848.1: `muse exec --json
+  // --provider echo --model <id>` exits 2 with `--model requires --provider
+  // meta` and emits no JSONL at all, so forwarding both would produce a turn
+  // that could only die.
   test('drops --model under echo, which muse refuses to accept it with', () => {
     const args = buildMuseExecArgs({
       sessionId: 'session-1',

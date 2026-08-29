@@ -26,9 +26,9 @@ import type { ProviderSession } from '../adapter-shape.js';
  * One caveat this table cannot express, stated here so a reader of the
  * declaration meets it: under the `echo` startup provider (#550), muse REFUSES
  * `--model` outright (`--model requires --provider meta`, exit 2 before any
- * JSONL), so `buildMuseExecArgs` drops the selection there and this table's
+ * JSONL; live-verified against Muse Code 1.0.1-R1848.1), so `buildMuseExecArgs` drops the selection there and this table's
  * claims describe `meta` — muse's default and the only provider a Station
- * deployment runs. `echo` is reachable only through the
+ * deployment runs by default. `echo` is reachable only through the
  * `STATION_E2E_MUSE_PROVIDER` test-determinism knob, whose whole purpose is a
  * run with no model behind it.
  */

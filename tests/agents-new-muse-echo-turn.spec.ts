@@ -28,9 +28,15 @@ import {
  * real binary and the real HTTP path; only the model behind it is replaced by
  * one whose answer can be asserted.
  *
- * `smoke-live`, and a host without the `muse` CLI fails here rather than
- * passing quietly — for the same reason the installed-CLI journey does: a
- * muse journey with no muse proves nothing.
+ * `smoke-live`, and a host that cannot run muse fails here rather than passing
+ * quietly — for the same reason the installed-CLI journey does: a muse journey
+ * with no muse proves nothing. Note what the precondition actually demands:
+ * `readyAgentConnections` keeps only connections the SERVER reports `ready`,
+ * and muse's readiness includes its AUTH prerequisite (`museCredentialState`
+ * observes `META_API_KEY` or a `~/.config/muse/auth.json`), so an installed
+ * but unauthenticated muse is NOT ready and this spec will not run — even
+ * though the echo turn it performs needs no key at all. That is a real
+ * precondition of the journey as written, not of the echo provider.
  *
  * The assertion is discriminating in both directions. `echo: ` is a prefix
  * ONLY the echo provider produces, and the typed token is what proves the
@@ -173,7 +179,13 @@ test.describe('New agent — a muse agent answers a real turn over echo', () => 
     page,
     authenticatedRequest,
   }) => {
-    test.setTimeout(180_000);
+    // Covers this spec's OWN declared worst case rather than the suite
+    // default: the create flow alone budgets 20s + 20s + 30s, the editor
+    // guard 20s, opening the chat 15s + 20s + 10s, and the turn itself 120s —
+    // ~255s. At 180s the harness could kill the test before its own final,
+    // informative assertion was ever reached, turning a diagnosable failure
+    // into a bare timeout.
+    test.setTimeout(300_000);
     const engine = await requireMuseEngine(authenticatedRequest);
 
     const name = `E2E Muse Echo Turn ${Date.now()}`;

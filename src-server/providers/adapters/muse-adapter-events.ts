@@ -264,7 +264,7 @@ export function buildMuseExecArgs(input: {
   // `--model` is validated by muse against its own catalog (an unknown id
   // exits 1 before any JSONL), so passing it is a real applied selection —
   // but muse rejects it outright under `--provider echo`: live-verified
-  // against muse 0.1.0-R708.1, `muse exec --json --provider echo --model <id>`
+  // against Muse Code 1.0.1-R1848.1, `muse exec --json --provider echo --model <id>`
   // exits 2 with `--model requires --provider meta` before emitting a single
   // JSONL line. So under `echo` the model is DROPPED rather than forwarded
   // into a turn that could only die — echo answers from the prompt alone and

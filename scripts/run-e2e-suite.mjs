@@ -1659,6 +1659,15 @@ export function isCleanInstallE2ESuite(suite) {
  * disabled path rather than merely relying on absent configuration.
  */
 export function suiteStationE2EEnv(suite) {
+  // station#4464 arbiter rule, same shape as `STATION_E2E_SCREENS` below: an
+  // EXPLICIT key in every branch, never a conditional spread. Both consumers
+  // spread this after `...process.env`, so a stray `STATION_E2E_MUSE_PROVIDER`
+  // already sitting in the runner's own environment would otherwise survive
+  // into a suite that never asked for it. `undefined` is not stringified —
+  // Node's `spawn` omits any key whose value is `undefined` — so the
+  // non-smoke-live suites hand the child no such variable at all.
+  const museProvider =
+    suite === 'smoke-live' ? SMOKE_LIVE_MUSE_PROVIDER : undefined;
   if (suite === 'starter-clean-install') {
     return {
       STATION_E2E_FIRST_RUN: '1',
@@ -1668,12 +1677,17 @@ export function suiteStationE2EEnv(suite) {
       STATION_USAGE_TELEMETRY_KEY: '',
       OTEL_EXPORTER_OTLP_ENDPOINT: '',
       STATION_TELEMETRY_API_KEY: '',
+      STATION_E2E_MUSE_PROVIDER: museProvider,
     };
   }
-  if (suite === 'first-run') return { STATION_E2E_FIRST_RUN: '1' };
+  if (suite === 'first-run')
+    return {
+      STATION_E2E_FIRST_RUN: '1',
+      STATION_E2E_MUSE_PROVIDER: museProvider,
+    };
   return {
     STATION_E2E_SYSTEM_STATUS_READY: '1',
-    ...(suite === 'smoke-live' ? SMOKE_LIVE_STATION_E2E_ENV : {}),
+    STATION_E2E_MUSE_PROVIDER: museProvider,
   };
 }
 
@@ -1688,13 +1702,15 @@ export function suiteStationE2EEnv(suite) {
  *
  * Scoped to `smoke-live` because that is the only bucket whose server runs a
  * muse turn; no other spec in it touches the muse engine, so nothing else in
- * the bucket changes behavior. Ordinary and clean-install suites are
- * untouched, and the knob is refused unless it names one of muse's two
- * provider modes (`src-server/providers/adapters/muse-adapter.ts`).
+ * the bucket changes behavior.
+ *
+ * Naming it here does not by itself authorize it. The server honors this only
+ * on a runtime it can attest is disposable — a `--temp-home` under a
+ * runner-owned instance id — so the same variable on a persistent home is
+ * inert (`museProviderOverrideContained` in
+ * `src-server/providers/adapters/muse-adapter.ts`).
  */
-export const SMOKE_LIVE_STATION_E2E_ENV = {
-  STATION_E2E_MUSE_PROVIDER: 'echo',
-};
+export const SMOKE_LIVE_MUSE_PROVIDER = 'echo';
 
 export function establishedUserPlaywrightEnv(suite) {
   return isCleanInstallE2ESuite(suite)

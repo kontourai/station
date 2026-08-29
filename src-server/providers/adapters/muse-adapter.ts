@@ -150,19 +150,18 @@ export function museCredentialState(
 }
 
 /**
- * Selects the startup provider every `muse exec` of this process runs under.
+ * Names the startup provider a CONTAINED run may put on `muse exec`.
  *
  * Station has never passed `--provider`, so muse's own default (`meta`) has
  * always applied — which makes a muse turn cost a real Meta key and a network
  * round trip, and is why no journey has ever run one. muse ships an `echo`
  * provider precisely for this: a byte-compatible event envelope produced from
- * the prompt alone, no key, no network, deterministic reply.
+ * the prompt alone, no key, no network, deterministic reply (live-verified
+ * against Muse Code 1.0.1-R1848.1).
  *
- * Deliberately part of the `STATION_E2E_*` family rather than a documented
- * operator setting. It is a test-determinism knob (`docs/reference/env-vars.md`
- * documents product configuration and lists none of this family), and naming
- * it as one avoids promising an operator-facing provider-selection feature
- * that the capability matrix does not declare.
+ * The variable NAMES the request; it does not authorize it. Authorization is
+ * the conjunction in {@link museProviderOverrideContained} — see that
+ * function for why the name alone cannot be trusted.
  */
 export const MUSE_PROVIDER_OVERRIDE_ENV = 'STATION_E2E_MUSE_PROVIDER';
 
@@ -170,27 +169,81 @@ export const MUSE_PROVIDER_OVERRIDE_ENV = 'STATION_E2E_MUSE_PROVIDER';
 export const MUSE_REFUSED_VALUE_MAX_CHARS = 120;
 
 /**
- * Narrows the raw env value to muse's own closed vocabulary before it can
- * become argv.
+ * The runner-owned instance namespace for the one suite that asks for this.
+ * `run-e2e-suite.mjs` mints `e2e-${suite}-${Date.now()}-${base36}`, so a
+ * smoke-live instance is the only shape that can match.
+ */
+const MUSE_E2E_SMOKE_LIVE_INSTANCE = /^e2e-smoke-live-[a-z0-9]+-[a-z0-9]+$/;
+
+/**
+ * Whether this process is the disposable E2E runtime the override is for.
  *
- * Unset (or whitespace) means UNSET: the caller emits no `--provider` at all
- * and the invocation is byte-identical to the one Station has always built.
- * A value outside {@link MUSE_PROVIDER_MODES} is REFUSED — reported through
- * `onRefused` and then treated as unset — rather than forwarded: this value is
- * spliced straight into the engine's option surface, so `--workspace` or
- * `-w /etc` sitting in a misconfigured environment would otherwise be an argv
- * injection into a state-mutating flag. Refusing to the pre-existing default
- * is chosen over throwing so a typo in one environment variable cannot take
- * the whole runtime down at construction.
+ * Mirrors `createEnvironmentRuntimeResourcePostureProbe` in
+ * `services/infra/resource-posture.ts`, which draws exactly this line for
+ * exactly this reason: keep one journey deterministic WITHOUT weakening a
+ * persistent home, so "the explicit E2E value alone has no effect".
+ *
+ * Both conjuncts are facts the CLI ATTESTS at spawn rather than values a
+ * caller can assert about itself (`packages/cli/src/commands/lifecycle.ts`
+ * writes `STATION_HOME_SOURCE` from its own resolved flag decision and
+ * `STATION_INSTANCE_ID` from the runner-owned instance name). That matters
+ * because `src-server/index.ts` imports `dotenv/config`: a `.env` file in the
+ * server's cwd is enough to put ANY variable into `process.env`, so a name on
+ * its own is not evidence of a disposable runtime. A `.env` can equally claim
+ * the two markers — but claiming them means claiming a `--temp-home` whose
+ * data dies with the run, under a runner-shaped instance id, which is the
+ * containment itself rather than a way around it.
+ *
+ * Consequence, deliberately: on a persistent production home the variable is
+ * inert no matter what it says.
+ */
+function museProviderOverrideContained(env: NodeJS.ProcessEnv): boolean {
+  return (
+    env.STATION_HOME_SOURCE === '--temp-home' &&
+    MUSE_E2E_SMOKE_LIVE_INSTANCE.test(env.STATION_INSTANCE_ID ?? '')
+  );
+}
+
+/** Why a named override did not become argv. */
+export interface MuseProviderOverrideRefusal {
+  /**
+   * `uncontained-environment` — the runtime is not the disposable E2E one, so
+   * the variable has no effect here whatever it says.
+   * `not-a-provider-mode` — contained, but the value is not one muse accepts.
+   */
+  reason: 'uncontained-environment' | 'not-a-provider-mode';
+  value: string;
+}
+
+/**
+ * Resolves the override, or refuses it with the state that refused it.
+ *
+ * Unset (or whitespace) means UNSET and is silent: the caller emits no
+ * `--provider` at all and the invocation is byte-identical to the one Station
+ * has always built.
+ *
+ * Containment is checked BEFORE the vocabulary, because on an uncontained
+ * runtime the value is beside the point — even a perfectly spelled `echo` has
+ * no effect there, and reporting "not a provider mode" would name the wrong
+ * problem. A value outside {@link MUSE_PROVIDER_MODES} is then refused rather
+ * than forwarded: it would be spliced straight into the engine's option
+ * surface, so `--workspace`, `-w /etc` or `--yolo` sitting in a misconfigured
+ * environment would be an argv injection into state-mutating flags. Both
+ * refusals fall back to the pre-existing default rather than throwing, so one
+ * environment variable cannot take the runtime down at construction.
  */
 export function resolveMuseProviderOverride(
   env: NodeJS.ProcessEnv,
-  onRefused?: (rawValue: string) => void,
+  onRefused?: (refusal: MuseProviderOverrideRefusal) => void,
 ): MuseProviderMode | undefined {
   const raw = env[MUSE_PROVIDER_OVERRIDE_ENV]?.trim();
   if (!raw) return undefined;
+  if (!museProviderOverrideContained(env)) {
+    onRefused?.({ reason: 'uncontained-environment', value: raw });
+    return undefined;
+  }
   if (!isMuseProviderMode(raw)) {
-    onRefused?.(raw);
+    onRefused?.({ reason: 'not-a-provider-mode', value: raw });
     return undefined;
   }
   return raw;
@@ -380,7 +433,7 @@ export class MuseAdapter implements ProviderAdapterShape {
    * turn is what makes it real, and {@link providerNoticeReported} keeps it to
    * one per process rather than one per turn.
    */
-  private readonly providerRefusal: string | undefined;
+  private readonly providerRefusal: MuseProviderOverrideRefusal | undefined;
   private providerNoticeReported = false;
 
   constructor(private readonly options: MuseAdapterOptions = {}) {
@@ -392,48 +445,72 @@ export class MuseAdapter implements ProviderAdapterShape {
     this.credentialFileExists = options.credentialFileExists ?? existsSync;
     this.findBinary = options.findBinary ?? findCliBinary;
     this.turnTimeoutMs = options.turnTimeoutMs ?? MUSE_DEFAULT_TURN_TIMEOUT_MS;
-    let refusal: string | undefined;
-    this.providerOverride = resolveMuseProviderOverride(
-      this.env,
-      (rawValue) => {
-        refusal = rawValue;
-      },
-    );
+    let refusal: MuseProviderOverrideRefusal | undefined;
+    this.providerOverride = resolveMuseProviderOverride(this.env, (refused) => {
+      refusal = refused;
+    });
     this.providerRefusal = refusal;
+  }
+
+  /**
+   * The model this session can honestly claim.
+   *
+   * Under `echo`, `buildMuseExecArgs` drops `--model` (muse refuses the
+   * combination outright), so no selection is ever applied — and a session
+   * that reports one would be asserting a fact nothing computed. The REQUEST
+   * is still legitimate and is still remembered on the record: agents carry a
+   * default model, and refusing the turn over it would be the wrong trade.
+   * What is withheld is the CLAIM that it took effect.
+   */
+  private appliedModelId(modelId: string | undefined): string | undefined {
+    return this.providerOverride === 'echo' ? undefined : modelId;
   }
 
   /**
    * Says, exactly once and only when there is something to say, what provider
    * this process's muse turns are actually running under.
    *
-   * Both branches exist because both are surprising in a log that does not
-   * mention them: a refused value silently keeping the old default, and an
-   * accepted `echo` silently replacing the model with a prompt echo.
+   * Every branch is surprising in a log that does not mention it: a named
+   * override silently inert on an uncontained runtime, a misspelled one
+   * silently keeping the old default, and an accepted `echo` silently
+   * replacing the model with a prompt echo.
+   *
+   * The flag is burned only once a logger call actually RAN. The whole reason
+   * this is deferred out of the constructor is that the runtime's logger
+   * arrives late; burning the flag against a logger that is still absent would
+   * reintroduce, one layer down, the same notice-nobody-hears bug.
    */
   private reportProviderNoticeOnce(): void {
     if (this.providerNoticeReported) return;
-    this.providerNoticeReported = true;
+    const logger = this.options.logger;
     if (this.providerRefusal !== undefined) {
-      this.options.logger?.warn?.(
-        `Ignoring ${MUSE_PROVIDER_OVERRIDE_ENV}: not one of ${MUSE_PROVIDER_MODES.join(
-          ', ',
-        )}. Muse turns keep the engine's own default provider.`,
+      if (!logger?.warn) return;
+      logger.warn(
+        this.providerRefusal.reason === 'uncontained-environment'
+          ? `Ignoring ${MUSE_PROVIDER_OVERRIDE_ENV}: it applies only to a disposable end-to-end runtime (a --temp-home under a runner-owned instance id), and this is not one. Muse turns keep the engine's own default provider.`
+          : `Ignoring ${MUSE_PROVIDER_OVERRIDE_ENV}: not one of ${MUSE_PROVIDER_MODES.join(
+              ', ',
+            )}. Muse turns keep the engine's own default provider.`,
         // Scrubbed and bounded: the refused value is arbitrary environment
         // content, and the point of echoing it is to show the operator their
         // typo, not to relay whatever else was mis-assigned to the variable.
         {
-          value: redactSecrets(this.providerRefusal).slice(
+          reason: this.providerRefusal.reason,
+          value: redactSecrets(this.providerRefusal.value).slice(
             0,
             MUSE_REFUSED_VALUE_MAX_CHARS,
           ),
         },
       );
+      this.providerNoticeReported = true;
       return;
     }
     if (this.providerOverride === 'echo') {
-      this.options.logger?.info?.(
+      if (!logger?.info) return;
+      logger.info(
         `${MUSE_PROVIDER_OVERRIDE_ENV}=echo: muse turns run its echo provider, which answers from the prompt alone. No model is selected and no model answers.`,
       );
+      this.providerNoticeReported = true;
     }
   }
 
@@ -480,13 +557,17 @@ export class MuseAdapter implements ProviderAdapterShape {
     const startedAt = Date.now();
     const museSessionId = this.newSessionId();
     const nowIso = this.now().toISOString();
+    // What the session REPORTS is what a turn will actually apply, which under
+    // `echo` is no model at all — see `appliedModelId`. `record.modelId` below
+    // keeps the request itself.
+    const appliedModelId = this.appliedModelId(input.modelId);
     const session: ProviderSession = {
       provider: this.provider,
       threadId: input.threadId,
       // Ready immediately: there is no handshake to wait on, because there is
       // no process until the first turn.
       status: 'ready',
-      model: input.modelId,
+      model: appliedModelId,
       ...(input.cwd ? { cwd: input.cwd } : {}),
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -521,7 +602,7 @@ export class MuseAdapter implements ProviderAdapterShape {
       createdAt: nowIso,
       method: 'session.configured',
       sessionId: input.threadId,
-      ...(input.modelId ? { model: input.modelId } : {}),
+      ...(appliedModelId ? { model: appliedModelId } : {}),
       ...(input.cwd ? { cwd: input.cwd } : {}),
       metadata: {
         ...input.metadata,
@@ -588,10 +669,17 @@ export class MuseAdapter implements ProviderAdapterShape {
     };
     record.activeTurn = turn;
     record.modelId = modelId;
+    const appliedModelId = this.appliedModelId(modelId);
     record.session = {
       ...record.session,
       status: 'running',
-      model: modelId ?? record.session.model,
+      // Under `echo` the claim is CLEARED, not carried: a plain
+      // `modelId ?? record.session.model` would let an earlier reported model
+      // survive a turn that provably ran without one.
+      model:
+        this.providerOverride === 'echo'
+          ? undefined
+          : (appliedModelId ?? record.session.model),
       updatedAt: this.now().toISOString(),
     };
     this.attachProcess(record, turn);
