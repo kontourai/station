@@ -1,10 +1,26 @@
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  agentId,
+  engineId,
+  engineRuntimeId,
+} from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type {
+  ProviderAdapterMetadata,
+  ProviderAdapterShape,
+} from '../../providers/adapter-shape.js';
+import { AsyncEventQueue } from '../../providers/sessions/async-event-queue.js';
+import { EventBus } from '../../services/orchestration/event-bus.js';
+import { EventStore } from '../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 
 process.env.STATION_API_BASE = 'http://control-delegation.test';
 process.env.STATION_INTERNAL_API_TOKEN = 'internal-test-token';
@@ -133,6 +149,96 @@ function localService() {
     sessionCommands,
     startSessionInternal,
   };
+}
+
+/** Minimal provider adapter for the real-lineage continuation test: only
+ * startSession and sendTurn behavior matter; everything else is inert. */
+class ContinuationFakeAdapter implements ProviderAdapterShape {
+  readonly provider: 'claude' | 'station-agent';
+  readonly sessions = new Map<
+    string,
+    {
+      provider: 'claude' | 'station-agent';
+      threadId: string;
+      status: 'ready';
+      createdAt: string;
+      updatedAt: string;
+    }
+  >();
+  private readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();
+  private readonly startedThreadIds: string[] = [];
+  readonly startSession = vi.fn(async (input: { threadId: string }) => {
+    this.startedThreadIds.push(input.threadId);
+    const session = {
+      provider: this.provider,
+      threadId: input.threadId,
+      status: 'ready' as const,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.sessions.set(input.threadId, session);
+    return session;
+  });
+  readonly sendTurn = vi.fn(async (input: { threadId: string }) => ({
+    threadId: input.threadId,
+    turnId: 'claude-turn',
+  }));
+  readonly interruptTurn = vi.fn(async () => ({
+    outcome: 'no-active-turn' as const,
+  }));
+  readonly steerTurn = vi.fn(async () => undefined);
+  readonly respondToRequest = vi.fn(async () => undefined);
+  startedSessionThreadIds() {
+    return this.startedThreadIds;
+  }
+
+  async listSessions() {
+    return [...this.sessions.values()];
+  }
+  async hasSession(threadId: string) {
+    return this.sessions.has(threadId);
+  }
+  async discardSession(threadId: string) {
+    this.sessions.delete(threadId);
+  }
+  async stopSession(threadId: string) {
+    this.sessions.delete(threadId);
+  }
+  async stopAll() {
+    this.sessions.clear();
+  }
+  async getPrerequisites() {
+    return [];
+  }
+  streamEvents(options?: { signal?: AbortSignal }) {
+    return this.events.iterable(options);
+  }
+  readonly metadata: ProviderAdapterMetadata;
+
+  constructor(provider: 'claude' | 'station-agent') {
+    this.provider = provider;
+    this.metadata = {
+      displayName: `${provider} Runtime`,
+      description: `${provider} adapter for tests`,
+      capabilities: ['agent-runtime'],
+      runtimeId: engineRuntimeId(`${provider}-runtime`),
+      builtin: true,
+      executionClass: 'connected',
+      // archive#980 shape (mirrors the orchestration-service test fake): the
+      // private station-agent adapter carries the real engineId 'station'.
+      ...(provider === 'station-agent'
+        ? { engineId: engineId('station') }
+        : {}),
+      modelLaunch: {
+        defaultAtStart: 'engine-selected',
+        omissionAtResume: 'engine-selected',
+        omissionPerTurn: 'engine-selected',
+        overrideAtStart: true,
+        overrideAtResume: true,
+        overridePerTurn: true,
+      },
+    };
+  }
 }
 
 const hostedRegistry = parseHostedTenantRegistry({
@@ -1611,13 +1717,16 @@ describe('Station Control canonical Environment + Agent execution', () => {
     });
   });
 
-  test('status looks through a reserved-but-unstarted continuation child to its predecessor (#764)', async () => {
+  test('status routes through the lineage-aware read when the current session id is not the root (routing pin only) (#764)', async () => {
     installCurrentStationFetch();
     const authority = hostedAuthority('alpha');
     const service = localDelegatedTaskService('completed');
-    // The lineage tail is a durable reservation whose provider Session never
-    // started (the failed-start shape). `loadDelegatedTask` must read the
-    // conversation through the lineage-aware read, not the raw child id.
+    // This is a DOUBLE, not a lineage fixture: its readSession returns detail
+    // for any id, so it cannot discriminate look-through from raw reads. It
+    // pins only the ROUTING — loadDelegatedTask must call the lineage-aware
+    // readCurrentConversationSession for a current-env task. The actual
+    // reserved-but-unstarted look-through (and the retried continue through
+    // it) is proven against the REAL service/store below.
     service.currentConversationSessionId = vi.fn(
       () => 'task-alpha:session:reserved-child',
     );
@@ -1639,6 +1748,139 @@ describe('Station Control canonical Environment + Agent execution', () => {
       'task-alpha',
       expect.anything(),
     );
+  });
+
+  // #764 review round 2: the only tool-layer proof of the reserved-unstarted
+  // tail used the stub double above, whose readSession answers for ANY id and
+  // therefore cannot fail. This one builds the real EventStore and real
+  // OrchestrationService so the reservation, the lineage read, and the
+  // retried continue all run the production derivations.
+  test('a retried continue after a failed start reuses the same reserved child through the real lineage store (#764)', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'delegate-continuation-'));
+    try {
+      const eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
+      const claude = new ContinuationFakeAdapter('claude');
+      const stationAgent = new ContinuationFakeAdapter('station-agent');
+      const adapters = [claude, stationAgent];
+      const service = new OrchestrationService({
+        adapterRegistry: {
+          register() {},
+          get(provider: string) {
+            return adapters.find((adapter) => adapter.provider === provider);
+          },
+          list() {
+            return adapters;
+          },
+        },
+        eventBus: new EventBus(),
+        eventStore,
+        // The production bootstrap (runtime-initialize) configures exactly
+        // this for the single-local-account deployment mode.
+        ownerlessSessionAccess: 'single-user-compat',
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const authority = sessionReadAuthorityFromRequest(
+        'shared-user',
+        undefined,
+        undefined,
+      );
+      const conversationId = 'task-continue-real';
+      const binding = {
+        taskId: 'task-continue-real',
+        conversationId,
+        environmentId: 'environment-current',
+        environmentName: 'Current environment',
+        targetKind: 'agent',
+        targetId: 'reviewer',
+        userId: 'shared-user',
+      };
+      const started = await service.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId: conversationId,
+            provider: 'claude',
+            metadata: { userId: 'shared-user' },
+          },
+        },
+        { userId: 'shared-user' },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      eventStore.appendEvent({
+        eventId: 'continue-real-configured',
+        provider: 'claude',
+        threadId: conversationId,
+        sessionId: conversationId,
+        method: 'session.configured',
+        metadata: binding,
+        createdAt: '2026-08-28T00:00:00.500Z',
+      });
+      eventStore.appendEvent({
+        eventId: 'continue-real-completed',
+        provider: 'claude',
+        threadId: conversationId,
+        sessionId: conversationId,
+        method: 'session.state-changed',
+        from: 'running',
+        to: 'completed',
+        sessionState: 'completed',
+        previousState: 'running',
+        transitionReason: 'turn_completed',
+        transitionSource: 'runtime',
+        createdAt: '2026-08-28T00:00:01.000Z',
+      });
+
+      installCurrentStationFetch();
+      const { continueDelegatedTask } = await import(
+        '../station-control-delegation.js'
+      );
+
+      // The first continue reserves the child, then its start FAILS (the
+      // ACP loadSession-fail-closed shape): the durable reservation stays as
+      // the lineage tail with no provider Session behind it.
+      stationAgent.startSession.mockImplementationOnce(async () => {
+        throw new Error('simulated failed start');
+      });
+      await expect(
+        continueDelegatedTask(
+          {
+            taskId: conversationId,
+            message: 'first attempt',
+            readAuthority: authority,
+          },
+          service as never,
+        ),
+      ).rejects.toThrow('simulated failed start');
+      const lineage = eventStore.conversationSessions(conversationId);
+      expect(lineage).toHaveLength(2);
+      const reservedChildId = lineage.at(-1)!.sessionId;
+
+      // The retry must look through the reserved-unstarted tail to the
+      // predecessor's binding and REUSE the same reserved child identity,
+      // not dead-end on a missing binding and not reserve a second child.
+      const retry = await continueDelegatedTask(
+        {
+          taskId: conversationId,
+          message: 'retry after failed start',
+          readAuthority: authority,
+        },
+        service as never,
+      );
+      expect(retry).toMatchObject({
+        conversationId,
+        taskId: conversationId,
+        sessionId: reservedChildId,
+        currentSessionId: reservedChildId,
+        status: 'dispatched',
+      });
+      expect(
+        eventStore.conversationSessions(conversationId),
+        'the retry must reuse the reservation, not mint a second child',
+      ).toHaveLength(2);
+      expect(stationAgent.startedSessionThreadIds()).toEqual([reservedChildId]);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
   test('continues an ended task through a child Session rather than reopening its predecessor', async () => {

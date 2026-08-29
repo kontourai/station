@@ -1135,6 +1135,57 @@ describe('OrchestrationService', () => {
     ).resolves.toBeNull();
   });
 
+  test('a cancelled or otherwise non-active boundary marker is not looked through (#764)', async () => {
+    // Both markers are written directly to the store: the service-level
+    // cancel compensates the successor lineage row (the cancelled child must
+    // not stay the canonical tail), so a survived cancelled marker at the
+    // exact tail is only reachable as a raw marker — which is exactly the
+    // input the marker validation in readCurrentConversationSession must
+    // refuse. (The remaining equality checks — conversationId/predecessor/
+    // successor identity — are defense-in-depth the store's own reserve
+    // invariants make unreachable: a marker whose predecessor does not
+    // belong to its conversation is rejected with `successor_exists`.)
+    for (const [label, status] of [
+      ['cancelled', 'cancelled'],
+      ['consumed', 'consumed'],
+    ] as const) {
+      const conversationId = `boundary-${label}-root`;
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId: conversationId,
+        status: 'closed',
+        createdAt: '2026-08-25T00:00:00.000Z',
+        updatedAt: '2026-08-25T00:00:00.000Z',
+      });
+      eventStore.reserveNextConversationSession({
+        conversationId,
+        predecessorSessionId: conversationId,
+        proposedSessionId: `${conversationId}:session:reserved`,
+        createdAt: '2026-08-25T00:02:00.000Z',
+      });
+      eventStore.reserveConversationContextBoundary({
+        boundaryId: `${label}-boundary`,
+        conversationId,
+        predecessorSessionId: conversationId,
+        successorSessionId: `${conversationId}:session:reserved`,
+        idempotencyKey: `${label}-boundary-key`,
+        policy: 'empty-next-cold-start',
+        status,
+        actorId: 'owner-user',
+        createdAt: '2026-08-25T00:02:01.000Z',
+      });
+      // The exact-tail boundary exists but its status is not active — the
+      // marker validation must refuse the predecessor fallback, or a
+      // cancelled/consumed boundary would keep authorizing reads.
+      await expect(
+        service.readCurrentConversationSession(
+          conversationId,
+          INTERNAL_SESSION_READ_SCOPE,
+        ),
+      ).resolves.toBeNull();
+    }
+  });
+
   test('a failed continuation start keeps status readable and a retried continue reuses the same reserved child (#764)', async () => {
     claude.startSession.mockImplementationOnce(async (input) => {
       const session = {

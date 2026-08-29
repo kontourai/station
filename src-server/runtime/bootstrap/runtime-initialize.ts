@@ -128,6 +128,7 @@ import {
   createEventStoreWorkItemPrincipalLiveness,
   WorkItemCapture,
 } from '../work-item-capture.js';
+import { acpResumeCursorSupport } from './acp-resume-cursor-support.js';
 import { composeAgentExecutionConfigLoader } from './agent-execution-config-loader.js';
 import {
   scheduleRuntimeDailyReload,
@@ -544,18 +545,10 @@ export async function initializeRuntime(
     // a durable reservation the supervision read then has to look through.
     // `undefined` (no handshake evidence, or a non-ACP provider) keeps the
     // cursor path — the adapter's own ruling stays authoritative there.
-    resumeCursorSupport: ({ provider, connectionId }) => {
-      if (provider !== 'acp' || !connectionId) return undefined;
-      try {
-        const connection = acpBridge
-          .getStatus()
-          .connections.find((entry) => entry.id === connectionId);
-        if (!connection?.capabilities) return undefined;
-        return connection.capabilities.loadSession === true;
-      } catch {
-        return undefined;
-      }
-    },
+    // #764: derivation extracted (and unit-tested) in
+    // acp-resume-cursor-support.ts — keyed on the observed handshake, not on
+    // the presence of capabilities.
+    resumeCursorSupport: acpResumeCursorSupport(acpBridge),
     adoptionLedger,
     credentialProfileRecoveryAdapter: deps.credentialProfileRecoveryAdapter,
     requireTenantExecutionContext: isHostedTenantExecutionRequired,

@@ -3065,12 +3065,29 @@ export async function executeExecutionTargetMessage(
         readAuthority,
       );
       const metadata = sessionBinding(rootDetail);
-      const currentMetadata = currentDetail
+      // #764 (review round 2): same reserved-but-unstarted plain-continuation
+      // tail as continueExecutionTargetMessage — fall back to the
+      // lineage-aware read so the predecessor's binding governs instead of
+      // dead-ending on the execution-binding error below.
+      let currentMetadata = currentDetail
         ? sessionBinding(currentDetail)
         : undefined;
       const reservedHandoff = currentDetail
         ? undefined
         : orchestrationService.reservedConversationHandoff(currentSessionId);
+      if (
+        !currentDetail &&
+        !reservedHandoff &&
+        typeof orchestrationService.readCurrentConversationSession ===
+          'function'
+      ) {
+        const continued =
+          await orchestrationService.readCurrentConversationSession(
+            sessionId,
+            readAuthority,
+          );
+        currentMetadata = continued ? sessionBinding(continued) : undefined;
+      }
       const boundTarget = reservedHandoff
         ? { kind: 'agent' as const, id: reservedHandoff.targetAgentId }
         : delegationTargetBinding(currentMetadata);
@@ -3419,12 +3436,29 @@ export async function continueExecutionTargetMessage(
     readAuthority,
   );
   const metadata = sessionBinding(rootDetail);
-  const currentMetadata = currentDetail
+  // #764 (review round 2): when the lineage tail is a reserved-but-unstarted
+  // plain continuation (no Session record, no handoff marker), the raw child
+  // read is null. The lineage-aware read resolves that exact tail back to its
+  // authorized predecessor, whose binding still governs the conversation —
+  // without it, a retried continue after a failed start dead-ends on the
+  // binding error below.
+  let currentMetadata = currentDetail
     ? sessionBinding(currentDetail)
     : undefined;
   const reservedHandoff = currentDetail
     ? undefined
     : orchestrationService.reservedConversationHandoff(currentSessionId);
+  if (
+    !currentDetail &&
+    !reservedHandoff &&
+    typeof orchestrationService.readCurrentConversationSession === 'function'
+  ) {
+    const continued = await orchestrationService.readCurrentConversationSession(
+      input.conversationId,
+      readAuthority,
+    );
+    currentMetadata = continued ? sessionBinding(continued) : undefined;
+  }
   const boundTarget = reservedHandoff
     ? { kind: 'agent' as const, id: reservedHandoff.targetAgentId }
     : delegationTargetBinding(currentMetadata);
