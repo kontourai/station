@@ -62,6 +62,7 @@ export type {
   ApprovalAttentionItem,
   AttentionItem,
   AttentionProjection,
+  DevicePairingAttentionItem,
   GateAttentionSource,
   GateBlockedAttentionItem,
   GateExceptionAttentionItem,
@@ -1028,6 +1029,13 @@ export {
   usePinBoardWidget,
   useUnpinBoardWidget,
 } from './query-domains/board.js';
+export {
+  confirmDevicePairingRequest,
+  DevicePairingRequestActionError,
+  denyDevicePairingRequest,
+  useConfirmDevicePairingRequestMutation,
+  useDenyDevicePairingRequestMutation,
+} from './query-domains/devicePairingRequests.js';
 export {
   type FeaturePreview,
   fetchFeaturePreviews,
