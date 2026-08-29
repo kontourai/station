@@ -159,6 +159,14 @@ export class WebNativePlatformAdapter implements NativePlatformAdapter {
     };
   }
 
+  async openDesktopTrayMenu(): Promise<NativeCommandResult<never>> {
+    return {
+      status: 'unsupported',
+      command: 'open-desktop-tray-menu',
+      reason: 'The web adapter has no desktop tray menu.',
+    };
+  }
+
   subscribeToBundledServerStatus(
     _listener: (status: BundledServerStatus) => void,
     _onError?: (error: NativePlatformError) => void,

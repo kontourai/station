@@ -1,4 +1,5 @@
 export const PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS: number;
+export const WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS: number;
 export type ExactProcessIdentity = { pid: number; start: string };
 export type ExactProcessIdentityProbe =
   | { state: 'dead' }
@@ -9,6 +10,7 @@ export type ProcessIdentityDependencies = {
   lookup?: (pid: number) => string | null;
   alive?: (pid: number) => 'alive' | 'dead' | 'unavailable';
   kill?: (pid: number, signal?: number) => void;
+  timeoutMs?: number;
   /** execFileSync-shaped seam; #1669 added it to the impl but not here. */
   exec?: (
     file: string,
@@ -62,6 +64,10 @@ export function lookupProcessBirthFingerprintCachedAsync(
 ): Promise<string | null>;
 export function clearProcessBirthFingerprintCache(): void;
 export function probeExactProcessIdentity(
+  pid: number,
+  dependencies?: ProcessIdentityDependencies,
+): ExactProcessIdentityProbe;
+export function resolveOwnProcessIdentity(
   pid: number,
   dependencies?: ProcessIdentityDependencies,
 ): ExactProcessIdentityProbe;
