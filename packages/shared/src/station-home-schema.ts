@@ -422,7 +422,7 @@ function isBootstrapScaffolding(homeDir: string): boolean {
       // not-scaffolding rather than a raw filesystem error.
       try {
         const content = readRegularFileNoFollow(homeDir, join(homeDir, entry), {
-          maxBytes: PORTABLE_INSTALL_DATA_ROOT_SIGNATURE.length,
+          maxBytes: Buffer.byteLength(PORTABLE_INSTALL_DATA_ROOT_SIGNATURE),
         });
         if (content === PORTABLE_INSTALL_DATA_ROOT_SIGNATURE) continue;
       } catch {

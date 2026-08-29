@@ -1,4 +1,5 @@
 import fs, {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -166,6 +167,20 @@ describe('portable installer data-root claim', () => {
     expect(PORTABLE_INSTALL_DATA_ROOT_SIGNATURE).toBe(
       `${PORTABLE_INSTALL_DATA_ROOT_SIGNATURE.trimEnd()}\n`,
     );
+  });
+
+  it('treats an unreadable marker as not-scaffolding instead of throwing', () => {
+    // The discriminating case for the hardened read: the raw reader threw
+    // EACCES here, escaping the fail-closed predicate entirely.
+    const home = mkdtempSync(join(tmpdir(), 'station-home-unreadable-marker-'));
+    const marker = join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER);
+    writeFileSync(marker, PORTABLE_INSTALL_DATA_ROOT_SIGNATURE);
+    chmodSync(marker, 0o000);
+    try {
+      expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+    } finally {
+      chmodSync(marker, 0o600);
+    }
   });
 
   it('refuses a symlinked marker even when its target holds the exact signature', () => {
