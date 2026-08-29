@@ -12394,6 +12394,12 @@ mod tests {
             std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
             std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o700)).unwrap();
         }
+        #[cfg(windows)]
+        crate::windows_path_trust::ensure(&[
+            (crate::windows_path_trust::TrustKind::Directory, &root),
+            (crate::windows_path_trust::TrustKind::Directory, &config),
+        ])
+        .unwrap();
         let path = config.join("profiles.json");
         let seeded = serde_json::json!({
             "schemaVersion": 1,
