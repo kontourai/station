@@ -99,7 +99,11 @@ function collapseDialogLayer() {
   const kept = { ...(window.history.state as Record<string, unknown>) };
   delete kept[DIALOG_HISTORY_KEY];
   const adoption = adoptCollapsedEntry?.(kept);
-  window.history.replaceState(adoption?.state ?? kept, '', window.location.href);
+  window.history.replaceState(
+    adoption?.state ?? kept,
+    '',
+    window.location.href,
+  );
   // Only once the entry really carries the index: a throwing `replaceState`
   // must leave the store's bookkeeping where it was, not one ahead of history.
   adoption?.commit();
