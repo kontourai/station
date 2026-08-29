@@ -241,26 +241,6 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
   );
   const [profileStoreEpoch, setProfileStoreEpoch] = useState(0);
   const nativeSelectionTail = useRef<Promise<void>>(Promise.resolve());
-  useEffect(() => {
-    // This native proof gates the hidden desktop window, so it must not wait
-    // for profile hydration/default authorization. Those operations can need
-    // the same sidecar and would otherwise turn a healthy listener into a
-    // 30-second deadlock. The proof pulls native status on start, so it is
-    // also correct if the sidecar published before its event listener mounted.
-    const controller = new AbortController();
-    let subscription: { dispose(): void } | undefined;
-    void Promise.all([
-      import('./native/startupReadiness'),
-      nativePlatformPromise,
-    ]).then(([{ startStartupReadinessProof }, adapter]) => {
-      const next = startStartupReadinessProof(adapter, controller.signal);
-      subscription = next;
-    });
-    return () => {
-      controller.abort();
-      subscription?.dispose();
-    };
-  }, []);
 
   // Native credential access is serial: select the host-authorized profile,
   // then publish a new secret-free connection snapshot. Rust reads the keyring

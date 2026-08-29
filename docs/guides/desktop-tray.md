@@ -33,7 +33,26 @@ assets. macOS decodes the dedicated `@2x` variants for a sharp menubar icon;
 Linux and Windows decode the matching 1x variants. Menu and icon mutations are
 marshalled through Tauri's main thread.
 
-## Actions and CLI parity
+## Menu and endpoint actions
+
+The tray separates identity, health, and destinations instead of compressing
+them into one passive backend row. An attached service exposes two explicit
+actions: **Open Station UI (port N)** opens its validated UI listener and
+**Open API docs (port N)** opens Swagger UI at `/ui` on its validated API
+listener. A Desktop-owned sidecar exposes its API-docs port and labels the UI
+as the desktop app because there is no second browser UI listener to claim.
+
+The desktop app's **More actions** menu includes **Open desktop tray** on
+desktop targets. macOS and Windows ask the native status item to reveal its
+menu. Linux indicators do not support programmatic reveal through the current
+host library; the app reports that limitation instead of treating the request
+as successful. Normal indicator clicks remain available.
+
+All endpoint actions are derived from the same exact Desktop ownership snapshot
+as health and service controls. API docs accept only an exact loopback origin;
+the renderer cannot supply a URL, port, or path.
+
+## Service actions and CLI parity
 
 Open Station UI uses the owned runtime manifest's UI port. Start and Stop run the
 installed checkout's absolute Node, `tsx`, and `scripts/station-cli.ts` paths
@@ -61,12 +80,14 @@ Run this on a release build from an installed checkout; do not use the bundled
 desktop server as the target.
 
 1. Install a user service and launch the desktop shell. Confirm the initial tray state reaches Running within one 10-second poll interval.
-2. Choose Open Station UI and confirm the browser opens the owned runtime manifest's UI port, not another channel's UI port.
-3. Choose Stop. Confirm the tray moves through Stopped, `station service status --json` reports the unit inactive, and a macOS service does not relaunch through KeepAlive.
-4. Choose Start. Confirm the service becomes Running, UI opens successfully, and `station service status --json` is healthy.
-5. Change the manifest to an unreachable or mismatched endpoint in a disposable service home. Confirm the tray shows Unhealthy rather than Stopped.
-6. On macOS, repeat Stop/Start after unloading the LaunchAgent and record that Start bootstraps then kickstarts it; record the menubar icon rendering at native scale.
-7. On a supported Linux desktop, repeat steps 1–5 and record the tray implementation/environment result. Linux indicator support is best-effort across desktop shells; document a missing indicator as a limitation, not a passing verification.
+2. Choose Open Station UI and confirm the browser opens the owned runtime manifest's displayed UI port, not another channel's UI port.
+3. Choose Open API docs and confirm Swagger UI opens at `/ui` on the displayed API port.
+4. From the desktop app's More actions menu, choose Open desktop tray. On macOS or Windows, confirm the native menu appears; on Linux, record the explicit unsupported notice and confirm the normal indicator still opens.
+5. Choose Stop. Confirm the tray moves through Stopped, `station service status --json` reports the unit inactive, and a macOS service does not relaunch through KeepAlive.
+6. Choose Start. Confirm the service becomes Running, UI opens successfully, and `station service status --json` is healthy.
+7. Change the manifest to an unreachable or mismatched endpoint in a disposable service home. Confirm the tray shows Unhealthy rather than Stopped.
+8. On macOS, repeat Stop/Start after unloading the LaunchAgent and record that Start bootstraps then kickstarts it; record the menubar icon rendering at native scale.
+9. On a supported Linux desktop, repeat steps 1–7 and record the tray implementation/environment result. Linux indicator support is best-effort across desktop shells; document a missing indicator as a limitation, not a passing verification.
 
 The desktop release workflow is the cross-platform compile lane (macOS, Linux,
 and Windows). `npm run verify:desktop-rust` is the local pure Rust/state test
