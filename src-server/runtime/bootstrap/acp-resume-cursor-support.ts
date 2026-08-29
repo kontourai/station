@@ -1,3 +1,5 @@
+import type { getACPManagerStatus } from '../../services/acp/acp-manager-view.js';
+
 /**
  * #764: a user-requested continuation of a stopped ACP conversation must
  * know BEFORE the child start whether the connection's observed initialize
@@ -14,13 +16,9 @@
  * path.
  */
 export function acpResumeCursorSupport(acpBridge: {
-  getStatus(): {
-    connections: Array<{
-      id: string;
-      handshakeObservedAt?: string;
-      capabilities?: { loadSession?: boolean };
-    }>;
-  };
+  // Typed against the producer so a field rename is a compile error here,
+  // not a silent every-connection-undefined regression.
+  getStatus(): Pick<ReturnType<typeof getACPManagerStatus>, 'connections'>;
 }): (input: {
   provider?: string;
   connectionId?: string;
