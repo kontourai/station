@@ -16,7 +16,7 @@ interface SessionPickerModalProps {
   /** The selected row is the input to server-authoritative open resolution. */
   onSelect: (
     conversation: ConversationListItem,
-  ) => void | boolean | Promise<undefined | boolean>;
+  ) => undefined | boolean | Promise<undefined | boolean>;
   agents: Array<{ slug: string; name: string }>;
   projects: Array<{ slug: string; name: string }>;
   activeConversationIds?: string[];

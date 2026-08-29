@@ -1,3 +1,7 @@
+import type {
+  ConversationListItem,
+  ConversationOpenResolution,
+} from '@kontourai/station-contracts/orchestration';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
@@ -663,6 +667,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     activeSessionCount,
     onAutoCollapse: handleAutoCollapse,
   });
+  // A non-tab recovery is still committed UI state (not a toast). It is used
+  // only when Station cannot safely hydrate an existing transcript into a
+  // tab; once a tab exists its `conversationOpenState` is the canonical copy.
+  const [conversationOpenRecovery, setConversationOpenRecovery] = useState<{
+    conversation: ConversationListItem;
+    status: 'missing-session' | 'unavailable' | 'transcript-only' | 'error';
+  } | null>(null);
 
   // station#1301 slice 1: the active session's running-background-task count,
   // for the tab bar's badge and the mobile switcher's row label.
@@ -760,8 +771,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     orchestrationSessionsStatus,
   });
   const inventoryChatStoreId = activeSession?.id;
-  const inventoryExecutionId =
-    activeSession?.currentSessionId ?? inventoryChatStoreId;
+  const conversationCanMutate =
+    activeSession?.conversationOpenState === undefined ||
+    (activeSession.conversationOpenState.status === 'resolved' &&
+      activeSession.conversationOpenState.canContinue);
+  const inventoryExecutionId = conversationCanMutate
+    ? (activeSession?.currentSessionId ?? inventoryChatStoreId)
+    : undefined;
   const inventoryProjectSlug = activeSession?.projectSlug;
   const inventoryProjectId = inventoryProjectSlug
     ? projects.find((project) => project.slug === inventoryProjectSlug)?.id
@@ -1088,6 +1104,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   const commandLauncherEnabled = Boolean(
     isPaneOpen &&
+      conversationCanMutate &&
       activeSession?.projectSlug &&
       activeSession.status !== 'sending',
   );
@@ -1167,29 +1184,30 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
   // Project actions remain project-scoped. Agent handoff is a conversation
   // action, so the same menu is also present for global conversations.
-  const secondaryActions: ComposerActionsMenuProps | undefined = activeSession
-    ? {
-        triggerRef: composerMenuTriggerRef,
-        projectActionsAvailable: Boolean(activeSession.projectSlug),
-        commandLauncherDisabled: !commandLauncherEnabled,
-        commandLauncherShortcut,
-        filesActive: activeWorkPanel === 'files',
-        taskContextActive: activeWorkPanel === 'context',
-        filesCount: gitStatus?.isRepo ? gitStatus.changes.length : undefined,
-        onOpenDelegation: openDelegationLauncher,
-        onOpenCommandLauncher: openCommandLauncher,
-        onToggleFiles: () => handleToggleActiveWorkPanel('files'),
-        onToggleTaskContext: () => handleToggleActiveWorkPanel('context'),
-        onOpenHandoff: () =>
-          openConversationHandoff(composerMenuTriggerRef.current),
-        handoffDisabled: Boolean(handoffDisabledReason),
-        handoffDisabledReason,
-        onOpenContextReset: () =>
-          activeSession.conversationId &&
-          setContextResetSource({ id: activeSession.conversationId }),
-        contextBoundaryStatus: contextBoundaryLabel,
-      }
-    : undefined;
+  const secondaryActions: ComposerActionsMenuProps | undefined =
+    activeSession && conversationCanMutate
+      ? {
+          triggerRef: composerMenuTriggerRef,
+          projectActionsAvailable: Boolean(activeSession.projectSlug),
+          commandLauncherDisabled: !commandLauncherEnabled,
+          commandLauncherShortcut,
+          filesActive: activeWorkPanel === 'files',
+          taskContextActive: activeWorkPanel === 'context',
+          filesCount: gitStatus?.isRepo ? gitStatus.changes.length : undefined,
+          onOpenDelegation: openDelegationLauncher,
+          onOpenCommandLauncher: openCommandLauncher,
+          onToggleFiles: () => handleToggleActiveWorkPanel('files'),
+          onToggleTaskContext: () => handleToggleActiveWorkPanel('context'),
+          onOpenHandoff: () =>
+            openConversationHandoff(composerMenuTriggerRef.current),
+          handoffDisabled: Boolean(handoffDisabledReason),
+          handoffDisabledReason,
+          onOpenContextReset: () =>
+            activeSession.conversationId &&
+            setContextResetSource({ id: activeSession.conversationId }),
+          contextBoundaryStatus: contextBoundaryLabel,
+        }
+      : undefined;
   const handoffSession = handoffSource
     ? allSessions.find(
         (session) =>
@@ -1463,6 +1481,116 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [openConversationInScopedPane, setActiveProjectSlug],
   );
+  /**
+   * Commits the server result before the picker disappears. In particular, a
+   * resolved result binds the returned current child onto the tab before the
+   * composer can be used; every other result becomes an explicit read-only
+   * recovery surface rather than falling through to New chat.
+   */
+  const commitConversationOpenResolution = useCallback(
+    async (resolution: ConversationOpenResolution): Promise<boolean> => {
+      const conversation = resolution.conversation;
+      if (
+        resolution.status === 'missing-session' ||
+        resolution.status === 'unavailable'
+      ) {
+        setConversationOpenRecovery({
+          conversation,
+          status: resolution.status,
+        });
+        return true;
+      }
+      const opened = await openUserSelectedConversationInScopedPane(
+        conversation.id,
+        conversation.agentSlug,
+        conversation.projectSlug,
+        projects.find((project) => project.slug === conversation.projectSlug)
+          ?.name,
+        conversation.model,
+        conversation.updatedAt,
+        conversation.acceptedModel,
+        { hydrateMessages: true },
+      );
+      if (!opened) {
+        setConversationOpenRecovery({
+          conversation,
+          status:
+            resolution.status === 'resolved'
+              ? 'unavailable'
+              : resolution.status,
+        });
+        return true;
+      }
+      const tab = Object.entries(activeChatsStore.getSnapshot()).find(
+        ([, chat]) => chat.conversationId === conversation.id,
+      );
+      if (!tab) {
+        // `openConversation` has just returned true, so this is a local store
+        // invariant fault. Do not allow an unbound tab to become writable.
+        setConversationOpenRecovery({ conversation, status: 'unavailable' });
+        return true;
+      }
+      updateChat(tab[0], {
+        title: conversation.title,
+        conversationOpenState: resolution,
+        ...(resolution.status === 'resolved'
+          ? { currentSessionId: resolution.currentSessionId }
+          : {}),
+      });
+      setConversationOpenRecovery(null);
+      return true;
+    },
+    [openUserSelectedConversationInScopedPane, projects, updateChat],
+  );
+  const retryActiveConversationOpen = useCallback(async () => {
+    if (!activeSession?.conversationId) return;
+    try {
+      const resolution = await resolveConversationOpen(
+        activeSession.conversationId,
+        apiBase,
+      );
+      if (resolution.status !== 'resolved') {
+        updateChat(activeSession.id, { conversationOpenState: resolution });
+        return;
+      }
+      updateChat(activeSession.id, {
+        title: resolution.conversation.title,
+        currentSessionId: resolution.currentSessionId,
+        conversationOpenState: resolution,
+      });
+    } catch {
+      // The existing committed recovery surface stays visible; a transport
+      // fault is not permission to clear it or expose the composer.
+      showToast('Conversation resolution is unavailable. Try again.');
+    }
+  }, [activeSession, apiBase, showToast, updateChat]);
+  const retryConversationOpenRecovery = useCallback(async () => {
+    if (!conversationOpenRecovery) return;
+    try {
+      const resolution = await resolveConversationOpen(
+        conversationOpenRecovery.conversation.id,
+        apiBase,
+      );
+      await commitConversationOpenResolution(resolution);
+    } catch {
+      // Preserve the original title and recovery panel across a retry fault.
+      setConversationOpenRecovery((current) =>
+        current ? { ...current, status: 'error' } : current,
+      );
+    }
+  }, [apiBase, commitConversationOpenResolution, conversationOpenRecovery]);
+  const startNewFromConversationRecovery = useCallback(() => {
+    // Direct-new creates and selects a replacement synchronously. If a picker
+    // is required it creates nothing, so keep the failed recovery visible
+    // until the user has actually selected a replacement there.
+    const before = new Set(Object.keys(activeChatsStore.getSnapshot()));
+    openNewChatDirect();
+    if (
+      Object.keys(activeChatsStore.getSnapshot()).some((id) => !before.has(id))
+    ) {
+      setConversationOpenRecovery(null);
+    }
+  }, [openNewChatDirect]);
   const openWorkItemConversationInScopedPane = useCallback(
     (
       conversationId: string,
@@ -1951,6 +2079,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 onOpenProfile: () => navigate('/profile'),
                 onOpenAppSettings: () => navigate('/settings'),
                 sessionInventory:
+                  !conversationOpenRecovery &&
                   inventoryExecutionId &&
                   activeOrchestrationSessionRead === 'present'
                     ? {
@@ -2065,17 +2194,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       isBackgroundTasksOpen,
                       onToggleBackgroundTasks: () =>
                         setIsBackgroundTasksOpen((open) => !open),
-                      sessionInventory: inventoryExecutionId
-                        ? {
-                            chatStoreId: inventoryChatStoreId!,
-                            executionId: inventoryExecutionId,
-                            projectId: inventoryProjectId,
-                            executionRead: activeOrchestrationSessionRead,
-                            mountRef: sessionInventoryMountRef,
-                            dockMode: effectiveDockSlotPlacement,
-                            fullscreen: isFullscreenPlacement,
-                          }
-                        : undefined,
+                      sessionInventory:
+                        !conversationOpenRecovery && inventoryExecutionId
+                          ? {
+                              chatStoreId: inventoryChatStoreId!,
+                              executionId: inventoryExecutionId,
+                              projectId: inventoryProjectId,
+                              executionRead: activeOrchestrationSessionRead,
+                              mountRef: sessionInventoryMountRef,
+                              dockMode: effectiveDockSlotPlacement,
+                              fullscreen: isFullscreenPlacement,
+                            }
+                          : undefined,
                       onOpenConversation: () => setShowSessionPicker(true),
                       onNewChat: openNewChatDirect,
                     }
@@ -2171,109 +2301,147 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 )}
                 <div className="chat-dock__conversation-surface">
                   <div ref={sessionInventoryMountRef} />
-                  <ChatDockContentArea
-                    onNewChat={handleStartNewChatWithMessage}
-                    activeSession={activeSession}
-                    activeOrchestrationSession={activeOrchestrationSession}
-                    activeOrchestrationSessionRead={
-                      activeOrchestrationSessionRead
-                    }
-                    onRetryOrchestrationSessions={() => {
-                      void refetchOrchestrationSessions();
-                    }}
-                    activeSessionId={activeSessionId}
-                    sessions={sessions}
-                    agents={agents}
-                    projects={projects}
-                    projectScope={
-                      scopedProjectSlug
-                        ? {
-                            slug: scopedProjectSlug,
-                            name:
-                              projects.find(
-                                (project) => project.slug === scopedProjectSlug,
-                              )?.name ?? scopedProjectSlug,
-                          }
-                        : null
-                    }
-                    chatFontSize={chatFontSize}
-                    dockHeight={dockHeight}
-                    showStatsPanel={showStatsPanel}
-                    showReasoning={showReasoning}
-                    showToolDetails={showToolDetails}
-                    modelSupportsAttachments={modelSupportsAttachments}
-                    fileAttachmentsSupported={fileAttachmentsSupported}
-                    modelProviderLabel={modelProviderLabel}
-                    modelProviders={modelProviders}
-                    agentDefaultModelId={agentDefaultModelId ?? null}
-                    connectionApprovalModeDefault={
-                      connectionApprovalModeDefault
-                    }
-                    toolPolicyDelivery={toolPolicyDelivery}
-                    availableModels={effectiveModels}
-                    modelsLoading={modelsLoading}
-                    chatInput={chatInput}
-                    secondaryActions={secondaryActions}
-                    onOpenAgentHandoff={() =>
-                      openConversationHandoff(composerAgentTriggerRef.current)
-                    }
-                    agentHandoffTriggerRef={composerAgentTriggerRef}
-                    isHistoryOpen={isHistoryOpen}
-                    onCloseHistory={closeHistory}
-                    onToggleStatsPanel={setShowStatsPanel}
-                    onTitleUpdate={handleTitleUpdate}
-                    onDeleteSession={removeSession}
-                    onFocusSession={focusUserSelectedSessionInPane}
-                    onOpenConversation={
-                      openUserSelectedConversationInScopedPane
-                    }
-                    onForkFromTurn={(source) => {
-                      if (!activeSession?.conversationId) return;
-                      const conversationId = activeSession.conversationId;
-                      const generation = ++forkGenerationRef.current;
-                      void Promise.all([
-                        import('./forkAttemptKey'),
-                        import('./forkSourceExecution'),
-                      ]).then(
-                        ([
-                          { getOrCreateForkAttemptKey },
-                          { resolveHistoricalForkExecution },
-                        ]) => {
-                          if (generation !== forkGenerationRef.current) return;
-                          const sourceExecution =
-                            resolveHistoricalForkExecution(
-                              source.sessionId,
-                              orchestrationSessions,
-                            );
-                          setForkSource({
-                            id: conversationId,
-                            agentSlug: source.agentSlug,
-                            turnId: source.turnId,
-                            projectSlug: activeSession.projectSlug,
-                            projectName: activeSession.projectName,
-                            model: source.model,
-                            modelSource: source.model ? 'runtime' : undefined,
-                            defaultModel: source.model,
-                            defaultModelSource: source.model
-                              ? 'runtime'
-                              : undefined,
-                            providerType:
-                              source.provider ?? sourceExecution.providerType,
-                            providerId: sourceExecution.providerId,
-                            providerOptions: sourceExecution.providerOptions,
-                            sourceSessionId: source.sessionId,
-                            idempotencyKey: getOrCreateForkAttemptKey(
-                              conversationId,
-                              source.turnId,
-                            ),
-                          });
-                          setForkOperation({ pending: false, error: null });
-                          setShowNewChatModal(true);
-                        },
-                      );
-                    }}
-                    onOpenBackgroundTasks={() => setIsBackgroundTasksOpen(true)}
-                  />
+                  {conversationOpenRecovery ? (
+                    <div className="session-history-error" role="alert">
+                      <strong>
+                        {conversationOpenRecovery.conversation.title} is
+                        available read-only.
+                      </strong>
+                      <span className="session-history-error__detail">
+                        {' '}
+                        {conversationOpenRecovery.status === 'missing-session'
+                          ? 'Its execution session is missing.'
+                          : conversationOpenRecovery.status ===
+                              'transcript-only'
+                            ? 'Its transcript is available, but continuation is not authorized.'
+                            : 'Station could not resolve its exact current session.'}
+                      </span>
+                      <button
+                        type="button"
+                        className="button button--secondary session-history-error__retry"
+                        onClick={() => void retryConversationOpenRecovery()}
+                      >
+                        Retry
+                      </button>
+                      <button
+                        type="button"
+                        className="button button--secondary"
+                        onClick={startNewFromConversationRecovery}
+                      >
+                        Start new chat
+                      </button>
+                    </div>
+                  ) : null}
+                  {!conversationOpenRecovery ? (
+                    <ChatDockContentArea
+                      onNewChat={handleStartNewChatWithMessage}
+                      onRetryConversationOpen={retryActiveConversationOpen}
+                      activeSession={activeSession}
+                      activeOrchestrationSession={activeOrchestrationSession}
+                      activeOrchestrationSessionRead={
+                        activeOrchestrationSessionRead
+                      }
+                      onRetryOrchestrationSessions={() => {
+                        void refetchOrchestrationSessions();
+                      }}
+                      activeSessionId={activeSessionId}
+                      sessions={sessions}
+                      agents={agents}
+                      projects={projects}
+                      projectScope={
+                        scopedProjectSlug
+                          ? {
+                              slug: scopedProjectSlug,
+                              name:
+                                projects.find(
+                                  (project) =>
+                                    project.slug === scopedProjectSlug,
+                                )?.name ?? scopedProjectSlug,
+                            }
+                          : null
+                      }
+                      chatFontSize={chatFontSize}
+                      dockHeight={dockHeight}
+                      showStatsPanel={showStatsPanel}
+                      showReasoning={showReasoning}
+                      showToolDetails={showToolDetails}
+                      modelSupportsAttachments={modelSupportsAttachments}
+                      fileAttachmentsSupported={fileAttachmentsSupported}
+                      modelProviderLabel={modelProviderLabel}
+                      modelProviders={modelProviders}
+                      agentDefaultModelId={agentDefaultModelId ?? null}
+                      connectionApprovalModeDefault={
+                        connectionApprovalModeDefault
+                      }
+                      toolPolicyDelivery={toolPolicyDelivery}
+                      availableModels={effectiveModels}
+                      modelsLoading={modelsLoading}
+                      chatInput={chatInput}
+                      secondaryActions={secondaryActions}
+                      onOpenAgentHandoff={() =>
+                        openConversationHandoff(composerAgentTriggerRef.current)
+                      }
+                      agentHandoffTriggerRef={composerAgentTriggerRef}
+                      isHistoryOpen={isHistoryOpen}
+                      onCloseHistory={closeHistory}
+                      onToggleStatsPanel={setShowStatsPanel}
+                      onTitleUpdate={handleTitleUpdate}
+                      onDeleteSession={removeSession}
+                      onFocusSession={focusUserSelectedSessionInPane}
+                      onOpenConversation={
+                        openUserSelectedConversationInScopedPane
+                      }
+                      onForkFromTurn={(source) => {
+                        if (!activeSession?.conversationId) return;
+                        const conversationId = activeSession.conversationId;
+                        const generation = ++forkGenerationRef.current;
+                        void Promise.all([
+                          import('./forkAttemptKey'),
+                          import('./forkSourceExecution'),
+                        ]).then(
+                          ([
+                            { getOrCreateForkAttemptKey },
+                            { resolveHistoricalForkExecution },
+                          ]) => {
+                            if (generation !== forkGenerationRef.current)
+                              return;
+                            const sourceExecution =
+                              resolveHistoricalForkExecution(
+                                source.sessionId,
+                                orchestrationSessions,
+                              );
+                            setForkSource({
+                              id: conversationId,
+                              agentSlug: source.agentSlug,
+                              turnId: source.turnId,
+                              projectSlug: activeSession.projectSlug,
+                              projectName: activeSession.projectName,
+                              model: source.model,
+                              modelSource: source.model ? 'runtime' : undefined,
+                              defaultModel: source.model,
+                              defaultModelSource: source.model
+                                ? 'runtime'
+                                : undefined,
+                              providerType:
+                                source.provider ?? sourceExecution.providerType,
+                              providerId: sourceExecution.providerId,
+                              providerOptions: sourceExecution.providerOptions,
+                              sourceSessionId: source.sessionId,
+                              idempotencyKey: getOrCreateForkAttemptKey(
+                                conversationId,
+                                source.turnId,
+                              ),
+                            });
+                            setForkOperation({ pending: false, error: null });
+                            setShowNewChatModal(true);
+                          },
+                        );
+                      }}
+                      onOpenBackgroundTasks={() =>
+                        setIsBackgroundTasksOpen(true)
+                      }
+                    />
+                  ) : null}
                 </div>
               </div>
             </>
@@ -2789,31 +2957,19 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             // Resolve under the server's one authority before routing or
             // creating a tab; recovery states deliberately do not fall
             // through to the old "New chat" hydration path.
-            const resolved = await resolveConversationOpen(row.id, apiBase);
-            if (!resolved) {
-              showToast(
-                'Conversation could not be resolved. Retry or start a new chat.',
-              );
-              return false;
+            try {
+              const resolved = await resolveConversationOpen(row.id, apiBase);
+              return await commitConversationOpenResolution(resolved);
+            } catch {
+              // Commit the error surface before allowing the picker to close.
+              // The selected row is metadata only; it cannot hydrate or enable
+              // a guessed session while the point read is unavailable.
+              setConversationOpenRecovery({
+                conversation: row,
+                status: 'error',
+              });
+              return true;
             }
-            if (resolved.status !== 'resolved' || !resolved.canContinue) {
-              showToast(
-                `${resolved.conversation.title} is available read-only. Retry or start a new chat.`,
-              );
-              return false;
-            }
-            const conversation = resolved.conversation;
-            return await openUserSelectedConversationInScopedPane(
-              conversation.id,
-              conversation.agentSlug,
-              conversation.projectSlug,
-              projects.find(
-                (project) => project.slug === conversation.projectSlug,
-              )?.name,
-              conversation.model,
-              conversation.updatedAt,
-              conversation.acceptedModel,
-            );
           },
           onChatFontSizeChange: setChatFontSize,
           onShowReasoningChange: setShowReasoning,

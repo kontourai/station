@@ -151,6 +151,8 @@ interface ChatDockBodyProps {
     attachments?: FileAttachment[],
     migratedTurnId?: string,
   ) => void | Promise<void>;
+  /** Re-resolves the exact durable conversation identity, never an Agent guess. */
+  onRetryConversationOpen?: () => void | Promise<void>;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   chatInput: {
     input: string;
@@ -297,6 +299,7 @@ export function ChatDockBody({
   agentHandoffTriggerRef,
   onOpenBackgroundTasks,
   onNewChat,
+  onRetryConversationOpen,
   onForkFromTurn,
   setShowStatsPanel,
 }: ChatDockBodyProps) {
@@ -491,6 +494,13 @@ export function ChatDockBody({
     return chatInput.handleSend(undefined, undefined, { ambientContext });
   }, [getComposedContext, chatInput]);
   const isExecutionActive = isSessionExecutionActive(activeSession);
+  // A reopened conversation retains the admission decision that opened this
+  // tab. Provider/model availability today cannot convert a recovery view
+  // into a writable continuation of a different child session.
+  const readOnlyOpen =
+    activeSession.conversationOpenState !== undefined &&
+    (activeSession.conversationOpenState.status !== 'resolved' ||
+      !activeSession.conversationOpenState.canContinue);
 
   // TTS readback when streaming ends
   const prevStatusRef = useRef(isExecutionActive);
@@ -1042,12 +1052,46 @@ export function ChatDockBody({
             )}
           </div>
         )}
+      {readOnlyOpen && activeSession.conversationOpenState ? (
+        <div className="session-history-error" role="alert">
+          <strong>
+            {activeSession.conversationOpenState.conversation.title} is
+            read-only.
+          </strong>
+          <span className="session-history-error__detail">
+            {' '}
+            {activeSession.conversationOpenState.status === 'missing-session'
+              ? 'Its execution session is no longer available.'
+              : 'Station could not prove a writable continuation for its current session.'}
+          </span>
+          {onRetryConversationOpen ? (
+            <button
+              type="button"
+              className="button button--secondary session-history-error__retry"
+              onClick={() => void onRetryConversationOpen()}
+            >
+              Retry
+            </button>
+          ) : null}
+          {onNewChat ? (
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() =>
+                void Promise.resolve(onNewChat()).catch(surfaceRecoveryFailure)
+              }
+            >
+              Start new chat
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <ChatInputArea
         sessionId={activeSession.id}
         input={chatInput.input}
         attachments={chatInput.attachments}
         textareaRef={chatInput.textareaRef}
-        disabled={!agent}
+        disabled={!agent || readOnlyOpen}
         isSending={isExecutionActive}
         turnInFlight={isTurnInFlight(activeSession)}
         stopPending={!!activeSession.stopPending}
@@ -1077,7 +1121,7 @@ export function ChatDockBody({
           activeSession.requestedProviderOptions ??
           activeSession.providerOptions
         }
-        secondaryActions={secondaryActions}
+        secondaryActions={readOnlyOpen ? undefined : secondaryActions}
         agentLabel={
           agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
         }
@@ -1100,7 +1144,11 @@ export function ChatDockBody({
         selectAttachmentFiles={chatInput.selectAttachmentFiles}
         attachmentError={chatInput.attachmentError}
         attachmentStages={chatInput.attachmentStages}
-        sendBlockedReason={chatInput.sendBlockedReason}
+        sendBlockedReason={
+          readOnlyOpen
+            ? 'This conversation is available read-only. Retry resolution or start a new chat.'
+            : chatInput.sendBlockedReason
+        }
         onRetryAttachmentStage={chatInput.retryAttachmentStage}
         onCancelAttachmentStage={chatInput.cancelAttachmentStage}
         onReplaceAttachmentFile={chatInput.replaceAttachmentFile}

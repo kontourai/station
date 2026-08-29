@@ -451,18 +451,50 @@ export async function fetchConversationById(
 export async function resolveConversationOpen(
   conversationId: string,
   apiBase?: string,
-): Promise<ConversationOpenResolution | null> {
+): Promise<ConversationOpenResolution> {
   const resolvedApiBase = await resolveApiBase(apiBase);
-  const response = await authenticatedFetch(
-    `${resolvedApiBase}/api/conversations/${encodeURIComponent(conversationId)}/open`,
-  );
-  const result = (await response.json()) as {
-    success: boolean;
-    data?: unknown;
-  };
-  return result.success && parseConversationOpenResolution(result.data)
-    ? (result.data as ConversationOpenResolution)
-    : null;
+  let response: Response;
+  try {
+    response = await authenticatedFetch(
+      `${resolvedApiBase}/api/conversations/${encodeURIComponent(conversationId)}/open`,
+    );
+  } catch (cause) {
+    throw new ConversationOpenResolutionError('network', cause);
+  }
+  let result: { success?: unknown; data?: unknown; error?: unknown };
+  try {
+    result = (await response.json()) as typeof result;
+  } catch (cause) {
+    throw new ConversationOpenResolutionError('invalid-response', cause);
+  }
+  if (!response.ok || result.success !== true) {
+    throw new ConversationOpenResolutionError(
+      response.status === 404 ? 'not-found' : 'rejected',
+      typeof result.error === 'string' ? result.error : undefined,
+    );
+  }
+  if (!parseConversationOpenResolution(result.data)) {
+    throw new ConversationOpenResolutionError('invalid-response');
+  }
+  return result.data;
+}
+
+/** A caller-visible open failure; never turn a transport/parser failure into an empty chat. */
+export class ConversationOpenResolutionError extends Error {
+  readonly cause?: unknown;
+
+  constructor(
+    readonly kind: 'network' | 'not-found' | 'rejected' | 'invalid-response',
+    cause?: unknown,
+  ) {
+    super(
+      typeof cause === 'string'
+        ? cause
+        : `Conversation open resolution failed: ${kind}`,
+    );
+    this.name = 'ConversationOpenResolutionError';
+    if (cause !== undefined && typeof cause !== 'string') this.cause = cause;
+  }
 }
 
 /** Reject hostile/old wire shapes rather than letting UI infer a Session. */
@@ -495,8 +527,35 @@ function parseConversationOpenResolution(
         (transcript.messageCount as number) < 0))
   )
     return false;
+  if (
+    !record.answerability ||
+    typeof record.answerability !== 'object' ||
+    typeof (record.answerability as Record<string, unknown>).answerable !==
+      'boolean'
+  )
+    return false;
+  const actions = record.recoveryActions as unknown[];
+  if (
+    actions.some(
+      (action) =>
+        action !== 'retry' && action !== 'start-new' && action !== 'restore',
+    )
+  )
+    return false;
+  if (record.status === 'resolved') {
+    return (
+      typeof record.currentSessionId === 'string' &&
+      record.currentSessionId.length > 0 &&
+      transcript.available === true &&
+      transcript.owner === 'runtime' &&
+      actions.length === 0
+    );
+  }
   return (
-    record.status !== 'resolved' || typeof record.currentSessionId === 'string'
+    typeof record.currentSessionId === 'undefined' &&
+    record.canContinue === false &&
+    actions.includes('retry') &&
+    actions.includes('start-new')
   );
 }
 

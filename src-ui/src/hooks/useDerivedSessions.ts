@@ -236,6 +236,8 @@ function deriveSession(
   return {
     id: chatId,
     conversationId: chatState.conversationId,
+    currentSessionId: chatState.currentSessionId,
+    conversationOpenState: chatState.conversationOpenState,
     agentSlug: agentId(chatState.agentSlug!),
     agentName,
     title,

@@ -2,7 +2,13 @@
  * @vitest-environment jsdom
  */
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {

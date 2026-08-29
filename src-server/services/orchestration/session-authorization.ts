@@ -244,11 +244,14 @@ export class SessionAuthorization {
     if (ownerUserId === undefined) {
       return this.deps.ownerlessSessionAccess === 'single-user-compat';
     }
-    return (
-      userId === undefined ||
-      ownerUserId === userId ||
-      this.canReadLegacyPersonalOwner(ownerUserId, authority)
-    );
+    // The released OS alias must never pass the ordinary equality path: any
+    // caller can guess a display alias. It is readable only through the
+    // narrowly provenance-bound migration bridge below. All other principal
+    // owners retain exact-id equality.
+    if (ownerUserId === this.deps.legacyPersonalOwner) {
+      return this.canReadLegacyPersonalOwner(ownerUserId, authority);
+    }
+    return userId === ownerUserId;
   }
 
   /**

@@ -1,4 +1,7 @@
-import type { ConversationHandoffProjection } from '@kontourai/station-contracts/orchestration';
+import type {
+  ConversationHandoffProjection,
+  ConversationOpenResolution,
+} from '@kontourai/station-contracts/orchestration';
 import type {
   ApprovalMode,
   ProviderKind,
@@ -298,6 +301,8 @@ export type ChatUIState = {
    * interrupts after a continuation creates a child session.
    */
   currentSessionId?: string;
+  /** Persisted only for a tab opened through the authoritative resolver. */
+  conversationOpenState?: ConversationOpenResolution;
   projectSlug?: string;
   projectName?: string;
   focusDirectoryId?: string;
