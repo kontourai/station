@@ -153,6 +153,10 @@ function attachConsoleBudget(page) {
   });
   page.on('response', (response) => {
     if (response.status() < 400) return;
+    // The suite's own api() calls carry this marker; their failures are
+    // asserted by the caller. The budget measures what the APP does during
+    // ordinary navigation, not what this harness asked for.
+    if (response.request().headers()[SUITE_REQUEST_HEADER]) return;
     const url = new URL(response.url());
     recordFinding(
       'request-error',
@@ -160,6 +164,7 @@ function attachConsoleBudget(page) {
     );
   });
   page.on('requestfailed', (request) => {
+    if (request.headers()[SUITE_REQUEST_HEADER]) return;
     const failure = request.failure()?.errorText ?? 'unknown failure';
     // Navigating away mid-flight aborts in-progress fetches; that is the
     // sweep's own doing, not a product failure.
@@ -227,16 +232,25 @@ async function poll(description, timeoutMs, probe) {
 }
 
 /**
+ * Marks requests the SUITE issues through api() so the console budget can
+ * tell them apart from the app's own traffic (lowercase: Playwright reports
+ * header names lowercased).
+ */
+const SUITE_REQUEST_HEADER = 'x-fresh-home-walkthrough';
+
+/**
  * Authenticated API call issued FROM the paired page, so it rides the same
  * device-session cookie, origin, and UI proxy the product's own client uses.
  */
 async function api(page, method, path, body) {
   const result = await page.evaluate(
-    async ({ method, path, body }) => {
+    async ({ method, path, body, marker }) => {
       const response = await fetch(path, {
         method,
-        headers:
-          body === undefined ? {} : { 'Content-Type': 'application/json' },
+        headers: {
+          [marker]: '1',
+          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       let payload = null;
@@ -247,7 +261,7 @@ async function api(page, method, path, body) {
       }
       return { status: response.status, payload };
     },
-    { method, path, body },
+    { method, path, body, marker: SUITE_REQUEST_HEADER },
   );
   return result;
 }
