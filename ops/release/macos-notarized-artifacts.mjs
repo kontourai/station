@@ -10,7 +10,10 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
-import { sealEmbeddedMacosMachOBounded } from '../nightly/macos-embedded-signing.mjs';
+import {
+  EMBEDDED_MACHO_SEALING_DEADLINE_MS,
+  sealEmbeddedMacosMachOBounded,
+} from '../nightly/macos-embedded-signing.mjs';
 
 const MAX_CODESIGN_REQUIREMENT_STREAM_BYTES = 64 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES = 64 * 1024;
@@ -28,6 +31,12 @@ export const EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS = 90 * 1000;
 export const NOTARY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 export const COMMAND_TERMINATION_GRACE_MS = 10 * 1000;
 export const MAX_RETRY_ATTEMPTS = 2;
+export const MACOS_RELEASE_JOB_BUDGET_MS = 120 * 60 * 1000;
+export const MACOS_RELEASE_BUILD_BUDGET_MS = 13 * 60 * 1000;
+// This envelope covers every outer/DMG signing and notarization retry. Along
+// with the build budget and one process-group grace period it remains below
+// the hosted 120-minute job limit.
+export const MACOS_NOTARIZED_ARTIFACTS_DEADLINE_MS = 100 * 60 * 1000;
 
 // The wrapper deliberately remains the process-group leader after the tool
 // receives TERM. A direct tool can exit and emit `close` while a descendant in
@@ -204,6 +213,7 @@ export function runBoundedCommand(
     timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS,
     terminationGraceMs = COMMAND_TERMINATION_GRACE_MS,
     maxOutputBytes = MAX_COMMAND_OUTPUT_BYTES,
+    allowNonzero = false,
     logger = console,
     spawn = defaultSpawn,
   } = {},
@@ -283,10 +293,10 @@ export function runBoundedCommand(
     child.once('error', () => fail());
     child.once('close', (status, signal) => {
       if (
-        status === 0 &&
         !timedOut &&
         !stdout.exceeded() &&
-        !stderr.exceeded()
+        !stderr.exceeded() &&
+        (status === 0 || allowNonzero)
       ) {
         finish(() => {
           log(`[macOS release] ${phase}: ${program} completed.`);
@@ -521,6 +531,12 @@ async function submit(command, file, key, keyId, issuer, logger) {
 
 export async function createMacosNotarizedArtifacts(options, injected = {}) {
   const logger = injected.logger ?? console;
+  const now = injected.now ?? Date.now;
+  const deadlineMs =
+    injected.deadlineMs ?? MACOS_NOTARIZED_ARTIFACTS_DEADLINE_MS;
+  if (!Number.isSafeInteger(deadlineMs) || deadlineMs <= 0)
+    throw new Error('macOS notarized artifact deadline must be a positive bound.');
+  const deadlineAt = now() + deadlineMs;
   const run =
     injected.run ??
     ((program, args, commandOptions) =>
@@ -535,7 +551,20 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     args,
     timeoutMs = DEFAULT_COMMAND_TIMEOUT_MS,
     commandOptions = {},
-  ) => captured(await run(program, args, { ...commandOptions, phase, timeoutMs }));
+  ) => {
+    const remainingMs = deadlineAt - now();
+    if (!Number.isFinite(remainingMs) || remainingMs <= 0)
+      throw new Error(
+        'macOS notarized artifact creation exceeded its aggregate deadline.',
+      );
+    return captured(
+      await run(program, args, {
+        ...commandOptions,
+        phase,
+        timeoutMs: Math.min(timeoutMs, remainingMs),
+      }),
+    );
+  };
   const fs = injected.fs ?? {
     existsSync,
     lstatSync,
@@ -568,30 +597,47 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
   const dmg = join(assets, `${prefix}.dmg`);
   const updater = join(assets, `${prefix}.app.tar.gz`);
   try {
-    const embeddedCommand = (phase, program, args, commandOptions) =>
+    const embeddedCommand = (
+      phase,
+      program,
+      args,
+      { timeoutMs, ...commandOptions } = {},
+    ) =>
       command(
         phase,
         program,
         args,
-        EMBEDDED_MACHO_COMMAND_TIMEOUT_MS,
+        Math.min(timeoutMs ?? EMBEDDED_MACHO_COMMAND_TIMEOUT_MS, EMBEDDED_MACHO_COMMAND_TIMEOUT_MS),
         commandOptions,
       );
-    const embeddedSign = (phase, program, args) =>
+    const embeddedSign = (
+      phase,
+      program,
+      args,
+      { timeoutMs, ...commandOptions } = {},
+    ) =>
+      command(
+        phase,
+        program,
+        args,
+        Math.min(
+          timeoutMs ?? EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS,
+          EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS,
+        ),
+        commandOptions,
+      );
+    const retryEmbeddedSign = (phase, args, operation) =>
       retryRetryableTransportFailure(
         phase,
         args,
-        () =>
-          command(
-            phase,
-            program,
-            args,
-            EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS,
-          ),
+        operation,
         logger,
       );
     await sealEmbeddedMacosMachOBounded(app, identity, {
       ...injected.embeddedMacos,
       command: embeddedCommand,
+      deadlineMs: EMBEDDED_MACHO_SEALING_DEADLINE_MS,
+      retrySign: retryEmbeddedSign,
       sign: embeddedSign,
     });
     const outerSigningArgs = [
