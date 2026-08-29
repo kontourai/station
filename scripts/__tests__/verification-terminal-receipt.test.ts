@@ -433,6 +433,37 @@ test('binds a bound but incomplete diagnostic instead of calling the lane broken
   ).toContain('25 failing test(s), 25 identified, 5 omitted');
 });
 
+test('binds a reporter-only nonzero exit instead of treating passed assertions as green', () => {
+  const worktree = mkdtempSync(join(tmpdir(), 'station-ci-fast-diagnostic-'));
+  roots.push(worktree);
+  const diagnosticRoot = join(worktree, '.kontourai/test-impact');
+  mkdirSync(diagnosticRoot, { recursive: true });
+  const provenance = {
+    repositoryId: 'a'.repeat(64),
+    headSha: 'b'.repeat(40),
+    workspaceDigest: 'c'.repeat(64),
+    environmentDigest: 'd'.repeat(64),
+    dependencyDigest: 'e'.repeat(64),
+  };
+  const diagnostic = changedDiagnostic(provenance);
+  diagnostic.complete = false;
+  diagnostic.incompleteReasons = [
+    'related: Vitest exited 1 without reporting a failed test',
+  ];
+  diagnostic.executions[0].exitCode = 1;
+  writeChangedDiagnosticBundle(diagnosticRoot, diagnostic);
+
+  const raw = __verificationCoordinatorInternals.attachCiFastDiagnostics(
+    { lane: { id: 'ci-fast' }, before: { worktree, ...provenance } },
+    { output: { stdout: { text: '' }, stderr: { text: '' } } },
+  );
+
+  expect(raw.unavailableAttachments).toBeUndefined();
+  expect(raw.attachments).toEqual([
+    expect.objectContaining({ name: 'changed-test-diagnostics' }),
+  ]);
+});
+
 test('names why a ci-fast diagnostic was unavailable instead of a file extension', () => {
   const worktree = mkdtempSync(join(tmpdir(), 'station-ci-fast-diagnostic-'));
   roots.push(worktree);

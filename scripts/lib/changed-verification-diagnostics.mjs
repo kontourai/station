@@ -18,6 +18,20 @@ export function incompleteDiagnosticReasons(diagnostics) {
         `${kind}: Vitest ${execution.emptyReason ?? 'selected zero tests'}`,
       );
     const failed = execution?.counts?.failed;
+    // A JSON reporter can finish and still have its parent Vitest process
+    // exit non-zero (for example, a reporter or worker failure after the
+    // passing assertions were written). Preserve the reported counts, but
+    // never call that a complete clean diagnostic merely because no assertion
+    // was marked failed.
+    if (
+      Number.isInteger(execution?.exitCode) &&
+      execution.exitCode !== 0 &&
+      execution?.infrastructureError !== true &&
+      failed === 0
+    )
+      reasons.push(
+        `${kind}: Vitest exited ${execution.exitCode} without reporting a failed test`,
+      );
     if (
       Number.isInteger(failed) &&
       failed > 0 &&

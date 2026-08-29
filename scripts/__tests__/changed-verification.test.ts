@@ -768,6 +768,7 @@ describe('changed verification selection', () => {
     });
   });
   test('does not trust green JSON when the Vitest child exits nonzero', () => {
+    const writeReceipt = vi.fn();
     const result = runChangedVerification(['--base=origin/main'], {
       root: process.cwd(),
       run: reportedRun({ status: 1 }),
@@ -776,13 +777,52 @@ describe('changed verification selection', () => {
         paths: [scenarios.sourceEdges.server],
       }),
       collectProvenance: provenance,
-      writeReceipt: vi.fn(),
+      writeReceipt,
     });
     expect(result.exitCode).toBe(1);
     expect(result.receipt).toMatchObject({
       terminal: { status: 'failed', exitCode: 1, passed: false },
       counts: { executed: 3, passed: 3, failed: 0, infrastructureErrors: 0 },
     });
+    const diagnostics = JSON.parse(
+      writeReceipt.mock.calls.find(
+        ([path]) => path === '.kontourai/test-impact/changed-diagnostics.json',
+      )?.[1],
+    );
+    expect(diagnostics).toMatchObject({
+      complete: false,
+      incompleteReasons: [
+        'related: Vitest exited 1 without reporting a failed test',
+      ],
+    });
+  });
+  test('does not record an unstarted explicit plan as an execution after a related failure', () => {
+    const run = reportedRun({ status: 1, report: passingReport });
+    const writeReceipt = vi.fn();
+    const result = runChangedVerification(['--base=origin/main'], {
+      root: process.cwd(),
+      run,
+      changedPathsFn: () => ({
+        mergeBase: 'base-sha',
+        paths: [
+          scenarios.sourceEdges.server,
+          scenarios.sourceEdges.dynamicScript,
+        ],
+      }),
+      collectProvenance: provenance,
+      writeReceipt,
+    });
+    expect(run).toHaveBeenCalledOnce();
+    expect(result.executed.map((entry) => entry.kind)).toEqual(['related']);
+    const diagnostics = JSON.parse(
+      writeReceipt.mock.calls.find(
+        ([path]) => path === '.kontourai/test-impact/changed-diagnostics.json',
+      )?.[1],
+    );
+    expect(diagnostics.executions.map(({ kind }) => kind)).toEqual(['related']);
+    expect(diagnostics.incompleteReasons).toEqual([
+      'related: Vitest exited 1 without reporting a failed test',
+    ]);
   });
   test('records spawn failures as infrastructure errors', () => {
     const result = runChangedVerification(['--base=origin/main'], {
