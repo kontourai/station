@@ -91,6 +91,7 @@ import {
 import { NotificationService } from '../../notifications/notification-service.js';
 import type { CwdShadowSample } from '../../projects/project-resource-shadow.js';
 import type { AdoptionLedger } from '../adoption-ledger.js';
+import { canResolveConversationContinuation } from '../conversation-lineage.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import {
@@ -908,6 +909,54 @@ describe('OrchestrationService', () => {
       transitionSource: 'runtime',
       createdAt: '2026-08-24T00:00:01.000Z',
     });
+
+    const lineageBeforeOpen = eventStore.conversationSessions(
+      'conversation-continuation',
+    );
+    const open = await service.resolveConversationOpen(
+      'conversation-continuation',
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    expect(open).toMatchObject({
+      status: 'resolved',
+      currentSessionId: 'conversation-continuation',
+      canContinue: true,
+    });
+    // A read proves eligibility only; it must not reserve the successor that
+    // the later foreground continuation command owns.
+    expect(
+      eventStore.conversationSessions('conversation-continuation'),
+    ).toEqual(lineageBeforeOpen);
+
+    const completedDetail = await service.readCurrentConversationSession(
+      'conversation-continuation',
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    if (!completedDetail) throw new Error('expected completed session detail');
+    for (const session of [
+      {
+        ...completedDetail.session,
+        controlMode: 'read-only-attached' as const,
+      },
+      { ...completedDetail.session, pendingReview: true },
+      { ...completedDetail.session, hasActiveTurn: true },
+      {
+        ...completedDetail.session,
+        answerability: {
+          answerable: false as const,
+          qualification: 'past_resume' as const,
+          observedBy: 'orchestration-service-test',
+          observedAt: '2026-08-24T00:00:01.000Z',
+        },
+      },
+    ]) {
+      expect(
+        canResolveConversationContinuation({
+          ...completedDetail,
+          session,
+        }),
+      ).toBe(false);
+    }
 
     const incompatibleProvider = await service.resolveConversationContinuation(
       'conversation-continuation',
