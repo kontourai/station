@@ -462,9 +462,30 @@ export async function resolveExternalEngineReadiness(
 }
 
 /**
- * A `cannot_verify` refresh carries no newer observation. Retain the last
- * genuine per-engine projection until a completed probe reports ready,
- * sign-in required, missing prerequisites, or disabled.
+ * The stronger evidence wins (#765 B2). `reason: 'cannot_verify'` is not an
+ * observation — it is the shape produced when the probe ABORTED at this
+ * route's 2 s discovery budget (`STATUS_PREREQUISITES_REFRESH_BUDGET_MS`),
+ * threw, or returned an errored prerequisite whose own contract is "cannot
+ * safely establish auth state". Letting that zero-information result
+ * overwrite a previously VERIFIED `ready: true` projection is what produced
+ * the audit's contradiction: the Engines list (whose inspector probe runs
+ * with no such budget) said READY while this route's flap re-armed the
+ * first-run "Station cannot verify…" launcher minutes into a session, on a
+ * host that was busy precisely because the engine was working.
+ *
+ * So: a `cannot_verify` refresh result keeps the last GENUINE projection for
+ * that engine — not only `ready` (#851 extends #765 B2's ready-only hold):
+ * `sign_in_required`, `missing_prerequisites`, and `disabled` are equally
+ * completed observations, and downgrading them to "cannot verify" on a
+ * zero-information flap erases an actionable reason without inventing or
+ * removing readiness (they are all `ready: false`). Every genuine
+ * observation still replaces the held projection immediately, so a real
+ * change (CLI uninstalled, signed out, signed in, connection disabled)
+ * surfaces on the first probe that actually completes. The disclosed
+ * residual: an engine whose probe never completes again keeps its last
+ * genuine projection for this process's lifetime — indistinguishable here
+ * from the load-induced timeout this exists to absorb, and strictly less
+ * wrong than downgrading a completed observation on no evidence.
  */
 export function reconcileExternalEngineReadiness(
   previous: ExternalEngineReadiness | undefined,
@@ -758,6 +779,10 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         ollamaReachable,
         codexInstalled,
         claudeInstalled,
+        // See `reconcileExternalEngineReadiness`: an aborted/errored probe
+        // (`cannot_verify`) must not overwrite an engine this cache has
+        // already genuinely observed — that flap is what re-armed the
+        // first-run launcher against a working engine (#765 B2, #851).
         externalEngineReadiness: reconcileExternalEngineReadiness(
           snapshot?.externalEngineReadiness,
           externalEngineReadiness,

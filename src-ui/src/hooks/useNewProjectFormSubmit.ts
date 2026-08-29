@@ -27,7 +27,10 @@ export function useNewProjectFormSubmit(state: NewProjectModalState) {
 
   // Create is disabled only for a fact the SERVER supplied on this draft: no
   // name at all, a slug a refreshed project list still says is taken
-  // (4-HOME-007), or a directory the server refused (4-HOME-008).
+  // (4-HOME-007), or a directory the server refused (4-HOME-008). A
+  // directory check that failed to HAPPEN (`directoryNotice`) is exactly not
+  // such a fact and never disables Create — its copy says "Try again", and a
+  // disabled retry control made that a lie (#765 F7-class click-eating).
   //
   // The cached duplicate notice deliberately does NOT appear here.
   // `['projects']` stays fresh for five minutes with refetch-on-mount
