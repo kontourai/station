@@ -573,7 +573,30 @@ pub fn ssh_launch_status(
 mod tests {
     use super::*;
     use std::collections::VecDeque;
-    use std::os::unix::process::ExitStatusExt;
+
+    #[cfg(unix)]
+    fn fake_exit_status(success: bool) -> std::process::ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+        std::process::ExitStatus::from_raw(if success { 0 } else { 1 << 8 })
+    }
+
+    #[cfg(windows)]
+    fn fake_exit_status(success: bool) -> std::process::ExitStatus {
+        use std::os::windows::process::ExitStatusExt;
+        std::process::ExitStatus::from_raw(if success { 0 } else { 1 })
+    }
+
+    #[cfg(unix)]
+    fn spawn_sleeping_child() -> std::io::Result<Child> {
+        Command::new("sleep").arg("60").spawn()
+    }
+
+    #[cfg(windows)]
+    fn spawn_sleeping_child() -> std::io::Result<Child> {
+        Command::new("powershell.exe")
+            .args(["-NoProfile", "-Command", "Start-Sleep -Seconds 60"])
+            .spawn()
+    }
 
     #[derive(Clone)]
     struct FakeRunner {
@@ -614,7 +637,7 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((program.into(), args.to_vec()));
-            let child = Command::new("sleep").arg("60").spawn()?;
+            let child = spawn_sleeping_child()?;
             self.spawned_pids.lock().unwrap().push(child.id());
             Ok(child)
         }
@@ -622,7 +645,7 @@ mod tests {
 
     fn output(success: bool, stdout: impl Into<Vec<u8>>) -> Output {
         Output {
-            status: std::process::ExitStatus::from_raw(if success { 0 } else { 1 << 8 }),
+            status: fake_exit_status(success),
             stdout: stdout.into(),
             stderr: Vec::new(),
         }
@@ -754,6 +777,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn offer_failure_kills_the_spawned_forward() {
         let request = request();
         let mut outputs = successful_prefix(&request, output(false, "not listening"));
