@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 // Keep this small and plain-JS so the verification scripts can use the exact
 // same probe when they are launched by node rather than tsx.
 export const PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS = 1_500;
+export const WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS = 10_000;
 
 // The Windows Job guard derives this exact representation from GetProcessTimes.
 // Keep the process-identity authority equally strict and normalize the same
@@ -51,7 +52,10 @@ function windowsCreationDateCommand(pid) {
   ].join('; ');
 }
 
-function windowsCreationDateProbe(pid) {
+function windowsCreationDateProbe(
+  pid,
+  timeoutMs = PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+) {
   return {
     command: 'powershell.exe',
     args: [
@@ -64,7 +68,7 @@ function windowsCreationDateProbe(pid) {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       windowsHide: true,
-      timeout: PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+      timeout: timeoutMs,
       killSignal: 'SIGKILL',
     },
   };
@@ -75,14 +79,14 @@ function canonicalWindowsCreationDate(output) {
   return isWindowsRoundTripUtcIso(value) ? value : null;
 }
 
-function windowsCreationDateFingerprint(pid, exec) {
-  const { command, args, options } = windowsCreationDateProbe(pid);
+function windowsCreationDateFingerprint(pid, exec, timeoutMs) {
+  const { command, args, options } = windowsCreationDateProbe(pid, timeoutMs);
   const output = exec(command, args, options);
   return canonicalWindowsCreationDate(output);
 }
 
-async function windowsCreationDateFingerprintAsync(pid, exec) {
-  const { command, args, options } = windowsCreationDateProbe(pid);
+async function windowsCreationDateFingerprintAsync(pid, exec, timeoutMs) {
+  const { command, args, options } = windowsCreationDateProbe(pid, timeoutMs);
   const output = await exec(command, args, options);
   return canonicalWindowsCreationDate(output);
 }
@@ -139,17 +143,16 @@ function aliveState(pid, kill = process.kill) {
  * means the fingerprint is a strong signal, not a cryptographic guarantee.
  * Linux (`/proc/<pid>/stat` field 22 + boot_id) does not have this limit.
  */
-export function lookupProcessBirthFingerprint(
-  pid,
-  {
+export function lookupProcessBirthFingerprint(pid, dependencies = {}) {
+  const {
     platform = process.platform,
     exec = execFileSync,
     readFile = readFileSync,
-  } = {},
-) {
+    timeoutMs,
+  } = dependencies;
   try {
     if (platform === 'win32') {
-      return windowsCreationDateFingerprint(pid, exec);
+      return windowsCreationDateFingerprint(pid, exec, timeoutMs);
     }
     if (platform === 'linux') {
       const stat = readFile(`/proc/${pid}/stat`, 'utf8').trim();
@@ -208,15 +211,17 @@ function defaultExecFileAsync(command, args, options) {
  */
 export async function lookupProcessBirthFingerprintAsync(
   pid,
-  {
+  dependencies = {},
+) {
+  const {
     platform = process.platform,
     exec = defaultExecFileAsync,
     readFile = readFileSync,
-  } = {},
-) {
+    timeoutMs,
+  } = dependencies;
   try {
     if (platform === 'win32') {
-      return await windowsCreationDateFingerprintAsync(pid, exec);
+      return await windowsCreationDateFingerprintAsync(pid, exec, timeoutMs);
     }
     if (platform === 'linux') {
       return lookupProcessBirthFingerprint(pid, { platform, readFile });
@@ -327,7 +332,7 @@ function probeExactProcessIdentityOnce(pid, dependencies) {
   if (liveness === 'dead') return { state: 'dead' };
   if (liveness !== 'alive') return { state: 'unavailable' };
   const lookup = dependencies.lookup ?? lookupProcessBirthFingerprint;
-  const birth = lookup(pid);
+  const birth = dependencies.lookup ? lookup(pid) : lookup(pid, dependencies);
   if (!birth) return { state: 'unavailable' };
   return { state: 'exact', identity: { pid, start: birth } };
 }
@@ -347,7 +352,10 @@ export function probeExactProcessIdentity(pid, dependencies = {}) {
  * later claimant/reclaim comparison; no PID-only or timing fallback exists.
  */
 export function resolveOwnProcessIdentity(pid, dependencies = {}) {
-  return probeExactProcessIdentityOnce(pid, dependencies);
+  return probeExactProcessIdentityOnce(pid, {
+    ...dependencies,
+    timeoutMs: dependencies.timeoutMs ?? WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS,
+  });
 }
 
 export function exactProcessIdentity(pid, dependencies = {}) {

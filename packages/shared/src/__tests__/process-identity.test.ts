@@ -205,6 +205,32 @@ describe('birthProvesReuse (station#2904)', () => {
     expect(unavailable).toHaveBeenCalledOnce();
   });
 
+  test('gives only own-process publication the larger bounded shell-start budget', () => {
+    const canonical = '2026-08-29T16:16:27.1234567Z';
+    const exec = vi.fn<
+      (
+        file: string,
+        args: readonly string[],
+        options?: Record<string, unknown>,
+      ) => string
+    >(() => canonical);
+    const common = {
+      platform: 'win32' as const,
+      exec,
+      alive: () => 'alive' as const,
+    };
+
+    expect(resolveOwnProcessIdentity(42, common).state).toBe('exact');
+    expect(exec.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({ timeout: 10_000 }),
+    );
+
+    expect(probeExactProcessIdentity(42, common).state).toBe('exact');
+    expect(exec.mock.calls[1]?.[2]).toEqual(
+      expect.objectContaining({ timeout: 1_500 }),
+    );
+  });
+
   test('keeps claimant and reclaim identity probes single-attempt on Windows', () => {
     const lookup = vi.fn(() => null);
     expect(
