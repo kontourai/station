@@ -9,6 +9,12 @@ interface DirectoryFieldProps {
   directory: string;
   /** The server's reason this exact directory was refused (4-HOME-008). */
   error?: string | null;
+  /**
+   * #765 F7-class: the check could not be performed (no verdict). Same slot
+   * as `error`, but the input is NOT marked invalid — nothing established
+   * the path is wrong — and Create stays enabled so "Try again." is true.
+   */
+  notice?: string | null;
   onDirectoryChange: (value: string) => void;
 }
 
@@ -16,8 +22,10 @@ export function NewProjectDirectoryField({
   apiBase,
   directory,
   error,
+  notice,
   onDirectoryChange,
 }: DirectoryFieldProps) {
+  const described = error ?? notice;
   return (
     <div className="new-project-modal__hero">
       <section className="new-project-modal__panel new-project-modal__panel--featured">
@@ -33,15 +41,17 @@ export function NewProjectDirectoryField({
             placeholder="/path/to/project"
             className="editor-input path-autocomplete__input new-project-modal__working-dir-input"
             aria-invalid={error ? true : undefined}
-            aria-describedby={error ? 'new-project-directory-error' : undefined}
+            aria-describedby={
+              described ? 'new-project-directory-error' : undefined
+            }
           />
-          {error && (
+          {described && (
             <p
               className="new-project-modal__field-error"
               id="new-project-directory-error"
               role="alert"
             >
-              {error}
+              {described}
             </p>
           )}
         </div>
