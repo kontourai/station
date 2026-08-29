@@ -21,6 +21,7 @@ import {
 } from './profile-credentials.js';
 import {
   assertValidProfileName,
+  ensureProfileStoreGenesis,
   findProfile,
   isCredentialRefReferenced,
   readProfileStore,
@@ -141,6 +142,10 @@ export async function runSetupCommand(
     // The install receipt below still compensates races and I/O failures that
     // can occur after this preflight.
     readProfileStore();
+    // The local service materializes its selected runtime home. Publish the
+    // shared profile genesis before that side effect, so a true first install
+    // cannot look like a cutover with an unexpectedly missing profiles.json.
+    ensureProfileStoreGenesis();
     const port = valueFlag(flags, 'port', String(DEFAULT_SERVER_PORT))!;
     if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535) {
       throw new Error('--port must be an integer from 1 to 65535.');
