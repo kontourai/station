@@ -82,6 +82,70 @@
     {
       "scope": "root",
       "lock": "package-lock.json",
+      "path": "node_modules/edgedriver",
+      "name": "edgedriver",
+      "version": "6.3.0",
+      "integrity": "sha512-ggEQL+oEyIcM4nP2QC3AtCQ04o4kDNefRM3hja0odvlPSnsaxiruMxEZ93v3gDCKWYW6BXUr51PPradb+3nffw==",
+      "hooks": [
+        {
+          "name": "install",
+          "command": "test -f ./dist/install.js && node ./dist/install.js || echo \"Skipping install, project not build!\""
+        }
+      ],
+      "decision": "deny",
+      "owner": "station-security",
+      "reason": "The embedded Tauri WebDriver provider does not use an external Edge driver; Station loads the Tauri service with lifecycle scripts disabled.",
+      "platform": { "os": [], "cpu": [] },
+      "artifact": {
+        "path": "bin/edgedriver.js",
+        "capability": "@wdio/tauri-service",
+        "proof": "no-build-fallback"
+      },
+      "purl": "pkg:npm/edgedriver@6.3.0",
+      "reviewedAt": "2026-08-29",
+      "expiresAt": "2026-11-27",
+      "recheck": "WebdriverIO dependency refresh or external driver adoption",
+      "triggers": [
+        "WebdriverIO dependency refresh",
+        "embedded provider removal",
+        "external Edge driver adoption"
+      ]
+    },
+    {
+      "scope": "root",
+      "lock": "package-lock.json",
+      "path": "node_modules/geckodriver",
+      "name": "geckodriver",
+      "version": "6.1.1",
+      "integrity": "sha512-/AcCyc9o9o6hUbudaSJM2iOtXbxSLqQPOb4GrPvEN40cjraUeaX/j5kH3mSgwiroyMn7qzx2wM61AQ2XY8j3sA==",
+      "hooks": [
+        {
+          "name": "postinstall",
+          "command": "test -f ./dist/install.js && node ./dist/install.js || echo \"Skipping install, project not built!\""
+        }
+      ],
+      "decision": "deny",
+      "owner": "station-security",
+      "reason": "The embedded Tauri WebDriver provider does not use an external Firefox driver; Station loads the Tauri service with lifecycle scripts disabled.",
+      "platform": { "os": [], "cpu": [] },
+      "artifact": {
+        "path": "bin/geckodriver.js",
+        "capability": "@wdio/tauri-service",
+        "proof": "no-build-fallback"
+      },
+      "purl": "pkg:npm/geckodriver@6.1.1",
+      "reviewedAt": "2026-08-29",
+      "expiresAt": "2026-11-27",
+      "recheck": "WebdriverIO dependency refresh or external driver adoption",
+      "triggers": [
+        "WebdriverIO dependency refresh",
+        "embedded provider removal",
+        "external Firefox driver adoption"
+      ]
+    },
+    {
+      "scope": "root",
+      "lock": "package-lock.json",
       "path": "node_modules/fsevents",
       "name": "fsevents",
       "version": "2.3.3",

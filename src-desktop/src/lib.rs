@@ -901,6 +901,12 @@ fn initialize_credential_store() -> Result<(), String> {
     static INITIALIZED: OnceLock<Result<(), String>> = OnceLock::new();
     INITIALIZED
         .get_or_init(|| {
+            #[cfg(feature = "webdriver")]
+            if std::env::var_os("STATION_TAURI_E2E_MOCK_CREDENTIAL").is_some() {
+                return keyring_core::mock::Store::new()
+                    .map(|store| keyring_core::set_default_store(store))
+                    .map_err(|error| format!("initialize WebDriver credential fixture: {error}"));
+            }
             apple_native_keyring_store::keychain::Store::new()
                 .map(|store| keyring_core::set_default_store(store))
                 .map_err(|error| format!("macOS Keychain is unavailable: {error}"))
@@ -915,6 +921,12 @@ fn initialize_credential_store() -> Result<(), String> {
     static INITIALIZED: OnceLock<Result<(), String>> = OnceLock::new();
     INITIALIZED
         .get_or_init(|| {
+            #[cfg(feature = "webdriver")]
+            if std::env::var_os("STATION_TAURI_E2E_MOCK_CREDENTIAL").is_some() {
+                return keyring_core::mock::Store::new()
+                    .map(|store| keyring_core::set_default_store(store))
+                    .map_err(|error| format!("initialize WebDriver credential fixture: {error}"));
+            }
             windows_native_keyring_store::Store::new()
                 .map(|store| keyring_core::set_default_store(store))
                 .map_err(|error| format!("Windows Credential Manager is unavailable: {error}"))
@@ -932,6 +944,12 @@ fn initialize_credential_store() -> Result<(), String> {
     static INITIALIZED: OnceLock<Result<(), String>> = OnceLock::new();
     INITIALIZED
         .get_or_init(|| {
+            #[cfg(feature = "webdriver")]
+            if std::env::var_os("STATION_TAURI_E2E_MOCK_CREDENTIAL").is_some() {
+                return keyring_core::mock::Store::new()
+                    .map(|store| keyring_core::set_default_store(store))
+                    .map_err(|error| format!("initialize WebDriver credential fixture: {error}"));
+            }
             zbus_secret_service_keyring_store::Store::new()
                 .map(|store| keyring_core::set_default_store(store))
                 .map_err(|error| {
@@ -995,6 +1013,25 @@ fn credential_entry(reference: &NativeCredentialReference) -> Result<keyring_cor
     let account = credential_account(reference)?;
     keyring_core::Entry::new(STATION_CREDENTIAL_SERVICE, &account)
         .map_err(|error| format!("create OS credential entry: {error}"))
+}
+
+#[cfg(all(not(mobile), feature = "webdriver"))]
+fn seed_webdriver_credential_fixture(app_identifier: &str) -> Result<(), String> {
+    if std::env::var_os("STATION_TAURI_E2E_MOCK_CREDENTIAL").is_none() {
+        return Ok(());
+    }
+    if !cfg!(debug_assertions) || app_identifier != "io.kontourai.station.webdriver" {
+        return Err(
+            "WebDriver credentials require the debug-only Station E2E application".to_string(),
+        );
+    }
+    write_credential_password(
+        &NativeCredentialReference {
+            kind: "station-bearer".to_string(),
+            id: "tauri-shell-e2e".to_string(),
+        },
+        "synthetic-tauri-shell-e2e-token",
+    )
 }
 
 fn is_missing_credential(error: &keyring_core::Error) -> bool {
@@ -8356,6 +8393,12 @@ If a stable instance is running, this launch will focus its window and exit.",
         },
     ));
 
+    // The embedded WebDriver binds loopback and grants full automation over
+    // the WebView. Keep it behind an explicit test feature; release workflows
+    // and ordinary debug builds must never enable it.
+    #[cfg(all(not(mobile), feature = "webdriver"))]
+    let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
+
     let mut builder = builder.plugin(
         tauri_plugin_log::Builder::new()
             .level(log_level)
@@ -8469,6 +8512,8 @@ If a stable instance is running, this launch will focus its window and exit.",
 
     builder
         .setup(move |app| {
+            #[cfg(all(not(mobile), feature = "webdriver"))]
+            seed_webdriver_credential_fixture(&app.config().identifier)?;
             if let Some(raw) = &invalid_log_level {
                 log::warn!(
                     "invalid STATION_DESKTOP_LOG_LEVEL={raw:?}; using the default (info). Expected one of trace, debug, info, warn, error, off."

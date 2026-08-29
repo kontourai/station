@@ -108,6 +108,25 @@ describe('useInvalidateCachesOnConnectionSwitch', () => {
     expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
+  it('invalidates a query that completed before saved-profile establishment', () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(['config'], {
+      pluginFrameOrigin: 'http://127.0.0.1:41000',
+    });
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { rerender } = renderSwitchHook(queryClient, {
+      apiBase: 'http://127.0.0.1:41000',
+      hasActiveConnection: false,
+    });
+
+    rerender({
+      apiBase: 'http://127.0.0.1:42000',
+      hasActiveConnection: true,
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledOnce();
+  });
+
   it('invalidates (never clears) exactly once when an ALREADY-established connection switches to a different apiBase', () => {
     const queryClient = new QueryClient();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
