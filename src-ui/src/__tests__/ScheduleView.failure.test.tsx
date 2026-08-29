@@ -458,11 +458,11 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     posture.kind = 'degraded';
     const { rerender } = render(<ScheduleView />);
     expect(screen.getAllByText('paused — host busy')).toHaveLength(2);
-    expect(screen.queryByText('paused — host at capacity')).toBeNull();
+    expect(screen.queryByText('paused — host very busy')).toBeNull();
 
     posture.kind = 'critical';
     rerender(<ScheduleView />);
-    expect(screen.getAllByText('paused — host at capacity')).toHaveLength(2);
+    expect(screen.getAllByText('paused — host very busy')).toHaveLength(2);
     expect(screen.queryByText('paused — host busy')).toBeNull();
   });
 

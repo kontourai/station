@@ -741,15 +741,29 @@ async function journeyCapacityGate(browser, note, shared) {
     // coincidentally-loaded host cannot fake this (its source differs), and
     // a silently unauthorized override cannot pass it (kind won't be
     // critical on a healthy runner).
-    const posture = envelopeData(
-      await apiOk(page, 'GET', '/api/system/resource-posture'),
-    );
-    assert(
-      posture?.kind === 'critical' &&
-        posture?.busyPercent === 97 &&
-        posture?.source === 'core-loop-capacity-e2e',
-      `forced posture not observed: ${JSON.stringify(posture)} — the STATION_E2E_RESOURCE_POSTURE_CRITICAL seam did not take`,
-    );
+    // #837 hysteresis: critical entry is sustained (3 consecutive smoothed
+    // samples, one per 2s cache window), so poll the endpoint through the
+    // entry window instead of asserting the first read. The SOURCE check on
+    // every read still proves the seam took (a coincidentally-loaded host
+    // reports a different source even while degraded/critical).
+    let posture;
+    const postureDeadline = Date.now() + 30_000;
+    for (;;) {
+      posture = envelopeData(
+        await apiOk(page, 'GET', '/api/system/resource-posture'),
+      );
+      assert(
+        posture?.source === 'core-loop-capacity-e2e' &&
+          posture?.busyPercent === 97,
+        `forced posture not observed: ${JSON.stringify(posture)} — the STATION_E2E_RESOURCE_POSTURE_CRITICAL seam did not take`,
+      );
+      if (posture?.kind === 'critical') break;
+      assert(
+        Date.now() < postureDeadline,
+        `forced posture never reached critical within the sustained-entry window: ${JSON.stringify(posture)}`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2_500));
+    }
     note(
       'posture endpoint reports the forced critical observation (source core-loop-capacity-e2e)',
     );

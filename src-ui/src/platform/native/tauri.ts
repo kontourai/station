@@ -807,6 +807,19 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     }
   }
 
+  async commitRendererMount(): Promise<NativeCommandResult<void>> {
+    try {
+      await this.bridge.invoke<unknown>('commit_renderer_mount');
+      return { status: 'ok', value: undefined };
+    } catch (error) {
+      return {
+        status: 'error',
+        command: 'commit-renderer-mount',
+        message: errorMessage(error),
+      };
+    }
+  }
+
   async commitStartupRecoveryUi(): Promise<NativeCommandResult<void>> {
     try {
       await this.bridge.invoke<unknown>('commit_startup_recovery_ui');
