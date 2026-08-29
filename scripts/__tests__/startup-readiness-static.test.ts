@@ -19,7 +19,7 @@ describe('desktop startup readiness static boundary', () => {
     }
   });
 
-  it('uses one native reveal authority and does not add window-state plugins', () => {
+  it('uses one native reveal authority and a macOS-owned bootstrap cover', () => {
     const lib = read('src-desktop/src/lib.rs');
     const tray = read('src-desktop/src/tray.rs');
     const mainWindowActions = [
@@ -28,12 +28,20 @@ describe('desktop startup readiness static boundary', () => {
       ),
     ];
     expect(mainWindowActions).toHaveLength(1);
-    expect(
-      lib.slice(
-        Math.max(0, (mainWindowActions[0]?.index ?? 0) - 120),
-        mainWindowActions[0]!.index,
-      ),
-    ).toContain('fn reveal_main_window');
+    expect(lib).toContain('fn reveal_main_window');
+    const nativeStart = lib.indexOf('fn with_native_startup_cover');
+    const nativeEnd = lib.indexOf('fn reveal_main_window');
+    const nativeCover = lib.slice(nativeStart, nativeEnd);
+    expect(nativeStart).toBeGreaterThanOrEqual(0);
+    expect(nativeEnd).toBeGreaterThan(nativeStart);
+    expect(nativeCover).toContain('window.with_webview');
+    expect(nativeCover).toContain('content.addSubview(&cover)');
+    expect(nativeCover).toContain('setAlphaValue: 0.0f64');
+    expect(nativeCover).toContain('setAlphaValue: 1.0f64');
+    expect(nativeCover).toContain('ns_window.makeKeyAndOrderFront(None)');
+    expect(nativeCover).not.toContain('.eval(');
+    expect(lib).toContain('with_native_startup_cover(&window, true)');
+    expect(lib).toContain('with_native_startup_cover(&window, false)');
     expect(tray).toMatch(
       /fn focus_station_window[\s\S]{0,260}crate::request_main_window_activation\(app\)/,
     );
