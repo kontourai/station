@@ -1071,10 +1071,7 @@ export function ChatDockBody({
               : activeSession.conversationOpenState?.status ===
                   'missing-session'
                 ? 'missing-session'
-                : activeSession.conversationOpenState?.status ===
-                    'transcript-only'
-                  ? 'transcript-only'
-                  : 'unavailable',
+                : 'unavailable',
             onRetry: onRetryConversationOpen
               ? () => void onRetryConversationOpen()
               : undefined,

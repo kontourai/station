@@ -981,18 +981,6 @@ export type ConversationOpenResolution =
       recoveryActions: readonly [];
     }
   | {
-      status: 'transcript-only';
-      conversation: ConversationListItem;
-      transcript: {
-        available: true;
-        owner: 'store' | 'runtime';
-        messageCount: number;
-      };
-      canContinue: false;
-      answerability: RequestAnswerability;
-      recoveryActions: readonly ('retry' | 'start-new')[];
-    }
-  | {
       status: 'missing-session';
       conversation: ConversationListItem;
       transcript: { available: false; owner: 'runtime' };

@@ -1,6 +1,6 @@
 export interface ConversationOpenRecoveryNoticeProps {
   title: string;
-  state: 'resolving' | 'missing-session' | 'transcript-only' | 'unavailable';
+  state: 'resolving' | 'missing-session' | 'unavailable';
   onRetry?: () => void;
   onStartNew?: () => void;
 }
@@ -20,9 +20,7 @@ export function ConversationOpenRecoveryNotice({
       ? 'Station is resolving its current session.'
       : state === 'missing-session'
         ? 'Its execution session is no longer available.'
-        : state === 'transcript-only'
-          ? 'Its transcript is available, but continuation is not authorized.'
-          : 'Station could not prove a writable continuation for its current session.';
+        : 'Station could not prove a writable continuation for its current session.';
 
   return (
     <div className="session-history-error" role="alert">

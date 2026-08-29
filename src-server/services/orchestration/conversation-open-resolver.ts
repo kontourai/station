@@ -36,9 +36,9 @@ export function createConversationOpenResolver(deps: {
   return {
     async resolve({ conversation, authority }) {
       if (conversation.source === 'store') {
-        // Store transcripts are real durable history, but have no
-        // orchestration session/continuation authority.  The route hydrates
-        // their messages under the same request authority before returning.
+        // The runtime picker filters store rows and the point-read route never
+        // guesses their owner. Keep this defensive arm total if another caller
+        // accidentally supplies one, without promising transcript hydration.
         return {
           status: 'unavailable',
           conversation,

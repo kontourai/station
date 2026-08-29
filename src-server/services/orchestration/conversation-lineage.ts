@@ -40,15 +40,23 @@ const CONVERSATION_HISTORY_MAX_ENTRIES = 100;
  * be admissible for the current child rather than treating terminal lifecycle
  * as a permanent read-only state.
  */
-export function canResolveConversationContinuation(
+export function isConversationContinuationControlEligible(
   detail: OrchestrationSessionDetail,
 ): boolean {
   const session = detail.session;
   return (
     session.controlMode === 'station-owned' &&
-    session.hasActiveTurn !== true &&
     session.pendingReview !== true &&
     session.answerability.answerable
+  );
+}
+
+export function canResolveConversationContinuation(
+  detail: OrchestrationSessionDetail,
+): boolean {
+  return (
+    isConversationContinuationControlEligible(detail) &&
+    detail.session.hasActiveTurn !== true
   );
 }
 
@@ -209,6 +217,11 @@ export class ConversationLineage {
     const lifecycle = foldedSessionLifecycleState(
       detail.session.lifecycleState,
     );
+    if (!isConversationContinuationControlEligible(detail)) {
+      throw new Error(
+        'This conversation is not writable under its current control state.',
+      );
+    }
     if (!isSessionLifecycleStateStopped(lifecycle)) {
       observeConversationContinuation('current_open');
       return { sessionId: current.sessionId, startRequired: false };

@@ -603,8 +603,8 @@ Imperative API calls — use in event handlers, slash commands, or anywhere hook
 
 Resolves one inventory row under the server's request-derived authority before
 a caller treats it as a writable Session. The discriminated result is
-`resolved`, `transcript-only`, `missing-session`, or `unavailable`; only the
-`resolved` arm can carry a current Session identity and a server-derived
+`resolved`, `missing-session`, or `unavailable`; only the `resolved` arm can
+carry a current Session identity and a server-derived
 `canContinue` decision. Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
 chat.

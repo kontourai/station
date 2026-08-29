@@ -48,7 +48,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
             const chat = activeChatsStore.getSnapshot()[turn.sessionId];
             if (chat && !conversationCanMutate(chat)) {
               return {
-                kind: 'not-invoked' as const,
+                kind: 'deferred' as const,
                 reason: 'Conversation open state is not currently mutable.',
               };
             }

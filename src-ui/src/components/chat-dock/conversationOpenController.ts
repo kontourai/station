@@ -6,7 +6,7 @@ import type { ChatUIState } from '../../contexts/active-chats-state';
 
 export type ConversationOpenRecovery = {
   conversation: ConversationListItem;
-  status: 'missing-session' | 'unavailable' | 'transcript-only' | 'error';
+  status: 'missing-session' | 'unavailable' | 'error';
 };
 
 export type ConversationOpenCommit =

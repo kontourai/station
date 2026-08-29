@@ -65,7 +65,7 @@ function parseConversationOpenResolution(
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
   if (
-    !['resolved', 'transcript-only', 'missing-session', 'unavailable'].includes(
+    !['resolved', 'missing-session', 'unavailable'].includes(
       String(record.status),
     ) ||
     typeof record.canContinue !== 'boolean' ||
@@ -119,12 +119,6 @@ function parseConversationOpenResolution(
     !actions.includes('start-new')
   )
     return false;
-  if (record.status === 'transcript-only') {
-    return (
-      transcript.available === true &&
-      (transcript.owner === 'store' || transcript.owner === 'runtime')
-    );
-  }
   if (record.status === 'missing-session') {
     return transcript.available === false && transcript.owner === 'runtime';
   }
