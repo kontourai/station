@@ -162,6 +162,47 @@ describe('navigationStore query updates under an open dialog layer', () => {
     }
   });
 
+  test('a reused dialog id survives a collapse, so its next Back reaches its own entry', async () => {
+    navigationStore.navigate('/projects/alpha', { chat: 'session-old' });
+
+    const dispose = registerDialogHistory('reused-id', vi.fn());
+    navigationStore.updateParams({ chat: 'session-new' });
+    dispose();
+    for (let tick = 0; tick < 50; tick += 1) {
+      if (window.history.state[DIALOG_HISTORY_KEY] === undefined) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    // Reopening under the same id is the ordinary case, not an edge one —
+    // 'mobile-task-switcher' is a constant. A collapse that armed an orphan
+    // for the id would make this entry get skipped rather than landed on.
+    const disposeAgain = registerDialogHistory('reused-id', vi.fn());
+    expect(window.history.state[DIALOG_HISTORY_KEY]).toBe('reused-id');
+
+    // Somewhere beyond the dialog, so the next Back lands ON its entry rather
+    // than on the one beneath it.
+    window.history.pushState(
+      { __stationNavigationIndex: 99 },
+      '',
+      '/projects/alpha?chat=session-new&probe=1',
+    );
+
+    window.history.back();
+    for (let tick = 0; tick < 60; tick += 1) {
+      if (!window.location.search.includes('probe=1')) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(window.history.state[DIALOG_HISTORY_KEY]).toBe('reused-id');
+
+    disposeAgain();
+    for (let tick = 0; tick < 50; tick += 1) {
+      if (window.history.state[DIALOG_HISTORY_KEY] === undefined) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  });
+
   test('a dialog-mediated param change leaves one entry, so Back returns to the previous selection', async () => {
     navigationStore.navigate('/projects/alpha', { chat: 'session-old' });
 
