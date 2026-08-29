@@ -649,7 +649,7 @@ describe('exact Windows process identity', () => {
       expect.arrayContaining([
         '-Command',
         expect.stringContaining(
-          "ToString('o', [cultureinfo]::InvariantCulture)",
+          "ToString('yyyy-MM-ddTHH:mm:ss.fffffffZ', [System.Globalization.CultureInfo]::InvariantCulture)",
         ),
       ]),
       expect.objectContaining({ encoding: 'utf8' }),

@@ -1,4 +1,5 @@
 export const PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS: number;
+export const WINDOWS_PROCESS_BIRTH_ATTEMPTS: number;
 export type ExactProcessIdentity = { pid: number; start: string };
 export type ExactProcessIdentityProbe =
   | { state: 'dead' }
@@ -62,6 +63,10 @@ export function lookupProcessBirthFingerprintCachedAsync(
 ): Promise<string | null>;
 export function clearProcessBirthFingerprintCache(): void;
 export function probeExactProcessIdentity(
+  pid: number,
+  dependencies?: ProcessIdentityDependencies,
+): ExactProcessIdentityProbe;
+export function resolveOwnProcessIdentity(
   pid: number,
   dependencies?: ProcessIdentityDependencies,
 ): ExactProcessIdentityProbe;
