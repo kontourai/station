@@ -13,6 +13,10 @@ const historicalOrchestrationEvents = new WeakMap<
   Page,
   Record<string, Record<string, unknown>[]>
 >();
+const conversationSessionReaders = new WeakMap<
+  Page,
+  (conversationId: string) => string[]
+>();
 
 export const STATUS_READY = JSON.stringify({
   ready: true,
@@ -112,6 +116,7 @@ export const DEFAULT_CONVERSATIONS = [
 export const DEFAULT_CONVERSATION_LOOKUPS = {
   'conv-1': {
     id: 'conv-1',
+    currentSessionId: 'session-1',
     agentSlug: 'dev-agent',
     projectSlug: 'dev',
     title: 'Dev Agent Chat',
@@ -120,6 +125,7 @@ export const DEFAULT_CONVERSATION_LOOKUPS = {
   string,
   {
     id: string;
+    currentSessionId: string;
     agentSlug: string;
     projectSlug?: string;
     title?: string;
@@ -288,6 +294,7 @@ export async function installMockOrchestrationConversationEventWindow(
   page: Page,
   readSessionIds: (conversationId: string) => string[],
 ): Promise<void> {
+  conversationSessionReaders.set(page, readSessionIds);
   await page.route(
     '**/api/orchestration/conversations/*/event-window**',
     (route) => {
@@ -406,6 +413,7 @@ export async function seedOrchestrationRoutes(
       string,
       {
         id: string;
+        currentSessionId: string;
         agentSlug: string;
         projectSlug?: string;
         title?: string;
@@ -562,27 +570,92 @@ export async function seedOrchestrationRoutes(
         body: JSON.stringify({ success: true, data: [] }),
       }),
     ),
-    page.route('**/api/conversations/*', (r) => {
+    page.route('**/api/conversations/**', (r) => {
       const url = new URL(r.request().url());
+      const parts = url.pathname.split('/').filter(Boolean);
       const conversationId =
-        url.pathname.split('/').filter(Boolean).pop() ?? '';
+        (parts.at(-1) === 'open' ? parts.at(-2) : parts.at(-1)) ?? '';
       const conversation = (
         conversationLookups as Record<
           string,
           {
             id: string;
+            currentSessionId: string;
             agentSlug: string;
             projectSlug?: string;
             title?: string;
           }
         >
       )[conversationId];
+      if (parts.at(-1) === 'open' && conversation) {
+        const inventory = conversations.find(
+          (candidate) => candidate.id === conversationId,
+        );
+        if (!inventory) {
+          return r.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: false,
+              error: 'Conversation fixture metadata is incomplete',
+            }),
+          });
+        }
+        const sessionReader = conversationSessionReaders.get(page);
+        const currentSessionId = sessionReader
+          ? sessionReader(conversationId).at(-1)
+          : conversation.currentSessionId;
+        const { currentSessionId: _seededCurrentSessionId, ...identity } =
+          conversation;
+        const exactConversation = {
+          ...identity,
+          source: 'runtime' as const,
+          title: conversation.title ?? inventory.title ?? conversationId,
+          createdAt: inventory.createdAt,
+          updatedAt: inventory.updatedAt,
+          messageCount: inventory.messageCount ?? 0,
+          mutable: false,
+          answerability: { answerable: true },
+        };
+        return r.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            data: {
+              status: currentSessionId ? 'resolved' : 'missing-session',
+              conversation: exactConversation,
+              ...(currentSessionId ? { currentSessionId } : {}),
+              transcript: {
+                available: Boolean(currentSessionId),
+                owner: 'runtime',
+                ...(currentSessionId
+                  ? { messageCount: inventory.messageCount ?? 0 }
+                  : {}),
+              },
+              canContinue: Boolean(currentSessionId),
+              answerability: { answerable: true },
+              recoveryActions: currentSessionId ? [] : ['retry', 'start-new'],
+            },
+          }),
+        });
+      }
+      const legacyConversation = conversation
+        ? {
+            id: conversation.id,
+            agentSlug: conversation.agentSlug,
+            ...(conversation.projectSlug
+              ? { projectSlug: conversation.projectSlug }
+              : {}),
+            ...(conversation.title ? { title: conversation.title } : {}),
+          }
+        : undefined;
       return r.fulfill({
-        status: conversation ? 200 : 404,
+        status: legacyConversation ? 200 : 404,
         contentType: 'application/json',
         body: JSON.stringify(
-          conversation
-            ? { success: true, data: conversation }
+          legacyConversation
+            ? { success: true, data: legacyConversation }
             : { success: false, error: 'Conversation not found' },
         ),
       });
