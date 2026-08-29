@@ -238,9 +238,13 @@ describe('CI verification workflow contracts', () => {
       expect(source).toContain('workflow_dispatch:');
     }
     expect(ci).toContain('runs-on: ubuntu-22.04');
-    expect(containerSmoke).toContain('runs-on: ubuntu-22.04');
     expect(ci).not.toContain('runs-on: [self-hosted, Linux');
-    expect(containerSmoke).not.toContain('runs-on: [self-hosted, Linux');
+    const containerClassify = containerSmoke.slice(
+      containerSmoke.indexOf('  classify:'),
+      containerSmoke.indexOf('  smoke:'),
+    );
+    expect(containerClassify).toContain('runs-on: ubuntu-22.04');
+    expect(containerClassify).not.toContain('self-hosted');
     expect(ci).toContain(
       `group: ci-fast-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}`,
     );
@@ -278,13 +282,17 @@ describe('CI verification workflow contracts', () => {
         new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
       ),
     ).toHaveLength(1);
+    expect(
+      workflow('container-smoke.yml').match(
+        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
+      ),
+    ).toHaveLength(1);
 
     for (const name of [
       'android-test.yml',
       'build-android.yml',
       'ci.yml',
       'ci-extended.yml',
-      'container-smoke.yml',
       'nightly.yml',
       'publish-packages.yml',
       'backlog-priority-policy.yml',
@@ -401,12 +409,13 @@ describe('CI verification workflow contracts', () => {
       'interactive-workspace-performance.yml',
       'windows-verification.yml',
       'windows-vitest-diagnostic.yml',
+      'container-smoke.yml',
     ].flatMap((name) =>
       [...workflow(name).matchAll(/^\s+lease-weight: ["']?(\d+)["']?$/gm)].map(
         ([, weight]) => Number(weight),
       ),
     );
-    expect(desktopWinLeaseWeights).toEqual([6, 6, 6, 5, 9]);
+    expect(desktopWinLeaseWeights).toEqual([6, 6, 6, 5, 9, 9]);
     expect(Math.max(...desktopWinLeaseWeights)).toBeLessThanOrEqual(9);
     expect(workflow('secret-scan.yml')).not.toContain('capacity-lease-weight:');
     expect(fullRegression).toContain('run: npm run full:regression');
@@ -666,7 +675,6 @@ describe('CI verification workflow contracts', () => {
       'ci-extended.yml',
       'android-test.yml',
       'build-android.yml',
-      'container-smoke.yml',
       'secret-scan.yml',
       'nightly.yml',
       'publish-packages.yml',
@@ -684,6 +692,9 @@ describe('CI verification workflow contracts', () => {
     );
     expect(workflow('windows-verification.yml')).toContain(
       'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
+    );
+    expect(workflow('container-smoke.yml')).toContain(
+      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]',
     );
     const recovery = workflow('recover-terminal-capacity-owner.yml');
     expect(recovery).toContain(
