@@ -1,6 +1,9 @@
 import { MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import { getLegacyPathRedirect } from '../app-shell/routing';
-import { DIALOG_HISTORY_KEY } from '../components/dialog-history';
+import {
+  DIALOG_HISTORY_KEY,
+  setCollapsedDialogEntryAdopter,
+} from '../components/dialog-history';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { type DockMode, normalizeDockMode } from '../types';
 import {
@@ -187,6 +190,12 @@ class NavigationStore {
         );
       }
       window.addEventListener('popstate', this.handlePopState);
+      // This store owns navigation indices; `dialog-history` owns the dialog
+      // layer. Installed rather than called because the dependency runs that
+      // way — that module cannot import this one back without a cycle.
+      setCollapsedDialogEntryAdopter((state) =>
+        this.adoptCollapsedDialogEntry(state),
+      );
       // archive#settings-revamp (deliberate choice,
       // documented per the reviewer's request — the alternative was "any
       // navigation heals it," rejected because dockMode also drives
@@ -420,6 +429,36 @@ class NavigationStore {
   };
 
   getSnapshot = () => this.state;
+
+  /**
+   * Adopts the entry a collapsed dialog layer leaves behind, which holds a URL
+   * this store never pushed for.
+   *
+   * It arrives carrying the index of the entry beneath it — a dialog's marker
+   * push copies the state it lands on, and `updateParams` rewrites whatever
+   * index it already found — and two adjacent entries sharing an index make
+   * `handlePopState` compute a delta of 0, the value that means "no traversal
+   * to guard" and skips `runNavigationGuards`. Assign the index a `navigate`
+   * of this store's own would have, so a Back off this entry is a real
+   * traversal and the unsaved-changes guard is consulted.
+   *
+   * Deriving the state and advancing the index are separated so the caller can
+   * order the advance after its history write succeeds; this store stays the
+   * only writer of `historyIndex`, but it is no longer the one that decides
+   * when the write counted.
+   */
+  private adoptCollapsedDialogEntry(state: Record<string, unknown>): {
+    state: Record<string, unknown>;
+    commit: () => void;
+  } {
+    const nextIndex = this.historyIndex + 1;
+    return {
+      state: { ...state, [NAVIGATION_INDEX_KEY]: nextIndex },
+      commit: () => {
+        this.historyIndex = nextIndex;
+      },
+    };
+  }
 
   registerNavigationGuard(
     identity: symbol,
