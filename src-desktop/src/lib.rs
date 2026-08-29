@@ -12058,6 +12058,20 @@ mod tests {
         );
     }
 
+    #[cfg(not(mobile))]
+    #[test]
+    fn cli_and_desktop_share_the_root_genesis_lock_protocol() {
+        let root = std::path::Path::new("/Users/test/.station");
+        let target = station_profile_store_genesis_lock_target(root).unwrap();
+        assert_eq!(
+            target.file_name().and_then(|name| name.to_str()),
+            Some("..station.station-profile-store-genesis.json"),
+        );
+        let cli = include_str!("../../packages/cli/src/commands/profile-store.ts");
+        assert!(cli.contains(".${basename(root)}.station-profile-store-genesis.json.lock"));
+        assert!(cli.contains("createExclusiveProfileStoreLock(path)"));
+    }
+
     #[cfg(unix)]
     #[test]
     fn bundled_sidecar_reuses_an_owner_reached_through_an_ancestor_alias() {
