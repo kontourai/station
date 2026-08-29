@@ -1,3 +1,6 @@
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, test } from 'vitest';
 import {
   admitMacosAppBundle,
@@ -301,6 +304,45 @@ test('terminates a hung release subprocess with its phase and program, never its
   expect(progress).toContain('timed out');
   expect(progress).not.toContain(secret);
 });
+
+test.skipIf(process.platform === 'win32')(
+  'kills a TERM-ignoring descendant after its leader closes before retry can proceed',
+  async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-notary-descendant-'));
+    const ready = join(directory, 'ready');
+    const survived = join(directory, 'survived');
+    const descendant = `
+    const fs = require('node:fs');
+    const [ready, survived] = process.argv.slice(1);
+    process.on('SIGTERM', () => {
+      setTimeout(() => fs.writeFileSync(survived, 'still alive'), 150);
+    });
+    fs.writeFileSync(ready, 'ready');
+    setInterval(() => {}, 1000);
+  `;
+    const leader = `
+    const { spawn } = require('node:child_process');
+    const child = spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}, ${JSON.stringify(ready)}, ${JSON.stringify(survived)}], { stdio: 'ignore' });
+    process.on('SIGTERM', () => process.exit(0));
+    setInterval(() => {}, 1000);
+  `;
+    try {
+      await expect(
+        runBoundedCommand(process.execPath, ['-e', leader], {
+          phase: 'application notarization',
+          timeoutMs: 400,
+          terminationGraceMs: 50,
+          logger: logger(),
+        }),
+      ).rejects.toMatchObject({ timedOut: true });
+      expect(existsSync(ready)).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 225));
+      expect(existsSync(survived)).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
 
 test('retries exactly once for timestamp transport failures and never for identity failures', async () => {
   const releaseLogger = logger();

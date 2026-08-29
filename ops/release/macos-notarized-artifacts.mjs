@@ -19,6 +19,50 @@ export const NOTARY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 export const COMMAND_TERMINATION_GRACE_MS = 10 * 1000;
 export const MAX_RETRY_ATTEMPTS = 2;
 
+// The wrapper deliberately remains the process-group leader after the tool
+// receives TERM. A direct tool can exit and emit `close` while a descendant in
+// its group ignores TERM; using the direct PID as a later kill target would
+// either orphan that descendant or risk addressing a reused process-group ID.
+// The still-live wrapper owns its own PGID through the grace period, then
+// kills that exact group before it exits and lets the release retry continue.
+const POSIX_RELEASE_TOOL_WRAPPER = `
+const { spawn } = require('node:child_process');
+const [program, encodedArgs, graceRaw] = process.argv.slice(1);
+const graceMs = Number.parseInt(graceRaw, 10);
+let args;
+try {
+  args = JSON.parse(encodedArgs);
+} catch {
+  args = null;
+}
+if (!Array.isArray(args) || !Number.isSafeInteger(graceMs) || graceMs < 0) {
+  process.exitCode = 64;
+} else {
+  const child = spawn(program, args, { stdio: 'inherit', windowsHide: true });
+  let terminating = false;
+  function finishGroup() {
+    // This wrapper is still the group leader, so -process.pid cannot name a
+    // reused process group. SIGKILL terminates the wrapper and every survivor.
+    process.kill(-process.pid, 'SIGKILL');
+  }
+  function beginTermination() {
+    if (terminating) return;
+    terminating = true;
+    // Keep this leader alive until it kills its group. An unref'ed timer would
+    // let it exit as soon as the direct child closes, recreating the orphan.
+    setTimeout(finishGroup, graceMs);
+  }
+  process.on('SIGTERM', beginTermination);
+  process.on('SIGINT', beginTermination);
+  child.once('error', () => {
+    if (!terminating) process.exitCode = 127;
+  });
+  child.once('close', (status) => {
+    if (!terminating) process.exitCode = status ?? 1;
+  });
+}
+`;
+
 export class ReleaseCommandError extends Error {
   constructor({
     phase,
@@ -64,6 +108,26 @@ function terminateProcessGroup(child, signal) {
   child.kill(signal);
 }
 
+function spawnReleaseTool(program, args, terminationGraceMs, spawn) {
+  const options = {
+    detached: process.platform !== 'win32',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  };
+  if (process.platform === 'win32') return spawn(program, args, options);
+  return spawn(
+    process.execPath,
+    [
+      '-e',
+      POSIX_RELEASE_TOOL_WRAPPER,
+      program,
+      JSON.stringify(args),
+      String(terminationGraceMs),
+    ],
+    options,
+  );
+}
+
 function collectStream(stream) {
   const chunks = [];
   let bytes = 0;
@@ -87,9 +151,9 @@ function collectStream(stream) {
 }
 
 /**
- * Runs one release tool without exposing its arguments or output. A direct
- * process group lets the timeout clean up a hung tool and any child it starts;
- * `spawnSync` cannot provide either progress or a reliable release-job bound.
+ * Runs one release tool without exposing its arguments or output. On POSIX,
+ * a process-group wrapper retains ownership until TERM's grace period ends;
+ * `spawnSync` cannot provide that cleanup or phase-visible progress.
  */
 export function runBoundedCommand(
   program,
@@ -112,11 +176,7 @@ export function runBoundedCommand(
   return new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawn(program, args, {
-        detached: process.platform !== 'win32',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-      });
+      child = spawnReleaseTool(program, args, terminationGraceMs, spawn);
     } catch {
       reject(new ReleaseCommandError({ phase, program }));
       return;
@@ -131,7 +191,9 @@ export function runBoundedCommand(
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
-      clearTimeout(killTimer);
+      // POSIX owns escalation in the still-live wrapper. Windows has no PGID
+      // wrapper, so never retain a post-close PID kill that could be reused.
+      if (!timedOut || process.platform === 'win32') clearTimeout(killTimer);
       callback();
     };
     const fail = ({ status, signal } = {}) => {
@@ -151,20 +213,24 @@ export function runBoundedCommand(
     timeout = setTimeout(() => {
       timedOut = true;
       error(
-        `[macOS release] ${phase}: ${program} timed out after ${timeoutMs}ms; terminating.`,
+        `[macOS release] ${phase}: ${program} timed out after ${timeoutMs}ms; terminating process group.`,
       );
       try {
         terminateProcessGroup(child, 'SIGTERM');
       } catch {
         // The close event provides the bounded, phase-labelled failure.
       }
-      killTimer = setTimeout(() => {
-        try {
-          terminateProcessGroup(child, 'SIGKILL');
-        } catch {
-          // The process may have exited between TERM and KILL.
-        }
-      }, terminationGraceMs);
+      if (process.platform === 'win32') {
+        // Windows has no POSIX PGID wrapper; this only bounds a still-live
+        // direct child and is cancelled as soon as that child closes.
+        killTimer = setTimeout(() => {
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            // The owned child may have exited between TERM and KILL.
+          }
+        }, terminationGraceMs);
+      }
     }, timeoutMs);
     child.once('error', () => fail());
     child.once('close', (status, signal) => {
