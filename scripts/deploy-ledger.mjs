@@ -254,7 +254,10 @@ function renderChangelogSection(entry, githubRepo) {
   if (changelog.note) {
     lines.push(`> ${changelog.note}`, '');
   }
-  if (changelog.previousSha) {
+  // A slice with a note is a slice that could not be derived (unreachable
+  // predecessor, same-sha companion): the note already says why, and a
+  // "Commits since" header over an empty list would contradict it.
+  if (changelog.previousSha && !changelog.note) {
     const fullSha = githubRepo
       ? ` ([full sha](https://github.com/${githubRepo}/commit/${changelog.previousSha}))`
       : '';

@@ -137,7 +137,11 @@ describe('the nightly workflow records what it ships', () => {
       'DEPLOY_LEDGER_VERSION: $' + '{{ steps.cli_identity.outputs.version }}',
     );
     expect(step).not.toMatch(/git rev-parse/);
-    expect(step).toContain('steps.cli_npm_preflight.outputs.trusted_publisher');
+    // Records only what actually published, and cannot be suppressed by an
+    // unrelated later-step failure.
+    expect(step).toContain(
+      "always() && steps.decide.outputs.build == 'true' && steps.cli_npm_publish.outcome == 'success'",
+    );
     expect(step).toMatch(/docs\(ledger\):/);
   });
 

@@ -128,6 +128,15 @@ jobs:
       - name: List APK
         run: ls -lh apk/ && find apk/ -name "*.apk"
 
+      - name: Enable KVM for the runner user
+        # Hosted runners expose /dev/kvm root-only until this documented step:
+        # https://github.blog/changelog/2024-04-02-github-actions-hardware-accelerated-android-virtualization-now-available/
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Verify provisioned KVM access
         run: |
           test -r /dev/kvm -a -w /dev/kvm || {
