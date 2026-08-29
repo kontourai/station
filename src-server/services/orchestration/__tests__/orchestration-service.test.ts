@@ -892,7 +892,11 @@ describe('OrchestrationService', () => {
       threadId: 'conversation-continuation',
       sessionId: 'conversation-continuation',
       method: 'session.configured',
-      metadata: { connectionId: 'connection-a' },
+      metadata: {
+        userId: 'owner-user',
+        agentSlug: 'station',
+        connectionId: 'connection-a',
+      },
       createdAt: '2026-08-24T00:00:00.500Z',
     });
     eventStore.appendEvent({
@@ -915,7 +919,7 @@ describe('OrchestrationService', () => {
     );
     const open = await service.resolveConversationOpen(
       'conversation-continuation',
-      INTERNAL_SESSION_READ_SCOPE,
+      personalReadAuthority('owner-user'),
     );
     expect(open).toMatchObject({
       status: 'resolved',

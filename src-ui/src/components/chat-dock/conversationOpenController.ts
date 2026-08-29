@@ -145,8 +145,7 @@ export async function commitConversationOpen({
       kind: 'recovery',
       recovery: {
         conversation,
-        status:
-          resolution.status === 'resolved' ? 'unavailable' : resolution.status,
+        status: 'unavailable',
       },
     };
   }
