@@ -7,6 +7,7 @@ import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import {
   emitMockOrchestrationEvent,
+  installMockOrchestrationConversationEventWindow,
   installMockOrchestrationEventWindow,
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
@@ -226,6 +227,7 @@ const CONVERSATIONS = {
       createdAt: '2026-05-01T00:00:00Z',
       updatedAt: '2026-05-01T00:03:00Z',
       messageCount: 2,
+      projectSlug: 'alpha',
     },
   ],
   claude: [
@@ -235,6 +237,7 @@ const CONVERSATIONS = {
       createdAt: '2026-05-01T00:00:00Z',
       updatedAt: '2026-05-01T00:02:00Z',
       messageCount: 2,
+      projectSlug: 'alpha',
     },
   ],
   codex: [
@@ -244,6 +247,7 @@ const CONVERSATIONS = {
       createdAt: '2026-05-01T00:00:00Z',
       updatedAt: '2026-05-01T00:01:00Z',
       messageCount: 2,
+      projectSlug: 'beta',
     },
   ],
   kiro: [
@@ -253,6 +257,7 @@ const CONVERSATIONS = {
       createdAt: '2026-05-01T00:00:00Z',
       updatedAt: '2026-05-01T00:00:30Z',
       messageCount: 2,
+      projectSlug: 'alpha',
     },
   ],
 } as Record<string, Array<Record<string, unknown>>>;
@@ -263,7 +268,7 @@ const CONVERSATION_INVENTORY = Object.entries(CONVERSATIONS).flatMap(
       ...conversation,
       source: agentSlug === 'station' ? 'store' : 'runtime',
       agentSlug,
-      projectSlug: agentSlug === 'codex' ? 'beta' : 'alpha',
+      projectSlug: conversation.projectSlug,
       mutable: agentSlug === 'station',
       answerability: { answerable: true },
     })),
@@ -451,19 +456,39 @@ async function seedCrossRuntimeRoutes(
   page: Page,
   executionRequests: ExecutionRequest[] = [],
 ) {
-  await installMockOrchestrationEventWindow(
+  const sessionIdsByConversation = {
+    'conv-managed-alpha': ['session-managed-alpha'],
+    'conv-claude-alpha': ['conv-claude-alpha'],
+    'conv-codex-beta': ['conv-codex-beta'],
+    'conv-acp-alpha': ['session-acp-alpha'],
+  } as const;
+  const historicalBySession = Object.fromEntries(
+    Object.entries(MESSAGES).map(([conversationId, messages]) => [
+      sessionIdsByConversation[
+        conversationId as keyof typeof sessionIdsByConversation
+      ][0],
+      historicalWindowEvents(conversationId, messages),
+    ]),
+  );
+  await installMockOrchestrationEventWindow(page, 'codex', historicalBySession);
+  await installMockOrchestrationConversationEventWindow(
     page,
-    'codex',
-    Object.fromEntries(
-      Object.entries(MESSAGES).map(([threadId, messages]) => [
-        threadId,
-        historicalWindowEvents(threadId, messages),
-      ]),
-    ),
+    (conversationId) => [
+      ...(sessionIdsByConversation[
+        conversationId as keyof typeof sessionIdsByConversation
+      ] ?? []),
+    ],
   );
   await page.addInitScript(() => {
     localStorage.setItem('lastProject', 'alpha');
     localStorage.setItem('station:onboarding-setup-dismissed', '1');
+    localStorage.setItem(
+      'station-device-settings-v1',
+      JSON.stringify({
+        version: 2,
+        values: { chatDockProjectSlug: 'alpha' },
+      }),
+    );
     localStorage.removeItem('recentAgents');
     sessionStorage.setItem(
       'activeChats',
@@ -632,6 +657,40 @@ async function seedCrossRuntimeRoutes(
       json({
         success: true,
         data: [
+          {
+            provider: 'claude',
+            threadId: 'conv-claude-alpha',
+            displayTitle: 'Claude Alpha Chat',
+            status: 'completed',
+            controlMode: 'station-owned',
+            model: 'claude-sonnet-4-20250514',
+            projectSlug: 'alpha',
+            cwd: '/work/alpha',
+            createdAt: '2026-05-01T00:00:00.000Z',
+            updatedAt: '2026-05-01T00:02:00.000Z',
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 2,
+            lastEventAt: '2026-05-01T00:02:00.000Z',
+            lastEventMethod: 'turn.completed',
+          },
+          {
+            provider: 'codex',
+            threadId: 'conv-codex-beta',
+            displayTitle: 'Codex Beta Chat',
+            status: 'completed',
+            controlMode: 'station-owned',
+            model: 'gpt-5-codex',
+            projectSlug: 'beta',
+            cwd: '/work/beta',
+            createdAt: '2026-05-01T00:00:00.000Z',
+            updatedAt: '2026-05-01T00:01:00.000Z',
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 2,
+            lastEventAt: '2026-05-01T00:01:00.000Z',
+            lastEventMethod: 'turn.completed',
+          },
           {
             provider: 'codex',
             threadId: 'daily-driver-mobile-home',
@@ -817,11 +876,11 @@ async function selectProductPath(page: Page, path: ProductPath) {
     project: path.project,
   });
   const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
-  const projectBadge = page.locator('.chat-dock__project-badge');
+  const projectContext = page.locator('.chat-dock__project-context');
   const activeChat = chatList.locator('button[aria-current="true"]');
   await expect(activeChat).toBeVisible();
   await expect(activeChat).toContainText(path.runtimeName);
-  return { activeChat, projectBadge };
+  return { activeChat, projectContext };
 }
 
 async function selectInventoryConversation(
@@ -833,23 +892,18 @@ async function selectInventoryConversation(
   }: { title: string; runtimeName: string; project: string },
 ) {
   const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
-  const chat = chatList.getByRole('button', {
-    name: new RegExp(`^${runtimeName} Chat, ${project}`),
-  });
-  if ((await chat.count()) === 0) {
-    await chatList
-      .getByRole('button', { name: 'Conversation history' })
-      .click();
-    await page
-      .locator('.conversation-history .session-item__content', {
-        hasText: title,
-      })
-      .click();
-  } else {
-    await chat.click();
-  }
-  const projectBadge = page.locator('.chat-dock__project-badge');
-  await expect(projectBadge).toContainText(project);
+  await chatList.getByRole('button', { name: 'Conversation history' }).click();
+  await page
+    .locator('.conversation-history .session-item__content', {
+      hasText: title,
+    })
+    .click();
+  await expect(chatList.locator('button[aria-current="true"]')).toContainText(
+    runtimeName,
+  );
+  await expect(page.locator('.chat-dock__project-context')).toContainText(
+    project,
+  );
 }
 
 async function submitExactTurn({
@@ -1025,7 +1079,7 @@ async function runProductPath({
   send: ReturnType<Page['getByRole']>;
   executionRequests: ExecutionRequest[];
 }): Promise<UiObservation> {
-  const { activeChat, projectBadge } = await selectProductPath(page, path);
+  const { activeChat, projectContext } = await selectProductPath(page, path);
   const assistantRowsBefore = await assistantRows(page).count();
   const commandBinding = await submitExactTurn({
     textarea,
@@ -1055,7 +1109,7 @@ async function runProductPath({
     commandBinding,
     identityBinding: await activeChat.isVisible(),
     projectBinding:
-      (await projectBadge.textContent())?.includes(path.project) === true,
+      (await projectContext.textContent())?.includes(path.project) === true,
     classification: measurement.classification,
   };
 }
@@ -1093,7 +1147,7 @@ async function assertConversationHistory(
   await history
     .locator('.session-item__content', { hasText: 'Claude Alpha Chat' })
     .click();
-  await expect(page.locator('.chat-dock__project-badge')).toContainText(
+  await expect(page.locator('.chat-dock__project-context')).toContainText(
     'Alpha Project',
   );
   await expect(chatList.locator('button[aria-current="true"]')).toContainText(
@@ -1345,7 +1399,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
  * measurement only runs in a real layout — see the plan's stop-short risk).
  */
 test.describe('chat-dock project switcher (kontourai/station#793)', () => {
-  test('desktop badge opens an anchored popover; Open project navigates and Continue in <project> opens a fresh, preseeded chat', async ({
+  test('desktop badge opens an anchored popover; Open navigates and Switch rebinds without starting a chat', async ({
     page,
   }) => {
     await seedCrossRuntimeRoutes(page);
@@ -1364,14 +1418,9 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       runtimeName: 'Claude Runtime',
       project: 'Alpha Project',
     });
-    // exact: true — Playwright's role-name matcher is substring by default, and
-    // the sidebar's project button/chevron/chats action and the inbox's own chat
-    // rows all contain "Alpha Project" as a substring of a longer accessible name.
-    const badge = page.getByRole('button', {
-      name: 'Alpha Project',
-      exact: true,
-    });
+    const badge = page.locator('.chat-dock__project-badge');
     await expect(badge).toBeVisible();
+    await expect(badge).toHaveText('Alpha Project');
     await expect(badge).toHaveAttribute('aria-haspopup', 'dialog');
     await expect(badge).toHaveAttribute('aria-expanded', 'false');
 
@@ -1388,13 +1437,13 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
       dialog.getByRole('button', { name: 'Open Alpha Project' }),
     ).toBeVisible();
     await expect(
-      dialog.getByRole('button', { name: 'Continue in Alpha Project' }),
+      dialog.getByRole('button', { name: 'Switch to Alpha Project' }),
     ).toBeVisible();
     await expect(
       dialog.getByRole('button', { name: 'Open Beta Project' }),
     ).toBeVisible();
     await expect(
-      dialog.getByRole('button', { name: 'Continue in Beta Project' }),
+      dialog.getByRole('button', { name: 'Switch to Beta Project' }),
     ).toBeVisible();
 
     await dialog.getByRole('button', { name: 'Open Beta Project' }).click();
@@ -1405,17 +1454,24 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     // instead of landing behind the dock.
     await expect(page.locator('.chat-dock')).toHaveClass(/is-collapsed/);
 
-    // "Continue in <project>" always opens a FRESH chat via the New Chat
-    // modal, preseeded to the target project — never a resume of the
-    // existing Alpha chat this test started from.
+    const openChatsSummary = page.getByRole('button', {
+      name: /\d+ open chats?/,
+    });
+    const sessionsBeforeSwitch = await openChatsSummary.textContent();
+    const activeChatBeforeSwitch = new URL(page.url()).searchParams.get('chat');
+    expect(activeChatBeforeSwitch).toBeTruthy();
     await badge.click();
     await page
       .getByRole('dialog', { name: 'Switch project' })
-      .getByRole('button', { name: 'Continue in Beta Project' })
+      .getByRole('button', { name: 'Switch to Beta Project' })
       .click();
-    const modal = page.locator('.new-chat-modal');
-    await expect(modal).toBeVisible();
-    await expect(page.locator('.new-chat-modal__context-button')).toContainText(
+    await expect(badge).toContainText('Beta Project');
+    await expect(page.locator('.new-chat-modal')).toHaveCount(0);
+    await expect(openChatsSummary).toHaveText(sessionsBeforeSwitch ?? '');
+    expect(new URL(page.url()).searchParams.get('chat')).toBe(
+      activeChatBeforeSwitch,
+    );
+    await expect(page.locator('.chat-dock__project-context')).toContainText(
       'Beta Project',
     );
   });

@@ -557,6 +557,30 @@ describe('useChatDockViewModel — station#1146 session directory', () => {
     expect(result.current.activeOrchestrationSession).toBe(failed);
   });
 
+  test('prefers the current lineage Session over the durable Conversation id', () => {
+    const current = {
+      threadId: 'session-current',
+      cwd: '/tmp/current-session',
+      lifecycleState: 'running',
+    };
+    const { result } = render({
+      sessions: [
+        {
+          ...chatSession,
+          conversationId: 'conversation-root',
+          currentSessionId: 'session-current',
+        },
+      ],
+      orchestrationSessions: [
+        { threadId: 'conversation-root', cwd: '/tmp/stale-root' },
+        current,
+      ] as any,
+    });
+
+    expect(result.current.activeOrchestrationSession).toBe(current);
+    expect(result.current.sessionDisplayCwd).toBe('/tmp/current-session');
+  });
+
   test('a session that does not correlate is reported as no record, never the wrong one', () => {
     const { result } = render({
       orchestrationSessions: [

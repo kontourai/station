@@ -135,6 +135,7 @@ import {
 } from './projectChatRequest';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockViewModel } from './useChatDockViewModel';
+import { useLatestDeferredFocus } from './useLatestDeferredFocus';
 
 /**
  * Re-open an offline queued turn from what its owning session persistently
@@ -1257,9 +1258,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       activeSessionId,
       setActiveSessionId,
     });
+  const {
+    cancel: cancelPendingProjectBindingFocus,
+    schedule: scheduleProjectBindingFocus,
+  } = useLatestDeferredFocus((sessionId) =>
+    focusSession(sessionId, !isFullscreenPlacement),
+  );
   const focusSessionInPane = useCallback(
-    (sessionId: string) => focusSession(sessionId, !isFullscreenPlacement),
-    [focusSession, isFullscreenPlacement],
+    (sessionId: string) => {
+      cancelPendingProjectBindingFocus();
+      focusSession(sessionId, !isFullscreenPlacement);
+    },
+    [cancelPendingProjectBindingFocus, focusSession, isFullscreenPlacement],
   );
   const openChatForAgentInScopedPane = useCallback(
     (
@@ -1276,6 +1286,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       providerId?: string,
       providerType?: string,
     ) => {
+      cancelPendingProjectBindingFocus();
       if (routeToScopedChatProject(targetProjectSlug)) return;
       const effectiveProjectSlug = hasImmutableProjectScope
         ? projectSlug
@@ -1284,7 +1295,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         ? (projects.find((project) => project.slug === projectSlug)?.name ??
           targetProjectName)
         : targetProjectName;
-      openChatForAgent(
+      const sessionId = openChatForAgent(
         agent,
         effectiveProjectSlug,
         effectiveProjectName,
@@ -1299,14 +1310,21 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         providerId,
         providerType,
       );
+      if (!hasImmutableProjectScope && effectiveProjectSlug) {
+        setActiveProjectSlug(effectiveProjectSlug);
+        scheduleProjectBindingFocus(sessionId);
+      }
     },
     [
       hasImmutableProjectScope,
+      cancelPendingProjectBindingFocus,
       isFullscreenPlacement,
       openChatForAgent,
       projectSlug,
       projects,
       routeToScopedChatProject,
+      scheduleProjectBindingFocus,
+      setActiveProjectSlug,
     ],
   );
   const handleStartNewChatWithMessage = useCallback(
@@ -2579,7 +2597,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             providerId,
             providerType,
           ) => {
-            if (routeToScopedChatProject(projectSlug)) return;
             // station#4525: an explicit project choice inside the New Chat
             // modal is exactly as deliberate as a picker pick (#4524's
             // acceptance names an explicit picker change or deletion as the
@@ -2589,9 +2606,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             // Never CLEARS the binding: a modal chat started with no project
             // chosen leaves it exactly where it was (the same "new chats
             // preserve the binding" contract `openNewChatDirect` follows).
-            if (!hasImmutableProjectScope && projectSlug) {
-              setActiveProjectSlug(projectSlug);
-            }
             openChatForAgentInScopedPane(
               agent,
               projectSlug,

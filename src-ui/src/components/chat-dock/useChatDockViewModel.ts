@@ -138,14 +138,14 @@ export function useChatDockViewModel({
   // report, not a second guess at the resolver, and it cannot go stale when a
   // connection is later edited.
   //
-  // Correlation key is the repo's existing one, not a new convention: a
-  // provider-backed chat uses the Station thread id as its canonical
-  // conversation id, and `home-view-model.ts`'s `chatLifecycleLabel` already
-  // pairs `conversationId || id` with `threadId` — including its rule that
-  // the store key is a fallback for a MISSING conversationId, never a second
-  // guess when a present one simply doesn't correlate.
+  // Correlate to the exact current execution Session once the bounded
+  // Conversation window has supplied it. Legacy one-Session conversations
+  // retain the established Conversation/store-key fallbacks.
   const sessionThreadId =
-    activeSessionForHook?.conversationId || activeSessionForHook?.id || null;
+    activeSessionForHook?.currentSessionId ||
+    activeSessionForHook?.conversationId ||
+    activeSessionForHook?.id ||
+    null;
   /**
    * The serving Station's own record of the chat this dock is showing, found
    * by the correlation key documented above. station#3213 named it: the dock
