@@ -287,7 +287,7 @@ describe('AgentConnectionView', () => {
     // both is the reported dead end.
     expect(screen.getByText('Muse')).toBeTruthy();
     expect(
-      screen.queryByText('Every supported provider is already listed'),
+      screen.queryByText('Every supported engine is already listed'),
     ).toBeNull();
   });
 
@@ -314,7 +314,7 @@ describe('AgentConnectionView', () => {
     );
 
     expect(
-      screen.getByText('Every supported provider is already listed'),
+      screen.getByText('Every supported engine is already listed'),
     ).toBeTruthy();
   });
 
@@ -360,7 +360,7 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
-    expect(screen.getByRole('heading', { name: 'Add provider' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Add engine' })).toBeTruthy();
     expect(screen.getByText('Claude Code')).toBeTruthy();
     expect(screen.getByText('Detected')).toBeTruthy();
     expect(screen.queryByText('Station engine')).toBeNull();
@@ -421,7 +421,7 @@ describe('AgentConnectionView', () => {
         },
       ],
       'Sign in required',
-      'Sign in to finish connecting this provider.',
+      'Sign in to finish connecting.',
     ],
     [
       'available',
@@ -437,7 +437,7 @@ describe('AgentConnectionView', () => {
         },
       ],
       'Setup required',
-      'Finish setup before using this provider.',
+      'Finish setup before using this connection.',
     ],
   ] as const)(
     'projects the backend %s setup tuple into the provider detail',
@@ -1075,7 +1075,7 @@ describe('AgentConnectionView', () => {
       { resume: 'none', fork: 'native', rewind: 'in-place' },
       [
         'Cannot resume an existing execution session.',
-        'Can create a provider-native conversation branch.',
+        'Can create an engine-native conversation branch.',
         'Can rewind this execution session in place.',
       ],
     ],
@@ -1083,7 +1083,7 @@ describe('AgentConnectionView', () => {
       { resume: 'none', fork: 'none', rewind: 'none' },
       [
         'Cannot resume an existing execution session.',
-        'Cannot create a provider-native branch.',
+        'Cannot create an engine-native branch.',
         'Cannot rewind an execution session in place.',
       ],
     ],
@@ -1111,7 +1111,7 @@ describe('AgentConnectionView', () => {
       for (const sentence of expected) expect(rendered).toContain(sentence);
       if (continuity.fork === 'replay-seed')
         expect(
-          screen.getByText(/provider cursor, tool, or approval state/),
+          screen.getByText(/engine cursor, tool, or approval state/),
         ).toBeTruthy();
     },
   );

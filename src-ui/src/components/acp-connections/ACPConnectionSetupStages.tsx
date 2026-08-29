@@ -21,26 +21,23 @@ export function ACPConnectionSetupHeader({
   const custom = stage === 'custom';
   const subtitle =
     stage === 'confirm'
-      ? 'Review what connecting this provider changes.'
+      ? 'Review what connecting this engine changes.'
       : stage === 'checking'
-        ? 'Station is checking this provider now.'
+        ? 'Station is checking this engine now.'
         : stage === 'result'
           ? 'Here is the current readiness result.'
           : stage === 'error'
             ? 'Your setup is still here. Try again or edit it.'
-            : 'Choose a provider to set up, or enter a custom command.';
+            : 'Choose an engine to set up, or enter a custom command.';
   return (
     <div className="acp-add-dialog__header">
       <div>
         <h3 id="add-provider-title">
-          {custom ? 'Custom provider' : 'Add provider'}
+          {custom ? 'Custom engine' : 'Add engine'}
         </h3>
         <p className="acp-add-dialog__subtitle">{subtitle}</p>
       </div>
-      <ResponsiveDialogCloseButton
-        label="Close add provider"
-        onClick={onClose}
-      />
+      <ResponsiveDialogCloseButton label="Close add engine" onClick={onClose} />
     </div>
   );
 }
@@ -159,7 +156,7 @@ function ACPConnectionSetupEntryActions({
           disabled={!canSubmit}
           onClick={onSubmit}
         >
-          Check provider
+          Check engine
         </button>
       )}
       {stage === 'confirm' && (
@@ -206,7 +203,7 @@ function ACPConnectionSetupCompletionActions({
           className="button button--secondary"
           onClick={edit}
         >
-          {isCustom ? 'Edit setup' : 'Choose another provider'}
+          {isCustom ? 'Edit setup' : 'Choose another engine'}
         </button>
       )}
       {stage === 'error' && errorKind === 'mutation' && (
@@ -282,7 +279,7 @@ export function ACPConnectionCatalogStage({
         className="acp-add-dialog__choice"
         onClick={onCustom}
       >
-        <span className="acp-add-dialog__choice-name">Custom provider</span>
+        <span className="acp-add-dialog__choice-name">Custom engine</span>
         <span className="acp-add-dialog__choice-detail">
           Enter a name and command first; optional details stay advanced.
         </span>
@@ -400,7 +397,7 @@ export function ACPConnectionSetupStatus({
         <strong>Checking</strong>
         <span>
           {pending
-            ? 'Adding the provider and checking its readiness.'
+            ? 'Adding the engine and checking its readiness.'
             : 'Waiting for the refreshed connection result.'}
         </span>
       </div>
@@ -409,12 +406,12 @@ export function ACPConnectionSetupStatus({
   if (stage === 'result' && label) {
     const detail =
       label === 'Ready'
-        ? 'This provider is ready to use.'
+        ? 'This engine is ready to use.'
         : label === 'Setup needed'
-          ? 'This provider needs more setup before it can run work.'
+          ? 'This engine needs more setup before it can run work.'
           : label === 'Off'
-            ? 'This provider is configured but turned off.'
-            : 'Station could not make this provider available.';
+            ? 'This engine is configured but turned off.'
+            : 'Station could not make this engine available.';
     return (
       <div className="acp-add-dialog__result" role="status" aria-live="polite">
         <strong>{label}</strong>
@@ -434,8 +431,8 @@ export function ACPConnectionSetupStatus({
 */}
               {reason.phase === 'spawn' ||
               reason.phase === 'workspace preparation'
-                ? 'Station could not start this provider’s command. Install it and make it runnable on this computer, then check it again.'
-                : 'The command started but did not finish connecting. Resolve what it reported above in the provider itself, then check it again.'}
+                ? 'Station could not start this engine’s command. Install it and make it runnable on this computer, then check it again.'
+                : 'The command started but did not finish connecting. Resolve what it reported above in the engine itself, then check it again.'}
             </span>
           </>
         )}

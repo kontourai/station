@@ -484,8 +484,8 @@ export function ProviderSettingsView({
       paneId={CONNECTIONS_MODELS_PANE_ID}
       label={
         selectedProviderId && !isCreatingSelection
-          ? 'Connections / Providers / Edit'
-          : 'Connections / Providers'
+          ? 'Connections / Models / Edit'
+          : 'Connections / Models'
       }
       // FLAGGED FOR CLEANUP (archive#4463): `breadcrumbLinks`
       // is looked up per SEGMENT (`seg.toLowerCase` against one word from
@@ -503,7 +503,7 @@ export function ProviderSettingsView({
             }
           : undefined
       }
-      title="Providers"
+      title="Model connections"
       subtitle="Connect model services for chats and agents"
       items={items}
       loading={isLoading}
@@ -579,7 +579,7 @@ export function ProviderSettingsView({
                   marginBottom: '8px',
                 }}
               >
-                Detected providers
+                Detected connections
               </div>
               <div
                 style={{
@@ -717,7 +717,7 @@ export function ProviderSettingsView({
 */}
       <ConfirmModal
         isOpen={showDeleteModal && !!selectedProviderId && !isNew}
-        title="Delete provider"
+        title="Remove model connection"
         message={`Are you sure you want to delete "${form?.name || selectedProviderId}"? Its saved credentials are removed from this computer. This cannot be undone.`}
         confirmLabel="Delete"
         variant="danger"

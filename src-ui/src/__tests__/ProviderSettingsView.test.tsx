@@ -348,7 +348,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     expect(deleteMutate).not.toHaveBeenCalled();
 
     const dialog = screen.getByRole('alertdialog');
-    expect(dialog.textContent).toContain('Delete provider');
+    expect(dialog.textContent).toContain('Remove model connection');
     expect(dialog.textContent).toContain('This cannot be undone.');
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -377,7 +377,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       <ProviderSettingsView selectedProviderId="new" onNavigate={onNavigate} />,
     );
 
-    expect(screen.getByRole('heading', { name: 'Add provider' })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { name: 'Add model connection' }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /LiteLLM/ }));
 
     expect(

@@ -60,21 +60,21 @@ describe('ACPConnectionsSection read failure (review H1)', () => {
   test('renders the empty state only when the read actually settled empty', () => {
     render(<ACPConnectionsSection acpAgents={[]} />);
 
-    expect(screen.getByText('Add a provider to get started')).toBeTruthy();
-    expect(screen.queryByText('Unable to load providers')).toBeNull();
+    expect(screen.getByText('Add an engine to get started')).toBeTruthy();
+    expect(screen.queryByText('Unable to load engines')).toBeNull();
   });
 
   // The failure was read before this change, but only inside the Add-provider
   // modal — the page fell through and told a user whose provider list Station
   // could not read that they had none and should add one.
-  test('renders the failure, not "Add a provider to get started", on a failed read', () => {
+  test('renders the failure, not "Add an engine to get started", on a failed read', () => {
     connectionsState.isError = true;
     connectionsState.error = new Error('providers read failed');
 
     render(<ACPConnectionsSection acpAgents={[]} />);
 
-    expect(screen.queryByText('Add a provider to get started')).toBeNull();
-    expect(screen.getByText('Unable to load providers')).toBeTruthy();
+    expect(screen.queryByText('Add an engine to get started')).toBeNull();
+    expect(screen.getByText('Unable to load engines')).toBeTruthy();
     expect(screen.getByText('providers read failed')).toBeTruthy();
     expect(screen.getByRole('alert')).toBeTruthy();
   });
@@ -94,8 +94,8 @@ describe('ACPConnectionsSection read failure (review H1)', () => {
 
     render(<ACPConnectionsSection acpAgents={[]} />);
 
-    expect(screen.getByLabelText('Loading providers')).toBeTruthy();
-    expect(screen.queryByText('Unable to load providers')).toBeNull();
-    expect(screen.queryByText('Add a provider to get started')).toBeNull();
+    expect(screen.getByLabelText('Loading engines')).toBeTruthy();
+    expect(screen.queryByText('Unable to load engines')).toBeNull();
+    expect(screen.queryByText('Add an engine to get started')).toBeNull();
   });
 });

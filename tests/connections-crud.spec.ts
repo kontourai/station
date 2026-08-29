@@ -704,7 +704,7 @@ test.describe('Connections CRUD', () => {
     // "one-click detected" entry that still asks which provider you meant is
     // one click short of its name.)
     await expect(
-      page.getByRole('heading', { name: 'Add provider' }),
+      page.getByRole('heading', { name: 'Add model connection' }),
     ).toBeVisible();
   });
 
@@ -1003,30 +1003,30 @@ test.describe('Connections CRUD', () => {
     // `/connections/acp` redirects to the Engines SECTION, whose one add
     // action is "Add engine" (`connection-sections.ts:12-26`,
     // `ConnectionsSectionFrame.tsx:40-53`). The ACP provider setup surface —
-    // and with it the `Add provider` trigger and its catalog dialog — now
+    // and with it the `Add engine` trigger and its catalog dialog — now
     // mounts only on the item route (`app-shell/routing.ts` →
     // `AppViewContent.tsx`), which opens straight onto the custom stage.
     await page.goto('/connections/engines/new/custom');
     await page
-      .getByRole('dialog', { name: 'Custom provider' })
+      .getByRole('dialog', { name: 'Custom engine' })
       .getByRole('button', { name: 'Cancel' })
       .click();
 
     // With no dialog open the catalog is not on the page: that is the claim.
     await expect(page.getByRole('button', { name: /Kiro CLI/ })).toHaveCount(0);
     const add = page.getByRole('button', {
-      name: 'Add provider',
+      name: 'Add engine',
       exact: true,
     });
     await add.click();
     // The deep link names a provider, so the dialog reopens on that provider's
     // stage; the catalog is the stage behind it.
     await page
-      .getByRole('dialog', { name: 'Custom provider' })
+      .getByRole('dialog', { name: 'Custom engine' })
       .getByRole('button', { name: 'Back' })
       .click();
     const dialog = page.getByRole('dialog', {
-      name: 'Add provider',
+      name: 'Add engine',
     });
     const kiro = dialog.getByRole('button', { name: /Kiro CLI/ });
     await expect(kiro).toContainText(
@@ -1041,7 +1041,7 @@ test.describe('Connections CRUD', () => {
     await expect(dialog.getByRole('status')).toContainText('Ready');
     await expect(
       page.getByRole('button', {
-        name: 'Add provider',
+        name: 'Add engine',
         exact: true,
       }),
     ).toHaveCount(1);
@@ -1063,15 +1063,15 @@ test.describe('Connections CRUD', () => {
     // the old body performed is one step this journey no longer needs.
     await page.goto('/connections/engines/new/custom');
     // Unnamed on purpose: there is one dialog, and its accessible name tracks
-    // the stage — "Custom provider" while editing, "Add provider" once the
+    // the stage — "Custom engine" while editing, "Add engine" once the
     // check has answered.
     const dialog = page.getByRole('dialog');
     await expect(
-      dialog.getByRole('heading', { name: 'Custom provider' }),
+      dialog.getByRole('heading', { name: 'Custom engine' }),
     ).toBeVisible();
     await dialog.getByLabel('Name').fill('Gemini CLI');
     await dialog.getByRole('textbox', { name: 'Command' }).fill('gemini');
-    await dialog.getByRole('button', { name: 'Check provider' }).click();
+    await dialog.getByRole('button', { name: 'Check engine' }).click();
 
     await expect(dialog.getByRole('alert')).toContainText('Unavailable');
     await expect(dialog.getByRole('alert')).toContainText(
@@ -1135,11 +1135,11 @@ test.describe('Connections CRUD', () => {
       await installVisualViewportFixture(page);
       await page.goto('/connections/engines/new/custom');
       await page
-        .getByRole('dialog', { name: 'Custom provider' })
+        .getByRole('dialog', { name: 'Custom engine' })
         .getByRole('button', { name: 'Cancel' })
         .click();
       const add = page.getByRole('button', {
-        name: 'Add provider',
+        name: 'Add engine',
         exact: true,
       });
       // Measured before opening: the trigger itself has to be tappable.
@@ -1150,16 +1150,16 @@ test.describe('Connections CRUD', () => {
       // The deep link names a provider, so the dialog reopens on that stage;
       // the catalog is behind it.
       await page
-        .getByRole('dialog', { name: 'Custom provider' })
+        .getByRole('dialog', { name: 'Custom engine' })
         .getByRole('button', { name: 'Back' })
         .click();
 
       const dialog = page.getByRole('dialog', {
-        name: 'Add provider',
+        name: 'Add engine',
       });
       const kiro = dialog.getByRole('button', { name: /Kiro CLI/ });
       const custom = dialog.getByRole('button', {
-        name: 'Custom provider',
+        name: 'Custom engine',
       });
       for (const control of [kiro, custom]) {
         expect(
@@ -1331,7 +1331,7 @@ test.describe('Connections CRUD', () => {
       .click();
     await expect(page).toHaveURL(/\/connections\/models\/new$/);
     await expect(
-      page.getByRole('heading', { name: 'Add provider' }),
+      page.getByRole('heading', { name: 'Add model connection' }),
     ).toBeVisible();
 
     // Plain clicks, not `forceClickRole`/`fillStable`: those existed to beat
@@ -1377,7 +1377,7 @@ test.describe('Connections CRUD', () => {
       .click();
     await expect(page).toHaveURL(/\/connections\/models\/new$/);
     await expect(
-      page.getByRole('heading', { name: 'Add provider' }),
+      page.getByRole('heading', { name: 'Add model connection' }),
     ).toBeVisible();
 
     await page.getByRole('button', { name: /^OpenRouter/ }).click();
