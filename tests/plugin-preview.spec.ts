@@ -12,7 +12,10 @@ test.describe('Plugin Preview Modal (UI)', () => {
   // biome-ignore lint/correctness/noEmptyPattern: Playwright requires fixture destructuring before testInfo
   test.beforeAll(({}, testInfo) => {
     testInfo.setTimeout(90_000);
-    execSync('npx tsx ../../packages/cli/src/cli.ts plugin build', {
+    // #537: the one-root CLI refuses direct source execution ("Direct CLI
+    // source execution is unsupported; use ./station."), which failed this
+    // whole file at setup. Build the fixture through the sanctioned entry.
+    execSync(`"${join(PROJECT_DIR, 'station')}" plugin build`, {
       cwd: DEMO_DIR,
       timeout: 60_000,
     });
