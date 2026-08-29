@@ -452,6 +452,12 @@ export function useSendMessage(
           // non-retryable notice, so reload/navigation keeps the evidence.
           assignConversationId(sessionId, observedSessionId);
         }
+        const resourceOverrideToken =
+          err.code === 'resource_posture_override_required' &&
+          err.override &&
+          err.override.expiresAt > Date.now()
+            ? err.override.token
+            : undefined;
         updateChat(sessionId, {
           // `terminalSession` is a Station-side refusal: the conversation has
           // ended, so the send was declined before any engine saw it. Writing
@@ -502,12 +508,10 @@ export function useSendMessage(
           // A workspace refusal is permanent for this conversation. Other
           // failures retry with the same id and latest conversation id.
           action:
-            err.code === 'resource_posture_override_required' &&
-            err.override &&
-            err.override.expiresAt > Date.now() &&
-            !dispatchClaim
-              ? {
-                  label: 'Start anyway',
+            terminalSession || foregroundIndeterminate || dispatchClaim
+              ? undefined
+              : {
+                  label: resourceOverrideToken ? 'Start anyway' : 'Retry',
                   handler: () =>
                     sendMessage(
                       sessionId,
@@ -517,26 +521,14 @@ export function useSendMessage(
                       attachments,
                       ambientContext,
                       resolvedTurnId,
-                      {
-                        resourceAdmissionOverrideToken: err.override!.token,
-                      },
+                      resourceOverrideToken
+                        ? {
+                            resourceAdmissionOverrideToken:
+                              resourceOverrideToken,
+                          }
+                        : undefined,
                     ),
-                }
-              : terminalSession || foregroundIndeterminate || dispatchClaim
-                ? undefined
-                : {
-                    label: 'Retry',
-                    handler: () =>
-                      sendMessage(
-                        sessionId,
-                        agentSlug,
-                        latestState?.conversationId ?? conversationId,
-                        content,
-                        attachments,
-                        ambientContext,
-                        resolvedTurnId,
-                      ),
-                  },
+                },
         });
         if (foregroundIndeterminate) {
           invalidate(['orchestration-sessions']);
