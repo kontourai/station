@@ -983,11 +983,12 @@ export interface BuildManifest {
 }
 
 interface PackagedReleaseManifest {
-  schemaVersion: 1;
+  schemaVersion: 2;
   sha: string;
   ref: string;
   createdAt: string;
-  channel: 'stable' | 'preview';
+  channel: 'stable' | 'beta';
+  releaseChannel: 'stable' | 'preview';
   prerelease: boolean;
 }
 
@@ -2636,13 +2637,14 @@ function validatePackagedReleaseManifest(
     'createdAt',
     'prerelease',
     'ref',
+    'releaseChannel',
     'schemaVersion',
     'sha',
   ];
   if (
     keys.length !== expectedKeys.length ||
     keys.some((key, index) => key !== expectedKeys[index]) ||
-    candidate.schemaVersion !== 1 ||
+    candidate.schemaVersion !== 2 ||
     typeof candidate.sha !== 'string' ||
     !/^[0-9a-f]{40}$/i.test(candidate.sha) ||
     typeof candidate.ref !== 'string' ||
@@ -2651,9 +2653,13 @@ function validatePackagedReleaseManifest(
     !Number.isFinite(Date.parse(candidate.createdAt)) ||
     new Date(Date.parse(candidate.createdAt)).toISOString() !==
       candidate.createdAt ||
-    (candidate.channel !== 'stable' && candidate.channel !== 'preview') ||
-    candidate.prerelease !== (candidate.channel === 'preview') ||
-    (candidate.channel === 'stable'
+    (candidate.channel !== 'stable' && candidate.channel !== 'beta') ||
+    (candidate.releaseChannel !== 'stable' &&
+      candidate.releaseChannel !== 'preview') ||
+    candidate.channel !==
+      (candidate.releaseChannel === 'preview' ? 'beta' : 'stable') ||
+    candidate.prerelease !== (candidate.releaseChannel === 'preview') ||
+    (candidate.releaseChannel === 'stable'
       ? !/^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(candidate.ref)
       : !/^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-preview\.(?:[1-9]\d*)$/.test(
           candidate.ref,
@@ -2662,11 +2668,12 @@ function validatePackagedReleaseManifest(
     return null;
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sha: candidate.sha,
     ref: candidate.ref,
     createdAt: candidate.createdAt,
     channel: candidate.channel,
+    releaseChannel: candidate.releaseChannel,
     prerelease: candidate.prerelease,
   };
 }
@@ -4417,7 +4424,10 @@ function delegatePackagedUpgradeIfPresent(): string | null {
   const state = readSafePackagedInstallState(
     join(installRoot, '.station-release-state.json'),
   );
-  if (manifest.channel !== state.releaseChannel) {
+  // The manifest's `channel` is the runtime channel (stable|beta); the
+  // persisted ring is a release channel, so compare releaseChannel to
+  // releaseChannel.
+  if (manifest.releaseChannel !== state.releaseChannel) {
     throw new Error(
       'packaged release provenance does not match the persisted release ring',
     );
