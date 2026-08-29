@@ -3,6 +3,7 @@ import {
   type RegistryCatalogTab,
   useInstalledRegistryItemsQuery,
   usePluginRegistryInstallMutation,
+  usePluginRegistryPreviewMutation,
   useRegistryAgentActionMutation,
   useRegistryIntegrationActionMutation,
   useRegistryItemsQuery,
@@ -23,6 +24,7 @@ import {
 } from '../components/registry/RegistryLayoutActions';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
+import { usePermissions } from '../core/PermissionManager';
 import { pluginRegistry } from '../core/PluginRegistry';
 import {
   reloadAfterRemotePluginBundleRevoke,
@@ -31,6 +33,9 @@ import {
   subscribeRemotePluginBundleConsent,
 } from '../core/remotePluginBundleConsent';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
+import { InstallPreviewModal } from './plugin-management/InstallPreviewModal';
+import type { PreviewData } from './plugin-management/types';
+import './PluginManagementView.css';
 import './RegistryView.css';
 import './page-layout.css';
 
@@ -70,6 +75,24 @@ export function RegistryView({
   const [installationOverrides, setInstallationOverrides] = useState(
     () => new Map<string, boolean>(),
   );
+  // A registry entry that resolves as a PLUGIN is installed the way the
+  // Plugins view installs one (archive#4288): preview the resolved source,
+  // take the operator's decision on what the preview found, and send that
+  // decision with the install. Without it the server refuses any plugin that
+  // contributes code — refusing is the honest no-decision behavior; the old
+  // one-click path materialized the plugin tree without ever building its
+  // bundle, so its layout components could never register (#765 D1).
+  const [pluginInstallPreview, setPluginInstallPreview] = useState<{
+    tab: RegistryCatalogTab;
+    item: RegistryItem;
+    itemId: string;
+    data: PreviewData;
+  } | null>(null);
+  const [previewSkips, setPreviewSkips] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const previewMutation = usePluginRegistryPreviewMutation();
+  const { requestInstallConsent } = usePermissions();
   const pluginRegistryStatus = useSyncExternalStore(
     pluginRegistry.subscribe,
     pluginRegistry.getLoadStatus,
@@ -185,33 +208,81 @@ export function RegistryView({
     );
   };
 
+  const actionCallbacks = (
+    tab: RegistryCatalogTab,
+    item: RegistryItem,
+    itemId: string,
+    isInstalled: boolean,
+  ) => ({
+    onError: (error: Error) => setMessage(error.message),
+    onSuccess: () => {
+      const installationKey = registryInstallationKey(tab, itemId);
+      setInstallationOverrides((current) => {
+        const next = new Map(current);
+        next.set(installationKey, !isInstalled);
+        return next;
+      });
+      setMessage(
+        `${isInstalled ? 'Removed' : 'Installed'} ${item.displayName || itemId}`,
+      );
+      void refetchInstalled().finally(() => {
+        setInstallationOverrides((current) => {
+          const next = new Map(current);
+          next.delete(installationKey);
+          return next;
+        });
+      });
+    },
+  });
+
   const runAction = (
     item: RegistryItem,
     itemId: string,
     isInstalled: boolean,
   ) => {
     const action = isInstalled ? 'uninstall' : 'install';
-    const callbacks = {
-      onError: (error: Error) => setMessage(error.message),
-      onSuccess: () => {
-        const installationKey = registryInstallationKey(activeTab, itemId);
-        setInstallationOverrides((current) => {
-          const next = new Map(current);
-          next.set(installationKey, !isInstalled);
-          return next;
-        });
-        setMessage(
-          `${isInstalled ? 'Removed' : 'Installed'} ${item.displayName || itemId}`,
-        );
-        void refetchInstalled().finally(() => {
-          setInstallationOverrides((current) => {
-            const next = new Map(current);
-            next.delete(installationKey);
-            return next;
-          });
-        });
-      },
-    };
+    // Installing a registry entry the plugin registry resolves starts at the
+    // preview, exactly like the Plugins view: the decision the server needs
+    // is about the previewed bytes, so there is nothing honest to send until
+    // the preview has been shown. The server is the authority on which ids
+    // are plugins — an agent-face entry it cannot resolve answers
+    // `registry-plugin-not-found` and keeps the plain agent install path.
+    if (
+      action === 'install' &&
+      (activeTab === 'agents' || activeTab === 'plugins')
+    ) {
+      const tab = activeTab;
+      setMessage(null);
+      previewMutation.mutate(itemId, {
+        onSuccess: (data: PreviewData & { code?: string }) => {
+          if (data.code === 'registry-plugin-not-found' && tab === 'agents') {
+            agentMutation.mutate(
+              { id: itemId, action },
+              actionCallbacks(tab, item, itemId, isInstalled),
+            );
+            return;
+          }
+          if (!data.valid || !data.contentDigest || !data.permissions) {
+            setMessage(
+              data.error ||
+                `Could not preview ${item.displayName || itemId} before install`,
+            );
+            return;
+          }
+          setPreviewSkips(
+            new Set(
+              data.conflicts.map((conflict) => {
+                return `${conflict.type}:${conflict.id}`;
+              }),
+            ),
+          );
+          setPluginInstallPreview({ tab, item, itemId, data });
+        },
+        onError: (error: Error) => setMessage(error.message),
+      });
+      return;
+    }
+    const callbacks = actionCallbacks(activeTab, item, itemId, isInstalled);
     if (activeTab === 'agents') {
       agentMutation.mutate({ id: itemId, action }, callbacks);
     } else if (activeTab === 'skills') {
@@ -220,6 +291,62 @@ export function RegistryView({
       integrationMutation.mutate({ id: itemId, action }, callbacks);
     } else {
       pluginMutation.mutate({ id: itemId, action }, callbacks);
+    }
+  };
+
+  const confirmPluginInstall = async () => {
+    const preview = pluginInstallPreview;
+    if (!preview) return;
+    const { data, item, itemId, tab } = preview;
+    if (!data.contentDigest || !data.permissions) return;
+    const displayName =
+      data.manifest?.displayName ||
+      data.manifest?.name ||
+      item.displayName ||
+      itemId;
+    const pendingConsent = data.permissions.pendingConsent;
+    if (pendingConsent.length > 0) {
+      const approved = await requestInstallConsent(
+        data.manifest?.name || itemId,
+        displayName,
+        pendingConsent,
+      );
+      if (!approved) {
+        setPluginInstallPreview(null);
+        setMessage(
+          `Install declined for ${displayName} — nothing was added or changed.`,
+        );
+        return;
+      }
+    }
+    setPluginInstallPreview(null);
+    const baseCallbacks = actionCallbacks(tab, item, itemId, false);
+    const callbacks = {
+      onError: baseCallbacks.onError,
+      onSuccess: () => {
+        baseCallbacks.onSuccess();
+        // The server announces the install over SSE too; reloading here makes
+        // the new layout components register without depending on that
+        // connection being up.
+        void pluginRegistry.reload();
+      },
+    };
+    const variables = {
+      id: itemId,
+      action: 'install' as const,
+      consent: {
+        permissions: data.permissions.required,
+        contentDigest: data.contentDigest,
+        dependencies: (data.dependencies ?? []).map(
+          (dependency) => dependency.id,
+        ),
+      },
+      skip: Array.from(previewSkips),
+    };
+    if (tab === 'agents') {
+      agentMutation.mutate(variables, callbacks);
+    } else {
+      pluginMutation.mutate(variables, callbacks);
     }
   };
 
@@ -268,7 +395,9 @@ export function RegistryView({
           selectedItemId,
           selectedInstalled,
           selectedActionPending:
-            mutationPending && pendingId === selectedItemId,
+            (mutationPending && pendingId === selectedItemId) ||
+            (previewMutation.isPending &&
+              previewMutation.variables === selectedItemId),
           layoutPendingId: layoutMutation.variables?.id,
           layoutPending: layoutMutation.isPending,
         }}
@@ -295,6 +424,26 @@ export function RegistryView({
         }}
       />
       {!remoteIsolationActive && remoteBundlesSection}
+      {pluginInstallPreview && (
+        <InstallPreviewModal
+          previewData={pluginInstallPreview.data}
+          previewSkips={previewSkips}
+          installPending={agentMutation.isPending || pluginMutation.isPending}
+          onClose={() => setPluginInstallPreview(null)}
+          onToggleSkip={(key) =>
+            setPreviewSkips((current) => {
+              const next = new Set(current);
+              if (next.has(key)) {
+                next.delete(key);
+              } else {
+                next.add(key);
+              }
+              return next;
+            })
+          }
+          onConfirm={() => void confirmPluginInstall()}
+        />
+      )}
       <ConfirmModal
         isOpen={remoteBundleModal === 'enable'}
         title="Enable remote extensions?"
