@@ -6,7 +6,10 @@ import {
   getLegacyPathRedirect,
   resolveViewFromPath,
 } from '../app-shell/routing';
-import { DIALOG_HISTORY_KEY } from '../components/dialog-history';
+import {
+  DIALOG_HISTORY_KEY,
+  registerDialogHistory,
+} from '../components/dialog-history';
 import {
   navigationStore,
   parseNavigationTarget,
@@ -70,6 +73,192 @@ describe('navigationStore dialog history isolation', () => {
       'session-new',
     );
     expect(window.history.state[DIALOG_HISTORY_KEY]).toBeUndefined();
+  });
+});
+
+describe('navigationStore query updates under an open dialog layer', () => {
+  test('an updateParams made while a dialog is open outlives the dialog close', async () => {
+    window.history.replaceState({}, '', '/projects/alpha?chat=session-old');
+    const close = vi.fn();
+    const dispose = registerDialogHistory('switcher-probe', close);
+
+    // `updateParams` rewrites whichever entry is live — the dialog's own —
+    // and spreads its state, so the layer's marker rides along with the new
+    // URL. Closing the dialog must not take the URL back with the layer.
+    navigationStore.updateParams({ chat: 'session-new' });
+    expect(window.history.state[DIALOG_HISTORY_KEY]).toBe('switcher-probe');
+
+    dispose();
+    // Settle on the marker leaving, whichever way cleanup removes it: dropping
+    // it in place is synchronous, but travelling back is a jsdom task. Reading
+    // the URL before that task lands would pass on a close that does revert it.
+    for (let tick = 0; tick < 50; tick += 1) {
+      if (window.history.state[DIALOG_HISTORY_KEY] === undefined) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(window.history.state[DIALOG_HISTORY_KEY]).toBeUndefined();
+
+    expect(new URLSearchParams(window.location.search).get('chat')).toBe(
+      'session-new',
+    );
+    expect(window.history.state.__stationNavigationIndex).toEqual(
+      expect.any(Number),
+    );
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  test('the collapsed layer takes its own navigation index, not the one beneath it', async () => {
+    // Establish both entries through the store so the indices are the ones it
+    // really assigns, rather than a hand-written pair that agrees by luck.
+    navigationStore.navigate('/projects/alpha', { chat: 'session-old' });
+    const beneathIndex = window.history.state.__stationNavigationIndex;
+
+    const dispose = registerDialogHistory('index-probe', vi.fn());
+    navigationStore.updateParams({ chat: 'session-new' });
+    dispose();
+    for (let tick = 0; tick < 50; tick += 1) {
+      if (window.history.state[DIALOG_HISTORY_KEY] === undefined) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    // The residue holds a URL the entry beneath does not, so it must not also
+    // hold that entry's index: equal indices are the delta-0 the store reads
+    // as "nothing traversed".
+    expect(window.history.state.__stationNavigationIndex).toBe(
+      beneathIndex + 1,
+    );
+  });
+
+  test('a Back off the collapsed layer consults the unsaved-changes guard', async () => {
+    navigationStore.navigate('/projects/alpha', { chat: 'session-old' });
+
+    const dispose = registerDialogHistory('guard-probe', vi.fn());
+    navigationStore.updateParams({ chat: 'session-new' });
+    dispose();
+    for (let tick = 0; tick < 50; tick += 1) {
+      if (window.history.state[DIALOG_HISTORY_KEY] === undefined) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    // Registered the way `useUnsavedGuard` registers one. A guard that is
+    // never consulted is how a dirty editor gets abandoned silently, so this
+    // asserts the call, not the destination.
+    const guard = vi.fn((continueNavigation: () => void) =>
+      continueNavigation(),
+    );
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('dialog-collapse-draft'),
+      guard,
+    );
+    try {
+      window.history.back();
+      for (let tick = 0; tick < 60; tick += 1) {
+        if (guard.mock.calls.length > 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      expect(guard).toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+
+  test('a history write that throws leaves the store index where it was', async () => {
+    navigationStore.navigate('/projects/alpha', { chat: 'session-old' });
+    const beneathIndex = window.history.state.__stationNavigationIndex;
+
+    const dispose = registerDialogHistory('throwing-probe', vi.fn());
+    navigationStore.updateParams({ chat: 'session-new' });
+
+    // WebKit rate-limits history mutations with a SecurityError. The store
+    // must not be left one ahead of a write that never landed.
+    const uncaught: unknown[] = [];
+    const onUncaught = (error: unknown) => uncaught.push(error);
+    process.on('uncaughtException', onUncaught);
+    const replaceState = vi
+      .spyOn(window.history, 'replaceState')
+      .mockImplementation(() => {
+        throw new Error('SecurityError: history rate limit');
+      });
+    dispose();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    replaceState.mockRestore();
+    process.off('uncaughtException', onUncaught);
+
+    // The next entry this store pushes reports where its bookkeeping actually
+    // stood; a commit that ran anyway would show up here as a skipped index.
+    navigationStore.navigate('/projects/beta');
+    expect(window.history.state.__stationNavigationIndex).toBe(
+      beneathIndex + 1,
+    );
+  });
+
+  test('a reused dialog id survives a collapse, so its next Back reaches its own entry', async () => {
+    navigationStore.navigate('/projects/alpha', { chat: 'session-old' });
+
+    const dispose = registerDialogHistory('reused-id', vi.fn());
+    navigationStore.updateParams({ chat: 'session-new' });
+    dispose();
+    for (let tick = 0; tick < 50; tick += 1) {
+      if (window.history.state[DIALOG_HISTORY_KEY] === undefined) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    // Reopening under the same id is the ordinary case, not an edge one —
+    // 'mobile-task-switcher' is a constant. A collapse that armed an orphan
+    // for the id would make this entry get skipped rather than landed on.
+    const disposeAgain = registerDialogHistory('reused-id', vi.fn());
+    expect(window.history.state[DIALOG_HISTORY_KEY]).toBe('reused-id');
+
+    // Somewhere beyond the dialog, so the next Back lands ON its entry rather
+    // than on the one beneath it.
+    window.history.pushState(
+      { __stationNavigationIndex: 99 },
+      '',
+      '/projects/alpha?chat=session-new&probe=1',
+    );
+
+    window.history.back();
+    for (let tick = 0; tick < 60; tick += 1) {
+      if (!window.location.search.includes('probe=1')) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(window.history.state[DIALOG_HISTORY_KEY]).toBe('reused-id');
+
+    disposeAgain();
+    for (let tick = 0; tick < 50; tick += 1) {
+      if (window.history.state[DIALOG_HISTORY_KEY] === undefined) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  });
+
+  test('a dialog-mediated param change leaves one entry, so Back returns to the previous selection', async () => {
+    navigationStore.navigate('/projects/alpha', { chat: 'session-old' });
+
+    const dispose = registerDialogHistory('residue-probe', vi.fn());
+    navigationStore.updateParams({ chat: 'session-new' });
+    dispose();
+    for (let tick = 0; tick < 50; tick += 1) {
+      if (window.history.state[DIALOG_HISTORY_KEY] === undefined) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(new URLSearchParams(window.location.search).get('chat')).toBe(
+      'session-new',
+    );
+
+    // The deliberate asymmetry: the switch cost one entry, so the phone Back
+    // gesture returns to the chat the user came from instead of leaving the
+    // surface entirely.
+    window.history.back();
+    for (let tick = 0; tick < 60; tick += 1) {
+      if (navigationStore.getSnapshot().activeChat === 'session-old') break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(new URLSearchParams(window.location.search).get('chat')).toBe(
+      'session-old',
+    );
+    expect(navigationStore.getSnapshot().activeChat).toBe('session-old');
   });
 });
 
