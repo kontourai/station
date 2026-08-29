@@ -6389,7 +6389,7 @@ impl PendingMainWindowActivation {
 }
 
 #[cfg(target_os = "macos")]
-const NATIVE_STARTUP_COVER_TAG: isize = 730_001;
+const NATIVE_STARTUP_COVER_IDENTIFIER: &str = "io.kontourai.station.startup-cover";
 
 #[cfg(target_os = "macos")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -6539,7 +6539,10 @@ fn with_native_startup_cover(
     covered: bool,
 ) -> Result<(), tauri::Error> {
     use objc2::{ClassType, MainThreadMarker};
-    use objc2_app_kit::{NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSView};
+    use objc2_app_kit::{
+        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSUserInterfaceItemIdentification,
+        NSView,
+    };
     use objc2_foundation::{ns_string, NSObjectProtocol};
 
     window.with_webview(move |webview| {
@@ -6552,9 +6555,19 @@ fn with_native_startup_cover(
         let Some(content) = ns_window.contentView() else {
             return;
         };
+        let cover_identifier = ns_string!("io.kontourai.station.startup-cover");
+        debug_assert_eq!(
+            cover_identifier.to_string(),
+            NATIVE_STARTUP_COVER_IDENTIFIER
+        );
+        let subviews = content.subviews();
+        let existing = subviews.iter().find(|view| {
+            view.identifier()
+                .as_deref()
+                .is_some_and(|identifier| identifier.isEqualToString(cover_identifier))
+        });
 
         if covered {
-            let existing = content.viewWithTag(NATIVE_STARTUP_COVER_TAG);
             if let Some(existing) = existing {
                 if !existing.isKindOfClass(NSBox::class()) {
                     log::error!("refusing to replace an unexpected native startup cover view");
@@ -6570,9 +6583,7 @@ fn with_native_startup_cover(
                 cover.setBoxType(NSBoxType::Custom);
                 cover.setFillColor(&NSColor::whiteColor());
                 cover.setTitle(ns_string!("Station is preparing its protected workspace…"));
-                unsafe {
-                    let _: () = objc2::msg_send![&*cover, setTag: NATIVE_STARTUP_COVER_TAG];
-                }
+                cover.setIdentifier(Some(cover_identifier));
                 content.addSubview(&cover);
             }
             unsafe {
@@ -6585,7 +6596,7 @@ fn with_native_startup_cover(
             ns_window.deminiaturize(None);
             ns_window.makeKeyAndOrderFront(None);
         } else {
-            if let Some(cover) = content.viewWithTag(NATIVE_STARTUP_COVER_TAG) {
+            if let Some(cover) = existing {
                 if !cover.isKindOfClass(NSBox::class()) {
                     log::error!("refusing to remove an unexpected startup cover view");
                     return;
