@@ -30,15 +30,17 @@ vi.mock('../../platform/native', () => ({
 }));
 
 function PairingDeepLinkHarness({
+  clientChannel = 'stable',
   onPairingPayload,
   onError,
 }: {
+  clientChannel?: 'stable' | 'beta' | 'nightly';
   onPairingPayload: (payload: string) => void;
   onError: (message: string) => void;
 }) {
   usePairingDeepLink({
     enabled: true,
-    clientChannel: 'stable',
+    clientChannel,
     onPairingPayload,
     onError,
   });
@@ -87,6 +89,41 @@ describe('usePairingDeepLink', () => {
     );
 
     expect(onPairingPayload).toHaveBeenCalledOnce();
+    expect(onError).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining(PAIRING_LINK_REMEDY),
+    );
+  });
+
+  test('does not let another release channel present its pairing review', async () => {
+    const onPairingPayload = vi.fn();
+    const onError = vi.fn();
+    const payload = encodeDevicePairingPayload({
+      protocolVersion: 1,
+      environmentId: 'environment-link',
+      offerId: 'offer-link',
+      challenge: 'challenge-link',
+      manualCode: 'ABCDE12345',
+      endpoint: 'https://station.example.test',
+      scope: 'orchestration:read',
+      expiresAt: Date.now() + 60_000,
+    });
+
+    render(
+      <PairingDeepLinkHarness
+        clientChannel="beta"
+        onPairingPayload={onPairingPayload}
+        onError={onError}
+      />,
+    );
+
+    await waitFor(() => expect(nativePairingDeepLinkMock.deliver).toBeTruthy());
+    act(() =>
+      nativePairingDeepLinkMock.deliver?.({
+        url: encodePairingDeepLink({ payload, clientChannel: 'nightly' }),
+      }),
+    );
+
+    expect(onPairingPayload).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledExactlyOnceWith(
       expect.stringContaining(PAIRING_LINK_REMEDY),
     );

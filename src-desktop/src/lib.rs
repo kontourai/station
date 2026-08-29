@@ -6339,6 +6339,55 @@ struct DesktopServerState {
     ownership_checked_at: Mutex<Option<Instant>>,
 }
 
+/// Hands a user-initiated main-window activation across setup's readiness
+/// boundary. Every release channel starts with its main window hidden, so a
+/// cold macOS Apple Event can arrive before `DesktopServerState` exists.
+///
+/// Both sides hold the same mutex while inspecting and changing the handoff
+/// state. A separate `try_state` check plus an atomic pending flag has a
+/// lost-wakeup gap: setup can observe no pending activation before the event
+/// records one. The replay still goes through `request_main_window_activation`,
+/// which keeps startup readiness as the sole reveal authority.
+#[cfg(not(mobile))]
+#[derive(Default)]
+struct PendingMainWindowActivation(Mutex<PendingMainWindowActivationState>);
+
+#[cfg(not(mobile))]
+#[derive(Default)]
+struct PendingMainWindowActivationState {
+    readiness_installed: bool,
+    activation_pending: bool,
+}
+
+#[cfg(not(mobile))]
+impl PendingMainWindowActivation {
+    /// Returns whether a managed readiness authority is already available and
+    /// this event should be delivered immediately.
+    fn request(&self) -> bool {
+        let mut state = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.readiness_installed {
+            true
+        } else {
+            state.activation_pending = true;
+            false
+        }
+    }
+
+    /// Publishes readiness and returns the one coalesced cold activation that
+    /// arrived before it. `DesktopServerState` must be managed first.
+    fn install_readiness(&self) -> bool {
+        let mut state = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.readiness_installed = true;
+        std::mem::take(&mut state.activation_pending)
+    }
+}
+
 #[cfg(not(mobile))]
 fn reveal_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -6410,6 +6459,26 @@ pub(crate) fn request_main_window_activation(app: &AppHandle) {
     );
     if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
         reveal_main_window(app);
+    }
+}
+
+#[cfg(not(mobile))]
+fn request_or_defer_main_window_activation(
+    app: &AppHandle,
+    pending_activation: &PendingMainWindowActivation,
+) {
+    if pending_activation.request() {
+        request_main_window_activation(app);
+    }
+}
+
+#[cfg(not(mobile))]
+fn replay_pending_main_window_activation(
+    app: &AppHandle,
+    pending_activation: &PendingMainWindowActivation,
+) {
+    if pending_activation.install_readiness() {
+        request_main_window_activation(app);
     }
 }
 
@@ -7860,13 +7929,20 @@ If a stable instance is running, this launch will focus its window and exit.",
             #[cfg(not(mobile))]
             {
                 let activation_app = app.handle().clone();
+                let pending_activation = Arc::new(PendingMainWindowActivation::default());
+                let pending_activation_for_deep_link = Arc::clone(&pending_activation);
                 app.handle().deep_link().on_open_url(move |event| {
                     // macOS delivers open-document Apple Events here. Retain
                     // the plugin's URL event for the renderer and never let
-                    // this activation bypass the main-window authority.
+                    // this activation bypass the main-window authority. The
+                    // handler may run before setup manages readiness, so
+                    // retain its activation until that authority exists.
                     let urls = event.urls().into_iter().map(|url| url.to_string()).collect::<Vec<_>>();
                     let _ = activation_app.emit("station://pairing-deep-link", urls);
-                    request_main_window_activation(&activation_app);
+                    request_or_defer_main_window_activation(
+                        &activation_app,
+                        &pending_activation_for_deep_link,
+                    );
                 });
                 let resource_dir = simplified_sidecar_resource_dir(&app.path().resource_dir()?);
                 let packaged_channel = if cfg!(debug_assertions) {
@@ -7984,6 +8060,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                     },
                 );
                 app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), ownership_checked_at: Mutex::new(Some(Instant::now())) });
+                replay_pending_main_window_activation(app.handle(), &pending_activation);
                 // The tray poll reads this managed ownership state. Starting
                 // it earlier allowed its first poll to see only the
                 // fail-closed initialization placeholder and then stop before
@@ -8032,6 +8109,114 @@ mod tests {
         assert!(
             ownership_management < tray_initialization,
             "tray polling must start only after DesktopServerState exists"
+        );
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn cold_link_activation_is_retained_until_hidden_window_readiness_exists() {
+        let pending = PendingMainWindowActivation::default();
+        assert!(
+            !pending.request(),
+            "an Apple Event received before DesktopServerState must replay once readiness exists"
+        );
+        assert!(
+            pending.install_readiness(),
+            "replaying the same cold activation twice could incorrectly focus a later window"
+        );
+        assert!(
+            !pending.install_readiness(),
+            "setup must not replay the same cold activation twice"
+        );
+
+        let (waiting, _) = startup_readiness::transition(
+            &startup_readiness::StartupReadiness::default(),
+            startup_readiness::ReadinessInput::Begin {
+                now_ms: 1,
+                timeout_ms: 10,
+                dev_bypass: false,
+                owned_sidecar: true,
+            },
+        );
+        let (waiting, effects) = startup_readiness::transition(
+            &waiting,
+            startup_readiness::ReadinessInput::ActivationRequested,
+        );
+        assert_eq!(
+            effects,
+            vec![startup_readiness::ReadinessEffect::DeferActivation]
+        );
+        let ticket = startup_readiness::StartupTicket {
+            generation: 1,
+            instance_id: "desktop-sidecar-beta".into(),
+            boot_id: "boot-beta".into(),
+            api_base: "http://127.0.0.1:4141".into(),
+        };
+        let (waiting, _) = startup_readiness::transition(
+            &waiting,
+            startup_readiness::ReadinessInput::ServerTicket(ticket.clone()),
+        );
+        let (_, effects) = startup_readiness::transition(
+            &waiting,
+            startup_readiness::ReadinessInput::RendererCommitted(ticket),
+        );
+        assert_eq!(
+            effects,
+            vec![startup_readiness::ReadinessEffect::RevealMainWindow]
+        );
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn cold_activation_handoff_has_no_lost_wakeup_under_setup_interleavings() {
+        use std::sync::Barrier;
+
+        let setup_before_event = PendingMainWindowActivation::default();
+        assert!(!setup_before_event.install_readiness());
+        assert!(
+            setup_before_event.request(),
+            "an event arriving after setup must activate directly"
+        );
+
+        let event_before_setup = PendingMainWindowActivation::default();
+        assert!(!event_before_setup.request());
+        assert!(
+            event_before_setup.install_readiness(),
+            "an event arriving before setup must be replayed by setup"
+        );
+
+        let concurrent = Arc::new(PendingMainWindowActivation::default());
+        let barrier = Arc::new(Barrier::new(3));
+        let event_handoff = Arc::clone(&concurrent);
+        let event_barrier = Arc::clone(&barrier);
+        let event = thread::spawn(move || {
+            event_barrier.wait();
+            event_handoff.request()
+        });
+        let setup_handoff = Arc::clone(&concurrent);
+        let setup_barrier = Arc::clone(&barrier);
+        let setup = thread::spawn(move || {
+            setup_barrier.wait();
+            setup_handoff.install_readiness()
+        });
+        barrier.wait();
+        assert_eq!(
+            usize::from(event.join().unwrap()) + usize::from(setup.join().unwrap()),
+            1,
+            "exactly one side must own the cold activation under a simultaneous handoff"
+        );
+
+        let repeated = PendingMainWindowActivation::default();
+        assert!(!repeated.request());
+        assert!(!repeated.request());
+        assert!(
+            repeated.install_readiness(),
+            "repeated pre-ready URLs coalesce to one window activation while their URL events remain distinct"
+        );
+        assert!(repeated.request());
+        assert!(
+            repeated.request(),
+            "each repeated URL after setup activates through the managed authority"
         );
     }
 
