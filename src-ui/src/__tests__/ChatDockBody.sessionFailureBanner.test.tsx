@@ -536,4 +536,46 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     );
     expect(chatInputPropsMock.current?.disabled).toBe(false);
   });
+
+  // #834: the exact open resolution the server now returns for a STOPPED
+  // conversation — continuable through the successor reserve, while the
+  // current child's answerability decoration stays `past_resume` (the steady
+  // state of every stopped, unloaded session). The composer must key on the
+  // server's continuation decision, not re-derive one from answerability.
+  test('#834 re-enables the composer for a stopped conversation resolved continuable', () => {
+    const stoppedAnswerability = {
+      answerable: false as const,
+      qualification: 'past_resume' as const,
+      observedBy: 'chat-dock-body-test',
+      observedAt: '2026-08-29T00:02:00.000Z',
+    };
+    renderDock({
+      session: buildSession({
+        conversationOpenState: {
+          status: 'resolved' as const,
+          conversation: {
+            id: 'stopped',
+            source: 'runtime' as const,
+            agentSlug: agentId('codex'),
+            title: 'Stopped then continued',
+            createdAt: '2026-08-01T00:00:00.000Z',
+            updatedAt: '2026-08-01T00:01:00.000Z',
+            messageCount: 4,
+            mutable: false,
+            answerability: stoppedAnswerability,
+          },
+          currentSessionId: 'stopped:session:child-1',
+          transcript: {
+            available: true as const,
+            owner: 'runtime' as const,
+            messageCount: 4,
+          },
+          canContinue: true,
+          answerability: stoppedAnswerability,
+          recoveryActions: [] as const,
+        },
+      }),
+    });
+    expect(chatInputPropsMock.current?.disabled).toBe(false);
+  });
 });

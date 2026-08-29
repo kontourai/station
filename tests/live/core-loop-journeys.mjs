@@ -124,23 +124,9 @@ const JOURNEY_FILTER = (process.env.CORE_LOOP_JOURNEYS ?? '')
  * here that PASSES fails the run: the entry is stale and must be removed.
  */
 const EXPECTED_JOURNEY_FAILURES = new Map([
-  [
-    '1-multi-turn-continuity',
-    {
-      // kontourai/station#834: after the #749/#814 conversation-open model
-      // landed, a conversation whose current child was STOPPED is
-      // permanently non-continuable — the continuation eligibility gate
-      // reads a stopped, unloaded session as unanswerable, making the
-      // stopped-predecessor reserve path (the #765 A1 / PR #796 recovery)
-      // unreachable, and the authoritative open never recovers it.
-      // Reproduced by this suite on main 3cb5f1228 (2026-08-29). Turns 1-2
-      // and every other journey-1 assertion still fail REAL when they
-      // break: only this exact reopen dead-end is excused.
-      issue: 'kontourai/station#834',
-      expectedMessageSubstring:
-        'never resolved continuable via the authoritative open',
-    },
-  ],
+  // (empty since kontourai/station#834 was fixed: the continuation
+  // eligibility gate now treats a stopped, unloaded current child as
+  // continuable through the successor reserve path.)
 ]);
 
 async function runJourney(id, title, fn) {
@@ -294,13 +280,15 @@ async function resolveClaudeAgentSlug(page, state) {
  *  - "Agent catalog is refreshing after a configuration change; retrying
  *    automatically." — a freshly-materialized engine agent until deferred
  *    activation reconciles (materialize-engine's `activationMode: 'defer'`);
- *  - `resource_posture_critical` on a HEALTHY (non-forced) instance — the
- *    REAL host briefly over 95% CPU busy from sibling work. The product's
- *    own refusal copy says "Wait for load to drop, then retry" and
+ *  - `resource_posture_override_required` on a HEALTHY (non-forced) instance —
+ *    the REAL host remains over the sustained critical threshold from sibling
+ *    work. A scripted journey must not silently choose Start anyway, so it
+ *    waits and retries without consuming the one-shot capability.
+ *    The legacy critical-refusal code remains recognized for older peers, and
  *    tests/helpers/capacity-retry.ts encodes the same recovery; a journey
  *    about chat continuity must ride that recovery, not fail on the host's
- *    weather. (The capacity-gate journey still asserts the refusal itself,
- *    on the instance where it is FORCED and therefore never clears.)
+ *    weather. (The capacity-gate journey sets retryCapacity:false and asserts
+ *    the challenge itself on the forced instance, where it never clears.)
  *  - "This conversation is not writable under its current control state."
  *    right after a turn settles — the #749/#814 conversation-open model's
  *    revalidation window. The product's own composer defers its outbound
@@ -337,12 +325,14 @@ async function dispatchWithCatalogSettle(
       }
       if (
         retryCapacity &&
-        last.status === 400 &&
-        last.payload?.code === 'resource_posture_critical'
+        ((last.status === 409 &&
+          last.payload?.code === 'resource_posture_override_required') ||
+          (last.status === 400 &&
+            last.payload?.code === 'resource_posture_critical'))
       ) {
         capacityRetries += 1;
         console.log(
-          `  (host genuinely at capacity — retry ${capacityRetries}: ${last.payload?.error})`,
+          `  (host remains very busy — wait/retry ${capacityRetries} without consuming override: ${last.payload?.error})`,
         );
         return false;
       }
@@ -768,12 +758,12 @@ async function journeyCapacityGate(browser, note, shared) {
       'posture endpoint reports the forced critical observation (source core-loop-capacity-e2e)',
     );
 
-    // Real dispatch refusal needs an engine ready enough to pass
+    // Real interactive admission needs an engine ready enough to pass
     // assertAdapterReady (which runs BEFORE admitEngineStart).
     const state = await claudeEngineState(page);
     if (state.ready) {
       const agentSlug = await resolveClaudeAgentSlug(page, state);
-      // retryCapacity OFF: on this instance the refusal IS the expectation
+      // retryCapacity OFF: on this instance the challenge IS the expectation
       // (the forced posture never clears), so riding the recovery loop here
       // would time out around the very evidence being asserted.
       const { status, payload } = await dispatchWithCatalogSettle(
@@ -781,32 +771,50 @@ async function journeyCapacityGate(browser, note, shared) {
         '/api/orchestration/chat',
         {
           target: { environment: { kind: 'current' }, agent: agentSlug },
-          message: 'capacity probe — this dispatch must be refused',
+          message: 'capacity probe — this dispatch must require confirmation',
         },
         { retryCapacity: false },
       );
       assert(
-        status === 400,
-        `dispatch under critical posture returned HTTP ${status}, expected 400: ${JSON.stringify(payload)?.slice(0, 400)}`,
+        status === 409,
+        `interactive dispatch under critical posture returned HTTP ${status}, expected 409: ${JSON.stringify(payload)?.slice(0, 400)}`,
       );
       assert(
-        payload?.code === 'resource_posture_critical',
-        `refusal carried code ${payload?.code ?? 'none'}, expected resource_posture_critical: ${JSON.stringify(payload)?.slice(0, 400)}`,
+        payload?.code === 'resource_posture_override_required',
+        `challenge carried code ${payload?.code ?? 'none'}, expected resource_posture_override_required: ${JSON.stringify(payload)?.slice(0, 400)}`,
       );
       assert(
-        /resource posture=critical/.test(payload?.error ?? ''),
-        `refusal error text does not name the posture: ${payload?.error}`,
+        typeof payload?.resourceAdmissionOverride?.token === 'string' &&
+          payload.resourceAdmissionOverride.token.length > 0 &&
+          Number.isFinite(payload.resourceAdmissionOverride.expiresAt),
+        `challenge did not carry a bounded override capability: ${JSON.stringify(payload)?.slice(0, 400)}`,
       );
       note(
-        'real dispatch refused with typed resource_posture_critical at the HTTP seam',
+        'real interactive dispatch returned a typed one-shot resource_posture_override_required challenge',
       );
+
+      const background = await dispatchWithCatalogSettle(
+        page,
+        '/api/orchestration/chat/background',
+        {
+          target: { environment: { kind: 'current' }, agent: agentSlug },
+          message: 'capacity probe — automatic work must defer',
+        },
+        { retryCapacity: false },
+      );
+      assert(
+        background.status === 400 &&
+          background.payload?.code === 'resource_posture_deferred',
+        `background dispatch did not defer before provider effect: HTTP ${background.status} ${JSON.stringify(background.payload)?.slice(0, 400)}`,
+      );
+      note('real background dispatch deferred with resource_posture_deferred');
     } else {
       note(
-        'real-dispatch refusal NOT exercised on this host (Claude engine not ready; the posture gate sits behind assertAdapterReady) — covered by the posture assert above plus the surface assert below',
+        'real interactive/background dispatch admission NOT exercised on this host (Claude engine not ready; the posture gate sits behind assertAdapterReady) — covered by the posture assert above plus the surface assert below',
       );
       if (REQUIRE_CLAUDE) {
         throw new Error(
-          'CORE_LOOP_REQUIRE_CLAUDE=1 but the Claude engine is not ready for the capacity-gate dispatch assert',
+          'CORE_LOOP_REQUIRE_CLAUDE=1 but the Claude engine is not ready for the capacity-gate dispatch assertions',
         );
       }
     }
@@ -815,18 +823,17 @@ async function journeyCapacityGate(browser, note, shared) {
     await capacity.stop();
   }
 
-  // Surface half (#765 A3): the refusal must reach the CONVERSATION UI as
-  // the "Host is at capacity" ephemeral with a Retry action, replacing the
-  // "Working…" streaming state, when a dispatch answers with the server's
-  // pinned refusal wire shape. Replayed via route interception on the MAIN
+  // Surface half (#798): the challenge must reach the CONVERSATION UI as
+  // the "Host remains busy" ephemeral with a Start anyway action, and the
+  // retry must carry the exact one-shot token. Replayed via route interception on the MAIN
   // healthy instance because a real refusal requires a ready engine (see
-  // module docblock); the injected body is byte-shaped after
-  // orchestration.routes.test.ts "preserves a critical resource refusal
-  // code at the outer HTTP seam".
-  // Its OWN one-turn conversation, never stopped: kontourai/station#834
-  // makes a STOPPED conversation's composer permanently non-editable, and
-  // journey 1 deliberately ends in that state — borrowing its conversation
-  // would entangle this surface assert with that tracked defect. Driven
+  // module docblock); the injected body is byte-shaped after the route/SDK
+  // override contract tests.
+  // Its OWN one-turn conversation, never stopped: journey 1 deliberately
+  // ends its conversation in the stopped-then-continued state
+  // (kontourai/station#834's recovered population) — borrowing that
+  // conversation would entangle this surface assert with journey 1's
+  // post-stop lineage instead of a plain writable composer. Driven
   // from a FRESHLY paired page: the run-long first page's device session
   // has been observed aging into 401/429 refusals by this point (journey 4
   // learned the same lesson).
@@ -888,20 +895,48 @@ async function journeyCapacityGate(browser, note, shared) {
     // binding — and record what it actually posted so a red run names the
     // route instead of guessing.
     const interceptedDispatches = [];
+    const overrideToken = 'core-loop-capacity-override';
+    let overrideRequest;
     await page.route(
       (url) => url.pathname.startsWith('/api/orchestration/chat'),
       (route) => {
         if (route.request().method() !== 'POST') return route.continue();
         interceptedDispatches.push(new URL(route.request().url()).pathname);
+        const body = route.request().postDataJSON();
+        if (interceptedDispatches.length > 1) {
+          overrideRequest = body;
+          return route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                conversationId,
+                sessionId,
+                providerTurnId: 'core-loop-capacity-override-turn',
+                target: { kind: 'agent', id: agentSlug },
+                resolution: {
+                  environment: { kind: 'current' },
+                  agentId: agentSlug,
+                  provider: 'claude',
+                },
+              },
+            }),
+          });
+        }
         return route.fulfill({
-          status: 400,
+          status: 409,
           contentType: 'application/json',
           body: JSON.stringify({
             success: false,
             error:
-              'Engine start refused: resource posture=critical, observed busyPercent=97, thresholdPercent=85, cpuCount=8',
-            code: 'resource_posture_critical',
+              'This Station remains very busy (97% averaged CPU). Start anyway?',
+            code: 'resource_posture_override_required',
             retryable: true,
+            resourceAdmissionOverride: {
+              token: overrideToken,
+              expiresAt: Date.now() + 30_000,
+            },
           }),
         });
       },
@@ -943,7 +978,7 @@ async function journeyCapacityGate(browser, note, shared) {
 
     const capacityNotice = page
       .locator('.ephemeral-message')
-      .filter({ hasText: 'Host is at capacity' })
+      .filter({ hasText: 'Host remains busy' })
       .last();
     await capacityNotice
       .waitFor({ state: 'visible', timeout: 30_000 })
@@ -951,21 +986,21 @@ async function journeyCapacityGate(browser, note, shared) {
         const shot = join(OUTPUT_ROOT, 'journey2-no-refusal.png');
         await page.screenshot({ path: shot }).catch(() => undefined);
         throw new Error(
-          `capacity surface: the "Host is at capacity" ephemeral never rendered after the refused dispatch (#765 A3). Intercepted ${interceptedDispatches.length} dispatch(es): ${interceptedDispatches.join(', ') || 'NONE — the composer posted somewhere this interception does not cover'} — screenshot at ${shot}`,
+          `capacity surface: the "Host remains busy" challenge never rendered. Intercepted ${interceptedDispatches.length} dispatch(es): ${interceptedDispatches.join(', ') || 'NONE — the composer posted somewhere this interception does not cover'} — screenshot at ${shot}`,
         );
       });
-    const retry = capacityNotice.getByRole('button', {
-      name: 'Retry',
+    const startAnyway = capacityNotice.getByRole('button', {
+      name: 'Start anyway',
       exact: true,
     });
     assert(
-      (await retry.count()) > 0,
-      'capacity refusal rendered without its Retry action',
+      (await startAnyway.count()) > 0,
+      'capacity challenge rendered without its Start anyway action',
     );
-    // The refusal replaced the streaming state: no "Working…" label may
-    // survive it (the eternal-spinner defect).
+    // The challenge replaced the first attempt's streaming state: no
+    // "Working…" label may survive it (the eternal-spinner defect).
     await poll(
-      'Working… indicator to clear after the refusal',
+      'Working… indicator to clear after the challenge',
       15_000,
       async () => {
         const working = await page
@@ -974,8 +1009,15 @@ async function journeyCapacityGate(browser, note, shared) {
         return working === 0;
       },
     );
+    await startAnyway.click();
+    await poll(
+      'Start anyway retry to carry its exact token',
+      15_000,
+      async () =>
+        overrideRequest?.resourceAdmissionOverrideToken === overrideToken,
+    );
     note(
-      'chat surface rendered "Host is at capacity" with Retry and cleared Working…',
+      'chat surface rendered "Host remains busy" with Start anyway, cleared the challenged attempt, and carried the exact token',
     );
   } finally {
     await context2.close();

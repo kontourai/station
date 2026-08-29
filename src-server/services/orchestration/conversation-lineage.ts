@@ -44,10 +44,28 @@ export function isConversationContinuationControlEligible(
   detail: OrchestrationSessionDetail,
 ): boolean {
   const session = detail.session;
+  if (
+    session.controlMode !== 'station-owned' ||
+    session.pendingReview === true
+  ) {
+    return false;
+  }
+  if (session.answerability.answerable) return true;
+  // #834: `answerable: false` + `past_resume` is the steady state of every
+  // stopped/finished, unloaded current child — the answerability contract
+  // itself warns it speaks only about answering an open request on the
+  // CURRENT child in THIS process. Continuation never does that: for a
+  // stopped child it reserves a successor (the stopped-predecessor branch of
+  // resolveConversationContinuation, the #765 A1 / PR #796 recovery), so the
+  // same stopped-lifecycle condition that branch keys on is what makes the
+  // conversation continuable. `provider_absent` stays denied: it names a
+  // child whose work could still resume but which nothing serving this
+  // process can drive, so the reserve path is not the recovery for it.
   return (
-    session.controlMode === 'station-owned' &&
-    session.pendingReview !== true &&
-    session.answerability.answerable
+    session.answerability.qualification === 'past_resume' &&
+    isSessionLifecycleStateStopped(
+      foldedSessionLifecycleState(session.lifecycleState),
+    )
   );
 }
 
