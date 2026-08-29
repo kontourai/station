@@ -1,6 +1,6 @@
 [
   {
-    "timestampUtc": "2026-08-29T02:01:00Z",
+    "timestampUtc": "2026-08-29T02:01:11Z",
     "channel": "nightly-android",
     "version": "0.1.2-nightly.2432",
     "sha": "b0ac1b7b186a9d8f941616938321d09930c2ad38",
@@ -11,7 +11,7 @@
     ],
     "gateResult": "nightly test-gate success on b0ac1b7b186a9d8f941616938321d09930c2ad38 (station#4539)",
     "notes": [
-      "Recorded after the fact: run 33225213529 published to Play internal sharing, then failed at the tag-advance step before its ledger steps could run."
+      "Recorded after the fact: run 33225213529 published to the Play internal testing track, then failed at the tag-advance step before its ledger steps could run. timestampUtc is the Play upload step's completion time (2026-08-29T02:01:11Z), used verbatim."
     ],
     "changelog": {
       "previousSha": "c4229f43f7569e96874c25356d1199fa01cbfec1",

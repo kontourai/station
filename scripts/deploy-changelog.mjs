@@ -194,7 +194,16 @@ export function deriveChangelogSlice({
   try {
     execGit(['cat-file', '-e', `${previousSha}^{commit}`]);
   } catch (error) {
-    if (error?.code === 'ENOENT') throw error; // git itself is missing, not the object
+    // Only a genuinely missing OBJECT is the disclosed case. Everything
+    // else a failed probe can mean — git missing (ENOENT), not a
+    // repository, a corrupt or unreadable object store — must stay loud,
+    // or a broken environment would masquerade as an honest history gap.
+    const stderr =
+      typeof error?.stderr === 'string'
+        ? error.stderr
+        : (error?.stderr?.toString?.() ?? '');
+    const failureText = `${stderr}\n${error?.message ?? ''}`;
+    if (!/Not a valid object name/.test(failureText)) throw error;
     return {
       previousSha,
       groups: Object.fromEntries(CHANGELOG_GROUP_ORDER.map((g) => [g, []])),

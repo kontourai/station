@@ -541,6 +541,7 @@ jobs:
       # no second version write here, which would otherwise let the bundle's
       # baked-in identity and the published npm version disagree.
       - name: Publish @kontourai/station-cli to the nightly dist-tag
+        id: cli_npm_publish
         if: steps.decide.outputs.build == 'true' && steps.cli_npm_preflight.outputs.trusted_publisher == 'true'
         working-directory: packages/cli
         run: npm publish --tag nightly --access public
@@ -675,6 +676,7 @@ jobs:
           node scripts/check-android-16kb-alignment.mjs "$apk"
 
       - name: Upload to Play internal testing track
+        id: play_upload
         if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
         env:
           PLAY_UPLOAD_ACTION_PATH: ${{ steps.play_upload_action.outputs.path }}
@@ -699,12 +701,17 @@ jobs:
         # old..new range touches .github/workflows/*. The refs API only
         # points the ref at a commit that already exists on main, so it is
         # not subject to that push-path check — the same mechanism release
-        # tags use. The POST fallback covers the first-ever run, when the
-        # tag does not exist yet (PATCH would 404 forever).
+        # tags use. The POST fallback covers a missing tag (first-ever run,
+        # or a hand-deleted tag forcing a rebuild): PATCH on a missing ref
+        # returns 422 "Reference does not exist" (404 accepted too, in case
+        # that ever changes). The success path re-reads the response and
+        # asserts WHICH ref moved and to what, rather than trusting the
+        # status code alone.
         if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_SHA: ${{ steps.decide.outputs.head_sha }}
+          TAG_REF: refs/tags/nightly
         run: |
           set -euo pipefail
           advance_ref() {
@@ -713,16 +720,31 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               "$@"
           }
+          ref_missing() {
+            [ "$1" = "404" ] || { [ "$1" = "422" ] \
+              && grep -q 'Reference does not exist' "$RUNNER_TEMP/tag-advance-response.json"; }
+          }
           status=$(advance_ref -X PATCH \
-            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/refs/tags/nightly" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/${TAG_REF}" \
             -d "{\"sha\":\"${TAG_SHA}\",\"force\":true}")
-          if [ "$status" = "404" ]; then
+          if ref_missing "$status"; then
             status=$(advance_ref -X POST \
               "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/refs" \
-              -d "{\"ref\":\"refs/tags/nightly\",\"sha\":\"${TAG_SHA}\"}")
+              -d "{\"ref\":\"${TAG_REF}\",\"sha\":\"${TAG_SHA}\"}")
           fi
           case "$status" in
-            200|201) echo "nightly tag now at ${TAG_SHA}" ;;
+            200|201)
+              node -e '
+                const { readFileSync } = require("node:fs");
+                const [file, ref, sha] = process.argv.slice(1);
+                const body = JSON.parse(readFileSync(file, "utf8"));
+                if (body.ref !== ref || body.object?.sha !== sha) {
+                  console.error("ref update response mismatch:", JSON.stringify(body));
+                  process.exit(1);
+                }
+              ' "$RUNNER_TEMP/tag-advance-response.json" "$TAG_REF" "$TAG_SHA"
+              echo "${TAG_REF} now at ${TAG_SHA}"
+              ;;
             *)
               echo "::error::Tag advance failed with HTTP ${status}; tomorrow's nightly will rebuild this SHA."
               cat "$RUNNER_TEMP/tag-advance-response.json"
@@ -751,7 +773,12 @@ jobs:
       # safe). Two steps means two commits; both subjects are docs(ledger):
       # and excluded from every changelog slice.
       - name: Record the nightly Android ship in the deploy ledger
-        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
+        # always(): a later-step failure (the tag advance, most recently) must
+        # never suppress the record of a publish that already happened — that
+        # is exactly the unrecorded-ship incident the ledger exists to end.
+        # The play_upload outcome gate keeps the converse true: a failed or
+        # skipped publish records nothing.
+        if: ${{ always() && steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != '' && steps.play_upload.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEPLOY_LEDGER_SHA: ${{ steps.decide.outputs.head_sha }}
@@ -782,7 +809,10 @@ jobs:
         # The npm publish step ran early in this job; the RECORD runs last so
         # its failure can never abort the Android build still ahead of it —
         # the same publish-first-then-ledger ordering as the Android entry.
-        if: steps.decide.outputs.build == 'true' && steps.cli_npm_preflight.outputs.trusted_publisher == 'true'
+        # always() + the publish outcome gate: an unrelated later failure
+        # cannot suppress the record, and a failed/skipped publish records
+        # nothing.
+        if: ${{ always() && steps.decide.outputs.build == 'true' && steps.cli_npm_publish.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEPLOY_LEDGER_SHA: ${{ steps.decide.outputs.head_sha }}
@@ -1010,6 +1040,7 @@ jobs:
       # for anyone but the repo, so a draft nightly-desktop would silently
       # break every installed app's update check.
       - name: Publish the rolling desktop nightly prerelease
+        id: desktop_publish
         if: steps.decide.outputs.build == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1043,11 +1074,14 @@ jobs:
         # Android leg's tag advance: GITHUB_TOKEN can never hold the
         # `workflows` scope, and the push path refuses ref moves across
         # workflow-file changes; the refs API only points at an existing
-        # commit.
+        # commit. Missing-ref fallback and response assertion mirror that
+        # step too (PATCH on a missing ref returns 422 "Reference does not
+        # exist"; 404 accepted in case that ever changes).
         if: steps.decide.outputs.build == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_SHA: ${{ steps.decide.outputs.head_sha }}
+          TAG_REF: refs/tags/nightly-desktop
         run: |
           set -euo pipefail
           advance_ref() {
@@ -1056,16 +1090,31 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               "$@"
           }
+          ref_missing() {
+            [ "$1" = "404" ] || { [ "$1" = "422" ] \
+              && grep -q 'Reference does not exist' "$RUNNER_TEMP/tag-advance-response.json"; }
+          }
           status=$(advance_ref -X PATCH \
-            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/refs/tags/nightly-desktop" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/${TAG_REF}" \
             -d "{\"sha\":\"${TAG_SHA}\",\"force\":true}")
-          if [ "$status" = "404" ]; then
+          if ref_missing "$status"; then
             status=$(advance_ref -X POST \
               "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/refs" \
-              -d "{\"ref\":\"refs/tags/nightly-desktop\",\"sha\":\"${TAG_SHA}\"}")
+              -d "{\"ref\":\"${TAG_REF}\",\"sha\":\"${TAG_SHA}\"}")
           fi
           case "$status" in
-            200|201) echo "nightly-desktop tag now at ${TAG_SHA}" ;;
+            200|201)
+              node -e '
+                const { readFileSync } = require("node:fs");
+                const [file, ref, sha] = process.argv.slice(1);
+                const body = JSON.parse(readFileSync(file, "utf8"));
+                if (body.ref !== ref || body.object?.sha !== sha) {
+                  console.error("ref update response mismatch:", JSON.stringify(body));
+                  process.exit(1);
+                }
+              ' "$RUNNER_TEMP/tag-advance-response.json" "$TAG_REF" "$TAG_SHA"
+              echo "${TAG_REF} now at ${TAG_SHA}"
+              ;;
             *)
               echo "::error::Tag advance failed with HTTP ${status}; tomorrow's desktop nightly will rebuild this SHA."
               cat "$RUNNER_TEMP/tag-advance-response.json"
@@ -1077,7 +1126,10 @@ jobs:
       # step above succeeded; its own failure reddens the job without
       # un-shipping anything.
       - name: Record the nightly desktop ship in the deploy ledger
-        if: steps.decide.outputs.build == 'true'
+        # always() + the publish outcome gate, mirroring the Android job's
+        # ledger steps: a tag-advance failure cannot suppress the record of a
+        # publish that happened, and a failed/skipped publish records nothing.
+        if: ${{ always() && steps.decide.outputs.build == 'true' && steps.desktop_publish.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEPLOY_LEDGER_SHA: ${{ steps.decide.outputs.head_sha }}

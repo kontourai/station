@@ -252,6 +252,7 @@ describe('changelog slice derivation', () => {
   });
 
   it('propagates a missing git binary from the reachability probe', () => {
+    const calls: string[][] = [];
     const enoent = Object.assign(new Error('spawn git ENOENT'), {
       code: 'ENOENT',
     });
@@ -261,11 +262,38 @@ describe('changelog slice derivation', () => {
         previousSha: A_SHA,
         sha: B_SHA,
         githubRepo: 'kontourai/station',
-        execGit: () => {
+        execGit: (args: string[]) => {
+          calls.push(args);
           throw enoent;
         },
       }),
     ).toThrow(/ENOENT/);
+    // The throw must come from the probe itself, not a later log call the
+    // carve-out happened to cover.
+    expect(calls).toEqual([['cat-file', '-e', `${A_SHA}^{commit}`]]);
+  });
+
+  it('keeps non-missing-object probe failures loud instead of disclosing a false history gap', () => {
+    for (const failure of [
+      new Error(
+        'fatal: not a git repository (or any of the parent directories): .git',
+      ),
+      Object.assign(new Error('git failed'), {
+        stderr: 'error: object file .git/objects/aa is corrupt\n',
+      }),
+    ]) {
+      expect(() =>
+        deriveChangelogSlice({
+          repoRoot: '.',
+          previousSha: A_SHA,
+          sha: B_SHA,
+          githubRepo: 'kontourai/station',
+          execGit: () => {
+            throw failure;
+          },
+        }),
+      ).toThrow(failure.message);
+    }
   });
 
   it('rejects malformed shas before any git call', () => {
