@@ -5,6 +5,8 @@ import { readFileSync } from 'node:fs';
 // same probe when they are launched by node rather than tsx.
 export const PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS = 1_500;
 export const WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS = 10_000;
+export const WINDOWS_OWN_PROCESS_BIRTH_ATTEMPTS = 3;
+export const WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS = 250;
 
 // The Windows Job guard derives this exact representation from GetProcessTimes.
 // Keep the process-identity authority equally strict and normalize the same
@@ -352,10 +354,35 @@ export function probeExactProcessIdentity(pid, dependencies = {}) {
  * later claimant/reclaim comparison; no PID-only or timing fallback exists.
  */
 export function resolveOwnProcessIdentity(pid, dependencies = {}) {
-  return probeExactProcessIdentityOnce(pid, {
+  const probeDependencies = {
     ...dependencies,
     timeoutMs: dependencies.timeoutMs ?? WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS,
-  });
+  };
+  const platform = dependencies.platform ?? process.platform;
+  const attempts =
+    platform === 'win32' ? WINDOWS_OWN_PROCESS_BIRTH_ATTEMPTS : 1;
+  const wait =
+    dependencies.wait ??
+    ((milliseconds) =>
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT)),
+        0,
+        0,
+        milliseconds,
+      ));
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const probe = probeExactProcessIdentityOnce(pid, probeDependencies);
+    if (probe.state !== 'unavailable' || attempt === attempts - 1) {
+      return probe;
+    }
+    // This path observes only the coordinator's own still-running process.
+    // Retrying the same direct process-handle authority survives a transient
+    // PowerShell startup timeout without ever publishing PID-only ownership.
+    wait(WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS);
+  }
+
+  return { state: 'unavailable' };
 }
 
 export function exactProcessIdentity(pid, dependencies = {}) {
