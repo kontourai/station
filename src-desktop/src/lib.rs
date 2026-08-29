@@ -7643,6 +7643,12 @@ async fn bundled_server_status(app: AppHandle) -> BundledServerStatus {
 }
 
 #[cfg(not(mobile))]
+#[tauri::command]
+fn open_desktop_tray_menu(app: AppHandle) -> Result<bool, String> {
+    crate::tray::open_menu(&app)
+}
+
+#[cfg(not(mobile))]
 pub(crate) fn emit_service_status(app: &AppHandle) {
     let _ = app.emit(
         "station://bundled-server-status",
@@ -8439,6 +8445,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         open_local_browser_preview_window,
         open_workspace_pane_pop_out,
         bundled_server_status,
+        open_desktop_tray_menu,
         restart_bundled_server,
         commit_startup_readiness,
         commit_startup_recovery_ui,

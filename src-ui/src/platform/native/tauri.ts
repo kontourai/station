@@ -718,6 +718,34 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     }
   }
 
+  async openDesktopTrayMenu(): Promise<NativeCommandResult<void>> {
+    try {
+      const opened = await this.bridge.invoke<unknown>(
+        'open_desktop_tray_menu',
+      );
+      if (opened === true) return { status: 'ok', value: undefined };
+      if (opened === false) {
+        return {
+          status: 'unsupported',
+          command: 'open-desktop-tray-menu',
+          reason:
+            'This desktop environment opens the Station menu from its system tray indicator.',
+        };
+      }
+      return {
+        status: 'error',
+        command: 'open-desktop-tray-menu',
+        message: 'The native host returned an invalid tray-menu result.',
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        command: 'open-desktop-tray-menu',
+        message: errorMessage(error),
+      };
+    }
+  }
+
   subscribeToBundledServerStatus(
     listener: (status: BundledServerStatus) => void,
     onError?: (error: NativePlatformError) => void,
