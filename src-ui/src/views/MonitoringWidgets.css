@@ -1001,13 +1001,24 @@
 
 /* station#753 item 6: was `5s`, with keyframe stops at 0%/5%/100% — the
    entrance actually completed at the 5% mark (250ms into the original 5s),
-   and the remaining 95% held the SAME from/opacity values, doing nothing
-   observable (confirmed: no JS reads this animation's end, `isNew` is
-   derived from list position, not a timer — MonitoringContext.tsx). That
-   95% was dead time the literal duration existed only to produce; deleting
-   it and keying the entrance directly to `--motion-base` is the "delete
-   dead rules" half of the migration, not a behavior change to the visible
-   slide-in. */
+   and the remaining 95% held the SAME from/opacity values with no
+   fill-mode, so there was nothing left for it to hold: the element had
+   already reverted to its own unanimated state (opacity 1, no transform —
+   identical to the keyframe's `to`) well before the hold segment even
+   started. That was dead time the literal duration existed only to produce;
+   deleting it and keying the entrance directly to `--motion-base` is the
+   "delete dead rules" half of the migration, not a behavior change to the
+   visible slide-in.
+
+   The `new-event` class itself is NOT list-position-derived — MonitoringView
+   .tsx:189-200 computes it from a set-diff on event identity and clears it
+   with `setTimeout(() => setNewEventIds(new Set()), 5000)`. That timer is
+   unrelated to this animation's duration and was never coupled to it (the
+   animation was already finished, dead-holding, at the 250ms mark even under
+   the original 5s literal). One consequence worth flagging as a follow-up,
+   not fixed here: `.log-entry.new-event` now stays on the row for the full
+   5000ms with no visual effect after the first ~200ms, where it previously
+   at least matched the class's own literal duration by coincidence. */
 .log-entry.new-event {
   animation: slideInFade var(--motion-base) var(--ease-out);
 }

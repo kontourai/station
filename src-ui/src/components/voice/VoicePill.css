@@ -48,15 +48,28 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   animation: none;
   transform: scale(var(--audio-scale, 1));
-  /* Was 0.08s: an audio-reactive scale, smoothing a live level (VoicePill.tsx
-     `--audio-scale`/`--audio-glow`) rather than a discrete state change. No
-     token sits at 80ms; `--motion-instant` (0ms) would drop the smoothing
-     entirely and read as jitter, so this takes the nearest smoothing token
-     over the nearest number — station#753 design call, flagged for review:
-     ~70ms more perceived lag between the audio level and the visual. */
+  /* station#753 item 6 EXCEPTION (reviewed 2/2, arbitrated): `--audio-scale`
+     and `--audio-glow` are republished on every microphone frame
+     (NovaVoiceSessionAdapter.ts `handleMicrophoneFrame`, ~378-390 — an RMS
+     level pushed via `this.publish(...)` per audio callback, on the order of
+     milliseconds, not a discrete state change). That puts this transition in
+     the grammar's Direct-manipulation category, not Feedback/state: the
+     property being driven by a continuous external signal must not carry a
+     grammar duration, the same reasoning `docs/design/motion.md` already
+     applies to pointer/finger tracking. 0.08s here is a signal-smoothing
+     time CONSTANT, structurally the same kind of exception as
+     NotificationHistory.css's `4s`/`UNDO_WINDOW_MS` — it is coupled to how
+     fast the signal itself updates, not to a motion category. At the token
+     above it (`--motion-fast`, 150ms) the transition restarts before
+     completing on every new frame and never resolves — visibly mushy rather
+     than smooth. Local test:
+     `src-ui/src/components/voice/__tests__/VoicePill.motion-exception.test.ts`
+     pins this literal per motion.md's "a component exception must … include
+     a local test" so a future ratchet sweep does not silently re-tokenize
+     it. */
   transition:
-    transform var(--motion-fast) var(--ease-out),
-    box-shadow var(--motion-fast) var(--ease-out);
+    transform 0.08s ease-out,
+    box-shadow 0.08s ease-out;
 }
 
 .voice-pill__ring {
@@ -67,10 +80,11 @@
   box-shadow: 0 0 calc(4px + var(--audio-glow, 0) * 16px)
     rgba(76, 175, 80, calc(var(--audio-glow, 0) * 0.6));
   pointer-events: none;
-  /* Same audio-reactive smoothing call as `.voice-pill--listening` above. */
+  /* Same audio-reactive smoothing exception as `.voice-pill--listening`
+     above. */
   transition:
-    border-color var(--motion-fast),
-    box-shadow var(--motion-fast);
+    border-color 0.08s,
+    box-shadow 0.08s;
 }
 
 .voice-pill--thinking {
