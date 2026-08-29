@@ -1261,6 +1261,22 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     (sessionId: string) => focusSession(sessionId, !isFullscreenPlacement),
     [focusSession, isFullscreenPlacement],
   );
+  // A conversation-row click is an explicit choice of the project context in
+  // which the person wants to continue.  Keep that intent at this UI seam:
+  // URL hydration, external focus requests, handoff refocus, and other
+  // programmatic session selection must not silently rewrite the DockShell's
+  // ambient binding.  A projectless conversation likewise has no project
+  // choice to make, so it preserves the current binding.
+  const focusUserSelectedSessionInPane = useCallback(
+    (sessionId: string) => {
+      const selectedProjectSlug = allSessions.find(
+        (session) => session.id === sessionId,
+      )?.projectSlug;
+      if (selectedProjectSlug) setActiveProjectSlug(selectedProjectSlug);
+      focusSessionInPane(sessionId);
+    },
+    [allSessions, focusSessionInPane, setActiveProjectSlug],
+  );
   const openChatForAgentInScopedPane = useCallback(
     (
       agent: AgentData,
@@ -1433,6 +1449,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       openConversation,
       routeToScopedChatProject,
     ],
+  );
+  // The cold-row half of `focusUserSelectedSessionInPane`: a History, Inbox,
+  // or mobile task-switcher item may not be an in-memory tab yet.  Bind only
+  // after its open succeeds, and only when that row names a project.
+  const openUserSelectedConversationInScopedPane = useCallback(
+    async (...args: Parameters<typeof openConversationInScopedPane>) => {
+      const opened = await openConversationInScopedPane(...args);
+      const targetProjectSlug = args[2];
+      if (opened && targetProjectSlug) setActiveProjectSlug(targetProjectSlug);
+      return opened;
+    },
+    [openConversationInScopedPane, setActiveProjectSlug],
   );
   const openWorkItemConversationInScopedPane = useCallback(
     (
@@ -2100,9 +2128,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         agents,
                         activeChatSessionId: activeSessionId,
                         openChatSessionIds: openInboxChatSessionIds,
-                        onFocusChat: focusSessionInPane,
+                        onFocusChat: focusUserSelectedSessionInPane,
                         onOpenConversation:
-                          openWorkItemConversationInScopedPane,
+                          openUserSelectedConversationInScopedPane,
                         onOpenSession: onOpenInboxSession,
                         onCloseChat: removeSession,
                         onAcknowledgeConversation: acknowledgeTaskConversation,
@@ -2194,8 +2222,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     onToggleStatsPanel={setShowStatsPanel}
                     onTitleUpdate={handleTitleUpdate}
                     onDeleteSession={removeSession}
-                    onFocusSession={focusSessionInPane}
-                    onOpenConversation={openConversationInScopedPane}
+                    onFocusSession={focusUserSelectedSessionInPane}
+                    onOpenConversation={
+                      openUserSelectedConversationInScopedPane
+                    }
                     onForkFromTurn={(source) => {
                       if (!activeSession?.conversationId) return;
                       const conversationId = activeSession.conversationId;
@@ -2295,8 +2325,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   ? activityTriggerRef
                   : taskSwitcherTriggerRef,
               onClose: () => setIsTaskSwitcherOpen(false),
-              onFocusChat: focusSessionInPane,
-              onOpenConversation: openWorkItemConversationInScopedPane,
+              onFocusChat: focusUserSelectedSessionInPane,
+              onOpenConversation: openUserSelectedConversationInScopedPane,
               onCloseChat: removeSession,
               onAcknowledgeConversation: acknowledgeTaskConversation,
               agentsLoaded,
@@ -2753,7 +2783,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 }
               : undefined,
           onCloseSessionPicker: () => setShowSessionPicker(false),
-          onSessionPickerSelect: openConversationInScopedPane,
+          onSessionPickerSelect: openUserSelectedConversationInScopedPane,
           onChatFontSizeChange: setChatFontSize,
           onShowReasoningChange: setShowReasoning,
           onShowToolDetailsChange: setShowToolDetails,
