@@ -82,6 +82,35 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     ]);
   });
 
+  test('#749 preserves queued text when a replayed terminal event arrives before open revalidation', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['do not shift'],
+      conversationOpenPending: true,
+    });
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
+      'do not shift',
+    ]);
+  });
+
+  test('#749 requeues the shifted head when open state changes during the settle delay', async () => {
+    activeChatsStore.updateChat(threadId, { queuedMessages: ['race head'] });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    // The first phase already shifted its head; resolution loses authority
+    // before the delayed mutation/provider boundary.
+    activeChatsStore.updateChat(threadId, { conversationOpenFailed: true });
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
+      'race head',
+    ]);
+  });
+
   test('pops the head synchronously, then dispatches the canonical Agent target after the settle delay', async () => {
     activeChatsStore.updateChat(threadId, {
       queuedMessages: ['first', 'second'],

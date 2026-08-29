@@ -38,6 +38,7 @@ async function seedDefaultAgentRoutes(
   page: import('@playwright/test').Page,
   options?: {
     chatFailure?: boolean;
+    inventorySource?: 'store' | 'runtime';
     initialConversations?: Array<{
       id: string;
       resourceId: string;
@@ -69,7 +70,7 @@ async function seedDefaultAgentRoutes(
   const conversationInventory = () =>
     state.conversations.map((conversation) => ({
       id: conversation.id,
-      source: 'store' as const,
+      source: options?.inventorySource ?? ('store' as const),
       agentSlug: 'station',
       projectSlug: 'default',
       title: conversation.title,
@@ -518,8 +519,14 @@ test.describe('Default agent workflow', () => {
     const sendButton = page.getByRole('button', { name: 'Send' });
 
     for (const [command, matcher] of [
-      ['/mcp', /MCP servers are unavailable for this binding/],
-      ['/tools', /Tool inventory is unavailable for this binding/],
+      [
+        '/mcp',
+        /This chat’s agent doesn’t support MCP servers, so there are none to show/,
+      ],
+      [
+        '/tools',
+        /This chat’s agent doesn’t run tools, so there are none to list/,
+      ],
       // Playbooks merged into Skills: `/prompts` is no longer a command at all
       // (the composer answers "Unknown command: /prompts"). The command that
       // lists the commands is `/commands`
@@ -568,6 +575,177 @@ test.describe('Default agent workflow', () => {
     await expect(page.locator('.conversation-history')).toContainText(
       'Station Chat',
     );
+  });
+
+  test('#749 resolves one runtime inventory row before opening and revalidates it after reload', async ({
+    page,
+  }) => {
+    const conversationId = 'conversation-authoritative-open';
+    const currentSessionId = `${conversationId}:child:2`;
+    await seedDefaultAgentRoutes(page, {
+      inventorySource: 'runtime',
+      initialConversations: [
+        {
+          id: conversationId,
+          resourceId: 'station',
+          userId: 'brian',
+          title: 'Authoritative conversation',
+          createdAt: '2026-04-12T00:00:00Z',
+          updatedAt: '2026-04-12T00:00:10Z',
+        },
+      ],
+      initialMessagesByConversation: {
+        [conversationId]: [
+          {
+            role: 'user',
+            parts: [{ type: 'text', text: 'What does this stand on?' }],
+          },
+          {
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'The recorded basis.' }],
+          },
+        ],
+      },
+    });
+
+    let openRequests = 0;
+    await page.route(
+      `**/api/conversations/${conversationId}/open`,
+      async (route) => {
+        openRequests += 1;
+        await route.fulfill(
+          json({
+            success: true,
+            data: {
+              status: 'resolved',
+              conversation: {
+                id: conversationId,
+                source: 'runtime',
+                agentSlug: 'station',
+                projectSlug: 'default',
+                title: 'Authoritative conversation',
+                createdAt: '2026-04-12T00:00:00Z',
+                updatedAt: '2026-04-12T00:00:10Z',
+                messageCount: 2,
+                mutable: false,
+                answerability: { answerable: true },
+              },
+              currentSessionId,
+              transcript: {
+                available: true,
+                owner: 'runtime',
+                messageCount: 2,
+              },
+              canContinue: true,
+              answerability: { answerable: true },
+              recoveryActions: [],
+            },
+          }),
+        );
+      },
+    );
+    await page.route('**/api/orchestration/sessions/read-model', (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: [
+            {
+              threadId: currentSessionId,
+              provider: 'ollama',
+              status: 'ready',
+              lifecycleState: 'idle',
+              controlMode: 'station-owned',
+              answerability: { answerable: true },
+              isLoaded: true,
+              isPersisted: true,
+              eventCount: 2,
+              createdAt: '2026-04-12T00:00:00Z',
+              updatedAt: '2026-04-12T00:00:10Z',
+            },
+          ],
+        }),
+      ),
+    );
+    await page.route(
+      `**/api/orchestration/conversations/${conversationId}/event-window**`,
+      (route) =>
+        route.fulfill(
+          json({
+            success: true,
+            data: {
+              protocolVersion: 1,
+              conversationId,
+              currentSessionId,
+              sessionLineage: [
+                {
+                  sessionId: currentSessionId,
+                  agentSlug: 'station',
+                  agentDisplayName: 'Station',
+                },
+              ],
+              handoffs: [],
+              contextBoundaries: [],
+              events: [
+                {
+                  sequence: 1,
+                  event: {
+                    eventId: 'authoritative-open-started',
+                    provider: 'ollama',
+                    threadId: currentSessionId,
+                    turnId: 'authoritative-open-turn',
+                    createdAt: '2026-04-12T00:00:00Z',
+                    method: 'turn.started',
+                    prompt: 'What does this stand on?',
+                  },
+                },
+                {
+                  sequence: 2,
+                  event: {
+                    eventId: 'authoritative-open-completed',
+                    provider: 'ollama',
+                    threadId: currentSessionId,
+                    turnId: 'authoritative-open-turn',
+                    createdAt: '2026-04-12T00:00:01Z',
+                    method: 'turn.completed',
+                    outputText: 'The recorded basis.',
+                    finishReason: 'stop',
+                  },
+                },
+              ],
+              hasMore: false,
+              watermark: 2,
+            },
+          }),
+        ),
+    );
+
+    await openDefaultAgentSession(page);
+    await page.locator('.chat-dock__tab-actions .chat-dock__open').click();
+    const picker = page.getByRole('dialog', { name: 'Open Conversation' });
+    await expect(picker).toBeVisible();
+    await picker
+      .getByRole('button', { name: /Authoritative conversation/ })
+      .click();
+
+    await expect(picker).not.toBeVisible();
+    await expect
+      .poll(() => openRequests, { message: 'authoritative open request' })
+      .toBe(1);
+    await expect(page.getByText('The recorded basis.')).toBeVisible();
+    await expect(
+      page.locator('textarea[placeholder*="Type a message"]'),
+    ).toBeEnabled();
+    await expect(page.getByText(/is read-only/)).toHaveCount(0);
+
+    await page.reload();
+    await dismissSetupLauncher(page);
+    await expect
+      .poll(() => openRequests, { message: 'reload revalidation request' })
+      .toBeGreaterThanOrEqual(2);
+    await expect(
+      page.locator('textarea[placeholder*="Type a message"]'),
+    ).toBeEnabled();
+    await expect(page.getByText(/is read-only/)).toHaveCount(0);
   });
 
   test('surfaces provider errors ephemerally instead of silently no-oping', async ({

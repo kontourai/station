@@ -13,13 +13,10 @@ import { type AutoSelectItem, AutoSelectModal } from './AutoSelectModal';
 interface SessionPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** The selected row is the input to server-authoritative open resolution. */
   onSelect: (
-    conversationId: string,
-    agentSlug: string,
-    projectSlug?: string,
-    projectName?: string,
-    model?: string,
-  ) => void;
+    conversation: ConversationListItem,
+  ) => undefined | boolean | Promise<undefined | boolean>;
   agents: Array<{ slug: string; name: string }>;
   projects: Array<{ slug: string; name: string }>;
   activeConversationIds?: string[];
@@ -36,10 +33,15 @@ export function SessionPickerModal({
   const inventoryQuery = useConversationInventoryQuery({ enabled: isOpen });
   const conversations = useMemo(
     () =>
-      [...(inventoryQuery.data ?? [])].sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      ),
+      [...(inventoryQuery.data ?? [])]
+        // File-store history is still listed elsewhere, but lacks the
+        // principal-aware point-read contract this picker requires. Never
+        // offer a row that authoritative open must deny.
+        .filter((conversation) => conversation.source === 'runtime')
+        .sort(
+          (a, b) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+        ),
     [inventoryQuery.data],
   );
 
@@ -100,19 +102,13 @@ export function SessionPickerModal({
           ? 'Could not load conversations. Close and reopen to try again.'
           : 'No conversations found'
       }
-      onSelect={(item) => {
+      onSelect={async (item) => {
         const conversation = item.metadata!;
-        const project = projects.find(
-          (candidate) => candidate.slug === conversation.projectSlug,
-        );
-        onSelect(
-          item.id,
-          conversation.agentSlug,
-          conversation.projectSlug,
-          project?.name,
-          conversation.model,
-        );
-        onClose();
+        const opened = await onSelect(conversation);
+        // An authoritative recovery/error result keeps the picker visible;
+        // closing it would turn a denied or unavailable resolution into a
+        // silent no-op.
+        if (opened !== false) onClose();
       }}
       onClose={onClose}
       renderMetadata={(item) => {

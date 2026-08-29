@@ -259,6 +259,14 @@ export interface ChatSession {
   conversationId?: string;
   /** Replaceable execution context beneath this durable conversation. */
   currentSessionId?: string;
+  /**
+   * The server's exact admission result for a picker-opened conversation.
+   * This is committed with the tab and is never reconstructed from an Agent,
+   * a model, or an inventory row when controls subsequently render.
+   */
+  conversationOpenState?: import('@kontourai/station-contracts/orchestration').ConversationOpenResolution;
+  conversationOpenPending?: boolean;
+  conversationOpenFailed?: boolean;
   agentSlug: AgentId;
   agentName: string;
   title: string;

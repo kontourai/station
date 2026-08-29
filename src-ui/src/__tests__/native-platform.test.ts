@@ -3,7 +3,10 @@
  */
 
 import { describe, expect, test, vi } from 'vitest';
-import { createNativePlatformAdapter } from '../platform/native';
+import {
+  createNativePlatformAdapter,
+  createNativePlatformPromise,
+} from '../platform/native';
 import { MAX_NATIVE_SHARE_TEXT_BYTES } from '../platform/native/share';
 import {
   type TauriEventBridge,
@@ -95,6 +98,22 @@ describe('native platform boundary', () => {
     await expect(
       createNativePlatformAdapter(() => true),
     ).resolves.toMatchObject({ platform: 'tauri' });
+  });
+
+  test('defers the singleton host decision until document bootstrap completes', async () => {
+    let ready: (() => void) | undefined;
+    const create = vi.fn(async () => new TauriNativePlatformAdapter());
+    const adapter = createNativePlatformPromise(create, {
+      readyState: 'loading',
+      addEventListener: (_type, listener) => {
+        ready = listener as () => void;
+      },
+    });
+
+    expect(create).not.toHaveBeenCalled();
+    ready?.();
+    await expect(adapter).resolves.toMatchObject({ platform: 'tauri' });
+    expect(create).toHaveBeenCalledOnce();
   });
 
   test('reports web-native commands as typed unsupported results', async () => {

@@ -3541,6 +3541,28 @@ describe('Global Conversation Routes', () => {
     expect(res.status).toBe(404);
   });
 
+  test('GET /:id/open gives a guessed or denied identity the same empty 404 envelope', async () => {
+    const reader = {
+      ...emptyHistoryReader(),
+      resolveConversationOpen: vi.fn().mockResolvedValue(null),
+    };
+    const app = createGlobalConversationRoutes(
+      new Map(),
+      { getConversation: vi.fn().mockReturnValue(null) } as any,
+      mockLogger,
+      undefined,
+      reader,
+    );
+
+    const response = await app.request('/guessed-owner-session/open');
+    expect(response.status).toBe(404);
+    expect(await json(response)).toEqual({
+      success: false,
+      error: 'Conversation not found',
+    });
+    expect(reader.resolveConversationOpen).toHaveBeenCalledOnce();
+  });
+
   test('GET /:id resolves an orchestration-owned conversation', async () => {
     const adapter = createMockAdapter();
     adapter.getConversation.mockResolvedValue(null);

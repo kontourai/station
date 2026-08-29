@@ -22,6 +22,9 @@ describe('desktop startup readiness static boundary', () => {
   it('uses one native reveal authority and a macOS-owned bootstrap cover', () => {
     const lib = read('src-desktop/src/lib.rs');
     const tray = read('src-desktop/src/tray.rs');
+    const platformBootstrap = read(
+      'src-ui/src/platform/PlatformProfileContext.tsx',
+    );
     const mainWindowActions = [
       ...lib.matchAll(
         /get_webview_window\("main"\)[\s\S]{0,320}?(?:\.show\(\)|\.unminimize\(\)|\.set_focus\(\))/g,
@@ -66,6 +69,35 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).toContain('with_native_startup_cover(&window, target.covered)');
     expect(lib).toContain('request_native_cover(app, true)');
     expect(lib).toContain('request_native_cover(app, false)');
+    expect(lib).toContain('.on_page_load(|webview, payload|');
+    expect(lib).toContain(
+      'observe_native_startup_page(webview.app_handle(), webview.label(), payload.event())',
+    );
+    expect(lib).toContain('event == PageLoadEvent::Started');
+    expect(lib).toContain('label == "main"');
+    expect(lib).not.toContain('NATIVE_STARTUP_BOOTSTRAP_SCRIPT');
+    expect(lib).not.toContain("invoke('renderer_startup_ready')");
+    expect(platformBootstrap).not.toContain('startStartupReadinessProof');
+    const nativeWake = lib.slice(
+      lib.indexOf('fn notify_startup_readiness_if_waiting'),
+      lib.indexOf('struct PendingMainWindowActivation'),
+    );
+    expect(
+      nativeWake.indexOf('request_native_startup_commit(app);'),
+    ).toBeLessThan(
+      nativeWake.indexOf('app.emit("station://startup-readiness-retry"'),
+    );
+    const ticketWake = lib.slice(
+      lib.indexOf('fn observe_startup_ticket'),
+      lib.indexOf('fn observe_startup_loss'),
+    );
+    expect(
+      ticketWake.indexOf(
+        'request_native_startup_commit_for_ticket(app, published_ticket);',
+      ),
+    ).toBeLessThan(
+      ticketWake.indexOf('app.emit("station://startup-readiness-retry"'),
+    );
     expect([
       ...lib.matchAll(/\.name\("station-native-cover-dispatcher"\.into\(\)\)/g),
     ]).toHaveLength(1);
@@ -92,10 +124,15 @@ describe('desktop startup readiness static boundary', () => {
     const handler = lib.indexOf('deep_link().on_open_url');
     const readinessManagement = lib.indexOf('app.manage(DesktopServerState {');
     const replay = lib.lastIndexOf('replay_pending_main_window_activation(');
+    const nativePageReplay = lib.lastIndexOf(
+      'advance_native_startup_after_page(app.handle());',
+    );
 
     expect(handler).toBeGreaterThanOrEqual(0);
     expect(readinessManagement).toBeGreaterThan(handler);
     expect(replay).toBeGreaterThan(readinessManagement);
+    expect(nativePageReplay).toBeGreaterThan(readinessManagement);
+    expect(lib).toContain('commit_startup_recovery_ui_for_app(app)');
     expect(lib).toContain('request_or_defer_main_window_activation(');
     expect(lib).toContain('request_main_window_activation(app);');
   });

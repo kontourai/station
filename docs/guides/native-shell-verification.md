@@ -72,8 +72,9 @@ service needs a durable home.
 
 The truth-bearing startup source is
 [`src-desktop/src/startup_readiness.rs`](../../src-desktop/src/startup_readiness.rs):
-the renderer may reveal only by committing the ticket matching the current
-generation, instance ID, boot ID, and API base. The native host arms one
+the native host may reveal only after Tauri's native page-start callback observes
+the exact main WebView without waiting for browser timers or application chunks, and its authenticated proof commits the ticket matching
+the current generation, instance ID, boot ID, and API base. The native host arms one
 30-second deadline, shows Retry/Exit once per epoch, and routes Retry according
 to ownership in [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs).
 
