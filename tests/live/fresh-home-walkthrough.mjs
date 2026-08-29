@@ -53,10 +53,13 @@ const SETTLE_TIMEOUT_MS = 30_000;
 
 /**
  * Bundled-content assertions expected to fail on current main, keyed by
- * plugin id. An entry here reports EXPECTED-FAIL (visible in the summary,
- * not hidden) instead of failing the run, and reports loudly when the
- * assertion unexpectedly passes so the entry gets removed.
- * Keep this empty unless a tracked issue names the breakage.
+ * plugin id. Each entry names the tracking issue AND the exact failure it
+ * excuses (`expectedMessageSubstring`): only a failure whose message
+ * contains that substring reports EXPECTED-FAIL (visible in the summary,
+ * not hidden) — any other failure for the same plugin is a REAL failure.
+ * The suite reports loudly when an expected failure starts passing so the
+ * entry gets removed. Keep this empty unless a tracked issue names the
+ * breakage.
  */
 const EXPECTED_PLUGIN_FAILURES = new Map([
   // kontourai/station#765 finding D1 (Critical): the bundled Getting Started
@@ -67,13 +70,46 @@ const EXPECTED_PLUGIN_FAILURES = new Map([
   // layout plugin (their components are equally unregistered after install),
   // so each carries the same D1 reference below. Remove each entry as the fix
   // lands; the suite reports loudly when an expected failure starts passing.
-  ['getting-started-starter', 'kontourai/station#765 D1'],
-  ['coding-starter', 'kontourai/station#765 D1 (same class)'],
-  ['knowledge-docs-starter', 'kontourai/station#765 D1 (same class)'],
-  ['minimal-layout', 'kontourai/station#765 D1 (same class)'],
+  // The tracked message quotes the forbidden on-page copy ('Unsupported
+  // layout tab — Plugin layout component "…" is not installed or
+  // registered.'), so that quoted fragment is the discriminating substring.
+  [
+    'getting-started-starter',
+    {
+      issue: 'kontourai/station#765 D1',
+      expectedMessageSubstring: 'Unsupported layout tab',
+    },
+  ],
+  [
+    'coding-starter',
+    {
+      issue: 'kontourai/station#765 D1 (same class)',
+      expectedMessageSubstring: 'Unsupported layout tab',
+    },
+  ],
+  [
+    'knowledge-docs-starter',
+    {
+      issue: 'kontourai/station#765 D1 (same class)',
+      expectedMessageSubstring: 'Unsupported layout tab',
+    },
+  ],
+  [
+    'minimal-layout',
+    {
+      issue: 'kontourai/station#765 D1 (same class)',
+      expectedMessageSubstring: 'Unsupported layout tab',
+    },
+  ],
   // demo-layout shows the class one step earlier: it installs, but its
   // declared layout never appears in the layout catalog at all.
-  ['demo-layout', 'kontourai/station#765 D1 (same class)'],
+  [
+    'demo-layout',
+    {
+      issue: 'kontourai/station#765 D1 (same class)',
+      expectedMessageSubstring: 'none appeared in the layout catalog',
+    },
+  ],
 ]);
 
 // ---------------------------------------------------------------------------
@@ -624,9 +660,15 @@ function settlePageQuiet(page) {
 
 function reportPluginFailure(pluginId, message) {
   const expectation = EXPECTED_PLUGIN_FAILURES.get(pluginId);
-  if (expectation) {
-    expectedFailures.push(`${pluginId}: ${message} (expected: ${expectation})`);
-    console.error(`EXPECTED-FAIL [${pluginId}] ${message} — ${expectation}`);
+  // Excuse only the SPECIFIC tracked failure: a listed plugin failing some
+  // other way is a real failure, not a covered one.
+  if (expectation && message.includes(expectation.expectedMessageSubstring)) {
+    expectedFailures.push(
+      `${pluginId}: ${message} (expected: ${expectation.issue})`,
+    );
+    console.error(
+      `EXPECTED-FAIL [${pluginId}] ${message} — ${expectation.issue}`,
+    );
     return;
   }
   fail(`plugin ${pluginId}: ${message}`);
