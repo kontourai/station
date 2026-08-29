@@ -1630,7 +1630,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             updatedAt: new Date(activeSession.updatedAt).toISOString(),
             messageCount: activeSession.messages.length,
             mutable: false,
-            answerability: { answerable: false },
+            answerability: {
+              answerable: false,
+              qualification: 'past_resume',
+              observedBy: 'client-reload',
+              observedAt: new Date().toISOString(),
+            },
           },
           status: 'error',
         });
