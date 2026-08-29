@@ -204,9 +204,11 @@ jobs:
           # code before this job can build it.
           head_sha=$(git rev-parse HEAD)
           last_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly^{commit}' || true)
+          normalized_head_sha=$(node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$last_sha")
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
-          if [ "$head_sha" = "$last_sha" ] && [ -z "$NIGHTLY_REBUILD_INDEX" ]; then
-            echo "::notice::main has not moved since the last nightly ($head_sha); nothing to build."
+          echo "normalized_head_sha=$normalized_head_sha" >> "$GITHUB_OUTPUT"
+          if [ "$normalized_head_sha" = "$last_sha" ] && [ -z "$NIGHTLY_REBUILD_INDEX" ]; then
+            echo "::notice::main has no source change since the last nightly ($last_sha); nothing to build."
             echo "build=false" >> "$GITHUB_OUTPUT"
           else
             echo "build=true" >> "$GITHUB_OUTPUT"
@@ -874,6 +876,14 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Reserve nightly macOS release cleanup window
+        id: nightly_macos_release_deadline
+        shell: bash
+        run: |
+          # Reserve cleanup time before checkout and toolchain setup consume
+          # the 120-minute hosted-job budget.
+          epoch="$(( $(date -u +%s) + 105 * 60 ))"
+          printf 'epoch=%s\n' "$epoch" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
@@ -898,10 +908,14 @@ jobs:
         run: |
           head_sha=$(git rev-parse HEAD)
           last_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly-desktop^{commit}' || true)
-          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
-          echo "date=$(date -u +%Y-%m-%dT00:00:00Z)" >> "$GITHUB_OUTPUT"
-          if [ "$head_sha" = "$last_sha" ]; then
-            echo "::notice::main has not moved since the last desktop nightly ($head_sha); nothing to build."
+          normalized_head_sha=$(node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$last_sha")
+          {
+            echo "head_sha=$head_sha"
+            echo "normalized_head_sha=$normalized_head_sha"
+            echo "date=$(date -u +%Y-%m-%dT00:00:00Z)"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$normalized_head_sha" = "$last_sha" ]; then
+            echo "::notice::main has no source change since the last desktop nightly ($last_sha); nothing to build."
             echo "build=false" >> "$GITHUB_OUTPUT"
           else
             echo "build=true" >> "$GITHUB_OUTPUT"
@@ -952,15 +966,13 @@ jobs:
         env:
           APPLE_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 }}
           APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_SIGNING_IDENTITY }}
         run: |
           certificate="$RUNNER_TEMP/station-developer-id.p12"
           keychain="$RUNNER_TEMP/station-developer-id.keychain-db"
+          state="$RUNNER_TEMP/station-developer-id-search-state.json"
           printf '%s' "$APPLE_DEVELOPER_ID_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
-          security create-keychain -p "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" "$keychain"
-          security unlock-keychain -p "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" "$keychain"
-          security import "$certificate" -k "$keychain" -P "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD" "$keychain"
-          security list-keychains -d user -s "$keychain"
+          node ops/release/macos-signing-readiness.mjs prepare --certificate "$certificate" --keychain "$keychain" --state "$state" --deadline-epoch "${{ steps.nightly_macos_release_deadline.outputs.epoch }}"
 
       # tauri.macos.conf.json auto-merges for this target (resources,
       # beforeBuildCommand); tauri.nightly.conf.json is passed explicitly for
@@ -981,10 +993,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_DEVELOPER_ID_SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_SIGNING_IDENTITY }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
         run: |
+          node ops/release/macos-signing-readiness.mjs unlock --keychain "$RUNNER_TEMP/station-developer-id.keychain-db" --deadline-epoch "${{ steps.nightly_macos_release_deadline.outputs.epoch }}"
+          node ops/release/macos-signing-readiness.mjs probe --keychain "$RUNNER_TEMP/station-developer-id.keychain-db" --probe "$RUNNER_TEMP/station-developer-id-probe"
           umask 077
           notary_key="$RUNNER_TEMP/station-notary-api-key.p8"
           trap 'rm -f "$notary_key"' EXIT
@@ -996,7 +1011,7 @@ jobs:
           app="${app_candidates[0]}"
           printf '%s' "$APPLE_API_PRIVATE_KEY" > "$notary_key"
           chmod 600 "$notary_key"
-          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir release-assets --release-tag nightly-desktop --architecture aarch64 --bundle-id io.kontourai.station.nightly
+          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir release-assets --release-tag nightly-desktop --architecture aarch64 --bundle-id io.kontourai.station.nightly --deadline-epoch "${{ steps.nightly_macos_release_deadline.outputs.epoch }}"
           # A config overlay that silently failed to apply would otherwise
           # publish a production-identified build to the nightly channel —
           # the same check the Android leg's badging grep proves, here
@@ -1004,6 +1019,15 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "${{ steps.identity.outputs.version }}"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist")" = "${{ steps.identity.outputs.product_name }}"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "io.kontourai.station.nightly"
+      - name: Cleanup macOS Developer ID keychain
+        if: always()
+        run: |
+          set +e
+          node ops/release/macos-signing-readiness.mjs cleanup --keychain "$RUNNER_TEMP/station-developer-id.keychain-db" --state "$RUNNER_TEMP/station-developer-id-search-state.json"
+          helper_status=$?
+          rm -f "$RUNNER_TEMP/station-developer-id.p12" "$RUNNER_TEMP/station-developer-id-probe"
+          rm_status=$?
+          test "$helper_status" -eq 0 && test "$rm_status" -eq 0
 
       - name: Assemble the signed updater manifest
         if: steps.decide.outputs.build == 'true'
@@ -1048,9 +1072,15 @@ jobs:
             exit 1
           fi
           if ! gh release view nightly-desktop --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release create nightly-desktop --repo "${{ github.repository }}" --prerelease \
-              --title 'Station Nightly (desktop)' \
-              --notes 'Rolling nightly desktop build; assets are replaced on every ship.'
+            # The rolling release's tag is structural only; the deploy ledger
+            # carries the last shipped SHA. Do not let GITHUB_TOKEN create it
+            # from this candidate: GitHub rejects a ref that crosses workflow
+            # changes without an unavailable workflows:write token (station#737).
+            # An owner must bootstrap this one release/tag with their signed-in
+            # credentials before enabling the job; once present this workflow
+            # only replaces authenticated assets under that fixed release.
+            echo "::error::nightly-desktop does not exist; bootstrap the rolling prerelease/tag with an owner credential before rerunning. Refusing GITHUB_TOKEN release creation because a workflow-changing target is blocked." >&2
+            exit 1
           fi
           gh release upload nightly-desktop --repo "${{ github.repository }}" --clobber \
             release-assets/station-nightly-desktop-macos-aarch64.dmg \

@@ -1077,6 +1077,9 @@ fn station_profile_authorize_active_internal(
     // The renderer may have attempted its bounded readiness proof before the
     // active credential was available. Reuse its mounted retry subscription
     // once the host has committed the selected profile.
+    #[cfg(not(mobile))]
+    notify_startup_readiness_if_waiting(app);
+    #[cfg(mobile)]
     let _ = app.emit("station://startup-readiness-retry", ());
     Ok(receipt)
 }
@@ -3801,6 +3804,13 @@ fn station_profile_store_write_internal(
             entry.phase = NativePairingPhase::AwaitingRequiresAuth;
         }
     }
+    #[cfg(not(mobile))]
+    if write_result.is_ok() {
+        // A cold first run may create or repair this channel's bundled
+        // credential after the first readiness attempt. Wake the existing
+        // bounded proof without coupling it to renderer hydration order.
+        notify_startup_readiness_if_waiting(app);
+    }
     write_result
 }
 
@@ -6339,6 +6349,26 @@ struct DesktopServerState {
     ownership_checked_at: Mutex<Option<Instant>>,
 }
 
+#[cfg(not(mobile))]
+fn startup_readiness_accepts_retry(phase: startup_readiness::ReadinessPhase) -> bool {
+    phase == startup_readiness::ReadinessPhase::Waiting
+}
+
+#[cfg(not(mobile))]
+fn notify_startup_readiness_if_waiting(app: &AppHandle) {
+    let Some(state) = app.try_state::<DesktopServerState>() else {
+        return;
+    };
+    let phase = state
+        .readiness
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .phase;
+    if startup_readiness_accepts_retry(phase) {
+        let _ = app.emit("station://startup-readiness-retry", ());
+    }
+}
+
 /// Hands a user-initiated main-window activation across setup's readiness
 /// boundary. Every release channel starts with its main window hidden, so a
 /// cold macOS Apple Event can arrive before `DesktopServerState` exists.
@@ -6540,10 +6570,10 @@ fn with_native_startup_cover(
 ) -> Result<(), tauri::Error> {
     use objc2::{ClassType, MainThreadMarker};
     use objc2_app_kit::{
-        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSUserInterfaceItemIdentification,
-        NSView,
+        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSFont, NSTextAlignment,
+        NSTextField, NSUserInterfaceItemIdentification, NSView,
     };
-    use objc2_foundation::{ns_string, NSObjectProtocol};
+    use objc2_foundation::{ns_string, NSArray, NSObjectProtocol, NSPoint, NSRect, NSSize};
 
     window.with_webview(move |webview| {
         let marker = MainThreadMarker::new()
@@ -6581,18 +6611,52 @@ fn with_native_startup_cover(
                         | NSAutoresizingMaskOptions::ViewHeightSizable,
                 );
                 cover.setBoxType(NSBoxType::Custom);
-                cover.setFillColor(&NSColor::whiteColor());
-                cover.setTitle(ns_string!("Station is preparing its protected workspace…"));
+                cover.setFillColor(&NSColor::windowBackgroundColor());
+                cover.setTitle(ns_string!(""));
                 cover.setIdentifier(Some(cover_identifier));
+                if let Some(cover_content) = cover.contentView() {
+                    let label_text = ns_string!("Station is preparing its protected workspace…");
+                    let label = NSTextField::labelWithString(label_text, marker);
+                    let bounds = cover_content.bounds();
+                    label.setFrame(NSRect::new(
+                        NSPoint::new(24.0, ((bounds.size.height - 30.0) / 2.0).max(0.0)),
+                        NSSize::new((bounds.size.width - 48.0).max(0.0), 30.0),
+                    ));
+                    label.setAutoresizingMask(
+                        NSAutoresizingMaskOptions::ViewWidthSizable
+                            | NSAutoresizingMaskOptions::ViewMinYMargin
+                            | NSAutoresizingMaskOptions::ViewMaxYMargin,
+                    );
+                    label.setAlignment(NSTextAlignment(2));
+                    label.setFont(Some(&NSFont::boldSystemFontOfSize(17.0)));
+                    label.setTextColor(Some(&NSColor::labelColor()));
+                    unsafe {
+                        let _: () = objc2::msg_send![&*label, setAccessibilityElement: true];
+                        let _: () = objc2::msg_send![&*label, setAccessibilityLabel: label_text];
+                    }
+                    cover_content.addSubview(&label);
+                }
                 content.addSubview(&cover);
+            }
+            let protected_subviews = content.subviews();
+            if let Some(protected_cover) = protected_subviews.iter().find(|view| {
+                view.identifier()
+                    .as_deref()
+                    .is_some_and(|identifier| identifier.isEqualToString(cover_identifier))
+            }) {
+                let protected_children = NSArray::arrayWithObject(&*protected_cover);
+                unsafe {
+                    let _: () = objc2::msg_send![&*content, setAccessibilityChildren: &*protected_children];
+                }
             }
             unsafe {
                 let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: true];
-            }
-            ns_window.makeFirstResponder(None);
-            unsafe {
+                // Keep WebKit executing the readiness proof. Accessibility is
+                // isolated by the content-view child list above; alpha is now
+                // only the visual half of the protected surface.
                 let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64];
             }
+            ns_window.makeFirstResponder(None);
             ns_window.deminiaturize(None);
             ns_window.makeKeyAndOrderFront(None);
         } else {
@@ -6607,6 +6671,10 @@ fn with_native_startup_cover(
                 let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: false];
             }
             unsafe {
+                // Clear our temporary override. AppKit must resume deriving
+                // the live accessibility hierarchy; a copied subview snapshot
+                // would retain stale children and omit later replacements.
+                let _: () = objc2::msg_send![&*content, setAccessibilityChildren: None::<&NSArray<NSView>>];
                 let _: () = objc2::msg_send![webview_view, setAlphaValue: 1.0f64];
             }
             ns_window.deminiaturize(None);
@@ -6661,7 +6729,26 @@ fn commit_current_startup_ticket(
     readiness: &mut startup_readiness::StartupReadiness,
     ticket: startup_readiness::StartupTicket,
 ) -> Result<Vec<startup_readiness::ReadinessEffect>, &'static str> {
-    let current = startup_readiness::StartupTicket {
+    let current = current_startup_ticket(status)?;
+    if ticket != current {
+        return Err("Desktop startup readiness ticket is stale.");
+    }
+    let (next, effects) = startup_readiness::transition(
+        readiness,
+        startup_readiness::ReadinessInput::RendererCommitted(ticket),
+    );
+    if !effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
+        return Err("Desktop startup readiness commit is no longer current.");
+    }
+    *readiness = next;
+    Ok(effects)
+}
+
+#[cfg(not(mobile))]
+fn current_startup_ticket(
+    status: &BundledServerStatus,
+) -> Result<startup_readiness::StartupTicket, &'static str> {
+    Ok(startup_readiness::StartupTicket {
         generation: status
             .generation
             .ok_or("Desktop sidecar has no active generation.")?,
@@ -6677,19 +6764,7 @@ fn commit_current_startup_ticket(
             .api_base
             .clone()
             .ok_or("Desktop sidecar has no active API base.")?,
-    };
-    if ticket != current {
-        return Err("Desktop startup readiness ticket is stale.");
-    }
-    let (next, effects) = startup_readiness::transition(
-        readiness,
-        startup_readiness::ReadinessInput::RendererCommitted(ticket),
-    );
-    if !effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
-        return Err("Desktop startup readiness commit is no longer current.");
-    }
-    *readiness = next;
-    Ok(effects)
+    })
 }
 
 #[cfg(not(mobile))]
@@ -6730,7 +6805,7 @@ fn continue_startup_readiness(
     if effects.contains(&startup_readiness::ReadinessEffect::RestartOwnedSidecar) {
         let _ = state.supervisor.tx.send(SupervisorMessage::Restart);
     } else {
-        let _ = app.emit("station://startup-readiness-retry", ());
+        notify_startup_readiness_if_waiting(app);
     }
     let epoch = state
         .readiness
@@ -6772,7 +6847,7 @@ fn observe_startup_ticket(app: &AppHandle, ticket: startup_readiness::StartupTic
     // A sidecar retry becomes reprobeable only after this exact new generation
     // is running and has published its ticket; never wake the renderer against
     // the old child during Restart.
-    let _ = app.emit("station://startup-readiness-retry", ());
+    notify_startup_readiness_if_waiting(app);
 }
 
 #[cfg(not(mobile))]
@@ -6878,16 +6953,194 @@ fn exit_desktop_home_preparation_failure(
 }
 
 #[cfg(not(mobile))]
-#[tauri::command]
-fn commit_startup_readiness(
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct BundledStartupCredentialReceipt {
+    profile_name: String,
+    reference: NativeCredentialReference,
+    exact_origin: String,
+    instance_id: String,
+    station_home: PathBuf,
+}
+
+#[cfg(not(mobile))]
+fn bundled_startup_credential_receipt(
+    store: &CredentialProfileStore,
+    launch: &SidecarLaunchContext,
+    ticket: &startup_readiness::StartupTicket,
+) -> Result<BundledStartupCredentialReceipt, String> {
+    let ticket_url = url::Url::parse(&ticket.api_base)
+        .map_err(|_| "Desktop startup readiness API base is invalid.".to_string())?;
+    if ticket_url.path() != "/" || ticket_url.query().is_some() || ticket_url.fragment().is_some() {
+        return Err("Desktop startup readiness API base is not an origin.".to_string());
+    }
+    let ticket_origin = exact_origin(&ticket.api_base)?;
+    let home = launch
+        .station_home
+        .to_str()
+        .ok_or_else(|| "Desktop startup channel home is not valid UTF-8.".to_string())?;
+    let matches = store
+        .profiles
+        .iter()
+        .filter(|profile| {
+            // `localService.baseDir` is the native-owned channel boundary.
+            // `setupSource` records how the credential arrived and may be
+            // `paired` after a reviewed home/profile cutover; it is not
+            // authority for this startup proof.
+            profile.configuration_state == "configured"
+                && profile.credential_ref.is_some()
+                && profile.local_service.as_ref().is_some_and(|service| {
+                    service.instance_id == ticket.instance_id
+                        && same_runtime_home_identity(
+                            &service.base_dir,
+                            home,
+                            &launch.station_root,
+                        )
+                })
+                && exact_origin(&profile.endpoint).as_deref() == Ok(ticket_origin.as_str())
+        })
+        .collect::<Vec<_>>();
+    let [profile] = matches.as_slice() else {
+        return Err(
+            "Desktop startup readiness requires exactly one configured profile owned by this channel home."
+                .to_string(),
+        );
+    };
+    let reference = profile.credential_ref.clone().ok_or_else(|| {
+        "Desktop startup readiness profile has no native credential reference.".to_string()
+    })?;
+    credential_reference_key(&reference)?;
+    Ok(BundledStartupCredentialReceipt {
+        profile_name: profile.name.clone(),
+        reference,
+        exact_origin: ticket_origin,
+        instance_id: ticket.instance_id.clone(),
+        station_home: launch.station_home.clone(),
+    })
+}
+
+#[cfg(not(mobile))]
+fn read_bundled_startup_credential_receipt(
+    launch: &SidecarLaunchContext,
+    ticket: &startup_readiness::StartupTicket,
+) -> Result<BundledStartupCredentialReceipt, String> {
+    let path = launch.station_root.join("config").join("profiles.json");
+    let contents = read_station_profile_store(&path)
+        .map_err(|error| format!("read bundled startup profile metadata: {error}"))?;
+    let store = parse_station_profile_store(&contents)?;
+    bundled_startup_credential_receipt(&store, launch, ticket)
+}
+
+#[cfg(not(mobile))]
+fn startup_identity_matches_ticket(body: &str, ticket: &startup_readiness::StartupTicket) -> bool {
+    let Ok(identity) = serde_json::from_str::<serde_json::Value>(body) else {
+        return false;
+    };
+    identity
+        .get("instanceId")
+        .and_then(serde_json::Value::as_str)
+        == Some(ticket.instance_id.as_str())
+        && identity.get("bootId").and_then(serde_json::Value::as_str)
+            == Some(ticket.boot_id.as_str())
+}
+
+#[cfg(not(mobile))]
+fn prove_bundled_startup_identity(
+    launch: &SidecarLaunchContext,
+    ticket: &startup_readiness::StartupTicket,
+) -> Result<(), String> {
+    let receipt = read_bundled_startup_credential_receipt(launch, ticket)?;
+    let credential = credential_entry(&receipt.reference)?
+        .get_password()
+        .map_err(|error| format!("read bundled startup credential: {error}"))?;
+    let identity_url = url::Url::parse(&receipt.exact_origin)
+        .and_then(|origin| origin.join("/api/system/identity"))
+        .map_err(|_| "Desktop startup identity URL is invalid.".to_string())?;
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .max_redirects(0)
+        .timeout_global(Some(Duration::from_secs(5)))
+        .http_status_as_error(false)
+        .build()
+        .into();
+    let mut response = agent
+        .get(identity_url.as_str())
+        .header("Authorization", format!("Bearer {credential}"))
+        .call()
+        .map_err(|error| {
+            format!(
+                "Desktop startup identity request failed: {}",
+                native_request_transport_detail(&error).detail
+            )
+        })?;
+    if response.status().as_u16() != 200 {
+        return Err(format!(
+            "Desktop startup identity request returned HTTP {}.",
+            response.status().as_u16()
+        ));
+    }
+    let body = response
+        .body_mut()
+        .with_config()
+        .limit(16 * 1024)
+        .read_to_string()
+        .map_err(|error| format!("Desktop startup identity response was unreadable: {error}"))?;
+    if !startup_identity_matches_ticket(&body, ticket) {
+        return Err(
+            "Desktop startup identity did not match the current sidecar ticket.".to_string(),
+        );
+    }
+    // The profile is mutable shared metadata. Re-read the host-owned binding
+    // after network I/O so a concurrent profile replacement cannot authorize
+    // the reveal with a stale credential receipt.
+    if read_bundled_startup_credential_receipt(launch, ticket)? != receipt {
+        return Err(
+            "Desktop startup credential binding changed during identity proof.".to_string(),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(not(mobile))]
+fn commit_startup_readiness_blocking(
     app: AppHandle,
     ticket: startup_readiness::StartupTicket,
 ) -> Result<(), String> {
+    let generation = ticket.generation;
     let state = app
         .try_state::<DesktopServerState>()
         .ok_or("Desktop startup readiness is not initialized.")?;
+    let launch = state.supervisor.context.launch.clone();
+    {
+        let status = state
+            .supervisor
+            .status
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let current = current_startup_ticket(&status).map_err(|error| {
+            log::warn!(
+                "desktop startup identity proof refused generation {generation}: {error}"
+            );
+            error.to_string()
+        })?;
+        if ticket != current {
+            log::warn!(
+                "desktop startup identity proof refused generation {generation}: ticket is stale"
+            );
+            return Err("Desktop startup readiness ticket is stale.".to_string());
+        }
+    }
+    // Native owns the exact bundled profile and Keychain reference. Prove the
+    // current sidecar directly so reveal never depends on the WebView's active
+    // profile, which may still name another channel during cold bootstrap.
+    if let Err(error) = prove_bundled_startup_identity(&launch, &ticket) {
+        // The renderer receives this refusal but cannot safely inspect or log
+        // native credential details. Keep one secret-free host diagnostic so
+        // a protected-window timeout identifies profile, Keychain, transport,
+        // identity, or race refusal instead of collapsing to a blank deadline.
+        log::warn!("desktop startup identity proof refused generation {generation}: {error}");
+        return Err(error);
+    }
     // Supervisor status precedes readiness everywhere this pair is acquired.
-    // Compare and transition while both guards are held, then release before UI.
+    // Revalidate and transition after the bounded request, then release before UI.
     let status = state
         .supervisor
         .status
@@ -6897,14 +7150,37 @@ fn commit_startup_readiness(
         .readiness
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let effects =
-        commit_current_startup_ticket(&status, &mut readiness, ticket).map_err(str::to_string)?;
+    let effects = commit_current_startup_ticket(&status, &mut readiness, ticket).map_err(
+        |error| {
+            log::warn!(
+                "desktop startup identity proof refused generation {generation}: {error}"
+            );
+            error.to_string()
+        },
+    )?;
     drop(readiness);
     drop(status);
     if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
+        log::info!(
+            "desktop startup identity proof committed generation {}",
+            generation
+        );
         reveal_main_window(&app);
     }
     Ok(())
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+async fn commit_startup_readiness(
+    app: AppHandle,
+    ticket: startup_readiness::StartupTicket,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        commit_startup_readiness_blocking(app, ticket)
+    })
+    .await
+    .map_err(|error| format!("Desktop startup identity task failed: {error}"))?
 }
 
 #[cfg(not(mobile))]
@@ -8555,6 +8831,30 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "macos")]
+    fn native_cover_labels_and_isolates_ax_without_pausing_webkit() {
+        let source = include_str!("lib.rs");
+        let start = source
+            .find("fn with_native_startup_cover")
+            .expect("native startup cover exists");
+        let end = source[start..]
+            .find("fn present_startup_recovery_surface")
+            .map(|offset| start + offset)
+            .expect("native startup cover ends before recovery composition");
+        let cover = &source[start..end];
+
+        assert!(cover.contains("NSTextField::labelWithString(label_text, marker)"));
+        assert!(cover.contains("setAccessibilityLabel: label_text"));
+        assert!(cover.contains("NSArray::arrayWithObject(&*protected_cover)"));
+        assert!(cover.contains("setAccessibilityChildren: &*protected_children"));
+        assert!(cover.contains("setAccessibilityChildren: None::<&NSArray<NSView>>"));
+        assert!(!cover.contains("let revealed_children = content.subviews()"));
+        assert!(cover.contains("setAlphaValue: 0.0f64"));
+        assert!(cover.contains("setAlphaValue: 1.0f64"));
+        assert!(!cover.contains("webview_view.setHidden("));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
     fn native_cover_dispatch_serializes_cover_before_a_fast_reveal() {
         let desired = Mutex::new(NativeCoverDesired {
             generation: 1,
@@ -8900,7 +9200,7 @@ mod tests {
             .find("fn exit_desktop_home_preparation_failure")
             .expect("home-preparation recovery exists")
             ..source
-                .find("#[tauri::command]\nfn commit_startup_readiness")
+                .find("fn commit_startup_readiness_blocking")
                 .expect("next desktop lifecycle boundary exists")];
         assert!(recovery.contains(".show(exit_after_dialog_dismissal"));
         assert!(
@@ -8955,6 +9255,195 @@ mod tests {
             vec![startup_readiness::ReadinessEffect::RevealMainWindow]
         );
         assert_eq!(readiness.phase, startup_readiness::ReadinessPhase::Ready);
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn profile_changes_wake_only_a_waiting_startup_proof() {
+        assert!(startup_readiness_accepts_retry(
+            startup_readiness::ReadinessPhase::Waiting
+        ));
+        for terminal in [
+            startup_readiness::ReadinessPhase::Ready,
+            startup_readiness::ReadinessPhase::Failed,
+            startup_readiness::ReadinessPhase::Bypassed,
+        ] {
+            assert!(!startup_readiness_accepts_retry(terminal));
+        }
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn startup_credential_admits_a_migrated_paired_owner_by_exact_channel_home() {
+        let temp = tempfile::tempdir().unwrap();
+        let station_root = temp.path().join(".station");
+        let beta_home = station_root.join("instances").join("beta");
+        let stable_home = station_root.join("instances").join("stable");
+        std::fs::create_dir_all(&beta_home).unwrap();
+        std::fs::create_dir_all(&stable_home).unwrap();
+        let store = parse_station_profile_store(
+            &serde_json::json!({
+                "schemaVersion": 1,
+                "revision": 2,
+                "defaultProfile": "stable-local",
+                "projectProfiles": {},
+                "profiles": [
+                    {
+                        "schemaVersion": 1,
+                        "name": "stable-local",
+                        "endpoint": "http://127.0.0.1:18141",
+                        "credentialRef": { "kind": "station-bearer", "id": "stable-token" },
+                        "environmentId": "stable-environment",
+                        "localService": {
+                            "instanceId": "desktop-sidecar-stable",
+                            "baseDir": stable_home,
+                            "serverPort": 18141,
+                            "uiPort": 18000
+                        },
+                        "setupSource": "local",
+                        "configurationState": "configured",
+                        "createdAt": 1,
+                        "updatedAt": 1
+                    },
+                    {
+                        "schemaVersion": 1,
+                        "name": "beta-local",
+                        "endpoint": "http://127.0.0.1:28141",
+                        "credentialRef": { "kind": "station-bearer", "id": "beta-token" },
+                        "environmentId": "beta-environment",
+                        "localService": {
+                            "instanceId": "desktop-sidecar-beta",
+                            "baseDir": beta_home,
+                            "serverPort": 28141,
+                            "uiPort": 28000
+                        },
+                        "setupSource": "paired",
+                        "configurationState": "configured",
+                        "createdAt": 2,
+                        "updatedAt": 2
+                    },
+                    {
+                        "schemaVersion": 1,
+                        "name": "beta-placeholder",
+                        "endpoint": "http://127.0.0.1:28141",
+                        "environmentId": null,
+                        "localService": {
+                            "instanceId": "desktop-sidecar-beta",
+                            "baseDir": beta_home,
+                            "serverPort": 28141,
+                            "uiPort": 28000
+                        },
+                        "setupSource": "local",
+                        "configurationState": "configured",
+                        "createdAt": 3,
+                        "updatedAt": 3
+                    }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let launch = SidecarLaunchContext {
+            resource_dir: temp.path().join("resources"),
+            station_root: station_root.clone(),
+            station_home: beta_home.clone(),
+            home: temp.path().to_string_lossy().into_owned(),
+            shell_path: "/usr/bin:/bin".into(),
+            channel: Some("beta".into()),
+            pinned_port: Some(28141),
+            supervisor_birth: "birth".into(),
+            instance_id: "desktop-sidecar-beta".into(),
+        };
+        let ticket = startup_readiness::StartupTicket {
+            generation: 3,
+            instance_id: "desktop-sidecar-beta".into(),
+            boot_id: "boot-beta".into(),
+            api_base: "http://127.0.0.1:28141".into(),
+        };
+
+        let receipt = bundled_startup_credential_receipt(&store, &launch, &ticket).unwrap();
+        assert_eq!(receipt.profile_name, "beta-local");
+        assert_eq!(receipt.reference.id, "beta-token");
+        assert_eq!(receipt.station_home, beta_home);
+        assert_eq!(receipt.exact_origin, "http://127.0.0.1:28141");
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn startup_credential_refuses_foreign_home_and_non_origin_ticket() {
+        let temp = tempfile::tempdir().unwrap();
+        let station_root = temp.path().join(".station");
+        let beta_home = station_root.join("instances").join("beta");
+        let foreign_home = station_root.join("instances").join("stable");
+        std::fs::create_dir_all(&beta_home).unwrap();
+        std::fs::create_dir_all(&foreign_home).unwrap();
+        let store = parse_station_profile_store(
+            &serde_json::json!({
+                "schemaVersion": 1,
+                "revision": 1,
+                "defaultProfile": "foreign",
+                "projectProfiles": {},
+                "profiles": [{
+                    "schemaVersion": 1,
+                    "name": "foreign",
+                    "endpoint": "http://127.0.0.1:28141",
+                    "credentialRef": { "kind": "station-bearer", "id": "foreign-token" },
+                    "environmentId": "foreign-environment",
+                    "localService": {
+                        "instanceId": "desktop-sidecar-beta",
+                        "baseDir": foreign_home,
+                        "serverPort": 28141,
+                        "uiPort": 28000
+                    },
+                    "setupSource": "local",
+                    "configurationState": "configured",
+                    "createdAt": 1,
+                    "updatedAt": 1
+                }]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let launch = SidecarLaunchContext {
+            resource_dir: temp.path().join("resources"),
+            station_root,
+            station_home: beta_home,
+            home: temp.path().to_string_lossy().into_owned(),
+            shell_path: "/usr/bin:/bin".into(),
+            channel: Some("beta".into()),
+            pinned_port: Some(28141),
+            supervisor_birth: "birth".into(),
+            instance_id: "desktop-sidecar-beta".into(),
+        };
+        let mut ticket = startup_readiness::StartupTicket {
+            generation: 1,
+            instance_id: "desktop-sidecar-beta".into(),
+            boot_id: "boot-beta".into(),
+            api_base: "http://127.0.0.1:28141".into(),
+        };
+        assert!(bundled_startup_credential_receipt(&store, &launch, &ticket).is_err());
+        ticket.api_base = "http://127.0.0.1:28141/foreign".into();
+        assert!(bundled_startup_credential_receipt(&store, &launch, &ticket).is_err());
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn startup_identity_requires_exact_instance_and_boot_ticket() {
+        let ticket = startup_readiness::StartupTicket {
+            generation: 7,
+            instance_id: "desktop-sidecar-beta".into(),
+            boot_id: "boot-beta".into(),
+            api_base: "http://127.0.0.1:28141".into(),
+        };
+        assert!(startup_identity_matches_ticket(
+            r#"{"instanceId":"desktop-sidecar-beta","bootId":"boot-beta","sha":"abc"}"#,
+            &ticket,
+        ));
+        assert!(!startup_identity_matches_ticket(
+            r#"{"instanceId":"desktop-sidecar-beta","bootId":"old"}"#,
+            &ticket,
+        ));
+        assert!(!startup_identity_matches_ticket("not-json", &ticket));
     }
 
     #[test]

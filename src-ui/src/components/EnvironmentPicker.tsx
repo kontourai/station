@@ -33,9 +33,12 @@ export function EnvironmentPicker({
       <label className="editor-label" htmlFor={id}>
         {label}
       </label>
+      {/* #765 F5: `editor-select`, the design system's styled select (custom
+          chevron, no native appearance) — `editor-input` left this control
+          native-looking beside otherwise styled fields. */}
       <select
         id={id}
-        className="editor-input"
+        className="editor-select"
         value={savedId ?? 'current'}
         onChange={(event) =>
           onChange(

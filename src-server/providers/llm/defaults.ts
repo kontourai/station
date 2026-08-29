@@ -41,7 +41,7 @@ const MCP_FILESYSTEM_PACKAGE = '@modelcontextprotocol/server-filesystem';
 const KIRO_ACP_CONNECTION: ACPConnectionRegistryEntry = {
   id: 'kiro',
   name: 'Kiro CLI',
-  description: 'Connect Kiro CLI through Agent Client Protocol.',
+  description: 'Connect the Kiro CLI installed on this machine as an engine.',
   command: 'kiro-cli',
   args: ['acp'],
   icon: 'brand:kiro',
@@ -52,7 +52,7 @@ const CURSOR_ACP_CONNECTION: ACPConnectionRegistryEntry = {
   id: 'cursor',
   name: 'Cursor',
   description:
-    'Connect Cursor through Agent Client Protocol (cursor-agent acp).',
+    'Connect the Cursor agent CLI installed on this machine as an engine.',
   command: 'cursor-agent',
   args: ['acp'],
   icon: 'C',
@@ -62,7 +62,8 @@ const CURSOR_ACP_CONNECTION: ACPConnectionRegistryEntry = {
 const OPENCODE_ACP_CONNECTION: ACPConnectionRegistryEntry = {
   id: 'opencode',
   name: 'OpenCode',
-  description: 'Connect OpenCode through Agent Client Protocol (opencode acp).',
+  description:
+    'Connect the OpenCode CLI installed on this machine as an engine.',
   command: 'opencode',
   args: ['acp'],
   icon: 'brand:opencode',
@@ -72,7 +73,7 @@ const OPENCODE_ACP_CONNECTION: ACPConnectionRegistryEntry = {
 const GOOSE_ACP_CONNECTION: ACPConnectionRegistryEntry = {
   id: 'goose',
   name: 'Goose',
-  description: 'Connect Goose through Agent Client Protocol (goose acp).',
+  description: 'Connect the Goose CLI installed on this machine as an engine.',
   command: 'goose',
   args: ['acp'],
   icon: 'G',
@@ -82,7 +83,8 @@ const GOOSE_ACP_CONNECTION: ACPConnectionRegistryEntry = {
 const QWEN_CODE_ACP_CONNECTION: ACPConnectionRegistryEntry = {
   id: 'qwen-code',
   name: 'Qwen Code',
-  description: 'Connect Qwen Code through Agent Client Protocol (qwen --acp).',
+  description:
+    'Connect the Qwen Code CLI installed on this machine as an engine.',
   command: 'qwen',
   args: ['--acp'],
   icon: 'Q',
@@ -93,7 +95,7 @@ const COPILOT_ACP_CONNECTION: ACPConnectionRegistryEntry = {
   id: 'copilot',
   name: 'GitHub Copilot',
   description:
-    'Connect GitHub Copilot CLI through Agent Client Protocol (copilot --acp).',
+    'Connect the GitHub Copilot CLI installed on this machine as an engine.',
   command: 'copilot',
   args: ['--acp'],
   icon: 'GH',
@@ -104,7 +106,7 @@ const GROK_BUILD_ACP_CONNECTION: ACPConnectionRegistryEntry = {
   id: 'grok-build',
   name: 'Grok Build',
   description:
-    'Connect Grok Build through Agent Client Protocol (grok agent stdio).',
+    'Connect the Grok Build CLI installed on this machine as an engine.',
   command: 'grok',
   args: ['agent', 'stdio'],
   icon: 'GK',
@@ -114,7 +116,8 @@ const GROK_BUILD_ACP_CONNECTION: ACPConnectionRegistryEntry = {
 const MISTRAL_VIBE_ACP_CONNECTION: ACPConnectionRegistryEntry = {
   id: 'mistral-vibe',
   name: 'Mistral Vibe',
-  description: 'Connect Mistral Vibe through Agent Client Protocol (vibe-acp).',
+  description:
+    'Connect the Mistral Vibe CLI installed on this machine as an engine.',
   command: 'vibe-acp',
   args: [],
   icon: 'MV',

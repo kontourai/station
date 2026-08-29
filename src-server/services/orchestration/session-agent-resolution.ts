@@ -6,8 +6,10 @@
  * when the session is starting as a real on-disk agent (a canonical
  * `metadata.agentSlug`) whose
  * provider has at least one session-delivery channel this wave (ACP tool
- * servers; Claude skills and, as of wave B, the authored system prompt;
- * codex and ACP prompts are receipted `engine-unsupported`). An authored
+ * servers; Claude skills and, as of wave B, the authored system prompt; as
+ * of wave C, muse/codex/ACP without a native systemPrompt channel receipt
+ * the prompt `channel: 'first-turn'` instead of dropping it — see
+ * `instructionsInFirstTurn` on `EngineCapabilityMatrix`). An authored
  * field — including an authored empty array — is the source of truth for
  * that capability and overrides the connection-level default the adapter
  * would otherwise apply; an unauthored field stays `undefined` so the
@@ -423,6 +425,47 @@ export function createSessionAgentResolver(
             requested: [SYSTEM_PROMPT_CAPABILITY_ID],
             undelivered: [],
           };
+        } else if (input.resumeCursor !== undefined) {
+          // Independent review MEDIUM-2 (delta round): `resumeCursor` marks
+          // every path that resumes the engine's OWN thread — not just a
+          // cross-session continuation, but SAME-THREAD recovery too
+          // (credential-profile restart via `restartCredentialProfileProviderSession`
+          // → `resolveSessionAgentForStart`; dormant-thread recovery via
+          // `startRecoveredOrchestrationSession` → `resolveSessionAgent`,
+          // reached at boot AND from an ordinary `sendTurn` dispatch). Both
+          // publish a SECOND `session.started`/`session.configured` on the
+          // SAME threadId. Emitting NO systemPrompt entry at all here —
+          // never a first-turn stamp (would duplicate into the resumed
+          // thread's next turn), never an engine-unsupported drop either —
+          // is deliberate: `capabilityDeliveryReport`'s
+          // `{...report, ...candidate}` fold only OVERWRITES a capability
+          // key when the newer event's candidate actually sets it, so
+          // omitting the key here lets same-thread recovery's fold
+          // PRESERVE whatever the thread's earlier event already said
+          // (still 'delivered' once a turn composed it). A genuinely fresh
+          // continuation child has no earlier entry to preserve, so its own
+          // fold renders honest silence — never a false claim either way.
+          // No `recordUndelivered` call: nothing was refused, so nothing
+          // should count as one.
+        } else if (
+          ENGINE_CAPABILITY_MATRICES[input.provider]?.instructionsInFirstTurn
+            ?.state === 'session'
+        ) {
+          // archive#895 wave C: no native systemPrompt channel this wave, but
+          // this engine's matrix names the `instructionsInFirstTurn`
+          // fallback — deliver the authored prompt by prepending it into the
+          // session's first turn instead (orchestration-service.ts's
+          // ambientContext choke point reads this exact receipt off the
+          // durable session.started metadata). NOT attached to `definition`:
+          // there is no native field for it to ride, only the report's
+          // pending marker.
+          report.systemPrompt = {
+            source: 'agent',
+            requested: [SYSTEM_PROMPT_CAPABILITY_ID],
+            undelivered: [],
+            channel: 'first-turn',
+            firstTurnInstructions: authoredPrompt,
+          };
         } else {
           const undelivered: CapabilityUndelivered[] = [
             {
@@ -438,6 +481,27 @@ export function createSessionAgentResolver(
             undelivered,
           };
         }
+      }
+
+      // Agent settings augment slice B: the model-field footgun.
+      // `AgentSpec.model` is the Station-engine field — read only for an
+      // unbound (Station-engine) agent. An engine-bound agent's model
+      // selection reads `execution.modelId` instead
+      // (`execution-target-resolver.ts`), so authoring the top-level field
+      // here is a silent no-op: the session still starts, on whatever model
+      // the engine defaults to. Read-only derivation at the narrowest
+      // honest seam — never a registry write, never a refusal — naming the
+      // field that actually applies for THIS agent's engine binding.
+      if (
+        spec.execution?.agentConnectionId !== undefined &&
+        typeof spec.model === 'string' &&
+        spec.model.trim().length > 0 &&
+        (spec.execution.modelId === undefined ||
+          spec.execution.modelId === null ||
+          spec.execution.modelId.trim().length === 0)
+      ) {
+        report.modelFieldWarning = `Agent '${spec.name}' authored the top-level 'model' field ('${spec.model}'), but this agent is engine-bound and engine-bound sessions read 'execution.modelId' instead — 'model' has no effect here. Set 'execution.modelId' to choose a model.`;
+        logger?.warn?.(report.modelFieldWarning);
       }
 
       return {

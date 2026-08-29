@@ -18,28 +18,40 @@ function repeatedRuntimeErrorText(message: string, count: number) {
  * what the dock's failure-ownership predicate matches on, so "the transcript
  * already shows this failure" stops depending on a glyph.
  */
-function runtimeErrorPart(text: string): MessagePart {
-  return { type: 'text', text, runtimeError: true };
+function runtimeErrorPart(text: string, code?: string): MessagePart {
+  return {
+    type: 'text',
+    text,
+    runtimeError: true,
+    // #765 A1: keep the structured code beside the prose so a rehydrated
+    // failure can be translated exactly like the live one, instead of only
+    // ever rendering the engine's raw error text.
+    ...(code ? { runtimeErrorCode: code } : {}),
+  };
 }
 
-function appendRuntimeErrorPart(parts: MessagePart[], message: string) {
+function appendRuntimeErrorPart(
+  parts: MessagePart[],
+  message: string,
+  code?: string,
+) {
   const previous = parts.at(-1);
   const prefix = `⚠️ ${message}`;
   const previousText = previous?.type === 'text' ? previous.text : undefined;
   if (previousText?.startsWith(prefix)) {
     const suffix = previousText.slice(prefix.length);
     const match = /^ \(repeated (\d+)×\)$/.exec(suffix);
-    if (suffix && !match) return [...parts, runtimeErrorPart(prefix)];
+    if (suffix && !match) return [...parts, runtimeErrorPart(prefix, code)];
     const count = match ? Number(match[1]) + 1 : 2;
     return [
       ...parts.slice(0, -1),
       {
         ...previous,
-        ...runtimeErrorPart(repeatedRuntimeErrorText(message, count)),
+        ...runtimeErrorPart(repeatedRuntimeErrorText(message, count), code),
       },
     ];
   }
-  return [...parts, runtimeErrorPart(prefix)];
+  return [...parts, runtimeErrorPart(prefix, code)];
 }
 
 /**
@@ -487,7 +499,7 @@ export function projectRuntimeEventsToMessages(
         turnOpen = true;
         flushText();
         flushReasoning();
-        parts = appendRuntimeErrorPart(parts, ev.message);
+        parts = appendRuntimeErrorPart(parts, ev.message, ev.code);
         break;
       }
       case 'turn.aborted': {

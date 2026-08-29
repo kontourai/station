@@ -613,7 +613,10 @@ describe('the nightly workflow keeps its promises', () => {
       'NIGHTLY_REBUILD_INDEX: $' + '{{ inputs.rebuild_index }}',
     );
     expect(decide).toContain(
-      '[ "$head_sha" = "$last_sha" ] && [ -z "$NIGHTLY_REBUILD_INDEX" ]',
+      'node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$last_sha"',
+    );
+    expect(decide).toContain(
+      '[ "$normalized_head_sha" = "$last_sha" ] && [ -z "$NIGHTLY_REBUILD_INDEX" ]',
     );
   });
 
@@ -758,6 +761,7 @@ describe('the nightly workflow keeps its promises', () => {
         start,
         nextStep === -1 ? workflow.length : nextStep,
       );
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: asserts the workflow's literal placeholder, not a template.
       expect(step).toContain('/git/' + '${TAG_REF}');
       expect(step).toContain('Reference does not exist');
       expect(step).toContain('ref update response mismatch');
@@ -843,6 +847,24 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     );
   });
 
+  it('reserves macOS release cleanup time before setup and passes the absolute deadline to notarization', () => {
+    expect(desktopJob).toContain('timeout-minutes: 120');
+    const reserve = desktopJob.slice(
+      desktopJob.indexOf('name: Reserve nightly macOS release cleanup window'),
+      desktopJob.indexOf('uses: actions/checkout'),
+    );
+    expect(reserve).toContain('id: nightly_macos_release_deadline');
+    expect(reserve).toContain('105 * 60');
+    const notarize = desktopJob.slice(
+      desktopJob.indexOf('name: Seal, notarize'),
+      desktopJob.indexOf('name: Assemble the signed updater manifest'),
+    );
+    expect(notarize).toContain(
+      '--deadline-epoch "$' +
+        '{{ steps.nightly_macos_release_deadline.outputs.epoch }}"',
+    );
+  });
+
   it('publishes only on a literal success result from the test gate', () => {
     // Same literal line as the Android job's pin above, and the same
     // conjunct-order reasoning: scripts/actionlint-gate.mjs's
@@ -863,7 +885,8 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     );
     expect(decide).toContain('id: decide');
     expect(decide).toContain('head_sha=$(git rev-parse HEAD)');
-    expect(decide).toContain('echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"');
+    expect(decide).toContain('echo "head_sha=$head_sha"');
+    expect(decide).toContain('} >> "$GITHUB_OUTPUT"');
     expect(decide).toContain('refs/tags/nightly-desktop^{commit}');
     const build = desktopJob.slice(
       desktopJob.indexOf('Build an unsigned macOS nightly staging candidate'),
@@ -878,6 +901,12 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     );
     expect(notarize).toContain('--release-tag nightly-desktop');
     expect(notarize).toContain('--bundle-id io.kontourai.station.nightly');
+    expect(notarize).toContain('macos-signing-readiness.mjs unlock');
+    expect(notarize).toContain('macos-signing-readiness.mjs probe');
+    expect(notarize.indexOf('macos-signing-readiness.mjs unlock')).toBeLessThan(
+      notarize.indexOf('macos-notarized-artifacts.mjs'),
+    );
+    expect(desktopJob).toContain('Cleanup macOS Developer ID keychain');
   });
 
   it('does not depend on the Android job succeeding, and allocates no Android version code', () => {
@@ -909,7 +938,7 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     expect(ledger).toBeGreaterThan(advance);
   });
 
-  it('refuses to upload into an existing draft release, and drops the dead --target (station#575 L5)', () => {
+  it('refuses draft and unbootstrapped rolling releases rather than asking GITHUB_TOKEN to create a workflow-changing ref', () => {
     const publish = desktopJob.slice(
       desktopJob.indexOf(
         'name: Publish the rolling desktop nightly prerelease',
@@ -919,9 +948,9 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     expect(publish).toContain('--json isDraft');
     expect(publish).toMatch(/grep -qx true/);
     expect(publish).toMatch(/::error::[^\n]*draft[^\n]*\n\s+exit 1/i);
-    // --target on `gh release create` only mattered when the tag was
-    // pre-pushed; now that the advance runs after publish, the flag is
-    // dead weight the create call never needs.
+    expect(publish).toContain('nightly-desktop does not exist; bootstrap');
+    expect(publish).toContain('workflow-changing target is blocked');
+    expect(publish).not.toContain('gh release create nightly-desktop');
     expect(publish).not.toContain('--target');
   });
 
@@ -932,7 +961,7 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
       ),
       desktopJob.indexOf('name: Advance the rolling desktop nightly tag'),
     );
-    expect(publish).toContain('--prerelease');
+    expect(publish).toContain('gh release view nightly-desktop');
     expect(publish).toContain('--clobber');
     const invocations =
       publish.match(/gh release upload nightly-desktop/g) ?? [];

@@ -162,7 +162,15 @@ describe('session detail scroll structure (station#3305)', () => {
         visualViewport={{ style: {} } as any}
       />,
     );
-    expect(screen.getByText('device device-7 · mobile · 1.2.3')).toBeTruthy();
+    // #765 D6: the tile leads with the derived summary — actor kind, surface,
+    // and when — never the raw device UUID. The exact detail string (UUID and
+    // build included) survives as the tile's tooltip.
+    const summaryTile = screen.getByText(/Paired device · Mobile app/);
+    expect(summaryTile.textContent).toMatch(/· (just now|.+ ago)$/);
+    expect(summaryTile.textContent).not.toContain('device-7');
+    expect(summaryTile.getAttribute('title')).toBe(
+      'device device-7 · mobile · 1.2.3',
+    );
     rendered.unmount();
     receiptData.value = undefined;
     withClient(
@@ -177,6 +185,62 @@ describe('session detail scroll structure (station#3305)', () => {
     );
     expect(screen.getByText('unknown')).toBeTruthy();
   });
+  // #765 D6: a completed session's actual output leads the page; the events
+  // stay collapsed below it. The answer used to be reachable only through
+  // "Details · N events".
+  test('surfaces the latest completed turn output as the primary block above the tiles', () => {
+    receiptData.value = undefined;
+    withClient(
+      <MutableSessionDetail
+        apiBase="http://station.test"
+        session={session}
+        onTaskChanged={vi.fn()}
+        events={[
+          ev({ method: 'turn.started', turnId: 't1', prompt: 'do the thing' }),
+          ev({
+            method: 'turn.completed',
+            turnId: 't1',
+            finishReason: 'stop',
+            outputText: 'TURN ONE OK — the thing is done.',
+          }),
+        ]}
+        connected
+        visualViewport={{ style: {} } as any}
+      />,
+    );
+
+    const result = screen.getByTestId('session-final-output');
+    expect(result.textContent).toContain('the thing is done');
+    const detail = screen.getByTestId('session-detail');
+    expect(
+      detail.querySelector('.sessions-detail__scroll')?.contains(result),
+    ).toBe(true);
+    // The answer leads: it precedes the metadata tile region in the DOM.
+    const evidence = screen.getByTestId('session-evidence-region');
+    expect(
+      result.compareDocumentPosition(evidence) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  test('renders no result block when no completed turn reported output', () => {
+    receiptData.value = undefined;
+    withClient(
+      <MutableSessionDetail
+        apiBase="http://station.test"
+        session={session}
+        onTaskChanged={vi.fn()}
+        events={[
+          ev({ method: 'turn.started', turnId: 't1', prompt: 'do the thing' }),
+        ]}
+        connected
+        visualViewport={{ style: {} } as any}
+      />,
+    );
+
+    expect(screen.queryByTestId('session-final-output')).toBe(null);
+  });
+
   test('read-only detail: the transcript is inside the scroll region, the header pinned outside it', () => {
     withClient(
       <AttachedSessionDetail

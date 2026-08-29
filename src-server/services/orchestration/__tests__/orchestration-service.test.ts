@@ -1047,6 +1047,178 @@ describe('OrchestrationService', () => {
     ).toHaveLength(3);
   });
 
+  // #765 A1: a predecessor started with `persistSession: false` has no
+  // durable engine transcript behind its cursor — the Claude adapter spawns
+  // such sessions with `--no-session-persistence`, so a child start that
+  // presents the cursor deterministically dies with the CLI's
+  // "No conversation found with session ID: <uuid>". The continuation must
+  // take the transcript-seed fresh child instead.
+  test('#765 A1: a predecessor without engine persistence continues by transcript seed, never its cursor', async () => {
+    claude.startSession.mockImplementationOnce(async (input) => {
+      const session: ProviderSession = {
+        provider: 'claude' as const,
+        threadId: input.threadId,
+        status: 'ready' as const,
+        resumeCursor: 'unpersisted-native-session',
+        // The live adapter records the start posture on its ProviderSession
+        // (claude-adapter.ts `startTrackedSession`); this is that exact
+        // shape for a chat started before #765 forced persistence on.
+        persistSession: false,
+        createdAt: '2026-08-29T00:00:00.000Z',
+        updatedAt: '2026-08-29T00:00:00.000Z',
+      };
+      claude.sessions.set(input.threadId, session);
+      return session;
+    });
+    const started = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'conversation-unpersisted',
+          provider: 'claude',
+          metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+        },
+      },
+      { userId: 'owner-user' },
+    );
+    if (started.status !== 'accepted') throw new Error(started.message);
+    eventStore.appendEvent({
+      eventId: 'conversation-unpersisted-configured',
+      provider: 'claude',
+      threadId: 'conversation-unpersisted',
+      sessionId: 'conversation-unpersisted',
+      method: 'session.configured',
+      metadata: { connectionId: 'connection-a' },
+      createdAt: '2026-08-29T00:00:00.500Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'conversation-unpersisted-turn',
+      provider: 'claude',
+      threadId: 'conversation-unpersisted',
+      turnId: 'unpersisted-turn',
+      method: 'turn.started',
+      prompt: 'first-turn-token coral-7',
+      createdAt: '2026-08-29T00:00:00.750Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'conversation-unpersisted-completed',
+      provider: 'claude',
+      threadId: 'conversation-unpersisted',
+      sessionId: 'conversation-unpersisted',
+      method: 'session.state-changed',
+      from: 'running',
+      to: 'completed',
+      sessionState: 'completed',
+      previousState: 'running',
+      transitionReason: 'turn_completed',
+      transitionSource: 'runtime',
+      createdAt: '2026-08-29T00:00:01.000Z',
+    });
+
+    const next = await service.resolveConversationContinuation(
+      'conversation-unpersisted',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', connectionId: 'connection-a' },
+    );
+    expect(next).toMatchObject({
+      startRequired: true,
+      transcriptSeed: expect.stringContaining('first-turn-token coral-7'),
+    });
+    expect(next).not.toHaveProperty('resumeCursor');
+  });
+
+  // #765 A1: `dead` is the engine's own structured verdict that this binding
+  // can never resume (archive#1827). Reserving the next child on the same
+  // disproved cursor replays the identical failure forever; the continuation
+  // must fall back to the transcript seed so a user's retry genuinely
+  // recovers the conversation.
+  test('#765 A1: a dead engine binding continues by transcript seed — its cursor is disproved, not reusable', async () => {
+    claude.startSession.mockImplementationOnce(async (input) => {
+      const session: ProviderSession = {
+        provider: 'claude' as const,
+        threadId: input.threadId,
+        status: 'ready' as const,
+        resumeCursor: 'disproved-native-session',
+        persistSession: true,
+        createdAt: '2026-08-29T01:00:00.000Z',
+        updatedAt: '2026-08-29T01:00:00.000Z',
+      };
+      claude.sessions.set(input.threadId, session);
+      return session;
+    });
+    const started = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'conversation-dead-binding',
+          provider: 'claude',
+          metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+        },
+      },
+      { userId: 'owner-user' },
+    );
+    if (started.status !== 'accepted') throw new Error(started.message);
+    eventStore.appendEvent({
+      eventId: 'conversation-dead-configured',
+      provider: 'claude',
+      threadId: 'conversation-dead-binding',
+      sessionId: 'conversation-dead-binding',
+      method: 'session.configured',
+      metadata: { connectionId: 'connection-a' },
+      createdAt: '2026-08-29T01:00:00.500Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'conversation-dead-turn',
+      provider: 'claude',
+      threadId: 'conversation-dead-binding',
+      turnId: 'dead-turn',
+      method: 'turn.started',
+      prompt: 'dead-binding-token violet-3',
+      createdAt: '2026-08-29T01:00:00.750Z',
+    });
+    // The REAL arrival path: the adapter's structured terminal report
+    // (claude-adapter-events.ts publishes exactly this on a `result` with
+    // `is_error`), consumed through the live event pipeline so the read
+    // model marks the binding dead the same way production does. The live
+    // adapter also flips its OWN retained session record to 'dead'
+    // (claude-adapter.ts `consumeMessages`' terminalResultObserved catch) —
+    // mirrored here so a later read-model refresh from the adapter cannot
+    // resurrect 'ready'.
+    const liveRecord = claude.sessions.get('conversation-dead-binding');
+    if (liveRecord) liveRecord.status = 'dead';
+    claude.events.push({
+      eventId: 'conversation-dead-runtime-error',
+      provider: 'claude',
+      threadId: 'conversation-dead-binding',
+      turnId: 'dead-turn',
+      method: 'runtime.error',
+      severity: 'error',
+      code: 'engine-session-binding-dead',
+      retriable: false,
+      message:
+        'No conversation found with session ID: disproved-native-session',
+      createdAt: '2026-08-29T01:00:01.000Z',
+    } as never);
+    await waitFor(
+      () => eventStore.readSessionByThread('conversation-dead-binding'),
+      (session) => session?.status === 'dead',
+      5000,
+    );
+
+    const next = await service.resolveConversationContinuation(
+      'conversation-dead-binding',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', connectionId: 'connection-a' },
+    );
+    expect(next).toMatchObject({
+      startRequired: true,
+      transcriptSeed: expect.stringContaining('dead-binding-token violet-3'),
+    });
+    // The seed must carry the user's words, never the engine's error prose.
+    expect(next.transcriptSeed).not.toContain('No conversation found');
+    expect(next).not.toHaveProperty('resumeCursor');
+  });
+
   test.each([
     ['reserved', undefined],
     ['failed', 'failed'],
@@ -1098,28 +1270,261 @@ describe('OrchestrationService', () => {
     },
   );
 
-  test('fails closed for an unmaterialized child without an exact boundary or handoff', async () => {
+  test('a plain continuation reservation is readable through its predecessor, but an arbitrary missing child is not (#764)', async () => {
     eventStore.upsertSession({
       provider: 'claude',
-      threadId: 'unrelated-missing-child',
+      threadId: 'plain-reservation-root',
       status: 'closed',
       createdAt: '2026-08-25T00:00:00.000Z',
       updatedAt: '2026-08-25T00:00:00.000Z',
     });
     eventStore.reserveNextConversationSession({
-      conversationId: 'unrelated-missing-child',
-      predecessorSessionId: 'unrelated-missing-child',
-      proposedSessionId: 'unrelated-missing-child:session:missing',
+      conversationId: 'plain-reservation-root',
+      predecessorSessionId: 'plain-reservation-root',
+      proposedSessionId: 'plain-reservation-root:session:reserved',
       createdAt: '2026-08-25T00:01:00.000Z',
     });
 
+    // #764: a plain continuation reservation creates neither a context
+    // boundary nor a handoff marker. Supervision must look through it to the
+    // authorized predecessor instead of failing the whole conversation.
     await expect(
       service.readCurrentConversationSession(
-        'unrelated-missing-child',
+        'plain-reservation-root',
+        INTERNAL_SESSION_READ_SCOPE,
+      ),
+    ).resolves.toMatchObject({
+      session: { threadId: 'plain-reservation-root' },
+    });
+
+    // A lineage child that is NOT the exact tail is still not a fallback:
+    // this is the authorization-bypass shape the read must refuse.
+    await expect(
+      service.readCurrentConversationSession(
+        'plain-reservation-root:session:reserved',
         INTERNAL_SESSION_READ_SCOPE,
       ),
     ).resolves.toBeNull();
   });
+
+  test('a cancelled or otherwise non-active boundary marker is not looked through (#764)', async () => {
+    // Both markers are written directly to the store: the service-level
+    // cancel compensates the successor lineage row (the cancelled child must
+    // not stay the canonical tail), so a survived cancelled marker at the
+    // exact tail is only reachable as a raw marker — which is exactly the
+    // input the marker validation in readCurrentConversationSession must
+    // refuse. (The remaining equality checks — conversationId/predecessor/
+    // successor identity — are defense-in-depth the store's own reserve
+    // invariants make unreachable: a marker whose predecessor does not
+    // belong to its conversation is rejected with `successor_exists`.)
+    for (const [label, status] of [
+      ['cancelled', 'cancelled'],
+      ['consumed', 'consumed'],
+    ] as const) {
+      const conversationId = `boundary-${label}-root`;
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId: conversationId,
+        status: 'closed',
+        createdAt: '2026-08-25T00:00:00.000Z',
+        updatedAt: '2026-08-25T00:00:00.000Z',
+      });
+      eventStore.reserveNextConversationSession({
+        conversationId,
+        predecessorSessionId: conversationId,
+        proposedSessionId: `${conversationId}:session:reserved`,
+        createdAt: '2026-08-25T00:02:00.000Z',
+      });
+      eventStore.reserveConversationContextBoundary({
+        boundaryId: `${label}-boundary`,
+        conversationId,
+        predecessorSessionId: conversationId,
+        successorSessionId: `${conversationId}:session:reserved`,
+        idempotencyKey: `${label}-boundary-key`,
+        policy: 'empty-next-cold-start',
+        status,
+        actorId: 'owner-user',
+        createdAt: '2026-08-25T00:02:01.000Z',
+      });
+      // The exact-tail boundary exists but its status is not active — the
+      // marker validation must refuse the predecessor fallback, or a
+      // cancelled/consumed boundary would keep authorizing reads.
+      await expect(
+        service.readCurrentConversationSession(
+          conversationId,
+          INTERNAL_SESSION_READ_SCOPE,
+        ),
+      ).resolves.toBeNull();
+    }
+  });
+
+  test('a failed continuation start keeps status readable and a retried continue reuses the same reserved child (#764)', async () => {
+    claude.startSession.mockImplementationOnce(async (input) => {
+      const session = {
+        provider: 'claude' as const,
+        threadId: input.threadId,
+        status: 'ready' as const,
+        resumeCursor: { nativeSession: 'turn-one' },
+        createdAt: '2026-08-24T00:00:00.000Z',
+        updatedAt: '2026-08-24T00:00:00.000Z',
+      };
+      claude.sessions.set(input.threadId, session);
+      return session;
+    });
+    const started = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'conversation-failed-start',
+          provider: 'claude',
+          metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+        },
+      },
+      { userId: 'owner-user' },
+    );
+    if (started.status !== 'accepted') throw new Error(started.message);
+    eventStore.appendEvent({
+      eventId: 'failed-start-configured',
+      provider: 'claude',
+      threadId: 'conversation-failed-start',
+      sessionId: 'conversation-failed-start',
+      method: 'session.configured',
+      metadata: { connectionId: 'connection-a' },
+      createdAt: '2026-08-24T00:00:00.500Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'failed-start-completed',
+      provider: 'claude',
+      threadId: 'conversation-failed-start',
+      sessionId: 'conversation-failed-start',
+      method: 'session.state-changed',
+      from: 'running',
+      to: 'completed',
+      sessionState: 'completed',
+      previousState: 'running',
+      transitionReason: 'turn_completed',
+      transitionSource: 'runtime',
+      createdAt: '2026-08-24T00:00:01.000Z',
+    });
+
+    const first = await service.resolveConversationContinuation(
+      'conversation-failed-start',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', connectionId: 'connection-a' },
+    );
+    expect(first).toMatchObject({ startRequired: true });
+    expect(first.sessionId).not.toBe('conversation-failed-start');
+
+    // The child start fails (the ACP loadSession-fail-closed shape): the
+    // durable reservation remains as the lineage tail, and supervision must
+    // resolve through it to the predecessor rather than erroring.
+    await expect(
+      service.readCurrentConversationSession(
+        'conversation-failed-start',
+        INTERNAL_SESSION_READ_SCOPE,
+      ),
+    ).resolves.toMatchObject({
+      session: { threadId: 'conversation-failed-start' },
+    });
+
+    // The retried continue reaches the reserved_unstarted recovery and
+    // reuses the SAME reserved child identity.
+    const retry = await service.resolveConversationContinuation(
+      'conversation-failed-start',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', connectionId: 'connection-a' },
+    );
+    expect(retry).toEqual(first);
+    expect(
+      eventStore.conversationSessions('conversation-failed-start'),
+    ).toHaveLength(2);
+  });
+
+  test.each([
+    ['observed loadSession absent', false, 'transcriptSeed'],
+    ['observed loadSession present', true, 'resumeCursor'],
+    ['capability unknown', undefined, 'resumeCursor'],
+  ] as const)(
+    'continuation decides cursor-vs-seed before start when resume support is %s (#764)',
+    async (_label, support, expectedField) => {
+      claude.startSession.mockImplementationOnce(async (input) => {
+        const session = {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          resumeCursor: { nativeSession: 'turn-one' },
+          createdAt: '2026-08-24T00:00:00.000Z',
+          updatedAt: '2026-08-24T00:00:00.000Z',
+        };
+        claude.sessions.set(input.threadId, session);
+        return session;
+      });
+      const started = await service.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId: `conversation-resume-support-${String(support)}`,
+            provider: 'claude',
+            metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+          },
+        },
+        { userId: 'owner-user' },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      const conversationId = `conversation-resume-support-${String(support)}`;
+      eventStore.appendEvent({
+        eventId: `${conversationId}-configured`,
+        provider: 'claude',
+        threadId: conversationId,
+        sessionId: conversationId,
+        method: 'session.configured',
+        metadata: { connectionId: 'connection-a' },
+        createdAt: '2026-08-24T00:00:00.500Z',
+      });
+      eventStore.appendEvent({
+        eventId: `${conversationId}-completed`,
+        provider: 'claude',
+        threadId: conversationId,
+        sessionId: conversationId,
+        method: 'session.state-changed',
+        from: 'running',
+        to: 'completed',
+        sessionState: 'completed',
+        previousState: 'running',
+        transitionReason: 'turn_completed',
+        transitionSource: 'runtime',
+        createdAt: '2026-08-24T00:00:01.000Z',
+      });
+
+      const supported = new OrchestrationService({
+        adapterRegistry: createRegistry([bedrock, claude]),
+        eventBus: new EventBus(),
+        eventStore,
+        resumeCursorSupport: ({ provider, connectionId }) =>
+          provider === 'claude' && connectionId === 'connection-a'
+            ? support
+            : undefined,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+
+      const resolved = await supported.resolveConversationContinuation(
+        conversationId,
+        INTERNAL_SESSION_READ_SCOPE,
+        { provider: 'claude', connectionId: 'connection-a' },
+      );
+      expect(resolved).toMatchObject({
+        startRequired: true,
+        ...(expectedField === 'resumeCursor'
+          ? { resumeCursor: { nativeSession: 'turn-one' } }
+          : { transcriptSeed: expect.any(String) }),
+      });
+      if (expectedField === 'resumeCursor') {
+        expect(resolved).not.toHaveProperty('transcriptSeed');
+      } else {
+        expect(resolved).not.toHaveProperty('resumeCursor');
+      }
+    },
+  );
 
   test('reserves an idempotent explicit handoff without letting ordinary continuation start its target child', async () => {
     const handoffService = new OrchestrationService({
@@ -5689,6 +6094,65 @@ describe('OrchestrationService', () => {
     await restartService.shutdown();
   });
 
+  test('independent review HIGH-1: restartCredentialProfileRecoverySession composes ambientContext into the adapter wire input (a pending first-turn instructions receipt riding it must not be silently dropped on a credential-profile recovery replay)', async () => {
+    // `CredentialProfileRecovery.restartRecoverySession` used to call
+    // `adapter.sendTurn({ input: input.input, ... })` directly, bypassing
+    // the SAME ambientContext choke point (`composeAmbientSendTurnInput`)
+    // the ordinary `dispatch({type:'sendTurn'})` path composes through — so
+    // a pending first-turn instructions receipt (station#895 wave C), which
+    // rides `ambientContext` exactly like ordinary ambient context, was
+    // silently dropped on a credential-profile recovery replay while the
+    // delegate-seam receipt still read the prompt 'delivered' (derived from
+    // `turn.started` existing, which this call path itself creates).
+    const adapter = new FakeAdapter('codex');
+    const restartService = new OrchestrationService({
+      adapterRegistry: createRegistry([adapter]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'credential-restart-first-turn-instructions';
+    await restartService.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'codex' },
+    });
+    adapter.sendTurn.mockClear();
+
+    await (
+      restartService as unknown as {
+        restartCredentialProfileRecoverySession(input: {
+          threadId: string;
+          input: string;
+          ambientContext?: string;
+          recoveryCorrelationId: string;
+          signal: AbortSignal;
+          credentialProfileRef?: string;
+        }): Promise<unknown>;
+      }
+    ).restartCredentialProfileRecoverySession({
+      threadId,
+      input: 'Hello',
+      ambientContext: 'Be terse.',
+      recoveryCorrelationId: 'first-turn-restart-correlation',
+      signal: new AbortController().signal,
+      credentialProfileRef: 'canary',
+    });
+
+    expect(adapter.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // Model-facing input carries the composed text, exactly like the
+        // ordinary dispatch path (#685's composeAmbientSendTurnInput).
+        input: 'Be terse.\nHello',
+        // Transcript-facing text stays the typed text alone.
+        displayInput: 'Hello',
+        // Relay-only passthrough is preserved for the station-agent relay.
+        ambientContext: 'Be terse.',
+      }),
+    );
+
+    await restartService.shutdown();
+  });
+
   /**
    * archive#3525 fix round MEDIUM 1: the arm and the `stopSession` call now
    * get their OWN `try`/`catch`, separate from the rest of the restart. If
@@ -8922,6 +9386,150 @@ describe('OrchestrationService', () => {
         }),
       }),
     );
+  });
+
+  test('instructionsInFirstTurn (#895 wave C): a pending first-turn receipt is prepended once, never re-prepended, and the persisted turn keeps only the typed prompt (so a continuation transcript seed built from it can never duplicate it)', async () => {
+    // Muse has no native systemPrompt channel — session-agent-resolution.ts
+    // falls back to `channel: 'first-turn'` for it (see the matrix's
+    // `instructionsInFirstTurn` cell). This adapter double is a minimal
+    // stand-in for muse-adapter.ts's own real behavior: it spreads
+    // `input.metadata` into `session.started` (so the receipt lands
+    // durably), and stamps `turn.started`'s `prompt` from
+    // `input.displayInput ?? input.input` (so it persists the TYPED text
+    // only) — both mirror the production adapter exactly.
+    const museFirstTurn = new FakeAdapter('muse');
+    museFirstTurn.startSession.mockImplementation(async (input) => {
+      const now = new Date().toISOString();
+      museFirstTurn.events.push({
+        eventId: randomUUID(),
+        provider: 'muse',
+        threadId: input.threadId,
+        createdAt: now,
+        method: 'session.started',
+        sessionId: input.threadId,
+        initialState: 'created',
+        metadata: { ...input.metadata },
+      });
+      return {
+        provider: 'muse',
+        threadId: input.threadId,
+        status: 'ready',
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+    let turnCounter = 0;
+    museFirstTurn.sendTurn.mockImplementation(async (input) => {
+      turnCounter += 1;
+      const turnId = `muse-turn-${turnCounter}`;
+      museFirstTurn.events.push({
+        eventId: randomUUID(),
+        provider: 'muse',
+        threadId: input.threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        prompt: input.displayInput ?? input.input,
+      });
+      return { threadId: input.threadId, turnId };
+    });
+
+    const resolveSessionAgent = createSessionAgentResolver({
+      loadAgentSpec: async () => ({
+        name: 'Muse Agent',
+        prompt: 'Be terse.',
+      }),
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+    });
+    const museService = new OrchestrationService({
+      adapterRegistry: createRegistry([museFirstTurn]),
+      eventBus,
+      eventStore,
+      resolveSessionAgent,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'thread-muse-first-turn-instructions';
+
+    await museService.dispatch({
+      type: 'startSession',
+      input: {
+        threadId,
+        provider: 'muse',
+        modelId: 'muse-spark-1.2-contributor',
+        metadata: { agentSlug: 'muse-agent' },
+      },
+    });
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) => events.some((event) => event.method === 'session.started'),
+    );
+
+    await museService.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Hello' },
+    });
+
+    // The composed model input carries the authored prompt ahead of the
+    // typed text; the typed text alone remains the transcript-facing value.
+    // Independent review MEDIUM-1: the dispatch that genuinely composed the
+    // pending receipt ALSO stamps the server-owned
+    // firstTurnInstructionsComposed marker into the turn's own metadata —
+    // the delivering adapter carries it onto turn.started, which is what
+    // lets the delegate seam derive 'delivered' from THIS turn's own
+    // record rather than merely from a turn having started.
+    expect(museFirstTurn.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: 'Be terse.\nHello',
+        displayInput: 'Hello',
+        metadata: expect.objectContaining({
+          firstTurnInstructionsComposed: true,
+        }),
+      }),
+    );
+
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) => events.some((event) => event.method === 'turn.started'),
+    );
+    const firstTurnStarted = eventStore
+      .listEvents(threadId)
+      .find((event) => event.method === 'turn.started');
+    expect(firstTurnStarted).toBeDefined();
+    // The persisted transcript prompt is the TYPED text only. #895 wave C's
+    // conversation-lineage.ts `continuationTranscriptSeed` builds a
+    // continuation child's seed exclusively from this same persisted field
+    // (user/assistant `part.text`, never `ambientContext`), so a fresh child
+    // session's own first-turn receipt is the ONLY place the authored prompt
+    // can ever appear in its composed input — never twice from a
+    // transcript that already baked it in once.
+    expect((firstTurnStarted!.payload as { prompt?: string }).prompt).toBe(
+      'Hello',
+    );
+
+    museFirstTurn.sendTurn.mockClear();
+    await museService.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Again' },
+    });
+
+    // A second turn on the SAME session: current.events already carries the
+    // first turn.started, so the receipt is never re-read as pending — and
+    // the marker is never stamped on a turn that composed nothing.
+    expect(museFirstTurn.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ input: 'Again' }),
+    );
+    expect(museFirstTurn.sendTurn).not.toHaveBeenCalledWith(
+      expect.objectContaining({ input: expect.stringContaining('Be terse.') }),
+    );
+    const secondTurnCall = museFirstTurn.sendTurn.mock.calls.at(-1)?.[0] as
+      | { metadata?: Record<string, unknown> }
+      | undefined;
+    expect(secondTurnCall?.metadata?.firstTurnInstructionsComposed).not.toBe(
+      true,
+    );
+
+    await museService.shutdown();
   });
 
   test('sendTurn validates attachments before dispatch and records successful bytes', async () => {

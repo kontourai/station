@@ -9,8 +9,12 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
+import { runBoundedCommand } from '../release/macos-notarized-artifacts.mjs';
 import {
+  EMBEDDED_MACHO_FIND_MAX_BUFFER,
+  EMBEDDED_MACHO_SEALING_DEADLINE_MS,
   embeddedMacosMachOPaths,
+  sealEmbeddedMacosMachOBounded,
   sealEmbeddedMacosMachO,
 } from './macos-embedded-signing.mjs';
 
@@ -102,6 +106,203 @@ test('pre-filters by Mach-O magic, then confirms only candidates with file', () 
       ([program, args]) => program === 'codesign' && args.includes('--force'),
     ),
   ).toBe(true);
+});
+
+test('emits one progress heartbeat per candidate so a slow batch is not read as a hang', () => {
+  const { run } = fixture();
+  const lines = [];
+  sealEmbeddedMacosMachO('/app', 'Developer ID', {
+    ...options(run),
+    progress: (line) => lines.push(line),
+  });
+  expect(lines).toEqual(['[embedded sealing] 1/1']);
+});
+
+test('makes hosted embedded inventory, inspection, signing, and verification independently visible', async () => {
+  const { calls, run } = fixture();
+  const phases = [];
+  const invocations = [];
+  await expect(
+    sealEmbeddedMacosMachOBounded('/app', 'Developer ID', {
+      ...options(run),
+      command: async (phase, program, args, commandOptions) => {
+        phases.push(phase);
+        invocations.push([phase, program, args, commandOptions]);
+        return run(program, args);
+      },
+    }),
+  ).resolves.toEqual(['Contents/Resources/node_modules/a.node']);
+  expect(phases).toContain('embedded Mach-O inventory file scan');
+  expect(phases).toContain(
+    'embedded Mach-O Contents/Resources/node_modules/a.node: inventory',
+  );
+  expect(phases).toContain(
+    'embedded Mach-O 1/1 Contents/Resources/node_modules/a.node: inspect whole signature',
+  );
+  expect(phases).toContain(
+    'embedded Mach-O 1/1 Contents/Resources/node_modules/a.node: signing',
+  );
+  expect(phases).toContain(
+    'embedded Mach-O 1/1 Contents/Resources/node_modules/a.node: verification',
+  );
+  expect(phases.join('\n')).not.toContain('/app/');
+  expect(
+    invocations.find(
+      ([, program, args]) =>
+        program === 'find' && args.includes('f') && args.includes('-print0'),
+    )?.[3],
+  ).toMatchObject({ maxOutputBytes: EMBEDDED_MACHO_FIND_MAX_BUFFER });
+  expect(
+    calls.some(
+      ([program, args]) => program === 'codesign' && args.includes('--force'),
+    ),
+  ).toBe(true);
+});
+
+test('keeps an invalid hosted embedded signature terminal before any signing', async () => {
+  const { calls, run } = fixture({
+    verify: {
+      status: 1,
+      stdout: '',
+      stderr: 'a sealed resource is missing or invalid',
+    },
+  });
+  await expect(
+    sealEmbeddedMacosMachOBounded('/app', 'Developer ID', {
+      ...options(run),
+      command: async (phase, program, args) => run(program, args),
+    }),
+  ).rejects.toThrow(/invalid integrity/);
+  expect(
+    calls.some(
+      ([program, args]) => program === 'codesign' && args.includes('--force'),
+    ),
+  ).toBe(false);
+});
+
+test('classifies a real bounded unsigned codesign probe before timestamped re-signing', async () => {
+  const file = '/app/Contents/Resources/node_modules/vendor/a.node';
+  const unsignedDiagnostic = 'code object is not signed at all\n';
+  const releaseLogger = { error() {}, log() {}, warn() {} };
+  let signed = false;
+  let signAttempts = 0;
+  const runChild = (phase, exitCode, stderr, commandOptions = {}) =>
+    runBoundedCommand(
+      process.execPath,
+      ['-e', `process.stderr.write(${JSON.stringify(stderr)}); process.exit(${exitCode});`],
+      {
+        phase,
+        timeoutMs: Math.min(commandOptions.timeoutMs ?? 500, 500),
+        terminationGraceMs: 20,
+        allowNonzero: commandOptions.allowNonzero,
+        logger: releaseLogger,
+      },
+    );
+  await expect(
+    sealEmbeddedMacosMachOBounded('/app', 'Developer ID', {
+      command: (phase, program, args, commandOptions) => {
+        if (program === 'find' && args.includes('l')) return result('');
+        if (program === 'find') return result(`${file}\0`);
+        if (program === 'file') return result('Mach-O 64-bit bundle arm64');
+        if (program === 'lipo') return result('arm64');
+        if (program === 'codesign') {
+          const postSignVerification =
+            signed && args[0] === '--verify' && !args.includes('--architecture');
+          return runChild(
+            phase,
+            postSignVerification ? 0 : 1,
+            postSignVerification ? '' : unsignedDiagnostic,
+            commandOptions,
+          );
+        }
+        throw new Error(`Unexpected program ${program}.`);
+      },
+      lstat: () => ({ isSymbolicLink: () => false }),
+      magic: () => true,
+      realpath: (path) => path,
+      sign: async () => {
+        signed = true;
+        signAttempts += 1;
+        return ok;
+      },
+    }),
+  ).resolves.toEqual(['Contents/Resources/node_modules/vendor/a.node']);
+  expect(signAttempts).toBe(1);
+});
+
+test('keeps unexpected bounded probe diagnostics terminal before signing', async () => {
+  const file = '/app/Contents/Resources/node_modules/vendor/a.node';
+  let signAttempts = 0;
+  await expect(
+    sealEmbeddedMacosMachOBounded('/app', 'Developer ID', {
+      command: (phase, program, args, commandOptions) => {
+        if (program === 'find' && args.includes('l')) return result('');
+        if (program === 'find') return result(`${file}\0`);
+        if (program === 'file') return result('Mach-O 64-bit bundle arm64');
+        if (program === 'lipo') return result('arm64');
+        return runBoundedCommand(
+          process.execPath,
+          ['-e', "process.stderr.write('sealed resource modified\\n'); process.exit(1);"],
+          {
+            phase,
+            timeoutMs: Math.min(commandOptions.timeoutMs ?? 500, 500),
+            terminationGraceMs: 20,
+            allowNonzero: commandOptions.allowNonzero,
+            logger: { error() {}, log() {}, warn() {} },
+          },
+        );
+      },
+      lstat: () => ({ isSymbolicLink: () => false }),
+      magic: () => true,
+      realpath: (path) => path,
+      sign: async () => {
+        signAttempts += 1;
+        return ok;
+      },
+    }),
+  ).rejects.toThrow('Embedded Mach-O has invalid integrity.');
+  expect(signAttempts).toBe(0);
+});
+
+test('fails closed once the aggregate embedded sealing deadline is exhausted', async () => {
+  let now = 0;
+  const invocations = [];
+  await expect(
+    sealEmbeddedMacosMachOBounded('/app', 'Developer ID', {
+      command: async (phase, program, args, commandOptions) => {
+        invocations.push([phase, program, args, commandOptions]);
+        now = 31;
+        return result('');
+      },
+      deadlineMs: 30,
+      lstat: () => ({ isSymbolicLink: () => false }),
+      magic: () => false,
+      now: () => now,
+      realpath: (path) => path,
+    }),
+  ).rejects.toThrow('Embedded Mach-O sealing exceeded its aggregate deadline.');
+  expect(invocations).toHaveLength(1);
+  expect(invocations[0][3]).toMatchObject({ timeoutMs: 30 });
+  expect(EMBEDDED_MACHO_SEALING_DEADLINE_MS).toBe(20 * 60 * 1000);
+});
+
+test('refuses control characters before they can enter a hosted phase label', async () => {
+  const file = '/app/Contents/Resources/node_modules/vendor/hidden\tvalue.node';
+  const phases = [];
+  await expect(
+    sealEmbeddedMacosMachOBounded('/app', 'Developer ID', {
+      command: async (phase, program, args) => {
+        phases.push(phase);
+        if (program === 'find' && args.includes('l')) return result('');
+        if (program === 'find') return result(`${file}\0`);
+        return ok;
+      },
+      lstat: () => ({ isSymbolicLink: () => false }),
+      magic: () => true,
+      realpath: (path) => path,
+    }),
+  ).rejects.toThrow('Embedded Mach-O path contains a control character.');
+  expect(phases.join('\n')).not.toContain('hidden\tvalue');
 });
 
 test('preserves valid timestamped Developer ID metadata emitted on stderr byte-for-byte', () => {

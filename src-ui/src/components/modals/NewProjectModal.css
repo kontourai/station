@@ -13,7 +13,15 @@
 .new-project-modal {
   width: min(720px, 100%);
   max-height: min(92vh, 920px);
-  overflow: auto;
+  /* #765 F7: the panel used to scroll as one block, so on short viewports the
+     footer actions (Cancel/Create) sat below the fold on first open. The
+     panel is now a flex column whose BODY scrolls internally (the draft
+     fieldset, or the layout catalog while browsing) and the header and
+     actions stay in view. The mobile responsive-surface rules re-enable
+     panel scrolling below 768px; the internal regions still shrink first. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 1.5rem;
   background:
     radial-gradient(
@@ -35,6 +43,7 @@
 
 .new-project-modal__header {
   display: flex;
+  flex-shrink: 0;
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1.5rem;
@@ -68,18 +77,33 @@
 
 .new-project-modal__form {
   display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
   flex-direction: column;
   gap: 1.25rem;
 }
 
 .new-project-modal__draft-fields {
   display: flex;
+  /* #765 F7: the form's one shrinkable region — scrolls internally when the
+     viewport is short so the actions row below never leaves the screen. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   min-inline-size: 0;
   margin: 0;
   padding: 0;
   border: 0;
   flex-direction: column;
   gap: 1.25rem;
+}
+
+/* The browse-layouts body swaps in for the form inside the same panel; the
+   catalog list is its shrinkable scroll region (#765 F7). */
+.new-project-modal > .project-layout-catalog {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .new-project-modal__recovery {

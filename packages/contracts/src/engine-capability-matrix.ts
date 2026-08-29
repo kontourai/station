@@ -50,7 +50,13 @@ export type DeliveryChannel =
   | 'subprocess'
   | 'app-home'
   | 'workspace-overlay'
-  | 'flag';
+  | 'flag'
+  // Ordinary turn text, not a system-prompt field: the `instructionsInFirstTurn`
+  // capability's only channel. The engine never sees anything resembling a
+  // system prompt — Station prepends the authored prompt into the FIRST
+  // turn's already-composed model input (orchestration's ambientContext
+  // choke point) and every later turn on the same session is unchanged.
+  | 'first-turn';
 
 /**
  * Which SAFE, non-secret-crossing mechanism (if any) this
@@ -337,6 +343,20 @@ export interface EngineCapabilityMatrix {
    */
   displayName: string | null;
   systemPrompt: CapabilityDelivery;
+  /**
+   * archive#895 wave C: the fallback for an authored prompt when
+   * `systemPrompt` has no native channel this wave. NEVER labeled
+   * `systemPrompt` — the engine receives nothing resembling a system-prompt
+   * field; the authored prompt is prepended into the session's first turn as
+   * ordinary text (`orchestration-service.ts`'s ambientContext choke point,
+   * `session-agent-resolution.ts` stamps the pending receipt). A cell may be
+   * `'session'` here only when `systemPrompt` above is NOT `'session'` for
+   * the same engine — an engine with a native channel never needs the
+   * fallback (see the module's own cross-check test). `'unsupported'` is the
+   * correct answer for an engine with no ordinary turn-text channel at all,
+   * not merely one that already has a better one.
+   */
+  instructionsInFirstTurn: CapabilityDelivery;
   toolServers: CapabilityDelivery;
   skills: CapabilityDelivery;
   commands: CapabilityDelivery;
@@ -547,6 +567,9 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     engineId: toEngineId('station'),
     displayName: 'Station',
     systemPrompt: { state: 'native' },
+    // Native systemPrompt already delivers the authored prompt; the
+    // first-turn fallback is never reached.
+    instructionsInFirstTurn: { state: 'unsupported' },
     toolServers: { state: 'native' },
     skills: { state: 'native' },
     commands: { state: 'native' },
@@ -575,6 +598,9 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     displayName: 'Claude Code',
     // systemPrompt deliverable via a per-session flag.
     systemPrompt: { state: 'session', channel: 'flag' },
+    // The native flag channel above already delivers the authored prompt;
+    // the first-turn fallback is never reached.
+    instructionsInFirstTurn: { state: 'unsupported' },
     // SDK mcpServers wired in claude-adapter.ts buildOptions —
     // stdio/sse/streamable-http tool servers, plus a station-control-only
     // token injection. Channel 'subprocess' (NOT 'wire' — see
@@ -649,6 +675,14 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // DROP, not a silent gap: delivery ships once a genuine
     // version/capability signal exists to gate on.
     systemPrompt: { state: 'unsupported' },
+    // archive#895 wave C: no version/capability signal exists to gate
+    // `developerInstructions` on (see the systemPrompt cell above), but
+    // ordinary turn text carries no such ambiguity — `codex-adapter.ts`
+    // already sends `input.input` as `turn/start`'s text on every turn
+    // (`text: input.input`), evidence-independent of any wire-schema
+    // version. Station prepends the authored prompt into that same
+    // first-turn text; codex sees ordinary user-turn input, nothing new.
+    instructionsInFirstTurn: { state: 'session', channel: 'first-turn' },
     // `codex
     // app-server`'s `-c`/`--config` session-layer overrides (evidence:
     // `ConfigLayerSource`'s `sessionFlags` variant, confirmed against
@@ -727,6 +761,12 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // commands, so every one of those cells stays `unsupported` rather than
     // claiming a channel Station cannot demonstrate.
     systemPrompt: { state: 'unsupported' },
+    // archive#895 wave C: `muse-adapter.ts` spawns `muse exec` with
+    // `prompt: input.input` — the ordinary per-turn text argument, evidenced
+    // exactly like the model flag below. Station prepends the authored
+    // prompt into that same first-turn text; muse sees one longer prompt,
+    // nothing resembling a system-prompt field.
+    instructionsInFirstTurn: { state: 'session', channel: 'first-turn' },
     toolServers: { state: 'unsupported' },
     skills: { state: 'unsupported' },
     commands: { state: 'unsupported' },
@@ -767,6 +807,14 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // `displayName`'s doc comment on the interface above.
     displayName: null,
     systemPrompt: { state: 'unsupported' },
+    // archive#895 wave C: `acp-adapter.ts` already builds an ordinary
+    // `{type:'text', text: input.input}` prompt content block on every
+    // `session/prompt` — declared, not observation-gated, because every ACP
+    // CLI accepts prompt text by protocol definition (unlike the
+    // capability-negotiated mechanisms below). Station prepends the
+    // authored prompt into that same first-turn text; the connected agent
+    // sees ordinary user-turn content, nothing ACP calls a system prompt.
+    instructionsInFirstTurn: { state: 'session', channel: 'first-turn' },
     // archive#888/archive#895 (authored passthrough), archive#1684 (the built-in server).
     //
     // Mechanism 'http-header-token', NOT codex's 'url-token', even though
@@ -880,6 +928,8 @@ export const UNKNOWN_EXTERNAL_ENGINE_MATRIX: EngineCapabilityMatrix = {
   engineId: toEngineId('unknown'),
   displayName: null,
   systemPrompt: { state: 'unsupported' },
+  // Never guessed for an unknown engine class, same as every other surface.
+  instructionsInFirstTurn: { state: 'unsupported' },
   toolServers: { state: 'unsupported' },
   skills: { state: 'unsupported' },
   commands: { state: 'unsupported' },

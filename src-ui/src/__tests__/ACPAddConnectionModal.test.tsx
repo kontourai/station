@@ -42,7 +42,7 @@ describe('ACPAddConnectionModal', () => {
       />,
     );
 
-    expect(screen.getByRole('dialog', { name: 'Add provider' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Add engine' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Kiro CLI/i })).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /Kiro CLI/i })).toHaveLength(
       1,
@@ -113,7 +113,7 @@ describe('ACPAddConnectionModal', () => {
     });
     expect(screen.queryByText('Ready')).toBeNull();
     expect(
-      screen.getByRole('button', { name: 'Choose another provider' }),
+      screen.getByRole('button', { name: 'Choose another engine' }),
     ).toBeTruthy();
   });
 
@@ -255,12 +255,12 @@ describe('ACPAddConnectionModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain(
-        'Could not refresh this provider status.',
+        'Could not refresh this engine’s status.',
       );
     });
     expect(screen.queryByText('Checking')).toBeNull();
     expect(
-      screen.getByRole('button', { name: 'Choose another provider' }),
+      screen.getByRole('button', { name: 'Choose another engine' }),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry refresh' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
@@ -280,7 +280,7 @@ describe('ACPAddConnectionModal', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Custom provider/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Custom engine/i }));
     expect(screen.getByText('Advanced').parentElement).not.toHaveProperty(
       'open',
       true,
@@ -295,7 +295,7 @@ describe('ACPAddConnectionModal', () => {
     fireEvent.click(screen.getByText('Advanced'));
     expect(screen.getByLabelText('ID')).toBeTruthy();
     expect(screen.getByLabelText('Arguments')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Check provider' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
 
     await waitFor(() => {
       expect(onAdd).toHaveBeenCalledWith({
@@ -326,7 +326,7 @@ describe('ACPAddConnectionModal', () => {
     cancel.focus();
     fireEvent.keyDown(cancel, { key: 'Tab' });
     expect(document.activeElement).toBe(
-      screen.getByRole('button', { name: 'Close add provider' }),
+      screen.getByRole('button', { name: 'Close add engine' }),
     );
   });
 
@@ -349,7 +349,7 @@ describe('ACPAddConnectionModal', () => {
     fireEvent.change(screen.getByLabelText('Command'), {
       target: { value: 'gemini' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Check provider' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
 
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain(
@@ -365,7 +365,7 @@ describe('ACPAddConnectionModal', () => {
 
     // A successful retry waits for a result from the connection query. Start
     // over to prove the same safe draft also survives an explicit edit.
-    fireEvent.click(screen.getByRole('button', { name: 'Close add provider' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close add engine' }));
   });
 
   test('preserves the custom draft when a mutation error is edited', async () => {
@@ -386,7 +386,7 @@ describe('ACPAddConnectionModal', () => {
     fireEvent.change(screen.getByLabelText('Command'), {
       target: { value: 'gemini' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Check provider' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));

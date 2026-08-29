@@ -1570,6 +1570,11 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* #765 A7: the title cluster ends with the (start-truncated) project path
+     and the actions cluster opens with the "N sessions" counter; with no gap
+     the two read as one run-together string ("…demo-project1 session"). The
+     gap keeps a visible seam even when the path fills every spare pixel. */
+  gap: var(--space-3);
   padding: var(--space-2) var(--space-6);
   border-bottom: 1px solid var(--border-primary);
   background: var(--bg-tertiary);
@@ -1977,8 +1982,12 @@ button:hover {
   opacity: 1;
   font-weight: 500;
 }
+/* #765 F8: plain copy ("Home folder"), not machine framing — normal type in
+   the UI face, muted, never italic monospace. */
 .chat-dock__project-dir--fallback {
-  font-style: italic;
+  font-family: var(--font-sans);
+  font-style: normal;
+  color: var(--text-muted);
 }
 .chat-dock__project-dir--link {
   cursor: pointer;
@@ -8121,9 +8130,12 @@ button.tool-call__line:hover {
   flex: 1;
 }
 
+/* #765 F8: same plain-copy treatment as `.chat-dock__project-dir--fallback`.
+   The base `__context-dir` opacity already mutes it; real copy is not dimmed
+   further the way the old machine literal was. */
 .new-chat-modal__context-dir--fallback {
-  font-style: italic;
-  opacity: 0.4;
+  font-family: var(--font-sans);
+  font-style: normal;
 }
 
 .new-chat-modal__chevron {

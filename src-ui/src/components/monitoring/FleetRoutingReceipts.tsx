@@ -139,36 +139,50 @@ export function FleetServeReceipts() {
   return (
     <section className="fleet-routing" data-testid="fleet-serve-receipts">
       <h3>Fleet inference served</h3>
-      <p className="fleet-routing__chain" data-testid="fleet-serve-chain">
-        Chain {data.chain.status}: {data.chain.message}
-      </p>
       {data.receipts.length === 0 ? (
-        <p>This Station has not served any fleet inference yet.</p>
+        // #765 F3b: for an empty log the server's chain verdict IS the
+        // empty-state sentence (`readChainedReceipts`'s `emptyMessage`), so
+        // a chain line above a hardcoded copy of that sentence said the same
+        // thing twice in adjacent lines. One line, the server's own words; a
+        // non-intact verdict keeps its status prefix — an unreadable log
+        // must not be captioned as "nothing served yet".
+        <p className="fleet-routing__chain" data-testid="fleet-serve-chain">
+          {data.chain.status === 'intact'
+            ? data.chain.message
+            : `Chain ${data.chain.status}: ${data.chain.message}`}
+        </p>
       ) : (
-        <ol className="fleet-routing__list">
-          {data.receipts.map((receipt) => (
-            <li key={receipt.receiptId}>
-              <article className="fleet-routing__receipt">
-                <header>
-                  <strong>{receipt.requestedModelId ?? 'unknown model'}</strong>{' '}
-                  · {receipt.recordedAt} · {receipt.outcome}
-                  {receipt.refusalCode ? ` (${receipt.refusalCode})` : ''}
-                </header>
-                <p className="fleet-routing__served">
-                  Peer{' '}
-                  {receipt.peerFingerprint
-                    ? `${receipt.peerFingerprint.slice(0, 12)}… (credential fingerprint, not an identity this Station verified)`
-                    : 'unidentified — no credential was presented'}
-                </p>
-                <p className="fleet-routing__digest">
-                  Request digest {receipt.promptDigest.slice(0, 12)}… — the
-                  request content is never recorded. Receipted by content digest{' '}
-                  {receipt.receiptId.slice(0, 12)}… — not signed.
-                </p>
-              </article>
-            </li>
-          ))}
-        </ol>
+        <>
+          <p className="fleet-routing__chain" data-testid="fleet-serve-chain">
+            Chain {data.chain.status}: {data.chain.message}
+          </p>
+          <ol className="fleet-routing__list">
+            {data.receipts.map((receipt) => (
+              <li key={receipt.receiptId}>
+                <article className="fleet-routing__receipt">
+                  <header>
+                    <strong>
+                      {receipt.requestedModelId ?? 'unknown model'}
+                    </strong>{' '}
+                    · {receipt.recordedAt} · {receipt.outcome}
+                    {receipt.refusalCode ? ` (${receipt.refusalCode})` : ''}
+                  </header>
+                  <p className="fleet-routing__served">
+                    Peer{' '}
+                    {receipt.peerFingerprint
+                      ? `${receipt.peerFingerprint.slice(0, 12)}… (credential fingerprint, not an identity this Station verified)`
+                      : 'unidentified — no credential was presented'}
+                  </p>
+                  <p className="fleet-routing__digest">
+                    Request digest {receipt.promptDigest.slice(0, 12)}… — the
+                    request content is never recorded. Receipted by content
+                    digest {receipt.receiptId.slice(0, 12)}… — not signed.
+                  </p>
+                </article>
+              </li>
+            ))}
+          </ol>
+        </>
       )}
     </section>
   );
@@ -215,19 +229,29 @@ export function FleetRoutingReceipts() {
   return (
     <section className="fleet-routing" data-testid="fleet-routing-receipts">
       <h3>Fleet routing</h3>
-      <p className="fleet-routing__chain" data-testid="fleet-routing-chain">
-        Chain {data.chain.status}: {data.chain.message}
-      </p>
       {data.receipts.length === 0 ? (
-        <p>No turn has been fleet-routed on this Station yet.</p>
+        // #765 F3b: see the serving-side sibling above — the empty log's
+        // chain verdict already carries the server's empty-state sentence,
+        // so this branch says it once instead of paraphrasing it beneath
+        // the chain line.
+        <p className="fleet-routing__chain" data-testid="fleet-routing-chain">
+          {data.chain.status === 'intact'
+            ? data.chain.message
+            : `Chain ${data.chain.status}: ${data.chain.message}`}
+        </p>
       ) : (
-        <ol className="fleet-routing__list">
-          {data.receipts.map((receipt) => (
-            <li key={receipt.receiptId}>
-              <FleetRoutingReceiptRow receipt={receipt} />
-            </li>
-          ))}
-        </ol>
+        <>
+          <p className="fleet-routing__chain" data-testid="fleet-routing-chain">
+            Chain {data.chain.status}: {data.chain.message}
+          </p>
+          <ol className="fleet-routing__list">
+            {data.receipts.map((receipt) => (
+              <li key={receipt.receiptId}>
+                <FleetRoutingReceiptRow receipt={receipt} />
+              </li>
+            ))}
+          </ol>
+        </>
       )}
     </section>
   );

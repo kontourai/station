@@ -59,16 +59,16 @@ describe('ACPConnectionsView', () => {
   it('renders canonical Empty copy for the ACP empty state', () => {
     render(<ACPConnectionsView agents={[]} />);
 
-    expect(screen.getByText('Add a provider to get started')).toBeTruthy();
+    expect(screen.getByText('Add an engine to get started')).toBeTruthy();
     expect(
-      screen.getByText('Choose a detected provider or connect a custom one.'),
+      screen.getByText('Choose a detected engine or connect a custom one.'),
     ).toBeTruthy();
   });
 
   it('publishes an unlinked Connections eyebrow (parent-context text only) into the page frame', () => {
     render(
       <PageFrame
-        routeIdentity="connections-acp"
+        routeIdentity="connections-acp-new"
         spec={{
           title: 'Provider setup',
           subtitle: 'Connect providers that run as local apps or commands.',
@@ -111,7 +111,12 @@ describe('ACPConnectionsView', () => {
     expect(container.querySelector('h1')).toBeNull();
   });
 
-  it('keeps detected registry choices out of the configured list until Add opens', () => {
+  // #592 slice 2: this section no longer owns an "Add engine" trigger — the
+  // merged catalogue on the Engines tab (`AgentConnectionView`'s
+  // `EngineAddCatalog`) is the sole browse-and-choose entry point, covered
+  // there. This section's dialog only opens pre-addressed, via a provider id
+  // named in the route.
+  it('keeps detected registry choices out of the configured list, and renders no add trigger of its own', () => {
     acpRegistryState.data = [
       {
         id: 'kiro',
@@ -124,9 +129,9 @@ describe('ACPConnectionsView', () => {
     render(<ACPConnectionsView agents={[]} />);
 
     expect(screen.queryByText('Kiro CLI')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Add provider' }));
-    expect(screen.getByRole('dialog')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Kiro CLI/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Add engine' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Engines' })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   // CI-R8 — the hub card that routes here reads as a status ("Found, not
@@ -153,10 +158,10 @@ describe('ACPConnectionsView', () => {
     expect(
       screen.getByText(/Adds an agent named Kiro CLI to your Agents list\./),
     ).toBeTruthy();
-    expect(screen.queryByText('Choose a provider')).toBeNull();
+    expect(screen.queryByText('Choose an engine')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
-    await screen.findByText('Station is checking this provider now.');
+    await screen.findByText('Station is checking this engine now.');
     expect(installRegistryEntry).toHaveBeenCalledWith('kiro');
   });
 
@@ -166,11 +171,16 @@ describe('ACPConnectionsView', () => {
     ];
     acpConnectionsState.error = new Error('Connection refresh failed');
     acpConnectionsState.isError = true;
-    render(<ACPConnectionsView agents={[]} />);
+    // The merged catalogue's own choice is what used to open this dialog and
+    // pick Kiro CLI from the catalog stage; a route naming the provider is
+    // this section's only remaining entry point, so it arrives already past
+    // that stage (`confirm`).
+    render(<ACPConnectionsView agents={[]} initialProviderId="kiro" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add provider' }));
     const dialog = screen.getByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: /Kiro CLI/i }));
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Connect Kiro CLI' }),
+    );
     await within(dialog).findByRole('alert');
     fireEvent.click(
       within(dialog).getByRole('button', { name: 'Retry refresh' }),

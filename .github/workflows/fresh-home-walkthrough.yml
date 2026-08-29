@@ -1,0 +1,79 @@
+name: Fresh-home walkthrough
+
+# kontourai/station#766 item 1: the automated fresh-home release walkthrough.
+# Boots the BUILT app against a throwaway home (`./station start --temp-home`),
+# pairs a browser through the ui-bootstrap mint route, sweeps every route the
+# routing table declares (screenshot gallery artifact), enforces the console
+# budget, and smokes the bundled registry plugins' layouts. See
+# tests/live/fresh-home-walkthrough.mjs for what each assertion claims.
+#
+# This is release-train/nightly cadence work, not per-PR work — every finding
+# it exists to catch (audit archive#765) was visible on a first boot, so once a
+# day against main is the leverage point. It never runs on pull requests.
+on:
+  schedule:
+    # 10:00 UTC — after the nightly's 09:00 gate, so a red walkthrough lands
+    # next to (not inside) the nightly build's own verdict.
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fresh-home-walkthrough
+  cancel-in-progress: false
+
+jobs:
+  walkthrough:
+    name: Fresh-home release walkthrough
+    # This workflow's triggers are schedule and workflow_dispatch, neither of
+    # which is a pull_request; the explicit exclusion keeps the persistent
+    # runner policy's contract readable and future-proof.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc }
+
+      - run: npm run dependencies:ci
+
+      - name: Install Chromium
+        # Hosted runners are ephemeral, so this installs Chromium every job.
+        # Bounded and retried per archive#3517, same as nightly.yml's gate.
+        timeout-minutes: 20
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt $attempt"
+            if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
+              exit 0
+            fi
+            echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
+            sleep 15
+          done
+          echo "::error::Playwright install failed after 3 attempts"
+          exit 1
+
+      - name: Run fresh-home walkthrough
+        # `./station start` builds the app on first run for its own instance,
+        # so no separate build step is needed; the suite's timeout budgets it.
+        timeout-minutes: 45
+        run: npm run walkthrough:fresh-home
+
+      - name: Upload walkthrough gallery
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        # Artifact upload trouble is an infrastructure condition, not a
+        # verdict on the walkthrough (archive#2218).
+        continue-on-error: true
+        with:
+          name: fresh-home-walkthrough-${{ github.run_id }}
+          path: test-results/fresh-home-walkthrough/
+          if-no-files-found: ignore
+          retention-days: 14

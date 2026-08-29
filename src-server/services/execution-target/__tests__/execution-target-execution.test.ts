@@ -481,6 +481,10 @@ describe('executeForegroundMessage', () => {
       expect.objectContaining({
         threadId: 'conversation:test',
         provider: 'station-agent',
+        // #765 A1: a durable conversation's Session keeps its native engine
+        // transcript, so continuation children can genuinely `--resume` it.
+        // Only `ephemeral` turns opt out (asserted separately below).
+        persistSession: true,
         metadata: expect.objectContaining({
           agentId: 'station',
           agentSlug: 'station',
@@ -513,6 +517,28 @@ describe('executeForegroundMessage', () => {
     });
     expect(JSON.stringify(result)).not.toContain('private');
     expect(JSON.stringify(result)).not.toContain('apiBase');
+  });
+
+  // #765 A1: the deliberate opt-OUT half of the persistence contract — a
+  // machine-triggered ephemeral turn must still start its session with
+  // `persistSession: false`, never inherit the durable-conversation default.
+  test('an ephemeral turn keeps its no-transcript posture (persistSession: false)', async () => {
+    const deps = dependencies();
+    await executeForegroundMessage(
+      {
+        target: {
+          environment: { kind: 'current' },
+          agent: agentId('station'),
+        },
+        message: 'machine-triggered probe',
+        ephemeral: true,
+      },
+      deps,
+    );
+    expect(deps.startSession).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ persistSession: false }),
+    );
   });
 
   test('continues an existing conversation without starting a second session', async () => {

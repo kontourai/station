@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
+import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
@@ -114,6 +115,32 @@ class DeferredExitCodexProcess extends FakeCodexProcess {
 function parseLine(line: string): any {
   return JSON.parse(line);
 }
+
+/**
+ * #774 fixture child: a codex app-server stand-in that answers `initialize`
+ * and the first `model/list` page, then closes its stdin reader (fd 0 —
+ * `process.stdin.destroy()` alone does NOT close the underlying pipe fd)
+ * BEFORE delivering the page-1 result (which carries a `nextCursor`,
+ * guaranteeing the parent writes a page-2 request). That page-2 write
+ * deterministically hits the closed pipe — the EPIPE a dead/broken codex
+ * binary produces in production. The child stays alive so only the stdin
+ * door can settle the in-flight catalog read.
+ */
+const EPIPE_AFTER_FIRST_PAGE_CHILD = [
+  "const fs=require('node:fs');let b='';let n=0;",
+  "process.stdin.setEncoding('utf8');",
+  "process.stdin.on('data',c=>{",
+  'b+=c;let i;',
+  "while((i=b.indexOf('\\n'))>=0){",
+  'const l=b.slice(0,i);b=b.slice(i+1);if(!l.trim())continue;',
+  'const m=JSON.parse(l);n++;',
+  "if(n===1){process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{}})+'\\n');}",
+  'if(n===3){fs.closeSync(0);',
+  "setTimeout(()=>{process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{data:[{model:'gpt-a',displayName:'GPT A'}],nextCursor:'more'}})+'\\n');},100);}",
+  '}',
+  '});',
+  'setInterval(()=>{},1000);',
+].join('');
 
 async function flushIo(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -2073,6 +2100,130 @@ describe('CodexAdapter', () => {
     await adapter.stopAll();
   });
 
+  test('station#895 wave C (instructionsInFirstTurn): a first-turn-composed authored prompt reaches turn/start verbatim, and turn.started persists only the typed text', async () => {
+    // Codex's `systemPrompt` cell stays `unsupported` (no version signal to
+    // gate `developerInstructions` on); `instructionsInFirstTurn` is the
+    // fallback the matrix claims instead, on the strength of exactly this
+    // property — `codex-adapter.ts` always sends `text: input.input` on
+    // `turn/start`, so whatever orchestration-service.ts's ambientContext
+    // choke point composes into the session's first turn reaches the wire
+    // unchanged, with no separate system-prompt-shaped path at all.
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => processHandle!,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    const startSessionPromise = adapter.startSession({
+      provider: 'codex',
+      threadId: 'thread-first-turn-prompt',
+      cwd: '/tmp/project',
+      modelId: 'gpt-5-codex',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-first-turn-prompt', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-first-turn-prompt', {
+      id: '2',
+      result: { thread: { id: 'codex-first-turn' }, model: 'gpt-5-codex' },
+    });
+    await withTimeout(startSessionPromise, 'startSession');
+    await flushIo();
+
+    const sendTurnPromise = adapter.sendTurn({
+      threadId: 'thread-first-turn-prompt',
+      input: 'Be terse.\nHello',
+      displayInput: 'Hello',
+      metadata: { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-first-turn-prompt', {
+      id: '3',
+      result: { turn: { id: 'turn-first-turn-prompt' } },
+    });
+    await withTimeout(sendTurnPromise, 'sendTurn');
+
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turnStarted = await nextEvent(iterator, 'turn.started');
+    expect(turnStarted).toMatchObject({
+      method: 'turn.started',
+      prompt: 'Hello',
+      // Independent review MEDIUM-1: the marker rides THIS turn's own
+      // persisted metadata, so the delegate-seam disclosure can derive
+      // 'delivered' from this turn's own record, not merely from having
+      // started.
+      metadata: expect.objectContaining({
+        [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true,
+      }),
+    });
+
+    const turnStart = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'turn/start');
+    expect(turnStart?.params?.input).toEqual([
+      {
+        type: 'text',
+        text: 'Be terse.\nHello',
+        text_elements: [],
+      },
+    ]);
+
+    await adapter.stopAll();
+  });
+
+  test('independent review MEDIUM-1: an ordinary codex turn (no composed-first-turn metadata) never carries the marker', async () => {
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => processHandle!,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    const startSessionPromise = adapter.startSession({
+      provider: 'codex',
+      threadId: 'thread-ordinary-turn',
+      cwd: '/tmp/project',
+      modelId: 'gpt-5-codex',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-ordinary-turn', {
+      id: '1',
+      result: { userAgent: 'test' },
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-ordinary-turn', {
+      id: '2',
+      result: { thread: { id: 'codex-ordinary' }, model: 'gpt-5-codex' },
+    });
+    await withTimeout(startSessionPromise, 'startSession');
+    await flushIo();
+
+    const sendTurnPromise = adapter.sendTurn({
+      threadId: 'thread-ordinary-turn',
+      input: 'Hello',
+    });
+    await flushIo();
+    writeServerMessage(adapter, 'thread-ordinary-turn', {
+      id: '3',
+      result: { turn: { id: 'turn-ordinary' } },
+    });
+    await withTimeout(sendTurnPromise, 'sendTurn');
+
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turnStarted = await nextEvent(iterator, 'turn.started');
+    expect(
+      (turnStarted.metadata as Record<string, unknown> | undefined)?.[
+        FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY
+      ],
+    ).not.toBe(true);
+
+    await adapter.stopAll();
+  });
+
   test('maps validated image attachments to Codex app-server image inputs', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({
@@ -2770,6 +2921,37 @@ describe('CodexAdapter', () => {
       if (child?.exitCode === null && child.signalCode === null) {
         child.kill('SIGKILL');
       }
+    }
+  });
+
+  // #774: a one-shot catalog whose child closes its stdin reader (any
+  // dead/broken codex binary) must reject through the adapter's error door,
+  // never crash the process on the unhandled stdin EPIPE that the next
+  // write produces. The child answers `initialize` and the first
+  // `model/list` page (whose result carries a nextCursor, so a page-2
+  // request is guaranteed), then destroys its stdin BEFORE delivering the
+  // page-1 response — the parent's page-2 write therefore lands on a
+  // closed pipe (EPIPE) deterministically, while the child stays alive so
+  // the process 'exit' door never fires: the stdin door is the only
+  // teardown path exercised.
+  test('rejects a model catalog read whose app-server stdin closes mid-flight instead of crashing', async () => {
+    let child: ChildProcessWithoutNullStreams | undefined;
+    const adapter = new CodexAdapter({
+      processFactory: () => {
+        child = spawn(process.execPath, ['-e', EPIPE_AFTER_FIRST_PAGE_CHILD], {
+          stdio: 'pipe',
+          windowsHide: true,
+        });
+        return child;
+      },
+    });
+
+    try {
+      await expect(adapter.listModels()).rejects.toThrow(
+        'Codex app-server stdin write failed',
+      );
+    } finally {
+      child?.kill('SIGKILL');
     }
   });
 

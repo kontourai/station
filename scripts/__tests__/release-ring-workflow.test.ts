@@ -48,13 +48,24 @@ describe('portable release-ring workflow', () => {
     );
     expect(smoke).toContain('launcher_name=station');
     expect(smoke).toContain('"$launcher" upgrade');
-    expect(smoke).toContain('station-$runtime_channel');
-    expect(smoke).toContain('.station-$runtime_channel');
+    expect(smoke).toContain('installs/$runtime_channel');
+    expect(smoke).toContain('instances/$runtime_channel');
     expect(smoke).toContain('Expected failed candidate start');
     expect(smoke).toContain('previous_current');
-    expect(smoke).toContain('STATION_SMOKE_RELEASE_DIR');
+    expect(smoke).toContain('STATION_INSTALL_PUBLIC_MANIFEST_URL=');
+    expect(smoke).toContain('STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL=');
+    expect(smoke).toContain('STATION_INSTALL_ALLOW_INSECURE_TEST_URLS=1');
+    expect(smoke).toContain('scripts/ecosystem-manifest.mjs');
+    // The smoke installs through the unauthenticated public-manifest path, so
+    // its fixture must not fake gh either.
+    expect(smoke).toContain('gh must not run in the public installer path');
+    // The bad-release leg must swap the served fixture the packaged upgrade
+    // verifies against, not just a local directory the installer never reads.
+    expect(smoke).toContain(
+      'cp "$bad_release/station-portable.tar.gz" "$serve_dir/station-portable.tar.gz"',
+    );
     const initialInstallIndex = smoke.indexOf(
-      'STATION_INSTALL_MANIFEST_URL="http://127.0.0.1:8765/',
+      'STATION_INSTALL_PUBLIC_MANIFEST_URL=http://127.0.0.1:8766/',
     );
     const captureCurrentIndex = smoke.indexOf('previous_current=$(readlink');
     const packagedUpgradeIndex = smoke.indexOf('"$launcher" upgrade');

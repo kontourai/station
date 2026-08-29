@@ -33,6 +33,7 @@ import { subscribeToTrayNavigation } from '../lib/trayNavigation';
 import { CommandPalette } from './CommandPalette';
 import { FirstRunFlow } from './first-run/FirstRunFlow';
 import { ResourcePostureBannerSource } from './notifications/ResourcePostureBannerSource';
+import { ReportProblemHost } from './report-problem/ReportProblemHost';
 
 function TrayNavigationListener() {
   const { navigate } = useNavigation();
@@ -56,6 +57,7 @@ export default function DeferredAppOverlays() {
       <CommandPalette />
       <FirstRunFlow />
       <ResourcePostureBannerSource />
+      <ReportProblemHost />
       <TrayNavigationListener />
     </>
   );

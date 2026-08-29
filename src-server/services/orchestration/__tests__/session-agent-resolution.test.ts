@@ -1,4 +1,5 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
   type ProviderSessionStartInput,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
@@ -11,6 +12,7 @@ import {
   stationDocsRuntimeIdentity,
 } from '../../../runtime/bootstrap/station-control-runtime-env.js';
 import { agentCapabilityUndelivered } from '../../../telemetry/metrics.js';
+import { delegatedCapabilityDelivery } from '../../../tools/station-control-delegation.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -558,7 +560,7 @@ describe('createSessionAgentResolver', () => {
     expect(loadAgentSpec).not.toHaveBeenCalled();
   });
 
-  test('station#1195: a codex session still receipts systemPrompt/skills engine-unsupported (unchanged), but toolServers is now delivered (matrix flip)', async () => {
+  test('station#1195/#895 wave C: a codex session still receipts skills engine-unsupported (unchanged), the prompt now receipts channel first-turn instead of dropping, and toolServers is delivered (matrix flip)', async () => {
     const toolDef: ToolDef = {
       id: 'filesystem',
       kind: 'mcp',
@@ -597,16 +599,16 @@ describe('createSessionAgentResolver', () => {
     const report = result.metadata?.[
       SESSION_CAPABILITY_DELIVERY_METADATA_KEY
     ] as any;
+    // #895 wave C: codex has no native systemPrompt channel, but its matrix
+    // names `instructionsInFirstTurn` — the prompt is no longer dropped; it
+    // is receipted pending delivery on the first-turn fallback, and NOT
+    // attached to `result.agent` (there is no native field for it to ride).
     expect(report.systemPrompt).toEqual({
       source: 'agent',
       requested: ['agent-prompt'],
-      undelivered: [
-        {
-          capability: 'systemPrompt',
-          id: 'agent-prompt',
-          reason: 'engine-unsupported',
-        },
-      ],
+      undelivered: [],
+      channel: 'first-turn',
+      firstTurnInstructions: 'You are a codex-bound agent.',
     });
     expect(report.toolServers).toEqual({
       source: 'agent',
@@ -770,7 +772,7 @@ describe('createSessionAgentResolver', () => {
     expect(report.systemPrompt).toBeUndefined();
   });
 
-  test('an authored prompt on an acp session is receipted engine-unsupported and not attached', async () => {
+  test('#895 wave C: an authored prompt on an acp session receipts channel first-turn and is not attached to result.agent', async () => {
     const resolver = createSessionAgentResolver({
       loadAgentSpec: async () =>
         agentSpec({ prompt: 'You are an ACP-bound agent.' }),
@@ -780,6 +782,9 @@ describe('createSessionAgentResolver', () => {
 
     const result = await resolver(baseInput({ provider: 'acp' }));
 
+    // ACP has no native systemPrompt channel, but its matrix names
+    // `instructionsInFirstTurn` — there is still no native field to ride,
+    // but the prompt is no longer dropped.
     expect(result.agent?.systemPrompt).toBeUndefined();
     const report = result.metadata?.[
       SESSION_CAPABILITY_DELIVERY_METADATA_KEY
@@ -787,13 +792,136 @@ describe('createSessionAgentResolver', () => {
     expect(report.systemPrompt).toEqual({
       source: 'agent',
       requested: ['agent-prompt'],
-      undelivered: [
+      undelivered: [],
+      channel: 'first-turn',
+      firstTurnInstructions: 'You are an ACP-bound agent.',
+    });
+  });
+
+  describe('independent review MEDIUM-2: first-turn stamping must not duplicate onto a resumed engine thread', () => {
+    test('a cursor continuation (resumeCursor present) emits NO systemPrompt entry at all — not first-turn, not an engine-unsupported drop', async () => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({ prompt: 'You are an ACP-bound agent.' }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+
+      const callsBefore = vi.mocked(agentCapabilityUndelivered.add).mock.calls
+        .length;
+      const result = await resolver(
+        baseInput({ provider: 'acp', resumeCursor: { nativeSession: 'x' } }),
+      );
+
+      expect(result.agent?.systemPrompt).toBeUndefined();
+      const report = result.metadata?.[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ] as any;
+      // Independent review (delta round): resumeCursor covers same-thread
+      // recovery paths too (credential-profile restart, dormant-thread
+      // recovery), which publish a SECOND session.started/configured on
+      // the SAME thread. Pinning "not first-turn" alone let a regression
+      // fall through to the engine-unsupported drop branch instead — a
+      // systemPrompt key WOULD then be present (with an undelivered
+      // entry), and `capabilityDeliveryReport`'s `{...report, ...candidate}`
+      // fold would let that drop REPLACE an earlier turn's genuinely
+      // truthful 'delivered' entry. The only honest output here is NO KEY
+      // AT ALL, so the fold has nothing to overwrite with.
+      expect(report).not.toHaveProperty('systemPrompt');
+      // No refusal happened, so nothing new should be counted as one
+      // (the mock is module-scoped and accumulates across this file's
+      // tests, so a fresh call count is compared rather than "never
+      // called").
+      expect(vi.mocked(agentCapabilityUndelivered.add).mock.calls.length).toBe(
+        callsBefore,
+      );
+    });
+
+    test('a seed continuation (no resumeCursor — a fresh provider session bridging prior history via transcriptSeed text) still stamps normally', async () => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({ prompt: 'You are an ACP-bound agent.' }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+
+      // No `resumeCursor` at all — exactly the shape
+      // `continuationLaunchContext` (conversation-lineage.ts) produces for
+      // a fresh child session whose predecessor either never had a cursor
+      // or lost execution-identity/resume-capability continuity. The fresh
+      // engine process has no memory of the authored prompt at all, so it
+      // must still be delivered.
+      const result = await resolver(baseInput({ provider: 'acp' }));
+
+      const report = result.metadata?.[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ] as any;
+      expect(report.systemPrompt).toEqual({
+        source: 'agent',
+        requested: ['agent-prompt'],
+        undelivered: [],
+        channel: 'first-turn',
+        firstTurnInstructions: 'You are an ACP-bound agent.',
+      });
+    });
+
+    test('independent review (delta round): a same-thread-recovery-shaped fold — the resolver output on the resumeCursor path never overwrites an earlier delivered entry at the delegate seam', async () => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({ prompt: 'You are an ACP-bound agent.' }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+
+      // The session's genuine first dispatch: fresh, no resumeCursor —
+      // stamps the pending first-turn receipt exactly like production.
+      const firstDispatch = await resolver(baseInput({ provider: 'acp' }));
+      const firstReport =
+        firstDispatch.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY];
+
+      // Same-thread recovery re-runs THIS resolver on the SAME thread with
+      // a resumeCursor now present — exactly the shape
+      // `restartCredentialProfileProviderSession` →
+      // `resolveSessionAgentForStart` and `startRecoveredOrchestrationSession`
+      // → `resolveSessionAgent` produce (orchestration-service.ts:2037/2058,
+      // orchestration-session-state.ts:1108/1133).
+      const recoveryDispatch = await resolver(
+        baseInput({
+          provider: 'acp',
+          resumeCursor: { nativeSession: 'recovered' },
+        }),
+      );
+      const recoveryReport =
+        recoveryDispatch.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY];
+
+      // The event log a real session accumulates: the original
+      // session.started (pending receipt), the turn that actually composed
+      // it (marker true), then the recovery's OWN session.started carrying
+      // whatever THIS resolver invocation just produced.
+      const events = [
         {
-          capability: 'systemPrompt',
-          id: 'agent-prompt',
-          reason: 'engine-unsupported',
+          method: 'session.started',
+          metadata: { capabilityDelivery: firstReport },
         },
-      ],
+        {
+          method: 'turn.started',
+          metadata: { firstTurnInstructionsComposed: true },
+        },
+        {
+          method: 'session.started',
+          metadata: { capabilityDelivery: recoveryReport },
+        },
+      ];
+
+      // Reverting the resumeCursor gate to 1d11acd's shape (falls through
+      // to the engine-unsupported drop branch instead of omitting the key)
+      // reproduces `recoveryReport.systemPrompt` carrying an undelivered
+      // entry, which this fold then uses to REPLACE the earlier delivered
+      // one — verified by temporary revert, see the delivery report.
+      expect(delegatedCapabilityDelivery(events)?.prompt).toEqual({
+        channel: 'first-turn',
+        status: 'delivered',
+      });
     });
   });
 
@@ -879,6 +1007,115 @@ describe('createSessionAgentResolver', () => {
       provider: 'acp',
       capability: 'toolServers',
       reason: 'not-found',
+    });
+  });
+
+  describe('agent settings augment slice B: the model-field footgun', () => {
+    test('an engine-bound agent authoring top-level model with no execution.modelId gets a disclosed warning naming execution.modelId', async () => {
+      const logger = { warn: vi.fn() };
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({
+            model: 'claude-opus',
+            execution: { agentConnectionId: engineConnectionId('claude') },
+          }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+        logger,
+      });
+
+      const result = await resolver(baseInput({ provider: 'claude' }));
+
+      const report = result.metadata?.[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ] as any;
+      expect(report.modelFieldWarning).toContain("'model'");
+      expect(report.modelFieldWarning).toContain('execution.modelId');
+      expect(report.modelFieldWarning).toContain('claude-opus');
+      expect(logger.warn).toHaveBeenCalledWith(report.modelFieldWarning);
+    });
+
+    test('an engine-bound agent authoring an empty/whitespace execution.modelId still gets the warning (blank is not "set")', async () => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({
+            model: 'claude-opus',
+            execution: {
+              agentConnectionId: engineConnectionId('claude'),
+              modelId: '   ',
+            },
+          }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+
+      const result = await resolver(baseInput({ provider: 'claude' }));
+
+      const report = result.metadata?.[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ] as any;
+      expect(report.modelFieldWarning).toBeDefined();
+    });
+
+    test('a correctly-set engine-bound agent (execution.modelId authored) gets no warning', async () => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({
+            model: 'claude-opus',
+            execution: {
+              agentConnectionId: engineConnectionId('claude'),
+              modelId: 'claude-sonnet-4',
+            },
+          }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+
+      const result = await resolver(baseInput({ provider: 'claude' }));
+
+      const report = result.metadata?.[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ] as any;
+      expect(report?.modelFieldWarning).toBeUndefined();
+    });
+
+    test('an engine-bound agent with no top-level model authored gets no warning (nothing to conflict)', async () => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({
+            execution: { agentConnectionId: engineConnectionId('claude') },
+          }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+
+      const result = await resolver(baseInput({ provider: 'claude' }));
+
+      const report = result.metadata?.[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ] as any;
+      expect(report?.modelFieldWarning).toBeUndefined();
+    });
+
+    test('an unbound (Station-engine) agent authoring top-level model gets no warning — model is the field that actually applies there', async () => {
+      // builtinStationAgentSpec / an ordinary unbound agent never reaches
+      // this resolver's provider gate for 'station', but the same
+      // derivation must not fire for an agent with no engine binding at
+      // all even when reached through a delivery-capable provider, since
+      // `execution.agentConnectionId` — the gate this check keys on — is
+      // what makes an agent "engine-bound" in the first place.
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () => agentSpec({ model: 'claude-opus' }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+
+      const result = await resolver(baseInput({ provider: 'claude' }));
+
+      const report = result.metadata?.[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ] as any;
+      expect(report?.modelFieldWarning).toBeUndefined();
     });
   });
 });

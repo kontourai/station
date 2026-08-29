@@ -300,7 +300,10 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     expect(screen.getByText('Open')).toBeTruthy();
     expect(screen.getByRole('button', { name: '+ Add layout' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '+ Add pane' })).toBeTruthy();
-    expect(screen.getByText(/panes are the newer hosting model/)).toBeTruthy();
+    // #765 F4: plain copy — no internal migration narrative in product copy.
+    expect(
+      screen.getByText('Workspace views open in this project.'),
+    ).toBeTruthy();
   });
 
   test('keeps healthy panes visible when the layouts query fails', async () => {

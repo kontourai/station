@@ -197,6 +197,29 @@ export interface DelegatedTaskHandle {
   resolution?: ExecutionResolutionReceipt;
   model?: string;
   parentTaskId?: string;
+  /** Engine this dispatch resolved to; names the delivery disclosure's channels. */
+  provider?: string;
+  /** Delivery receipts read back off the just-started session. */
+  capabilityDelivery?: DelegatedCapabilityDelivery;
+}
+
+/**
+ * SDK-local mirror of the server's delivery-disclosure view (declared
+ * locally per this file's package-boundary convention). Derived by the
+ * server from the session's capability-delivery receipts — a caller can
+ * never author it.
+ */
+export interface DelegatedCapabilityDelivery {
+  prompt?: {
+    channel: 'system-prompt' | 'first-turn';
+    status: 'delivered' | 'pending' | 'not-delivered';
+    reason?: string;
+  };
+  dropped: Array<{
+    capability: 'systemPrompt' | 'toolServers' | 'skills';
+    id?: string;
+    reason: string;
+  }>;
 }
 
 /**
@@ -301,6 +324,8 @@ export interface DelegatedTaskSnapshot {
   model?: string;
   projectSlug?: string;
   parentTaskId?: string;
+  /** Derived delivery disclosure; see `DelegatedCapabilityDelivery`. */
+  capabilityDelivery?: DelegatedCapabilityDelivery;
   eventCount: number;
   lastEvent?: { method: string; createdAt?: string };
   pendingRequest?: DelegatedTaskPendingRequest;

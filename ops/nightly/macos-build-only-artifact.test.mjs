@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import {
   assertSafeArchiveEntries,
@@ -5,7 +6,6 @@ import {
   createExclusiveDirectory,
   validateBuildOnlyOutput,
 } from './macos-build-only-artifact.mjs';
-import { execFileSync } from 'node:child_process';
 
 describe('macOS Nightly build-only artifact boundary', () => {
   const realpath = (path) =>

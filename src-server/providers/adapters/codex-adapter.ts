@@ -16,6 +16,7 @@ import type {
   CapabilityUndelivered,
 } from '@kontourai/station-contracts/provider';
 import {
+  FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
 } from '@kontourai/station-contracts/provider';
@@ -598,6 +599,13 @@ export class CodexAdapter implements ProviderAdapterShape {
           ),
         ),
       );
+      // #774: same door as the catalog one-shot — a stdin write after the
+      // reader is gone EPIPEs on the stdin stream, not the ChildProcess.
+      processHandle.stdin.on('error', (error) =>
+        fail(
+          new Error(`Codex app-server stdin write failed: ${error.message}`),
+        ),
+      );
       const send = (method: string, params?: unknown) => {
         const id = String(++requestId);
         const response = new Promise<unknown>((resolve, reject) =>
@@ -949,6 +957,16 @@ export class CodexAdapter implements ProviderAdapterShape {
     processHandle.on('error', (error) => {
       failPending(
         new Error(`Codex app-server failed to start: ${error.message}`),
+      );
+    });
+    // #774: a write landing after the child's stdin reader is gone emits
+    // 'error' (EPIPE) on the stdin stream itself — not on the ChildProcess.
+    // Unhandled, it crashes the whole server; route it through the same
+    // failPending door (idempotent: `pending` is cleared by whichever of
+    // exit/error fires first).
+    processHandle.stdin.on('error', (error) => {
+      failPending(
+        new Error(`Codex app-server stdin write failed: ${error.message}`),
       );
     });
 
@@ -1476,6 +1494,15 @@ export class CodexAdapter implements ProviderAdapterShape {
           input.modelId,
           input.modelId ? record.session.model : undefined,
         ),
+        // Independent review MEDIUM-1: carries the server-owned
+        // `firstTurnInstructionsComposed` marker onto THIS turn's own
+        // persisted record — see the constant's doc comment in
+        // provider.ts — so the delegate-seam disclosure can derive
+        // 'delivered' from this turn having actually composed it, not
+        // merely from having started.
+        ...(input.metadata?.[FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]
+          ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
+          : {}),
       },
     });
 

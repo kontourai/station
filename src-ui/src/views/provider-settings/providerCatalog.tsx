@@ -382,7 +382,7 @@ export function resolveProviderPresentation(
       brand,
       readiness: 'Disabled',
       tone: 'disabled',
-      detail: 'Turn this provider on when you want to use it.',
+      detail: 'Turn this on when you want to use it.',
       actionLabel: input.readOnly ? 'Details' : 'Enable',
     };
   }
@@ -392,7 +392,7 @@ export function resolveProviderPresentation(
       brand,
       readiness: 'Sign in required',
       tone: 'warn',
-      detail: 'Sign in to finish connecting this provider.',
+      detail: 'Sign in to finish connecting.',
       actionLabel: 'Sign in',
     };
   }
@@ -412,7 +412,7 @@ export function resolveProviderPresentation(
       brand,
       readiness: 'Setup required',
       tone: 'warn',
-      detail: input.description ?? 'Finish setup before using this provider.',
+      detail: input.description ?? 'Finish setup before using it.',
       actionLabel: 'Set up',
     };
   }
@@ -423,7 +423,7 @@ export function resolveProviderPresentation(
       readiness: 'Found, not connected',
       tone: 'warn',
       detail: 'Found on this computer — not yet connected to this Station.',
-      actionLabel: 'Connect this provider',
+      actionLabel: 'Connect',
     };
   }
 
@@ -433,7 +433,7 @@ export function resolveProviderPresentation(
       readiness: 'Found, not connected',
       tone: 'warn',
       detail: 'Found on this computer — not yet connected to this Station.',
-      actionLabel: 'Connect this provider',
+      actionLabel: 'Connect',
     };
   }
 
@@ -470,7 +470,7 @@ export function resolveProviderPresentation(
           tone: 'error',
           detail:
             evidence.summary ||
-            'The last connection test was refused by the provider.',
+            'The last connection test was refused by the service.',
           actionLabel: 'Fix and test again',
         };
       }
@@ -497,7 +497,7 @@ export function resolveProviderPresentation(
               tone: 'warn',
               detail:
                 evidence.summary ||
-                'Station could not reach this provider on its last try, and is still retrying.',
+                'Station could not reach this connection on its last try, and is still retrying.',
               actionLabel: 'Test connection',
             }
           : {
@@ -505,7 +505,7 @@ export function resolveProviderPresentation(
               readiness: 'Cannot reach provider',
               tone: 'error',
               detail:
-                evidence.summary || 'Station could not reach this provider.',
+                evidence.summary || 'Station could not reach this connection.',
               actionLabel: 'Fix and test again',
             };
       }
@@ -515,7 +515,7 @@ export function resolveProviderPresentation(
           readiness: 'Reachable — no model catalog',
           tone: 'warn',
           detail:
-            'The provider answered but offers no model list. Run Test Connection or start a chat to verify it can actually run work.',
+            'The service answered but offers no model list. Run Test Connection or start a chat to verify it can actually run work.',
           actionLabel: 'Test connection',
         };
       }
@@ -540,7 +540,7 @@ export function resolveProviderPresentation(
         readiness: 'Saved — not verified',
         tone: 'warn',
         detail:
-          'Settings are saved. Nothing has asked this provider yet — test it to be sure.',
+          'Settings are saved. Nothing has asked this connection yet — test it to be sure.',
         actionLabel: 'Test connection',
       };
     }
@@ -571,7 +571,7 @@ export function resolveProviderPresentation(
       brand,
       readiness: 'Unreachable',
       tone: 'error',
-      detail: 'Station cannot reach this provider right now.',
+      detail: 'Station cannot reach it right now.',
       actionLabel: input.readOnly ? 'Details' : 'Reconnect',
     };
   }
@@ -583,8 +583,8 @@ export function resolveProviderPresentation(
     detail:
       input.description ??
       (input.setup?.detected
-        ? 'Station found this provider. Finish setup to use it.'
-        : 'Finish setup before using this provider.'),
+        ? 'Station found it on this computer. Finish setup to use it.'
+        : 'Finish setup before using it.'),
     actionLabel: 'Set up',
   };
 }

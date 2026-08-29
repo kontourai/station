@@ -369,6 +369,9 @@ export function AmbientChatDockPaneHost({
             document={ambientChatDockPaneDocument}
             presentation="chromeless"
             admitRestoredInstance={admitsAmbientDockInstance}
+            admitOpenInstance={(instance) =>
+              ambientDockDescriptorFor(instance) !== null
+            }
             // Wrapped in an updater on purpose: the payload IS a function, and a
             // bare `setReplace` would make React call it as an updater —
             // `controller.replace(previousState)` — leaving `replace` a boolean and
