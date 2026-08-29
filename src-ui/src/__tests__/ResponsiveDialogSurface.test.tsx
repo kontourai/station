@@ -563,6 +563,142 @@ describe('ResponsiveDialogSurface', () => {
     expect(window.location.pathname).toBe('/dialog-test');
   });
 
+  test('ordinary close on an unchanged URL folds its layer by travelling back', async () => {
+    setMobileViewport(false);
+    const back = vi.spyOn(window.history, 'back');
+
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return open ? (
+        <ResponsiveDialogSurface
+          ariaLabel="Steady picker"
+          onClose={() => setOpen(false)}
+        >
+          <button type="button" onClick={() => setOpen(false)}>
+            Close now
+          </button>
+        </ResponsiveDialogSurface>
+      ) : null;
+    }
+
+    render(<Harness />);
+    await waitFor(() =>
+      expect(window.history.state.__stationDialog).toBeTruthy(),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close now' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() =>
+      expect(window.history.state.__stationDialog).toBeUndefined(),
+    );
+
+    // The layer is the newest entry and nothing moved the URL underneath it,
+    // so folding it must not cost the page a history entry.
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(window.location.pathname).toBe('/dialog-test');
+  });
+
+  test('a URL changed while the dialog is open survives its ordinary close', async () => {
+    setMobileViewport(false);
+    const back = vi.spyOn(window.history, 'back');
+
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return open ? (
+        <ResponsiveDialogSurface
+          ariaLabel="Param picker"
+          onClose={() => setOpen(false)}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              // The shape `navigationStore.updateParams` writes: a
+              // `replaceState` onto whichever entry is live — here the
+              // dialog's own — spreading the existing state, so the layer's
+              // marker rides along with the new URL.
+              const url = new URL(window.location.href);
+              url.searchParams.set('chat', 'session-new');
+              window.history.replaceState(
+                {
+                  ...(window.history.state ?? {}),
+                  __stationNavigationIndex: 0,
+                },
+                '',
+                url.toString(),
+              );
+              setOpen(false);
+            }}
+          >
+            Pick and close
+          </button>
+        </ResponsiveDialogSurface>
+      ) : null;
+    }
+
+    window.history.replaceState({}, '', '/dialog-test?chat=session-old');
+    render(<Harness />);
+    await waitFor(() =>
+      expect(window.history.state.__stationDialog).toBeTruthy(),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pick and close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() =>
+      expect(window.history.state.__stationDialog).toBeUndefined(),
+    );
+
+    expect(new URLSearchParams(window.location.search).get('chat')).toBe(
+      'session-new',
+    );
+    // Travelling back here would land on the entry underneath, which still
+    // holds the pre-dialog URL, silently undoing the selection.
+    expect(back).not.toHaveBeenCalled();
+    expect(window.history.state.__stationNavigationIndex).toBe(0);
+  });
+
+  test('browser Back still leaves the entry underneath after a URL change', async () => {
+    setMobileViewport(false);
+
+    function Harness() {
+      const [open, setOpen] = useState(true);
+      return open ? (
+        <ResponsiveDialogSurface
+          ariaLabel="Back picker"
+          onClose={() => setOpen(false)}
+        >
+          <p>Open</p>
+        </ResponsiveDialogSurface>
+      ) : null;
+    }
+
+    window.history.replaceState({}, '', '/dialog-test?chat=session-old');
+    render(<Harness />);
+    await waitFor(() =>
+      expect(window.history.state.__stationDialog).toBeTruthy(),
+    );
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('chat', 'session-new');
+    window.history.replaceState(
+      { ...(window.history.state ?? {}) },
+      '',
+      url.toString(),
+    );
+
+    // Back is the user asking for the entry underneath; it keeps the
+    // pre-dialog URL, and the dialog closes without any further travel.
+    window.history.back();
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Back picker' })).toBeNull(),
+    );
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).get('chat')).toBe(
+        'session-old',
+      ),
+    );
+    expect(window.history.state.__stationDialog).toBeUndefined();
+  });
+
   test('route navigation closes a dialog and skips its orphaned history entry', async () => {
     setMobileViewport(false);
 

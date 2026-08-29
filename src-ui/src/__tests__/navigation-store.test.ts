@@ -6,7 +6,10 @@ import {
   getLegacyPathRedirect,
   resolveViewFromPath,
 } from '../app-shell/routing';
-import { DIALOG_HISTORY_KEY } from '../components/dialog-history';
+import {
+  DIALOG_HISTORY_KEY,
+  registerDialogHistory,
+} from '../components/dialog-history';
 import {
   navigationStore,
   parseNavigationTarget,
@@ -70,6 +73,32 @@ describe('navigationStore dialog history isolation', () => {
       'session-new',
     );
     expect(window.history.state[DIALOG_HISTORY_KEY]).toBeUndefined();
+  });
+});
+
+describe('navigationStore query updates under an open dialog layer', () => {
+  test('an updateParams made while a dialog is open outlives the dialog close', async () => {
+    window.history.replaceState({}, '', '/projects/alpha?chat=session-old');
+    const close = vi.fn();
+    const dispose = registerDialogHistory('switcher-probe', close);
+
+    // `updateParams` rewrites whichever entry is live — the dialog's own —
+    // and spreads its state, so the layer's marker rides along with the new
+    // URL. Closing the dialog must not take the URL back with the layer.
+    navigationStore.updateParams({ chat: 'session-new' });
+    expect(window.history.state[DIALOG_HISTORY_KEY]).toBe('switcher-probe');
+
+    dispose();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(new URLSearchParams(window.location.search).get('chat')).toBe(
+      'session-new',
+    );
+    expect(window.history.state[DIALOG_HISTORY_KEY]).toBeUndefined();
+    expect(window.history.state.__stationNavigationIndex).toEqual(
+      expect.any(Number),
+    );
+    expect(close).not.toHaveBeenCalled();
   });
 });
 
