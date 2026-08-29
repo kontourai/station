@@ -305,6 +305,8 @@ export interface DelegatedTaskReferenceInput {
   taskId: string;
   environmentId?: string;
   userId?: string;
+  /** Internal-only bound for best-effort Activity reconciliation reads. */
+  readTimeoutMs?: number;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
 }
@@ -785,12 +787,14 @@ async function getCanonical<T>(
   target: Pick<DelegationTarget, 'apiBase' | 'requestOptions'>,
   path: string,
   unavailableMessage: string,
+  signal?: AbortSignal,
 ): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${target.apiBase}${path}`, {
       method: 'GET',
       headers: target.requestOptions?.headers,
+      signal,
     });
   } catch (cause) {
     throw new CanonicalDelegationReadError(
@@ -2672,13 +2676,28 @@ export async function observeDelegatedTask(
   localServiceRequiredInHostedMode(target, readAuthority, orchestrationService);
   if (target.kind !== 'current' || !orchestrationService) {
     try {
-      return normalizeDelegatedIdentity(
+      const snapshot = normalizeDelegatedIdentity(
         await getCanonical<DelegatedTaskSnapshot>(
           target,
           `/api/orchestration/delegations/${encodeURIComponent(input.taskId)}`,
           'The selected Station could not read the delegated task',
+          input.readTimeoutMs
+            ? AbortSignal.timeout(input.readTimeoutMs)
+            : undefined,
         ),
       );
+      if (
+        target.kind === 'peer' &&
+        orchestrationService &&
+        isSessionLifecycleState(snapshot.status)
+      ) {
+        orchestrationService.recordPeerDelegationActivityOutcome({
+          taskId: snapshot.taskId,
+          environmentId: target.environmentId,
+          status: snapshot.status,
+        });
+      }
+      return snapshot;
     } catch (error) {
       if (
         !(error instanceof CanonicalDelegationReadError) ||
@@ -2690,12 +2709,60 @@ export async function observeDelegatedTask(
       // Older target Stations do not expose the conversation-aware delegation
       // projection. Their 1:1 root Session is still a valid compatibility
       // shape, and the SDK normalizer supplies the additive identity aliases.
-      return normalizeDelegatedIdentity(
+      const snapshot = normalizeDelegatedIdentity(
         snapshotFor(await loadDelegatedTask(input, orchestrationService)),
       );
+      if (
+        target.kind === 'peer' &&
+        orchestrationService &&
+        isSessionLifecycleState(snapshot.status)
+      ) {
+        orchestrationService.recordPeerDelegationActivityOutcome({
+          taskId: snapshot.taskId,
+          environmentId: target.environmentId,
+          status: snapshot.status,
+        });
+      }
+      return snapshot;
     }
   }
   return snapshotFor(await loadDelegatedTask(input, orchestrationService));
+}
+
+/**
+ * Reconcile compact delegator-side records from the peer's status endpoint.
+ * This intentionally reads no peer events or output: Activity learns only the
+ * lifecycle the existing delegation channel can prove.
+ */
+export async function refreshPeerDelegationActivity(
+  input: Pick<DelegatedTaskReferenceInput, 'userId' | 'readAuthority'>,
+  orchestrationService: OrchestrationService,
+): Promise<void> {
+  const readAuthority = readAuthorityForInput(input);
+  const records = (
+    await orchestrationService.listSessionReadModel(readAuthority)
+  )
+    .filter(
+      (session) =>
+        session.delegation?.environmentKind === 'peer' &&
+        session.delegation.environmentId &&
+        !isSessionLifecycleStateStopped(session.lifecycleState ?? 'queued'),
+    )
+    .slice(-20);
+  await Promise.allSettled(
+    records.map((session) =>
+      observeDelegatedTask(
+        {
+          taskId: session.delegation!.taskId,
+          environmentId: session.delegation!.environmentId,
+          userId: readAuthority.userId,
+          readAuthority,
+          readTimeoutMs: 1_500,
+        },
+        orchestrationService,
+      ),
+    ),
+  );
 }
 
 /**
@@ -2934,7 +3001,7 @@ export async function delegateTask(
       selectedTarget,
       input.target,
     );
-    return postCanonical<DelegatedTaskHandle>(
+    const remoteHandle = await postCanonical<DelegatedTaskHandle>(
       selectedTarget,
       '/api/orchestration/delegations',
       {
@@ -2944,6 +3011,27 @@ export async function delegateTask(
       },
       'The selected Station could not start the delegated task',
     );
+    const handle =
+      selectedTarget.kind === 'peer'
+        ? normalizeDelegatedIdentity(remoteHandle)
+        : remoteHandle;
+    if (selectedTarget.kind === 'peer' && orchestrationService) {
+      orchestrationService.recordPeerDelegationActivityDispatch({
+        taskId: handle.taskId,
+        conversationId: handle.conversationId,
+        prompt: input.prompt,
+        userId: readAuthority.userId,
+        environment: {
+          id: selectedTarget.environmentId,
+          name: selectedTarget.environmentName,
+          kind: 'peer',
+        },
+        target: handle.target,
+        ...(handle.project?.slug ? { projectSlug: handle.project.slug } : {}),
+        ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+      });
+    }
+    return handle;
   }
   // archive#4543 LOW-2: a caller-supplied `sessionId` becomes this task's
   // `metadata.conversationId` below (via `conversationIdentity`) — reject a

@@ -2141,6 +2141,51 @@ describe('OrchestrationService', () => {
     );
   });
 
+  test('projects a durable peer delegation Activity record without claiming completion before peer evidence (#847)', async () => {
+    service.recordPeerDelegationActivityDispatch({
+      taskId: 'task:peer-847',
+      conversationId: 'task:peer-847',
+      prompt: 'Verify the release candidate',
+      userId: 'owner-user',
+      environment: {
+        id: 'environment-peer',
+        name: 'Station B',
+        kind: 'peer',
+      },
+      target: { kind: 'agent', id: 'codex' },
+    });
+
+    const dispatched = (await service.listSessionReadModel()).find(
+      (session) => session.delegation?.taskId === 'task:peer-847',
+    );
+    expect(dispatched).toMatchObject({
+      lifecycleState: 'queued',
+      displayTitle: 'Verify the release candidate',
+      delegation: {
+        taskId: 'task:peer-847',
+        environmentId: 'environment-peer',
+        environmentName: 'Station B',
+        environmentKind: 'peer',
+        targetKind: 'agent',
+        targetId: 'codex',
+      },
+    });
+    expect(dispatched?.lifecycleState).not.toBe('completed');
+
+    expect(
+      service.recordPeerDelegationActivityOutcome({
+        taskId: 'task:peer-847',
+        environmentId: 'environment-peer',
+        status: 'completed',
+      }),
+    ).toBe(true);
+    expect(
+      (await service.listSessionReadModel()).find(
+        (session) => session.delegation?.taskId === 'task:peer-847',
+      ),
+    ).toMatchObject({ lifecycleState: 'completed' });
+  });
+
   // archive#4543 MED-2: the combined test above asserts BOTH keys absent in
   // one `not.objectContaining({conversationId, environmentId})` — Jest/
   // Vitest's `objectContaining` requires every listed key to match, so

@@ -815,6 +815,70 @@ describe('Station Control canonical Environment + Agent execution', () => {
     ).toBe(false);
   });
 
+  test('records a peer dispatch on the delegating Station only after the peer accepts it (#847)', async () => {
+    const recordPeerDelegationActivityDispatch = vi.fn();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`) {
+        return json({ environmentId: 'environment-current' });
+      }
+      if (url === `${CURRENT_API}/api/environments/ssh`) {
+        return json({ success: true, data: [] });
+      }
+      if (
+        url ===
+        `${CURRENT_API}/api/environments/peers/environment-remote/credential`
+      ) {
+        return json({
+          success: true,
+          data: {
+            environmentId: 'environment-remote',
+            apiBase: REMOTE_API,
+            scope: 'station:peer',
+            credential: 'peer-secret',
+            label: 'Station B',
+          },
+        });
+      }
+      if (url === `${REMOTE_API}/api/orchestration/delegations`) {
+        return json({
+          success: true,
+          data: delegationHandle({
+            taskId: 'task-peer-847',
+            sessionId: 'task-peer-847',
+            provider: 'codex',
+            environment: {
+              id: 'environment-remote',
+              name: 'Current environment',
+              kind: 'current',
+            },
+            target: { kind: 'agent', id: 'codex' },
+          }),
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const { delegateTask } = await import('../station-control-delegation.js');
+
+    await delegateTask(
+      { prompt: 'Run the peer checks', target: savedTarget() },
+      { recordPeerDelegationActivityDispatch } as never,
+    );
+
+    expect(recordPeerDelegationActivityDispatch).toHaveBeenCalledWith({
+      taskId: 'task-peer-847',
+      conversationId: 'task-peer-847',
+      prompt: 'Run the peer checks',
+      userId: expect.any(String),
+      environment: {
+        id: 'environment-remote',
+        name: 'Station B',
+        kind: 'peer',
+      },
+      target: { kind: 'agent', id: 'codex' },
+    });
+  });
+
   test('relays target-side delegation validation errors without a fallback', async () => {
     installRemoteStationFetch('/api/orchestration/delegations', undefined);
     // Replace only the canonical target response with a rejection while the

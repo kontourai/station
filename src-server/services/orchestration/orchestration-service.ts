@@ -260,6 +260,7 @@ import {
 import {
   ACTIVE_TURN_FOLD_METHODS,
   activeTurnIdForEvents,
+  createManualSessionTransitionEvent,
   isDeferredRetriableTurnError,
   normalizeCanonicalRuntimeEventLifecycle,
   projectSessionLifecycle,
@@ -666,6 +667,29 @@ interface OrchestrationServiceOptions {
       warn(message: string, meta?: Record<string, unknown>): void;
     };
   };
+}
+
+export interface PeerDelegationActivityDispatch {
+  taskId: string;
+  conversationId: string;
+  prompt: string;
+  userId: string;
+  environment: { id: string; name: string; kind: 'peer' };
+  target: { kind: 'agent'; id: string };
+  projectSlug?: string;
+  parentTaskId?: string;
+}
+
+function peerDelegationActivityThreadId(
+  environmentId: string,
+  taskId: string,
+): string {
+  const digest = crypto
+    .createHash('sha256')
+    .update(`${environmentId}\0${taskId}`)
+    .digest('hex')
+    .slice(0, 32);
+  return `peer-delegation:${digest}`;
 }
 
 /**
@@ -2498,6 +2522,93 @@ export class OrchestrationService {
     }
 
     return sessions.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  /**
+   * Persist the delegating Station's own dispatch receipt for work owned by a
+   * paired peer. This is a compact Activity record, not a copy of the peer's
+   * runtime event stream: dispatch proves only `queued`; a later point read
+   * must supply lifecycle evidence before this record can advance.
+   */
+  recordPeerDelegationActivityDispatch(
+    input: PeerDelegationActivityDispatch,
+  ): string {
+    this.initialize();
+    const threadId = peerDelegationActivityThreadId(
+      input.environment.id,
+      input.taskId,
+    );
+    if (
+      this.sessionReadModel.has(threadId) ||
+      this.options.eventStore?.readSessionByThread(threadId)
+    ) {
+      return threadId;
+    }
+    const createdAt = new Date().toISOString();
+    const title = Array.from(input.prompt.replace(/\s+/g, ' ').trim())
+      .slice(0, 120)
+      .join('');
+    this.projectAndPublishEvent({
+      eventId: `peer-delegation-dispatched:${threadId}`,
+      provider: 'station-agent',
+      threadId,
+      createdAt,
+      method: 'session.started',
+      sessionId: threadId,
+      initialState: 'created',
+      sessionState: 'queued',
+      transitionReason: 'session_started',
+      transitionSource: 'runtime',
+      metadata: {
+        taskId: input.taskId,
+        conversationId: input.conversationId,
+        environmentId: input.environment.id,
+        environmentName: input.environment.name,
+        environmentKind: input.environment.kind,
+        targetKind: input.target.kind,
+        targetId: input.target.id,
+        assignedAgentSlug: input.target.id,
+        delegationTitle: title,
+        userId: input.userId,
+        ...(input.projectSlug ? { projectSlug: input.projectSlug } : {}),
+        ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+      },
+    });
+    return threadId;
+  }
+
+  /** Advance a peer Activity record only from an observed peer lifecycle. */
+  recordPeerDelegationActivityOutcome(input: {
+    taskId: string;
+    environmentId: string;
+    status: SessionLifecycleState;
+  }): boolean {
+    this.initialize();
+    const threadId = peerDelegationActivityThreadId(
+      input.environmentId,
+      input.taskId,
+    );
+    const persisted = this.options.eventStore?.readSessionByThread(threadId);
+    const loaded = this.sessionReadModel.get(threadId);
+    const session = loaded ?? persisted;
+    if (!session) return false;
+    const events =
+      this.options.eventStore
+        ?.listSessionProjectionEvents(threadId)
+        .map((event) => event.payload) ?? [];
+    const current = projectSessionLifecycle({ session, events }).lifecycleState;
+    if (current === input.status) return false;
+    const event = createManualSessionTransitionEvent({
+      provider: session.provider,
+      threadId,
+      from: current,
+      to: input.status,
+      reason: 'manual_update',
+      source: 'system_recovery',
+      message: 'Observed from the paired Station delegation status endpoint',
+    });
+    this.projectAndPublishEvent(event);
+    return true;
   }
 
   async listSessionReadModel(
