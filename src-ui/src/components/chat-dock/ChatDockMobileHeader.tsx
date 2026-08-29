@@ -65,23 +65,30 @@ export interface ChatDockMobileOverflowActions {
   /** Full-screen layout placement has no ambient dock geometry to control. */
   dockControls?: boolean;
   /**
-   * station#524 (review round 2, H2): the occupant picker (the header's
-   * `occupantPicker` prop) hides in the maximized bar at <=430px — the
-   * bar's own slot math doesn't fit an eighth control there even with the
-   * agent avatar already dropped. This is the fallback reachable path at
-   * that width: the plain `dockPane` action (not the mobile-maximizing
-   * `dockPaneAsOnlyContent` — switching occupant from an ALREADY-maximized
-   * bar cannot strand anything behind it, since the dock still covers the
-   * whole screen either way). `null` for the full-screen Chat placement,
+   * station#524 (review round 2, H2) + station#520 (review round 3, B1):
+   * the ⋯ overflow sheet's occupant-switch fallback list. NOT
+   * maximized-bar-only — the sheet is reachable from every dock state
+   * (collapsed, half, maximized) at every mobile width, the same as every
+   * other item in it, so its occupant-switch entries carry the same mobile
+   * dock-and-empty contract `DockOccupantPicker` does: `onChoose` for the
+   * ordinary case, `onChooseAsOnlyContent` (mobile-maximizing) when
+   * choosing this occupant would strand the main area behind it. The sheet
+   * derives which one to call itself, through `chooseAmbientOccupant` — the
+   * ONE shared derivation both this and `DockOccupantPicker` call, so a fix
+   * to one is a fix to both. `null` for the full-screen Chat placement,
    * which has no ambient occupant to switch away from (mirrors
    * `occupantPicker` itself being absent there).
    */
-  onSwitchOccupant:
-    | ((
-        descriptor: WorkspacePaneDescriptor,
-        instance: WorkspacePaneInstance,
-      ) => void)
-    | null;
+  onSwitchOccupant: {
+    onChoose: (
+      descriptor: WorkspacePaneDescriptor,
+      instance: WorkspacePaneInstance,
+    ) => void;
+    onChooseAsOnlyContent: (
+      descriptor: WorkspacePaneDescriptor,
+      instance: WorkspacePaneInstance,
+    ) => void;
+  } | null;
 }
 
 /**
@@ -312,13 +319,6 @@ export function ChatDockMobileHeader({
     <div
       className={`chat-dock__header chat-dock__mobile-header${
         showDrawerToggle ? ' chat-dock__mobile-header--with-drawer' : ''
-      }${
-        // station#524: the occupant picker is an extra fixed 44px slot the
-        // bar's width budget (docs above `.chat-dock__mobile-agent-avatar`)
-        // never accounted for — this modifier extends that SAME "drop the
-        // avatar first" budget logic to the narrow non-maximized bar too,
-        // rather than inventing a second tightening mechanism.
-        occupantPicker ? ' chat-dock__mobile-header--with-occupant-picker' : ''
       }`}
       onPointerDown={onDragPointerDown}
       onClickCapture={onDragClickCapture}

@@ -9014,41 +9014,32 @@ button.tool-call__line:hover {
     display: none;
   }
 
-  /* station#524: the occupant picker (below) is the same class of "eighth
-     control" this file already reasons about for the maximized bar — an
-     extra fixed 44px slot the identity block pays for. Below 431px with the
-     picker present, drop the avatar here too (same sacrifice order: picture
-     before text) rather than let the picker silently reopen the overflow
-     this file's avatar gating was written to close. Not device-measured —
-     `tests/mobile-chat-composer.spec.ts` is the existing pin for this bar
-     and a Playwright run is what would confirm the exact threshold; this
-     reuses the avatar's own already-measured 430px gate rather than a new
-     unverified number. Unconditional on `--with-drawer` (the maximized
-     bar's rule above already drops the avatar there on its own) — this is
-     what does the actual work in the NON-maximized bar, where the avatar
-     gives way and the picker itself stays visible.
+  /* station#520/524 (review round 3, M6): the occupant picker (below)
+     never fits at this width in EITHER bar configuration, by this file's
+     own already-recorded slot math:
 
-     Deliberately not also duplicated at a narrower breakpoint: 430px is
-     already the WIDEST gate anything in this bar needs (nothing below it
-     asks for more room), so no width strictly under 430 can ever see a
-     different verdict from this same selector — a second block at, say,
-     361px would be dead by construction. */
-  .chat-dock__mobile-header--with-occupant-picker
-  .chat-dock__mobile-agent-avatar {
-    display: none;
-  }
+       - Maximized (`--with-drawer`) bar: seven 44px controls need 308px
+         against 304 available at 375px (the avatar-hide rule above), and
+         an eighth ~44-46px slot needs far more room than the avatar's own
+         ~18px of give — especially since the avatar is ALREADY gone there
+         by the rule above, so it has nothing left to give a second time.
+       - Non-maximized bar: documented immediately above
+         `.chat-dock__mobile-agent-avatar`'s own base rule as "healthy from
+         361px up" at SEVEN controls (no drawer toggle, no picker) — an
+         eighth doesn't fit there either, and this bar has no avatar-hide
+         gate to spend in the first place.
 
-  /* review round 2 (H2): the maximized bar's own slot math doesn't fit an
-     eighth 44px control even with the avatar already gone — this file's own
-     measurement is seven 44px slots need 308px against 304 at 375px, before
-     an eighth slot (~44-46px) is added, and the with-drawer bar has ALREADY
-     spent the avatar's ~18px of give above. Below 431px the maximized bar
-     drops the picker outright — the same avatar gate reused, not a new
-     unverified number — leaving the ⋯ overflow sheet's occupant-switch item
-     (ChatDockMobileOverflowSheet.tsx) as the way to change occupant in that
-     band; the non-maximized bar (no drawer) is not gated here and keeps the
-     picker with the avatar-sacrifice order above. */
-  .chat-dock__mobile-header--with-drawer .chat-dock__mobile-occupant-picker {
+     So the picker is hidden here UNCONDITIONALLY (both bars), not only
+     `--with-drawer` — the avatar keeps its EXISTING treatment (untouched
+     by the picker's presence, since the picker no longer competes for
+     space at this width), and the ⋯ overflow sheet's occupant-switch
+     items (`ChatDockMobileOverflowSheet.tsx`) are the routed fallback:
+     station#520 review round 3 (B1) made the sheet share the SAME
+     mobile-maximizing derivation (`chooseAmbientOccupant`) the picker
+     uses, so switching occupant through the sheet at this width carries
+     the identical dock-and-empty contract, not a degraded one. Contract:
+     picker visible >430px, sheet-only switching <=430px, in both bars. */
+  .chat-dock__mobile-occupant-picker {
     display: none;
   }
 }

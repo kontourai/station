@@ -16,11 +16,32 @@ import {
 } from '../components/chat-dock/ChatDockMobileHeader';
 import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
+// station#520 (review round 3, B1): the overflow sheet's occupant-switch
+// items now read `useIsMobile()`/`useNavigation()` themselves (the same
+// inputs `DockOccupantPicker` reads for `chooseAmbientOccupant`) — mutable
+// mocks so the maximize-routing tests below can drive both without a real
+// `matchMedia` breakpoint or router.
+const mobileFlag = vi.hoisted(() => ({ isMobile: false }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../hooks/useIsMobile')>();
+  return { ...actual, useIsMobile: () => mobileFlag.isMobile };
+});
+const pathnameFlag = vi.hoisted(() => ({ pathname: '/' }));
+vi.mock('../contexts/NavigationContext', () => ({
+  useNavigation: () => ({
+    get pathname() {
+      return pathnameFlag.pathname;
+    },
+  }),
+}));
+
 // archive#3297 put a live connection indicator in this bar, so the header now
 // mounts through the same connection boundary the app uses. Nothing here
 // asserts on probe results; the stub only keeps the shared health coordinator
 // from reaching the network.
 beforeEach(() => {
+  mobileFlag.isMobile = false;
+  pathnameFlag.pathname = '/';
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => new Response('{}', { status: 200 })),
@@ -50,9 +71,10 @@ function renderHeader(
     onOpenProject?: (() => void) | null;
     openProjectName?: string | null;
     occupantPicker?: ReactNode;
-    onSwitchOccupant?:
-      | ((descriptor: unknown, instance: unknown) => void)
-      | null;
+    onSwitchOccupant?: {
+      onChoose: (descriptor: unknown, instance: unknown) => void;
+      onChooseAsOnlyContent: (descriptor: unknown, instance: unknown) => void;
+    } | null;
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
@@ -456,15 +478,34 @@ describe('ChatDockMobileHeader occupant picker (station#524)', () => {
 });
 
 /**
- * station#524 (review round 2, H2): the header's own occupant picker hides
- * in the maximized bar at <=430px (the bar's slot math doesn't fit an
- * eighth control there even with the agent avatar dropped) — the ⋯
- * overflow sheet's occupant-switch items are the fallback that keeps
- * switching occupant reachable at that width.
+ * station#524 (review round 2, H2) + station#520 (review round 3, B1): the
+ * ⋯ overflow sheet's occupant-switch items are reachable at EVERY dock
+ * state (collapsed/half/maximized), not only when the header's own
+ * occupant picker hides at <=430px — so they must carry the SAME mobile
+ * dock-and-empty contract `DockOccupantPicker` does: maximize when picking
+ * this occupant would strand the main area behind it, plain switch
+ * otherwise. Review round 2 wired the sheet to the plain action only; these
+ * tests pin the round-3 fix (`chooseAmbientOccupant`, shared with the
+ * picker) instead of re-pinning the gap.
  */
-describe('ChatDockMobileHeader overflow sheet occupant switch (station#524 review round 2, H2)', () => {
+type OccupantChooser = (descriptor: unknown, instance: unknown) => void;
+
+describe('ChatDockMobileHeader overflow sheet occupant switch (station#520/524)', () => {
+  function switcher(
+    overrides: {
+      onChoose?: ReturnType<typeof vi.fn<OccupantChooser>>;
+      onChooseAsOnlyContent?: ReturnType<typeof vi.fn<OccupantChooser>>;
+    } = {},
+  ) {
+    return {
+      onChoose: overrides.onChoose ?? vi.fn<OccupantChooser>(),
+      onChooseAsOnlyContent:
+        overrides.onChooseAsOnlyContent ?? vi.fn<OccupantChooser>(),
+    };
+  }
+
   test('lists every other ambient occupant when onSwitchOccupant is supplied', async () => {
-    renderHeader({ onSwitchOccupant: vi.fn() });
+    renderHeader({ onSwitchOccupant: switcher() });
 
     fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
     expect(
@@ -479,9 +520,14 @@ describe('ChatDockMobileHeader overflow sheet occupant switch (station#524 revie
     ).toBeNull();
   });
 
-  test('calls onSwitchOccupant with the picked descriptor/instance and closes the sheet', async () => {
-    const onSwitchOccupant = vi.fn();
-    renderHeader({ onSwitchOccupant });
+  test('desktop or off-route: calls the plain onChoose and closes the sheet', async () => {
+    mobileFlag.isMobile = false;
+    pathnameFlag.pathname = '/';
+    const onChoose = vi.fn<OccupantChooser>();
+    const onChooseAsOnlyContent = vi.fn<OccupantChooser>();
+    renderHeader({
+      onSwitchOccupant: switcher({ onChoose, onChooseAsOnlyContent }),
+    });
 
     fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
     const item = await screen.findByRole('menuitem', {
@@ -489,11 +535,42 @@ describe('ChatDockMobileHeader overflow sheet occupant switch (station#524 revie
     });
     fireEvent.click(item);
 
-    expect(onSwitchOccupant).toHaveBeenCalledWith(
+    expect(onChoose).toHaveBeenCalledWith(
       WORKSPACE_HOME_PANE_DESCRIPTOR,
       WORKSPACE_HOME_PANE_INSTANCE,
     );
+    expect(onChooseAsOnlyContent).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  /**
+   * station#520 (review round 3, B1): the reproduction the reviewer named
+   * verbatim — the header's own `isDockMaximized: false` default (a
+   * COLLAPSED or HALF dock, not maximized) with the picked pane's own
+   * route (`/`) already on screen. Before this fix the sheet always called
+   * the plain action here, stranding `WorkspacePaneAwayState` as the whole
+   * main area exactly like #520's acceptance criterion describes.
+   */
+  test("mobile + on the picked pane's own route (dock NOT maximized): routes through onChooseAsOnlyContent", async () => {
+    mobileFlag.isMobile = true;
+    pathnameFlag.pathname = '/'; // Home's own canonical route.
+    const onChoose = vi.fn<OccupantChooser>();
+    const onChooseAsOnlyContent = vi.fn<OccupantChooser>();
+    renderHeader({
+      onSwitchOccupant: switcher({ onChoose, onChooseAsOnlyContent }),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Chat actions' }));
+    const item = await screen.findByRole('menuitem', {
+      name: 'Switch to Home',
+    });
+    fireEvent.click(item);
+
+    expect(onChooseAsOnlyContent).toHaveBeenCalledWith(
+      WORKSPACE_HOME_PANE_DESCRIPTOR,
+      WORKSPACE_HOME_PANE_INSTANCE,
+    );
+    expect(onChoose).not.toHaveBeenCalled();
   });
 
   test('renders no switch items when onSwitchOccupant is absent (full-screen placement)', async () => {

@@ -1262,26 +1262,6 @@
   opacity: 0.7;
 }
 
-/* The readonly chip carries TWO labels — "Set by engine" and the tool-policy
-   coverage (`toolPolicyDeliveryLabel`, e.g. "Station approvals do not
-   apply"). `-policy` used to be plain, unbounded text: `text-overflow` has
-   no effect on a flex CONTAINER's overflowing children (only on a single
-   text node), so when the chip had to shrink at mobile width — station#541,
-   the `.chat-input__meta .chat-input__approval-chip` mobile rule below sets
-   `flex: 1 1 12rem` — the sentence was hard-clipped mid-word with no "…"
-   marker, reading as a dangling, broken fragment rather than a
-   deliberately-truncated chip. Same ellipsis treatment as `-label` above
-   fixes that; `min-width: 0` is what actually lets it shrink. Still
-   aria-hidden and still fully disclosed via the chip's `aria-label`/`title`
-   (archive#1010) — nothing here removes a disclosure, only bounds its
-   visible projection. */
-.chat-input__approval-chip-policy {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 @media (max-width: 480px) {
   .turn-footer__actions {
     justify-content: flex-start;

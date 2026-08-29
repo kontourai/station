@@ -264,13 +264,17 @@ function AmbientHomeDock({
 }
 
 /**
- * The full dock-chrome surface (`DockShellChrome`) plus the two things it
+ * The full dock-chrome surface (`DockShellChrome`) plus the things it
  * cannot itself derive: `dockPane`, the ambient host's own admission-checked
- * replace action, and `occupantPicker`, a pre-rendered `DockOccupantPicker`
- * naming THIS occupant (a different node per occupant — Chat's names "Chat",
- * Home's names "Home"). Every occupant (Chat, Home, Activity) receives
- * exactly this shape (archive#4460) — one contract, not three per-occupant
- * ones.
+ * replace action; `dockPaneAsOnlyContent` (station#520, review round 3,
+ * B1), the SAME action's mobile-maximizing sibling — needed by every
+ * occupant-switch surface (the header's `DockOccupantPicker` AND the ⋯
+ * overflow sheet), not only the docked-pane host, because both are reachable
+ * at every dock state and both can strand the main area the same way; and
+ * `occupantPicker`, a pre-rendered `DockOccupantPicker` naming THIS occupant
+ * (a different node per occupant — Chat's names "Chat", Home's names
+ * "Home"). Every occupant (Chat, Home, Activity) receives exactly this shape
+ * (archive#4460) — one contract, not three per-occupant ones.
  *
  * `occupantPicker` is pre-rendered, not `{current, onChoose}` data:
  * `DockOccupantPicker` pulls in `ambientDockOccupants.ts` and all
@@ -283,6 +287,11 @@ function AmbientHomeDock({
  */
 export type AmbientDockShellApi = DockShellChrome & {
   dockPane: (
+    descriptor: WorkspacePaneDescriptor,
+    instance: WorkspacePaneInstance,
+  ) => void;
+  /** See the type doc above — station#520 review round 3, B1. */
+  dockPaneAsOnlyContent: (
     descriptor: WorkspacePaneDescriptor,
     instance: WorkspacePaneInstance,
   ) => void;
@@ -462,6 +471,11 @@ export function AmbientChatDockPaneHost({
         ): AmbientDockShellApi => ({
           ...shellChrome,
           dockPane,
+          // station#520 (review round 3, B1): every occupant-switch
+          // consumer of this shape — the header's picker AND (via
+          // `ChatDock.tsx`) the ⋯ overflow sheet — needs this, not only the
+          // picker the object below already carries it into.
+          dockPaneAsOnlyContent,
           occupantPicker: (
             <DockOccupantPicker
               current={current}

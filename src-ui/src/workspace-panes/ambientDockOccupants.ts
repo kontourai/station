@@ -19,6 +19,8 @@ import {
   workspacePaneModesSatisfiableBy,
 } from '@kontourai/station-contracts/workspace-pane';
 import { workspacePaneHostSuppliableContexts } from '@kontourai/station-contracts/workspace-pane-host';
+import { resolveViewFromPath } from '../app-shell/routing';
+import { shouldMaximizeOnOccupantChoice } from '../components/chat-dock/mobile-chrome';
 
 /**
  * The panes the ambient host can RENDER, which is the one per-pane fact
@@ -141,4 +143,50 @@ export function ambientDockOccupantRouteViewType(
   if (descriptor.id === WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id)
     return 'activity';
   return null;
+}
+
+/**
+ * station#520 (review round 3, B1): THE one call site for "choosing this
+ * occupant would strand the main area behind it, so route through the
+ * mobile-maximizing action instead of the plain one." Two independent
+ * copies of this composition — `shouldMaximizeOnOccupantChoice` fed
+ * `resolveViewFromPath(pathname).type` and
+ * `ambientDockOccupantRouteViewType(descriptor)` — is how the SECOND one
+ * (the ⋯ overflow sheet) went missing when the FIRST (`DockOccupantPicker`)
+ * was fixed in review round 2: the fix landed once, the fact needed it
+ * twice. Every occupant-switch surface (the header's picker, the overflow
+ * sheet's fallback list) calls this instead of re-deriving.
+ */
+export function chooseAmbientOccupant({
+  isMobile,
+  pathname,
+  descriptor,
+  instance,
+  onChoose,
+  onChooseAsOnlyContent,
+}: {
+  isMobile: boolean;
+  pathname: string;
+  descriptor: WorkspacePaneDescriptor;
+  instance: WorkspacePaneInstance;
+  onChoose: (
+    descriptor: WorkspacePaneDescriptor,
+    instance: WorkspacePaneInstance,
+  ) => void;
+  onChooseAsOnlyContent: (
+    descriptor: WorkspacePaneDescriptor,
+    instance: WorkspacePaneInstance,
+  ) => void;
+}): void {
+  if (
+    shouldMaximizeOnOccupantChoice(
+      isMobile,
+      resolveViewFromPath(pathname).type,
+      ambientDockOccupantRouteViewType(descriptor),
+    )
+  ) {
+    onChooseAsOnlyContent(descriptor, instance);
+  } else {
+    onChoose(descriptor, instance);
+  }
 }

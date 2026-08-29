@@ -11,6 +11,12 @@ const chatCss = readFileSync(
   'utf8',
 );
 
+/** Comments out, so a rule quoted in prose (e.g. a moved-rule pointer
+ * comment) is not read as a declaration. */
+function withoutComments(css: string): string {
+  return css.replaceAll(/\/\*[\s\S]*?\*\//g, '');
+}
+
 describe('composer Agent/Model controls layout', () => {
   test('model capability filters retain padded non-shrinking hit areas', () => {
     const pickerCss = readFileSync(
@@ -46,31 +52,52 @@ describe('composer Agent/Model controls layout', () => {
   });
 
   /**
-   * station#541: the readonly approval chip's tool-policy half
-   * (`.chat-input__approval-chip-policy`, e.g. "Station approvals do not
-   * apply") used to be plain, unbounded text. `text-overflow: ellipsis` has
-   * no effect on a flex CONTAINER's overflowing children (only a single
-   * text node) — so when the chip shrank at the narrow-width rail above
-   * (`flex: 1 1 12rem`), the sentence hard-clipped mid-word with no "…"
-   * marker, rendering as a dangling fragment rather than a legible
-   * truncation. Both spans need `min-width: 0` too: a flex item's default
-   * `min-width: auto` refuses to shrink below its content size, which
-   * silently disables ellipsis the same way.
+   * station#541: the readonly approval chip's label span
+   * (`.chat-input__approval-chip-label`, the "Set by engine" half) used to
+   * be plain, unbounded text: a flex item's default `min-width: auto`
+   * refuses to shrink below its content size, which silently disables
+   * `text-overflow: ellipsis` — the chip would just grow the row instead
+   * of truncating.
+   *
+   * The tool-policy half (`-policy`, e.g. "Station approvals do not
+   * apply") is NOT covered here (review round 3, M5): it is a
+   * security-relevant negation that must never render a partial ("Station
+   * approvals do…" reads as the OPPOSITE), so it is `display: none`
+   * wherever it could otherwise shrink — see the dedicated test below —
+   * and genuinely live nowhere the chip is unconstrained either (its
+   * container is `flex: 0 0 auto` there). An ellipsis rule on that span
+   * would be dead CSS with no state that exercises it; round 2 shipped
+   * exactly that dead rule and this test's own loop narrated it as live.
    */
-  test('the approval chip label AND its policy half both ellipsize, not just hard-clip', () => {
-    for (const selector of [
-      '.chat-input__approval-chip-label',
-      '.chat-input__approval-chip-policy',
-    ]) {
-      const rule = chatCss.match(
-        new RegExp(`${selector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`),
-      )?.[1];
-      expect(rule, `${selector} rule not found`).toBeDefined();
-      expect(rule).toMatch(/min-width:\s*0/);
-      expect(rule).toMatch(/overflow:\s*hidden/);
-      expect(rule).toMatch(/text-overflow:\s*ellipsis/);
-      expect(rule).toMatch(/white-space:\s*nowrap/);
-    }
+  test('the approval chip label span ellipsizes, not just hard-clips', () => {
+    const rule = chatCss.match(
+      /\.chat-input__approval-chip-label\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(
+      rule,
+      '.chat-input__approval-chip-label rule not found',
+    ).toBeDefined();
+    expect(rule).toMatch(/min-width:\s*0/);
+    expect(rule).toMatch(/overflow:\s*hidden/);
+    expect(rule).toMatch(/text-overflow:\s*ellipsis/);
+    expect(rule).toMatch(/white-space:\s*nowrap/);
+
+    // And the policy span carries NONE of that ellipsis machinery — it
+    // would be dead CSS (M5): confirms the round-2 rule was actually
+    // deleted, not merely renamed/moved. Comments stripped first: a
+    // pointer comment elsewhere quotes this exact selector in prose, which
+    // a naive scan of the raw text would misread as a second declaration.
+    const policyRules = [
+      ...withoutComments(chatCss).matchAll(
+        /\.chat-input__approval-chip-policy\s*\{([^}]*)\}/g,
+      ),
+    ];
+    expect(
+      policyRules.length,
+      'exactly one .chat-input__approval-chip-policy declaration should remain',
+    ).toBe(1);
+    expect(policyRules[0][1]).toMatch(/display:\s*none/);
+    expect(policyRules[0][1]).not.toMatch(/text-overflow/);
   });
 
   /**

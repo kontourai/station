@@ -380,21 +380,31 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // pre-rendered node the ambient host already built (review round M4) —
   // Chat renders it as-is, the same way Home/Activity do, instead of
   // importing `DockOccupantPicker` into this eager module itself.
-  // station#524 (review round 2, H2): `dockPane` alongside `occupantPicker`,
-  // same reasoning — the mobile overflow sheet's occupant-switch fallback
-  // (reachable when the header's own picker hides at <=430px) needs the
-  // RAW action, not the pre-rendered picker node.
-  const { chrome, occupantPicker, occupantSwitchDockPane } =
+  // station#524 (review round 2, H2) + station#520 (review round 3, B1):
+  // `dockPane` AND `dockPaneAsOnlyContent` alongside `occupantPicker`, same
+  // reasoning — the ⋯ overflow sheet's occupant-switch fallback is
+  // reachable at EVERY dock state (not only when the header's own picker
+  // hides), so it needs the same route-aware choice `DockOccupantPicker`
+  // makes, which needs both RAW actions, not the pre-rendered picker node.
+  const {
+    chrome,
+    occupantPicker,
+    occupantSwitchDockPane,
+    occupantSwitchDockPaneAsOnlyContent,
+  } =
     props.placement === 'fullscreen'
       ? {
           chrome: localShellChrome,
           occupantPicker: undefined,
           occupantSwitchDockPane: null,
+          occupantSwitchDockPaneAsOnlyContent: null,
         }
       : {
           chrome: props.shellChrome,
           occupantPicker: props.shellChrome.occupantPicker,
           occupantSwitchDockPane: props.shellChrome.dockPane,
+          occupantSwitchDockPaneAsOnlyContent:
+            props.shellChrome.dockPaneAsOnlyContent,
         };
   const recoverAuth = useChatAuthRecovery();
   const requestAuth = onRequestAuth ?? recoverAuth;
@@ -2050,7 +2060,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 onRestoreDock: () => applyDockSnap('half'),
                 isDockMaximized: isPaneMaximized,
                 dockControls: !isFullscreenPlacement,
-                onSwitchOccupant: occupantSwitchDockPane,
+                onSwitchOccupant:
+                  occupantSwitchDockPane && occupantSwitchDockPaneAsOnlyContent
+                    ? {
+                        onChoose: occupantSwitchDockPane,
+                        onChooseAsOnlyContent:
+                          occupantSwitchDockPaneAsOnlyContent,
+                      }
+                    : null,
               }}
             />
           ) : (

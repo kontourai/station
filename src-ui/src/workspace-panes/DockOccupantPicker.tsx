@@ -3,13 +3,11 @@ import type {
   WorkspacePaneInstance,
 } from '@kontourai/station-contracts/workspace-pane';
 import { useEffect, useRef, useState } from 'react';
-import { resolveViewFromPath } from '../app-shell/routing';
-import { shouldMaximizeOnOccupantChoice } from '../components/chat-dock/mobile-chrome';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import {
   ambientDockOccupantChoices,
-  ambientDockOccupantRouteViewType,
+  chooseAmbientOccupant,
 } from './ambientDockOccupants';
 
 /**
@@ -31,16 +29,17 @@ import {
  * to whatever the removed item's neighbour happened to be). Choosing the
  * current occupant is a no-op that closes the menu.
  *
- * station#520 (review round 2, M3): this is also the mobile
- * dock-and-empty contract's SECOND entry point, not just
- * `WorkspacePaneDockAction`'s "Dock this pane". Picking Home here while the
- * main area is ALREADY `/` reproduces the exact same stranding "Dock this
- * pane" refuses — the main area becomes Home's away-state placeholder with
- * nothing else behind it. `shouldMaximizeOnOccupantChoice` derives that
- * from the live route (`useNavigation().pathname` +
- * `resolveViewFromPath` + `ambientDockOccupantRouteViewType`) and routes
- * through `onChooseAsOnlyContent` (the mobile-maximizing action) instead of
- * the plain `onChoose` when it matches.
+ * station#520 (review round 2, M3; review round 3, B1): this is one of TWO
+ * occupant-switch surfaces in the mobile dock-and-empty contract, not just
+ * `WorkspacePaneDockAction`'s "Dock this pane" — the ⋯ overflow sheet's
+ * fallback list (reachable at every dock state, not only when this picker
+ * hides) is the other. Picking Home here while the main area is ALREADY `/`
+ * reproduces the exact same stranding "Dock this pane" refuses — the main
+ * area becomes Home's away-state placeholder with nothing else behind it.
+ * `chooseAmbientOccupant` is the ONE shared derivation both this picker and
+ * the overflow sheet call — a second, independent copy of the same
+ * composition is how the sheet's copy went missing the first time this was
+ * fixed (round 2 fixed only this file).
  */
 export function DockOccupantPicker({
   current,
@@ -56,9 +55,9 @@ export function DockOccupantPicker({
    * station#520: the SAME action `WorkspacePaneDockAction` uses
    * (`dockPaneAsOnlyContent` on `WorkspacePaneDockContext`) — maximizes the
    * dock on mobile rather than preserving whatever snap it already had.
-   * Called instead of `onChoose` exactly when
-   * `shouldMaximizeOnOccupantChoice` says the picked pane's own route is
-   * the one the main area is already showing.
+   * Called instead of `onChoose` exactly when `chooseAmbientOccupant` says
+   * the picked pane's own route is the one the main area is already
+   * showing.
    */
   onChooseAsOnlyContent: (
     descriptor: WorkspacePaneDescriptor,
@@ -141,21 +140,14 @@ export function DockOccupantPicker({
                 // is a no-op that closes the menu, not a replace that churns
                 // the persisted document.
                 if (choice.descriptor.id !== current.id) {
-                  // station#520 (review round 2, M3): route through the
-                  // maximizing action exactly when picking this occupant
-                  // would strand the main area behind it — the picked
-                  // pane's own route is the one already on screen.
-                  if (
-                    shouldMaximizeOnOccupantChoice(
-                      isMobile,
-                      resolveViewFromPath(pathname).type,
-                      ambientDockOccupantRouteViewType(choice.descriptor),
-                    )
-                  ) {
-                    onChooseAsOnlyContent(choice.descriptor, choice.instance);
-                  } else {
-                    onChoose(choice.descriptor, choice.instance);
-                  }
+                  chooseAmbientOccupant({
+                    isMobile,
+                    pathname,
+                    descriptor: choice.descriptor,
+                    instance: choice.instance,
+                    onChoose,
+                    onChooseAsOnlyContent,
+                  });
                 }
                 setMenuOpen(false);
                 triggerRef.current?.focus();

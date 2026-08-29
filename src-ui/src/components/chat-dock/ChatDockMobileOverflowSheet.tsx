@@ -1,6 +1,11 @@
 import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
 import { useState } from 'react';
-import { ambientDockOccupantChoices } from '../../workspace-panes/ambientDockOccupants';
+import { useNavigation } from '../../contexts/NavigationContext';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import {
+  ambientDockOccupantChoices,
+  chooseAmbientOccupant,
+} from '../../workspace-panes/ambientDockOccupants';
 import { LazyBoundary } from '../LazyBoundary';
 import {
   ResponsiveDialogHeader,
@@ -54,6 +59,12 @@ export function ChatDockMobileOverflowSheet({
     onClose();
     action();
   };
+  // station#520 (review round 3, B1): the occupant-switch items below need
+  // the SAME inputs `DockOccupantPicker` reads for `chooseAmbientOccupant`
+  // — this sheet is a real component too, so it reads them itself rather
+  // than having `ChatDock.tsx` compute and thread them down.
+  const isMobile = useIsMobile();
+  const { pathname } = useNavigation();
 
   if (inventoryOpen && overflow.sessionInventory)
     return (
@@ -193,15 +204,14 @@ export function ChatDockMobileOverflowSheet({
             Collapse chat
           </button>
         )}
-        {/* station#524 (review round 2, H2): the header's own occupant
-            picker hides in the maximized bar at <=430px — the bar's slot
-            math doesn't fit an eighth control there even with the agent
-            avatar already dropped. This is the fallback: same derivation
-            the picker itself reads, so a pane it admits/refuses is
-            admitted/refused here too. Switching occupant while ALREADY
-            maximized cannot strand the main area (the dock still covers
-            the whole screen either way), so this stays on the plain
-            `onSwitchOccupant` action, not a mobile-maximizing one. */}
+        {/* station#524 (review round 2, H2) + station#520 (review round 3,
+            B1): reachable at EVERY dock state (collapsed/half/maximized),
+            not only when the header's own picker hides — the mobile
+            dock-and-empty contract applies here exactly as it does to
+            `DockOccupantPicker`, through the SAME shared derivation
+            (`chooseAmbientOccupant`), not a second copy of it. Same
+            occupant list the picker reads too — a pane it admits/refuses
+            is admitted/refused here. */}
         {overflow.onSwitchOccupant &&
           otherAmbientOccupants().map((choice) => (
             <button
@@ -210,12 +220,18 @@ export function ChatDockMobileOverflowSheet({
               role="menuitem"
               className="composer-actions-menu__item"
               onClick={() =>
-                run(() =>
-                  overflow.onSwitchOccupant?.(
-                    choice.descriptor,
-                    choice.instance,
-                  ),
-                )
+                run(() => {
+                  if (!overflow.onSwitchOccupant) return;
+                  chooseAmbientOccupant({
+                    isMobile,
+                    pathname,
+                    descriptor: choice.descriptor,
+                    instance: choice.instance,
+                    onChoose: overflow.onSwitchOccupant.onChoose,
+                    onChooseAsOnlyContent:
+                      overflow.onSwitchOccupant.onChooseAsOnlyContent,
+                  });
+                })
               }
             >
               Switch to {choice.descriptor.name}
