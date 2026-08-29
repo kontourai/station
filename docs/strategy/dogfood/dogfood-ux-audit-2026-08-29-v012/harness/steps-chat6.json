@@ -1,0 +1,18 @@
+[
+ {"goto": "/agents", "settle": 3000},
+ {"clickRole": ["button", "Chat", 2], "settle": 2000},
+ {"clickText": "Claude Code", "exact": true, "settle": 3500},
+ {"fill": ["textarea", "Say exactly: TURN ONE OK"]},
+ {"press": "Enter", "settle": 2000},
+ {"wait": 25000},
+ {"shot": "45-t1"},
+ {"fill": ["textarea", "Say exactly: TURN TWO OK"]},
+ {"press": "Enter", "settle": 2000},
+ {"wait": 22000},
+ {"shot": "46-t2"},
+ {"fill": ["textarea", "Say exactly: TURN THREE OK"]},
+ {"press": "Enter", "settle": 2000},
+ {"wait": 22000},
+ {"shot": "47-t3"},
+ {"eval": "location.href"}
+]

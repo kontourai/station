@@ -1,0 +1,10 @@
+[
+ {"goto": "/projects/new", "settle": 2500},
+ {"fill": ["input[placeholder='/path/to/project']", "/private/tmp/claude-501/-Users-brian-dev-github-kontourai/cbcbdcc3-099c-4e5d-a10b-95c0e41771a1/scratchpad/station-audit/demo-project"]},
+ {"fill": ["input[placeholder='My Project']", "Audit Demo"]},
+ {"eval": "(() => { const b=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='Create'); const r=b.getBoundingClientRect(); return {y:r.y, h:r.height, vh: innerHeight, clipped: r.y+r.height>innerHeight}; })()"},
+ {"eval": "[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='Create').click()"},
+ {"wait": 3500},
+ {"shot": "52-project-after-create"},
+ {"eval": "location.href"}
+]

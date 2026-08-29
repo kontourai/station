@@ -1,0 +1,7 @@
+[
+ {"goto": "/activity", "settle": 2500},
+ {"clickRole": ["button", "Bring it back here"], "settle": 2500},
+ {"clickRole": ["button", "Delegate worker"], "settle": 2500},
+ {"shot": "107-delegate-modal"},
+ {"eval": "[...document.querySelectorAll('select option, [role=option], [role=combobox]')].map(e=>e.textContent.trim()).slice(0,20)"}
+]

@@ -1,0 +1,14 @@
+[
+ {"goto": "/projects/audit-demo", "settle": 2500},
+ {"clickText": "Getting Started", "exact": true, "settle": 3500},
+ {"shot": "77-gs-layout-open"},
+ {"eval": "location.href"},
+ {"goto": "/projects/audit-demo", "settle": 2500},
+ {"clickText": "Session Board", "exact": true, "settle": 3500},
+ {"shot": "78-session-board-open"},
+ {"eval": "location.href"},
+ {"goto": "/projects/audit-demo", "settle": 2500},
+ {"fill": ["input[placeholder*='Crea']", "Audit demo task one"]},
+ {"clickRole": ["button", "Add task"], "settle": 2500},
+ {"shot": "79-task-added"}
+]

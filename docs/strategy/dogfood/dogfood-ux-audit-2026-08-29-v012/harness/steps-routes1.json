@@ -1,0 +1,21 @@
+[
+ {"goto": "/", "settle": 4000},
+ {"shot": "02-home-settled"},
+ {"eval": "fetch('/api/system/instance',{credentials:'include'}).then(r=>r.status+':'+r.headers.get('content-type')).catch(String)"},
+ {"goto": "/agents", "settle": 2000},
+ {"shot": "03-agents"},
+ {"goto": "/agents/new", "settle": 2000},
+ {"shot": "04-agents-new"},
+ {"goto": "/connections", "settle": 2000},
+ {"shot": "05-connections"},
+ {"goto": "/connections/engines", "settle": 2000},
+ {"shot": "06-connections-engines"},
+ {"goto": "/connections/models", "settle": 2000},
+ {"shot": "07-connections-models"},
+ {"goto": "/activity", "settle": 2000},
+ {"shot": "08-activity"},
+ {"goto": "/tasks", "settle": 2000},
+ {"shot": "09-tasks"},
+ {"goto": "/sessions", "settle": 2000},
+ {"shot": "10-sessions"}
+]

@@ -1,0 +1,5 @@
+[
+ {"goto": "/connections/computers", "settle": 2500},
+ {"clickRole": ["button", "Add computer"], "settle": 2000},
+ {"shot": "104-add-computer"}
+]

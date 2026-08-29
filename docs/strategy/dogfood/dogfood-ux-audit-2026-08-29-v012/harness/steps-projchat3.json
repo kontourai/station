@@ -1,0 +1,10 @@
+[
+ {"goto": "/projects/audit-demo", "settle": 2500},
+ {"clickNear": ["Continue a conversation in the dock or full-screen.", "Open"], "settle": 3000},
+ {"shot": "55-project-chat-open"},
+ {"fill": ["textarea[placeholder*='Type a message']", "Say exactly: PROJECT CHAT OK"]},
+ {"press": "Enter", "settle": 2500},
+ {"wait": 20000},
+ {"shot": "56-project-chat-turn1"},
+ {"eval": "location.href"}
+]

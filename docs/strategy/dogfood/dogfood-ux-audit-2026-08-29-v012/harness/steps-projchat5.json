@@ -1,0 +1,9 @@
+[
+ {"goto": "/projects/audit-demo/panes/pane%3Abuiltin%3Achat/workspace-chat?chat=claude%3A1787978484428", "settle": 3000},
+ {"fill": ["textarea", "Say exactly: PROJECT TURN TWO OK"]},
+ {"press": "Enter", "settle": 2500},
+ {"wait": 20000},
+ {"shot": "60-project-chat-turn2"},
+ {"goto": "/projects/audit-demo/panes/pane%3Abuiltin%3Achat/workspace-chat?chat=claude%3A1787978484428", "settle": 3500},
+ {"shot": "61-project-chat-after-reload"}
+]

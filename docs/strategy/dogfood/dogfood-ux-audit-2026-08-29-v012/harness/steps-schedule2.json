@@ -1,0 +1,13 @@
+[
+ {"goto": "/schedule", "settle": 2500},
+ {"clickRole": ["button", "+ Add Job"], "settle": 1500},
+ {"fill": ["input[placeholder='my-daily-briefing']", "audit-noop-job"]},
+ {"fill": ["textarea[placeholder='What should the agent do?']", "Say exactly OK and stop."]},
+ {"clickText": "Station", "exact": false, "settle": 1200},
+ {"shot": "64-agent-dropdown"},
+ {"clickText": "Claude Code", "exact": true, "settle": 1000},
+ {"clickRole": ["button", "One time"], "settle": 1200},
+ {"shot": "65-onetime-tab"},
+ {"clickRole": ["button", "Add Job"], "settle": 2500},
+ {"shot": "66-job-added"}
+]

@@ -1,0 +1,14 @@
+[
+ {"goto": "/agents", "settle": 2500},
+ {"clickRole": ["button", "Chat", 2], "settle": 2000},
+ {"clickText": "Claude Code", "exact": true, "settle": 3000},
+ {"fill": ["textarea", "Reply with exactly one short sentence: what directory are you running in?"]},
+ {"press": "Enter", "settle": 3000},
+ {"shot": "40-chat-sent"},
+ {"wait": 25000},
+ {"shot": "41-chat-response1"},
+ {"fill": ["textarea", "Great. Now reply with exactly: SECOND TURN OK"]},
+ {"press": "Enter", "settle": 3000},
+ {"wait": 22000},
+ {"shot": "42-chat-response2"}
+]

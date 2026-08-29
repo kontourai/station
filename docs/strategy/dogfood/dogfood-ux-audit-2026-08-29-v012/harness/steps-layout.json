@@ -1,0 +1,17 @@
+[
+ {"goto": "/projects/audit-demo", "settle": 2500},
+ {"clickRole": ["button", "Add layout"], "settle": 2000},
+ {"clickText": "Getting Started", "exact": true, "settle": 3500},
+ {"shot": "74-getting-started-layout"},
+ {"eval": "location.href"},
+ {"goto": "/projects/audit-demo", "settle": 2000},
+ {"clickRole": ["button", "+ Add layout"], "settle": 2000},
+ {"clickText": "Session Board", "exact": true, "settle": 3500},
+ {"shot": "75-session-board"},
+ {"eval": "location.href"},
+ {"goto": "/projects/audit-demo", "settle": 2000},
+ {"clickRole": ["button", "+ Add layout"], "settle": 2000},
+ {"clickText": "Tasks", "exact": true, "settle": 3500},
+ {"shot": "76-tasks-layout"},
+ {"eval": "location.href"}
+]

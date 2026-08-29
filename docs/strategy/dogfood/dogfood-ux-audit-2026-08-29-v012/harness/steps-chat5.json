@@ -1,0 +1,9 @@
+[
+ {"goto": "/agents?chat=claude%3A1787977959306&dock=open", "settle": 3500},
+ {"fill": ["textarea", "Retry: reply with exactly THIRD TURN OK"]},
+ {"press": "Enter", "settle": 3000},
+ {"wait": 20000},
+ {"shot": "43-chat-retry-same"},
+ {"clickRole": ["button", "New", 0], "settle": 2500},
+ {"shot": "44-newchat-modal2"}
+]

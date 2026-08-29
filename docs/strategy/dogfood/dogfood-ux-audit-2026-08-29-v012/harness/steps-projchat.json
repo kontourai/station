@@ -1,0 +1,6 @@
+[
+ {"goto": "/projects/audit-demo", "settle": 2500},
+ {"clickRole": ["button", "Open", 1], "settle": 3000},
+ {"shot": "53-project-chat-pane"},
+ {"eval": "({url: location.href, ta: [...document.querySelectorAll('textarea')].map(t=>t.placeholder)})"}
+]

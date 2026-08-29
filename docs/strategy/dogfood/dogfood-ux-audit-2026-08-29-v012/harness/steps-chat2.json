@@ -1,0 +1,11 @@
+[
+ {"goto": "/", "settle": 3000},
+ {"clickRole": ["button", "Not now"], "settle": 1200},
+ {"shot": "36-after-notnow"},
+ {"goto": "/", "settle": 2500},
+ {"shot": "37-home-reload-modal-check"},
+ {"goto": "/agents", "settle": 2500},
+ {"clickRole": ["button", "Chat", 2], "settle": 4000},
+ {"shot": "38-chat-claude-open"},
+ {"eval": "({url: location.href, ta: [...document.querySelectorAll('textarea')].map(t=>t.placeholder)})"}
+]

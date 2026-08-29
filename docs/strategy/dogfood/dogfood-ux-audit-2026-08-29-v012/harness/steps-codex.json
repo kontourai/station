@@ -1,0 +1,15 @@
+[
+ {"goto": "/agents", "settle": 2500},
+ {"clickRole": ["button", "Chat", 1], "settle": 2000},
+ {"clickText": "Codex", "exact": true, "settle": 3000},
+ {"fill": ["textarea", "Say exactly: CODEX OK"]},
+ {"press": "Enter", "settle": 2500},
+ {"wait": 15000},
+ {"shot": "95-codex-chat"},
+ {"press": "Meta+m", "settle": 1200},
+ {"shot": "96-dock-mode2"},
+ {"press": "Meta+m", "settle": 1200},
+ {"shot": "97-dock-mode3"},
+ {"press": "Meta+m", "settle": 1200},
+ {"shot": "98-dock-mode4"}
+]

@@ -1,0 +1,8 @@
+[
+ {"goto": "/activity", "settle": 2500},
+ {"clickRole": ["button", "Delegate worker"], "settle": 2000},
+ {"fill": ["textarea[placeholder*='Implement the next']", "Reply with exactly DELEGATED OK and finish."]},
+ {"clickRole": ["button", "Change routing"], "settle": 2000},
+ {"shot": "108-routing-options"},
+ {"eval": "[...document.querySelectorAll('button,[role=option],[role=radio],label')].map(e=>e.textContent.trim()).filter(t=>t&&t.length<80).slice(0,30)"}
+]

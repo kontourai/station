@@ -1,0 +1,13 @@
+[
+ {"goto": "/schedule", "settle": 2500},
+ {"clickRole": ["button", "+ Add Job"], "settle": 1500},
+ {"fill": ["input[placeholder='my-daily-briefing']", "audit-noop-job"]},
+ {"fill": ["textarea[placeholder='What should the agent do?']", "Say exactly OK and stop."]},
+ {"clickRole": ["button", "One time"], "settle": 1200},
+ {"eval": "(() => { const btns=[...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Add Job'); btns[btns.length-1].click(); return 'clicked '+btns.length; })()"},
+ {"wait": 3000},
+ {"shot": "67-job-created"},
+ {"wait": 8000},
+ {"goto": "/schedule", "settle": 2500},
+ {"shot": "68-schedule-with-job"}
+]

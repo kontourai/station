@@ -1,0 +1,6 @@
+[
+ {"goto": "http://localhost:18600/notifications", "settle": 3000},
+ {"shot": "b02-notifications"},
+ {"goto": "http://localhost:18600/", "settle": 2500},
+ {"shot": "b03-home"}
+]

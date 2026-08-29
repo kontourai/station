@@ -1,0 +1,14 @@
+[
+ {"goto": "/agents", "settle": 2500},
+ {"clickText": "Start a chat", "settle": 1500},
+ {"shot": "82-newchat-modal"},
+ {"press": "Meta+k", "settle": 1500},
+ {"shot": "83-palette-over-modal"},
+ {"press": "Escape", "settle": 800},
+ {"shot": "84-after-esc1"},
+ {"press": "Escape", "settle": 800},
+ {"shot": "85-after-esc2"},
+ {"eval": "(() => { const b=[...document.querySelectorAll('button')].find(x=>x.getAttribute('aria-label')?.match(/notification/i)); if(b){b.click(); return 'bell clicked';} return 'no bell'; })()"},
+ {"wait": 1500},
+ {"shot": "86-notifications-popover"}
+]

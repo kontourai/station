@@ -1,0 +1,14 @@
+[
+ {"goto": "/", "settle": 4000},
+ {"shot": "112-after-restart2"},
+ {"goto": "/projects/audit-demo", "settle": 3000},
+ {"shot": "113-project-persisted"},
+ {"goto": "/activity", "settle": 3000},
+ {"shot": "114-history-persisted"},
+ {"viewport": [390, 844]},
+ {"goto": "/", "settle": 3000},
+ {"shot": "115-mobile-home"},
+ {"goto": "/agents", "settle": 2500},
+ {"shot": "116-mobile-agents"},
+ {"viewport": [1440, 900]}
+]

@@ -1,0 +1,11 @@
+[
+ {"goto": "/projects/audit-demo/panes/pane%3Abuiltin%3Achat/workspace-chat", "settle": 2500},
+ {"clickRole": ["button", "Start a chat"], "settle": 2500},
+ {"shot": "57-project-startchat"},
+ {"clickText": "Claude Code", "exact": true, "settle": 3000},
+ {"shot": "58-project-chat-ready"},
+ {"fill": ["textarea", "Say exactly: PROJECT CHAT OK"]},
+ {"press": "Enter", "settle": 2500},
+ {"wait": 18000},
+ {"shot": "59-project-chat-turn1"}
+]

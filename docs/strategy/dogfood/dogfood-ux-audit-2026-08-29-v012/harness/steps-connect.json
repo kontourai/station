@@ -1,0 +1,6 @@
+[
+ {"goto": "/agents", "settle": 2500},
+ {"clickRole": ["button", "Connect"], "settle": 2500},
+ {"shot": "99-st-connect-flow"},
+ {"eval": "[...document.querySelectorAll('input,textarea')].map(i=>i.placeholder||i.name).filter(Boolean)"}
+]

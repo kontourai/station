@@ -1,0 +1,14 @@
+[
+ {"goto": "/activity", "settle": 2500},
+ {"clickRole": ["button", "Delegate worker"], "settle": 2000},
+ {"fill": ["textarea[placeholder*='Implement the next']", "Reply with exactly DELEGATED OK and finish."]},
+ {"clickRole": ["button", "Change routing"], "settle": 2000},
+ {"eval": "[...document.querySelectorAll('select')].map(s=>({opts:[...s.options].map(o=>o.textContent.trim())}))"},
+ {"eval": "(() => { const sels=[...document.querySelectorAll('select')]; const st=sels.find(s=>[...s.options].some(o=>/This Station/.test(o.textContent))); const opt=[...st.options].find(o=>/127|18641/.test(o.textContent)); if(opt){st.value=opt.value; st.dispatchEvent(new Event('change',{bubbles:true})); return 'picked '+opt.textContent;} return 'no-b-option'; })()"},
+ {"wait": 1500},
+ {"shot": "109-routing-station-b"},
+ {"clickRole": ["button", "Delegate"], "exact": true, "settle": 3000},
+ {"shot": "110-delegated"},
+ {"wait": 12000},
+ {"shot": "111-delegated-later"}
+]

@@ -1,0 +1,8 @@
+[
+ {"goto": "/projects/audit-demo", "settle": 2500},
+ {"eval": "(() => { const cards=[...document.querySelectorAll('div,section')].filter(d=>d.querySelector('button')); const chatCard=[...document.querySelectorAll('*')].find(e=>e.childElementCount===0 && e.textContent.trim()==='Chat' && e.closest('div')); return 'located'; })()"},
+ {"eval": "(() => { const els=[...document.querySelectorAll('button')]; const open=els.filter(b=>b.textContent.trim()==='Open'); const target=open.find(b=>b.closest('div[class]')?.textContent.includes('Continue a conversation')); if(target){target.click(); return 'clicked-chat-open';} return 'notfound:'+open.length; })()"},
+ {"wait": 3000},
+ {"shot": "54-project-chat-pane"},
+ {"eval": "location.href"}
+]

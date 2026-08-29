@@ -1,0 +1,9 @@
+[
+ {"goto": "/projects/audit-demo", "settle": 2500},
+ {"clickText": "1 more notice, 1 error", "settle": 1500},
+ {"shot": "80-banner-stack-expanded"},
+ {"eval": "[...document.querySelectorAll('input')].map(i=>i.placeholder).filter(Boolean)"},
+ {"clickNear": ["Arrange exact Station work references", "Open"], "settle": 3000},
+ {"shot": "81-work-board"},
+ {"eval": "location.href"}
+]

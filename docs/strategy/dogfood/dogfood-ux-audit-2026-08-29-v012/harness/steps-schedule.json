@@ -1,0 +1,7 @@
+[
+ {"goto": "/schedule", "settle": 3000},
+ {"shot": "62-schedule-settled"},
+ {"clickRole": ["button", "+ Add Job"], "settle": 2000},
+ {"shot": "63-schedule-addjob"},
+ {"eval": "[...document.querySelectorAll('input,textarea,select')].map(i=>({t:i.tagName, p:i.placeholder||i.name||null})).slice(0,15)"}
+]

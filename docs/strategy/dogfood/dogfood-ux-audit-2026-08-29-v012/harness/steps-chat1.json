@@ -1,0 +1,11 @@
+[
+ {"goto": "/", "settle": 2500},
+ {"clickText": "Not now", "settle": 1000},
+ {"shot": "33-home-after-notnow"},
+ {"goto": "/agents", "settle": 2000},
+ {"clickText": "Claude Code", "settle": 1200},
+ {"eval": "[...document.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Chat').length"},
+ {"click": "button:has-text('Chat')", "settle": 2500},
+ {"shot": "34-chat-opened"},
+ {"eval": "({url: location.href, inputs: [...document.querySelectorAll('textarea,input')].map(i=>i.placeholder||i.name).slice(0,10)})"}
+]

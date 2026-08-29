@@ -1,0 +1,12 @@
+[
+ {"goto": "/activity", "settle": 2500},
+ {"clickRole": ["button", "Dock this pane"], "settle": 2500},
+ {"shot": "100-activity-docked"},
+ {"press": "Meta+m", "settle": 1200},
+ {"shot": "101-docked-mode2"},
+ {"press": "Meta+m", "settle": 1200},
+ {"shot": "102-docked-mode3"},
+ {"eval": "(() => { const d=[...document.querySelectorAll('div')].filter(e=>{const s=getComputedStyle(e); return s.overflow==='hidden' && e.scrollHeight>e.clientHeight+50 && e.clientHeight>100;}); return d.slice(0,5).map(e=>({cls:(e.className||'').toString().slice(0,60), sh:e.scrollHeight, ch:e.clientHeight})); })()"},
+ {"goto": "/connections/computers", "settle": 2500},
+ {"shot": "103-computers"}
+]

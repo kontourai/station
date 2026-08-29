@@ -1,0 +1,11 @@
+[
+ {"goto": "/agents", "settle": 2500},
+ {"clickRole": ["button", "I understand"], "settle": 1500},
+ {"shot": "91-telemetry-step2"},
+ {"clickRole": ["button", "I understand"], "settle": 1500},
+ {"shot": "92-telemetry-step3"},
+ {"clickRole": ["button", "I understand"], "settle": 1500},
+ {"shot": "93-after-telemetry-done"},
+ {"press": "Meta+k", "settle": 1500},
+ {"shot": "94-palette-now"}
+]

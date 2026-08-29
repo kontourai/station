@@ -1,0 +1,5 @@
+[
+ {"goto": "/#station-ui-bootstrap=4gDOo0lzqg2WH-T0JUhP7YvCwF5UG_wEzP6c0O5yfg0", "settle": 3000},
+ {"shot": "01-first-boot"},
+ {"eval": "({url: location.href, title: document.title, cookies: document.cookie.length})"}
+]

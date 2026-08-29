@@ -1,0 +1,7 @@
+[
+ {"goto": "/connections/computers", "settle": 3000},
+ {"shot": "105-computers-after-pair"},
+ {"goto": "/activity", "settle": 2500},
+ {"clickRole": ["button", "Delegate worker"], "settle": 2500},
+ {"shot": "106-delegate-modal"}
+]

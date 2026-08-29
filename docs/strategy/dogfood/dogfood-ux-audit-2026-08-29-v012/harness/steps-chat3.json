@@ -1,0 +1,7 @@
+[
+ {"goto": "/agents", "settle": 2500},
+ {"clickRole": ["button", "Chat", 2], "settle": 2000},
+ {"clickText": "Claude Code", "exact": true, "settle": 3000},
+ {"shot": "39-chat-surface"},
+ {"eval": "({url: location.href, ta: [...document.querySelectorAll('textarea')].map(t=>t.placeholder), editable: [...document.querySelectorAll('[contenteditable=true]')].length})"}
+]

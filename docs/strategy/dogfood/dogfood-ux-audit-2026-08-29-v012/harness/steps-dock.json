@@ -1,0 +1,14 @@
+[
+ {"goto": "/agents", "settle": 2500},
+ {"press": "Meta+k", "settle": 1500},
+ {"shot": "87-palette-plain"},
+ {"press": "Escape", "settle": 800},
+ {"goto": "/agents?chat=claude%3A1787978484428&dock=open", "settle": 3000},
+ {"shot": "88-dock-reopen-project-chat"},
+ {"press": "Meta+m", "settle": 1200},
+ {"shot": "89-dock-after-cmd-m"},
+ {"press": "Meta+m", "settle": 1200},
+ {"press": "Meta+d", "settle": 1500},
+ {"shot": "90-dock-after-cmd-d"},
+ {"eval": "location.href"}
+]

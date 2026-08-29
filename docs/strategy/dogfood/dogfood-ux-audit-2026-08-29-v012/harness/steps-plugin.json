@@ -1,0 +1,6 @@
+[
+ {"goto": "/registry", "settle": 3000},
+ {"clickNear": ["Getting Started Starter", "View Getting Started Starter details"], "settle": 2500},
+ {"shot": "70-plugin-details"},
+ {"eval": "[...document.querySelectorAll('button')].map(b=>b.textContent.trim()).filter(t=>t&&t.length<40).slice(0,30)"}
+]
