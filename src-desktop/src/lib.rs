@@ -6460,6 +6460,37 @@ pub(crate) fn request_main_window_activation(app: &AppHandle) {
     if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
         reveal_main_window(app);
     }
+    continue_startup_readiness(app, state.inner(), &effects);
+}
+
+#[cfg(not(mobile))]
+fn continue_startup_readiness(
+    app: &AppHandle,
+    state: &DesktopServerState,
+    effects: &[startup_readiness::ReadinessEffect],
+) {
+    let resumed = effects.iter().any(|effect| {
+        matches!(
+            effect,
+            startup_readiness::ReadinessEffect::ReprobeCurrentTicket
+                | startup_readiness::ReadinessEffect::RestartOwnedSidecar
+                | startup_readiness::ReadinessEffect::RecommitRecoverySurface
+        )
+    });
+    if !resumed {
+        return;
+    }
+    if effects.contains(&startup_readiness::ReadinessEffect::RestartOwnedSidecar) {
+        let _ = state.supervisor.tx.send(SupervisorMessage::Restart);
+    } else {
+        let _ = app.emit("station://startup-readiness-retry", ());
+    }
+    let epoch = state
+        .readiness
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .epoch;
+    arm_startup_deadline(app.clone(), epoch);
 }
 
 #[cfg(not(mobile))]
@@ -6516,20 +6547,32 @@ fn arm_startup_deadline(app: AppHandle, epoch: u64) {
             thread::sleep(Duration::from_secs(30));
             let Some(state) = app.try_state::<DesktopServerState>() else { return };
             let effects = transition_startup_readiness(state.inner(), startup_readiness::ReadinessInput::DeadlineElapsed { epoch, now_ms: 30_000 });
+            if effects.iter().any(|effect| matches!(effect,
+                startup_readiness::ReadinessEffect::ReprobeCurrentTicket
+                    | startup_readiness::ReadinessEffect::RestartOwnedSidecar
+                    | startup_readiness::ReadinessEffect::RecommitRecoverySurface
+            )) {
+                continue_startup_readiness(&app, state.inner(), &effects);
+                return;
+            }
             if !effects.contains(&startup_readiness::ReadinessEffect::ShowDiagnostic { epoch }) { return; }
             use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
             log::warn!("desktop startup readiness timed out for epoch {epoch}");
             let retry = app.dialog().message("Station is still preparing its protected workspace. Retry safely resumes the selected local recovery surface.").title("Station is not ready").kind(MessageDialogKind::Warning).buttons(MessageDialogButtons::OkCancelCustom("Retry".into(), "Exit".into())).blocking_show();
-            if !retry { let _ = app.exit(1); return; }
-            let retry_effects = transition_startup_readiness(state.inner(), startup_readiness::ReadinessInput::Retry { now_ms: 0, timeout_ms: 30_000 });
-            let next_epoch = state.readiness.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).epoch;
-            if retry_effects.contains(&startup_readiness::ReadinessEffect::RestartOwnedSidecar) {
-                let _ = state.supervisor.tx.send(SupervisorMessage::Restart);
-            } else if retry_effects.contains(&startup_readiness::ReadinessEffect::ReprobeCurrentTicket)
-                || retry_effects.contains(&startup_readiness::ReadinessEffect::RecommitRecoverySurface) {
-                let _ = app.emit("station://startup-readiness-retry", ());
+            if !retry {
+                let still_failed_for_dialog_epoch = {
+                    let readiness = state
+                    .readiness
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    readiness.phase == startup_readiness::ReadinessPhase::Failed
+                        && readiness.epoch == epoch
+                };
+                if still_failed_for_dialog_epoch { let _ = app.exit(1); }
+                return;
             }
-            arm_startup_deadline(app, next_epoch);
+            let retry_effects = transition_startup_readiness(state.inner(), startup_readiness::ReadinessInput::Retry { now_ms: 0, timeout_ms: 30_000 });
+            continue_startup_readiness(&app, state.inner(), &retry_effects);
         });
 }
 

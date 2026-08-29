@@ -62,6 +62,24 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).toContain('request_main_window_activation(app);');
   });
 
+  it('routes timeout recovery through the existing readiness authority', () => {
+    const lib = read('src-desktop/src/lib.rs');
+    const activation = lib.indexOf(
+      'pub(crate) fn request_main_window_activation',
+    );
+    const deadline = lib.indexOf('fn arm_startup_deadline');
+
+    expect(activation).toBeGreaterThanOrEqual(0);
+    expect(deadline).toBeGreaterThan(activation);
+    expect(lib.slice(activation, deadline)).toContain(
+      'continue_startup_readiness(app, state.inner(), &effects);',
+    );
+    expect(lib.slice(deadline)).toContain(
+      'continue_startup_readiness(&app, state.inner(), &effects);',
+    );
+    expect(lib.slice(deadline)).toContain('readiness.epoch == epoch');
+  });
+
   it('registers the updater exactly once only for usable release configuration', () => {
     const lib = read('src-desktop/src/lib.rs');
     const configurationStart = lib.indexOf(
