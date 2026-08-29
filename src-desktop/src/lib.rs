@@ -6431,10 +6431,13 @@ fn request_native_startup_commit(app: &AppHandle) {
             .status
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let Ok(ticket) = current_startup_ticket(&status) else {
-            return;
-        };
-        ticket
+        match current_startup_ticket(&status) {
+            Ok(ticket) => ticket,
+            Err(error) => {
+                log::info!("native startup bootstrap is waiting for a sidecar ticket: {error}");
+                return;
+            }
+        }
     };
     let phase = state
         .readiness
@@ -6447,8 +6450,13 @@ fn request_native_startup_commit(app: &AppHandle) {
         &state.startup_commit_in_flight,
         &state.startup_commit_pending,
     ) {
+        log::debug!("native startup bootstrap did not claim readiness phase {phase:?}");
         return;
     }
+    log::info!(
+        "native startup bootstrap claimed identity proof generation {}",
+        ticket.generation
+    );
     let app_for_commit = app.clone();
     tauri::async_runtime::spawn(async move {
         match tauri::async_runtime::spawn_blocking({
@@ -6957,9 +6965,14 @@ fn observe_startup_ticket(app: &AppHandle, ticket: startup_readiness::StartupTic
     let Some(state) = app.try_state::<DesktopServerState>() else {
         return;
     };
+    let generation = ticket.generation;
     let _ = transition_startup_readiness(
         state.inner(),
         startup_readiness::ReadinessInput::ServerTicket(ticket),
+    );
+    log::info!(
+        "native startup bootstrap observed sidecar ticket generation {}",
+        generation
     );
     // A sidecar retry becomes reprobeable only after this exact new generation
     // is running and has published its ticket; never wake the renderer against
