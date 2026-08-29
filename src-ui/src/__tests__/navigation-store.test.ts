@@ -53,6 +53,24 @@ describe('navigationStore dialog history isolation', () => {
     expect(window.location.pathname).toBe('/connections/models');
     expect(window.history.state[DIALOG_HISTORY_KEY]).toBeUndefined();
   });
+
+  test('commits a same-route chat selection beyond the dialog Back marker', () => {
+    window.history.replaceState(
+      { [DIALOG_HISTORY_KEY]: 'new-chat' },
+      '',
+      '/projects/alpha?chat=conversation-old',
+    );
+
+    navigationStore.navigate('/projects/alpha', {
+      chat: 'session-new',
+    });
+
+    expect(window.location.pathname).toBe('/projects/alpha');
+    expect(new URLSearchParams(window.location.search).get('chat')).toBe(
+      'session-new',
+    );
+    expect(window.history.state[DIALOG_HISTORY_KEY]).toBeUndefined();
+  });
 });
 
 describe('navigationStore Settings query history', () => {
