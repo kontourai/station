@@ -10,7 +10,11 @@ import type {
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { WorkflowSidecarAttachMode } from '../evidence/orchestration-workflow-sidecar.js';
-import { CriticalResourcePostureError } from '../infra/resource-posture.js';
+import type { RuntimeEngineStartIntent } from '../infra/resource-posture.js';
+import {
+  CriticalResourcePostureError,
+  InteractiveResourceOverrideRequiredError,
+} from '../infra/resource-posture.js';
 
 /** The only start-session intent callers may issue. */
 export type SessionCommand = {
@@ -37,6 +41,7 @@ export type SessionCommandOutcome =
       message: string;
       /** Typed, retryable refusal facts survive to HTTP/delegation callers. */
       code?: string;
+      resourceAdmissionOverride?: { token: string; expiresAt: number };
     }
   | {
       /** Session effects completed, but accepted-receipt durability is unknown. */
@@ -77,6 +82,10 @@ export type SessionCommandInternalOptions = {
     conversationId: string;
     environmentId: string;
   };
+  /** Server-derived caller topology; never accepted from a command body. */
+  resourceAdmissionIntent?: RuntimeEngineStartIntent;
+  /** Opaque controller capability; only the foreground route can carry it. */
+  resourceAdmissionOverrideToken?: string;
 };
 
 type ExistingSession = {
@@ -172,6 +181,7 @@ export interface SessionCommandDependencies {
       adapter: ProviderAdapterShape,
       input: ProviderSessionStartInput,
       context: SessionCommandContext,
+      internal: SessionCommandInternalOptions | undefined,
     ): Promise<ProviderSession>;
     recordStarted(
       adapter: ProviderAdapterShape,
@@ -318,8 +328,14 @@ export function createSessionCommandModule(
         receipt: readback ?? terminalReceipt,
         receiptStatus: readback ? 'persisted' : 'unavailable',
         message: error instanceof Error ? error.message : String(error),
-        ...(error instanceof CriticalResourcePostureError
-          ? { code: error.code }
+        ...(error instanceof CriticalResourcePostureError ||
+        (typeof error === 'object' &&
+          error !== null &&
+          typeof (error as { code?: unknown }).code === 'string')
+          ? { code: (error as { code: string }).code }
+          : {}),
+        ...(error instanceof InteractiveResourceOverrideRequiredError
+          ? { resourceAdmissionOverride: error.override }
           : {}),
       };
     };
@@ -447,6 +463,7 @@ export function createSessionCommandModule(
           adapter,
           startInput,
           context,
+          internal,
         );
         deps.launchPolicy.recordStarted(adapter, startInput);
         await deps.launchPolicy.ensureStartedSessionCurrent(
