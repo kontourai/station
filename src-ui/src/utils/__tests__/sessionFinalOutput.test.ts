@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { latestTurnOutputText } from '../sessionFinalOutput';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
+import { latestTurnOutputText } from '../sessionFinalOutput';
 
 function ev(partial: Record<string, unknown>): OrchestrationEvent {
   return {
