@@ -19,6 +19,7 @@ import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
+import { conversationCanMutate } from '../../contexts/conversation-open-policy';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { drainQueuedMessageOnTurnCompleted } from '../../hooks/orchestration/queueDrain';
 import { useActiveChatTranscript } from '../../hooks/orchestration/useActiveChatTranscript';
@@ -65,7 +66,6 @@ import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
 import { ErrorState, SkeletonList } from '../state';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
-import { conversationCanMutate } from './conversationOpenPolicy';
 import {
   type RetryAttachment,
   resolveRetryAttachments,

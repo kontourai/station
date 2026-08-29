@@ -4,7 +4,7 @@ import {
   commitConversationOpen,
   conversationOpenPatch,
 } from '../components/chat-dock/conversationOpenController';
-import { conversationCanMutate } from '../components/chat-dock/conversationOpenPolicy';
+import { conversationCanMutate } from '../contexts/conversation-open-policy';
 
 const conversation = {
   id: 'conversation-749',

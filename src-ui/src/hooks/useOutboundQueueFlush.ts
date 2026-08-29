@@ -13,8 +13,8 @@
  */
 import { useConnectionStatus } from '@kontourai/station-connect';
 import { useCallback, useEffect, useRef } from 'react';
-import { conversationCanMutate } from '../components/chat-dock/conversationOpenPolicy';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { conversationCanMutate } from '../contexts/conversation-open-policy';
 import { checkServerHealth, probeServerConnection } from '../lib/serverHealth';
 import { useSendMessage } from './useActiveChatSessions';
 

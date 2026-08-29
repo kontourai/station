@@ -6,7 +6,7 @@ export interface ConversationOpenPolicyState {
   conversationOpenState?: ConversationOpenResolution;
 }
 
-/** The one synchronous gate shared by composer, inventory, Basis, and actions. */
+/** The one synchronous gate shared by mutation, composer, inventory, and Basis. */
 export function conversationCanMutate(
   state: ConversationOpenPolicyState,
 ): boolean {

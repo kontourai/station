@@ -30,6 +30,7 @@ import {
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { activeChatDurableId } from '../../contexts/active-chats-state';
 import { CONFIG_DEFAULTS, useConfig } from '../../contexts/ConfigContext';
+import { conversationCanMutate as canMutateConversation } from '../../contexts/conversation-open-policy';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -125,7 +126,6 @@ import {
   refuseConversationHandoffUiState,
 } from './conversationHandoffUiState';
 import type { ConversationOpenRecovery } from './conversationOpenController';
-import { conversationCanMutate as canMutateConversation } from './conversationOpenPolicy';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
 import type { MobileTaskSwitcherMode } from './MobileTaskSwitcher';
 import { isDockOwnedViewType, isMobileDockFullscreen } from './mobile-chrome';

@@ -2,8 +2,8 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import { contextRegistry } from '@kontourai/station-sdk';
 import { ChatHttpError } from '@kontourai/station-sdk/client';
-import { conversationCanMutate } from '../../components/chat-dock/conversationOpenPolicy';
 import { activeChatsStore } from '../../contexts/active-chats-store';
+import { conversationCanMutate } from '../../contexts/conversation-open-policy';
 import { ambientContextForSend } from '../../utils/chatAmbientContext';
 import { buildOutgoingUserMessage } from '../useActiveChatSessions.helpers';
 import { sendExecutionMessage } from '../useOrchestration';
@@ -111,6 +111,15 @@ export function drainQueuedMessageOnTurnCompleted(
   setTimeout(() => {
     const current = activeChatsStore.getSnapshot()[threadId];
     if (!current) {
+      return;
+    }
+    // The terminal event and the resolver can race across the settle delay.
+    // Requeue the exact head before any optimistic row or provider effect if
+    // the current authoritative state ceased to admit continuation.
+    if (!conversationCanMutate(current)) {
+      activeChatsStore.updateChat(threadId, {
+        queuedMessages: [nextMessage, ...(current.queuedMessages ?? [])],
+      });
       return;
     }
 
