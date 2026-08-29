@@ -186,6 +186,22 @@ export function deriveChangelogSlice({
       commitCount: 0,
     };
   }
+  // A previous ship SHA can be absent from this repository entirely: the
+  // ledger survives history resets, so a predecessor row may point into a
+  // history this repository no longer carries. No commit range exists to
+  // slice in that case — disclose the gap on this one entry rather than
+  // failing every subsequent ship on the channel forever.
+  try {
+    execGit(['cat-file', '-e', `${previousSha}^{commit}`]);
+  } catch (error) {
+    if (error?.code === 'ENOENT') throw error; // git itself is missing, not the object
+    return {
+      previousSha,
+      groups: Object.fromEntries(CHANGELOG_GROUP_ORDER.map((g) => [g, []])),
+      note: `Changelog slice omitted: previous ship SHA ${previousSha.slice(0, 7)} is not reachable in this repository's history, so no commit range exists to derive.`,
+      commitCount: 0,
+    };
+  }
   const entries = parseGitLogOutput(
     execGit(['log', '--format=%H%x00%P%x00%s', `${previousSha}..${sha}`]),
   );

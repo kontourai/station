@@ -187,6 +187,7 @@ describe('changelog slice derivation', () => {
     const inner = `${D_SHA}\0${A_SHA}\0fix(delegate): real change`;
     const ledger = `${C_SHA}\0${A_SHA}\0docs(ledger): record nightly ships from run 1`;
     const { execGit } = fixtureExec({
+      [`cat-file -e ${A_SHA}^{commit}`]: '',
       [`log --format=%H%x00%P%x00%s ${A_SHA}..${B_SHA}`]: [
         merge,
         inner,
@@ -211,6 +212,7 @@ describe('changelog slice derivation', () => {
 
   it('keeps unattributed commits visible and unlinked rather than dropping them', () => {
     const { execGit } = fixtureExec({
+      [`cat-file -e ${A_SHA}^{commit}`]: '',
       [`log --format=%H%x00%P%x00%s ${A_SHA}..${B_SHA}`]: `${C_SHA}\0${A_SHA}\0chore: direct push\n`,
     });
     const slice = deriveChangelogSlice({
@@ -221,6 +223,49 @@ describe('changelog slice derivation', () => {
       execGit,
     });
     expect(slice.groups.other).toEqual(['chore: direct push']);
+  });
+
+  it('discloses an unreachable previous ship SHA instead of failing the channel', () => {
+    const calls: string[][] = [];
+    const execGit = (args: string[]): string => {
+      calls.push(args);
+      if (args[0] === 'cat-file') {
+        throw new Error(
+          `fatal: Not a valid object name ${A_SHA}^{commit}`,
+        );
+      }
+      throw new Error(`unexpected git call after failed probe: ${args.join(' ')}`);
+    };
+    const slice = deriveChangelogSlice({
+      repoRoot: '.',
+      previousSha: A_SHA,
+      sha: B_SHA,
+      githubRepo: 'kontourai/station',
+      execGit,
+    });
+    expect(calls).toEqual([['cat-file', '-e', `${A_SHA}^{commit}`]]);
+    expect(slice.previousSha).toBe(A_SHA);
+    expect(slice.commitCount).toBe(0);
+    for (const group of CHANGELOG_GROUP_ORDER)
+      expect(slice.groups[group]).toEqual([]);
+    expect(slice.note).toMatch(/not reachable in this repository/);
+  });
+
+  it('propagates a missing git binary from the reachability probe', () => {
+    const enoent = Object.assign(new Error('spawn git ENOENT'), {
+      code: 'ENOENT',
+    });
+    expect(() =>
+      deriveChangelogSlice({
+        repoRoot: '.',
+        previousSha: A_SHA,
+        sha: B_SHA,
+        githubRepo: 'kontourai/station',
+        execGit: () => {
+          throw enoent;
+        },
+      }),
+    ).toThrow(/ENOENT/);
   });
 
   it('rejects malformed shas before any git call', () => {
