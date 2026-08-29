@@ -2354,9 +2354,36 @@ describe('device pairing requests need attention (#765 D5)', () => {
         createdAt: new Date(requestNow - 1_000).toISOString(),
         updatedAt: new Date(requestNow - 1_000).toISOString(),
         deviceName: 'Test Phone',
+        // No viewer capability supplied — an unknown caller fails closed:
+        // the projection must never claim decidability nothing derived.
+        viewerCanDecide: false,
         openHref: '/connections',
         source: { requestId: 'pair-req-1' },
       },
+    ]);
+  });
+
+  test('a viewer the boundary would admit gets viewerCanDecide: true; one it would refuse gets false (#765 D5)', async () => {
+    const projection = makeService({ pairingRequests: [pairingRequest()] });
+
+    const decider = await projection.list(undefined, {
+      mayDecidePairingRequests: true,
+    });
+    expect(decider.items).toEqual([
+      expect.objectContaining({
+        kind: 'device-pairing',
+        viewerCanDecide: true,
+      }),
+    ]);
+
+    const bystander = await projection.list(undefined, {
+      mayDecidePairingRequests: false,
+    });
+    expect(bystander.items).toEqual([
+      expect.objectContaining({
+        kind: 'device-pairing',
+        viewerCanDecide: false,
+      }),
     ]);
   });
 
