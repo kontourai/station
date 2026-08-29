@@ -1618,6 +1618,63 @@ fn read_station_profile_contents(app: &AppHandle) -> Result<String, String> {
         .map_err(|error| format!("read saved Station metadata for credential access: {error}"))
 }
 
+/// Publish a fully-synced profile replacement. POSIX rename replaces the
+/// destination atomically, while Windows requires ReplaceFileW for the same
+/// existing-destination contract.
+#[cfg(windows)]
+fn replace_station_profile_store(
+    temporary: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn ReplaceFileW(
+            replaced_file_name: *const u16,
+            replacement_file_name: *const u16,
+            backup_file_name: *const u16,
+            replace_flags: u32,
+            exclude: *const core::ffi::c_void,
+            reserved: *const core::ffi::c_void,
+        ) -> i32;
+    }
+    let wide = |path: &std::path::Path| {
+        path.as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>()
+    };
+    let destination = wide(destination);
+    let temporary = wide(temporary);
+    if unsafe {
+        ReplaceFileW(
+            destination.as_ptr(),
+            temporary.as_ptr(),
+            std::ptr::null(),
+            0,
+            std::ptr::null(),
+            std::ptr::null(),
+        )
+    } == 0
+    {
+        return Err(format!(
+            "replace saved Station metadata: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn replace_station_profile_store(
+    temporary: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<(), String> {
+    std::fs::rename(temporary, destination)
+        .map_err(|error| format!("replace saved Station metadata: {error}"))
+}
+
 fn authorized_credential_reference(
     app: &AppHandle,
     authority: &NativeProfileAuthority,
@@ -3435,8 +3492,14 @@ fn reclaim_stale_profile_reclaim_guard(
     path: &std::path::Path,
     birth_for_pid: &dyn Fn(u32) -> Result<Option<String>, String>,
 ) -> Result<bool, String> {
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|error| format!("inspect saved Station reclaim guard: {error}"))?;
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        // The observed guard can be released between create_new's EEXIST and
+        // this stale inspection. Let the caller retry acquisition instead of
+        // treating normal owner completion as a bootstrap failure.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("inspect saved Station reclaim guard: {error}")),
+    };
     if !metadata.file_type().is_file() {
         return Ok(false);
     }
@@ -3447,8 +3510,11 @@ fn reclaim_stale_profile_reclaim_guard(
             return Ok(false);
         }
     }
-    let contents = std::fs::read_to_string(path)
-        .map_err(|error| format!("read saved Station reclaim guard: {error}"))?;
+    let contents = match std::fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("read saved Station reclaim guard: {error}")),
+    };
     let reclaimable = match serde_json::from_str::<ParsedStationProfileLockRecord>(&contents) {
         Ok(record) => {
             let now = SystemTime::now()
@@ -3481,8 +3547,13 @@ fn reclaim_stale_profile_reclaim_guard(
     }
     // Recheck just before unlinking so a competing recovery that already
     // replaced this pathname with a live guard is never removed by us.
-    let current = std::fs::symlink_metadata(path)
-        .map_err(|error| format!("reinspect saved Station reclaim guard: {error}"))?;
+    let current = match std::fs::symlink_metadata(path) {
+        Ok(current) => current,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("reinspect saved Station reclaim guard: {error}")),
+    };
+    #[cfg(not(unix))]
+    let _ = &current;
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -3660,8 +3731,13 @@ fn reclaim_stale_profile_lock(
     }
     // Bind deletion to the exact inode inspected under the exclusive guard;
     // a pathname replacement is never reclaim authority.
-    let current = std::fs::symlink_metadata(path)
-        .map_err(|error| format!("reinspect saved Station lock: {error}"))?;
+    let current = match std::fs::symlink_metadata(path) {
+        Ok(current) => current,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("reinspect saved Station lock: {error}")),
+    };
+    #[cfg(not(unix))]
+    let _ = &current;
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -4089,8 +4165,7 @@ fn station_profile_store_write_internal(
             .map_err(|error| format!("write saved Station temp file: {error}"))?;
         file.sync_all()
             .map_err(|error| format!("sync saved Station temp file: {error}"))?;
-        std::fs::rename(&temporary, &path)
-            .map_err(|error| format!("replace saved Station metadata: {error}"))?;
+        replace_station_profile_store(&temporary, &path)?;
         crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, &path)])?;
         Ok(())
     })();
@@ -12165,8 +12240,7 @@ mod tests {
             .map_err(|error| format!("write native bootstrap profile store: {error}"))?;
         file.sync_all()
             .map_err(|error| format!("sync native bootstrap profile store: {error}"))?;
-        std::fs::rename(&temporary, path)
-            .map_err(|error| format!("publish native bootstrap profile store: {error}"))?;
+        replace_station_profile_store(&temporary, path)?;
         Ok(())
     }
 
@@ -12249,8 +12323,12 @@ mod tests {
         }
 
         let executable = std::env::current_exe().unwrap();
+        // Repeating every channel makes the ordinary release/reclaim windows
+        // likely under one bounded test run, while the final store still has
+        // exactly one native owner row per channel.
         let children = ["stable", "beta", "nightly"]
             .into_iter()
+            .flat_map(|channel| std::iter::repeat(channel).take(8))
             .map(|channel| {
                 let mut command = Command::new(&executable);
                 command
@@ -12470,6 +12548,26 @@ mod tests {
             .expect("profile reader follows admission")];
         assert!(admission.contains("TrustKind::Directory, root"));
         assert!(admission.contains("TrustKind::Directory, &config"));
+    }
+
+    #[test]
+    fn profile_store_publish_uses_the_shared_replace_authority_on_every_platform() {
+        let source = include_str!("lib.rs");
+        assert!(source.contains("fn replace_station_profile_store("));
+        assert!(source.contains("fn ReplaceFileW("));
+        let production = &source[source
+            .find("fn station_profile_store_write_internal(")
+            .expect("native profile writer exists")..source
+            .find("fn station_profile_store_write(")
+            .expect("native command wrapper follows writer")];
+        assert!(production.contains("replace_station_profile_store(&temporary, &path)?"));
+        assert!(!production.contains("std::fs::rename(&temporary, &path)"));
+        let worker = &source[source
+            .find("fn write_native_bootstrap_process_store(")
+            .expect("native worker publisher exists")..source
+            .find("fn native_bundled_profile_process_worker()")
+            .expect("native worker follows publisher")];
+        assert!(worker.contains("replace_station_profile_store(&temporary, path)?"));
     }
 
     #[cfg(not(mobile))]
