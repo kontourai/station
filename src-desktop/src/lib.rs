@@ -6355,6 +6355,7 @@ struct DesktopServerState {
 #[derive(Default)]
 struct NativeStartupBootstrap {
     renderer_observed: AtomicBool,
+    renderer_mounted: AtomicBool,
 }
 
 #[cfg(not(mobile))]
@@ -6523,6 +6524,30 @@ fn advance_native_startup_after_page(app: &AppHandle) {
     } else if let Err(error) = commit_native_startup_recovery_for_app(app) {
         log::warn!("native startup recovery reveal refused: {error}");
     }
+}
+
+#[cfg(not(mobile))]
+fn replay_native_startup_renderer_observations(app: &AppHandle) {
+    let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
+        return;
+    };
+    if !bootstrap.renderer_observed.load(Ordering::Acquire) {
+        return;
+    }
+    let Some(state) = app.try_state::<DesktopServerState>() else {
+        return;
+    };
+    let _ = transition_startup_readiness(
+        state.inner(),
+        startup_readiness::ReadinessInput::RendererPageStarted,
+    );
+    if bootstrap.renderer_mounted.load(Ordering::Acquire) {
+        let _ = transition_startup_readiness(
+            state.inner(),
+            startup_readiness::ReadinessInput::RendererMounted,
+        );
+    }
+    advance_native_startup_after_page(app);
 }
 
 #[cfg(not(mobile))]
@@ -7363,6 +7388,7 @@ fn observe_native_startup_page(app: &AppHandle, label: &str, event: PageLoadEven
     let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
         return;
     };
+    bootstrap.renderer_mounted.store(false, Ordering::Release);
     if !bootstrap.renderer_observed.swap(true, Ordering::AcqRel) {
         log::info!("native startup bootstrap observed the main renderer page start");
     }
@@ -7433,9 +7459,14 @@ fn commit_renderer_mount(window: tauri::WebviewWindow, app: AppHandle) -> Result
     if !renderer_mount_label_admitted(window.label()) {
         return Err("Renderer mount commits are accepted only from the main WebView.".into());
     }
-    let state = app
-        .try_state::<DesktopServerState>()
-        .ok_or("Desktop startup readiness is not initialized.")?;
+    let bootstrap = app
+        .try_state::<NativeStartupBootstrap>()
+        .ok_or("Desktop startup bootstrap is not initialized.")?;
+    bootstrap.renderer_mounted.store(true, Ordering::Release);
+    let Some(state) = app.try_state::<DesktopServerState>() else {
+        log::info!("native startup bootstrap retained the main React mount before desktop state");
+        return Ok(());
+    };
     let effects = transition_startup_readiness(
         state.inner(),
         startup_readiness::ReadinessInput::RendererMounted,
@@ -7450,7 +7481,10 @@ fn commit_renderer_mount(window: tauri::WebviewWindow, app: AppHandle) -> Result
 
 #[cfg(not(mobile))]
 #[tauri::command]
-fn commit_startup_recovery_ui(app: AppHandle) -> Result<(), String> {
+fn commit_startup_recovery_ui(window: tauri::WebviewWindow, app: AppHandle) -> Result<(), String> {
+    if !renderer_mount_label_admitted(window.label()) {
+        return Err("Startup recovery commits are accepted only from the main WebView.".into());
+    }
     commit_startup_recovery_ui_for_app(&app)
 }
 
@@ -8925,7 +8959,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                     app.manage(dispatcher);
                 }
                 app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), startup_commit_in_flight: AtomicBool::new(false), startup_commit_pending: AtomicBool::new(false), ownership_checked_at: Mutex::new(Some(Instant::now())) });
-                advance_native_startup_after_page(app.handle());
+                replay_native_startup_renderer_observations(app.handle());
                 replay_pending_main_window_activation(app.handle(), &pending_activation);
                 // The tray poll reads this managed ownership state. Starting
                 // it earlier allowed its first poll to see only the

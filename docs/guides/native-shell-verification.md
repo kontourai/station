@@ -77,7 +77,9 @@ Tauri's native page-start callback observes the exact main WebView and permits
 the host to begin its authenticated ticket proof; a post-React-layout mount
 commit from that main WebView proves renderer liveness. Page start alone is not
 renderer readiness. The ticket still binds the current generation, instance
-ID, boot ID, and API base. The native host arms one 30-second deadline, shows
+ID, boot ID, and API base. Native bootstrap retains and replays page/mount facts
+that arrive before desktop readiness state exists, so the eager mount is not a
+browser retry loop. The native host arms one 30-second deadline, shows
 Retry/Exit once per epoch, and routes Retry according to ownership in
 [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs).
 

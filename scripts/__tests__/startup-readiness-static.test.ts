@@ -98,6 +98,31 @@ describe('desktop startup readiness static boundary', () => {
       renderApp.indexOf('<PlatformBootstrap>'),
     );
     expect(lib).not.toContain('clear_all_browsing_data');
+    const mountCommit = lib.slice(
+      lib.indexOf('fn commit_renderer_mount'),
+      lib.indexOf('fn commit_startup_recovery_ui'),
+    );
+    expect(mountCommit.indexOf('renderer_mounted.store(true')).toBeLessThan(
+      mountCommit.indexOf('try_state::<DesktopServerState>()'),
+    );
+    expect(mountCommit).toContain(
+      'retained the main React mount before desktop state',
+    );
+    const retainedReplay = lib.slice(
+      lib.indexOf('fn replay_native_startup_renderer_observations'),
+      lib.indexOf('fn native_startup_uses_sidecar_proof'),
+    );
+    expect(retainedReplay.indexOf('RendererPageStarted')).toBeLessThan(
+      retainedReplay.indexOf('RendererMounted'),
+    );
+    const readinessManagement = lib.indexOf('app.manage(DesktopServerState {');
+    const readinessSetup = lib.slice(
+      readinessManagement,
+      lib.indexOf('tray::init(app.handle())?;', readinessManagement),
+    );
+    expect(readinessSetup).toContain(
+      'replay_native_startup_renderer_observations(app.handle());',
+    );
     expect(lib).not.toContain('NATIVE_STARTUP_BOOTSTRAP_SCRIPT');
     expect(lib).not.toContain("invoke('renderer_startup_ready')");
     expect(platformBootstrap).not.toContain('startStartupReadinessProof');
@@ -147,14 +172,14 @@ describe('desktop startup readiness static boundary', () => {
     const handler = lib.indexOf('deep_link().on_open_url');
     const readinessManagement = lib.indexOf('app.manage(DesktopServerState {');
     const replay = lib.lastIndexOf('replay_pending_main_window_activation(');
-    const nativePageReplay = lib.lastIndexOf(
-      'advance_native_startup_after_page(app.handle());',
+    const nativeRendererReplay = lib.lastIndexOf(
+      'replay_native_startup_renderer_observations(app.handle());',
     );
 
     expect(handler).toBeGreaterThanOrEqual(0);
     expect(readinessManagement).toBeGreaterThan(handler);
     expect(replay).toBeGreaterThan(readinessManagement);
-    expect(nativePageReplay).toBeGreaterThan(readinessManagement);
+    expect(nativeRendererReplay).toBeGreaterThan(readinessManagement);
     expect(lib).toContain('commit_native_startup_recovery_for_app(app)');
     expect(lib).toContain('request_or_defer_main_window_activation(');
     expect(lib).toContain('request_main_window_activation(app);');

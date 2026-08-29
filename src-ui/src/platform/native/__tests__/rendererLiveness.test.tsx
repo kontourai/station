@@ -75,9 +75,11 @@ describe('NativeRendererMountCommit', () => {
   });
 
   it('fails closed without retrying or rendering diagnostic UI', async () => {
-    const commitRendererMount = vi.fn(async () => {
-      throw new Error('host unavailable');
-    });
+    const commitRendererMount = vi.fn(async () => ({
+      status: 'error' as const,
+      command: 'commit-renderer-mount' as const,
+      message: 'host unavailable',
+    }));
     const MountCommit = createNativeRendererMountCommit(
       async () =>
         ({
