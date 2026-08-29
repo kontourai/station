@@ -186,18 +186,14 @@ export function deriveChangelogSlice({
       commitCount: 0,
     };
   }
-  // A previous ship SHA can be absent from this repository entirely: the
-  // ledger survives history resets, so a predecessor row may point into a
-  // history this repository no longer carries. No commit range exists to
-  // slice in that case — disclose the gap on this one entry rather than
-  // failing every subsequent ship on the channel forever.
+  // The ledger survives history resets, so a predecessor SHA can be absent
+  // from this repository entirely: disclose that one gap rather than fail
+  // every subsequent ship on the channel.
   try {
     execGit(['cat-file', '-e', `${previousSha}^{commit}`]);
   } catch (error) {
-    // Only a genuinely missing OBJECT is the disclosed case. Everything
-    // else a failed probe can mean — git missing (ENOENT), not a
-    // repository, a corrupt or unreadable object store — must stay loud,
-    // or a broken environment would masquerade as an honest history gap.
+    // Only a missing object is the disclosed case; any other probe failure
+    // (no git, not a repository, corrupt store) must stay loud.
     const stderr =
       typeof error?.stderr === 'string'
         ? error.stderr

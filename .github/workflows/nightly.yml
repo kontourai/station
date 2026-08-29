@@ -696,17 +696,10 @@ jobs:
         # Only after a successful publish path: the tag is what suppresses
         # tomorrow's build, so moving it on a failed run would skip a day.
         #
-        # REST ref update, not `git push`: GITHUB_TOKEN can never hold the
-        # `workflows` scope, and the push path refuses any ref move whose
-        # old..new range touches .github/workflows/*. The refs API only
-        # points the ref at a commit that already exists on main, so it is
-        # not subject to that push-path check — the same mechanism release
-        # tags use. The POST fallback covers a missing tag (first-ever run,
-        # or a hand-deleted tag forcing a rebuild): PATCH on a missing ref
-        # returns 422 "Reference does not exist" (404 accepted too, in case
-        # that ever changes). The success path re-reads the response and
-        # asserts WHICH ref moved and to what, rather than trusting the
-        # status code alone.
+        # REST ref update, not `git push`: GITHUB_TOKEN cannot hold the
+        # `workflows` scope, so a push moving this tag across a range that
+        # touches .github/workflows/* is refused; the refs API is not
+        # subject to that check. https://docs.github.com/en/rest/git/refs
         if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -758,10 +751,9 @@ jobs:
       # never block a ship. If a ledger step fails the JOB goes red — an
       # unrecorded ship must be visible — accepting the tradeoff that the
       # nightly is already live with a red recording step; the next
-      # successful nightly's changelog slice covers the gap. Known residual:
-      # the npm publish happens before the Android build in this job, so an
-      # Android-step failure reddens the job with the npm ship recorded only
-      # in the next green run — visible either way, never silent.
+      # successful nightly's changelog slice covers the gap. The always() +
+      # publish-outcome gates on each record step mean even an Android-step
+      # failure records the npm ship that already happened in THIS run.
       # The entry sha is steps.decide.outputs.head_sha: the SAME decided SHA
       # the gate verdicted and the build shipped. A ledger on a different SHA
       # than the one that shipped is a lie, which is what station#4572
@@ -773,11 +765,9 @@ jobs:
       # safe). Two steps means two commits; both subjects are docs(ledger):
       # and excluded from every changelog slice.
       - name: Record the nightly Android ship in the deploy ledger
-        # always(): a later-step failure (the tag advance, most recently) must
-        # never suppress the record of a publish that already happened — that
-        # is exactly the unrecorded-ship incident the ledger exists to end.
-        # The play_upload outcome gate keeps the converse true: a failed or
-        # skipped publish records nothing.
+        # always() so no later-step failure suppresses the record of a
+        # publish that happened; the outcome gate keeps a failed or skipped
+        # publish from recording.
         if: ${{ always() && steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != '' && steps.play_upload.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -807,11 +797,8 @@ jobs:
 
       - name: Record the nightly CLI npm ship in the deploy ledger
         # The npm publish step ran early in this job; the RECORD runs last so
-        # its failure can never abort the Android build still ahead of it —
-        # the same publish-first-then-ledger ordering as the Android entry.
-        # always() + the publish outcome gate: an unrelated later failure
-        # cannot suppress the record, and a failed/skipped publish records
-        # nothing.
+        # its failure can never abort the Android build still ahead of it.
+        # always() + outcome gate, as on the Android record above.
         if: ${{ always() && steps.decide.outputs.build == 'true' && steps.cli_npm_publish.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -869,10 +856,7 @@ jobs:
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}
     runs-on: macos-15
     environment: native-release
-    # Notarization dominates the budget and is out of our hands: Apple's
-    # notary service holds first submissions of a bundle id for tens of
-    # minutes, on top of a ~40-minute build. 60 minutes cancels the job
-    # mid-notarize on a slow notary day.
+    # ~40 min build + Apple notary's long tail; 60 cancelled mid-notarize.
     timeout-minutes: 120
     permissions:
       contents: write
@@ -1070,13 +1054,8 @@ jobs:
         # fails would assert a ship that never happened and could only be
         # recovered by hand-deleting the tag.
         #
-        # REST ref update, not `git push`, for the same reason as the
-        # Android leg's tag advance: GITHUB_TOKEN can never hold the
-        # `workflows` scope, and the push path refuses ref moves across
-        # workflow-file changes; the refs API only points at an existing
-        # commit. Missing-ref fallback and response assertion mirror that
-        # step too (PATCH on a missing ref returns 422 "Reference does not
-        # exist"; 404 accepted in case that ever changes).
+        # REST ref update, not `git push` — same constraint as the Android
+        # leg's tag advance above.
         if: steps.decide.outputs.build == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1126,9 +1105,7 @@ jobs:
       # step above succeeded; its own failure reddens the job without
       # un-shipping anything.
       - name: Record the nightly desktop ship in the deploy ledger
-        # always() + the publish outcome gate, mirroring the Android job's
-        # ledger steps: a tag-advance failure cannot suppress the record of a
-        # publish that happened, and a failed/skipped publish records nothing.
+        # always() + outcome gate, as on the Android job's ledger records.
         if: ${{ always() && steps.decide.outputs.build == 'true' && steps.desktop_publish.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

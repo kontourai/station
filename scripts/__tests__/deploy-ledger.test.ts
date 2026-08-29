@@ -393,9 +393,6 @@ describe('markdown regeneration', () => {
   });
 
   it('omits the "Commits since" header when a noted slice carries a previousSha', () => {
-    // The unreachable-predecessor slice is the one shape with BOTH a note
-    // and a non-null previousSha; the note explains why no range exists,
-    // so a commits header over an empty list would contradict it.
     const unreachable = entry({
       changelog: {
         previousSha: B_SHA,

@@ -743,23 +743,28 @@ describe('the nightly workflow keeps its promises', () => {
   });
 
   it('advances rolling tags through the refs API, never a git push', () => {
-    // GITHUB_TOKEN cannot hold the workflows scope, and the push path
-    // refuses any tag move whose range touches .github/workflows/* — the
-    // refs API is the only mechanism this token can use. A reintroduced
-    // git push would fail the first night a workflow edit lands on main.
+    // GITHUB_TOKEN cannot hold the workflows scope, so only the refs API
+    // can move these tags; asserted per step so one leg cannot quietly
+    // lose the mechanism.
     expect(workflow).not.toMatch(/git push[^\n]*refs\/tags\/nightly/);
-    expect(workflow.split('/git/' + '${TAG_REF}').length - 1).toBe(2);
-    // Missing-ref create fallback: PATCH on an absent ref answers 422
-    // "Reference does not exist" (a hand-deleted tag is the documented way
-    // to force a rebuild, so this path is reachable in normal operation).
-    expect(
-      workflow.split('Reference does not exist').length - 1,
-    ).toBeGreaterThanOrEqual(2);
+    for (const stepName of [
+      'Advance the rolling nightly tag',
+      'Advance the rolling desktop nightly tag',
+    ]) {
+      const start = workflow.indexOf(`- name: ${stepName}`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const nextStep = workflow.indexOf('\n      - name: ', start + 1);
+      const step = workflow.slice(
+        start,
+        nextStep === -1 ? workflow.length : nextStep,
+      );
+      expect(step).toContain('/git/' + '${TAG_REF}');
+      expect(step).toContain('Reference does not exist');
+      expect(step).toContain('ref update response mismatch');
+    }
   });
 
   it('records ledger ships independently of the tag advance, gated on each publish outcome', () => {
-    // A later-step failure must never suppress the record of a publish
-    // that happened, and a failed or skipped publish must record nothing.
     for (const literal of [
       "always() && steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != '' && steps.play_upload.outcome == 'success'",
       "always() && steps.decide.outputs.build == 'true' && steps.cli_npm_publish.outcome == 'success'",
@@ -770,13 +775,21 @@ describe('the nightly workflow keeps its promises', () => {
   });
 
   it('checks out full history in both publishing jobs', () => {
-    // fetch-depth: 0 is load-bearing twice over: the decide steps read the
-    // rolling tags, and the changelog slice walks previousSha..sha. A
-    // shallow checkout would turn every changelog into a plausible false
-    // "unreachable predecessor" disclosure with nothing red anywhere.
-    expect(workflow.split('fetch-depth: 0').length - 1).toBeGreaterThanOrEqual(
-      2,
-    );
+    // The decide steps read the rolling tags and the changelog slice walks
+    // previousSha..sha, so a shallow checkout silently breaks both.
+    const jobSlice = (name: string): string => {
+      const start = workflow.indexOf(`\n  ${name}:`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const next = workflow
+        .slice(start + 1)
+        .match(/\n {2}[A-Za-z0-9_-]+:\s*\n/);
+      return workflow.slice(
+        start,
+        next ? start + 1 + (next.index ?? 0) : workflow.length,
+      );
+    };
+    expect(jobSlice('nightly')).toContain('fetch-depth: 0');
+    expect(jobSlice('nightly-desktop')).toContain('fetch-depth: 0');
   });
 
   it('uses keyless GitHub OIDC for Play without a service-account key', () => {
