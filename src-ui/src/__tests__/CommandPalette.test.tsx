@@ -684,6 +684,30 @@ describe('CommandPalette', () => {
     ).toBeTruthy();
   });
 
+  // #766 item 4: the Report-a-problem entry point is a palette action that
+  // dispatches the host's open event; the dialog itself is lazily hosted by
+  // DeferredAppOverlays.
+  test('registers Report a problem and dispatches its open event', async () => {
+    const { OPEN_REPORT_PROBLEM_EVENT } = await import(
+      '../lib/reportProblemEvents'
+    );
+    const listener = vi.fn();
+    window.addEventListener(OPEN_REPORT_PROBLEM_EVENT, listener);
+    try {
+      await renderCommandPalette();
+      open();
+      fireEvent.change(screen.getByRole('combobox'), {
+        target: { value: 'report a problem' },
+      });
+      fireEvent.click(screen.getByRole('option', { name: /Report a problem/ }));
+      expect(listener).toHaveBeenCalledTimes(1);
+      // The palette closes so the dialog is what the user sees next.
+      expect(screen.queryByRole('dialog')).toBeNull();
+    } finally {
+      window.removeEventListener(OPEN_REPORT_PROBLEM_EVENT, listener);
+    }
+  });
+
   test('Enter runs the highlighted command then closes', async () => {
     await renderCommandPalette();
     open();
