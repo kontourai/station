@@ -26,6 +26,7 @@ import {
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '../components/Button';
+import { CheckGlyph } from '../components/icons/Glyph';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import {
   ResponsiveDialogSurface,
@@ -355,7 +356,9 @@ export function ReviewQueueView() {
             ? sourceNotices.join(' ')
             : 'AI proposals awaiting approval and inline review comments appear here.'
         }
-        emptyIcon="R"
+        // #765 F3c: a bare letter "R" read as a broken glyph; the check
+        // echoes the sidebar's Review icon, like the sibling views' glyphs.
+        emptyIcon={<CheckGlyph />}
         emptyTitle="Select an item"
         emptyDescription="Review a proposed change, or read and resolve a diff comment."
         headerActions={

@@ -1,5 +1,72 @@
 [
   {
+    "timestampUtc": "2026-08-29T14:30:53Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.2-nightly.2432",
+    "sha": "15401e2708722905149cbe54003bafc448d19848",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/33256579723",
+    "artifacts": [
+      "github-release:nightly-desktop (station-nightly-desktop-macos-aarch64.dmg, .app.tar.gz, latest.json)"
+    ],
+    "gateResult": "nightly test-gate success on 15401e2708722905149cbe54003bafc448d19848 (station#4539)",
+    "notes": null,
+    "changelog": {
+      "previousSha": "c9968e5b096c6489e4ce17215db0e26c40924635",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#789](https://github.com/kontourai/station/pull/789) fix(ui): pin the Registry layouts-tab eyebrow derivation (#765 F1)",
+          "[#789](https://github.com/kontourai/station/pull/789) fix(ui): restyle the engine row Needs state as a muted warning chip (#765 B3)",
+          "[#789](https://github.com/kontourai/station/pull/789) fix(ui): use a real glyph for the Review Queue empty state (#765 F3c)",
+          "[#789](https://github.com/kontourai/station/pull/789) fix(ui): dedupe the Telemetry fleet empty-state sentence (#765 F3b)",
+          "[#788](https://github.com/kontourai/station/pull/788) fix(deps): flow 5.1.1 — directory-fsync tolerance unblocks Windows",
+          "[#787](https://github.com/kontourai/station/pull/787) fix(ci): derive the emulator smoke's launch identity from the APK"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#788](https://github.com/kontourai/station/pull/788) chore(ui): raise the entry JS gzip ceiling to the measured 306937"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-08-29T14:27:15Z",
+    "channel": "nightly-android",
+    "version": "0.1.2-nightly.2432",
+    "sha": "15401e2708722905149cbe54003bafc448d19848",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/33256579723",
+    "artifacts": [
+      "play-internal-aab:io.kontourai.station.nightly@versionCode 243205",
+      "workflow-artifact:station-nightly-243205 (7-day retention)"
+    ],
+    "gateResult": "nightly test-gate success on 15401e2708722905149cbe54003bafc448d19848 (station#4539)",
+    "notes": null,
+    "changelog": {
+      "previousSha": "c9968e5b096c6489e4ce17215db0e26c40924635",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#789](https://github.com/kontourai/station/pull/789) fix(ui): pin the Registry layouts-tab eyebrow derivation (#765 F1)",
+          "[#789](https://github.com/kontourai/station/pull/789) fix(ui): restyle the engine row Needs state as a muted warning chip (#765 B3)",
+          "[#789](https://github.com/kontourai/station/pull/789) fix(ui): use a real glyph for the Review Queue empty state (#765 F3c)",
+          "[#789](https://github.com/kontourai/station/pull/789) fix(ui): dedupe the Telemetry fleet empty-state sentence (#765 F3b)",
+          "[#788](https://github.com/kontourai/station/pull/788) fix(deps): flow 5.1.1 — directory-fsync tolerance unblocks Windows",
+          "[#787](https://github.com/kontourai/station/pull/787) fix(ci): derive the emulator smoke's launch identity from the APK"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#788](https://github.com/kontourai/station/pull/788) chore(ui): raise the entry JS gzip ceiling to the measured 306937"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-08-29T10:21:21Z",
     "channel": "nightly-desktop",
     "version": "0.1.2-nightly.2432",
