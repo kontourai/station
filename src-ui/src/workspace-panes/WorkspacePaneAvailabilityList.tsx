@@ -4,6 +4,7 @@ import {
   presentWorkspacePaneAvailability,
   type WorkspacePaneAvailabilityCatalogEntry,
 } from './workspacePaneAvailabilityPresentation';
+import { builtinWorkspacePaneGlyph } from './workspacePaneGlyphs';
 import './WorkspacePaneAvailabilityList.css';
 
 export interface WorkspacePaneAvailabilityListProps {
@@ -77,6 +78,7 @@ function WorkspacePaneAvailabilityCard({
   const ids = useId();
   const [expanded, setExpanded] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const PaneGlyph = builtinWorkspacePaneGlyph(entry.descriptor.renderer);
   const presentation = presentWorkspacePaneAvailability(
     entry.availability,
     entry.rendererGate,
@@ -133,10 +135,17 @@ function WorkspacePaneAvailabilityCard({
             src={entry.descriptor.previewImage}
             alt=""
           />
+        ) : entry.descriptor.icon ? (
+          <span className="workspace-pane-availability-list__preview-glyph">
+            {entry.descriptor.icon}
+          </span>
+        ) : PaneGlyph ? (
+          // #765 F4: a built-in pane's real icon on the accent tile —
+          // Coding and Chat both rendered a giant letter "C" before this.
+          <PaneGlyph className="workspace-pane-availability-list__preview-icon" />
         ) : (
           <span className="workspace-pane-availability-list__preview-glyph">
-            {entry.descriptor.icon ??
-              entry.descriptor.name.charAt(0).toUpperCase()}
+            {entry.descriptor.name.charAt(0).toUpperCase()}
           </span>
         )}
       </div>

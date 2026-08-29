@@ -37,6 +37,10 @@ export const ArrowUpGlyph = /* @__PURE__ */ glyph('M3 10l5-5 5 5');
 export const AttachmentGlyph = /* @__PURE__ */ glyph(
   'm6 8.5 3.8-3.8a2 2 0 1 1 2.8 2.8L7.4 12.7a3 3 0 0 1-4.2-4.2l5-5',
 );
+/** Kanban columns — the Console Board pane tile. */
+export const BoardGlyph = /* @__PURE__ */ glyph(
+  'M2.5 3h3.2v10H2.5V3Zm3.9 0h3.2v7H6.4V3Zm3.9 0h3.2v5h-3.2V3Z',
+);
 export const BrainGlyph = /* @__PURE__ */ glyph(
   'M6.2 3.2A2.3 2.3 0 0 0 2.5 5a2.2 2.2 0 0 0 .7 4.2A2.4 2.4 0 0 0 6.5 12v1.5M9.8 3.2A2.3 2.3 0 0 1 13.5 5a2.2 2.2 0 0 1-.7 4.2A2.4 2.4 0 0 1 9.5 12v1.5M8 2.5v11M5.5 6H8m2.5 3H8',
 );
@@ -51,8 +55,16 @@ export const ChartGlyph = /* @__PURE__ */ glyph(
 );
 export const CheckGlyph = /* @__PURE__ */ glyph('m3 8 3.2 3.2L13 4.5');
 export const CloseGlyph = /* @__PURE__ */ glyph('M3.5 3.5l9 9m0-9-9 9');
+/** Angle brackets and slash — the Coding pane tile. */
+export const CodeGlyph = /* @__PURE__ */ glyph(
+  'm5 5-3 3 3 3m6-6 3 3-3 3M9.5 3.5l-3 9',
+);
 export const DatabaseGlyph = /* @__PURE__ */ glyph(
   'M3 4c0-1 2.2-1.8 5-1.8S13 3 13 4s-2.2 1.8-5 1.8S3 5 3 4Zm0 0v4c0 1 2.2 1.8 5 1.8S13 9 13 8V4m-10 4v4c0 1 2.2 1.8 5 1.8s5-.8 5-1.8V8',
+);
+/** Two compared branch nodes (git-compare) — the Diff pane tile. */
+export const DiffGlyph = /* @__PURE__ */ glyph(
+  'M4.5 6.5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Zm0 0v7M11.5 9.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4Zm0 0v-7',
 );
 export const DocumentGlyph = /* @__PURE__ */ glyph(
   'M4 2.5h5l3 3v8H4v-11Zm5 0v3h3M6 8h4m-4 2.5h4',
@@ -71,6 +83,10 @@ export const GlobeGlyph = /* @__PURE__ */ glyph(
 );
 export const HandGlyph = /* @__PURE__ */ glyph(
   'M4.5 8V4.5a1 1 0 0 1 2 0V7m0-3.5a1 1 0 0 1 2 0V7m0-3a1 1 0 0 1 2 0v3m0-2a1 1 0 0 1 2 0v4a4 4 0 0 1-4 4H7a4 4 0 0 1-3.4-1.9L2 8.7a1.2 1.2 0 0 1 2-.7l1 1',
+);
+/** A house — the Home pane tile. */
+export const HomeGlyph = /* @__PURE__ */ glyph(
+  'm2.5 8 5.5-5.5L13.5 8M4.5 6.5v7h7v-7',
 );
 export const InboxGlyph = /* @__PURE__ */ glyph(
   'M3 3h10v10H3V3Zm0 6h3l1 1.5h2L10 9h3',
@@ -107,6 +123,8 @@ export const PauseGlyph = /* @__PURE__ */ glyph('M5.5 3.5v9m5-9v9');
 export const PinGlyph = /* @__PURE__ */ glyph(
   'm5 2 6 6-2 1.2-.8 3.3-1.5-1.4-3.6 2.8 2.8-3.6L4.5 8.3 7.8 7.5 9 5.5 5 2Z',
 );
+/** A run triangle — the Flow run console pane tile. */
+export const PlayGlyph = /* @__PURE__ */ glyph('M5.5 3.5v9l7-4.5-7-4.5Z');
 export const PlugGlyph = /* @__PURE__ */ glyph(
   'M5 2v4m6-4v4M4 6h8v1.5a4 4 0 0 1-8 0V6Zm4 5.5V14',
 );

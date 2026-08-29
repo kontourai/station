@@ -314,9 +314,10 @@ export function ProjectPage({ slug }: { slug: string }) {
               </button>
             </div>
           </div>
+          {/* #765 F4: plain copy — the layouts→panes migration is an internal
+              narrative and does not belong in product copy. */}
           <p className="project-page__section-explainer">
-            Layouts and panes both open in this project — panes are the newer
-            hosting model and layouts are migrating to them.
+            Workspace views open in this project.
           </p>
           <ProjectLayoutsSection
             slug={slug}

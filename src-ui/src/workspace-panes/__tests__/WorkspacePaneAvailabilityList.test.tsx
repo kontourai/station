@@ -11,6 +11,7 @@ import {
 } from '../WorkspacePaneAvailabilityList';
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspacePaneAvailabilityPresentation';
 import { presentWorkspacePaneAvailability } from '../workspacePaneAvailabilityPresentation';
+import { builtinWorkspacePaneGlyph } from '../workspacePaneGlyphs';
 
 function entry(
   name: string,
@@ -156,6 +157,95 @@ describe('WorkspacePaneAvailabilityList', () => {
     );
     // Decorative only — the pane's name and state remain the textual signal.
     expect(preview.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  // #765 F4: Coding and Chat both rendered a giant letter "C". Built-in
+  // panes now carry their real icon on the tile; the letter remains only the
+  // last-resort fallback for renderers this build does not recognise.
+  test('renders a built-in pane’s real glyph on the tile instead of a letter placeholder', () => {
+    const builtinChat: WorkspacePaneAvailabilityCatalogEntry = {
+      ...available,
+      descriptor: {
+        ...available.descriptor,
+        renderer: { kind: 'builtin-component', name: 'workspace-chat' },
+      },
+    };
+    render(
+      <WorkspacePaneAvailabilityList
+        entries={[builtinChat]}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const preview = document.querySelector(
+      '.workspace-pane-availability-list__preview',
+    ) as HTMLElement;
+    expect(
+      preview.querySelector('.workspace-pane-availability-list__preview-icon'),
+    ).toBeTruthy();
+    expect(
+      preview.querySelector('.workspace-pane-availability-list__preview-glyph'),
+    ).toBe(null);
+  });
+
+  test('gives same-initial built-ins distinct tile glyphs (Coding vs Chat)', () => {
+    const coding = builtinWorkspacePaneGlyph({
+      kind: 'builtin-component',
+      name: 'coding',
+    });
+    const chat = builtinWorkspacePaneGlyph({
+      kind: 'builtin-component',
+      name: 'workspace-chat',
+    });
+    expect(coding).toBeTruthy();
+    expect(chat).toBeTruthy();
+    expect(coding).not.toBe(chat);
+  });
+
+  test('keeps the letter fallback for renderers this build does not recognise', () => {
+    const pluginPane: WorkspacePaneAvailabilityCatalogEntry = {
+      ...available,
+      descriptor: {
+        ...available.descriptor,
+        renderer: { kind: 'plugin-component', name: 'some-plugin-pane' },
+      },
+    };
+    render(
+      <WorkspacePaneAvailabilityList
+        entries={[pluginPane]}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(
+      document.querySelector('.workspace-pane-availability-list__preview-glyph')
+        ?.textContent,
+    ).toBe('F');
+    expect(
+      document.querySelector('.workspace-pane-availability-list__preview-icon'),
+    ).toBe(null);
+  });
+
+  test('a descriptor-supplied icon string still outranks the built-in glyph', () => {
+    const iconed: WorkspacePaneAvailabilityCatalogEntry = {
+      ...available,
+      descriptor: {
+        ...available.descriptor,
+        icon: '📁',
+        renderer: { kind: 'builtin-component', name: 'workspace-chat' },
+      },
+    };
+    render(
+      <WorkspacePaneAvailabilityList entries={[iconed]} onSelect={vi.fn()} />,
+    );
+
+    expect(
+      document.querySelector('.workspace-pane-availability-list__preview-glyph')
+        ?.textContent,
+    ).toBe('📁');
+    expect(
+      document.querySelector('.workspace-pane-availability-list__preview-icon'),
+    ).toBe(null);
   });
 
   test('renders a descriptor-supplied preview image when present', () => {
