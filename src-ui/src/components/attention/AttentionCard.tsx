@@ -148,6 +148,25 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
   const confirmMutation = useConfirmDevicePairingRequestMutation();
   const denyMutation = useDenyDevicePairingRequestMutation();
   const busy = confirmMutation.isPending || denyMutation.isPending;
+  // #765 D5 live verification: `access:approve` is operator-promotion-only,
+  // so a paired browser session can read this item but the pairing routes
+  // answer its approve/deny with 401 `authentication_required` — the buttons
+  // were structurally dead there. `viewerCanDecide` is the server's own
+  // boundary predicate evaluated for THIS session; when it says no, render
+  // the remedy the panel prints for the same refusal instead of dead buttons.
+  if (!item.viewerCanDecide) {
+    return (
+      <>
+        <div
+          className="attention-item__detail"
+          data-testid="attention-pairing-remedy"
+        >
+          {pairingApprovalRemedy(item)}
+        </div>
+        <OpenConnectionsLink href={item.openHref} />
+      </>
+    );
+  }
   return (
     <>
       <div className="attention-item__actions">
@@ -184,6 +203,15 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
 }
 
 /**
+ * The remedy for a session that cannot decide: the SAME sentence the panel
+ * and the 403 error path print, because it is the same fact arriving earlier
+ * — before a doomed request instead of after one.
+ */
+function pairingApprovalRemedy(item: DevicePairingAttentionItem): string {
+  return `Approving “${item.deviceName}” needs a trusted Station session. Run this on the Station: station environment access approve ${item.source.requestId} --force`;
+}
+
+/**
  * Same status → copy mapping `HostDevicePairingPanel.actOnRequest` renders,
  * so the two approve surfaces describe a refusal identically. 403 on approve
  * is the pairing service's "a request cannot approve itself" refusal
@@ -203,9 +231,7 @@ function describePairingActionError(
     );
   }
   if (error.status === 403 && action === 'approve') {
-    return new Error(
-      `Approving “${item.deviceName}” needs a trusted Station session. Run this on the Station: station environment access approve ${item.source.requestId} --force`,
-    );
+    return new Error(pairingApprovalRemedy(item));
   }
   if (error.status === 404 || error.status === 410) {
     return new Error(
