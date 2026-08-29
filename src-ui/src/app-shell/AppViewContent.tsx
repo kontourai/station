@@ -221,7 +221,33 @@ export function AppViewContent(props: AppViewContentProps) {
             `key` remounts it on an actual surface transition; Connections
             list/edit routes intentionally share a section surface. */}
         <div className="route-transition" key={surfaceKey}>
-          <AppViewContentBody {...props} />
+          {/* station#753 item 4: the skeleton -> content fade. Keyed on
+              `surfaceKey`, the SAME key as `.route-transition` above — a
+              first attempt keyed this on the finer-grained `routeKey`
+              instead, reasoning that a list -> detail selection within one
+              surface (e.g. Connections) never replays `.route-transition`'s
+              own entrance. That broke a real contract: `key` forces a fresh
+              React mount, and "keeps a section wrapper mounted across its
+              exact list/edit routes" (AppViewContent.test.tsx) failed —
+              `ProviderSettingsView` remounted on every row click instead of
+              keeping its provider component and form state alive. Keying on
+              `surfaceKey` costs nothing beyond what `.route-transition`'s own
+              key already causes (RouteViewBoundary's Suspense only actually
+              falls back once per surface — every route in this app lazy-loads
+              per SURFACE, not per record — so there is no live case today
+              where routeKey changes without surfaceKey also changing). The
+              nesting still earns its keep: this inner fade reaches full
+              opacity at `--motion-fast` while the outer translateY glide is
+              still settling at `--motion-base`, so content doesn't stay
+              visually washed out for the whole outer entrance. Nested INSIDE
+              `.route-transition` rather than a sibling wrapper around it:
+              `.route-transition` must stay the direct child of
+              `.page-frame__body` (see `.page-frame--fill > .page-frame__body
+              > .route-transition` in route-transition.css) so an extra seam
+              here cannot break that selector. */}
+          <div className="route-outlet-content" key={surfaceKey}>
+            <AppViewContentBody {...props} />
+          </div>
         </div>
       </RouteViewBoundary>
     </PageFrame>
