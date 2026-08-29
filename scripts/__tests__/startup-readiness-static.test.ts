@@ -22,6 +22,9 @@ describe('desktop startup readiness static boundary', () => {
   it('uses one native reveal authority and a macOS-owned bootstrap cover', () => {
     const lib = read('src-desktop/src/lib.rs');
     const tray = read('src-desktop/src/tray.rs');
+    const platformBootstrap = read(
+      'src-ui/src/platform/PlatformProfileContext.tsx',
+    );
     const mainWindowActions = [
       ...lib.matchAll(
         /get_webview_window\("main"\)[\s\S]{0,320}?(?:\.show\(\)|\.unminimize\(\)|\.set_focus\(\))/g,
@@ -74,11 +77,14 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).toContain('label == "main"');
     expect(lib).not.toContain('NATIVE_STARTUP_BOOTSTRAP_SCRIPT');
     expect(lib).not.toContain("invoke('renderer_startup_ready')");
+    expect(platformBootstrap).not.toContain('startStartupReadinessProof');
     const nativeWake = lib.slice(
       lib.indexOf('fn notify_startup_readiness_if_waiting'),
       lib.indexOf('struct PendingMainWindowActivation'),
     );
-    expect(nativeWake.indexOf('request_native_startup_commit(app);')).toBeLessThan(
+    expect(
+      nativeWake.indexOf('request_native_startup_commit(app);'),
+    ).toBeLessThan(
       nativeWake.indexOf('app.emit("station://startup-readiness-retry"'),
     );
     expect([

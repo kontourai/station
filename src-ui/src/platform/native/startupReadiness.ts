@@ -81,9 +81,8 @@ export async function proveAndCommitStartupReadiness(
 
 /**
  * Starts the mounted desktop proof and owns the native retry subscription.
- * This tiny orchestration deliberately stays in the entry graph: the native
- * cover cannot depend on loading a second renderer chunk before it can prove
- * the packaged sidecar and reveal the main window.
+ * Keeping this orchestration in the lazy readiness chunk avoids charging web
+ * and mobile first paint for desktop-only lifecycle wiring.
  */
 export function startStartupReadinessProof(
   adapter: NativePlatformAdapter,
@@ -91,7 +90,6 @@ export function startStartupReadinessProof(
 ): {
   dispose(): void;
 } {
-  globalThis.performance?.mark?.('station:startup-readiness-trigger:v1');
   let disposed = false;
   let ready = false;
   let rerunRequested = false;

@@ -12,7 +12,6 @@ import { gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   assertBundleDependencyProvenance,
-  assertStartupReadinessInInitialPayload,
   evaluateBundleBudget,
   measureEntryBundle,
   shouldEnforceUiBundleBudget,
@@ -165,47 +164,6 @@ describe('measureEntryBundle (station#1218)', () => {
     writeFileSync(join(dir, relPath), bytes);
     return gzipSync(Buffer.from(bytes)).byteLength;
   }
-
-  it('requires the complete desktop readiness trigger in the initial payload', () => {
-    const dir = stageOutputDir();
-    writeAsset(
-      dir,
-      'entry.js',
-      [
-        'station:startup-readiness-trigger:v1',
-        'bundled_server_status',
-        'commit_startup_readiness',
-        'commit_startup_recovery_ui',
-        'station://startup-readiness-retry',
-      ].join(';'),
-    );
-    writeAsset(dir, 'main.css', 'body{}');
-    writeFileSync(
-      join(dir, 'index.html'),
-      '<script type="module" src="/entry.js"></script><link rel="stylesheet" href="/main.css">',
-    );
-
-    expect(() => assertStartupReadinessInInitialPayload(dir)).not.toThrow();
-  });
-
-  it('rejects readiness commands stranded behind a lazy asset', () => {
-    const dir = stageOutputDir();
-    writeAsset(
-      dir,
-      'entry.js',
-      'bundled_server_status;commit_startup_readiness;commit_startup_recovery_ui;station://startup-readiness-retry;import("/readiness.js")',
-    );
-    writeAsset(dir, 'readiness.js', 'station:startup-readiness-trigger:v1');
-    writeAsset(dir, 'main.css', 'body{}');
-    writeFileSync(
-      join(dir, 'index.html'),
-      '<script type="module" src="/entry.js"></script><link rel="stylesheet" href="/main.css">',
-    );
-
-    expect(() => assertStartupReadinessInInitialPayload(dir)).toThrow(
-      /must be executable from the initial UI payload/u,
-    );
-  });
 
   // AC4: fixtures a built index.html with MULTIPLE scripts, MULTIPLE
   // stylesheets, and MULTIPLE modulepreloads, mirroring the #926 vite
