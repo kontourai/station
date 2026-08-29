@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { tauriShellBinaryCandidates } from '../run-tauri-shell-e2e.mjs';
 
@@ -28,9 +29,7 @@ describe('Tauri embedded WebDriver boundary', () => {
       'if !cfg!(debug_assertions) || app_identifier != "io.kontourai.station.webdriver"',
     );
     expect(rust).toContain('keyring_core::mock::Store::new()');
-    expect(webdriverRunner).toContain(
-      "STATION_TAURI_E2E_MOCK_CREDENTIAL: '1'",
-    );
+    expect(webdriverRunner).toContain("STATION_TAURI_E2E_MOCK_CREDENTIAL: '1'");
     expect(release).not.toContain('tauri.webdriver.conf.json');
     expect(release).not.toMatch(/--features[= ]+webdriver/);
     expect(release).not.toContain('STATION_TAURI_E2E_MOCK_CREDENTIAL');
@@ -38,13 +37,24 @@ describe('Tauri embedded WebDriver boundary', () => {
 
   test('resolves only bounded platform-specific binary locations', () => {
     expect(tauriShellBinaryCandidates('/repo', 'win32')).toEqual([
-      '/repo/src-desktop/target/debug/station.exe',
+      join('/repo', 'src-desktop', 'target', 'debug', 'station.exe'),
     ]);
     expect(tauriShellBinaryCandidates('/repo', 'linux')).toEqual([
-      '/repo/src-desktop/target/debug/station',
+      join('/repo', 'src-desktop', 'target', 'debug', 'station'),
     ]);
     expect(tauriShellBinaryCandidates('/repo', 'darwin')).toContain(
-      '/repo/src-desktop/target/debug/bundle/macos/Station Tauri Shell E2E.app/Contents/MacOS/station',
+      join(
+        '/repo',
+        'src-desktop',
+        'target',
+        'debug',
+        'bundle',
+        'macos',
+        'Station Tauri Shell E2E.app',
+        'Contents',
+        'MacOS',
+        'station',
+      ),
     );
   });
 
