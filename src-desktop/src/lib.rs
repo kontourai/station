@@ -6396,9 +6396,9 @@ fn with_native_startup_cover(
     window: &tauri::WebviewWindow,
     covered: bool,
 ) -> Result<(), tauri::Error> {
-    use objc2::MainThreadMarker;
-    use objc2_app_kit::{NSBox, NSBoxType, NSColor, NSView};
-    use objc2_foundation::ns_string;
+    use objc2::{ClassType, MainThreadMarker};
+    use objc2_app_kit::{NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSView};
+    use objc2_foundation::{ns_string, NSObjectProtocol};
 
     window.with_webview(move |webview| {
         let marker = MainThreadMarker::new()
@@ -6411,22 +6411,41 @@ fn with_native_startup_cover(
 
         if covered {
             let existing = content.viewWithTag(NATIVE_STARTUP_COVER_TAG);
-            if existing.is_none() {
+            if let Some(existing) = existing {
+                if !existing.isKindOfClass(NSBox::class()) {
+                    log::error!("refusing to replace an unexpected native startup cover view");
+                    return;
+                }
+            } else {
                 let cover = NSBox::new(marker);
                 cover.setFrame(content.bounds());
+                cover.setAutoresizingMask(
+                    NSAutoresizingMaskOptions::ViewWidthSizable
+                        | NSAutoresizingMaskOptions::ViewHeightSizable,
+                );
                 cover.setBoxType(NSBoxType::Custom);
                 cover.setFillColor(&NSColor::whiteColor());
                 cover.setTitle(ns_string!("Station is preparing its protected workspace…"));
                 unsafe { let _: () = objc2::msg_send![&*cover, setTag: NATIVE_STARTUP_COVER_TAG]; }
                 content.addSubview(&cover);
             }
+            unsafe { let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: true]; }
+            ns_window.makeFirstResponder(None);
             unsafe { let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64]; }
+            ns_window.deminiaturize(None);
             ns_window.makeKeyAndOrderFront(None);
         } else {
             if let Some(cover) = content.viewWithTag(NATIVE_STARTUP_COVER_TAG) {
+                if !cover.isKindOfClass(NSBox::class()) {
+                    log::error!("refusing to remove an unexpected startup cover view");
+                    return;
+                }
                 cover.removeFromSuperview();
             }
+            unsafe { let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: false]; }
             unsafe { let _: () = objc2::msg_send![webview_view, setAlphaValue: 1.0f64]; }
+            ns_window.deminiaturize(None);
+            ns_window.makeFirstResponder(Some(webview_view));
             ns_window.makeKeyAndOrderFront(None);
         }
     })

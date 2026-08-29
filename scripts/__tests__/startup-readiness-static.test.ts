@@ -38,6 +38,16 @@ describe('desktop startup readiness static boundary', () => {
     expect(nativeCover).toContain('content.addSubview(&cover)');
     expect(nativeCover).toContain('setAlphaValue: 0.0f64');
     expect(nativeCover).toContain('setAlphaValue: 1.0f64');
+    expect(nativeCover).toContain('setAccessibilityHidden: true');
+    expect(nativeCover).toContain('setAccessibilityHidden: false');
+    expect(nativeCover).toContain('ns_window.makeFirstResponder(None)');
+    expect(nativeCover).toContain(
+      'ns_window.makeFirstResponder(Some(webview_view))',
+    );
+    expect(nativeCover).toContain('ViewWidthSizable');
+    expect(nativeCover).toContain('ViewHeightSizable');
+    expect(nativeCover).toContain('isKindOfClass(NSBox::class())');
+    expect(nativeCover).toContain('ns_window.deminiaturize(None)');
     expect(nativeCover).toContain('ns_window.makeKeyAndOrderFront(None)');
     expect(nativeCover).not.toContain('.eval(');
     expect(lib).toContain('with_native_startup_cover(&window, true)');
