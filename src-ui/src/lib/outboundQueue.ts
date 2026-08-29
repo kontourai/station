@@ -134,7 +134,10 @@ export interface OutboundDispatchModule {
   ): Promise<
     { status: 'blocked'; count: number } | { status: 'completed'; value: T }
   >;
-  flush(transport: OutboundDispatchTransport): Promise<OutboundFlushOutcome>;
+  flush(
+    transport: OutboundDispatchTransport,
+    options?: { blockedSessionIds?: ReadonlySet<string> },
+  ): Promise<OutboundFlushOutcome>;
   /**
    * A terminal event may remove an accepted head only when it names the same
    * provider turn the transport durably recorded.
@@ -1134,8 +1137,9 @@ async function retry(clientTurnId: string): Promise<void> {
 
 async function flush(
   transport: OutboundDispatchTransport,
+  options?: { blockedSessionIds?: ReadonlySet<string> },
 ): Promise<OutboundFlushOutcome> {
-  const blockedSessions = new Set<string>();
+  const blockedSessions = new Set(options?.blockedSessionIds);
   let unavailable = false;
   while (true) {
     let claimed: QueuedOutboundTurn | undefined;

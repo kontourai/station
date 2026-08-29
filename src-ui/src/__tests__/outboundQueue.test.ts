@@ -103,6 +103,27 @@ describe('OutboundDispatchModule', () => {
     expect(await outboundDispatch.snapshot()).toEqual([]);
   });
 
+  it('#749 leaves a temporarily non-mutable session pending without claiming an attempt', async () => {
+    await outboundDispatch.enqueue(turn('pending-open', 'session-pending'));
+    const send = vi.fn(async () => accepted('provider-pending'));
+    const blocked = new Set(['session-pending']);
+    const initialAttempts = (await outboundDispatch.snapshot())[0]!.attempts;
+
+    await outboundDispatch.flush(send, { blockedSessionIds: blocked });
+    await outboundDispatch.flush(send, { blockedSessionIds: blocked });
+    expect(send).not.toHaveBeenCalled();
+    expect(await outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({
+        clientTurnId: 'pending-open',
+        status: 'pending',
+        attempts: initialAttempts,
+      }),
+    ]);
+
+    await outboundDispatch.flush(send);
+    expect(send).toHaveBeenCalledOnce();
+  });
+
   it('consumes matched early evidence on completion and ignores duplicate terminals on tuple reuse', async () => {
     let state: unknown = {
       version: 2,

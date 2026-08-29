@@ -38,48 +38,56 @@ export function useOutboundQueueFlush(apiBase: string): void {
     flushing = true;
     void import('../lib/outboundQueue')
       .then(async ({ outboundDispatch }) => {
-        const outcome = await outboundDispatch.flush(async (turn, claim) => {
-          const chat = activeChatsStore.getSnapshot()[turn.sessionId];
-          if (chat && !conversationCanMutate(chat)) {
+        const blockedSessionIds = new Set(
+          Object.entries(activeChatsStore.getSnapshot())
+            .filter(([, chat]) => !conversationCanMutate(chat))
+            .map(([sessionId]) => sessionId),
+        );
+        const outcome = await outboundDispatch.flush(
+          async (turn, claim) => {
+            const chat = activeChatsStore.getSnapshot()[turn.sessionId];
+            if (chat && !conversationCanMutate(chat)) {
+              return {
+                kind: 'not-invoked' as const,
+                reason: 'Conversation open state is not currently mutable.',
+              };
+            }
+            const result = await sendMessage(
+              turn.sessionId,
+              turn.agentSlug,
+              turn.conversationId,
+              turn.content,
+              turn.attachments,
+              turn.ambientContext,
+              turn.clientTurnId,
+              {
+                skipInMemoryQueueOnBusy: true,
+                dispatch: claim,
+                executionSnapshot: {
+                  requestedModel: turn.requestedModel,
+                  requestedProviderOptions: turn.requestedProviderOptions,
+                  model: turn.model,
+                  providerOptions: turn.providerOptions,
+                },
+              },
+            );
+            // The replay call is given an outbound capability, so its Interface
+            // returns an explicit transport fact. Keep this narrow conversion at
+            // the composition Seam; the Module never infers invocation from a
+            // boolean.
+            if (result && typeof result === 'object' && 'kind' in result) {
+              return result;
+            }
+            // A boolean success is only available to direct callers. A replay
+            // lacking the typed provider receipt cannot be accepted because a
+            // later terminal event would have no exact correlation.
             return {
               kind: 'not-invoked' as const,
-              reason: 'Conversation open state is not currently mutable.',
+              reason: 'The send gate did not invoke the provider.',
             };
-          }
-          const result = await sendMessage(
-            turn.sessionId,
-            turn.agentSlug,
-            turn.conversationId,
-            turn.content,
-            turn.attachments,
-            turn.ambientContext,
-            turn.clientTurnId,
-            {
-              skipInMemoryQueueOnBusy: true,
-              dispatch: claim,
-              executionSnapshot: {
-                requestedModel: turn.requestedModel,
-                requestedProviderOptions: turn.requestedProviderOptions,
-                model: turn.model,
-                providerOptions: turn.providerOptions,
-              },
-            },
-          );
-          // The replay call is given an outbound capability, so its Interface
-          // returns an explicit transport fact. Keep this narrow conversion at
-          // the composition Seam; the Module never infers invocation from a
-          // boolean.
-          if (result && typeof result === 'object' && 'kind' in result) {
-            return result;
-          }
-          // A boolean success is only available to direct callers. A replay
-          // lacking the typed provider receipt cannot be accepted because a
-          // later terminal event would have no exact correlation.
-          return {
-            kind: 'not-invoked' as const,
-            reason: 'The send gate did not invoke the provider.',
-          };
-        });
+          },
+          { blockedSessionIds },
+        );
         if (outcome === 'unavailable') {
           const { reportOutboundQueueUnavailable } = await import(
             '../lib/outboundQueueReporting'
