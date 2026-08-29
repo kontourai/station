@@ -562,10 +562,11 @@ export async function seedOrchestrationRoutes(
         body: JSON.stringify({ success: true, data: [] }),
       }),
     ),
-    page.route('**/api/conversations/*', (r) => {
+    page.route('**/api/conversations/**', (r) => {
       const url = new URL(r.request().url());
+      const parts = url.pathname.split('/').filter(Boolean);
       const conversationId =
-        url.pathname.split('/').filter(Boolean).pop() ?? '';
+        (parts.at(-1) === 'open' ? parts.at(-2) : parts.at(-1)) ?? '';
       const conversation = (
         conversationLookups as Record<
           string,
@@ -577,6 +578,34 @@ export async function seedOrchestrationRoutes(
           }
         >
       )[conversationId];
+      if (parts.at(-1) === 'open' && conversation) {
+        return r.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            data: {
+              status: 'resolved',
+              conversation: {
+                ...conversation,
+                source: 'runtime',
+                mutable: false,
+                messageCount: 0,
+                answerability: { answerable: true },
+              },
+              currentSessionId: conversationId,
+              transcript: {
+                available: true,
+                owner: 'runtime',
+                messageCount: 0,
+              },
+              canContinue: true,
+              answerability: { answerable: true },
+              recoveryActions: [],
+            },
+          }),
+        });
+      }
       return r.fulfill({
         status: conversation ? 200 : 404,
         contentType: 'application/json',
