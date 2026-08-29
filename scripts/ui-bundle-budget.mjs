@@ -41,7 +41,7 @@
  * HTML) is not part of the initial payload by any browser-observable
  * definition, so it is out of scope here even though it exists on disk.
  */
-import { lstatSync, readFileSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
@@ -129,12 +129,55 @@ function requireAssetPath(tag, attr) {
   return match[1];
 }
 
-function sumGzipBytes(outputDir, files) {
-  return files.reduce(
-    (sum, file) =>
-      sum + gzipSync(readFileSync(join(outputDir, file))).byteLength,
-    0,
+const VITE_CONTENT_HASH =
+  /-[A-Za-z0-9_-]{8}(?=\.(?:css|js|jpe?g|map|png|svg|wasm|webp|woff2?)(?:["'`),;\s]|$))/g;
+
+/**
+ * Vite names lazy assets with content hashes and writes those names into the
+ * eager chunks. The hash value is entropy, not product payload: Vite can
+ * derive a different value for the same source tree in a different absolute
+ * checkout, and those random-looking characters gzip by a few different
+ * bytes. Preserve every reference and its byte length while canonicalizing
+ * only that eight-character entropy before measuring the ratchet.
+ */
+export function normalizeViteContentHashEntropy(source, knownHashes) {
+  const admitted = new Set(knownHashes);
+  return source.replace(VITE_CONTENT_HASH, (match) =>
+    admitted.has(match.slice(1)) ? '-00000000' : match,
   );
+}
+
+function collectBuiltContentHashes(outputDir) {
+  const hashes = [];
+  const pending = [outputDir];
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    if (!directory) continue;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        pending.push(join(directory, entry.name));
+        continue;
+      }
+      const hash = entry.name.match(VITE_CONTENT_HASH)?.[0].slice(1);
+      if (hash) hashes.push(hash);
+    }
+  }
+  return hashes;
+}
+
+function sumGzipBytes(outputDir, files, { contentHashes } = {}) {
+  return files.reduce((sum, file) => {
+    const bytes = readFileSync(join(outputDir, file));
+    const measured = contentHashes
+      ? Buffer.from(
+          normalizeViteContentHashEntropy(
+            bytes.toString('utf8'),
+            contentHashes,
+          ),
+        )
+      : bytes;
+    return sum + gzipSync(measured).byteLength;
+  }, 0);
 }
 
 export function measureEntryBundle(outputDir) {
@@ -175,14 +218,23 @@ export function measureEntryBundle(outputDir) {
   // concatenating sources and gzipping once, which would report an
   // unrealistically good number by letting the compressor share a
   // dictionary across files no browser ever receives as a single stream.
-  const entryJsGzipBytes = sumGzipBytes(outputDir, entryJsFiles);
-  const entryCssGzipBytes = sumGzipBytes(outputDir, entryCssFiles);
+  const contentHashes = collectBuiltContentHashes(outputDir);
+  const entryJsRawGzipBytes = sumGzipBytes(outputDir, entryJsFiles);
+  const entryCssRawGzipBytes = sumGzipBytes(outputDir, entryCssFiles);
+  const entryJsGzipBytes = sumGzipBytes(outputDir, entryJsFiles, {
+    contentHashes,
+  });
+  const entryCssGzipBytes = sumGzipBytes(outputDir, entryCssFiles, {
+    contentHashes,
+  });
 
   return {
     entryJsFiles,
     entryJsGzipBytes,
+    entryJsRawGzipBytes,
     entryCssFiles,
     entryCssGzipBytes,
+    entryCssRawGzipBytes,
     assetCount: entryJsFiles.length + entryCssFiles.length,
   };
 }
@@ -218,6 +270,9 @@ if (process.argv[1]?.endsWith('ui-bundle-budget.mjs')) {
     console.log(
       `Initial UI bundle (${measured.assetCount} assets summed: ${measured.entryJsFiles.length} JS, ${measured.entryCssFiles.length} CSS): ` +
         `JS ${measured.entryJsGzipBytes}/${budget.entryJsGzipBytes} gzip bytes; CSS ${measured.entryCssGzipBytes}/${budget.entryCssGzipBytes}.`,
+    );
+    console.log(
+      `Raw delivered gzip bytes before path-sensitive Vite hash normalization: JS ${measured.entryJsRawGzipBytes}; CSS ${measured.entryCssRawGzipBytes}.`,
     );
     console.log(`Bundle dependency provenance: ${provenance.contractsPath}`);
     if (!result.ok && uiBundleBudgetObserveOnly()) {
