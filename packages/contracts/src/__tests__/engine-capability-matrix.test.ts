@@ -51,6 +51,56 @@ describe('engine capability matrix', () => {
     expect(sessionDeliveryChannels('ollama')).toBeUndefined();
   });
 
+  describe('station#895 wave C: instructionsInFirstTurn (the systemPrompt fallback, never itself labeled systemPrompt)', () => {
+    test('shipped only where systemPrompt has no native channel this wave — muse, codex, acp', () => {
+      expect(ENGINE_CAPABILITY_MATRICES.muse.instructionsInFirstTurn).toEqual({
+        state: 'session',
+        channel: 'first-turn',
+      });
+      expect(ENGINE_CAPABILITY_MATRICES.codex.instructionsInFirstTurn).toEqual({
+        state: 'session',
+        channel: 'first-turn',
+      });
+      expect(ENGINE_CAPABILITY_MATRICES.acp.instructionsInFirstTurn).toEqual({
+        state: 'session',
+        channel: 'first-turn',
+      });
+    });
+
+    test('unsupported for every engine with its own native systemPrompt channel, and for the unknown-external fallback', () => {
+      expect(
+        ENGINE_CAPABILITY_MATRICES.station.instructionsInFirstTurn,
+      ).toEqual({ state: 'unsupported' });
+      expect(ENGINE_CAPABILITY_MATRICES.claude.instructionsInFirstTurn).toEqual(
+        { state: 'unsupported' },
+      );
+      expect(UNKNOWN_EXTERNAL_ENGINE_MATRIX.instructionsInFirstTurn).toEqual({
+        state: 'unsupported',
+      });
+    });
+
+    test('cross-check: no shipped matrix entry claims both a native systemPrompt AND the first-turn fallback — the fallback is a genuine fallback, never a second channel', () => {
+      for (const [provider, matrix] of Object.entries(
+        ENGINE_CAPABILITY_MATRICES,
+      )) {
+        if (matrix.systemPrompt.state === 'session') {
+          expect(
+            matrix.instructionsInFirstTurn.state,
+            `${provider}: systemPrompt is session but instructionsInFirstTurn is also ${matrix.instructionsInFirstTurn.state}`,
+          ).not.toBe('session');
+        }
+      }
+      // And every engine has at least ONE of the two channels, or neither —
+      // never a matrix entry claiming a first-turn channel while ALSO
+      // claiming systemPrompt native (native already covers it).
+      for (const matrix of Object.values(ENGINE_CAPABILITY_MATRICES)) {
+        if (matrix.systemPrompt.state === 'native') {
+          expect(matrix.instructionsInFirstTurn.state).toBe('unsupported');
+        }
+      }
+    });
+  });
+
   test('resolveEngineCapabilityMatrix branch order (managed ids, executionClass, acp, unknown-external)', () => {
     expect(resolveEngineCapabilityMatrix()).toBe(
       ENGINE_CAPABILITY_MATRICES.station,

@@ -20,8 +20,13 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
+  type CapabilityDeliveryCapability,
+  type CapabilityUndeliveredReason,
+  FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   type ProviderKind,
+  SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SESSION_VISIBILITY_METADATA_KEY,
+  type SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
 import {
   isSessionLifecycleState,
@@ -229,6 +234,15 @@ export interface DelegatedTaskHandle {
   resolution: ExecutionResolutionReceipt;
   model?: string;
   parentTaskId?: string;
+  /** The engine this dispatch resolved to — names the delivery disclosure's channels. */
+  provider?: string;
+  /**
+   * Delivery receipts read back off the just-started session: the
+   * resolution-stage drops were stamped before the adapter ran, so they are
+   * already durable at dispatch time. Absent when the session has no
+   * capability receipts (or a target Station predates the field).
+   */
+  capabilityDelivery?: DelegatedCapabilityDelivery;
 }
 
 export interface DelegationTargetOption {
@@ -404,6 +418,128 @@ export interface DelegatedTaskRequestResponseHandle {
   target: DelegatedTaskSnapshot['target'];
 }
 
+/**
+ * The delegate seam's disclosed view of what the resolved Agent's authored
+ * settings actually did on this engine — derived from the server-owned
+ * capability-delivery receipts stamped into `session.started`/
+ * `session.configured` event metadata
+ * (`SESSION_CAPABILITY_DELIVERY_METADATA_KEY`), never asserted by a caller.
+ *
+ * A projection, not a passthrough: the raw report is resolution-stage
+ * vocabulary (requested ids, receipt entries), while the consumer here is an
+ * operator reading `station delegate` output. `prompt` collapses the report's
+ * systemPrompt entry into the three outcomes that matter at this seam —
+ * delivered on the engine's system-prompt channel, delivered (or still
+ * pending) as first-turn instructions, or not delivered with a reason — and
+ * `dropped` lists every authored setting the engine could not carry, which is
+ * the disclosure this view exists to guarantee (a visible line naming the
+ * dropped setting, never a silent drop).
+ */
+export interface DelegatedCapabilityDelivery {
+  prompt?: {
+    channel: 'system-prompt' | 'first-turn';
+    status: 'delivered' | 'pending' | 'not-delivered';
+    reason?: CapabilityUndeliveredReason;
+  };
+  dropped: Array<{
+    capability: CapabilityDeliveryCapability;
+    id?: string;
+    reason: CapabilityUndeliveredReason;
+  }>;
+}
+
+/**
+ * Fold the capability-delivery receipts out of a session's raw event log.
+ * `session.started` carries the resolution-stage report; a later
+ * `session.configured` (written by the delivering adapter via
+ * `mergeCapabilityDeliveryMetadata`) merges the channel-stage outcome into
+ * the same per-capability entries, so the LAST event carrying a capability's
+ * entry wins — exactly the merge order the adapters themselves write.
+ */
+function capabilityDeliveryReport(
+  events: Array<Record<string, unknown>>,
+): SessionCapabilityDeliveryMetadata | undefined {
+  let report: SessionCapabilityDeliveryMetadata | undefined;
+  for (const event of events) {
+    if (
+      event.method !== 'session.started' &&
+      event.method !== 'session.configured'
+    ) {
+      continue;
+    }
+    const metadata =
+      event.metadata && typeof event.metadata === 'object'
+        ? (event.metadata as Record<string, unknown>)
+        : undefined;
+    const candidate = metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY];
+    if (!candidate || typeof candidate !== 'object') continue;
+    report = {
+      ...report,
+      ...(candidate as SessionCapabilityDeliveryMetadata),
+    };
+  }
+  return report;
+}
+
+/**
+ * Derive the delegate seam's delivery disclosure from a session's events.
+ * Exported for its unit tests; callers pass the same raw event array
+ * `snapshotFor` already holds.
+ */
+export function delegatedCapabilityDelivery(
+  events: Array<Record<string, unknown>>,
+): DelegatedCapabilityDelivery | undefined {
+  const report = capabilityDeliveryReport(events);
+  if (!report) return undefined;
+  const dropped: DelegatedCapabilityDelivery['dropped'] = [];
+  for (const capability of ['systemPrompt', 'toolServers', 'skills'] as const) {
+    for (const entry of report[capability]?.undelivered ?? []) {
+      dropped.push({
+        capability: entry.capability,
+        ...(entry.id !== undefined ? { id: entry.id } : {}),
+        reason: entry.reason,
+      });
+    }
+  }
+  const systemPrompt = report.systemPrompt;
+  let prompt: DelegatedCapabilityDelivery['prompt'];
+  if (systemPrompt) {
+    const undelivered = systemPrompt.undelivered[0];
+    if (undelivered) {
+      prompt = {
+        channel: 'system-prompt',
+        status: 'not-delivered',
+        reason: undelivered.reason,
+      };
+    } else if (systemPrompt.channel === 'first-turn') {
+      prompt = {
+        channel: 'first-turn',
+        // Independent review MEDIUM-1: "a turn started" is not proof
+        // composition happened — a receipt can be present while dispatch
+        // skipped composing it (a defect this derivation must not read as
+        // success). `'delivered'` requires the turn's OWN record to carry
+        // the `firstTurnInstructionsComposed` marker orchestration-service.ts
+        // stamps ONLY at the moment it actually prepends the receipt into
+        // that turn's composed input (see provider.ts's doc comment on the
+        // constant).
+        status: events.some(
+          (event) =>
+            event.method === 'turn.started' &&
+            (event as { metadata?: Record<string, unknown> }).metadata?.[
+              FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY
+            ] === true,
+        )
+          ? 'delivered'
+          : 'pending',
+      };
+    } else {
+      prompt = { channel: 'system-prompt', status: 'delivered' };
+    }
+  }
+  if (!prompt && dropped.length === 0) return undefined;
+  return { ...(prompt ? { prompt } : {}), dropped };
+}
+
 export interface DelegatedTaskSnapshot {
   /** Durable selector for continuation; `taskId` is retained for compatibility. */
   conversationId: string;
@@ -431,6 +567,8 @@ export interface DelegatedTaskSnapshot {
   model?: string;
   projectSlug?: string;
   parentTaskId?: string;
+  /** Derived delivery disclosure; see `DelegatedCapabilityDelivery`. */
+  capabilityDelivery?: DelegatedCapabilityDelivery;
   eventCount: number;
   lastEvent?: { method: string; createdAt?: string };
   pendingRequest?: {
@@ -1827,6 +1965,7 @@ function snapshotFor(options: {
     );
   const lastEvent = events.at(-1);
   const status = taskStatus(session);
+  const capabilityDelivery = delegatedCapabilityDelivery(events);
   const sessionId = String(session.threadId ?? options.metadata.taskId);
   const conversationId = delegatedConversationId(options.metadata, sessionId);
   return {
@@ -1855,6 +1994,10 @@ function snapshotFor(options: {
       ? { parentTaskId: options.metadata.parentTaskId }
       : {}),
     eventCount: events.length,
+    // The delivery disclosure is derived from the same event log folded above
+    // — absent when the session carries no capability receipts at all (an
+    // agent-less session or a target Station predating the field).
+    ...(capabilityDelivery ? { capabilityDelivery } : {}),
     ...(lastEvent && typeof lastEvent.method === 'string'
       ? {
           lastEvent: {
@@ -2969,10 +3112,31 @@ export async function delegateTask(
     target: bindingTarget.kind,
     environment: target.kind,
   });
+  // Delivery disclosure at dispatch: read the just-started session's
+  // capability receipts back off its event log. The resolution-stage drops
+  // (engine-unsupported, not-found, secret-boundary-env) were stamped into
+  // `session.started` metadata before the adapter ran, so they are already
+  // durable here. Best-effort by design — a read failure must never fail an
+  // otherwise-successful dispatch, and `delegate status` re-derives the same
+  // view from the same events on every read.
+  let capabilityDelivery: DelegatedCapabilityDelivery | undefined;
+  try {
+    const detail = await orchestrationService.readSession(
+      sessionId,
+      readAuthority,
+    );
+    capabilityDelivery = delegatedCapabilityDelivery(
+      (detail?.events ?? []) as unknown as Array<Record<string, unknown>>,
+    );
+  } catch {
+    capabilityDelivery = undefined;
+  }
   return {
     ...handleFor(input, target, project, sessionId),
     target: { kind: 'agent', id: resolved.agentId },
     resolution: resolved.receipt,
+    provider: resolved.provider,
+    ...(capabilityDelivery ? { capabilityDelivery } : {}),
   };
 }
 
@@ -3065,12 +3229,29 @@ export async function executeExecutionTargetMessage(
         readAuthority,
       );
       const metadata = sessionBinding(rootDetail);
-      const currentMetadata = currentDetail
+      // #764 (review round 2): same reserved-but-unstarted plain-continuation
+      // tail as continueExecutionTargetMessage — fall back to the
+      // lineage-aware read so the predecessor's binding governs instead of
+      // dead-ending on the execution-binding error below.
+      let currentMetadata = currentDetail
         ? sessionBinding(currentDetail)
         : undefined;
       const reservedHandoff = currentDetail
         ? undefined
         : orchestrationService.reservedConversationHandoff(currentSessionId);
+      if (
+        !currentDetail &&
+        !reservedHandoff &&
+        typeof orchestrationService.readCurrentConversationSession ===
+          'function'
+      ) {
+        const continued =
+          await orchestrationService.readCurrentConversationSession(
+            sessionId,
+            readAuthority,
+          );
+        currentMetadata = continued ? sessionBinding(continued) : undefined;
+      }
       const boundTarget = reservedHandoff
         ? { kind: 'agent' as const, id: reservedHandoff.targetAgentId }
         : delegationTargetBinding(currentMetadata);
@@ -3419,12 +3600,29 @@ export async function continueExecutionTargetMessage(
     readAuthority,
   );
   const metadata = sessionBinding(rootDetail);
-  const currentMetadata = currentDetail
+  // #764 (review round 2): when the lineage tail is a reserved-but-unstarted
+  // plain continuation (no Session record, no handoff marker), the raw child
+  // read is null. The lineage-aware read resolves that exact tail back to its
+  // authorized predecessor, whose binding still governs the conversation —
+  // without it, a retried continue after a failed start dead-ends on the
+  // binding error below.
+  let currentMetadata = currentDetail
     ? sessionBinding(currentDetail)
     : undefined;
   const reservedHandoff = currentDetail
     ? undefined
     : orchestrationService.reservedConversationHandoff(currentSessionId);
+  if (
+    !currentDetail &&
+    !reservedHandoff &&
+    typeof orchestrationService.readCurrentConversationSession === 'function'
+  ) {
+    const continued = await orchestrationService.readCurrentConversationSession(
+      input.conversationId,
+      readAuthority,
+    );
+    currentMetadata = continued ? sessionBinding(continued) : undefined;
+  }
   const boundTarget = reservedHandoff
     ? { kind: 'agent' as const, id: reservedHandoff.targetAgentId }
     : delegationTargetBinding(currentMetadata);

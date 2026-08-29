@@ -121,6 +121,15 @@ OpenSSH argv, cleanup, and broken-pipe contracts. Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
 `continue-on-error` to relabel that gap green.
 
+Every pull request runs that bounded floor as the stable
+`Windows PR portable floor` check. Its workflow is read from the protected base
+through `pull_request_target`, checks out the exact candidate repository and
+SHA, and executes on an ephemeral GitHub-hosted Windows runner with read-only
+permissions and no persisted credentials. Forks run the same proof; they are
+not silently converted into a skipped required check. The physical Windows
+workflow remains a separate post-merge hardware-reference diagnostic and does
+not replace the PR gate.
+
 ### Targeted screenshot capture and the baseline diff loop (station#4464)
 
 `tests/screenshots.spec.ts`'s `SCREENS` list can be captured as a named
@@ -426,7 +435,7 @@ requires that boundary and `persist-credentials: false` on their checkouts.
 Unreviewed PR code belongs on hosted or genuinely one-job ephemeral runners.
 
 Linux CI, Android, publish, and secret-scan jobs run on GitHub-hosted
-images. desktop-win remains for the named Windows hardware-reference
+images. A private native Windows host remains for the hardware-reference
 performance lane, the native Windows portable floor, the Windows Vitest
 diagnostic, container-smoke Playwright, and recovering a leaked
 physical-host capacity lease. If a Linux job is reintroduced on that host, `ci:fast` alone

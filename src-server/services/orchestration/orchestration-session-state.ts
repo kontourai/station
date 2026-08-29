@@ -348,6 +348,16 @@ export function buildOrchestrationSessionSummary(options: {
     ...(base.resumeCursor !== undefined
       ? { resumeCursor: base.resumeCursor }
       : {}),
+    // #765 A1: carried so conversation continuation can tell a cursor with a
+    // durable engine transcript behind it from one whose session was started
+    // with persistence explicitly off (the Claude adapter spawns those with
+    // `--no-session-persistence`, so presenting the cursor to a child start
+    // is guaranteed to fail). Only a LOADED session ever carries an explicit
+    // `false` — the event-store row stores false and absent identically —
+    // which is exactly the live-continuation window the guard needs.
+    ...(base.persistSession !== undefined
+      ? { persistSession: base.persistSession }
+      : {}),
     ...(base.attachedSource ? { attachedSource: base.attachedSource } : {}),
     createdAt: base.createdAt,
     updatedAt: base.updatedAt,

@@ -106,6 +106,64 @@ export function HelpMenu({
             {promptConfig.label}
           </button>
         ))}
+        {/* #766 item 4: not an "Ask Station" prompt — opens the
+            Report-a-problem dialog, which previews the captured context
+            before the user chooses where the report goes. */}
+        <button
+          type="button"
+          onClick={() => {
+            onClose();
+            // Inline literal, not `requestReportProblem` from
+            // `lib/reportProblemEvents`: this menu is its own lazy chunk, and
+            // importing that module here (it is also used inside the deferred
+            // overlays chunk) hoists it into a shared chunk whose filename
+            // costs the ENTRY chunk a preload-map record (~36 gzip bytes,
+            // measured — the DeferredAppOverlays boundary comment documents
+            // the mechanism). `HelpMenu.report-problem.test.tsx` binds this
+            // literal to the constant behaviorally, so they cannot drift.
+            window.dispatchEvent(
+              new CustomEvent('station:open-report-problem'),
+            );
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            width: '100%',
+            padding: '10px 12px',
+            border: 'none',
+            borderTop: '1px solid var(--border-primary)',
+            background: 'transparent',
+            color: 'var(--text-primary)',
+            fontSize: 13,
+            textAlign: 'left',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+          onMouseEnter={(event) => {
+            event.currentTarget.style.background = 'var(--bg-tertiary)';
+          }}
+          onMouseLeave={(event) => {
+            event.currentTarget.style.background = 'transparent';
+          }}
+        >
+          <svg
+            aria-hidden="true"
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="var(--text-muted)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ flexShrink: 0, marginRight: 8 }}
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          Report a problem
+        </button>
       </div>
     </>,
     document.body,

@@ -30,6 +30,7 @@ const state = {
   toolsFailed: false,
   toolsError: undefined as unknown,
   toolsFailureReason: undefined as unknown,
+  catalogReconciling: false,
 };
 
 const createAgent = vi.fn();
@@ -70,6 +71,7 @@ const MODEL_CONNECTIONS = [
 const EMPTY: never[] = [];
 const refetchAgent = vi.fn();
 const refetchAgentTools = vi.fn();
+const useAgentToolsQuery = vi.fn();
 
 vi.mock('@kontourai/station-sdk', () => ({
   useAgentConnectionsQuery: () => ({ data: CONNECTIONS }),
@@ -84,13 +86,16 @@ vi.mock('@kontourai/station-sdk', () => ({
   isAgentToolsActivatingError: (error: unknown) =>
     (error as { activating?: boolean } | undefined)?.activating === true,
   useAgentTemplatesQuery: () => ({ data: EMPTY }),
-  useAgentToolsQuery: () => ({
-    data: EMPTY,
-    isError: state.toolsFailed,
-    error: state.toolsError,
-    failureReason: state.toolsFailureReason,
-    refetch: refetchAgentTools,
-  }),
+  useAgentToolsQuery: (...args: unknown[]) => {
+    useAgentToolsQuery(...args);
+    return {
+      data: EMPTY,
+      isError: state.toolsFailed,
+      error: state.toolsError,
+      failureReason: state.toolsFailureReason,
+      refetch: refetchAgentTools,
+    };
+  },
   useIntegrationsQuery: () => ({ data: EMPTY }),
   useProjectsQuery: () => ({ data: EMPTY }),
   useSkillsQuery: () => ({ data: EMPTY }),
@@ -100,7 +105,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
 }));
 vi.mock('../../../contexts/AgentsContext', () => ({
-  useAgentCatalogReconciling: () => false,
+  useAgentCatalogReconciling: () => state.catalogReconciling,
   useAgents: () => state.agents,
   useAgentActions: () => ({
     createAgent,
@@ -150,6 +155,7 @@ beforeEach(() => {
   state.toolsFailed = false;
   state.toolsError = undefined;
   state.toolsFailureReason = undefined;
+  state.catalogReconciling = false;
   createAgent.mockReset().mockResolvedValue({ data: { slug: 'writer' } });
   updateAgent.mockReset().mockResolvedValue({ data: {} });
   materializeEngineAgent
@@ -157,6 +163,7 @@ beforeEach(() => {
     .mockResolvedValue({ data: { slug: 'claude-code' }, created: true });
   select.mockClear();
   navigate.mockClear();
+  useAgentToolsQuery.mockClear();
 });
 
 afterEach(() => {
@@ -257,7 +264,9 @@ describe('AC5 — a created Agent is in the list and selected, with no reload', 
     const { result, rerender } = render();
     expect(result.current.listItems).toHaveLength(0);
     // What the create mutation's `['agents']` invalidation delivers.
-    state.agents = [agent({ slug: 'writer', name: 'Writer' })];
+    state.agents = [
+      agent({ slug: 'writer', name: 'Writer', engineId: 'station' }),
+    ];
     rerender();
     await waitFor(() =>
       expect(result.current.listItems.map((item) => item.id)).toEqual([
@@ -274,8 +283,47 @@ describe('AC5 — a tools read that lands mid-activation is a wait, not an error
   // and an error would name a failure that has not happened.
   const activating = { activating: true };
 
+  test.each([
+    ['the catalog has no selected row', [], false],
+    [
+      'the selected row is from a reconciling catalog',
+      [agent({ slug: 'writer', name: 'Writer', engineId: 'station' })],
+      true,
+    ],
+  ])(
+    '%s does not request runtime tools',
+    (_case, agents, catalogReconciling) => {
+      state.selectedId = 'writer';
+      state.agents = agents;
+      state.catalogReconciling = catalogReconciling;
+
+      render();
+
+      expect(useAgentToolsQuery).toHaveBeenLastCalledWith(
+        'writer',
+        expect.objectContaining({ enabled: false }),
+      );
+    },
+  );
+
+  test('a stable selected Station row requests its runtime tools', () => {
+    state.selectedId = 'writer';
+    state.agents = [
+      agent({ slug: 'writer', name: 'Writer', engineId: 'station' }),
+    ];
+
+    render();
+
+    expect(useAgentToolsQuery).toHaveBeenLastCalledWith(
+      'writer',
+      expect.objectContaining({ enabled: true }),
+    );
+  });
+
   test('while the retry is in flight the pane reports activating, not failure', () => {
-    state.agents = [agent({ slug: 'writer', name: 'Writer' })];
+    state.agents = [
+      agent({ slug: 'writer', name: 'Writer', engineId: 'station' }),
+    ];
     state.selectedId = 'writer';
     state.detail = { slug: 'writer', name: 'Writer' };
     // react-query keeps `error` null while it is still retrying; the last
@@ -287,7 +335,9 @@ describe('AC5 — a tools read that lands mid-activation is a wait, not an error
   });
 
   test('once the retries are spent it stops implying it might still arrive', () => {
-    state.agents = [agent({ slug: 'writer', name: 'Writer' })];
+    state.agents = [
+      agent({ slug: 'writer', name: 'Writer', engineId: 'station' }),
+    ];
     state.selectedId = 'writer';
     state.detail = { slug: 'writer', name: 'Writer' };
     state.toolsFailed = true;
@@ -305,6 +355,7 @@ describe('AC5 — a tools read that lands mid-activation is a wait, not an error
       agent({
         slug: 'writer',
         name: 'Writer',
+        engineId: 'station',
         activationFailure: {
           reason: 'prompt template references a missing variable',
           at: '2026-08-20T00:00:00.000Z',
@@ -325,7 +376,9 @@ describe('AC5 — a tools read that lands mid-activation is a wait, not an error
   });
 
   test('a healthy agent carries no activation failure', () => {
-    state.agents = [agent({ slug: 'writer', name: 'Writer' })];
+    state.agents = [
+      agent({ slug: 'writer', name: 'Writer', engineId: 'station' }),
+    ];
     state.selectedId = 'writer';
     state.detail = { slug: 'writer', name: 'Writer' };
     const { result } = render();
@@ -335,7 +388,9 @@ describe('AC5 — a tools read that lands mid-activation is a wait, not an error
   test('a non-activating tools failure claims neither state', () => {
     // A 409 is a real answer about a genuinely inactive Agent; retrying it or
     // calling it "activating" would both be wrong.
-    state.agents = [agent({ slug: 'writer', name: 'Writer' })];
+    state.agents = [
+      agent({ slug: 'writer', name: 'Writer', engineId: 'station' }),
+    ];
     state.selectedId = 'writer';
     state.detail = { slug: 'writer', name: 'Writer' };
     state.toolsFailed = true;

@@ -17,7 +17,7 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -189,6 +189,7 @@ function failedOrchestrationSession(): OrchestrationSessionSummary {
 function renderDock(
   session: ChatSession,
   activeOrchestrationSession: OrchestrationSessionSummary | null,
+  chatInput: ReturnType<typeof buildChatInput> = buildChatInput(),
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -206,7 +207,7 @@ function renderDock(
         modelSupportsAttachments={false}
         fileAttachmentsSupported={false}
         availableModels={[]}
-        chatInput={buildChatInput() as any}
+        chatInput={chatInput as any}
         setShowStatsPanel={vi.fn()}
         onNewChat={vi.fn()}
       />
@@ -380,5 +381,64 @@ describe('ChatDockBody session-failure ownership (station#3299)', () => {
     const session = buildSession({ status: 'idle' });
     renderDock(session, null);
     expect(screen.queryByTestId('chat-dock-session-failure')).toBeNull();
+  });
+});
+
+// #765 A2/A3: the stall watchdog's `progressSilence` projection, surfaced in
+// the chat it is about. Before this the server logged
+// `Turn stall detected (observe-only)` and only Home/Sessions rows showed
+// it; the affected chat said "Working…" indefinitely with no Stop pointer.
+describe('ChatDockBody turn-stall notice (#765)', () => {
+  function stalledOrchestrationSession(): OrchestrationSessionSummary {
+    return {
+      threadId: 'failure-ownership-session',
+      provider: 'claude',
+      lifecycleState: 'running',
+      status: 'running',
+      controlMode: 'station-owned',
+      hasActiveTurn: true,
+      turnProgress: {
+        turnId: 'stalled-turn',
+        lastProgressEventAt: '2026-08-29T12:00:00.000Z',
+        progressSilence: {
+          detectedAt: '2026-08-29T12:03:00.000Z',
+          windowMs: 180_000,
+          silentSinceEventAt: '2026-08-29T12:00:00.000Z',
+          provider: 'claude',
+        },
+      },
+      answerability: { answerable: true },
+      isLoaded: true,
+      isPersisted: true,
+      eventCount: 4,
+      createdAt: '2026-08-29T11:00:00.000Z',
+      updatedAt: '2026-08-29T12:03:00.000Z',
+    } as OrchestrationSessionSummary;
+  }
+
+  test('renders the stall notice with a working stop affordance while the turn is in flight', () => {
+    const chatInput = buildChatInput();
+    // `isTurnInFlight` — status 'sending' is the local in-flight signal.
+    const session = buildSession({ status: 'sending' });
+    renderDock(session, stalledOrchestrationSession(), chatInput);
+
+    expect(screen.getByTestId('chat-dock-turn-stall-notice')).toBeTruthy();
+    expect(screen.getByText(/appears stalled/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /stop this turn/i }));
+    expect(chatInput.handleCancel).toHaveBeenCalledTimes(1);
+  });
+
+  test('renders no stall notice once the turn has settled, even with a stale projection', () => {
+    const session = buildSession({ status: 'idle' });
+    renderDock(session, stalledOrchestrationSession());
+    expect(screen.queryByTestId('chat-dock-turn-stall-notice')).toBeNull();
+  });
+
+  test('renders no stall notice for a healthy in-flight turn', () => {
+    const summary = stalledOrchestrationSession();
+    delete (summary as { turnProgress?: unknown }).turnProgress;
+    const session = buildSession({ status: 'sending' });
+    renderDock(session, summary);
+    expect(screen.queryByTestId('chat-dock-turn-stall-notice')).toBeNull();
   });
 });

@@ -761,6 +761,7 @@ describe('the nightly workflow keeps its promises', () => {
         start,
         nextStep === -1 ? workflow.length : nextStep,
       );
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: asserts the workflow's literal placeholder, not a template.
       expect(step).toContain('/git/' + '${TAG_REF}');
       expect(step).toContain('Reference does not exist');
       expect(step).toContain('ref update response mismatch');
@@ -846,6 +847,24 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     );
   });
 
+  it('reserves macOS release cleanup time before setup and passes the absolute deadline to notarization', () => {
+    expect(desktopJob).toContain('timeout-minutes: 120');
+    const reserve = desktopJob.slice(
+      desktopJob.indexOf('name: Reserve nightly macOS release cleanup window'),
+      desktopJob.indexOf('uses: actions/checkout'),
+    );
+    expect(reserve).toContain('id: nightly_macos_release_deadline');
+    expect(reserve).toContain('105 * 60');
+    const notarize = desktopJob.slice(
+      desktopJob.indexOf('name: Seal, notarize'),
+      desktopJob.indexOf('name: Assemble the signed updater manifest'),
+    );
+    expect(notarize).toContain(
+      '--deadline-epoch "$' +
+        '{{ steps.nightly_macos_release_deadline.outputs.epoch }}"',
+    );
+  });
+
   it('publishes only on a literal success result from the test gate', () => {
     // Same literal line as the Android job's pin above, and the same
     // conjunct-order reasoning: scripts/actionlint-gate.mjs's
@@ -882,6 +901,12 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     );
     expect(notarize).toContain('--release-tag nightly-desktop');
     expect(notarize).toContain('--bundle-id io.kontourai.station.nightly');
+    expect(notarize).toContain('macos-signing-readiness.mjs unlock');
+    expect(notarize).toContain('macos-signing-readiness.mjs probe');
+    expect(notarize.indexOf('macos-signing-readiness.mjs unlock')).toBeLessThan(
+      notarize.indexOf('macos-notarized-artifacts.mjs'),
+    );
+    expect(desktopJob).toContain('Cleanup macOS Developer ID keychain');
   });
 
   it('does not depend on the Android job succeeding, and allocates no Android version code', () => {

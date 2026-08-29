@@ -1,6 +1,7 @@
 import type {
   ApprovalAttentionItem,
   AttentionItem,
+  DevicePairingAttentionItem,
   GateBlockedAttentionItem,
   GateExceptionAttentionItem,
   GateRouteBackAttentionItem,
@@ -10,9 +11,12 @@ import type {
 } from '@kontourai/station-sdk';
 import {
   acceptFlowException,
+  DevicePairingRequestActionError,
   evaluateFlowGate,
   sendOrchestrationTurn,
   useAcknowledgeAttentionItemMutation,
+  useConfirmDevicePairingRequestMutation,
+  useDenyDevicePairingRequestMutation,
   useDismissNotificationMutation,
   useNotificationActionMutation,
   useQueryClient,
@@ -126,7 +130,91 @@ function AttentionAction({ item }: { item: AttentionItem }) {
       return <GateReEvaluateAction item={item} />;
     case 'gate-exception':
       return <GateExceptionAction item={item} />;
+    case 'device-pairing':
+      return <DevicePairingActions item={item} />;
   }
+}
+
+/**
+ * #765 D5: Approve/Deny for a pending inbound pairing request, posting to
+ * the SAME gated `/api/pairing/requests/:requestId` routes the Connections
+ * pairing panel and `station environment access approve|deny` use — the
+ * pairing family's authorization at the HTTP boundary decides, never this
+ * card. On success both projections refresh and the item resolves out of
+ * Needs attention; refusals render the honest remedy (mirrors
+ * `HostDevicePairingPanel`'s copy for the same statuses).
+ */
+function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
+  const confirmMutation = useConfirmDevicePairingRequestMutation();
+  const denyMutation = useDenyDevicePairingRequestMutation();
+  const busy = confirmMutation.isPending || denyMutation.isPending;
+  return (
+    <>
+      <div className="attention-item__actions">
+        <button
+          type="button"
+          className="attention-item__action attention-item__action--primary"
+          disabled={busy}
+          onClick={() => confirmMutation.mutate(item.source.requestId)}
+        >
+          Approve
+        </button>
+        <button
+          type="button"
+          className="attention-item__action attention-item__action--danger"
+          disabled={busy}
+          onClick={() => denyMutation.mutate(item.source.requestId)}
+        >
+          Deny
+        </button>
+      </div>
+      <OpenConnectionsLink href={item.openHref} />
+      <MutationError
+        error={describePairingActionError(
+          confirmMutation.error,
+          item,
+          'approve',
+        )}
+      />
+      <MutationError
+        error={describePairingActionError(denyMutation.error, item, 'deny')}
+      />
+    </>
+  );
+}
+
+/**
+ * Same status → copy mapping `HostDevicePairingPanel.actOnRequest` renders,
+ * so the two approve surfaces describe a refusal identically. 403 on approve
+ * is the pairing service's "a request cannot approve itself" refusal
+ * (`approval_requires_operator`): the remedy is a credentialed session, so
+ * the message names the one that always exists on the host.
+ */
+function describePairingActionError(
+  error: unknown,
+  item: DevicePairingAttentionItem,
+  action: 'approve' | 'deny',
+): unknown {
+  if (error == null) return null;
+  if (!(error instanceof DevicePairingRequestActionError)) return error;
+  if (error.status === 401) {
+    return new Error(
+      "This device's access to this Station needs review. Reconnect it, then try again.",
+    );
+  }
+  if (error.status === 403 && action === 'approve') {
+    return new Error(
+      `Approving “${item.deviceName}” needs a trusted Station session. Run this on the Station: station environment access approve ${item.source.requestId} --force`,
+    );
+  }
+  if (error.status === 404 || error.status === 410) {
+    return new Error(
+      'That access request has already expired or been removed.',
+    );
+  }
+  return new Error(
+    `This Station could not ${action} that access request. Try again.`,
+  );
 }
 
 function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
@@ -546,6 +634,14 @@ function OpenFlowConsoleLink({ href }: { href: string }) {
   return (
     <a className="attention-open-link" href={href}>
       Open flow console
+    </a>
+  );
+}
+
+function OpenConnectionsLink({ href }: { href: string }) {
+  return (
+    <a className="attention-open-link" href={href}>
+      Open connections
     </a>
   );
 }

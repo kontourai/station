@@ -44,13 +44,16 @@ import type {
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
 import {
+  FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
+  SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SESSION_REATTACH_CONFLICT_CODE,
   SESSION_VISIBILITY_METADATA_KEY,
+  type SessionCapabilityDeliveryMetadata,
   type SessionReattachConflictReason,
   stripReservedOrchestrationMetadata,
   unsupportedModelOptionError,
@@ -480,6 +483,17 @@ interface OrchestrationServiceOptions {
   /** Adoption's deliberately composed behavioral Interface. */
   adoptionLedger?: AdoptionLedger;
   turnDeduplicator?: TurnDeduplicator;
+  /**
+   * #764: observed per-connection resume support consulted at continuation
+   * resolution, BEFORE a reserved child starts. Return `false` only for an
+   * OBSERVED capability absence (an ACP initialize handshake without
+   * `loadSession`); `undefined` keeps the resumeCursor path and leaves the
+   * adapter's own fail-closed ruling authoritative.
+   */
+  resumeCursorSupport?: (requested: {
+    provider: ProviderKind;
+    connectionId?: string;
+  }) => boolean | undefined;
   /** Real connection Adapter composed by StationRuntime; never a recovery protocol. */
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   /** Hosted deployments fail closed for direct/internal starts without a server binding. */
@@ -671,6 +685,58 @@ function composeAmbientSendTurnInput(
     // composes once and persists typed text.
     ambientContext,
   };
+}
+
+/**
+ * archive#895 wave C (instructionsInFirstTurn): read the pending first-turn
+ * authored prompt off a session's own event log — the same receipt
+ * `session-agent-resolution.ts` stamps into `session.started` metadata
+ * before any turn dispatches (`report.systemPrompt.channel === 'first-turn'`
+ * with a `firstTurnInstructions` string). Every delivering adapter spreads
+ * `input.metadata` into its `session.started`/`session.configured` publish
+ * (see e.g. `muse-adapter.ts`), so the receipt lands durably before this
+ * function ever runs — mirrors `station-control-delegation.ts`'s
+ * `capabilityDeliveryReport` fold for this narrower need (only the
+ * systemPrompt entry, only the first-turn shape).
+ *
+ * Returns `undefined` once a `turn.started` already exists for this
+ * session: that is the session's genuine first turn having already
+ * happened, and the ONLY signal this function needs to never re-prepend —
+ * every later `sendTurn` dispatch on the same session sees its own prior
+ * `turn.started` in the event log it reads. Checked over the whole log
+ * rather than short-circuiting mid-scan, so this holds regardless of a
+ * session.configured event's position relative to turn.started.
+ */
+function pendingFirstTurnInstructions(
+  events: readonly { method?: unknown; metadata?: unknown }[],
+): string | undefined {
+  if (events.some((event) => event.method === 'turn.started')) {
+    return undefined;
+  }
+  let firstTurnInstructions: string | undefined;
+  for (const event of events) {
+    if (
+      event.method !== 'session.started' &&
+      event.method !== 'session.configured'
+    ) {
+      continue;
+    }
+    const metadata =
+      event.metadata && typeof event.metadata === 'object'
+        ? (event.metadata as Record<string, unknown>)
+        : undefined;
+    const report = metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY] as
+      | SessionCapabilityDeliveryMetadata
+      | undefined;
+    const systemPrompt = report?.systemPrompt;
+    if (
+      systemPrompt?.channel === 'first-turn' &&
+      typeof systemPrompt.firstTurnInstructions === 'string'
+    ) {
+      firstTurnInstructions = systemPrompt.firstTurnInstructions;
+    }
+  }
+  return firstTurnInstructions;
 }
 
 /**
@@ -1447,6 +1513,9 @@ export class OrchestrationService {
     this.conversationLineage = new ConversationLineage({
       ...(options.eventStore ? { eventStore: options.eventStore } : {}),
       logger: options.logger,
+      ...(options.resumeCursorSupport
+        ? { resumeCursorSupport: options.resumeCursorSupport }
+        : {}),
       ...(this.turnDeduplicator
         ? { turnDeduplicator: this.turnDeduplicator }
         : {}),
@@ -3737,8 +3806,25 @@ export class OrchestrationService {
           } = command.input as ProviderSendTurnInput & {
             ambientContext?: string;
           };
+          // archive#895 wave C: an engine with no native systemPrompt
+          // channel gets its authored prompt delivered by prepending it
+          // into THIS turn's ambientContext — the same choke point ordinary
+          // ambient context (timezone, geolocation) already crosses —
+          // but only on the session's genuine first turn (`current` was
+          // read above, before this dispatch's own turn.started exists).
+          const pendingPrompt = current
+            ? pendingFirstTurnInstructions(current.events)
+            : undefined;
+          const turnInputWithFirstTurnPrompt = pendingPrompt
+            ? {
+                ...publicTurnInput,
+                ambientContext: publicTurnInput.ambientContext?.trim()
+                  ? `${pendingPrompt}\n${publicTurnInput.ambientContext}`
+                  : pendingPrompt,
+              }
+            : publicTurnInput;
           let turnInput = stripReservedCapabilityMetadata(
-            composeAmbientSendTurnInput(publicTurnInput),
+            composeAmbientSendTurnInput(turnInputWithFirstTurnPrompt),
           );
           if (internal?.reviewIsolation) {
             turnInput = {
@@ -3774,6 +3860,16 @@ export class OrchestrationService {
               [MODEL_LAUNCH_PLAN_METADATA_KEY]: turnPlan,
               [MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY]:
                 turnRequestedOverride,
+              // Independent review MEDIUM-1: stamped ONLY on the dispatch
+              // that genuinely composed a pending first-turn instructions
+              // receipt into `turnInput.input` above — the delivering
+              // adapter carries it onto its published `turn.started`'s own
+              // metadata, so the delegate-seam disclosure can derive
+              // 'delivered' from this turn's own record of what happened,
+              // not merely from a turn having started.
+              ...(pendingPrompt
+                ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
+                : {}),
             },
           };
           turnInput =

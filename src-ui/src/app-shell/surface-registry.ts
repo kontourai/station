@@ -293,7 +293,6 @@ export const APP_SURFACE_REGISTRY = createSurfaceRegistry([
       'connections-provider-edit',
       'connections-engines',
       'connections-runtime-edit',
-      'connections-acp',
       'connections-acp-new',
       'connections-tools',
       'connections-tool-edit',

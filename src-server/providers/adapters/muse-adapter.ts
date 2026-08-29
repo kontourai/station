@@ -6,6 +6,7 @@ import {
   engineId,
   engineRuntimeId,
 } from '@kontourai/station-contracts/agent-identity';
+import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
@@ -477,6 +478,20 @@ export class MuseAdapter implements ProviderAdapterShape {
     this.attachProcess(record, turn);
     this.armTurnDeadline(record, turn);
 
+    // Independent review MEDIUM-1: carries the server-owned
+    // `firstTurnInstructionsComposed` marker (reserved metadata, stripped
+    // from any caller-supplied value) onto THIS turn's own persisted
+    // record — see the constant's doc comment in provider.ts — so the
+    // delegate-seam disclosure can derive 'delivered' from this turn
+    // having actually composed it, not merely from having started.
+    const turnStartedMetadata: Record<string, unknown> = {
+      ...(input.recoveryCorrelationId
+        ? { recoveryCorrelationId: input.recoveryCorrelationId }
+        : {}),
+      ...(input.metadata?.[FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]
+        ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
+        : {}),
+    };
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -486,8 +501,8 @@ export class MuseAdapter implements ProviderAdapterShape {
       turnId,
       prompt: input.displayInput ?? input.input,
       ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
-      ...(input.recoveryCorrelationId
-        ? { metadata: { recoveryCorrelationId: input.recoveryCorrelationId } }
+      ...(Object.keys(turnStartedMetadata).length > 0
+        ? { metadata: turnStartedMetadata }
         : {}),
     });
     providerOps.add(1, {

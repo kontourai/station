@@ -470,9 +470,14 @@ describe('native release workflow topology', () => {
   it('seals embedded macOS code before API-key notarization and derives every release asset afterwards', () => {
     const macos = workflowJob(release, 'desktop-macos');
     expectStepOrder(macos, [
+      'Reserve macOS release cleanup window',
       'Build an unsigned macOS staging candidate',
       'Seal, notarize, and derive canonical macOS artifacts',
     ]);
+    expect(macos['timeout-minutes']).toBe(120);
+    expect(
+      namedStep(macos, 'Reserve macOS release cleanup window').run,
+    ).toContain('105 * 60');
     const gate = namedStep(
       macos,
       'Fail closed and create tag-bound updater configuration',
@@ -486,6 +491,11 @@ describe('native release workflow topology', () => {
       'Seal, notarize, and derive canonical macOS artifacts',
     );
     expect(seal.run).toContain('macos-notarized-artifacts.mjs');
+    expect(seal.run).toContain('macos-signing-readiness.mjs unlock');
+    expect(seal.run).toContain('macos-signing-readiness.mjs probe');
+    expect(seal.run.indexOf('macos-signing-readiness.mjs unlock')).toBeLessThan(
+      seal.run.indexOf('macos-notarized-artifacts.mjs'),
+    );
     expect(seal.run).toContain('station-notary-api-key.p8');
     expect(seal.run).toContain('app_candidates=()');
     expect(seal.run).toContain(
@@ -498,6 +508,9 @@ describe('native release workflow topology', () => {
     expect(seal.run).toContain('app="$' + '{app_candidates[0]}"');
     expect(seal.run).not.toContain('-print -quit');
     expect(seal.run).toContain('macos-notarized-artifacts.mjs --app "$app"');
+    expect(seal.run).toContain(
+      `--deadline-epoch "\${{ steps.macos_release_deadline.outputs.epoch }}"`,
+    );
     expect(seal.env).toMatchObject({
       APPLE_API_KEY_ID: `\${{ secrets.APPLE_API_KEY_ID }}`,
       APPLE_API_ISSUER_ID: `\${{ secrets.APPLE_API_ISSUER_ID }}`,
@@ -506,8 +519,14 @@ describe('native release workflow topology', () => {
     expect(
       namedStep(macos, 'Build an unsigned macOS staging candidate').run,
     ).toContain('--no-sign');
-    expect(macosArtifacts).toContain('ops/nightly/macos-embedded-signing.mjs');
-    expect(macosArtifacts.indexOf('macos-embedded-signing.mjs')).toBeLessThan(
+    const embeddedSealing = macosArtifacts.indexOf(
+      'await sealEmbeddedMacosMachOBounded(app, identity, {',
+    );
+    expect(embeddedSealing).toBeGreaterThan(-1);
+    expect(embeddedSealing).toBeLessThan(
+      macosArtifacts.indexOf('const outerSigningArgs = ['),
+    );
+    expect(embeddedSealing).toBeLessThan(
       macosArtifacts.indexOf(
         'await submit(command, zip, key, keyId, issuer, logger);',
       ),
@@ -519,6 +538,7 @@ describe('native release workflow topology', () => {
     expect(macosArtifacts).toContain("'DMG staple validation'");
     expect(macosArtifacts).toContain("'updater archive derivation'");
     expect(macosArtifacts).toContain('runBoundedCommand');
+    expect(release).toContain('Cleanup macOS Developer ID keychain');
   });
 
   it('admits exactly one relative macOS app discovered by the release workflow', () => {

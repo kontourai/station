@@ -48,7 +48,7 @@ use tauri::Emitter;
 use tauri::{ipc::Channel, AppHandle, State};
 #[cfg(not(mobile))]
 use tauri::{
-    webview::{DownloadEvent, NewWindowResponse},
+    webview::{DownloadEvent, NewWindowResponse, PageLoadEvent},
     WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 #[cfg(not(mobile))]
@@ -6340,6 +6340,8 @@ struct DesktopServerState {
     owner: Mutex<DesktopOwner>,
     supervisor: Arc<ServerSupervisor>,
     readiness: Mutex<startup_readiness::StartupReadiness>,
+    startup_commit_in_flight: AtomicBool,
+    startup_commit_pending: AtomicBool,
     /// When the owner was last re-derived. App setup seeds this with the
     /// instant of its own derivation, so in production it is always `Some` —
     /// the boot decision starts the interval rather than making the first
@@ -6350,8 +6352,182 @@ struct DesktopServerState {
 }
 
 #[cfg(not(mobile))]
+#[derive(Default)]
+struct NativeStartupBootstrap {
+    renderer_observed: AtomicBool,
+}
+
+#[cfg(not(mobile))]
 fn startup_readiness_accepts_retry(phase: startup_readiness::ReadinessPhase) -> bool {
     phase == startup_readiness::ReadinessPhase::Waiting
+}
+
+#[cfg(not(mobile))]
+fn claim_startup_commit(
+    renderer_observed: bool,
+    phase: startup_readiness::ReadinessPhase,
+    in_flight: &AtomicBool,
+    pending: &AtomicBool,
+) -> bool {
+    if !renderer_observed || !startup_readiness_accepts_retry(phase) {
+        return false;
+    }
+    loop {
+        if in_flight
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            pending.store(false, Ordering::Release);
+            return true;
+        }
+        pending.store(true, Ordering::Release);
+        if in_flight.load(Ordering::Acquire) {
+            return false;
+        }
+    }
+}
+
+#[cfg(not(mobile))]
+fn release_failed_startup_commit_claim(in_flight: &AtomicBool, pending: &AtomicBool) -> bool {
+    in_flight.store(false, Ordering::Release);
+    pending.swap(false, Ordering::AcqRel)
+}
+
+#[cfg(not(mobile))]
+fn release_failed_startup_commit(app: &AppHandle) {
+    if let Some(state) = app.try_state::<DesktopServerState>() {
+        if release_failed_startup_commit_claim(
+            &state.startup_commit_in_flight,
+            &state.startup_commit_pending,
+        ) {
+            request_native_startup_commit(app);
+        }
+    }
+}
+
+#[cfg(not(mobile))]
+fn complete_startup_commit(app: &AppHandle) {
+    if let Some(state) = app.try_state::<DesktopServerState>() {
+        state
+            .startup_commit_pending
+            .store(false, Ordering::Release);
+    }
+}
+
+#[cfg(not(mobile))]
+fn request_native_startup_commit(app: &AppHandle) {
+    let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
+        log::warn!("native startup bootstrap state is unavailable");
+        return;
+    };
+    if !bootstrap.renderer_observed.load(Ordering::Acquire) {
+        log::debug!("native startup bootstrap is waiting for the main renderer page start");
+        return;
+    }
+    let Some(state) = app.try_state::<DesktopServerState>() else {
+        log::debug!("native startup bootstrap is waiting for desktop state");
+        return;
+    };
+    let ticket = {
+        let status = state
+            .supervisor
+            .status
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match current_startup_ticket(&status) {
+            Ok(ticket) => ticket,
+            Err(error) => {
+                log::info!("native startup bootstrap is waiting for a sidecar ticket: {error}");
+                return;
+            }
+        }
+    };
+    request_native_startup_commit_for_ticket(app, ticket);
+}
+
+#[cfg(not(mobile))]
+fn request_native_startup_commit_for_ticket(
+    app: &AppHandle,
+    ticket: startup_readiness::StartupTicket,
+) {
+    let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
+        log::warn!("native startup bootstrap state is unavailable");
+        return;
+    };
+    let Some(state) = app.try_state::<DesktopServerState>() else {
+        log::debug!("native startup bootstrap is waiting for desktop state");
+        return;
+    };
+    let phase = state
+        .readiness
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .phase;
+    if !claim_startup_commit(
+        bootstrap.renderer_observed.load(Ordering::Acquire),
+        phase,
+        &state.startup_commit_in_flight,
+        &state.startup_commit_pending,
+    ) {
+        log::info!(
+            "native startup bootstrap did not claim: phase={phase:?} inFlight={} pending={} rendererObserved={}",
+            state.startup_commit_in_flight.load(Ordering::Acquire),
+            state.startup_commit_pending.load(Ordering::Acquire),
+            bootstrap.renderer_observed.load(Ordering::Acquire),
+        );
+        return;
+    }
+    log::info!(
+        "native startup bootstrap claimed identity proof generation {}",
+        ticket.generation
+    );
+    let app_for_commit = app.clone();
+    tauri::async_runtime::spawn(async move {
+        match tauri::async_runtime::spawn_blocking({
+            let app_for_task = app_for_commit.clone();
+            move || commit_startup_readiness_blocking(app_for_task, ticket)
+        })
+        .await
+        {
+            Ok(Ok(())) => complete_startup_commit(&app_for_commit),
+            Ok(Err(error)) => {
+                log::warn!("native startup bootstrap proof refused: {error}");
+                release_failed_startup_commit(&app_for_commit);
+            }
+            Err(error) => {
+                log::warn!("native startup bootstrap task failed: {error}");
+                release_failed_startup_commit(&app_for_commit);
+            }
+        }
+    });
+}
+
+#[cfg(not(mobile))]
+fn advance_native_startup_after_page(app: &AppHandle) {
+    let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
+        return;
+    };
+    if !bootstrap.renderer_observed.load(Ordering::Acquire) {
+        return;
+    }
+    let Some(state) = app.try_state::<DesktopServerState>() else {
+        return;
+    };
+    let owner = state
+        .owner
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    if native_startup_uses_sidecar_proof(&owner) {
+        request_native_startup_commit(app);
+    } else if let Err(error) = commit_startup_recovery_ui_for_app(app) {
+        log::warn!("native startup recovery reveal refused: {error}");
+    }
+}
+
+#[cfg(not(mobile))]
+fn native_startup_uses_sidecar_proof(owner: &DesktopOwner) -> bool {
+    owner == &DesktopOwner::Sidecar
 }
 
 #[cfg(not(mobile))]
@@ -6365,6 +6541,10 @@ fn notify_startup_readiness_if_waiting(app: &AppHandle) {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .phase;
     if startup_readiness_accepts_retry(phase) {
+        // Native owns the credential and identity proof. Claim it before the
+        // compatibility renderer wake so an already-mounted WebView cannot
+        // win the single-flight slot and recreate the bootstrap dependency.
+        request_native_startup_commit(app);
         let _ = app.emit("station://startup-readiness-retry", ());
     }
 }
@@ -6570,10 +6750,10 @@ fn with_native_startup_cover(
 ) -> Result<(), tauri::Error> {
     use objc2::{ClassType, MainThreadMarker};
     use objc2_app_kit::{
-        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSUserInterfaceItemIdentification,
-        NSView,
+        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSFont, NSTextAlignment,
+        NSTextField, NSUserInterfaceItemIdentification, NSView,
     };
-    use objc2_foundation::{ns_string, NSObjectProtocol};
+    use objc2_foundation::{ns_string, NSArray, NSObjectProtocol, NSPoint, NSRect, NSSize};
 
     window.with_webview(move |webview| {
         let marker = MainThreadMarker::new()
@@ -6611,18 +6791,52 @@ fn with_native_startup_cover(
                         | NSAutoresizingMaskOptions::ViewHeightSizable,
                 );
                 cover.setBoxType(NSBoxType::Custom);
-                cover.setFillColor(&NSColor::whiteColor());
-                cover.setTitle(ns_string!("Station is preparing its protected workspace…"));
+                cover.setFillColor(&NSColor::windowBackgroundColor());
+                cover.setTitle(ns_string!(""));
                 cover.setIdentifier(Some(cover_identifier));
+                if let Some(cover_content) = cover.contentView() {
+                    let label_text = ns_string!("Station is preparing its protected workspace…");
+                    let label = NSTextField::labelWithString(label_text, marker);
+                    let bounds = cover_content.bounds();
+                    label.setFrame(NSRect::new(
+                        NSPoint::new(24.0, ((bounds.size.height - 30.0) / 2.0).max(0.0)),
+                        NSSize::new((bounds.size.width - 48.0).max(0.0), 30.0),
+                    ));
+                    label.setAutoresizingMask(
+                        NSAutoresizingMaskOptions::ViewWidthSizable
+                            | NSAutoresizingMaskOptions::ViewMinYMargin
+                            | NSAutoresizingMaskOptions::ViewMaxYMargin,
+                    );
+                    label.setAlignment(NSTextAlignment(2));
+                    label.setFont(Some(&NSFont::boldSystemFontOfSize(17.0)));
+                    label.setTextColor(Some(&NSColor::labelColor()));
+                    unsafe {
+                        let _: () = objc2::msg_send![&*label, setAccessibilityElement: true];
+                        let _: () = objc2::msg_send![&*label, setAccessibilityLabel: label_text];
+                    }
+                    cover_content.addSubview(&label);
+                }
                 content.addSubview(&cover);
+            }
+            let protected_subviews = content.subviews();
+            if let Some(protected_cover) = protected_subviews.iter().find(|view| {
+                view.identifier()
+                    .as_deref()
+                    .is_some_and(|identifier| identifier.isEqualToString(cover_identifier))
+            }) {
+                let protected_children = NSArray::arrayWithObject(&*protected_cover);
+                unsafe {
+                    let _: () = objc2::msg_send![&*content, setAccessibilityChildren: &*protected_children];
+                }
             }
             unsafe {
                 let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: true];
-            }
-            ns_window.makeFirstResponder(None);
-            unsafe {
+                // Keep WebKit executing the readiness proof. Accessibility is
+                // isolated by the content-view child list above; alpha is now
+                // only the visual half of the protected surface.
                 let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64];
             }
+            ns_window.makeFirstResponder(None);
             ns_window.deminiaturize(None);
             ns_window.makeKeyAndOrderFront(None);
         } else {
@@ -6637,6 +6851,10 @@ fn with_native_startup_cover(
                 let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: false];
             }
             unsafe {
+                // Clear our temporary override. AppKit must resume deriving
+                // the live accessibility hierarchy; a copied subview snapshot
+                // would retain stale children and omit later replacements.
+                let _: () = objc2::msg_send![&*content, setAccessibilityChildren: None::<&NSArray<NSView>>];
                 let _: () = objc2::msg_send![webview_view, setAlphaValue: 1.0f64];
             }
             ns_window.deminiaturize(None);
@@ -6802,14 +7020,21 @@ fn observe_startup_ticket(app: &AppHandle, ticket: startup_readiness::StartupTic
     let Some(state) = app.try_state::<DesktopServerState>() else {
         return;
     };
+    let generation = ticket.generation;
+    let published_ticket = ticket.clone();
     let _ = transition_startup_readiness(
         state.inner(),
         startup_readiness::ReadinessInput::ServerTicket(ticket),
     );
+    log::info!(
+        "native startup bootstrap observed sidecar ticket generation {}",
+        generation
+    );
+    request_native_startup_commit_for_ticket(app, published_ticket);
     // A sidecar retry becomes reprobeable only after this exact new generation
     // is running and has published its ticket; never wake the renderer against
     // the old child during Restart.
-    notify_startup_readiness_if_waiting(app);
+    let _ = app.emit("station://startup-readiness-retry", ());
 }
 
 #[cfg(not(mobile))]
@@ -7066,6 +7291,7 @@ fn commit_startup_readiness_blocking(
     app: AppHandle,
     ticket: startup_readiness::StartupTicket,
 ) -> Result<(), String> {
+    let generation = ticket.generation;
     let state = app
         .try_state::<DesktopServerState>()
         .ok_or("Desktop startup readiness is not initialized.")?;
@@ -7076,14 +7302,30 @@ fn commit_startup_readiness_blocking(
             .status
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if ticket != current_startup_ticket(&status).map_err(str::to_string)? {
+        let current = current_startup_ticket(&status).map_err(|error| {
+            log::warn!(
+                "desktop startup identity proof refused generation {generation}: {error}"
+            );
+            error.to_string()
+        })?;
+        if ticket != current {
+            log::warn!(
+                "desktop startup identity proof refused generation {generation}: ticket is stale"
+            );
             return Err("Desktop startup readiness ticket is stale.".to_string());
         }
     }
     // Native owns the exact bundled profile and Keychain reference. Prove the
     // current sidecar directly so reveal never depends on the WebView's active
     // profile, which may still name another channel during cold bootstrap.
-    prove_bundled_startup_identity(&launch, &ticket)?;
+    if let Err(error) = prove_bundled_startup_identity(&launch, &ticket) {
+        // The renderer receives this refusal but cannot safely inspect or log
+        // native credential details. Keep one secret-free host diagnostic so
+        // a protected-window timeout identifies profile, Keychain, transport,
+        // identity, or race refusal instead of collapsing to a blank deadline.
+        log::warn!("desktop startup identity proof refused generation {generation}: {error}");
+        return Err(error);
+    }
     // Supervisor status precedes readiness everywhere this pair is acquired.
     // Revalidate and transition after the bounded request, then release before UI.
     let status = state
@@ -7095,14 +7337,43 @@ fn commit_startup_readiness_blocking(
         .readiness
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let effects =
-        commit_current_startup_ticket(&status, &mut readiness, ticket).map_err(str::to_string)?;
+    let effects = commit_current_startup_ticket(&status, &mut readiness, ticket).map_err(
+        |error| {
+            log::warn!(
+                "desktop startup identity proof refused generation {generation}: {error}"
+            );
+            error.to_string()
+        },
+    )?;
     drop(readiness);
     drop(status);
     if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
+        log::info!(
+            "desktop startup identity proof committed generation {}",
+            generation
+        );
         reveal_main_window(&app);
     }
     Ok(())
+}
+
+#[cfg(not(mobile))]
+fn observe_native_startup_page(app: &AppHandle, label: &str, event: PageLoadEvent) {
+    if !native_startup_page_admitted(label, event) {
+        return;
+    }
+    let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
+        return;
+    };
+    if !bootstrap.renderer_observed.swap(true, Ordering::AcqRel) {
+        log::info!("native startup bootstrap observed the main renderer page start");
+    }
+    advance_native_startup_after_page(app);
+}
+
+#[cfg(not(mobile))]
+fn native_startup_page_admitted(label: &str, event: PageLoadEvent) -> bool {
+    label == "main" && event == PageLoadEvent::Started
 }
 
 #[cfg(not(mobile))]
@@ -7111,16 +7382,50 @@ async fn commit_startup_readiness(
     app: AppHandle,
     ticket: startup_readiness::StartupTicket,
 ) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        commit_startup_readiness_blocking(app, ticket)
+    let state = app
+        .try_state::<DesktopServerState>()
+        .ok_or("Desktop startup readiness is not initialized.")?;
+    let phase = state
+        .readiness
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .phase;
+    if !claim_startup_commit(
+        true,
+        phase,
+        &state.startup_commit_in_flight,
+        &state.startup_commit_pending,
+    ) {
+        return Err("Desktop startup identity proof is already in flight.".to_string());
+    }
+    let app_for_commit = app.clone();
+    let result = match tauri::async_runtime::spawn_blocking(move || {
+        commit_startup_readiness_blocking(app_for_commit, ticket)
     })
     .await
-    .map_err(|error| format!("Desktop startup identity task failed: {error}"))?
+    {
+        Ok(result) => result,
+        Err(error) => {
+            release_failed_startup_commit(&app);
+            return Err(format!("Desktop startup identity task failed: {error}"));
+        }
+    };
+    if result.is_err() {
+        release_failed_startup_commit(&app);
+    } else {
+        complete_startup_commit(&app);
+    }
+    result
 }
 
 #[cfg(not(mobile))]
 #[tauri::command]
 fn commit_startup_recovery_ui(app: AppHandle) -> Result<(), String> {
+    commit_startup_recovery_ui_for_app(&app)
+}
+
+#[cfg(not(mobile))]
+fn commit_startup_recovery_ui_for_app(app: &AppHandle) -> Result<(), String> {
     let state = app
         .try_state::<DesktopServerState>()
         .ok_or("Desktop startup readiness is not initialized.")?;
@@ -7138,7 +7443,7 @@ fn commit_startup_recovery_ui(app: AppHandle) -> Result<(), String> {
         startup_readiness::ReadinessInput::RecoveryUiCommitted,
     );
     if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
-        reveal_main_window(&app);
+        reveal_main_window(app);
     }
     Ok(())
 }
@@ -7575,6 +7880,12 @@ fn unified_server_status(app: &AppHandle) -> BundledServerStatus {
 #[tauri::command]
 async fn bundled_server_status(app: AppHandle) -> BundledServerStatus {
     unified_server_status(&app)
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+fn open_desktop_tray_menu(app: AppHandle) -> Result<bool, String> {
+    crate::tray::open_menu(&app)
 }
 
 #[cfg(not(mobile))]
@@ -8347,6 +8658,10 @@ If a stable instance is running, this launch will focus its window and exit.",
         .manage(NativePairingExchangeCancellation::default());
     #[cfg(not(mobile))]
     let builder = builder
+        .manage(NativeStartupBootstrap::default())
+        .on_page_load(|webview, payload| {
+            observe_native_startup_page(webview.app_handle(), webview.label(), payload.event());
+        })
         .manage(NativeBrowserPreviewGrants::default())
         .manage(ssh_launcher::SshLaunches::default());
 
@@ -8374,6 +8689,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         open_local_browser_preview_window,
         open_workspace_pane_pop_out,
         bundled_server_status,
+        open_desktop_tray_menu,
         restart_bundled_server,
         commit_startup_readiness,
         commit_startup_recovery_ui,
@@ -8564,7 +8880,8 @@ If a stable instance is running, this launch will focus its window and exit.",
                 if let Some(dispatcher) = native_cover_dispatcher(app.handle().clone()) {
                     app.manage(dispatcher);
                 }
-                app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), ownership_checked_at: Mutex::new(Some(Instant::now())) });
+                app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), startup_commit_in_flight: AtomicBool::new(false), startup_commit_pending: AtomicBool::new(false), ownership_checked_at: Mutex::new(Some(Instant::now())) });
+                advance_native_startup_after_page(app.handle());
                 replay_pending_main_window_activation(app.handle(), &pending_activation);
                 // The tray poll reads this managed ownership state. Starting
                 // it earlier allowed its first poll to see only the
@@ -8755,6 +9072,30 @@ mod tests {
             }],
             "an unread cover must be superseded by the newer exact reveal"
         );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn native_cover_labels_and_isolates_ax_without_pausing_webkit() {
+        let source = include_str!("lib.rs");
+        let start = source
+            .find("fn with_native_startup_cover")
+            .expect("native startup cover exists");
+        let end = source[start..]
+            .find("fn present_startup_recovery_surface")
+            .map(|offset| start + offset)
+            .expect("native startup cover ends before recovery composition");
+        let cover = &source[start..end];
+
+        assert!(cover.contains("NSTextField::labelWithString(label_text, marker)"));
+        assert!(cover.contains("setAccessibilityLabel: label_text"));
+        assert!(cover.contains("NSArray::arrayWithObject(&*protected_cover)"));
+        assert!(cover.contains("setAccessibilityChildren: &*protected_children"));
+        assert!(cover.contains("setAccessibilityChildren: None::<&NSArray<NSView>>"));
+        assert!(!cover.contains("let revealed_children = content.subviews()"));
+        assert!(cover.contains("setAlphaValue: 0.0f64"));
+        assert!(cover.contains("setAlphaValue: 1.0f64"));
+        assert!(!cover.contains("webview_view.setHidden("));
     }
 
     #[test]
@@ -9173,6 +9514,78 @@ mod tests {
             startup_readiness::ReadinessPhase::Bypassed,
         ] {
             assert!(!startup_readiness_accepts_retry(terminal));
+        }
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn native_bootstrap_claim_requires_renderer_waiting_and_single_flight() {
+        let in_flight = AtomicBool::new(false);
+        let pending = AtomicBool::new(false);
+        assert!(!claim_startup_commit(
+            false,
+            startup_readiness::ReadinessPhase::Waiting,
+            &in_flight,
+            &pending,
+        ));
+        assert!(!claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Ready,
+            &in_flight,
+            &pending,
+        ));
+        assert!(claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Waiting,
+            &in_flight,
+            &pending,
+        ));
+        assert!(!claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Waiting,
+            &in_flight,
+            &pending,
+        ));
+        assert!(pending.load(Ordering::Acquire));
+        assert!(release_failed_startup_commit_claim(
+            &in_flight,
+            &pending,
+        ));
+        assert!(!pending.load(Ordering::Acquire));
+        assert!(claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Waiting,
+            &in_flight,
+            &pending,
+        ));
+        assert!(!release_failed_startup_commit_claim(
+            &in_flight,
+            &pending,
+        ));
+        assert!(native_startup_page_admitted(
+            "main",
+            PageLoadEvent::Started,
+        ));
+        assert!(!native_startup_page_admitted(
+            "main",
+            PageLoadEvent::Finished,
+        ));
+        for foreign in ["preview", "workspace-popout", "main-copy", ""] {
+            assert!(!native_startup_page_admitted(
+                foreign,
+                PageLoadEvent::Started,
+            ));
+        }
+        assert!(native_startup_uses_sidecar_proof(&DesktopOwner::Sidecar));
+        for owner in [
+            DesktopOwner::Service {
+                id: "service".into(),
+                port: 18141,
+            },
+            DesktopOwner::Unowned,
+            DesktopOwner::None,
+        ] {
+            assert!(!native_startup_uses_sidecar_proof(&owner));
         }
     }
 

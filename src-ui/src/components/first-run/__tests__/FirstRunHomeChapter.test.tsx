@@ -100,23 +100,35 @@ vi.mock('../../../contexts/onboarding-setup-store', () => ({
   firstRunChapterPresence: { set: (open: boolean) => presence.push(open) },
 }));
 /**
- * The disclosure step, stubbed down to the two things this file is about: what
+ * The disclosure step, stubbed down to the things this file is about: what
  * the chapter ASKS it (is there anything to disclose, has the query answered)
- * and what it does with the answer (a step, in front of the engines). The
- * inventory, the acknowledgement POST and "Not now"'s page-lifetime dismissal
- * are the component's own, covered in `UsageTelemetryDisclosure.test.tsx`.
+ * and what it does with the answers (advance on an acknowledgement, close on a
+ * decline). The inventory, the acknowledgement POST and the dismissal's own
+ * persistence are the component's own, covered in
+ * `UsageTelemetryDisclosure.test.tsx`.
  */
 const disclosureState = { settled: true, outstanding: false };
+const { dismissUsageTelemetryDisclosure } = vi.hoisted(() => ({
+  dismissUsageTelemetryDisclosure: vi.fn(),
+}));
 vi.mock('../../UsageTelemetryDisclosure', () => ({
   useUsageTelemetryDisclosureState: () => disclosureState,
-  UsageTelemetryDisclosureStep: ({ onAdvance }: { onAdvance: () => void }) => (
-    <button
-      type="button"
-      data-testid="first-run-disclosure"
-      onClick={onAdvance}
-    >
-      I understand
-    </button>
+  dismissUsageTelemetryDisclosure,
+  UsageTelemetryDisclosureStep: ({
+    onAdvance,
+    onDefer,
+  }: {
+    onAdvance: () => void;
+    onDefer: () => void;
+  }) => (
+    <div data-testid="first-run-disclosure">
+      <button type="button" onClick={onDefer}>
+        Not now
+      </button>
+      <button type="button" onClick={onAdvance}>
+        I understand
+      </button>
+    </div>
   ),
 }));
 vi.mock('../../../hooks/useSystemStatus', () => ({
@@ -171,6 +183,7 @@ beforeEach(() => {
       created: true,
     }));
   configValue.firstRun = { status: 'pending' };
+  dismissUsageTelemetryDisclosure.mockReset();
   disclosureState.settled = true;
   disclosureState.outstanding = false;
   setupState.launcherWouldShow = false;
@@ -688,10 +701,34 @@ describe('the disclosure is the first step of the run, not a modal over it', () 
     // The engines step is BEHIND it, not beside it.
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
 
-    fireEvent.click(screen.getByTestId('first-run-disclosure'));
+    // Acknowledging is the ONLY way forward; the counter follows the steps
+    // the run actually rendered.
+    fireEvent.click(screen.getByRole('button', { name: 'I understand' }));
     expect(screen.getByTestId('first-run-engines')).toBeTruthy();
     expect(screen.getByText('Step 2 of 3')).toBeTruthy();
     expect(screen.queryByTestId('first-run-disclosure')).toBeNull();
+  });
+
+  test('"Not now" on the disclosure step CLOSES the run, never advances (#765 B1)', async () => {
+    // Reproduced live: "Not now" on "Step 1 of 3" advanced to step 2, which
+    // reads as the modal refusing to be dismissed. Declining the disclosure
+    // is a deferral of the run — the dialog closes, the durable fact is
+    // written, and the Home card keeps offering the run.
+    disclosureState.outstanding = true;
+    render(<FirstRunHomeChapter />);
+    expect(screen.getByTestId('first-run-disclosure')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    });
+
+    expect(
+      screen.queryByTestId('first-run-engines'),
+      '"Not now" advanced into the engines step',
+    ).toBeNull();
+    expect(screen.queryByTestId('first-run-disclosure')).toBeNull();
+    expect(recordFirstRunDecision).toHaveBeenCalledWith({ status: 'skipped' });
+    expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
   });
 
   test('an already-acknowledged home runs two steps and says so', () => {
@@ -724,14 +761,35 @@ describe('the disclosure is the first step of the run, not a modal over it', () 
     expect(screen.getByText('Step 1 of 3')).toBeTruthy();
   });
 
-  test('closing the run at the disclosure step still writes the deferral', async () => {
-    // The dialog's own close is the RUN's decision at every step, including
-    // the one the disclosure owns — its "Not now" only advances.
+  test('closing the run at the disclosure step writes the deferral AND dismisses the disclosure', async () => {
+    // The dialog's own close is the RUN's decision at every step. At the
+    // disclosure step it is also the DISCLOSURE's decision: without recording
+    // the dismissal, the `skipped` write flips the home off `pending`,
+    // `OnboardingGate` mounts the standalone modal on every route, and the
+    // dialog the user just closed re-appears over `/agents` (#765 B1,
+    // reproduced live).
     disclosureState.outstanding = true;
     render(<FirstRunHomeChapter />);
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Close setup' }));
     });
     expect(recordFirstRunDecision).toHaveBeenCalledWith({ status: 'skipped' });
+    expect(
+      dismissUsageTelemetryDisclosure,
+      'closing over the disclosure step left the disclosure undismissed',
+    ).toHaveBeenCalled();
+  });
+
+  test('closing the run at a LATER step does not touch the disclosure', async () => {
+    // The disclosure behind an acknowledged step is settled server-side; a
+    // close at the engines step must not write a client snooze for it.
+    disclosureState.outstanding = false;
+    render(<FirstRunHomeChapter />);
+    expect(screen.getByTestId('first-run-engines')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Close setup' }));
+    });
+    expect(recordFirstRunDecision).toHaveBeenCalledWith({ status: 'skipped' });
+    expect(dismissUsageTelemetryDisclosure).not.toHaveBeenCalled();
   });
 });

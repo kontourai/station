@@ -3,6 +3,7 @@ import type {
   ProviderAdapterShape,
   ProviderSendTurnInput,
 } from '../../providers/adapter-shape.js';
+import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import type { EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
@@ -163,9 +164,34 @@ export class CredentialProfileRecovery {
     // push for it.
     let result: { turnId: string };
     try {
+      // Independent review HIGH-1: this replay used to send `input.input`
+      // straight to the adapter, bypassing the same ambientContext choke
+      // point `orchestration-service.ts`'s ordinary `sendTurn` dispatch
+      // composes through (`composeAmbientSendTurnInput`) — a pending
+      // first-turn instructions receipt (station#895 wave C) rides
+      // `ambientContext` exactly like ordinary ambient context (timezone,
+      // geolocation), so a credential-profile recovery replay of the
+      // session's first turn was silently dropping it while the receipt
+      // still read 'delivered' (derived from `turn.started` existing, which
+      // this call path itself creates). Composing here — the same rule,
+      // not a reimplementation the two paths could drift apart on — closes
+      // that gap for every recovery replay, first turn or not.
+      //
+      // Deliberately does NOT stamp FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY
+      // (MEDIUM-1) on this dispatch's own `metadata` — safe only because
+      // `input.ambientContext` here (when it carries a pending prompt at
+      // all) was read off an EARLIER `turn.started`'s own `ambientContext`
+      // (`session-recovery-coordinator.ts`'s `buildReplayInput`), an event
+      // that already carries the marker from ITS original dispatch; the
+      // delegate seam's `events.some(...)` scan finds that entry either
+      // way. A replay of a turn that never reached its own `turn.started`
+      // in the first place would under-report ('pending' rather than
+      // 'delivered') instead of falsely claiming delivery — an accepted,
+      // fail-toward-honest gap, not a silent one.
       result = await adapter.sendTurn({
         threadId: input.threadId,
-        input: input.input,
+        input: composeAmbientTurnText(input.ambientContext, input.input),
+        displayInput: input.input,
         ...(input.attachments ? { attachments: input.attachments } : {}),
         ...(input.ambientContext
           ? { ambientContext: input.ambientContext }

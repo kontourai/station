@@ -210,6 +210,8 @@ function openLinkLabel(kind: AttentionItem['kind']): string {
     case 'gate-blocked':
     case 'gate-exception':
       return 'Open flow console';
+    case 'device-pairing':
+      return 'Open connections';
     default:
       return 'Open session';
   }

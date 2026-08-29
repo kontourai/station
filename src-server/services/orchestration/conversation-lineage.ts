@@ -47,6 +47,18 @@ export interface ConversationLineageDeps {
     threadId: string,
     authority: SessionReadScope,
   ) => Promise<OrchestrationSessionDetail | null>;
+  /**
+   * #764: observed per-connection resume support, consulted BEFORE a
+   * continuation takes the resumeCursor path. `false` must mean an OBSERVED
+   * capability absence (an ACP initialize handshake that did not advertise
+   * `loadSession`); `undefined` (unknown, or a non-ACP provider) keeps the
+   * cursor path and leaves the ACP adapter's own fail-closed A3 ruling
+   * authoritative.
+   */
+  resumeCursorSupport?: (requested: {
+    provider: ProviderKind;
+    connectionId?: string;
+  }) => boolean | undefined;
   readSessionMessages: (
     threadId: string,
     authority: SessionReadScope,
@@ -107,6 +119,11 @@ export class ConversationLineage {
       return { sessionId: conversationId, startRequired: false };
     }
     const current = lineage[lineage.length - 1]!;
+    // #764: decide cursor-vs-seed BEFORE a child start. An observed ACP
+    // capability absence (no loadSession) must take the transcriptSeed
+    // fresh-child path here; the adapter's fail-closed start refusal stays
+    // authoritative only for the cases this observation cannot speak for.
+    const resumeSupported = this.deps.resumeCursorSupport?.(requested);
     const detail = await this.deps.readSession(current.sessionId, authority);
     if (!detail) {
       // A handoff-reserved child must be launched by its selected target, not
@@ -143,6 +160,7 @@ export class ConversationLineage {
                   conversationId,
                   authority,
                 ),
+                resumeSupported,
               )
             : {}),
         };
@@ -165,6 +183,7 @@ export class ConversationLineage {
                 conversationId,
                 authority,
               ),
+              resumeSupported,
             )
           : {}),
       };
@@ -190,6 +209,7 @@ export class ConversationLineage {
         detail,
         requested,
         this.readConversationTranscriptMessages(conversationId, authority),
+        resumeSupported,
       ),
     };
   }
@@ -216,10 +236,11 @@ export class ConversationLineage {
 
     // A durable reservation creates lineage before it creates a provider
     // Session.  Keep the canonical Conversation readable across that crash
-    // window, but only by following the exact, still-active reservation back
-    // to its authorized predecessor.  A missing arbitrary lineage child is
-    // deliberately not a fallback: that would turn corruption or a foreign
-    // child into an authorization bypass.
+    // window, but only by following the exact lineage tail back to its
+    // authorized predecessor (a plain continuation reservation, an active
+    // context-boundary, or an active handoff marker — #764). A missing
+    // arbitrary lineage child is deliberately not a fallback: that would
+    // turn corruption or a foreign child into an authorization bypass.
     const store = this.deps.eventStore;
     const currentLineage = store?.conversationSessions(conversationId).at(-1);
     if (
@@ -232,6 +253,16 @@ export class ConversationLineage {
     const boundary =
       store.conversationContextBoundaryForSuccessor(currentSessionId);
     const handoff = store.conversationHandoffForSession(currentSessionId);
+    // #764: a plain continuation reservation creates lineage with NO marker
+    // of either kind. It is as legitimate a tail as the two marked kinds, and
+    // the predecessor is reached under the same exact-tail +
+    // authorized-predecessor shape the marked arms use.
+    if (!boundary && !handoff) {
+      return this.deps.readSession(
+        currentLineage.predecessorSessionId,
+        authority,
+      );
+    }
     const activeBoundary =
       boundary &&
       boundary.conversationId === conversationId &&
@@ -855,6 +886,7 @@ function continuationLaunchContext(
   detail: Pick<OrchestrationSessionDetail, 'session' | 'events'>,
   requested: { provider: ProviderKind; connectionId?: string },
   messages: readonly ConversationMessage[],
+  resumeSupported?: boolean,
 ): { resumeCursor?: unknown; transcriptSeed?: string } {
   const sourceConnectionId = [...detail.events].reverse().flatMap((event) => {
     if (
@@ -870,7 +902,36 @@ function continuationLaunchContext(
   const sameExecutionIdentity =
     detail.session.provider === requested.provider &&
     sourceConnectionId === requested.connectionId;
-  return sameExecutionIdentity && detail.session.resumeCursor !== undefined
+  // #765 A1: a predecessor started with an explicit `persistSession: false`
+  // has no durable engine transcript behind its cursor — the Claude adapter
+  // spawns such sessions with `--no-session-persistence`, so a child start
+  // that presents the cursor gets the CLI's terminal "No conversation found
+  // with session ID" and the conversation dies. The cursor is a claim the
+  // predecessor's own start posture disproves; carry the bounded transcript
+  // seed instead. `undefined` (providers that ignore the flag, e.g. Codex's
+  // always-persisted rollouts, and rows persisted before the flag existed)
+  // keeps the cursor path.
+  const cursorBackedByTranscript = detail.session.persistSession !== false;
+  // #765 A1: `dead` is the engine's own structured verdict that THIS binding
+  // can never resume (archive#1827 — e.g. Claude's `--resume` answered
+  // "No conversation found with session ID"). Reserving the next child on
+  // the same disproved cursor re-runs the identical failure forever; the
+  // transcript-seed fresh child is the recovery that actually works, and it
+  // is what makes the UI's "send your message again" claim true for
+  // conversations whose predecessor ran before persistence was fixed.
+  // `error` status deliberately keeps the cursor: archive#1090's contract is
+  // that a config-shaped failure may retry the SAME cursor once fixed.
+  const cursorDisprovenByEngine = detail.session.status === 'dead';
+  // #764: `resumeSupported === false` is an observed capability absence
+  // (e.g. an ACP handshake without loadSession) — take the engine-agnostic
+  // transcript-seed fresh child instead of a start the adapter must refuse.
+  // `undefined` keeps the cursor path for every provider this observation
+  // cannot speak for.
+  return sameExecutionIdentity &&
+    detail.session.resumeCursor !== undefined &&
+    cursorBackedByTranscript &&
+    !cursorDisprovenByEngine &&
+    resumeSupported !== false
     ? { resumeCursor: detail.session.resumeCursor }
     : { transcriptSeed: continuationTranscriptSeed(messages) };
 }
