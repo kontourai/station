@@ -220,6 +220,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
           isError: part.isError,
           progressMessage: part.progressMessage,
           runtimeError: part.runtimeError,
+          runtimeErrorCode: part.runtimeErrorCode,
           needsApproval: part.needsApproval,
           approvalId: part.approvalId,
           approvalStatus: part.approvalStatus,
@@ -280,7 +281,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       }
       return false;
     });
-    const visibleProjected = projected.filter(
+    let visibleProjected = projected.filter(
       (_message, index) => !hiddenProjectedUsers.has(index),
     );
     // Flow events and provider notices are appended by the single app-wide
@@ -288,32 +289,60 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     // projector does not recreate them. Keep those explicit live supplements
     // alongside the REST projection without admitting ordinary full-history
     // rows from the active-chat store.
-    // A failure the server projection ALREADY renders for THAT SAME TURN must
-    // not be doubled by the local marker: one failure, one visible element.
+    // A failure must render exactly once — but #765 A1 flips WHICH copy wins
+    // when both exist for the same turn: the local `[CHAT_ERROR]` marker
+    // carries the translated copy and the Send again/New chat affordance
+    // (`ChatDockBody`'s `renderOverride` — this hook's only consumer), while
+    // the projected `runtimeError` part is untranslatable prose with no
+    // action. Previously the marker was hidden in favour of the projected
+    // part, which is exactly how the audit saw a raw
+    // "No conversation found with session ID: <uuid>" with no retry. Now the
+    // marker stays and that turn's projected failure PARTS are stripped
+    // (real streamed content on the same row survives).
     //
-    // matched on turn identity, not on
-    // text. Global text matching suppressed a marker merely because some
-    // projected row anywhere in the window happened to contain the same
-    // sentence — two turns can fail the same way, and the second one's card
-    // would vanish. A marker with no turn identity has nothing to match on and
-    // falls back to the text comparison it had before.
-    const projectedFailureTurnIds = new Set(
-      visibleProjected
-        .filter((message) =>
-          message.contentParts?.some((part) => part.runtimeError === true),
-        )
+    // Matched on turn identity, not on text: two turns can fail the same
+    // way, and a global text match would collapse them. A marker with no
+    // turn identity keeps the text-comparison fallback it had before.
+    const markerFailureTurnIds = new Set(
+      session.messages
+        .filter((message) => isLiveFailureMarker(message))
         .map((message) => message.turnId)
         .filter((turnId): turnId is string => typeof turnId === 'string'),
     );
+    if (markerFailureTurnIds.size > 0) {
+      visibleProjected = visibleProjected.flatMap((message) => {
+        if (
+          typeof message.turnId !== 'string' ||
+          !markerFailureTurnIds.has(message.turnId) ||
+          !message.contentParts?.some((part) => part.runtimeError === true)
+        ) {
+          return [message];
+        }
+        const remaining = message.contentParts.filter(
+          (part) => part.runtimeError !== true,
+        );
+        if (remaining.length === 0) return [];
+        return [
+          {
+            ...message,
+            contentParts: remaining,
+            content: remaining
+              .filter((part) => part.type === 'text')
+              .map((part) => part.content ?? '')
+              .join(''),
+          },
+        ];
+      });
+    }
     const projectedFailureText = visibleProjected
       .map(transcriptMessageText)
       .join('\n');
     const supplementalMessages = session.messages.filter((message) => {
       if (!isLiveSupplementalMessage(message)) return false;
       if (!isLiveFailureMarker(message)) return true;
-      if (message.turnId !== undefined) {
-        return !projectedFailureTurnIds.has(message.turnId);
-      }
+      // A turn-identified marker owns its failure's one visible element —
+      // the projected copy for that turn was stripped above.
+      if (message.turnId !== undefined) return true;
       const reason = transcriptMessageText(message)
         .replace(/^\s*\[SYSTEM_EVENT\]\s*\[CHAT_ERROR(?::[\w-]+)?\]\s*/, '')
         .trim();

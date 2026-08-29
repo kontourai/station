@@ -297,8 +297,11 @@ describe('TurnProvenanceCard', () => {
     );
 
     const summary = screen.getByRole('button');
-    // Claude is declared 'disjoint', so 130 + 9400 + 700 is an honest total.
-    expect(summary.textContent).toContain('10230 tokens');
+    // Claude is declared 'disjoint', so 130 + 9400 + 700 is an honest total —
+    // rendered compact (#765 A8) with the exact figure in the tooltip.
+    expect(summary.textContent).toContain('10.2k tokens');
+    expect(summary.textContent).toContain('incl. context');
+    expect(summary.getAttribute('title')).toContain('10,230 tokens');
     expect(summary.textContent).not.toMatch(/\b130 tokens/);
 
     // The detail row keeps naming the components — the headline sum does

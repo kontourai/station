@@ -767,6 +767,13 @@
   background: var(--bg-secondary);
 }
 
+/* #765 D6: the final-answer block leading the mutable session detail — the
+   transcript-message chrome above, sized to content inside the scroll
+   region. */
+.sessions-detail__result {
+  flex-shrink: 0;
+}
+
 .sessions-detail__transcript-role {
   margin: 0 0 0.35rem;
   color: var(--text-muted);

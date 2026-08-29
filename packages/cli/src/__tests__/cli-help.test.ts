@@ -384,6 +384,73 @@ describe('environment access family: help.ts and environment.ts agree (station#4
   });
 });
 
+/**
+ * #765 D3: `peers` was implemented, dispatched, and documented in
+ * docs/reference/cli.md, yet absent from help.ts's `environment` entry — so
+ * `station environment --help` disowned the exact command the Computers page
+ * tells users to copy (`station environment peers add`, see
+ * src-ui/src/views/connections-hub/peer-credential-command.ts and its parity
+ * test). Same structural blind spot station#4515 review M5 closed for the
+ * access family above: nothing compared help.ts's hand-maintained entry to
+ * environment.ts's own USAGE.
+ */
+describe('environment peers family: help.ts and environment.ts agree (#765 D3)', () => {
+  const PEERS_LINE_PATTERN = /station environment peers ([a-z]+)\b(.*)/;
+  const PEERS_VERBS = ['list', 'add', 'remove'];
+
+  function extractPeersFlags(text: string): Record<string, Set<string>> {
+    const result: Record<string, Set<string>> = {};
+    for (const rawLine of text.split('\n')) {
+      const line = rawLine.trim();
+      const match = PEERS_LINE_PATTERN.exec(line);
+      if (!match) continue;
+      result[match[1]!] = new Set(
+        Array.from(line.matchAll(/--([a-z][a-z0-9-]*)/g), (m) => m[1]!),
+      );
+    }
+    return result;
+  }
+
+  /** `environment.ts`'s own thrown USAGE text — the ground truth for what actually parses. */
+  async function environmentUsageText(): Promise<string> {
+    try {
+      await runEnvironmentCommand(['not-a-real-verb'], {
+        projectHome: '/tmp/station-home',
+        stdout: () => {},
+        stderr: () => {},
+        isInteractive: false,
+      });
+    } catch (error) {
+      return (error as Error).message;
+    }
+    throw new Error('Expected the unknown-verb invocation to reject.');
+  }
+
+  test('help.ts advertises exactly the flags environment.ts actually parses for peers list/add/remove', async () => {
+    const fromEnvironmentTs = extractPeersFlags(await environmentUsageText());
+    const fromHelpTs = extractPeersFlags(commandHelpText('environment')!);
+
+    for (const verb of PEERS_VERBS) {
+      expect(
+        fromEnvironmentTs[verb],
+        `environment.ts USAGE names no "peers ${verb}" line`,
+      ).toBeDefined();
+      expect(
+        fromHelpTs[verb],
+        `help.ts usage names no "peers ${verb}" line`,
+      ).toBeDefined();
+      expect(
+        [...fromHelpTs[verb]!].sort(),
+        `help.ts advertises different flags than environment.ts parses for peers ${verb}`,
+      ).toEqual([...fromEnvironmentTs[verb]!].sort());
+    }
+  });
+
+  test('the actions vocabulary owns peers, so help and unknown-action suggestions agree', () => {
+    expect(actionsFor('environment')).toContain('peers');
+  });
+});
+
 describe('unknown input', () => {
   test('suggests the nearest command instead of dumping the manual', async () => {
     const { runCli, errored } = await loadCli();

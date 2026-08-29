@@ -183,6 +183,41 @@ export interface SessionFailedAttentionItem extends AttentionItemBase {
   agent?: string;
 }
 
+/**
+ * A pending inbound device-pairing request (#765 D5) — another device asked
+ * to pair with this Station and is waiting on an approve/deny decision, so it
+ * belongs in the needs-attention bucket, not passive activity history.
+ *
+ * Projected straight from the pairing service's own pending-request list
+ * (`DevicePairingService.listRequests`), never from the mirror notification:
+ * the service is the source of truth for whether the request is still
+ * decidable, so an approved/denied/expired request stops projecting on the
+ * next read with no notification-poll lag.
+ *
+ * The item carries NO grant authority. Its Approve/Deny affordances call the
+ * existing `/api/pairing/requests/:requestId/confirm` (POST) and
+ * `/api/pairing/requests/:requestId` (DELETE) routes, where the HTTP
+ * boundary's pairing-family authorization decides — operator credential,
+ * an `access:approve`-promoted device, or the documented attested-local
+ * floor for provably off-box requests (`DevicePairingService.confirmRequest`).
+ */
+export interface DevicePairingAttentionItem extends AttentionItemBase {
+  kind: 'device-pairing';
+  source: {
+    /** The pairing request the approve/deny routes act on. */
+    requestId: string;
+    /**
+     * The mirror `device-pairing` notification, when one is currently
+     * active — lets inbox surfaces suppress the duplicate activity row
+     * while this item is pending (same dedupe `approval` items get).
+     */
+    notificationId?: string;
+  };
+  /** The requesting device's display name, as recorded on the request. */
+  deviceName: string;
+  openHref: string;
+}
+
 export type AttentionItem =
   | ApprovalAttentionItem
   | NeedsInputAttentionItem
@@ -190,7 +225,8 @@ export type AttentionItem =
   | SessionFailedAttentionItem
   | GateRouteBackAttentionItem
   | GateBlockedAttentionItem
-  | GateExceptionAttentionItem;
+  | GateExceptionAttentionItem
+  | DevicePairingAttentionItem;
 
 export interface AttentionProjection {
   items: AttentionItem[];

@@ -760,11 +760,34 @@ function chatFailureNotice(chat: ChatUIState): string | null {
   return chat.queuedMessageFailure?.message?.trim() || null;
 }
 
+/**
+ * #765 A2: the per-correlation-key fold of the server session summaries.
+ * `hasActiveTurn` keeps its archive#1075 meaning; `failed` carries the
+ * server's own `lifecycleState === 'failed'` fold so a turn the server
+ * already recorded as failed cannot keep rendering "Active" off local
+ * composer state alone. `updatedAt` picks the NEWEST execution child when a
+ * durable conversation spans several sessions — the conversation-keyed entry
+ * must describe the current child, not the long-completed root session that
+ * happens to share the conversation's id.
+ */
+interface ChatSessionCorrelation {
+  hasActiveTurn: boolean;
+  failed: boolean;
+  updatedAt: string;
+}
+
 function chatLifecycleLabel(
   chat: ChatUIState,
   sessionId: string,
-  turnByThread: Map<string, boolean>,
+  turnByThread: Map<string, ChatSessionCorrelation>,
 ): HomeWorkItem['lifecycleLabel'] {
+  // Mirrors mergeHomeWorkItems' own key (`chat.conversationId || id`) exactly:
+  // the store key is a fallback for a MISSING conversationId, never a second
+  // guess when a present one simply doesn't correlate. Retrying the store key
+  // there could borrow an unrelated session's fold for a chat the merge would
+  // never pair with it (archive#1075).
+  const correlationKey = chat.conversationId || sessionId;
+  const correlated = turnByThread.get(correlationKey);
   if (chat.status === 'error' || chat.orchestrationStatus === 'failed') {
     return 'Failed';
   }
@@ -778,17 +801,17 @@ function chatLifecycleLabel(
   )
     return 'Needs attention';
   if (chat.status === 'sending') return 'Running';
+  // #765 A2: the server recorded this conversation's current session as
+  // failed and no newer local activity (send/approval above) supersedes it.
+  // Before this branch a chat whose client store missed the `runtime.error`
+  // (dropped SSE, other device, reload) stayed on the local-state fallbacks
+  // below and read "Active" while the server said failed.
+  if (correlated?.failed) return 'Failed';
   if (chat.orchestrationStatus !== 'running') return 'Recent';
-  // Mirrors mergeHomeWorkItems' own key (`chat.conversationId || id`) exactly:
-  // the store key is a fallback for a MISSING conversationId, never a second
-  // guess when a present one simply doesn't correlate. Retrying the store key
-  // there could borrow an unrelated session's fold for a chat the merge would
-  // never pair with it (archive#1075).
-  const correlationKey = chat.conversationId || sessionId;
   // No correlated session means no better signal than the chat store itself —
   // notably chats on non-orchestration send paths, which never have one.
-  if (!turnByThread.has(correlationKey)) return 'Running';
-  return turnByThread.get(correlationKey) ? 'Running' : 'Recent';
+  if (!correlated) return 'Running';
+  return correlated.hasActiveTurn ? 'Running' : 'Recent';
 }
 
 export function buildActiveChatTaskItems({
@@ -808,12 +831,26 @@ export function buildActiveChatTaskItems({
   sessions?: OrchestrationSessionSummary[];
   resolveModelLabel?: ResolveModelLabel;
 }): HomeWorkItem[] {
-  const turnByThread = new Map(
-    sessions.map((session) => [
-      session.threadId,
-      session.hasActiveTurn === true,
-    ]),
-  );
+  const turnByThread = new Map<string, ChatSessionCorrelation>();
+  for (const session of sessions) {
+    const entry: ChatSessionCorrelation = {
+      hasActiveTurn: session.hasActiveTurn === true,
+      failed: session.lifecycleState === 'failed',
+      updatedAt: session.updatedAt,
+    };
+    turnByThread.set(session.threadId, entry);
+    // #765 A2: a durable conversation's chats correlate by conversationId,
+    // but the summary whose threadId EQUALS the conversation id is the root
+    // execution session — long stopped once continuation children exist.
+    // Key the conversation to its newest child so the chip reflects the
+    // session actually running (or actually failed) now.
+    if (session.conversationId) {
+      const current = turnByThread.get(session.conversationId);
+      if (!current || session.updatedAt.localeCompare(current.updatedAt) >= 0) {
+        turnByThread.set(session.conversationId, entry);
+      }
+    }
+  }
   const items = Object.entries(chats).map<MergeItem>(([id, chat]) => {
     const agentLabel = safeAgentLabel({
       slug: chat.agentSlug,

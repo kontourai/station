@@ -202,6 +202,64 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
     expect(chatDraftsStore.get(SESSION_ID)).toBe('');
   });
 
+  // #765 A2: a send during a running turn is ENQUEUED
+  // (`useActiveChatSessionMessaging` pushes it into `chat.queuedMessages`
+  // and returns undefined). The queue owns the text from that point — it
+  // renders as "N messages queued" with its own retry/steer controls — so
+  // the debounce-persisted draft must clear exactly as it does for a
+  // successful send. Before this fix it survived forever and every queued
+  // message ALSO surfaced as a global "Unsent draft" row in the sidebar.
+  test('clears the persisted draft when the send was enqueued behind a running turn', async () => {
+    chatDraftsStore.set(SESSION_ID, 'queued while running');
+    activeChatsStore.updateChat(SESSION_ID, { input: 'queued while running' });
+    sendMessageMock.mockImplementationOnce(async () => {
+      // The real enqueue branch's observable effects: the text moves into
+      // `queuedMessages`, the chat stays 'sending', nothing is returned.
+      activeChatsStore.updateChat(SESSION_ID, {
+        status: 'sending',
+        queuedMessages: ['queued while running'],
+      });
+      return undefined;
+    });
+    const { result } = renderHook(
+      () =>
+        useChatInput({
+          apiBase: 'http://station.test',
+          sessionId: SESSION_ID,
+          agentSlug: 'dev-agent',
+          availableModels: [],
+        }),
+      { wrapper },
+    );
+
+    await act(() => result.current.handleSend());
+
+    expect(chatDraftsStore.get(SESSION_ID)).toBe('');
+  });
+
+  // The discriminating control: a send that failed outright (returned
+  // undefined WITHOUT queueing) keeps its draft — the draft is still the
+  // only copy of the user's words.
+  test('keeps the persisted draft when the send failed without being enqueued', async () => {
+    chatDraftsStore.set(SESSION_ID, 'failed outright');
+    activeChatsStore.updateChat(SESSION_ID, { input: 'failed outright' });
+    sendMessageMock.mockImplementationOnce(async () => undefined);
+    const { result } = renderHook(
+      () =>
+        useChatInput({
+          apiBase: 'http://station.test',
+          sessionId: SESSION_ID,
+          agentSlug: 'dev-agent',
+          availableModels: [],
+        }),
+      { wrapper },
+    );
+
+    await act(() => result.current.handleSend());
+
+    expect(chatDraftsStore.get(SESSION_ID)).toBe('failed outright');
+  });
+
   test('clearing the composer removes its sidebar-visible persisted draft', () => {
     chatDraftsStore.set(SESSION_ID, 'discard me');
     activeChatsStore.updateChat(SESSION_ID, { input: 'discard me' });

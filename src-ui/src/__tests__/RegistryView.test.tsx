@@ -24,7 +24,39 @@ const mutationCalls: Array<{
   action: 'install' | 'uninstall' | 'enable' | 'disable' | 'remove';
   id: string;
   tab: 'agents' | 'integrations' | 'plugins' | 'skills' | 'layouts';
+  consent?: {
+    permissions: string[];
+    contentDigest: string;
+    dependencies: string[];
+  };
+  skip?: string[];
 }> = [];
+
+/**
+ * Registry ids the preview endpoint resolves as PLUGINS (#765 D1): install
+ * clicks on the agents/plugins tabs preview first and open the install
+ * preview modal. Ids absent here answer `registry-plugin-not-found`, which
+ * keeps the plain agent install path.
+ */
+const previewResults = new Map<string, unknown>();
+const previewMutationCalls: string[] = [];
+const validDemoPreview = () => ({
+  valid: true,
+  manifest: {
+    name: 'demo-layout',
+    displayName: 'Demo Layout',
+    version: '1.0.0',
+  },
+  components: [{ type: 'layout', id: 'demo' }],
+  conflicts: [],
+  contentDigest: 'sha256:demo',
+  permissions: {
+    required: ['navigation.dock'],
+    autoGranted: ['navigation.dock'],
+    pendingConsent: [] as Array<{ permission: string; tier: string }>,
+  },
+  dependencies: [],
+});
 
 const registryItems = {
   agents: [
@@ -93,6 +125,12 @@ function makeMutation(
       variables: {
         id: string;
         action: 'install' | 'uninstall' | 'enable' | 'disable' | 'remove';
+        consent?: {
+          permissions: string[];
+          contentDigest: string;
+          dependencies: string[];
+        };
+        skip?: string[];
       },
       callbacks?: {
         onSuccess?: (result: {
@@ -157,6 +195,28 @@ vi.mock('@kontourai/station-sdk', () => ({
   useRegistryIntegrationActionMutation: () => makeMutation('integrations'),
   useRegistryLayoutActionMutation: () => makeMutation('layouts'),
   usePluginRegistryInstallMutation: () => makeMutation('plugins'),
+  usePluginRegistryPreviewMutation: () => ({
+    isPending: false,
+    variables: undefined,
+    mutate: (
+      registryId: string,
+      callbacks?: {
+        onSuccess?: (data: unknown) => void;
+        onError?: (error: Error) => void;
+      },
+    ) => {
+      previewMutationCalls.push(registryId);
+      callbacks?.onSuccess?.(
+        previewResults.get(registryId) ?? {
+          valid: false,
+          error: `Plugin '${registryId}' not found in registry`,
+          code: 'registry-plugin-not-found',
+          components: [],
+          conflicts: [],
+        },
+      );
+    },
+  }),
   useRegistryItemsQuery: (tab: string) => ({
     data: emptyTabs.has(tab)
       ? []
@@ -192,6 +252,9 @@ vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => platformProfile,
 }));
 
+const pluginRegistryReload = vi.fn();
+const requestInstallConsent = vi.fn(async () => true);
+
 vi.mock('../core/PluginRegistry', () => ({
   pluginRegistry: {
     subscribe: (listener: () => void) => {
@@ -199,7 +262,14 @@ vi.mock('../core/PluginRegistry', () => ({
       return () => pluginRegistryListeners.delete(listener);
     },
     getLoadStatus: () => pluginRegistryStatus,
+    reload: () => pluginRegistryReload(),
   },
+}));
+
+vi.mock('../core/PermissionManager', () => ({
+  usePermissions: () => ({
+    requestInstallConsent,
+  }),
 }));
 
 import { RegistryView } from '../views/RegistryView';
@@ -209,6 +279,11 @@ afterEach(() => {
     installedItems.clear();
   }
   mutationCalls.length = 0;
+  previewResults.clear();
+  previewMutationCalls.length = 0;
+  pluginRegistryReload.mockClear();
+  requestInstallConsent.mockClear();
+  requestInstallConsent.mockResolvedValue(true);
   navigateMock.mockReset();
   emptyTabs.clear();
   stalledInstalledTabs.clear();
@@ -471,6 +546,9 @@ describe('RegistryView', () => {
   ] as const)(
     'renders preview install/remove actions for %s',
     (tabLabel, tabKey, itemId, itemLabel, sourceLabel) => {
+      if (tabKey === 'plugins') {
+        previewResults.set(itemId, validDemoPreview());
+      }
       const { rerender } = render(<RegistryView />);
 
       fireEvent.click(screen.getByRole('tab', { name: tabLabel }));
@@ -492,11 +570,21 @@ describe('RegistryView', () => {
         within(selectedDetail).getByRole('button', { name: /Install/ }),
       );
 
-      expect(mutationCalls).toContainEqual({
-        id: itemId,
-        action: 'install',
-        tab: tabKey,
-      });
+      if (tabKey === 'plugins') {
+        // A registry plugin installs from its preview (#765 D1): the modal
+        // shows what the previewed source contributes before anything runs.
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Confirm Install' }),
+        );
+      }
+
+      expect(mutationCalls).toContainEqual(
+        expect.objectContaining({
+          id: itemId,
+          action: 'install',
+          tab: tabKey,
+        }),
+      );
       expect(screen.getByText(`Installed ${itemLabel}`)).toBeTruthy();
 
       rerender(<RegistryView />);
@@ -658,6 +746,7 @@ describe('RegistryView', () => {
 
   test('shows an installed plugin immediately while its refetch catches up', () => {
     staleAfterMutationTabs.add('plugins');
+    previewResults.set('demo-layout', validDemoPreview());
 
     render(<RegistryView initialTab="plugins" />);
     fireEvent.click(
@@ -665,6 +754,7 @@ describe('RegistryView', () => {
         name: 'Install',
       }),
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
     const installedDetail = screen.getByTestId('registry-detail');
     expect(screen.getByText('Installed Demo Layout')).toBeTruthy();
@@ -679,6 +769,7 @@ describe('RegistryView', () => {
   test('reconciles an optimistic install against contradictory fresh server state', async () => {
     staleAfterMutationTabs.add('plugins');
     reconciledRefetchTabs.add('plugins');
+    previewResults.set('demo-layout', validDemoPreview());
     render(<RegistryView initialTab="plugins" />);
 
     fireEvent.click(
@@ -686,6 +777,7 @@ describe('RegistryView', () => {
         name: 'Install',
       }),
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
     expect(screen.getByText('Installed Demo Layout')).toBeTruthy();
     await waitFor(() =>
@@ -717,10 +809,12 @@ describe('RegistryView', () => {
   });
 
   test('keeps installed plugin removal reachable through the full lifecycle', () => {
+    previewResults.set('demo-layout', validDemoPreview());
     render(<RegistryView initialTab="plugins" />);
 
     const detail = screen.getByTestId('registry-detail');
     fireEvent.click(within(detail).getByRole('button', { name: 'Install' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
     expect(screen.getByText('Installed Demo Layout')).toBeTruthy();
 
     fireEvent.click(
@@ -732,11 +826,121 @@ describe('RegistryView', () => {
     ).toBeTruthy();
 
     fireEvent.click(within(detail).getByRole('button', { name: 'Install' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
     expect(screen.getByText('Installed Demo Layout')).toBeTruthy();
     expect(mutationCalls).toEqual([
-      { id: 'demo-layout', action: 'install', tab: 'plugins' },
+      expect.objectContaining({
+        id: 'demo-layout',
+        action: 'install',
+        tab: 'plugins',
+      }),
       { id: 'demo-layout', action: 'uninstall', tab: 'plugins' },
-      { id: 'demo-layout', action: 'install', tab: 'plugins' },
+      expect.objectContaining({
+        id: 'demo-layout',
+        action: 'install',
+        tab: 'plugins',
+      }),
+    ]);
+  });
+
+  /**
+   * #765 D1. The agents tab is where a JSON-manifest registry lists its
+   * plugins today, and installing one there used to land a tree whose bundle
+   * was never built — every declared layout component then rendered
+   * "Unsupported layout tab" while the install reported success. A plugin id
+   * now installs from its preview with the operator's decision attached, and
+   * the client plugin registry reloads so the new components register without
+   * a page reload.
+   */
+  test('installs an agents-tab registry plugin from its preview with the operator decision attached', () => {
+    previewResults.set('agent-two', {
+      ...validDemoPreview(),
+      manifest: {
+        name: 'agent-two',
+        displayName: 'Agent Two',
+        version: '1.0.0',
+      },
+    });
+    render(<RegistryView />);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View Agent Two details' }),
+    );
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+
+    // Nothing mutated yet: the preview modal is the decision point.
+    expect(mutationCalls).toEqual([]);
+    expect(screen.getByText('Install Preview')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
+
+    expect(mutationCalls).toEqual([
+      {
+        id: 'agent-two',
+        action: 'install',
+        tab: 'agents',
+        consent: {
+          permissions: ['navigation.dock'],
+          contentDigest: 'sha256:demo',
+          dependencies: [],
+        },
+        skip: [],
+      },
+    ]);
+    expect(screen.getByText('Installed Agent Two')).toBeTruthy();
+    expect(pluginRegistryReload).toHaveBeenCalled();
+  });
+
+  test('a declined consent decision installs nothing', async () => {
+    previewResults.set('demo-layout', {
+      ...validDemoPreview(),
+      permissions: {
+        required: ['providers.register'],
+        autoGranted: [],
+        pendingConsent: [{ permission: 'providers.register', tier: 'trusted' }],
+      },
+    });
+    requestInstallConsent.mockResolvedValueOnce(false);
+    render(<RegistryView initialTab="plugins" />);
+
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/Install declined for Demo Layout/)).toBeTruthy(),
+    );
+    expect(requestInstallConsent).toHaveBeenCalledWith(
+      'demo-layout',
+      'Demo Layout',
+      [{ permission: 'providers.register', tier: 'trusted' }],
+    );
+    expect(mutationCalls).toEqual([]);
+    expect(pluginRegistryReload).not.toHaveBeenCalled();
+  });
+
+  test('an agents-tab entry the plugin registry does not resolve keeps the plain agent install path', () => {
+    render(<RegistryView />);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'View Agent Two details' }),
+    );
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+
+    expect(previewMutationCalls).toEqual(['agent-two']);
+    expect(mutationCalls).toEqual([
+      { id: 'agent-two', action: 'install', tab: 'agents' },
     ]);
   });
 });

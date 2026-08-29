@@ -34,6 +34,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'board',
   'catalog',
   'chatRuntime',
+  'devicePairingRequests',
   'diffComments',
   'featurePreviews',
   'flowRuns',
