@@ -4,12 +4,11 @@ import { readFileSync } from 'node:fs';
 // Keep this small and plain-JS so the verification scripts can use the exact
 // same probe when they are launched by node rather than tsx.
 export const PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS = 1_500;
-export const WINDOWS_PROCESS_BIRTH_ATTEMPTS = 3;
+export const WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS = 10_000;
 
-// The Windows Job guard accepts this exact representation in its BOUND record.
-// Keep the process-identity authority equally strict: accepting a locale-shaped
-// or offset-bearing value here would let the coordinator and guard disagree
-// about the same live process.
+// The Windows Job guard derives this exact representation from GetProcessTimes.
+// Keep the process-identity authority equally strict and normalize the same
+// 100ns FILETIME ticks to microsecond precision before comparison.
 const WINDOWS_ROUND_TRIP_UTC_ISO =
   /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{7}Z$/;
 
@@ -39,18 +38,24 @@ function isWindowsRoundTripUtcIso(value) {
 }
 
 function windowsCreationDateCommand(pid) {
-  // CreationDate is surfaced as a DateTime by CIM on supported PowerShell
-  // hosts. Format it explicitly rather than relying on PowerShell's output
-  // formatting or DateTime's Kind-dependent round-trip `o` format.
+  // System.Diagnostics.Process.StartTime reads the process handle directly;
+  // unlike Win32_Process through CIM, it does not depend on an eventually
+  // visible management projection for the coordinator's newly started PID.
+  // The guard truncates GetProcessTimes FILETIME to microseconds, so do the
+  // identical tick normalization here before emitting its canonical format.
   return [
-    `$process = Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}'`,
-    'if ($null -eq $process -or $null -eq $process.CreationDate) { exit 3 }',
-    '$created = ([datetime]$process.CreationDate).ToUniversalTime()',
-    "$created.ToString('yyyy-MM-ddTHH:mm:ss.fffffffZ', [System.Globalization.CultureInfo]::InvariantCulture)",
+    `$process = [System.Diagnostics.Process]::GetProcessById(${pid})`,
+    'try { $created = $process.StartTime.ToUniversalTime() } finally { $process.Dispose() }',
+    '$ticks = $created.Ticks - ($created.Ticks % 10)',
+    '$normalized = [datetime]::new([long]$ticks, [System.DateTimeKind]::Utc)',
+    "$normalized.ToString('yyyy-MM-ddTHH:mm:ss.fffffffZ', [System.Globalization.CultureInfo]::InvariantCulture)",
   ].join('; ');
 }
 
-function windowsCreationDateProbe(pid) {
+function windowsCreationDateProbe(
+  pid,
+  timeoutMs = PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+) {
   return {
     command: 'powershell.exe',
     args: [
@@ -63,7 +68,7 @@ function windowsCreationDateProbe(pid) {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       windowsHide: true,
-      timeout: PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+      timeout: timeoutMs,
       killSignal: 'SIGKILL',
     },
   };
@@ -74,14 +79,14 @@ function canonicalWindowsCreationDate(output) {
   return isWindowsRoundTripUtcIso(value) ? value : null;
 }
 
-function windowsCreationDateFingerprint(pid, exec) {
-  const { command, args, options } = windowsCreationDateProbe(pid);
+function windowsCreationDateFingerprint(pid, exec, timeoutMs) {
+  const { command, args, options } = windowsCreationDateProbe(pid, timeoutMs);
   const output = exec(command, args, options);
   return canonicalWindowsCreationDate(output);
 }
 
-async function windowsCreationDateFingerprintAsync(pid, exec) {
-  const { command, args, options } = windowsCreationDateProbe(pid);
+async function windowsCreationDateFingerprintAsync(pid, exec, timeoutMs) {
+  const { command, args, options } = windowsCreationDateProbe(pid, timeoutMs);
   const output = await exec(command, args, options);
   return canonicalWindowsCreationDate(output);
 }
@@ -138,17 +143,16 @@ function aliveState(pid, kill = process.kill) {
  * means the fingerprint is a strong signal, not a cryptographic guarantee.
  * Linux (`/proc/<pid>/stat` field 22 + boot_id) does not have this limit.
  */
-export function lookupProcessBirthFingerprint(
-  pid,
-  {
+export function lookupProcessBirthFingerprint(pid, dependencies = {}) {
+  const {
     platform = process.platform,
     exec = execFileSync,
     readFile = readFileSync,
-  } = {},
-) {
+    timeoutMs,
+  } = dependencies;
   try {
     if (platform === 'win32') {
-      return windowsCreationDateFingerprint(pid, exec);
+      return windowsCreationDateFingerprint(pid, exec, timeoutMs);
     }
     if (platform === 'linux') {
       const stat = readFile(`/proc/${pid}/stat`, 'utf8').trim();
@@ -207,15 +211,17 @@ function defaultExecFileAsync(command, args, options) {
  */
 export async function lookupProcessBirthFingerprintAsync(
   pid,
-  {
+  dependencies = {},
+) {
+  const {
     platform = process.platform,
     exec = defaultExecFileAsync,
     readFile = readFileSync,
-  } = {},
-) {
+    timeoutMs,
+  } = dependencies;
   try {
     if (platform === 'win32') {
-      return await windowsCreationDateFingerprintAsync(pid, exec);
+      return await windowsCreationDateFingerprintAsync(pid, exec, timeoutMs);
     }
     if (platform === 'linux') {
       return lookupProcessBirthFingerprint(pid, { platform, readFile });
@@ -314,10 +320,10 @@ export function lookupProcessBirthFingerprintCachedAsync(
 
 /**
  * A three-way exact process probe. In particular, a live Windows PID whose
- * round-trip UTC CIM CreationDate cannot be read is unavailable, never dead:
+ * round-trip UTC process creation time cannot be read is unavailable, never dead:
  * callers must retain the fence rather than reclaiming a possibly-live owner.
  */
-function probeExactProcessIdentityWithAttempts(pid, dependencies, attempts) {
+function probeExactProcessIdentityOnce(pid, dependencies) {
   if (!Number.isInteger(pid) || pid < 1) return { state: 'dead' };
   const alive =
     dependencies.alive ??
@@ -326,15 +332,7 @@ function probeExactProcessIdentityWithAttempts(pid, dependencies, attempts) {
   if (liveness === 'dead') return { state: 'dead' };
   if (liveness !== 'alive') return { state: 'unavailable' };
   const lookup = dependencies.lookup ?? lookupProcessBirthFingerprint;
-  let birth = null;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    birth = lookup(pid);
-    if (birth) break;
-    // Retry only while the same PID is still live. A retry never turns a
-    // missing or unobservable birth into PID-only ownership: exhausted or
-    // ambiguous probes remain unavailable below.
-    if (attempt + 1 < attempts && alive(pid) !== 'alive') break;
-  }
+  const birth = dependencies.lookup ? lookup(pid) : lookup(pid, dependencies);
   if (!birth) return { state: 'unavailable' };
   return { state: 'exact', identity: { pid, start: birth } };
 }
@@ -345,22 +343,19 @@ function probeExactProcessIdentityWithAttempts(pid, dependencies, attempts) {
  * than spend more synchronous probe time while deciding whether to take it.
  */
 export function probeExactProcessIdentity(pid, dependencies = {}) {
-  return probeExactProcessIdentityWithAttempts(pid, dependencies, 1);
+  return probeExactProcessIdentityOnce(pid, dependencies);
 }
 
 /**
  * Resolve this coordinator's own process identity before it publishes a new
- * lease. Windows may spend a bounded three attempts here because the caller
- * has not created an ownership record yet; retries are never used to reclaim
- * or challenge somebody else's lease.
+ * lease. The same direct handle authority is used for owner publication and
+ * later claimant/reclaim comparison; no PID-only or timing fallback exists.
  */
 export function resolveOwnProcessIdentity(pid, dependencies = {}) {
-  const platform = dependencies.platform ?? process.platform;
-  return probeExactProcessIdentityWithAttempts(
-    pid,
-    dependencies,
-    platform === 'win32' ? WINDOWS_PROCESS_BIRTH_ATTEMPTS : 1,
-  );
+  return probeExactProcessIdentityOnce(pid, {
+    ...dependencies,
+    timeoutMs: dependencies.timeoutMs ?? WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS,
+  });
 }
 
 export function exactProcessIdentity(pid, dependencies = {}) {

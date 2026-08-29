@@ -99,9 +99,15 @@ describe('birthProvesReuse (station#2904)', () => {
     expect(birthProvesReuse(first, process.pid)).toBe(false);
   });
 
-  test('accepts only a canonical, calendar-valid Windows UTC CreationDate', () => {
+  test('reads Windows creation time from the process handle with guard-identical precision', () => {
     const canonical = '2026-08-29T16:16:27.1234567Z';
-    const exec = vi.fn(() => `${canonical}\n`);
+    const exec = vi.fn<
+      (
+        file: string,
+        args: readonly string[],
+        options?: Record<string, unknown>,
+      ) => string
+    >(() => `${canonical}\n`);
     expect(lookupProcessBirthFingerprint(42, { platform: 'win32', exec })).toBe(
       canonical,
     );
@@ -109,9 +115,14 @@ describe('birthProvesReuse (station#2904)', () => {
       'powershell.exe',
       expect.arrayContaining([
         '-Command',
-        expect.stringContaining('yyyy-MM-ddTHH:mm:ss.fffffffZ'),
+        expect.stringMatching(
+          /GetProcessById\(42\).*Ticks % 10.*yyyy-MM-ddTHH:mm:ss\.fffffffZ/,
+        ),
       ]),
       expect.objectContaining({ encoding: 'utf8', windowsHide: true }),
+    );
+    expect(exec.mock.calls[0]?.[1]?.join(' ') ?? '').not.toContain(
+      'Get-CimInstance',
     );
     expect(
       lookupProcessBirthFingerprint(42, {
@@ -139,7 +150,7 @@ describe('birthProvesReuse (station#2904)', () => {
     ).toBe(true);
   });
 
-  test('uses the same strict Windows CreationDate authority asynchronously', async () => {
+  test('uses the same direct Windows creation-time authority asynchronously', async () => {
     const canonical = '2026-08-29T16:16:27.1234567Z';
     const exec = vi.fn(async () => `${canonical}\n`);
     await expect(
@@ -167,11 +178,8 @@ describe('birthProvesReuse (station#2904)', () => {
     ).resolves.toBeNull();
   });
 
-  test('retries a live Windows process birth probe without granting PID-only ownership', () => {
-    const lookup = vi
-      .fn<(pid: number) => string | null>()
-      .mockReturnValueOnce(null)
-      .mockReturnValueOnce('2026-08-29T16:16:27.1234567Z');
+  test('own-process publication uses one exact probe and never grants PID-only ownership', () => {
+    const lookup = vi.fn(() => '2026-08-29T16:16:27.1234567Z');
     const alive = vi.fn(() => 'alive' as const);
     expect(
       resolveOwnProcessIdentity(42, {
@@ -183,8 +191,8 @@ describe('birthProvesReuse (station#2904)', () => {
       state: 'exact',
       identity: { pid: 42, start: '2026-08-29T16:16:27.1234567Z' },
     });
-    expect(lookup).toHaveBeenCalledTimes(2);
-    expect(alive).toHaveBeenCalledTimes(2);
+    expect(lookup).toHaveBeenCalledOnce();
+    expect(alive).toHaveBeenCalledOnce();
 
     const unavailable = vi.fn(() => null);
     expect(
@@ -194,19 +202,33 @@ describe('birthProvesReuse (station#2904)', () => {
         alive: () => 'alive',
       }),
     ).toEqual({ state: 'unavailable' });
-    expect(unavailable).toHaveBeenCalledTimes(3);
+    expect(unavailable).toHaveBeenCalledOnce();
   });
 
-  test('does not retry a Windows birth probe after the PID stops being live', () => {
-    const lookup = vi.fn(() => null);
-    const alive = vi
-      .fn<() => 'alive' | 'dead'>()
-      .mockReturnValueOnce('alive')
-      .mockReturnValueOnce('dead');
-    expect(
-      resolveOwnProcessIdentity(42, { platform: 'win32', lookup, alive }),
-    ).toEqual({ state: 'unavailable' });
-    expect(lookup).toHaveBeenCalledTimes(1);
+  test('gives only own-process publication the larger bounded shell-start budget', () => {
+    const canonical = '2026-08-29T16:16:27.1234567Z';
+    const exec = vi.fn<
+      (
+        file: string,
+        args: readonly string[],
+        options?: Record<string, unknown>,
+      ) => string
+    >(() => canonical);
+    const common = {
+      platform: 'win32' as const,
+      exec,
+      alive: () => 'alive' as const,
+    };
+
+    expect(resolveOwnProcessIdentity(42, common).state).toBe('exact');
+    expect(exec.mock.calls[0]?.[2]).toEqual(
+      expect.objectContaining({ timeout: 10_000 }),
+    );
+
+    expect(probeExactProcessIdentity(42, common).state).toBe('exact');
+    expect(exec.mock.calls[1]?.[2]).toEqual(
+      expect.objectContaining({ timeout: 1_500 }),
+    );
   });
 
   test('keeps claimant and reclaim identity probes single-attempt on Windows', () => {
