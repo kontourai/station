@@ -8,11 +8,8 @@ import {
   createMacosNotarizedArtifacts,
   EMBEDDED_MACHO_COMMAND_TIMEOUT_MS,
   EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS,
-  MACOS_NOTARIZED_ARTIFACTS_DEADLINE_MS,
-  MACOS_RELEASE_BUILD_BUDGET_MS,
-  MACOS_RELEASE_JOB_BUDGET_MS,
-  COMMAND_TERMINATION_GRACE_MS,
   outerAppDesignatedRequirement,
+  parseReleaseDeadlineEpoch,
   ReleaseCommandError,
   retryRetryableTransportFailure,
   runBoundedCommand,
@@ -395,32 +392,38 @@ test('retries a bounded embedded timestamp signing failure once without rewrappi
   ).toBe(false);
 });
 
-test('keeps the artifact envelope, build budget, and process-group grace below the hosted job limit', () => {
-  expect(
-    MACOS_RELEASE_BUILD_BUDGET_MS +
-      MACOS_NOTARIZED_ARTIFACTS_DEADLINE_MS +
-      COMMAND_TERMINATION_GRACE_MS,
-  ).toBeLessThan(MACOS_RELEASE_JOB_BUDGET_MS);
-});
-
-test('fails closed when aggregate artifact time is exhausted before another child starts', async () => {
+test('validates absolute release epochs and reserves process-group cleanup grace after delayed setup', async () => {
+  expect(parseReleaseDeadlineEpoch('1700006300')).toBe(1_700_006_300_000);
+  expect(() => parseReleaseDeadlineEpoch('not-an-epoch')).toThrow(/Unix timestamp/);
   const release = fixture();
+  const deadlineAt = 1_700_006_300_000;
+  let now = deadlineAt - 25_000;
   const baseRun = release.run;
-  let now = 0;
   release.run = (program, args, commandOptions) => {
-    now = 11;
+    now = deadlineAt - 9_000;
     return baseRun(program, args, commandOptions);
   };
   await expect(
-    createMacosNotarizedArtifacts(release.options, {
-      ...release,
-      deadlineMs: 10,
-      now: () => now,
-    }),
-  ).rejects.toThrow(
-    'macOS notarized artifact creation exceeded its aggregate deadline.',
-  );
+    createMacosNotarizedArtifacts(
+      { ...release.options, deadlineEpoch: '1700006300' },
+      {
+        ...release,
+        embeddedMacos: { ...release.embeddedMacos, now: () => now },
+        now: () => now,
+      },
+    ),
+  ).rejects.toThrow(/deadline/);
   expect(release.calls).toHaveLength(1);
+  expect(release.calls[0][2].timeoutMs).toBe(15_000);
+
+  const expired = fixture();
+  await expect(
+    createMacosNotarizedArtifacts(
+      { ...expired.options, deadlineEpoch: '1700006300' },
+      { ...expired, now: () => deadlineAt - 10_000 },
+    ),
+  ).rejects.toThrow(/cleanup grace/);
+  expect(expired.calls).toEqual([]);
 });
 
 test.skipIf(process.platform === 'win32')(

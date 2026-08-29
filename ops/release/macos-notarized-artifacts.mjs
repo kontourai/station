@@ -31,12 +31,18 @@ export const EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS = 90 * 1000;
 export const NOTARY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 export const COMMAND_TERMINATION_GRACE_MS = 10 * 1000;
 export const MAX_RETRY_ATTEMPTS = 2;
-export const MACOS_RELEASE_JOB_BUDGET_MS = 120 * 60 * 1000;
-export const MACOS_RELEASE_BUILD_BUDGET_MS = 13 * 60 * 1000;
-// This envelope covers every outer/DMG signing and notarization retry. Along
-// with the build budget and one process-group grace period it remains below
-// the hosted 120-minute job limit.
+// Standalone callers retain a bounded relative deadline. Hosted release passes
+// an absolute epoch recorded at the start of its 120-minute job instead.
 export const MACOS_NOTARIZED_ARTIFACTS_DEADLINE_MS = 100 * 60 * 1000;
+
+export function parseReleaseDeadlineEpoch(epoch) {
+  if (typeof epoch !== 'string' || !/^[1-9][0-9]{9,10}$/.test(epoch))
+    throw new Error('macOS release deadline epoch must be an integer Unix timestamp.');
+  const seconds = Number(epoch);
+  if (!Number.isSafeInteger(seconds))
+    throw new Error('macOS release deadline epoch must be an integer Unix timestamp.');
+  return seconds * 1000;
+}
 
 // The wrapper deliberately remains the process-group leader after the tool
 // receives TERM. A direct tool can exit and emit `close` while a descendant in
@@ -532,11 +538,24 @@ async function submit(command, file, key, keyId, issuer, logger) {
 export async function createMacosNotarizedArtifacts(options, injected = {}) {
   const logger = injected.logger ?? console;
   const now = injected.now ?? Date.now;
-  const deadlineMs =
+  const relativeDeadlineMs =
     injected.deadlineMs ?? MACOS_NOTARIZED_ARTIFACTS_DEADLINE_MS;
-  if (!Number.isSafeInteger(deadlineMs) || deadlineMs <= 0)
+  if (
+    options.deadlineEpoch === undefined &&
+    (!Number.isSafeInteger(relativeDeadlineMs) || relativeDeadlineMs <= 0)
+  )
     throw new Error('macOS notarized artifact deadline must be a positive bound.');
-  const deadlineAt = now() + deadlineMs;
+  const deadlineAt =
+    options.deadlineEpoch === undefined
+      ? now() + relativeDeadlineMs
+      : parseReleaseDeadlineEpoch(options.deadlineEpoch);
+  if (
+    !Number.isSafeInteger(deadlineAt) ||
+    deadlineAt - now() <= COMMAND_TERMINATION_GRACE_MS
+  )
+    throw new Error(
+      'macOS notarized artifact creation lacks cleanup grace before its deadline.',
+    );
   const run =
     injected.run ??
     ((program, args, commandOptions) =>
@@ -553,15 +572,21 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     commandOptions = {},
   ) => {
     const remainingMs = deadlineAt - now();
-    if (!Number.isFinite(remainingMs) || remainingMs <= 0)
+    if (
+      !Number.isFinite(remainingMs) ||
+      remainingMs <= COMMAND_TERMINATION_GRACE_MS
+    )
       throw new Error(
-        'macOS notarized artifact creation exceeded its aggregate deadline.',
+        'macOS notarized artifact creation lacks cleanup grace before its deadline.',
       );
     return captured(
       await run(program, args, {
         ...commandOptions,
         phase,
-        timeoutMs: Math.min(timeoutMs, remainingMs),
+        timeoutMs: Math.min(
+          timeoutMs,
+          remainingMs - COMMAND_TERMINATION_GRACE_MS,
+        ),
       }),
     );
   };
@@ -636,7 +661,10 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     await sealEmbeddedMacosMachOBounded(app, identity, {
       ...injected.embeddedMacos,
       command: embeddedCommand,
-      deadlineMs: EMBEDDED_MACHO_SEALING_DEADLINE_MS,
+      deadlineMs: Math.min(
+        EMBEDDED_MACHO_SEALING_DEADLINE_MS,
+        deadlineAt - now() - COMMAND_TERMINATION_GRACE_MS,
+      ),
       retrySign: retryEmbeddedSign,
       sign: embeddedSign,
     });
@@ -876,6 +904,7 @@ if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
     releaseTag: raw['--release-tag'],
     architecture: raw['--architecture'],
     bundleId: raw['--bundle-id'],
+    deadlineEpoch: raw['--deadline-epoch'],
   }).catch((error) => {
     console.error(`::error::macOS release failed: ${error.message}`);
     process.exitCode = 1;

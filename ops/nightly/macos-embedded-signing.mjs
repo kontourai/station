@@ -539,9 +539,15 @@ export function embeddedMacosMachOPaths(
 }
 
 export function sealEmbeddedMacosMachO(app, identity, options = {}) {
-  const { run = spawnSync } = options;
+  const { run = spawnSync, progress } = options;
   const files = embeddedMacosMachOPaths(app, options);
+  let processed = 0;
   for (const file of files) {
+    // A heartbeat per file: the serial batch can legitimately run for many
+    // minutes (network --timestamp per signature), and without it a slow
+    // pass is indistinguishable from a hang at the caller's ceiling.
+    processed += 1;
+    progress?.(`[embedded sealing] ${processed}/${files.length}`);
     const verified = command(run, 'codesign', [
       '--verify',
       '--strict',
@@ -649,6 +655,10 @@ if (isMainModule()) {
   if (!app || !identity)
     throw new Error('Expected <app> <Developer ID identity>.');
   process.stdout.write(
-    `${JSON.stringify(sealEmbeddedMacosMachO(app, identity))}\n`,
+    `${JSON.stringify(
+      sealEmbeddedMacosMachO(app, identity, {
+        progress: (line) => process.stderr.write(`${line}\n`),
+      }),
+    )}\n`,
   );
 }

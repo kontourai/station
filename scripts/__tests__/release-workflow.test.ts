@@ -470,9 +470,14 @@ describe('native release workflow topology', () => {
   it('seals embedded macOS code before API-key notarization and derives every release asset afterwards', () => {
     const macos = workflowJob(release, 'desktop-macos');
     expectStepOrder(macos, [
+      'Reserve macOS release cleanup window',
       'Build an unsigned macOS staging candidate',
       'Seal, notarize, and derive canonical macOS artifacts',
     ]);
+    expect(macos['timeout-minutes']).toBe(120);
+    expect(
+      namedStep(macos, 'Reserve macOS release cleanup window').run,
+    ).toContain('105 * 60');
     const gate = namedStep(
       macos,
       'Fail closed and create tag-bound updater configuration',
@@ -498,6 +503,9 @@ describe('native release workflow topology', () => {
     expect(seal.run).toContain('app="$' + '{app_candidates[0]}"');
     expect(seal.run).not.toContain('-print -quit');
     expect(seal.run).toContain('macos-notarized-artifacts.mjs --app "$app"');
+    expect(seal.run).toContain(
+      `--deadline-epoch "\${{ steps.macos_release_deadline.outputs.epoch }}"`,
+    );
     expect(seal.env).toMatchObject({
       APPLE_API_KEY_ID: `\${{ secrets.APPLE_API_KEY_ID }}`,
       APPLE_API_ISSUER_ID: `\${{ secrets.APPLE_API_ISSUER_ID }}`,

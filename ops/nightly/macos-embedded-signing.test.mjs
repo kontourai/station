@@ -108,6 +108,16 @@ test('pre-filters by Mach-O magic, then confirms only candidates with file', () 
   ).toBe(true);
 });
 
+test('emits one progress heartbeat per candidate so a slow batch is not read as a hang', () => {
+  const { run } = fixture();
+  const lines = [];
+  sealEmbeddedMacosMachO('/app', 'Developer ID', {
+    ...options(run),
+    progress: (line) => lines.push(line),
+  });
+  expect(lines).toEqual(['[embedded sealing] 1/1']);
+});
+
 test('makes hosted embedded inventory, inspection, signing, and verification independently visible', async () => {
   const { calls, run } = fixture();
   const phases = [];
