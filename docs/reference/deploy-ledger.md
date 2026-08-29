@@ -224,7 +224,7 @@ Commits since `b0ac1b7` ([full sha](https://github.com/kontourai/station/commit/
 - [#740](https://github.com/kontourai/station/pull/740) fix(ci): advance rolling nightly tags via the refs API and widen the desktop timeout
 - [#739](https://github.com/kontourai/station/pull/739) fix(e2e): build the plugin-preview fixture through the sanctioned ./station entry (#537)
 - [#738](https://github.com/kontourai/station/pull/738) fix(ci): run container-smoke Playwright on the docker fleet
-- [#736](https://github.com/kontourai/station/pull/736) fix(ci): copy lifecycle helper into the image and keep Windows on desktop-win
+- [#736](https://github.com/kontourai/station/pull/736) fix(ci): copy lifecycle helper into the image and keep Windows on the native runner
 - [#735](https://github.com/kontourai/station/pull/735) fix(desktop): harden native startup cover
 - [#735](https://github.com/kontourai/station/pull/735) fix(desktop): use native startup cover on macOS
 - [#734](https://github.com/kontourai/station/pull/734) fix(desktop): recover readiness after activation timeout
@@ -232,7 +232,7 @@ Commits since `b0ac1b7` ([full sha](https://github.com/kontourai/station/commit/
 
 **CI / workflow**
 
-- [#733](https://github.com/kontourai/station/pull/733) ci: move public CI off desktop-win onto GitHub-hosted runners
+- [#733](https://github.com/kontourai/station/pull/733) ci: move public CI off the private runner onto GitHub-hosted runners
 
 **Other**
 
