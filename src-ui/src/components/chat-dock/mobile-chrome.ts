@@ -57,3 +57,25 @@ export function isMobileDockFullscreen({
 export function isDockOwnedViewType(viewType: string): boolean {
   return viewType !== 'layout' && viewType !== 'workspace-pane';
 }
+
+/**
+ * station#520 (mobile dock-and-empty contract): whether docking a pane
+ * "as only content" (`WorkspacePaneDockAction`'s "Dock this pane", called by
+ * a pane on itself — see `WorkspacePaneDockAction` on
+ * `WorkspacePaneDockContext` for the full contract this implements) should
+ * also force the dock open MAXIMIZED, rather than leaving it at whatever
+ * snap it already had.
+ *
+ * True only when BOTH hold: the device is mobile (every mobile dock is a
+ * bottom bar — desktop's side/bottom panel already leaves room beside it,
+ * so this is a phone-only behavior change) AND the dock action actually
+ * admitted the pane (`docked`) — maximizing after a REFUSED request would
+ * open the dock over nothing, which is a bug this guards against, not the
+ * contract (station#520 review).
+ */
+export function shouldMaximizeAfterDockingAsOnlyContent(
+  isMobile: boolean,
+  docked: boolean,
+): boolean {
+  return isMobile && docked;
+}

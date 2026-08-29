@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isDockOwnedViewType,
   isMobileDockFullscreen,
+  shouldMaximizeAfterDockingAsOnlyContent,
 } from '../components/chat-dock/mobile-chrome';
 import { ruleBodiesFor } from './helpers/css-rules';
 
@@ -565,6 +566,21 @@ describe('mobile chat chrome has one header owner', () => {
     expect(desktopHeader).not.toContain('chat-dock__restore-label');
     expect(chatCss).not.toContain('chat-dock__mobile-task-trigger');
     expect(read('index.css')).not.toContain('chat-dock__restore-label');
+  });
+});
+
+describe('the mobile dock-and-empty contract derivation (station#520)', () => {
+  it('maximizes only mobile + a request the admission check actually docked', () => {
+    expect(shouldMaximizeAfterDockingAsOnlyContent(true, true)).toBe(true);
+    expect(
+      shouldMaximizeAfterDockingAsOnlyContent(false, true),
+      'desktop already has room beside the dock',
+    ).toBe(false);
+    expect(
+      shouldMaximizeAfterDockingAsOnlyContent(true, false),
+      'a REFUSED dock request must never force Full over nothing',
+    ).toBe(false);
+    expect(shouldMaximizeAfterDockingAsOnlyContent(false, false)).toBe(false);
   });
 });
 

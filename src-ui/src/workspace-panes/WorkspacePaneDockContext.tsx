@@ -32,6 +32,40 @@ export interface WorkspacePaneDockAction {
     instance: WorkspacePaneInstance,
   ): void;
   /**
+   * `dockPane`, plus the mobile dock-and-empty contract (station#520,
+   * archive#4471).
+   *
+   * THE CONTRACT: at phone width, a dock action that would leave the main
+   * area with no meaningful content auto-maximizes the docked pane instead
+   * — the composition "placeholder card (`WorkspacePaneAwayState`) as the
+   * only viewport content" is refused by construction, never detected and
+   * patched up after the fact.
+   *
+   * THE DERIVATION SHIPPED: deciding "would leave no meaningful content"
+   * honestly needs the current route's composition (does it have other
+   * content besides this pane?), which the ambient dock host cannot see —
+   * it is occupant-agnostic infrastructure with no `pathname`/
+   * `NavigationView`. The fallback this method encodes: call it ONLY from
+   * the exact place a pane's own content offers to dock itself
+   * (`WorkspacePaneDockAction`, "Dock this pane") — every call arriving
+   * there is, by construction, "dock the pane the main viewport currently,
+   * entirely renders", because the button is part of that pane's own
+   * rendered output. On mobile, `dockPaneAsOnlyContent` opens the dock
+   * MAXIMIZED rather than preserving whatever snap it already had, so the
+   * dock itself covers the screen instead of leaving a collapsed/half bar
+   * over an otherwise-empty main area.
+   *
+   * DISCLOSED GAP: `DockOccupantPicker`'s occupant switch is a different
+   * call site (chosen from the dock's own chrome, not from route content)
+   * and stays on plain `dockPane` — picking an occupant whose route happens
+   * to already be the main view can still reproduce the empty composition.
+   * Not derived away; a real remaining gap.
+   */
+  dockPaneAsOnlyContent(
+    descriptor: WorkspacePaneDescriptor,
+    instance: WorkspacePaneInstance,
+  ): void;
+  /**
    * The `instanceId` of the providing host's CURRENT occupant — republished
    * from the host's own document state on every occupant change, so a route
    * placement derives "my pane is away in the dock" from the same source of

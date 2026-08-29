@@ -46,13 +46,29 @@ vi.mock('../../contexts/DeviceSettingsContext', () => ({
   useDeviceSettingsActions: () => ({ setDeviceSetting: () => {} }),
 }));
 
+// station#520: `setDockState` is a spy (not a bare no-op) so the
+// mobile-dock-and-empty tests below can assert `dockPaneAsOnlyContent`
+// actually requests Full (`setDockState(true, true)`) rather than only
+// checking DOM state a fully-mocked navigation context can't reflect.
+const navigationMock = vi.hoisted(() => ({ setDockState: vi.fn() }));
+// station#520: `useIsMobile` is real (unmocked) elsewhere in this file,
+// which is correctly "desktop" in jsdom's default viewport — the
+// mobile-dock-and-empty tests below flip this flag to exercise the phone
+// branch without needing a real `matchMedia` breakpoint match.
+const mobileFlag = vi.hoisted(() => ({ isMobile: false }));
+vi.mock('../../hooks/useIsMobile', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../hooks/useIsMobile')>();
+  return { ...actual, useIsMobile: () => mobileFlag.isMobile };
+});
+
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     dockMode: 'bottom',
     isDockOpen: true,
     isDockMaximized: false,
     pathname: '/',
-    setDockState: () => {},
+    setDockState: navigationMock.setDockState,
     setDockMode: () => {},
     collapseMaximizedDock: () => {},
   }),
@@ -122,6 +138,8 @@ const AMBIENT_DOCK_STORAGE_KEY =
  * path production takes.
  */
 beforeEach(() => {
+  mobileFlag.isMobile = false;
+  navigationMock.setDockState.mockClear();
   Object.defineProperty(globalThis.navigator, 'locks', {
     configurable: true,
     value: {
@@ -284,6 +302,7 @@ test('the production ambient host refuses project-bound Basis so the launcher us
  */
 test('the published dock action reports EXACTLY the ambient scope derivation', () => {
   const action = ambientWorkspacePaneDockAction(
+    () => {},
     () => {},
     'workspace-chat',
     () => {},
@@ -705,4 +724,102 @@ test('undockOccupant restores the baseline Chat occupant (remove-from-dock seman
   await waitFor(() => {
     expect(feed.latest().occupantInstanceId).toBe('workspace-chat');
   });
+});
+
+/* ------------------------------------------------------------------ *
+ * station#520: the mobile dock-and-empty contract. At phone width,
+ * `dockPaneAsOnlyContent` ("Dock this pane", called by a pane on itself —
+ * see `WorkspacePaneDockAction` on `WorkspacePaneDockContext` for the full
+ * contract) must open the dock MAXIMIZED so the away-state placeholder
+ * (`WorkspacePaneAwayState`) never renders as the viewport's only content.
+ * ------------------------------------------------------------------ */
+
+test('mobile: dockPaneAsOnlyContent maximizes the dock after a successful dock', async () => {
+  mobileFlag.isMobile = true;
+  const feed = mountedDockActionFeed();
+  await waitFor(() => {
+    expect(feed.published.some((action) => action !== null)).toBe(true);
+  });
+  act(() => {
+    feed
+      .latest()
+      .dockPaneAsOnlyContent(
+        WORKSPACE_HOME_PANE_DESCRIPTOR,
+        WORKSPACE_HOME_PANE_INSTANCE,
+      );
+  });
+  await waitFor(() => {
+    expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
+  });
+  expect(
+    navigationMock.setDockState,
+    'mobile self-dock must request Full (open + maximized)',
+  ).toHaveBeenCalledWith(true, true);
+});
+
+test('desktop: dockPaneAsOnlyContent docks the pane but does not force Full', async () => {
+  mobileFlag.isMobile = false;
+  const feed = mountedDockActionFeed();
+  await waitFor(() => {
+    expect(feed.published.some((action) => action !== null)).toBe(true);
+  });
+  act(() => {
+    feed
+      .latest()
+      .dockPaneAsOnlyContent(
+        WORKSPACE_HOME_PANE_DESCRIPTOR,
+        WORKSPACE_HOME_PANE_INSTANCE,
+      );
+  });
+  await waitFor(() => {
+    expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
+  });
+  expect(
+    navigationMock.setDockState,
+    'desktop already has room beside the dock — station#520 is phone-only',
+  ).not.toHaveBeenCalledWith(true, true);
+});
+
+test('mobile: a REFUSED dockPaneAsOnlyContent (non-canonical instance) never requests Full', async () => {
+  mobileFlag.isMobile = true;
+  const feed = mountedDockActionFeed();
+  await waitFor(() => {
+    expect(feed.published.some((action) => action !== null)).toBe(true);
+  });
+  act(() => {
+    feed
+      .latest()
+      .dockPaneAsOnlyContent(
+        WORKSPACE_HOME_PANE_DESCRIPTOR,
+        impostorHomeInstance,
+      );
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(screen.queryByTestId('ambient-home-occupant')).toBeNull();
+  expect(
+    navigationMock.setDockState,
+    'maximizing a request the admission check refused would open the dock over nothing',
+  ).not.toHaveBeenCalled();
+});
+
+test('mobile: the occupant-picker path (plain dockPane) does not auto-maximize', async () => {
+  // Disclosed gap (see the `dockPaneAsOnlyContent` doc): choosing an
+  // occupant from the dock's own picker is a different call site than
+  // "Dock this pane", and stays on the plain, non-maximizing `dockPane`.
+  mobileFlag.isMobile = true;
+  const feed = mountedDockActionFeed();
+  await waitFor(() => {
+    expect(feed.published.some((action) => action !== null)).toBe(true);
+  });
+  act(() => {
+    feed
+      .latest()
+      .dockPane(WORKSPACE_HOME_PANE_DESCRIPTOR, WORKSPACE_HOME_PANE_INSTANCE);
+  });
+  await waitFor(() => {
+    expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
+  });
+  expect(navigationMock.setDockState).not.toHaveBeenCalledWith(true, true);
 });
