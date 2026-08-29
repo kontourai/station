@@ -4176,6 +4176,9 @@ fn station_profile_store_write_internal(
             .map_err(|error| format!("write saved Station temp file: {error}"))?;
         file.sync_all()
             .map_err(|error| format!("sync saved Station temp file: {error}"))?;
+        // Windows ReplaceFileW cannot consume a replacement file while this
+        // process still owns its descriptor; POSIX permits the old ordering.
+        drop(file);
         replace_station_profile_store(&temporary, &path)?;
         crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::File, &path)])?;
         Ok(())
@@ -12343,6 +12346,7 @@ mod tests {
             .map_err(|error| format!("write native bootstrap profile store: {error}"))?;
         file.sync_all()
             .map_err(|error| format!("sync native bootstrap profile store: {error}"))?;
+        drop(file);
         replace_station_profile_store(&temporary, path)?;
         Ok(())
     }
