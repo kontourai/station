@@ -983,7 +983,7 @@ describe('CI verification workflow contracts', () => {
     expect(diagnostic.length).toBeLessThanOrEqual(1_024);
   });
 
-  it('provides the supported Windows fallback without pretending E2E is covered', () => {
+  it('provides the supported post-merge Windows fallback without pretending E2E is covered', () => {
     const windows = workflow('windows-verification.yml');
 
     expect(windows).toContain('workflow_dispatch:');
@@ -1002,6 +1002,27 @@ describe('CI verification workflow contracts', () => {
     expect(windows).not.toContain('run: npm run test:full');
     expect(windows).not.toContain('verify:e2e:full');
     expect(windows).not.toContain('test:android');
+  });
+
+  it('runs the bounded Windows floor on every PR head from base-controlled hosted policy', () => {
+    const windows = workflow('windows-pr-verification.yml');
+    expect(windows).toContain('pull_request_target:');
+    expect(windows).not.toContain('  pull_request:\n');
+    expect(windows).toContain('branches: [main]');
+    expect(windows).not.toContain(
+      'github.event.pull_request.head.repo.full_name == github.repository',
+    );
+    expect(windows).toContain('runs-on: windows-latest');
+    expect(windows).not.toContain('self-hosted');
+    expect(windows).toContain(
+      "repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}",
+    );
+    expect(windows).toContain(
+      "ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}",
+    );
+    expect(windows).toContain('run: npm run verification:policy:gate');
+    expect(windows).toContain('run: npm run test:windows:portable');
+    expect(windows).toContain('run: npm run typecheck');
   });
 
   it('keeps full Windows Vitest diagnostics complete, manual, and honestly red', () => {

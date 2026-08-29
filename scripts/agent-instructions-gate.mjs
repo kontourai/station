@@ -38,6 +38,12 @@ function byteLength(text) {
 function lineCount(text) {
   return text === '' ? 0 : text.split(/\r?\n/).length;
 }
+export function canonicalInstructionPath(value) {
+  return value.replaceAll('\\', '/');
+}
+function repoRelative(root, target) {
+  return canonicalInstructionPath(relative(root, target));
+}
 function budgetErrors(file, text, budget, encoder) {
   const counts = {
     bytes: byteLength(text),
@@ -317,7 +323,7 @@ export function instructionGateErrors({
     try {
       if ((stat ?? statSync)(override).isFile())
         errors.push(
-          `unsupported instruction override: ${relative(root, override)}`,
+          `unsupported instruction override: ${repoRelative(root, override)}`,
         );
     } catch {
       // Absence is expected; only a concrete override changes the declared topology.

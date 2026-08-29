@@ -6570,10 +6570,10 @@ fn with_native_startup_cover(
 ) -> Result<(), tauri::Error> {
     use objc2::{ClassType, MainThreadMarker};
     use objc2_app_kit::{
-        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSUserInterfaceItemIdentification,
-        NSView,
+        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSFont, NSTextAlignment,
+        NSTextField, NSUserInterfaceItemIdentification, NSView,
     };
-    use objc2_foundation::{ns_string, NSObjectProtocol};
+    use objc2_foundation::{ns_string, NSObjectProtocol, NSPoint, NSRect, NSSize};
 
     window.with_webview(move |webview| {
         let marker = MainThreadMarker::new()
@@ -6611,18 +6611,42 @@ fn with_native_startup_cover(
                         | NSAutoresizingMaskOptions::ViewHeightSizable,
                 );
                 cover.setBoxType(NSBoxType::Custom);
-                cover.setFillColor(&NSColor::whiteColor());
-                cover.setTitle(ns_string!("Station is preparing its protected workspace…"));
+                cover.setFillColor(&NSColor::windowBackgroundColor());
+                cover.setTitle(ns_string!(""));
                 cover.setIdentifier(Some(cover_identifier));
+                if let Some(cover_content) = cover.contentView() {
+                    let label_text = ns_string!("Station is preparing its protected workspace…");
+                    let label = NSTextField::labelWithString(label_text, marker);
+                    let bounds = cover_content.bounds();
+                    label.setFrame(NSRect::new(
+                        NSPoint::new(24.0, ((bounds.size.height - 30.0) / 2.0).max(0.0)),
+                        NSSize::new((bounds.size.width - 48.0).max(0.0), 30.0),
+                    ));
+                    label.setAutoresizingMask(
+                        NSAutoresizingMaskOptions::ViewWidthSizable
+                            | NSAutoresizingMaskOptions::ViewMinYMargin
+                            | NSAutoresizingMaskOptions::ViewMaxYMargin,
+                    );
+                    label.setAlignment(NSTextAlignment(2));
+                    label.setFont(Some(&NSFont::boldSystemFontOfSize(17.0)));
+                    label.setTextColor(Some(&NSColor::labelColor()));
+                    unsafe {
+                        let _: () = objc2::msg_send![&*label, setAccessibilityElement: true];
+                        let _: () = objc2::msg_send![&*label, setAccessibilityLabel: label_text];
+                    }
+                    cover_content.addSubview(&label);
+                }
                 content.addSubview(&cover);
             }
+            // `alphaValue = 0` is only visual; AX still traverses the WKWebView
+            // and exposes unproved workspace text. A hidden native view keeps
+            // the renderer alive while removing its complete subtree from
+            // both display and accessibility until the ticket commits.
+            webview_view.setHidden(true);
             unsafe {
                 let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: true];
             }
             ns_window.makeFirstResponder(None);
-            unsafe {
-                let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64];
-            }
             ns_window.deminiaturize(None);
             ns_window.makeKeyAndOrderFront(None);
         } else {
@@ -6636,9 +6660,7 @@ fn with_native_startup_cover(
             unsafe {
                 let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: false];
             }
-            unsafe {
-                let _: () = objc2::msg_send![webview_view, setAlphaValue: 1.0f64];
-            }
+            webview_view.setHidden(false);
             ns_window.deminiaturize(None);
             ns_window.makeFirstResponder(Some(webview_view));
             ns_window.makeKeyAndOrderFront(None);
@@ -8754,6 +8776,29 @@ mod tests {
                 covered: false,
             }],
             "an unread cover must be superseded by the newer exact reveal"
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn native_cover_has_visible_label_and_hides_the_renderer_subtree() {
+        let source = include_str!("lib.rs");
+        let start = source
+            .find("fn with_native_startup_cover")
+            .expect("native startup cover exists");
+        let end = source[start..]
+            .find("fn present_startup_recovery_surface")
+            .map(|offset| start + offset)
+            .expect("native startup cover ends before recovery composition");
+        let cover = &source[start..end];
+
+        assert!(cover.contains("NSTextField::labelWithString(label_text, marker)"));
+        assert!(cover.contains("setAccessibilityLabel: label_text"));
+        assert!(cover.contains("webview_view.setHidden(true)"));
+        assert!(cover.contains("webview_view.setHidden(false)"));
+        assert!(
+            !cover.contains("setAlphaValue"),
+            "alpha-only hiding exposes unproved renderer content to accessibility"
         );
     }
 
