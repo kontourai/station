@@ -878,36 +878,30 @@ node -e '
   try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
 ' "$state_stage" "$runtime_channel" "$release_channel" "$canonical_install_root" "$canonical_station_root" "$canonical_station_home" || fail 'could not stage install channel state'
 
-promoted=false
 if [ "$previous_release" != "$release_dir" ]; then
   stop_installed_station
   if ! replace_link_atomically "$release_dir" "$current_link" || \
     ! node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$staged_launcher" "$launcher"; then
     fail_with_rollback 'could not publish the new release'
   fi
-  promoted=true
 else
   # A reused release may still be running from the previous install; the
-  # later start must not race that live instance for its own ports.
+  # later start must not race that live instance for its own ports. Every
+  # failure after this stop rolls back so the previously-running Station is
+  # never left stopped (the "previous" release here is the same release, so
+  # rollback is a restart, not a downgrade).
   stop_installed_station
   node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$staged_launcher" "$launcher" || \
-    fail 'could not publish the channel launcher'
+    fail_with_rollback 'could not publish the channel launcher'
 fi
 
-if ! node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$state_stage" "$state_file"; then
-  if [ "$promoted" = true ]; then
-    fail_with_rollback 'could not persist install channel state'
-  fi
-  fail 'could not persist install channel state'
-fi
+node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$state_stage" "$state_file" || \
+  fail_with_rollback 'could not persist install channel state'
 state_stage=""
 
 if [ "${STATION_INSTALL_NO_START:-0}" != 1 ]; then
   if ! start_installed_station; then
-    if [ "$promoted" = true ]; then
-      fail_with_rollback 'the new release did not start'
-    fi
-    fail 'the installed release did not start'
+    fail_with_rollback 'the new release did not start'
   fi
   for installed_release in "$install_root"/releases/*; do
     [ -d "$installed_release" ] || continue

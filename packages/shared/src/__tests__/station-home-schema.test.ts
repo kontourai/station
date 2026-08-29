@@ -4,6 +4,7 @@ import fs, {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
@@ -157,6 +158,28 @@ describe('portable installer data-root claim', () => {
     expect(installer).toContain(
       `DATA_ROOT_SIGNATURE='${PORTABLE_INSTALL_DATA_ROOT_SIGNATURE.trimEnd()}'`,
     );
+    // Bytes-written must equal bytes-accepted, newline included: install.sh
+    // appends the newline the TS constant carries, so pin BOTH halves — the
+    // write expression and the constant's terminal newline. Either side
+    // drifting alone re-breaks every fresh install silently.
+    expect(installer).toContain('fs.writeFileSync(fd, `${signature}\\n`)');
+    expect(PORTABLE_INSTALL_DATA_ROOT_SIGNATURE).toBe(
+      `${PORTABLE_INSTALL_DATA_ROOT_SIGNATURE.trimEnd()}\n`,
+    );
+  });
+
+  it('refuses a symlinked marker even when its target holds the exact signature', () => {
+    const home = mkdtempSync(join(tmpdir(), 'station-home-symlink-marker-'));
+    const outside = mkdtempSync(join(tmpdir(), 'station-marker-target-'));
+    writeFileSync(
+      join(outside, 'target'),
+      PORTABLE_INSTALL_DATA_ROOT_SIGNATURE,
+    );
+    symlinkSync(
+      join(outside, 'target'),
+      join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER),
+    );
+    expect(stationHomeSchemaNeedsReset(home)).toBe(true);
   });
 });
 

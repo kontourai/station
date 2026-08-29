@@ -47,6 +47,9 @@ jobs:
         env:
           SMOKE_HOME: ${{ runner.temp }}/station-home
           RELEASE_DIR: ${{ runner.temp }}/release
+          # The sha the checkout and packager actually used; GITHUB_SHA is the
+          # base tip under pull_request_target.
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           runtime_channel="$RUNTIME_CHANNEL"
@@ -224,8 +227,10 @@ jobs:
           curl -fsS --retry 10 --retry-connrefused --retry-delay 1 \
             -o "$RUNNER_TEMP/station-ui.html" http://127.0.0.1:3200/
           grep -q '<div id="root"' "$RUNNER_TEMP/station-ui.html"
+          # EXPECTED_SHA, not GITHUB_SHA: under pull_request_target GITHUB_SHA
+          # is the BASE tip while the checkout and packager use the PR head.
           curl -fsS http://127.0.0.1:3200/__station/identity \
-            | jq -e --arg sha "$GITHUB_SHA" '.sha == $sha and (.bootId | length > 0)'
+            | jq -e --arg sha "$EXPECTED_SHA" '.sha == $sha and (.bootId | length > 0)'
 
           curl -fsSL "file://$GITHUB_WORKSPACE/install.sh" | env \
             HOME="$SMOKE_HOME" \

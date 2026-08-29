@@ -416,14 +416,17 @@ function isBootstrapScaffolding(homeDir: string): boolean {
     if (entry === PORTABLE_INSTALL_DATA_ROOT_MARKER) {
       // The installer's claim is scaffolding only when it is exactly the
       // installer's bytes; wrong content, a directory, or a link is data the
-      // gate must keep refusing to bootstrap over.
-      const marker = join(homeDir, entry);
-      const stats = lstatSync(marker);
-      if (
-        stats.isFile() &&
-        readFileSync(marker, 'utf8') === PORTABLE_INSTALL_DATA_ROOT_SIGNATURE
-      ) {
-        continue;
+      // gate must keep refusing to bootstrap over. The hardened no-follow
+      // reader closes the lstat→read symlink window, and anything it
+      // refuses — including a marker removed concurrently — reads as
+      // not-scaffolding rather than a raw filesystem error.
+      try {
+        const content = readRegularFileNoFollow(homeDir, join(homeDir, entry), {
+          maxBytes: PORTABLE_INSTALL_DATA_ROOT_SIGNATURE.length,
+        });
+        if (content === PORTABLE_INSTALL_DATA_ROOT_SIGNATURE) continue;
+      } catch {
+        // fall through to the refusal below
       }
       return false;
     }
