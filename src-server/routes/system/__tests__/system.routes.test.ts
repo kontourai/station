@@ -28,8 +28,13 @@ const { createSystemRoutes } = await import('../system.js');
 const { createConnectionRoutes } = await import(
   '../../connections/connections.js'
 );
-const { readBuildProvenance, STATUS_PREREQUISITES_CACHE_TTL_MS } = await import(
-  '../system-status-routes.js'
+const {
+  readBuildProvenance,
+  reconcileExternalEngineReadiness,
+  STATUS_PREREQUISITES_CACHE_TTL_MS,
+} = await import('../system-status-routes.js');
+const { buildCliRuntimePrerequisites } = await import(
+  '../../../providers/auth/cli-auth.js'
 );
 const { checkBedrockCredentials } = await import(
   '../../../providers/llm/bedrock.js'
@@ -1594,13 +1599,7 @@ describe('System Routes', () => {
       });
     });
 
-    test('prefers cannot_verify over sign_in_required when an engine has both', async () => {
-      // The discriminating case for the reason precedence. With only an
-      // errored prerequisite, `needsSignIn` is false whatever the order, so
-      // the sibling test above cannot detect the ternary being swapped. Only
-      // an engine carrying BOTH an errored probe and a genuinely missing
-      // `-auth` prerequisite pins the product rule: an errored probe is not
-      // evidence of an authentication problem, so it must win.
+    test('prefers a completed CLI error over sign_in_required when an engine has both', async () => {
       vi.mocked(checkBedrockCredentials).mockResolvedValueOnce(false);
       vi.mocked(getProviderAdapters).mockReturnValueOnce([
         fakeExternalEngineAdapter({
@@ -1618,9 +1617,152 @@ describe('System Routes', () => {
         expect.objectContaining({
           engineId: 'codex',
           ready: false,
-          reason: 'cannot_verify',
+          reason: 'missing_prerequisites',
         }),
       ]);
+    });
+
+    describe('reconcileExternalEngineReadiness', () => {
+      const signInRequired = {
+        ready: false,
+        source: null,
+        engines: [
+          {
+            engineId: 'claude-code',
+            name: 'claude',
+            detected: true,
+            ready: false,
+            source: null,
+            reason: 'sign_in_required',
+          },
+        ],
+      } as any;
+      const cannotVerify = {
+        ready: false,
+        source: null,
+        engines: [
+          {
+            engineId: 'claude-code',
+            name: 'claude',
+            detected: false,
+            ready: false,
+            source: null,
+            reason: 'cannot_verify',
+          },
+        ],
+      } as any;
+
+      test('holds the last genuine sign-in-required observation through a cannot_verify flap', () => {
+        expect(
+          reconcileExternalEngineReadiness(signInRequired, cannotVerify),
+        ).toEqual(signInRequired);
+      });
+
+      test('does not hold cannot_verify when there is no prior observation', () => {
+        expect(
+          reconcileExternalEngineReadiness(undefined, cannotVerify),
+        ).toEqual(cannotVerify);
+      });
+    });
+
+    test('a completed version-probe error replaces held ready readiness after the TTL', async () => {
+      vi.mocked(checkBedrockCredentials).mockResolvedValue(false);
+      const readyAdapter = fakeExternalEngineAdapter({
+        provider: 'claude',
+        engineId: 'claude-code',
+        prerequisites: [
+          { id: 'claude-cli', status: 'installed' },
+          { id: 'claude-auth', status: 'installed' },
+        ],
+      });
+      const completedErrorAdapter = {
+        ...readyAdapter,
+        getPrerequisites: vi.fn(() =>
+          buildCliRuntimePrerequisites({
+            command: 'claude',
+            displayName: 'Claude',
+            versionArgs: ['--version'],
+            authArgs: ['--version'],
+            installStep: 'Install Claude.',
+            authStep: 'Log in.',
+            findBinary: () => '/bin/claude',
+            runCommand: async () => ({
+              stdout: '',
+              stderr: 'launcher failed',
+              code: 1,
+            }),
+          }),
+        ),
+      };
+      vi.mocked(getProviderAdapters)
+        .mockReturnValueOnce([readyAdapter])
+        .mockReturnValue([completedErrorAdapter]);
+      const app = createSystemRoutes(createMockDeps() as any, mockLogger);
+      const first = await waitForStatusDiscovery(app);
+      expect(first.externalEngines[0]).toMatchObject({ ready: true });
+
+      const realNow = Date.now.bind(Date);
+      const nowSpy = vi
+        .spyOn(Date, 'now')
+        .mockImplementation(
+          () => realNow() + STATUS_PREREQUISITES_CACHE_TTL_MS + 1_000,
+        );
+      try {
+        await app.request('/status');
+        await vi.waitFor(async () => {
+          const body = await json(await app.request('/status'));
+          expect(body.prerequisitesState).toBe('ready');
+          expect(body.externalEngines[0]).toMatchObject({
+            ready: false,
+            reason: 'missing_prerequisites',
+          });
+        });
+      } finally {
+        nowSpy.mockRestore();
+        vi.mocked(checkBedrockCredentials).mockResolvedValue(true);
+        vi.mocked(getProviderAdapters).mockReturnValue([]);
+      }
+    });
+
+    test('an aborted probe keeps the last genuine ready observation after the TTL', async () => {
+      vi.mocked(checkBedrockCredentials).mockResolvedValue(false);
+      const readyAdapter = fakeExternalEngineAdapter({
+        provider: 'claude',
+        engineId: 'claude-code',
+        prerequisites: [
+          { id: 'claude-cli', status: 'installed' },
+          { id: 'claude-auth', status: 'installed' },
+        ],
+      });
+      const abortedAdapter = {
+        ...readyAdapter,
+        getPrerequisites: vi.fn().mockRejectedValue(new Error('timed out')),
+      };
+      vi.mocked(getProviderAdapters)
+        .mockReturnValueOnce([readyAdapter])
+        .mockReturnValue([abortedAdapter]);
+      const app = createSystemRoutes(createMockDeps() as any, mockLogger);
+      const first = await waitForStatusDiscovery(app);
+      expect(first.externalEngines[0]).toMatchObject({ ready: true });
+
+      const realNow = Date.now.bind(Date);
+      const nowSpy = vi
+        .spyOn(Date, 'now')
+        .mockImplementation(
+          () => realNow() + STATUS_PREREQUISITES_CACHE_TTL_MS + 1_000,
+        );
+      try {
+        await app.request('/status');
+        await vi.waitFor(async () => {
+          const body = await json(await app.request('/status'));
+          expect(body.prerequisitesState).toBe('ready');
+          expect(body.externalEngines[0]).toMatchObject({ ready: true });
+        });
+      } finally {
+        nowSpy.mockRestore();
+        vi.mocked(checkBedrockCredentials).mockResolvedValue(true);
+        vi.mocked(getProviderAdapters).mockReturnValue([]);
+      }
     });
 
     test('does not assert detection for a disabled engine whose CLI is absent', async () => {

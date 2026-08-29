@@ -118,6 +118,44 @@ describe('buildCliRuntimePrerequisites', () => {
     );
   });
 
+  test('records a completed version-probe failure on the CLI prerequisite', async () => {
+    const prerequisites = await buildCliRuntimePrerequisites({
+      command: 'node',
+      displayName: 'Test CLI',
+      versionArgs: ['--version'],
+      authArgs: ['--version'],
+      installStep: 'Install it.',
+      authStep: 'Log in.',
+      runCommand: async () => ({
+        stdout: '',
+        stderr: 'launcher failed',
+        code: 1,
+      }),
+    });
+
+    expect(prerequisites).toEqual([
+      expect.objectContaining({ id: 'node-cli', status: 'error' }),
+    ]);
+  });
+
+  test('keeps a probe with no result as unverifiable auth evidence', async () => {
+    const prerequisites = await buildCliRuntimePrerequisites({
+      command: 'node',
+      displayName: 'Test CLI',
+      versionArgs: ['--version'],
+      authArgs: ['--version'],
+      installStep: 'Install it.',
+      authStep: 'Log in.',
+      runCommand: async () => null,
+    });
+
+    expect(prerequisites).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'node-auth', status: 'error' }),
+      ]),
+    );
+  });
+
   test('propagates cancellation to every active CLI probe', async () => {
     const controller = new AbortController();
     const observedSignals: AbortSignal[] = [];

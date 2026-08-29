@@ -414,7 +414,14 @@ export async function resolveExternalEngineReadiness(
           // particular, CLI auth probes deliberately return `error` when they
           // cannot safely establish auth state.
           const cannotVerify = adapterReadiness.prerequisites.some(
-            (prerequisite) => prerequisite.status === 'error',
+            (prerequisite) =>
+              prerequisite.status === 'error' &&
+              !prerequisite.id.endsWith('-cli'),
+          );
+          const completedCliError = adapterReadiness.prerequisites.some(
+            (prerequisite) =>
+              prerequisite.status === 'error' &&
+              prerequisite.id.endsWith('-cli'),
           );
           const needsSignIn = adapterReadiness.missingPrerequisites.some(
             (prerequisite) =>
@@ -430,9 +437,11 @@ export async function resolveExternalEngineReadiness(
             source: null,
             reason: cannotVerify
               ? 'cannot_verify'
-              : needsSignIn
-                ? 'sign_in_required'
-                : 'missing_prerequisites',
+              : completedCliError
+                ? 'missing_prerequisites'
+                : needsSignIn
+                  ? 'sign_in_required'
+                  : 'missing_prerequisites',
           };
         } catch {
           return {
@@ -450,6 +459,27 @@ export async function resolveExternalEngineReadiness(
   );
   const ready = readiness.find((candidate) => candidate.ready);
   return { ready: !!ready, source: ready?.source ?? null, engines: readiness };
+}
+
+/**
+ * A `cannot_verify` refresh carries no newer observation. Retain the last
+ * genuine per-engine projection until a completed probe reports ready,
+ * sign-in required, missing prerequisites, or disabled.
+ */
+export function reconcileExternalEngineReadiness(
+  previous: ExternalEngineReadiness | undefined,
+  next: ExternalEngineReadiness,
+): ExternalEngineReadiness {
+  if (!previous) return next;
+  const previousByEngineId = new Map(
+    previous.engines.map((engine) => [engine.engineId, engine]),
+  );
+  const engines = next.engines.map((engine) => {
+    if (engine.reason !== 'cannot_verify') return engine;
+    return previousByEngineId.get(engine.engineId) ?? engine;
+  });
+  const ready = engines.find((candidate) => candidate.ready);
+  return { ready: !!ready, source: ready?.source ?? null, engines };
 }
 
 /**
@@ -728,7 +758,10 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         ollamaReachable,
         codexInstalled,
         claudeInstalled,
-        externalEngineReadiness,
+        externalEngineReadiness: reconcileExternalEngineReadiness(
+          snapshot?.externalEngineReadiness,
+          externalEngineReadiness,
+        ),
         prerequisites,
         developerServices,
       };
