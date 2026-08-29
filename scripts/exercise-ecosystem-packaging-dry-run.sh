@@ -59,7 +59,7 @@ STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS=1 node "$ROOT/scripts/ecosystem-manif
   --private-key "$WORK/private.pem" \
   --key-id station-ecosystem-v1 \
   --output "$MANIFESTS/stable.json"
-node "$ROOT/scripts/ecosystem-manifest.mjs" cask \
+STATION_ECOSYSTEM_ALLOW_INSECURE_TEST_URLS=1 node "$ROOT/scripts/ecosystem-manifest.mjs" cask \
   --manifest "$MANIFESTS/stable.json" \
   --public-key "$KEYS/public.pem" \
   --output "$WORK/station.rb"
