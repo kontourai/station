@@ -31,6 +31,7 @@ export interface AgentMetadata {
   slug: string;
   name: string;
   description?: string;
+  prompt?: string;
   /** Plugin that owns this Agent definition, when contributed by a plugin. */
   plugin?: string;
   updatedAt?: string;

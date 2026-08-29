@@ -78,6 +78,37 @@ function setup(overrides: Record<string, unknown> = {}) {
 }
 
 describe('registry-backed enriched Agent routes', () => {
+  test('keeps Station fallback prompt distinct from description and supports legacy metadata', async () => {
+    const metadata = [
+      {
+        slug: 'station',
+        name: 'Station',
+        description: 'Visible description',
+        prompt: 'Persisted system prompt',
+      },
+    ];
+    const { app } = setup({
+      agentMetadataMap: new Map(metadata.map((agent) => [agent.slug, agent])),
+      listAgents: async () => metadata,
+    });
+    const current = await json(await app.request('/station'));
+    expect(current.data).toMatchObject({
+      description: 'Visible description',
+      prompt: 'Persisted system prompt',
+    });
+
+    const legacy = [
+      { slug: 'station', name: 'Station', description: 'Legacy prompt' },
+    ];
+    const legacyRoute = setup({
+      agentMetadataMap: new Map(legacy.map((agent) => [agent.slug, agent])),
+      listAgents: async () => legacy,
+    });
+    expect(
+      (await json(await legacyRoute.app.request('/station'))).data.prompt,
+    ).toBe('Legacy prompt');
+  });
+
   test('projects the enforced built-in denial catalog separately from Agent-configured denials', async () => {
     const writerSpec = {
       name: 'Writer',
