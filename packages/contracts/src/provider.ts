@@ -704,6 +704,22 @@ export interface CapabilityDeliveryChannelReport {
    */
   runtimeProvided?: string[];
   undelivered: CapabilityUndelivered[];
+  /**
+   * Present only on the systemPrompt report when the prompt was NOT
+   * delivered on the engine's system-prompt channel but is scheduled for
+   * delivery as first-turn instructions (the `instructionsInFirstTurn`
+   * capability row): the orchestration sendTurn choke point composes the
+   * pending `firstTurnInstructions` into the conversation's first turn.
+   * Absent means the ordinary channel semantics apply.
+   */
+  channel?: 'first-turn';
+  /**
+   * The pending authored prompt for first-turn composition. Server-owned
+   * (reserved metadata key — a public caller can never forge it), present
+   * only alongside `channel: 'first-turn'` and only until the conversation's
+   * first turn composes it.
+   */
+  firstTurnInstructions?: string;
 }
 
 /**

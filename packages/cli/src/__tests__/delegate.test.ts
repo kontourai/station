@@ -70,6 +70,15 @@ describe('station delegate over HTTP', () => {
     pathname: string;
     body: Record<string, unknown>;
   }> = [];
+  // Capability-delivery disclosure fixtures: when set, the mock server
+  // attaches them to the create/status responses so tests can pin the
+  // DEFAULT human output's disclosure lines without a real engine.
+  let createDeliveryFixture:
+    | { provider?: string; capabilityDelivery?: Record<string, unknown> }
+    | undefined;
+  let statusDeliveryFixture:
+    | { provider?: string; capabilityDelivery?: Record<string, unknown> }
+    | undefined;
 
   beforeEach(async () => {
     consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -77,6 +86,8 @@ describe('station delegate over HTTP', () => {
     requestBodies.length = 0;
     tasks.clear();
     nextTaskSeq = 1;
+    createDeliveryFixture = undefined;
+    statusDeliveryFixture = undefined;
 
     server = createServer(async (req, res) => {
       const method = req.method || 'GET';
@@ -207,6 +218,14 @@ describe('station delegate over HTTP', () => {
             typeof selectedWorkspace.projectSlug === 'string'
               ? { project: projectHandleFor(selectedWorkspace.projectSlug) }
               : {}),
+            ...(createDeliveryFixture?.provider
+              ? { provider: createDeliveryFixture.provider }
+              : {}),
+            ...(createDeliveryFixture?.capabilityDelivery
+              ? {
+                  capabilityDelivery: createDeliveryFixture.capabilityDelivery,
+                }
+              : {}),
           },
         });
         return;
@@ -276,6 +295,14 @@ describe('station delegate over HTTP', () => {
               ? { parentTaskId: record.parentTaskId }
               : {}),
             eventCount: record.events.length,
+            ...(statusDeliveryFixture?.provider
+              ? { provider: statusDeliveryFixture.provider }
+              : {}),
+            ...(statusDeliveryFixture?.capabilityDelivery
+              ? {
+                  capabilityDelivery: statusDeliveryFixture.capabilityDelivery,
+                }
+              : {}),
             ...(record.pendingRequest
               ? { pendingRequest: record.pendingRequest }
               : {}),
@@ -1570,5 +1597,146 @@ describe('station delegate over HTTP', () => {
         (entry) => entry.pathname === '/api/orchestration/delegations',
       ),
     ).toBe(false);
+  });
+
+  // ── capability-delivery disclosure (agent-settings augment slice A) ──
+  // The DEFAULT human output must name an authored setting the engine could
+  // not carry — the same station#977/#1463 class as the other non---json
+  // assertions in this file: a disclosure that only ever reached --json is a
+  // disclosure the operator never reads.
+
+  test('human output: create discloses a dropped prompt and delivered summary', async () => {
+    const { runCli } = await import('../cli.js');
+
+    createDeliveryFixture = {
+      provider: 'opencode',
+      capabilityDelivery: {
+        prompt: {
+          channel: 'system-prompt',
+          status: 'not-delivered',
+          reason: 'engine-unsupported',
+        },
+        dropped: [
+          {
+            capability: 'systemPrompt',
+            id: 'agent-prompt',
+            reason: 'engine-unsupported',
+          },
+        ],
+      },
+    };
+    try {
+      await runCli([
+        'delegate',
+        '--agent=opencode-agent',
+        'Ship it',
+        `--api-base=${apiBase}`,
+      ]);
+
+      const text = printedText();
+      expect(text).toContain(
+        'prompt not delivered: engine has no system-prompt channel (opencode)',
+      );
+    } finally {
+      createDeliveryFixture = undefined;
+    }
+  });
+
+  test('human output: create renders the delivered prompt summary and dropped tool servers', async () => {
+    const { runCli } = await import('../cli.js');
+
+    createDeliveryFixture = {
+      provider: 'claude',
+      capabilityDelivery: {
+        prompt: { channel: 'system-prompt', status: 'delivered' },
+        dropped: [
+          {
+            capability: 'toolServers',
+            id: 'github',
+            reason: 'not-found',
+          },
+        ],
+      },
+    };
+    try {
+      await runCli([
+        'delegate',
+        '--agent=claude-agent',
+        'Ship it',
+        `--api-base=${apiBase}`,
+      ]);
+
+      const text = printedText();
+      expect(text).toContain('agent prompt delivered (claude system prompt)');
+      expect(text).toContain(
+        "tool server 'github' not delivered: not found on this Station",
+      );
+    } finally {
+      createDeliveryFixture = undefined;
+    }
+  });
+
+  test('human output: status discloses the dropped prompt line', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'Ship it',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    statusDeliveryFixture = {
+      provider: 'opencode',
+      capabilityDelivery: {
+        prompt: {
+          channel: 'system-prompt',
+          status: 'not-delivered',
+          reason: 'engine-unsupported',
+        },
+        dropped: [
+          {
+            capability: 'systemPrompt',
+            id: 'agent-prompt',
+            reason: 'engine-unsupported',
+          },
+        ],
+      },
+    };
+    try {
+      await runCli([
+        'delegate',
+        'status',
+        created.data.taskId,
+        `--api-base=${apiBase}`,
+      ]);
+
+      const text = printedText();
+      expect(text).toContain(
+        'prompt not delivered: engine has no system-prompt channel (opencode)',
+      );
+    } finally {
+      statusDeliveryFixture = undefined;
+    }
+  });
+
+  test('human output: no delivery lines render without receipts', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      'Ship it',
+      `--api-base=${apiBase}`,
+    ]);
+
+    const text = printedText();
+    expect(text).not.toContain('not delivered');
+    expect(text).not.toContain('agent prompt');
   });
 });
