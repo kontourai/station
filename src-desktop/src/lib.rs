@@ -6417,12 +6417,15 @@ fn complete_startup_commit(app: &AppHandle) {
 #[cfg(not(mobile))]
 fn request_native_startup_commit(app: &AppHandle) {
     let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
+        log::warn!("native startup bootstrap state is unavailable");
         return;
     };
     if !bootstrap.renderer_observed.load(Ordering::Acquire) {
+        log::debug!("native startup bootstrap is waiting for the main renderer page start");
         return;
     }
     let Some(state) = app.try_state::<DesktopServerState>() else {
+        log::debug!("native startup bootstrap is waiting for desktop state");
         return;
     };
     let ticket = {
@@ -6439,18 +6442,39 @@ fn request_native_startup_commit(app: &AppHandle) {
             }
         }
     };
+    request_native_startup_commit_for_ticket(app, ticket);
+}
+
+#[cfg(not(mobile))]
+fn request_native_startup_commit_for_ticket(
+    app: &AppHandle,
+    ticket: startup_readiness::StartupTicket,
+) {
+    let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
+        log::warn!("native startup bootstrap state is unavailable");
+        return;
+    };
+    let Some(state) = app.try_state::<DesktopServerState>() else {
+        log::debug!("native startup bootstrap is waiting for desktop state");
+        return;
+    };
     let phase = state
         .readiness
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .phase;
     if !claim_startup_commit(
-        true,
+        bootstrap.renderer_observed.load(Ordering::Acquire),
         phase,
         &state.startup_commit_in_flight,
         &state.startup_commit_pending,
     ) {
-        log::debug!("native startup bootstrap did not claim readiness phase {phase:?}");
+        log::info!(
+            "native startup bootstrap did not claim: phase={phase:?} inFlight={} pending={} rendererObserved={}",
+            state.startup_commit_in_flight.load(Ordering::Acquire),
+            state.startup_commit_pending.load(Ordering::Acquire),
+            bootstrap.renderer_observed.load(Ordering::Acquire),
+        );
         return;
     }
     log::info!(
@@ -6997,6 +7021,7 @@ fn observe_startup_ticket(app: &AppHandle, ticket: startup_readiness::StartupTic
         return;
     };
     let generation = ticket.generation;
+    let published_ticket = ticket.clone();
     let _ = transition_startup_readiness(
         state.inner(),
         startup_readiness::ReadinessInput::ServerTicket(ticket),
@@ -7005,7 +7030,7 @@ fn observe_startup_ticket(app: &AppHandle, ticket: startup_readiness::StartupTic
         "native startup bootstrap observed sidecar ticket generation {}",
         generation
     );
-    request_native_startup_commit(app);
+    request_native_startup_commit_for_ticket(app, published_ticket);
     // A sidecar retry becomes reprobeable only after this exact new generation
     // is running and has published its ticket; never wake the renderer against
     // the old child during Restart.

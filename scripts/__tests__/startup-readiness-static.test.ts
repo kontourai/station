@@ -92,7 +92,9 @@ describe('desktop startup readiness static boundary', () => {
       lib.indexOf('fn observe_startup_loss'),
     );
     expect(
-      ticketWake.indexOf('request_native_startup_commit(app);'),
+      ticketWake.indexOf(
+        'request_native_startup_commit_for_ticket(app, published_ticket);',
+      ),
     ).toBeLessThan(
       ticketWake.indexOf('app.emit("station://startup-readiness-retry"'),
     );
