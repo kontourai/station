@@ -847,6 +847,24 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     );
   });
 
+  it('reserves macOS release cleanup time before setup and passes the absolute deadline to notarization', () => {
+    expect(desktopJob).toContain('timeout-minutes: 120');
+    const reserve = desktopJob.slice(
+      desktopJob.indexOf('name: Reserve nightly macOS release cleanup window'),
+      desktopJob.indexOf('uses: actions/checkout'),
+    );
+    expect(reserve).toContain('id: nightly_macos_release_deadline');
+    expect(reserve).toContain('105 * 60');
+    const notarize = desktopJob.slice(
+      desktopJob.indexOf('name: Seal, notarize'),
+      desktopJob.indexOf('name: Assemble the signed updater manifest'),
+    );
+    expect(notarize).toContain(
+      '--deadline-epoch "$' +
+        '{{ steps.nightly_macos_release_deadline.outputs.epoch }}"',
+    );
+  });
+
   it('publishes only on a literal success result from the test gate', () => {
     // Same literal line as the Android job's pin above, and the same
     // conjunct-order reasoning: scripts/actionlint-gate.mjs's
