@@ -116,6 +116,7 @@ export const DEFAULT_CONVERSATIONS = [
 export const DEFAULT_CONVERSATION_LOOKUPS = {
   'conv-1': {
     id: 'conv-1',
+    currentSessionId: 'session-1',
     agentSlug: 'dev-agent',
     projectSlug: 'dev',
     title: 'Dev Agent Chat',
@@ -124,6 +125,7 @@ export const DEFAULT_CONVERSATION_LOOKUPS = {
   string,
   {
     id: string;
+    currentSessionId: string;
     agentSlug: string;
     projectSlug?: string;
     title?: string;
@@ -411,6 +413,7 @@ export async function seedOrchestrationRoutes(
       string,
       {
         id: string;
+        currentSessionId: string;
         agentSlug: string;
         projectSlug?: string;
         title?: string;
@@ -577,6 +580,7 @@ export async function seedOrchestrationRoutes(
           string,
           {
             id: string;
+            currentSessionId: string;
             agentSlug: string;
             projectSlug?: string;
             title?: string;
@@ -597,11 +601,13 @@ export async function seedOrchestrationRoutes(
             }),
           });
         }
-        const currentSessionId = conversationSessionReaders
-          .get(page)?.(conversationId)
-          .at(-1);
+        const currentSessionId =
+          conversationSessionReaders.get(page)?.(conversationId).at(-1) ??
+          conversation.currentSessionId;
+        const { currentSessionId: _seededCurrentSessionId, ...identity } =
+          conversation;
         const exactConversation = {
-          ...conversation,
+          ...identity,
           source: 'runtime' as const,
           title: conversation.title ?? inventory.title ?? conversationId,
           createdAt: inventory.createdAt,
