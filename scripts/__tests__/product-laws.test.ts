@@ -218,6 +218,44 @@ describe('executable product-law manifest', () => {
     ).toMatchObject({ status: 'NOT_VERIFIED' });
   });
 
+  test('a failed observation carries the assertion failure text so CI is diagnosable', () => {
+    const selector = 'exact observable behavior';
+    expect(
+      structuredLawObservationVerdict(
+        {
+          testResults: [
+            {
+              assertionResults: [
+                {
+                  title: selector,
+                  status: 'failed',
+                  failureMessages: [
+                    'AssertionError: expected pass to be route-back',
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        selector,
+      ),
+    ).toEqual({
+      status: 'FAIL',
+      reason: 'AssertionError: expected pass to be route-back',
+    });
+    // A failed result with no messages still fails, without inventing text.
+    expect(
+      structuredLawObservationVerdict(
+        {
+          testResults: [
+            { assertionResults: [{ title: selector, status: 'failed' }] },
+          ],
+        },
+        selector,
+      ),
+    ).toEqual({ status: 'FAIL' });
+  });
+
   test('classifies a tiny env-configured observation timeout as infrastructure, while law failures remain failed', async () => {
     const child = new EventEmitter() as EventEmitter & {
       signals: string[];

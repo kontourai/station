@@ -247,7 +247,10 @@ export function ProviderConnectionForm({
         gap: '16px',
       }}
     >
-      <nav className="provider-detail__progress" aria-label="Provider setup">
+      <nav
+        className="provider-detail__progress"
+        aria-label="Model connection setup"
+      >
         {steps.map((step, index) => (
           <Fragment key={step.label}>
             {index > 0 && <span aria-hidden="true">→</span>}
@@ -595,7 +598,7 @@ export function ProviderConnectionForm({
             value={(form.config.defaultModel as string) ?? ''}
             options={modelOptions}
             placeholder="The model id to use when an agent names none"
-            hint="Used when an agent names no model of its own, and it is the model Test Connection sends its one minimal chat request to if this provider returns no model list."
+            hint="Used when an agent names no model of its own, and it is the model Test Connection sends its one minimal chat request to if this connection returns no model list."
             onChange={(next) => onSetConfigField('defaultModel', next)}
           />
         </div>
@@ -781,7 +784,7 @@ export function ProviderConnectionForm({
             id="provider-test-disclosure"
             className="provider-detail__disclosure"
           >
-            Asks this provider for its model list. If it offers none, Station
+            Asks this connection for its model list. If it offers none, Station
             sends one minimal chat request (max_tokens 1) using the default
             model — the only way to prove it can run work. Some providers bill
             for that request.
@@ -830,7 +833,7 @@ export function ProviderConnectionForm({
         <div className="provider-detail__advanced-fields">
           <div className="editor-field">
             <label className="editor-label" htmlFor={providerTypeId}>
-              Provider type
+              Connection type
             </label>
             <select
               id={providerTypeId}

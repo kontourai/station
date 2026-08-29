@@ -27,9 +27,10 @@ export function SessionInventoryFullFallback({
   chatStoreId?: string;
   hostId?: string;
   onClose?(): void;
-  onHostOpened?(): void;
+  /** Re-focuses the exact already-opened Workspace Pane without recreating it. */
+  onHostOpened?(focus: () => boolean): void;
 }) {
-  const { openBasis, fallback } = useBasisPaneLauncher();
+  const { openBasis, focusBasis, fallback } = useBasisPaneLauncher();
   const authority = useHostRequestAuthorityScope();
   const mobileBindingId = useRef(`mobile:${crypto.randomUUID()}`).current;
   useEffect(
@@ -54,10 +55,12 @@ export function SessionInventoryFullFallback({
       if (JSON.stringify(current?.scope) !== JSON.stringify(scope))
         commitSessionInventorySelection(key, { scope, groupId: 'inputs' });
     }
-    const result = openBasis(
+    const instance =
       !forceFallback && projectId
         ? createSessionInventoryBasisPaneInstance(projectId, scope.sessionId)
-        : null,
+        : null;
+    const result = openBasis(
+      instance,
       {
         kind: 'session-inventory',
         sessionId: scope.sessionId,
@@ -77,7 +80,7 @@ export function SessionInventoryFullFallback({
             chatStoreId,
           },
         );
-      onHostOpened?.();
+      onHostOpened?.(() => (instance ? focusBasis(instance) : false));
     }
   }, [
     forceFallback,
@@ -87,6 +90,7 @@ export function SessionInventoryFullFallback({
     onClose,
     onHostOpened,
     openBasis,
+    focusBasis,
     projectId,
     scope,
     trigger,

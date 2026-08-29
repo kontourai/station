@@ -175,10 +175,10 @@ export function SessionInventoryCompact({
                   })
                 }
               >
-                <bdi>{item.label}</bdi>
-                <span>
+                <bdi>
+                  {item.label} ·{' '}
                   {item.classification === 'kept' ? 'Kept' : 'Current'}
-                </span>
+                </bdi>
               </button>
             </li>
           ))}

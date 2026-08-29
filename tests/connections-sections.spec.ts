@@ -377,7 +377,7 @@ test.describe('Connections IA', () => {
     await page.getByRole('button', { name: 'Add model connection' }).click();
     await expect(page).toHaveURL(/\/connections\/models\/new$/);
     await expect(
-      page.getByRole('heading', { name: 'Add provider' }),
+      page.getByRole('heading', { name: 'Add model connection' }),
     ).toBeVisible();
     // The "More providers" entry, not the "OpenAI" preset — regex anchored
     // to the start of the accessible name so it cannot match the preset.
