@@ -30,8 +30,8 @@
   background: var(--bg-primary);
   flex-shrink: 0;
   transition:
-    border-color 0.15s,
-    background 0.15s;
+    border-color var(--motion-fast),
+    background var(--motion-fast);
 }
 .cb__input:checked + .cb__box {
   background: var(--accent-primary);

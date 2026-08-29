@@ -27,10 +27,10 @@ import {
  * evidence is the captured request body, not the response text. Both turns'
  * distinct prompts and the (identical) reply render in the transcript too.
  *
- * RED BY DESIGN, proving archive#4571: turn 2's captured request is missing
+ * RED BY DESIGN, proving #574: turn 2's captured request is missing
  * turn 1's exchange entirely for this Station/model-engine agent. Quarantined
  * in tests/e2e-manifest.mjs so this doesn't red
- * verify:e2e:full — it re-enters a running bucket once archive#4571 is fixed.
+ * verify:e2e:full — it re-enters a running bucket once #574 is fixed.
  *
  * The mechanism: `conversation-lineage.ts`'s
  * `continuationLaunchContext` — it OMITS `transcriptSeed` (the prior-turn
@@ -43,7 +43,7 @@ import {
  * one the cursor/history belongs to) — so VoltAgent's memory lookup for that
  * new id finds nothing, and neither mechanism (the omitted transcriptSeed,
  * nor VoltAgent's session-keyed memory) actually carries turn 1's exchange
- * into turn 2's request. archive#4571 has the full trace.
+ * into turn 2's request. #574 has the full trace.
  */
 
 const FIXTURE_CONNECTION_ID = 'e2e-multi-turn-context-fixture';

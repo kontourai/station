@@ -489,9 +489,9 @@
   color: var(--text-primary);
   font-size: var(--text-base);
   transition:
-    border-color 180ms ease,
-    background-color 180ms ease,
-    color 180ms ease;
+    border-color var(--motion-base) var(--ease-standard),
+    background-color var(--motion-base) var(--ease-standard),
+    color var(--motion-base) var(--ease-standard);
 }
 
 .workflow-plan-panel__runtime-dot {
@@ -504,7 +504,8 @@
 
 /* Liveness: pulse the dot while the runtime is actively working. */
 .workflow-plan-panel__runtime-dot--live {
-  animation: workflow-runtime-pulse 1.6s ease-out infinite;
+  animation: workflow-runtime-pulse var(--motion-status-pulse) var(--ease-out)
+    infinite;
 }
 
 @keyframes workflow-runtime-pulse {
@@ -670,21 +671,21 @@
 
 .workflow-plan-panel__view-tab {
   transition:
-    border-color 140ms ease,
-    color 140ms ease,
-    background-color 140ms ease;
+    border-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard);
 }
 
 .workflow-plan-panel__summary > div {
   transition:
-    border-color 200ms ease,
-    background-color 200ms ease;
+    border-color var(--motion-base) var(--ease-standard),
+    background-color var(--motion-base) var(--ease-standard);
 }
 
 /* Content fades in on view switch (steps ⇄ markdown remount). */
 .workflow-plan-panel__steps,
 .workflow-plan-panel__markdown {
-  animation: workflow-plan-fade-in 220ms ease both;
+  animation: workflow-plan-fade-in var(--motion-base) var(--ease-standard) both;
 }
 
 @keyframes workflow-plan-fade-in {

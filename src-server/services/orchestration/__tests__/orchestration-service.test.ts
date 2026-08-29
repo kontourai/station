@@ -82,7 +82,10 @@ import { VeritasReadinessService } from '../../evidence/veritas-readiness-servic
 import { WorkflowSidecarService } from '../../evidence/workflow-sidecar-service.js';
 import { FlowRunService } from '../../flow/flow-run-service.js';
 import { receiptBus, waitForReceipt } from '../../infra/receipt-bus.js';
-import { CriticalResourcePostureError } from '../../infra/resource-posture.js';
+import {
+  CriticalResourcePostureError,
+  createRuntimeResourcePostureController,
+} from '../../infra/resource-posture.js';
 import { createServerLogReader } from '../../infra/server-log-reader.js';
 import {
   installServerLogSink,
@@ -945,10 +948,15 @@ describe('OrchestrationService', () => {
       { ...completedDetail.session, pendingReview: true },
       { ...completedDetail.session, hasActiveTurn: true },
       {
+        // Unanswerable for a reason the successor reserve path cannot
+        // recover: the child could still resume but no adapter here can
+        // drive it. (#834 made `past_resume` on a stopped child continuable,
+        // so it is no longer a denial case — see the stopped-conversation
+        // test below.)
         ...completedDetail.session,
         answerability: {
           answerable: false as const,
-          qualification: 'past_resume' as const,
+          qualification: 'provider_absent' as const,
           observedBy: 'orchestration-service-test',
           observedAt: '2026-08-24T00:00:01.000Z',
         },
@@ -961,6 +969,25 @@ describe('OrchestrationService', () => {
         }),
       ).toBe(false);
     }
+    // #834 both directions: the SAME completed child decorated exactly as a
+    // detached (unloaded) process would decorate it — `past_resume` is the
+    // steady state of every finished session after a restart — remains
+    // continuable, because continuation reserves a successor rather than
+    // answering a request on the current child.
+    expect(
+      canResolveConversationContinuation({
+        ...completedDetail,
+        session: {
+          ...completedDetail.session,
+          answerability: {
+            answerable: false as const,
+            qualification: 'past_resume' as const,
+            observedBy: 'orchestration-service-test',
+            observedAt: '2026-08-24T00:00:01.000Z',
+          },
+        },
+      }),
+    ).toBe(true);
 
     const incompatibleProvider = await service.resolveConversationContinuation(
       'conversation-continuation',
@@ -1098,6 +1125,137 @@ describe('OrchestrationService', () => {
     expect(
       eventStore.conversationSessions('conversation-continuation'),
     ).toHaveLength(3);
+  });
+
+  // #834: pressing Stop tears down and DETACHES the current child, whose
+  // answerability decoration is then permanently `past_resume` — the exact
+  // shape the #749/#814 continuation gate misread as "never writable again",
+  // which made Stop kill the conversation forever. This drives the real
+  // command pipeline (start → answered turn → stopSession dispatch) and
+  // proves the conversation stays continuable through the successor reserve.
+  test('#834: a stopped, unloaded conversation stays continuable and reserves a successor', async () => {
+    claude.startSession.mockImplementationOnce(async (input) => {
+      const session: ProviderSession = {
+        provider: 'claude' as const,
+        threadId: input.threadId,
+        status: 'ready' as const,
+        resumeCursor: { nativeSession: 'stopped-turn-one' },
+        createdAt: '2026-08-29T00:00:00.000Z',
+        updatedAt: '2026-08-29T00:00:00.000Z',
+      };
+      claude.sessions.set(input.threadId, session);
+      return session;
+    });
+    const started = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'conversation-stopped',
+          provider: 'claude',
+          metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+        },
+      },
+      { userId: 'owner-user' },
+    );
+    if (started.status !== 'accepted') throw new Error(started.message);
+    eventStore.appendEvent({
+      eventId: 'conversation-stopped-configured',
+      provider: 'claude',
+      threadId: 'conversation-stopped',
+      sessionId: 'conversation-stopped',
+      method: 'session.configured',
+      metadata: {
+        userId: 'owner-user',
+        agentSlug: 'station',
+        connectionId: 'connection-a',
+      },
+      createdAt: '2026-08-29T00:00:00.500Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'conversation-stopped-turn',
+      provider: 'claude',
+      threadId: 'conversation-stopped',
+      turnId: 'stopped-turn',
+      method: 'turn.started',
+      prompt: 'stopped-token violet-13',
+      createdAt: '2026-08-24T00:00:01.000Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'conversation-stopped-turn-completed',
+      provider: 'claude',
+      threadId: 'conversation-stopped',
+      turnId: 'stopped-turn',
+      method: 'turn.completed',
+      createdAt: '2026-08-24T00:00:01.500Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'conversation-stopped-completed',
+      provider: 'claude',
+      threadId: 'conversation-stopped',
+      sessionId: 'conversation-stopped',
+      method: 'session.state-changed',
+      from: 'running',
+      to: 'completed',
+      sessionState: 'completed',
+      previousState: 'running',
+      transitionReason: 'turn_completed',
+      transitionSource: 'runtime',
+      createdAt: '2026-08-24T00:00:02.000Z',
+    });
+
+    await service.dispatchWithReceipt(
+      { type: 'stopSession', threadId: 'conversation-stopped' },
+      { userId: 'owner-user' },
+    );
+
+    // Fixture-vs-reality guard: the stopped child must project the REAL
+    // post-stop decoration (#834's population) — detached + past resume —
+    // or this test is not exercising the defect's shape at all.
+    const stoppedDetail = await service.readCurrentConversationSession(
+      'conversation-stopped',
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    if (!stoppedDetail) throw new Error('expected stopped session detail');
+    expect(stoppedDetail.session.answerability).toMatchObject({
+      answerable: false,
+      qualification: 'past_resume',
+    });
+
+    // The authoritative open — the same composition the picker/reload paths
+    // call — must resolve the stopped conversation continuable without
+    // reserving the successor the mutating command owns.
+    const lineageBeforeOpen = eventStore.conversationSessions(
+      'conversation-stopped',
+    );
+    const open = await service.resolveConversationOpen(
+      'conversation-stopped',
+      personalReadAuthority('owner-user'),
+    );
+    expect(open).toMatchObject({
+      status: 'resolved',
+      currentSessionId: 'conversation-stopped',
+      canContinue: true,
+    });
+    expect(eventStore.conversationSessions('conversation-stopped')).toEqual(
+      lineageBeforeOpen,
+    );
+
+    // The mutating continuation reserves the successor from the stopped
+    // predecessor — the #765 A1 / PR #796 recovery this gate had made
+    // unreachable — carrying the predecessor's trusted cursor.
+    const continued = await service.resolveConversationContinuation(
+      'conversation-stopped',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', connectionId: 'connection-a' },
+    );
+    expect(continued).toMatchObject({
+      startRequired: true,
+      resumeCursor: { nativeSession: 'stopped-turn-one' },
+    });
+    expect(continued.sessionId).not.toBe('conversation-stopped');
+    expect(
+      eventStore.conversationSessions('conversation-stopped'),
+    ).toHaveLength(2);
   });
 
   // #765 A1: a predecessor started with `persistSession: false` has no
@@ -2099,15 +2257,88 @@ describe('OrchestrationService', () => {
     }
   });
 
-  test('refuses an engine start at the real session command seam under critical observed posture', async () => {
+  test('requires and consumes a one-shot override for an explicit sustained-critical start', async () => {
     const startSession = vi.spyOn(claude, 'startSession');
+    const logger = { debug: vi.fn(), warn: vi.fn() };
+    let clock = 100;
+    const resourcePosture = createRuntimeResourcePostureController({
+      sample: async () => ({
+        busyPercent: 99,
+        cpuCount: 15,
+        sampledAt: clock,
+        sampleMs: 500,
+        thresholdPercent: 85,
+        source: 'test',
+      }),
+      now: () => clock,
+      cacheMs: 0,
+    });
+    for (let index = 0; index < 3; index += 1) {
+      clock += 1;
+      await resourcePosture.observe();
+    }
     const criticalService = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      resourcePosture,
+      logger,
+    });
+
+    const challenged = await criticalService.startSessionInternal(
+      {
+        type: 'start-session',
+        input: { threadId: 'critical-posture', provider: 'claude' },
+      },
+      { userId: 'owner-user' },
+      { resourceAdmissionIntent: 'interactive_user' },
+    );
+    expect(challenged).toMatchObject({
+      status: 'rejected',
+      code: 'resource_posture_override_required',
+      resourceAdmissionOverride: {
+        token: expect.any(String),
+        expiresAt: expect.any(Number),
+      },
+    });
+    if (
+      challenged.status === 'accepted' ||
+      challenged.status === 'indeterminate' ||
+      !challenged.resourceAdmissionOverride
+    )
+      throw new Error('expected override challenge');
+    expect(startSession).not.toHaveBeenCalled();
+
+    await expect(
+      criticalService.startSessionInternal(
+        {
+          type: 'start-session',
+          input: { threadId: 'critical-posture', provider: 'claude' },
+        },
+        { userId: 'owner-user' },
+        {
+          resourceAdmissionIntent: 'interactive_user',
+          resourceAdmissionOverrideToken:
+            challenged.resourceAdmissionOverride.token,
+        },
+      ),
+    ).resolves.toMatchObject({ status: 'accepted' });
+    expect(startSession).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Interactive engine start override consumed',
+      expect.objectContaining({ busyPercent: 99 }),
+    );
+  });
+
+  test('defers a server-derived delegated/background start under the same posture', async () => {
+    const startSession = vi.spyOn(claude, 'startSession');
+    const service = new OrchestrationService({
       adapterRegistry: createRegistry([claude]),
       eventBus,
       eventStore,
       resourcePosture: {
         observe: async () => ({
-          kind: 'critical',
+          kind: 'critical' as const,
           busyPercent: 99,
           cpuCount: 15,
           sampledAt: 100,
@@ -2120,21 +2351,57 @@ describe('OrchestrationService', () => {
     });
 
     await expect(
-      criticalService.dispatch(
+      service.startSessionInternal(
         {
-          type: 'startSession',
-          input: { threadId: 'critical-posture', provider: 'claude' },
+          type: 'start-session',
+          input: { threadId: 'background-posture', provider: 'claude' },
         },
         { userId: 'owner-user' },
+        { resourceAdmissionIntent: 'delegated_background' },
       ),
-    ).rejects.toThrow(
-      // Plain-substring form: vitest 4's toThrow matches a string against the
-      // error MESSAGE, while an asymmetric stringContaining is compared against
-      // the thrown value itself — which here is an
-      // OrchestrationCommandDispatchError object, so the matcher never hit the
-      // message and failed even though the message contained this text.
-      'Engine start refused: resource posture=critical, observed busyPercent=99',
-    );
+    ).resolves.toMatchObject({
+      status: 'rejected',
+      code: 'resource_posture_deferred',
+    });
+    expect(startSession).not.toHaveBeenCalled();
+  });
+
+  test('classifies a future platform-backed critical-memory guard as rejected policy', async () => {
+    const startSession = vi.spyOn(claude, 'startSession');
+    const guarded = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      resourcePosture: {
+        observe: async () => ({
+          kind: 'healthy' as const,
+          busyPercent: 20,
+          cpuCount: 15,
+          sampledAt: 100,
+          sampleMs: 500,
+          thresholdPercent: 85,
+          source: 'test-memory-adapter',
+          memoryPressure: 'critical' as const,
+          availableMemoryBytes: 128 * 1024 * 1024,
+          totalMemoryBytes: 16 * 1024 * 1024 * 1024,
+        }),
+      },
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+
+    await expect(
+      guarded.startSessionInternal(
+        {
+          type: 'start-session',
+          input: { threadId: 'memory-guard', provider: 'claude' },
+        },
+        { userId: 'owner-user' },
+        { resourceAdmissionIntent: 'interactive_user' },
+      ),
+    ).resolves.toMatchObject({
+      status: 'rejected',
+      code: 'resource_memory_critical',
+    });
     expect(startSession).not.toHaveBeenCalled();
   });
 
@@ -2171,6 +2438,70 @@ describe('OrchestrationService', () => {
       provider: 'claude',
     });
     expect(startSession).toHaveBeenCalledOnce();
+  });
+
+  test('holds one global cold-start lease through provider startup across different threads', async () => {
+    const originalStart = claude.startSession.getMockImplementation();
+    if (!originalStart) throw new Error('expected fake start implementation');
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const startSession = claude.startSession.mockImplementationOnce(
+      async (input) => {
+        await firstGate;
+        return await originalStart(input);
+      },
+    );
+    const controller = createRuntimeResourcePostureController({
+      sample: async () => ({
+        busyPercent: 20,
+        cpuCount: 15,
+        sampledAt: Date.now(),
+        sampleMs: 500,
+        thresholdPercent: 85,
+        source: 'test',
+      }),
+    });
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      resourcePosture: controller,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+
+    const first = service.startSessionInternal(
+      {
+        type: 'start-session',
+        input: { threadId: 'start-lease-a', provider: 'claude' },
+      },
+      { userId: 'owner-user' },
+      { resourceAdmissionIntent: 'interactive_user' },
+    );
+    await vi.waitFor(() => expect(startSession).toHaveBeenCalledOnce());
+    await expect(
+      service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: { threadId: 'start-lease-b', provider: 'claude' },
+        },
+        { userId: 'owner-user' },
+        { resourceAdmissionIntent: 'interactive_user' },
+      ),
+    ).resolves.toMatchObject({
+      status: 'rejected',
+      code: 'resource_engine_start_capacity',
+    });
+    expect(startSession).toHaveBeenCalledOnce();
+    releaseFirst();
+    const firstOutcome = await first;
+    if (firstOutcome.status !== 'accepted') {
+      throw new Error(
+        `first start did not settle accepted: ${firstOutcome.message}`,
+      );
+    }
+    expect(firstOutcome.status).toBe('accepted');
   });
 
   test('maps an indeterminate SessionCommand result to an honest dispatch error', async () => {

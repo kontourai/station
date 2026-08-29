@@ -432,13 +432,19 @@ export function createInboundWebhookRoutes(options: {
         error instanceof CriticalResourcePostureError ||
         (typeof error === 'object' &&
           error !== null &&
-          (error as { code?: unknown }).code === 'resource_posture_critical')
+          ((error as { code?: unknown }).code === 'resource_posture_critical' ||
+            (error as { code?: unknown }).code === 'resource_posture_deferred'))
       ) {
         recordOutcome('policy_unavailable');
         return c.json(
           {
             success: false,
-            code: 'resource_posture_critical',
+            code:
+              typeof error === 'object' &&
+              error !== null &&
+              (error as { code?: unknown }).code === 'resource_posture_deferred'
+                ? 'resource_posture_deferred'
+                : 'resource_posture_critical',
             retryable: true,
           },
           503,

@@ -48,6 +48,25 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   animation: none;
   transform: scale(var(--audio-scale, 1));
+  /* station#753 item 6 EXCEPTION (reviewed 2/2, arbitrated): `--audio-scale`
+     and `--audio-glow` are republished on every microphone frame
+     (NovaVoiceSessionAdapter.ts `handleMicrophoneFrame`, ~378-390 — an RMS
+     level pushed via `this.publish(...)` per audio callback, on the order of
+     milliseconds, not a discrete state change). That puts this transition in
+     the grammar's Direct-manipulation category, not Feedback/state: the
+     property being driven by a continuous external signal must not carry a
+     grammar duration, the same reasoning `docs/design/motion.md` already
+     applies to pointer/finger tracking. 0.08s here is a signal-smoothing
+     time CONSTANT, structurally the same kind of exception as
+     NotificationHistory.css's `4s`/`UNDO_WINDOW_MS` — it is coupled to how
+     fast the signal itself updates, not to a motion category. At the token
+     above it (`--motion-fast`, 150ms) the transition restarts before
+     completing on every new frame and never resolves — visibly mushy rather
+     than smooth. Local test:
+     `src-ui/src/components/voice/__tests__/VoicePill.motion-exception.test.ts`
+     pins this literal per motion.md's "a component exception must … include
+     a local test" so a future ratchet sweep does not silently re-tokenize
+     it. */
   transition:
     transform 0.08s ease-out,
     box-shadow 0.08s ease-out;
@@ -61,6 +80,8 @@
   box-shadow: 0 0 calc(4px + var(--audio-glow, 0) * 16px)
     rgba(76, 175, 80, calc(var(--audio-glow, 0) * 0.6));
   pointer-events: none;
+  /* Same audio-reactive smoothing exception as `.voice-pill--listening`
+     above. */
   transition:
     border-color 0.08s,
     box-shadow 0.08s;
@@ -69,7 +90,7 @@
 .voice-pill--thinking {
   border-color: #ff9800;
   border-top-color: transparent;
-  animation: voice-spin 0.8s linear infinite;
+  animation: voice-spin var(--motion-status-spin) var(--ease-linear) infinite;
 }
 
 .voice-pill--speaking {
@@ -77,7 +98,8 @@
   box-shadow:
     0 2px 8px rgba(0, 0, 0, 0.3),
     0 0 12px rgba(33, 150, 243, 0.4);
-  animation: voice-pulse 1s ease-in-out infinite;
+  animation: voice-pulse var(--motion-status-pulse) var(--ease-standard)
+    infinite;
 }
 
 .voice-pill__icon {
@@ -101,7 +123,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--motion-base) var(--ease-standard);
   pointer-events: none;
 }
 

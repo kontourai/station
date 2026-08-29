@@ -699,6 +699,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   private attachedSessionFollowService?: AttachedSessionFollowService;
   private consoleBridgeService?: ConsoleBridgeService;
   private orchestrationEventStore: EventStore;
@@ -2954,6 +2955,7 @@ export class StationRuntime {
     this.appConfig = initialized.appConfig;
     this.framework = initialized.framework;
     this.orchestrationService = initialized.orchestrationService;
+    this.resourcePosture = initialized.resourcePosture;
     this.attachedSessionFollowService =
       initialized.attachedSessionFollowService;
     this.consoleBridgeService = initialized.consoleBridgeService;
@@ -3300,6 +3302,7 @@ export class StationRuntime {
       terminalService: this.terminalService,
       actionOperations: this.actionOperations,
       orchestrationService: this.orchestrationService,
+      resourcePosture: this.resourcePosture,
       orchestrationEventStore: this.orchestrationEventStore,
       pluginOperationalEventSubscriptions:
         this.pluginOperationalEventSubscriptions,

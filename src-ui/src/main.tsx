@@ -7,6 +7,7 @@ import { installPluginSharedRuntime } from './core/pluginSharedRuntime';
 import { installVisualViewportInset } from './hooks/useMobileVisualViewport';
 import { installAndroidSafeArea } from './platform/androidSafeArea';
 import { clientOriginSurfaceForProfile } from './platform/client-origin-surface';
+import { NativeRendererMountCommit } from './platform/native/rendererLiveness';
 import { SharedAnswerBoundary } from './views/share/SharedAnswerBoundary';
 
 // Expose shared modules globally for dynamically loaded plugin bundles. This
@@ -239,6 +240,7 @@ function renderApp(): void {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     isSharedAnswerPath ? (
       <React.StrictMode>
+        <NativeRendererMountCommit />
         {/* The boundary is eager (it must exist to catch the page's own chunk
           failing to load) and carries no stylesheet, so the entry cost is a
           few hundred bytes rather than the share page's CSS. */}
@@ -248,6 +250,7 @@ function renderApp(): void {
       </React.StrictMode>
     ) : (
       <React.StrictMode>
+        <NativeRendererMountCommit />
         <PlatformBootstrap>
           <ClientOriginProfileBridge />
           <ApiBaseProvider>
