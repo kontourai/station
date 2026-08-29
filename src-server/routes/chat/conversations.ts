@@ -11,7 +11,10 @@ import {
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import { CONVERSATION_INTENT_SUMMARY_MAX_ITEMS } from '@kontourai/station-contracts/conversation-intent-summary';
-import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
+import type {
+  ConversationListItem,
+  ConversationOpenResolution,
+} from '@kontourai/station-contracts/orchestration';
 import { agentAvailableInProject } from '@kontourai/station-contracts/project-reference-integrity';
 import { parseConversationStatsResponse } from '@kontourai/station-contracts/runtime';
 import {
@@ -445,7 +448,7 @@ const messageSearchQuerySchema = z.object({
   query: z.string().trim().min(2).max(256),
 });
 
-async function listPersonalFileConversationItems(
+async function _listPersonalFileConversationItems(
   memoryAdapters: Map<string, FileMemoryAdapter>,
   userId: string,
   limit: number,
@@ -1169,7 +1172,6 @@ export function createConversationRoutes(
     try {
       conversationOps.add(1, { operation: 'list' });
       const slug = param(c, 'slug');
-      const runtimeSlug = runtimeAgentKey(slug);
       const authority = authorityFor(c.req.raw);
       const hosted = isHostedSessionReadAuthority(authority);
       const pageQuery = conversationHistoryPageQuerySchema.safeParse({
@@ -1191,15 +1193,15 @@ export function createConversationRoutes(
           400,
         );
       }
-      const adapter = getAdapter(runtimeSlug);
-
       // File-store records carry projectSlug (if any) inside `metadata`
       // (stamped by `ensureChatConversation`) — project it to a top-level
       // field so it lines up with the session-projection leg below, whose
       // items already carry `projectSlug` at the top level.
+      const runtimeSlug = runtimeAgentKey(slug);
+      const adapter = getAdapter(runtimeSlug);
       const storePage =
         adapter && !hosted
-          ? await listPersonalFileConversationItems(
+          ? await _listPersonalFileConversationItems(
               new Map([[runtimeSlug, adapter]]),
               authority.userId,
               pageQuery.data.limit,
@@ -2239,6 +2241,16 @@ export function createGlobalConversationRoutes(
       hasMore: boolean;
       nextCursor?: string;
     }>;
+    conversationOpenResolver?: {
+      resolve(input: {
+        conversation: ConversationListItem;
+        authority: SessionReadAuthority;
+      }): Promise<ConversationOpenResolution>;
+    };
+    resolveConversationOpen?(
+      conversationId: string,
+      authority: SessionReadAuthority,
+    ): Promise<ConversationOpenResolution | null>;
   },
   getUserId: () => string = () => getCachedUser().alias,
   acknowledgementStore?: ConversationAcknowledgementStore,
@@ -2395,9 +2407,9 @@ export function createGlobalConversationRoutes(
       }));
       const storePage = hosted
         ? { items: [], hasMore: false }
-        : await listPersonalFileConversationItems(
+        : await _listPersonalFileConversationItems(
             memoryAdapters,
-            userId,
+            authority.userId,
             pageQuery.data.limit,
           );
       const byId = new Map(
@@ -2499,6 +2511,44 @@ export function createGlobalConversationRoutes(
       updatedAt: new Date(parsedUpdatedAt).toISOString(),
     });
     return c.json({ success: true });
+  });
+
+  // Resolve a picker row before a tab exists.  This keeps discovery,
+  // lineage/current-child selection, transcript, and recovery under one
+  // request-derived authority rather than producing an inventory success and
+  // a later Session 404 that the client can accidentally make writable.
+  app.get('/:id/open', async (c) => {
+    try {
+      const id = parseConversationIdSegment(param(c, 'id'));
+      if (!id)
+        return c.json(
+          { success: false, error: 'Invalid conversation identity' },
+          400,
+        );
+      const authority = authorityFor(c.req.raw);
+      const resolved =
+        await sessionConversationReader.resolveConversationOpen?.(
+          id,
+          authority,
+        );
+      if (resolved) {
+        return c.json({
+          success: true,
+          data: resolved,
+        });
+      }
+      // File-store ownership is not a request principal.  Until it has a
+      // principal-aware point-read seam, a guessed id must remain invisible
+      // rather than treating record.userId as authority.
+      return c.json({ success: false, error: 'Conversation not found' }, 404);
+    } catch (error) {
+      return conversationRouteFailure(
+        c,
+        logger,
+        'Failed to resolve conversation open state',
+        error,
+      );
+    }
   });
 
   app.get('/:id', async (c) => {

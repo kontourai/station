@@ -837,6 +837,14 @@ export function configureRuntimeRoutes(
   // This must run before every public, bespoke, and credential-protected
   // mount below. Personal mode has no configured registry and is unchanged.
   const hostedTenantRegistry = loadHostedTenantRegistryFromEnvironment();
+  // #749: chat inventory/open routes receive a principal-derived authority
+  // through this request-local binding.  Keeping it separate from legacy
+  // read-only route fallbacks prevents a cached OS display alias from being
+  // reused as identity while this migration completes.
+  const conversationRequestAuthorities = new WeakMap<
+    Request,
+    ReturnType<typeof sessionReadAuthorityFromRequest>
+  >();
   // Keep only immutable deployment configuration in this closure.  Every
   // call constructs authority from the ingress context belonging to the
   // current Request; neither a tenant nor an authority crosses requests.
@@ -1048,6 +1056,39 @@ export function configureRuntimeRoutes(
       );
     },
   );
+  const conversationReadAuthorityForContext = (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+  ) => {
+    const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    return sessionReadAuthorityFromRequest(
+      resolveOrchestrationRequestPrincipal(c).id,
+      getTenantRequestContext(c.req.raw),
+      hostedTenantRegistry,
+      runtimePrincipal?.locality === 'home-possession'
+        ? { localHomePossession: true }
+        : undefined,
+    );
+  };
+  const conversationReadAuthorityForRequest = (request: Request) => {
+    const authority = conversationRequestAuthorities.get(request);
+    if (!authority) {
+      // This is a wiring failure, never permission to fall back to a cached
+      // OS alias. Public conversation reads must have crossed the middleware
+      // that resolves the same principal as orchestration.
+      throw new Error('Conversation request authority was not resolved');
+    }
+    return authority;
+  };
+  const bindConversationReadAuthority = async (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+    next: () => Promise<void>,
+  ) => {
+    conversationRequestAuthorities.set(
+      c.req.raw,
+      conversationReadAuthorityForContext(c),
+    );
+    await next();
+  };
   // station#4075 stage 3 slice 1: `ProjectTaskRoomRequestAuthority.resolve`
   // (below, at the Task-room `requestAuthority` deps literal) receives only a
   // bare `Request` — never the Hono `Context` — because every one of its
@@ -1540,6 +1581,12 @@ export function configureRuntimeRoutes(
     ),
   );
 
+  // #749: these route families are the only public conversation discovery and
+  // open surfaces. Bind the same principal-derived authority used by
+  // orchestration before either route can inspect inventory or transcript.
+  context.app.use('/agents/*', bindConversationReadAuthority);
+  context.app.use('/api/conversations', bindConversationReadAuthority);
+  context.app.use('/api/conversations/*', bindConversationReadAuthority);
   context.app.route(
     '/agents',
     createAgentRoutes(
@@ -3423,7 +3470,7 @@ export function configureRuntimeRoutes(
           modelId,
         );
       },
-      readAuthorityForRequest,
+      conversationReadAuthorityForRequest,
       context.orchestrationService,
       (slug) =>
         resolveRuntimeAgent(slug, {
@@ -3444,12 +3491,7 @@ export function configureRuntimeRoutes(
         taskGraph: context.taskGraphService,
         sessionQueries: context.orchestrationService.sessionQueries,
       }),
-      (c) =>
-        sessionReadAuthorityFromRequest(
-          resolveOrchestrationRequestPrincipal(c).id,
-          getTenantRequestContext(c.req.raw),
-          hostedTenantRegistry,
-        ),
+      conversationReadAuthorityForContext,
     ),
   );
   // The bytes behind a transcript's attachment chips. Separate from
@@ -3486,7 +3528,7 @@ export function configureRuntimeRoutes(
       new FileConversationAcknowledgementStore(
         context.configLoader.getProjectHomeDir(),
       ),
-      readAuthorityForRequest,
+      conversationReadAuthorityForRequest,
       context.orchestrationService,
       (query, signal) =>
         searchConnectedRemoteMessages(

@@ -19,6 +19,7 @@ import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
+import { conversationCanMutate } from '../../contexts/conversation-open-policy';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { drainQueuedMessageOnTurnCompleted } from '../../hooks/orchestration/queueDrain';
 import { useActiveChatTranscript } from '../../hooks/orchestration/useActiveChatTranscript';
@@ -82,6 +83,11 @@ const loadOutboundQueuedMessages = () =>
       default: OutboundQueuedMessages,
     }),
   );
+
+const loadConversationOpenRecoveryNotice = () =>
+  import('./ConversationOpenRecoveryNotice').then((module) => ({
+    default: module.ConversationOpenRecoveryNotice,
+  }));
 
 const loadQueuedMessages = () =>
   import('../chat/QueuedMessages').then(({ QueuedMessages }) => ({
@@ -152,6 +158,8 @@ interface ChatDockBodyProps {
     attachments?: FileAttachment[],
     migratedTurnId?: string,
   ) => void | Promise<void>;
+  /** Re-resolves the exact durable conversation identity, never an Agent guess. */
+  onRetryConversationOpen?: () => void | Promise<void>;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   chatInput: {
     input: string;
@@ -298,6 +306,7 @@ export function ChatDockBody({
   agentHandoffTriggerRef,
   onOpenBackgroundTasks,
   onNewChat,
+  onRetryConversationOpen,
   onForkFromTurn,
   setShowStatsPanel,
 }: ChatDockBodyProps) {
@@ -492,6 +501,10 @@ export function ChatDockBody({
     return chatInput.handleSend(undefined, undefined, { ambientContext });
   }, [getComposedContext, chatInput]);
   const isExecutionActive = isSessionExecutionActive(activeSession);
+  // A reopened conversation retains the admission decision that opened this
+  // tab. Provider/model availability today cannot convert a recovery view
+  // into a writable continuation of a different child session.
+  const readOnlyOpen = !conversationCanMutate(activeSession);
 
   // TTS readback when streaming ends
   const prevStatusRef = useRef(isExecutionActive);
@@ -1046,6 +1059,37 @@ export function ChatDockBody({
             )}
           </div>
         )}
+      {readOnlyOpen ? (
+        <LazyBoundary
+          load={loadConversationOpenRecoveryNotice}
+          componentProps={{
+            title:
+              activeSession.conversationOpenState?.conversation.title ??
+              activeSession.title,
+            state: activeSession.conversationOpenPending
+              ? 'resolving'
+              : activeSession.conversationOpenState?.status ===
+                  'missing-session'
+                ? 'missing-session'
+                : 'unavailable',
+            onRetry: onRetryConversationOpen
+              ? () => void onRetryConversationOpen()
+              : undefined,
+            onStartNew: onNewChat
+              ? () =>
+                  void Promise.resolve(onNewChat()).catch(
+                    surfaceRecoveryFailure,
+                  )
+              : undefined,
+          }}
+          pending={
+            <div className="session-history-error" role="status">
+              Conversation recovery is loading. This conversation remains
+              read-only.
+            </div>
+          }
+        />
+      ) : null}
       {/*
         #765 A2/A3: the turn-stall watchdog's projection, surfaced IN the
         chat it is about. The server has observed this silence for the
@@ -1098,7 +1142,7 @@ export function ChatDockBody({
         input={chatInput.input}
         attachments={chatInput.attachments}
         textareaRef={chatInput.textareaRef}
-        disabled={!agent}
+        disabled={!agent || readOnlyOpen}
         isSending={isExecutionActive}
         turnInFlight={isTurnInFlight(activeSession)}
         stopPending={!!activeSession.stopPending}
@@ -1128,7 +1172,7 @@ export function ChatDockBody({
           activeSession.requestedProviderOptions ??
           activeSession.providerOptions
         }
-        secondaryActions={secondaryActions}
+        secondaryActions={readOnlyOpen ? undefined : secondaryActions}
         agentLabel={
           agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
         }
@@ -1151,7 +1195,11 @@ export function ChatDockBody({
         selectAttachmentFiles={chatInput.selectAttachmentFiles}
         attachmentError={chatInput.attachmentError}
         attachmentStages={chatInput.attachmentStages}
-        sendBlockedReason={chatInput.sendBlockedReason}
+        sendBlockedReason={
+          readOnlyOpen
+            ? 'This conversation is available read-only. Retry resolution or start a new chat.'
+            : chatInput.sendBlockedReason
+        }
         onRetryAttachmentStage={chatInput.retryAttachmentStage}
         onCancelAttachmentStage={chatInput.cancelAttachmentStage}
         onReplaceAttachmentFile={chatInput.replaceAttachmentFile}

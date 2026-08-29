@@ -197,6 +197,10 @@ export default defineConfig(({ command }) => {
           __dirname,
           './packages/sdk/src/client-origin.ts',
         ),
+        '@kontourai/station-sdk/conversation-open': path.resolve(
+          __dirname,
+          './packages/sdk/src/conversation-open.ts',
+        ),
         '@kontourai/station-sdk/app-config': path.resolve(
           __dirname,
           './packages/sdk/src/app-config.ts',
