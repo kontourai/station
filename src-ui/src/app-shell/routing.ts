@@ -146,6 +146,14 @@ export function getLegacyPathRedirect(path: string): string | null {
     '/sys/schedule': '/schedule',
     '/manage': '/agents',
     '/tools': '/connections/tools',
+    // #765 D2: there is no task-collection view — a Task is only ever opened
+    // by id (`/tasks/:id`), and task lists live inside their project surfaces
+    // and on Home. Redirecting the bare path (both spellings, like
+    // '/sessions' above) sends a hand-typed or truncated URL to the surface
+    // that does list tasks instead of a "No view matches /tasks" 404. Task
+    // deep links are exact-lookup-safe: `/tasks/<id>` never matches here.
+    '/tasks': '/',
+    '/tasks/': '/',
   };
   const exactRedirect = exactRedirects[pathname];
   if (exactRedirect) return preserveSearch(exactRedirect);

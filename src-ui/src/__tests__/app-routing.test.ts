@@ -34,6 +34,9 @@ const LEGACY_PATH_CASES = [
   ['/sys/monitoring', '/developer/telemetry'],
   ['/sys/schedule', '/schedule'],
   ['/manage', '/agents'],
+  // #765 D2: bare /tasks has no collection view; tasks surface on Home.
+  ['/tasks', '/'],
+  ['/tasks/', '/'],
   ['/manage/agents', '/agents'],
   ['/manage/agents/planner', '/agents/planner'],
   ['/manage/prompts', '/guidance?tab=skills'],
@@ -412,6 +415,14 @@ describe('app-shell routing', () => {
   });
 
   test('resolveViewFromPath rejects missing or malformed Task ids as 404s', () => {
+    // #765 D2: the redirect layer canonicalises bare /tasks to Home before
+    // this resolver ever runs (LEGACY_PATH_CASES above), so direct navigation
+    // no longer dead-ends on "No view matches /tasks". At THIS layer the bare
+    // path stays a 404 rather than inventing a task-collection view — and a
+    // real task deep link must never be redirected away from its id.
+    expect(getLegacyPathRedirect('/tasks')).toBe('/');
+    expect(getLegacyPathRedirect('/tasks/')).toBe('/');
+    expect(getLegacyPathRedirect('/tasks/alpha')).toBeNull();
     expect(resolveViewFromPath('/tasks')).toEqual({
       type: 'not-found',
       path: '/tasks',
