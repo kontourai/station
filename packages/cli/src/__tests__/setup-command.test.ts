@@ -71,6 +71,25 @@ describe('station setup', () => {
     });
   });
 
+  it('publishes shared profile genesis before local setup populates its runtime', async () => {
+    const deps = dependencies();
+    deps.installLocalService.mockImplementationOnce(async () => {
+      expect(readProfileStore()).toMatchObject({ revision: 0, profiles: [] });
+      mkdirSync(join(home, 'service-state'), { recursive: true, mode: 0o700 });
+      writeFileSync(join(home, 'service-state', 'installed'), 'yes', {
+        mode: 0o600,
+      });
+      return { rollback: vi.fn() };
+    });
+
+    await runSetupCommand(['local'], deps);
+    expect(readProfileStore()).toMatchObject({
+      revision: 1,
+      defaultProfile: 'kontour',
+      profiles: [expect.objectContaining({ name: 'kontour' })],
+    });
+  });
+
   it('saves the reachable bind address while wildcard binds use loopback', async () => {
     const deps = dependencies();
     await runSetupCommand(

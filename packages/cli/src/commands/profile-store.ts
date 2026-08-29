@@ -303,7 +303,14 @@ function withProfileStoreGenesisLock<T>(home: string, callback: () => T): T {
  * author a channel-local row. A crash after marker creation is intentionally a
  * recovery condition, not permission to replace a potentially moved store.
  */
-function ensureProfileStoreGenesis(home: string): void {
+/**
+ * Establish the shared profile document before a caller mutates a runtime
+ * home. Local setup invokes this before service installation so its own fresh
+ * runtime files cannot be mistaken for a cutover residue on first publish.
+ */
+export function ensureProfileStoreGenesis(
+  home: string = resolveStationHome(),
+): void {
   // Establish the same no-reparse/current-user directory boundary before the
   // first marker or empty store exists. `writeProfileStore` already does this
   // for later publications through `acquireProfileStoreLock`; genesis cannot
