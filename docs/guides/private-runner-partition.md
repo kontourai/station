@@ -1,7 +1,8 @@
 # Private runner partition
 
-Station's Linux CI, Android, container, publish, and secret-scan jobs run
-on GitHub-hosted images now that the repository is public. desktop-win
+Station's Linux CI, Android, publish, and secret-scan jobs run on
+GitHub-hosted images now that the repository is public. Container-smoke
+Playwright stays on the docker fleet listener. desktop-win
 remains the named native-Windows host for interactive-workspace performance,
 the Windows portable floor, the Windows Vitest diagnostic, and recovering a
 leaked physical-host capacity lease.

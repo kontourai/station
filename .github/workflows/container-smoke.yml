@@ -42,13 +42,31 @@ jobs:
     concurrency:
       group: container-smoke-${{ github.ref }}
       cancel-in-progress: true
-    runs-on: ubuntu-22.04
+    # Pairing e2e timed out on github-hosted ubuntu-22.04 (run 33228038600):
+    # the container image built, then device-pairing-mobile never saw a
+    # Connections entry control within 15s. Keep this job on the docker +
+    # playwright fleet listener.
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+        with:
+          require-docker: "true"
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "9"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
       - name: Isolate Docker client state
+        # Persistent WSL hosts may also use Docker Desktop interactively. Keep
+        # CI independent from its credential helper and Windows logon state.
         run: |
           umask 077
           docker_config="$(mktemp -d "$RUNNER_TEMP/station-docker-config.XXXXXX")"
