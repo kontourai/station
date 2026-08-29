@@ -137,10 +137,15 @@ test.describe('New agent — a muse agent answers a real turn over echo', () => 
     const name = `E2E Muse Echo Turn ${Date.now()}`;
     await createMuseAgent(page, name, engine);
 
-    // The editor names the engine the user chose, not a connection id.
+    // The editor names the engine the user chose, not a connection id — which
+    // is also this spec's guard that the turn below is genuinely a MUSE turn
+    // and not some other engine's. Given the same 20s allowance as every other
+    // wait in this file rather than the 5s default: the assertion is a settle
+    // on a freshly created agent, and this suite shares a host with whatever
+    // else is running on it.
     await expect(
       page.locator('.agent-inline-editor').getByText(engine.name).first(),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 20_000 });
 
     await openChatWithAgent(page, name);
 
