@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatChatErrorDisplay,
   translateChatError,
+  translateProjectedRuntimeError,
 } from '../chatErrorTranslation';
 
 // Fixture-based per the plan's Stop-short risks: the real AWS Bedrock
@@ -439,16 +440,22 @@ describe('translateChatError', () => {
       });
 
       expect(result.title).not.toContain(rawMessage);
-      expect(result.title).toMatch(/history is gone/i);
+      expect(result.title).toMatch(/engine session was lost/i);
       expect(result.body).not.toContain(rawMessage);
+      // #765 A1: the hint offers a resend FIRST — the server's continuation
+      // seam now recovers this class with a fresh child session — and keeps
+      // "new chat" as the explicit alternative.
+      expect(result.hint).toMatch(/send your message again/i);
       expect(result.hint).toMatch(/new chat/i);
-      expect(result.terminalSession).toBe(true);
+      // #765 A1: no longer `terminalSession` — the conversation survives; only
+      // the engine-native binding died, and continuation replaces it.
+      expect(result.terminalSession).toBeUndefined();
       expect(result.disclosureRaw).toBe(true);
     });
 
     it('classifies via the prose fallback ONLY when no code is supplied', () => {
       const withoutCode = translateChatError({ message: rawMessage });
-      expect(withoutCode.terminalSession).toBe(true);
+      expect(withoutCode.title).toMatch(/engine session was lost/i);
 
       // A code that does NOT match must never fall through to the prose
       // fallback net — the structured signal, when present, is
@@ -457,15 +464,50 @@ describe('translateChatError', () => {
         message: rawMessage,
         code: 'some-other-code',
       });
-      expect(wrongCode.terminalSession).toBeUndefined();
+      expect(wrongCode.title).not.toMatch(/engine session was lost/i);
     });
 
     it('does not misclassify an unrelated "not found"-shaped message', () => {
       const result = translateChatError({
         message: 'Agent not found: some-agent',
       });
-      expect(result.terminalSession).toBeUndefined();
+      expect(result.title).not.toMatch(/engine session was lost/i);
     });
+  });
+});
+
+// #765 A1: the durable-projection entry point — see
+// `translateProjectedRuntimeError`'s doc comment.
+describe('translateProjectedRuntimeError', () => {
+  const RAW =
+    'No conversation found with session ID: d434e194-cc2e-4edc-8733-d8645c512fab';
+
+  it('translates a coded ⚠️-prefixed projection part like the live path', () => {
+    const result = translateProjectedRuntimeError(
+      `⚠️ ${RAW}`,
+      'engine-session-binding-dead',
+    );
+    expect(result).toMatch(/engine session was lost/i);
+    // The raw prose survives, demoted to the disclosure section.
+    expect(result).toContain(RAW);
+    expect(result!.indexOf(RAW)).toBeGreaterThan(
+      result!.toLowerCase().indexOf('engine session was lost'),
+    );
+  });
+
+  it('preserves a repeat-compaction suffix', () => {
+    const result = translateProjectedRuntimeError(
+      `⚠️ ${RAW} (repeated 3×)`,
+      'engine-session-binding-dead',
+    );
+    expect(result).toMatch(/engine session was lost/i);
+    expect(result).toContain('(repeated 3×)');
+  });
+
+  it('returns null for a code the table does not map — verbatim prose stays', () => {
+    expect(
+      translateProjectedRuntimeError(`⚠️ ${RAW}`, 'some-unmapped-code'),
+    ).toBeNull();
   });
 });
 

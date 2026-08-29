@@ -166,7 +166,11 @@ function buildSession(overrides: Partial<ChatSession>): ChatSession {
 const RAW_MESSAGE =
   'No conversation found with session ID: d434e194-cc2e-4edc-8733-d8645c512fab';
 
-function renderDock(session: ChatSession, onNewChat: () => void) {
+function renderDock(
+  session: ChatSession,
+  onNewChat: () => void,
+  chatInput: ReturnType<typeof buildChatInput> = buildChatInput(),
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -182,7 +186,7 @@ function renderDock(session: ChatSession, onNewChat: () => void) {
         modelSupportsAttachments={false}
         fileAttachmentsSupported={false}
         availableModels={[]}
-        chatInput={buildChatInput() as any}
+        chatInput={chatInput as any}
         setShowStatsPanel={vi.fn()}
         onNewChat={onNewChat}
       />
@@ -191,8 +195,9 @@ function renderDock(session: ChatSession, onNewChat: () => void) {
 }
 
 describe('ChatDockBody terminal-session marker (station#1827)', () => {
-  test('migrates the complete failed turn into a new-chat draft — no "Send again"', async () => {
+  test('#765 A1: offers "Send again" for a dead engine binding — the conversation continues in a fresh child session', async () => {
     const onNewChat = vi.fn();
+    const chatInput = buildChatInput();
     const session = buildSession({
       messages: [
         {
@@ -208,20 +213,23 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
       ],
     });
 
-    renderDock(session, onNewChat);
+    renderDock(session, onNewChat, chatInput);
 
     // Plain-language headline, not the raw prose.
-    expect(await screen.findByText(/history is gone/i)).toBeTruthy();
+    expect(await screen.findByText(/engine session was lost/i)).toBeTruthy();
     // The raw engine text is present (the disclosure) but not as a heading —
     // it renders inside the marker's own body text.
     expect(await screen.findByText(RAW_MESSAGE, { exact: false })).toBeTruthy();
 
-    // The recovery affordance is "Start new chat", not "Send again" — a
-    // dead engine binding cannot be retried into the same thread.
+    // #765 A1: the recovery affordance is "Send again". The server's
+    // continuation seam replaces the dead binding with a fresh child session
+    // (transcript carried forward), so resending into the same conversation
+    // is the truthful first affordance now — station#1827's New-chat-only
+    // treatment remains for translations that still claim `terminalSession`.
     const actionButton = await screen.findByRole('button', {
-      name: 'New chat',
+      name: 'Send again',
     });
-    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
 
     fireEvent.click(actionButton);
     // The recovery is async since archive#3385 — it resolves any attachment
@@ -229,9 +237,13 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     // whose bytes are gone is refused rather than migrated without them. The
     // payload it eventually delivers must still be exactly the old one.
     await waitFor(() =>
-      expect(onNewChat).toHaveBeenCalledWith('are you still there?', []),
+      expect(chatInput.handleSend).toHaveBeenCalledWith(
+        'are you still there?',
+        [],
+      ),
     );
-    expect(onNewChat).toHaveBeenCalledTimes(1);
+    expect(chatInput.handleSend).toHaveBeenCalledTimes(1);
+    expect(onNewChat).not.toHaveBeenCalled();
   });
 
   test('keeps a terminal turn attachment when deriving its recovery payload', () => {
@@ -319,7 +331,11 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
         } as any,
         {
           role: 'user',
-          content: `[SYSTEM_EVENT] [CHAT_ERROR:engine-session-binding-dead] ${RAW_MESSAGE}`,
+          // #765 A1: a code whose translation still claims `terminalSession` —
+          // the dead-engine-binding code no longer does (it recovers via a
+          // fresh child session), so this rejection-path test pins the
+          // New-chat action through a genuinely terminal refusal instead.
+          content: `[SYSTEM_EVENT] [CHAT_ERROR:continuation_workspace_worktree_gone] ${RAW_MESSAGE}`,
           timestamp: 2,
         } as any,
       ],
@@ -358,7 +374,9 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
         } as any,
         {
           role: 'user',
-          content: `[SYSTEM_EVENT] [CHAT_ERROR:engine-session-binding-dead] ${RAW_MESSAGE}`,
+          // #765 A1: a still-`terminalSession` code — see the sibling
+          // rejection test above for why the dead-binding code moved off it.
+          content: `[SYSTEM_EVENT] [CHAT_ERROR:continuation_workspace_worktree_gone] ${RAW_MESSAGE}`,
           timestamp: 2,
         } as any,
       ],
