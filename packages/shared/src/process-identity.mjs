@@ -315,7 +315,7 @@ export function lookupProcessBirthFingerprintCachedAsync(
 
 /**
  * A three-way exact process probe. In particular, a live Windows PID whose
- * round-trip UTC CIM CreationDate cannot be read is unavailable, never dead:
+ * round-trip UTC process creation time cannot be read is unavailable, never dead:
  * callers must retain the fence rather than reclaiming a possibly-live owner.
  */
 function probeExactProcessIdentityOnce(pid, dependencies) {

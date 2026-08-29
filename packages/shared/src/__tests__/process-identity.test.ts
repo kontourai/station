@@ -101,7 +101,13 @@ describe('birthProvesReuse (station#2904)', () => {
 
   test('reads Windows creation time from the process handle with guard-identical precision', () => {
     const canonical = '2026-08-29T16:16:27.1234567Z';
-    const exec = vi.fn(() => `${canonical}\n`);
+    const exec = vi.fn<
+      (
+        file: string,
+        args: readonly string[],
+        options?: Record<string, unknown>,
+      ) => string
+    >(() => `${canonical}\n`);
     expect(lookupProcessBirthFingerprint(42, { platform: 'win32', exec })).toBe(
       canonical,
     );
@@ -115,7 +121,9 @@ describe('birthProvesReuse (station#2904)', () => {
       ]),
       expect.objectContaining({ encoding: 'utf8', windowsHide: true }),
     );
-    expect(exec.mock.calls[0]?.[1].join(' ')).not.toContain('Get-CimInstance');
+    expect(exec.mock.calls[0]?.[1]?.join(' ') ?? '').not.toContain(
+      'Get-CimInstance',
+    );
     expect(
       lookupProcessBirthFingerprint(42, {
         platform: 'win32',
