@@ -2,6 +2,7 @@ import { memo, type RefObject, useRef, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { activatable } from '../../utils/activatable';
 import { GitBadge } from '../badges/GitBadge';
+import { HomeFolderLabel } from '../HomeFolderLabel';
 import { LazyBoundary } from '../LazyBoundary';
 import { splitWorkingDirectoryPath } from './chat-dock-utils';
 
@@ -202,9 +203,10 @@ function ChatDockProjectContextImpl({
         </span>
       )}
       {!hasWorkingDirectory && (
-        <span className="chat-dock__project-dir chat-dock__project-dir--fallback">
-          ~ (defaults to home)
-        </span>
+        <HomeFolderLabel
+          className="chat-dock__project-dir chat-dock__project-dir--fallback"
+          title="~ (no project folder set — chats start in your home folder)"
+        />
       )}
       {gitStatus?.isRepo && <GitBadge git={gitStatus} />}
     </div>
