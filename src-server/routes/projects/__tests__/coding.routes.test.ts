@@ -15,10 +15,22 @@ const { FileTreeService } = await import(
 );
 
 describe('Coding Routes', () => {
+  let fileTreeDir: string;
+
+  beforeAll(() => {
+    fileTreeDir = mkdtempSync(join(tmpdir(), 'station-coding-routes-'));
+  });
+
+  afterAll(() => {
+    rmSync(fileTreeDir, { recursive: true, force: true });
+  });
+
   test('GET /files returns file tree', async () => {
     const svc = new FileTreeService();
     const app = createCodingRoutes(svc);
-    const body = await json(await app.request('/files?path=/tmp'));
+    const body = await json(
+      await app.request(`/files?path=${encodeURIComponent(fileTreeDir)}`),
+    );
     expect(body.success).toBe(true);
     expect(Array.isArray(body.data)).toBe(true);
   });

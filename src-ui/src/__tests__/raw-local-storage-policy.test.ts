@@ -25,6 +25,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station.chatDock.snap', // Ephemeral dock geometry/snap state.
   'station.coding.treeSnap', // Ephemeral coding-tree selection state.
   'station.dockFirstRunSeen', // One-time affordance marker.
+  'station.usage-telemetry-disclosure.snoozed', // Time-bounded disclosure deferral, not acknowledgement or a user-editable setting.
   // archive#3122's `station.home.variant` used to sit here. It was written by
   // one deletable module and read by nothing else, exactly so that retiring
   // the variant experiment would take no DEVICE_SETTINGS_REGISTRY entry with
