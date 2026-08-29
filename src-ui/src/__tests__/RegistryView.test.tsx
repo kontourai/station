@@ -526,6 +526,19 @@ describe('RegistryView', () => {
     },
   );
 
+  // #765 F1's exact case: the audit found a layout's detail block labeled
+  // "Selected agent". The eyebrow derives from the active tab, so the
+  // Layouts tab — which the install-flow cases above cannot cover, its
+  // detail actions differ — is pinned on its own.
+  test('derives the detail eyebrow from the Layouts tab', () => {
+    render(<RegistryView />);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Layouts' }));
+    const detail = screen.getByTestId('registry-detail');
+    expect(within(detail).getByText('Selected layout')).toBeTruthy();
+    expect(within(detail).queryByText('Selected agent')).toBeNull();
+  });
+
   test('offers a route to installed skill management from the skills tab', () => {
     render(<RegistryView />);
 
