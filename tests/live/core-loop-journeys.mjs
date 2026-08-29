@@ -294,13 +294,15 @@ async function resolveClaudeAgentSlug(page, state) {
  *  - "Agent catalog is refreshing after a configuration change; retrying
  *    automatically." — a freshly-materialized engine agent until deferred
  *    activation reconciles (materialize-engine's `activationMode: 'defer'`);
- *  - `resource_posture_critical` on a HEALTHY (non-forced) instance — the
- *    REAL host briefly over 95% CPU busy from sibling work. The product's
- *    own refusal copy says "Wait for load to drop, then retry" and
+ *  - `resource_posture_override_required` on a HEALTHY (non-forced) instance —
+ *    the REAL host remains over the sustained critical threshold from sibling
+ *    work. A scripted journey must not silently choose Start anyway, so it
+ *    waits and retries without consuming the one-shot capability.
+ *    The legacy critical-refusal code remains recognized for older peers, and
  *    tests/helpers/capacity-retry.ts encodes the same recovery; a journey
  *    about chat continuity must ride that recovery, not fail on the host's
- *    weather. (The capacity-gate journey still asserts the refusal itself,
- *    on the instance where it is FORCED and therefore never clears.)
+ *    weather. (The capacity-gate journey sets retryCapacity:false and asserts
+ *    the challenge itself on the forced instance, where it never clears.)
  *  - "This conversation is not writable under its current control state."
  *    right after a turn settles — the #749/#814 conversation-open model's
  *    revalidation window. The product's own composer defers its outbound
@@ -337,12 +339,14 @@ async function dispatchWithCatalogSettle(
       }
       if (
         retryCapacity &&
-        last.status === 400 &&
-        last.payload?.code === 'resource_posture_critical'
+        ((last.status === 409 &&
+          last.payload?.code === 'resource_posture_override_required') ||
+          (last.status === 400 &&
+            last.payload?.code === 'resource_posture_critical'))
       ) {
         capacityRetries += 1;
         console.log(
-          `  (host genuinely at capacity — retry ${capacityRetries}: ${last.payload?.error})`,
+          `  (host remains very busy — wait/retry ${capacityRetries} without consuming override: ${last.payload?.error})`,
         );
         return false;
       }
