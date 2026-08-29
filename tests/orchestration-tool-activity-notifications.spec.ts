@@ -60,12 +60,14 @@ test.describe('Orchestration Tool Activity Notifications', () => {
       conversationLookups: {
         'conv-1': {
           id: 'conv-1',
+          currentSessionId: 'session-1',
           agentSlug: 'dev-agent',
           projectSlug: 'dev',
           title: 'Foreground Chat',
         },
         'conv-2': {
           id: 'conv-2',
+          currentSessionId: 'session-2',
           agentSlug: 'dev-agent',
           projectSlug: 'dev',
           title: 'Background Chat',
