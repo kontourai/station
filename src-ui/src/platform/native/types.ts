@@ -69,6 +69,7 @@ export type NativeCommandName =
   | 'discover-local-browser-preview-target'
   | 'open-local-browser-preview-window'
   | 'open-workspace-pane-pop-out'
+  | 'open-desktop-tray-menu'
   | 'restart-bundled-server'
   | 'commit-startup-readiness'
   | 'commit-startup-recovery-ui'
@@ -340,6 +341,8 @@ export interface NativePlatformAdapter {
   ): NativeEventSubscription;
   /** One-shot snapshot of the configured local service state. */
   getBundledServerStatus(): Promise<NativeCommandResult<BundledServerStatus>>;
+  /** Reveal the desktop tray menu when the native indicator host supports it. */
+  openDesktopTrayMenu(): Promise<NativeCommandResult<void>>;
   /** Subscribe to local-service lifecycle transitions. */
   subscribeToBundledServerStatus(
     listener: (status: BundledServerStatus) => void,

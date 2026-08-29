@@ -3,16 +3,25 @@
  */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createPortal } from 'react-dom';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-connect', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
   ConnectionStatusDot: () => <span data-testid="connection-status" />,
 }));
 
+let isDesktop = false;
+vi.mock('../platform/PlatformProfileContext', () => ({
+  usePlatformProfile: () => ({ isDesktop }),
+}));
+
 import { HelpMenu } from '../components/header/HelpMenu';
 import { OverflowMenu } from '../components/header/OverflowMenu';
 import { useMenuFocus } from '../hooks/useMenuFocus';
+
+beforeEach(() => {
+  isDesktop = false;
+});
 
 /**
  * These menus are portalled to `document.body` so they can escape the mobile
@@ -108,6 +117,42 @@ describe('portalled header menus stay reachable from the keyboard', () => {
 });
 
 describe('portalled header menu click-away controls', () => {
+  test('shows native tray reveal only on desktop hosts', () => {
+    isDesktop = true;
+    const view = render(<Harness isOpen />);
+    expect(
+      screen.getByRole('button', { name: 'Open desktop tray' }),
+    ).toBeTruthy();
+
+    view.unmount();
+    isDesktop = false;
+    render(<Harness isOpen />);
+    expect(
+      screen.queryByRole('button', { name: 'Open desktop tray' }),
+    ).toBeNull();
+  });
+
+  test('offers the desktop tray action and closes before invoking it', () => {
+    const calls: string[] = [];
+    render(
+      <OverflowMenu
+        isOpen
+        connStatus="connected"
+        userInitials="ST"
+        onClose={() => calls.push('close')}
+        onOpenConnections={vi.fn()}
+        onOpenDesktopTrayMenu={() => {
+          calls.push('tray');
+        }}
+        onOpenHelp={vi.fn()}
+        onOpenProfile={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open desktop tray' }));
+    expect(calls).toEqual(['close', 'tray']);
+  });
+
   test('uses named buttons for the pointer dismissal surfaces', () => {
     const onCloseHelp = vi.fn();
     const onCloseOverflow = vi.fn();

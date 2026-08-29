@@ -22,7 +22,42 @@ export async function createNativePlatformAdapter(
   return new TauriNativePlatformAdapter();
 }
 
-export const nativePlatformPromise = createNativePlatformAdapter();
+interface DocumentReadiness {
+  readonly readyState: DocumentReadyState;
+  addEventListener(
+    type: 'DOMContentLoaded',
+    listener: () => void,
+    options: { once: true },
+  ): void;
+}
+
+/**
+ * Resolve the one host adapter after the document bootstrap boundary. The UI
+ * entry is a head module, while Tauri installs its runtime globals through an
+ * initialization script. Selecting during module evaluation can permanently
+ * cache the web fallback before that script is observable in WKWebView.
+ */
+export function createNativePlatformPromise(
+  create: () => Promise<NativePlatformAdapter> = () =>
+    createNativePlatformAdapter(),
+  documentTarget: DocumentReadiness | undefined = typeof document ===
+  'undefined'
+    ? undefined
+    : document,
+): Promise<NativePlatformAdapter> {
+  if (documentTarget?.readyState !== 'loading') return create();
+  return new Promise((resolve, reject) => {
+    documentTarget.addEventListener(
+      'DOMContentLoaded',
+      () => {
+        void create().then(resolve, reject);
+      },
+      { once: true },
+    );
+  });
+}
+
+export const nativePlatformPromise = createNativePlatformPromise();
 
 export {
   decideStreamingHaptic,
