@@ -7104,6 +7104,7 @@ fn commit_startup_readiness_blocking(
     app: AppHandle,
     ticket: startup_readiness::StartupTicket,
 ) -> Result<(), String> {
+    let generation = ticket.generation;
     let state = app
         .try_state::<DesktopServerState>()
         .ok_or("Desktop startup readiness is not initialized.")?;
@@ -7114,14 +7115,30 @@ fn commit_startup_readiness_blocking(
             .status
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if ticket != current_startup_ticket(&status).map_err(str::to_string)? {
+        let current = current_startup_ticket(&status).map_err(|error| {
+            log::warn!(
+                "desktop startup identity proof refused generation {generation}: {error}"
+            );
+            error.to_string()
+        })?;
+        if ticket != current {
+            log::warn!(
+                "desktop startup identity proof refused generation {generation}: ticket is stale"
+            );
             return Err("Desktop startup readiness ticket is stale.".to_string());
         }
     }
     // Native owns the exact bundled profile and Keychain reference. Prove the
     // current sidecar directly so reveal never depends on the WebView's active
     // profile, which may still name another channel during cold bootstrap.
-    prove_bundled_startup_identity(&launch, &ticket)?;
+    if let Err(error) = prove_bundled_startup_identity(&launch, &ticket) {
+        // The renderer receives this refusal but cannot safely inspect or log
+        // native credential details. Keep one secret-free host diagnostic so
+        // a protected-window timeout identifies profile, Keychain, transport,
+        // identity, or race refusal instead of collapsing to a blank deadline.
+        log::warn!("desktop startup identity proof refused generation {generation}: {error}");
+        return Err(error);
+    }
     // Supervisor status precedes readiness everywhere this pair is acquired.
     // Revalidate and transition after the bounded request, then release before UI.
     let status = state
@@ -7133,11 +7150,21 @@ fn commit_startup_readiness_blocking(
         .readiness
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let effects =
-        commit_current_startup_ticket(&status, &mut readiness, ticket).map_err(str::to_string)?;
+    let effects = commit_current_startup_ticket(&status, &mut readiness, ticket).map_err(
+        |error| {
+            log::warn!(
+                "desktop startup identity proof refused generation {generation}: {error}"
+            );
+            error.to_string()
+        },
+    )?;
     drop(readiness);
     drop(status);
     if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
+        log::info!(
+            "desktop startup identity proof committed generation {}",
+            generation
+        );
         reveal_main_window(&app);
     }
     Ok(())
