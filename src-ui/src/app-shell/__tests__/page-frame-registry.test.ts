@@ -21,7 +21,6 @@ const ROUTES: NavigationView[] = [
   { type: 'connections-provider-edit', id: 'p' },
   { type: 'connections-engines' },
   { type: 'connections-runtime-edit', id: 'r' },
-  { type: 'connections-acp' },
   { type: 'connections-acp-new', providerId: 'p' },
   { type: 'connections-tools' },
   { type: 'connections-tool-edit', id: 't' },
@@ -110,10 +109,9 @@ describe('page-frame registry', () => {
       const surface = APP_SURFACE_REGISTRY.getSurfaceForView(route);
       if (!spec || !surface) continue;
       // Routes that state their own title in the table keep it (Connections'
-      // hub is 'Connections'; the ACP sub-routes are 'Provider setup').
+      // hub is 'Connections'; the ACP sub-route is 'Provider setup').
       const stated = new Set([
         'connections',
-        'connections-acp',
         'connections-acp-new',
         'connections-knowledge',
         'registry',
@@ -203,7 +201,6 @@ describe('page-frame registry', () => {
   it('gives every subpage with a static eyebrow just its parent, not a breadcrumb trail', () => {
     expect(resolvePageFrame({ type: 'developer' })?.eyebrow).toBe('Developer');
     for (const route of [
-      { type: 'connections-acp' },
       { type: 'connections-acp-new', providerId: 'p' },
       { type: 'connections-knowledge' },
     ] as const) {
