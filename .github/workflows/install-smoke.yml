@@ -54,8 +54,11 @@ jobs:
           launcher_name=station
           if [ "$runtime_channel" = beta ]; then launcher_name=station-beta; fi
           launcher="$SMOKE_HOME/.local/bin/$launcher_name"
-          install_root="$SMOKE_HOME/.local/share/station-$runtime_channel"
-          station_home="$SMOKE_HOME/.station-$runtime_channel"
+          # Mirror install.sh's default roots for HOME=$SMOKE_HOME without
+          # overrides: $station_root/installs|instances/$runtime_channel.
+          station_root="$SMOKE_HOME/.station"
+          install_root="$station_root/installs/$runtime_channel"
+          station_home="$station_root/instances/$runtime_channel"
           mkdir -p "$SMOKE_HOME/fake-bin"
           cat >"$SMOKE_HOME/fake-bin/codex" <<'EOF'
           #!/bin/sh

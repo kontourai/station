@@ -48,8 +48,8 @@ describe('portable release-ring workflow', () => {
     );
     expect(smoke).toContain('launcher_name=station');
     expect(smoke).toContain('"$launcher" upgrade');
-    expect(smoke).toContain('station-$runtime_channel');
-    expect(smoke).toContain('.station-$runtime_channel');
+    expect(smoke).toContain('installs/$runtime_channel');
+    expect(smoke).toContain('instances/$runtime_channel');
     expect(smoke).toContain('Expected failed candidate start');
     expect(smoke).toContain('previous_current');
     expect(smoke).toContain('STATION_INSTALL_PUBLIC_MANIFEST_URL=');
