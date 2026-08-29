@@ -849,7 +849,10 @@ button:hover {
    through `ResponsiveDialogSurface` (NewChatModal, the ACP setup dialog, the
    model picker, confirm/prompt modals, …) — a single declaration at the
    shared seam instead of per-dialog CSS. Entrance/exit category: opacity AND
-   transform, `--motion-base`/`--ease-emphasized` per the grammar.
+   a small translation, `--motion-base`/`--ease-emphasized` per the grammar.
+   Do not scale this interactive container: a 0.98 panel scale turns every
+   nominal 44px mobile control into a physically undersized hit target while
+   the surface is already visible (#855).
    Close is deliberately NOT animated here: `ResponsiveDialogSurface` unmounts
    on close with no delay state machinery, and CSS cannot animate an element
    that is already gone. Adding an unmount-delay just to play a fast
@@ -864,11 +867,11 @@ button:hover {
 @keyframes responsive-surface-panel-enter {
   from {
     opacity: 0;
-    transform: scale(0.98);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0);
   }
 }
 
