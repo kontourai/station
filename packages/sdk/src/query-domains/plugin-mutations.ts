@@ -99,6 +99,31 @@ export function usePluginPreviewMutation() {
   });
 }
 
+/**
+ * Preview a REGISTRY entry by catalog id. Registry listings carry provider
+ * labels rather than source paths, so the server resolves the id through its
+ * registry providers and stages the same source an install of that id would
+ * use. An id the plugin registry cannot resolve answers
+ * `{ valid: false, code: 'registry-plugin-not-found' }`, which is how a
+ * caller learns the entry is not a plugin at all.
+ */
+export function usePluginRegistryPreviewMutation() {
+  return useMutation({
+    mutationFn: async (registryId: string) => {
+      const apiBase = await _getApiBase();
+      const response = await authenticatedFetch(
+        `${apiBase}/api/plugins/preview`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ registryId }),
+        },
+      );
+      return response.json();
+    },
+  });
+}
+
 export function usePluginUpdateMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -284,6 +309,18 @@ export function useReloadPluginsMutation(
 export async function requestPluginRegistryInstallAction(
   id: string,
   action: 'install' | 'uninstall',
+  options?: {
+    /**
+     * The operator's pre-install decision, taken from a preview of the
+     * registry entry's resolved source (station#4288). Without it the server
+     * refuses any registry plugin that contributes code (`entrypoint`,
+     * `layout`, `workspacePanes`) — refusal, not a silent bundle-less
+     * install, is the no-decision behavior.
+     */
+    consent?: PluginInstallConsent;
+    /** Preview conflict components to skip, as `type:id` keys. */
+    skip?: string[];
+  },
 ): Promise<InstallResult> {
   const apiBase = await _getApiBase();
   const response =
@@ -291,7 +328,11 @@ export async function requestPluginRegistryInstallAction(
       ? await authenticatedFetch(`${apiBase}/api/registry/plugins/install`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id }),
+          body: JSON.stringify({
+            id,
+            ...(options?.consent ? { consent: options.consent } : {}),
+            ...(options?.skip ? { skip: options.skip } : {}),
+          }),
         })
       : await authenticatedFetch(
           `${apiBase}/api/registry/plugins/${encodeURIComponent(id)}`,
@@ -313,10 +354,15 @@ export function usePluginRegistryInstallMutation() {
   return useMutation<
     InstallResult,
     Error,
-    { id: string; action: 'install' | 'uninstall' }
+    {
+      id: string;
+      action: 'install' | 'uninstall';
+      consent?: PluginInstallConsent;
+      skip?: string[];
+    }
   >({
-    mutationFn: async ({ id, action }) =>
-      requestPluginRegistryInstallAction(id, action),
+    mutationFn: async ({ id, action, consent, skip }) =>
+      requestPluginRegistryInstallAction(id, action, { consent, skip }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['registry', 'plugins'] });
       queryClient.invalidateQueries({

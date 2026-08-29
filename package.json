@@ -194,6 +194,7 @@
     "dogfood:daily-driver:scenarios": "node scripts/daily-driver-scenario-qualification.mjs",
     "test:e2e:extended": "node scripts/run-e2e-suite.mjs --suite=extended",
     "test:live:cold-bootstrap": "node tests/live/cold-bootstrap.mjs",
+    "walkthrough:fresh-home": "tsx tests/live/fresh-home-walkthrough.mjs",
     "test:e2e:screenshot": "node scripts/run-e2e-suite.mjs --suite=screenshot",
     "screenshot:baseline": "node scripts/screenshot-diff.mjs baseline",
     "screenshot:diff": "node scripts/screenshot-diff.mjs diff",

@@ -34,11 +34,12 @@ const TRAY_NAVIGATION_EVENT: &str = "station://tray-navigation";
 struct TrayState {
     identity_text: String,
     icon_bytes: &'static [u8],
+    api_docs: MenuItem<Wry>,
     backend: MenuItem<Wry>,
     connections: MenuItem<Wry>,
     connected_clients: MenuItem<Wry>,
     updates: MenuItem<Wry>,
-    open: MenuItem<Wry>,
+    open_ui: MenuItem<Wry>,
     service_action: MenuItem<Wry>,
     status: MenuItem<Wry>,
     tray: TrayIcon<Wry>,
@@ -124,24 +125,31 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         false,
         None::<&str>,
     )?;
-    let open = MenuItem::with_id(
+    let open_ui = MenuItem::with_id(
         app,
-        "tray-open",
-        open_label(&product_name),
+        "tray-open-ui",
+        "Station UI unavailable",
+        false,
+        None::<&str>,
+    )?;
+    let api_docs = MenuItem::with_id(
+        app,
+        "tray-open-api-docs",
+        "API docs unavailable",
         false,
         None::<&str>,
     )?;
     let connections = MenuItem::with_id(
         app,
         "tray-connections",
-        "Configure backends…",
+        "Connections…",
         false,
         None::<&str>,
     )?;
     let connected_clients = MenuItem::with_id(
         app,
         "tray-connected-clients",
-        "Connected clients: unavailable",
+        "Paired devices: unavailable",
         false,
         None::<&str>,
     )?;
@@ -168,10 +176,12 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     )?;
     let menu = MenuBuilder::new(app)
         .item(&identity)
-        .item(&backend)
         .item(&status)
+        .item(&backend)
         .separator()
-        .item(&open)
+        .item(&open_ui)
+        .item(&api_docs)
+        .separator()
         .item(&connections)
         .item(&connected_clients)
         .item(&updates)
@@ -190,7 +200,8 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         .tooltip("Station service: checking…")
         .icon_as_template(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            "tray-open" => open_station_ui(app),
+            "tray-open-ui" => open_station_ui(app),
+            "tray-open-api-docs" => open_station_api_docs(app),
             "tray-connections" => open_station_connections(app),
             "tray-connected-clients" => open_paired_devices(app),
             "tray-updates" => open_core_update_settings(app),
@@ -209,11 +220,12 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     if !app.manage(TrayState {
         identity_text,
         icon_bytes,
+        api_docs,
         backend,
         connections,
         connected_clients,
         updates,
-        open,
+        open_ui,
         service_action,
         status,
         tray,
@@ -327,9 +339,12 @@ fn station_home(app: &AppHandle) -> std::path::PathBuf {
 
 fn apply_primary_health(state: &TrayState, snapshot: TrayBackendSnapshot) {
     let label = snapshot.health.label();
-    let _ = state.status.set_text(format!("Station service: {label}"));
+    let _ = state.status.set_text(format!("Status: {label}"));
     let _ = state.backend.set_text(&snapshot.label);
-    let _ = state.open.set_enabled(snapshot.can_open());
+    let _ = state.open_ui.set_text(&snapshot.ui_label);
+    let _ = state.open_ui.set_enabled(snapshot.can_open_ui());
+    let _ = state.api_docs.set_text(&snapshot.api_docs_label);
+    let _ = state.api_docs.set_enabled(snapshot.can_open_api_docs());
     let _ = state.connections.set_enabled(snapshot.can_navigate());
     let _ = state.connected_clients.set_enabled(snapshot.can_navigate());
     let _ = state.updates.set_enabled(snapshot.can_navigate());
@@ -354,13 +369,16 @@ fn apply_connected_clients(state: &TrayState, connected_clients: String) {
 /// menu. This disables native actions without changing service ownership or
 /// issuing any service command.
 fn apply_poller_failure_ui(state: &TrayState) {
-    let _ = state.status.set_text("Station service: unavailable");
+    let _ = state.status.set_text("Status: unavailable");
     let _ = state.backend.set_text("Backend: unavailable");
-    let _ = state.open.set_enabled(false);
+    let _ = state.open_ui.set_text("Station UI unavailable");
+    let _ = state.open_ui.set_enabled(false);
+    let _ = state.api_docs.set_text("API docs unavailable");
+    let _ = state.api_docs.set_enabled(false);
     let _ = state.connections.set_enabled(false);
     let _ = state
         .connected_clients
-        .set_text("Connected clients: unavailable");
+        .set_text("Paired devices: unavailable");
     let _ = state.connected_clients.set_enabled(false);
     let _ = state.updates.set_enabled(false);
     let _ = state.service_action.set_text("Service unavailable");
@@ -391,12 +409,20 @@ struct TrayBackendSnapshot {
     kind: TrayBackendKind,
     health: ServiceHealth,
     label: String,
+    api_docs_label: String,
+    ui_label: String,
+    api_docs_available: bool,
+    ui_available: bool,
     action: ContextualServiceAction,
 }
 
 impl TrayBackendSnapshot {
-    fn can_open(&self) -> bool {
-        self.kind != TrayBackendKind::Unavailable
+    fn can_open_api_docs(&self) -> bool {
+        self.kind != TrayBackendKind::Unavailable && self.api_docs_available
+    }
+
+    fn can_open_ui(&self) -> bool {
+        self.kind != TrayBackendKind::Unavailable && self.ui_available
     }
 
     fn can_navigate(&self) -> bool {
@@ -482,11 +508,13 @@ fn tray_backend_snapshot(
             kind: TrayBackendKind::Service,
             health,
             label: format!(
-                "Backend: local service {} · API {} · UI {}",
-                safe_instance(&manifest.instance_id),
-                manifest.server_port,
-                manifest.ui_port
+                "Backend: local service {}",
+                safe_instance(&manifest.instance_id)
             ),
+            api_docs_label: format!("Open API docs (port {})", manifest.server_port),
+            ui_label: format!("Open Station UI (port {})", manifest.ui_port),
+            api_docs_available: true,
+            ui_available: true,
             action,
         };
     }
@@ -494,13 +522,22 @@ fn tray_backend_snapshot(
     if sidecar_is_current(status, owner) {
         let health = status_health(status);
         let label = match status.port.and_then(display_port) {
-            Some(api_port) => format!("Backend: Built-in · API {api_port}"),
-            None => "Backend: Built-in · API unavailable".into(),
+            Some(_) => "Backend: built-in".into(),
+            None => "Backend: built-in · API unavailable".into(),
         };
+        let api_docs_label = match status.port.and_then(display_port) {
+            Some(api_port) => format!("Open API docs (port {api_port})"),
+            None => "API docs unavailable".into(),
+        };
+        let api_docs_available = status.port.and_then(display_port).is_some();
         return TrayBackendSnapshot {
             kind: TrayBackendKind::Sidecar,
             health,
             label,
+            api_docs_label,
+            ui_label: "Show Station UI (desktop app)".into(),
+            api_docs_available,
+            ui_available: true,
             action: ContextualServiceAction {
                 label: "Built-in service",
                 action: None,
@@ -518,6 +555,10 @@ fn tray_backend_snapshot(
         kind: TrayBackendKind::Unavailable,
         health,
         label: "Backend: unavailable".into(),
+        api_docs_label: "API docs unavailable".into(),
+        ui_label: "Station UI unavailable".into(),
+        api_docs_available: false,
+        ui_available: false,
         action: contextual_service_action(health, None),
     }
 }
@@ -559,10 +600,6 @@ fn product_name_label(product_name: &str) -> &str {
     } else {
         product_name
     }
-}
-
-fn open_label(product_name: &str) -> String {
-    format!("Open {}", product_name_label(product_name))
 }
 
 fn quit_label(product_name: &str) -> String {
@@ -721,6 +758,21 @@ fn open_station_ui(app: &AppHandle) {
     }
 }
 
+fn open_station_api_docs(app: &AppHandle) {
+    let context = tray_context(app);
+    let Some(api_origin) = context.api_origin else {
+        return;
+    };
+    match station_api_docs_url(&api_origin) {
+        Ok(url) => {
+            if let Err(error) = app.opener().open_url(url, None::<&str>) {
+                log::error!("Station tray could not open API docs: {error}");
+            }
+        }
+        Err(error) => log::error!("Station tray refused the API docs URL: {error}"),
+    }
+}
+
 fn open_manifest_ui<E>(
     manifest: &ServiceManifest,
     opener: impl FnOnce(&str) -> Result<(), E>,
@@ -780,6 +832,51 @@ fn station_api_origin(manifest: &ServiceManifest) -> Result<String, String> {
     Ok(url.origin().ascii_serialization())
 }
 
+fn station_api_docs_url(api_origin: &str) -> Result<String, String> {
+    let origin = crate::exact_origin(api_origin)?;
+    if api_origin != origin {
+        return Err("API docs require an exact Station origin".into());
+    }
+    let parsed = url::Url::parse(&origin).map_err(|_| "invalid Station API origin".to_string())?;
+    let is_local = match parsed.host_str() {
+        Some("localhost") => true,
+        Some(host) => host
+            .parse::<IpAddr>()
+            .map(|address| address.is_loopback())
+            .unwrap_or(false),
+        None => false,
+    };
+    if !is_local {
+        return Err("API docs require a local Station origin".into());
+    }
+    Ok(format!("{origin}/ui"))
+}
+
+/// Reveal the native tray menu from a renderer-owned affordance. Tauri's
+/// public wrapper intentionally keeps the platform implementation private;
+/// `with_inner_tray_icon` marshals this operation onto the native main thread.
+/// Linux indicators do not support programmatic menu reveal, so callers get
+/// an explicit `false` instead of a successful no-op.
+pub(crate) fn open_menu(app: &AppHandle) -> Result<bool, String> {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    {
+        let state = app
+            .try_state::<TrayState>()
+            .ok_or_else(|| "The desktop tray is not available.".to_string())?;
+        kick(app);
+        state
+            .tray
+            .with_inner_tray_icon(|tray| tray.show_menu())
+            .map_err(|error| format!("Station could not open the desktop tray menu: {error}"))?;
+        Ok(true)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = app;
+        Ok(false)
+    }
+}
+
 const CONNECTED_CLIENTS_BODY_LIMIT: u64 = 64 * 1024;
 const CONNECTED_CLIENTS_DEVICE_LIMIT: usize = 1_024;
 const CONNECTED_CLIENTS_TOTAL_LIMIT: u64 = 256;
@@ -796,10 +893,10 @@ struct ConnectedClientsResponse {
 /// every unavailable authority/transport/shape path stays explicitly unknown.
 fn connected_clients_label(app: &AppHandle, context: &TrayContext) -> String {
     let Some(origin) = context.api_origin.as_deref() else {
-        return "Connected clients: unavailable".to_string();
+        return "Paired devices: unavailable".to_string();
     };
     let Ok(credential) = crate::native_credential_for_origin(app, &origin) else {
-        return "Connected clients: unavailable".to_string();
+        return "Paired devices: unavailable".to_string();
     };
     let endpoint = format!("{origin}/api/client-presence/summary");
     let request = match ureq::http::Request::builder()
@@ -809,11 +906,11 @@ fn connected_clients_label(app: &AppHandle, context: &TrayContext) -> String {
         .body(Vec::new())
     {
         Ok(request) => request,
-        Err(_) => return "Connected clients: unavailable".to_string(),
+        Err(_) => return "Paired devices: unavailable".to_string(),
     };
     let mut response = match crate::native_http_agent().run(request) {
         Ok(response) if response.status().as_u16() == 200 => response,
-        _ => return "Connected clients: unavailable".to_string(),
+        _ => return "Paired devices: unavailable".to_string(),
     };
     let mut body = String::new();
     if response
@@ -824,10 +921,10 @@ fn connected_clients_label(app: &AppHandle, context: &TrayContext) -> String {
         .is_err()
         || body.len() as u64 > CONNECTED_CLIENTS_BODY_LIMIT
     {
-        return "Connected clients: unavailable".to_string();
+        return "Paired devices: unavailable".to_string();
     }
     connected_clients_label_from_body(&body)
-        .unwrap_or_else(|| "Connected clients: unavailable".to_string())
+        .unwrap_or_else(|| "Paired devices: unavailable".to_string())
 }
 
 fn connected_clients_label_from_body(body: &str) -> Option<String> {
@@ -838,11 +935,18 @@ fn connected_clients_label_from_body(body: &str) -> Option<String> {
     {
         return None;
     }
-    Some(match parsed.connected_clients {
-        0 => "No clients connected".to_string(),
-        1 => "1 client connected".to_string(),
-        count => format!("{count} clients connected"),
-    })
+    if parsed.connected_devices == 0 && parsed.connected_clients == 0 {
+        return Some("Paired devices: none connected".to_string());
+    }
+    let devices = match parsed.connected_devices {
+        1 => "1 device".to_string(),
+        count => format!("{count} devices"),
+    };
+    let clients = match parsed.connected_clients {
+        1 => "1 client".to_string(),
+        count => format!("{count} clients"),
+    };
+    Some(format!("Paired devices: {devices} · {clients}"))
 }
 
 fn station_core_update_url(manifest: &ServiceManifest) -> Result<String, String> {
@@ -1118,7 +1222,6 @@ mod tests {
             "Station Nightly v0.1.0-nightly.4"
         );
         assert_eq!(identity_label("   ", "2.0.0"), "Station v2.0.0");
-        assert_eq!(open_label("Station Nightly"), "Open Station Nightly");
         assert_eq!(quit_label("Station Nightly"), "Quit Station Nightly");
     }
 
@@ -1126,16 +1229,15 @@ mod tests {
     fn labels_backends_from_ownership_and_validated_ports() {
         let service = manifest_with("127.0.0.1", "alpha_1.2", 3141, 3000);
         let service_status = status(ServerOwnership::Service, Some(3141));
-        assert_eq!(
-            tray_backend_snapshot(
-                &service_status,
-                &service_owner("alpha_1.2", 3141),
-                Some(&service),
-                Some(ServiceHealth::Running),
-            )
-            .label,
-            "Backend: local service alpha_1.2 · API 3141 · UI 3000",
+        let service_snapshot = tray_backend_snapshot(
+            &service_status,
+            &service_owner("alpha_1.2", 3141),
+            Some(&service),
+            Some(ServiceHealth::Running),
         );
+        assert_eq!(service_snapshot.label, "Backend: local service alpha_1.2");
+        assert_eq!(service_snapshot.api_docs_label, "Open API docs (port 3141)");
+        assert_eq!(service_snapshot.ui_label, "Open Station UI (port 3000)");
         assert_eq!(
             tray_backend_snapshot(
                 &status(ServerOwnership::Sidecar, Some(4310)),
@@ -1144,7 +1246,7 @@ mod tests {
                 None,
             )
             .label,
-            "Backend: Built-in · API 4310",
+            "Backend: built-in",
         );
         assert_eq!(
             tray_backend_snapshot(
@@ -1154,7 +1256,7 @@ mod tests {
                 Some(ServiceHealth::Stopped),
             )
             .label,
-            "Backend: local service alpha_1.2 · API 3141 · UI 3000",
+            "Backend: local service alpha_1.2",
         );
         assert_eq!(
             tray_backend_snapshot(
@@ -1164,7 +1266,7 @@ mod tests {
                 None,
             )
             .label,
-            "Backend: Built-in · API unavailable",
+            "Backend: built-in · API unavailable",
         );
         assert_eq!(
             tray_backend_snapshot(
@@ -1174,7 +1276,7 @@ mod tests {
                 None,
             )
             .label,
-            "Backend: Built-in · API unavailable",
+            "Backend: built-in · API unavailable",
         );
         let zero_port_service = manifest_with("127.0.0.1", "alpha", 0, 3000);
         assert_eq!(
@@ -1205,7 +1307,7 @@ mod tests {
                 Some(ServiceHealth::Running),
             )
             .label,
-            "Backend: local service custom · API 3141 · UI 3000",
+            "Backend: local service custom",
         );
     }
 
@@ -1230,11 +1332,17 @@ mod tests {
         let running_snapshot =
             tray_backend_snapshot(&running, &DesktopOwnerSnapshot::Sidecar, None, None);
 
-        assert_eq!(starting_snapshot.label, "Backend: Built-in · API 38141");
+        assert_eq!(starting_snapshot.label, "Backend: built-in");
+        assert_eq!(
+            starting_snapshot.api_docs_label,
+            "Open API docs (port 38141)"
+        );
+        assert_eq!(starting_snapshot.ui_label, "Show Station UI (desktop app)");
         assert_eq!(starting_snapshot.health, ServiceHealth::Stopped);
-        assert_eq!(running_snapshot.label, "Backend: Built-in · API 38141");
+        assert_eq!(running_snapshot.label, "Backend: built-in");
         assert_eq!(running_snapshot.health, ServiceHealth::Running);
-        assert!(running_snapshot.can_open());
+        assert!(running_snapshot.can_open_ui());
+        assert!(running_snapshot.can_open_api_docs());
         assert!(running_snapshot.can_navigate());
         assert!(!running_snapshot.action.enabled);
     }
@@ -1249,7 +1357,7 @@ mod tests {
         sidecar.phase = crate::bundled_server_state::ServerPhase::Running;
         let snapshot = tray_backend_snapshot(&sidecar, &DesktopOwnerSnapshot::Sidecar, None, None);
         assert_eq!(snapshot.kind, TrayBackendKind::Sidecar);
-        assert_eq!(snapshot.label, "Backend: Built-in · API 18141");
+        assert_eq!(snapshot.label, "Backend: built-in");
         assert_eq!(snapshot.health, ServiceHealth::Running);
 
         let attached = manifest_with("127.0.0.1", "stable-service", 18_141, 18_000);
@@ -1577,10 +1685,10 @@ mod tests {
         assert_eq!(
             tray_tooltip(
                 "Station Nightly v0.1.0-nightly.4",
-                "Backend: Built-in · API 4310",
+                "Backend: built-in",
                 ServiceHealth::Running
             ),
-            "Station Nightly v0.1.0-nightly.4\nBackend: Built-in · API 4310\nHealth: Running"
+            "Station Nightly v0.1.0-nightly.4\nBackend: built-in\nHealth: Running"
         );
     }
 
@@ -1610,6 +1718,12 @@ mod tests {
             station_ui_url(&manifest("localhost")).unwrap(),
             "http://localhost:3000"
         );
+        assert_eq!(
+            station_api_docs_url("http://127.0.0.1:3141").unwrap(),
+            "http://127.0.0.1:3141/ui"
+        );
+        assert!(station_api_docs_url("https://example.com").is_err());
+        assert!(station_api_docs_url("http://127.0.0.1:3141/other").is_err());
     }
 
     #[test]
@@ -1653,21 +1767,21 @@ mod tests {
                 r#"{"connectedClients":0,"connectedDevices":0,"observedAt":1}"#
             )
             .as_deref(),
-            Some("No clients connected")
+            Some("Paired devices: none connected")
         );
         assert_eq!(
             connected_clients_label_from_body(
                 r#"{"connectedClients":1,"connectedDevices":1,"observedAt":1}"#
             )
             .as_deref(),
-            Some("1 client connected")
+            Some("Paired devices: 1 device · 1 client")
         );
         assert_eq!(
             connected_clients_label_from_body(
                 r#"{"connectedClients":5,"connectedDevices":2,"observedAt":1}"#
             )
             .as_deref(),
-            Some("5 clients connected")
+            Some("Paired devices: 2 devices · 5 clients")
         );
         assert!(connected_clients_label_from_body("not-json").is_none());
         assert!(connected_clients_label_from_body(

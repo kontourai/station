@@ -1047,6 +1047,178 @@ describe('OrchestrationService', () => {
     ).toHaveLength(3);
   });
 
+  // #765 A1: a predecessor started with `persistSession: false` has no
+  // durable engine transcript behind its cursor — the Claude adapter spawns
+  // such sessions with `--no-session-persistence`, so a child start that
+  // presents the cursor deterministically dies with the CLI's
+  // "No conversation found with session ID: <uuid>". The continuation must
+  // take the transcript-seed fresh child instead.
+  test('#765 A1: a predecessor without engine persistence continues by transcript seed, never its cursor', async () => {
+    claude.startSession.mockImplementationOnce(async (input) => {
+      const session: ProviderSession = {
+        provider: 'claude' as const,
+        threadId: input.threadId,
+        status: 'ready' as const,
+        resumeCursor: 'unpersisted-native-session',
+        // The live adapter records the start posture on its ProviderSession
+        // (claude-adapter.ts `startTrackedSession`); this is that exact
+        // shape for a chat started before #765 forced persistence on.
+        persistSession: false,
+        createdAt: '2026-08-29T00:00:00.000Z',
+        updatedAt: '2026-08-29T00:00:00.000Z',
+      };
+      claude.sessions.set(input.threadId, session);
+      return session;
+    });
+    const started = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'conversation-unpersisted',
+          provider: 'claude',
+          metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+        },
+      },
+      { userId: 'owner-user' },
+    );
+    if (started.status !== 'accepted') throw new Error(started.message);
+    eventStore.appendEvent({
+      eventId: 'conversation-unpersisted-configured',
+      provider: 'claude',
+      threadId: 'conversation-unpersisted',
+      sessionId: 'conversation-unpersisted',
+      method: 'session.configured',
+      metadata: { connectionId: 'connection-a' },
+      createdAt: '2026-08-29T00:00:00.500Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'conversation-unpersisted-turn',
+      provider: 'claude',
+      threadId: 'conversation-unpersisted',
+      turnId: 'unpersisted-turn',
+      method: 'turn.started',
+      prompt: 'first-turn-token coral-7',
+      createdAt: '2026-08-29T00:00:00.750Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'conversation-unpersisted-completed',
+      provider: 'claude',
+      threadId: 'conversation-unpersisted',
+      sessionId: 'conversation-unpersisted',
+      method: 'session.state-changed',
+      from: 'running',
+      to: 'completed',
+      sessionState: 'completed',
+      previousState: 'running',
+      transitionReason: 'turn_completed',
+      transitionSource: 'runtime',
+      createdAt: '2026-08-29T00:00:01.000Z',
+    });
+
+    const next = await service.resolveConversationContinuation(
+      'conversation-unpersisted',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', connectionId: 'connection-a' },
+    );
+    expect(next).toMatchObject({
+      startRequired: true,
+      transcriptSeed: expect.stringContaining('first-turn-token coral-7'),
+    });
+    expect(next).not.toHaveProperty('resumeCursor');
+  });
+
+  // #765 A1: `dead` is the engine's own structured verdict that this binding
+  // can never resume (archive#1827). Reserving the next child on the same
+  // disproved cursor replays the identical failure forever; the continuation
+  // must fall back to the transcript seed so a user's retry genuinely
+  // recovers the conversation.
+  test('#765 A1: a dead engine binding continues by transcript seed — its cursor is disproved, not reusable', async () => {
+    claude.startSession.mockImplementationOnce(async (input) => {
+      const session: ProviderSession = {
+        provider: 'claude' as const,
+        threadId: input.threadId,
+        status: 'ready' as const,
+        resumeCursor: 'disproved-native-session',
+        persistSession: true,
+        createdAt: '2026-08-29T01:00:00.000Z',
+        updatedAt: '2026-08-29T01:00:00.000Z',
+      };
+      claude.sessions.set(input.threadId, session);
+      return session;
+    });
+    const started = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'conversation-dead-binding',
+          provider: 'claude',
+          metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+        },
+      },
+      { userId: 'owner-user' },
+    );
+    if (started.status !== 'accepted') throw new Error(started.message);
+    eventStore.appendEvent({
+      eventId: 'conversation-dead-configured',
+      provider: 'claude',
+      threadId: 'conversation-dead-binding',
+      sessionId: 'conversation-dead-binding',
+      method: 'session.configured',
+      metadata: { connectionId: 'connection-a' },
+      createdAt: '2026-08-29T01:00:00.500Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'conversation-dead-turn',
+      provider: 'claude',
+      threadId: 'conversation-dead-binding',
+      turnId: 'dead-turn',
+      method: 'turn.started',
+      prompt: 'dead-binding-token violet-3',
+      createdAt: '2026-08-29T01:00:00.750Z',
+    });
+    // The REAL arrival path: the adapter's structured terminal report
+    // (claude-adapter-events.ts publishes exactly this on a `result` with
+    // `is_error`), consumed through the live event pipeline so the read
+    // model marks the binding dead the same way production does. The live
+    // adapter also flips its OWN retained session record to 'dead'
+    // (claude-adapter.ts `consumeMessages`' terminalResultObserved catch) —
+    // mirrored here so a later read-model refresh from the adapter cannot
+    // resurrect 'ready'.
+    const liveRecord = claude.sessions.get('conversation-dead-binding');
+    if (liveRecord) liveRecord.status = 'dead';
+    claude.events.push({
+      eventId: 'conversation-dead-runtime-error',
+      provider: 'claude',
+      threadId: 'conversation-dead-binding',
+      turnId: 'dead-turn',
+      method: 'runtime.error',
+      severity: 'error',
+      code: 'engine-session-binding-dead',
+      retriable: false,
+      message:
+        'No conversation found with session ID: disproved-native-session',
+      createdAt: '2026-08-29T01:00:01.000Z',
+    } as never);
+    await waitFor(
+      () => eventStore.readSessionByThread('conversation-dead-binding'),
+      (session) => session?.status === 'dead',
+      5000,
+    );
+
+    const next = await service.resolveConversationContinuation(
+      'conversation-dead-binding',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', connectionId: 'connection-a' },
+    );
+    expect(next).toMatchObject({
+      startRequired: true,
+      transcriptSeed: expect.stringContaining('dead-binding-token violet-3'),
+    });
+    // The seed must carry the user's words, never the engine's error prose.
+    expect(next.transcriptSeed).not.toContain('No conversation found');
+    expect(next).not.toHaveProperty('resumeCursor');
+  });
+
   test.each([
     ['reserved', undefined],
     ['failed', 'failed'],

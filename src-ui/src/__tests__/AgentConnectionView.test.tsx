@@ -80,6 +80,12 @@ const DEFAULT_AGENT_CATALOG: unknown[] = [
 ];
 let agentConnections: unknown[] = DEFAULT_AGENT_CONNECTIONS;
 let agentCatalog: unknown[] = DEFAULT_AGENT_CATALOG;
+/**
+ * #592 slice 2: the merged Add-engine catalogue's second population. Empty
+ * by default so every pre-existing native-only test is unchanged; tests that
+ * exercise the ACP half set this explicitly.
+ */
+let acpRegistryEntries: unknown[] = [];
 
 vi.mock('@kontourai/station-sdk', () => ({
   useSkillsQuery: () => ({
@@ -191,6 +197,11 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
 }));
 
+vi.mock('../hooks/useACPConnections', () => ({
+  useACPConnections: () => ({ data: [] }),
+  useACPConnectionRegistry: () => ({ data: acpRegistryEntries }),
+}));
+
 import { AgentConnectionView } from '../views/AgentConnectionView';
 
 describe('AgentConnectionView', () => {
@@ -206,6 +217,7 @@ describe('AgentConnectionView', () => {
     saveFailure = null;
     agentConnections = DEFAULT_AGENT_CONNECTIONS;
     agentCatalog = DEFAULT_AGENT_CATALOG;
+    acpRegistryEntries = [];
     connectionQueryData = null;
     appHomeProfileQueryData = null;
     credentialRecoveryQueryData = null;
@@ -316,6 +328,41 @@ describe('AgentConnectionView', () => {
     expect(
       screen.getByText('Every supported engine is already listed'),
     ).toBeTruthy();
+    // #592 slice 2, review M4b: the manual escape hatch is not part of the
+    // "supported engine" claim above — it must still be there, and usable,
+    // when both catalog populations are exhausted.
+    expect(screen.getByText('Custom engine')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Set up custom engine' }),
+    ).toBeTruthy();
+  });
+
+  // #592 slice 2, review M4a: `hasCatalogEntries` reads
+  // `connections.length > 0 || commandEntries.length > 0` — a rewrite that
+  // silently dropped the `commandEntries` term (checking only the native
+  // population) would still pass every OTHER test in this file, since none
+  // of them exercises "native empty, ACP non-empty" on its own. This is the
+  // one that would catch it.
+  test('the empty-state claim requires both populations exhausted, not just the native one', () => {
+    agentCatalog = [];
+    acpRegistryEntries = [
+      {
+        id: 'kiro',
+        name: 'Kiro CLI',
+        command: 'kiro',
+        installed: false,
+        detected: true,
+      },
+    ];
+
+    render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
+    );
+
+    expect(
+      screen.queryByText('Every supported engine is already listed'),
+    ).toBeNull();
+    expect(screen.getByText('Kiro CLI')).toBeTruthy();
   });
 
   test('titles the engines route Engines, not Providers', () => {
@@ -362,13 +409,140 @@ describe('AgentConnectionView', () => {
 
     expect(screen.getByRole('heading', { name: 'Add engine' })).toBeTruthy();
     expect(screen.getByText('Claude Code')).toBeTruthy();
-    expect(screen.getByText('Detected')).toBeTruthy();
+    // #592 slice 2: the bespoke Detected/Available chip retired in favor of
+    // the same ProviderReadiness vocabulary every other picker uses —
+    // `setup.state: 'available', detected: true` reads "Found, not
+    // connected" everywhere else on Connections.
+    expect(screen.getByText('Found, not connected')).toBeTruthy();
     expect(screen.queryByText('Station engine')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: /^Add$/ }));
+    // #592 slice 2 review M3: bare "Add" is ambiguous with more than one row
+    // in the catalogue — the accessible name carries the engine's own name.
+    fireEvent.click(screen.getByRole('button', { name: 'Add Claude Code' }));
     expect(save).toHaveBeenCalledWith({
       connection: expect.objectContaining({ id: 'claude' }),
       isNew: false,
+    });
+  });
+
+  // #592 slice 2, review M1: the catalog endpoint is not
+  // registration-authoritative (`AgentConnectionView.tsx`'s own
+  // `isAddedEngine` doc comment) — it can carry a row this Station already
+  // treats as usable that the runtime inventory has no record of adding yet.
+  // Before this fix, `availableAgentApps` only excluded rows already in
+  // `addedIds`; it never required the catalog row's OWN `setup.state` to be
+  // `'available'`, so a `'ready'` row rendered here beside an "Add" button.
+  test('a catalog row that already reads ready is not offered as an Add choice', () => {
+    agentCatalog = [
+      ...DEFAULT_AGENT_CATALOG,
+      {
+        id: 'already-ready',
+        kind: 'agent',
+        type: 'already-ready-runtime',
+        name: 'Already Ready',
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+        prerequisites: [],
+        config: { executionClass: 'connected' },
+        // Reads 'ready' on the catalog's own copy — never in
+        // `agentConnections`, so nothing in the runtime inventory says this
+        // is added either.
+        setup: { state: 'ready', detected: true, configured: true },
+      },
+    ];
+
+    render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
+    );
+
+    expect(screen.getByText('Claude Code')).toBeTruthy();
+    expect(screen.queryByText('Already Ready')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Already Ready/ })).toBeNull();
+  });
+
+  // #592 slice 2: the catalogue that used to live only inside the ACP add
+  // modal (reached via a second "Add engine" button the ACP section owned)
+  // is now this same list's second population, sharing its readiness
+  // vocabulary and continuing into the existing ACP setup route rather than
+  // a second catalogue.
+  test('the merged catalogue offers both populations and routes an ACP choice into its setup route', () => {
+    acpRegistryEntries = [
+      {
+        id: 'kiro',
+        name: 'Kiro CLI',
+        command: 'kiro',
+        description:
+          'Connect the Kiro CLI installed on this machine as an engine.',
+        installed: false,
+        detected: true,
+      },
+      {
+        id: 'opencode',
+        name: 'OpenCode',
+        command: 'opencode',
+        description:
+          'Connect the OpenCode CLI installed on this machine as an engine.',
+        installed: false,
+        detected: false,
+      },
+      // Already configured — must not reappear as an add choice.
+      {
+        id: 'configured-cli',
+        name: 'Configured CLI',
+        command: 'configured-cli',
+        installed: true,
+        detected: true,
+      },
+    ];
+    const onNavigate = vi.fn();
+
+    render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={onNavigate} />,
+    );
+
+    // Native population, unchanged.
+    expect(screen.getByText('Claude Code')).toBeTruthy();
+    // ACP population, sharing the same readiness vocabulary.
+    expect(screen.getByText('Kiro CLI')).toBeTruthy();
+    expect(screen.getAllByText('Found, not connected').length).toBeGreaterThan(
+      0,
+    );
+    expect(screen.getByText('OpenCode')).toBeTruthy();
+    expect(screen.getByText('Setup required')).toBeTruthy();
+    expect(screen.queryByText('Configured CLI')).toBeNull();
+    // The always-available manual escape hatch.
+    expect(screen.getByText('Custom engine')).toBeTruthy();
+
+    // #592 slice 2 review M3: bare "Connect"/"Set up" are ambiguous across
+    // rows — the accessible name carries the engine's own name too.
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    expect(onNavigate).toHaveBeenCalledWith({
+      type: 'connections-acp-new',
+      providerId: 'kiro',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set up OpenCode' }));
+    expect(onNavigate).toHaveBeenCalledWith({
+      type: 'connections-acp-new',
+      providerId: 'opencode',
+    });
+  });
+
+  test('the merged catalogue routes the trailing custom entry into the ACP custom setup route', () => {
+    const onNavigate = vi.fn();
+
+    render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={onNavigate} />,
+    );
+
+    expect(screen.getByText('Custom engine')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Set up custom engine' }),
+    );
+    expect(onNavigate).toHaveBeenCalledWith({
+      type: 'connections-acp-new',
+      providerId: 'custom',
     });
   });
 
@@ -378,7 +552,7 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /^Add$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Claude Code' }));
 
     expect(screen.getByText('Could not add Claude Code')).toBeTruthy();
   });

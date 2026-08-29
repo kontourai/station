@@ -1,5 +1,6 @@
 import { memo, useMemo } from 'react';
 import type { ChatMessage } from '../../../types';
+import { translateProjectedRuntimeError } from '../../../utils/chatErrorTranslation';
 import { FilePartPreview } from '../FilePartPreview';
 import { LazyMarkdown } from '../LazyMarkdown';
 import { ReasoningSection } from '../ReasoningSection';
@@ -96,6 +97,21 @@ function MessageContentComponent({
             );
           }
           if (part.type === 'text' && part.content) {
+            // #765 A1: a runtime-error part rehydrated from the durable
+            // projection carries the structured code beside its raw engine
+            // prose. Render the same translated copy the live path shows
+            // instead of the raw text (e.g. a bare
+            // "No conversation found with session ID: <uuid>"); an uncoded
+            // or unmapped failure keeps its verbatim prose.
+            if (part.runtimeError && part.runtimeErrorCode) {
+              const translated = translateProjectedRuntimeError(
+                part.content,
+                part.runtimeErrorCode,
+              );
+              if (translated) {
+                return <LazyMarkdown key={index}>{translated}</LazyMarkdown>;
+              }
+            }
             // archive#3354: persisted text parts keep their highlighting —
             // they previously rendered plain once the turn settled.
             return <LazyMarkdown key={index}>{part.content}</LazyMarkdown>;

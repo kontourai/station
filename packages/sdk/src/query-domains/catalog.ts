@@ -32,6 +32,20 @@ interface IntegrationRegistryActionInput {
 interface RegistryActionInput {
   id: string;
   action: 'install' | 'uninstall';
+  /**
+   * Operator pre-install decision for a registry entry that resolves as a
+   * PLUGIN (station#4288). A JSON-manifest registry serves its plugin catalog
+   * through the agent face too, and the server refuses a code-contributing
+   * plugin without a decision — so the Registry view previews the entry's
+   * source and carries the answer here. Ignored for plain agent installs.
+   */
+  consent?: {
+    permissions: string[];
+    contentDigest: string;
+    dependencies: string[];
+  };
+  /** Preview conflict components to skip, as `type:id` keys. */
+  skip?: string[];
 }
 
 export interface LayoutRegistryActionInput {

@@ -590,7 +590,17 @@ export async function executeForegroundMessage(
         ...(continuation?.resumeCursor !== undefined
           ? { resumeCursor: continuation.resumeCursor }
           : {}),
-        ...(input.ephemeral ? { persistSession: false } : {}),
+        // #765 A1: a durable conversation's Sessions must keep their native
+        // engine transcript. `resolveConversationContinuation` reserves a
+        // child Session per stopped predecessor and resumes it via the
+        // predecessor's `resumeCursor` — but the Claude adapter maps an
+        // unset `persistSession` to an explicit `--no-session-persistence`
+        // spawn (`input.persistSession === true`, claude-adapter.ts), so the
+        // engine never wrote the transcript that cursor names and every
+        // second turn died with the CLI's raw "No conversation found with
+        // session ID" error. Ephemeral (machine-triggered) turns keep their
+        // deliberate no-transcript posture.
+        persistSession: !input.ephemeral,
         ...(resolved.modelOptions
           ? { modelOptions: { ...resolved.modelOptions } }
           : {}),

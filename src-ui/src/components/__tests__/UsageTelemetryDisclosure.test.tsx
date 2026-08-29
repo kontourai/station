@@ -19,6 +19,7 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
 
 import {
   resetUsageTelemetryDisclosureDismissal,
+  USAGE_TELEMETRY_SNOOZE_STORAGE_KEY,
   UsageTelemetryDisclosure,
   UsageTelemetryDisclosureStep,
 } from '../UsageTelemetryDisclosure';
@@ -241,7 +242,7 @@ test('the first-run STEP acknowledges through the same endpoint, then advances',
 
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <UsageTelemetryDisclosureStep onAdvance={advance} />
+      <UsageTelemetryDisclosureStep onAdvance={advance} onDefer={vi.fn()} />
     </QueryClientProvider>,
   );
 
@@ -268,18 +269,20 @@ test('the first-run STEP acknowledges through the same endpoint, then advances',
   resetUsageTelemetryDisclosureDismissal();
 });
 
-test('"Not now" in the step writes nothing and still moves the run on', async () => {
-  // Same semantics as the standalone modal's "Not now": no receipt, so the
-  // disclosure is offered again on the next load — but the first run does not
-  // stall on a step the user declined.
+test('"Not now" in the step DEFERS — writes nothing, never advances (#765 B1)', async () => {
+  // Same semantics as the standalone modal's "Not now": no receipt, the
+  // dialog closes. It used to call `onAdvance`, which pushed the reader into
+  // step 2 of the run they had just declined — reproduced live as the modal
+  // refusing to be dismissed.
   resetUsageTelemetryDisclosureDismissal();
   authenticatedFetch.mockReset();
   authenticatedFetch.mockImplementation(async () => inventoryResponse(false));
   const advance = vi.fn();
+  const defer = vi.fn();
 
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <UsageTelemetryDisclosureStep onAdvance={advance} />
+      <UsageTelemetryDisclosureStep onAdvance={advance} onDefer={defer} />
       <UsageTelemetryDisclosure firstRun />
     </QueryClientProvider>,
   );
@@ -291,16 +294,110 @@ test('"Not now" in the step writes nothing and still moves the run on', async ()
   const step = screen.getByTestId('first-run-disclosure');
   fireEvent.click(within(step).getByRole('button', { name: 'Not now' }));
 
-  await waitFor(() => expect(advance).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(defer).toHaveBeenCalledTimes(1));
+  expect(
+    advance,
+    '"Not now" advanced the run instead of deferring it',
+  ).not.toHaveBeenCalled();
   expect(
     authenticatedFetch.mock.calls.filter((call) =>
       String(call[0]).endsWith('/acknowledgements'),
     ),
     '"Not now" wrote an acknowledgement receipt',
   ).toEqual([]);
-  // The standalone modal beside it stands down for this page — the same
-  // dismissal the modal's own "Not now" performs — rather than re-offering the
-  // moment the run ends.
+  // The standalone modal beside it stands down — the same dismissal the
+  // modal's own "Not now" performs — rather than re-offering the moment the
+  // run ends.
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  resetUsageTelemetryDisclosureDismissal();
+});
+
+test('a dismissal survives a full remount, as a reload does not resurrect the modal (#765 B1)', async () => {
+  // The dismissal used to be a module-level flag, which every full page load
+  // reset — so the modal re-opened on every visit to `/` and followed the
+  // user to `/agents` (3/3 reloads in the live re-verification). The snooze
+  // is persisted; here the reload is simulated faithfully: module state is
+  // reset (a fresh page's module scope) while localStorage keeps what the
+  // dismissal wrote.
+  resetUsageTelemetryDisclosureDismissal();
+  authenticatedFetch.mockReset();
+  authenticatedFetch.mockImplementation(async () => inventoryResponse(false));
+
+  const firstPage = render(
+    <QueryClientProvider client={new QueryClient()}>
+      <UsageTelemetryDisclosure firstRun />
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByRole('dialog')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+  const persisted = localStorage.getItem(USAGE_TELEMETRY_SNOOZE_STORAGE_KEY);
+  expect(persisted, 'the dismissal wrote no snooze record').toBeTruthy();
+
+  // The "reload": fresh module state, surviving storage.
+  firstPage.unmount();
+  resetUsageTelemetryDisclosureDismissal();
+  localStorage.setItem(USAGE_TELEMETRY_SNOOZE_STORAGE_KEY, persisted!);
+
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      {/* The Settings presentation shares the query and renders regardless of
+          the dismissal — its inventory appearing proves the query settled, so
+          the no-dialog assertion below cannot pass vacuously. */}
+      <UsageTelemetryDisclosure />
+      <UsageTelemetryDisclosure firstRun />
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByText('station_started')).toBeTruthy();
+  expect(
+    screen.queryByRole('dialog'),
+    'the modal re-opened on the next load despite an explicit dismissal',
+  ).toBeNull();
+  resetUsageTelemetryDisclosureDismissal();
+});
+
+test('a lapsed snooze, or a changed inventory, re-offers the disclosure', async () => {
+  // The snooze is a deferral, not a substitute for the receipt: after its
+  // window — or the moment the server publishes an inventory the user has
+  // not seen — the disclosure comes back.
+  resetUsageTelemetryDisclosureDismissal();
+  authenticatedFetch.mockReset();
+  authenticatedFetch.mockImplementation(async () => inventoryResponse(false));
+
+  // Snoozed in the past: the window has lapsed.
+  localStorage.setItem(
+    USAGE_TELEMETRY_SNOOZE_STORAGE_KEY,
+    JSON.stringify({ until: Date.now() - 1000, inventoryRevision: 'rev' }),
+  );
+  const lapsed = render(
+    <QueryClientProvider client={new QueryClient()}>
+      <UsageTelemetryDisclosure firstRun />
+    </QueryClientProvider>,
+  );
+  expect(
+    await screen.findByRole('dialog'),
+    'a lapsed snooze still suppressed the disclosure',
+  ).toBeTruthy();
+  lapsed.unmount();
+
+  // Snoozed for a DIFFERENT revision than the server now publishes ('rev').
+  resetUsageTelemetryDisclosureDismissal();
+  localStorage.setItem(
+    USAGE_TELEMETRY_SNOOZE_STORAGE_KEY,
+    JSON.stringify({
+      until: Date.now() + 60 * 60 * 1000,
+      inventoryRevision: 'an-older-inventory',
+    }),
+  );
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <UsageTelemetryDisclosure firstRun />
+    </QueryClientProvider>,
+  );
+  expect(
+    await screen.findByRole('dialog'),
+    'a snooze for an older inventory suppressed a changed one',
+  ).toBeTruthy();
   resetUsageTelemetryDisclosureDismissal();
 });

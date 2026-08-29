@@ -336,11 +336,17 @@ export function translateChatError(
     code === ENGINE_SESSION_BINDING_DEAD_CODE ||
     (code === undefined && TERMINAL_SESSION_PATTERN.test(text))
   ) {
+    // #765 A1: no longer `terminalSession` — the CONVERSATION survives this
+    // failure. Only the engine-native session binding is dead; the server's
+    // continuation seam reserves a fresh child session for the next turn and
+    // refuses to re-present a cursor a dead binding already disproved
+    // (`conversation-lineage.ts`), carrying the transcript forward as a seed
+    // when no trustworthy cursor exists. So "send it again" is a true claim
+    // now, where the pre-#765 copy could only honestly offer a new chat.
     return {
-      title: "This conversation's history is gone",
-      body: "Can't reach native session.",
-      hint: 'New chat.',
-      terminalSession: true,
+      title: "This conversation's engine session was lost",
+      body: 'The engine could not reopen the native session behind this conversation, so this turn failed.',
+      hint: 'Send your message again — the conversation continues in a fresh engine session — or start a new chat.',
       disclosureRaw: true,
     };
   }
@@ -509,6 +515,30 @@ export function translateChatError(
  * can express. Every existing translation leaves `disclosureRaw` unset, so
  * this is purely additive — their display is byte-identical to before.
  */
+/**
+ * #765 A1: translation for a runtime-error part rehydrated from the durable
+ * event projection (`runtime-event-projection.ts` writes
+ * `⚠️ <raw engine message>` with `runtimeError: true` and, when the event
+ * carried one, `runtimeErrorCode`). Returns the same translated markdown the
+ * live path shows, or `null` when the code is not one this table maps —
+ * an uncoded or unrecognised failure keeps its verbatim engine prose, the
+ * same honesty rule the live `turnHandlers.ts` path applies.
+ */
+export function translateProjectedRuntimeError(
+  text: string,
+  code: string,
+): string | null {
+  if (code !== ENGINE_SESSION_BINDING_DEAD_CODE) return null;
+  const match = /^⚠️ ([\s\S]*?)( \(repeated \d+×\))?$/.exec(text);
+  const raw = match?.[1] ?? text;
+  const repeatSuffix = match?.[2] ?? '';
+  const display = formatChatErrorDisplay(
+    translateChatError({ message: raw, code }),
+    raw,
+  );
+  return repeatSuffix ? `${display}\n${repeatSuffix.trim()}` : display;
+}
+
 export function formatChatErrorDisplay(
   translation: ChatErrorTranslation,
   rawMessage?: string,

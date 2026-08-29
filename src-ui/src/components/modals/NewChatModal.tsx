@@ -23,6 +23,7 @@ import {
   buildCodingChatInitialMessage,
   type CodingChatContextDraft,
 } from '../coding-layout/chatContextDraft';
+import { HomeFolderLabel } from '../HomeFolderLabel';
 import { AgentIcon } from '../icons/AgentIcon';
 import {
   EngineGlyph,
@@ -599,9 +600,14 @@ export function NewChatModal({
               </span>
             )}
             {workspaceHint.kind === 'home' && (
-              <span className="new-chat-modal__context-dir new-chat-modal__context-dir--fallback">
-                {isGlobal ? '~ (home directory)' : '~ (defaults to home)'}
-              </span>
+              <HomeFolderLabel
+                className="new-chat-modal__context-dir new-chat-modal__context-dir--fallback"
+                title={
+                  isGlobal
+                    ? '~ (your home folder)'
+                    : '~ (no project folder set — chats start in your home folder)'
+                }
+              />
             )}
             <span className="new-chat-modal__chevron">▾</span>
           </button>

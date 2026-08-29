@@ -20,7 +20,7 @@ type Disclosure = {
 };
 
 /**
- * "Not now" for this page, and only this page.
+ * "Not now" — a dismissal that survives a reload.
  *
  * The dialog needs an exit that does not require the acknowledgement to
  * succeed — a revoked session, a 403, or an unwritable receipt path otherwise
@@ -29,10 +29,71 @@ type Disclosure = {
  * component re-mounts on every route, so component state would forget the
  * dismissal immediately; it lives here instead.
  *
- * Deliberately NOT persisted, and deliberately not a substitute for the
- * receipt: acknowledgement is the only thing that stops the disclosure coming
- * back, so a reload shows it again exactly as it does today. Same policy, and
- * the same reasoning, as `onboardingSetupStore`'s in-memory `deferredState`.
+ * The dismissal used to be page-lifetime only ("a reload shows it again
+ * exactly as it does today"), which the #765 B1 re-verification proved is a
+ * nag loop in practice: every full page load reset the module flag, so the
+ * modal re-opened on every visit to `/` and followed the user to `/agents`,
+ * where its focus trap swallowed the engine list. A declined disclosure is
+ * therefore SNOOZED in localStorage (same pattern and reasoning as
+ * `utils/activity-snooze-store.ts`): the modal stays away for
+ * `SNOOZE_DURATION_MS`, then re-offers. It re-offers immediately when the
+ * server publishes a different `inventoryRevision` — a changed inventory is
+ * new information the user has not declined. The snooze is deliberately not a
+ * substitute for the receipt: acknowledgement is still the only thing that
+ * retires the disclosure for good, and the server-side flow is unchanged.
+ */
+export const USAGE_TELEMETRY_SNOOZE_STORAGE_KEY =
+  'station.usage-telemetry-disclosure.snoozed';
+/** A week: long enough to stop the every-visit nag, short enough that an unacknowledged inventory keeps resurfacing. */
+export const USAGE_TELEMETRY_SNOOZE_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+
+type SnoozeRecord = {
+  /** Epoch ms at which the snooze lapses. */
+  until: number;
+  /** The inventory the user declined; a different revision re-prompts. */
+  inventoryRevision: string;
+};
+
+/** Read fresh on every check (cheap, and it is what makes a reload honest). */
+function readSnoozeRecord(): SnoozeRecord | null {
+  try {
+    const raw = window.localStorage.getItem(USAGE_TELEMETRY_SNOOZE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    const candidate = parsed as Record<string, unknown>;
+    if (
+      typeof candidate.until !== 'number' ||
+      typeof candidate.inventoryRevision !== 'string'
+    ) {
+      return null;
+    }
+    return {
+      until: candidate.until,
+      inventoryRevision: candidate.inventoryRevision,
+    };
+  } catch {
+    // No storage (privacy mode, opaque origin) — the in-memory page-lifetime
+    // flag below still covers this session.
+    return null;
+  }
+}
+
+function isSnoozedFor(inventoryRevision: string | undefined): boolean {
+  const record = readSnoozeRecord();
+  return (
+    record !== null &&
+    record.until > Date.now() &&
+    record.inventoryRevision === (inventoryRevision ?? '')
+  );
+}
+
+/**
+ * The page-lifetime half of the dismissal: it keeps this session honest even
+ * when localStorage is unavailable or the write fails, and it is what the
+ * `useSyncExternalStore` subscription below actually observes.
  */
 let dismissedForPageLifetime = false;
 const dismissalListeners = new Set<() => void>();
@@ -48,15 +109,38 @@ function readDismissal(): boolean {
   return dismissedForPageLifetime;
 }
 
-function dismissForPageLifetime(): void {
+/**
+ * Every dismissal route — "Not now", ✕, Escape, a backdrop click, and the
+ * first-run chapter closing over the disclosure step — lands here.
+ */
+export function dismissUsageTelemetryDisclosure(
+  inventoryRevision: string | undefined,
+): void {
   if (dismissedForPageLifetime) return;
   dismissedForPageLifetime = true;
+  try {
+    const record: SnoozeRecord = {
+      until: Date.now() + USAGE_TELEMETRY_SNOOZE_DURATION_MS,
+      inventoryRevision: inventoryRevision ?? '',
+    };
+    window.localStorage.setItem(
+      USAGE_TELEMETRY_SNOOZE_STORAGE_KEY,
+      JSON.stringify(record),
+    );
+  } catch {
+    // Best-effort: the snooze is a convenience, not state worth failing over.
+  }
   for (const listener of dismissalListeners) listener();
 }
 
-/** Page-lifetime state outlives a test; each case needs its own page. */
+/** Module state and the snooze outlive a test; each case needs its own page. */
 export function resetUsageTelemetryDisclosureDismissal(): void {
   dismissedForPageLifetime = false;
+  try {
+    window.localStorage.removeItem(USAGE_TELEMETRY_SNOOZE_STORAGE_KEY);
+  } catch {
+    // Nothing persisted, nothing to clear.
+  }
   for (const listener of dismissalListeners) listener();
 }
 
@@ -104,7 +188,10 @@ export interface UsageTelemetryDisclosureState {
 
 export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureState {
   const { apiBase } = useApiBase();
-  const dismissed = useSyncExternalStore(subscribeToDismissal, readDismissal);
+  const pageDismissed = useSyncExternalStore(
+    subscribeToDismissal,
+    readDismissal,
+  );
   const query = useQuery({
     queryKey: ['usage-telemetry-disclosure', apiBase],
     queryFn: () =>
@@ -120,6 +207,13 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
         ? NOT_READY_RETRY_DELAY_MS
         : Math.min(1000 * 2 ** failureCount, 30_000),
   });
+  // The persisted snooze is checked against the CURRENT inventory revision:
+  // a snooze recorded for an older inventory does not cover a new one. Read
+  // in render rather than through the store subscription because it needs the
+  // query's answer; the subscription still forces the re-render whenever a
+  // dismissal happens on this page.
+  const dismissed =
+    pageDismissed || isSnoozedFor(query.data?.inventoryRevision);
   return {
     data: query.data,
     isError: query.isError,
@@ -200,16 +294,21 @@ function acknowledgeErrorNotice(isError: boolean): ReactNode {
  * disclosure belongs to onboarding, so on a `pending` home it is shown here,
  * and `OnboardingGate` does not mount the standalone modal at all.
  *
- * Same copy, same acknowledgement, same "Not now": deferring advances the run
- * without writing a receipt, and the standalone modal re-offers on the next
- * load exactly as it does today. Chrome (scrim, focus trap, header, step
- * count) belongs to `FirstRunHomeChapter`'s dialog; this owns the inventory
- * and its two actions and nothing else.
+ * Same copy, same acknowledgement, same "Not now": declining snoozes the
+ * disclosure and DEFERS the run — the dialog closes, exactly as "Not now" on
+ * the standalone modal closes it. It used to advance to the next step
+ * instead, which read as the modal refusing to go away (#765 B1). Chrome
+ * (scrim, focus trap, header, step count) belongs to `FirstRunHomeChapter`'s
+ * dialog; this owns the inventory and its two actions and nothing else.
  */
 export function UsageTelemetryDisclosureStep({
   onAdvance,
+  onDefer,
 }: {
+  /** The acknowledgement landed — the run moves to its next step. */
   onAdvance: () => void;
+  /** The disclosure was declined — the run closes without advancing. */
+  onDefer: () => void;
 }) {
   const { data, settled } = useUsageTelemetryDisclosureState();
   const acknowledge = useAcknowledgeDisclosure(onAdvance);
@@ -229,16 +328,17 @@ export function UsageTelemetryDisclosureStep({
       </div>
       <ResponsiveSurfaceActions className="first-run-chapter__actions">
         {acknowledgeErrorNotice(acknowledge.isError)}
-        {/* "Not now" is the same decision it is in the standalone modal: the
-            run moves on, no receipt is written, and the disclosure is offered
-            again on the next load. It never ends the first run — that is the
-            dialog's own close, one step down. */}
+        {/* "Not now" is the same decision it is in the standalone modal: no
+            receipt is written, the disclosure is snoozed, and the dialog
+            CLOSES. It must never advance — a decline that pushes the reader
+            into step 2 reads as the modal refusing to be dismissed
+            (#765 B1, reproduced live). */}
         <button
           type="button"
           className="editor-btn"
           onClick={() => {
-            dismissForPageLifetime();
-            onAdvance();
+            dismissUsageTelemetryDisclosure(data.inventoryRevision);
+            onDefer();
           }}
         >
           Not now
@@ -293,15 +393,17 @@ export function UsageTelemetryDisclosure({
   // the viewport and scroll its own body — the launcher card it used to borrow
   // had no bound at all and ran off the top and bottom of the screen with the
   // single action stranded below the fold.
+  const dismiss = () => dismissUsageTelemetryDisclosure(data.inventoryRevision);
   if (firstRun) {
     return (
       <Dialog
         // Escape, a backdrop click, and the "Not now" button below all reach
-        // the same page-lifetime dismissal. This dialog covers the whole app,
+        // the same persisted dismissal. This dialog covers the whole app,
         // including the connection-recovery UI, and its acknowledgement can
         // fail persistently — so it must not be the only way out. The receipt
-        // is still what stops it coming back.
-        onClose={dismissForPageLifetime}
+        // is still what stops it coming back for good; the dismissal only
+        // snoozes it.
+        onClose={dismiss}
         closeLabel="Close usage telemetry disclosure"
         // Focus the primary action rather than the panel: the panel is what
         // the surface focuses by default, and a focus ring around the whole
@@ -316,7 +418,7 @@ export function UsageTelemetryDisclosure({
         footer={
           <>
             {acknowledgeError}
-            <Button variant="secondary" onClick={dismissForPageLifetime}>
+            <Button variant="secondary" onClick={dismiss}>
               Not now
             </Button>
             {acknowledgeButton}

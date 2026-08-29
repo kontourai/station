@@ -193,6 +193,9 @@ export interface ChatMessage {
     /** archive#3769: the durable projection's own runtime.error marker — see
      * `MessagePart.runtimeError` in `packages/shared/src/conversation-message.ts`. */
     runtimeError?: boolean;
+    /** #765 A1: the structured `RuntimeErrorEvent.code` carried beside
+     * `runtimeError`, so a rehydrated failure translates like the live one. */
+    runtimeErrorCode?: string;
     uiBlock?: UIBlock;
     toolCallId?: string;
     flowRunAttached?: FlowRunBinding;
@@ -374,7 +377,6 @@ export type NavigationView =
   | { type: 'connections-provider-edit'; id: string }
   | { type: 'connections-engines' }
   | { type: 'connections-runtime-edit'; id: string }
-  | { type: 'connections-acp' }
   | { type: 'connections-acp-new'; providerId: string }
   | { type: 'connections-tools' }
   | { type: 'connections-tool-edit'; id: string }

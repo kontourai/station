@@ -47,7 +47,7 @@ export function createWindowsOwnedProtocol() {
         isWindowsRoundTripUtcIso(bound[2])
       ) {
         // Windows BOUND identities are canonical round-trip UTC ISO strings.
-        // Native creation ticks are normalized to CIM's microsecond precision
+        // Native creation ticks are normalized to the protocol's microsecond precision
         // before formatting, so persisted lifecycle identities still match.
         state = 'awaiting-resume';
         return {

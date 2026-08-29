@@ -111,6 +111,11 @@ const expectedDependencies = new Map(
     'src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx':
       'private-import',
     'src-ui/src/workspace-panes/workspacePaneDirectRoute.ts': 'direct-route',
+    // #765 F4: the tile-glyph map for the workspace-pane cards. The semantic
+    // scan sees it because it names the Coding pane renderer names; it is
+    // display-only — a renderer-name → SVG-glyph lookup that authorises
+    // nothing and reaches no privileged surface.
+    'src-ui/src/workspace-panes/workspacePaneGlyphs.tsx': 'presentation',
   }),
 );
 const semantic =

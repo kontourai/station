@@ -124,6 +124,55 @@ describe('starter plugin examples', () => {
     }
   });
 
+  /**
+   * #765 D1 class pin, over the WHOLE bundled default registry rather than
+   * one plugin. Every layout component a bundled plugin's layout declares
+   * must be a name its entrypoint registers, and the plugin must be buildable
+   * by the host pipeline at all: an `entrypoint` (that is what produces
+   * `dist/bundle.js` — without it the client PluginRegistry skips the plugin
+   * and each declared component renders "Unsupported layout tab"), and no
+   * `build` field (the host refuses manifest-controlled shell builds). The
+   * install-path half of the defect — a registry face that materialized the
+   * tree without ever building it — is pinned in registry.routes.test.ts.
+   */
+  test('every bundled default-registry plugin declares layout components its entrypoint registers', async () => {
+    const defaultRegistry = readJson<{
+      plugins: Array<{ id: string; source: string }>;
+    }>(join(examplesDir, 'registry', 'default.json'));
+    expect(defaultRegistry.plugins.length).toBeGreaterThan(0);
+
+    for (const entry of defaultRegistry.plugins) {
+      const pluginDir = resolve(examplesDir, 'registry', entry.source);
+      const manifest = await readPluginManifestFile(
+        join(pluginDir, 'plugin.json'),
+      );
+
+      expect(manifest.build, `${entry.id}: manifest.build`).toBeUndefined();
+
+      if (!manifest.layout) continue;
+      expect(
+        manifest.entrypoint,
+        `${entry.id}: a layout plugin needs an entrypoint to build a bundle`,
+      ).toBeTruthy();
+      const entrypoint = readFileSync(
+        join(pluginDir, manifest.entrypoint ?? ''),
+        'utf-8',
+      );
+      const layout = readJson<{
+        tabs?: Array<{ id: string; component?: unknown }>;
+      }>(join(pluginDir, manifest.layout.source));
+      for (const tab of layout.tabs ?? []) {
+        // Only plain-string components are plugin components the bundle must
+        // register; builtin/mcp references resolve elsewhere.
+        if (typeof tab.component !== 'string') continue;
+        expect(
+          entrypoint,
+          `${entry.id}: layout tab '${tab.id}' declares component '${tab.component}' the entrypoint never registers`,
+        ).toContain(`'${tab.component}'`);
+      }
+    }
+  });
+
   test('starter READMEs explain copyable scope and local registry install', () => {
     for (const starter of starterPlugins) {
       const readme = readFileSync(

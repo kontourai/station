@@ -34,6 +34,9 @@ const LEGACY_PATH_CASES = [
   ['/sys/monitoring', '/developer/telemetry'],
   ['/sys/schedule', '/schedule'],
   ['/manage', '/agents'],
+  // #765 D2: bare /tasks has no collection view; tasks surface on Home.
+  ['/tasks', '/'],
+  ['/tasks/', '/'],
   ['/manage/agents', '/agents'],
   ['/manage/agents/planner', '/agents/planner'],
   ['/manage/prompts', '/guidance?tab=skills'],
@@ -67,7 +70,6 @@ const CANONICAL_VIEWS = [
   { type: 'connections-acp-new', providerId: 'custom' },
   { type: 'connections-engines' },
   { type: 'connections-runtime-edit', id: 'engine' },
-  { type: 'connections-acp' },
   { type: 'connections-tools' },
   { type: 'connections-tool-edit', id: 'tool' },
   { type: 'connections-knowledge' },
@@ -239,8 +241,14 @@ describe('app-shell routing', () => {
     expect(resolveViewFromPath('/connections/engines')).toEqual({
       type: 'connections-engines',
     });
+    // #592 slice 2: `connections-acp` (the plain, id-less route) retired —
+    // `/connections/acp` only ever resolves here (a genuine 404) when a
+    // caller skips `getLegacyPathRedirect`, which every real navigation runs
+    // first (see the LEGACY_PATH_CASES row above canonicalising it to
+    // `/connections/engines`).
     expect(resolveViewFromPath('/connections/acp')).toEqual({
-      type: 'connections-acp',
+      type: 'not-found',
+      path: '/connections/acp',
     });
     expect(resolveViewFromPath('/projects/demo/layouts/coding')).toEqual({
       type: 'layout',
@@ -412,6 +420,14 @@ describe('app-shell routing', () => {
   });
 
   test('resolveViewFromPath rejects missing or malformed Task ids as 404s', () => {
+    // #765 D2: the redirect layer canonicalises bare /tasks to Home before
+    // this resolver ever runs (LEGACY_PATH_CASES above), so direct navigation
+    // no longer dead-ends on "No view matches /tasks". At THIS layer the bare
+    // path stays a 404 rather than inventing a task-collection view — and a
+    // real task deep link must never be redirected away from its id.
+    expect(getLegacyPathRedirect('/tasks')).toBe('/');
+    expect(getLegacyPathRedirect('/tasks/')).toBe('/');
+    expect(getLegacyPathRedirect('/tasks/alpha')).toBeNull();
     expect(resolveViewFromPath('/tasks')).toEqual({
       type: 'not-found',
       path: '/tasks',
@@ -617,9 +633,6 @@ describe('app-shell routing', () => {
     expect(
       getParentView({ type: 'project-flow-console', slug: 'alpha' }),
     ).toEqual({ type: 'project', slug: 'alpha' });
-    expect(getPathForView({ type: 'connections-acp' })).toBe(
-      '/connections/acp',
-    );
     expect(getPathForView({ type: 'task', taskId: 'task/alpha' })).toBe(
       '/tasks/task%2Falpha',
     );

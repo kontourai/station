@@ -89,6 +89,8 @@ function makeService(opts: {
     }): void;
   };
   getUserId?: () => string;
+  /** #765 D5: the pairing service's current request list. */
+  pairingRequests?: unknown[];
 }) {
   const {
     notifications = [],
@@ -100,6 +102,7 @@ function makeService(opts: {
     unanswerable = [],
     acknowledgementStore,
     getUserId,
+    pairingRequests,
   } = opts;
   // Production receives a complete registry dependency. Keep older fixtures
   // terse while supplying its harmless personal-mode default explicitly.
@@ -133,6 +136,9 @@ function makeService(opts: {
     projectionApprovalRegistry,
     acknowledgementStore,
     getUserId,
+    pairingRequests
+      ? () => ({ listRequests: () => pairingRequests as never })
+      : undefined,
   );
 }
 
@@ -2314,5 +2320,157 @@ describe('the bell agrees with the client fold (station#3227 B1)', () => {
         }).toEqual({ shape: shape.threadId, kinds: expected });
       }
     });
+  });
+});
+
+describe('device pairing requests need attention (#765 D5)', () => {
+  const requestNow = Date.now();
+
+  function pairingRequest(overrides: Record<string, unknown> = {}) {
+    return {
+      requestId: 'pair-req-1',
+      offerId: 'offer-1',
+      deviceName: 'Test Phone',
+      scope: 'orchestration:read',
+      createdAt: requestNow - 1_000,
+      expiresAt: requestNow + 60_000,
+      source: 'pairing-code',
+      status: 'pending',
+      ...overrides,
+    };
+  }
+
+  test('a pending, unexpired request projects an actionable attention item', async () => {
+    const projection = makeService({ pairingRequests: [pairingRequest()] });
+
+    const result = await projection.list();
+    expect(result.pendingCount).toBe(1);
+    expect(result.items).toEqual([
+      {
+        id: 'device-pairing:pair-req-1',
+        kind: 'device-pairing',
+        title: 'A device is asking to pair',
+        body: 'Test Phone is waiting for approval on this Station.',
+        createdAt: new Date(requestNow - 1_000).toISOString(),
+        updatedAt: new Date(requestNow - 1_000).toISOString(),
+        deviceName: 'Test Phone',
+        openHref: '/connections',
+        source: { requestId: 'pair-req-1' },
+      },
+    ]);
+  });
+
+  test('confirmed, denied, and expired requests project nothing', async () => {
+    const projection = makeService({
+      pairingRequests: [
+        // Approved — waiting on the device's exchange; the decision is made.
+        pairingRequest({ requestId: 'pair-confirmed', status: 'confirmed' }),
+        pairingRequest({ requestId: 'pair-denied', status: 'denied' }),
+        // Pending but past its window — cannot be approved any more.
+        pairingRequest({
+          requestId: 'pair-expired',
+          expiresAt: requestNow - 1,
+        }),
+      ],
+    });
+
+    await expect(projection.list()).resolves.toEqual({
+      items: [],
+      pendingCount: 0,
+    });
+  });
+
+  test('no pairing source resolvable projects nothing (and never throws)', async () => {
+    const projection = makeService({});
+    await expect(projection.list()).resolves.toEqual({
+      items: [],
+      pendingCount: 0,
+    });
+  });
+
+  test('joins the mirror activity notification for inbox dedupe', async () => {
+    const projection = makeService({
+      pairingRequests: [pairingRequest()],
+      notifications: [
+        {
+          id: 'pairing-notification-1',
+          source: 'device-pairing',
+          category: 'pairing-request',
+          title: 'A device is asking to pair',
+          priority: 'high',
+          status: 'delivered',
+          createdAt: now,
+          updatedAt: now,
+          metadata: { requestId: 'pair-req-1' },
+        } as Notification,
+        // A different request's notification must not be joined.
+        {
+          id: 'pairing-notification-other',
+          source: 'device-pairing',
+          category: 'pairing-request',
+          title: 'A device is asking to pair',
+          priority: 'high',
+          status: 'delivered',
+          createdAt: now,
+          updatedAt: now,
+          metadata: { requestId: 'pair-req-other' },
+        } as Notification,
+      ],
+    });
+
+    const result = await projection.list();
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        kind: 'device-pairing',
+        source: {
+          requestId: 'pair-req-1',
+          notificationId: 'pairing-notification-1',
+        },
+      }),
+    ]);
+  });
+
+  test('hosted reads never see host pairing requests', async () => {
+    const registry = parseHostedTenantRegistry({
+      schemaVersion: 1,
+      tenants: [{ id: 'alpha', authority: 'alpha.example.test' }],
+    });
+    const alpha = sessionReadAuthorityFromRequest(
+      'alpha',
+      { tenantId: registry.tenants[0].id },
+      registry,
+    );
+    const projection = makeService({ pairingRequests: [pairingRequest()] });
+
+    await expect(projection.list(alpha)).resolves.toEqual({
+      items: [],
+      pendingCount: 0,
+    });
+  });
+
+  test('acknowledging a pairing item drops it from the pending count without deleting it', async () => {
+    const acked = new Map<string, string>();
+    const projection = makeService({
+      pairingRequests: [pairingRequest()],
+      acknowledgementStore: {
+        get: (userId, conversationId) =>
+          acked.get(`${userId}:${conversationId}`),
+        acknowledge: ({ userId, conversationId, updatedAt }) => {
+          acked.set(`${userId}:${conversationId}`, updatedAt);
+        },
+      },
+    });
+
+    expect(await projection.acknowledge('device-pairing:pair-req-1')).toBe(
+      true,
+    );
+    const result = await projection.list();
+    expect(result.pendingCount).toBe(0);
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'device-pairing:pair-req-1',
+        acknowledgedAt: expect.any(String),
+      }),
+    ]);
   });
 });
