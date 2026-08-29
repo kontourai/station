@@ -48,6 +48,22 @@ const REQUIRED_ANDROID_TARGETS = [
 ];
 const REQUIRED_IOS_TARGETS = ['aarch64-apple-ios', 'aarch64-apple-ios-sim'];
 
+export const TAURI_CONTEXT_USAGE = `Usage: node scripts/tauri-context.mjs [options]
+
+Context report:
+  --platform <all|macos|windows|linux|android|ios>
+  --json | --format <human|json>
+  --root <path>
+  --strict
+
+Official Tauri documentation:
+  --list-topics
+  --topic <name> [--max-chars <count>]
+
+General:
+  --help
+`;
+
 export function mergeJsonPatch(target, patch) {
   if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) {
     return structuredClone(patch);
@@ -525,7 +541,7 @@ function humanReport(report) {
   return lines.join('\n');
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const options = {
     format: 'human',
     maxChars: 60_000,
@@ -544,6 +560,7 @@ function parseArgs(argv) {
     else if (value === '--max-chars') options.maxChars = Number(argv[++index]);
     else if (value === '--strict') options.strict = true;
     else if (value === '--list-topics') options.listTopics = true;
+    else if (value === '--help' || value === '-h') options.help = true;
     else throw new Error(`Unknown argument: ${value}`);
   }
   if (!['all', ...Object.keys(PLATFORM_CONFIGS)].includes(options.platform)) {
@@ -571,6 +588,10 @@ async function printDocumentation(topicName, maxChars) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  if (options.help) {
+    process.stdout.write(TAURI_CONTEXT_USAGE);
+    return;
+  }
   if (options.listTopics) {
     process.stdout.write(`${Object.keys(DOC_TOPICS).sort().join('\n')}\n`);
     return;
