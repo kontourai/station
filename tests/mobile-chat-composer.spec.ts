@@ -25,19 +25,31 @@ const json = (body: unknown) => ({
   body: JSON.stringify(body),
 });
 
-async function mockChatShell(page: Page) {
+async function mockChatShell(
+  page: Page,
+  options: { expectedEnvironmentId?: string } = {},
+) {
   let providerCalls = 0;
   page.on('pageerror', (error) => {
     console.error(`mobile-chat page error: ${error.message}`);
   });
   await installVisualViewportFixture(page);
-  await page.addInitScript(() => {
+  await page.addInitScript((expectedEnvironmentId) => {
     localStorage.setItem('station-connect-connections-active', 'mobile');
     localStorage.setItem(
       'station-connect-connections',
-      JSON.stringify([{ id: 'mobile', name: 'Mobile', url: location.origin }]),
+      JSON.stringify([
+        {
+          id: 'mobile',
+          name: 'Mobile',
+          url: location.origin,
+          ...(expectedEnvironmentId
+            ? { environmentId: expectedEnvironmentId }
+            : {}),
+        },
+      ]),
     );
-  });
+  }, options.expectedEnvironmentId ?? null);
   await page.route('**/.well-known/station/v1', (route) =>
     route.fulfill(
       json({
@@ -1706,7 +1718,9 @@ test('the 320px header contains every pinned control while maximized (#3309 SF-2
 }) => {
   test.setTimeout(45_000);
   await page.setViewportSize({ width: 320, height: 568 });
-  await mockChatShell(page);
+  await mockChatShell(page, {
+    expectedEnvironmentId: '22222222-2222-4222-8222-222222222222',
+  });
   await openComposer(page, true);
 
   // Maximize: this is what hides the app toolbar and hands this bar the drawer
@@ -1721,6 +1735,14 @@ test('the 320px header contains every pinned control while maximized (#3309 SF-2
   await expect(drawerToggle).toBeVisible();
 
   const header = page.locator('.chat-dock__mobile-header');
+  const connectionChip = header.getByTestId('chat-dock-mobile-connection');
+  await expect(connectionChip).toHaveAttribute(
+    'data-connection-state',
+    'needs-repair',
+  );
+  await expect(
+    connectionChip.locator('.chat-dock__mobile-conn-label'),
+  ).toHaveText('Re-pair');
   const headerBox = await header.boundingBox();
   if (!headerBox) throw new Error('Mobile dock header is not measurable');
   expect(headerBox.x).toBeGreaterThanOrEqual(0);
