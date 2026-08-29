@@ -375,12 +375,12 @@ export function createFileProfileStore(
   };
 }
 
-/** A bad or unknown profile file fails closed instead of being silently replaced. */
-export function readProfileStore(
-  home: string = resolveStationHome(),
+/** Read an already-persisted document; absence is never silently interpreted here. */
+function readPersistedProfileStore(
+  home: string,
+  missingMessage?: string,
 ): StationProfileStore {
   const path = profilesPath(home);
-  if (!existsSync(path)) return emptyStationProfileStore();
   assertTrustedProfileStoreParent(path);
   let fd: number | undefined;
   let parsed: unknown;
@@ -400,6 +400,9 @@ export function readProfileStore(
     }
     parsed = JSON.parse(readFileSync(fd, 'utf-8'));
   } catch (error) {
+    if (missingMessage && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(missingMessage);
+    }
     throw new Error(
       `saved Station metadata is corrupt or not owner-controlled: ${path}. Repair its contents, ownership, or permissions before continuing. (${(error as Error).message})`,
     );
@@ -412,6 +415,15 @@ export function readProfileStore(
     );
   }
   return parsed;
+}
+
+/** A bad or unknown profile file fails closed instead of being silently replaced. */
+export function readProfileStore(
+  home: string = resolveStationHome(),
+): StationProfileStore {
+  const path = profilesPath(home);
+  if (!existsSync(path)) return emptyStationProfileStore();
+  return readPersistedProfileStore(home);
 }
 
 /** Atomic, owner-only metadata write: temp + fsync + rename. */
@@ -707,17 +719,23 @@ export function writeProfileStore(
   store: StationProfileStore,
   home: string = resolveStationHome(),
   expectedRevision: number = store.revision,
+  /** Test-only interleaving seam; production callers omit it. */
+  hooks: { afterGenesisAdmission?: () => void } = {},
 ): StationProfileStore {
   if (!isStationProfileStore(store)) {
     throw new Error('Refusing to write invalid saved Station metadata.');
   }
   ensureProfileStoreGenesis(home);
+  hooks.afterGenesisAdmission?.();
   const path = profilesPath(home);
   const temporary = `${path}.${process.pid}.tmp`;
   let fd: number | undefined;
   return withProfileStoreLock(() => {
     try {
-      const actual = readProfileStore(home);
+      const actual = readPersistedProfileStore(
+        home,
+        'saved Station metadata disappeared during a write; refusing to recreate it.',
+      );
       if (actual.revision !== expectedRevision) {
         throw new Error(
           `saved Station store changed concurrently (expected revision ${expectedRevision}, found ${actual.revision}). Re-read and retry.`,

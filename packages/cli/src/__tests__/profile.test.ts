@@ -18,6 +18,7 @@ import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { runStationsCommand } from '../commands/profile-command.js';
 import {
+  ensureProfileStoreGenesis,
   findProfile,
   profilesPath,
   readProfileStore,
@@ -117,6 +118,19 @@ describe('shared saved Station store', () => {
         endpoint: 'http://127.0.0.1:28141',
       }),
     ).toThrow(/missing from an initialized or in-progress shared root/);
+  });
+
+  test('refuses a revision-zero store moved after genesis and before the locked CAS', () => {
+    ensureProfileStoreGenesis();
+    const revisionZero = readProfileStore();
+    expect(revisionZero.revision).toBe(0);
+
+    expect(() =>
+      writeProfileStore(revisionZero, home, 0, {
+        afterGenesisAdmission: () => unlinkSync(profilesPath()),
+      }),
+    ).toThrow(/metadata disappeared during a write/);
+    expect(() => readFileSync(profilesPath(), 'utf8')).toThrow();
   });
 
   test('refuses a genesis marker symlink before it can redirect a missing-store read', () => {
