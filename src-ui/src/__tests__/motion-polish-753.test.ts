@@ -240,13 +240,21 @@ describe('station#753 item 3: dialog open transition', () => {
     expect(to).toMatch(/transform:\s*scale\(1\)/);
   });
 
-  test('collapses under reduced motion', () => {
-    const bodies = reducedMotionBodies(indexCss);
-    const covering = bodies.find((body) =>
-      body.includes('.responsive-surface-panel'),
+  test('collapses under reduced motion via the global tokens.css reset', () => {
+    // This animation carries no delay, so it needs no page-local
+    // reduced-motion block (mobile-css-ratchet counts those): the global
+    // reset in tokens.css collapses duration and iteration for it. Pin the
+    // preconditions of that derivation: no delay on the panel animation, and
+    // the global reset still covering both properties.
+    const panel = rulesFor(indexCss, '.responsive-surface-panel').join('\n');
+    expect(panel).not.toMatch(/animation-delay/);
+    const tokensCss = read('tokens.css');
+    const globalReset = reducedMotionBodies(tokensCss).join('\n');
+    expect(globalReset).toMatch(/animation-duration:\s*0\.01ms\s*!important/);
+    expect(globalReset).toMatch(/animation-iteration-count:\s*1\s*!important/);
+    expect(reducedMotionBodies(indexCss).join('\n')).not.toContain(
+      '.responsive-surface-panel',
     );
-    expect(covering).toBeDefined();
-    expect(covering).toMatch(/animation:\s*none/);
   });
 });
 

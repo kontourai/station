@@ -872,13 +872,9 @@ button:hover {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .responsive-surface-panel {
-    animation: none;
-    opacity: 1;
-    transform: none;
-  }
-}
+/* No per-component reduced-motion block: this animation has no delay, so the
+   global reset in tokens.css (animation-duration 0.01ms, iteration-count 1)
+   fully collapses it — see mobile-css-ratchet on page-local at-rules. */
 
 /* Horizontal tab strips that must scroll (not clip) on narrow viewports.
    Only takes effect under the mobile breakpoint; desktop keeps wrapping/static
