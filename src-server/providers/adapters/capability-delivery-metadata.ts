@@ -66,6 +66,24 @@ export function mergeCapabilityDeliveryMetadata(
           ...(existingReport?.undelivered ?? []),
           ...channelReport.undelivered,
         ],
+        // Independent review LOW-1: `channel`/`firstTurnInstructions` are
+        // resolution-stage facts (`session-agent-resolution.ts` decides
+        // them from the engine capability matrix; no channel-stage merge
+        // legitimately produces them) — carried forward exactly like
+        // `source`/`requested` above, never read off `channelReport`. Not
+        // carrying them forward would let an unrelated channel-stage merge
+        // for the SAME capability (e.g. a future systemPrompt confirmation)
+        // silently reconstruct the report without them, and the delegate
+        // seam's `channel === 'first-turn'` check would then fall through
+        // to the ordinary system-prompt branch — a first-turn receipt
+        // misreported as "delivered on the engine's system-prompt channel"
+        // for an engine that has none.
+        ...(existingReport?.channel !== undefined
+          ? { channel: existingReport.channel }
+          : {}),
+        ...(existingReport?.firstTurnInstructions !== undefined
+          ? { firstTurnInstructions: existingReport.firstTurnInstructions }
+          : {}),
       },
     },
   };

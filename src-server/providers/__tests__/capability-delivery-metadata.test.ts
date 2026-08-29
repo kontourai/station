@@ -147,4 +147,53 @@ describe('mergeCapabilityDeliveryMetadata', () => {
     const merged = result[SESSION_CAPABILITY_DELIVERY_METADATA_KEY] as any;
     expect(merged.skills.delivered).toEqual([]);
   });
+
+  test('independent review LOW-1: a channel-stage merge for systemPrompt carries `channel`/`firstTurnInstructions` forward — a first-turn receipt is never reconstructed into a false ordinary-channel "delivered"', () => {
+    // Simulates the resolution-stage report session-agent-resolution.ts
+    // writes for an engine with no native systemPrompt channel (muse,
+    // codex, acp): `channel: 'first-turn'` names the fallback, and
+    // `firstTurnInstructions` carries the pending authored prompt.
+    const inputMetadata = {
+      [SESSION_CAPABILITY_DELIVERY_METADATA_KEY]: {
+        agentSlug: 'my-agent',
+        systemPrompt: {
+          source: 'agent',
+          requested: ['agent-prompt'],
+          undelivered: [],
+          channel: 'first-turn' as const,
+          firstTurnInstructions: 'Be terse.',
+        },
+      },
+    };
+
+    // An UNRELATED channel-stage merge for the same capability (e.g. a
+    // hypothetical future confirmation) that never mentions channel/
+    // firstTurnInstructions at all — exactly what claude-adapter.ts's own
+    // native-flag confirmation call looks like today.
+    const result = mergeCapabilityDeliveryMetadata(
+      inputMetadata,
+      'systemPrompt',
+      {
+        source: 'agent',
+        requested: ['agent-prompt'],
+        delivered: ['agent-prompt'],
+        undelivered: [],
+      },
+    );
+
+    const merged = result[SESSION_CAPABILITY_DELIVERY_METADATA_KEY] as any;
+    // The reconstructed report still names the first-turn fallback and
+    // still carries the pending prompt — a reconstruction that silently
+    // dropped both would make `delegatedCapabilityDelivery` fall through to
+    // its ordinary-channel branch and report "delivered (system prompt)"
+    // for an engine that has no system-prompt channel at all.
+    expect(merged.systemPrompt).toEqual({
+      source: 'agent',
+      requested: ['agent-prompt'],
+      delivered: ['agent-prompt'],
+      undelivered: [],
+      channel: 'first-turn',
+      firstTurnInstructions: 'Be terse.',
+    });
+  });
 });

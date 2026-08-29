@@ -46,6 +46,7 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   type ApprovalDecision,
   continueDelegatedTask,
+  type DelegatedCapabilityDelivery,
   type DelegatedTaskEventPage,
   type DelegatedTaskFollowUpHandle,
   type DelegatedTaskHandle,
@@ -218,6 +219,65 @@ function projectJoinNote(
   }
 }
 
+/**
+ * Delivery-honesty disclosure for the delegate surface: when the resolved
+ * Agent authored a setting the engine's channels could not carry, the default
+ * human output names the dropped setting — never a silent drop, and never a
+ * refusal (the task dispatched; the setting did not travel). A delivered (or
+ * first-turn pending) prompt gets its one-line positive summary because it is
+ * cheap and answers the natural next question.
+ */
+function capabilityDeliveryLines(
+  delivery: DelegatedCapabilityDelivery | undefined,
+  provider: string | undefined,
+): string[] {
+  if (!delivery) return [];
+  const engine = provider ?? 'this engine';
+  const lines: string[] = [];
+  if (delivery.prompt) {
+    if (delivery.prompt.status === 'not-delivered') {
+      lines.push(
+        delivery.prompt.reason === 'engine-unsupported'
+          ? `prompt not delivered: engine has no system-prompt channel (${engine})`
+          : `prompt not delivered: ${delivery.prompt.reason ?? 'unknown reason'}`,
+      );
+    } else if (delivery.prompt.channel === 'first-turn') {
+      lines.push(
+        delivery.prompt.status === 'delivered'
+          ? `agent prompt delivered (first-turn instructions, ${engine})`
+          : `agent prompt delivers with the first turn (${engine})`,
+      );
+    } else {
+      lines.push(`agent prompt delivered (${engine} system prompt)`);
+    }
+  }
+  for (const drop of delivery.dropped) {
+    // systemPrompt drops are covered by the prompt line above.
+    if (drop.capability === 'systemPrompt') continue;
+    const subject =
+      drop.capability === 'toolServers'
+        ? `tool server '${drop.id ?? '?'}'`
+        : `skill '${drop.id ?? '?'}'`;
+    lines.push(`${subject} not delivered: ${droppedReasonText(drop.reason)}`);
+  }
+  return lines;
+}
+
+function droppedReasonText(reason: string): string {
+  switch (reason) {
+    case 'engine-unsupported':
+      return 'engine has no channel for it';
+    case 'not-found':
+      return 'not found on this Station';
+    case 'disabled':
+      return 'disabled';
+    case 'secret-boundary-env':
+      return 'its env crosses the secret boundary';
+    default:
+      return reason;
+  }
+}
+
 function formatCreateSummary(handle: DelegatedTaskHandle): string {
   // Older target Stations can still return the pre-lineage create handle.
   // Keep the compatibility alias at this last presentation seam too, so a
@@ -236,6 +296,9 @@ function formatCreateSummary(handle: DelegatedTaskHandle): string {
   }
   if (handle.model) lines.push(`Model: ${handle.model}`);
   if (handle.parentTaskId) lines.push(`Parent task: ${handle.parentTaskId}`);
+  lines.push(
+    ...capabilityDeliveryLines(handle.capabilityDelivery, handle.provider),
+  );
   // station#3409: this used to read `dispatched (resumable)`, printed
   // unconditionally at the moment of dispatch. It described a window that
   // closes when the task finishes — which is exactly when a supervisor has
@@ -265,6 +328,9 @@ function formatStatusSummary(snapshot: DelegatedTaskSnapshot): string {
   ];
   if (snapshot.provider) lines.push(`Provider: ${snapshot.provider}`);
   if (snapshot.model) lines.push(`Model: ${snapshot.model}`);
+  lines.push(
+    ...capabilityDeliveryLines(snapshot.capabilityDelivery, snapshot.provider),
+  );
   if (snapshot.lastEvent) {
     lines.push(
       `Last event: ${snapshot.lastEvent.method}${
