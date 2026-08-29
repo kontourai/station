@@ -71,6 +71,8 @@ export interface WorkspacePaneHostTreeProps {
   /** Injectable only at the browser-lock boundary; production uses Web Locks. */
   lockManager?: WorkspacePaneHostLockManager | null;
   admitRestoredInstance?: WorkspacePaneHostRestoredInstanceAdmission;
+  /** Admission for new host-open requests; restored instances use their own fence. */
+  admitOpenInstance?(instance: WorkspacePaneInstance): boolean;
   onInstanceRemoved?(instance: WorkspacePaneInstance): void;
   presentationLabel?(instance: WorkspacePaneInstance): string | null;
   onOpenCatalog?(request: WorkspacePaneHostCatalogRequest): void;
@@ -134,6 +136,7 @@ export function WorkspacePaneHostTree({
   storage,
   lockManager,
   admitRestoredInstance,
+  admitOpenInstance,
   onInstanceRemoved,
   presentationLabel,
   onOpenCatalog,
@@ -169,6 +172,7 @@ export function WorkspacePaneHostTree({
     storage,
     lockManager,
     admitRestoredInstance,
+    admitOpenInstance,
     onInstanceRemoved,
     onDocumentChange,
     operationalEventSink,
@@ -334,7 +338,12 @@ export function WorkspacePaneHostTree({
     const failed =
       occupant && controller.state.rendererFailures[occupant.instanceId];
     return (
-      <WorkspacePaneHostOpenContext.Provider value={{ open: controller.open }}>
+      <WorkspacePaneHostOpenContext.Provider
+        value={{
+          open: controller.open,
+          focusExisting: controller.focusExisting,
+        }}
+      >
         {/* No chrome AND no element. `display: contents` was not enough: it
             removes a wrapper's box but not its place in the DOM, and the shell
             positions the dock with child combinators
@@ -386,7 +395,12 @@ export function WorkspacePaneHostTree({
       projection.activeInstanceId,
     );
     return (
-      <WorkspacePaneHostOpenContext.Provider value={{ open: controller.open }}>
+      <WorkspacePaneHostOpenContext.Provider
+        value={{
+          open: controller.open,
+          focusExisting: controller.focusExisting,
+        }}
+      >
         <section
           ref={compactHostRef}
           className="workspace-pane-host workspace-pane-host--compact"
@@ -445,7 +459,9 @@ export function WorkspacePaneHostTree({
       )
     : undefined;
   return (
-    <WorkspacePaneHostOpenContext.Provider value={{ open: controller.open }}>
+    <WorkspacePaneHostOpenContext.Provider
+      value={{ open: controller.open, focusExisting: controller.focusExisting }}
+    >
       <section className="workspace-pane-host" aria-label="Workspace panes">
         <p className="workspace-pane-host__persistence" role="status">
           {persistenceNotice}

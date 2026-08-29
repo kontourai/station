@@ -882,6 +882,48 @@ test('focuses an existing pane without admitting a duplicate instance', async ()
   expect(globalThis.document.activeElement).toBe(tab);
 });
 
+test.each([
+  { name: 'chromeless', presentation: 'chromeless' as const },
+  { name: 'compact', compact: true },
+  { name: 'tabbed' },
+])(
+  'publishes focusExisting through the $name production provider',
+  async (props) => {
+    let focused = false;
+    function FocusConsumer() {
+      const host = useWorkspacePaneHostOpenAction();
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            focused = host?.focusExisting?.(two.instanceId) ?? false;
+          }}
+        >
+          Focus existing from {props.name}
+        </button>
+      );
+    }
+    render(
+      <WorkspacePaneHost
+        document={hostDocument()}
+        {...props}
+        renderPane={() => <FocusConsumer />}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.click(
+      screen.getAllByRole('button', {
+        name: `Focus existing from ${props.name}`,
+      })[0]!,
+    );
+
+    expect(focused).toBe(true);
+  },
+);
+
 test('compact commands target the active persisted group and disable flattened reordering', async () => {
   const onDocumentChange = vi.fn();
   const onOpenCatalog = vi.fn();

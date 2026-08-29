@@ -73,6 +73,8 @@ export interface WorkspacePaneHostControllerOptions {
   storage?: WorkspacePaneHostStorage;
   lockManager?: WorkspacePaneHostLockManager | null;
   admitRestoredInstance?: WorkspacePaneHostRestoredInstanceAdmission;
+  /** Refuses a new occurrence this host cannot render before persistence. */
+  admitOpenInstance?(instance: WorkspacePaneInstance): boolean;
   onInstanceRemoved?(instance: WorkspacePaneInstance): void;
   onDocumentChange?(document: WorkspacePaneHostDocumentV1): void;
   operationalEventSink?: WorkspacePaneOperationalEventSink;
@@ -123,6 +125,7 @@ export function useWorkspacePaneHostController({
   storage,
   lockManager,
   admitRestoredInstance,
+  admitOpenInstance,
   onInstanceRemoved,
   onDocumentChange,
   operationalEventSink,
@@ -158,6 +161,7 @@ export function useWorkspacePaneHostController({
   const authorityFingerprintRef = useRef(authorityFingerprint);
   const documentRef = useRef(document);
   const restoredInstanceAdmissionRef = useRef(admitRestoredInstance);
+  const openInstanceAdmissionRef = useRef(admitOpenInstance);
   const liveReferenceOwner = useRef(Symbol('workspace-pane-host'));
   const mountedRef = useRef(false);
   const persistenceStatusRef =
@@ -193,6 +197,7 @@ export function useWorkspacePaneHostController({
   stateRef.current = state;
   documentRef.current = document;
   restoredInstanceAdmissionRef.current = admitRestoredInstance;
+  openInstanceAdmissionRef.current = admitOpenInstance;
   onDocumentChangeRef.current = onDocumentChange;
   operationalEventContextRef.current = operationalEventContext;
   operationalEventSinkRef.current = operationalEventSink;
@@ -631,6 +636,11 @@ export function useWorkspacePaneHostController({
       placement?: WorkspacePaneHostOpenPlacement,
     ) => {
       if (!hasPersistenceLease()) return false;
+      if (
+        openInstanceAdmissionRef.current &&
+        !openInstanceAdmissionRef.current(instance)
+      )
+        return false;
       const action: Extract<
         WorkspacePaneHostAction,
         { type: 'add-existing-instance' } | { type: 'split' }
