@@ -601,9 +601,10 @@ export async function seedOrchestrationRoutes(
             }),
           });
         }
-        const currentSessionId =
-          conversationSessionReaders.get(page)?.(conversationId).at(-1) ??
-          conversation.currentSessionId;
+        const sessionReader = conversationSessionReaders.get(page);
+        const currentSessionId = sessionReader
+          ? sessionReader(conversationId).at(-1)
+          : conversation.currentSessionId;
         const { currentSessionId: _seededCurrentSessionId, ...identity } =
           conversation;
         const exactConversation = {
@@ -639,12 +640,22 @@ export async function seedOrchestrationRoutes(
           }),
         });
       }
+      const legacyConversation = conversation
+        ? {
+            id: conversation.id,
+            agentSlug: conversation.agentSlug,
+            ...(conversation.projectSlug
+              ? { projectSlug: conversation.projectSlug }
+              : {}),
+            ...(conversation.title ? { title: conversation.title } : {}),
+          }
+        : undefined;
       return r.fulfill({
-        status: conversation ? 200 : 404,
+        status: legacyConversation ? 200 : 404,
         contentType: 'application/json',
         body: JSON.stringify(
-          conversation
-            ? { success: true, data: conversation }
+          legacyConversation
+            ? { success: true, data: legacyConversation }
             : { success: false, error: 'Conversation not found' },
         ),
       });
