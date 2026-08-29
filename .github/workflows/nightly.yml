@@ -20,13 +20,10 @@ name: Nightly
 # its four specs touch device sessions or pairing. Paired-device journey coverage is
 # separate, open work (station#4537 item 1).
 #
-# The `test-gate` and `nightly` (Android) jobs below are deliberately
-# self-hosted: build-android.yml already builds Android on this fleet, so
-# they do not depend on provider-hosted capacity. Adding a new SELF-HOSTED
-# job to the fleet requires it in the "Kontour Build Fleet" runner group's
-# allow-list — until then its jobs queue rather than run. This does not
-# apply to `nightly-desktop`, which runs on a provider-hosted `macos-15`
-# runner outside the fleet (see that job's own header).
+# The `test-gate` and `nightly` (Android) jobs run on GitHub-hosted
+# ubuntu-22.04 now that the repository is public. `nightly-desktop` stays
+# on macos-15 (see that job's own header). desktop-win is reserved for the
+# native Windows hardware-reference lane.
 on:
   schedule:
     # 09:00 UTC — early morning in the maintainer's timezone, so a day's work
@@ -72,7 +69,7 @@ jobs:
     if: github.event_name != 'pull_request'
     permissions:
       contents: read
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -82,30 +79,6 @@ jobs:
           # the nightly ships" contract readable.
           ref: ${{ github.sha }}
           persist-credentials: false
-
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          # Same weight as ci.yml's browser-smoke job: the same work on the
-          # same single persistent listener. The build job's weight-9 lease
-          # cannot be admitted until this lease is released, and it cannot
-          # start before this job finishes anyway.
-          #
-          # Disclosure: this lease deliberately precedes the nightly job's
-          # operator-input prevalidation (rebuild-index validation runs in
-          # that job, after this capacity is already held — for up to 45
-          # minutes). Hoisting prevalidation ahead of the gate would need a
-          # third prevalidation job, which was reviewed and rejected as
-          # over-build; the malformed-input cost is a wasted gate run, not
-          # a wasted build.
-          lease-weight: "6"
-          timeout-seconds: "600"
-          owner-lifetime-seconds: "7800"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc }
@@ -128,12 +101,10 @@ jobs:
         run: node scripts/typecheck-aggregate.mjs
 
       - name: Install Chromium
-        # Persistent-$HOME convention (station#3453): this fleet is a single
-        # persistent listener, so a browser downloaded on one run survives to
-        # the next with no cache step. Bounded and retried per station#3517.
-        # run-e2e-suite.mjs fails loud when Chromium is missing
-        # (assertPlaywrightBrowsersInstalled), so a broken install reddens
-        # this gate rather than silently skipping the smoke.
+        # Hosted runners are ephemeral, so this installs Chromium every job.
+        # Bounded and retried per station#3517. run-e2e-suite.mjs fails loud
+        # when Chromium is missing (assertPlaywrightBrowsersInstalled), so a
+        # broken install reddens this gate rather than silently skipping.
         timeout-minutes: 20
         run: |
           echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
@@ -188,7 +159,7 @@ jobs:
     # the literal prefix ladder ending in `github.event_name !=
     # 'pull_request'`, so reordering the conjuncts reddens gate:workflows.
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
       GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
@@ -211,8 +182,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-
       - name: Validate requested Nightly rebuild index
         env:
           NIGHTLY_REBUILD_INDEX: ${{ inputs.rebuild_index }}
@@ -222,16 +191,6 @@ jobs:
             import { parseNightlyRebuildIndex } from "./scripts/lib/nightly-build-identity.mjs";
             parseNightlyRebuildIndex(process.env.NIGHTLY_REBUILD_INDEX);
           '
-
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "9"
-          timeout-seconds: "600"
-          owner-lifetime-seconds: "7800"
 
       - name: Decide whether there is anything to build
         id: decide
@@ -362,7 +321,6 @@ jobs:
           NIGHTLY_NOW: ${{ steps.allocate.outputs.date }}
           NIGHTLY_BUILD: ${{ steps.allocate.outputs.build }}
           NIGHTLY_CONFIG_PATH: ${{ runner.temp }}/tauri.nightly.conf.json
-
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.decide.outputs.build == 'true'
@@ -841,9 +799,8 @@ jobs:
   # ── Desktop (station#575) ────────────────────────────────────────────────
   # A sibling of `nightly` above, gated identically on the shared test-gate
   # and never on that job's own success: Android and desktop ship
-  # independently. Runs on GitHub-hosted `macos-15`, the same provider-hosted
-  # image release.yml's desktop-macos job uses — the self-hosted-fleet
-  # allow-list this file's header describes governs only self-hosted jobs.
+  # independently. Runs on GitHub-hosted `macos-15`, the same image
+  # release.yml's desktop-macos job uses.
   #
   # This job ships the CONFIG half (build, sign, publish the manifest).
   # `src-desktop` carries the runtime half (#575): `tauri-plugin-updater` is

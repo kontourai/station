@@ -18,7 +18,7 @@ jobs:
   resolve-build:
     name: Resolve exact build revision
     if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     permissions:
       actions: read
@@ -32,17 +32,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "1"
-          timeout-seconds: "600"
-          owner-lifetime-seconds: "7800"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
@@ -59,7 +48,7 @@ jobs:
     name: Mobile Playwright (Android viewport)
     if: github.event_name != 'pull_request'
     needs: resolve-build
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     permissions:
       contents: read
@@ -69,17 +58,6 @@ jobs:
           ref: ${{ needs.resolve-build.outputs.head_sha }}
           persist-credentials: false
 
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "6"
-          timeout-seconds: "600"
-          owner-lifetime-seconds: "7800"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
@@ -119,7 +97,7 @@ jobs:
     name: Emulator Smoke Test
     if: github.event_name != 'pull_request'
     needs: resolve-build
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, android-kvm]
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     permissions:
       actions: read
@@ -131,17 +109,6 @@ jobs:
           ref: ${{ needs.resolve-build.outputs.head_sha }}
           persist-credentials: false
 
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "9"
-          timeout-seconds: "600"
-          owner-lifetime-seconds: "7800"
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
           distribution: temurin
@@ -164,7 +131,7 @@ jobs:
       - name: Verify provisioned KVM access
         run: |
           test -r /dev/kvm -a -w /dev/kvm || {
-            echo "::error::android-kvm runner cannot read and write /dev/kvm"
+            echo "::error::hosted Ubuntu runner cannot read and write /dev/kvm"
             exit 1
           }
 

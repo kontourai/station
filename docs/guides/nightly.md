@@ -6,7 +6,7 @@ with two different build and delivery mechanisms, sharing one identifier:
 | Platform | Artifact | Identifier | Built by | Delivered by |
 | --- | --- | --- | --- | --- |
 | macOS | `/Applications/Station Nightly.app` | `io.kontourai.station.nightly` | `ops/nightly/install-macos.zsh` on the local Mac | Local install only |
-| Android | Signed AAB/APK | `io.kontourai.station.nightly` | `.github/workflows/nightly.yml` on the self-hosted fleet | Play internal testing track |
+| Android | Signed AAB/APK | `io.kontourai.station.nightly` | `.github/workflows/nightly.yml` on GitHub-hosted `ubuntu-22.04` | Play internal testing track |
 
 Because the nightly uses its own identifier, both lanes install alongside a
 stable Station install (`io.kontourai.station`) and never touch it.

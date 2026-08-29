@@ -17,18 +17,11 @@ permissions:
 jobs:
   classify:
     name: Exact full-diff classification
-    # Keep candidate feedback off the starved heavy listener; non-PR jobs use
-    # this full-diff result.
+    # Non-PR jobs use this full-diff result. Hosted so a GitHub-hosted
+    # outage cannot skip the rest of this workflow the way station#1931
+    # did when this classifier ran on a billing-blocked hosted image.
     if: ${{ github.event_name != 'pull_request_target' }}
-    # station#1931: this MUST NOT be provider-hosted. Every other job in this
-    # workflow `needs:` it, so while provider-hosted jobs cannot start (org
-    # billing, 2026-08-01) a zero-step failure here SKIPS the entire
-    # self-hosted fleet — `full:regression` did not run on `main` for 25+
-    # consecutive pushes, and nothing surfaced that. It classifies a diff with
-    # one node script; it has no reason to need a provider runner.
-    # `fast-feedback` is policy-reserved for `fast-checks` alone
-    # (scripts/actionlint-gate.mjs), so this takes the heavy-host listener.
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     outputs:
       heavy: ${{ steps.classify.outputs.heavy }}
@@ -39,21 +32,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-
-      # Same bounded-lane shape as `fast-checks`, which runs on this listener
-      # and is this job's immediate consumer. Weight 1: classification reads a
-      # diff, it does not build.
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "1"
-          timeout-seconds: "300"
-          owner-lifetime-seconds: "7800"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -69,9 +47,7 @@ jobs:
   fast-checks:
     needs: classify
     # `always()` permits same-repository PR feedback after its intentionally
-    # skipped heavy-host classifier. Fork PRs must stay on provider-hosted
-    # infrastructure below; no untrusted fork code reaches this persistent
-    # runner.
+    # skipped classifier. Fork PRs stay on the isolated fork-smoke job below.
     if: ${{ always() && !cancelled() && ((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
@@ -80,17 +56,11 @@ jobs:
       # type keeps dispatches isolated from pushes on refs/heads/main.
       group: ci-fast-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    # `fast-feedback` is a dedicated listener without the shared
-    # `kontour-linux` label.  That keeps admission for this bounded lane
-    # available while a heavy job waits on (or holds) host capacity. Reserve
-    # one unit: every other desktop-win reservation is capped at nine, so a
-    # compliant heavyweight cannot consume the bounded feedback headroom.
-    runs-on: [self-hosted, Linux, X64, fast-feedback]
-    # Five minutes of capacity admission, a bounded 20-minute Chromium
-    # installation, the twelve-minute raw ci:fast budget, and post checks
-    # cannot fit inside fifteen minutes. Forty-five minutes is a job-level
-    # containment fence for those declared stages, not a broader raw-test
-    # budget or completion claim.
+    runs-on: ubuntu-22.04
+    # A bounded 20-minute Chromium installation, the twelve-minute raw
+    # ci:fast budget, and post checks cannot fit inside fifteen minutes.
+    # Forty-five minutes is a job-level containment fence for those declared
+    # stages, not a broader raw-test budget or completion claim.
     timeout-minutes: 45
     steps:
       - name: Check out base policy for pull-request title gate
@@ -101,18 +71,6 @@ jobs:
           persist-credentials: false
           repository: ${{ github.repository }}
           ref: ${{ github.event.pull_request.base.sha }}
-
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "1"
-          timeout-seconds: "300"
-          owner-lifetime-seconds: "7800"
 
       - name: Validate base-controlled pull-request title
         if: ${{ github.event_name == 'pull_request_target' }}
@@ -155,11 +113,9 @@ jobs:
       # touch-target checks (NotificationContainer, station#3513) whenever
       # the merge snapshot touches notification code — and they fail loud
       # (not silently skip) without a browser, redding every affected PR.
-      # Same persistent-$HOME convention as full-regression's install below
-      # (station#3453): survives runs on the persistent listener without a
-      # cache step; `playwright install` called directly so the exported
-      # path wins over install:playwright's node_modules pin. Bounded +
-      # retried per #3517.
+      # `playwright install` is called directly so the exported path wins
+      # over install:playwright's node_modules pin. Bounded + retried per
+      # #3517. Hosted runners are ephemeral, so this installs every job.
       - name: Install Chromium for changed-set touch-target checks
         timeout-minutes: 20
         run: |
@@ -267,34 +223,21 @@ jobs:
           STATION_CI_FAST_BASE: ${{ github.event.pull_request.base.sha }}
         run: npm run ci:fast
 
-
   full-regression:
-    # Avoid the weight-6, roughly 65-minute heavy-host lease on every push or
-    # PR; dispatch remains available for an explicitly requested completion gate.
+    # Avoid a ~65-minute completion gate on every push or PR; dispatch remains
+    # available for an explicitly requested run.
     needs: [classify, fast-checks]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}
     concurrency:
       group: ci-full-regression-${{ github.event_name }}-${{ github.ref }}
       cancel-in-progress: true
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "6"
-          timeout-seconds: "600"
-          owner-lifetime-seconds: "7800"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -310,26 +253,15 @@ jobs:
         #
         # Installed to `$HOME/.cache/ms-playwright`, exported job-wide via
         # `$GITHUB_ENV` — the same convention `browser-smoke` below already
-        # uses. This org's Linux heavy-host fleet is a single persistent
-        # listener (`desktop-win-linux`), so both jobs land on the same
-        # machine and the same `$HOME`. Unlike `node_modules`,
-        # `$HOME` is untouched by `npm run dependencies:ci` above, so a browser downloaded on
-        # one run survives to the next without any GitHub Actions cache
-        # step (station#3517, station#3555). This intentionally does NOT use
-        # `npm run install:playwright`: that script hardcodes an
-        # in-`node_modules` browsers path as a package.json prefix, which
-        # would override the exported env var. Calling `playwright install`
-        # directly lets the export win. The touch-target test's own default
-        # (`tests/helpers/css-cascade-fixture.ts`) and
+        # uses. Hosted runners are ephemeral, so this installs every job.
+        # This intentionally does NOT use `npm run install:playwright`: that
+        # script hardcodes an in-`node_modules` browsers path as a package.json
+        # prefix, which would override the exported env var. Calling
+        # `playwright install` directly lets the export win. The touch-target
+        # test's own default (`tests/helpers/css-cascade-fixture.ts`) and
         # `scripts/run-e2e-suite.mjs` both honor any already-*set*
         # `PLAYWRIGHT_BROWSERS_PATH` rather than forcing `0`, so they resolve
         # the same path this step just installed to.
-        #
-        # Trade-off, disclosed: the browser store is now shared across runs
-        # on that host rather than pinned per-checkout. Not a hazard on CI —
-        # one checkout, one Playwright version — and concurrent access is
-        # already serialized by the physical-host capacity lease plus
-        # `browser-smoke`'s `needs: full-regression` below.
         #
         # Bounded + retried, mirroring ci-extended.yml's `playwright-full`
         # install: the previous single 5-minute attempt with no retry was
@@ -420,31 +352,19 @@ jobs:
 
   browser-smoke:
     name: Deterministic Browser Smoke
-    # The completion gate owns weight 6, so start browser smoke only after it
-    # releases capacity. GitHub skips failed dependencies by default.
+    # Start browser smoke only after the completion gate.
+    # GitHub skips failed dependencies by default.
     needs: [classify, full-regression]
     if: github.event_name != 'pull_request_target' && (github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')
     concurrency:
       group: ci-browser-smoke-${{ github.event_name }}-${{ github.ref }}
       cancel-in-progress: true
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "6"
-          timeout-seconds: "600"
-          owner-lifetime-seconds: "7800"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

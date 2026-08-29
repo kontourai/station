@@ -31,10 +31,9 @@ describe('backlog priority policy', () => {
     expect(workflow).toContain('node scripts/backlog-priority-policy.mjs');
     expect(workflow).toContain('node scripts/label-manifest.mjs --input=');
     expect(workflow).toContain('issues: read');
-    expect(workflow).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]',
-    );
-    expect(workflow).toContain('physical-host-capacity@');
+    expect(workflow).toContain('runs-on: ubuntu-22.04');
+    expect(workflow).not.toContain('physical-host-capacity@');
+    expect(workflow).not.toContain('self-hosted');
   });
 
   test('accepts a bounded actionable queue and explicit non-actionable dispositions', () => {

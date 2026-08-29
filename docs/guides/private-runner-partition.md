@@ -1,8 +1,14 @@
 # Private runner partition
 
-This is an operations plan for any GitHub Actions fleet where short feedback
-must remain available while long jobs share one physical host. It deliberately
-does not modify a host from a repository checkout.
+Station's Linux CI, Android, container, publish, secret-scan, and generic
+Windows jobs run on GitHub-hosted images now that the repository is public.
+desktop-win remains the named native-Windows hardware-reference host for
+interactive-workspace performance and for recovering a leaked physical-host
+capacity lease.
+
+This is an operations plan for any remaining GitHub Actions fleet where short
+feedback must remain available while long jobs share one physical host. It
+deliberately does not modify a host from a repository checkout.
 
 GitHub Actions treats `runs-on` labels as required set membership, not a
 priority queue: a runner can accept a job whenever it has every requested
@@ -22,11 +28,13 @@ Both listeners retain GitHub's default `self-hosted`, `Linux`, and `X64`
 labels. Keep the existing native Windows listener and its `kontour-windows` /
 `native` routing unchanged.
 
-Station routes only `ci.yml`'s `fast-checks` job to `fast-feedback`. Every
-other Linux workflow job that reserves `physical-host-capacity` (including a
-reusable workflow caller) requests `heavy-host`. The lease is still required:
-the two listeners may run a 4-unit fast lane and a 6-unit heavy lane together,
-but never work that exceeds the host's 10-unit budget.
+Station no longer routes Linux CI to these listeners. Remaining desktop-win
+jobs request the native Windows labels (`kontour-windows`, `native`) and still
+take a physical-host lease. If a Linux job is reintroduced on this host, route
+only `ci.yml`'s `fast-checks` to `fast-feedback` and every other leased Linux
+job to `heavy-host`. The lease is still required: the two listeners may run a
+4-unit fast lane and a 6-unit heavy lane together, but never work that exceeds
+the host's 10-unit budget.
 
 ## Safe rollout
 

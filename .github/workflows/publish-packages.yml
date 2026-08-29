@@ -11,22 +11,14 @@ on:
 # regardless of `cancel-in-progress`, so on a busy main every push to main
 # cancelled a queued `workflow_dispatch` before it ever reached a runner.
 #
-# Observed live 2026-08-03, immediately after this job moved to the private
-# fleet: the single `heavy-host` listener was continuously occupied (CI
-# full-regression, container smoke, Android tests, Secret Scan and the Android
-# build artifact all contend for it), and five consecutive dispatches were
-# cancelled while still pending, each by the next push's own publish run. The
-# documented instruction "run the workflow manually to publish deliberately"
-# was therefore unreachable — not slow, unreachable — and it failed as a
-# cancellation, which reads like a human stopped it on purpose.
+# Observed live 2026-08-03 when this job still shared the private fleet
+# listener: five consecutive dispatches were cancelled while still pending,
+# each by the next push's own publish run. The documented instruction "run
+# the workflow manually to publish deliberately" was therefore unreachable.
 #
-# Keying the group on the event keeps the property that actually matters (push
-# runs stay mutually exclusive with each other; only the newest version PR is
-# useful) while letting a deliberate publish hold its place in the queue. The
-# trade is that a version run and a publish run are no longer mutually
-# exclusive. That is the right trade here: they are serialized in practice by
-# the single Linux listener, and a rare interleave is a far smaller defect than
-# a publish path that cannot be invoked at all.
+# Keying the group on the event keeps push runs mutually exclusive with each
+# other (only the newest version PR is useful) while letting a deliberate
+# publish hold its place in the queue.
 concurrency:
   group: publish-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: false
@@ -44,34 +36,11 @@ permissions:
 
 jobs:
   publish:
-    # Provider-hosted runners are unavailable to this private repo during the
-    # account-level Actions billing outage: the job terminated in seconds having
-    # executed ZERO steps, so nothing here — not even the preflight — had ever
-    # run. Every other Linux job in this repo already targets the private fleet;
-    # this file was the last `ubuntu-latest` holdout.
-    #
-    # Label choice: `heavy-host`, not `fast-feedback`. `fast-feedback` is a
-    # dedicated single-purpose listener and `scripts/actionlint-gate.mjs`
-    # (`runnerPartitionFindings`) hard-reserves it for ci.yml's `fast-checks`
-    # job alone — routing anything else there is a gate failure, not a
-    # preference. `docs/guides/private-runner-partition.md` states the same
-    # contract from the ops side: every other Linux job that takes a
-    # physical-host lease requests `heavy-host`. That partition exists so a
-    # queued heavyweight cannot occupy bounded feedback capacity before its own
-    # lease is admitted, and this job is a heavyweight by that definition — it
-    # runs `npm run dependencies:ci` plus four package builds and then, on a real publish, an
-    # irreversible registry write. It is not a five-minute feedback lane.
-    #
-    # SECURITY POSTURE, stated rather than skipped: publishing now authenticates
-    # on the owner's own machine. What executes there is an OIDC id-token minted
-    # per job for audience `npm:registry.npmjs.org`, exchanged for a
-    # registry token that is short-lived and scoped to the individual package
-    # being published. No long-lived npm credential exists in this repo (it has
-    # no Actions secrets at all) and none is created here, so the blast radius
-    # of the fleet is one publish window for three named packages, not a
-    # standing token.
+    # Public repository: GitHub-hosted runners are free and are required for
+    # npm trusted-publishing provenance (station#683). OIDC still authenticates
+    # the publish; no long-lived npm credential exists in this repo.
     if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    runs-on: ubuntu-latest
     # ci.yml's heavy jobs budget 90; a ceiling that lands inside
     # `changeset publish` produces a partial publish, so keep the headroom.
     timeout-minutes: 60
@@ -82,13 +51,10 @@ jobs:
       # thing it exists to guard.
       PUBLISH_RUN: ${{ github.event_name == 'workflow_dispatch' }}
     steps:
-      # `persist-credentials: false` is mandatory on the persistent fleet (the
-      # runner's workspace outlives the job, so a stored git credential outlives
-      # it too) and is enforced by scripts/actionlint-gate.mjs. It removes the
-      # credential a git-CLI push would need — which is fine: the changesets
-      # step below pushes through the GitHub API (action v2's default;
-      # `push-with-git-cli` stays false), authenticated by its `github-token`
-      # input, so no git credential ever needs to exist in this workspace.
+      # `persist-credentials: false` removes the credential a git-CLI push
+      # would need — which is fine: the changesets step below pushes through
+      # the GitHub API (action v2's default; `push-with-git-cli` stays false),
+      # authenticated by its `github-token` input.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -99,26 +65,8 @@ jobs:
           # runs after credentials are removed, which fails with "could not
           # read Username" (run 32598339585, the first paired v2+v3 run).
           # Fetching everything up front removes the post-checkout fetch
-          # entirely; on the persistent fleet the workspace already carries
-          # most history, so the incremental cost is small.
+          # entirely.
           fetch-depth: 0
-
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-
-      # The fleet is one physical host with a 10-unit budget. This job is
-      # `npm run dependencies:ci` + four package builds — heavier than the 1-unit scan lanes,
-      # lighter than ci.yml's 6-unit full-regression corpus or the 9-unit
-      # container/Android builds. 4 leaves room for the reserved feedback unit
-      # and a concurrent mid-weight lane.
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "4"
-          timeout-seconds: "600"
-          owner-lifetime-seconds: "7800"
 
       # DO NOT add `registry-url:` here without also supplying a real
       # NODE_AUTH_TOKEN. setup-node writes the literal line
@@ -142,11 +90,9 @@ jobs:
       # each package's own `publishConfig`. Preflight check 4 fails the job if a
       # registry credential is configured but unresolvable.
       #
-      # `cache: npm` is deliberately absent and is a gate rule on this fleet:
-      # the persistent runner already keeps npm's content-addressed cache in its
-      # service-account home, so setup-node's remote cache would download and
-      # extract the same multi-gigabyte archive once per job while adding
-      # nothing to `npm run dependencies:ci`'s clean-install guarantees.
+      # `cache: npm` is deliberately absent: `npm run dependencies:ci` is a
+      # clean install from the lockfile, and a remote cache is not part of
+      # that guarantee.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
@@ -516,16 +462,7 @@ jobs:
           version-script: npm run version-packages
           pr-title: 'chore: version packages'
           commit-message: 'chore: version packages'
-        env:
-          # Self-hosted runners cannot produce sigstore provenance: npm's
-          # trusted publishing auto-attaches it and the registry rejects the
-          # publish with E422 ("Only github-hosted runners are supported").
-          # Disabling provenance leaves OIDC trusted-publishing auth intact —
-          # only the attestation is dropped. Restoring real provenance means
-          # moving this job to a github-hosted runner (#683).
-          NPM_CONFIG_PROVENANCE: 'false'
-        # Exactly ONE env var above, deliberately — each absence below is a
-        # decision:
+        # No env vars on this step, deliberately — each absence is a decision:
         #
         # No GITHUB_TOKEN: v2 takes the token through the `github-token`
         # input and errors when an env var of that name disagrees with it —
@@ -546,19 +483,11 @@ jobs:
         # Authentication is the job's OIDC id-token, exchanged by npm with the
         # registry against the trusted publishers named above.
         #
-        # NPM_CONFIG_PROVENANCE is deliberately NOT set. npm generates
-        # provenance automatically under trusted publishing, but only behind two
-        # gates (npm/cli lib/utils/oidc.js:145-165): the id-token must report
-        # `repository_visibility === "public"`, AND `libaccess.getVisibility()`
-        # must report the npm package public. Setting the env var makes
-        # `config.isDefault('provenance')` false, which bypasses both and forces
-        # generation from this PRIVATE repo — npm documents provenance as
-        # unsupported for private repositories even when the package is public
-        # (github.blog changelog 2023-07-25, cited from npm's trusted-publishers
-        # doc). Leaving it unset is what makes provenance switch itself on once
-        # the repo AND the package are public; hardcoding either value cannot do
-        # that. NOT VERIFIED: whether the registry rejects such a publish or
-        # merely produces a useless attestation — the removal stands either way.
+        # NPM_CONFIG_PROVENANCE is deliberately NOT set. The job now runs on
+        # github-hosted ubuntu-latest (station#683): npm trusted publishing
+        # auto-attaches sigstore provenance, which the registry only accepts
+        # from github-hosted runners. Leaving the env var unset lets npm's
+        # default turn provenance on because the repository is public.
 
       # Deploy ledger (station#4572), recorded only when this run actually
       # published (`published == 'true'` — a version-only run or a
