@@ -693,18 +693,42 @@ jobs:
       - name: Advance the rolling nightly tag
         # Only after a successful publish path: the tag is what suppresses
         # tomorrow's build, so moving it on a failed run would skip a day.
+        #
+        # REST ref update, not `git push`: GITHUB_TOKEN can never hold the
+        # `workflows` scope, and the push path refuses any ref move whose
+        # old..new range touches .github/workflows/*. The refs API only
+        # points the ref at a commit that already exists on main, so it is
+        # not subject to that push-path check — the same mechanism release
+        # tags use. The POST fallback covers the first-ever run, when the
+        # tag does not exist yet (PATCH would 404 forever).
         if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_SHA: ${{ steps.decide.outputs.head_sha }}
         run: |
-          git tag -f nightly "${{ steps.decide.outputs.head_sha }}"
-          # --no-verify: npm run dependencies:ci earlier in this job armed .githooks via the
-          # prepare script, and the pre-push hook would otherwise run repo
-          # gates (lint:check first) inside a tag-advance push — a lint red on
-          # main must not stop the rolling nightly tag from advancing.
-          git push -f --no-verify \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}" \
-            refs/tags/nightly
+          set -euo pipefail
+          advance_ref() {
+            curl -sS -o "$RUNNER_TEMP/tag-advance-response.json" -w '%{http_code}' \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "$@"
+          }
+          status=$(advance_ref -X PATCH \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/refs/tags/nightly" \
+            -d "{\"sha\":\"${TAG_SHA}\",\"force\":true}")
+          if [ "$status" = "404" ]; then
+            status=$(advance_ref -X POST \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/refs" \
+              -d "{\"ref\":\"refs/tags/nightly\",\"sha\":\"${TAG_SHA}\"}")
+          fi
+          case "$status" in
+            200|201) echo "nightly tag now at ${TAG_SHA}" ;;
+            *)
+              echo "::error::Tag advance failed with HTTP ${status}; tomorrow's nightly will rebuild this SHA."
+              cat "$RUNNER_TEMP/tag-advance-response.json"
+              exit 1
+              ;;
+          esac
 
       # ── Deploy ledger (station#4572) ─────────────────────────────────────
       # Publish-first-then-ledger, by construction: both steps below run only
@@ -815,7 +839,11 @@ jobs:
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}
     runs-on: macos-15
     environment: native-release
-    timeout-minutes: 60
+    # Notarization dominates the budget and is out of our hands: Apple's
+    # notary service holds first submissions of a bundle id for tens of
+    # minutes, on top of a ~40-minute build. 60 minutes cancels the job
+    # mid-notarize on a slow notary day.
+    timeout-minutes: 120
     permissions:
       contents: write
     steps:
@@ -1010,14 +1038,40 @@ jobs:
         # manual rebuild input, so moving it before a publish that then
         # fails would assert a ship that never happened and could only be
         # recovered by hand-deleting the tag.
+        #
+        # REST ref update, not `git push`, for the same reason as the
+        # Android leg's tag advance: GITHUB_TOKEN can never hold the
+        # `workflows` scope, and the push path refuses ref moves across
+        # workflow-file changes; the refs API only points at an existing
+        # commit.
         if: steps.decide.outputs.build == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_SHA: ${{ steps.decide.outputs.head_sha }}
         run: |
-          git tag -f nightly-desktop "${{ steps.decide.outputs.head_sha }}"
-          git push -f --no-verify \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}" \
-            refs/tags/nightly-desktop
+          set -euo pipefail
+          advance_ref() {
+            curl -sS -o "$RUNNER_TEMP/tag-advance-response.json" -w '%{http_code}' \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "$@"
+          }
+          status=$(advance_ref -X PATCH \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/refs/tags/nightly-desktop" \
+            -d "{\"sha\":\"${TAG_SHA}\",\"force\":true}")
+          if [ "$status" = "404" ]; then
+            status=$(advance_ref -X POST \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/refs" \
+              -d "{\"ref\":\"refs/tags/nightly-desktop\",\"sha\":\"${TAG_SHA}\"}")
+          fi
+          case "$status" in
+            200|201) echo "nightly-desktop tag now at ${TAG_SHA}" ;;
+            *)
+              echo "::error::Tag advance failed with HTTP ${status}; tomorrow's desktop nightly will rebuild this SHA."
+              cat "$RUNNER_TEMP/tag-advance-response.json"
+              exit 1
+              ;;
+          esac
 
       # Publish-first-then-ledger (station#4572): runs only after the publish
       # step above succeeded; its own failure reddens the job without
