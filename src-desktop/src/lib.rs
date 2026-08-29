@@ -1647,23 +1647,32 @@ fn replace_station_profile_store(
     };
     let destination = wide(destination);
     let temporary = wide(temporary);
-    if unsafe {
-        ReplaceFileW(
-            destination.as_ptr(),
-            temporary.as_ptr(),
-            std::ptr::null(),
-            0,
-            std::ptr::null(),
-            std::ptr::null(),
-        )
-    } == 0
-    {
-        return Err(format!(
-            "replace saved Station metadata: {}",
-            std::io::Error::last_os_error()
-        ));
+    for attempt in 0..100 {
+        if unsafe {
+            ReplaceFileW(
+                destination.as_ptr(),
+                temporary.as_ptr(),
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+                std::ptr::null(),
+            )
+        } != 0
+        {
+            return Ok(());
+        }
+        let error = std::io::Error::last_os_error();
+        // Other bundled bootstrap processes read the shared document before
+        // entering their own CAS. Windows readers can transiently deny delete
+        // sharing, unlike POSIX; keep this retry bounded while holding the
+        // profile lock so no writer can leapfrog the exact revision.
+        if matches!(error.raw_os_error(), Some(32 | 33)) && attempt < 99 {
+            std::thread::sleep(Duration::from_millis(10));
+            continue;
+        }
+        return Err(format!("replace saved Station metadata: {error}"));
     }
-    Ok(())
+    unreachable!("bounded Windows profile replacement returns on every path")
 }
 
 #[cfg(not(windows))]
