@@ -108,20 +108,26 @@ describe('portable installer data-root claim', () => {
   it('bootstraps a fresh home whose only content is the exact installer marker', () => {
     const home = makeHome();
     mkdirSync(home, { recursive: true, mode: 0o700 });
-    writeFileSync(join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER), PORTABLE_INSTALL_DATA_ROOT_SIGNATURE);
+    writeFileSync(
+      join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER),
+      PORTABLE_INSTALL_DATA_ROOT_SIGNATURE,
+    );
 
     expect(stationHomeSchemaNeedsReset(home)).toBe(false);
     ensureStationHomeSchemaSync(home, { acquireMutationLock: () => () => {} });
     expect(existsSync(join(home, STATION_HOME_SCHEMA_FILE))).toBe(true);
-    expect(readFileSync(join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER), 'utf8')).toBe(
-      PORTABLE_INSTALL_DATA_ROOT_SIGNATURE,
-    );
+    expect(
+      readFileSync(join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER), 'utf8'),
+    ).toBe(PORTABLE_INSTALL_DATA_ROOT_SIGNATURE);
   });
 
   it('resets a home whose installer marker is not the exact installer bytes', () => {
     const home = makeHome();
     mkdirSync(home, { recursive: true, mode: 0o700 });
-    writeFileSync(join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER), 'not the signature\n');
+    writeFileSync(
+      join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER),
+      'not the signature\n',
+    );
 
     expect(stationHomeSchemaNeedsReset(home)).toBe(true);
     expect(() => ensureStationHomeSchemaSync(home)).toThrow(
@@ -132,7 +138,9 @@ describe('portable installer data-root claim', () => {
 
   it('resets a home whose installer marker path is a directory', () => {
     const home = makeHome();
-    mkdirSync(join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER), { recursive: true });
+    mkdirSync(join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER), {
+      recursive: true,
+    });
 
     expect(stationHomeSchemaNeedsReset(home)).toBe(true);
   });
