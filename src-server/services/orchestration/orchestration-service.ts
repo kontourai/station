@@ -44,6 +44,7 @@ import type {
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
 import {
+  FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
@@ -3859,6 +3860,16 @@ export class OrchestrationService {
               [MODEL_LAUNCH_PLAN_METADATA_KEY]: turnPlan,
               [MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY]:
                 turnRequestedOverride,
+              // Independent review MEDIUM-1: stamped ONLY on the dispatch
+              // that genuinely composed a pending first-turn instructions
+              // receipt into `turnInput.input` above — the delivering
+              // adapter carries it onto its published `turn.started`'s own
+              // metadata, so the delegate-seam disclosure can derive
+              // 'delivered' from this turn's own record of what happened,
+              // not merely from a turn having started.
+              ...(pendingPrompt
+                ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
+                : {}),
             },
           };
           turnInput =

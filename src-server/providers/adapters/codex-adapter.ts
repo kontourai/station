@@ -16,6 +16,7 @@ import type {
   CapabilityUndelivered,
 } from '@kontourai/station-contracts/provider';
 import {
+  FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
 } from '@kontourai/station-contracts/provider';
@@ -1493,6 +1494,15 @@ export class CodexAdapter implements ProviderAdapterShape {
           input.modelId,
           input.modelId ? record.session.model : undefined,
         ),
+        // Independent review MEDIUM-1: carries the server-owned
+        // `firstTurnInstructionsComposed` marker onto THIS turn's own
+        // persisted record — see the constant's doc comment in
+        // provider.ts — so the delegate-seam disclosure can derive
+        // 'delivered' from this turn having actually composed it, not
+        // merely from having started.
+        ...(input.metadata?.[FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]
+          ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
+          : {}),
       },
     });
 

@@ -3,6 +3,7 @@ import type {
   ProviderAdapterShape,
   ProviderSendTurnInput,
 } from '../../providers/adapter-shape.js';
+import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import type { EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
@@ -163,9 +164,22 @@ export class CredentialProfileRecovery {
     // push for it.
     let result: { turnId: string };
     try {
+      // Independent review HIGH-1: this replay used to send `input.input`
+      // straight to the adapter, bypassing the same ambientContext choke
+      // point `orchestration-service.ts`'s ordinary `sendTurn` dispatch
+      // composes through (`composeAmbientSendTurnInput`) — a pending
+      // first-turn instructions receipt (station#895 wave C) rides
+      // `ambientContext` exactly like ordinary ambient context (timezone,
+      // geolocation), so a credential-profile recovery replay of the
+      // session's first turn was silently dropping it while the receipt
+      // still read 'delivered' (derived from `turn.started` existing, which
+      // this call path itself creates). Composing here — the same rule,
+      // not a reimplementation the two paths could drift apart on — closes
+      // that gap for every recovery replay, first turn or not.
       result = await adapter.sendTurn({
         threadId: input.threadId,
-        input: input.input,
+        input: composeAmbientTurnText(input.ambientContext, input.input),
+        displayInput: input.input,
         ...(input.attachments ? { attachments: input.attachments } : {}),
         ...(input.ambientContext
           ? { ambientContext: input.ambientContext }

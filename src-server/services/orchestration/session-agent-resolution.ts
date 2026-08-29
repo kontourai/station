@@ -426,6 +426,17 @@ export function createSessionAgentResolver(
             undelivered: [],
           };
         } else if (
+          // Independent review MEDIUM-2: `input.resumeCursor` is the
+          // discriminator this seam already has for "the engine's OWN
+          // process/thread is being resumed, not started fresh" — a
+          // resumed engine thread already heard the authored prompt on
+          // whichever earlier turn first composed it, so stamping a new
+          // pending marker here would prepend it AGAIN into the resumed
+          // session's next turn. The transcriptSeed continuation path
+          // (no resumeCursor — a fresh provider session bridging prior
+          // history via text) has no such history on the ENGINE side and
+          // must keep stamping normally.
+          input.resumeCursor === undefined &&
           ENGINE_CAPABILITY_MATRICES[input.provider]?.instructionsInFirstTurn
             ?.state === 'session'
         ) {

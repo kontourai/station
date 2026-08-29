@@ -16,6 +16,7 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   engineControlPlaneCapability,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 import type { SessionLifecycleState } from '../../../packages/contracts/src/session-lifecycle.js';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
@@ -2362,16 +2363,54 @@ describe('AcpAdapter', () => {
       threadId: 'thread-first-turn-prompt',
       input: 'Be terse.\nHello',
       displayInput: 'Hello',
+      metadata: { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true },
     });
 
     const turnStarted = await nextEvent(iterator, 'turn.started');
     expect(turnStarted).toMatchObject({
       method: 'turn.started',
       prompt: 'Hello',
+      // Independent review MEDIUM-1: the marker rides THIS turn's own
+      // persisted metadata, so the delegate-seam disclosure can derive
+      // 'delivered' from this turn's own record, not merely from having
+      // started.
+      metadata: expect.objectContaining({
+        [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true,
+      }),
     });
     expect(processes[0].promptContents[0]).toEqual([
       { type: 'text', text: 'Be terse.\nHello' },
     ]);
+
+    processes[0].resolvePrompt('end_turn');
+    await nextEvent(iterator, 'turn.completed');
+    await adapter.stopAll();
+  });
+
+  test('independent review MEDIUM-1: an ordinary ACP turn (no composed-first-turn metadata) never carries the marker', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-ordinary-turn',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+
+    await adapter.sendTurn({
+      threadId: 'thread-ordinary-turn',
+      input: 'Hello',
+    });
+
+    const turnStarted = await nextEvent(iterator, 'turn.started');
+    expect(
+      (turnStarted as { metadata?: Record<string, unknown> }).metadata?.[
+        FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY
+      ],
+    ).not.toBe(true);
 
     processes[0].resolvePrompt('end_turn');
     await nextEvent(iterator, 'turn.completed');

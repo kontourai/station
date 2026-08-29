@@ -22,6 +22,7 @@ import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
   type CapabilityDeliveryCapability,
   type CapabilityUndeliveredReason,
+  FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   type ProviderKind,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SESSION_VISIBILITY_METADATA_KEY,
@@ -513,7 +514,21 @@ export function delegatedCapabilityDelivery(
     } else if (systemPrompt.channel === 'first-turn') {
       prompt = {
         channel: 'first-turn',
-        status: events.some((event) => event.method === 'turn.started')
+        // Independent review MEDIUM-1: "a turn started" is not proof
+        // composition happened — a receipt can be present while dispatch
+        // skipped composing it (a defect this derivation must not read as
+        // success). `'delivered'` requires the turn's OWN record to carry
+        // the `firstTurnInstructionsComposed` marker orchestration-service.ts
+        // stamps ONLY at the moment it actually prepends the receipt into
+        // that turn's composed input (see provider.ts's doc comment on the
+        // constant).
+        status: events.some(
+          (event) =>
+            event.method === 'turn.started' &&
+            (event as { metadata?: Record<string, unknown> }).metadata?.[
+              FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY
+            ] === true,
+        )
           ? 'delivered'
           : 'pending',
       };

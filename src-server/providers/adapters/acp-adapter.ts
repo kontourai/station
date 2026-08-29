@@ -35,6 +35,7 @@ import type {
   ResolvedAgentDefinition,
 } from '@kontourai/station-contracts/provider';
 import {
+  FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
@@ -1380,10 +1381,29 @@ export class AcpAdapter implements ProviderAdapterShape {
       // Transcript-facing: the typed text, never the composed model input.
       prompt: input.displayInput ?? input.input,
       attachments: input.attachments,
-      metadata: effectiveModelMetadata(
-        input.modelId ?? record.session.model,
-        input.modelOptions,
-      ),
+      // Independent review HIGH-1 fix-adjacent: muse-adapter.ts and
+      // codex-adapter.ts already persist this (the uncomposed ambient text
+      // TurnStartedEvent.ambientContext's doc comment names); this adapter
+      // silently omitted it, so a crash-recovery replay of an ACP turn
+      // (session-recovery-coordinator.ts's `buildReplayInput`, sourced from
+      // this very event) had no ambient context to recompose at all —
+      // including a pending first-turn instructions receipt riding it.
+      ...(input.ambientContext ? { ambientContext: input.ambientContext } : {}),
+      metadata: {
+        ...effectiveModelMetadata(
+          input.modelId ?? record.session.model,
+          input.modelOptions,
+        ),
+        // Independent review MEDIUM-1: carries the server-owned
+        // `firstTurnInstructionsComposed` marker onto THIS turn's own
+        // persisted record — see the constant's doc comment in
+        // provider.ts — so the delegate-seam disclosure can derive
+        // 'delivered' from this turn having actually composed it, not
+        // merely from having started.
+        ...(input.metadata?.[FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]
+          ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
+          : {}),
+      },
     });
 
     const content: ContentBlock[] = [

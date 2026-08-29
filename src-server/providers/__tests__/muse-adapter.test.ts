@@ -7,6 +7,7 @@ import {
   UNKNOWN_EXTERNAL_ENGINE_MATRIX,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
+  FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   resolveModelLaunchPlan,
   unsupportedModelOptionKeys,
 } from '@kontourai/station-contracts/provider';
@@ -384,6 +385,7 @@ describe('MuseAdapter', () => {
       threadId: 'thread-first-turn-prompt',
       input: 'Be terse.\nHello',
       displayInput: 'Hello',
+      metadata: { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true },
     });
 
     expect(harness.spawnArgs[0][harness.spawnArgs[0].length - 1]).toBe(
@@ -396,6 +398,37 @@ describe('MuseAdapter', () => {
     const events = await drain(harness.iterator, 4, 'first-turn-prompt');
     const started = events.find((event) => event.method === 'turn.started');
     expect(started.prompt).toBe('Hello');
+    // Independent review MEDIUM-1: the marker rides THIS turn's own
+    // persisted metadata, so the delegate-seam disclosure can derive
+    // 'delivered' from this turn's own record, not merely from having
+    // started.
+    expect(started.metadata).toMatchObject({
+      [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true,
+    });
+  });
+
+  test('independent review MEDIUM-1: an ordinary turn (no composed-first-turn metadata) never carries the marker', async () => {
+    const harness = createHarness();
+    await harness.adapter.startSession({
+      provider: 'muse',
+      threadId: 'thread-ordinary-turn',
+      cwd: '/tmp/project',
+      modelId: 'muse-spark-1.2-contributor',
+    });
+
+    await harness.adapter.sendTurn({
+      threadId: 'thread-ordinary-turn',
+      input: 'Hello',
+    });
+
+    await writeLines(harness.processes[0], MUSE_META_RUN_TERMINAL);
+    harness.processes[0].exit(0);
+    await flushIo();
+    const events = await drain(harness.iterator, 4, 'ordinary-turn');
+    const started = events.find((event) => event.method === 'turn.started');
+    expect(
+      started.metadata?.[FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY],
+    ).not.toBe(true);
   });
 
   test('a child exit without run_terminal still closes the turn, and is never a session exit', async () => {

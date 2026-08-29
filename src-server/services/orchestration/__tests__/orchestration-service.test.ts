@@ -5922,6 +5922,65 @@ describe('OrchestrationService', () => {
     await restartService.shutdown();
   });
 
+  test('independent review HIGH-1: restartCredentialProfileRecoverySession composes ambientContext into the adapter wire input (a pending first-turn instructions receipt riding it must not be silently dropped on a credential-profile recovery replay)', async () => {
+    // `CredentialProfileRecovery.restartRecoverySession` used to call
+    // `adapter.sendTurn({ input: input.input, ... })` directly, bypassing
+    // the SAME ambientContext choke point (`composeAmbientSendTurnInput`)
+    // the ordinary `dispatch({type:'sendTurn'})` path composes through — so
+    // a pending first-turn instructions receipt (station#895 wave C), which
+    // rides `ambientContext` exactly like ordinary ambient context, was
+    // silently dropped on a credential-profile recovery replay while the
+    // delegate-seam receipt still read the prompt 'delivered' (derived from
+    // `turn.started` existing, which this call path itself creates).
+    const adapter = new FakeAdapter('codex');
+    const restartService = new OrchestrationService({
+      adapterRegistry: createRegistry([adapter]),
+      eventBus,
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'credential-restart-first-turn-instructions';
+    await restartService.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'codex' },
+    });
+    adapter.sendTurn.mockClear();
+
+    await (
+      restartService as unknown as {
+        restartCredentialProfileRecoverySession(input: {
+          threadId: string;
+          input: string;
+          ambientContext?: string;
+          recoveryCorrelationId: string;
+          signal: AbortSignal;
+          credentialProfileRef?: string;
+        }): Promise<unknown>;
+      }
+    ).restartCredentialProfileRecoverySession({
+      threadId,
+      input: 'Hello',
+      ambientContext: 'Be terse.',
+      recoveryCorrelationId: 'first-turn-restart-correlation',
+      signal: new AbortController().signal,
+      credentialProfileRef: 'canary',
+    });
+
+    expect(adapter.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // Model-facing input carries the composed text, exactly like the
+        // ordinary dispatch path (#685's composeAmbientSendTurnInput).
+        input: 'Be terse.\nHello',
+        // Transcript-facing text stays the typed text alone.
+        displayInput: 'Hello',
+        // Relay-only passthrough is preserved for the station-agent relay.
+        ambientContext: 'Be terse.',
+      }),
+    );
+
+    await restartService.shutdown();
+  });
+
   /**
    * archive#3525 fix round MEDIUM 1: the arm and the `stopSession` call now
    * get their OWN `try`/`catch`, separate from the rest of the restart. If
@@ -9241,10 +9300,19 @@ describe('OrchestrationService', () => {
 
     // The composed model input carries the authored prompt ahead of the
     // typed text; the typed text alone remains the transcript-facing value.
+    // Independent review MEDIUM-1: the dispatch that genuinely composed the
+    // pending receipt ALSO stamps the server-owned
+    // firstTurnInstructionsComposed marker into the turn's own metadata —
+    // the delivering adapter carries it onto turn.started, which is what
+    // lets the delegate seam derive 'delivered' from THIS turn's own
+    // record rather than merely from a turn having started.
     expect(museFirstTurn.sendTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         input: 'Be terse.\nHello',
         displayInput: 'Hello',
+        metadata: expect.objectContaining({
+          firstTurnInstructionsComposed: true,
+        }),
       }),
     );
 
@@ -9274,12 +9342,19 @@ describe('OrchestrationService', () => {
     });
 
     // A second turn on the SAME session: current.events already carries the
-    // first turn.started, so the receipt is never re-read as pending.
+    // first turn.started, so the receipt is never re-read as pending — and
+    // the marker is never stamped on a turn that composed nothing.
     expect(museFirstTurn.sendTurn).toHaveBeenCalledWith(
       expect.objectContaining({ input: 'Again' }),
     );
     expect(museFirstTurn.sendTurn).not.toHaveBeenCalledWith(
       expect.objectContaining({ input: expect.stringContaining('Be terse.') }),
+    );
+    const secondTurnCall = museFirstTurn.sendTurn.mock.calls.at(-1)?.[0] as
+      | { metadata?: Record<string, unknown> }
+      | undefined;
+    expect(secondTurnCall?.metadata?.firstTurnInstructionsComposed).not.toBe(
+      true,
     );
 
     await museService.shutdown();

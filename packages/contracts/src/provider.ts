@@ -141,6 +141,21 @@ export const SESSION_AGENT_DISPLAY_NAME_METADATA_KEY = 'agentName';
 export const SESSION_AGENT_ICON_METADATA_KEY = 'agentIcon';
 export const SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH = 100;
 export const SESSION_AGENT_ICON_MAX_LENGTH = AGENT_ICON_TOKEN_MAX_LENGTH;
+/**
+ * Independent review MEDIUM-1 (station#895 wave C): a derivation, not a
+ * label. `orchestration-service.ts`'s sendTurn dispatch stamps this `true`
+ * into the turn's OWN metadata (server-owned, added after the reserved-key
+ * strip below) at the exact moment it prepends a pending first-turn
+ * instructions receipt into the composed model input — never merely
+ * because a turn started. The delivering adapter carries it onto its
+ * published `turn.started` event's own metadata, so
+ * `station-control-delegation.ts`'s delivery disclosure can derive
+ * `'delivered'` from "this turn's own record says composition happened
+ * here", not from "some turn happened" (a label a receipt-present,
+ * composition-skipped session would otherwise satisfy for free).
+ */
+export const FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY =
+  'firstTurnInstructionsComposed';
 
 /**
  * Complete set of orchestration evidence fields a public caller may never
@@ -162,6 +177,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   ENVIRONMENT_ID_RESERVED_METADATA_KEY,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
+  FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
 ] as const;
 
 /**

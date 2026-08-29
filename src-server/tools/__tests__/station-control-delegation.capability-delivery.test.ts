@@ -11,11 +11,16 @@
  * - a session with no receipts derives nothing (an agent-less session or a
  *   target Station predating the field renders no lines);
  * - first-turn prompt delivery derives `pending` before any turn and
- *   `delivered` once a `turn.started` exists (the channel itself lands with
- *   the instructionsInFirstTurn slice; the derivation is pinned now so the
- *   two cannot drift).
+ *   `delivered` once a `turn.started` carries the
+ *   `firstTurnInstructionsComposed` marker (independent review MEDIUM-1: a
+ *   turn merely having STARTED is not proof composition happened — a
+ *   receipt can be present while dispatch skipped composing it, and that
+ *   must never read 'delivered').
  */
-import { SESSION_CAPABILITY_DELIVERY_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import {
+  FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
+} from '@kontourai/station-contracts/provider';
 import { describe, expect, test } from 'vitest';
 import { delegatedCapabilityDelivery } from '../station-control-delegation.js';
 
@@ -152,7 +157,7 @@ describe('delegatedCapabilityDelivery', () => {
     expect(view).toBeUndefined();
   });
 
-  test('first-turn prompt delivery is pending before any turn and delivered after', () => {
+  test('first-turn prompt delivery is pending before any turn and delivered once a turn.started carries the composed marker', () => {
     const report = {
       systemPrompt: {
         source: 'agent',
@@ -168,8 +173,50 @@ describe('delegatedCapabilityDelivery', () => {
     expect(
       delegatedCapabilityDelivery([
         sessionStarted(report),
-        { method: 'turn.started' },
+        {
+          method: 'turn.started',
+          metadata: {
+            [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true,
+          },
+        },
       ])?.prompt,
     ).toEqual({ channel: 'first-turn', status: 'delivered' });
+  });
+
+  test('independent review MEDIUM-1 divergence: a turn.started WITHOUT the composed marker must NOT read delivered, even though the receipt is present and a turn genuinely started', () => {
+    const report = {
+      systemPrompt: {
+        source: 'agent',
+        requested: ['agent-prompt'],
+        undelivered: [],
+        channel: 'first-turn' as const,
+        firstTurnInstructions: 'Be terse.',
+      },
+    };
+    // A turn.started with no metadata at all (composition skipped, or a
+    // pre-marker target Station).
+    expect(
+      delegatedCapabilityDelivery([
+        sessionStarted(report),
+        { method: 'turn.started' },
+      ])?.prompt,
+    ).toEqual({ channel: 'first-turn', status: 'pending' });
+    // A turn.started whose metadata is present but the marker is explicitly
+    // false/absent — the "label, not a derivation" defect class this test
+    // exists to catch: reading ANY metadata presence, or the marker key's
+    // mere presence rather than its true value, as 'delivered' would pass
+    // this the same way "any turn.started exists" used to.
+    expect(
+      delegatedCapabilityDelivery([
+        sessionStarted(report),
+        {
+          method: 'turn.started',
+          metadata: {
+            [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: false,
+            unrelatedField: 'present',
+          },
+        },
+      ])?.prompt,
+    ).toEqual({ channel: 'first-turn', status: 'pending' });
   });
 });

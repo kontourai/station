@@ -797,6 +797,60 @@ describe('createSessionAgentResolver', () => {
     });
   });
 
+  describe('independent review MEDIUM-2: first-turn stamping must not duplicate onto a resumed engine thread', () => {
+    test('a cursor continuation (resumeCursor present) does NOT re-stamp the first-turn receipt — the resumed engine thread already heard it', async () => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({ prompt: 'You are an ACP-bound agent.' }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+
+      const result = await resolver(
+        baseInput({ provider: 'acp', resumeCursor: { nativeSession: 'x' } }),
+      );
+
+      expect(result.agent?.systemPrompt).toBeUndefined();
+      const report = result.metadata?.[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ] as any;
+      // Never the first-turn channel on a resumed thread — re-stamping it
+      // would prepend the authored prompt AGAIN into the resumed session's
+      // next turn (orchestration-service.ts's pendingFirstTurnInstructions
+      // reads this exact receipt).
+      expect(report.systemPrompt?.channel).not.toBe('first-turn');
+      expect(report.systemPrompt?.firstTurnInstructions).toBeUndefined();
+    });
+
+    test('a seed continuation (no resumeCursor — a fresh provider session bridging prior history via transcriptSeed text) still stamps normally', async () => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({ prompt: 'You are an ACP-bound agent.' }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+
+      // No `resumeCursor` at all — exactly the shape
+      // `continuationLaunchContext` (conversation-lineage.ts) produces for
+      // a fresh child session whose predecessor either never had a cursor
+      // or lost execution-identity/resume-capability continuity. The fresh
+      // engine process has no memory of the authored prompt at all, so it
+      // must still be delivered.
+      const result = await resolver(baseInput({ provider: 'acp' }));
+
+      const report = result.metadata?.[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ] as any;
+      expect(report.systemPrompt).toEqual({
+        source: 'agent',
+        requested: ['agent-prompt'],
+        undelivered: [],
+        channel: 'first-turn',
+        firstTurnInstructions: 'You are an ACP-bound agent.',
+      });
+    });
+  });
+
   test('authored skills on an acp session are receipted engine-unsupported and not attached', async () => {
     const resolveSkillDir = vi.fn();
     const resolver = createSessionAgentResolver({
