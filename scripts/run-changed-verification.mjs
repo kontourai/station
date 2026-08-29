@@ -399,9 +399,9 @@ function runVitest(
   { beforeCleanup = () => {}, readReport = readFileSync, vitestPath } = {},
 ) {
   const vitest = vitestPath ?? resolve(root, 'node_modules/vitest/vitest.mjs');
-  const executions = [];
+  const plannedExecutions = [];
   if (selection.relatedPaths.length) {
-    executions.push({
+    plannedExecutions.push({
       kind: 'related',
       command: [vitest, 'related', '--run', ...selection.relatedPaths],
     });
@@ -415,16 +415,23 @@ function runVitest(
       .map((entry) => entry.path)
       .filter((path) => !related.has(path));
     if (exactTests.length)
-      executions.push({
+      plannedExecutions.push({
         kind: 'explicit',
         command: [vitest, 'run', ...exactTests],
       });
   }
+  // An execution record is evidence that a child was actually started. Keep
+  // the plan separate: a non-zero related run is fail-fast, so later planned
+  // commands never acquire an exit status or a JSON report. Recording those
+  // plans as executions made an otherwise truthful failing diagnostic look
+  // corrupt to its consumer (#701).
+  const executions = [];
   const reportDirectory = mkdtempSync(join(tmpdir(), 'station-test-changed-'));
   let durable = false;
   try {
-    for (const [index, execution] of executions.entries()) {
+    for (const [index, execution] of plannedExecutions.entries()) {
       const reportPath = join(reportDirectory, `${index}.json`);
+      executions.push(execution);
       const child = run(
         process.execPath,
         [
