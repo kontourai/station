@@ -1,14 +1,16 @@
-/// <reference types="@wdio/globals/types" />
-/// <reference types="@wdio/mocha-framework" />
-
+import assert from 'node:assert/strict';
 import { createServer, type RequestListener, type Server } from 'node:http';
-import { $, browser, expect } from '@wdio/globals';
 import { build } from 'esbuild';
 import { buildPluginHostFrameDocument } from '../../src-server/runtime/mcp/mcp-ui-frame-server.js';
 import {
   E2E_STATION_CAPABILITIES,
   E2E_STATION_COMPATIBILITY,
 } from '../helpers/current-station-contract.js';
+import {
+  type DirectWebDriver,
+  startTauriShellFixture,
+  type TauriShellFixture,
+} from './direct-webdriver.js';
 
 const PLUGIN_NAME = 'hostile-plugin';
 const DECLARED_SLUG = 'hostile-panel';
@@ -28,6 +30,8 @@ type AttackHits = {
 let remote: ListeningServer;
 let frame: ListeningServer;
 let blocked: ListeningServer;
+let browser!: DirectWebDriver;
+let fixture: TauriShellFixture;
 let stationOrigin = 'tauri://localhost';
 let hostileBundle = '';
 const hits: AttackHits = { blockedFetch: 0, secretApi: 0, requests: [] };
@@ -253,20 +257,14 @@ function remoteResponse(
   return json(response, { success: true, data: [] });
 }
 
-before(async () => {
-  const remotePort = Number(process.env.STATION_TAURI_E2E_REMOTE_PORT);
-  const framePort = Number(process.env.STATION_TAURI_E2E_FRAME_PORT);
-  const blockedPort = Number(process.env.STATION_TAURI_E2E_BLOCKED_PORT);
-  if (![remotePort, framePort, blockedPort].every(Number.isSafeInteger)) {
-    throw new Error(
-      'Tauri shell fixture ports were not supplied by the config.',
-    );
-  }
-  blocked = await listen(blockedPort, (_request, response) => {
+async function setUp() {
+  fixture = await startTauriShellFixture();
+  browser = fixture.driver;
+  blocked = await listen(fixture.blockedPort, (_request, response) => {
     hits.blockedFetch += 1;
     send(response, 200, 'blocked target reached', 'text/plain');
   });
-  frame = await listen(framePort, (request, response) => {
+  frame = await listen(fixture.framePort, (request, response) => {
     const pathname = new URL(request.url ?? '/', frame.origin).pathname;
     if (pathname !== '/plugin-host/frame') {
       return send(response, 404, 'Not found', 'text/plain');
@@ -278,7 +276,7 @@ before(async () => {
       'text/html',
     );
   });
-  remote = await listen(remotePort, remoteResponse);
+  remote = await listen(fixture.remotePort, remoteResponse);
   const hostileSource = `
     let parentTauri = 'not-attempted';
     try {
@@ -317,238 +315,285 @@ before(async () => {
     platform: 'browser',
   });
   hostileBundle = bundled.outputFiles[0].text;
-});
+}
 
-after(async () => {
+async function tearDown() {
   await Promise.all([
     close(remote?.server),
     close(frame?.server),
     close(blocked?.server),
   ]);
-});
+  await fixture?.stop();
+}
 
-describe('isolated plugin inside a real Tauri WebView', () => {
-  it('keeps the hostile frame IPC-blind and unable to mutate Station', async () => {
-    // Station deliberately does not expose `window.__TAURI__`. Marking the
-    // already-selected main handle as an explicit WebDriver choice disables
-    // the service's optional focus probe, which otherwise waits for that less
-    // hardened global before every element command.
-    await browser.switchToWindow(await browser.getWindowHandle());
-    await browser.waitUntil(
-      async () =>
-        (await browser.execute(() => document.readyState)) === 'complete',
-      { timeout: 30_000, timeoutMsg: 'Tauri document did not become ready.' },
-    );
-    const mainBridge = await browser.execute(
-      () =>
-        typeof (window as unknown as { __TAURI_INTERNALS__?: unknown })
-          .__TAURI_INTERNALS__,
-    );
-    expect(mainBridge).toBe('object');
-    stationOrigin = await browser.execute(() =>
-      window.location.origin === 'null'
-        ? 'tauri://localhost'
-        : window.location.origin,
-    );
-    await browser.execute(
-      ({
+async function runProof() {
+  await browser.waitUntil(
+    async () =>
+      (await browser.execute(() => document.readyState)) === 'complete',
+    { timeout: 30_000, timeoutMsg: 'Tauri document did not become ready.' },
+  );
+  const mainBridge = await browser.execute(
+    () =>
+      typeof (window as unknown as { __TAURI_INTERNALS__?: unknown })
+        .__TAURI_INTERNALS__,
+  );
+  assert.equal(mainBridge, 'object');
+  stationOrigin = await browser.execute(() =>
+    window.location.origin === 'null'
+      ? 'tauri://localhost'
+      : window.location.origin,
+  );
+  await browser.execute(
+    ({
+      remoteOrigin,
+      frameOrigin,
+      pwnedKey,
+    }: {
+      remoteOrigin: string;
+      frameOrigin: string;
+      pwnedKey: string;
+    }) => {
+      localStorage.setItem('station:onboarding-setup-dismissed', '1');
+      localStorage.removeItem(pwnedKey);
+      localStorage.removeItem('station-connect-connections');
+      localStorage.removeItem('station-connect-connections-active');
+      localStorage.setItem(
+        'station:plugin-registry:remote-bundles-allowed:station-profile:remote-plugin-proof',
         remoteOrigin,
-        frameOrigin,
-        pwnedKey,
-      }: {
-        remoteOrigin: string;
-        frameOrigin: string;
-        pwnedKey: string;
-      }) => {
-        localStorage.setItem('station:onboarding-setup-dismissed', '1');
-        localStorage.removeItem(pwnedKey);
-        localStorage.removeItem('station-connect-connections');
-        localStorage.removeItem('station-connect-connections-active');
-        localStorage.setItem(
-          'station:plugin-registry:remote-bundles-allowed:station-profile:remote-plugin-proof',
-          remoteOrigin,
-        );
-        localStorage.setItem('plugin-host-frame-origin', frameOrigin);
-      },
-      {
+      );
+      localStorage.setItem('plugin-host-frame-origin', frameOrigin);
+    },
+    {
+      remoteOrigin: remote.origin,
+      frameOrigin: frame.origin,
+      pwnedKey: PWNED_KEY,
+    },
+  );
+
+  assert.equal(
+    await browser.execute(
+      (key: string) => localStorage.getItem(key),
+      PWNED_KEY,
+    ),
+    null,
+  );
+
+  await browser.refresh();
+  await browser.waitUntil(
+    async () =>
+      (await browser.execute(
+        () =>
+          typeof (window as unknown as { __TAURI_INTERNALS__?: unknown })
+            .__TAURI_INTERNALS__,
+      )) === 'object',
+    {
+      timeout: 20_000,
+      timeoutMsg: 'Tauri core bridge did not return after fixture reload.',
+    },
+  );
+  const managerSelector = '[data-testid="app-toolbar-connection"]';
+  await browser.waitUntil(
+    () =>
+      browser.execute((selector: string) => {
+        const element = document.querySelector<HTMLElement>(selector);
+        return Boolean(element && element.getClientRects().length > 0);
+      }, managerSelector),
+    { timeout: 20_000, timeoutMsg: 'Station manager button was not visible.' },
+  );
+  await browser.execute((selector: string) => {
+    document.querySelector<HTMLElement>(selector)?.click();
+  }, managerSelector);
+  const selectRemoteSelector =
+    'button[aria-label="Select remote-plugin-proof"]';
+  await browser.waitUntil(
+    () =>
+      browser.execute((selector: string) => {
+        const element = document.querySelector<HTMLElement>(selector);
+        return Boolean(element && element.getClientRects().length > 0);
+      }, selectRemoteSelector),
+    { timeout: 20_000, timeoutMsg: 'Remote profile button was not visible.' },
+  );
+  await browser.execute((selector: string) => {
+    document.querySelector<HTMLElement>(selector)?.click();
+  }, selectRemoteSelector);
+  try {
+    await browser.waitUntil(async () => hits.requests.length > 0, {
+      timeout: 5_000,
+      timeoutMsg: 'Selecting the remote profile made no handshake request.',
+    });
+  } catch (error) {
+    const selectionState = await browser.execute(() => ({
+      body: document.body.innerText.slice(0, 1_500),
+      activeConnection: localStorage.getItem(
+        'station-connect-connections-active',
+      ),
+    }));
+    const nativeState = await browser.execute(async () => {
+      const invoke = (
+        window as unknown as {
+          __TAURI_INTERNALS__: {
+            invoke<T>(command: string): Promise<T>;
+          };
+        }
+      ).__TAURI_INTERNALS__.invoke;
+      return {
+        profiles: await invoke<string>('station_profile_store_read'),
+        bundled: await invoke<unknown>('bundled_server_status'),
+      };
+    });
+    throw new Error(
+      `Remote profile selection produced no request: ${JSON.stringify({
+        ...selectionState,
+        ariaPressed: await browser.execute(
+          (selector: string) =>
+            document.querySelector(selector)?.getAttribute('aria-pressed') ??
+            null,
+          selectRemoteSelector,
+        ),
+        fixtureRequests: hits.requests,
+        nativeState,
         remoteOrigin: remote.origin,
-        frameOrigin: frame.origin,
-        pwnedKey: PWNED_KEY,
-      },
+      })}`,
+      { cause: error },
     );
-
-    expect(
-      await browser.execute(
-        (key: string) => localStorage.getItem(key),
-        PWNED_KEY,
-      ),
-    ).toBeNull();
-
-    await browser.refresh();
-    await browser.waitUntil(
-      async () =>
-        (await browser.execute(
-          () =>
-            typeof (window as unknown as { __TAURI_INTERNALS__?: unknown })
-              .__TAURI_INTERNALS__,
-        )) === 'object',
-      {
-        timeout: 20_000,
-        timeoutMsg: 'Tauri core bridge did not return after fixture reload.',
-      },
+  }
+  await browser.execute(() => {
+    const closeManager = document.querySelector<HTMLElement>(
+      'button[aria-label="Close Station manager"]',
     );
-    const manager = await $('[data-testid="app-toolbar-connection"]');
-    await manager.waitForDisplayed({ timeout: 20_000 });
-    await manager.click();
-    const selectRemote = await $(
-      'button[aria-label="Select remote-plugin-proof"]',
-    );
-    await selectRemote.waitForDisplayed({ timeout: 20_000 });
-    await selectRemote.click();
-    try {
-      await browser.waitUntil(async () => hits.requests.length > 0, {
-        timeout: 5_000,
-        timeoutMsg: 'Selecting the remote profile made no handshake request.',
-      });
-    } catch (error) {
-      const selectionState = await browser.execute(() => ({
-        body: document.body.innerText.slice(0, 1_500),
-        activeConnection: localStorage.getItem(
-          'station-connect-connections-active',
-        ),
-      }));
-      const nativeState = await browser.execute(async () => {
-        const invoke = (
-          window as unknown as {
-            __TAURI_INTERNALS__: {
-              invoke<T>(command: string): Promise<T>;
-            };
-          }
-        ).__TAURI_INTERNALS__.invoke;
-        return {
-          profiles: await invoke<string>('station_profile_store_read'),
-          bundled: await invoke<unknown>('bundled_server_status'),
-        };
-      });
-      throw new Error(
-        `Remote profile selection produced no request: ${JSON.stringify({
-          ...selectionState,
-          ariaPressed: await selectRemote.getAttribute('aria-pressed'),
-          fixtureRequests: hits.requests,
-          nativeState,
-          remoteOrigin: remote.origin,
-        })}`,
-        { cause: error },
-      );
-    }
-    const closeManager = await $('button[aria-label="Close Station manager"]');
-    if (await closeManager.isDisplayed()) await closeManager.click();
-    const panePath =
-      '/projects/hostile/layouts/proof/panes/hostile-pane/hostile-instance';
-    await browser.execute((path: string) => {
+    if (closeManager?.getClientRects().length) closeManager.click();
+  });
+  const panePath =
+    '/projects/hostile/layouts/proof/panes/hostile-pane/hostile-instance';
+  await browser.execute((path: string) => {
+    (
+      window as unknown as { __tauriShellErrors?: string[] }
+    ).__tauriShellErrors = [];
+    window.addEventListener('error', (event) => {
       (
-        window as unknown as { __tauriShellErrors?: string[] }
-      ).__tauriShellErrors = [];
-      window.addEventListener('error', (event) => {
-        (
-          window as unknown as { __tauriShellErrors: string[] }
-        ).__tauriShellErrors.push(String(event.error ?? event.message));
-      });
-      window.addEventListener('unhandledrejection', (event) => {
-        (
-          window as unknown as { __tauriShellErrors: string[] }
-        ).__tauriShellErrors.push(String(event.reason));
-      });
-      window.history.pushState({}, '', path);
-      window.dispatchEvent(new PopStateEvent('popstate'));
-    }, panePath);
-    // The embedded macOS driver executes element lookup on the WebView's main
-    // loop. Give the lazy isolation chunk one command-free turn to resolve;
-    // tight findElement polling can otherwise starve the very asset load it is
-    // waiting to observe.
-    await browser.pause(2_000);
-    const outerFrameSelector = `iframe[title="Plugin: ${DECLARED_SLUG}"]`;
-    try {
-      await browser.waitUntil(
-        async () =>
-          await browser.execute(
-            (selector: string) => Boolean(document.querySelector(selector)),
-            outerFrameSelector,
-          ),
-        { timeout: 10_000, timeoutMsg: 'Plugin frame did not enter the DOM.' },
-      );
-    } catch (error) {
-      const state = await browser.execute(() => ({
-        body: document.body.innerText.slice(0, 2_000),
-        iframes: [...document.querySelectorAll('iframe')].map((entry) => ({
-          src: entry.src,
-          title: entry.title,
-        })),
-        paneHtml:
-          document
-            .querySelector('.project-page__workspace-pane-route')
-            ?.innerHTML.slice(0, 5_000) ?? null,
-        errors:
-          (window as unknown as { __tauriShellErrors?: string[] })
-            .__tauriShellErrors ?? [],
-        resources: performance
-          .getEntriesByType('resource')
-          .map((entry) => entry.name)
-          .filter((name) => name.includes('PluginFrameHost')),
-        location: window.location.href,
-        activeConnection: localStorage.getItem(
-          'station-connect-connections-active',
-        ),
-      }));
-      throw new Error(
-        `Hostile plugin frame did not mount: ${JSON.stringify({
-          ...state,
-          fixtureRequests: hits.requests,
-        })}`,
-        { cause: error },
-      );
-    }
-    const outerFrame = await $(outerFrameSelector);
+        window as unknown as { __tauriShellErrors: string[] }
+      ).__tauriShellErrors.push(String(event.error ?? event.message));
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      (
+        window as unknown as { __tauriShellErrors: string[] }
+      ).__tauriShellErrors.push(String(event.reason));
+    });
+    window.history.pushState({}, '', path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, panePath);
+  // The embedded macOS driver executes element lookup on the WebView's main
+  // loop. Give the lazy isolation chunk one command-free turn to resolve;
+  // tight findElement polling can otherwise starve the very asset load it is
+  // waiting to observe.
+  await browser.pause(2_000);
+  const outerFrameSelector = `iframe[title="Plugin: ${DECLARED_SLUG}"]`;
+  try {
     await browser.waitUntil(
       async () =>
-        Number.parseInt(
-          String((await outerFrame.getCSSProperty('height')).value),
-          10,
-        ) === 721,
-      {
-        timeout: 20_000,
-        timeoutMsg:
-          'Hostile plugin did not report an IPC-blind, cross-origin frame.',
-      },
+        await browser.execute(
+          (selector: string) => Boolean(document.querySelector(selector)),
+          outerFrameSelector,
+        ),
+      { timeout: 10_000, timeoutMsg: 'Plugin frame did not enter the DOM.' },
     );
-    expect(await outerFrame.getAttribute('sandbox')).toBe(
-      'allow-scripts allow-same-origin',
+  } catch (error) {
+    const state = await browser.execute(() => ({
+      body: document.body.innerText.slice(0, 2_000),
+      iframes: [...document.querySelectorAll('iframe')].map((entry) => ({
+        src: entry.src,
+        title: entry.title,
+      })),
+      paneHtml:
+        document
+          .querySelector('.project-page__workspace-pane-route')
+          ?.innerHTML.slice(0, 5_000) ?? null,
+      errors:
+        (window as unknown as { __tauriShellErrors?: string[] })
+          .__tauriShellErrors ?? [],
+      resources: performance
+        .getEntriesByType('resource')
+        .map((entry) => entry.name)
+        .filter((name) => name.includes('PluginFrameHost')),
+      location: window.location.href,
+      activeConnection: localStorage.getItem(
+        'station-connect-connections-active',
+      ),
+    }));
+    throw new Error(
+      `Hostile plugin frame did not mount: ${JSON.stringify({
+        ...state,
+        fixtureRequests: hits.requests,
+      })}`,
+      { cause: error },
     );
+  }
+  await browser.waitUntil(
+    async () =>
+      (await browser.execute((selector: string) => {
+        const frame = document.querySelector<HTMLElement>(selector);
+        return frame ? Number.parseInt(getComputedStyle(frame).height, 10) : 0;
+      }, outerFrameSelector)) === 721,
+    {
+      timeout: 20_000,
+      timeoutMsg:
+        'Hostile plugin did not report an IPC-blind, cross-origin frame.',
+    },
+  );
+  assert.equal(
+    await browser.execute(
+      (selector: string) =>
+        document.querySelector(selector)?.getAttribute('sandbox') ?? null,
+      outerFrameSelector,
+    ),
+    'allow-scripts allow-same-origin',
+  );
 
-    expect(
-      await browser.execute(
-        (key: string) => localStorage.getItem(key),
-        PWNED_KEY,
-      ),
-    ).toBeNull();
-    expect(
-      await browser.execute(() =>
-        document.body.getAttribute('data-plugin-pwned'),
-      ),
-    ).toBeNull();
-    expect(await browser.getUrl()).toContain(panePath);
-    expect({
+  assert.equal(
+    await browser.execute(
+      (key: string) => localStorage.getItem(key),
+      PWNED_KEY,
+    ),
+    null,
+  );
+  assert.equal(
+    await browser.execute(() =>
+      document.body.getAttribute('data-plugin-pwned'),
+    ),
+    null,
+  );
+  assert.match(
+    await browser.execute(() => window.location.href),
+    new RegExp(panePath),
+  );
+  assert.deepEqual(
+    {
       blockedFetch: hits.blockedFetch,
       secretApi: hits.secretApi,
-    }).toEqual({ blockedFetch: 0, secretApi: 0 });
+    },
+    { blockedFetch: 0, secretApi: 0 },
+  );
 
-    expect(
+  assert.equal(
+    (
       await browser.execute(() =>
         Object.keys(
           (window as unknown as { __station_ai_plugins?: object })
             .__station_ai_plugins ?? {},
         ),
-      ),
-    ).not.toContain(PLUGIN_NAME);
-  });
-});
+      )
+    ).includes(PLUGIN_NAME),
+    false,
+  );
+}
+
+const started = Date.now();
+try {
+  await setUp();
+  await runProof();
+  console.log(
+    `PASS: hostile plugin stayed IPC-blind in ${browser.capabilities.browserName ?? 'webview'} ${browser.capabilities.browserVersion ?? 'unknown'} (${Date.now() - started}ms)`,
+  );
+} finally {
+  await tearDown();
+}

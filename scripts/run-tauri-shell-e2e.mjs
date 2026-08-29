@@ -86,9 +86,6 @@ function main() {
       `Tauri shell E2E binary not found. Run npm run test:tauri-shell:build or set STATION_TAURI_E2E_BINARY. Checked: ${tauriShellBinaryCandidates(root).join(', ')}`,
     );
   }
-  const wdio = resolve(root, 'node_modules/@wdio/cli/bin/wdio.js');
-  if (!existsSync(wdio))
-    throw new Error(`WebdriverIO CLI not installed: ${wdio}`);
   const revision = spawnSync('git', ['rev-parse', 'HEAD'], {
     cwd: root,
     encoding: 'utf8',
@@ -96,13 +93,17 @@ function main() {
   });
   if (revision.status !== 0)
     throw new Error('Could not resolve the Tauri E2E source revision.');
-  run(process.execPath, [wdio, 'run', 'tests/tauri-shell/wdio.conf.ts'], {
-    env: {
-      ...process.env,
-      STATION_TAURI_E2E_BINARY: binary,
-      STATION_TAURI_E2E_SOURCE_SHA: revision.stdout.trim(),
+  run(
+    process.execPath,
+    ['--import', 'tsx', 'tests/tauri-shell/plugin-host-security.e2e.ts'],
+    {
+      env: {
+        ...process.env,
+        STATION_TAURI_E2E_BINARY: binary,
+        STATION_TAURI_E2E_SOURCE_SHA: revision.stdout.trim(),
+      },
     },
-  });
+  );
 }
 
 if (

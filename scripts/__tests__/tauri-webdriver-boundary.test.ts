@@ -13,7 +13,7 @@ describe('Tauri embedded WebDriver boundary', () => {
     const webdriverConfig = JSON.parse(
       read('src-desktop/tauri.webdriver.conf.json'),
     );
-    const webdriverRunner = read('tests/tauri-shell/wdio.conf.ts');
+    const webdriverRunner = read('tests/tauri-shell/direct-webdriver.ts');
     const release = read('.github/workflows/release.yml');
 
     expect(cargo).toContain('webdriver = ["dep:tauri-plugin-wdio-webdriver"]');
@@ -30,6 +30,8 @@ describe('Tauri embedded WebDriver boundary', () => {
     );
     expect(rust).toContain('keyring_core::mock::Store::new()');
     expect(webdriverRunner).toContain("STATION_TAURI_E2E_MOCK_CREDENTIAL: '1'");
+    expect(webdriverRunner).toContain('TAURI_WEBDRIVER_PORT');
+    expect(webdriverRunner).not.toContain('@wdio/');
     expect(release).not.toContain('tauri.webdriver.conf.json');
     expect(release).not.toMatch(/--features[= ]+webdriver/);
     expect(release).not.toContain('STATION_TAURI_E2E_MOCK_CREDENTIAL');
