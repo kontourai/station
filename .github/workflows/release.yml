@@ -84,6 +84,7 @@ jobs:
   # also supplies an endpoint. Nightly already ships both (nightly.yml).
   desktop-macos:
     needs: preflight
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -106,6 +107,14 @@ jobs:
       STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
       MACOS_BUNDLE_VERSION: ${{ needs.preflight.outputs.macos_bundle_version }}
     steps:
+      - name: Reserve macOS release cleanup window
+        id: macos_release_deadline
+        shell: bash
+        run: |
+          # Record this before checkout/toolchain setup so release work cannot
+          # consume the cleanup window that a 120-minute hosted job requires.
+          epoch="$(( $(date -u +%s) + 105 * 60 ))"
+          printf 'epoch=%s\n' "$epoch" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.sha }}
@@ -173,7 +182,7 @@ jobs:
           printf '%s' "$APPLE_API_PRIVATE_KEY" > "$notary_key"
           chmod 600 "$notary_key"
           bundle_id="${{ needs.preflight.outputs.beta_desktop_config && 'io.kontourai.station.beta' || 'io.kontourai.station' }}"
-          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir release-assets --release-tag "$RELEASE_TAG" --architecture "${{ matrix.target == 'aarch64-apple-darwin' && 'aarch64' || 'x86_64' }}" --bundle-id "$bundle_id"
+          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir release-assets --release-tag "$RELEASE_TAG" --architecture "${{ matrix.target == 'aarch64-apple-darwin' && 'aarch64' || 'x86_64' }}" --bundle-id "$bundle_id" --deadline-epoch "${{ steps.macos_release_deadline.outputs.epoch }}"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$RELEASE_VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" = "$MACOS_BUNDLE_VERSION"
           grep -F 'app.package_info().version' src-desktop/src/tray.rs

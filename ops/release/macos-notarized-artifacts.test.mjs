@@ -6,7 +6,10 @@ import {
   admitMacosAppBundle,
   assertAcceptedNotaryReceipt,
   createMacosNotarizedArtifacts,
+  EMBEDDED_MACHO_COMMAND_TIMEOUT_MS,
+  EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS,
   outerAppDesignatedRequirement,
+  parseReleaseDeadlineEpoch,
   ReleaseCommandError,
   retryRetryableTransportFailure,
   runBoundedCommand,
@@ -82,6 +85,11 @@ function fixture({
   };
   return {
     calls,
+    embeddedMacos: {
+      lstat: () => ({ isSymbolicLink: () => false }),
+      magic: () => false,
+      realpath: (file) => file,
+    },
     fs,
     options: {
       app,
@@ -103,12 +111,12 @@ async function rejectsBeforeSubmission({
   designatedRequirement,
   entitlementOutput,
 }) {
-  const { calls, fs, options, run } = fixture({
+  const { calls, embeddedMacos, fs, options, run } = fixture({
     designatedRequirement,
     entitlementOutput,
   });
   await expect(
-    createMacosNotarizedArtifacts(options, { fs, run }),
+    createMacosNotarizedArtifacts(options, { embeddedMacos, fs, run }),
   ).rejects.toThrow(/designated requirement|unexpected entitlements/i);
   expect(
     calls.some(
@@ -136,8 +144,10 @@ test('accepts current, legacy, and split-stream requirements before submitting',
       stderr: 'Executable=/app/Station.app/Contents/MacOS/Station',
     },
   ]) {
-    const { calls, fs, options, run } = fixture({ designatedRequirement });
-    await createMacosNotarizedArtifacts(options, { fs, run });
+    const { calls, embeddedMacos, fs, options, run } = fixture({
+      designatedRequirement,
+    });
+    await createMacosNotarizedArtifacts(options, { embeddedMacos, fs, run });
     expect(
       calls.some(
         ([program, args]) => program === 'xcrun' && args[1] === 'submit',
@@ -147,23 +157,26 @@ test('accepts current, legacy, and split-stream requirements before submitting',
 });
 
 test('uses a visible phase for each injected command and preserves the canonical app path', async () => {
-  const { calls, fs, options, run } = fixture({
+  const { calls, embeddedMacos, fs, options, run } = fixture({
     app: 'src-desktop/target/aarch64-apple-darwin/release/bundle/macos/Station.app',
   });
   await createMacosNotarizedArtifacts(options, {
     fs,
+    embeddedMacos,
     run,
     path: { resolve: () => '/app/Station.app' },
   });
   expect(calls).toContainEqual([
-    'node',
+    'find',
     [
-      'ops/nightly/macos-embedded-signing.mjs',
-      '/app/Station.app',
-      'Developer ID',
+      '/app/Station.app/Contents/Resources/node_modules',
+      '-type',
+      'f',
+      '-print0',
     ],
-    expect.objectContaining({ phase: 'embedded sealing' }),
+    expect.objectContaining({ phase: 'embedded Mach-O inventory file scan' }),
   ]);
+  expect(calls.some(([program]) => program === 'node')).toBe(false);
   expect(calls).toContainEqual([
     'codesign',
     ['-d', '--entitlements', '-', '--xml', '/app/Station.app'],
@@ -185,9 +198,9 @@ test('rejects missing, non-app, symlinked, newline, and escaping app paths befor
     fixture({ app: '/app/Station.app', appSymbolicLink: true }),
     fixture({ app: '/app/Station.app\n' }),
   ];
-  for (const { calls, fs, options, run } of cases) {
+  for (const { calls, embeddedMacos, fs, options, run } of cases) {
     await expect(
-      createMacosNotarizedArtifacts(options, { fs, run }),
+      createMacosNotarizedArtifacts(options, { embeddedMacos, fs, run }),
     ).rejects.toThrow(/staged app|application bundle|unambiguous/i);
     expect(calls).toEqual([]);
   }
@@ -230,8 +243,8 @@ test('fails closed on non-exact outer entitlements before submission', async () 
 });
 
 test('does not assess Gatekeeper until the accepted app has been stapled', async () => {
-  const { calls, fs, options, run } = fixture();
-  await createMacosNotarizedArtifacts(options, { fs, run });
+  const { calls, embeddedMacos, fs, options, run } = fixture();
+  await createMacosNotarizedArtifacts(options, { embeddedMacos, fs, run });
   const submit = calls.findIndex(
     ([program, args]) =>
       program === 'xcrun' &&
@@ -276,7 +289,7 @@ function logger() {
   };
 }
 
-test('terminates a hung release subprocess with its phase and program, never its arguments or output', async () => {
+test('terminates a hung embedded signing subprocess with its phase and program, never its arguments or output', async () => {
   const releaseLogger = logger();
   const secret = 'not-a-real-notary-secret';
   await expect(
@@ -287,7 +300,7 @@ test('terminates a hung release subprocess with its phase and program, never its
         `process.stderr.write(${JSON.stringify(secret)}); process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);`,
       ],
       {
-        phase: 'outer app signing',
+        phase: 'embedded Mach-O 1/1 node_modules/vendor/a.node: signing',
         timeoutMs: 50,
         terminationGraceMs: 50,
         logger: releaseLogger,
@@ -295,14 +308,122 @@ test('terminates a hung release subprocess with its phase and program, never its
     ),
   ).rejects.toMatchObject({
     name: 'ReleaseCommandError',
-    phase: 'outer app signing',
+    phase: 'embedded Mach-O 1/1 node_modules/vendor/a.node: signing',
     program: process.execPath,
     timedOut: true,
   });
   const progress = releaseLogger.entries.join('\n');
-  expect(progress).toContain('outer app signing');
+  expect(progress).toContain(
+    'embedded Mach-O 1/1 node_modules/vendor/a.node: signing',
+  );
   expect(progress).toContain('timed out');
   expect(progress).not.toContain(secret);
+});
+
+test('retries a bounded embedded timestamp signing failure once without rewrapping the full inventory', async () => {
+  const release = fixture();
+  const file = '/app/Station.app/Contents/Resources/node_modules/vendor/a.node';
+  const baseRun = release.run;
+  let embeddedSignAttempts = 0;
+  release.embeddedMacos = {
+    lstat: () => ({ isSymbolicLink: () => false }),
+    magic: (candidate) => candidate === file,
+    realpath: (candidate) => candidate,
+  };
+  release.run = (program, args, commandOptions) => {
+    if (program === 'find' && args.includes('l'))
+      return { status: 0, stdout: '', stderr: '' };
+    if (program === 'find')
+      return { status: 0, stdout: `${file}\0`, stderr: '' };
+    if (program === 'file' && args.at(-1) === file)
+      return { status: 0, stdout: 'Mach-O 64-bit bundle arm64', stderr: '' };
+    if (program === 'lipo') return { status: 0, stdout: 'arm64', stderr: '' };
+    if (program === 'codesign' && args[0] === '-dvv' && args.at(-1) === file)
+      return { status: 0, stdout: '', stderr: 'Signature=adhoc\n' };
+    if (program === 'codesign' && args.includes('-R') && args.at(-1) === file)
+      return { status: 1, stdout: '', stderr: 'not Developer ID' };
+    if (
+      program === 'codesign' &&
+      args.includes('--entitlements') &&
+      args.at(-1) === file
+    )
+      return {
+        status: 1,
+        stdout: '',
+        stderr: 'code object is not signed at all',
+      };
+    if (program === 'codesign' && args.includes('--force') && args.at(-1) === file) {
+      release.calls.push([program, args, commandOptions]);
+      embeddedSignAttempts += 1;
+      if (embeddedSignAttempts === 1)
+        throw new ReleaseCommandError({
+          phase: commandOptions.phase,
+          program: 'codesign',
+          timedOut: true,
+        });
+      return { status: 0, stdout: '', stderr: '' };
+    }
+    return baseRun(program, args, commandOptions);
+  };
+  await expect(
+    createMacosNotarizedArtifacts(release.options, release),
+  ).resolves.toBeDefined();
+  expect(embeddedSignAttempts).toBe(2);
+  expect(
+    release.calls.find(
+      ([program, args]) =>
+        program === 'codesign' &&
+        args[0] === '--verify' &&
+        args.includes('--architecture') &&
+        args.at(-1) === file,
+    )?.[2].timeoutMs,
+  ).toBe(EMBEDDED_MACHO_COMMAND_TIMEOUT_MS);
+  expect(
+    release.calls.find(
+      ([program, args]) =>
+        program === 'codesign' && args.includes('--force') && args.at(-1) === file,
+    )?.[2].timeoutMs,
+  ).toBe(EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS);
+  expect(
+    release.calls.some(
+      ([program, args]) =>
+        program === 'node' && args.includes('macos-embedded-signing.mjs'),
+    ),
+  ).toBe(false);
+});
+
+test('validates absolute release epochs and reserves process-group cleanup grace after delayed setup', async () => {
+  expect(parseReleaseDeadlineEpoch('1700006300')).toBe(1_700_006_300_000);
+  expect(() => parseReleaseDeadlineEpoch('not-an-epoch')).toThrow(/Unix timestamp/);
+  const release = fixture();
+  const deadlineAt = 1_700_006_300_000;
+  let now = deadlineAt - 25_000;
+  const baseRun = release.run;
+  release.run = (program, args, commandOptions) => {
+    now = deadlineAt - 9_000;
+    return baseRun(program, args, commandOptions);
+  };
+  await expect(
+    createMacosNotarizedArtifacts(
+      { ...release.options, deadlineEpoch: '1700006300' },
+      {
+        ...release,
+        embeddedMacos: { ...release.embeddedMacos, now: () => now },
+        now: () => now,
+      },
+    ),
+  ).rejects.toThrow(/deadline/);
+  expect(release.calls).toHaveLength(1);
+  expect(release.calls[0][2].timeoutMs).toBe(15_000);
+
+  const expired = fixture();
+  await expect(
+    createMacosNotarizedArtifacts(
+      { ...expired.options, deadlineEpoch: '1700006300' },
+      { ...expired, now: () => deadlineAt - 10_000 },
+    ),
+  ).rejects.toThrow(/cleanup grace/);
+  expect(expired.calls).toEqual([]);
 });
 
 test.skipIf(process.platform === 'win32')(
