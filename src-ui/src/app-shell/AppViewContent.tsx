@@ -322,19 +322,12 @@ function AppViewContentBody({
       </ConnectionsSectionFrame>
     );
   }
-  if (
-    currentView.type === 'connections-acp' ||
-    currentView.type === 'connections-acp-new'
-  ) {
+  if (currentView.type === 'connections-acp-new') {
     return (
       <ConnectionsSectionFrame sectionId="engines">
         <ACPConnectionsView
           agents={agents}
-          initialProviderId={
-            currentView.type === 'connections-acp-new'
-              ? currentView.providerId
-              : null
-          }
+          initialProviderId={currentView.providerId}
         />
       </ConnectionsSectionFrame>
     );

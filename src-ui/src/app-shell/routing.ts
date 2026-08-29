@@ -290,15 +290,13 @@ export function resolveViewFromPath(
   if (path === '/connections/engines') {
     return { type: 'connections-engines' };
   }
-  if (path === '/connections/acp') {
-    return { type: 'connections-acp' };
-  }
-  if (path.startsWith('/connections/acp/new/')) {
-    const providerId = decodeURIComponent(
-      path.slice('/connections/acp/new/'.length),
-    );
-    if (providerId) return { type: 'connections-acp-new', providerId };
-  }
+  // #592 slice 2: `connections-acp` (the plain, id-less route) retired — it
+  // was never reachable through normal navigation. `/connections/acp` and
+  // `/connections/acp/new/<id>` both canonicalise to their `/connections/
+  // engines/...` spelling via `CONNECTION_SECTIONS`' legacy paths
+  // (`getLegacyPathRedirect`, called before this function on every real
+  // navigation), and the `/connections/engines/new/` branch above is where
+  // the `new/<id>` form already "lands" once redirected — see its comment.
   if (path === '/connections/tools') {
     return { type: 'connections-tools' };
   }
@@ -497,11 +495,6 @@ export function getPathForView(view: NavigationView): string | null {
       return '/connections/engines';
     case 'connections-runtime-edit':
       return `/connections/engines/${view.id}`;
-    // Serializes to its own path (the legacy-redirect table canonicalises it
-    // to /connections/engines at navigation time), so view↔path stays a
-    // round trip: two views may not share one path.
-    case 'connections-acp':
-      return '/connections/acp';
     case 'connections-acp-new':
       return `/connections/engines/new/${encodeURIComponent(view.providerId)}`;
     case 'connections-tools':
@@ -573,7 +566,6 @@ export function getParentView(view: NavigationView): NavigationView | null {
       return { type: 'connections-tools' };
     case 'connections-providers':
     case 'connections-engines':
-    case 'connections-acp':
     case 'connections-tools':
     case 'connections-knowledge':
       return { type: 'connections' };

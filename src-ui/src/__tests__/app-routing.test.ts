@@ -67,7 +67,6 @@ const CANONICAL_VIEWS = [
   { type: 'connections-acp-new', providerId: 'custom' },
   { type: 'connections-engines' },
   { type: 'connections-runtime-edit', id: 'engine' },
-  { type: 'connections-acp' },
   { type: 'connections-tools' },
   { type: 'connections-tool-edit', id: 'tool' },
   { type: 'connections-knowledge' },
@@ -239,8 +238,14 @@ describe('app-shell routing', () => {
     expect(resolveViewFromPath('/connections/engines')).toEqual({
       type: 'connections-engines',
     });
+    // #592 slice 2: `connections-acp` (the plain, id-less route) retired —
+    // `/connections/acp` only ever resolves here (a genuine 404) when a
+    // caller skips `getLegacyPathRedirect`, which every real navigation runs
+    // first (see the LEGACY_PATH_CASES row above canonicalising it to
+    // `/connections/engines`).
     expect(resolveViewFromPath('/connections/acp')).toEqual({
-      type: 'connections-acp',
+      type: 'not-found',
+      path: '/connections/acp',
     });
     expect(resolveViewFromPath('/projects/demo/layouts/coding')).toEqual({
       type: 'layout',
@@ -617,9 +622,6 @@ describe('app-shell routing', () => {
     expect(
       getParentView({ type: 'project-flow-console', slug: 'alpha' }),
     ).toEqual({ type: 'project', slug: 'alpha' });
-    expect(getPathForView({ type: 'connections-acp' })).toBe(
-      '/connections/acp',
-    );
     expect(getPathForView({ type: 'task', taskId: 'task/alpha' })).toBe(
       '/tasks/task%2Falpha',
     );

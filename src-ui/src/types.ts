@@ -380,7 +380,6 @@ export type NavigationView =
   | { type: 'connections-provider-edit'; id: string }
   | { type: 'connections-engines' }
   | { type: 'connections-runtime-edit'; id: string }
-  | { type: 'connections-acp' }
   | { type: 'connections-acp-new'; providerId: string }
   | { type: 'connections-tools' }
   | { type: 'connections-tool-edit'; id: string }
