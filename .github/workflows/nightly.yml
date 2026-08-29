@@ -541,6 +541,7 @@ jobs:
       # no second version write here, which would otherwise let the bundle's
       # baked-in identity and the published npm version disagree.
       - name: Publish @kontourai/station-cli to the nightly dist-tag
+        id: cli_npm_publish
         if: steps.decide.outputs.build == 'true' && steps.cli_npm_preflight.outputs.trusted_publisher == 'true'
         working-directory: packages/cli
         run: npm publish --tag nightly --access public
@@ -675,6 +676,7 @@ jobs:
           node scripts/check-android-16kb-alignment.mjs "$apk"
 
       - name: Upload to Play internal testing track
+        id: play_upload
         if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
         env:
           PLAY_UPLOAD_ACTION_PATH: ${{ steps.play_upload_action.outputs.path }}
@@ -693,18 +695,55 @@ jobs:
       - name: Advance the rolling nightly tag
         # Only after a successful publish path: the tag is what suppresses
         # tomorrow's build, so moving it on a failed run would skip a day.
+        #
+        # REST ref update, not `git push`: GITHUB_TOKEN cannot hold the
+        # `workflows` scope, so a push moving this tag across a range that
+        # touches .github/workflows/* is refused; the refs API is not
+        # subject to that check. https://docs.github.com/en/rest/git/refs
         if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_SHA: ${{ steps.decide.outputs.head_sha }}
+          TAG_REF: refs/tags/nightly
         run: |
-          git tag -f nightly "${{ steps.decide.outputs.head_sha }}"
-          # --no-verify: npm run dependencies:ci earlier in this job armed .githooks via the
-          # prepare script, and the pre-push hook would otherwise run repo
-          # gates (lint:check first) inside a tag-advance push — a lint red on
-          # main must not stop the rolling nightly tag from advancing.
-          git push -f --no-verify \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}" \
-            refs/tags/nightly
+          set -euo pipefail
+          advance_ref() {
+            curl -sS -o "$RUNNER_TEMP/tag-advance-response.json" -w '%{http_code}' \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "$@"
+          }
+          ref_missing() {
+            [ "$1" = "404" ] || { [ "$1" = "422" ] \
+              && grep -q 'Reference does not exist' "$RUNNER_TEMP/tag-advance-response.json"; }
+          }
+          status=$(advance_ref -X PATCH \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/${TAG_REF}" \
+            -d "{\"sha\":\"${TAG_SHA}\",\"force\":true}")
+          if ref_missing "$status"; then
+            status=$(advance_ref -X POST \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/refs" \
+              -d "{\"ref\":\"${TAG_REF}\",\"sha\":\"${TAG_SHA}\"}")
+          fi
+          case "$status" in
+            200|201)
+              node -e '
+                const { readFileSync } = require("node:fs");
+                const [file, ref, sha] = process.argv.slice(1);
+                const body = JSON.parse(readFileSync(file, "utf8"));
+                if (body.ref !== ref || body.object?.sha !== sha) {
+                  console.error("ref update response mismatch:", JSON.stringify(body));
+                  process.exit(1);
+                }
+              ' "$RUNNER_TEMP/tag-advance-response.json" "$TAG_REF" "$TAG_SHA"
+              echo "${TAG_REF} now at ${TAG_SHA}"
+              ;;
+            *)
+              echo "::error::Tag advance failed with HTTP ${status}; tomorrow's nightly will rebuild this SHA."
+              cat "$RUNNER_TEMP/tag-advance-response.json"
+              exit 1
+              ;;
+          esac
 
       # ── Deploy ledger (station#4572) ─────────────────────────────────────
       # Publish-first-then-ledger, by construction: both steps below run only
@@ -712,10 +751,9 @@ jobs:
       # never block a ship. If a ledger step fails the JOB goes red — an
       # unrecorded ship must be visible — accepting the tradeoff that the
       # nightly is already live with a red recording step; the next
-      # successful nightly's changelog slice covers the gap. Known residual:
-      # the npm publish happens before the Android build in this job, so an
-      # Android-step failure reddens the job with the npm ship recorded only
-      # in the next green run — visible either way, never silent.
+      # successful nightly's changelog slice covers the gap. The always() +
+      # publish-outcome gates on each record step mean even an Android-step
+      # failure records the npm ship that already happened in THIS run.
       # The entry sha is steps.decide.outputs.head_sha: the SAME decided SHA
       # the gate verdicted and the build shipped. A ledger on a different SHA
       # than the one that shipped is a lie, which is what station#4572
@@ -727,7 +765,10 @@ jobs:
       # safe). Two steps means two commits; both subjects are docs(ledger):
       # and excluded from every changelog slice.
       - name: Record the nightly Android ship in the deploy ledger
-        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
+        # always() so no later-step failure suppresses the record of a
+        # publish that happened; the outcome gate keeps a failed or skipped
+        # publish from recording.
+        if: ${{ always() && steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != '' && steps.play_upload.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEPLOY_LEDGER_SHA: ${{ steps.decide.outputs.head_sha }}
@@ -756,9 +797,9 @@ jobs:
 
       - name: Record the nightly CLI npm ship in the deploy ledger
         # The npm publish step ran early in this job; the RECORD runs last so
-        # its failure can never abort the Android build still ahead of it —
-        # the same publish-first-then-ledger ordering as the Android entry.
-        if: steps.decide.outputs.build == 'true' && steps.cli_npm_preflight.outputs.trusted_publisher == 'true'
+        # its failure can never abort the Android build still ahead of it.
+        # always() + outcome gate, as on the Android record above.
+        if: ${{ always() && steps.decide.outputs.build == 'true' && steps.cli_npm_publish.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEPLOY_LEDGER_SHA: ${{ steps.decide.outputs.head_sha }}
@@ -815,7 +856,8 @@ jobs:
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}
     runs-on: macos-15
     environment: native-release
-    timeout-minutes: 60
+    # ~40 min build + Apple notary's long tail; 60 cancelled mid-notarize.
+    timeout-minutes: 120
     permissions:
       contents: write
     steps:
@@ -982,6 +1024,7 @@ jobs:
       # for anyone but the repo, so a draft nightly-desktop would silently
       # break every installed app's update check.
       - name: Publish the rolling desktop nightly prerelease
+        id: desktop_publish
         if: steps.decide.outputs.build == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -1010,20 +1053,60 @@ jobs:
         # manual rebuild input, so moving it before a publish that then
         # fails would assert a ship that never happened and could only be
         # recovered by hand-deleting the tag.
+        #
+        # REST ref update, not `git push` — same constraint as the Android
+        # leg's tag advance above.
         if: steps.decide.outputs.build == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_SHA: ${{ steps.decide.outputs.head_sha }}
+          TAG_REF: refs/tags/nightly-desktop
         run: |
-          git tag -f nightly-desktop "${{ steps.decide.outputs.head_sha }}"
-          git push -f --no-verify \
-            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}" \
-            refs/tags/nightly-desktop
+          set -euo pipefail
+          advance_ref() {
+            curl -sS -o "$RUNNER_TEMP/tag-advance-response.json" -w '%{http_code}' \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "$@"
+          }
+          ref_missing() {
+            [ "$1" = "404" ] || { [ "$1" = "422" ] \
+              && grep -q 'Reference does not exist' "$RUNNER_TEMP/tag-advance-response.json"; }
+          }
+          status=$(advance_ref -X PATCH \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/${TAG_REF}" \
+            -d "{\"sha\":\"${TAG_SHA}\",\"force\":true}")
+          if ref_missing "$status"; then
+            status=$(advance_ref -X POST \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/refs" \
+              -d "{\"ref\":\"${TAG_REF}\",\"sha\":\"${TAG_SHA}\"}")
+          fi
+          case "$status" in
+            200|201)
+              node -e '
+                const { readFileSync } = require("node:fs");
+                const [file, ref, sha] = process.argv.slice(1);
+                const body = JSON.parse(readFileSync(file, "utf8"));
+                if (body.ref !== ref || body.object?.sha !== sha) {
+                  console.error("ref update response mismatch:", JSON.stringify(body));
+                  process.exit(1);
+                }
+              ' "$RUNNER_TEMP/tag-advance-response.json" "$TAG_REF" "$TAG_SHA"
+              echo "${TAG_REF} now at ${TAG_SHA}"
+              ;;
+            *)
+              echo "::error::Tag advance failed with HTTP ${status}; tomorrow's desktop nightly will rebuild this SHA."
+              cat "$RUNNER_TEMP/tag-advance-response.json"
+              exit 1
+              ;;
+          esac
 
       # Publish-first-then-ledger (station#4572): runs only after the publish
       # step above succeeded; its own failure reddens the job without
       # un-shipping anything.
       - name: Record the nightly desktop ship in the deploy ledger
-        if: steps.decide.outputs.build == 'true'
+        # always() + outcome gate, as on the Android job's ledger records.
+        if: ${{ always() && steps.decide.outputs.build == 'true' && steps.desktop_publish.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEPLOY_LEDGER_SHA: ${{ steps.decide.outputs.head_sha }}
