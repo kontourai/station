@@ -901,6 +901,12 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     );
     expect(notarize).toContain('--release-tag nightly-desktop');
     expect(notarize).toContain('--bundle-id io.kontourai.station.nightly');
+    expect(notarize).toContain('macos-signing-readiness.mjs unlock');
+    expect(notarize).toContain('macos-signing-readiness.mjs probe');
+    expect(notarize.indexOf('macos-signing-readiness.mjs unlock')).toBeLessThan(
+      notarize.indexOf('macos-notarized-artifacts.mjs'),
+    );
+    expect(desktopJob).toContain('Cleanup macOS Developer ID keychain');
   });
 
   it('does not depend on the Android job succeeding, and allocates no Android version code', () => {
