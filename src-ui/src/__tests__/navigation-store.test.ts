@@ -89,12 +89,18 @@ describe('navigationStore query updates under an open dialog layer', () => {
     expect(window.history.state[DIALOG_HISTORY_KEY]).toBe('switcher-probe');
 
     dispose();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Settle on the marker leaving, whichever way cleanup removes it: dropping
+    // it in place is synchronous, but travelling back is a jsdom task. Reading
+    // the URL before that task lands would pass on a close that does revert it.
+    for (let tick = 0; tick < 50; tick += 1) {
+      if (window.history.state?.[DIALOG_HISTORY_KEY] === undefined) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(window.history.state[DIALOG_HISTORY_KEY]).toBeUndefined();
 
     expect(new URLSearchParams(window.location.search).get('chat')).toBe(
       'session-new',
     );
-    expect(window.history.state[DIALOG_HISTORY_KEY]).toBeUndefined();
     expect(window.history.state.__stationNavigationIndex).toEqual(
       expect.any(Number),
     );
