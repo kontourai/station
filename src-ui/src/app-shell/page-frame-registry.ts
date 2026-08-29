@@ -52,21 +52,17 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'connections-provider-edit': SPLIT_PANE,
   'connections-engines': SPLIT_PANE,
   'connections-runtime-edit': SPLIT_PANE,
-  // Both are the Engines section (CONNECTION_SECTIONS): the frame names the
-  // section, so these defaults must agree with it rather than introduce a
-  // sixth title for the same destination.
+  // The Engines section (CONNECTION_SECTIONS): the frame names the section,
+  // so this default must agree with it rather than introduce a second title
+  // for the same destination.
   //
   // The eyebrow is the PARENT only ('Connections'), not the retired
   // 'Connections / Engines' breadcrumb-as-eyebrow — the title already says
   // 'Engines' as its own `<h1>`. `ConnectionsSectionFrame` publishes the
   // live (linked) version of this once it mounts; this is only the brief
-  // fallback shown before that chunk arrives.
-  'connections-acp': {
-    eyebrow: 'Connections',
-    title: 'Engines',
-    subtitle: 'Agent CLIs installed here, and custom engines you connected.',
-    width: 'narrow',
-  },
+  // fallback shown before that chunk arrives. (#592 slice 2: the sibling
+  // 'connections-acp' route this comment used to justify agreeing with is
+  // retired — this is now the only frame naming Engines this way.)
   'connections-acp-new': {
     eyebrow: 'Connections',
     title: 'Engines',

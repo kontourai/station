@@ -163,7 +163,6 @@ describe('routeIdentity', () => {
       { type: 'connections' },
       { type: 'connections-providers' },
       { type: 'connections-engines' },
-      { type: 'connections-acp' },
       { type: 'connections-tools' },
       { type: 'connections-knowledge' },
       { type: 'plugins' },
@@ -228,14 +227,12 @@ describe('routeSurfaceIdentity', () => {
   });
 
   test('does not broaden surface identity to ACP, new agents, or Activity', () => {
-    const acp = { type: 'connections-acp' } as const;
     const acpNew = { type: 'connections-acp-new', providerId: 'p1' } as const;
     const agentNew = { type: 'agent-new' } as const;
     const agentEdit = { type: 'agent-edit', slug: 'a' } as const;
     const activity = { type: 'activity' } as const;
     const session = { type: 'activity', sessionId: 's1' } as const;
 
-    expect(routeSurfaceIdentity(acp)).toBe(routeIdentity(acp));
     expect(routeSurfaceIdentity(acpNew)).toBe(routeIdentity(acpNew));
     expect(routeSurfaceIdentity(agentNew)).toBe(routeIdentity(agentNew));
     expect(routeSurfaceIdentity(agentEdit)).toBe(routeIdentity(agentEdit));
