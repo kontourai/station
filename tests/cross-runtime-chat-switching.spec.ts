@@ -309,7 +309,7 @@ const PRODUCT_PATHS = [
     profile: 'claude-default',
     provider: 'claude',
     agentSlug: 'claude',
-    runtimeName: 'Claude Runtime',
+    runtimeName: 'Claude Code',
     project: 'Alpha Project',
     projectSlug: 'alpha',
     sessionId: 'conv-claude-alpha',
@@ -320,7 +320,7 @@ const PRODUCT_PATHS = [
     profile: 'codex-default',
     provider: 'codex',
     agentSlug: 'codex',
-    runtimeName: 'Codex Runtime',
+    runtimeName: 'Codex',
     project: 'Beta Project',
     projectSlug: 'beta',
     sessionId: 'conv-codex-beta',
@@ -827,7 +827,9 @@ async function seedCrossRuntimeRoutes(
   });
   await page.route('**/api/conversations**', (route) => {
     const url = new URL(route.request().url());
-    const conversationId = url.pathname.split('/').filter(Boolean).pop();
+    const parts = url.pathname.split('/').filter(Boolean);
+    const conversationId =
+      parts.at(-1) === 'open' ? parts.at(-2) : parts.at(-1);
     if (url.pathname === '/api/conversations') {
       return route.fulfill(
         json({
@@ -842,6 +844,65 @@ async function seedCrossRuntimeRoutes(
     if (!entry || !conversationId) {
       return route.fulfill(json({ success: false, error: 'Not found' }, 404));
     }
+    const conversation = entry[1].find(
+      (candidate) => candidate.id === conversationId,
+    );
+    if (parts.at(-1) === 'open') {
+      const source = entry[0] === 'station' ? 'store' : 'runtime';
+      if (source === 'store') {
+        return route.fulfill(
+          json({
+            success: true,
+            data: {
+              status: 'unavailable',
+              conversation: {
+                ...conversation,
+                id: conversationId,
+                source,
+                agentSlug: entry[0],
+                mutable: true,
+                answerability: { answerable: true },
+              },
+              transcript: { available: false, owner: 'store' },
+              canContinue: false,
+              answerability: { answerable: true },
+              recoveryActions: ['retry', 'start-new'],
+            },
+          }),
+        );
+      }
+      const currentSessionId =
+        sessionIdsByConversation[
+          conversationId as keyof typeof sessionIdsByConversation
+        ]?.at(-1);
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            status: currentSessionId ? 'resolved' : 'missing-session',
+            conversation: {
+              ...conversation,
+              id: conversationId,
+              source,
+              agentSlug: entry[0],
+              mutable: false,
+              answerability: { answerable: true },
+            },
+            ...(currentSessionId ? { currentSessionId } : {}),
+            transcript: {
+              available: Boolean(currentSessionId),
+              owner: 'runtime',
+              ...(currentSessionId
+                ? { messageCount: Number(conversation?.messageCount ?? 0) }
+                : {}),
+            },
+            canContinue: Boolean(currentSessionId),
+            answerability: { answerable: true },
+            recoveryActions: currentSessionId ? [] : ['retry', 'start-new'],
+          },
+        }),
+      );
+    }
     return route.fulfill(
       json({
         success: true,
@@ -849,9 +910,7 @@ async function seedCrossRuntimeRoutes(
           id: conversationId,
           agentSlug: entry[0],
           projectSlug: conversationId.includes('beta') ? 'beta' : 'alpha',
-          title:
-            (entry[1].find((conversation) => conversation.id === conversationId)
-              ?.title as string) || conversationId,
+          title: (conversation?.title as string) || conversationId,
         },
       }),
     );
@@ -1193,7 +1252,7 @@ async function assertConversationHistory(
     'Alpha Project',
   );
   await expect(chatList.locator('button[aria-current="true"]')).toContainText(
-    'Claude Runtime',
+    'Claude Code',
   );
   await expect(
     page
@@ -1203,7 +1262,7 @@ async function assertConversationHistory(
   await expectSettled(page, SETTLEMENT_DEADLINE_MS);
   await selectInventoryConversation(page, {
     title: 'Codex Beta Chat',
-    runtimeName: 'Codex Runtime',
+    runtimeName: 'Codex',
     project: 'Beta Project',
   });
 }
@@ -1256,7 +1315,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
 
     await selectInventoryConversation(page, {
       title: 'Claude Alpha Chat',
-      runtimeName: 'Claude Runtime',
+      runtimeName: 'Claude Code',
       project: 'Alpha Project',
     });
     await expect(page.locator('body')).toContainText(
@@ -1265,7 +1324,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
 
     await selectInventoryConversation(page, {
       title: 'Codex Beta Chat',
-      runtimeName: 'Codex Runtime',
+      runtimeName: 'Codex',
       project: 'Beta Project',
     });
     await expect(page.locator('body')).toContainText(
@@ -1341,7 +1400,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     await waitForMockOrchestrationSse(page);
     await selectInventoryConversation(page, {
       title: 'Claude Alpha Chat',
-      runtimeName: 'Claude Runtime',
+      runtimeName: 'Claude Code',
       project: 'Alpha Project',
     });
     const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
@@ -1374,7 +1433,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     await waitForMockOrchestrationSse(page);
     await selectInventoryConversation(page, {
       title: 'Claude Alpha Chat',
-      runtimeName: 'Claude Runtime',
+      runtimeName: 'Claude Code',
       project: 'Alpha Project',
     });
     await page
@@ -1467,7 +1526,7 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     await expect(badge).toHaveText('Beta Project');
     await selectInventoryConversation(page, {
       title: 'Claude Alpha Chat',
-      runtimeName: 'Claude Runtime',
+      runtimeName: 'Claude Code',
       project: 'Alpha Project',
     });
     await expect(badge).toBeVisible();
@@ -1486,7 +1545,7 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     await expect(badge).toHaveText('Alpha Project');
     await selectInventoryConversation(page, {
       title: 'Claude Alpha Chat',
-      runtimeName: 'Claude Runtime',
+      runtimeName: 'Claude Code',
       project: 'Alpha Project',
     });
 
@@ -1553,12 +1612,12 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     // with that real active session.
     await selectInventoryConversation(page, {
       title: 'Codex Beta Chat',
-      runtimeName: 'Codex Runtime',
+      runtimeName: 'Codex',
       project: 'Beta Project',
     });
     await selectInventoryConversation(page, {
       title: 'Claude Alpha Chat',
-      runtimeName: 'Claude Runtime',
+      runtimeName: 'Claude Code',
       project: 'Alpha Project',
     });
     await page.setViewportSize({ width: 390, height: 844 });
