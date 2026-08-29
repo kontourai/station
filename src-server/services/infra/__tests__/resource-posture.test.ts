@@ -6,6 +6,7 @@ import {
   createEnvironmentRuntimeResourcePostureProbe,
   createRuntimeResourcePostureProbe,
   deriveRuntimeResourcePosture,
+  E2E_CRITICAL_RESOURCE_POSTURE_ENV,
   E2E_HEALTHY_RESOURCE_POSTURE_ENV,
   RUNTIME_RESOURCE_POSTURE_CRITICAL_BUSY_PERCENT,
   RUNTIME_RESOURCE_POSTURE_DEGRADED_BUSY_PERCENT,
@@ -70,6 +71,81 @@ describe('runtime resource posture', () => {
         ).observe(),
       ).resolves.toMatchObject({ kind: 'critical', busyPercent: 96 });
     }
+  });
+
+  // #766 item 2: the mirrored critical-forcing override. Same authorization
+  // matrix as the healthy override above — env value alone has no effect;
+  // the CLI-attested `--temp-home` home source AND the journey-owned
+  // instance namespace are both required; and the forced sample still rides
+  // the ordinary numeric derivation (busyPercent 97 -> critical), never a
+  // posture string.
+  test('isolates the explicit core-loop capacity E2E from the real host without accepting other values', async () => {
+    await expect(
+      createEnvironmentRuntimeResourcePostureProbe({
+        [E2E_CRITICAL_RESOURCE_POSTURE_ENV]: '1',
+        STATION_HOME_SOURCE: '--temp-home',
+        STATION_INSTANCE_ID: 'e2e-core-loop-capacity-1234-abcd',
+      }).observe(),
+    ).resolves.toMatchObject({
+      kind: 'critical',
+      busyPercent: 97,
+      cpuCount: 8,
+      source: 'core-loop-capacity-e2e',
+    });
+
+    const healthySample = {
+      sample: async () => healthyObservation,
+    };
+    for (const env of [
+      // Not a --temp-home process: a persistent home can never be forced
+      // into refusing engine starts.
+      {
+        [E2E_CRITICAL_RESOURCE_POSTURE_ENV]: '1',
+        STATION_HOME_SOURCE: 'default',
+        STATION_INSTANCE_ID: 'e2e-core-loop-capacity-1234-abcd',
+      },
+      // Wrong instance namespace, including the healthy override's own —
+      // the two overrides' namespaces are disjoint by construction.
+      {
+        [E2E_CRITICAL_RESOURCE_POSTURE_ENV]: '1',
+        STATION_HOME_SOURCE: '--temp-home',
+        STATION_INSTANCE_ID: 'stable',
+      },
+      {
+        [E2E_CRITICAL_RESOURCE_POSTURE_ENV]: '1',
+        STATION_HOME_SOURCE: '--temp-home',
+        STATION_INSTANCE_ID: 'e2e-starter-clean-install-1234-abcd',
+      },
+      // Only the exact value '1' authorizes.
+      {
+        [E2E_CRITICAL_RESOURCE_POSTURE_ENV]: 'true',
+        STATION_HOME_SOURCE: '--temp-home',
+        STATION_INSTANCE_ID: 'e2e-core-loop-capacity-1234-abcd',
+      },
+    ]) {
+      await expect(
+        createEnvironmentRuntimeResourcePostureProbe(
+          env,
+          healthySample,
+        ).observe(),
+      ).resolves.toMatchObject({ kind: 'healthy', busyPercent: 20 });
+    }
+
+    // The healthy override still wins for ITS attested namespace even with
+    // the critical env var also set: the critical branch cannot flip a
+    // starter-clean-install run, whose whole point is isolation from load.
+    await expect(
+      createEnvironmentRuntimeResourcePostureProbe({
+        [E2E_HEALTHY_RESOURCE_POSTURE_ENV]: '1',
+        [E2E_CRITICAL_RESOURCE_POSTURE_ENV]: '1',
+        STATION_HOME_SOURCE: '--temp-home',
+        STATION_INSTANCE_ID: 'e2e-starter-clean-install-1234-abcd',
+      }).observe(),
+    ).resolves.toMatchObject({
+      kind: 'healthy',
+      busyPercent: 0,
+      source: 'starter-clean-install-e2e',
+    });
   });
 
   test('derives critical from the observed busy percent, not a supplied status', () => {

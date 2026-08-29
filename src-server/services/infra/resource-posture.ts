@@ -86,6 +86,23 @@ const STARTER_CLEAN_INSTALL_INSTANCE =
   /^e2e-starter-clean-install-[a-z0-9]+-[a-z0-9]+$/;
 
 /**
+ * #766 item 2 (core-loop journeys): the mirrored critical-forcing override.
+ * The capacity-gate journey must observe the REAL refusal path — banner,
+ * engine-start admission, and scheduler all reading one forced observation —
+ * and no seam existed to force it (the healthy override above forces the
+ * opposite). Authorization mirrors the healthy override exactly: the CLI
+ * must attest `--temp-home` AND the runner-owned journey instance namespace;
+ * the env value alone has no effect, so a persistent production home can
+ * never be forced into refusing engine starts. The forced sample still
+ * travels through `deriveRuntimeResourcePosture` — this seam supplies an
+ * observation (busyPercent 97), never a posture string.
+ */
+export const E2E_CRITICAL_RESOURCE_POSTURE_ENV =
+  'STATION_E2E_RESOURCE_POSTURE_CRITICAL';
+const CORE_LOOP_CAPACITY_INSTANCE =
+  /^e2e-core-loop-capacity-[a-z0-9]+-[a-z0-9]+$/;
+
+/**
  * Classifies a sampled observation. The source sample's `status` is deliberately
  * not trusted: this recomputes the posture from measured busy percent, CPU
  * count, and the named thresholds, so a caller cannot assert a posture string.
@@ -171,20 +188,45 @@ export function createEnvironmentRuntimeResourcePostureProbe(
     env[E2E_HEALTHY_RESOURCE_POSTURE_ENV] === '1' &&
     env.STATION_HOME_SOURCE === '--temp-home' &&
     STARTER_CLEAN_INSTALL_INSTANCE.test(env.STATION_INSTANCE_ID ?? '');
-  if (!authorized) {
-    return createRuntimeResourcePostureProbe(options);
+  if (authorized) {
+    return createRuntimeResourcePostureProbe({
+      sample: async () =>
+        buildHostPressureSample({
+          busyPercent: 0,
+          cpuCount: 1,
+          sampleMs: 0,
+          sampledAt: Date.now(),
+          threshold: RUNTIME_RESOURCE_POSTURE_DEGRADED_BUSY_PERCENT,
+          source: 'starter-clean-install-e2e',
+        }),
+    });
   }
-  return createRuntimeResourcePostureProbe({
-    sample: async () =>
-      buildHostPressureSample({
-        busyPercent: 0,
-        cpuCount: 1,
-        sampleMs: 0,
-        sampledAt: Date.now(),
-        threshold: RUNTIME_RESOURCE_POSTURE_DEGRADED_BUSY_PERCENT,
-        source: 'starter-clean-install-e2e',
-      }),
-  });
+  // The critical override is gated on ITS OWN instance namespace, disjoint
+  // by construction from the starter-clean-install one, so a single process
+  // can never be authorized for both and the healthy override's behavior is
+  // byte-identical to before this branch existed.
+  const criticalAuthorized =
+    env[E2E_CRITICAL_RESOURCE_POSTURE_ENV] === '1' &&
+    env.STATION_HOME_SOURCE === '--temp-home' &&
+    CORE_LOOP_CAPACITY_INSTANCE.test(env.STATION_INSTANCE_ID ?? '');
+  if (criticalAuthorized) {
+    return createRuntimeResourcePostureProbe({
+      sample: async () =>
+        buildHostPressureSample({
+          // Above RUNTIME_RESOURCE_POSTURE_CRITICAL_BUSY_PERCENT so the
+          // ordinary numeric derivation classifies critical; the journey
+          // asserts this exact source string to prove the refusal it saw
+          // came from the seam, not from coincidental real host load.
+          busyPercent: 97,
+          cpuCount: 8,
+          sampleMs: 0,
+          sampledAt: Date.now(),
+          threshold: RUNTIME_RESOURCE_POSTURE_DEGRADED_BUSY_PERCENT,
+          source: 'core-loop-capacity-e2e',
+        }),
+    });
+  }
+  return createRuntimeResourcePostureProbe(options);
 }
 
 export class CriticalResourcePostureError extends Error {
