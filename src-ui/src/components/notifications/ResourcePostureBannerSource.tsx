@@ -42,21 +42,30 @@ const RESOURCE_POSTURE_BANNER_ID = BANNER_IDS.resourcePosture;
 
 function postureBannerMessage(
   kind: HostPressureKind,
-  busyPercent: number | undefined,
+  posture: {
+    busyPercent?: number;
+    smoothedBusyPercent?: number;
+    windowLength?: number;
+    ageMs?: number | null;
+  },
 ): string {
+  const displayed = posture.smoothedBusyPercent ?? posture.busyPercent;
   const observed =
-    typeof busyPercent === 'number'
-      ? `${busyPercent}% CPU busy`
+    typeof displayed === 'number'
+      ? `${Math.round(displayed)}% CPU busy averaged across ${posture.windowLength ?? 1} sample${(posture.windowLength ?? 1) === 1 ? '' : 's'}`
       : 'over its resource threshold';
+  const age =
+    typeof posture.ageMs === 'number'
+      ? `, observed ${Math.max(0, Math.round(posture.ageMs / 1000))}s ago`
+      : '';
   return kind === 'critical'
-    ? `This Station's host is at capacity (${observed}). New engine starts are refused until load drops.`
-    : `This Station's host is busy (${observed}). Scheduled runs are paused until load drops.`;
+    ? `This Station's host remains very busy (${observed}${age}). Automatic work is paused; explicit starts ask before continuing.`
+    : `This Station's host is busy (${observed}${age}). Automatic work is paused until the averaged load recovers.`;
 }
 
 export function ResourcePostureBannerSource() {
   const { data } = useResourcePostureQuery();
   const kind = data?.kind;
-  const busyPercent = data?.busyPercent;
 
   useEffect(() => {
     if (kind !== 'degraded' && kind !== 'critical') {
@@ -70,7 +79,7 @@ export function ResourcePostureBannerSource() {
       // Shared with Schedule's paused wording (utils/resourcePosture.ts) so
       // the two surfaces cannot disagree about what this posture is called.
       badge: hostPressureBadge(kind),
-      message: postureBannerMessage(kind, busyPercent),
+      message: postureBannerMessage(kind, data ?? {}),
       // Recurring host-pressure state, not a one-off notice: it clears
       // itself the moment posture recovers (the effect above dismisses it),
       // so a persistent dismiss would only hide a later, distinct episode
@@ -80,7 +89,7 @@ export function ResourcePostureBannerSource() {
     return () => {
       bannerStore.dismiss(RESOURCE_POSTURE_BANNER_ID);
     };
-  }, [kind, busyPercent]);
+  }, [kind, data]);
 
   return null;
 }

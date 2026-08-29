@@ -31,7 +31,11 @@ import type { IProviderAdapterRegistry } from '../../providers/provider-interfac
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { receiptBus } from '../infra/receipt-bus.js';
-import { CriticalResourcePostureError } from '../infra/resource-posture.js';
+import {
+  CriticalResourcePostureError,
+  ResourcePostureDeferredError,
+  type RuntimeEngineStartLease,
+} from '../infra/resource-posture.js';
 import type { EventStore } from './event-store.js';
 import {
   projectRequestAnswerability,
@@ -1081,7 +1085,9 @@ export interface RecoveredSessionStartOptions {
    * A critical refusal leaves the persisted session recoverable and writes no
    * recovery-failure event — it is a deferral, not a verdict on the session.
    */
-  admitEngineStart?: () => Promise<void>;
+  admitEngineStart?: (
+    threadId: string,
+  ) => Promise<RuntimeEngineStartLease | undefined>;
 }
 
 /**
@@ -1162,11 +1168,16 @@ export async function startRecoveredOrchestrationSession(options: {
     if (deps.applyCredentialProfile) {
       startInput = await deps.applyCredentialProfile(startInput);
     }
-    await deps.admitEngineStart?.();
-    const recovered = await withTenantExecutionContext(
-      startInput.tenantExecutionContext,
-      () => adapter.startSession(startInput),
-    );
+    const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
+    let recovered: ProviderSession;
+    try {
+      recovered = await withTenantExecutionContext(
+        startInput.tenantExecutionContext,
+        () => adapter.startSession(startInput),
+      );
+    } finally {
+      admissionLease?.release();
+    }
     deps.recordAcceptedModelLaunch?.(adapter, startInput);
     const nextSession = {
       ...session,
@@ -1183,7 +1194,11 @@ export async function startRecoveredOrchestrationSession(options: {
     deps.eventStore?.upsertSession(nextSession);
     return nextSession;
   } catch (error) {
-    if (error instanceof CriticalResourcePostureError) throw error;
+    if (
+      error instanceof CriticalResourcePostureError ||
+      error instanceof ResourcePostureDeferredError
+    )
+      throw error;
     const message = error instanceof Error ? error.message : String(error);
     deps.logger.warn('Failed to recover provider session', {
       provider: session.provider,

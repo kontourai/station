@@ -20,13 +20,22 @@ export type ResourcePostureKind =
 
 export interface ResourcePostureVM {
   kind: ResourcePostureKind;
-  /** Absent only for `kind: 'unavailable'` — no observation to report. */
+  /** Latest raw sample; absent only when observation is unavailable. */
   busyPercent?: number;
+  /** Median of the server controller's bounded rolling window. */
+  smoothedBusyPercent?: number;
   cpuCount: number;
   sampledAt: number | null;
+  ageMs?: number | null;
   sampleMs: number | null;
   thresholdPercent: number;
+  criticalThresholdPercent?: number;
   source: string;
+  windowLength?: number;
+  postureSince?: number | null;
+  availableMemoryBytes?: number | null;
+  totalMemoryBytes?: number | null;
+  memoryPressure?: 'healthy' | 'critical' | 'unavailable';
 }
 
 export async function fetchResourcePosture(): Promise<ResourcePostureVM> {
