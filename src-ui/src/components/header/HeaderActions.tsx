@@ -12,11 +12,13 @@ import { useAttentionQuery } from '@kontourai/station-sdk';
 import { useEffect, useState } from 'react';
 import { APP_SURFACE_REGISTRY } from '../../app-shell/surface-registry';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { toastStore } from '../../contexts/ToastContext';
 import { hasRealSavedConnection } from '../../lib/saved-connections';
 import {
   checkServerHealth,
   probeServerConnection,
 } from '../../lib/serverHealth';
+import { nativePlatformPromise } from '../../platform/native';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { useBundledServerStatus } from '../../platform/useBundledServerStatus';
 import { SettingsGlyph } from '../icons/Glyph';
@@ -238,6 +240,18 @@ export function HeaderActions({
     .filter(Boolean)
     .join(' · ');
 
+  const openDesktopTrayMenu = profile.isDesktop
+    ? async () => {
+        const native = await nativePlatformPromise;
+        const result = await native.openDesktopTrayMenu();
+        if (result.status !== 'ok') {
+          toastStore.show(
+            result.status === 'unsupported' ? result.reason : result.message,
+          );
+        }
+      }
+    : undefined;
+
   return (
     <div className="app-toolbar__actions">
       <div className="header-divider" />
@@ -438,6 +452,7 @@ export function HeaderActions({
               userInitials,
               onClose: onCloseOverflow,
               onOpenConnections,
+              onOpenDesktopTrayMenu: openDesktopTrayMenu,
               onOpenHelp: onToggleHelp,
               onOpenProfile,
             }}

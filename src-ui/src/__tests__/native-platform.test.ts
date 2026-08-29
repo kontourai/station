@@ -696,6 +696,32 @@ describe('native platform boundary', () => {
     expect(invoked).toContain('restart_bundled_server');
   });
 
+  test('opens the desktop tray menu and preserves unsupported host results', async () => {
+    const invoked: string[] = [];
+    const supported = new TauriNativePlatformAdapter({
+      invoke: async <T>(command: string) => {
+        invoked.push(command);
+        return true as T;
+      },
+      listen: async () => () => undefined,
+    });
+    await expect(supported.openDesktopTrayMenu()).resolves.toEqual({
+      status: 'ok',
+      value: undefined,
+    });
+    expect(invoked).toContain('open_desktop_tray_menu');
+
+    const unsupported = new TauriNativePlatformAdapter({
+      invoke: async <T>() => false as T,
+      listen: async () => () => undefined,
+    });
+    await expect(unsupported.openDesktopTrayMenu()).resolves.toEqual({
+      status: 'unsupported',
+      command: 'open-desktop-tray-menu',
+      reason: expect.any(String),
+    });
+  });
+
   test('delivers validated bundled-server status events and ignores noise', async () => {
     let handler: ((event: { payload: unknown }) => void) | undefined;
     let unlistened = false;
@@ -750,6 +776,11 @@ describe('native platform boundary', () => {
     await expect(web.restartBundledServer()).resolves.toEqual({
       status: 'unsupported',
       command: 'restart-bundled-server',
+      reason: expect.any(String),
+    });
+    await expect(web.openDesktopTrayMenu()).resolves.toEqual({
+      status: 'unsupported',
+      command: 'open-desktop-tray-menu',
       reason: expect.any(String),
     });
     expect(() =>

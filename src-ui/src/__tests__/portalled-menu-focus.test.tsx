@@ -108,6 +108,27 @@ describe('portalled header menus stay reachable from the keyboard', () => {
 });
 
 describe('portalled header menu click-away controls', () => {
+  test('offers the desktop tray action and closes before invoking it', () => {
+    const calls: string[] = [];
+    render(
+      <OverflowMenu
+        isOpen
+        connStatus="connected"
+        userInitials="ST"
+        onClose={() => calls.push('close')}
+        onOpenConnections={vi.fn()}
+        onOpenDesktopTrayMenu={() => {
+          calls.push('tray');
+        }}
+        onOpenHelp={vi.fn()}
+        onOpenProfile={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open desktop tray' }));
+    expect(calls).toEqual(['close', 'tray']);
+  });
+
   test('uses named buttons for the pointer dismissal surfaces', () => {
     const onCloseHelp = vi.fn();
     const onCloseOverflow = vi.fn();

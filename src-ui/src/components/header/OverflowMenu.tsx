@@ -12,6 +12,7 @@ interface OverflowMenuProps {
   userInitials: string;
   onClose: () => void;
   onOpenConnections: () => void;
+  onOpenDesktopTrayMenu?: () => void | Promise<void>;
   onOpenHelp: () => void;
   onOpenProfile: () => void;
 }
@@ -22,6 +23,7 @@ export function OverflowMenu({
   userInitials,
   onClose,
   onOpenConnections,
+  onOpenDesktopTrayMenu,
   onOpenHelp,
   onOpenProfile,
 }: OverflowMenuProps) {
@@ -64,6 +66,31 @@ export function OverflowMenu({
           <ConnectionStatusDot status={connStatus} size={7} />
           Connections
         </button>
+        {onOpenDesktopTrayMenu && (
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              void onOpenDesktopTrayMenu();
+            }}
+          >
+            <svg
+              aria-hidden="true"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="4" y="4" width="16" height="13" rx="2" />
+              <path d="M9 21h6M12 17v4" />
+            </svg>
+            Open desktop tray
+          </button>
+        )}
         {/* archive#3311: on mobile the profile lives here rather than in the
             toolbar, whose slot the connection status chip now occupies. LAST,
             not first: it is the demoted item, and this menu is painted at

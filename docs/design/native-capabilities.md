@@ -28,7 +28,7 @@ host.
 | Compile-target report | unsupported | enabled | Rust reports target and Station-enabled state. |
 | Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (station#1954). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
 | Remote push wakeup | unsupported | unsupported | No provisioned FCM/APNs application or server delivery credentials. The capability report names this explicitly; the dormant local poller cannot wake a frozen or closed app (#917/#1225). |
-| Station service tray | unsupported | report-authoritative | Desktop implementation remains Rust-owned; JavaScript receives no opener permission. |
+| Station service tray | unsupported | report-authoritative | Desktop implementation remains Rust-owned. The renderer may request native menu reveal through one typed command but receives no opener permission, URL, port, or menu mutation authority. |
 
 Desktop startup readiness is also Rust-owned. A sidecar status may carry the
 secret-free exact `(generation, instanceId, bootId, apiBase)` observation that
@@ -53,8 +53,9 @@ reported through the typed adapter error callback and surfaced to the user.
 `core:event:allow-listen` and `core:event:allow-unlisten` for the typed host
 event bridge. Application commands registered by the Rust host remain outside
 the plugin permission surface. The manifest no longer grants `core:default`,
-`shell:allow-open`, or `shell:allow-execute`. The desktop tray still opens its
-validated local Station URL from Rust through `tauri-plugin-opener`. The
+`shell:allow-open`, or `shell:allow-execute`. The desktop tray still opens only
+its validated local Station UI or fixed `/ui` API-docs URL from Rust through
+`tauri-plugin-opener`. The renderer's menu-reveal request carries no URL. The
 plugin's default JavaScript link interception is disabled, and that Rust-owned
 behavior is not a reason to expose generic shell or opener commands to the
 webview.
@@ -94,7 +95,7 @@ exists.
 | Updater | Desktop only; mobile is unsupported. | disabled; unused updater dependency removed. |
 | Dialog | Mobile is partial: no folder picker and path results use URI forms. | disabled. |
 | File system | Mobile is partial/sandboxed. | disabled. |
-| Opener / shell | Mobile is limited to opening URLs; desktop has broader support. | Rust desktop tray uses `tauri-plugin-opener` 2.5.4 for a validated local HTTP URL only; JavaScript link interception and opener permissions are disabled. |
+| Opener / shell | Mobile is limited to opening URLs; desktop has broader support. | Rust desktop tray uses `tauri-plugin-opener` 2.5.4 for a validated local UI URL or fixed `/ui` API-docs path only; JavaScript link interception and opener permissions are disabled. |
 | Process | Desktop only. | disabled for JavaScript and no process plugin enabled. |
 | Credential storage | Platform-native stores are available on mobile. | unsupported for durable mobile pairing. #2043 requires host-owned pairing capture and request brokering before any Keystore/Keychain persistence can be enabled. |
 | Clipboard | Mobile supports plain text only. | disabled. |
@@ -142,9 +143,9 @@ readiness claim. A device IPA,
 signed Android APK/AAB, signed desktop packages, notarization, Windows trust,
 Play upload, and App Store upload require protected-environment credentials and
 provider receipts before they can be claimed. The validated opener boundary is
-unit-tested and compiled on macOS; an actual tray click launching the OS browser
-remains NOT_VERIFIED on macOS, Linux, and Windows until native shell smoke
-coverage exists.
+unit-tested and compiled on macOS; actual tray endpoint clicks and renderer-led
+menu reveal remain NOT_VERIFIED on macOS, Linux, and Windows until native shell
+smoke coverage exists.
 
 Mobile packages are remote clients. Their Tauri configs inherit only the shared
 native-client UI build and cannot bundle the desktop server, Node runtime, seed
