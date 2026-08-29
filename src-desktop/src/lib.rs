@@ -1366,10 +1366,9 @@ fn station_profile_store_genesis_admissible(root: &std::path::Path) -> Result<bo
             for entry in entries {
                 let entry = entry.map_err(|error| format!("inspect Station root: {error}"))?;
                 let name = entry.file_name();
-                let metadata = entry
-                    .metadata()
+                let metadata = std::fs::symlink_metadata(entry.path())
                     .map_err(|error| format!("inspect Station install root: {error}"))?;
-                if !metadata.is_dir() {
+                if !metadata.file_type().is_dir() {
                     return Ok(false);
                 }
                 if name == "installs" {
@@ -12189,6 +12188,23 @@ mod tests {
         std::fs::remove_dir(&root).unwrap();
         symlink(&redirected, &root).unwrap();
         assert!(ensure_station_profile_store_root(&root).is_err());
+    }
+
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn shared_profile_genesis_never_follows_a_config_or_install_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".station");
+        let external = temp.path().join("external");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&external).unwrap();
+        symlink(&external, root.join("config")).unwrap();
+        assert!(!station_profile_store_genesis_admissible(&root).unwrap());
+        std::fs::remove_file(root.join("config")).unwrap();
+        symlink(&external, root.join("installs")).unwrap();
+        assert!(!station_profile_store_genesis_admissible(&root).unwrap());
     }
 
     #[cfg(not(mobile))]
