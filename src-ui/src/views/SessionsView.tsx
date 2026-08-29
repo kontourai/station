@@ -51,6 +51,7 @@ import {
 } from '../utils/sessionDisplay';
 import { isTerminalLifecycle } from './home/home-lane-model';
 import { RunBoardSummary } from './sessions/RunBoardSummary';
+import { foldConversationTurns } from './sessions/conversation-groups';
 import { groupDelegatedSessionRuns } from './sessions/run-groups';
 import {
   matchesProjectFilter,
@@ -130,11 +131,22 @@ function searchableSessionFields(
 function sessionMetaLine(
   session: OrchestrationSessionSummary,
   now: number,
+  foldedTurnCount?: number,
 ): string {
   const recency = sessionRecency(session);
   const parts: string[] = [];
   if (session.delegation) parts.push(sessionKindLabel(session));
   parts.push(sessionStatusWord(session));
+  // NOT the `eventCount` proxy the docblock above refuses: this counts the
+  // sibling turn-sessions folded behind this conversation row
+  // (`foldConversationTurns`), each one a continuation session the lineage
+  // opened for a turn. A session that absorbed a queued/steered extra turn
+  // makes this a floor, not an exact transcript count — it says how many
+  // rows the fold collapsed, which is the fragmentation fact the reader
+  // needs, and is derived entirely from what this list is showing.
+  if (foldedTurnCount !== undefined && foldedTurnCount > 1) {
+    parts.push(`${foldedTurnCount} turns`);
+  }
   if (recency > 0) parts.push(relativeTimeAgo(recency, now));
   return parts.join(' · ');
 }
@@ -562,9 +574,16 @@ export function SessionsView({
   const orderByThreadId = new Map(
     sessionRows.map((row, index) => [row.session.threadId, index]),
   );
-  const presentationRows = groupDelegatedSessionRuns(
-    sessionRows.map((row) => row.session),
-  ).map((presentation) => {
+  // #765 residue: fold sibling turn-sessions of one conversation into a
+  // single representative row (newest state wins; count carried onto the
+  // row). Runs first, then the fold — a run group is already its own
+  // presentation unit and must not lose members to a conversation fold.
+  const { presentations: foldedPresentations, turnCounts } =
+    foldConversationTurns(
+      groupDelegatedSessionRuns(sessionRows.map((row) => row.session)),
+      { pinnedThreadId: selectedId },
+    );
+  const presentationRows = foldedPresentations.map((presentation) => {
     const members =
       presentation.kind === 'run'
         ? presentation.run.members
@@ -587,13 +606,16 @@ export function SessionsView({
       .filter((row) => row.laneId === laneId)
       .sort((left, right) => left.order - right.order);
     if (lanePresentations.length === 0) return [];
-    // The lane count means sessions CLASSIFIED into this lane — the same
-    // per-session semantics Project Live Work promises to share ("the same
-    // populations with the same words"). A mixed-state run RENDERS in its
-    // highest-priority member lane, but its members still count where their
-    // own state belongs: one waiting child in an otherwise-active run is
-    // 'Needs you · 1', never '· 2'. Stable across expand/collapse because
-    // classification, not visibility, is what is counted.
+    // The lane count means presentation members CLASSIFIED into this lane.
+    // A mixed-state run RENDERS in its highest-priority member lane, but its
+    // members still count where their own state belongs: one waiting child
+    // in an otherwise-active run is 'Needs you · 1', never '· 2'. Stable
+    // across expand/collapse because classification, not visibility, is what
+    // is counted. Turn-sessions folded away by `foldConversationTurns` do
+    // NOT count: the folded conversation is the unit this list now shows,
+    // which is the same conversation-folded population Home and Project Live
+    // Work already count ("the same populations with the same words") — the
+    // per-turn count was the disagreement, not this.
     const laneSessionCount = lanePresentations.reduce(
       (total, row) =>
         total +
@@ -636,7 +658,7 @@ export function SessionsView({
           name: sessionTitle(s),
           subtitle: group
             ? sessionMemberStatusLine(s, agents, now)
-            : sessionMetaLine(s, now),
+            : sessionMetaLine(s, now, turnCounts.get(s.threadId)),
           // EVERY row in the lane carries the lane section —
           // the layout emits a heading only when section CHANGES between
           // neighbors, so a member with undefined reset the comparison and a
