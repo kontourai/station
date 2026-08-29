@@ -4,7 +4,6 @@ import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const lifecycle = vi.hoisted(() => [] as string[]);
-const readinessProof = vi.hoisted(() => vi.fn(() => ({ dispose: vi.fn() })));
 const profileStorage = vi.hoisted(() => ({
   hydrate: vi.fn(async () => {
     lifecycle.push('hydrate');
@@ -37,10 +36,6 @@ vi.mock('../native/stationProfileStorage', () => ({
   nativeStationProfileStorage: () => profileStorage,
 }));
 
-vi.mock('../native/startupReadiness', () => ({
-  startStartupReadinessProof: readinessProof,
-}));
-
 import { PlatformBootstrap } from '../PlatformProfileContext';
 
 function NativeChild() {
@@ -54,7 +49,7 @@ describe('PlatformBootstrap native default authorization', () => {
     vi.clearAllMocks();
   });
 
-  it('starts the native readiness proof while profile hydration is pending and authorizes before native children render', async () => {
+  it('authorizes the native default before native children render', async () => {
     let releaseHydration: (() => void) | undefined;
     profileStorage.hydrate.mockImplementationOnce(
       () =>
@@ -69,13 +64,14 @@ describe('PlatformBootstrap native default authorization', () => {
       </PlatformBootstrap>,
     );
 
-    await vi.waitFor(() => expect(readinessProof).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(profileStorage.hydrate).toHaveBeenCalledOnce(),
+    );
     expect(lifecycle).toEqual(['hydrate']);
     expect(screen.queryByText('native child')).toBeNull();
 
     releaseHydration?.();
     await screen.findByText('native child');
     expect(lifecycle).toEqual(['hydrate', 'authorize', 'child']);
-    expect(readinessProof).toHaveBeenCalledOnce();
   });
 });
