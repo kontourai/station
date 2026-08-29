@@ -4,7 +4,7 @@
  */
 
 import { join } from 'node:path';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { unregisterPluginEngineConnections } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import {
@@ -24,6 +24,10 @@ import {
   findPluginContentLockCycleError,
   pluginContentLockCycleMessage,
 } from '../../services/plugins/plugin-content-integrity.js';
+import {
+  isPluginConsentRefusedError,
+  type PluginInstallConsent,
+} from '../../services/plugins/plugin-install-consent.js';
 import { registryOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import {
@@ -31,6 +35,7 @@ import {
   getBody,
   param,
   registryInstallSchema,
+  registryPluginInstallSchema,
   skillInstallSchema,
   validate,
 } from '../schemas/schemas.js';
@@ -329,21 +334,104 @@ export function createRegistryRoutes(
     return c.json({ success: true, data: items });
   });
 
-  app.post('/agents/install', validate(registryInstallSchema), async (c) => {
-    const { id } = getBody(c);
-    registryOps.add(1, { operation: 'install-agent', item: id });
+  app.post(
+    '/agents/install',
+    validate(registryPluginInstallSchema),
+    async (c) => {
+      const body = getBody(c);
+      const { id } = body;
+      registryOps.add(1, { operation: 'install-agent', item: id });
 
-    const result = await getAgentRegistryProvider().install(id);
-    if (result.success) {
-      // Refresh ACP modes so the new agent appears
-      await refreshACPModes().catch(() => {});
-    }
-    return c.json(result, result.success ? 200 : 500);
-  });
+      // A JSON-manifest registry serves the same catalog through the agent
+      // face and the plugin face (`register-manifest-registry.ts`), so an id
+      // this surface offers can be a PLUGIN — code contributions, a build
+      // step, a consent basis. Installing that through the provider's raw
+      // tree copy skipped all three: the tree landed without `dist/bundle.js`
+      // and its layout components could never register (#765 D1). An id the
+      // plugin registry resolves takes the one complete install path;
+      // anything else remains a plain provider install, exactly as before.
+      if (pluginInstallDeps) {
+        let registryPlugin: { source: string } | null = null;
+        try {
+          registryPlugin = await resolvePluginRegistryInstall(id);
+        } catch (error: unknown) {
+          return c.json({ success: false, message: errorMessage(error) }, 500);
+        }
+        if (registryPlugin) {
+          return installRegistryPlugin(c, body);
+        }
+      }
+
+      const result = await getAgentRegistryProvider().install(id);
+      if (result.success) {
+        // Refresh ACP modes so the new agent appears
+        await refreshACPModes().catch(() => {});
+      }
+      return c.json(result, result.success ? 200 : 500);
+    },
+  );
 
   app.delete('/agents/:id', async (c) => {
     const id = param(c, 'id');
     registryOps.add(1, { operation: 'uninstall-agent', item: id });
+
+    // Mirror of the install branch above: a registry PLUGIN installed through
+    // the full pipeline wrote agent definitions, grants, and integrations,
+    // and the provider's raw uninstall (delete tree, drop alias) would leave
+    // all of that behind. The shared uninstall removes what the shared
+    // install created. An id the plugin registry does not resolve falls
+    // through to the provider, exactly as before.
+    if (pluginInstallDeps) {
+      let registryPlugin: { source: string } | null = null;
+      try {
+        registryPlugin = await resolvePluginRegistryInstall(id);
+      } catch (error: unknown) {
+        return c.json({ success: false, message: errorMessage(error) }, 500);
+      }
+      if (registryPlugin) {
+        try {
+          const mutation = await captureConfigurationMutation(
+            deps?.applyConfigurationMutation,
+            async (beginMutation) => {
+              const removed = await uninstallInstalledPlugin(id, {
+                ...pluginInstallDeps,
+                beginConfigurationMutation: beginMutation,
+              });
+              await deps?.settleProviderAdapterRetirements?.();
+              return removed;
+            },
+          );
+          if (mutation.value.success) {
+            try {
+              refreshInstalledKits();
+            } catch (error: unknown) {
+              deps?.logger?.warn(
+                'Kit observability refresh failed after registry removal',
+                { error: errorMessage(error) },
+              );
+            }
+          }
+          return c.json(
+            {
+              ...mutation.value,
+              success: mutation.activation?.status !== 'pending',
+              ...configurationActivationPayload(mutation.activation),
+            },
+            configurationMutationStatus(mutation.activation, 200),
+          );
+        } catch (error: unknown) {
+          const message =
+            error instanceof Error
+              ? errorMessage(error)
+              : `No provider could uninstall ${id}`;
+          return c.json(
+            { success: false, message },
+            message === 'Plugin not found' ? 404 : 500,
+          );
+        }
+      }
+    }
+
     const result = await getAgentRegistryProvider().uninstall(id);
     if (result.success) {
       await refreshACPModes().catch(() => {});
@@ -545,15 +633,55 @@ export function createRegistryRoutes(
     return c.json({ success: true, data: items });
   });
 
-  app.post('/plugins/install', validate(registryInstallSchema), async (c) => {
-    const { id } = getBody(c);
-    registryOps.add(1, { operation: 'install-plugin', item: id });
+  /**
+   * The one registry install path for PLUGINS, whichever catalog face listed
+   * them. A JSON-manifest registry serves its plugin catalog through the
+   * agent-registry surface too (`register-manifest-registry.ts`), and the
+   * agent install route used to answer that with the provider's raw tree
+   * copy: no `buildPlugin`, no consent gate, no `plugins:installed` event.
+   * The copy "succeeded", `dist/bundle.js` never existed, and every layout
+   * component the plugin declared rendered as "Unsupported layout tab"
+   * forever (#765 D1). Routing both faces here means a registry plugin is
+   * either installed completely — built, consent-checked, announced — or
+   * refused with a sentence that says what to do, never half-installed.
+   */
+  const installRegistryPlugin = async (
+    c: Context,
+    body: {
+      id: string;
+      skip?: string[];
+      consent?: {
+        permissions: string[];
+        contentDigest: string;
+        dependencies?: string[];
+      };
+    },
+  ) => {
+    const { id, skip, consent: consentBody } = body;
     if (!pluginInstallDeps) {
       return c.json(
         { success: false, message: 'Plugin install dependencies unavailable' },
         500,
       );
     }
+    // archive#4288. Without a decision in the request this route installs on
+    // one click with no preview and no prompt, so it holds no operator
+    // decision and says so rather than passing a decision nobody made — the
+    // installer then refuses exactly what such a caller could not have
+    // disclosed. The Registry view closes that gap the same way the Plugins
+    // view does: it previews the resolved source and carries the operator's
+    // answer here, bound to the digest of the bytes that were shown.
+    const consent: PluginInstallConsent = consentBody
+      ? {
+          kind: 'operator-decision',
+          permissions: consentBody.permissions,
+          contentDigest: consentBody.contentDigest,
+          dependencies: consentBody.dependencies ?? [],
+        }
+      : {
+          kind: 'no-operator-decision',
+          caller: 'the plugin registry',
+        };
     try {
       const registryInstall = await resolvePluginRegistryInstall(id);
       if (!registryInstall) {
@@ -567,24 +695,12 @@ export function createRegistryRoutes(
         async (beginMutation) => {
           const installed = await installPluginFromSource(
             registryInstall.source,
-            [],
+            skip ?? [],
             { ...pluginInstallDeps, beginConfigurationMutation: beginMutation },
             {
               registryId: id,
               registryKey: registryInstall.registryKey,
-              // archive#4288. This route installs on one click with no
-              // preview and no prompt, so it holds no operator decision and
-              // says so rather than passing a decision nobody made. The
-              // installer refuses exactly what this route could not have
-              // disclosed — a registry plugin deriving a consent-needing
-              // permission — and leaves everything else alone. Closing the
-              // rest of the gap means giving the Registry view the same
-              // preview-then-approve flow the Plugins view has, which is its
-              // own change.
-              consent: {
-                kind: 'no-operator-decision',
-                caller: 'the plugin registry',
-              },
+              consent,
             },
           );
           await deps?.settleProviderAdapterRetirements?.();
@@ -612,6 +728,27 @@ export function createRegistryRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
+      // Same refusal, same shape as the direct install route: the request and
+      // the plugin disagree about what was approved, and nothing was written
+      // when it refused (archive#4288).
+      if (isPluginConsentRefusedError(error)) {
+        deps?.logger?.warn(
+          'Registry plugin install refused: consent did not cover the source',
+          { plugin: error.pluginName, reason: error.reason },
+        );
+        return c.json(
+          {
+            success: false,
+            message: errorMessage(error),
+            consent: {
+              reason: error.reason,
+              required: error.required,
+              consented: error.consented,
+            },
+          },
+          400,
+        );
+      }
       // The same refusal the direct install route answers 409 to, through the
       // same derivation — this is the second route that can observe it, and
       // two routes describing one refusal differently is how the reader learns
@@ -641,7 +778,17 @@ export function createRegistryRoutes(
           : 500,
       );
     }
-  });
+  };
+
+  app.post(
+    '/plugins/install',
+    validate(registryPluginInstallSchema),
+    async (c) => {
+      const body = getBody(c);
+      registryOps.add(1, { operation: 'install-plugin', item: body.id });
+      return installRegistryPlugin(c, body);
+    },
+  );
 
   app.delete('/plugins/:id', async (c) => {
     const id = param(c, 'id');

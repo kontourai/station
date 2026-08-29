@@ -57,6 +57,17 @@ export interface MessagePart {
    * different vocabulary. No other writer sets it.
    */
   runtimeError?: boolean;
+  /**
+   * #765 A1: the originating `RuntimeErrorEvent.code`, carried alongside
+   * `runtimeError` when the durable event had one (e.g.
+   * `engine-session-binding-dead`). The live SSE path already translates a
+   * coded failure into plain-language copy (`turnHandlers.ts` /
+   * `chatErrorTranslation.ts`); without this field the rehydrated projection
+   * of the SAME failure could only render the engine's raw prose verbatim.
+   * Set only by `runtime-event-projection.ts`, only next to
+   * `runtimeError: true`.
+   */
+  runtimeErrorCode?: string;
   needsApproval?: boolean;
   approvalId?: string;
   /**

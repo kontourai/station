@@ -37,7 +37,10 @@ import {
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
 import { buildPlugin } from './plugin-bundles.js';
-import { installPluginFromSource } from './plugin-install-shared.js';
+import {
+  installPluginFromSource,
+  resolvePluginRegistrySource,
+} from './plugin-install-shared.js';
 import {
   detectPluginConflicts,
   detectWorkspacePaneCatalogConflicts,
@@ -165,12 +168,34 @@ export function registerPluginInstallRoutes(
 
   app.post('/preview', validate(pluginPreviewSchema), async (c) => {
     try {
-      const { source } = getBody(c);
+      const { source: bodySource, registryId } = getBody(c);
+      let source = bodySource;
+      // The Registry view previews by catalog id: its listings carry provider
+      // labels, not source paths, so the server resolves the id through the
+      // same registry providers the install itself would use. `code` lets a
+      // caller distinguish "this id is not a plugin" (an agent-face entry it
+      // should install as before) from a broken plugin source.
+      if (!source && registryId) {
+        const resolved = await resolvePluginRegistrySource(registryId);
+        if (!resolved) {
+          return c.json(
+            {
+              valid: false,
+              error: `Plugin '${registryId}' not found in registry`,
+              code: 'registry-plugin-not-found',
+              components: [],
+              conflicts: [],
+            },
+            404,
+          );
+        }
+        source = resolved;
+      }
       if (!source) {
         return c.json(
           {
             valid: false,
-            error: 'source is required',
+            error: 'source or registryId is required',
             components: [],
             conflicts: [],
           },

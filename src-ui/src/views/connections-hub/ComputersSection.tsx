@@ -42,14 +42,13 @@ import '../page-layout.css';
 import './ComputersSection.css';
 import { type ComputerRowModel, isSshBusy } from './computer-rows';
 import { knownEnvironmentRegistry } from './known-environment-registry';
+import { PEER_CREDENTIAL_COMMAND } from './peer-credential-command';
 import {
   deriveSshForwardProbeState,
   sshForwardLifecycleLabel,
   sshForwardProvenanceWarning,
 } from './sshForwardState';
 import { useComputerRows } from './useComputerRows';
-
-const PEER_CREDENTIAL_COMMAND = 'station environment peers add';
 
 function SshForwardState({
   connection,

@@ -122,6 +122,86 @@ describe('buildHomeWorkItems', () => {
       title: 'Current title',
     });
   });
+
+  // #765 A2: the server had folded the conversation's current execution
+  // child to `failed` (runtime.error on the second turn), but the chat
+  // store's own state was stale ('running', no local error — the exact
+  // shape when the client missed or dropped the SSE runtime.error). The row
+  // must read Failed from the server fold, never "Active"/Running off local
+  // composer state.
+  test('a conversation whose current child the server folded to failed reads Failed, not Running', () => {
+    const sessions = [
+      {
+        // The root execution session shares the conversation's id — long
+        // completed once continuation children exist. It must NOT be the
+        // correlation the chip reads.
+        threadId: 'conversation-765',
+        conversationId: 'conversation-765',
+        provider: 'claude',
+        status: 'ready',
+        lifecycleState: 'completed',
+        hasActiveTurn: false,
+        updatedAt: '2026-08-29T12:00:00Z',
+        createdAt: '2026-08-29T11:00:00Z',
+        isLoaded: true,
+        isPersisted: true,
+        answerability: { answerable: true },
+        eventCount: 4,
+      },
+      {
+        threadId: 'conversation-765:session:child-1',
+        conversationId: 'conversation-765',
+        provider: 'claude',
+        status: 'dead',
+        lifecycleState: 'failed',
+        hasActiveTurn: false,
+        updatedAt: '2026-08-29T12:05:00Z',
+        createdAt: '2026-08-29T12:04:00Z',
+        isLoaded: true,
+        isPersisted: true,
+        answerability: { answerable: true },
+        eventCount: 6,
+      },
+    ] as any;
+    const chats = {
+      'conversation-765': {
+        conversationId: 'conversation-765',
+        agentSlug: 'claude',
+        agentName: 'Claude Code',
+        title: 'Second turn chat',
+        status: 'idle',
+        orchestrationStatus: 'running',
+        createdAt: 10,
+        messages: [{ timestamp: '2026-08-29T12:05:00Z' }],
+      },
+    } as any;
+
+    const [item] = buildActiveChatTaskItems({
+      chats,
+      agents: [] as any,
+      sessions,
+    });
+    expect(item.lifecycleLabel).toBe('Failed');
+
+    // Discriminating control: the same conversation with a genuinely running
+    // newest child stays Running — the failed fold must come from the
+    // correlated session, not blanket every conversation-keyed chat.
+    const [running] = buildActiveChatTaskItems({
+      chats,
+      agents: [] as any,
+      sessions: [
+        sessions[0],
+        {
+          ...sessions[1],
+          status: 'running',
+          lifecycleState: 'running',
+          hasActiveTurn: true,
+        },
+      ],
+    });
+    expect(running.lifecycleLabel).toBe('Running');
+  });
+
   test('keeps current session identity private through Home task merging', () => {
     const work = buildHomeWorkItems({
       chats: {},

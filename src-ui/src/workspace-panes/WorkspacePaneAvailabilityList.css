@@ -89,6 +89,13 @@
   line-height: 1;
 }
 
+/* #765 F4: a built-in pane's real icon (SVG glyph, 1em-sized) centered on the
+   accent tile — same footprint as the text glyph above, stroked in the tile's
+   accent via currentColor. */
+.workspace-pane-availability-list__preview-icon {
+  font-size: 1.75rem;
+}
+
 .workspace-pane-availability-list__body {
   display: flex;
   flex-direction: column;

@@ -102,7 +102,7 @@ function renderModal() {
 }
 
 describe('NewChatModal workspace hint (#1089)', () => {
-  test("shows the engine connection's directory, not '~ (defaults to home)', for a directoryless project", () => {
+  test("shows the engine connection's directory, not 'Home folder', for a directoryless project", () => {
     selectionModelState.isGlobal = false;
     selectionModelState.selectedProject = {
       slug: 'scope-only',
@@ -114,7 +114,7 @@ describe('NewChatModal workspace hint (#1089)', () => {
 
     renderModal();
 
-    expect(screen.queryByText('~ (defaults to home)')).toBe(null);
+    expect(screen.queryByText('Home folder')).toBe(null);
     const breadcrumb = screen.getByLabelText(
       'Working directory: /tmp/s1089-elsewhere',
     );
@@ -133,7 +133,10 @@ describe('NewChatModal workspace hint (#1089)', () => {
 
     renderModal();
 
-    expect(screen.getByText('~ (defaults to home)')).toBeDefined();
+    // #765 F8: plain copy, with the tilde answer preserved as the tooltip.
+    const fallback = screen.getByText('Home folder');
+    expect(fallback).toBeDefined();
+    expect(fallback.getAttribute('title')).toContain('~');
   });
 
   test('an unbound chat names the connection directory rather than claiming the home directory', () => {
@@ -145,7 +148,7 @@ describe('NewChatModal workspace hint (#1089)', () => {
 
     renderModal();
 
-    expect(screen.queryByText('~ (home directory)')).toBe(null);
+    expect(screen.queryByText('Home folder')).toBe(null);
     expect(
       screen.getByLabelText('Working directory: /tmp/s1089-elsewhere'),
     ).toBeDefined();

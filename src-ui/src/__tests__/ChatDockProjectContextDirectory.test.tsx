@@ -4,15 +4,19 @@
  * archive#1146 — what the dock's directory row actually RENDERS, per case.
  *
  * The view-model test next door pins the resolution; this pins the pixels it
- * produces, because the defect was a rendered string ("~ (defaults to home)")
- * and not a value. `ChatDockProjectContext` renders the fallback copy purely
- * from the absence of a directory, so a resolution regression is only visible
- * here as the wrong sentence.
+ * produces, because the defect was a rendered string (the no-directory
+ * fallback label) and not a value. `ChatDockProjectContext` renders the
+ * fallback copy purely from the absence of a directory, so a resolution
+ * regression is only visible here as the wrong sentence.
+ *
+ * #765 F8: the fallback copy is the plain "Home folder" label (shared
+ * `HomeFolderLabel`), never the old machine literal "~ (defaults to home)".
  */
 
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { ChatDockProjectContext } from '../components/chat-dock/ChatDockProjectContext';
+import { HOME_FOLDER_LABEL } from '../components/HomeFolderLabel';
 
 afterEach(cleanup);
 
@@ -37,13 +41,18 @@ describe('ChatDockProjectContext directory row (station#1146)', () => {
     const row = renderRow('/tmp/s1146-elsewhere');
 
     expect(row.textContent).toContain('s1146-elsewhere');
-    expect(screen.queryByText('~ (defaults to home)')).toBe(null);
+    expect(screen.queryByText(HOME_FOLDER_LABEL)).toBe(null);
   });
 
-  test('still says "~ (defaults to home)" when there is no directory to name', () => {
+  test('says "Home folder" (plain copy, tilde kept as tooltip) when there is no directory to name', () => {
     renderRow(null);
 
-    expect(screen.getByText('~ (defaults to home)')).toBeDefined();
+    const fallback = screen.getByText(HOME_FOLDER_LABEL);
+    expect(fallback).toBeDefined();
+    // The old label's machine framing is gone from the visible text but the
+    // concrete path answer survives as the hover/assistive detail.
+    expect(fallback.getAttribute('title')).toContain('~');
+    expect(fallback.textContent).not.toContain('defaults to home');
   });
 
   test('renders an absolute session path with its parent and leaf split intact', () => {

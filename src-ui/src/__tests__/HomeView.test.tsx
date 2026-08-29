@@ -195,6 +195,7 @@ vi.mock('../components/UsageTelemetryDisclosure', () => ({
     outstanding: false,
   }),
   UsageTelemetryDisclosureStep: () => null,
+  dismissUsageTelemetryDisclosure: vi.fn(),
 }));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ selectedProject: null }),

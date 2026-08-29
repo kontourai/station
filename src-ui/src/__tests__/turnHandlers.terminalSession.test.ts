@@ -50,12 +50,15 @@ describe('handleRuntimeErrorEvent — station#1827 terminal engine session', () 
       .map((p: any) => p.content)
       .join('\n');
 
-    expect(bubbleText).toMatch(/history is gone/i);
+    // #765 A1: the translated headline names the recoverable fact (the
+    // engine session was lost) — not "history is gone", which overclaimed:
+    // the conversation survives via the server's continuation seam.
+    expect(bubbleText).toMatch(/engine session was lost/i);
     // The raw engine text is present (the disclosure), but strictly AFTER
     // the translated headline — never itself the headline.
     expect(bubbleText).toContain(RAW_MESSAGE);
     expect(bubbleText!.indexOf(RAW_MESSAGE)).toBeGreaterThan(
-      bubbleText!.indexOf('history is gone'),
+      bubbleText!.indexOf('engine session was lost'),
     );
   });
 

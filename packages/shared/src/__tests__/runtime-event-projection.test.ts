@@ -409,6 +409,59 @@ describe('projectRuntimeEventsToMessages', () => {
     ]);
   });
 
+  // #765 A1: the structured code rides beside the prose so a rehydrated
+  // failure can be translated exactly like the live one (the live SSE path
+  // classifies on `RuntimeErrorEvent.code`; without this field the replay
+  // could only ever show the engine's raw error text — e.g. a verbatim
+  // "No conversation found with session ID: <uuid>").
+  it('carries the runtime error code on the projected part when the event has one', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'r1' }),
+      ev({
+        method: 'runtime.error',
+        severity: 'error',
+        code: 'engine-session-binding-dead',
+        message: 'No conversation found with session ID: abc-123',
+      }),
+      ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'other' }),
+    ]);
+    expect(messages[0].parts).toEqual([
+      {
+        type: 'text',
+        text: '⚠️ No conversation found with session ID: abc-123',
+        runtimeError: true,
+        runtimeErrorCode: 'engine-session-binding-dead',
+      },
+    ]);
+  });
+
+  it('keeps the code on a compacted repeated runtime-error part', () => {
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'r1' }),
+      ev({
+        method: 'runtime.error',
+        severity: 'error',
+        code: 'engine-session-binding-dead',
+        message: 'No conversation found with session ID: abc-123',
+      }),
+      ev({
+        method: 'runtime.error',
+        severity: 'error',
+        code: 'engine-session-binding-dead',
+        message: 'No conversation found with session ID: abc-123',
+      }),
+      ev({ method: 'turn.completed', turnId: 'r1', finishReason: 'other' }),
+    ]);
+    expect(messages[0].parts).toEqual([
+      {
+        type: 'text',
+        text: '⚠️ No conversation found with session ID: abc-123 (repeated 2×)',
+        runtimeError: true,
+        runtimeErrorCode: 'engine-session-binding-dead',
+      },
+    ]);
+  });
+
   it('compacts only identical consecutive runtime errors in one assistant turn', () => {
     const messages = projectRuntimeEventsToMessages([
       ev({ method: 'turn.started', turnId: 'r1' }),

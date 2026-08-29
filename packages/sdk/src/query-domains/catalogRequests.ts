@@ -129,9 +129,23 @@ export async function requestRegistryCatalogAction(
   {
     id,
     action,
+    consent,
+    skip,
   }: {
     id: string;
     action: 'install' | 'uninstall';
+    /**
+     * Operator pre-install decision for an entry that resolves as a plugin
+     * (station#4288); the server ignores it for plain agent installs and
+     * refuses a code-contributing plugin without it.
+     */
+    consent?: {
+      permissions: string[];
+      contentDigest: string;
+      dependencies: string[];
+    };
+    /** Preview conflict components to skip, as `type:id` keys. */
+    skip?: string[];
   },
 ): Promise<InstallResult> {
   const apiBase = await _getApiBase();
@@ -140,7 +154,11 @@ export async function requestRegistryCatalogAction(
       ? await authenticatedFetch(`${apiBase}/api/registry/${tab}/install`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id }),
+          body: JSON.stringify({
+            id,
+            ...(consent ? { consent } : {}),
+            ...(skip ? { skip } : {}),
+          }),
         })
       : await authenticatedFetch(
           `${apiBase}/api/registry/${tab}/${encodeURIComponent(id)}`,

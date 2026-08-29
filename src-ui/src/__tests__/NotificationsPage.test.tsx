@@ -18,6 +18,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const clearActivity = vi.fn();
 const dismiss = vi.fn();
 const action = vi.fn();
+const confirmPairing = vi.fn();
+const denyPairing = vi.fn();
 const sdkMocks = vi.hoisted(() => ({ acknowledgeAttentionItem: vi.fn() }));
 const invalidateQueries = vi.fn();
 let notifications: Notification[] = [];
@@ -45,6 +47,17 @@ vi.mock('@kontourai/station-sdk', () => ({
   useNotificationActionMutation: () => ({
     isPending: false,
     mutate: action,
+  }),
+  DevicePairingRequestActionError: class extends Error {},
+  useConfirmDevicePairingRequestMutation: () => ({
+    isPending: false,
+    error: null,
+    mutate: confirmPairing,
+  }),
+  useDenyDevicePairingRequestMutation: () => ({
+    isPending: false,
+    error: null,
+    mutate: denyPairing,
   }),
   useAcknowledgeAttentionItemMutation: () => ({
     isPending: false,
@@ -119,6 +132,8 @@ describe('NotificationsPage', () => {
     clearActivity.mockReset();
     dismiss.mockReset();
     action.mockReset();
+    confirmPairing.mockReset();
+    denyPairing.mockReset();
     acknowledgeAttentionItem.mockReset();
     invalidateQueries.mockReset();
     navigate.mockReset();
@@ -152,6 +167,97 @@ describe('NotificationsPage', () => {
       actionId: 'accept',
       id: 'notif-1',
     });
+  });
+
+  /*
+   * #765 D5: an inbound pairing request used to file under passive Activity
+   * with only Dismiss, while "Needs attention" claimed nothing needed you —
+   * and approving was CLI-only. It is an attention item with the decision
+   * on it now, and its mirror activity row is suppressed while pending.
+   */
+  test('a pending pairing request needs attention, with Approve/Deny, and no duplicate activity row', () => {
+    const timestamp = new Date().toISOString();
+    attention = {
+      pendingCount: 1,
+      items: [
+        {
+          id: 'device-pairing:pair-req-1',
+          kind: 'device-pairing',
+          title: 'A device is asking to pair',
+          body: 'Test Phone is waiting for approval on this Station.',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          deviceName: 'Test Phone',
+          openHref: '/connections',
+          source: {
+            requestId: 'pair-req-1',
+            notificationId: 'pairing-notif-1',
+          },
+        },
+      ],
+    };
+    notifications = [
+      {
+        id: 'pairing-notif-1',
+        source: 'device-pairing',
+        category: 'pairing-request',
+        title: 'A device is asking to pair',
+        priority: 'high',
+        status: 'delivered',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        metadata: { requestId: 'pair-req-1' },
+      },
+    ];
+
+    renderPage();
+
+    // Counted by the same badge derivation the header bell uses.
+    expect(bellBadgeCount()).toBe(1);
+    // Filed under Needs attention, not only Activity.
+    const attentionSection = screen
+      .getByRole('heading', { name: /Needs attention/ })
+      .closest('section');
+    if (!attentionSection) throw new Error('attention section not rendered');
+    expect(
+      within(attentionSection).getByText('A device is asking to pair'),
+    ).toBeTruthy();
+    // The decision is on the item — approve calls the pairing confirm.
+    fireEvent.click(
+      within(attentionSection).getByRole('button', { name: 'Approve' }),
+    );
+    expect(confirmPairing).toHaveBeenCalledWith('pair-req-1');
+    fireEvent.click(
+      within(attentionSection).getByRole('button', { name: 'Deny' }),
+    );
+    expect(denyPairing).toHaveBeenCalledWith('pair-req-1');
+    // The mirror notification does not double up in the activity list.
+    expect(screen.getByText(/Showing 0 of 0 activity items/)).toBeTruthy();
+  });
+
+  test('a resolved pairing request leaves Needs attention empty and its record in activity', () => {
+    const timestamp = new Date().toISOString();
+    attention = { pendingCount: 0, items: [] };
+    notifications = [
+      {
+        id: 'pairing-notif-1',
+        source: 'device-pairing',
+        category: 'pairing-request',
+        title: 'A device is asking to pair',
+        priority: 'high',
+        status: 'actioned',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        metadata: { requestId: 'pair-req-1' },
+      },
+    ];
+
+    renderPage();
+
+    expect(bellBadgeCount()).toBeNull();
+    expect(screen.getByText('Nothing needs you right now')).toBeTruthy();
+    expect(screen.getByText(/Showing 1 of 1 activity items/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
   });
 
   test('focuses the exact approval deep link even when history filters hide it', () => {
