@@ -34,6 +34,7 @@ import { receiptBus } from '../infra/receipt-bus.js';
 import {
   CriticalResourcePostureError,
   ResourcePostureDeferredError,
+  type RuntimeEngineStartLease,
 } from '../infra/resource-posture.js';
 import type { EventStore } from './event-store.js';
 import {
@@ -1084,7 +1085,9 @@ export interface RecoveredSessionStartOptions {
    * A critical refusal leaves the persisted session recoverable and writes no
    * recovery-failure event — it is a deferral, not a verdict on the session.
    */
-  admitEngineStart?: () => Promise<void>;
+  admitEngineStart?: (
+    threadId: string,
+  ) => Promise<RuntimeEngineStartLease | undefined>;
 }
 
 /**
@@ -1165,11 +1168,16 @@ export async function startRecoveredOrchestrationSession(options: {
     if (deps.applyCredentialProfile) {
       startInput = await deps.applyCredentialProfile(startInput);
     }
-    await deps.admitEngineStart?.();
-    const recovered = await withTenantExecutionContext(
-      startInput.tenantExecutionContext,
-      () => adapter.startSession(startInput),
-    );
+    const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
+    let recovered: ProviderSession;
+    try {
+      recovered = await withTenantExecutionContext(
+        startInput.tenantExecutionContext,
+        () => adapter.startSession(startInput),
+      );
+    } finally {
+      admissionLease?.release();
+    }
     deps.recordAcceptedModelLaunch?.(adapter, startInput);
     const nextSession = {
       ...session,

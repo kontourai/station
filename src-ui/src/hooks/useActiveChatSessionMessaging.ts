@@ -160,6 +160,7 @@ export function useSendMessage(
       // stay durable, rather than also entering this legacy in-memory queue.
       options?: {
         skipInMemoryQueueOnBusy?: boolean;
+        resourceAdmissionOverrideToken?: string;
         /** State-bound capability supplied only by OutboundDispatchModule. */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
@@ -271,6 +272,8 @@ export function useSendMessage(
           attachmentStages: currentState?.attachmentStages,
           ambientContext,
           clientTurnId: resolvedTurnId,
+          resourceAdmissionOverrideToken:
+            options?.resourceAdmissionOverrideToken,
           signal: abortController.signal,
         });
 
@@ -309,7 +312,10 @@ export function useSendMessage(
             } satisfies OutboundDispatchTransportResult)
           : true;
       } catch (error) {
-        const err = error as Error & Partial<ChatHttpError>;
+        const err = error as Error &
+          Partial<ChatHttpError> & {
+            override?: { token: string; expiresAt: number };
+          };
         const latestState = activeChatsStore.getSnapshot()[sessionId];
 
         // archive#1224 (offline): a genuinely offline send (the
@@ -487,10 +493,12 @@ export function useSendMessage(
           // A workspace refusal is permanent for this conversation. Other
           // failures retry with the same id and latest conversation id.
           action:
-            terminalSession || foregroundIndeterminate || dispatchClaim
-              ? undefined
-              : {
-                  label: 'Retry',
+            err.code === 'resource_posture_override_required' &&
+            err.override &&
+            err.override.expiresAt > Date.now() &&
+            !dispatchClaim
+              ? {
+                  label: 'Start anyway',
                   handler: () =>
                     sendMessage(
                       sessionId,
@@ -500,8 +508,26 @@ export function useSendMessage(
                       attachments,
                       ambientContext,
                       resolvedTurnId,
+                      {
+                        resourceAdmissionOverrideToken: err.override!.token,
+                      },
                     ),
-                },
+                }
+              : terminalSession || foregroundIndeterminate || dispatchClaim
+                ? undefined
+                : {
+                    label: 'Retry',
+                    handler: () =>
+                      sendMessage(
+                        sessionId,
+                        agentSlug,
+                        latestState?.conversationId ?? conversationId,
+                        content,
+                        attachments,
+                        ambientContext,
+                        resolvedTurnId,
+                      ),
+                  },
         });
         if (foregroundIndeterminate) {
           invalidate(['orchestration-sessions']);

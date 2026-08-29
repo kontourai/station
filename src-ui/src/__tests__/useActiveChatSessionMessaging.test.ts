@@ -408,6 +408,43 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     );
   });
 
+  it('offers Start anyway with the exact one-shot token and turn binding', async () => {
+    const challenge = Object.assign(
+      new CodedOrchestrationError(
+        409,
+        'This Station remains busy.',
+        'resource_posture_override_required',
+      ),
+      {
+        override: {
+          token: 'override-token-1',
+          expiresAt: Date.now() + 30_000,
+        },
+      },
+    );
+    sendExecutionMessageMock
+      .mockRejectedValueOnce(challenge)
+      .mockResolvedValueOnce(successReceipt());
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'start under load');
+    });
+    const firstId = sendExecutionMessageMock.mock.calls[0][0].clientTurnId;
+    const action = activeChatsStore
+      .getSnapshot()
+      [sessionId]?.ephemeralMessages?.at(-1)?.action;
+    expect(action?.label).toBe('Start anyway');
+
+    await act(async () => {
+      await action?.handler();
+    });
+    expect(sendExecutionMessageMock.mock.calls[1][0]).toMatchObject({
+      clientTurnId: firstId,
+      resourceAdmissionOverrideToken: 'override-token-1',
+    });
+  });
+
   it('renders a workspace-resume hint instead of a Model-connection hint for an orchestration refusal', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new CodedOrchestrationError(

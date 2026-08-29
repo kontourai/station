@@ -82,7 +82,10 @@ import { VeritasReadinessService } from '../../evidence/veritas-readiness-servic
 import { WorkflowSidecarService } from '../../evidence/workflow-sidecar-service.js';
 import { FlowRunService } from '../../flow/flow-run-service.js';
 import { receiptBus, waitForReceipt } from '../../infra/receipt-bus.js';
-import { CriticalResourcePostureError } from '../../infra/resource-posture.js';
+import {
+  CriticalResourcePostureError,
+  createRuntimeResourcePostureController,
+} from '../../infra/resource-posture.js';
 import { createServerLogReader } from '../../infra/server-log-reader.js';
 import {
   installServerLogSink,
@@ -2099,39 +2102,75 @@ describe('OrchestrationService', () => {
     }
   });
 
-  test('admits an explicit engine start with a warning under sustained critical posture', async () => {
+  test('requires and consumes a one-shot override for an explicit sustained-critical start', async () => {
     const startSession = vi.spyOn(claude, 'startSession');
     const logger = { debug: vi.fn(), warn: vi.fn() };
+    let clock = 100;
+    const resourcePosture = createRuntimeResourcePostureController({
+      sample: async () => ({
+        busyPercent: 99,
+        cpuCount: 15,
+        sampledAt: clock,
+        sampleMs: 500,
+        thresholdPercent: 85,
+        source: 'test',
+      }),
+      now: () => clock,
+      cacheMs: 0,
+    });
+    for (let index = 0; index < 3; index += 1) {
+      clock += 1;
+      await resourcePosture.observe();
+    }
     const criticalService = new OrchestrationService({
       adapterRegistry: createRegistry([claude]),
       eventBus,
       eventStore,
-      resourcePosture: {
-        observe: async () => ({
-          kind: 'critical',
-          busyPercent: 99,
-          cpuCount: 15,
-          sampledAt: 100,
-          sampleMs: 500,
-          thresholdPercent: 85,
-          source: 'test',
-        }),
-      },
+      resourcePosture,
       logger,
     });
 
+    const challenged = await criticalService.startSessionInternal(
+      {
+        type: 'start-session',
+        input: { threadId: 'critical-posture', provider: 'claude' },
+      },
+      { userId: 'owner-user' },
+      { resourceAdmissionIntent: 'interactive_user' },
+    );
+    expect(challenged).toMatchObject({
+      status: 'rejected',
+      code: 'resource_posture_override_required',
+      resourceAdmissionOverride: {
+        token: expect.any(String),
+        expiresAt: expect.any(Number),
+      },
+    });
+    if (
+      challenged.status === 'accepted' ||
+      challenged.status === 'indeterminate' ||
+      !challenged.resourceAdmissionOverride
+    )
+      throw new Error('expected override challenge');
+    expect(startSession).not.toHaveBeenCalled();
+
     await expect(
-      criticalService.dispatch(
+      criticalService.startSessionInternal(
         {
-          type: 'startSession',
+          type: 'start-session',
           input: { threadId: 'critical-posture', provider: 'claude' },
         },
         { userId: 'owner-user' },
+        {
+          resourceAdmissionIntent: 'interactive_user',
+          resourceAdmissionOverrideToken:
+            challenged.resourceAdmissionOverride.token,
+        },
       ),
-    ).resolves.toMatchObject({ threadId: 'critical-posture' });
+    ).resolves.toMatchObject({ status: 'accepted' });
     expect(startSession).toHaveBeenCalledOnce();
     expect(logger.warn).toHaveBeenCalledWith(
-      'Interactive engine start admitted under host pressure',
+      'Interactive engine start override consumed',
       expect.objectContaining({ busyPercent: 99 }),
     );
   });
@@ -2172,6 +2211,45 @@ describe('OrchestrationService', () => {
     expect(startSession).not.toHaveBeenCalled();
   });
 
+  test('classifies a future platform-backed critical-memory guard as rejected policy', async () => {
+    const startSession = vi.spyOn(claude, 'startSession');
+    const guarded = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      resourcePosture: {
+        observe: async () => ({
+          kind: 'healthy' as const,
+          busyPercent: 20,
+          cpuCount: 15,
+          sampledAt: 100,
+          sampleMs: 500,
+          thresholdPercent: 85,
+          source: 'test-memory-adapter',
+          memoryPressure: 'critical' as const,
+          availableMemoryBytes: 128 * 1024 * 1024,
+          totalMemoryBytes: 16 * 1024 * 1024 * 1024,
+        }),
+      },
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+
+    await expect(
+      guarded.startSessionInternal(
+        {
+          type: 'start-session',
+          input: { threadId: 'memory-guard', provider: 'claude' },
+        },
+        { userId: 'owner-user' },
+        { resourceAdmissionIntent: 'interactive_user' },
+      ),
+    ).resolves.toMatchObject({
+      status: 'rejected',
+      code: 'resource_memory_critical',
+    });
+    expect(startSession).not.toHaveBeenCalled();
+  });
+
   test('allows the unchanged session start path under healthy observed posture', async () => {
     const startSession = vi.spyOn(claude, 'startSession');
     const healthyService = new OrchestrationService({
@@ -2205,6 +2283,70 @@ describe('OrchestrationService', () => {
       provider: 'claude',
     });
     expect(startSession).toHaveBeenCalledOnce();
+  });
+
+  test('holds one global cold-start lease through provider startup across different threads', async () => {
+    const originalStart = claude.startSession.getMockImplementation();
+    if (!originalStart) throw new Error('expected fake start implementation');
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const startSession = claude.startSession.mockImplementationOnce(
+      async (input) => {
+        await firstGate;
+        return await originalStart(input);
+      },
+    );
+    const controller = createRuntimeResourcePostureController({
+      sample: async () => ({
+        busyPercent: 20,
+        cpuCount: 15,
+        sampledAt: Date.now(),
+        sampleMs: 500,
+        thresholdPercent: 85,
+        source: 'test',
+      }),
+    });
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      resourcePosture: controller,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+
+    const first = service.startSessionInternal(
+      {
+        type: 'start-session',
+        input: { threadId: 'start-lease-a', provider: 'claude' },
+      },
+      { userId: 'owner-user' },
+      { resourceAdmissionIntent: 'interactive_user' },
+    );
+    await vi.waitFor(() => expect(startSession).toHaveBeenCalledOnce());
+    await expect(
+      service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: { threadId: 'start-lease-b', provider: 'claude' },
+        },
+        { userId: 'owner-user' },
+        { resourceAdmissionIntent: 'interactive_user' },
+      ),
+    ).resolves.toMatchObject({
+      status: 'rejected',
+      code: 'resource_engine_start_capacity',
+    });
+    expect(startSession).toHaveBeenCalledOnce();
+    releaseFirst();
+    const firstOutcome = await first;
+    if (firstOutcome.status !== 'accepted') {
+      throw new Error(
+        `first start did not settle accepted: ${firstOutcome.message}`,
+      );
+    }
+    expect(firstOutcome.status).toBe('accepted');
   });
 
   test('maps an indeterminate SessionCommand result to an honest dispatch error', async () => {

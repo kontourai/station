@@ -159,7 +159,10 @@ import { type SessionFlowBinding } from '../flow/orchestration-flow-gate.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import {
   admitEngineStartForIntent,
+  ConcurrentEngineStartCapacityError,
+  CriticalMemoryPressureError,
   CriticalResourcePostureError,
+  InteractiveResourceOverrideRequiredError,
   ResourcePostureDeferredError,
   type RuntimeResourcePostureProbe,
 } from '../infra/resource-posture.js';
@@ -337,6 +340,7 @@ interface OrchestrationDispatchInternalOptions {
     environmentId: string;
   };
   resourceAdmissionIntent?: import('../infra/resource-posture.js').RuntimeEngineStartIntent;
+  resourceAdmissionOverrideToken?: string;
 }
 
 function chatStartGateReason(error: unknown): string {
@@ -2102,15 +2106,20 @@ export class OrchestrationService {
       // policy context (for Claude, that context is PreToolUse).
       startInput = await this.resolveSessionAgentForStart(startInput);
       throwIfAborted(startInput.signal);
-      await admitEngineStartForIntent(
+      const admissionLease = await admitEngineStartForIntent(
         this.options.resourcePosture,
         this.options.logger,
         'recovery',
+        { binding: input.threadId },
       );
-      const session = await withTenantExecutionContext(
-        tenantExecutionContext,
-        () => adapter.startSession(startInput),
-      );
+      let session: ProviderSession;
+      try {
+        session = await withTenantExecutionContext(tenantExecutionContext, () =>
+          adapter.startSession(startInput),
+        );
+      } finally {
+        admissionLease?.release();
+      }
       this.trackSession(session, adapter);
       this.options.eventStore?.upsertSession(session);
       return { adapter, armedInternalStopTurnId };
@@ -3553,11 +3562,6 @@ export class OrchestrationService {
           );
           startInput = await this.resolveSessionAgentForStart(startInput);
           throwIfAborted(startInput.signal);
-          await admitEngineStartForIntent(
-            this.options.resourcePosture,
-            this.options.logger,
-            internal?.resourceAdmissionIntent ?? 'interactive_user',
-          );
           this.assertAdapterCurrent(adapter);
           chatStartGate.add(1, {
             agent_type: chatStartGateAgentType(adapter),
@@ -3567,12 +3571,30 @@ export class OrchestrationService {
           });
           return startInput;
         },
-        start: async (adapter, input, context) => {
+        start: async (adapter, input, context, internal) => {
           const startedAt = performance.now();
-          const session = await withTenantExecutionContext(
-            context.tenantExecutionContext,
-            () => adapter.startSession(input),
+          const admissionLease = await admitEngineStartForIntent(
+            this.options.resourcePosture,
+            this.options.logger,
+            internal?.resourceAdmissionIntent ?? 'interactive_user',
+            {
+              binding: input.threadId,
+              ...(internal?.resourceAdmissionOverrideToken
+                ? {
+                    overrideToken: internal.resourceAdmissionOverrideToken,
+                  }
+                : {}),
+            },
           );
+          let session: ProviderSession;
+          try {
+            session = await withTenantExecutionContext(
+              context.tenantExecutionContext,
+              () => adapter.startSession(input),
+            );
+          } finally {
+            admissionLease?.release();
+          }
           adapterSessionStartDuration.record(performance.now() - startedAt, {
             provider: adapter.provider,
           });
@@ -3633,7 +3655,10 @@ export class OrchestrationService {
         error instanceof ModelLaunchPlanUnavailableError ||
         error instanceof SessionReattachConflictError ||
         error instanceof CriticalResourcePostureError ||
-        error instanceof ResourcePostureDeferredError,
+        error instanceof ResourcePostureDeferredError ||
+        error instanceof CriticalMemoryPressureError ||
+        error instanceof ConcurrentEngineStartCapacityError ||
+        error instanceof InteractiveResourceOverrideRequiredError,
       attachedSessionReadOnlyMessage: ATTACHED_SESSION_READ_ONLY_ERROR,
     });
   }
@@ -6100,11 +6125,12 @@ export class OrchestrationService {
           'resume',
           this.modelLaunch.modelLaunchRequestedOverrideFromInput(input),
         ),
-      admitEngineStart: () =>
+      admitEngineStart: (threadId) =>
         admitEngineStartForIntent(
           this.options.resourcePosture,
           this.options.logger,
           'recovery',
+          { binding: threadId },
         ),
       // archive#1011: recovery replays only the cwd persisted at start, so a
       // project-bound session created before that resolution existed (or by a

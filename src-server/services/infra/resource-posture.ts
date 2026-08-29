@@ -3,6 +3,7 @@
  * The portable sampler owns CPU arithmetic; this controller owns time:
  * shared sampling, smoothing, sustained critical entry, and hysteresis.
  */
+import { randomBytes } from 'node:crypto';
 import {
   buildHostPressureSample,
   createHostCpuSampler,
@@ -22,6 +23,8 @@ export const RUNTIME_RESOURCE_POSTURE_UNAVAILABLE_WARNING_INTERVAL_MS = 60_000;
 export const RUNTIME_RESOURCE_POSTURE_MIN_AVAILABLE_MEMORY_BYTES =
   512 * 1024 * 1024;
 export const RUNTIME_RESOURCE_POSTURE_MIN_AVAILABLE_MEMORY_PERCENT = 5;
+export const RUNTIME_RESOURCE_OVERRIDE_TTL_MS = 30_000;
+export const RUNTIME_RESOURCE_OVERRIDE_CAPACITY = 64;
 
 type Operation =
   | 'engine_start'
@@ -78,7 +81,18 @@ export interface RuntimeResourcePostureProbe {
   observe(): Promise<RuntimeResourcePosture>;
 }
 export interface RuntimeResourcePostureController
-  extends RuntimeResourcePostureProbe {}
+  extends RuntimeResourcePostureProbe {
+  reserveEngineStart(): RuntimeEngineStartLease;
+  issueInteractiveOverride(binding: string): RuntimeInteractiveOverride;
+  consumeInteractiveOverride(binding: string, token: string): boolean;
+}
+export interface RuntimeEngineStartLease {
+  release(): void;
+}
+export interface RuntimeInteractiveOverride {
+  token: string;
+  expiresAt: number;
+}
 export interface RuntimeResourcePostureProbeOptions {
   /** Numeric observation only; a supplied posture string is never trusted. */
   sample?: () => Promise<HostPressureSample>;
@@ -223,6 +237,9 @@ export function createRuntimeResourcePostureController(
       totalMemoryBytes: Number.NaN,
     }));
   const window: number[] = [];
+  const smoothedHistory: number[] = [];
+  const overrides = new Map<string, { binding: string; expiresAt: number }>();
+  let engineStartReserved = false;
   let effectiveKind: 'healthy' | 'degraded' | 'critical' = 'healthy';
   let postureSince = now();
   let latest: RuntimeResourcePosture | undefined;
@@ -252,11 +269,15 @@ export function createRuntimeResourcePostureController(
       }
       window.push(observed.busyPercent);
       if (window.length > RUNTIME_RESOURCE_POSTURE_WINDOW_SIZE) window.shift();
+      const smoothedBusyPercent = median(window);
+      smoothedHistory.push(smoothedBusyPercent);
+      if (smoothedHistory.length > RUNTIME_RESOURCE_POSTURE_WINDOW_SIZE)
+        smoothedHistory.shift();
       let next = effectiveKind;
       if (effectiveKind === 'critical') {
         if (
           tailEvery(
-            window,
+            smoothedHistory,
             RUNTIME_RESOURCE_POSTURE_RECOVERY_SAMPLES,
             (value) =>
               value <= RUNTIME_RESOURCE_POSTURE_CRITICAL_EXIT_BUSY_PERCENT,
@@ -265,7 +286,7 @@ export function createRuntimeResourcePostureController(
           next = 'degraded';
       } else if (
         tailEvery(
-          window,
+          smoothedHistory,
           RUNTIME_RESOURCE_POSTURE_CRITICAL_ENTRY_SAMPLES,
           (value) => value >= RUNTIME_RESOURCE_POSTURE_CRITICAL_BUSY_PERCENT,
         )
@@ -274,16 +295,14 @@ export function createRuntimeResourcePostureController(
       } else if (effectiveKind === 'degraded') {
         if (
           tailEvery(
-            window,
+            smoothedHistory,
             RUNTIME_RESOURCE_POSTURE_RECOVERY_SAMPLES,
             (value) =>
               value <= RUNTIME_RESOURCE_POSTURE_DEGRADED_EXIT_BUSY_PERCENT,
           )
         )
           next = 'healthy';
-      } else if (
-        observed.busyPercent > RUNTIME_RESOURCE_POSTURE_DEGRADED_BUSY_PERCENT
-      ) {
+      } else if (smoothedBusyPercent > observed.thresholdPercent) {
         next = 'degraded';
       }
       if (next !== effectiveKind) {
@@ -294,7 +313,7 @@ export function createRuntimeResourcePostureController(
         ...observed,
         kind:
           observed.memoryPressure === 'critical' ? 'critical' : effectiveKind,
-        smoothedBusyPercent: median(window),
+        smoothedBusyPercent,
         windowLength: window.length,
         postureSince,
       } as RuntimeResourcePosture;
@@ -332,6 +351,40 @@ export function createRuntimeResourcePostureController(
         inFlight = undefined;
       });
       return inFlight;
+    },
+    reserveEngineStart() {
+      if (engineStartReserved) throw new ConcurrentEngineStartCapacityError();
+      engineStartReserved = true;
+      let released = false;
+      return Object.freeze({
+        release() {
+          if (released) return;
+          released = true;
+          engineStartReserved = false;
+        },
+      });
+    },
+    issueInteractiveOverride(binding) {
+      const current = now();
+      for (const [token, entry] of overrides) {
+        if (entry.expiresAt <= current) overrides.delete(token);
+      }
+      while (overrides.size >= RUNTIME_RESOURCE_OVERRIDE_CAPACITY) {
+        const oldest = overrides.keys().next().value;
+        if (oldest === undefined) break;
+        overrides.delete(oldest);
+      }
+      const token = randomBytes(24).toString('base64url');
+      const expiresAt = current + RUNTIME_RESOURCE_OVERRIDE_TTL_MS;
+      overrides.set(token, { binding, expiresAt });
+      return { token, expiresAt };
+    },
+    consumeInteractiveOverride(binding, token) {
+      const entry = overrides.get(token);
+      overrides.delete(token);
+      return Boolean(
+        entry && entry.binding === binding && entry.expiresAt > now(),
+      );
     },
   };
 }
@@ -388,6 +441,29 @@ export class CriticalMemoryPressureError extends Error {
   }
 }
 
+export class ConcurrentEngineStartCapacityError extends Error {
+  readonly code = 'resource_engine_start_capacity';
+  readonly retryable = true;
+  constructor() {
+    super('Another engine is already starting. Try again after it settles.');
+    this.name = 'ConcurrentEngineStartCapacityError';
+  }
+}
+
+export class InteractiveResourceOverrideRequiredError extends Error {
+  readonly code = 'resource_posture_override_required';
+  readonly retryable = true;
+  constructor(
+    readonly posture: RuntimeObservedPosture<'critical'>,
+    readonly override: RuntimeInteractiveOverride,
+  ) {
+    super(
+      `This Station remains busy (${posture.smoothedBusyPercent ?? posture.busyPercent}% averaged CPU). Start anyway?`,
+    );
+    this.name = 'InteractiveResourceOverrideRequiredError';
+  }
+}
+
 export type RuntimeEngineStartIntent =
   | 'interactive_user'
   | 'delegated_background'
@@ -405,25 +481,29 @@ export class ResourcePostureDeferredError extends Error {
   }
 }
 
-/** Explicit user starts warn under CPU pressure; memory protection stays hard. */
+function resourceController(
+  probe: RuntimeResourcePostureProbe,
+): RuntimeResourcePostureController | undefined {
+  const candidate = probe as Partial<RuntimeResourcePostureController>;
+  return typeof candidate.reserveEngineStart === 'function' &&
+    typeof candidate.issueInteractiveOverride === 'function' &&
+    typeof candidate.consumeInteractiveOverride === 'function'
+    ? (candidate as RuntimeResourcePostureController)
+    : undefined;
+}
+
+/** Compatibility helper for direct callers that do not carry override state. */
 export async function admitEngineStart(
   probe: RuntimeResourcePostureProbe | undefined,
   logger: Pick<Logger, 'warn'> | undefined,
 ): Promise<void> {
-  if (!probe) return;
-  const posture = await probe.observe();
-  if (posture.memoryPressure === 'critical') {
-    observeDecision('engine_start', posture, 'refused');
-    throw new CriticalMemoryPressureError(posture);
-  }
-  const pressured = posture.kind === 'degraded' || posture.kind === 'critical';
-  observeDecision('engine_start', posture, pressured ? 'warned' : 'allowed');
-  warnUnavailableAdmission('engine_start', posture, logger);
-  if (pressured)
-    logger?.warn(
-      'Interactive engine start admitted under host pressure',
-      posture,
-    );
+  const lease = await admitEngineStartForIntent(
+    probe,
+    logger,
+    'interactive_user',
+    { binding: 'compatibility-direct-start' },
+  );
+  lease?.release();
 }
 
 /** Machine-triggered starts defer under pressure and never override memory. */
@@ -455,17 +535,57 @@ export async function admitEngineStartForIntent(
   probe: RuntimeResourcePostureProbe | undefined,
   logger: ResourcePostureLogger | undefined,
   intent: RuntimeEngineStartIntent,
-): Promise<void> {
-  if (intent === 'interactive_user') {
-    return await admitEngineStart(probe, logger);
-  }
-  const admission = await admitBackgroundEngineStart(
-    probe,
-    logger,
-    intent === 'recovery' ? 'recovery_start' : 'background_start',
-  );
-  if (admission.kind === 'deferred') {
-    throw new ResourcePostureDeferredError(admission.posture);
+  input: { binding: string; overrideToken?: string },
+): Promise<RuntimeEngineStartLease | undefined> {
+  if (!probe) return undefined;
+  const controller = resourceController(probe);
+  const lease = controller?.reserveEngineStart();
+  try {
+    const posture = await probe.observe();
+    if (posture.memoryPressure === 'critical') {
+      observeDecision('engine_start', posture, 'refused');
+      throw new CriticalMemoryPressureError(posture);
+    }
+    if (intent === 'interactive_user') {
+      warnUnavailableAdmission('engine_start', posture, logger);
+      if (posture.kind === 'critical') {
+        if (!controller) throw new CriticalResourcePostureError(posture);
+        const accepted =
+          typeof input.overrideToken === 'string' &&
+          controller.consumeInteractiveOverride(
+            input.binding,
+            input.overrideToken,
+          );
+        if (!accepted) {
+          observeDecision('engine_start', posture, 'refused');
+          throw new InteractiveResourceOverrideRequiredError(
+            posture,
+            controller.issueInteractiveOverride(input.binding),
+          );
+        }
+        observeDecision('engine_start', posture, 'overridden');
+        logger?.warn('Interactive engine start override consumed', posture);
+        return lease;
+      }
+      const warned = posture.kind === 'degraded';
+      observeDecision('engine_start', posture, warned ? 'warned' : 'allowed');
+      if (warned)
+        logger?.warn(
+          'Interactive engine start admitted under host pressure',
+          posture,
+        );
+      return lease;
+    }
+    const deferred = posture.kind === 'degraded' || posture.kind === 'critical';
+    const operation =
+      intent === 'recovery' ? 'recovery_start' : 'background_start';
+    observeDecision(operation, posture, deferred ? 'deferred' : 'allowed');
+    warnUnavailableAdmission(operation, posture, logger);
+    if (deferred) throw new ResourcePostureDeferredError(posture);
+    return lease;
+  } catch (error) {
+    lease?.release();
+    throw error;
   }
 }
 
@@ -526,7 +646,7 @@ function warnUnavailableAdmission(
 function observeDecision(
   operation: Operation,
   posture: RuntimeResourcePosture,
-  outcome: 'allowed' | 'warned' | 'deferred' | 'refused',
+  outcome: 'allowed' | 'warned' | 'overridden' | 'deferred' | 'refused',
 ): void {
   try {
     resourcePostureDecisions.add(1, {

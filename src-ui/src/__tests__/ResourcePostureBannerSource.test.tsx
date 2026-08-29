@@ -112,7 +112,7 @@ describe('ResourcePostureBannerSource', () => {
     expect(alert.textContent).toMatch(/averaged across 5 samples/i);
     expect(alert.textContent).toMatch(/observed 3s ago/i);
     expect(alert.textContent).toMatch(/automatic work is paused/i);
-    expect(alert.textContent).toMatch(/explicit starts may continue/i);
+    expect(alert.textContent).toMatch(/explicit starts ask before continuing/i);
   });
 
   it('renders a degraded banner distinguishable from the critical wording', async () => {

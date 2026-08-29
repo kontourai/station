@@ -23,6 +23,7 @@ export async function dispatchForeground(input: {
   attachmentStages?: ComposerAttachmentStageSnapshot[];
   ambientContext?: string;
   clientTurnId: string;
+  resourceAdmissionOverrideToken?: string;
   signal: AbortSignal;
 }) {
   const resolved = resolveTurnModel(input);
@@ -117,6 +118,7 @@ export async function dispatchForeground(input: {
     ...attachmentDispatch,
     ambientContext: input.ambientContext,
     clientTurnId: input.clientTurnId,
+    resourceAdmissionOverrideToken: input.resourceAdmissionOverrideToken,
     signal: input.signal,
   });
 }

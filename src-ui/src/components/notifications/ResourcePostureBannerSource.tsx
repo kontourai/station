@@ -59,7 +59,7 @@ function postureBannerMessage(
       ? `, observed ${Math.max(0, Math.round(posture.ageMs / 1000))}s ago`
       : '';
   return kind === 'critical'
-    ? `This Station's host remains at capacity (${observed}${age}). Automatic work is paused; explicit starts may continue with a warning.`
+    ? `This Station's host remains at capacity (${observed}${age}). Automatic work is paused; explicit starts ask before continuing.`
     : `This Station's host is busy (${observed}${age}). Automatic work is paused until the averaged load recovers.`;
 }
 

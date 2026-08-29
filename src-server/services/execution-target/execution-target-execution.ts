@@ -68,6 +68,8 @@ export interface ForegroundMessageInput {
   }) => ChatAttachmentInput[];
   ambientContext?: string;
   clientTurnId?: string;
+  /** Opaque, expiring capability returned by a critical admission challenge. */
+  resourceAdmissionOverrideToken?: string;
   delegation?: AgentDelegationContext;
   userId?: string;
   /**
@@ -259,6 +261,7 @@ export interface ExecutionTargetExecutionDependencies
   startSession: (
     access: EnvironmentAccess,
     input: ProviderSessionStartInput,
+    context?: { resourceAdmissionOverrideToken?: string },
   ) => Promise<{ commandId: string; sessionId: string } | undefined>;
   sendTurn: (
     access: EnvironmentAccess,
@@ -571,7 +574,7 @@ export async function executeForegroundMessage(
       throw new Error('Worktree provisioning did not return a workspace path');
     }
     try {
-      const startReceipt = await deps.startSession(resolved.access, {
+      const sessionStartInput: ProviderSessionStartInput = {
         threadId: sessionId,
         provider: resolved.provider,
         ...(worktree
@@ -651,7 +654,13 @@ export async function executeForegroundMessage(
             ? { webhookTokenId: input.webhookTokenId }
             : {}),
         },
-      });
+      };
+      const startReceipt = await (input.resourceAdmissionOverrideToken
+        ? deps.startSession(resolved.access, sessionStartInput, {
+            resourceAdmissionOverrideToken:
+              input.resourceAdmissionOverrideToken,
+          })
+        : deps.startSession(resolved.access, sessionStartInput));
       if (continuation?.contextBoundary) {
         // A cold context is spent by the exact accepted start command. The
         // first user turn is deliberately a separate provider effect and may

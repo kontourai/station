@@ -413,6 +413,24 @@ export function translateChatError(
   // (`builtin-scheduler-execution.ts`) — an engine-start refusal and a
   // deferred scheduled job are different facts and must not collapse into
   // one message.
+  if (code === 'resource_posture_override_required') {
+    return {
+      title: 'Host remains busy',
+      body:
+        text ||
+        "This Station's averaged CPU load remains high. Automatic work is paused.",
+      hint: 'Choose Start anyway to use this one start, or wait for load to recover.',
+    };
+  }
+
+  if (code === 'resource_engine_start_capacity') {
+    return {
+      title: 'Another engine is starting',
+      body: text || 'Another engine start still owns the start slot.',
+      hint: 'Retry after that start settles.',
+    };
+  }
+
   if (code === 'resource_posture_critical') {
     const detail = RESOURCE_POSTURE_DETAIL_PATTERN.exec(text);
     const body = detail

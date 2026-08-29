@@ -3393,7 +3393,11 @@ export async function executeExecutionTargetMessage(
         indeterminate,
       );
     },
-    startSession: async (_access: EnvironmentAccess, startInput) => {
+    startSession: async (
+      _access: EnvironmentAccess,
+      startInput,
+      startContext,
+    ) => {
       // archive#2821 hardening L3: `sessionVisibility` is a reserved
       // metadata key (no public startSession command may set it — see
       // RESERVED_ORCHESTRATION_METADATA_KEYS), so the ordinary public
@@ -3418,7 +3422,17 @@ export async function executeExecutionTargetMessage(
         dispatchContextForAuthority(readAuthority),
         {
           ...(ephemeral ? { ephemeralSessionVisibility: true } : {}),
-          resourceAdmissionIntent: ephemeral ? 'webhook' : 'interactive_user',
+          resourceAdmissionIntent: ephemeral
+            ? 'webhook'
+            : startInput.metadata?.delegation
+              ? 'delegated_background'
+              : 'interactive_user',
+          ...(startContext?.resourceAdmissionOverrideToken
+            ? {
+                resourceAdmissionOverrideToken:
+                  startContext.resourceAdmissionOverrideToken,
+              }
+            : {}),
           conversationIdentity: { conversationId, environmentId },
           ...(typeof startInput.metadata?.contextBoundary === 'object' &&
           startInput.metadata.contextBoundary !== null &&
@@ -3450,6 +3464,11 @@ export async function executeExecutionTargetMessage(
       if (started.status !== 'accepted') {
         const error = new Error(started.message);
         if (started.code) Object.assign(error, { code: started.code });
+        if (started.resourceAdmissionOverride) {
+          Object.assign(error, {
+            resourceAdmissionOverride: started.resourceAdmissionOverride,
+          });
+        }
         throw error;
       }
       return {

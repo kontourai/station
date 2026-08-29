@@ -1,7 +1,9 @@
 import { describe, expect, test, vi } from 'vitest';
 import {
   admitEngineStart,
+  admitEngineStartForIntent,
   admitScheduledJob,
+  ConcurrentEngineStartCapacityError,
   CriticalResourcePostureError,
   createEnvironmentRuntimeResourcePostureProbe,
   createRuntimeResourcePostureController,
@@ -139,7 +141,7 @@ describe('runtime resource posture', () => {
     expect(error.message).not.toMatch(/Scheduler job/);
   });
 
-  test('interactive CPU admission warns while automatic scheduling defers the same sustained critical posture', async () => {
+  test('a non-controller critical probe fails closed while automatic scheduling defers', async () => {
     const criticalProbe = {
       observe: async () => ({
         kind: 'critical' as const,
@@ -153,12 +155,8 @@ describe('runtime resource posture', () => {
     };
 
     const logger = { warn: vi.fn(), info: vi.fn() };
-    await expect(
-      admitEngineStart(criticalProbe, logger),
-    ).resolves.toBeUndefined();
-    expect(logger.warn).toHaveBeenCalledWith(
-      'Interactive engine start admitted under host pressure',
-      expect.objectContaining({ busyPercent: 99 }),
+    await expect(admitEngineStart(criticalProbe, logger)).rejects.toThrow(
+      CriticalResourcePostureError,
     );
     await expect(admitScheduledJob(criticalProbe, logger)).resolves.toEqual({
       kind: 'deferred',
@@ -196,7 +194,7 @@ describe('runtime resource posture', () => {
 
   test('shares samples, requires sustained critical entry, and exits through hysteresis', async () => {
     let clock = 1_000;
-    const values = [99, 98, 97, 89, 79, 78];
+    const values = [99, 98, 97, 89, 79, 78, 77, 76];
     const sample = vi.fn(async () => ({
       ...healthyObservation,
       sampledAt: clock,
@@ -228,9 +226,104 @@ describe('runtime resource posture', () => {
       windowLength: 3,
     });
     await expect(observeNext()).resolves.toMatchObject({ kind: 'critical' });
+    await expect(observeNext()).resolves.toMatchObject({ kind: 'critical' });
+    await expect(observeNext()).resolves.toMatchObject({
+      kind: 'critical',
+      smoothedBusyPercent: 89,
+    });
     await expect(observeNext()).resolves.toMatchObject({ kind: 'degraded' });
     await expect(observeNext()).resolves.toMatchObject({ kind: 'healthy' });
-    expect(sample).toHaveBeenCalledTimes(6);
+    expect(sample).toHaveBeenCalledTimes(8);
+  });
+
+  test('uses the sampler-provided degraded threshold in stateful classification', async () => {
+    const controller = createRuntimeResourcePostureController({
+      sample: async () => ({
+        ...healthyObservation,
+        thresholdPercent: 75,
+        busyPercent: 80,
+      }),
+    });
+    await expect(controller.observe()).resolves.toMatchObject({
+      kind: 'degraded',
+      busyPercent: 80,
+      smoothedBusyPercent: 80,
+      thresholdPercent: 75,
+    });
+  });
+
+  test('mints a thread-bound expiring one-shot override and holds a global start lease', async () => {
+    let clock = 10_000;
+    const controller = createRuntimeResourcePostureController({
+      sample: async () => ({
+        ...healthyObservation,
+        sampledAt: clock,
+        busyPercent: 99,
+      }),
+      now: () => clock,
+      cacheMs: 0,
+      readMemory: () => ({
+        availableMemoryBytes: 2 * 1024 * 1024 * 1024,
+        totalMemoryBytes: 4 * 1024 * 1024 * 1024,
+      }),
+    });
+    for (let index = 0; index < 3; index += 1) {
+      clock += 1;
+      await controller.observe();
+    }
+
+    const firstError = await admitEngineStartForIntent(
+      controller,
+      undefined,
+      'interactive_user',
+      { binding: 'thread-a' },
+    ).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(firstError).toMatchObject({
+      code: 'resource_posture_override_required',
+      override: { token: expect.any(String), expiresAt: 40_003 },
+    });
+    const token = (firstError as { override: { token: string } }).override
+      .token;
+
+    const lease = await admitEngineStartForIntent(
+      controller,
+      undefined,
+      'interactive_user',
+      { binding: 'thread-a', overrideToken: token },
+    );
+    await expect(
+      admitEngineStartForIntent(controller, undefined, 'interactive_user', {
+        binding: 'thread-b',
+      }),
+    ).rejects.toThrow(ConcurrentEngineStartCapacityError);
+    lease?.release();
+
+    await expect(
+      admitEngineStartForIntent(controller, undefined, 'interactive_user', {
+        binding: 'thread-a',
+        overrideToken: token,
+      }),
+    ).rejects.toMatchObject({ code: 'resource_posture_override_required' });
+
+    const mismatch = controller.issueInteractiveOverride('thread-a');
+    await expect(
+      admitEngineStartForIntent(controller, undefined, 'interactive_user', {
+        binding: 'thread-b',
+        overrideToken: mismatch.token,
+      }),
+    ).rejects.toMatchObject({ code: 'resource_posture_override_required' });
+
+    const expired = controller.issueInteractiveOverride('thread-a');
+    clock = expired.expiresAt;
+    await expect(
+      admitEngineStartForIntent(controller, undefined, 'interactive_user', {
+        binding: 'thread-a',
+        overrideToken: expired.token,
+      }),
+    ).rejects.toMatchObject({ code: 'resource_posture_override_required' });
   });
 
   test('joins concurrent readers and reports honest sample age from one controller snapshot', async () => {

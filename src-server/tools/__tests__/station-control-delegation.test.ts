@@ -1397,6 +1397,35 @@ describe('Station Control canonical Environment + Agent execution', () => {
     });
   });
 
+  test('derives delegated/background admission from server-carried delegation metadata', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await executeExecutionTargetMessage(
+      {
+        target: currentTarget(),
+        message: 'Delegated delivery',
+        conversationId: 'conversation-delegated',
+        delegation: {
+          mode: 'isolated-child',
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: 'parent' as never,
+          rootAgentSlug: 'root' as never,
+        },
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+
+    expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
+      resourceAdmissionIntent: 'delegated_background',
+    });
+  });
+
   test('returns typed indeterminate foreground evidence instead of dispatching a second turn', async () => {
     installCurrentStationFetch();
     const service = localService();

@@ -222,6 +222,26 @@ function errorCode(error: unknown): string | undefined {
   return typeof code === 'string' ? code : undefined;
 }
 
+function resourceAdmissionOverride(error: unknown):
+  | {
+      token: string;
+      expiresAt: number;
+    }
+  | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const value = (error as { resourceAdmissionOverride?: unknown })
+    .resourceAdmissionOverride;
+  if (typeof value !== 'object' || value === null) return undefined;
+  const token = (value as { token?: unknown }).token;
+  const expiresAt = (value as { expiresAt?: unknown }).expiresAt;
+  return typeof token === 'string' &&
+    token.length > 0 &&
+    typeof expiresAt === 'number' &&
+    Number.isFinite(expiresAt)
+    ? { token, expiresAt }
+    : undefined;
+}
+
 function isForegroundIndeterminateShape(error: unknown): boolean {
   return (
     typeof error === 'object' &&
@@ -428,6 +448,7 @@ export const foregroundMessageObjectSchema = z.object({
     .max(CHAT_ATTACHMENT_MAX_COUNT)
     .optional(),
   clientTurnId: z.string().min(1).max(200).optional(),
+  resourceAdmissionOverrideToken: z.string().min(1).max(128).optional(),
 });
 
 function requireMessageOrAttachment(
@@ -1154,13 +1175,15 @@ export function createOrchestrationRoutes(
       const unreachableWorkspace =
         error instanceof ProjectWorktreeDirectoryError &&
         error.reason === 'unreachable';
+      const override = resourceAdmissionOverride(error);
       return c.json(
         {
           success: false,
           error: errorMessage(error),
           ...(errorCode(error) ? { code: errorCode(error) } : {}),
+          ...(override ? { resourceAdmissionOverride: override } : {}),
         },
-        unreachableWorkspace ? 503 : 400,
+        unreachableWorkspace ? 503 : override ? 409 : 400,
       );
     }
   });
@@ -1236,7 +1259,16 @@ export function createOrchestrationRoutes(
             409,
           );
         }
-        return c.json({ success: false, error: errorMessage(error) }, 409);
+        const override = resourceAdmissionOverride(error);
+        return c.json(
+          {
+            success: false,
+            error: errorMessage(error),
+            ...(errorCode(error) ? { code: errorCode(error) } : {}),
+            ...(override ? { resourceAdmissionOverride: override } : {}),
+          },
+          409,
+        );
       }
     },
   );
@@ -1427,7 +1459,16 @@ export function createOrchestrationRoutes(
             409,
           );
         }
-        return c.json({ success: false, error: errorMessage(error) }, 400);
+        const override = resourceAdmissionOverride(error);
+        return c.json(
+          {
+            success: false,
+            error: errorMessage(error),
+            ...(errorCode(error) ? { code: errorCode(error) } : {}),
+            ...(override ? { resourceAdmissionOverride: override } : {}),
+          },
+          override ? 409 : 400,
+        );
       }
     },
   );

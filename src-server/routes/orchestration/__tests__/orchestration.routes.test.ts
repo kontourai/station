@@ -967,6 +967,49 @@ describe('Orchestration Routes', () => {
     });
   });
 
+  test('POST /chat returns a bounded one-shot critical override capability', async () => {
+    const challenge = Object.assign(new Error('This Station remains busy.'), {
+      code: 'resource_posture_override_required',
+      resourceAdmissionOverride: {
+        token: 'override-token-1',
+        expiresAt: 123_456,
+      },
+    });
+    const executeForegroundMessage = vi.fn().mockRejectedValue(challenge);
+    const app = createOrchestrationRoutes({} as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => 'bound-user',
+      executeForegroundMessage,
+    });
+
+    const res = await app.request('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Start under load',
+        target: { environment: { kind: 'current' }, agent: 'claude' },
+        resourceAdmissionOverrideToken: 'retry-token',
+      }),
+    });
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      success: false,
+      error: 'This Station remains busy.',
+      code: 'resource_posture_override_required',
+      resourceAdmissionOverride: {
+        token: 'override-token-1',
+        expiresAt: 123_456,
+      },
+    });
+    expect(executeForegroundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resourceAdmissionOverrideToken: 'retry-token',
+      }),
+    );
+  });
+
   test('POST /chat maps an unreachable workspace mount to 503, not 400 (#2552)', async () => {
     const app = createOrchestrationRoutes({} as any, {
       eventBus: new EventBus(),

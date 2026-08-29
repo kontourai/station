@@ -32,6 +32,8 @@ export interface ForegroundMessageInput {
   ambientContext?: string;
   /** Stable client idempotency key reused for retry and offline replay. */
   clientTurnId?: string;
+  /** Opaque one-shot capability returned by a sustained-critical challenge. */
+  resourceAdmissionOverrideToken?: string;
 }
 
 export interface ForegroundMessageReceipt {
@@ -73,6 +75,18 @@ export class ForegroundMessageIndeterminateError extends ChatHttpError {
   }
 }
 
+export class ResourcePostureOverrideRequiredError extends ChatHttpError {
+  readonly code = 'resource_posture_override_required';
+  constructor(
+    status: number,
+    message: string,
+    readonly override: { token: string; expiresAt: number },
+  ) {
+    super(status, message, 'resource_posture_override_required');
+    this.name = 'ResourcePostureOverrideRequiredError';
+  }
+}
+
 type ExecutionErrorResponse = {
   success: boolean;
   data?: ForegroundMessageReceipt;
@@ -82,7 +96,29 @@ type ExecutionErrorResponse = {
   receipt?: unknown;
   receiptStatus?: unknown;
   session?: unknown;
+  resourceAdmissionOverride?: unknown;
 };
+
+function resourceAdmissionOverride(
+  result: ExecutionErrorResponse,
+): { token: string; expiresAt: number } | undefined {
+  if (
+    result.code !== 'resource_posture_override_required' ||
+    typeof result.resourceAdmissionOverride !== 'object' ||
+    result.resourceAdmissionOverride === null
+  )
+    return undefined;
+  const token = (result.resourceAdmissionOverride as { token?: unknown }).token;
+  const expiresAt = (
+    result.resourceAdmissionOverride as { expiresAt?: unknown }
+  ).expiresAt;
+  return typeof token === 'string' &&
+    token.length > 0 &&
+    typeof expiresAt === 'number' &&
+    Number.isFinite(expiresAt)
+    ? { token, expiresAt }
+    : undefined;
+}
 
 function providerTurnIdentityUnavailable(message: string): ChatHttpError & {
   outcome: 'indeterminate';
@@ -124,6 +160,14 @@ function readExecutionReceipt(
   result: ExecutionErrorResponse,
 ): ForegroundMessageReceipt {
   if (!response.ok || !result.success || !result.data) {
+    const override = resourceAdmissionOverride(result);
+    if (override) {
+      throw new ResourcePostureOverrideRequiredError(
+        response.status,
+        apiErrorMessage(result, 'This Station remains busy.'),
+        override,
+      );
+    }
     const detail = indeterminateDetail(result);
     if (detail) {
       throw new ForegroundMessageIndeterminateError(

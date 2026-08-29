@@ -11,7 +11,10 @@ import type { TenantExecutionContext } from '@kontourai/station-contracts/tenanc
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { WorkflowSidecarAttachMode } from '../evidence/orchestration-workflow-sidecar.js';
 import type { RuntimeEngineStartIntent } from '../infra/resource-posture.js';
-import { CriticalResourcePostureError } from '../infra/resource-posture.js';
+import {
+  CriticalResourcePostureError,
+  InteractiveResourceOverrideRequiredError,
+} from '../infra/resource-posture.js';
 
 /** The only start-session intent callers may issue. */
 export type SessionCommand = {
@@ -38,6 +41,7 @@ export type SessionCommandOutcome =
       message: string;
       /** Typed, retryable refusal facts survive to HTTP/delegation callers. */
       code?: string;
+      resourceAdmissionOverride?: { token: string; expiresAt: number };
     }
   | {
       /** Session effects completed, but accepted-receipt durability is unknown. */
@@ -80,6 +84,8 @@ export type SessionCommandInternalOptions = {
   };
   /** Server-derived caller topology; never accepted from a command body. */
   resourceAdmissionIntent?: RuntimeEngineStartIntent;
+  /** Opaque controller capability; only the foreground route can carry it. */
+  resourceAdmissionOverrideToken?: string;
 };
 
 type ExistingSession = {
@@ -175,6 +181,7 @@ export interface SessionCommandDependencies {
       adapter: ProviderAdapterShape,
       input: ProviderSessionStartInput,
       context: SessionCommandContext,
+      internal: SessionCommandInternalOptions | undefined,
     ): Promise<ProviderSession>;
     recordStarted(
       adapter: ProviderAdapterShape,
@@ -327,6 +334,9 @@ export function createSessionCommandModule(
           typeof (error as { code?: unknown }).code === 'string')
           ? { code: (error as { code: string }).code }
           : {}),
+        ...(error instanceof InteractiveResourceOverrideRequiredError
+          ? { resourceAdmissionOverride: error.override }
+          : {}),
       };
     };
 
@@ -453,6 +463,7 @@ export function createSessionCommandModule(
           adapter,
           startInput,
           context,
+          internal,
         );
         deps.launchPolicy.recordStarted(adapter, startInput);
         await deps.launchPolicy.ensureStartedSessionCurrent(

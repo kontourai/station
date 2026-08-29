@@ -7,6 +7,7 @@ import {
   getConversationContextBoundaryStatus,
   getConversationHandoffStatus,
   handoffExecutionMessage,
+  ResourcePostureOverrideRequiredError,
   sendExecutionMessage,
 } from '../client/execution';
 import { ChatHttpError } from '../query-domains/chatRuntimeStream';
@@ -329,6 +330,42 @@ describe('client execution', () => {
       detail: { receipt, receiptStatus: 'unavailable', session },
     });
     expect(error).toBeInstanceOf(ChatHttpError);
+  });
+
+  test('preserves a sustained-critical one-shot override challenge', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'This Station remains busy.',
+            code: 'resource_posture_override_required',
+            resourceAdmissionOverride: {
+              token: 'override-token-1',
+              expiresAt: 123_456,
+            },
+          }),
+          { status: 409, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+
+    const request = sendExecutionMessage('http://station.test', {
+      message: 'Start anyway',
+      target: {
+        environment: { kind: 'current' },
+        agent: agentId('claude'),
+      },
+    });
+    await expect(request).rejects.toMatchObject({
+      name: 'ResourcePostureOverrideRequiredError',
+      code: 'resource_posture_override_required',
+      override: { token: 'override-token-1', expiresAt: 123_456 },
+    });
+    await expect(request).rejects.toBeInstanceOf(
+      ResourcePostureOverrideRequiredError,
+    );
   });
 
   test('continues through the server-verified conversation binding', async () => {
