@@ -3181,7 +3181,7 @@ describe('collectDoctorReport', () => {
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          label: 'Configured chat connections',
+          label: 'Configured chat model connections',
           status: 'pass',
         }),
       ]),

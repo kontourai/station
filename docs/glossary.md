@@ -223,8 +223,9 @@ as interchangeable names for “the thing on screen.”
 |---|---|
 | agent run by Station's engine | **"Station" engine chip** + agent name |
 | agent run by an external engine (incl. ACP) | **engine chip** naming the engine ("Claude Code", "Codex", "OpenCode · GLM-4.7") |
-| Any configurable model or agent connection | **Provider** (group: "Providers") |
-| A selectable inference option within a provider | **Model** |
+| A configured LLM endpoint | **Model connection** (Connections › Models) |
+| A configured agent CLI or custom engine | **Engine** (Connections › Engines) |
+| A selectable inference option within a connection | **Model** |
 | This device's saved binding to one Station | **Station** (verbs: Add / Edit / **Forget**) |
 | Saved workspace composition | **Layout** |
 | One renderable region in a Layout | **Pane** (developer contract: **Workspace Pane**) |
@@ -243,9 +244,10 @@ as interchangeable names for “the thing on screen.”
 
 This is the current pre-release vocabulary. Station does not preserve incompatible identity schemas: a non-empty unversioned or wrong-version home fails before data loading with `STATION_HOME_RESET_REQUIRED`, which names the supported `station home reset --confirm` command (station#1913) rather than requiring a manual, improvised fix.
 
-- **User-facing labels:** Connections and chat use **Provider** as the umbrella
-  and **Model** for the option selected within it. Station/external and
-  model/agent distinctions remain execution properties.
+- **User-facing labels:** the Connections tab owns the noun (#592) — **Model
+  connection** on the Models tab, **Engine** on the Engines tab, **Model** for
+  the option selected within a connection. Station/external and model/agent
+  distinctions remain execution properties.
 - **Data model:** `ConnectionKind` is `'model' | 'agent'`; Agent execution uses
   `agentConnectionId`; execution mode is `'external' | 'station'`; and adapter
   capability derives from `engineId` plus the engine capability matrix. Agent

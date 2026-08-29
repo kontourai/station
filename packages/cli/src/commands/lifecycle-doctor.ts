@@ -408,7 +408,7 @@ export async function collectDoctorReport(
           : `Managed identity probe failing with a lifecycle lock present for: ${supervisorWedges.join('; ')}. Remedy per instance: station service start --instance=<id> (kickstart).`,
     },
     {
-      label: 'Configured chat connections',
+      label: 'Configured chat model connections',
       status: enabledLlmProviders.length > 0 ? 'pass' : 'warn',
       detail:
         enabledLlmProviders.length > 0
