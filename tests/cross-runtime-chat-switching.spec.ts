@@ -849,28 +849,56 @@ async function seedCrossRuntimeRoutes(
     );
     if (parts.at(-1) === 'open') {
       const source = entry[0] === 'station' ? 'store' : 'runtime';
+      if (source === 'store') {
+        return route.fulfill(
+          json({
+            success: true,
+            data: {
+              status: 'unavailable',
+              conversation: {
+                ...conversation,
+                id: conversationId,
+                source,
+                agentSlug: entry[0],
+                mutable: true,
+                answerability: { answerable: true },
+              },
+              transcript: { available: false, owner: 'store' },
+              canContinue: false,
+              answerability: { answerable: true },
+              recoveryActions: ['retry', 'start-new'],
+            },
+          }),
+        );
+      }
+      const currentSessionId =
+        sessionIdsByConversation[
+          conversationId as keyof typeof sessionIdsByConversation
+        ]?.at(-1);
       return route.fulfill(
         json({
           success: true,
           data: {
-            status: 'resolved',
+            status: currentSessionId ? 'resolved' : 'missing-session',
             conversation: {
               ...conversation,
               id: conversationId,
               source,
               agentSlug: entry[0],
-              mutable: source === 'store',
+              mutable: false,
               answerability: { answerable: true },
             },
-            currentSessionId: conversationId,
+            ...(currentSessionId ? { currentSessionId } : {}),
             transcript: {
-              available: true,
+              available: Boolean(currentSessionId),
               owner: 'runtime',
-              messageCount: Number(conversation?.messageCount ?? 0),
+              ...(currentSessionId
+                ? { messageCount: Number(conversation?.messageCount ?? 0) }
+                : {}),
             },
-            canContinue: true,
+            canContinue: Boolean(currentSessionId),
             answerability: { answerable: true },
-            recoveryActions: [],
+            recoveryActions: currentSessionId ? [] : ['retry', 'start-new'],
           },
         }),
       );
@@ -1224,7 +1252,7 @@ async function assertConversationHistory(
     'Alpha Project',
   );
   await expect(chatList.locator('button[aria-current="true"]')).toContainText(
-    'Claude Runtime',
+    'Claude Code',
   );
   await expect(
     page

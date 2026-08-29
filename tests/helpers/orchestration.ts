@@ -13,6 +13,10 @@ const historicalOrchestrationEvents = new WeakMap<
   Page,
   Record<string, Record<string, unknown>[]>
 >();
+const conversationSessionReaders = new WeakMap<
+  Page,
+  (conversationId: string) => string[]
+>();
 
 export const STATUS_READY = JSON.stringify({
   ready: true,
@@ -288,6 +292,7 @@ export async function installMockOrchestrationConversationEventWindow(
   page: Page,
   readSessionIds: (conversationId: string) => string[],
 ): Promise<void> {
+  conversationSessionReaders.set(page, readSessionIds);
   await page.route(
     '**/api/orchestration/conversations/*/event-window**',
     (route) => {
@@ -579,29 +584,51 @@ export async function seedOrchestrationRoutes(
         >
       )[conversationId];
       if (parts.at(-1) === 'open' && conversation) {
+        const inventory = conversations.find(
+          (candidate) => candidate.id === conversationId,
+        );
+        if (!inventory) {
+          return r.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: false,
+              error: 'Conversation fixture metadata is incomplete',
+            }),
+          });
+        }
+        const currentSessionId = conversationSessionReaders
+          .get(page)?.(conversationId)
+          .at(-1);
+        const exactConversation = {
+          ...conversation,
+          source: 'runtime' as const,
+          title: conversation.title ?? inventory.title ?? conversationId,
+          createdAt: inventory.createdAt,
+          updatedAt: inventory.updatedAt,
+          messageCount: inventory.messageCount ?? 0,
+          mutable: false,
+          answerability: { answerable: true },
+        };
         return r.fulfill({
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
             success: true,
             data: {
-              status: 'resolved',
-              conversation: {
-                ...conversation,
-                source: 'runtime',
-                mutable: false,
-                messageCount: 0,
-                answerability: { answerable: true },
-              },
-              currentSessionId: conversationId,
+              status: currentSessionId ? 'resolved' : 'missing-session',
+              conversation: exactConversation,
+              ...(currentSessionId ? { currentSessionId } : {}),
               transcript: {
-                available: true,
+                available: Boolean(currentSessionId),
                 owner: 'runtime',
-                messageCount: 0,
+                ...(currentSessionId
+                  ? { messageCount: inventory.messageCount ?? 0 }
+                  : {}),
               },
-              canContinue: true,
+              canContinue: Boolean(currentSessionId),
               answerability: { answerable: true },
-              recoveryActions: [],
+              recoveryActions: currentSessionId ? [] : ['retry', 'start-new'],
             },
           }),
         });
