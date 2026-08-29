@@ -60,20 +60,9 @@ describe('Tauri embedded WebDriver boundary', () => {
     );
   });
 
-  test('denies unrelated browser-driver lifecycle downloads', () => {
-    const allowlist = JSON.parse(
-      read('config/dependency-lifecycle-allowlist.json'),
-    );
-    const decisions = Object.fromEntries(
-      allowlist.entries
-        .filter((entry: { name: string }) =>
-          ['edgedriver', 'geckodriver'].includes(entry.name),
-        )
-        .map((entry: { name: string; decision: string }) => [
-          entry.name,
-          entry.decision,
-        ]),
-    );
-    expect(decisions).toEqual({ edgedriver: 'deny', geckodriver: 'deny' });
+  test('does not install unrelated external browser drivers', () => {
+    const lock = JSON.parse(read('package-lock.json'));
+    expect(lock.packages).not.toHaveProperty('node_modules/edgedriver');
+    expect(lock.packages).not.toHaveProperty('node_modules/geckodriver');
   });
 });
