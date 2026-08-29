@@ -435,4 +435,105 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       screen.getByTestId('chat-dock-session-record-missing').textContent,
     ).toContain('Last message you sent: ship the release notes');
   });
+
+  test('#749 keeps the composer disabled while a reloaded conversation is resolving', async () => {
+    renderDock({
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+      }),
+    });
+
+    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    expect(
+      await screen.findByText('Station is resolving its current session.'),
+    ).toBeTruthy();
+  });
+
+  test('#749 transport failure remains read-only and exposes recovery actions', async () => {
+    const onRetryConversationOpen = vi.fn();
+    const onNewChat = vi.fn();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatDockBody
+          activeSession={buildSession({
+            conversationId: 'cool',
+            conversationOpenFailed: true,
+          })}
+          chatFontSize={14}
+          dockHeight={400}
+          showStatsPanel={false}
+          showReasoning={false}
+          showToolDetails={false}
+          modelSupportsAttachments={false}
+          fileAttachmentsSupported={false}
+          availableModels={[]}
+          chatInput={buildChatInput() as any}
+          setShowStatsPanel={vi.fn()}
+          onRetryConversationOpen={onRetryConversationOpen}
+          onNewChat={onNewChat}
+        />
+      </QueryClientProvider>,
+    );
+    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Start new chat' }),
+    );
+    expect(onRetryConversationOpen).toHaveBeenCalledOnce();
+    expect(onNewChat).toHaveBeenCalledOnce();
+  });
+
+  test('#749 respects canContinue rather than Agent availability', () => {
+    const base = {
+      status: 'resolved' as const,
+      conversation: {
+        id: 'cool',
+        source: 'runtime' as const,
+        agentSlug: agentId('codex'),
+        title: 'Cool',
+        createdAt: '2026-08-01T00:00:00.000Z',
+        updatedAt: '2026-08-01T00:01:00.000Z',
+        messageCount: 2,
+        mutable: false,
+        answerability: { answerable: true as const },
+      },
+      currentSessionId: 'cool:child:2',
+      transcript: {
+        available: true as const,
+        owner: 'runtime' as const,
+        messageCount: 2,
+      },
+      answerability: { answerable: true as const },
+      recoveryActions: [] as const,
+    };
+    const { rerender } = renderDock({
+      session: buildSession({
+        conversationOpenState: { ...base, canContinue: false },
+      }),
+    });
+    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <ChatDockBody
+          {...({
+            activeSession: buildSession({
+              conversationOpenState: { ...base, canContinue: true },
+            }),
+            chatFontSize: 14,
+            dockHeight: 400,
+            showStatsPanel: false,
+            showReasoning: false,
+            showToolDetails: false,
+            modelSupportsAttachments: false,
+            fileAttachmentsSupported: false,
+            availableModels: [],
+            chatInput: buildChatInput(),
+            setShowStatsPanel: vi.fn(),
+          } as any)}
+        />
+      </QueryClientProvider>,
+    );
+    expect(chatInputPropsMock.current?.disabled).toBe(false);
+  });
 });

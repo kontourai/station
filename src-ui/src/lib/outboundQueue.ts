@@ -107,6 +107,8 @@ export type OutboundSettlement =
  */
 export type OutboundDispatchTransportResult =
   | { kind: 'accepted'; providerTurnId: string }
+  /** A temporary pre-provider gate. Releasing it must not consume an attempt. */
+  | { kind: 'deferred'; reason?: string }
   | { kind: 'not-invoked'; reason?: string };
 
 /** The transport Adapter receives no raw storage or claim identity. */
@@ -134,7 +136,10 @@ export interface OutboundDispatchModule {
   ): Promise<
     { status: 'blocked'; count: number } | { status: 'completed'; value: T }
   >;
-  flush(transport: OutboundDispatchTransport): Promise<OutboundFlushOutcome>;
+  flush(
+    transport: OutboundDispatchTransport,
+    options?: { blockedSessionIds?: ReadonlySet<string> },
+  ): Promise<OutboundFlushOutcome>;
   /**
    * A terminal event may remove an accepted head only when it names the same
    * provider turn the transport durably recorded.
@@ -855,6 +860,30 @@ async function releaseRejected(
   }
 }
 
+async function releaseDeferred(
+  claimed: QueuedOutboundTurn,
+): Promise<OutboundSettlement> {
+  try {
+    return await mutate((entries) => {
+      const index = entries.findIndex((entry) => exact(entry, claimed));
+      if (index === -1)
+        return { entries, result: 'stale' as const, changed: false };
+      const next = [...entries];
+      next[index] = {
+        ...next[index]!,
+        status: 'pending',
+        dispatchBootId: undefined,
+        claimedAt: undefined,
+      };
+      return { entries: next, result: 'applied' as const, changed: true };
+    });
+  } catch {
+    unavailableClaims.add(claimed.clientTurnId);
+    notify();
+    return 'unavailable';
+  }
+}
+
 interface InternalClaim {
   readonly public: OutboundDispatchClaim;
   readonly settled: () => boolean;
@@ -1134,8 +1163,9 @@ async function retry(clientTurnId: string): Promise<void> {
 
 async function flush(
   transport: OutboundDispatchTransport,
+  options?: { blockedSessionIds?: ReadonlySet<string> },
 ): Promise<OutboundFlushOutcome> {
-  const blockedSessions = new Set<string>();
+  const blockedSessions = new Set(options?.blockedSessionIds);
   let unavailable = false;
   while (true) {
     let claimed: QueuedOutboundTurn | undefined;
@@ -1163,6 +1193,10 @@ async function flush(
             unavailableClaims.add(claimed.clientTurnId);
             unavailable ||= accepted === 'unavailable';
           }
+        } else if (result.kind === 'deferred') {
+          const released = await releaseDeferred(claimed);
+          unavailable ||= released === 'unavailable';
+          blockedSessions.add(claimed.sessionId);
         } else {
           const released = await releaseRejected(
             claimed,

@@ -34,6 +34,7 @@
     "./secret-bindings": "./src/client/secret-bindings.ts",
     "./secret-bindings-query": "./src/query-domains/secret-bindings.ts",
     "./client-origin": "./src/client-origin.ts",
+    "./conversation-open": "./src/conversation-open.ts",
     "./error-state": "./src/components/ErrorState.tsx",
     "./app-config": "./src/app-config.ts",
     "./developer-runtime": "./src/query-domains/developerRuntime.ts",
