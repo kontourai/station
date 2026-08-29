@@ -1054,9 +1054,15 @@ jobs:
             exit 1
           fi
           if ! gh release view nightly-desktop --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release create nightly-desktop --repo "${{ github.repository }}" --prerelease \
-              --title 'Station Nightly (desktop)' \
-              --notes 'Rolling nightly desktop build; assets are replaced on every ship.'
+            # The rolling release's tag is structural only; the deploy ledger
+            # carries the last shipped SHA. Do not let GITHUB_TOKEN create it
+            # from this candidate: GitHub rejects a ref that crosses workflow
+            # changes without an unavailable workflows:write token (station#737).
+            # An owner must bootstrap this one release/tag with their signed-in
+            # credentials before enabling the job; once present this workflow
+            # only replaces authenticated assets under that fixed release.
+            echo "::error::nightly-desktop does not exist; bootstrap the rolling prerelease/tag with an owner credential before rerunning. Refusing GITHUB_TOKEN release creation because a workflow-changing target is blocked." >&2
+            exit 1
           fi
           gh release upload nightly-desktop --repo "${{ github.repository }}" --clobber \
             release-assets/station-nightly-desktop-macos-aarch64.dmg \
