@@ -67,7 +67,7 @@ function createHarness(
     failureLimiter?: PairingFailureLimiter;
     connectedClientPresence?: ClientConnectionPresence;
     clientPresenceAvailable?: boolean;
-    resolvePublicIngressOrigin?: () => Promise<string | undefined>;
+    resolvePublicIngressOrigin?: () => Promise<readonly string[] | undefined>;
   } = {},
 ) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-pairing-routes-'));
@@ -2955,8 +2955,9 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
     test('records the resolved public origin when Host is our own ingress', async () => {
       const harness = createHarness({
-        resolvePublicIngressOrigin: async () =>
+        resolvePublicIngressOrigin: async () => [
           'https://kontour.python-smelt.ts.net',
+        ],
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
 
@@ -2974,8 +2975,9 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // previous behaviour stands rather than us advertising an address this
       // request never used.
       const harness = createHarness({
-        resolvePublicIngressOrigin: async () =>
+        resolvePublicIngressOrigin: async () => [
           'https://kontour.python-smelt.ts.net',
+        ],
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
 
@@ -3000,28 +3002,28 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // the request never arrived at.
       const cases: Array<{
         hostHeader: string;
-        resolved: string;
+        resolvedOrigins: readonly string[];
         used: boolean;
       }> = [
         {
           hostHeader: 'kontour.python-smelt.ts.net:8444',
-          resolved: 'https://kontour.python-smelt.ts.net:8444',
+          resolvedOrigins: ['https://kontour.python-smelt.ts.net:8444'],
           used: true,
         },
         {
           hostHeader: 'kontour.python-smelt.ts.net',
-          resolved: 'https://kontour.python-smelt.ts.net:8444',
+          resolvedOrigins: ['https://kontour.python-smelt.ts.net:8444'],
           used: false,
         },
         {
           hostHeader: 'kontour.python-smelt.ts.net:443',
-          resolved: 'https://kontour.python-smelt.ts.net',
+          resolvedOrigins: ['https://kontour.python-smelt.ts.net'],
           used: false,
         },
       ];
-      for (const { hostHeader, resolved, used } of cases) {
+      for (const { hostHeader, resolvedOrigins, used } of cases) {
         const harness = createHarness({
-          resolvePublicIngressOrigin: async () => resolved,
+          resolvePublicIngressOrigin: async () => resolvedOrigins,
         });
         const recorded = vi.spyOn(harness.pairing, 'requestAccess');
         await directRequest(
@@ -3030,9 +3032,33 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
         );
         expect(recorded, hostHeader).toHaveBeenCalledTimes(1);
         expect(recorded.mock.calls[0]?.[0], hostHeader).toMatchObject({
-          endpoint: used ? resolved : `http://${hostHeader}`,
+          endpoint: used ? resolvedOrigins[0] : `http://${hostHeader}`,
         });
       }
+    });
+
+    test('selects the exact valid listener when two Serve origins share one server port', async () => {
+      // Fault regression: the daemon publishes :3773 and :8444 as root
+      // proxies to the same embedded server. Canonical sorting makes :3773
+      // first, but this direct request arrived at :8444 and must preserve
+      // that authority for the later credential exchange.
+      const harness = createHarness({
+        resolvePublicIngressOrigin: async () => [
+          'https://kontour.python-smelt.ts.net:3773',
+          'https://kontour.python-smelt.ts.net:8444',
+        ],
+      });
+      const recorded = vi.spyOn(harness.pairing, 'requestAccess');
+
+      const response = await directRequest(
+        harness,
+        'http://kontour.python-smelt.ts.net:8444/.well-known/station/v1/pairing/access-request',
+      );
+
+      expect(response.status).toBe(202);
+      expect(recorded.mock.calls[0]?.[0]).toMatchObject({
+        endpoint: 'https://kontour.python-smelt.ts.net:8444',
+      });
     });
 
     test('an unresolvable origin through the Host branch falls back untouched', async () => {
@@ -3056,7 +3082,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       const harness = createHarness({
         resolvePublicIngressOrigin: async () => {
           consulted += 1;
-          return 'https://kontour.python-smelt.ts.net';
+          return ['https://kontour.python-smelt.ts.net'];
         },
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
@@ -3101,8 +3127,9 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     // while silently restoring the original defect.
     test('an attested proxy request records the resolved public origin', async () => {
       const harness = createHarness({
-        resolvePublicIngressOrigin: async () =>
+        resolvePublicIngressOrigin: async () => [
           'https://kontour.python-smelt.ts.net',
+        ],
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
 
@@ -3117,6 +3144,29 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       expect(recorded).toHaveBeenCalledTimes(1);
       expect(recorded.mock.calls[0]?.[0]).toMatchObject({
         endpoint: 'https://kontour.python-smelt.ts.net',
+      });
+    });
+
+    test('uses the canonical daemon order for an attested proxy with multiple listeners', async () => {
+      // The proxy rewrites Host to loopback, so there is no trustworthy
+      // request authority left to distinguish its two daemon-validated
+      // listeners. The resolver's canonical order is stable and cannot be
+      // selected by a forwarded header or other client input.
+      const harness = createHarness({
+        resolvePublicIngressOrigin: async () => [
+          'https://kontour.python-smelt.ts.net:3773',
+          'https://kontour.python-smelt.ts.net:8444',
+        ],
+      });
+      const recorded = vi.spyOn(harness.pairing, 'requestAccess');
+
+      await accessRequest(harness, nextLoopbackPeer(), 'Proxied phone', {
+        ...proxied(DEVICE_PEER),
+        ...attestedIngress(),
+      });
+
+      expect(recorded.mock.calls[0]?.[0]).toMatchObject({
+        endpoint: 'https://kontour.python-smelt.ts.net:3773',
       });
     });
 
