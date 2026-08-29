@@ -198,6 +198,16 @@ describe('ChatDockActiveIdentity', () => {
     expect(onClose).toHaveBeenCalledWith('chat-1');
   });
 
+  // #765 A7: the idle chip used to read a bare "ID", which looked like a
+  // debug artifact next to the chat title. The visible label must name the
+  // action the aria-label already promises.
+  test('the copy control idles as "Copy ID", not a bare "ID" chip', () => {
+    render(
+      <ChatDockActiveIdentity session={routedSession} onClose={vi.fn()} />,
+    );
+    expect(copyButton().textContent).toBe('Copy ID');
+  });
+
   test('copies the routed conversation id, never the local tab key', async () => {
     const writeText = clipboardWrites();
 
