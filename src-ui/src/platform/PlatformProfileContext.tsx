@@ -23,6 +23,7 @@ import {
 } from 'react';
 import { nativePlatformPromise } from './native';
 import { primeNativeNotifications } from './native/notify';
+import { startStartupReadinessProof } from './native/startupReadiness';
 import type { NativeStationProfileStorage } from './native/stationProfileStorage';
 import type { NativeCompileTarget } from './native/types';
 
@@ -249,10 +250,12 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
     // also correct if the sidecar published before its event listener mounted.
     const controller = new AbortController();
     let subscription: { dispose(): void } | undefined;
-    void Promise.all([
-      import('./native/startupReadiness'),
-      nativePlatformPromise,
-    ]).then(([{ startStartupReadinessProof }, adapter]) => {
+    // Keep this tiny bootstrap in the entry graph. A failed lazy-chunk load
+    // used to leave the native cover up until its 30-second timeout without
+    // ever invoking the host, which made a healthy packaged sidecar look
+    // broken. The proof itself remains host-owned and bounded; only its
+    // renderer liveness trigger is eager.
+    void nativePlatformPromise.then((adapter) => {
       const next = startStartupReadinessProof(adapter, controller.signal);
       subscription = next;
     });

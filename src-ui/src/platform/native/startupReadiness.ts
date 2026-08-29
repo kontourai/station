@@ -81,8 +81,9 @@ export async function proveAndCommitStartupReadiness(
 
 /**
  * Starts the mounted desktop proof and owns the native retry subscription.
- * Keeping this orchestration in the lazy readiness chunk avoids charging web
- * and mobile first paint for desktop-only lifecycle wiring.
+ * This tiny orchestration deliberately stays in the entry graph: the native
+ * cover cannot depend on loading a second renderer chunk before it can prove
+ * the packaged sidecar and reveal the main window.
  */
 export function startStartupReadinessProof(
   adapter: NativePlatformAdapter,

@@ -187,6 +187,36 @@ export function measureEntryBundle(outputDir) {
   };
 }
 
+const STARTUP_READINESS_ENTRY_MARKERS = Object.freeze([
+  'bundled_server_status',
+  'commit_startup_readiness',
+  'commit_startup_recovery_ui',
+  'station://startup-readiness-retry',
+]);
+
+/**
+ * The packaged desktop keeps its WebView alive behind a native cover until
+ * this renderer trigger asks the host to prove the exact sidecar identity.
+ * Every command and retry marker must therefore be present in the initial
+ * JavaScript payload; a lazy asset cannot be a prerequisite for reveal.
+ */
+export function assertStartupReadinessInInitialPayload(
+  outputDir,
+  measured = measureEntryBundle(outputDir),
+) {
+  const initialJavaScript = measured.entryJsFiles
+    .map((file) => readFileSync(join(outputDir, file), 'utf8'))
+    .join('\n');
+  const missing = STARTUP_READINESS_ENTRY_MARKERS.filter(
+    (marker) => !initialJavaScript.includes(marker),
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `Desktop startup readiness must be executable from the initial UI payload; missing ${missing.join(', ')}.`,
+    );
+  }
+}
+
 export function shouldEnforceUiBundleBudget(env = process.env) {
   return env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE !== '1';
 }
@@ -214,6 +244,7 @@ if (process.argv[1]?.endsWith('ui-bundle-budget.mjs')) {
       readFileSync(new URL('./ui-bundle-budget.json', import.meta.url), 'utf8'),
     );
     const measured = measureEntryBundle(outputDir);
+    assertStartupReadinessInInitialPayload(outputDir, measured);
     const result = evaluateBundleBudget(measured, budget);
     console.log(
       `Initial UI bundle (${measured.assetCount} assets summed: ${measured.entryJsFiles.length} JS, ${measured.entryCssFiles.length} CSS): ` +

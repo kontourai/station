@@ -1,3 +1,4 @@
+import { TauriNativePlatformAdapter } from './tauri';
 import type { NativePlatformAdapter } from './types';
 import { WebNativePlatformAdapter } from './web';
 
@@ -18,7 +19,6 @@ export async function createNativePlatformAdapter(
   detectTauri: () => boolean = hasTauriRuntime,
 ): Promise<NativePlatformAdapter> {
   if (!detectTauri()) return new WebNativePlatformAdapter();
-  const { TauriNativePlatformAdapter } = await import('./tauri');
   return new TauriNativePlatformAdapter();
 }
 
