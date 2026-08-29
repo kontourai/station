@@ -10,6 +10,14 @@ name: Fresh-home walkthrough
 # This is release-train/nightly cadence work, not per-PR work — every finding
 # it exists to catch (audit archive#765) was visible on a first boot, so once a
 # day against main is the leverage point. It never runs on pull requests.
+#
+# #766 item 2 adds a second job: the core-loop journeys
+# (tests/live/core-loop-journeys.mjs) — multi-turn continuity, the capacity
+# gate reaching the chat surface, the project deep-link reload, and the
+# pairing/approval loop. Journeys that need a signed-in Claude Code CLI
+# report NOT-EXERCISED here (hosted runners have none) and are exercised on
+# development hosts; the capacity-posture seam and the pairing loop run
+# end-to-end on this runner.
 on:
   schedule:
     # 10:00 UTC — after the nightly's 09:00 gate, so a red walkthrough lands
@@ -75,5 +83,55 @@ jobs:
         with:
           name: fresh-home-walkthrough-${{ github.run_id }}
           path: test-results/fresh-home-walkthrough/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  core-loop-journeys:
+    name: Core-loop journeys
+    # Same trigger contract as the walkthrough job: schedule and
+    # workflow_dispatch only, never pull requests.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc }
+
+      - run: npm run dependencies:ci
+
+      - name: Install Chromium
+        # Same bounded, retried install as the walkthrough job above
+        # (archive#3517) — hosted runners are ephemeral.
+        timeout-minutes: 20
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt $attempt"
+            if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
+              exit 0
+            fi
+            echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
+            sleep 15
+          done
+          echo "::error::Playwright install failed after 3 attempts"
+          exit 1
+
+      - name: Run core-loop journeys
+        # `./station start` builds the app on first run for its own instance;
+        # the suite's own start timeout budgets it.
+        timeout-minutes: 45
+        run: npm run journeys:core-loop
+
+      - name: Upload journey summary
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        continue-on-error: true
+        with:
+          name: core-loop-journeys-${{ github.run_id }}
+          path: test-results/core-loop-journeys/
           if-no-files-found: ignore
           retention-days: 14

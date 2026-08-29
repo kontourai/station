@@ -80,6 +80,22 @@ describe('host-pressure busy math', () => {
     ).toBe(50);
   });
 
+  it('normalizes one fully busy CPU across a 15-CPU host to seven percent', () => {
+    const first = Array.from({ length: 15 }, () => ({
+      times: { user: 0, nice: 0, sys: 0, idle: 0, irq: 0 },
+    }));
+    const second = Array.from({ length: 15 }, (_unused, index) => ({
+      times: {
+        user: index === 0 ? 100 : 0,
+        nice: 0,
+        sys: 0,
+        idle: index === 0 ? 0 : 100,
+        irq: 0,
+      },
+    }));
+    expect(computeBusyPercent(first, second)).toBe(7);
+  });
+
   it('treats real os.cpus()-shaped snapshots identically', () => {
     // Mirrors the exact object shape os.cpus() returns (extra fields ignored).
     const first = [

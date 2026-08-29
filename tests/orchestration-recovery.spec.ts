@@ -44,6 +44,7 @@ test.describe('Orchestration Recovery', () => {
       conversationLookups: {
         'conv-restore': {
           id: 'conv-restore',
+          currentSessionId: 'session-restore',
           agentSlug: 'dev-agent',
           projectSlug: 'dev',
           title: 'Restored Chat',
@@ -142,6 +143,7 @@ test.describe('Orchestration Recovery', () => {
       conversationLookups: {
         'conv-closed': {
           id: 'conv-closed',
+          currentSessionId: 'session-closed',
           agentSlug: 'dev-agent',
           projectSlug: 'dev',
           title: 'Closed Chat',

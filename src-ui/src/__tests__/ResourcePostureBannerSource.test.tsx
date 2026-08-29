@@ -90,10 +90,13 @@ describe('ResourcePostureBannerSource', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('renders a critical banner naming the posture and the exact observed busy percent the response carried', async () => {
+  it('renders sustained critical posture with the averaged window, age, and interactive/automatic distinction', async () => {
     mockResourcePostureResponse({
       kind: 'critical',
-      busyPercent: 97,
+      busyPercent: 99,
+      smoothedBusyPercent: 97,
+      windowLength: 5,
+      ageMs: 3_000,
       cpuCount: 8,
       sampledAt: 1,
       sampleMs: 500,
@@ -104,9 +107,12 @@ describe('ResourcePostureBannerSource', () => {
     renderChrome();
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toMatch(/at capacity/i);
+    expect(alert.textContent).toMatch(/very busy/i);
     expect(alert.textContent).toMatch(/97% CPU busy/);
-    expect(alert.textContent).toMatch(/new engine starts are refused/i);
+    expect(alert.textContent).toMatch(/averaged across 5 samples/i);
+    expect(alert.textContent).toMatch(/observed 3s ago/i);
+    expect(alert.textContent).toMatch(/automatic work is paused/i);
+    expect(alert.textContent).toMatch(/explicit starts ask before continuing/i);
   });
 
   it('renders a degraded banner distinguishable from the critical wording', async () => {
@@ -125,8 +131,8 @@ describe('ResourcePostureBannerSource', () => {
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toMatch(/busy/i);
     expect(alert.textContent).toMatch(/90% CPU busy/);
-    expect(alert.textContent).not.toMatch(/at capacity/i);
+    expect(alert.textContent).not.toMatch(/very busy/i);
     expect(alert.textContent).not.toMatch(/new engine starts are refused/i);
-    expect(alert.textContent).toMatch(/scheduled runs are paused/i);
+    expect(alert.textContent).toMatch(/automatic work is paused/i);
   });
 });

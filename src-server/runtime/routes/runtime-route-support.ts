@@ -184,11 +184,8 @@ export function createRuntimeSystemRouteDeps(
       .map((origin) => origin.trim())
       .filter(Boolean),
     skillService: context.skillService,
-    // station#3089: the same derivation `admitEngineStart`/`admitScheduledJob`
-    // use — this is a fresh probe instance, not a shared one, because
-    // `observe()` is stateless (each call re-samples the host); nothing here
-    // caches or re-derives a posture.
-    resourcePosture: createEnvironmentRuntimeResourcePostureProbe(),
+    resourcePosture:
+      context.resourcePosture ?? createEnvironmentRuntimeResourcePostureProbe(),
   };
 }
 
@@ -290,7 +287,9 @@ export function configureRuntimeSupportServices(
     builtin: {
       notificationService,
       turnAdapter: createScheduledTurnAdapter(context.activeAgents),
-      resourcePosture: createEnvironmentRuntimeResourcePostureProbe(),
+      resourcePosture:
+        context.resourcePosture ??
+        createEnvironmentRuntimeResourcePostureProbe(),
       integrationSecretResolver:
         context.secretBindingAdministration as unknown as import('../../services/secrets/secret-binding-administration.js').IntegrationSecretResolver,
       onActionableMonitor: async (input) => {

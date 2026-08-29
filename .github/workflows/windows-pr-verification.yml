@@ -41,6 +41,13 @@ jobs:
       - name: Run bounded Windows portable floor
         run: npm run test:windows:portable
 
+      - name: Compile desktop Rust tests
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist-server | Out-Null
+          New-Item -ItemType Directory -Force dist-desktop-runtime/node_modules | Out-Null
+          cargo test --manifest-path src-desktop/Cargo.toml --no-run
+
       - name: Typecheck Station contracts
         run: npm run typecheck
 

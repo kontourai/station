@@ -26,7 +26,6 @@
  * Like tests/live/cold-bootstrap.mjs this deliberately uses no storageState
  * and never intercepts `/api/**`: the point is the product as shipped.
  */
-import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
@@ -38,6 +37,19 @@ import {
 import { APP_SURFACE_REGISTRY } from '../../src-ui/src/app-shell/surface-registry.ts';
 import { CONNECTION_SECTIONS } from '../../src-ui/src/views/connections-hub/connection-sections.ts';
 import { WALKTHROUGH_ALLOWLIST } from './fresh-home-walkthrough-allowlist.mjs';
+// Boot/pair/settle plumbing is shared with the core-loop journey suite
+// (#766 item 2) — see tests/live/helpers/station-instance.mjs. Only the
+// walkthrough-specific pieces (console budget, gallery, expected-failure
+// accounting) live in this file.
+import {
+  api,
+  apiOk,
+  pairBrowser as pairBrowserForInstance,
+  poll,
+  runStation as runStationAt,
+  SUITE_REQUEST_HEADER,
+  settlePageReason,
+} from './helpers/station-instance.mjs';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const INSTANCE = process.env.WALKTHROUGH_INSTANCE ?? 'fresh-walkthrough';
@@ -213,103 +225,11 @@ function attachConsoleBudget(page) {
 }
 
 // ---------------------------------------------------------------------------
-// Process + HTTP helpers
+// Process helper (shared implementation, this suite's ROOT bound in)
 // ---------------------------------------------------------------------------
 
 function runStation(args, { timeoutMs }) {
-  return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn('./station', args, {
-      cwd: ROOT,
-      env: process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
-    let output = '';
-    const capture = (chunk) => {
-      output += String(chunk);
-    };
-    child.stdout.on('data', capture);
-    child.stderr.on('data', capture);
-    const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      rejectPromise(
-        new Error(
-          `./station ${args.join(' ')} timed out after ${timeoutMs}ms\n${output.slice(-4000)}`,
-        ),
-      );
-    }, timeoutMs);
-    child.on('error', (error) => {
-      clearTimeout(timer);
-      rejectPromise(error);
-    });
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      resolvePromise({ code, output });
-    });
-  });
-}
-
-async function poll(description, timeoutMs, probe) {
-  const deadline = Date.now() + timeoutMs;
-  let lastError;
-  while (Date.now() < deadline) {
-    try {
-      if (await probe()) return;
-    } catch (error) {
-      lastError = error;
-    }
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
-  }
-  throw new Error(
-    `Timed out after ${timeoutMs}ms waiting for ${description}${
-      lastError ? `: ${lastError}` : ''
-    }`,
-  );
-}
-
-/**
- * Marks requests the SUITE issues through api() so the console budget can
- * tell them apart from the app's own traffic (lowercase: Playwright reports
- * header names lowercased).
- */
-const SUITE_REQUEST_HEADER = 'x-fresh-home-walkthrough';
-
-/**
- * Authenticated API call issued FROM the paired page, so it rides the same
- * device-session cookie, origin, and UI proxy the product's own client uses.
- */
-async function api(page, method, path, body) {
-  const result = await page.evaluate(
-    async ({ method, path, body, marker }) => {
-      const response = await fetch(path, {
-        method,
-        headers: {
-          [marker]: '1',
-          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      let payload = null;
-      try {
-        payload = await response.json();
-      } catch {
-        // non-JSON response bodies are reported by status alone
-      }
-      return { status: response.status, payload };
-    },
-    { method, path, body, marker: SUITE_REQUEST_HEADER },
-  );
-  return result;
-}
-
-async function apiOk(page, method, path, body) {
-  const { status, payload } = await api(page, method, path, body);
-  if (status >= 400 || payload?.success === false) {
-    throw new Error(
-      `${method} ${path} failed: HTTP ${status} ${JSON.stringify(payload)?.slice(0, 400)}`,
-    );
-  }
-  return payload;
+  return runStationAt(ROOT, args, { timeoutMs });
 }
 
 // ---------------------------------------------------------------------------
@@ -336,70 +256,17 @@ function routeShotName(route) {
 }
 
 /**
- * Every loading treatment the shipped app renders while a surface is not yet
- * real content. All selectors name markup that exists today:
- *  - `.skeleton` — the shared @kontourai/ui placeholder primitive;
- *  - `[role="status"][aria-busy="true"]` — Station's SkeletonBlock/SkeletonList;
- *  - `.fs-screen` / `.station-spinner` — @kontourai/station-sdk's full-screen
- *    loading interstitial ("Polishing the pixels...") and spinner.
- * The suite's first gallery review caught two screenshots the old
- * first-skeleton-only check waved through: a layout still on `.fs-screen`,
- * and the LocalUiSessionGate pending text (checked separately below because
- * it is plain text, not a stable selector).
- */
-const LOADING_MARKER_SELECTORS = [
-  '.skeleton',
-  '[role="status"][aria-busy="true"]',
-  '.fs-screen',
-  '.station-spinner',
-];
-
-async function countVisibleLoadingMarkers(page) {
-  let total = 0;
-  for (const selector of LOADING_MARKER_SELECTORS) {
-    total += await page.locator(selector).filter({ visible: true }).count();
-  }
-  // LocalUiSessionGate's pending state (src-ui LocalUiSessionGate.tsx).
-  total += await page
-    .getByText("Checking this browser's Station access")
-    .count();
-  return total;
-}
-
-/**
  * A page has settled when a landmark surface is visible and NO loading
- * treatment remains anywhere on it. A page still showing one after the budget
- * is the "infinite skeleton" defect this suite exists to catch.
+ * treatment remains anywhere on it (the shared settled-page definition —
+ * see settlePageReason in helpers/station-instance.mjs). A page still
+ * showing one after the budget is the "infinite skeleton" defect this suite
+ * exists to catch.
  */
 async function settlePage(page, label, { record = true } = {}) {
-  const landmarkVisible = await page
-    .locator('main, [data-testid="setup-launcher"]')
-    .first()
-    .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS })
-    .then(
-      () => true,
-      () => false,
-    );
-  if (!landmarkVisible) {
-    if (record) fail(`${label}: no <main> or setup launcher became visible`);
-    return false;
-  }
-  const loadingGone = await poll(
-    `${label} loading markers to clear`,
-    SETTLE_TIMEOUT_MS,
-    async () => (await countVisibleLoadingMarkers(page)) === 0,
-  ).then(
-    () => true,
-    () => false,
-  );
-  if (!loadingGone) {
-    if (record)
-      fail(
-        `${label}: a loading treatment (skeleton/spinner/loading screen/access gate) is still visible after ${SETTLE_TIMEOUT_MS}ms`,
-      );
-    return false;
-  }
-  return true;
+  const reason = await settlePageReason(page, SETTLE_TIMEOUT_MS);
+  if (reason === null) return true;
+  if (record) fail(`${label}: ${reason}`);
+  return false;
 }
 
 async function assertTextAbsent(page, text, label) {
@@ -415,59 +282,16 @@ async function assertTextAbsent(page, text, label) {
 // Walkthrough phases
 // ---------------------------------------------------------------------------
 
-async function pairBrowser(page) {
-  // Read the throwaway home the launcher just created from the instance
-  // registry — the same record scripts/run-e2e-suite.mjs trusts.
-  const registry = JSON.parse(
-    readFileSync(
-      join(ROOT, '.station', 'instances', `${INSTANCE}.json`),
-      'utf8',
-    ),
-  );
-  const home = registry?.baseDir;
-  if (typeof home !== 'string' || !home) {
-    throw new Error('Instance registry did not publish a home directory');
-  }
-  const secret = readFileSync(
-    join(home, 'runtime', 'local-grant.secret'),
-    'utf8',
-  ).trim();
-  // Mint must be a DIRECT loopback call on the server port (never the UI
-  // proxy) presenting the per-boot local grant — filesystem possession plus
-  // loopback position, per docs/design/local-bootstrap-token.md.
-  const mint = await fetch(
-    `http://127.0.0.1:${SERVER_PORT}/.well-known/station/v1/pairing/mint-ui-bootstrap`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ secret }),
-    },
-  );
-  if (!mint.ok) {
-    throw new Error(`ui-bootstrap mint failed: HTTP ${mint.status}`);
-  }
-  const { token } = await mint.json();
-  // The browser exchanges the one-time token itself via the fragment path —
-  // the exact journey `station start` prints for a human. Await the app's own
-  // exchange POST rather than polling an authenticated route: probing before
-  // the cookie lands would record 401 noise this suite itself caused.
-  const exchange = page.waitForResponse(
-    (response) =>
-      response.url().endsWith('/pairing/ui-bootstrap') &&
-      response.request().method() === 'POST',
-    { timeout: 30_000 },
-  );
-  await page.goto(`${UI_ORIGIN}/#station-ui-bootstrap=${token}`, {
-    waitUntil: 'load',
+function pairBrowser(page) {
+  // Shared journey: instance-registry home discovery, DIRECT loopback mint
+  // presenting the per-boot local grant, browser-owned fragment exchange
+  // (docs/design/local-bootstrap-token.md) — helpers/station-instance.mjs.
+  return pairBrowserForInstance(page, {
+    root: ROOT,
+    instance: INSTANCE,
+    serverPort: SERVER_PORT,
+    uiOrigin: UI_ORIGIN,
   });
-  const exchanged = await exchange;
-  if (exchanged.status() !== 200) {
-    throw new Error(`ui-bootstrap exchange failed: HTTP ${exchanged.status()}`);
-  }
-  const boot = await api(page, 'GET', '/api/boot');
-  if (boot.status !== 200) {
-    throw new Error(`paired boot check failed: GET /api/boot ${boot.status}`);
-  }
 }
 
 /**

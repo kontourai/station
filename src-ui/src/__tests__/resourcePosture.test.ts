@@ -14,13 +14,10 @@ describe('host pressure wording', () => {
     expect(hostPressureKind(undefined)).toBeUndefined();
   });
 
-  test('only critical is "at capacity" — degraded is busy', () => {
-    // The chrome banner has always drawn this line; Schedule now draws it
-    // from the same place, so 86% CPU cannot read "Busy" above the page and
-    // "host at capacity" inside it.
-    expect(hostPressureBadge('critical')).toBe('At capacity');
+  test('distinguishes very busy from busy without claiming hard capacity', () => {
+    expect(hostPressureBadge('critical')).toBe('Very busy');
     expect(hostPressureBadge('degraded')).toBe('Busy');
-    expect(hostPressureSubject('critical')).toBe('host at capacity');
+    expect(hostPressureSubject('critical')).toBe('host very busy');
     expect(hostPressureSubject('degraded')).toBe('host busy');
   });
 });

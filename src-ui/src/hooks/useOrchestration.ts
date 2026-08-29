@@ -48,6 +48,8 @@ export async function sendExecutionMessage(input: {
   attachmentRefs?: StagedAttachmentReference[];
   ambientContext?: string;
   clientTurnId?: string;
+  resourceAdmissionOverrideToken?: string;
+  automaticBackground?: boolean;
   signal?: AbortSignal;
 }): Promise<ForegroundMessageReceipt> {
   return sendExecutionMessageRequest(
@@ -60,6 +62,8 @@ export async function sendExecutionMessage(input: {
       attachmentRefs: input.attachmentRefs,
       ambientContext: input.ambientContext,
       clientTurnId: input.clientTurnId,
+      resourceAdmissionOverrideToken: input.resourceAdmissionOverrideToken,
+      automaticBackground: input.automaticBackground,
     },
     { signal: input.signal },
   );
