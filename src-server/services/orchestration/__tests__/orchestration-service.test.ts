@@ -2099,8 +2099,9 @@ describe('OrchestrationService', () => {
     }
   });
 
-  test('refuses an engine start at the real session command seam under critical observed posture', async () => {
+  test('admits an explicit engine start with a warning under sustained critical posture', async () => {
     const startSession = vi.spyOn(claude, 'startSession');
+    const logger = { debug: vi.fn(), warn: vi.fn() };
     const criticalService = new OrchestrationService({
       adapterRegistry: createRegistry([claude]),
       eventBus,
@@ -2116,7 +2117,7 @@ describe('OrchestrationService', () => {
           source: 'test',
         }),
       },
-      logger: { debug: vi.fn(), warn: vi.fn() },
+      logger,
     });
 
     await expect(
@@ -2127,14 +2128,47 @@ describe('OrchestrationService', () => {
         },
         { userId: 'owner-user' },
       ),
-    ).rejects.toThrow(
-      // Plain-substring form: vitest 4's toThrow matches a string against the
-      // error MESSAGE, while an asymmetric stringContaining is compared against
-      // the thrown value itself — which here is an
-      // OrchestrationCommandDispatchError object, so the matcher never hit the
-      // message and failed even though the message contained this text.
-      'Engine start refused: resource posture=critical, observed busyPercent=99',
+    ).resolves.toMatchObject({ threadId: 'critical-posture' });
+    expect(startSession).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Interactive engine start admitted under host pressure',
+      expect.objectContaining({ busyPercent: 99 }),
     );
+  });
+
+  test('defers a server-derived delegated/background start under the same posture', async () => {
+    const startSession = vi.spyOn(claude, 'startSession');
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      resourcePosture: {
+        observe: async () => ({
+          kind: 'critical' as const,
+          busyPercent: 99,
+          cpuCount: 15,
+          sampledAt: 100,
+          sampleMs: 500,
+          thresholdPercent: 85,
+          source: 'test',
+        }),
+      },
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+
+    await expect(
+      service.startSessionInternal(
+        {
+          type: 'start-session',
+          input: { threadId: 'background-posture', provider: 'claude' },
+        },
+        { userId: 'owner-user' },
+        { resourceAdmissionIntent: 'delegated_background' },
+      ),
+    ).resolves.toMatchObject({
+      status: 'rejected',
+      code: 'resource_posture_deferred',
+    });
     expect(startSession).not.toHaveBeenCalled();
   });
 

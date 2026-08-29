@@ -10,6 +10,7 @@ import type {
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { WorkflowSidecarAttachMode } from '../evidence/orchestration-workflow-sidecar.js';
+import type { RuntimeEngineStartIntent } from '../infra/resource-posture.js';
 import { CriticalResourcePostureError } from '../infra/resource-posture.js';
 
 /** The only start-session intent callers may issue. */
@@ -77,6 +78,8 @@ export type SessionCommandInternalOptions = {
     conversationId: string;
     environmentId: string;
   };
+  /** Server-derived caller topology; never accepted from a command body. */
+  resourceAdmissionIntent?: RuntimeEngineStartIntent;
 };
 
 type ExistingSession = {
@@ -318,8 +321,11 @@ export function createSessionCommandModule(
         receipt: readback ?? terminalReceipt,
         receiptStatus: readback ? 'persisted' : 'unavailable',
         message: error instanceof Error ? error.message : String(error),
-        ...(error instanceof CriticalResourcePostureError
-          ? { code: error.code }
+        ...(error instanceof CriticalResourcePostureError ||
+        (typeof error === 'object' &&
+          error !== null &&
+          typeof (error as { code?: unknown }).code === 'string')
+          ? { code: (error as { code: string }).code }
           : {}),
       };
     };

@@ -31,7 +31,10 @@ import type { IProviderAdapterRegistry } from '../../providers/provider-interfac
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { receiptBus } from '../infra/receipt-bus.js';
-import { CriticalResourcePostureError } from '../infra/resource-posture.js';
+import {
+  CriticalResourcePostureError,
+  ResourcePostureDeferredError,
+} from '../infra/resource-posture.js';
 import type { EventStore } from './event-store.js';
 import {
   projectRequestAnswerability,
@@ -1183,7 +1186,11 @@ export async function startRecoveredOrchestrationSession(options: {
     deps.eventStore?.upsertSession(nextSession);
     return nextSession;
   } catch (error) {
-    if (error instanceof CriticalResourcePostureError) throw error;
+    if (
+      error instanceof CriticalResourcePostureError ||
+      error instanceof ResourcePostureDeferredError
+    )
+      throw error;
     const message = error instanceof Error ? error.message : String(error);
     deps.logger.warn('Failed to recover provider session', {
       provider: session.provider,

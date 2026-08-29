@@ -652,6 +652,9 @@ describe('Station Control canonical Environment + Agent execution', () => {
       resolution: { engine: { kind: 'station' } },
     });
     expect(service.sessionCommands.execute).toHaveBeenCalledTimes(1);
+    expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
+      resourceAdmissionIntent: 'delegated_background',
+    });
     expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
     expect(service.sessionCommands.execute.mock.calls[0][0]).toMatchObject({
       type: 'start-session',
@@ -1344,6 +1347,9 @@ describe('Station Control canonical Environment + Agent execution', () => {
       target: { kind: 'agent', id: 'reviewer' },
     });
     expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
+      resourceAdmissionIntent: 'interactive_user',
+    });
     expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
     expect(service.dispatchWithReceipt.mock.calls[0][0]).toMatchObject({
       type: 'sendTurn',
@@ -1360,6 +1366,31 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(service.dispatchWithReceipt.mock.calls[0][1]).toEqual({
       userId: 'shared-user',
       tenantExecutionContext: { tenantId: 'alpha', source: 'request' },
+    });
+  });
+
+  test('derives webhook admission from the server-owned ephemeral seam', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await executeExecutionTargetMessage(
+      {
+        target: currentTarget(),
+        message: 'Webhook delivery',
+        conversationId: 'conversation-webhook',
+        ephemeral: true,
+        webhookTokenId: 'token-1',
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+
+    expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
+      ephemeralSessionVisibility: true,
+      resourceAdmissionIntent: 'webhook',
     });
   });
 

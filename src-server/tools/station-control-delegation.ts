@@ -3073,6 +3073,7 @@ export async function delegateTask(
           conversationId: sessionId,
           environmentId: target.environmentId,
         },
+        resourceAdmissionIntent: 'delegated_background',
       },
     );
     if (started.status === 'indeterminate') {
@@ -3086,7 +3087,9 @@ export async function delegateTask(
         retryable?: boolean;
       };
       error.code = started.code;
-      error.retryable = started.code === 'resource_posture_critical';
+      error.retryable =
+        started.code === 'resource_posture_critical' ||
+        started.code === 'resource_posture_deferred';
       throw error;
     }
   }
@@ -3415,6 +3418,7 @@ export async function executeExecutionTargetMessage(
         dispatchContextForAuthority(readAuthority),
         {
           ...(ephemeral ? { ephemeralSessionVisibility: true } : {}),
+          resourceAdmissionIntent: ephemeral ? 'webhook' : 'interactive_user',
           conversationIdentity: { conversationId, environmentId },
           ...(typeof startInput.metadata?.contextBoundary === 'object' &&
           startInput.metadata.contextBoundary !== null &&

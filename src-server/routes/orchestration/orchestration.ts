@@ -3139,10 +3139,13 @@ export function createOrchestrationRoutes(
 
 function resourcePostureRefusal(
   error: unknown,
-): { code: 'resource_posture_critical' } | undefined {
-  return typeof error === 'object' &&
-    error !== null &&
-    (error as { code?: unknown }).code === 'resource_posture_critical'
-    ? { code: 'resource_posture_critical' }
+):
+  | { code: 'resource_posture_critical' | 'resource_posture_deferred' }
+  | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const code = (error as { code?: unknown }).code;
+  return code === 'resource_posture_critical' ||
+    code === 'resource_posture_deferred'
+    ? { code }
     : undefined;
 }

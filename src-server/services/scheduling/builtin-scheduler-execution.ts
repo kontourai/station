@@ -144,7 +144,27 @@ export async function executeSchedulerJobAttempt({
       durationSecs: 0,
     };
   }
-  const admission = await admitScheduledJob(resourcePosture, logger);
+  // `manual` is durable SchedulerLedger truth, not a request hint. Automatic
+  // occurrences defer under sustained pressure; an explicit Run now keeps
+  // its user intent and proceeds with a warning unless memory protection is
+  // critical.
+  const admission = await admitScheduledJob(resourcePosture, logger, {
+    manual,
+  });
+  if (admission.kind === 'admitted' && admission.warning) {
+    logger?.warn('Manual scheduled job admitted under host pressure', {
+      posture: admission.warning.kind,
+      busy_percent:
+        admission.warning.kind === 'unavailable'
+          ? undefined
+          : admission.warning.busyPercent,
+      smoothed_busy_percent:
+        admission.warning.kind === 'unavailable'
+          ? undefined
+          : admission.warning.smoothedBusyPercent,
+      window_length: admission.warning.windowLength ?? 0,
+    });
+  }
   if (admission.kind === 'deferred') {
     const released = receipt.releaseDeferred();
     if (released.kind === 'applied') {

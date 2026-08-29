@@ -4,6 +4,7 @@ import {
   admitScheduledJob,
   CriticalResourcePostureError,
   createEnvironmentRuntimeResourcePostureProbe,
+  createRuntimeResourcePostureController,
   createRuntimeResourcePostureProbe,
   deriveRuntimeResourcePosture,
   E2E_HEALTHY_RESOURCE_POSTURE_ENV,
@@ -68,7 +69,7 @@ describe('runtime resource posture', () => {
           env,
           criticalSample,
         ).observe(),
-      ).resolves.toMatchObject({ kind: 'critical', busyPercent: 96 });
+      ).resolves.toMatchObject({ kind: 'degraded', busyPercent: 96 });
     }
   });
 
@@ -129,7 +130,7 @@ describe('runtime resource posture', () => {
 
     expect(error.code).toBe('resource_posture_critical');
     expect(error.message).toBe(
-      'Engine start refused: resource posture=critical, observed busyPercent=97, thresholdPercent=85, cpuCount=8',
+      'Engine start refused: resource posture=critical, observed busyPercent=97, smoothedBusyPercent=97, thresholdPercent=85, cpuCount=8',
     );
     // Distinct from the scheduler's deferred/refused copy
     // (builtin-scheduler-execution.ts) — an engine-start refusal and a
@@ -138,7 +139,7 @@ describe('runtime resource posture', () => {
     expect(error.message).not.toMatch(/Scheduler job/);
   });
 
-  test('admitEngineStart throws CriticalResourcePostureError only at critical, carrying the same observed value admitScheduledJob would defer on', async () => {
+  test('interactive CPU admission warns while automatic scheduling defers the same sustained critical posture', async () => {
     const criticalProbe = {
       observe: async () => ({
         kind: 'critical' as const,
@@ -151,9 +152,18 @@ describe('runtime resource posture', () => {
       }),
     };
 
-    await expect(admitEngineStart(criticalProbe, undefined)).rejects.toThrow(
-      /observed busyPercent=99/,
+    const logger = { warn: vi.fn(), info: vi.fn() };
+    await expect(
+      admitEngineStart(criticalProbe, logger),
+    ).resolves.toBeUndefined();
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Interactive engine start admitted under host pressure',
+      expect.objectContaining({ busyPercent: 99 }),
     );
+    await expect(admitScheduledJob(criticalProbe, logger)).resolves.toEqual({
+      kind: 'deferred',
+      posture: await criticalProbe.observe(),
+    });
 
     const degradedProbe = {
       observe: async () => ({
@@ -176,6 +186,81 @@ describe('runtime resource posture', () => {
       kind: 'deferred',
       posture: await degradedProbe.observe(),
     });
+    await expect(
+      admitScheduledJob(degradedProbe, undefined, { manual: true }),
+    ).resolves.toEqual({
+      kind: 'admitted',
+      warning: await degradedProbe.observe(),
+    });
+  });
+
+  test('shares samples, requires sustained critical entry, and exits through hysteresis', async () => {
+    let clock = 1_000;
+    const values = [99, 98, 97, 89, 79, 78];
+    const sample = vi.fn(async () => ({
+      ...healthyObservation,
+      sampledAt: clock,
+      busyPercent: values.shift()!,
+    }));
+    const controller = createRuntimeResourcePostureController({
+      sample,
+      now: () => clock,
+      cacheMs: 0,
+      readMemory: () => ({
+        availableMemoryBytes: 2 * 1024 * 1024 * 1024,
+        totalMemoryBytes: 4 * 1024 * 1024 * 1024,
+      }),
+    });
+
+    const observeNext = async () => {
+      clock += 1;
+      return await controller.observe();
+    };
+    await expect(observeNext()).resolves.toMatchObject({
+      kind: 'degraded',
+      busyPercent: 99,
+      windowLength: 1,
+    });
+    await expect(observeNext()).resolves.toMatchObject({ kind: 'degraded' });
+    await expect(observeNext()).resolves.toMatchObject({
+      kind: 'critical',
+      smoothedBusyPercent: 98,
+      windowLength: 3,
+    });
+    await expect(observeNext()).resolves.toMatchObject({ kind: 'critical' });
+    await expect(observeNext()).resolves.toMatchObject({ kind: 'degraded' });
+    await expect(observeNext()).resolves.toMatchObject({ kind: 'healthy' });
+    expect(sample).toHaveBeenCalledTimes(6);
+  });
+
+  test('joins concurrent readers and reports honest sample age from one controller snapshot', async () => {
+    let release!: () => void;
+    let clock = 2_000;
+    const sample = vi.fn(
+      () =>
+        new Promise<typeof healthyObservation>((resolve) => {
+          release = () => resolve({ ...healthyObservation, sampledAt: 2_000 });
+        }),
+    );
+    const controller = createRuntimeResourcePostureController({
+      sample,
+      now: () => clock,
+      readMemory: () => ({
+        availableMemoryBytes: 2 * 1024 * 1024 * 1024,
+        totalMemoryBytes: 4 * 1024 * 1024 * 1024,
+      }),
+    });
+    const first = controller.observe();
+    const second = controller.observe();
+    await vi.waitFor(() => expect(sample).toHaveBeenCalledOnce());
+    release();
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      expect.objectContaining({ kind: 'healthy', ageMs: 0 }),
+      expect.objectContaining({ kind: 'healthy', ageMs: 0 }),
+    ]);
+    clock = 2_750;
+    await expect(controller.observe()).resolves.toMatchObject({ ageMs: 750 });
+    expect(sample).toHaveBeenCalledOnce();
   });
 
   test('a config field cannot assert posture over a healthy observation', async () => {

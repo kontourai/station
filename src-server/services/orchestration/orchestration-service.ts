@@ -158,8 +158,9 @@ import type {
 import { type SessionFlowBinding } from '../flow/orchestration-flow-gate.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import {
-  admitEngineStart,
+  admitEngineStartForIntent,
   CriticalResourcePostureError,
+  ResourcePostureDeferredError,
   type RuntimeResourcePostureProbe,
 } from '../infra/resource-posture.js';
 import {
@@ -335,6 +336,7 @@ interface OrchestrationDispatchInternalOptions {
     conversationId: string;
     environmentId: string;
   };
+  resourceAdmissionIntent?: import('../infra/resource-posture.js').RuntimeEngineStartIntent;
 }
 
 function chatStartGateReason(error: unknown): string {
@@ -2100,7 +2102,11 @@ export class OrchestrationService {
       // policy context (for Claude, that context is PreToolUse).
       startInput = await this.resolveSessionAgentForStart(startInput);
       throwIfAborted(startInput.signal);
-      await admitEngineStart(this.options.resourcePosture, this.options.logger);
+      await admitEngineStartForIntent(
+        this.options.resourcePosture,
+        this.options.logger,
+        'recovery',
+      );
       const session = await withTenantExecutionContext(
         tenantExecutionContext,
         () => adapter.startSession(startInput),
@@ -3547,9 +3553,10 @@ export class OrchestrationService {
           );
           startInput = await this.resolveSessionAgentForStart(startInput);
           throwIfAborted(startInput.signal);
-          await admitEngineStart(
+          await admitEngineStartForIntent(
             this.options.resourcePosture,
             this.options.logger,
+            internal?.resourceAdmissionIntent ?? 'interactive_user',
           );
           this.assertAdapterCurrent(adapter);
           chatStartGate.add(1, {
@@ -3625,7 +3632,8 @@ export class OrchestrationService {
       isRejectedError: (error) =>
         error instanceof ModelLaunchPlanUnavailableError ||
         error instanceof SessionReattachConflictError ||
-        error instanceof CriticalResourcePostureError,
+        error instanceof CriticalResourcePostureError ||
+        error instanceof ResourcePostureDeferredError,
       attachedSessionReadOnlyMessage: ATTACHED_SESSION_READ_ONLY_ERROR,
     });
   }
@@ -6093,7 +6101,11 @@ export class OrchestrationService {
           this.modelLaunch.modelLaunchRequestedOverrideFromInput(input),
         ),
       admitEngineStart: () =>
-        admitEngineStart(this.options.resourcePosture, this.options.logger),
+        admitEngineStartForIntent(
+          this.options.resourcePosture,
+          this.options.logger,
+          'recovery',
+        ),
       // archive#1011: recovery replays only the cwd persisted at start, so a
       // project-bound session created before that resolution existed (or by a
       // client that never supplied one) keeps recovering with none — and the
