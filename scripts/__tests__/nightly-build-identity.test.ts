@@ -742,6 +742,56 @@ describe('the nightly workflow keeps its promises', () => {
     expect(tagStep).toContain('refs/tags/nightly');
   });
 
+  it('advances rolling tags through the refs API, never a git push', () => {
+    // GITHUB_TOKEN cannot hold the workflows scope, so only the refs API
+    // can move these tags; asserted per step so one leg cannot quietly
+    // lose the mechanism.
+    expect(workflow).not.toMatch(/git push[^\n]*refs\/tags\/nightly/);
+    for (const stepName of [
+      'Advance the rolling nightly tag',
+      'Advance the rolling desktop nightly tag',
+    ]) {
+      const start = workflow.indexOf(`- name: ${stepName}`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const nextStep = workflow.indexOf('\n      - name: ', start + 1);
+      const step = workflow.slice(
+        start,
+        nextStep === -1 ? workflow.length : nextStep,
+      );
+      expect(step).toContain('/git/' + '${TAG_REF}');
+      expect(step).toContain('Reference does not exist');
+      expect(step).toContain('ref update response mismatch');
+    }
+  });
+
+  it('records ledger ships independently of the tag advance, gated on each publish outcome', () => {
+    for (const literal of [
+      "always() && steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != '' && steps.play_upload.outcome == 'success'",
+      "always() && steps.decide.outputs.build == 'true' && steps.cli_npm_publish.outcome == 'success'",
+      "always() && steps.decide.outputs.build == 'true' && steps.desktop_publish.outcome == 'success'",
+    ]) {
+      expect(workflow).toContain(literal);
+    }
+  });
+
+  it('checks out full history in both publishing jobs', () => {
+    // The decide steps read the rolling tags and the changelog slice walks
+    // previousSha..sha, so a shallow checkout silently breaks both.
+    const jobSlice = (name: string): string => {
+      const start = workflow.indexOf(`\n  ${name}:`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const next = workflow
+        .slice(start + 1)
+        .match(/\n {2}[A-Za-z0-9_-]+:\s*\n/);
+      return workflow.slice(
+        start,
+        next ? start + 1 + (next.index ?? 0) : workflow.length,
+      );
+    };
+    expect(jobSlice('nightly')).toContain('fetch-depth: 0');
+    expect(jobSlice('nightly-desktop')).toContain('fetch-depth: 0');
+  });
+
   it('uses keyless GitHub OIDC for Play without a service-account key', () => {
     expect(workflow).toContain('id-token: write');
     expect(workflow).toContain(

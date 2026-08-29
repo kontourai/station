@@ -1,5 +1,32 @@
 [
   {
+    "timestampUtc": "2026-08-29T02:01:11Z",
+    "channel": "nightly-android",
+    "version": "0.1.2-nightly.2432",
+    "sha": "b0ac1b7b186a9d8f941616938321d09930c2ad38",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/33225213529",
+    "artifacts": [
+      "play-internal-aab:io.kontourai.station.nightly@versionCode 243200",
+      "workflow-artifact:station-nightly-243200 (7-day retention)"
+    ],
+    "gateResult": "nightly test-gate success on b0ac1b7b186a9d8f941616938321d09930c2ad38 (station#4539)",
+    "notes": [
+      "Recorded after the fact: run 33225213529 published to the Play internal testing track, then failed at the tag-advance step before its ledger steps could run. timestampUtc is the Play upload step's completion time (2026-08-29T02:01:11Z), used verbatim."
+    ],
+    "changelog": {
+      "previousSha": "c4229f43f7569e96874c25356d1199fa01cbfec1",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": "Changelog slice omitted: previous ship SHA c4229f4 is not reachable in this repository's history, so no commit range exists to derive.",
+      "commitCount": 0
+    }
+  },
+  {
     "timestampUtc": "2026-08-28T16:30:48Z",
     "channel": "stable-npm",
     "version": "0.7.0",
@@ -10,7 +37,7 @@
     ],
     "gateResult": "npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96)",
     "notes": [
-      "Recorded late: published in run 33188020921 alongside station-contracts@0.7.0, but the ledger loop refused this row as a duplicate \u2014 the identity lacked the package name and three packages shared version 0.7.0 at one sha (fixed in the change carrying this row). Same run also recorded five tag-only private packages as npm ships; those fabricated rows are removed in the same change."
+      "Recorded late: published in run 33188020921 alongside station-contracts@0.7.0, but the ledger loop refused this row as a duplicate — the identity lacked the package name and three packages shared version 0.7.0 at one sha (fixed in the change carrying this row). Same run also recorded five tag-only private packages as npm ships; those fabricated rows are removed in the same change."
     ],
     "changelog": {
       "previousSha": null,
@@ -29,7 +56,7 @@
     ],
     "gateResult": "npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96)",
     "notes": [
-      "Recorded late: published in run 33188020921 alongside station-contracts@0.7.0, but the ledger loop refused this row as a duplicate \u2014 the identity lacked the package name and three packages shared version 0.7.0 at one sha (fixed in the change carrying this row). Same run also recorded five tag-only private packages as npm ships; those fabricated rows are removed in the same change."
+      "Recorded late: published in run 33188020921 alongside station-contracts@0.7.0, but the ledger loop refused this row as a duplicate — the identity lacked the package name and three packages shared version 0.7.0 at one sha (fixed in the change carrying this row). Same run also recorded five tag-only private packages as npm ships; those fabricated rows are removed in the same change."
     ],
     "changelog": {
       "previousSha": null,
@@ -57,7 +84,7 @@
         "docs": [],
         "other": []
       },
-      "note": "Changelog slice omitted: this ship is a same-sha companion of stable-npm 0.5.1 (recorded at b4fe42e) \u2014 no commits exist between same-sha ships, so the slice would repeat that entry's.",
+      "note": "Changelog slice omitted: this ship is a same-sha companion of stable-npm 0.5.1 (recorded at b4fe42e) — no commits exist between same-sha ships, so the slice would repeat that entry's.",
       "commitCount": 0
     },
     "package": "@kontourai/station-contracts"
@@ -75,7 +102,7 @@
     "gateResult": "no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z)",
     "notes": [
       "PRE-RESET SHIP (2026-08-28 history reset): the sha and tags reference the archived pre-reset history (kontourai/station-archive) and do not exist in this repository's single-root history; the run URL has been repointed to the archive, where the run records live. The ship itself (Play internal, versionCode 243000) is real and unaffected.",
-      "Seeded from observable history (station#4572): version 0.1.2-nightly.2430 = day 2430 build 0 = versionCode 243000; the immutable reservation tag refs/tags/nightly-version-code/243000 and the rolling refs/tags/nightly both point at the recorded sha; nightly run 33064078473 (created 2026-08-27T10:40:51Z) concluded success with its nightly job completing 2026-08-27T10:54:02Z \u2014 used verbatim as timestampUtc; the publish moment inside the job is not separately observable.",
+      "Seeded from observable history (station#4572): version 0.1.2-nightly.2430 = day 2430 build 0 = versionCode 243000; the immutable reservation tag refs/tags/nightly-version-code/243000 and the rolling refs/tags/nightly both point at the recorded sha; nightly run 33064078473 (created 2026-08-27T10:40:51Z) concluded success with its nightly job completing 2026-08-27T10:54:02Z — used verbatim as timestampUtc; the publish moment inside the job is not separately observable.",
       "Owner's brief dated this ship 2026-08-26 (local time); UTC day 2430 is 2026-08-27, which is what the version and run timestamps record."
     ],
     "changelog": {
