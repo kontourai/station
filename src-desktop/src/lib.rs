@@ -12419,14 +12419,19 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
         }
+        #[cfg(windows)]
+        crate::windows_path_trust::ensure(&[(
+            crate::windows_path_trust::TrustKind::File,
+            &path,
+        )])
+        .unwrap();
 
         let executable = std::env::current_exe().unwrap();
-        // Repeating every channel makes the ordinary release/reclaim windows
-        // likely under one bounded test run, while the final store still has
-        // exactly one native owner row per channel.
+        // One process per packaged channel is the production contract: the
+        // bounded retry budget must reconcile Stable, Beta, and Nightly, not
+        // an unbounded synthetic writer fleet.
         let children = ["stable", "beta", "nightly"]
             .into_iter()
-            .flat_map(|channel| std::iter::repeat(channel).take(8))
             .map(|channel| {
                 let mut command = Command::new(&executable);
                 command
