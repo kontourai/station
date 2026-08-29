@@ -1015,9 +1015,11 @@ describe('CI verification workflow contracts', () => {
     expect(windows).toContain('runs-on: windows-latest');
     expect(windows).not.toContain('self-hosted');
     expect(windows).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: asserting the workflow's literal GitHub expression
       "repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}",
     );
     expect(windows).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: asserting the workflow's literal GitHub expression
       "ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}",
     );
     expect(windows).toContain('run: npm run verification:policy:gate');
