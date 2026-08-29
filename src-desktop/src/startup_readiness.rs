@@ -29,6 +29,7 @@ pub struct StartupReadiness {
     pub epoch: u64,
     pub phase: ReadinessPhase,
     pub deadline_ms: u64,
+    pub timeout_ms: u64,
     pub current_generation: Option<u64>,
     pub owned_sidecar: bool,
     pub ticket: Option<StartupTicket>,
@@ -86,6 +87,7 @@ impl Default for StartupReadiness {
             epoch: 0,
             phase: ReadinessPhase::Waiting,
             deadline_ms: 0,
+            timeout_ms: 0,
             current_generation: None,
             owned_sidecar: false,
             ticket: None,
@@ -93,6 +95,26 @@ impl Default for StartupReadiness {
             activation_pending: false,
             diagnostic_shown: false,
         }
+    }
+}
+
+fn restart_readiness(next: &mut StartupReadiness, now_ms: u64, timeout_ms: u64) -> ReadinessEffect {
+    next.epoch += 1;
+    next.phase = ReadinessPhase::Waiting;
+    next.timeout_ms = timeout_ms;
+    next.deadline_ms = now_ms.saturating_add(timeout_ms);
+    next.activation_pending = false;
+    next.diagnostic_shown = false;
+    if next.owned_sidecar && next.ticket.is_some() && !next.reprobe_attempted {
+        next.reprobe_attempted = true;
+        ReadinessEffect::ReprobeCurrentTicket
+    } else if next.owned_sidecar {
+        next.ticket = None;
+        next.current_generation = None;
+        next.reprobe_attempted = false;
+        ReadinessEffect::RestartOwnedSidecar
+    } else {
+        ReadinessEffect::RecommitRecoverySurface
     }
 }
 
@@ -112,6 +134,7 @@ pub fn transition(
         } => {
             next.epoch += 1;
             next.deadline_ms = now_ms.saturating_add(timeout_ms);
+            next.timeout_ms = timeout_ms;
             next.ticket = None;
             next.reprobe_attempted = false;
             next.current_generation = None;
@@ -165,37 +188,35 @@ pub fn transition(
                 && epoch == next.epoch
                 && now_ms >= next.deadline_ms =>
         {
-            next.phase = ReadinessPhase::Failed;
-            if !next.diagnostic_shown {
-                next.diagnostic_shown = true;
-                effects.push(ReadinessEffect::ShowDiagnostic { epoch: next.epoch });
+            // An activation is an explicit user request to recover an
+            // initially-hidden window. Do not strand it behind a timeout
+            // dialog: begin a new authenticated readiness epoch and let the
+            // renderer reprobe the current exact ticket (or restart only the
+            // owned sidecar when no ticket exists). No effect reveals a
+            // window until a matching renderer commit arrives.
+            if next.activation_pending {
+                let timeout_ms = next.timeout_ms;
+                // Native deadline timers measure each epoch from zero; the
+                // replacement epoch must do the same or its next 30-second
+                // callback would look stale before it can recover.
+                effects.push(restart_readiness(&mut next, 0, timeout_ms));
+            } else {
+                next.phase = ReadinessPhase::Failed;
+                if !next.diagnostic_shown {
+                    next.diagnostic_shown = true;
+                    effects.push(ReadinessEffect::ShowDiagnostic { epoch: next.epoch });
+                }
             }
         }
         ReadinessInput::Retry { now_ms, timeout_ms } if next.phase == ReadinessPhase::Failed => {
-            next.epoch += 1;
-            next.phase = ReadinessPhase::Waiting;
-            next.deadline_ms = now_ms.saturating_add(timeout_ms);
-            next.activation_pending = false;
-            next.diagnostic_shown = false;
-            effects.push(
-                if next.owned_sidecar && next.ticket.is_some() && !next.reprobe_attempted {
-                    next.reprobe_attempted = true;
-                    ReadinessEffect::ReprobeCurrentTicket
-                } else if next.owned_sidecar {
-                    next.ticket = None;
-                    next.current_generation = None;
-                    next.reprobe_attempted = false;
-                    ReadinessEffect::RestartOwnedSidecar
-                } else {
-                    ReadinessEffect::RecommitRecoverySurface
-                },
-            );
+            effects.push(restart_readiness(&mut next, now_ms, timeout_ms));
         }
-        ReadinessInput::ActivationRequested
-            if matches!(next.phase, ReadinessPhase::Waiting | ReadinessPhase::Failed) =>
-        {
+        ReadinessInput::ActivationRequested if next.phase == ReadinessPhase::Waiting => {
             next.activation_pending = true;
             effects.push(ReadinessEffect::DeferActivation);
+        }
+        ReadinessInput::ActivationRequested if next.phase == ReadinessPhase::Failed => {
+            effects.push(restart_readiness(&mut next, 0, 30_000));
         }
         ReadinessInput::ActivationRequested => effects.push(ReadinessEffect::RevealMainWindow),
         _ => {}
@@ -407,6 +428,81 @@ mod tests {
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
         let (s, _) = transition(&s, ReadinessInput::RendererCommitted(ticket(1)));
         let (_, effects) = transition(&s, ReadinessInput::ActivationRequested);
+        assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
+    }
+    #[test]
+    fn pending_activation_through_timeout_reprobes_without_revealing_unready_content() {
+        let (s, _) = transition(
+            &StartupReadiness::default(),
+            ReadinessInput::Begin {
+                now_ms: 1,
+                timeout_ms: 10,
+                dev_bypass: false,
+                owned_sidecar: true,
+            },
+        );
+        let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
+        let (s, effects) = transition(&s, ReadinessInput::ActivationRequested);
+        assert_eq!(effects, vec![ReadinessEffect::DeferActivation]);
+        let (s, effects) = transition(
+            &s,
+            ReadinessInput::DeadlineElapsed {
+                epoch: 1,
+                now_ms: 11,
+            },
+        );
+        assert_eq!(s.phase, ReadinessPhase::Waiting);
+        assert_eq!(s.epoch, 2);
+        assert_eq!(s.deadline_ms, 10, "the replacement epoch gets a full timeout");
+        assert_eq!(effects, vec![ReadinessEffect::ReprobeCurrentTicket]);
+        assert!(
+            !effects.contains(&ReadinessEffect::RevealMainWindow),
+            "a timeout recovery may only ask the renderer to prove the exact ticket"
+        );
+        let (_, effects) = transition(&s, ReadinessInput::RendererCommitted(ticket(1)));
+        assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
+    }
+    #[test]
+    fn activation_after_timeout_restarts_readiness_and_rejects_stale_epoch_or_ticket() {
+        let (s, _) = transition(
+            &StartupReadiness::default(),
+            ReadinessInput::Begin {
+                now_ms: 1,
+                timeout_ms: 10,
+                dev_bypass: false,
+                owned_sidecar: true,
+            },
+        );
+        let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
+        let (s, effects) = transition(
+            &s,
+            ReadinessInput::DeadlineElapsed {
+                epoch: 1,
+                now_ms: 11,
+            },
+        );
+        assert_eq!(effects, vec![ReadinessEffect::ShowDiagnostic { epoch: 1 }]);
+        let (s, effects) = transition(&s, ReadinessInput::ActivationRequested);
+        assert_eq!(s.phase, ReadinessPhase::Waiting);
+        assert_eq!(s.epoch, 2);
+        assert_eq!(effects, vec![ReadinessEffect::ReprobeCurrentTicket]);
+        assert!(!effects.contains(&ReadinessEffect::RevealMainWindow));
+
+        let (s, repeated) = transition(&s, ReadinessInput::ActivationRequested);
+        assert_eq!(repeated, vec![ReadinessEffect::DeferActivation]);
+        let (s, stale_deadline) = transition(
+            &s,
+            ReadinessInput::DeadlineElapsed {
+                epoch: 1,
+                now_ms: 30,
+            },
+        );
+        assert!(stale_deadline.is_empty());
+        let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(2)));
+        let (s, stale_ticket) = transition(&s, ReadinessInput::RendererCommitted(ticket(1)));
+        assert!(stale_ticket.is_empty());
+        assert_eq!(s.phase, ReadinessPhase::Waiting);
+        let (_, effects) = transition(&s, ReadinessInput::RendererCommitted(ticket(2)));
         assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
     }
     #[test]
