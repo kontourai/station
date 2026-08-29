@@ -1,4 +1,7 @@
-import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
+import type {
+  WorkspacePaneInstance,
+  WorkspacePaneInstanceId,
+} from '@kontourai/station-contracts/workspace-pane';
 import { createContext, useContext } from 'react';
 
 /** A persisted host destination chosen by the command surface before catalog selection. */
@@ -22,6 +25,11 @@ export interface WorkspacePaneHostOpenAction {
     preparation?: WorkspacePaneHostOpenPreparation,
     placement?: WorkspacePaneHostOpenPlacement,
   ): boolean;
+  /**
+   * Selects and focuses one already-admitted pane. Unlike `open`, this never
+   * writes a second occurrence or falls back when the exact identity is gone.
+   */
+  focusExisting?(instanceId: WorkspacePaneInstanceId): boolean;
 }
 
 /** Caller-owned state transaction paired with the host's durable open. */
