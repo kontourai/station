@@ -1670,10 +1670,31 @@ export function suiteStationE2EEnv(suite) {
       STATION_TELEMETRY_API_KEY: '',
     };
   }
-  return suite === 'first-run'
-    ? { STATION_E2E_FIRST_RUN: '1' }
-    : { STATION_E2E_SYSTEM_STATUS_READY: '1' };
+  if (suite === 'first-run') return { STATION_E2E_FIRST_RUN: '1' };
+  return {
+    STATION_E2E_SYSTEM_STATUS_READY: '1',
+    ...(suite === 'smoke-live' ? SMOKE_LIVE_STATION_E2E_ENV : {}),
+  };
 }
+
+/**
+ * #550 — what makes `agents-new-muse-echo-turn.spec.ts` runnable.
+ *
+ * Station has never passed `--provider` to `muse exec`, so muse's own default
+ * (`meta`) always applied and a muse turn cost a live Meta key plus a network
+ * round trip — which is why muse was the one engine family whose create-an-
+ * agent-and-run-a-turn journey was covered by nothing. `echo` is muse's OWN
+ * provider for this: same event envelope, answered from the prompt alone.
+ *
+ * Scoped to `smoke-live` because that is the only bucket whose server runs a
+ * muse turn; no other spec in it touches the muse engine, so nothing else in
+ * the bucket changes behavior. Ordinary and clean-install suites are
+ * untouched, and the knob is refused unless it names one of muse's two
+ * provider modes (`src-server/providers/adapters/muse-adapter.ts`).
+ */
+export const SMOKE_LIVE_STATION_E2E_ENV = {
+  STATION_E2E_MUSE_PROVIDER: 'echo',
+};
 
 export function establishedUserPlaywrightEnv(suite) {
   return isCleanInstallE2ESuite(suite)

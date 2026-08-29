@@ -1732,6 +1732,28 @@ describe('suiteStationE2EEnv', () => {
       STATION_E2E_SYSTEM_STATUS_READY: '1',
     });
   });
+
+  // #550: the muse real-turn journey needs muse's own `echo` provider, which
+  // Station only reaches when this variable names it.
+  test('gives the smoke-live server muse’s echo provider, and only that suite', () => {
+    expect(suiteStationE2EEnv('smoke-live')).toEqual({
+      STATION_E2E_SYSTEM_STATUS_READY: '1',
+      STATION_E2E_MUSE_PROVIDER: 'echo',
+    });
+    for (const suite of [
+      'product',
+      'extended',
+      'first-run',
+      'starter-clean-install',
+      'screenshot',
+      'android',
+    ]) {
+      expect(
+        suiteStationE2EEnv(suite),
+        `${suite} must not silently inherit the muse echo override`,
+      ).not.toHaveProperty('STATION_E2E_MUSE_PROVIDER');
+    }
+  });
 });
 
 describe('Starter clean-install suite routing', () => {

@@ -153,6 +153,7 @@ describe('e2e manifest', () => {
       'tests/paired-device-chat.spec.ts',
       'tests/pr-smoke-live-chat-send.spec.ts',
       'tests/agents-new-cli-turn.spec.ts',
+      'tests/agents-new-muse-echo-turn.spec.ts',
       'tests/csp-shell.spec.ts',
       'tests/plugin-bundle-csp.spec.ts',
       'tests/bundled-plugin-registry-lifecycle.spec.ts',
