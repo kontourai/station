@@ -19,6 +19,7 @@ function isWindowsRoundTripUtcIso(value) {
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
+  if (year < 1) return false;
   const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   const daysInMonth = [
     31,
@@ -49,24 +50,40 @@ function windowsCreationDateCommand(pid) {
   ].join('; ');
 }
 
-function windowsCreationDateFingerprint(pid, exec) {
-  const output = exec(
-    'powershell.exe',
-    [
+function windowsCreationDateProbe(pid) {
+  return {
+    command: 'powershell.exe',
+    args: [
       '-NoProfile',
       '-NonInteractive',
       '-Command',
       windowsCreationDateCommand(pid),
     ],
-    {
+    options: {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       windowsHide: true,
       timeout: PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
       killSignal: 'SIGKILL',
     },
-  ).trim();
-  return isWindowsRoundTripUtcIso(output) ? output : null;
+  };
+}
+
+function canonicalWindowsCreationDate(output) {
+  const value = typeof output === 'string' ? output.trim() : '';
+  return isWindowsRoundTripUtcIso(value) ? value : null;
+}
+
+function windowsCreationDateFingerprint(pid, exec) {
+  const { command, args, options } = windowsCreationDateProbe(pid);
+  const output = exec(command, args, options);
+  return canonicalWindowsCreationDate(output);
+}
+
+async function windowsCreationDateFingerprintAsync(pid, exec) {
+  const { command, args, options } = windowsCreationDateProbe(pid);
+  const output = await exec(command, args, options);
+  return canonicalWindowsCreationDate(output);
 }
 
 /**
@@ -198,22 +215,7 @@ export async function lookupProcessBirthFingerprintAsync(
 ) {
   try {
     if (platform === 'win32') {
-      const stdout = await exec(
-        'powershell.exe',
-        [
-          '-NoProfile',
-          '-NonInteractive',
-          '-Command',
-          `(Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}').CreationDate.ToUniversalTime().ToString('o', [cultureinfo]::InvariantCulture)`,
-        ],
-        {
-          encoding: 'utf8',
-          windowsHide: true,
-          timeout: PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
-          killSignal: 'SIGKILL',
-        },
-      );
-      return stdout.trim() || null;
+      return await windowsCreationDateFingerprintAsync(pid, exec);
     }
     if (platform === 'linux') {
       return lookupProcessBirthFingerprint(pid, { platform, readFile });

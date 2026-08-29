@@ -1,4 +1,5 @@
 export const PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS: number;
+export const WINDOWS_PROCESS_BIRTH_ATTEMPTS: number;
 export type ExactProcessIdentity = { pid: number; start: string };
 export type ExactProcessIdentityProbe =
   | { state: 'dead' }

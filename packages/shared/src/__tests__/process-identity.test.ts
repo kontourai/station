@@ -15,6 +15,7 @@ import { describe, expect, test } from 'vitest';
 import {
   birthProvesReuse,
   lookupProcessBirthFingerprint,
+  lookupProcessBirthFingerprintAsync,
   probeExactProcessIdentity,
   resolveOwnProcessIdentity,
 } from '../process-identity.mjs';
@@ -125,11 +126,45 @@ describe('birthProvesReuse (station#2904)', () => {
       }),
     ).toBeNull();
     expect(
+      lookupProcessBirthFingerprint(42, {
+        platform: 'win32',
+        exec: () => '0000-01-01T00:00:00.0000000Z\n',
+      }),
+    ).toBeNull();
+    expect(
       birthProvesReuse(canonical, 42, {
         platform: 'win32',
         exec: () => '2026-08-29T16:16:27.1234568Z\n',
       }),
     ).toBe(true);
+  });
+
+  test('uses the same strict Windows CreationDate authority asynchronously', async () => {
+    const canonical = '2026-08-29T16:16:27.1234567Z';
+    const exec = vi.fn(async () => `${canonical}\n`);
+    await expect(
+      lookupProcessBirthFingerprintAsync(42, { platform: 'win32', exec }),
+    ).resolves.toBe(canonical);
+    expect(exec).toHaveBeenCalledWith(
+      'powershell.exe',
+      expect.arrayContaining([
+        '-Command',
+        expect.stringContaining('yyyy-MM-ddTHH:mm:ss.fffffffZ'),
+      ]),
+      expect.objectContaining({ encoding: 'utf8', windowsHide: true }),
+    );
+    await expect(
+      lookupProcessBirthFingerprintAsync(42, {
+        platform: 'win32',
+        exec: async () => '0000-01-01T00:00:00.0000000Z\n',
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      lookupProcessBirthFingerprintAsync(42, {
+        platform: 'win32',
+        exec: async () => 'August 29, 2026\n',
+      }),
+    ).resolves.toBeNull();
   });
 
   test('retries a live Windows process birth probe without granting PID-only ownership', () => {
