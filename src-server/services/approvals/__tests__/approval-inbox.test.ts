@@ -29,6 +29,17 @@ const logger = {
   warn: vi.fn(),
 };
 
+/**
+ * Approval-inbox observations exercise the provider's ordering and action
+ * contract. They retain the real durable notification document, but not the
+ * process-birth-aware cross-process lock: that infrastructure is covered by
+ * NotificationService's lock tests and can transiently be unavailable to a
+ * sandboxed Windows test worker. A lock-probe failure is deliberately caught
+ * by `NotificationService.dispatch`; using it here turns an approval-law
+ * observation into a silent, platform-dependent empty inbox.
+ */
+const acquireTestMutationLock = async () => async () => {};
+
 describe('approval inbox notifications', () => {
   let bus: EventBus;
   let dir: string;
@@ -51,7 +62,9 @@ describe('approval inbox notifications', () => {
   beforeEach(async () => {
     dir = mkdtempSync(join(tmpdir(), 'approval-inbox-'));
     bus = new EventBus();
-    notificationService = new NotificationService(bus, dir, 999_999);
+    notificationService = new NotificationService(bus, dir, 999_999, {
+      acquireMutationLock: acquireTestMutationLock,
+    });
     approvalRegistry = new ApprovalRegistry(logger, { eventBus: bus });
     orchestrationService = {
       dispatch: vi
@@ -152,7 +165,9 @@ describe('approval inbox notifications', () => {
     for (const notification of legacyDocument) delete notification.revision;
     writeFileSync(storePath, JSON.stringify(legacyDocument), 'utf8');
 
-    notificationService = new NotificationService(bus, dir, 999_999);
+    notificationService = new NotificationService(bus, dir, 999_999, {
+      acquireMutationLock: acquireTestMutationLock,
+    });
     provider = new ApprovalInboxNotificationProvider({
       approvalRegistry,
       orchestrationService,
