@@ -203,6 +203,7 @@ import {
   grantedPairingScope,
   type PairingScopeContextStore,
   requiredExternalSurfaceCapability,
+  requiredPairingScope,
 } from '../../security/pairing-route-scopes.js';
 import {
   attestedBrowserVisibleHost,
@@ -3750,7 +3751,47 @@ export function configureRuntimeRoutes(
   );
   context.app.route(
     '/api/attention',
-    createAttentionRoutes(attentionProjection, { readAuthorityForRequest }),
+    createAttentionRoutes(attentionProjection, {
+      readAuthorityForRequest,
+      // #765 D5: derive the device-pairing items' `viewerCanDecide` from the
+      // SAME two gates the middleware applies to an approve/deny request, in
+      // the same order: the pairing family's authority boundary
+      // (`authorizeCredential`, via the exported predicate) and then the
+      // scope table's tier for the confirm/deny leaves (read from the table
+      // itself, not restated — live verification caught a device that passes
+      // the boundary with `access:approve` while the table still 403s it
+      // because the scope-edit promotion path cannot retain `access:manage`).
+      // The attested internal principal (station-control/MCP) bypasses both
+      // gates in `configureRuntimeHttp`, so it decides too; an absent
+      // principal or an unmapped table entry fails closed.
+      viewerMayDecidePairingRequests: (request) => {
+        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+        if (!principal) return false;
+        if (principal.kind === 'internal') return true;
+        if (
+          !context.environmentSecurityService.credentialMayDecidePairingRequests(
+            principal.credential,
+          )
+        ) {
+          return false;
+        }
+        // Confirm and deny share the `/api/pairing` single-tier rule
+        // (method-agnostic), so one representative leaf answers for both.
+        const requiredScope = requiredPairingScope(
+          'POST',
+          '/api/pairing/requests/:requestId/confirm',
+        );
+        if (requiredScope === undefined) return false;
+        const grantedScope =
+          context.environmentSecurityService.resolveGrantedScope(
+            principal.credential,
+          );
+        return (
+          grantedScope !== undefined &&
+          pairingScopeIncludes(grantedScope, requiredScope)
+        );
+      },
+    }),
   );
   context.app.route(
     '/api/action-operations',

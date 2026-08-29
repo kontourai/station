@@ -16,13 +16,25 @@ export function createAttentionRoutes(
   options: {
     /** Runtime composition supplies branded request authority in hosted mode. */
     readAuthorityForRequest?: (request: Request) => SessionReadAuthority;
+    /**
+     * #765 D5: whether THIS request's authenticated principal could act on
+     * the pairing approve/deny routes — the runtime wires the boundary's own
+     * predicate (`credentialMayDecidePairingRequests`) over the request
+     * principal here, so the projection's `viewerCanDecide` is a derivation
+     * of the same decision the HTTP boundary would make, never a fresh
+     * guess. Absent (non-runtime compositions) fails closed to `false`.
+     */
+    viewerMayDecidePairingRequests?: (request: Request) => boolean;
   } = {},
 ) {
   const app = new Hono();
   app.get('/', async (c) =>
     c.json({
       success: true,
-      data: await attention.list(options.readAuthorityForRequest?.(c.req.raw)),
+      data: await attention.list(options.readAuthorityForRequest?.(c.req.raw), {
+        mayDecidePairingRequests:
+          options.viewerMayDecidePairingRequests?.(c.req.raw) ?? false,
+      }),
     }),
   );
   app.post('/:id/ack', async (c) => {

@@ -188,6 +188,7 @@ describe('NotificationsPage', () => {
           createdAt: timestamp,
           updatedAt: timestamp,
           deviceName: 'Test Phone',
+          viewerCanDecide: true,
           openHref: '/connections',
           source: {
             requestId: 'pair-req-1',

@@ -577,9 +577,11 @@ export class EnvironmentSecurityService {
       // scope-omitting, and continuity-flow credentials that never chose it,
       // so honouring it would elevate all of them at once.
       if (!isPairingApprovalLeaf(request)) return false;
-      const approved =
-        this.#devicePairingService?.credentialMayApprovePairing(candidate) ??
-        false;
+      // The shared decidability predicate (operator already returned above,
+      // so only the promoted-device half can admit here). Read-side surfaces
+      // consume the same method, so what the UI offers and what this boundary
+      // admits cannot drift.
+      const approved = this.credentialMayDecidePairingRequests(candidate);
       return approved && request.activity
         ? (this.#devicePairingService?.recordCredentialActivity(
             candidate,
@@ -593,6 +595,28 @@ export class EnvironmentSecurityService {
           request.activity.lastSeenFrom,
         ) ?? false)
       : (this.#devicePairingService?.verifyCredential(candidate) ?? false);
+  }
+
+  /**
+   * Whether `candidate` would be admitted by {@link authorizeCredential} to
+   * the pending-request approval leaves (#765 D5): the operator credential,
+   * or a device the operator promoted with `access:approve`
+   * ({@link DevicePairingService.credentialMayApprovePairing}). The SAME two
+   * derivations that branch composes at the HTTP boundary, exported so a
+   * read-side surface (the attention projection's Approve/Deny affordance)
+   * consumes the boundary's own predicate rather than re-deriving it — a
+   * second reader of an authorization decision eventually gets it wrong.
+   *
+   * Deliberately side-effect free: unlike the boundary branch it never
+   * records device activity, because answering "could this caller decide?"
+   * is not the caller acting.
+   */
+  credentialMayDecidePairingRequests(candidate: string): boolean {
+    if (this.verifyOperatorCredential(candidate)) return true;
+    return (
+      this.#devicePairingService?.credentialMayApprovePairing(candidate) ??
+      false
+    );
   }
 
   get devicePairing(): DevicePairingService {
