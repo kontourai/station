@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
 import { sessionOwnerCacheOps } from '../../telemetry/metrics.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import type { EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
@@ -33,6 +34,12 @@ export interface SessionAuthorizationDeps {
     context: TenantExecutionContext | undefined,
   ) => TenantExecutionContext | undefined;
   ownerlessSessionAccess?: 'deny' | 'single-user-compat';
+  /**
+   * One Station-home migration bridge for records written before principal
+   * ownership existed. This is intentionally a single exact OS alias, not an
+   * alias set and not a general personal-mode fallback.
+   */
+  legacyPersonalOwner?: string;
   sessionOwnerCacheMaxEntries?: number;
 }
 
@@ -237,7 +244,34 @@ export class SessionAuthorization {
     if (ownerUserId === undefined) {
       return this.deps.ownerlessSessionAccess === 'single-user-compat';
     }
-    return userId === undefined || ownerUserId === userId;
+    // The released OS alias must never pass the ordinary equality path: any
+    // caller can guess a display alias. It is readable only through the
+    // narrowly provenance-bound migration bridge below. All other principal
+    // owners retain exact-id equality.
+    if (ownerUserId === this.deps.legacyPersonalOwner) {
+      return this.canReadLegacyPersonalOwner(ownerUserId, authority);
+    }
+    return userId === ownerUserId;
+  }
+
+  /**
+   * The released pre-principal rows contain the OS alias as owner.  Only a
+   * request that has both the contract-defined local-operator identity and a
+   * home-possession fact may read that exact alias.  In particular this never
+   * admits paired devices, WhoIs identities, hosted callers, operator-secret
+   * callers without home possession, or an arbitrary same-name principal.
+   */
+  private canReadLegacyPersonalOwner(
+    ownerUserId: string,
+    authority: import('@kontourai/station-contracts/tenancy').SessionReadAuthority,
+  ): boolean {
+    return (
+      authority.mode === 'personal' &&
+      authority.localHomePossession === true &&
+      authority.userId === LOCAL_OPERATOR_PRINCIPAL_ID &&
+      this.deps.legacyPersonalOwner !== undefined &&
+      ownerUserId === this.deps.legacyPersonalOwner
+    );
   }
 
   /** Validate the persisted binding with the runtime's trusted registry seam. */

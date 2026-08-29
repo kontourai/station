@@ -1,4 +1,7 @@
-import type { ConversationHandoffProjection } from '@kontourai/station-contracts/orchestration';
+import type {
+  ConversationHandoffProjection,
+  ConversationOpenResolution,
+} from '@kontourai/station-contracts/orchestration';
 import type {
   ApprovalMode,
   ProviderKind,
@@ -298,6 +301,12 @@ export type ChatUIState = {
    * interrupts after a continuation creates a child session.
    */
   currentSessionId?: string;
+  /** Persisted only for a tab opened through the authoritative resolver. */
+  conversationOpenState?: ConversationOpenResolution;
+  /** A persisted identity is never a persisted continuation grant. */
+  conversationOpenPending?: boolean;
+  /** The reload point-read failed; it is an explicit non-mutable state. */
+  conversationOpenFailed?: boolean;
   projectSlug?: string;
   projectName?: string;
   focusDirectoryId?: string;
@@ -460,6 +469,8 @@ export type PersistedActiveChat = {
    * silently destroyed the record's one durable copy.
    */
   conversationId?: string;
+  /** Last known child identity only; admission is re-resolved after reload. */
+  currentSessionId?: string;
   agentSlug: string;
   /** archive#1795: carried through reload so a rehydrated chat keeps its
    * real creation floor instead of losing it (and falling back to the
@@ -633,6 +644,8 @@ export function hydrateActiveChats(
       hasUnread: false,
       agentSlug: session.agentSlug,
       conversationId: session.conversationId,
+      currentSessionId: session.currentSessionId,
+      conversationOpenPending: Boolean(session.conversationId),
       createdAt: session.createdAt,
       title: session.title,
       model: session.model,
@@ -717,6 +730,7 @@ export function serializeActiveChats(
       .map(([sessionId, chat]) => ({
         sessionId,
         conversationId: chat.conversationId,
+        currentSessionId: chat.currentSessionId,
         agentSlug: chat.agentSlug!,
         queuedMessages: chat.queuedMessages || [],
         ...(chat.queuedMessageFailure

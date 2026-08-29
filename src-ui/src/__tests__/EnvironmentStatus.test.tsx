@@ -76,13 +76,13 @@ describe('EnvironmentStatus (Host runtime IA)', () => {
       heading,
     );
     expect(stationHost.getByRole('status').textContent).toBe(
-      'Checking provider software on the Station host…',
+      'Checking prerequisites on the Station host…',
     );
     expect(stationHost.queryByRole('alert')).toBeNull();
-    expect(stationHost.queryByText('Detected provider software')).toBeNull();
+    expect(stationHost.queryByText('Detected prerequisites')).toBeNull();
     expect(stationHost.queryByText('Node.js')).toBeNull();
     expect(stationHost.queryByText(/required item to resolve/i)).toBeNull();
-    expect(stationHost.queryByText(/provider software detected/i)).toBeNull();
+    expect(stationHost.queryByText(/prerequisites detected/i)).toBeNull();
     expect(
       stationHost.queryByText(/^Station host (?:is )?(?:ready|healthy)\.?$/i),
     ).toBeNull();
@@ -96,7 +96,7 @@ describe('EnvironmentStatus (Host runtime IA)', () => {
     // Clarifies host semantics for a remote client using glossary vocabulary.
     expect(
       screen.getByText(
-        /Provider software detected on the computer running this Station/i,
+        /model-connection prerequisites detected on the computer running this Station/i,
       ),
     ).toBeTruthy();
     expect(
@@ -117,7 +117,7 @@ describe('EnvironmentStatus (Host runtime IA)', () => {
     );
     expect(disclosure).toBeTruthy();
     expect((disclosure as HTMLDetailsElement).open).toBe(false);
-    expect(screen.getByText('Detected provider software')).toBeTruthy();
+    expect(screen.getByText('Detected prerequisites')).toBeTruthy();
   });
 
   test('surfaces an inline alert and auto-opens when a required item is unmet', () => {

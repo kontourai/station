@@ -1,3 +1,4 @@
+import type { ConversationListItem } from '@kontourai/station-sdk';
 import type { AgentData } from '../../contexts/AgentsContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import type { ChatSession, DockMode } from '../../types';
@@ -6,7 +7,7 @@ import { LazyBoundary } from '../LazyBoundary';
 import type { NewChatModalMode } from '../modals/NewChatModal';
 
 export const FORK_REPLAY_ONLY_DISCLOSURE =
-  'Station replays the selected transcript only. Provider cursor, tool state, and approval state do not carry.';
+  'Station replays the selected transcript only. Engine cursor, tool state, and approval state do not carry.';
 
 // Both pickers are already mount-gated on a boolean that only a click flips,
 // so their bodies (agent grouping, context search, session lists) load with
@@ -60,12 +61,8 @@ interface ChatDockModalStackProps {
   onCloseSettings: () => void;
   onCloseSessionPicker: () => void;
   onSessionPickerSelect: (
-    conversationId: string,
-    agentSlug: string,
-    projectSlug?: string,
-    projectName?: string,
-    model?: string,
-  ) => void;
+    conversation: ConversationListItem,
+  ) => undefined | boolean | Promise<undefined | boolean>;
   onChatFontSizeChange: (fn: (prev: number) => number) => void;
   onShowReasoningChange: (show: boolean) => void;
   onShowToolDetailsChange: (show: boolean) => void;

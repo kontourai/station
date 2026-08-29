@@ -175,7 +175,7 @@ function renderForkModal(
         preferredAgentSlug: 'assistant',
         sourceModel: 'historical-source-model',
         disclosure:
-          'Provider cursor, tool state, and approval state do not carry.',
+          'Engine cursor, tool state, and approval state do not carry.',
         ...mode,
       }}
     />,
@@ -201,7 +201,7 @@ describe('NewChatModal select dispatch invariant (#3013)', () => {
 
     expect(screen.getByRole('dialog', { name: 'Fork from here' })).toBeTruthy();
     expect(screen.getByRole('note').textContent).toMatch(
-      /new independent conversation.*provider cursor.*tool state.*approval state do not carry/i,
+      /new independent conversation.*engine cursor.*tool state.*approval state do not carry/i,
     );
     await waitFor(() => {
       const preferred = document.querySelector(

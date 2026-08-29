@@ -103,6 +103,48 @@ describe('OutboundDispatchModule', () => {
     expect(await outboundDispatch.snapshot()).toEqual([]);
   });
 
+  it('#749 leaves a temporarily non-mutable session pending without claiming an attempt', async () => {
+    await outboundDispatch.enqueue(turn('pending-open', 'session-pending'));
+    const send = vi.fn(async () => accepted('provider-pending'));
+    const blocked = new Set(['session-pending']);
+    const initialAttempts = (await outboundDispatch.snapshot())[0]!.attempts;
+
+    await outboundDispatch.flush(send, { blockedSessionIds: blocked });
+    await outboundDispatch.flush(send, { blockedSessionIds: blocked });
+    expect(send).not.toHaveBeenCalled();
+    expect(await outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({
+        clientTurnId: 'pending-open',
+        status: 'pending',
+        attempts: initialAttempts,
+      }),
+    ]);
+
+    await outboundDispatch.flush(send);
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it('#749 releases a post-claim deferral without consuming an attempt', async () => {
+    await outboundDispatch.enqueue(turn('deferred-open', 'session-deferred'));
+    const initialAttempts = (await outboundDispatch.snapshot())[0]!.attempts;
+    const defer = vi.fn(async () => ({ kind: 'deferred' as const }));
+
+    await outboundDispatch.flush(defer);
+    await outboundDispatch.flush(defer);
+    expect(defer).toHaveBeenCalledTimes(2);
+    expect(await outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({
+        clientTurnId: 'deferred-open',
+        status: 'pending',
+        attempts: initialAttempts,
+      }),
+    ]);
+
+    const send = vi.fn(async () => accepted('provider-deferred'));
+    await outboundDispatch.flush(send);
+    expect(send).toHaveBeenCalledOnce();
+  });
+
   it('consumes matched early evidence on completion and ignores duplicate terminals on tuple reuse', async () => {
     let state: unknown = {
       version: 2,

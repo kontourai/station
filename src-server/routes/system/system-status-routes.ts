@@ -567,8 +567,9 @@ function buildSystemRecommendation(input: {
       : null;
   // Review H1: the same predicate the capability states use. A refused
   // connection still matches `configuredLlmProvider` below, so it lands on
-  // "A provider needs attention" — which is what it is — instead of being
-  // recommended as already chat-capable above its own failed card.
+  // "The default model connection needs attention" — which is what it is —
+  // instead of being recommended as already chat-capable above its own
+  // failed card.
   // Delta review H2: and it is the BOUND connection this names, not whichever
   // unrefused sibling happens to sort first.
   const enabledLlmProvider = chatCapableLlmProviders(
@@ -596,9 +597,9 @@ function buildSystemRecommendation(input: {
     return {
       code: 'runtime-only',
       type: 'runtimes',
-      actionLabel: 'Review providers',
-      title: 'An agent provider is available',
-      detail: 'Station found a ready provider that can start a chat.',
+      actionLabel: 'Review engines',
+      title: 'An engine is available',
+      detail: 'Station found a ready engine that can start a chat.',
     };
   }
   const configuredLlmProvider = input.configuredProviders.find((provider) =>
@@ -612,7 +613,7 @@ function buildSystemRecommendation(input: {
       return {
         code: 'configured-no-chat',
         type: 'providers',
-        actionLabel: 'Choose a default provider',
+        actionLabel: 'Choose a default model connection',
         title: 'Choose which model connection Station uses',
         detail:
           'More than one model connection is enabled and none is set as the default, so Station cannot tell which one to use for chat.',
@@ -622,7 +623,7 @@ function buildSystemRecommendation(input: {
       return {
         code: 'configured-no-chat',
         type: 'providers',
-        actionLabel: 'Choose a default provider',
+        actionLabel: 'Choose a default model connection',
         title: 'The default model connection is unavailable',
         detail:
           'The model connection Station is set to use is not enabled or no longer exists. Choose an available one as the default.',
@@ -631,9 +632,9 @@ function buildSystemRecommendation(input: {
     return {
       code: 'configured-no-chat',
       type: 'providers',
-      actionLabel: 'Review providers',
-      title: 'A provider needs attention',
-      detail: 'Choose or repair the default provider and model in Connections.',
+      actionLabel: 'Review model connections',
+      title: 'No model connection is ready for chat',
+      detail: 'Enable or repair a model connection in Connections.',
     };
   }
   if (detectedProvider) {
@@ -655,7 +656,7 @@ function buildSystemRecommendation(input: {
     type: 'connections',
     actionLabel: 'Open Connections',
     title: 'Choose what powers Station',
-    detail: 'Add a provider for chat, agents, or both.',
+    detail: 'Add a model connection or engine for chat, agents, or both.',
   };
 }
 
