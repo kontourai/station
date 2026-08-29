@@ -2377,7 +2377,7 @@ describe('the real workflow corpus', () => {
       }
     }
 
-    expect(directCapacityJobs).toBe(3);
+    expect(directCapacityJobs).toBe(5);
     expect(recoveryJobs).toBe(2);
     expect(reusableCapacityJobs).toBe(0);
   });

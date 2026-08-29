@@ -33,7 +33,7 @@ jobs:
   portable-floor:
     if: github.event_name != 'pull_request'
     name: Windows static and portable test floor (no full Vitest/E2E)
-    runs-on: windows-latest
+    runs-on: [self-hosted, Windows, X64, kontour-windows, native]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,7 +44,22 @@ jobs:
         with:
           node-version-file: .nvmrc
 
+      # The shared preflight validates Node as part of the native toolchain, so
+      # run it after the workflow has selected Station's declared Node version.
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: 'E:\kontour-runner-capacity'
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "5"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+
       - run: npm run dependencies:ci
+
 
       - name: Verify verification policy contract
         run: npm run verification:policy:gate
