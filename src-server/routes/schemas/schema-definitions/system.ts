@@ -106,8 +106,14 @@ export const registryInstallSchema = z.object({
 });
 
 // Plugins
+//
+// A preview names its subject either directly (`source`) or as a registry
+// entry (`registryId`) whose source the server resolves — the registry
+// listing shows provider labels, not paths, so the client cannot name the
+// path itself. The route refuses a body that names neither.
 export const pluginPreviewSchema = z.object({
-  source: z.string().min(1),
+  source: z.string().min(1).optional(),
+  registryId: z.string().min(1).optional(),
 });
 
 /**
@@ -127,6 +133,20 @@ export const pluginInstallConsentSchema = z.object({
 export const pluginInstallSchema = z.object({
   source: z.string().min(1),
   skip: z.array(z.string()).optional(),
+  consent: pluginInstallConsentSchema.optional(),
+});
+
+/**
+ * Registry installs of PLUGINS carry the same optional operator decision the
+ * direct plugin install route does (archive#4288): a registry entry with code
+ * contributions (`entrypoint`, `layout`, `workspacePanes`) is refused without
+ * one, so the Registry view previews the resolved source and sends the
+ * decision along. `skip` mirrors `pluginInstallSchema` for the preview's
+ * conflict checkboxes. Callers installing a plain agent definition send `id`
+ * alone, exactly as before.
+ */
+export const registryPluginInstallSchema = registryInstallSchema.extend({
+  skip: z.array(z.string()).max(256).optional(),
   consent: pluginInstallConsentSchema.optional(),
 });
 
