@@ -845,6 +845,41 @@ button:hover {
   z-index: var(--layer-system) !important;
 }
 
+/* station#753: one open transition for every dialog/sheet that renders
+   through `ResponsiveDialogSurface` (NewChatModal, the ACP setup dialog, the
+   model picker, confirm/prompt modals, …) — a single declaration at the
+   shared seam instead of per-dialog CSS. Entrance/exit category: opacity AND
+   transform, `--motion-base`/`--ease-emphasized` per the grammar.
+   Close is deliberately NOT animated here: `ResponsiveDialogSurface` unmounts
+   on close with no delay state machinery, and CSS cannot animate an element
+   that is already gone. Adding an unmount-delay just to play a fast
+   opacity-out would be exactly the "state machinery" the design pass chose
+   to avoid — see docs/design/motion.md and the design decision recorded in
+   station#753's report. */
+.responsive-surface-panel {
+  animation: responsive-surface-panel-enter var(--motion-base)
+    var(--ease-emphasized);
+}
+
+@keyframes responsive-surface-panel-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .responsive-surface-panel {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Horizontal tab strips that must scroll (not clip) on narrow viewports.
    Only takes effect under the mobile breakpoint; desktop keeps wrapping/static
    layout untouched. */
@@ -4867,6 +4902,17 @@ button.tool-call__line:hover {
   color: var(--text-on-accent);
   border-color: var(--accent-primary);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  /* station#753 item 5: press feedback wants a release faster than `.button`'s
+     shared `--motion-base` transform duration — redeclared here (not folded
+     into `.button`) because only the primary variant gets the scale-down
+     press affordance below. This also speeds up the existing hover lift's
+     transform, a quiet side effect of sharing the one `transform` layer. */
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    border-color var(--motion-base) var(--ease-standard),
+    color var(--motion-base) var(--ease-standard),
+    box-shadow var(--motion-base) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
 }
 
 .empty__description {
@@ -4877,6 +4923,16 @@ button.tool-call__line:hover {
   background: var(--accent-hover-fill);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
   transform: translateY(-1px);
+}
+
+/* Press micro-feedback: immediate acknowledgement, not moving layout — the
+   Feedback/state category. Instant onset (`--motion-instant`) so the press
+   reads as direct manipulation; the shared `.button--primary` transition
+   above (`--motion-fast`) takes over for the release once `:active` stops
+   matching. */
+.button--primary:active:not(:disabled) {
+  transform: scale(0.97);
+  transition: transform var(--motion-instant) var(--ease-standard);
 }
 
 .button--secondary {
