@@ -117,7 +117,7 @@ describe('SessionInventoryHost', () => {
     const fallback = hooks.fallback.mock.lastCall?.[0] as {
       onHostOpened?(focus: () => boolean): void;
     };
-    const focus = vi.fn(() => true);
+    const focus = vi.fn(() => false);
 
     act(() => fallback.onHostOpened?.(focus));
 
@@ -125,7 +125,7 @@ describe('SessionInventoryHost', () => {
       (
         trigger as HTMLElement & { focusFullBasis?: () => boolean }
       ).focusFullBasis?.(),
-    ).toBe(true);
+    ).toBe(false);
     expect(focus).toHaveBeenCalledOnce();
     expect(screen.queryByLabelText('Session inventory')).toBeNull();
   });

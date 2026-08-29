@@ -842,6 +842,46 @@ test('layout catalog placement opens through the controller as the sole document
   );
 });
 
+test('focuses an existing pane without admitting a duplicate instance', async () => {
+  let hostOpen: WorkspacePaneHostOpenAction | null = null;
+  const onDocumentChange = vi.fn();
+  render(
+    <WorkspacePaneHost
+      document={hostDocument()}
+      onDocumentChange={onDocumentChange}
+      onOpenActionChange={(action) => {
+        hostOpen = action;
+      }}
+      renderPane={(pane) => <div>{pane.descriptorId} content</div>}
+    />,
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  onDocumentChange.mockClear();
+
+  let duplicate = true;
+  let focused = false;
+  act(() => {
+    duplicate = hostOpen?.open(two) ?? true;
+    focused = hostOpen?.focusExisting?.(two.instanceId) ?? false;
+  });
+  expect(duplicate).toBe(false);
+  expect(focused).toBe(true);
+  await act(async () => {
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+  });
+
+  expect(onDocumentChange).toHaveBeenLastCalledWith(
+    expect.objectContaining({ activeInstanceId: two.instanceId }),
+  );
+  const tab = screen.getByRole('tab', { name: 'Two' });
+  expect(tab.getAttribute('aria-selected')).toBe('true');
+  expect(globalThis.document.activeElement).toBe(tab);
+});
+
 test('compact commands target the active persisted group and disable flattened reordering', async () => {
   const onDocumentChange = vi.fn();
   const onOpenCatalog = vi.fn();

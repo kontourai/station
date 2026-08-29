@@ -176,9 +176,12 @@ export function WorkspacePaneHostTree({
     operationalAvailability,
   });
   useEffect(() => {
-    onOpenActionChange?.({ open: controller.open });
+    onOpenActionChange?.({
+      open: controller.open,
+      focusExisting: controller.focusExisting,
+    });
     return () => onOpenActionChange?.(null);
-  }, [controller.open, onOpenActionChange]);
+  }, [controller.focusExisting, controller.open, onOpenActionChange]);
   useEffect(() => {
     onDockSlotActionChange?.(controller.replace);
     return () => onDockSlotActionChange?.(null);

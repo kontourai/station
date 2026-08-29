@@ -2,7 +2,7 @@
 
 import { createDirectAnswerBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { useBasisPaneLauncher } from '../BasisPaneLauncher';
 import { readSessionInventorySelection } from '../sessionInventorySelection';
@@ -77,6 +77,37 @@ function SessionHarness() {
   );
 }
 
+function ExistingPaneHarness() {
+  const { openBasis, focusBasis, fallback } = useBasisPaneLauncher();
+  const [focused, setFocused] = useState<boolean | null>(null);
+  const instance = createDirectAnswerBasisPaneInstance(
+    'project',
+    'session',
+    'turn',
+  )!;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(event) =>
+          openBasis(
+            instance,
+            { kind: 'direct-answer', sessionId: 'session', turnId: 'turn' },
+            event.currentTarget,
+          )
+        }
+      >
+        Open existing
+      </button>
+      <button type="button" onClick={() => setFocused(focusBasis(instance))}>
+        Focus existing
+      </button>
+      {focused !== null ? <output>{String(focused)}</output> : null}
+      {fallback}
+    </>
+  );
+}
+
 describe('Basis Pane launcher', () => {
   test('uses the Workspace Pane host when available', () => {
     const open = vi.fn(() => true);
@@ -87,6 +118,23 @@ describe('Basis Pane launcher', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Open' }));
     expect(open).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('focuses an existing host pane without reopening or falling back', () => {
+    const open = vi.fn(() => true);
+    const focusExisting = vi.fn(() => true);
+    render(
+      <WorkspacePaneHostOpenContext.Provider value={{ open, focusExisting }}>
+        <ExistingPaneHarness />
+      </WorkspacePaneHostOpenContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open existing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Focus existing' }));
+
+    expect(open).toHaveBeenCalledOnce();
+    expect(focusExisting).toHaveBeenCalledOnce();
+    expect(screen.getByText('true')).toBeTruthy();
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 

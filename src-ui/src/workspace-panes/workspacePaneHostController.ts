@@ -95,6 +95,7 @@ export interface WorkspacePaneHostController {
     reason: 'dirty' | 'pending';
   } | null;
   select(instanceId: WorkspacePaneInstanceId): void;
+  focusExisting(instanceId: WorkspacePaneInstanceId): boolean;
   focusTab(groupId: string, instanceId: WorkspacePaneInstanceId): void;
   close(instanceId: WorkspacePaneInstanceId): Promise<void>;
   confirmClose(): Promise<void>;
@@ -610,6 +611,19 @@ export function useWorkspacePaneHostController({
     dispatch({ type: 'select', instanceId });
     writeWorkspacePaneHostSelection(stateRef.current.document, instanceId);
   }, []);
+  const focusExisting = useCallback(
+    (instanceId: WorkspacePaneInstanceId) => {
+      const group = workspacePaneHostGroupContaining(
+        stateRef.current.document.root,
+        instanceId,
+      );
+      if (!group) return false;
+      select(instanceId);
+      focusTab(compact ? 'compact' : group.id, instanceId);
+      return true;
+    },
+    [compact, focusTab, select],
+  );
   const open = useCallback(
     (
       instance: WorkspacePaneInstance,
@@ -850,6 +864,7 @@ export function useWorkspacePaneHostController({
     tabRefs,
     closeConfirmation,
     select,
+    focusExisting,
     focusTab,
     close,
     confirmClose,

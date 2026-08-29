@@ -45,6 +45,8 @@ export function useBasisPaneLauncher(): {
     trigger: HTMLElement | null,
     onFallbackClose?: () => void,
   ): 'host' | 'fallback';
+  /** Select an admitted pane only; never create a fallback while re-focusing. */
+  focusBasis(instance: WorkspacePaneInstance): boolean;
   fallback: ReactNode;
 } {
   const host = useWorkspacePaneHostOpenAction();
@@ -90,6 +92,11 @@ export function useBasisPaneLauncher(): {
     setFallbackState(null);
     closing?.onClose?.();
   }, [fallbackState]);
+  const focusBasis = useCallback(
+    (instance: WorkspacePaneInstance) =>
+      host?.focusExisting?.(instance.instanceId) ?? false,
+    [host],
+  );
   const fallback = fallbackState ? (
     <ResponsiveDialogSurface
       ariaLabel="Basis"
@@ -111,5 +118,5 @@ export function useBasisPaneLauncher(): {
       </Suspense>
     </ResponsiveDialogSurface>
   ) : null;
-  return { openBasis, fallback };
+  return { openBasis, focusBasis, fallback };
 }
