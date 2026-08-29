@@ -190,6 +190,12 @@ class NavigationStore {
         );
       }
       window.addEventListener('popstate', this.handlePopState);
+      // This store owns navigation indices; `dialog-history` owns the dialog
+      // layer. Installed rather than called because the dependency runs that
+      // way — that module cannot import this one back without a cycle.
+      setCollapsedDialogEntryAdopter((state) =>
+        this.adoptCollapsedDialogEntry(state),
+      );
       // archive#settings-revamp (deliberate choice,
       // documented per the reviewer's request — the alternative was "any
       // navigation heals it," rejected because dockMode also drives
@@ -436,7 +442,7 @@ class NavigationStore {
    * of this store's own would have, so a Back off this entry is a real
    * traversal and the unsaved-changes guard is consulted.
    */
-  adoptCollapsedDialogEntry(
+  private adoptCollapsedDialogEntry(
     state: Record<string, unknown>,
   ): Record<string, unknown> {
     const nextIndex = this.historyIndex + 1;
@@ -755,10 +761,3 @@ class NavigationStore {
 }
 
 export const navigationStore = new NavigationStore();
-
-// This store owns navigation indices; `dialog-history` owns the dialog layer.
-// Installed here because the dependency runs that way — that module cannot
-// import this one back without closing a cycle.
-setCollapsedDialogEntryAdopter((state) =>
-  navigationStore.adoptCollapsedDialogEntry(state),
-);
