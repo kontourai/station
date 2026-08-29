@@ -6388,8 +6388,95 @@ impl PendingMainWindowActivation {
     }
 }
 
+#[cfg(target_os = "macos")]
+const NATIVE_STARTUP_COVER_TAG: isize = 730_001;
+
+#[cfg(target_os = "macos")]
+fn with_native_startup_cover(
+    window: &tauri::WebviewWindow,
+    covered: bool,
+) -> Result<(), tauri::Error> {
+    use objc2::{ClassType, MainThreadMarker};
+    use objc2_app_kit::{NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSView};
+    use objc2_foundation::{ns_string, NSObjectProtocol};
+
+    window.with_webview(move |webview| {
+        let marker = MainThreadMarker::new()
+            .expect("Tauri executes native webview access on the macOS main thread");
+        // Tauri's documented PlatformWebview macOS handles are valid only in
+        // this callback; nothing escapes or is retained across a window close.
+        let webview_view = unsafe { &*webview.inner().cast::<NSView>() };
+        let ns_window = unsafe { &*webview.ns_window().cast::<objc2_app_kit::NSWindow>() };
+        let Some(content) = ns_window.contentView() else { return };
+
+        if covered {
+            let existing = content.viewWithTag(NATIVE_STARTUP_COVER_TAG);
+            if let Some(existing) = existing {
+                if !existing.isKindOfClass(NSBox::class()) {
+                    log::error!("refusing to replace an unexpected native startup cover view");
+                    return;
+                }
+            } else {
+                let cover = NSBox::new(marker);
+                cover.setFrame(content.bounds());
+                cover.setAutoresizingMask(
+                    NSAutoresizingMaskOptions::ViewWidthSizable
+                        | NSAutoresizingMaskOptions::ViewHeightSizable,
+                );
+                cover.setBoxType(NSBoxType::Custom);
+                cover.setFillColor(&NSColor::whiteColor());
+                cover.setTitle(ns_string!("Station is preparing its protected workspace…"));
+                unsafe { let _: () = objc2::msg_send![&*cover, setTag: NATIVE_STARTUP_COVER_TAG]; }
+                content.addSubview(&cover);
+            }
+            unsafe { let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: true]; }
+            ns_window.makeFirstResponder(None);
+            unsafe { let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64]; }
+            ns_window.deminiaturize(None);
+            ns_window.makeKeyAndOrderFront(None);
+        } else {
+            if let Some(cover) = content.viewWithTag(NATIVE_STARTUP_COVER_TAG) {
+                if !cover.isKindOfClass(NSBox::class()) {
+                    log::error!("refusing to remove an unexpected startup cover view");
+                    return;
+                }
+                cover.removeFromSuperview();
+            }
+            unsafe { let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: false]; }
+            unsafe { let _: () = objc2::msg_send![webview_view, setAlphaValue: 1.0f64]; }
+            ns_window.deminiaturize(None);
+            ns_window.makeFirstResponder(Some(webview_view));
+            ns_window.makeKeyAndOrderFront(None);
+        }
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn present_startup_recovery_surface(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        if let Err(error) = with_native_startup_cover(&window, true) {
+            log::error!("could not install native startup cover before showing main window: {error}");
+        }
+    }
+}
+
+#[cfg(all(not(mobile), not(target_os = "macos")))]
+fn present_startup_recovery_surface(_app: &AppHandle) {
+    // Other desktop hosts retain the established hidden-until-ticket behavior.
+}
+
 #[cfg(not(mobile))]
 fn reveal_main_window(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(window) = app.get_webview_window("main") {
+            if let Err(error) = with_native_startup_cover(&window, false) {
+                log::error!("could not remove native startup cover after exact readiness commit: {error}");
+            }
+        }
+        return;
+    }
+    #[cfg(not(target_os = "macos"))]
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
@@ -6457,6 +6544,9 @@ pub(crate) fn request_main_window_activation(app: &AppHandle) {
         state.inner(),
         startup_readiness::ReadinessInput::ActivationRequested,
     );
+    if effects.contains(&startup_readiness::ReadinessEffect::PresentStartupRecoverySurface) {
+        present_startup_recovery_surface(app);
+    }
     if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
         reveal_main_window(app);
     }
@@ -8187,7 +8277,10 @@ mod tests {
         );
         assert_eq!(
             effects,
-            vec![startup_readiness::ReadinessEffect::DeferActivation]
+            vec![
+                startup_readiness::ReadinessEffect::PresentStartupRecoverySurface,
+                startup_readiness::ReadinessEffect::DeferActivation,
+            ]
         );
         let ticket = startup_readiness::StartupTicket {
             generation: 1,

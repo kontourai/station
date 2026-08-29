@@ -68,6 +68,9 @@ pub enum ReadinessInput {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReadinessEffect {
+    /// An explicit activation may make only the native-owned startup cover
+    /// visible so macOS can render the ticket proof; it never reveals content.
+    PresentStartupRecoverySurface,
     RevealMainWindow,
     DeferActivation,
     ShowDiagnostic {
@@ -213,9 +216,11 @@ pub fn transition(
         }
         ReadinessInput::ActivationRequested if next.phase == ReadinessPhase::Waiting => {
             next.activation_pending = true;
+            effects.push(ReadinessEffect::PresentStartupRecoverySurface);
             effects.push(ReadinessEffect::DeferActivation);
         }
         ReadinessInput::ActivationRequested if next.phase == ReadinessPhase::Failed => {
+            effects.push(ReadinessEffect::PresentStartupRecoverySurface);
             effects.push(restart_readiness(&mut next, 0, 30_000));
         }
         ReadinessInput::ActivationRequested => effects.push(ReadinessEffect::RevealMainWindow),
@@ -424,7 +429,13 @@ mod tests {
         let (s, _) = transition(&s, ReadinessInput::ServerLost { generation: 1 });
         assert!(s.ticket.is_none());
         let (s, effects) = transition(&s, ReadinessInput::ActivationRequested);
-        assert_eq!(effects, vec![ReadinessEffect::DeferActivation]);
+        assert_eq!(
+            effects,
+            vec![
+                ReadinessEffect::PresentStartupRecoverySurface,
+                ReadinessEffect::DeferActivation,
+            ]
+        );
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
         let (s, _) = transition(&s, ReadinessInput::RendererCommitted(ticket(1)));
         let (_, effects) = transition(&s, ReadinessInput::ActivationRequested);
@@ -443,7 +454,13 @@ mod tests {
         );
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
         let (s, effects) = transition(&s, ReadinessInput::ActivationRequested);
-        assert_eq!(effects, vec![ReadinessEffect::DeferActivation]);
+        assert_eq!(
+            effects,
+            vec![
+                ReadinessEffect::PresentStartupRecoverySurface,
+                ReadinessEffect::DeferActivation,
+            ]
+        );
         let (s, effects) = transition(
             &s,
             ReadinessInput::DeadlineElapsed {
@@ -454,7 +471,10 @@ mod tests {
         assert_eq!(s.phase, ReadinessPhase::Waiting);
         assert_eq!(s.epoch, 2);
         assert_eq!(s.deadline_ms, 10, "the replacement epoch gets a full timeout");
-        assert_eq!(effects, vec![ReadinessEffect::ReprobeCurrentTicket]);
+        assert_eq!(
+            effects,
+            vec![ReadinessEffect::ReprobeCurrentTicket]
+        );
         assert!(
             !effects.contains(&ReadinessEffect::RevealMainWindow),
             "a timeout recovery may only ask the renderer to prove the exact ticket"
@@ -485,11 +505,23 @@ mod tests {
         let (s, effects) = transition(&s, ReadinessInput::ActivationRequested);
         assert_eq!(s.phase, ReadinessPhase::Waiting);
         assert_eq!(s.epoch, 2);
-        assert_eq!(effects, vec![ReadinessEffect::ReprobeCurrentTicket]);
+        assert_eq!(
+            effects,
+            vec![
+                ReadinessEffect::PresentStartupRecoverySurface,
+                ReadinessEffect::ReprobeCurrentTicket,
+            ]
+        );
         assert!(!effects.contains(&ReadinessEffect::RevealMainWindow));
 
         let (s, repeated) = transition(&s, ReadinessInput::ActivationRequested);
-        assert_eq!(repeated, vec![ReadinessEffect::DeferActivation]);
+        assert_eq!(
+            repeated,
+            vec![
+                ReadinessEffect::PresentStartupRecoverySurface,
+                ReadinessEffect::DeferActivation,
+            ]
+        );
         let (s, stale_deadline) = transition(
             &s,
             ReadinessInput::DeadlineElapsed {
