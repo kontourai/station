@@ -9065,35 +9065,6 @@ button.tool-call__line:hover {
   .chat-dock__mobile-header--with-drawer .chat-dock__mobile-agent-avatar {
     display: none;
   }
-
-  /* station#520/524 (review round 3, M6): the occupant picker (below)
-     never fits at this width in EITHER bar configuration, by this file's
-     own already-recorded slot math:
-
-       - Maximized (`--with-drawer`) bar: seven 44px controls need 308px
-         against 304 available at 375px (the avatar-hide rule above), and
-         an eighth ~44-46px slot needs far more room than the avatar's own
-         ~18px of give — especially since the avatar is ALREADY gone there
-         by the rule above, so it has nothing left to give a second time.
-       - Non-maximized bar: documented immediately above
-         `.chat-dock__mobile-agent-avatar`'s own base rule as "healthy from
-         361px up" at SEVEN controls (no drawer toggle, no picker) — an
-         eighth doesn't fit there either, and this bar has no avatar-hide
-         gate to spend in the first place.
-
-     So the picker is hidden here UNCONDITIONALLY (both bars), not only
-     `--with-drawer` — the avatar keeps its EXISTING treatment (untouched
-     by the picker's presence, since the picker no longer competes for
-     space at this width), and the ⋯ overflow sheet's occupant-switch
-     items (`ChatDockMobileOverflowSheet.tsx`) are the routed fallback:
-     station#520 review round 3 (B1) made the sheet share the SAME
-     mobile-maximizing derivation (`chooseAmbientOccupant`) the picker
-     uses, so switching occupant through the sheet at this width carries
-     the identical dock-and-empty contract, not a degraded one. Contract:
-     picker visible >430px, sheet-only switching <=430px, in both bars. */
-  .chat-dock__mobile-occupant-picker {
-    display: none;
-  }
 }
 
 /* The picker's own footprint: same shrink-and-ellipsize treatment as the
@@ -9101,7 +9072,14 @@ button.tool-call__line:hover {
    above), not a hard floor beyond the 44px touch target every mobile
    trigger already carries — so a narrow phone gets a short, tappable
    "Ch…" rather than either an overflowing full-width label or a control
-   that vanishes outright. */
+   that vanishes outright.
+
+   This rule applies only when React renders the slot. `mobile-chrome.ts`
+   subscribes to `(min-width: 481px)` and leaves the picker DOM-absent below
+   that boundary in BOTH mobile bars. That is the same 481px identity-extras
+   deferral pinned at tests/mobile-chat-composer.spec.ts:1875: below it the
+   bar cannot afford the picker alongside its legible agent/title identity,
+   so the ⋯ overflow sheet is the occupant-switch path. */
 .chat-dock__mobile-occupant-picker {
   flex: 0 1 min(28vw, 108px);
   min-width: 44px;

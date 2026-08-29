@@ -1,3 +1,41 @@
+import { useEffect, useState } from 'react';
+
+/**
+ * The mobile dock header can afford its in-bar occupant picker only once the
+ * viewport reaches the encoded 481px identity-extras boundary. Below this,
+ * occupant switching remains available through the header's overflow sheet.
+ */
+export const MOBILE_DOCK_OCCUPANT_PICKER_QUERY = '(min-width: 481px)';
+
+/**
+ * Subscribes to the in-bar occupant-picker boundary. Missing `matchMedia`
+ * (SSR and jsdom by default) deliberately reads as hidden: rendering an extra
+ * fixed-width control before the browser can prove there is room would undo
+ * the identity-legibility invariant this gate protects.
+ */
+export function useMobileDockOccupantPicker(): boolean {
+  const [showPicker, setShowPicker] = useState(() =>
+    readMobileDockOccupantPickerMatch(),
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const query = window.matchMedia(MOBILE_DOCK_OCCUPANT_PICKER_QUERY);
+    const onChange = (event: MediaQueryListEvent) =>
+      setShowPicker(event.matches);
+    setShowPicker(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+
+  return showPicker;
+}
+
+function readMobileDockOccupantPickerMatch(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false;
+  return window.matchMedia(MOBILE_DOCK_OCCUPANT_PICKER_QUERY).matches;
+}
+
 export interface MobileDockFullscreenInput {
   isMobile: boolean;
   isDockOpen: boolean;

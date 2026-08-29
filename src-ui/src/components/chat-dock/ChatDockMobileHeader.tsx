@@ -3,18 +3,19 @@ import type {
   WorkspacePaneInstance,
 } from '@kontourai/station-contracts/workspace-pane';
 import type {
+  ReactElement,
   MouseEvent as ReactMouseEvent,
-  ReactNode,
   PointerEvent as ReactPointerEvent,
   RefObject,
 } from 'react';
-import { useId, useRef, useState } from 'react';
+import { cloneElement, useId, useRef, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { AgentIcon } from '../icons/AgentIcon';
 import { ArrowDownGlyph, MenuGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { ChatDockMobileConnection } from './ChatDockMobileConnection';
 import { ProjectSwitcherOverlay } from './ChatDockProjectContext';
+import { useMobileDockOccupantPicker } from './mobile-chrome';
 
 /** Overlay behind a tap — kept out of the entry chunk (see the sheet's note). */
 const loadChatDockMobileOverflowSheet = () =>
@@ -185,7 +186,7 @@ interface ChatDockMobileHeaderProps {
    * `ChatDockHeader`'s own `occupantPicker` prop, hidden there too when
    * `fullscreen`).
    */
-  occupantPicker?: ReactNode;
+  occupantPicker?: ReactElement<{ mobileDragPassthrough?: boolean }> | null;
 }
 
 function ActivityGlyph() {
@@ -289,6 +290,7 @@ export function ChatDockMobileHeader({
   occupantPicker,
 }: ChatDockMobileHeaderProps) {
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
+  const showOccupantPicker = useMobileDockOccupantPicker();
   const closeOverflow = () => setIsOverflowOpen(false);
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   // The chat title reaches assistive tech as this control's DESCRIPTION, not
@@ -462,19 +464,22 @@ export function ChatDockMobileHeader({
         </button>
       </div>
 
-      {/* station#524: parity with `ChatDockHeader` (Home/Activity), which
-          renders this same pre-rendered node at every width. A fixed 44px
+      {/* station#524: parity with `ChatDockHeader` (Home/Activity). At and
+          above the 481px identity-extras boundary, a fixed 44px
           slot beside the identity cluster, same pattern as the project
           switcher trigger below — `.chat-dock__mobile-identity-cluster` is
           the row's only `flex: 1 1 auto` member, so this and every other
           sibling slot take fixed width and the identity block is what gives
-          ground first. */}
-      {occupantPicker && (
+          ground first. Below that boundary the overflow sheet is the switch
+          path and this control is DOM-absent. The injected prop marks only
+          this mobile trigger as drag passthrough; desktop uses of the same
+          pre-rendered element are unchanged. */}
+      {occupantPicker && showOccupantPicker && (
         <div
           className="chat-dock__mobile-occupant-picker"
           data-dock-drag-passthrough=""
         >
-          {occupantPicker}
+          {cloneElement(occupantPicker, { mobileDragPassthrough: true })}
         </div>
       )}
 

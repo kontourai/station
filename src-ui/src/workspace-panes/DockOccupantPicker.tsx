@@ -41,16 +41,18 @@ import {
  * composition is how the sheet's copy went missing the first time this was
  * fixed (round 2 fixed only this file).
  */
-export function DockOccupantPicker({
-  current,
-  onChoose,
-  onChooseAsOnlyContent,
-}: {
+export interface DockOccupantPickerProps {
   current: WorkspacePaneDescriptor;
   onChoose: (
     descriptor: WorkspacePaneDescriptor,
     instance: WorkspacePaneInstance,
   ) => void;
+  /**
+   * Marks the trigger as part of the mobile dock header's drag surface. The
+   * mobile header injects this through its pre-rendered picker slot; desktop
+   * headers leave it absent so their interaction behavior is unchanged.
+   */
+  mobileDragPassthrough?: boolean;
   /**
    * station#520: the SAME action `WorkspacePaneDockAction` uses
    * (`dockPaneAsOnlyContent` on `WorkspacePaneDockContext`) — maximizes the
@@ -63,7 +65,14 @@ export function DockOccupantPicker({
     descriptor: WorkspacePaneDescriptor,
     instance: WorkspacePaneInstance,
   ) => void;
-}) {
+}
+
+export function DockOccupantPicker({
+  current,
+  onChoose,
+  onChooseAsOnlyContent,
+  mobileDragPassthrough = false,
+}: DockOccupantPickerProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -104,6 +113,7 @@ export function DockOccupantPicker({
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         aria-label={`Docked pane: ${current.name}`}
+        data-dock-drag-passthrough={mobileDragPassthrough ? '' : undefined}
         onClick={() => setMenuOpen((open) => !open)}
       >
         {/* station#524: a dedicated class so a host with less room (the

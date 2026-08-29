@@ -6,14 +6,15 @@ import {
   WORKSPACE_HOME_PANE_DESCRIPTOR,
   WORKSPACE_HOME_PANE_INSTANCE,
 } from '@kontourai/station-contracts/workspace-home-pane';
-import { fireEvent, screen } from '@testing-library/react';
-import { createRef, type ReactNode } from 'react';
+import { act, fireEvent, screen } from '@testing-library/react';
+import { createRef, type ReactElement } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   type ChatDockMobileDockToggle,
   ChatDockMobileHeader,
   type ChatDockMobileProjectSwitcher,
 } from '../components/chat-dock/ChatDockMobileHeader';
+import { MOBILE_DOCK_OCCUPANT_PICKER_QUERY } from '../components/chat-dock/mobile-chrome';
 import { renderWithIsolatedConnections } from './renderWithIsolatedConnections';
 
 // station#520 (review round 3, B1): the overflow sheet's occupant-switch
@@ -35,6 +36,34 @@ vi.mock('../contexts/NavigationContext', () => ({
   }),
 }));
 
+let pickerQueryMatches = false;
+const pickerQueryListeners = new Set<(event: MediaQueryListEvent) => void>();
+
+function setPickerQueryMatches(matches: boolean) {
+  pickerQueryMatches = matches;
+  act(() => {
+    for (const listener of pickerQueryListeners) {
+      listener({ matches } as MediaQueryListEvent);
+    }
+  });
+}
+
+function StubOccupantPicker({
+  mobileDragPassthrough,
+}: {
+  mobileDragPassthrough?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label="Docked pane: Chat"
+      data-dock-drag-passthrough={mobileDragPassthrough ? '' : undefined}
+    >
+      Chat
+    </button>
+  );
+}
+
 // archive#3297 put a live connection indicator in this bar, so the header now
 // mounts through the same connection boundary the app uses. Nothing here
 // asserts on probe results; the stub only keeps the shared health coordinator
@@ -42,6 +71,35 @@ vi.mock('../contexts/NavigationContext', () => ({
 beforeEach(() => {
   mobileFlag.isMobile = false;
   pathnameFlag.pathname = '/';
+  pickerQueryMatches = false;
+  pickerQueryListeners.clear();
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      get matches() {
+        return query === MOBILE_DOCK_OCCUPANT_PICKER_QUERY
+          ? pickerQueryMatches
+          : false;
+      },
+      media: query,
+      onchange: null,
+      addEventListener: (
+        event: string,
+        listener: (event: MediaQueryListEvent) => void,
+      ) => {
+        if (event === 'change') pickerQueryListeners.add(listener);
+      },
+      removeEventListener: (
+        event: string,
+        listener: (event: MediaQueryListEvent) => void,
+      ) => {
+        if (event === 'change') pickerQueryListeners.delete(listener);
+      },
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  );
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => new Response('{}', { status: 200 })),
@@ -70,7 +128,7 @@ function renderHeader(
     branchLabel?: string | null;
     onOpenProject?: (() => void) | null;
     openProjectName?: string | null;
-    occupantPicker?: ReactNode;
+    occupantPicker?: ReactElement<{ mobileDragPassthrough?: boolean }>;
     onSwitchOccupant?: {
       onChoose: (descriptor: unknown, instance: unknown) => void;
       onChooseAsOnlyContent: (descriptor: unknown, instance: unknown) => void;
@@ -452,18 +510,35 @@ describe('ChatDockMobileHeader connection indicator', () => {
  * `AmbientChatDockPaneHost.test.tsx`).
  */
 describe('ChatDockMobileHeader occupant picker (station#524)', () => {
-  test('renders the pre-rendered occupant picker when supplied', () => {
+  test('keeps the picker DOM-absent below 481px and renders it at the subscribed boundary', () => {
     renderHeader({
-      occupantPicker: (
-        <button type="button" aria-label="Docked pane: Chat">
-          Chat
-        </button>
-      ),
+      occupantPicker: <StubOccupantPicker />,
     });
+
+    expect(window.matchMedia).toHaveBeenCalledWith(
+      MOBILE_DOCK_OCCUPANT_PICKER_QUERY,
+    );
+    expect(MOBILE_DOCK_OCCUPANT_PICKER_QUERY).toBe('(min-width: 481px)');
+    expect(
+      screen.queryByRole('button', { name: 'Docked pane: Chat' }),
+    ).toBeNull();
+
+    setPickerQueryMatches(true);
 
     expect(
       screen.getByRole('button', { name: 'Docked pane: Chat' }),
     ).toBeTruthy();
+  });
+
+  test('marks the rendered picker trigger as mobile dock drag passthrough', () => {
+    pickerQueryMatches = true;
+    renderHeader({ occupantPicker: <StubOccupantPicker /> });
+
+    expect(
+      screen
+        .getByRole('button', { name: 'Docked pane: Chat' })
+        .getAttribute('data-dock-drag-passthrough'),
+    ).toBe('');
   });
 
   test('renders nothing extra when the occupant picker is absent (full-screen Chat placement)', () => {
@@ -481,7 +556,7 @@ describe('ChatDockMobileHeader occupant picker (station#524)', () => {
  * station#524 (review round 2, H2) + station#520 (review round 3, B1): the
  * ⋯ overflow sheet's occupant-switch items are reachable at EVERY dock
  * state (collapsed/half/maximized), not only when the header's own
- * occupant picker hides at <=430px — so they must carry the SAME mobile
+ * occupant picker is deferred below 481px — so they must carry the SAME mobile
  * dock-and-empty contract `DockOccupantPicker` does: maximize when picking
  * this occupant would strand the main area behind it, plain switch
  * otherwise. Review round 2 wired the sheet to the plain action only; these

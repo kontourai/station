@@ -570,6 +570,10 @@ async function dockHomeAndOpenPicker() {
     expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
   });
   const trigger = screen.getByRole('button', { name: 'Docked pane: Home' });
+  expect(
+    trigger.hasAttribute('data-dock-drag-passthrough'),
+    'the desktop/non-mobile header must not inherit the mobile drag marker',
+  ).toBe(false);
   fireEvent.click(trigger);
   return {
     feed,

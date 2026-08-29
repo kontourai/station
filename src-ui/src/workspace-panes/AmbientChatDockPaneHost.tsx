@@ -25,6 +25,7 @@ import {
 } from '@kontourai/station-contracts/workspace-pane-host';
 import {
   lazy,
+  type ReactElement,
   type ReactNode,
   Suspense,
   useCallback,
@@ -51,7 +52,10 @@ import {
   useHomeViewModel,
 } from '../views/home/useHomeViewModel';
 import { ambientDockDescriptorFor } from './ambientDockOccupants';
-import { DockOccupantPicker } from './DockOccupantPicker';
+import {
+  DockOccupantPicker,
+  type DockOccupantPickerProps,
+} from './DockOccupantPicker';
 import { WorkspacePaneDockContext } from './WorkspacePaneDockContext';
 import { WorkspacePaneHost } from './WorkspacePaneHost';
 
@@ -295,7 +299,7 @@ export type AmbientDockShellApi = DockShellChrome & {
     descriptor: WorkspacePaneDescriptor,
     instance: WorkspacePaneInstance,
   ) => void;
-  occupantPicker: ReactNode;
+  occupantPicker: ReactElement<DockOccupantPickerProps> | null;
 };
 
 /** The ambient shell mounts Chat through the same host/frame lifecycle as every pane. */
