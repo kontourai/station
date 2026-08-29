@@ -110,15 +110,18 @@ export function useConnectionStatus({
     endpoints: () => {
       const selected = activeConnection?.selectedEndpointId;
       return (
-        activeConnection?.endpoints ?? [
-          {
-            endpointVersion: 1 as const,
-            id: `endpoint:manual:${encodeURIComponent(apiBase)}`,
-            url: apiBase,
-            kind: 'manual' as const,
-            priority: 100,
-          },
-        ]
+        activeConnection?.endpoints ??
+        (apiBase
+          ? [
+              {
+                endpointVersion: 1 as const,
+                id: `endpoint:manual:${encodeURIComponent(apiBase)}`,
+                url: apiBase,
+                kind: 'manual' as const,
+                priority: 100,
+              },
+            ]
+          : [])
       ).map((endpoint) => ({
         ...endpoint,
         priority: endpoint.id === selected ? -1 : endpoint.priority,
