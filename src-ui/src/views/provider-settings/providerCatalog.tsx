@@ -583,7 +583,7 @@ export function resolveProviderPresentation(
     detail:
       input.description ??
       (input.setup?.detected
-        ? 'Station found this on this computer. Finish setup to use it.'
+        ? 'Station found it on this computer. Finish setup to use it.'
         : 'Finish setup before using it.'),
     actionLabel: 'Set up',
   };
