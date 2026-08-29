@@ -119,6 +119,20 @@ describe('shared saved Station store', () => {
     ).toThrow(/missing from an initialized or in-progress shared root/);
   });
 
+  test('refuses a genesis marker symlink before it can redirect a missing-store read', () => {
+    const external = join(home, 'marker-target');
+    writeFileSync(external, 'station-profile-store-v1\n', { mode: 0o600 });
+    symlinkSync(external, join(home, '.station-profile-store-v1'));
+
+    expect(() =>
+      upsertProfile({
+        name: 'stable-local',
+        endpoint: 'http://127.0.0.1:18141',
+      }),
+    ).toThrow(/genesis marker is invalid/);
+    expect(() => readFileSync(profilesPath(), 'utf8')).toThrow();
+  });
+
   test('refuses missing metadata beside a prior channel runtime without minting a replacement', () => {
     mkdirSync(join(home, 'instances', 'stable', 'data'), {
       recursive: true,

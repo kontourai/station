@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   closeSync,
   existsSync,
   fchmodSync,
@@ -123,20 +124,77 @@ function profileStoreGenesisMarkerPath(home: string): string {
   return join(home, PROFILE_STORE_GENESIS_MARKER);
 }
 
-function profileStoreGenesisMarkerExists(home: string): boolean {
-  const marker = profileStoreGenesisMarkerPath(home);
-  if (!existsSync(marker)) return false;
-  const info = lstatSync(marker);
+/** The root carries the durable missing-store fence, so it is a trust boundary too. */
+function ensureTrustedProfileStoreRoot(home: string): void {
+  mkdirSync(home, { recursive: true, mode: 0o700 });
+  assertWindowsPathsTrusted(windowsTrustRun, [
+    { kind: 'directory', path: home },
+  ]);
+  const info = lstatSync(home);
   if (
-    !info.isFile() ||
+    !info.isDirectory() ||
     info.isSymbolicLink() ||
-    (typeof process.getuid === 'function' &&
-      (info.uid !== process.getuid() || (info.mode & 0o077) !== 0)) ||
-    readFileSync(marker, 'utf8') !== PROFILE_STORE_GENESIS_SIGNATURE
+    (typeof process.getuid === 'function' && info.uid !== process.getuid())
   ) {
-    throw new Error(
-      'saved Station genesis marker is invalid or not owner-controlled',
+    throw new Error('saved Station root is not an owner-controlled directory');
+  }
+  if (typeof process.getuid === 'function') {
+    chmodSync(home, 0o700);
+    const hardened = lstatSync(home);
+    if (
+      !hardened.isDirectory() ||
+      hardened.isSymbolicLink() ||
+      hardened.uid !== process.getuid() ||
+      (hardened.mode & 0o077) !== 0
+    ) {
+      throw new Error('saved Station root could not be secured owner-only');
+    }
+  }
+}
+
+function profileStoreGenesisMarkerExists(home: string): boolean {
+  ensureTrustedProfileStoreRoot(home);
+  const marker = profileStoreGenesisMarkerPath(home);
+  try {
+    const initial = lstatSync(marker);
+    if (!initial.isFile() || initial.isSymbolicLink()) {
+      throw new Error(
+        'saved Station genesis marker is invalid or not owner-controlled',
+      );
+    }
+    assertWindowsPathsTrusted(windowsTrustRun, [
+      { kind: 'file', path: marker },
+    ]);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(
+      marker,
+      fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
     );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw new Error(
+      `saved Station genesis marker could not be read safely: ${(error as Error).message}`,
+    );
+  }
+  try {
+    const info = fstatSync(descriptor);
+    if (
+      !info.isFile() ||
+      (typeof process.getuid === 'function' &&
+        (info.uid !== process.getuid() || (info.mode & 0o077) !== 0)) ||
+      readFileSync(descriptor, 'utf8') !== PROFILE_STORE_GENESIS_SIGNATURE
+    ) {
+      throw new Error(
+        'saved Station genesis marker is invalid or not owner-controlled',
+      );
+    }
+  } finally {
+    closeSync(descriptor);
   }
   return true;
 }
@@ -171,7 +229,7 @@ function profileStoreGenesisAdmissible(home: string): boolean {
 }
 
 function writeProfileStoreGenesisMarker(home: string): void {
-  mkdirSync(home, { recursive: true, mode: 0o700 });
+  ensureTrustedProfileStoreRoot(home);
   const marker = profileStoreGenesisMarkerPath(home);
   if (existsSync(marker)) {
     profileStoreGenesisMarkerExists(home);
@@ -251,6 +309,7 @@ function ensureProfileStoreGenesis(home: string): void {
   // for later publications through `acquireProfileStoreLock`; genesis cannot
   // wait until then because it is the code that creates those files.
   ensureWindowsProfileDirectories(home);
+  ensureTrustedProfileStoreRoot(home);
   withProfileStoreGenesisLock(home, () => {
     const path = profilesPath(home);
     if (existsSync(path)) {

@@ -1291,6 +1291,51 @@ fn station_profile_store_root(path: &std::path::Path) -> Result<&std::path::Path
 }
 
 #[cfg(not(mobile))]
+fn validate_station_profile_store_root(root: &std::path::Path) -> Result<(), String> {
+    let metadata = std::fs::symlink_metadata(root)
+        .map_err(|error| format!("inspect saved Station root: {error}"))?;
+    if !metadata.file_type().is_dir() {
+        return Err("saved Station root must be a non-symlink directory".to_string());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.mode() & 0o077 != 0 || !profile_lock_owned_by_current_user(metadata.uid()) {
+            return Err("saved Station root must be current-user owned and owner-only".to_string());
+        }
+    }
+    #[cfg(windows)]
+    crate::windows_path_trust::verify(&[(
+        crate::windows_path_trust::TrustKind::Directory,
+        root,
+    )])?;
+    Ok(())
+}
+
+#[cfg(not(mobile))]
+fn ensure_station_profile_store_root(root: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(root)
+        .map_err(|error| format!("create saved Station root: {error}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let metadata = std::fs::symlink_metadata(root)
+            .map_err(|error| format!("inspect saved Station root: {error}"))?;
+        if !metadata.file_type().is_dir() || !profile_lock_owned_by_current_user(metadata.uid()) {
+            return Err("saved Station root must be a current-user-owned non-symlink directory".to_string());
+        }
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| format!("secure saved Station root: {error}"))?;
+    }
+    #[cfg(windows)]
+    crate::windows_path_trust::ensure(&[(
+        crate::windows_path_trust::TrustKind::Directory,
+        root,
+    )])?;
+    validate_station_profile_store_root(root)
+}
+
+#[cfg(not(mobile))]
 fn station_profile_store_genesis_lock_target(
     root: &std::path::Path,
 ) -> Result<std::path::PathBuf, String> {
@@ -1373,6 +1418,7 @@ fn sync_profile_store_directory(_path: &std::path::Path) -> Result<(), String> {
 
 #[cfg(not(mobile))]
 fn validate_profile_store_genesis_marker(root: &std::path::Path) -> Result<bool, String> {
+    validate_station_profile_store_root(root)?;
     let marker = profile_store_genesis_marker_path(root);
     let metadata = match std::fs::symlink_metadata(&marker) {
         Ok(metadata) => metadata,
@@ -1389,7 +1435,32 @@ fn validate_profile_store_genesis_marker(root: &std::path::Path) -> Result<bool,
             return Err("saved Station genesis marker must be current-user owned and owner-only".to_string());
         }
     }
-    let contents = std::fs::read_to_string(&marker)
+    #[cfg(windows)]
+    crate::windows_path_trust::verify(&[(
+        crate::windows_path_trust::TrustKind::File,
+        &marker,
+    )])?;
+    #[cfg(unix)]
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    options.custom_flags(libc::O_NOFOLLOW);
+    let mut file = options
+        .open(&marker)
+        .map_err(|error| format!("read saved Station genesis marker: {error}"))?;
+    let opened = file
+        .metadata()
+        .map_err(|error| format!("inspect saved Station genesis marker: {error}"))?;
+    if !opened.file_type().is_file() {
+        return Err("saved Station genesis marker must remain a regular file".to_string());
+    }
+    #[cfg(unix)]
+    if opened.mode() & 0o077 != 0 || !profile_lock_owned_by_current_user(opened.uid()) {
+        return Err("saved Station genesis marker must remain current-user owned and owner-only".to_string());
+    }
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)
         .map_err(|error| format!("read saved Station genesis marker: {error}"))?;
     if contents != STATION_PROFILE_STORE_GENESIS_SIGNATURE {
         return Err("saved Station genesis marker is invalid".to_string());
@@ -1402,8 +1473,7 @@ fn write_profile_store_genesis_marker(root: &std::path::Path) -> Result<(), Stri
     #[cfg(unix)]
     use std::os::unix::fs::OpenOptionsExt;
 
-    std::fs::create_dir_all(root)
-        .map_err(|error| format!("create Station root for saved metadata: {error}"))?;
+    validate_station_profile_store_root(root)?;
     let marker = profile_store_genesis_marker_path(root);
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
@@ -1480,6 +1550,7 @@ fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), Strin
 #[cfg(not(mobile))]
 fn ensure_station_profile_store_genesis(app: &AppHandle, root: &std::path::Path) -> Result<(), String> {
     let path = root.join("config").join("profiles.json");
+    ensure_station_profile_store_root(root)?;
     #[cfg(windows)]
     {
         let config = root.join("config");
@@ -12101,12 +12172,31 @@ mod tests {
         );
     }
 
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn shared_profile_genesis_root_is_owner_only_and_never_a_symlink() {
+        use std::os::unix::fs::{symlink, MetadataExt, PermissionsExt};
+
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".station");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).unwrap();
+        ensure_station_profile_store_root(&root).unwrap();
+        assert_eq!(std::fs::symlink_metadata(&root).unwrap().mode() & 0o077, 0);
+
+        let redirected = temp.path().join("redirected-root");
+        std::fs::create_dir(&redirected).unwrap();
+        std::fs::remove_dir(&root).unwrap();
+        symlink(&redirected, &root).unwrap();
+        assert!(ensure_station_profile_store_root(&root).is_err());
+    }
+
     #[cfg(not(mobile))]
     #[test]
     fn profile_store_genesis_marker_survives_missing_config_as_a_fence() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join(".station");
-        std::fs::create_dir_all(&root).unwrap();
+        ensure_station_profile_store_root(&root).unwrap();
         write_profile_store_genesis_marker(&root).unwrap();
         assert!(validate_profile_store_genesis_marker(&root).unwrap());
         assert!(
