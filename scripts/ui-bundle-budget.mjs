@@ -188,6 +188,7 @@ export function measureEntryBundle(outputDir) {
 }
 
 const STARTUP_READINESS_ENTRY_MARKERS = Object.freeze([
+  'station:startup-readiness-trigger:v1',
   'bundled_server_status',
   'commit_startup_readiness',
   'commit_startup_recovery_ui',

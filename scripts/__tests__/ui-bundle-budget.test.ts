@@ -172,6 +172,7 @@ describe('measureEntryBundle (station#1218)', () => {
       dir,
       'entry.js',
       [
+        'station:startup-readiness-trigger:v1',
         'bundled_server_status',
         'commit_startup_readiness',
         'commit_startup_recovery_ui',
@@ -189,12 +190,12 @@ describe('measureEntryBundle (station#1218)', () => {
 
   it('rejects readiness commands stranded behind a lazy asset', () => {
     const dir = stageOutputDir();
-    writeAsset(dir, 'entry.js', 'import("/readiness.js")');
     writeAsset(
       dir,
-      'readiness.js',
-      'bundled_server_status;commit_startup_readiness;commit_startup_recovery_ui;station://startup-readiness-retry',
+      'entry.js',
+      'bundled_server_status;commit_startup_readiness;commit_startup_recovery_ui;station://startup-readiness-retry;import("/readiness.js")',
     );
+    writeAsset(dir, 'readiness.js', 'station:startup-readiness-trigger:v1');
     writeAsset(dir, 'main.css', 'body{}');
     writeFileSync(
       join(dir, 'index.html'),

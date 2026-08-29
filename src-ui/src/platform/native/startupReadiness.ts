@@ -91,6 +91,7 @@ export function startStartupReadinessProof(
 ): {
   dispose(): void;
 } {
+  globalThis.performance?.mark?.('station:startup-readiness-trigger:v1');
   let disposed = false;
   let ready = false;
   let rerunRequested = false;
