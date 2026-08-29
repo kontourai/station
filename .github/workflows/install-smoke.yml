@@ -172,7 +172,8 @@ jobs:
             sh
 
           previous_current=$(readlink "$install_root/current")
-          HOME="$SMOKE_HOME" \
+          env \
+            HOME="$SMOKE_HOME" \
             PATH="$SMOKE_HOME/fake-bin:$SMOKE_HOME/.local/bin:$PATH" \
             "${public_install_env[@]}" \
             "$launcher" upgrade
@@ -198,7 +199,8 @@ jobs:
           # upgrade verifies the bad candidate, fails its start, and rolls back.
           cp "$bad_release/station-portable.tar.gz" "$serve_dir/station-portable.tar.gz"
           write_manifest_payload
-          if HOME="$SMOKE_HOME" \
+          if env \
+            HOME="$SMOKE_HOME" \
             PATH="$SMOKE_HOME/fake-bin:$SMOKE_HOME/.local/bin:$PATH" \
             "${public_install_env[@]}" \
             "$launcher" upgrade
