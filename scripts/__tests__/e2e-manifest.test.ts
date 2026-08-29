@@ -285,7 +285,7 @@ describe('e2e manifest', () => {
       (entry) => entry.bucket === 'quarantine',
     );
 
-    // station#4571: chat-multi-turn-context.spec.ts is RED BY DESIGN — it
+    // #574: chat-multi-turn-context.spec.ts is RED BY DESIGN — it
     // proves a real multi-turn context-retention defect, not spec rot — so it
     // cannot sit in a running bucket (smoke-live / verify:e2e:full) without
     // permanently redding the gate. Quarantine is the manifest's own home for
@@ -293,7 +293,7 @@ describe('e2e manifest', () => {
     expect(quarantined).toEqual([
       expect.objectContaining({
         path: 'tests/chat-multi-turn-context.spec.ts',
-        replacement: 'station#4571',
+        replacement: '#574',
       }),
     ]);
   });
