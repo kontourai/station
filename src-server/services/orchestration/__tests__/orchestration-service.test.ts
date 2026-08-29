@@ -948,10 +948,15 @@ describe('OrchestrationService', () => {
       { ...completedDetail.session, pendingReview: true },
       { ...completedDetail.session, hasActiveTurn: true },
       {
+        // Unanswerable for a reason the successor reserve path cannot
+        // recover: the child could still resume but no adapter here can
+        // drive it. (#834 made `past_resume` on a stopped child continuable,
+        // so it is no longer a denial case — see the stopped-conversation
+        // test below.)
         ...completedDetail.session,
         answerability: {
           answerable: false as const,
-          qualification: 'past_resume' as const,
+          qualification: 'provider_absent' as const,
           observedBy: 'orchestration-service-test',
           observedAt: '2026-08-24T00:00:01.000Z',
         },
@@ -964,6 +969,25 @@ describe('OrchestrationService', () => {
         }),
       ).toBe(false);
     }
+    // #834 both directions: the SAME completed child decorated exactly as a
+    // detached (unloaded) process would decorate it — `past_resume` is the
+    // steady state of every finished session after a restart — remains
+    // continuable, because continuation reserves a successor rather than
+    // answering a request on the current child.
+    expect(
+      canResolveConversationContinuation({
+        ...completedDetail,
+        session: {
+          ...completedDetail.session,
+          answerability: {
+            answerable: false as const,
+            qualification: 'past_resume' as const,
+            observedBy: 'orchestration-service-test',
+            observedAt: '2026-08-24T00:00:01.000Z',
+          },
+        },
+      }),
+    ).toBe(true);
 
     const incompatibleProvider = await service.resolveConversationContinuation(
       'conversation-continuation',
@@ -1101,6 +1125,137 @@ describe('OrchestrationService', () => {
     expect(
       eventStore.conversationSessions('conversation-continuation'),
     ).toHaveLength(3);
+  });
+
+  // #834: pressing Stop tears down and DETACHES the current child, whose
+  // answerability decoration is then permanently `past_resume` — the exact
+  // shape the #749/#814 continuation gate misread as "never writable again",
+  // which made Stop kill the conversation forever. This drives the real
+  // command pipeline (start → answered turn → stopSession dispatch) and
+  // proves the conversation stays continuable through the successor reserve.
+  test('#834: a stopped, unloaded conversation stays continuable and reserves a successor', async () => {
+    claude.startSession.mockImplementationOnce(async (input) => {
+      const session: ProviderSession = {
+        provider: 'claude' as const,
+        threadId: input.threadId,
+        status: 'ready' as const,
+        resumeCursor: { nativeSession: 'stopped-turn-one' },
+        createdAt: '2026-08-29T00:00:00.000Z',
+        updatedAt: '2026-08-29T00:00:00.000Z',
+      };
+      claude.sessions.set(input.threadId, session);
+      return session;
+    });
+    const started = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'conversation-stopped',
+          provider: 'claude',
+          metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+        },
+      },
+      { userId: 'owner-user' },
+    );
+    if (started.status !== 'accepted') throw new Error(started.message);
+    eventStore.appendEvent({
+      eventId: 'conversation-stopped-configured',
+      provider: 'claude',
+      threadId: 'conversation-stopped',
+      sessionId: 'conversation-stopped',
+      method: 'session.configured',
+      metadata: {
+        userId: 'owner-user',
+        agentSlug: 'station',
+        connectionId: 'connection-a',
+      },
+      createdAt: '2026-08-29T00:00:00.500Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'conversation-stopped-turn',
+      provider: 'claude',
+      threadId: 'conversation-stopped',
+      turnId: 'stopped-turn',
+      method: 'turn.started',
+      prompt: 'stopped-token violet-13',
+      createdAt: '2026-08-24T00:00:01.000Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'conversation-stopped-turn-completed',
+      provider: 'claude',
+      threadId: 'conversation-stopped',
+      turnId: 'stopped-turn',
+      method: 'turn.completed',
+      createdAt: '2026-08-24T00:00:01.500Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'conversation-stopped-completed',
+      provider: 'claude',
+      threadId: 'conversation-stopped',
+      sessionId: 'conversation-stopped',
+      method: 'session.state-changed',
+      from: 'running',
+      to: 'completed',
+      sessionState: 'completed',
+      previousState: 'running',
+      transitionReason: 'turn_completed',
+      transitionSource: 'runtime',
+      createdAt: '2026-08-24T00:00:02.000Z',
+    });
+
+    await service.dispatchWithReceipt(
+      { type: 'stopSession', threadId: 'conversation-stopped' },
+      { userId: 'owner-user' },
+    );
+
+    // Fixture-vs-reality guard: the stopped child must project the REAL
+    // post-stop decoration (#834's population) — detached + past resume —
+    // or this test is not exercising the defect's shape at all.
+    const stoppedDetail = await service.readCurrentConversationSession(
+      'conversation-stopped',
+      INTERNAL_SESSION_READ_SCOPE,
+    );
+    if (!stoppedDetail) throw new Error('expected stopped session detail');
+    expect(stoppedDetail.session.answerability).toMatchObject({
+      answerable: false,
+      qualification: 'past_resume',
+    });
+
+    // The authoritative open — the same composition the picker/reload paths
+    // call — must resolve the stopped conversation continuable without
+    // reserving the successor the mutating command owns.
+    const lineageBeforeOpen = eventStore.conversationSessions(
+      'conversation-stopped',
+    );
+    const open = await service.resolveConversationOpen(
+      'conversation-stopped',
+      personalReadAuthority('owner-user'),
+    );
+    expect(open).toMatchObject({
+      status: 'resolved',
+      currentSessionId: 'conversation-stopped',
+      canContinue: true,
+    });
+    expect(eventStore.conversationSessions('conversation-stopped')).toEqual(
+      lineageBeforeOpen,
+    );
+
+    // The mutating continuation reserves the successor from the stopped
+    // predecessor — the #765 A1 / PR #796 recovery this gate had made
+    // unreachable — carrying the predecessor's trusted cursor.
+    const continued = await service.resolveConversationContinuation(
+      'conversation-stopped',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', connectionId: 'connection-a' },
+    );
+    expect(continued).toMatchObject({
+      startRequired: true,
+      resumeCursor: { nativeSession: 'stopped-turn-one' },
+    });
+    expect(continued.sessionId).not.toBe('conversation-stopped');
+    expect(
+      eventStore.conversationSessions('conversation-stopped'),
+    ).toHaveLength(2);
   });
 
   // #765 A1: a predecessor started with `persistSession: false` has no
