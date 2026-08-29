@@ -382,7 +382,7 @@ export function resolveProviderPresentation(
       brand,
       readiness: 'Disabled',
       tone: 'disabled',
-      detail: 'Turn this connection on when you want to use it.',
+      detail: 'Turn this on when you want to use it.',
       actionLabel: input.readOnly ? 'Details' : 'Enable',
     };
   }
@@ -412,7 +412,7 @@ export function resolveProviderPresentation(
       brand,
       readiness: 'Setup required',
       tone: 'warn',
-      detail: input.description ?? 'Finish setup before using this connection.',
+      detail: input.description ?? 'Finish setup before using it.',
       actionLabel: 'Set up',
     };
   }
@@ -571,7 +571,7 @@ export function resolveProviderPresentation(
       brand,
       readiness: 'Unreachable',
       tone: 'error',
-      detail: 'Station cannot reach this connection right now.',
+      detail: 'Station cannot reach it right now.',
       actionLabel: input.readOnly ? 'Details' : 'Reconnect',
     };
   }
@@ -583,8 +583,8 @@ export function resolveProviderPresentation(
     detail:
       input.description ??
       (input.setup?.detected
-        ? 'Station found this connection. Finish setup to use it.'
-        : 'Finish setup before using this connection.'),
+        ? 'Station found this on this computer. Finish setup to use it.'
+        : 'Finish setup before using it.'),
     actionLabel: 'Set up',
   };
 }

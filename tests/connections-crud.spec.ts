@@ -1014,10 +1014,14 @@ test.describe('Connections CRUD', () => {
 
     // With no dialog open the catalog is not on the page: that is the claim.
     await expect(page.getByRole('button', { name: /Kiro CLI/ })).toHaveCount(0);
-    const add = page.getByRole('button', {
-      name: 'Add engine',
-      exact: true,
-    });
+    // Scoped to the ACP section: the page frame's own add action carries the
+    // same accessible name.
+    const add = page
+      .locator('.acp-connections-section__header')
+      .getByRole('button', {
+        name: 'Add engine',
+        exact: true,
+      });
     await add.click();
     // The deep link names a provider, so the dialog reopens on that provider's
     // stage; the catalog is the stage behind it.
@@ -1040,7 +1044,7 @@ test.describe('Connections CRUD', () => {
 
     await expect(dialog.getByRole('status')).toContainText('Ready');
     await expect(
-      page.getByRole('button', {
+      page.locator('.acp-connections-section__header').getByRole('button', {
         name: 'Add engine',
         exact: true,
       }),
@@ -1138,10 +1142,12 @@ test.describe('Connections CRUD', () => {
         .getByRole('dialog', { name: 'Custom engine' })
         .getByRole('button', { name: 'Cancel' })
         .click();
-      const add = page.getByRole('button', {
-        name: 'Add engine',
-        exact: true,
-      });
+      const add = page
+        .locator('.acp-connections-section__header')
+        .getByRole('button', {
+          name: 'Add engine',
+          exact: true,
+        });
       // Measured before opening: the trigger itself has to be tappable.
       expect((await add.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
         MIN_TOUCH_TARGET_PX,

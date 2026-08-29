@@ -255,7 +255,7 @@ describe('ACPAddConnectionModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/i }));
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain(
-        'Could not refresh this engine status.',
+        'Could not refresh this engine’s status.',
       );
     });
     expect(screen.queryByText('Checking')).toBeNull();

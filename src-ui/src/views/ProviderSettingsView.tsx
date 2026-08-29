@@ -717,7 +717,7 @@ export function ProviderSettingsView({
 */}
       <ConfirmModal
         isOpen={showDeleteModal && !!selectedProviderId && !isNew}
-        title="Remove model connection"
+        title="Delete model connection"
         message={`Are you sure you want to delete "${form?.name || selectedProviderId}"? Its saved credentials are removed from this computer. This cannot be undone.`}
         confirmLabel="Delete"
         variant="danger"

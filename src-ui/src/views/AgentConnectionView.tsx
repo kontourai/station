@@ -1296,7 +1296,7 @@ function CredentialProfileApplyConfirmation({
     <ConfirmModal
       isOpen={state.profileToApply !== null}
       title="Apply credential entry"
-      message="Station will verify this credential entry with one potentially billable provider turn before making it active. If verification fails, the previous active credential is preserved."
+      message="Station will verify this credential entry with one potentially billable engine turn before making it active. If verification fails, the previous active credential is preserved."
       confirmLabel="Apply and verify"
       cancelLabel="Cancel"
       variant="warning"

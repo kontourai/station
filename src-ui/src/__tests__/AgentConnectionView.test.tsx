@@ -437,7 +437,7 @@ describe('AgentConnectionView', () => {
         },
       ],
       'Setup required',
-      'Finish setup before using this connection.',
+      'Finish setup before using it.',
     ],
   ] as const)(
     'projects the backend %s setup tuple into the provider detail',
@@ -978,7 +978,7 @@ describe('AgentConnectionView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Apply manually' }));
     expect(applyMutate).not.toHaveBeenCalled();
-    expect(screen.getByText(/potentially billable provider turn/)).toBeTruthy();
+    expect(screen.getByText(/potentially billable engine turn/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Apply and verify' }));
     expect(applyMutate).toHaveBeenCalledWith({
       id: 'claude',
