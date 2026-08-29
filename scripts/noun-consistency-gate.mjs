@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Zero-tolerance regression gate for the #190 noun-unification rename
 // (prompt/runtime -> Skill/Engine, see docs/glossary.md). Current canon
-// (#1349): Provider is the intentional umbrella for model services and agent
-// apps; Engine remains the specific noun where that distinction adds value.
+// (#592, superseding #1349's umbrella): the Connections tab owns the noun —
+// user-facing objects are "Model connection" and "Engine"; "provider" is
+// brand/service copy and internal kind vocabulary only.
 // The Playbooks→Skills merge retired "Playbook" entirely: there is ONE authored
 // concept, a Skill, and some skills are runnable as a /command.
 // ("Engines" hub section, engine chips) — "External", "ACP", and "Agent app"
@@ -852,7 +853,7 @@ function main() {
   });
 
   console.log(
-    'Noun-consistency gate (prompt/playbook/runtime -> Skill/Engine; Provider is canonical).\n',
+    'Noun-consistency gate (prompt/playbook/runtime -> Skill/Engine; the Connections tab owns the noun).\n',
   );
 
   let failed = false;
