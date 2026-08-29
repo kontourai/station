@@ -1,11 +1,17 @@
+import { randomUUID } from 'node:crypto';
 import {
+  closeSync,
   copyFileSync,
   existsSync,
+  fsyncSync,
+  openSync,
   readFileSync,
+  renameSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import { signingIdentityRecordsFromSecurityOutput } from '../nightly/macos-signing-identity.mjs';
 import { runBoundedCommand } from './macos-notarized-artifacts.mjs';
 
@@ -14,6 +20,7 @@ export const PRIVATE_KEY_PROBE_TIMEOUT_MS = 60 * 1000;
 const SIGNING_KEYCHAIN_JOURNAL_VERSION = 1;
 const MAX_KEYCHAIN_PATH_LENGTH = 4096;
 const MAX_SEARCH_LIST_ENTRIES = 128;
+const JOURNAL_TEMP_ATTEMPTS = 8;
 
 export function lifetimeFromDeadline(epoch, now = Date.now) {
   if (typeof epoch !== 'string' || !/^[1-9][0-9]{9,10}$/.test(epoch))
@@ -119,19 +126,62 @@ function validatedSigningKeychainJournal(parsed, keychain) {
   };
 }
 
-function persistSigningKeychainState({ state, keychain, previous, stage }) {
-  writeFileSync(
-    state,
-    JSON.stringify({
-      keychain,
-      previous,
-      schemaVersion: SIGNING_KEYCHAIN_JOURNAL_VERSION,
-      stage,
-    }),
-    {
-      mode: 0o600,
-    },
-  );
+const DEFAULT_JOURNAL_FILESYSTEM = Object.freeze({
+  close: closeSync,
+  fsync: fsyncSync,
+  open: openSync,
+  randomUUID,
+  rename: renameSync,
+  unlink: unlinkSync,
+  write: writeFileSync,
+});
+
+function persistSigningKeychainState(
+  { state, keychain, previous, stage },
+  injectedFilesystem = {},
+) {
+  const filesystem = { ...DEFAULT_JOURNAL_FILESYSTEM, ...injectedFilesystem };
+  const contents = JSON.stringify({
+    keychain,
+    previous,
+    schemaVersion: SIGNING_KEYCHAIN_JOURNAL_VERSION,
+    stage,
+  });
+  let descriptor;
+  let temporary;
+  try {
+    for (let attempt = 0; attempt < JOURNAL_TEMP_ATTEMPTS; attempt += 1) {
+      temporary = join(
+        dirname(state),
+        `.${basename(state)}.${filesystem.randomUUID()}.tmp`,
+      );
+      try {
+        descriptor = filesystem.open(temporary, 'wx', 0o600);
+        break;
+      } catch (error) {
+        if (error?.code !== 'EEXIST' || attempt === JOURNAL_TEMP_ATTEMPTS - 1)
+          throw error;
+      }
+    }
+    filesystem.write(descriptor, contents, 'utf8');
+    filesystem.fsync(descriptor);
+    filesystem.close(descriptor);
+    descriptor = undefined;
+    filesystem.rename(temporary, state);
+    temporary = undefined;
+  } catch (error) {
+    if (descriptor !== undefined) {
+      try {
+        filesystem.close(descriptor);
+      } catch {}
+    }
+    if (temporary) {
+      try {
+        filesystem.unlink(temporary);
+      } catch {}
+    }
+    throw error;
+  }
 }
 
 export async function prepareMacosSigningKeychain({
@@ -143,7 +193,9 @@ export async function prepareMacosSigningKeychain({
   deadlineEpoch,
   now,
   run,
-  writeState = persistSigningKeychainState,
+  journalFilesystem,
+  writeState = (record) =>
+    persistSigningKeychainState(record, journalFilesystem),
 }) {
   const lifetime = lifetimeFromDeadline(deadlineEpoch, now);
   const previous = await previousSearchList(run);
@@ -284,10 +336,10 @@ export async function cleanupMacosSigningKeychain({ keychain, state, run }) {
         keychain,
       );
     } catch {
-      throw new Error('macOS signing keychain cleanup failed.');
+      failures.push('journal');
     }
   }
-  if (prepared) {
+  if (journal) {
     const { previous, stage } = journal;
     try {
       if (['search-restore-required', 'search-set'].includes(stage))

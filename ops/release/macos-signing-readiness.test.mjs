@@ -1,6 +1,14 @@
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { load } from 'js-yaml';
 import { expect, test, vi } from 'vitest';
 import { runBoundedCommand } from './macos-notarized-artifacts.mjs';
@@ -117,6 +125,7 @@ test('prepare journals every recovery stage and orders all bounded keychain comm
     schemaVersion: 1,
     stage: 'search-set',
   });
+  expect(statSync(state).mode & 0o777).toBe(0o600);
 });
 
 test('re-unlock sets a strictly fresher, smaller lifetime immediately before unlock', async () => {
@@ -315,14 +324,16 @@ test('records search restoration before a failed or interrupted search-list muta
   }
 });
 
-test('keeps search restoration recoverable when post-mutation state persistence fails', async () => {
+test('keeps search restoration recoverable when an atomic post-mutation journal write fails', async () => {
   const state = makeStatePath();
-  const stages = [];
   const calls = [];
-  const writeState = (record) => {
-    stages.push(record.stage);
-    if (record.stage === 'search-set') throw new Error('disk interruption');
-    writeFileSync(record.state, JSON.stringify(record), { mode: 0o600 });
+  let renameAttempts = 0;
+  const journalFilesystem = {
+    rename: (temporary, destination) => {
+      renameAttempts += 1;
+      if (renameAttempts === 4) throw new Error('disk interruption');
+      return renameSync(temporary, destination);
+    },
   };
   await expect(
     prepareMacosSigningKeychain({
@@ -334,16 +345,16 @@ test('keeps search restoration recoverable when post-mutation state persistence 
       password: 'secret',
       run: successRun(calls),
       state,
-      writeState,
+      journalFilesystem,
     }),
   ).rejects.toThrow('disk interruption');
-  expect(stages).toEqual([
-    'captured',
-    'created',
-    'search-restore-required',
-    'search-set',
-  ]);
   expect(stateAt(state).stage).toBe('search-restore-required');
+  expect(readdirSync(dirname(state))).not.toContain(
+    '.state.json.disk-interruption.tmp',
+  );
+  expect(
+    readdirSync(dirname(state)).filter((entry) => entry.endsWith('.tmp')),
+  ).toEqual([]);
   expect(calls.at(-1).args).toEqual([
     'list-keychains',
     '-d',
@@ -459,7 +470,7 @@ test('rejects malformed security search-list output before keychain mutation', a
   expect(existsSync(state)).toBe(false);
 });
 
-test('rejects stale, mismatched, and hostile journals before any cleanup mutation', async () => {
+test('rejects stale, mismatched, and hostile journals before restoration but still locks and deletes', async () => {
   const valid = {
     keychain: '/keychain',
     previous: ['/prior'],
@@ -492,7 +503,10 @@ test('rejects stale, mismatched, and hostile journals before any cleanup mutatio
         },
       }),
     ).rejects.toThrow('macOS signing keychain cleanup failed.');
-    expect(calls).toEqual([]);
+    expect(securityCommands(calls)).toEqual([
+      'lock-keychain',
+      'delete-keychain',
+    ]);
     expect(existsSync(state)).toBe(true);
   }
 });
