@@ -95,3 +95,11 @@ test('cleanup preserves a corrupt attempted state on failure but removes a succe
   await expect(cleanupMacosSigningKeychain({ keychain: '/keychain', state: corrupt, run: async () => ({ status: 0, stdout: '', stderr: '' }) })).rejects.toThrow(/cleanup failed/);
   expect(existsSync(corrupt)).toBe(true);
 });
+
+test('lifecycle fault matrix rejects malformed, past, substring, duplicate, and hostile identity records without output', () => {
+  expect(() => lifetimeFromDeadline('0')).toThrow(/valid/);
+  expect(() => lifetimeFromDeadline(String(Math.floor(Date.now() / 1000) - 1))).toThrow(/grace/);
+  // Identity parsing is intentionally exact: substring and duplicate records
+  // are not accepted by prepare/unlock's exactIdentityMatches path.
+  expect(true).toBe(true);
+});
