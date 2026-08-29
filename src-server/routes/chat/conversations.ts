@@ -2248,6 +2248,10 @@ export function createGlobalConversationRoutes(
         authority: SessionReadAuthority;
       }): Promise<ConversationOpenResolution>;
     };
+    resolveConversationOpen?(
+      conversationId: string,
+      authority: SessionReadAuthority,
+    ): Promise<ConversationOpenResolution | null>;
   },
   getUserId: () => string = () => getCachedUser().alias,
   acknowledgementStore?: ConversationAcknowledgementStore,
@@ -2523,58 +2527,20 @@ export function createGlobalConversationRoutes(
           400,
         );
       const authority = authorityFor(c.req.raw);
-      const runtimePage =
-        await sessionConversationReader.listConversationHistoryPage(authority, {
-          limit: 100,
-        });
-      const runtime = runtimePage.items.find((item) => item.id === id);
-      if (runtime && sessionConversationReader.conversationOpenResolver) {
+      const resolved =
+        await sessionConversationReader.resolveConversationOpen?.(
+          id,
+          authority,
+        );
+      if (resolved) {
         return c.json({
           success: true,
-          data: await sessionConversationReader.conversationOpenResolver.resolve(
-            {
-              conversation: runtime,
-              authority,
-            },
-          ),
+          data: resolved,
         });
       }
-      if (!isHostedSessionReadAuthority(authority)) {
-        for (const [slug, adapter] of memoryAdapters) {
-          const record = await adapter.getConversation(id);
-          if (!record) continue;
-          const messages = await adapter.getMessages(record.userId, record.id);
-          const metadata =
-            record.metadata &&
-            typeof record.metadata === 'object' &&
-            !Array.isArray(record.metadata)
-              ? (record.metadata as Record<string, unknown>)
-              : undefined;
-          const conversation: ConversationListItem = {
-            id: record.id,
-            source: 'store',
-            agentSlug: publicAgentIdFromRuntimeKey(record.resourceId || slug),
-            ...(typeof metadata?.projectSlug === 'string'
-              ? { projectSlug: metadata.projectSlug }
-              : {}),
-            title: record.title,
-            createdAt: record.createdAt,
-            updatedAt: record.updatedAt,
-            messageCount: messages.length,
-            mutable: true,
-            answerability: { answerable: true },
-          };
-          const resolution: ConversationOpenResolution = {
-            status: 'transcript-only',
-            conversation,
-            transcript: { available: true, owner: 'store', messages },
-            canContinue: false,
-            answerability: conversation.answerability,
-            recoveryActions: ['retry', 'start-new'],
-          };
-          return c.json({ success: true, data: resolution });
-        }
-      }
+      // File-store ownership is not a request principal.  Until it has a
+      // principal-aware point-read seam, a guessed id must remain invisible
+      // rather than treating record.userId as authority.
       return c.json({ success: false, error: 'Conversation not found' }, 404);
     } catch (error) {
       return conversationRouteFailure(

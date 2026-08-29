@@ -972,9 +972,11 @@ export type ConversationOpenResolution =
       transcript: {
         available: true;
         owner: 'runtime';
-        messages: readonly unknown[];
+        /** Bounded transcript bytes stay behind the existing message/window APIs. */
+        messageCount: number;
       };
-      canContinue: true;
+      /** Computed from the current Session control/lifecycle facts. */
+      canContinue: boolean;
       answerability: RequestAnswerability;
       recoveryActions: readonly [];
     }
@@ -984,7 +986,7 @@ export type ConversationOpenResolution =
       transcript: {
         available: true;
         owner: 'store' | 'runtime';
-        messages: readonly unknown[];
+        messageCount: number;
       };
       canContinue: false;
       answerability: RequestAnswerability;

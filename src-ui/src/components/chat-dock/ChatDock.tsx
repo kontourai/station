@@ -2790,9 +2790,20 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             // creating a tab; recovery states deliberately do not fall
             // through to the old "New chat" hydration path.
             const resolved = await resolveConversationOpen(row.id, apiBase);
-            if (resolved?.status !== 'resolved') return;
+            if (!resolved) {
+              showToast(
+                'Conversation could not be resolved. Retry or start a new chat.',
+              );
+              return false;
+            }
+            if (resolved.status !== 'resolved' || !resolved.canContinue) {
+              showToast(
+                `${resolved.conversation.title} is available read-only. Retry or start a new chat.`,
+              );
+              return false;
+            }
             const conversation = resolved.conversation;
-            await openUserSelectedConversationInScopedPane(
+            return await openUserSelectedConversationInScopedPane(
               conversation.id,
               conversation.agentSlug,
               conversation.projectSlug,

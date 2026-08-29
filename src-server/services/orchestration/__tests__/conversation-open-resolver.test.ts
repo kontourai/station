@@ -31,6 +31,7 @@ describe('ConversationOpenResolver', () => {
       readCurrent: vi.fn().mockResolvedValue({
         messages: [{ id: 'one', role: 'user', parts: [] }],
         answerability: { answerable: true },
+        canContinue: true,
       }),
     });
 

@@ -29,6 +29,7 @@ export function createConversationOpenResolver(deps: {
   }): Promise<{
     messages: readonly ConversationMessage[];
     answerability: ConversationListItem['answerability'];
+    canContinue: boolean;
   } | null>;
   reportUnavailable?(error: unknown): void;
 }): ConversationOpenResolver {
@@ -70,9 +71,9 @@ export function createConversationOpenResolver(deps: {
           transcript: {
             available: true,
             owner: 'runtime',
-            messages: current.messages,
+            messageCount: current.messages.length,
           },
-          canContinue: true,
+          canContinue: current.canContinue,
           answerability: current.answerability,
           recoveryActions: [],
         };

@@ -458,9 +458,46 @@ export async function resolveConversationOpen(
   );
   const result = (await response.json()) as {
     success: boolean;
-    data?: ConversationOpenResolution;
+    data?: unknown;
   };
-  return result.success ? (result.data ?? null) : null;
+  return result.success && parseConversationOpenResolution(result.data)
+    ? (result.data as ConversationOpenResolution)
+    : null;
+}
+
+/** Reject hostile/old wire shapes rather than letting UI infer a Session. */
+function parseConversationOpenResolution(
+  value: unknown,
+): value is ConversationOpenResolution {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  if (
+    !['resolved', 'transcript-only', 'missing-session', 'unavailable'].includes(
+      String(record.status),
+    ) ||
+    typeof record.canContinue !== 'boolean' ||
+    !Array.isArray(record.recoveryActions) ||
+    !record.conversation ||
+    typeof record.conversation !== 'object' ||
+    !record.transcript ||
+    typeof record.transcript !== 'object'
+  )
+    return false;
+  const conversation = record.conversation as Record<string, unknown>;
+  const transcript = record.transcript as Record<string, unknown>;
+  if (
+    typeof conversation.id !== 'string' ||
+    typeof conversation.title !== 'string' ||
+    typeof conversation.agentSlug !== 'string' ||
+    typeof transcript.available !== 'boolean' ||
+    (transcript.available &&
+      (!Number.isInteger(transcript.messageCount) ||
+        (transcript.messageCount as number) < 0))
+  )
+    return false;
+  return (
+    record.status !== 'resolved' || typeof record.currentSessionId === 'string'
+  );
 }
 
 export function useConversationsQuery(

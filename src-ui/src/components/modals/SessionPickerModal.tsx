@@ -14,7 +14,9 @@ interface SessionPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
   /** The selected row is the input to server-authoritative open resolution. */
-  onSelect: (conversation: ConversationListItem) => void | Promise<void>;
+  onSelect: (
+    conversation: ConversationListItem,
+  ) => void | boolean | Promise<undefined | boolean>;
   agents: Array<{ slug: string; name: string }>;
   projects: Array<{ slug: string; name: string }>;
   activeConversationIds?: string[];
@@ -97,8 +99,11 @@ export function SessionPickerModal({
       }
       onSelect={async (item) => {
         const conversation = item.metadata!;
-        await onSelect(conversation);
-        onClose();
+        const opened = await onSelect(conversation);
+        // An authoritative recovery/error result keeps the picker visible;
+        // closing it would turn a denied or unavailable resolution into a
+        // silent no-op.
+        if (opened !== false) onClose();
       }}
       onClose={onClose}
       renderMetadata={(item) => {

@@ -1557,6 +1557,17 @@ export class OrchestrationService {
             authority,
           ),
           answerability: detail.session.answerability,
+          // Continuation is a server decision over the CURRENT replaceable
+          // Session. A historical/nonmutable inventory row, a read-only
+          // attachment, an active turn, a pending review, or a stopped child
+          // does not become writable merely because the selected Agent has a
+          // provider today.
+          canContinue:
+            detail.session.controlMode === 'station-owned' &&
+            detail.session.lifecycleState === 'running' &&
+            detail.session.hasActiveTurn !== true &&
+            detail.session.pendingReview !== true &&
+            detail.session.answerability.answerable,
         };
       },
       reportUnavailable: (error) =>
@@ -3196,6 +3207,63 @@ export class OrchestrationService {
       threadId,
       authority,
     );
+  }
+
+  /**
+   * Exact conversation-open point read.  Unlike history inventory this never
+   * pages or derives a candidate from recency: the supplied durable
+   * conversation identity is followed only to its lineage current child and
+   * projected under the request's one authority.
+   */
+  async resolveConversationOpen(
+    conversationId: string,
+    authority: SessionReadAuthority,
+  ) {
+    this.initialize();
+    const currentSessionId = this.currentConversationSessionId(conversationId);
+    const query = await this.sessionQueries.read(
+      { type: 'conversation', threadId: currentSessionId },
+      authority,
+    );
+    if (query.status === 'unavailable') return null;
+    if (query.status !== 'found') return null;
+    // A direct legacy root may not have a lineage row. A lineage child must
+    // still prove it belongs to the requested durable conversation; otherwise
+    // an id collision cannot open a foreign Session.
+    if (
+      query.conversation.id !== conversationId &&
+      this.options.eventStore?.conversationForSession(currentSessionId)
+        ?.conversationId !== conversationId
+    ) {
+      return null;
+    }
+    const detail = await this.readCurrentConversationSession(
+      conversationId,
+      authority,
+    );
+    const conversation: ConversationListItem = {
+      id: conversationId,
+      source: 'runtime',
+      agentSlug: query.conversation
+        .agentSlug as ConversationListItem['agentSlug'],
+      ...(query.conversation.projectSlug
+        ? { projectSlug: query.conversation.projectSlug }
+        : {}),
+      title: query.conversation.title,
+      createdAt: query.conversation.createdAt,
+      updatedAt: query.conversation.updatedAt,
+      messageCount: query.conversation.messageCount,
+      mutable: false,
+      answerability: detail?.session.answerability ?? { answerable: true },
+      ...(query.conversation.model ? { model: query.conversation.model } : {}),
+      ...(query.conversation.acceptedModel
+        ? { acceptedModel: query.conversation.acceptedModel }
+        : {}),
+      ...(query.conversation.environmentId
+        ? { environmentId: query.conversation.environmentId }
+        : {}),
+    };
+    return this.conversationOpenResolver.resolve({ conversation, authority });
   }
 
   appendConversationFork(event: CanonicalRuntimeEvent): void {

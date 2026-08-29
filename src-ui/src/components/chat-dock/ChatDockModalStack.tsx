@@ -62,7 +62,7 @@ interface ChatDockModalStackProps {
   onCloseSessionPicker: () => void;
   onSessionPickerSelect: (
     conversation: ConversationListItem,
-  ) => void | Promise<void>;
+  ) => void | boolean | Promise<undefined | boolean>;
   onChatFontSizeChange: (fn: (prev: number) => number) => void;
   onShowReasoningChange: (show: boolean) => void;
   onShowToolDetailsChange: (show: boolean) => void;
