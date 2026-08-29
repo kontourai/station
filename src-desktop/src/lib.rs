@@ -6340,6 +6340,7 @@ struct DesktopServerState {
     owner: Mutex<DesktopOwner>,
     supervisor: Arc<ServerSupervisor>,
     readiness: Mutex<startup_readiness::StartupReadiness>,
+    startup_commit_in_flight: AtomicBool,
     /// When the owner was last re-derived. App setup seeds this with the
     /// instant of its own derivation, so in production it is always `Some` —
     /// the boot decision starts the interval rather than making the first
@@ -6350,8 +6351,101 @@ struct DesktopServerState {
 }
 
 #[cfg(not(mobile))]
+#[derive(Default)]
+struct NativeStartupBootstrap {
+    renderer_observed: AtomicBool,
+}
+
+#[cfg(not(mobile))]
+const NATIVE_STARTUP_BOOTSTRAP_SCRIPT: &str = r#"
+(() => {
+  const signalReady = () => {
+    window.__TAURI_INTERNALS__.invoke('renderer_startup_ready').catch(() => {});
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', signalReady, { once: true });
+  } else {
+    signalReady();
+  }
+})();
+"#;
+
+#[cfg(not(mobile))]
 fn startup_readiness_accepts_retry(phase: startup_readiness::ReadinessPhase) -> bool {
     phase == startup_readiness::ReadinessPhase::Waiting
+}
+
+#[cfg(not(mobile))]
+fn claim_startup_commit(
+    renderer_observed: bool,
+    phase: startup_readiness::ReadinessPhase,
+    in_flight: &AtomicBool,
+) -> bool {
+    renderer_observed
+        && startup_readiness_accepts_retry(phase)
+        && in_flight
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+}
+
+#[cfg(not(mobile))]
+fn release_failed_startup_commit(app: &AppHandle) {
+    if let Some(state) = app.try_state::<DesktopServerState>() {
+        state
+            .startup_commit_in_flight
+            .store(false, Ordering::Release);
+    }
+}
+
+#[cfg(not(mobile))]
+fn request_native_startup_commit(app: &AppHandle) {
+    let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
+        return;
+    };
+    if !bootstrap.renderer_observed.load(Ordering::Acquire) {
+        return;
+    }
+    let Some(state) = app.try_state::<DesktopServerState>() else {
+        return;
+    };
+    let ticket = {
+        let status = state
+            .supervisor
+            .status
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let Ok(ticket) = current_startup_ticket(&status) else {
+            return;
+        };
+        ticket
+    };
+    let phase = state
+        .readiness
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .phase;
+    if !claim_startup_commit(true, phase, &state.startup_commit_in_flight) {
+        return;
+    }
+    let app_for_commit = app.clone();
+    tauri::async_runtime::spawn(async move {
+        match tauri::async_runtime::spawn_blocking({
+            let app_for_task = app_for_commit.clone();
+            move || commit_startup_readiness_blocking(app_for_task, ticket)
+        })
+        .await
+        {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => {
+                log::warn!("native startup bootstrap proof refused: {error}");
+                release_failed_startup_commit(&app_for_commit);
+            }
+            Err(error) => {
+                log::warn!("native startup bootstrap task failed: {error}");
+                release_failed_startup_commit(&app_for_commit);
+            }
+        }
+    });
 }
 
 #[cfg(not(mobile))]
@@ -6366,6 +6460,7 @@ fn notify_startup_readiness_if_waiting(app: &AppHandle) {
         .phase;
     if startup_readiness_accepts_retry(phase) {
         let _ = app.emit("station://startup-readiness-retry", ());
+        request_native_startup_commit(app);
     }
 }
 
@@ -7172,15 +7267,48 @@ fn commit_startup_readiness_blocking(
 
 #[cfg(not(mobile))]
 #[tauri::command]
+fn renderer_startup_ready(app: AppHandle) -> Result<(), String> {
+    let bootstrap = app
+        .try_state::<NativeStartupBootstrap>()
+        .ok_or("Native startup bootstrap is not initialized.")?;
+    bootstrap.renderer_observed.store(true, Ordering::Release);
+    request_native_startup_commit(&app);
+    Ok(())
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
 async fn commit_startup_readiness(
     app: AppHandle,
     ticket: startup_readiness::StartupTicket,
 ) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        commit_startup_readiness_blocking(app, ticket)
+    let state = app
+        .try_state::<DesktopServerState>()
+        .ok_or("Desktop startup readiness is not initialized.")?;
+    let phase = state
+        .readiness
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .phase;
+    if !claim_startup_commit(true, phase, &state.startup_commit_in_flight) {
+        return Err("Desktop startup identity proof is already in flight.".to_string());
+    }
+    let app_for_commit = app.clone();
+    let result = match tauri::async_runtime::spawn_blocking(move || {
+        commit_startup_readiness_blocking(app_for_commit, ticket)
     })
     .await
-    .map_err(|error| format!("Desktop startup identity task failed: {error}"))?
+    {
+        Ok(result) => result,
+        Err(error) => {
+            release_failed_startup_commit(&app);
+            return Err(format!("Desktop startup identity task failed: {error}"));
+        }
+    };
+    if result.is_err() {
+        release_failed_startup_commit(&app);
+    }
+    result
 }
 
 #[cfg(not(mobile))]
@@ -8412,6 +8540,8 @@ If a stable instance is running, this launch will focus its window and exit.",
         .manage(NativePairingExchangeCancellation::default());
     #[cfg(not(mobile))]
     let builder = builder
+        .manage(NativeStartupBootstrap::default())
+        .append_invoke_initialization_script(NATIVE_STARTUP_BOOTSTRAP_SCRIPT)
         .manage(NativeBrowserPreviewGrants::default())
         .manage(ssh_launcher::SshLaunches::default());
 
@@ -8440,6 +8570,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         open_workspace_pane_pop_out,
         bundled_server_status,
         restart_bundled_server,
+        renderer_startup_ready,
         commit_startup_readiness,
         commit_startup_recovery_ui,
         ssh_env_probe,
@@ -8629,7 +8760,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                 if let Some(dispatcher) = native_cover_dispatcher(app.handle().clone()) {
                     app.manage(dispatcher);
                 }
-                app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), ownership_checked_at: Mutex::new(Some(Instant::now())) });
+                app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), startup_commit_in_flight: AtomicBool::new(false), ownership_checked_at: Mutex::new(Some(Instant::now())) });
                 replay_pending_main_window_activation(app.handle(), &pending_activation);
                 // The tray poll reads this managed ownership state. Starting
                 // it earlier allowed its first poll to see only the
@@ -9263,6 +9394,32 @@ mod tests {
         ] {
             assert!(!startup_readiness_accepts_retry(terminal));
         }
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn native_bootstrap_claim_requires_renderer_waiting_and_single_flight() {
+        let in_flight = AtomicBool::new(false);
+        assert!(!claim_startup_commit(
+            false,
+            startup_readiness::ReadinessPhase::Waiting,
+            &in_flight,
+        ));
+        assert!(!claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Ready,
+            &in_flight,
+        ));
+        assert!(claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Waiting,
+            &in_flight,
+        ));
+        assert!(!claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Waiting,
+            &in_flight,
+        ));
     }
 
     #[test]

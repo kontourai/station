@@ -66,6 +66,12 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).toContain('with_native_startup_cover(&window, target.covered)');
     expect(lib).toContain('request_native_cover(app, true)');
     expect(lib).toContain('request_native_cover(app, false)');
+    expect(lib).toContain(
+      '.append_invoke_initialization_script(NATIVE_STARTUP_BOOTSTRAP_SCRIPT)',
+    );
+    expect(lib).toContain("invoke('renderer_startup_ready')");
+    expect(lib).toContain('fn renderer_startup_ready');
+    expect(lib).toContain('request_native_startup_commit(&app);');
     expect([
       ...lib.matchAll(/\.name\("station-native-cover-dispatcher"\.into\(\)\)/g),
     ]).toHaveLength(1);
