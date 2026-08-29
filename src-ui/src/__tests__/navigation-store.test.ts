@@ -107,13 +107,13 @@ describe('navigationStore query updates under an open dialog layer', () => {
     expect(close).not.toHaveBeenCalled();
   });
 
-  test('the collapsed layer leaves a guarded entry, not one Back can cross unasked', async () => {
+  test('the collapsed layer takes its own navigation index, not the one beneath it', async () => {
     // Establish both entries through the store so the indices are the ones it
     // really assigns, rather than a hand-written pair that agrees by luck.
     navigationStore.navigate('/projects/alpha', { chat: 'session-old' });
     const beneathIndex = window.history.state.__stationNavigationIndex;
 
-    const dispose = registerDialogHistory('guard-probe', vi.fn());
+    const dispose = registerDialogHistory('index-probe', vi.fn());
     navigationStore.updateParams({ chat: 'session-new' });
     dispose();
     for (let tick = 0; tick < 50; tick += 1) {
@@ -123,11 +123,26 @@ describe('navigationStore query updates under an open dialog layer', () => {
 
     // The residue holds a URL the entry beneath does not, so it must not also
     // hold that entry's index: equal indices are the delta-0 the store reads
-    // as "nothing traversed" and answers by skipping every guard.
+    // as "nothing traversed".
     expect(window.history.state.__stationNavigationIndex).toBe(
       beneathIndex + 1,
     );
+  });
 
+  test('a Back off the collapsed layer consults the unsaved-changes guard', async () => {
+    navigationStore.navigate('/projects/alpha', { chat: 'session-old' });
+
+    const dispose = registerDialogHistory('guard-probe', vi.fn());
+    navigationStore.updateParams({ chat: 'session-new' });
+    dispose();
+    for (let tick = 0; tick < 50; tick += 1) {
+      if (window.history.state[DIALOG_HISTORY_KEY] === undefined) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    // Registered the way `useUnsavedGuard` registers one. A guard that is
+    // never consulted is how a dirty editor gets abandoned silently, so this
+    // asserts the call, not the destination.
     const guard = vi.fn((continueNavigation: () => void) =>
       continueNavigation(),
     );
