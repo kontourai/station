@@ -1,4 +1,5 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
   type ProviderSessionStartInput,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
@@ -878,6 +879,115 @@ describe('createSessionAgentResolver', () => {
       provider: 'acp',
       capability: 'toolServers',
       reason: 'not-found',
+    });
+  });
+
+  describe('agent settings augment slice B: the model-field footgun', () => {
+    test('an engine-bound agent authoring top-level model with no execution.modelId gets a disclosed warning naming execution.modelId', async () => {
+      const logger = { warn: vi.fn() };
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({
+            model: 'claude-opus',
+            execution: { agentConnectionId: engineConnectionId('claude') },
+          }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+        logger,
+      });
+
+      const result = await resolver(baseInput({ provider: 'claude' }));
+
+      const report = result.metadata?.[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ] as any;
+      expect(report.modelFieldWarning).toContain("'model'");
+      expect(report.modelFieldWarning).toContain('execution.modelId');
+      expect(report.modelFieldWarning).toContain('claude-opus');
+      expect(logger.warn).toHaveBeenCalledWith(report.modelFieldWarning);
+    });
+
+    test('an engine-bound agent authoring an empty/whitespace execution.modelId still gets the warning (blank is not "set")', async () => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({
+            model: 'claude-opus',
+            execution: {
+              agentConnectionId: engineConnectionId('claude'),
+              modelId: '   ',
+            },
+          }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+
+      const result = await resolver(baseInput({ provider: 'claude' }));
+
+      const report = result.metadata?.[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ] as any;
+      expect(report.modelFieldWarning).toBeDefined();
+    });
+
+    test('a correctly-set engine-bound agent (execution.modelId authored) gets no warning', async () => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({
+            model: 'claude-opus',
+            execution: {
+              agentConnectionId: engineConnectionId('claude'),
+              modelId: 'claude-sonnet-4',
+            },
+          }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+
+      const result = await resolver(baseInput({ provider: 'claude' }));
+
+      const report = result.metadata?.[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ] as any;
+      expect(report?.modelFieldWarning).toBeUndefined();
+    });
+
+    test('an engine-bound agent with no top-level model authored gets no warning (nothing to conflict)', async () => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({
+            execution: { agentConnectionId: engineConnectionId('claude') },
+          }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+
+      const result = await resolver(baseInput({ provider: 'claude' }));
+
+      const report = result.metadata?.[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ] as any;
+      expect(report?.modelFieldWarning).toBeUndefined();
+    });
+
+    test('an unbound (Station-engine) agent authoring top-level model gets no warning — model is the field that actually applies there', async () => {
+      // builtinStationAgentSpec / an ordinary unbound agent never reaches
+      // this resolver's provider gate for 'station', but the same
+      // derivation must not fire for an agent with no engine binding at
+      // all even when reached through a delivery-capable provider, since
+      // `execution.agentConnectionId` — the gate this check keys on — is
+      // what makes an agent "engine-bound" in the first place.
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () => agentSpec({ model: 'claude-opus' }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+
+      const result = await resolver(baseInput({ provider: 'claude' }));
+
+      const report = result.metadata?.[
+        SESSION_CAPABILITY_DELIVERY_METADATA_KEY
+      ] as any;
+      expect(report?.modelFieldWarning).toBeUndefined();
     });
   });
 });

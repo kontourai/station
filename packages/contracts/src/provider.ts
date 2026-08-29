@@ -741,6 +741,18 @@ export interface SessionCapabilityDeliveryMetadata {
     toolIdentity: 'self-reported';
     limitation: string;
   };
+  /**
+   * Agent settings augment slice B: present when this engine-bound agent
+   * (`AgentSpec.execution.agentConnectionId` set) authored the
+   * Station-engine `AgentSpec.model` field while leaving
+   * `execution.modelId` — the field an engine-bound agent's model
+   * selection actually reads — unset (or blank). `model` is read only
+   * for a Station-engine (unbound) agent, so authoring it here is a
+   * silent no-op: the session still starts, on whatever model the engine
+   * defaults to. A read-only disclosure, never a refusal; names the field
+   * that actually applies.
+   */
+  modelFieldWarning?: string;
 }
 
 export interface ProviderSessionStartInput {

@@ -461,6 +461,27 @@ export function createSessionAgentResolver(
         }
       }
 
+      // Agent settings augment slice B: the model-field footgun.
+      // `AgentSpec.model` is the Station-engine field — read only for an
+      // unbound (Station-engine) agent. An engine-bound agent's model
+      // selection reads `execution.modelId` instead
+      // (`execution-target-resolver.ts`), so authoring the top-level field
+      // here is a silent no-op: the session still starts, on whatever model
+      // the engine defaults to. Read-only derivation at the narrowest
+      // honest seam — never a registry write, never a refusal — naming the
+      // field that actually applies for THIS agent's engine binding.
+      if (
+        spec.execution?.agentConnectionId !== undefined &&
+        typeof spec.model === 'string' &&
+        spec.model.trim().length > 0 &&
+        (spec.execution.modelId === undefined ||
+          spec.execution.modelId === null ||
+          spec.execution.modelId.trim().length === 0)
+      ) {
+        report.modelFieldWarning = `Agent '${spec.name}' authored the top-level 'model' field ('${spec.model}'), but this agent is engine-bound and engine-bound sessions read 'execution.modelId' instead — 'model' has no effect here. Set 'execution.modelId' to choose a model.`;
+        logger?.warn?.(report.modelFieldWarning);
+      }
+
       return {
         ...input,
         agent: definition,
