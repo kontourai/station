@@ -12348,6 +12348,10 @@ mod tests {
             .map_err(|error| format!("sync native bootstrap profile store: {error}"))?;
         drop(file);
         replace_station_profile_store(&temporary, path)?;
+        crate::windows_path_trust::ensure(&[(
+            crate::windows_path_trust::TrustKind::File,
+            path,
+        )])?;
         Ok(())
     }
 
