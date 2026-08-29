@@ -259,23 +259,12 @@ describe('primary CI workflow governance', () => {
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
       "${{ github.event_name != 'pull_request_target' }}",
     );
-    expect(classify?.['runs-on']).toEqual([
-      'self-hosted',
-      'Linux',
-      'X64',
-      'kontour-linux',
-      'heavy-host',
-    ]);
+    expect(classify?.['runs-on']).toBe('ubuntu-22.04');
     expect(fastChecks?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
       "${{ always() && !cancelled() && ((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
     );
-    expect(fastChecks?.['runs-on']).toEqual([
-      'self-hosted',
-      'Linux',
-      'X64',
-      'fast-feedback',
-    ]);
+    expect(fastChecks?.['runs-on']).toBe('ubuntu-22.04');
     expect(fastChecks?.['timeout-minutes']).toBe(45);
     expect(fastChecks?.concurrency).toEqual({
       group:

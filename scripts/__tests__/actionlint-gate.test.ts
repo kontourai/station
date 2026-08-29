@@ -30,9 +30,60 @@ type MutableNightlyWorkflow = {
     nightly: {
       env: Record<string, string>;
       defaults?: { run: { 'working-directory': string } };
+      steps: Array<Record<string, unknown>>;
     };
   };
 };
+
+function persistentNightlyCapacityDocument(): MutableNightlyWorkflow {
+  return structuredClone({
+    jobs: {
+      nightly: {
+        'runs-on': ['self-hosted', 'Linux', 'kontour-linux', 'heavy-host'],
+        if: "github.event_name != 'pull_request'",
+        'timeout-minutes': 90,
+        env: {
+          GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER:
+            '${' + '{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}',
+          GCP_PLAY_SERVICE_ACCOUNT: '${' + '{ vars.GCP_PLAY_SERVICE_ACCOUNT }}',
+          ANDROID_UPLOAD_KEY_ALIAS: '${' + '{ vars.ANDROID_UPLOAD_KEY_ALIAS }}',
+          ANDROID_UPLOAD_CERT_SHA256:
+            '${' + '{ vars.ANDROID_UPLOAD_CERT_SHA256 }}',
+          ANDROID_BUILD_TOOLS_VERSION: '36.0.0',
+          STATION_MOBILE_DEFAULT_ENDPOINT:
+            '${' + '{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}',
+        },
+        steps: [
+          {
+            name: 'Validate requested Nightly rebuild index',
+            env: {
+              NIGHTLY_REBUILD_INDEX: '${' + '{ inputs.rebuild_index }}',
+            },
+            shell: 'bash',
+            run: [
+              "node --input-type=module -e '",
+              '  import { parseNightlyRebuildIndex } from "./scripts/lib/nightly-build-identity.mjs";',
+              '  parseNightlyRebuildIndex(process.env.NIGHTLY_REBUILD_INDEX);',
+              "'",
+              '',
+            ].join('\n'),
+          },
+          {
+            uses: `kontourai/.github/actions/physical-host-capacity@${REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA}`,
+            with: {
+              'coordination-root': '/mnt/e/kontour-runner-capacity',
+              'host-id': 'desktop-win',
+              'capacity-units': 10,
+              'lease-weight': 9,
+              'timeout-seconds': 600,
+              'owner-lifetime-seconds': 7800,
+            },
+          },
+        ],
+      },
+    },
+  }) as MutableNightlyWorkflow;
+}
 
 /** A verbatim actionlint line, including the colon-bearing shellcheck message
  * that a naive `split(':')` would mangle. */
@@ -1700,13 +1751,7 @@ describe('persistent runner policy', () => {
       },
     ],
   ])('rejects Nightly prevalidation with %s', (_name, mutate) => {
-    const workflow = readWorkflowDocuments().find(
-      ({ file }) => file === '.github/workflows/nightly.yml',
-    );
-    if (!workflow) throw new Error('Expected the checked-in Nightly workflow.');
-    const document = structuredClone(workflow.document) as {
-      jobs: { nightly: { steps: Array<Record<string, unknown>> } };
-    };
+    const document = persistentNightlyCapacityDocument();
     const validation = document.jobs.nightly.steps.find(
       (step) => step.name === 'Validate requested Nightly rebuild index',
     );
@@ -1724,13 +1769,7 @@ describe('persistent runner policy', () => {
   });
 
   test('rejects the exact prevalidation shape outside the Nightly job', () => {
-    const workflow = readWorkflowDocuments().find(
-      ({ file }) => file === '.github/workflows/nightly.yml',
-    );
-    if (!workflow) throw new Error('Expected the checked-in Nightly workflow.');
-    const document = structuredClone(workflow.document) as {
-      jobs: Record<string, unknown>;
-    };
+    const document = persistentNightlyCapacityDocument();
 
     expect(
       persistentRunnerPolicyFindings([
@@ -1777,14 +1816,7 @@ describe('persistent runner policy', () => {
   ])(
     'rejects inherited Nightly prevalidation context with %s',
     (_name, mutate) => {
-      const workflow = readWorkflowDocuments().find(
-        ({ file }) => file === '.github/workflows/nightly.yml',
-      );
-      if (!workflow)
-        throw new Error('Expected the checked-in Nightly workflow.');
-      const document = structuredClone(
-        workflow.document,
-      ) as MutableNightlyWorkflow;
+      const document = persistentNightlyCapacityDocument();
       mutate(document);
 
       expect(
@@ -2345,8 +2377,8 @@ describe('the real workflow corpus', () => {
       }
     }
 
-    expect(directCapacityJobs).toBeGreaterThanOrEqual(20);
+    expect(directCapacityJobs).toBe(3);
     expect(recoveryJobs).toBe(2);
-    expect(reusableCapacityJobs).toBeGreaterThan(0);
+    expect(reusableCapacityJobs).toBe(0);
   });
 });
