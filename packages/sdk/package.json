@@ -77,7 +77,7 @@
   },
   "dependencies": {
     "@kontourai/console-core": "^0.3.0",
-    "@kontourai/flow": "5.1.0",
+    "@kontourai/flow": "5.1.1",
     "@kontourai/flow-agents": "6.2.0",
     "@kontourai/station-contracts": "^0.7.0",
     "@kontourai/surface": "^3.0.0",
