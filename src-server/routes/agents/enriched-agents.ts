@@ -268,7 +268,9 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
     const stationDefault = metadata.slug === 'station';
     return {
       name: metadata.name || metadata.slug,
-      prompt: stationDefault ? (metadata.description ?? '') : '',
+      prompt: stationDefault
+        ? (metadata.prompt ?? metadata.description ?? '')
+        : '',
       description: metadata.description,
       ...(stationDefault
         ? { model: deps.defaultModel, tools: deps.defaultTools }
