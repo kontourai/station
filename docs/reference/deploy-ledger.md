@@ -27,6 +27,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-29T10:21:21Z | nightly-desktop | 0.1.2-nightly.2432 | `c9968e5` | nightly test-gate success on c9968e5b096c6489e4ce17215db0e26c40924635 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33246144107) |
 | 2026-08-29T10:08:01Z | nightly-android | 0.1.2-nightly.2432 | `c9968e5` | nightly test-gate success on c9968e5b096c6489e4ce17215db0e26c40924635 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33246144107) |
 | 2026-08-29T09:16:25Z | nightly-android | 0.1.2-nightly.2432 | `23478d5` | nightly test-gate success on 23478d54bdb96b7802b36ce490a7ab92b46fffac (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33244055407) |
 | 2026-08-29T07:43:10Z | nightly-android | 0.1.2-nightly.2432 | `52f9ee8` | nightly test-gate success on 52f9ee8fd785310a5d23281fa820694333c0b1ad (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33240426822) |
@@ -36,6 +37,15 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-08-29T10:21:21Z · nightly-desktop · 0.1.2-nightly.2432
+
+- Ship SHA: `c9968e5b096c6489e4ce17215db0e26c40924635`
+- Artifact: github-release:nightly-desktop (station-nightly-desktop-macos-aarch64.dmg, .app.tar.gz, latest.json)
+
+### Changelog
+
+> First recorded entry for this channel; no previous ship SHA exists in the ledger, so no changelog slice was derived.
 
 ## 2026-08-29T10:08:01Z · nightly-android · 0.1.2-nightly.2432
 

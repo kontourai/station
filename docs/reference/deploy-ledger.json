@@ -1,5 +1,29 @@
 [
   {
+    "timestampUtc": "2026-08-29T10:21:21Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.2-nightly.2432",
+    "sha": "c9968e5b096c6489e4ce17215db0e26c40924635",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/33246144107",
+    "artifacts": [
+      "github-release:nightly-desktop (station-nightly-desktop-macos-aarch64.dmg, .app.tar.gz, latest.json)"
+    ],
+    "gateResult": "nightly test-gate success on c9968e5b096c6489e4ce17215db0e26c40924635 (station#4539)",
+    "notes": null,
+    "changelog": {
+      "previousSha": null,
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": "First recorded entry for this channel; no previous ship SHA exists in the ledger, so no changelog slice was derived.",
+      "commitCount": 0
+    }
+  },
+  {
     "timestampUtc": "2026-08-29T10:08:01Z",
     "channel": "nightly-android",
     "version": "0.1.2-nightly.2432",
