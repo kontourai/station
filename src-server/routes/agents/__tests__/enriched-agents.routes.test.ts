@@ -269,6 +269,45 @@ describe('registry-backed enriched Agent routes', () => {
     expect(reconcilingBody.data).toEqual(stableBody.data);
   });
 
+  test('detail reads current persisted authoring fields while the runtime is reconciling', async () => {
+    let unstable = false;
+    let revision = 5;
+    let writer = {
+      name: 'Writer',
+      description: 'Before',
+      prompt: 'Before prompt',
+    };
+    const getAgentConfigurationRevision = vi.fn(() => {
+      if (unstable) revision += 1;
+      return revision;
+    });
+    const loadAgent = vi.fn(async (slug: string) =>
+      slug === 'writer' ? writer : { name: 'Station', prompt: 'Help.' },
+    );
+    const { app } = setup({ getAgentConfigurationRevision, loadAgent });
+
+    const stable = await json(await app.request('/'));
+    expect(stable.catalogState).toBeUndefined();
+
+    writer = {
+      name: 'Writer',
+      description: 'Persisted description',
+      prompt: 'Persisted prompt',
+    };
+    loadAgent.mockClear();
+    unstable = true;
+
+    const detail = await json(await app.request('/writer'));
+    expect(detail.catalogState).toBe('reconciling');
+    expect(detail.catalogAsOf).toBeUndefined();
+    expect(detail.data).toMatchObject({
+      slug: 'writer',
+      description: 'Persisted description',
+      prompt: 'Persisted prompt',
+    });
+    expect(loadAgent).toHaveBeenCalledTimes(1);
+  });
+
   describe('two Agents bound to one engine are told apart', () => {
     // Station never deletes a user's file to resolve a duplicate binding, so
     // the catalog can legitimately contain two. Rendering them as two
