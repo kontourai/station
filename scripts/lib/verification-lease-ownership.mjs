@@ -117,7 +117,7 @@ export function leaseIsLive(
   if (!lease?.owner || !Number.isFinite(lease.heartbeatAt)) return false;
   const actual = processIdentityFn(lease.owner.pid);
   if (!actual) return false;
-  // A live Windows PID without a bounded round-trip UTC CIM CreationDate is
+  // A live Windows PID without a bounded round-trip UTC creation time is
   // not evidence of death. Retain its lease rather than reclaiming an owner
   // whose PID could have been recycled while unavailable.
   if (actual.unavailable) return true;
@@ -150,7 +150,7 @@ function createOwner() {
   const identity = ownProcessIdentity(process.pid);
   if (identity?.unavailable)
     throw new Error(
-      'verification coordinator cannot create a lease while its round-trip UTC Windows CreationDate is unavailable',
+      'verification coordinator cannot create a lease while its round-trip UTC Windows process creation time is unavailable',
     );
   return {
     pid: process.pid,

@@ -63,7 +63,7 @@ class StationWindowsOwnedGuard {
     }
     quoted.Append('\\', backslashes * 2); quoted.Append('"'); return quoted.ToString();
   }
-  // FILETIME uses 100ns ticks while CIM exposes microseconds. Truncate only
+  // FILETIME uses 100ns ticks; the protocol compares microsecond precision. Truncate only
   // the final tick digit, then emit the canonical round-trip UTC ISO format.
   static string CreationIsoAtMicrosecondPrecision(IntPtr process) {
     FILETIME creation, exit, kernel, user;
