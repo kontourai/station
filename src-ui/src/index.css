@@ -1570,6 +1570,11 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* #765 A7: the title cluster ends with the (start-truncated) project path
+     and the actions cluster opens with the "N sessions" counter; with no gap
+     the two read as one run-together string ("…demo-project1 session"). The
+     gap keeps a visible seam even when the path fills every spare pixel. */
+  gap: var(--space-3);
   padding: var(--space-2) var(--space-6);
   border-bottom: 1px solid var(--border-primary);
   background: var(--bg-tertiary);

@@ -229,6 +229,13 @@ const CONVERSATIONS = {
       messageCount: 2,
       projectSlug: 'alpha',
     },
+    {
+      id: 'conv-managed-unbound',
+      title: 'Unbound Station Chat',
+      createdAt: '2026-05-01T00:00:00Z',
+      updatedAt: '2026-05-01T00:02:30Z',
+      messageCount: 2,
+    },
   ],
   claude: [
     {
@@ -278,6 +285,10 @@ const MESSAGES = {
   'conv-managed-alpha': [
     message('user', 'Use the managed fallback for Alpha.'),
     message('assistant', 'Managed Alpha transcript loaded.'),
+  ],
+  'conv-managed-unbound': [
+    message('user', 'Keep the current project context.'),
+    message('assistant', 'This conversation has no project binding.'),
   ],
   'conv-claude-alpha': [
     message('user', 'Ask connected Claude about Alpha.'),
@@ -458,6 +469,7 @@ async function seedCrossRuntimeRoutes(
 ) {
   const sessionIdsByConversation = {
     'conv-managed-alpha': ['session-managed-alpha'],
+    'conv-managed-unbound': ['session-managed-unbound'],
     'conv-claude-alpha': ['conv-claude-alpha'],
     'conv-codex-beta': ['conv-codex-beta'],
     'conv-acp-alpha': ['session-acp-alpha'],
@@ -502,6 +514,20 @@ async function seedCrossRuntimeRoutes(
           projectName: 'Alpha Project',
           executionMode: 'station',
           executionScope: 'project',
+          providerId: 'ollama-local',
+          provider: 'ollama',
+          providerOptions: {},
+          orchestrationSessionStarted: false,
+          ephemeralMessages: [],
+          inputHistory: [],
+        },
+        {
+          sessionId: 'session-managed-unbound',
+          conversationId: 'conv-managed-unbound',
+          agentSlug: 'station',
+          model: 'llama3.2',
+          executionMode: 'station',
+          executionScope: 'global',
           providerId: 'ollama-local',
           provider: 'ollama',
           providerOptions: {},
@@ -592,6 +618,21 @@ async function seedCrossRuntimeRoutes(
   await page.route('**/api/system/capabilities', (route) =>
     route.fulfill(
       json({ voice: { stt: [], tts: [] }, context: { providers: [] } }),
+    ),
+  );
+  // The shell also seeds React Query from /api/boot.  Leaving that aggregate
+  // live made this fixture race its explicit /api/projects response: the
+  // fresh server's empty boot list could clear the intentionally persisted
+  // Alpha binding before the mocked catalog arrived.  Keep the aggregate and
+  // the route mocks about the same project facts.
+  await page.route('**/api/boot', (route) =>
+    route.fulfill(
+      json({
+        version: 1,
+        sections: {
+          projects: { data: { success: true, data: PROJECTS } },
+        },
+      }),
     ),
   );
   await page.route('**/api/agents', (route) =>
@@ -889,7 +930,7 @@ async function selectInventoryConversation(
     title,
     runtimeName,
     project,
-  }: { title: string; runtimeName: string; project: string },
+  }: { title: string; runtimeName: string; project?: string },
 ) {
   const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
   await chatList.getByRole('button', { name: 'Conversation history' }).click();
@@ -901,9 +942,10 @@ async function selectInventoryConversation(
   await expect(chatList.locator('button[aria-current="true"]')).toContainText(
     runtimeName,
   );
-  await expect(page.locator('.chat-dock__project-context')).toContainText(
-    project,
-  );
+  if (project)
+    await expect(page.locator('.chat-dock__project-context')).toContainText(
+      project,
+    );
 }
 
 async function submitExactTurn({
@@ -1413,16 +1455,40 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
         .and(page.locator('[aria-current="true"]')),
     ).toBeVisible({ timeout: 15_000 });
 
+    const badge = page.locator('.chat-dock__project-badge');
+    // Begin on a different explicit dock binding.  Selecting a conversation
+    // row is itself an explicit project choice and must replace it.
+    await expect(badge).toHaveText('Alpha Project');
+    await badge.click();
+    await page
+      .getByRole('dialog', { name: 'Switch project' })
+      .getByRole('button', { name: 'Switch to Beta Project' })
+      .click();
+    await expect(badge).toHaveText('Beta Project');
     await selectInventoryConversation(page, {
       title: 'Claude Alpha Chat',
       runtimeName: 'Claude Runtime',
       project: 'Alpha Project',
     });
-    const badge = page.locator('.chat-dock__project-badge');
     await expect(badge).toBeVisible();
     await expect(badge).toHaveText('Alpha Project');
     await expect(badge).toHaveAttribute('aria-haspopup', 'dialog');
     await expect(badge).toHaveAttribute('aria-expanded', 'false');
+
+    // A projectless row is an explicit conversation choice but not an
+    // instruction to discard the dock's existing project context.  Exercise
+    // it while the inbox is still visible; this journey later verifies that
+    // opening a project deliberately collapses the dock.
+    await selectInventoryConversation(page, {
+      title: 'Unbound Station Chat',
+      runtimeName: 'Station',
+    });
+    await expect(badge).toHaveText('Alpha Project');
+    await selectInventoryConversation(page, {
+      title: 'Claude Alpha Chat',
+      runtimeName: 'Claude Runtime',
+      project: 'Alpha Project',
+    });
 
     await badge.click();
     await expect(badge).toHaveAttribute('aria-expanded', 'true');
@@ -1485,6 +1551,11 @@ test.describe('chat-dock project switcher (kontourai/station#793)', () => {
     // landmark. Establish the persisted conversation through its desktop
     // discovery surface, then verify the mobile-only project-switcher contract
     // with that real active session.
+    await selectInventoryConversation(page, {
+      title: 'Codex Beta Chat',
+      runtimeName: 'Codex Runtime',
+      project: 'Beta Project',
+    });
     await selectInventoryConversation(page, {
       title: 'Claude Alpha Chat',
       runtimeName: 'Claude Runtime',

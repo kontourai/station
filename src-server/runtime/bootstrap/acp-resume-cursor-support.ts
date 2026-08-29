@@ -15,10 +15,19 @@ import type { getACPManagerStatus } from '../../services/acp/acp-manager-view.js
  * `undefined` (no handshake evidence, or a non-ACP provider) keeps the cursor
  * path.
  */
+type ProducerConnection = ReturnType<
+  typeof getACPManagerStatus
+>['connections'][number];
+
+// Typed against the producer so a field rename is a compile error here, not a
+// silent every-connection-undefined regression; Pick keeps test fakes minimal.
+type ResumeSupportConnection = Pick<
+  ProducerConnection,
+  'id' | 'handshakeObservedAt' | 'capabilities'
+>;
+
 export function acpResumeCursorSupport(acpBridge: {
-  // Typed against the producer so a field rename is a compile error here,
-  // not a silent every-connection-undefined regression.
-  getStatus(): Pick<ReturnType<typeof getACPManagerStatus>, 'connections'>;
+  getStatus(): { connections: ResumeSupportConnection[] };
 }): (input: {
   provider?: string;
   connectionId?: string;
