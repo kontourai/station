@@ -230,11 +230,11 @@ describe('changelog slice derivation', () => {
     const execGit = (args: string[]): string => {
       calls.push(args);
       if (args[0] === 'cat-file') {
-        throw new Error(
-          `fatal: Not a valid object name ${A_SHA}^{commit}`,
-        );
+        throw new Error(`fatal: Not a valid object name ${A_SHA}^{commit}`);
       }
-      throw new Error(`unexpected git call after failed probe: ${args.join(' ')}`);
+      throw new Error(
+        `unexpected git call after failed probe: ${args.join(' ')}`,
+      );
     };
     const slice = deriveChangelogSlice({
       repoRoot: '.',
