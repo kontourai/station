@@ -97,17 +97,31 @@ async function createMuseAgent(
 }
 
 /**
- * Sends one turn and waits for the ECHO PROVIDER's own answer.
+ * Sends one turn and waits for the ECHO PROVIDER's own answer, retrying
+ * through Station's own capacity refusal exactly as a user would.
  *
  * Reads the whole chat pane's text rather than a single element: the reply is
  * whatever muse echoed back, which on a first turn is the composed prompt and
  * may render as several blocks. `echo:` preceding the token is what makes the
  * match the assistant's reply and not the user's message above it.
+ *
+ * The retry is not a tolerance for a flaky assertion — the assertion below is
+ * unchanged and still demands the echoed token. It answers ONE measured
+ * condition: on a shared host, Station refuses to start the engine and says so
+ * ("Host is at capacity: This Station's host is at 98% load, so the engine
+ * could not start. Wait for load to drop, then retry."), keeping a `Retry`
+ * control beside the banner rather than retrying itself. Observed live here at
+ * 1 run in 8; the other seven answered. `waitForDispatchThroughCapacityRetries`
+ * in `helpers/agents-journey` exists for the same disclosed condition and
+ * documents it as "not a defect in the journey using this" — this is that
+ * pattern applied to a composer turn, bounded by one overall deadline rather
+ * than looping forever, so a genuine engine failure still fails the spec.
  */
 async function sendTurnAndExpectEcho(
   page: Page,
   prompt: string,
   token: string,
+  overallTimeoutMs = 120_000,
 ): Promise<void> {
   const composer = page.getByPlaceholder('Type a message...');
   await composer.fill(prompt);
@@ -117,13 +131,41 @@ async function sendTurnAndExpectEcho(
   // mounted in either the dock or the workspace pane, and a reply rendered as
   // several blocks would defeat a single-element text match.
   const panes = page.locator('#chat-dock, #chat-workspace-pane');
-  await expect
-    .poll(async () => (await panes.allInnerTexts()).join('\n'), {
-      timeout: 120_000,
-      message:
-        'the chat pane never showed an `echo:` reply carrying the sent token; the muse turn did not round-trip through the echo provider',
-    })
-    .toMatch(new RegExp(`echo:[\\s\\S]*${token}`));
+  const paneText = async () => (await panes.allInnerTexts()).join('\n');
+  const echoed = new RegExp(`echo:[\\s\\S]*${token}`);
+  const retry = page.getByRole('button', { name: 'Retry' });
+
+  const deadline = Date.now() + overallTimeoutMs;
+  while (Date.now() < deadline) {
+    const remaining = Math.max(1_000, deadline - Date.now());
+    try {
+      await expect
+        .poll(paneText, { timeout: Math.min(15_000, remaining) })
+        .toMatch(echoed);
+      return;
+    } catch {
+      // The product does not auto-retry a capacity refusal; it offers the
+      // control. Press it the way the banner tells the user to, then keep
+      // waiting on the same unchanged assertion.
+      if (
+        await retry
+          .first()
+          .isVisible()
+          .catch(() => false)
+      ) {
+        await retry
+          .first()
+          .click()
+          .catch(() => undefined);
+      }
+    }
+  }
+
+  // Out of budget: assert once more so the failure names what was on screen.
+  expect(
+    await paneText(),
+    'the chat pane never showed an `echo:` reply carrying the sent token; the muse turn did not round-trip through the echo provider',
+  ).toMatch(echoed);
 }
 
 test.describe('New agent — a muse agent answers a real turn over echo', () => {
