@@ -6479,6 +6479,34 @@ fn request_native_startup_commit(app: &AppHandle) {
 }
 
 #[cfg(not(mobile))]
+fn advance_native_startup_after_page(app: &AppHandle) {
+    let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
+        return;
+    };
+    if !bootstrap.renderer_observed.load(Ordering::Acquire) {
+        return;
+    }
+    let Some(state) = app.try_state::<DesktopServerState>() else {
+        return;
+    };
+    let owner = state
+        .owner
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    if native_startup_uses_sidecar_proof(&owner) {
+        request_native_startup_commit(app);
+    } else if let Err(error) = commit_startup_recovery_ui_for_app(app) {
+        log::warn!("native startup recovery reveal refused: {error}");
+    }
+}
+
+#[cfg(not(mobile))]
+fn native_startup_uses_sidecar_proof(owner: &DesktopOwner) -> bool {
+    owner == &DesktopOwner::Sidecar
+}
+
+#[cfg(not(mobile))]
 fn notify_startup_readiness_if_waiting(app: &AppHandle) {
     let Some(state) = app.try_state::<DesktopServerState>() else {
         return;
@@ -7314,7 +7342,7 @@ fn observe_native_startup_page(app: &AppHandle, label: &str, event: PageLoadEven
     if !bootstrap.renderer_observed.swap(true, Ordering::AcqRel) {
         log::info!("native startup bootstrap observed the main renderer page start");
     }
-    request_native_startup_commit(app);
+    advance_native_startup_after_page(app);
 }
 
 #[cfg(not(mobile))]
@@ -7367,6 +7395,11 @@ async fn commit_startup_readiness(
 #[cfg(not(mobile))]
 #[tauri::command]
 fn commit_startup_recovery_ui(app: AppHandle) -> Result<(), String> {
+    commit_startup_recovery_ui_for_app(&app)
+}
+
+#[cfg(not(mobile))]
+fn commit_startup_recovery_ui_for_app(app: &AppHandle) -> Result<(), String> {
     let state = app
         .try_state::<DesktopServerState>()
         .ok_or("Desktop startup readiness is not initialized.")?;
@@ -7384,7 +7417,7 @@ fn commit_startup_recovery_ui(app: AppHandle) -> Result<(), String> {
         startup_readiness::ReadinessInput::RecoveryUiCommitted,
     );
     if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
-        reveal_main_window(&app);
+        reveal_main_window(app);
     }
     Ok(())
 }
@@ -8815,6 +8848,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                     app.manage(dispatcher);
                 }
                 app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), startup_commit_in_flight: AtomicBool::new(false), startup_commit_pending: AtomicBool::new(false), ownership_checked_at: Mutex::new(Some(Instant::now())) });
+                advance_native_startup_after_page(app.handle());
                 replay_pending_main_window_activation(app.handle(), &pending_activation);
                 // The tray poll reads this managed ownership state. Starting
                 // it earlier allowed its first poll to see only the
@@ -9508,6 +9542,17 @@ mod tests {
                 foreign,
                 PageLoadEvent::Started,
             ));
+        }
+        assert!(native_startup_uses_sidecar_proof(&DesktopOwner::Sidecar));
+        for owner in [
+            DesktopOwner::Service {
+                id: "service".into(),
+                port: 18141,
+            },
+            DesktopOwner::Unowned,
+            DesktopOwner::None,
+        ] {
+            assert!(!native_startup_uses_sidecar_proof(&owner));
         }
     }
 

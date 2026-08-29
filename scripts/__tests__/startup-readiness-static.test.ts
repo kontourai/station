@@ -113,10 +113,15 @@ describe('desktop startup readiness static boundary', () => {
     const handler = lib.indexOf('deep_link().on_open_url');
     const readinessManagement = lib.indexOf('app.manage(DesktopServerState {');
     const replay = lib.lastIndexOf('replay_pending_main_window_activation(');
+    const nativePageReplay = lib.lastIndexOf(
+      'advance_native_startup_after_page(app.handle());',
+    );
 
     expect(handler).toBeGreaterThanOrEqual(0);
     expect(readinessManagement).toBeGreaterThan(handler);
     expect(replay).toBeGreaterThan(readinessManagement);
+    expect(nativePageReplay).toBeGreaterThan(readinessManagement);
+    expect(lib).toContain('commit_startup_recovery_ui_for_app(app)');
     expect(lib).toContain('request_or_defer_main_window_activation(');
     expect(lib).toContain('request_main_window_activation(app);');
   });
