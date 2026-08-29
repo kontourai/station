@@ -773,6 +773,7 @@ jobs:
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
 
       - name: Record the nightly Android ship in the deploy ledger
         # always() so no later-step failure suppresses the record of a
@@ -788,6 +789,7 @@ jobs:
           DEPLOY_LEDGER_ARTIFACT_OUTCOME: ${{ steps.nightly_artifact.outcome }}
         run: |
           set -euo pipefail
+          [ -n "$GITHUB_TOKEN" ] || { echo "::error::ledger token mint failed; the record cannot push"; exit 1; }
           record=(node scripts/deploy-ledger.mjs
             --channel nightly-android
             --version "$DEPLOY_LEDGER_VERSION"
@@ -816,6 +818,7 @@ jobs:
           DEPLOY_LEDGER_VERSION: ${{ steps.cli_identity.outputs.version }}
         run: |
           set -euo pipefail
+          [ -n "$GITHUB_TOKEN" ] || { echo "::error::ledger token mint failed; the record cannot push"; exit 1; }
           node scripts/lib/deploy-ledger-commit.mjs \
             --commit-subject "docs(ledger): record nightly-npm $DEPLOY_LEDGER_VERSION from run $GITHUB_RUN_ID" \
             --summary-line "- recorded: \`nightly-npm $DEPLOY_LEDGER_VERSION\` at \`$DEPLOY_LEDGER_SHA\`" \
@@ -1121,6 +1124,7 @@ jobs:
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
 
       - name: Record the nightly desktop ship in the deploy ledger
         # always() + outcome gate, as on the Android job's ledger records.
@@ -1131,6 +1135,7 @@ jobs:
           DEPLOY_LEDGER_VERSION: ${{ steps.identity.outputs.version }}
         run: |
           set -euo pipefail
+          [ -n "$GITHUB_TOKEN" ] || { echo "::error::ledger token mint failed; the record cannot push"; exit 1; }
           node scripts/lib/deploy-ledger-commit.mjs \
             --commit-subject "docs(ledger): record nightly-desktop $DEPLOY_LEDGER_VERSION from run $GITHUB_RUN_ID" \
             --summary-line "- recorded: \`nightly-desktop $DEPLOY_LEDGER_VERSION\` at \`$DEPLOY_LEDGER_SHA\`" \

@@ -162,12 +162,14 @@ jobs:
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
 
       - name: Record the stable release in the deploy ledger
         env:
           GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
         run: |
           set -euo pipefail
+          [ -n "$GITHUB_TOKEN" ] || { echo "::error::ledger token mint failed; the record cannot push"; exit 1; }
           version="${RELEASE_TAG#v}"
           record=(node scripts/deploy-ledger.mjs
             --channel stable-desktop
