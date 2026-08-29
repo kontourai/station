@@ -1844,6 +1844,16 @@ async function main() {
       `[e2e] reclaimed ${recoveredCount} interrupted E2E run${recoveredCount === 1 ? '' : 's'}`,
     );
   }
+  // CROSS-FILE COUPLE — two server-side containment gates transcribe this
+  // exact `e2e-${suite}-${Date.now()}-${base36}` shape as a regex and treat a
+  // match as evidence of a disposable runner-owned runtime; change them
+  // together with any change here:
+  //   - `src-server/providers/adapters/muse-adapter.ts`'s
+  //     MUSE_E2E_SMOKE_LIVE_INSTANCE (#550)
+  //   - `src-server/services/infra/resource-posture.ts`'s
+  //     STARTER_CLEAN_INSTALL_INSTANCE
+  // Nothing fails if they drift; the affected suite simply stops getting the
+  // behavior it asks for, which is safe but reads as a mystery.
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const instance = `e2e-${suite}-${suffix}`;
   const outputDirs = [`dist-server-${instance}`, `dist-ui-${instance}`];

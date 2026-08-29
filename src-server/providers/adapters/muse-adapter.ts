@@ -170,8 +170,18 @@ export const MUSE_REFUSED_VALUE_MAX_CHARS = 120;
 
 /**
  * The runner-owned instance namespace for the one suite that asks for this.
- * `run-e2e-suite.mjs` mints `e2e-${suite}-${Date.now()}-${base36}`, so a
- * smoke-live instance is the only shape that can match.
+ *
+ * CROSS-FILE COUPLE — this pattern must match `scripts/run-e2e-suite.mjs`'s
+ * `e2e-${suite}-${Date.now()}-${base36}` minting; change both together. It is
+ * a transcription of a shape produced in another file, with no shared constant
+ * and nothing that fails if the two drift, so it is pinned by comment at both
+ * ends the way a wire format would be. `resource-posture.ts`'s
+ * `STARTER_CLEAN_INSTALL_INSTANCE` transcribes the same minting for its own
+ * suite and carries the same coupling.
+ *
+ * Drift is silent in the SAFE direction — a mismatch makes the override inert
+ * and reds `agents-new-muse-echo-turn.spec.ts` rather than widening anything —
+ * but it reds it as a mystery, so the pointer is worth more than the guard.
  */
 const MUSE_E2E_SMOKE_LIVE_INSTANCE = /^e2e-smoke-live-[a-z0-9]+-[a-z0-9]+$/;
 
@@ -183,19 +193,24 @@ const MUSE_E2E_SMOKE_LIVE_INSTANCE = /^e2e-smoke-live-[a-z0-9]+-[a-z0-9]+$/;
  * exactly this reason: keep one journey deterministic WITHOUT weakening a
  * persistent home, so "the explicit E2E value alone has no effect".
  *
- * Both conjuncts are facts the CLI ATTESTS at spawn rather than values a
- * caller can assert about itself (`packages/cli/src/commands/lifecycle.ts`
- * writes `STATION_HOME_SOURCE` from its own resolved flag decision and
- * `STATION_INSTANCE_ID` from the runner-owned instance name). That matters
- * because `src-server/index.ts` imports `dotenv/config`: a `.env` file in the
- * server's cwd is enough to put ANY variable into `process.env`, so a name on
- * its own is not evidence of a disposable runtime. A `.env` can equally claim
- * the two markers — but claiming them means claiming a `--temp-home` whose
- * data dies with the run, under a runner-shaped instance id, which is the
- * containment itself rather than a way around it.
+ * What the conjunction buys, precisely, and what it does not:
  *
- * Consequence, deliberately: on a persistent production home the variable is
- * inert no matter what it says.
+ * On a CLI-SPAWNED server both markers are spawn-owned.
+ * `packages/cli/src/commands/lifecycle.ts` builds the child env by spreading
+ * `process.env` and then OVERWRITING `STATION_HOME_SOURCE` (from its own
+ * resolved flag decision) and `STATION_INSTANCE_ID` (from the runner-owned
+ * instance name), so neither can be forged from a `.env` — which matters
+ * because `src-server/index.ts` imports `dotenv/config`, and a `.env` file in
+ * the server's cwd is otherwise enough to put ANY variable into `process.env`.
+ * That is the case this gate is for, and there the name alone is inert.
+ *
+ * On a DIRECTLY-LAUNCHED server (`npm run dev:server` / `start:server`, which
+ * load dotenv before anything else) there is no attestation at all: nothing
+ * server-side produces or cross-checks either marker, so a `.env` can set all
+ * three variables and the override applies. This gate accepts that residual
+ * rather than closing it — exactly as `resource-posture.ts` does with the same
+ * two markers. The line drawn is "a production server started the normal way
+ * cannot be flipped by a file", not "these markers are unforgeable".
  */
 function museProviderOverrideContained(env: NodeJS.ProcessEnv): boolean {
   return (
@@ -475,10 +490,22 @@ export class MuseAdapter implements ProviderAdapterShape {
    * silently keeping the old default, and an accepted `echo` silently
    * replacing the model with a prompt echo.
    *
-   * The flag is burned only once a logger call actually RAN. The whole reason
-   * this is deferred out of the constructor is that the runtime's logger
-   * arrives late; burning the flag against a logger that is still absent would
-   * reintroduce, one layer down, the same notice-nobody-hears bug.
+   * The flag is burned only once a logger call actually RAN.
+   *
+   * That guard does NOT cover the `station-runtime.ts` case, and should not be
+   * read as covering it: the shim it passes is always a truthy object whose
+   * methods no-op internally while the runtime's own logger is unassigned, so
+   * `logger.warn` is present and this code cannot tell the notice was
+   * swallowed. Deferring the report to the first turn is what handles that —
+   * by then the runtime logger is wired. The guard is for the case it can
+   * actually see: an adapter constructed with NO logger at all, which is every
+   * `new MuseAdapter()` in the tests and any future caller that omits one.
+   * There, burning the flag on a call that never happened would silence the
+   * notice for the life of the process.
+   *
+   * A throwing `warn` deliberately leaves the flag unburned: the throw fails
+   * that turn, and the next turn tries the notice again rather than treating
+   * an unreported state as reported.
    */
   private reportProviderNoticeOnce(): void {
     if (this.providerNoticeReported) return;
@@ -602,6 +629,16 @@ export class MuseAdapter implements ProviderAdapterShape {
       createdAt: nowIso,
       method: 'session.configured',
       sessionId: input.threadId,
+      // ADAPTER-LEVEL withhold only, and the distinction matters: omitting
+      // `model` here is not the same as clearing it downstream. The session
+      // projection folds this event as `event.model ?? baseSession.model`
+      // (`services/orchestration/orchestration-session-state.ts`), which reads
+      // an absent — and an explicitly-`undefined` — `model` as CARRY-FORWARD,
+      // so a row pre-seeded with a model keeps that claim through the READ
+      // MODEL even though this adapter's own record is honest. Clearing it end
+      // to end needs a contract-level cleared-marker the fold honors, plus a
+      // projection test: #848. Until then, do not read this withhold as
+      // end-to-end clearing.
       ...(appliedModelId ? { model: appliedModelId } : {}),
       ...(input.cwd ? { cwd: input.cwd } : {}),
       metadata: {
