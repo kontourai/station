@@ -653,6 +653,10 @@ describe('ResponsiveDialogSurface', () => {
     // Travelling back here would land on the entry underneath, which still
     // holds the pre-dialog URL, silently undoing the selection.
     expect(back).not.toHaveBeenCalled();
+    // Still the 0 this test wrote: nothing in this suite's module graph loads
+    // the navigation store, so the collapse takes the unregistered-adopter
+    // fallback and re-stamps no index. Production loads the store and would
+    // read 1 here. If the store ever enters this graph, that is why this reds.
     expect(window.history.state.__stationNavigationIndex).toBe(0);
   });
 

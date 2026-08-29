@@ -441,13 +441,23 @@ class NavigationStore {
    * to guard" and skips `runNavigationGuards`. Assign the index a `navigate`
    * of this store's own would have, so a Back off this entry is a real
    * traversal and the unsaved-changes guard is consulted.
+   *
+   * Deriving the state and advancing the index are separated so the caller can
+   * order the advance after its history write succeeds; this store stays the
+   * only writer of `historyIndex`, but it is no longer the one that decides
+   * when the write counted.
    */
-  private adoptCollapsedDialogEntry(
-    state: Record<string, unknown>,
-  ): Record<string, unknown> {
+  private adoptCollapsedDialogEntry(state: Record<string, unknown>): {
+    state: Record<string, unknown>;
+    commit: () => void;
+  } {
     const nextIndex = this.historyIndex + 1;
-    this.historyIndex = nextIndex;
-    return { ...state, [NAVIGATION_INDEX_KEY]: nextIndex };
+    return {
+      state: { ...state, [NAVIGATION_INDEX_KEY]: nextIndex },
+      commit: () => {
+        this.historyIndex = nextIndex;
+      },
+    };
   }
 
   registerNavigationGuard(

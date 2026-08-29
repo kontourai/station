@@ -162,6 +162,36 @@ describe('navigationStore query updates under an open dialog layer', () => {
     }
   });
 
+  test('a history write that throws leaves the store index where it was', async () => {
+    navigationStore.navigate('/projects/alpha', { chat: 'session-old' });
+    const beneathIndex = window.history.state.__stationNavigationIndex;
+
+    const dispose = registerDialogHistory('throwing-probe', vi.fn());
+    navigationStore.updateParams({ chat: 'session-new' });
+
+    // WebKit rate-limits history mutations with a SecurityError. The store
+    // must not be left one ahead of a write that never landed.
+    const uncaught: unknown[] = [];
+    const onUncaught = (error: unknown) => uncaught.push(error);
+    process.on('uncaughtException', onUncaught);
+    const replaceState = vi
+      .spyOn(window.history, 'replaceState')
+      .mockImplementation(() => {
+        throw new Error('SecurityError: history rate limit');
+      });
+    dispose();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    replaceState.mockRestore();
+    process.off('uncaughtException', onUncaught);
+
+    // The next entry this store pushes reports where its bookkeeping actually
+    // stood; a commit that ran anyway would show up here as a skipped index.
+    navigationStore.navigate('/projects/beta');
+    expect(window.history.state.__stationNavigationIndex).toBe(
+      beneathIndex + 1,
+    );
+  });
+
   test('a reused dialog id survives a collapse, so its next Back reaches its own entry', async () => {
     navigationStore.navigate('/projects/alpha', { chat: 'session-old' });
 

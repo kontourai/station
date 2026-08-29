@@ -20,15 +20,31 @@ interface DialogHistoryEntry {
  *
  * A hook rather than a direct call because the navigation store imports THIS
  * module for `DIALOG_HISTORY_KEY`; importing it back would close a cycle. The
- * store installs this at module init, so the unregistered fallback only
- * describes a build that never loaded the store at all.
+ * store installs this at module init, so the unregistered fallback describes a
+ * build — or an isolated test — that has not loaded the store.
+ *
+ * Adoption is two-phase on purpose. The adopter only DERIVES the residue's
+ * state; the `commit` it hands back is what moves the store's own bookkeeping,
+ * and the caller runs it strictly after the history write returns. A store that
+ * advanced while producing the state would be left permanently one ahead of
+ * history if that write threw — WebKit rate-limits history mutations with a
+ * SecurityError — and every later traversal delta would be wrong.
  */
+interface CollapsedEntryAdoption {
+  state: Record<string, unknown>;
+  commit: () => void;
+}
+
 type CollapsedEntryAdopter = (
   state: Record<string, unknown>,
-) => Record<string, unknown>;
+) => CollapsedEntryAdoption;
 
 let adoptCollapsedEntry: CollapsedEntryAdopter | null = null;
 
+/**
+ * Last registration wins and there is no unregister: the adopter is a single
+ * slot, not a subscriber list. Passing `null` clears it back to the fallback.
+ */
 export function setCollapsedDialogEntryAdopter(
   adopter: CollapsedEntryAdopter | null,
 ) {
@@ -82,11 +98,11 @@ function collapseDialogLayer() {
   // layer's id; that is all it derives, and all this needs.
   const kept = { ...(window.history.state as Record<string, unknown>) };
   delete kept[DIALOG_HISTORY_KEY];
-  window.history.replaceState(
-    adoptCollapsedEntry ? adoptCollapsedEntry(kept) : kept,
-    '',
-    window.location.href,
-  );
+  const adoption = adoptCollapsedEntry?.(kept);
+  window.history.replaceState(adoption?.state ?? kept, '', window.location.href);
+  // Only once the entry really carries the index: a throwing `replaceState`
+  // must leave the store's bookkeeping where it was, not one ahead of history.
+  adoption?.commit();
 }
 
 function skipOrphanedMarker() {
@@ -183,14 +199,19 @@ export function registerDialogHistory(id: string, close: () => void) {
       // it found (`useSectionNavigation`'s lightweight branch) can leave the
       // same id on more than one entry, which is why the id is not orphaned
       // here — an orphan armed for a reused id ('mobile-task-switcher' is a
-      // constant) would make a later reopen skip its own entry. Nothing is
-      // orphaned because nothing is being left behind carrying this id.
+      // constant) would make a later reopen skip its own entry. In the
+      // ordinary case that costs nothing, because this path leaves no entry
+      // carrying the id. Where a state-copying push HAS duplicated it, the
+      // stranded marked entry costs one wasted Back press — the other tail of
+      // the same identity-by-id limitation as #758.
       //
       // Known limitation (#758): if this layer is the INNER of two stacked
       // dialogs and the URL moved, collapsing in place leaves the outer's
       // own-entry check reading an entry it does not own, so the next Back
-      // reverts the URL and needs a second press to close the outer dialog.
-      // Unreachable today — no nested dialog writes the URL.
+      // reverts the URL; with no navigation guard registered it then takes a
+      // second press to close the outer dialog, while a registered guard's
+      // restore/replay bounce closes it on the first. Unreachable today — no
+      // nested dialog writes the URL.
       collapseDialogLayer();
     });
   };
