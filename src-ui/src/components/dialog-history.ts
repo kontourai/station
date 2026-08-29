@@ -7,9 +7,32 @@ interface DialogHistoryEntry {
   /**
    * The URL this dialog's layer was pushed at, which is also the URL the entry
    * underneath still carries. Ordinary cleanup may only fold the layer away by
-   * travelling back while the two still agree.
+   * travelling back while the two still agree. Captured when the entry is
+   * constructed, so it is never absent to fall open into the collapse path.
    */
-  pushedUrl?: string;
+  pushedUrl: string;
+}
+
+/**
+ * Stamps the entry a collapsed dialog layer leaves behind as a navigable entry
+ * of the navigation store's own — see `collapseDialogLayer` below for why the
+ * residue needs an identity rather than the one it inherited.
+ *
+ * A hook rather than a direct call because the navigation store imports THIS
+ * module for `DIALOG_HISTORY_KEY`; importing it back would close a cycle. The
+ * store installs this at module init, so the unregistered fallback only
+ * describes a build that never loaded the store at all.
+ */
+type CollapsedEntryAdopter = (
+  state: Record<string, unknown>,
+) => Record<string, unknown>;
+
+let adoptCollapsedEntry: CollapsedEntryAdopter | null = null;
+
+export function setCollapsedDialogEntryAdopter(
+  adopter: CollapsedEntryAdopter | null,
+) {
+  adoptCollapsedEntry = adopter;
 }
 
 const entries: DialogHistoryEntry[] = [];
@@ -33,14 +56,37 @@ function markerFromState(state: unknown): string | null {
   return typeof marker === 'string' ? marker : null;
 }
 
-function pushDialogEntry(entry: DialogHistoryEntry) {
+function pushDialogEntry(id: string) {
   const current = window.history.state;
   const state =
     current && typeof current === 'object' && !Array.isArray(current)
-      ? { ...current, [DIALOG_HISTORY_KEY]: entry.id }
-      : { [DIALOG_HISTORY_KEY]: entry.id };
+      ? { ...current, [DIALOG_HISTORY_KEY]: id }
+      : { [DIALOG_HISTORY_KEY]: id };
   window.history.pushState(state, '', window.location.href);
-  entry.pushedUrl = window.location.href;
+}
+
+/**
+ * Drops this layer's marker from the live entry, keeping the URL and the rest
+ * of the state, and hands the residue to the navigation store to stamp.
+ *
+ * The residue is a genuinely navigable entry: it holds a URL the entry beneath
+ * does not. It inherits that entry's navigation index, though — the marker
+ * push copies the state it lands on, and a `replaceState` writer rewrites the
+ * index it already found — so leaving it untouched makes the store read a
+ * delta of 0 on the next Back and skip `runNavigationGuards` entirely, which
+ * would let a Back off this entry abandon a dirty editor without asking. The
+ * store assigns the index a `pushState` of its own would have.
+ */
+function collapseDialogLayer() {
+  // `markerFromState` matched, so the live state is an object carrying this
+  // layer's id; that is all it derives, and all this needs.
+  const kept = { ...(window.history.state as Record<string, unknown>) };
+  delete kept[DIALOG_HISTORY_KEY];
+  window.history.replaceState(
+    adoptCollapsedEntry ? adoptCollapsedEntry(kept) : kept,
+    '',
+    window.location.href,
+  );
 }
 
 function skipOrphanedMarker() {
@@ -84,17 +130,24 @@ function ensureListener() {
  * Ordinary cleanup folds the layer by travelling back only while the live URL
  * still matches the one the layer was pushed at; a URL the dialog changed
  * before closing must survive the close.
+ *
+ * That leaves a deliberate asymmetry in the back stack, and it is the contract
+ * rather than a side effect: a param change made THROUGH a dialog leaves one
+ * entry behind, so Back undoes the switch and returns the user where they
+ * were, while the same change made outside a dialog leaves none. The dialog
+ * case is the one reached by a thumb on a phone's Back gesture, and returning
+ * to the previous selection is what that gesture is asking for.
  */
 export function registerDialogHistory(id: string, close: () => void) {
   ensureListener();
   const existing = entries.find((entry) => entry.id === id);
-  const entry = existing ?? { id, close };
+  const entry = existing ?? { id, close, pushedUrl: window.location.href };
   entry.close = close;
   entry.cleanupToken = undefined;
 
   if (!existing) {
     entries.push(entry);
-    pushDialogEntry(entry);
+    pushDialogEntry(id);
   }
 
   return () => {
@@ -106,10 +159,13 @@ export function registerDialogHistory(id: string, close: () => void) {
       if (index < 0) return;
       entries.splice(index, 1);
 
-      markOrphaned(id);
-      if (markerFromState(window.history.state) !== id) return;
+      if (markerFromState(window.history.state) !== id) {
+        markOrphaned(id);
+        return;
+      }
 
       if (window.location.href === entry.pushedUrl) {
+        markOrphaned(id);
         suppressNextPop = true;
         window.history.back();
         return;
@@ -118,15 +174,24 @@ export function registerDialogHistory(id: string, close: () => void) {
       // A same-entry URL mutation must survive an ordinary close. `replaceState`
       // callers (the navigation store's `updateParams`) rewrite the URL of
       // whichever entry is live — the dialog's own — and carry this marker
-      // forward with it, so the layer is still ours but the entry underneath
-      // holds the pre-dialog URL. Travelling back would discard the caller's
-      // navigation; collapse the layer where it stands instead, keeping the new
-      // URL and leaving the entry no longer claimed by any dialog (archive#549).
-      // The marker match above already proved the live state is a plain
-      // object, so it needs no second shape guard here.
-      const kept = { ...(window.history.state as Record<string, unknown>) };
-      delete kept[DIALOG_HISTORY_KEY];
-      window.history.replaceState(kept, '', window.location.href);
+      // forward with it, so some live entry still carries this id while the
+      // entry underneath holds the pre-dialog URL. Travelling back would
+      // discard the caller's navigation; collapse the layer where it stands
+      // instead, keeping the new URL (archive#549).
+      //
+      // The match is by id, not by entry: a `pushState` that copies the state
+      // it found (`useSectionNavigation`'s lightweight branch) can leave the
+      // same id on more than one entry, which is why the id is not orphaned
+      // here — an orphan armed for a reused id ('mobile-task-switcher' is a
+      // constant) would make a later reopen skip its own entry. Nothing is
+      // orphaned because nothing is being left behind carrying this id.
+      //
+      // Known limitation (#758): if this layer is the INNER of two stacked
+      // dialogs and the URL moved, collapsing in place leaves the outer's
+      // own-entry check reading an entry it does not own, so the next Back
+      // reverts the URL and needs a second press to close the outer dialog.
+      // Unreachable today — no nested dialog writes the URL.
+      collapseDialogLayer();
     });
   };
 }

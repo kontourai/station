@@ -93,7 +93,7 @@ describe('navigationStore query updates under an open dialog layer', () => {
     // it in place is synchronous, but travelling back is a jsdom task. Reading
     // the URL before that task lands would pass on a close that does revert it.
     for (let tick = 0; tick < 50; tick += 1) {
-      if (window.history.state?.[DIALOG_HISTORY_KEY] === undefined) break;
+      if (window.history.state[DIALOG_HISTORY_KEY] === undefined) break;
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
     expect(window.history.state[DIALOG_HISTORY_KEY]).toBeUndefined();
@@ -105,6 +105,74 @@ describe('navigationStore query updates under an open dialog layer', () => {
       expect.any(Number),
     );
     expect(close).not.toHaveBeenCalled();
+  });
+
+  test('the collapsed layer leaves a guarded entry, not one Back can cross unasked', async () => {
+    // Establish both entries through the store so the indices are the ones it
+    // really assigns, rather than a hand-written pair that agrees by luck.
+    navigationStore.navigate('/projects/alpha', { chat: 'session-old' });
+    const beneathIndex = window.history.state.__stationNavigationIndex;
+
+    const dispose = registerDialogHistory('guard-probe', vi.fn());
+    navigationStore.updateParams({ chat: 'session-new' });
+    dispose();
+    for (let tick = 0; tick < 50; tick += 1) {
+      if (window.history.state[DIALOG_HISTORY_KEY] === undefined) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    // The residue holds a URL the entry beneath does not, so it must not also
+    // hold that entry's index: equal indices are the delta-0 the store reads
+    // as "nothing traversed" and answers by skipping every guard.
+    expect(window.history.state.__stationNavigationIndex).toBe(
+      beneathIndex + 1,
+    );
+
+    const guard = vi.fn((continueNavigation: () => void) =>
+      continueNavigation(),
+    );
+    const unregister = navigationStore.registerNavigationGuard(
+      Symbol('dialog-collapse-draft'),
+      guard,
+    );
+    try {
+      window.history.back();
+      for (let tick = 0; tick < 60; tick += 1) {
+        if (guard.mock.calls.length > 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      expect(guard).toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+
+  test('a dialog-mediated param change leaves one entry, so Back returns to the previous selection', async () => {
+    navigationStore.navigate('/projects/alpha', { chat: 'session-old' });
+
+    const dispose = registerDialogHistory('residue-probe', vi.fn());
+    navigationStore.updateParams({ chat: 'session-new' });
+    dispose();
+    for (let tick = 0; tick < 50; tick += 1) {
+      if (window.history.state[DIALOG_HISTORY_KEY] === undefined) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(new URLSearchParams(window.location.search).get('chat')).toBe(
+      'session-new',
+    );
+
+    // The deliberate asymmetry: the switch cost one entry, so the phone Back
+    // gesture returns to the chat the user came from instead of leaving the
+    // surface entirely.
+    window.history.back();
+    for (let tick = 0; tick < 60; tick += 1) {
+      if (navigationStore.getSnapshot().activeChat === 'session-old') break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(new URLSearchParams(window.location.search).get('chat')).toBe(
+      'session-old',
+    );
+    expect(navigationStore.getSnapshot().activeChat).toBe('session-old');
   });
 });
 
