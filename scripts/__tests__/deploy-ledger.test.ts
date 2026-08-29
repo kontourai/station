@@ -391,6 +391,23 @@ describe('markdown regeneration', () => {
     );
     expect(markdown).toContain('Commits since `bbbbbbb`');
   });
+
+  it('omits the "Commits since" header when a noted slice carries a previousSha', () => {
+    const unreachable = entry({
+      changelog: {
+        previousSha: B_SHA,
+        groups: { feat: [], fix: [], ci: [], docs: [], other: [] },
+        note: 'Changelog slice omitted: previous ship SHA bbbbbbb is not reachable in this repository’s history, so no commit range exists to derive.',
+        commitCount: 0,
+      },
+    });
+    const markdown = renderLedgerMarkdown({
+      entries: [unreachable],
+      githubRepo: 'kontourai/station',
+    });
+    expect(markdown).toContain('not reachable in this repository');
+    expect(markdown).not.toContain('Commits since');
+  });
 });
 
 describe('per-package identity (multi-package npm publishes)', () => {
