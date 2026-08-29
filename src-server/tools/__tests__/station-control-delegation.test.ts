@@ -1536,6 +1536,111 @@ describe('Station Control canonical Environment + Agent execution', () => {
     }
   });
 
+  /**
+   * #764 diagnosis, pinned. A cleanly completed external-engine (ACP) turn —
+   * `turn.completed` with a non-cancelled finishReason as its terminal event
+   * — folds `completed` through the REAL lifecycle projection and therefore
+   * reads resumable. The live "(no longer accepts follow-up turns)" reading
+   * for a completed task is the OTHER fold: an unresolved `request.opened`
+   * after the terminal event, which pins `review_pending`; that snapshot
+   * correctly steers to `respond`, not continue, so its non-resumable line
+   * is honest. resumable's derivation itself is not weakened.
+   */
+  test('folds a completed external-engine delegated task as resumable, and a trailing unresolved request as not (#764)', async () => {
+    const { projectSessionLifecycle } = await import(
+      '../../services/orchestration/session-lifecycle-service.js'
+    );
+    const baseSession = {
+      provider: 'acp',
+      threadId: 'task-acp',
+      status: 'ready',
+      createdAt: '2026-08-27T00:00:00.000Z',
+      updatedAt: '2026-08-27T00:00:05.000Z',
+    } as never;
+    const completedTurn = [
+      { method: 'session.started', initialState: 'created' },
+      { method: 'session.configured' },
+      { method: 'turn.started', turnId: 'turn-1' },
+      { method: 'turn.completed', turnId: 'turn-1', finishReason: 'stop' },
+    ] as never[];
+    const withTrailingRequest = [
+      ...completedTurn,
+      {
+        method: 'request.opened',
+        requestId: 'request-late',
+        requestType: 'approval',
+      },
+    ] as never[];
+
+    expect(
+      projectSessionLifecycle({
+        session: baseSession,
+        events: completedTurn,
+      }),
+    ).toMatchObject({ lifecycleState: 'completed' });
+    expect(
+      projectSessionLifecycle({
+        session: baseSession,
+        events: withTrailingRequest,
+      }),
+    ).toMatchObject({ lifecycleState: 'review_pending' });
+
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await expect(
+      observeDelegatedTask(
+        { taskId: 'task-alpha', readAuthority: authority },
+        localDelegatedTaskService('completed', 'acp') as never,
+      ),
+    ).resolves.toMatchObject({ status: 'completed', resumable: true });
+
+    const reviewPending = localDelegatedTaskService('review_pending', 'acp');
+    await expect(
+      observeDelegatedTask(
+        { taskId: 'task-alpha', readAuthority: authority },
+        reviewPending as never,
+      ),
+    ).resolves.toMatchObject({
+      status: 'review_pending',
+      resumable: false,
+      pendingRequest: { id: 'request-alpha' },
+    });
+  });
+
+  test('status looks through a reserved-but-unstarted continuation child to its predecessor (#764)', async () => {
+    installCurrentStationFetch();
+    const authority = hostedAuthority('alpha');
+    const service = localDelegatedTaskService('completed');
+    // The lineage tail is a durable reservation whose provider Session never
+    // started (the failed-start shape). `loadDelegatedTask` must read the
+    // conversation through the lineage-aware read, not the raw child id.
+    service.currentConversationSessionId = vi.fn(
+      () => 'task-alpha:session:reserved-child',
+    );
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await expect(
+      observeDelegatedTask(
+        { taskId: 'task-alpha', readAuthority: authority },
+        service as never,
+      ),
+    ).resolves.toMatchObject({
+      status: 'completed',
+      resumable: true,
+      sessionId: 'task-alpha',
+    });
+    expect(service.readCurrentConversationSession).toHaveBeenCalledWith(
+      'task-alpha',
+      expect.anything(),
+    );
+  });
+
   test('continues an ended task through a child Session rather than reopening its predecessor', async () => {
     installCurrentStationFetch();
     const service = localDelegatedTaskService('completed');

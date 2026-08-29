@@ -160,7 +160,13 @@ describe('station delegate over HTTP', () => {
           // that has already ENDED is the state station#3409 is about, and
           // this stub has no other way to reach it.
           status:
-            body.prompt === 'trigger completed task' ? 'completed' : 'running',
+            body.prompt === 'trigger completed task'
+              ? 'completed'
+              : body.prompt === 'trigger review pending'
+                ? 'review_pending'
+                : body.prompt === 'trigger queued task'
+                  ? 'queued'
+                  : 'running',
           environment,
           target,
           ...(selectedModel ? { model: selectedModel } : {}),
@@ -169,7 +175,8 @@ describe('station delegate over HTTP', () => {
             { sequence: 1, method: 'turn.started', kind: 'lifecycle' },
             { sequence: 2, method: 'turn.completed', kind: 'message' },
           ],
-          ...(body.prompt === 'trigger pending request'
+          ...(body.prompt === 'trigger pending request' ||
+          body.prompt === 'trigger review pending'
             ? {
                 pendingRequest: {
                   id: 'req-pending-1',
@@ -273,7 +280,9 @@ describe('station delegate over HTTP', () => {
               ? { pendingRequest: record.pendingRequest }
               : {}),
             canInterrupt: record.status === 'running',
-            resumable: record.status !== 'completed',
+            resumable: ['queued', 'completed', 'failed', 'canceled'].includes(
+              record.status,
+            ),
           },
         });
         return;
@@ -314,7 +323,9 @@ describe('station delegate over HTTP', () => {
             nextCursor: `station-task-events:v1:${nextSequence}`,
             hasMore: nextSequence < record.events.length,
             canInterrupt: record.status === 'running',
-            resumable: record.status !== 'completed',
+            resumable: ['queued', 'completed', 'failed', 'canceled'].includes(
+              record.status,
+            ),
           },
         });
         return;
@@ -393,6 +404,10 @@ describe('station delegate over HTTP', () => {
           sendJson(400, { success: false, error: 'Delegated task not found' });
           return;
         }
+        // #764: an interrupt ends the active turn, so the task leaves
+        // `running` — the real server's post-interrupt snapshot reads
+        // stopped, and `resumable` derives from that fold.
+        record.status = 'canceled';
         sendJson(200, {
           success: true,
           data: {
@@ -405,7 +420,9 @@ describe('station delegate over HTTP', () => {
             target: record.target,
             eventCount: record.events.length,
             canInterrupt: record.status === 'running',
-            resumable: record.status !== 'completed',
+            resumable: ['queued', 'completed', 'failed', 'canceled'].includes(
+              record.status,
+            ),
             interruptRequested: true,
           },
         });
@@ -486,8 +503,10 @@ describe('station delegate over HTTP', () => {
     // The word on its own described a window that closes on completion, with
     // nothing at this call site able to see it close.
     expect(printed).not.toContain('(resumable)');
+    // #764: the hint is phrased conditionally — dispatch output cannot know
+    // the follow-up window stays open.
     expect(printed).toMatch(
-      /Continue this conversation: station delegate --session='task:[^']+' "<message>"/,
+      /Continue this conversation \(while it still accepts follow-up turns[^)]*\): station delegate --session='task:[^']+' "<message>"/,
     );
   });
 
@@ -524,10 +543,24 @@ describe('station delegate over HTTP', () => {
     expect(printed).toMatch(
       /station delegate --session='task:[^']+' "<message>"/,
     );
+    // #764: dispatch cannot know the follow-up window stays open, so the
+    // hint must say the window is conditional and name the surface that
+    // knows, instead of implying the command always works.
+    expect(printed).toMatch(
+      /while it still accepts follow-up turns — 'station delegate status task:\d+' says when it stops/,
+    );
     expect(printed).not.toContain('undefined');
   });
 
-  test('status discloses a closed follow-up window and names the way forward', async () => {
+  /**
+   * #764: this mock used to derive `resumable` as `status !== 'completed'` —
+   * the exact INVERSE of the server's contract-derived fold, in which a
+   * completed/failed/canceled task is resumable by reserving its next child
+   * and only the busy states are not. The mock now mirrors the server, so
+   * this pins the honest direction: a completed task still accepts a
+   * follow-up turn.
+   */
+  test('status offers continuation for a completed task (#764)', async () => {
     const { runCli } = await import('../cli.js');
 
     await runCli([
@@ -550,21 +583,60 @@ describe('station delegate over HTTP', () => {
     ]);
     const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
 
-    expect(printed).toContain('no longer accepts follow-up turns');
+    expect(printed).not.toContain('no longer accepts follow-up turns');
     expect(printed).toContain(
-      `Carry forward: station delegate create --parent-task=${created.data.taskId}`,
+      `Continue this conversation: station delegate --session='${created.data.conversationId}' "<message>"`,
     );
-    expect(printed).not.toContain('Continue this conversation:');
   });
 
-  test('status offers the follow-up command while the task is still running', async () => {
+  /**
+   * #764 diagnosis at the CLI surface: the fold that legitimately closes the
+   * follow-up window on a finished external-engine task is a trailing
+   * unresolved request (`review_pending`). Its status output must steer to
+   * `respond`, never advertise continuation.
+   */
+  test('status steers a trailing unresolved request to respond, not continue (#764)', async () => {
     const { runCli } = await import('../cli.js');
 
     await runCli([
       'delegate',
       '--agent=default',
       '--json',
-      'Ship it',
+      'trigger review pending',
+      `--api-base=${apiBase}`,
+    ]);
+    const created = JSON.parse(
+      consoleLog.mock.calls.map((call) => call[0]).join('\n'),
+    );
+    consoleLog.mockClear();
+
+    await runCli([
+      'delegate',
+      'status',
+      created.data.taskId,
+      `--api-base=${apiBase}`,
+    ]);
+    const printed = consoleLog.mock.calls.map((call) => call[0]).join('\n');
+
+    expect(printed).toContain('no longer accepts follow-up turns');
+    expect(printed).toContain('Pending request: req-pending-1');
+    expect(printed).toMatch(
+      /Respond: station delegate respond 'task:\d+' 'req-pending-1'/,
+    );
+    expect(printed).toContain(
+      `Carry forward: station delegate create --parent-task=${created.data.taskId}`,
+    );
+    expect(printed).not.toContain('Continue this conversation:');
+  });
+
+  test('status offers the follow-up command while the task can accept one', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'delegate',
+      '--agent=default',
+      '--json',
+      'trigger queued task',
       `--api-base=${apiBase}`,
     ]);
     const created = JSON.parse(

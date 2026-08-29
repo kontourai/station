@@ -1098,28 +1098,210 @@ describe('OrchestrationService', () => {
     },
   );
 
-  test('fails closed for an unmaterialized child without an exact boundary or handoff', async () => {
+  test('a plain continuation reservation is readable through its predecessor, but an arbitrary missing child is not (#764)', async () => {
     eventStore.upsertSession({
       provider: 'claude',
-      threadId: 'unrelated-missing-child',
+      threadId: 'plain-reservation-root',
       status: 'closed',
       createdAt: '2026-08-25T00:00:00.000Z',
       updatedAt: '2026-08-25T00:00:00.000Z',
     });
     eventStore.reserveNextConversationSession({
-      conversationId: 'unrelated-missing-child',
-      predecessorSessionId: 'unrelated-missing-child',
-      proposedSessionId: 'unrelated-missing-child:session:missing',
+      conversationId: 'plain-reservation-root',
+      predecessorSessionId: 'plain-reservation-root',
+      proposedSessionId: 'plain-reservation-root:session:reserved',
       createdAt: '2026-08-25T00:01:00.000Z',
     });
 
+    // #764: a plain continuation reservation creates neither a context
+    // boundary nor a handoff marker. Supervision must look through it to the
+    // authorized predecessor instead of failing the whole conversation.
     await expect(
       service.readCurrentConversationSession(
-        'unrelated-missing-child',
+        'plain-reservation-root',
+        INTERNAL_SESSION_READ_SCOPE,
+      ),
+    ).resolves.toMatchObject({
+      session: { threadId: 'plain-reservation-root' },
+    });
+
+    // A lineage child that is NOT the exact tail is still not a fallback:
+    // this is the authorization-bypass shape the read must refuse.
+    await expect(
+      service.readCurrentConversationSession(
+        'plain-reservation-root:session:reserved',
         INTERNAL_SESSION_READ_SCOPE,
       ),
     ).resolves.toBeNull();
   });
+
+  test('a failed continuation start keeps status readable and a retried continue reuses the same reserved child (#764)', async () => {
+    claude.startSession.mockImplementationOnce(async (input) => {
+      const session = {
+        provider: 'claude' as const,
+        threadId: input.threadId,
+        status: 'ready' as const,
+        resumeCursor: { nativeSession: 'turn-one' },
+        createdAt: '2026-08-24T00:00:00.000Z',
+        updatedAt: '2026-08-24T00:00:00.000Z',
+      };
+      claude.sessions.set(input.threadId, session);
+      return session;
+    });
+    const started = await service.sessionCommands.execute(
+      {
+        type: 'start-session',
+        input: {
+          threadId: 'conversation-failed-start',
+          provider: 'claude',
+          metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+        },
+      },
+      { userId: 'owner-user' },
+    );
+    if (started.status !== 'accepted') throw new Error(started.message);
+    eventStore.appendEvent({
+      eventId: 'failed-start-configured',
+      provider: 'claude',
+      threadId: 'conversation-failed-start',
+      sessionId: 'conversation-failed-start',
+      method: 'session.configured',
+      metadata: { connectionId: 'connection-a' },
+      createdAt: '2026-08-24T00:00:00.500Z',
+    });
+    eventStore.appendEvent({
+      eventId: 'failed-start-completed',
+      provider: 'claude',
+      threadId: 'conversation-failed-start',
+      sessionId: 'conversation-failed-start',
+      method: 'session.state-changed',
+      from: 'running',
+      to: 'completed',
+      sessionState: 'completed',
+      previousState: 'running',
+      transitionReason: 'turn_completed',
+      transitionSource: 'runtime',
+      createdAt: '2026-08-24T00:00:01.000Z',
+    });
+
+    const first = await service.resolveConversationContinuation(
+      'conversation-failed-start',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', connectionId: 'connection-a' },
+    );
+    expect(first).toMatchObject({ startRequired: true });
+    expect(first.sessionId).not.toBe('conversation-failed-start');
+
+    // The child start fails (the ACP loadSession-fail-closed shape): the
+    // durable reservation remains as the lineage tail, and supervision must
+    // resolve through it to the predecessor rather than erroring.
+    await expect(
+      service.readCurrentConversationSession(
+        'conversation-failed-start',
+        INTERNAL_SESSION_READ_SCOPE,
+      ),
+    ).resolves.toMatchObject({
+      session: { threadId: 'conversation-failed-start' },
+    });
+
+    // The retried continue reaches the reserved_unstarted recovery and
+    // reuses the SAME reserved child identity.
+    const retry = await service.resolveConversationContinuation(
+      'conversation-failed-start',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', connectionId: 'connection-a' },
+    );
+    expect(retry).toEqual(first);
+    expect(
+      eventStore.conversationSessions('conversation-failed-start'),
+    ).toHaveLength(2);
+  });
+
+  test.each([
+    ['observed loadSession absent', false, 'transcriptSeed'],
+    ['observed loadSession present', true, 'resumeCursor'],
+    ['capability unknown', undefined, 'resumeCursor'],
+  ] as const)(
+    'continuation decides cursor-vs-seed before start when resume support is %s (#764)',
+    async (_label, support, expectedField) => {
+      claude.startSession.mockImplementationOnce(async (input) => {
+        const session = {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          resumeCursor: { nativeSession: 'turn-one' },
+          createdAt: '2026-08-24T00:00:00.000Z',
+          updatedAt: '2026-08-24T00:00:00.000Z',
+        };
+        claude.sessions.set(input.threadId, session);
+        return session;
+      });
+      const started = await service.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId: `conversation-resume-support-${String(support)}`,
+            provider: 'claude',
+            metadata: { userId: 'owner-user', connectionId: 'connection-a' },
+          },
+        },
+        { userId: 'owner-user' },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      const conversationId = `conversation-resume-support-${String(support)}`;
+      eventStore.appendEvent({
+        eventId: `${conversationId}-configured`,
+        provider: 'claude',
+        threadId: conversationId,
+        sessionId: conversationId,
+        method: 'session.configured',
+        metadata: { connectionId: 'connection-a' },
+        createdAt: '2026-08-24T00:00:00.500Z',
+      });
+      eventStore.appendEvent({
+        eventId: `${conversationId}-completed`,
+        provider: 'claude',
+        threadId: conversationId,
+        sessionId: conversationId,
+        method: 'session.state-changed',
+        from: 'running',
+        to: 'completed',
+        sessionState: 'completed',
+        previousState: 'running',
+        transitionReason: 'turn_completed',
+        transitionSource: 'runtime',
+        createdAt: '2026-08-24T00:00:01.000Z',
+      });
+
+      const supported = new OrchestrationService({
+        adapterRegistry: createRegistry([bedrock, claude]),
+        eventBus: new EventBus(),
+        eventStore,
+        resumeCursorSupport: ({ provider, connectionId }) =>
+          provider === 'claude' && connectionId === 'connection-a'
+            ? support
+            : undefined,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+
+      const resolved = await supported.resolveConversationContinuation(
+        conversationId,
+        INTERNAL_SESSION_READ_SCOPE,
+        { provider: 'claude', connectionId: 'connection-a' },
+      );
+      expect(resolved).toMatchObject({
+        startRequired: true,
+        ...(expectedField === 'resumeCursor'
+          ? { resumeCursor: { nativeSession: 'turn-one' } }
+          : { transcriptSeed: expect.any(String) }),
+      });
+      if (expectedField === 'resumeCursor') {
+        expect(resolved).not.toHaveProperty('transcriptSeed');
+      } else {
+        expect(resolved).not.toHaveProperty('resumeCursor');
+      }
+    },
+  );
 
   test('reserves an idempotent explicit handoff without letting ordinary continuation start its target child', async () => {
     const handoffService = new OrchestrationService({

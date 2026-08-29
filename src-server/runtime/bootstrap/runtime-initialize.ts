@@ -537,6 +537,25 @@ export async function initializeRuntime(
       capture: async (input) => usagePricingSnapshotCapture?.capture(input),
     },
     turnDeduplicator: orchestrationEventStore.createTurnDeduplicator(),
+    // #764: a user-requested continuation of a stopped ACP conversation must
+    // know BEFORE the child start whether the connection's observed
+    // initialize handshake advertised `loadSession`; without it the resume
+    // cursor path is a start the ACP adapter must fail-closed (A3), leaving
+    // a durable reservation the supervision read then has to look through.
+    // `undefined` (no handshake evidence, or a non-ACP provider) keeps the
+    // cursor path — the adapter's own ruling stays authoritative there.
+    resumeCursorSupport: ({ provider, connectionId }) => {
+      if (provider !== 'acp' || !connectionId) return undefined;
+      try {
+        const connection = acpBridge
+          .getStatus()
+          .connections.find((entry) => entry.id === connectionId);
+        if (!connection?.capabilities) return undefined;
+        return connection.capabilities.loadSession === true;
+      } catch {
+        return undefined;
+      }
+    },
     adoptionLedger,
     credentialProfileRecoveryAdapter: deps.credentialProfileRecoveryAdapter,
     requireTenantExecutionContext: isHostedTenantExecutionRequired,
