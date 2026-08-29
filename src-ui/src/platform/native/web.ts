@@ -192,6 +192,14 @@ export class WebNativePlatformAdapter implements NativePlatformAdapter {
     };
   }
 
+  async commitRendererMount(): Promise<NativeCommandResult<never>> {
+    return {
+      status: 'unsupported',
+      command: 'commit-renderer-mount',
+      reason: 'The web adapter has no native main window to reveal.',
+    };
+  }
+
   async commitStartupRecoveryUi(): Promise<NativeCommandResult<never>> {
     return {
       status: 'unsupported',

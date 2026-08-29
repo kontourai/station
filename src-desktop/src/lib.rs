@@ -6355,6 +6355,7 @@ struct DesktopServerState {
 #[derive(Default)]
 struct NativeStartupBootstrap {
     renderer_observed: AtomicBool,
+    renderer_mounted: AtomicBool,
 }
 
 #[cfg(not(mobile))]
@@ -6520,9 +6521,33 @@ fn advance_native_startup_after_page(app: &AppHandle) {
         .clone();
     if native_startup_uses_sidecar_proof(&owner) {
         request_native_startup_commit(app);
-    } else if let Err(error) = commit_startup_recovery_ui_for_app(app) {
+    } else if let Err(error) = commit_native_startup_recovery_for_app(app) {
         log::warn!("native startup recovery reveal refused: {error}");
     }
+}
+
+#[cfg(not(mobile))]
+fn replay_native_startup_renderer_observations(app: &AppHandle) {
+    let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
+        return;
+    };
+    if !bootstrap.renderer_observed.load(Ordering::Acquire) {
+        return;
+    }
+    let Some(state) = app.try_state::<DesktopServerState>() else {
+        return;
+    };
+    let _ = transition_startup_readiness(
+        state.inner(),
+        startup_readiness::ReadinessInput::RendererPageStarted,
+    );
+    if bootstrap.renderer_mounted.load(Ordering::Acquire) {
+        let _ = transition_startup_readiness(
+            state.inner(),
+            startup_readiness::ReadinessInput::RendererMounted,
+        );
+    }
+    advance_native_startup_after_page(app);
 }
 
 #[cfg(not(mobile))]
@@ -6915,9 +6940,9 @@ fn commit_current_startup_ticket(
     }
     let (next, effects) = startup_readiness::transition(
         readiness,
-        startup_readiness::ReadinessInput::RendererCommitted(ticket),
+        startup_readiness::ReadinessInput::NativeIdentityCommitted(ticket),
     );
-    if !effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
+    if !next.identity_committed {
         return Err("Desktop startup readiness commit is no longer current.");
     }
     *readiness = next;
@@ -7337,21 +7362,19 @@ fn commit_startup_readiness_blocking(
         .readiness
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let effects = commit_current_startup_ticket(&status, &mut readiness, ticket).map_err(
-        |error| {
-            log::warn!(
-                "desktop startup identity proof refused generation {generation}: {error}"
-            );
+    let effects =
+        commit_current_startup_ticket(&status, &mut readiness, ticket).map_err(|error| {
+            log::warn!("desktop startup identity proof refused generation {generation}: {error}");
             error.to_string()
-        },
-    )?;
+        })?;
     drop(readiness);
     drop(status);
+    log::info!(
+        "desktop startup identity proof committed generation {}",
+        generation
+    );
     if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
-        log::info!(
-            "desktop startup identity proof committed generation {}",
-            generation
-        );
+        log::info!("desktop startup readiness revealed after identity and renderer mount");
         reveal_main_window(&app);
     }
     Ok(())
@@ -7365,8 +7388,15 @@ fn observe_native_startup_page(app: &AppHandle, label: &str, event: PageLoadEven
     let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
         return;
     };
+    bootstrap.renderer_mounted.store(false, Ordering::Release);
     if !bootstrap.renderer_observed.swap(true, Ordering::AcqRel) {
         log::info!("native startup bootstrap observed the main renderer page start");
+    }
+    if let Some(state) = app.try_state::<DesktopServerState>() {
+        let _ = transition_startup_readiness(
+            state.inner(),
+            startup_readiness::ReadinessInput::RendererPageStarted,
+        );
     }
     advance_native_startup_after_page(app);
 }
@@ -7419,13 +7449,63 @@ async fn commit_startup_readiness(
 }
 
 #[cfg(not(mobile))]
+fn renderer_mount_label_admitted(label: &str) -> bool {
+    label == "main"
+}
+
+#[cfg(not(mobile))]
 #[tauri::command]
-fn commit_startup_recovery_ui(app: AppHandle) -> Result<(), String> {
+fn commit_renderer_mount(window: tauri::WebviewWindow, app: AppHandle) -> Result<(), String> {
+    if !renderer_mount_label_admitted(window.label()) {
+        return Err("Renderer mount commits are accepted only from the main WebView.".into());
+    }
+    let bootstrap = app
+        .try_state::<NativeStartupBootstrap>()
+        .ok_or("Desktop startup bootstrap is not initialized.")?;
+    bootstrap.renderer_mounted.store(true, Ordering::Release);
+    let Some(state) = app.try_state::<DesktopServerState>() else {
+        log::info!("native startup bootstrap retained the main React mount before desktop state");
+        return Ok(());
+    };
+    let effects = transition_startup_readiness(
+        state.inner(),
+        startup_readiness::ReadinessInput::RendererMounted,
+    );
+    log::info!("native startup bootstrap observed the main React mount");
+    if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
+        log::info!("desktop startup readiness revealed after identity and renderer mount");
+        reveal_main_window(&app);
+    }
+    Ok(())
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+fn commit_startup_recovery_ui(window: tauri::WebviewWindow, app: AppHandle) -> Result<(), String> {
+    if !renderer_mount_label_admitted(window.label()) {
+        return Err("Startup recovery commits are accepted only from the main WebView.".into());
+    }
     commit_startup_recovery_ui_for_app(&app)
 }
 
 #[cfg(not(mobile))]
 fn commit_startup_recovery_ui_for_app(app: &AppHandle) -> Result<(), String> {
+    commit_startup_recovery_for_app(app, startup_readiness::ReadinessInput::RecoveryUiCommitted)
+}
+
+#[cfg(not(mobile))]
+fn commit_native_startup_recovery_for_app(app: &AppHandle) -> Result<(), String> {
+    commit_startup_recovery_for_app(
+        app,
+        startup_readiness::ReadinessInput::NativeRecoveryCommitted,
+    )
+}
+
+#[cfg(not(mobile))]
+fn commit_startup_recovery_for_app(
+    app: &AppHandle,
+    input: startup_readiness::ReadinessInput,
+) -> Result<(), String> {
     let state = app
         .try_state::<DesktopServerState>()
         .ok_or("Desktop startup readiness is not initialized.")?;
@@ -7438,10 +7518,7 @@ fn commit_startup_recovery_ui_for_app(app: &AppHandle) -> Result<(), String> {
     {
         return Err("Desktop sidecar recovery requires an exact authenticated ticket.".into());
     }
-    let effects = transition_startup_readiness(
-        state.inner(),
-        startup_readiness::ReadinessInput::RecoveryUiCommitted,
-    );
+    let effects = transition_startup_readiness(state.inner(), input);
     if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
         reveal_main_window(app);
     }
@@ -8691,6 +8768,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         bundled_server_status,
         open_desktop_tray_menu,
         restart_bundled_server,
+        commit_renderer_mount,
         commit_startup_readiness,
         commit_startup_recovery_ui,
         ssh_env_probe,
@@ -8881,7 +8959,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                     app.manage(dispatcher);
                 }
                 app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), startup_commit_in_flight: AtomicBool::new(false), startup_commit_pending: AtomicBool::new(false), ownership_checked_at: Mutex::new(Some(Instant::now())) });
-                advance_native_startup_after_page(app.handle());
+                replay_native_startup_renderer_observations(app.handle());
                 replay_pending_main_window_activation(app.handle(), &pending_activation);
                 // The tray poll reads this managed ownership state. Starting
                 // it earlier allowed its first poll to see only the
@@ -8981,9 +9059,14 @@ mod tests {
             &waiting,
             startup_readiness::ReadinessInput::ServerTicket(ticket.clone()),
         );
+        let (waiting, identity_effects) = startup_readiness::transition(
+            &waiting,
+            startup_readiness::ReadinessInput::NativeIdentityCommitted(ticket),
+        );
+        assert!(identity_effects.is_empty());
         let (_, effects) = startup_readiness::transition(
             &waiting,
-            startup_readiness::ReadinessInput::RendererCommitted(ticket),
+            startup_readiness::ReadinessInput::RendererMounted,
         );
         assert_eq!(
             effects,
@@ -9455,7 +9538,7 @@ mod tests {
     }
 
     #[test]
-    fn atomic_ticket_commit_refuses_rotated_supervisor_and_commits_exact_current_once() {
+    fn atomic_ticket_commit_refuses_rotated_supervisor_and_waits_for_renderer_mount() {
         let mut status = BundledServerStatus::initial("out".into(), "err".into());
         status.phase = bundled_server_state::ServerPhase::Running;
         status.generation = Some(2);
@@ -9495,6 +9578,13 @@ mod tests {
         );
         assert_eq!(readiness.phase, startup_readiness::ReadinessPhase::Waiting);
         let effects = commit_current_startup_ticket(&status, &mut readiness, current).unwrap();
+        assert!(effects.is_empty());
+        assert!(readiness.identity_committed);
+        assert_eq!(readiness.phase, startup_readiness::ReadinessPhase::Waiting);
+        let (readiness, effects) = startup_readiness::transition(
+            &readiness,
+            startup_readiness::ReadinessInput::RendererMounted,
+        );
         assert_eq!(
             effects,
             vec![startup_readiness::ReadinessEffect::RevealMainWindow]
@@ -9566,6 +9656,8 @@ mod tests {
             "main",
             PageLoadEvent::Started,
         ));
+        assert!(renderer_mount_label_admitted("main"));
+        assert!(!renderer_mount_label_admitted("browser-preview-proof"));
         assert!(!native_startup_page_admitted(
             "main",
             PageLoadEvent::Finished,
