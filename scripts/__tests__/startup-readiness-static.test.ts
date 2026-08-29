@@ -41,12 +41,25 @@ describe('desktop startup readiness static boundary', () => {
       /single_instance::init[\s\S]{0,1800}request_main_window_activation\(app\)/,
     );
     expect(lib).toMatch(
-      /deep_link\(\)\.on_open_url[\s\S]{0,500}request_main_window_activation/,
+      /deep_link\(\)\.on_open_url[\s\S]{0,700}request_or_defer_main_window_activation/,
     );
     expect(lib).toMatch(
       /RunEvent::Reopen[\s\S]{0,180}request_main_window_activation/,
     );
     expect(lib).not.toContain('tauri_plugin_window_state');
+  });
+
+  it('replays a cold pairing-link activation after native readiness management', () => {
+    const lib = read('src-desktop/src/lib.rs');
+    const handler = lib.indexOf('deep_link().on_open_url');
+    const readinessManagement = lib.indexOf('app.manage(DesktopServerState {');
+    const replay = lib.lastIndexOf('replay_pending_main_window_activation(');
+
+    expect(handler).toBeGreaterThanOrEqual(0);
+    expect(readinessManagement).toBeGreaterThan(handler);
+    expect(replay).toBeGreaterThan(readinessManagement);
+    expect(lib).toContain('request_or_defer_main_window_activation(');
+    expect(lib).toContain('request_main_window_activation(app);');
   });
 
   it('registers the updater exactly once only for usable release configuration', () => {
@@ -98,11 +111,11 @@ describe('desktop startup readiness static boundary', () => {
       ),
     ]).toHaveLength(2);
     const noAppleRoute = lib.replace(
-      'request_main_window_activation(&activation_app);',
+      'request_or_defer_main_window_activation(\n                        &activation_app,',
       '/* route removed */',
     );
     expect(noAppleRoute).not.toMatch(
-      /deep_link\(\)\.on_open_url[\s\S]{0,500}request_main_window_activation/,
+      /deep_link\(\)\.on_open_url[\s\S]{0,700}request_or_defer_main_window_activation/,
     );
     const noReopenRoute = lib.replace(
       'request_main_window_activation(app);\n            }\n            #[cfg(not(mobile))]\n            if let tauri::RunEvent::Exit',
