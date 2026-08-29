@@ -1321,15 +1321,27 @@ fn station_profile_store_genesis_admissible(root: &std::path::Path) -> Result<bo
             for entry in entries {
                 let entry = entry.map_err(|error| format!("inspect Station root: {error}"))?;
                 let name = entry.file_name();
-                if name != "installs" {
-                    return Ok(false);
-                }
                 let metadata = entry
                     .metadata()
                     .map_err(|error| format!("inspect Station install root: {error}"))?;
                 if !metadata.is_dir() {
                     return Ok(false);
                 }
+                if name == "installs" {
+                    continue;
+                }
+                // Windows establishes the ACL/reparse boundary before the
+                // genesis lock so its `config/` directory can exist during a
+                // legitimate first launch. An empty directory alone is not
+                // history; any residue is a relocation/cutover fence.
+                if name == "config" {
+                    let mut children = std::fs::read_dir(entry.path())
+                        .map_err(|error| format!("inspect Station config root: {error}"))?;
+                    if children.next().is_none() {
+                        continue;
+                    }
+                }
+                return Ok(false);
             }
             Ok(true)
         }
@@ -1341,6 +1353,22 @@ fn station_profile_store_genesis_admissible(root: &std::path::Path) -> Result<bo
 #[cfg(not(mobile))]
 fn profile_store_genesis_marker_path(root: &std::path::Path) -> std::path::PathBuf {
     root.join(STATION_PROFILE_STORE_GENESIS_MARKER)
+}
+
+/// POSIX file sync alone does not make a newly-created directory entry
+/// durable. Windows has no supported directory fsync equivalent, so the
+/// current-user/reparse trust boundary is the durability-compatible operation
+/// there and this becomes an explicit no-op.
+#[cfg(unix)]
+fn sync_profile_store_directory(path: &std::path::Path) -> Result<(), String> {
+    std::fs::File::open(path)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| format!("sync saved Station directory: {error}"))
+}
+
+#[cfg(not(unix))]
+fn sync_profile_store_directory(_path: &std::path::Path) -> Result<(), String> {
+    Ok(())
 }
 
 #[cfg(not(mobile))]
@@ -1383,10 +1411,20 @@ fn write_profile_store_genesis_marker(root: &std::path::Path) -> Result<(), Stri
     options.mode(0o600);
     match options.open(&marker) {
         Ok(mut file) => {
+            #[cfg(windows)]
+            crate::windows_path_trust::ensure(&[(
+                crate::windows_path_trust::TrustKind::File,
+                &marker,
+            )])?;
             file.write_all(STATION_PROFILE_STORE_GENESIS_SIGNATURE.as_bytes())
                 .map_err(|error| format!("write saved Station genesis marker: {error}"))?;
             file.sync_all()
                 .map_err(|error| format!("sync saved Station genesis marker: {error}"))?;
+            sync_profile_store_directory(root)?;
+            let parent = root
+                .parent()
+                .ok_or_else(|| "saved Station root has no parent directory".to_string())?;
+            sync_profile_store_directory(parent)?;
             Ok(())
         }
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -1418,10 +1456,16 @@ fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), Strin
     options.mode(0o600);
     match options.open(path) {
         Ok(mut file) => {
+            #[cfg(windows)]
+            crate::windows_path_trust::ensure(&[(
+                crate::windows_path_trust::TrustKind::File,
+                path,
+            )])?;
             file.write_all(EMPTY_STATION_PROFILE_STORE.as_bytes())
                 .map_err(|error| format!("write initial saved Station metadata: {error}"))?;
             file.sync_all()
                 .map_err(|error| format!("sync initial saved Station metadata: {error}"))?;
+            sync_profile_store_directory(parent)?;
             Ok(())
         }
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
@@ -1436,6 +1480,14 @@ fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), Strin
 #[cfg(not(mobile))]
 fn ensure_station_profile_store_genesis(app: &AppHandle, root: &std::path::Path) -> Result<(), String> {
     let path = root.join("config").join("profiles.json");
+    #[cfg(windows)]
+    {
+        let config = root.join("config");
+        crate::windows_path_trust::ensure(&[
+            (crate::windows_path_trust::TrustKind::Directory, root),
+            (crate::windows_path_trust::TrustKind::Directory, &config),
+        ])?;
+    }
     // This lives beside the root rather than under `config/`, so contenders
     // serialize before either can create the directory whose presence is
     // evidence of a non-virgin/cutover root.  A waiter always re-reads after
@@ -12039,8 +12091,13 @@ mod tests {
 
         std::fs::create_dir_all(root.join("config")).unwrap();
         assert!(
+            station_profile_store_genesis_admissible(&root).unwrap(),
+            "the Windows ACL bootstrap may create an otherwise empty config directory"
+        );
+        std::fs::write(root.join("config/cutover-receipt.json"), "held").unwrap();
+        assert!(
             !station_profile_store_genesis_admissible(&root).unwrap(),
-            "a transient or withheld config directory is never genesis authority"
+            "any config residue is a transient/cutover fence"
         );
     }
 
@@ -12056,6 +12113,38 @@ mod tests {
             !station_profile_store_genesis_admissible(&root).unwrap(),
             "the root marker must prevent a later missing config from becoming first-run"
         );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_store_genesis_syncs_and_trusts_before_first_publication() {
+        let source = include_str!("lib.rs");
+        let marker = &source[source
+            .find("fn write_profile_store_genesis_marker(")
+            .expect("marker writer exists")..source
+            .find("fn write_empty_station_profile_store(")
+            .expect("empty writer follows marker writer")];
+        assert!(marker.contains("sync_profile_store_directory(root)?"));
+        assert!(marker.contains("sync_profile_store_directory(parent)?"));
+        assert!(marker.contains("#[cfg(windows)]"));
+        assert!(marker.contains("TrustKind::File"));
+
+        let empty = &source[source
+            .find("fn write_empty_station_profile_store(")
+            .expect("empty writer exists")..source
+            .find("fn ensure_station_profile_store_genesis(")
+            .expect("genesis admission follows empty writer")];
+        assert!(empty.contains("sync_profile_store_directory(parent)?"));
+        assert!(empty.contains("#[cfg(windows)]"));
+        assert!(empty.contains("TrustKind::File"));
+
+        let admission = &source[source
+            .find("fn ensure_station_profile_store_genesis(")
+            .expect("genesis admission exists")..source
+            .find("fn read_station_profile_store(")
+            .expect("profile reader follows admission")];
+        assert!(admission.contains("TrustKind::Directory, root"));
+        assert!(admission.contains("TrustKind::Directory, &config"));
     }
 
     #[cfg(not(mobile))]

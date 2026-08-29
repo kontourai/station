@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { runStationsCommand } from '../commands/profile-command.js';
@@ -133,6 +133,62 @@ describe('shared saved Station store', () => {
     expect(() => readFileSync(profilesPath(), 'utf8')).toThrow();
   });
 
+  test('does not let a stale ordinary profile lock authorize a missing shared store', () => {
+    mkdirSync(join(home, 'instances', 'stable', 'data'), {
+      recursive: true,
+      mode: 0o700,
+    });
+    const staleLock = `${profilesPath()}.lock`;
+    mkdirSync(dirname(staleLock), { recursive: true, mode: 0o700 });
+    writeFileSync(
+      staleLock,
+      JSON.stringify({
+        schemaVersion: 2,
+        pid: process.pid,
+        birth: `stale-${lookupProcessBirthFingerprint(process.pid)}`,
+        createdAt: 0,
+      }),
+      { mode: 0o600 },
+    );
+    chmodSync(staleLock, 0o600);
+
+    expect(() =>
+      upsertProfile({
+        name: 'beta-local',
+        endpoint: 'http://127.0.0.1:28141',
+      }),
+    ).toThrow(/missing from an initialized or in-progress shared root/);
+    expect(() => readFileSync(profilesPath(), 'utf8')).toThrow();
+  });
+
+  test('reclaims a conclusively stale shared genesis lock before first publication', () => {
+    const genesisLock = join(
+      dirname(home),
+      `.${basename(home)}.station-profile-store-genesis.json.lock`,
+    );
+    const birth = lookupProcessBirthFingerprint(process.pid);
+    expect(birth).not.toBeNull();
+    writeFileSync(
+      genesisLock,
+      JSON.stringify({
+        schemaVersion: 2,
+        pid: process.pid,
+        birth: `stale-${birth}`,
+        createdAt: 0,
+      }),
+      { mode: 0o600 },
+    );
+    chmodSync(genesisLock, 0o600);
+
+    upsertProfile({
+      name: 'stable-local',
+      endpoint: 'http://127.0.0.1:18141',
+    });
+    expect(readProfileStore().profiles.map((profile) => profile.name)).toEqual([
+      'stable-local',
+    ]);
+  });
+
   test('three independent channel bootstraps converge on one shared revision chain', async () => {
     const moduleUrl = new URL('../commands/profile-store.ts', import.meta.url);
     const workers = [
@@ -160,7 +216,12 @@ describe('shared saved Station store', () => {
         process.execPath,
         ['--import', 'tsx/esm', '--input-type=module', '--eval', source],
         {
-          env: { ...process.env, STATION_HOME: home, STATION_ROOT: home, STATION_PROFILE_WORKER: `${name}:${port}` },
+          env: {
+            ...process.env,
+            STATION_HOME: home,
+            STATION_ROOT: home,
+            STATION_PROFILE_WORKER: `${name}:${port}`,
+          },
           stdio: 'ignore',
           windowsHide: true,
         },
@@ -266,6 +327,7 @@ describe('shared saved Station store', () => {
   });
 
   test('reclaims an old lock only after its recorded owner is dead', () => {
+    upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
     const path = `${profilesPath()}.lock`;
     mkdirSync(join(home, 'config'), { recursive: true, mode: 0o700 });
     writeFileSync(
@@ -287,6 +349,7 @@ describe('shared saved Station store', () => {
   });
 
   test('reclaims a v2 lock immediately when its exact owner is gone', () => {
+    upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
     const path = `${profilesPath()}.lock`;
     mkdirSync(join(home, 'config'), { recursive: true, mode: 0o700 });
     writeFileSync(
@@ -307,6 +370,7 @@ describe('shared saved Station store', () => {
   });
 
   test('retains a v2 lock held by the exact live owner', () => {
+    upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
     const birth = lookupProcessBirthFingerprint(process.pid);
     expect(birth).toBeTruthy();
     const path = `${profilesPath()}.lock`;
@@ -330,6 +394,7 @@ describe('shared saved Station store', () => {
   });
 
   test('reclaims a v2 PID-reuse record without waiting five minutes', () => {
+    upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
     const birth = lookupProcessBirthFingerprint(process.pid);
     expect(birth).toBeTruthy();
     const path = `${profilesPath()}.lock`;
@@ -351,6 +416,7 @@ describe('shared saved Station store', () => {
   test.skipIf(process.platform === 'win32')(
     'immediately reclaims a real process lock after its owner is killed',
     async () => {
+      upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
       const moduleUrl = new URL(
         '../commands/profile-store.ts',
         import.meta.url,
@@ -383,6 +449,7 @@ describe('shared saved Station store', () => {
   );
 
   test('reclaims an owner-only partial lock only after its filesystem age expires', () => {
+    upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
     const path = `${profilesPath()}.lock`;
     mkdirSync(join(home, 'config'), { recursive: true, mode: 0o700 });
     writeFileSync(path, '{"schemaVersion":', { mode: 0o600 });
@@ -398,6 +465,7 @@ describe('shared saved Station store', () => {
   });
 
   test('reclaims an owner-only zero-byte lock only after its filesystem age expires', () => {
+    upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
     const path = `${profilesPath()}.lock`;
     mkdirSync(join(home, 'config'), { recursive: true, mode: 0o700 });
     writeFileSync(path, '', { mode: 0o600 });
@@ -408,6 +476,7 @@ describe('shared saved Station store', () => {
   });
 
   test('does not reclaim a fresh partial lock', () => {
+    upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
     const path = `${profilesPath()}.lock`;
     mkdirSync(join(home, 'config'), { recursive: true, mode: 0o700 });
     writeFileSync(path, '{', { mode: 0o600 });
@@ -417,6 +486,7 @@ describe('shared saved Station store', () => {
   });
 
   test('does not let a second reclaimer remove a lock while the reclaim guard is held', () => {
+    upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
     const path = `${profilesPath()}.lock`;
     const guard = `${path}.reclaim`;
     mkdirSync(join(home, 'config'), { recursive: true, mode: 0o700 });
@@ -453,6 +523,7 @@ describe('shared saved Station store', () => {
   });
 
   test('recovers a stale reclaim guard left by a dead process', () => {
+    upsertProfile({ name: 'seed', endpoint: 'https://seed.example.test' });
     const path = `${profilesPath()}.lock`;
     const guard = `${path}.reclaim`;
     mkdirSync(join(home, 'config'), { recursive: true, mode: 0o700 });

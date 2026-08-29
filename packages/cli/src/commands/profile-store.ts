@@ -28,6 +28,7 @@ import {
   type StationProfileSetupSource,
   type StationProfileStore,
 } from '@kontourai/station-contracts';
+import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { assertCredentialTransportAllowed } from './profile-credentials.js';
@@ -133,7 +134,9 @@ function profileStoreGenesisMarkerExists(home: string): boolean {
       (info.uid !== process.getuid() || (info.mode & 0o077) !== 0)) ||
     readFileSync(marker, 'utf8') !== PROFILE_STORE_GENESIS_SIGNATURE
   ) {
-    throw new Error('saved Station genesis marker is invalid or not owner-controlled');
+    throw new Error(
+      'saved Station genesis marker is invalid or not owner-controlled',
+    );
   }
   return true;
 }
@@ -184,8 +187,16 @@ function writeProfileStoreGenesisMarker(home: string): void {
   );
   try {
     fchmodSync(descriptor, 0o600);
+    hardenWindowsPathsTrusted(windowsTrustRun, [
+      { kind: 'file', path: marker },
+    ]);
     writeFileSync(descriptor, PROFILE_STORE_GENESIS_SIGNATURE, 'utf8');
     fsyncSync(descriptor);
+    // A file fsync does not make its newly-created directory entry durable on
+    // POSIX. Persist both the root entry and (when the root was just born) its
+    // parent before an empty profile document can follow.
+    fsyncDirectorySync(home);
+    fsyncDirectorySync(dirname(home));
   } finally {
     closeSync(descriptor);
   }
@@ -194,9 +205,13 @@ function writeProfileStoreGenesisMarker(home: string): void {
 function withProfileStoreGenesisLock<T>(home: string, callback: () => T): T {
   const root = resolve(home);
   const parent = dirname(root);
-  const path = join(parent, `.${basename(root)}.station-profile-store-genesis.json.lock`);
+  const path = join(
+    parent,
+    `.${basename(root)}.station-profile-store-genesis.json.lock`,
+  );
   // The parent is the existing user-owned directory that contains the root;
   // never create config/ merely to coordinate genesis.
+  let reclaimed = false;
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const descriptor = createExclusiveProfileStoreLock(path);
     if (descriptor !== undefined) {
@@ -211,9 +226,18 @@ function withProfileStoreGenesisLock<T>(home: string, callback: () => T): T {
         }
       }
     }
+    if (!reclaimed && reclaimStaleProfileStoreLockAt(path)) {
+      reclaimed = true;
+      continue;
+    }
+    // A live sibling Desktop or CLI initializer has not yet published its
+    // marker/document. Wait boundedly for that winner rather than turning a
+    // healthy three-channel cold start into a spurious failure.
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
   }
-  throw new Error('saved Station genesis is busy; retry after the other client finishes.');
+  throw new Error(
+    'saved Station genesis is busy; retry after the other client finishes.',
+  );
 }
 
 /**
@@ -222,18 +246,20 @@ function withProfileStoreGenesisLock<T>(home: string, callback: () => T): T {
  * recovery condition, not permission to replace a potentially moved store.
  */
 function ensureProfileStoreGenesis(home: string): void {
+  // Establish the same no-reparse/current-user directory boundary before the
+  // first marker or empty store exists. `writeProfileStore` already does this
+  // for later publications through `acquireProfileStoreLock`; genesis cannot
+  // wait until then because it is the code that creates those files.
+  ensureWindowsProfileDirectories(home);
   withProfileStoreGenesisLock(home, () => {
     const path = profilesPath(home);
     if (existsSync(path)) {
-      profileStoreGenesisMarkerExists(home) || writeProfileStoreGenesisMarker(home);
+      profileStoreGenesisMarkerExists(home) ||
+        writeProfileStoreGenesisMarker(home);
       return;
     }
     const markerExists = profileStoreGenesisMarkerExists(home);
     if (markerExists || !profileStoreGenesisAdmissible(home)) {
-      // Pre-marker installations used this exact sibling lock protocol. Let
-      // its stale-lock tests/recovery finish, but never grant that exception
-      // to a marker-backed (current) root whose profile document disappeared.
-      if (!markerExists && existsSync(lockPath(home))) return;
       throw new Error(
         'saved Station metadata is missing from an initialized or in-progress shared root; restore profiles.json before changing saved Stations.',
       );
@@ -250,8 +276,14 @@ function ensureProfileStoreGenesis(home: string): void {
     );
     try {
       fchmodSync(descriptor, 0o600);
-      writeFileSync(descriptor, `${JSON.stringify(emptyStationProfileStore())}\n`, 'utf8');
+      hardenWindowsPathsTrusted(windowsTrustRun, [{ kind: 'file', path }]);
+      writeFileSync(
+        descriptor,
+        `${JSON.stringify(emptyStationProfileStore())}\n`,
+        'utf8',
+      );
       fsyncSync(descriptor);
+      fsyncDirectorySync(dirname(path));
     } finally {
       closeSync(descriptor);
     }
@@ -332,9 +364,8 @@ function lockPath(home: string): string {
   return `${profilesPath(home)}.lock`;
 }
 
-/** Serializes stale-lock inspection/reclamation; never held during a write. */
-function reclaimGuardPath(home: string): string {
-  return `${lockPath(home)}.reclaim`;
+function reclaimGuardPathForLock(path: string): string {
+  return `${path}.reclaim`;
 }
 
 function lockIsOwnedRegularFile(path: string): boolean {
@@ -513,9 +544,8 @@ function createExclusiveProfileStoreLock(path: string): number | undefined {
  * sibling guard makes validation + removal a one-reclaimer critical section;
  * a normal writer may still win the normal lock immediately afterwards.
  */
-function reclaimStaleProfileStoreLock(home: string): boolean {
-  const path = lockPath(home);
-  const guardPath = reclaimGuardPath(home);
+function reclaimStaleProfileStoreLockAt(path: string): boolean {
+  const guardPath = reclaimGuardPathForLock(path);
   let guardFd = createExclusiveProfileStoreLock(guardPath);
   const staleGuard =
     guardFd === undefined ? reclaimableProfileStoreLock(guardPath) : undefined;
@@ -550,6 +580,10 @@ function reclaimStaleProfileStoreLock(home: string): boolean {
       // A retained reclaim guard is safer than allowing competing reclaimers.
     }
   }
+}
+
+function reclaimStaleProfileStoreLock(home: string): boolean {
+  return reclaimStaleProfileStoreLockAt(lockPath(home));
 }
 
 function acquireProfileStoreLock(home: string): { fd: number; path: string } {
