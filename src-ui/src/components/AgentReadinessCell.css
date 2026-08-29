@@ -52,3 +52,22 @@
   line-height: 1.5;
   vertical-align: middle;
 }
+
+/* #765 B3: the caution state carries a full server sentence ("Needs: no
+   enabled LLM provider connection is configured."), and the kit's uppercase
+   monospace tone-block treatment turns that sentence into a shouting yellow
+   box beside the row name. This one state drops to the muted warning pair
+   (`--warning-bg`/`--warning-text`, the pattern DetailHeader's warning badge
+   and the posture chip use) in sentence case, wrapping instead of crowding
+   the name. Short labels (Ready, Not set up) keep the kit look. */
+.agent-readiness__status.tone-caution {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: var(--warning-text);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-transform: none;
+  text-align: left;
+  white-space: normal;
+}
