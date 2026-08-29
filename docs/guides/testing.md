@@ -425,14 +425,17 @@ only for protected `main` pushes or reviewed manual dispatches; the same gate
 requires that boundary and `persist-credentials: false` on their checkouts.
 Unreviewed PR code belongs on hosted or genuinely one-job ephemeral runners.
 
-The private Linux fleet is partitioned by listener, not queue priority:
-`ci:fast` alone requests `fast-feedback`, while every other Linux job that
-reserves physical-host capacity requests `heavy-host`. The fast listener must
-not carry `kontour-linux`, because GitHub matches a job when the runner has a
-*superset* of its requested labels; retaining that shared label would let an
-unrelated heavy job occupy the feedback listener before its lease is admitted.
-The actionlint policy and CI workflow contract test enforce both directions.
-See [the private-runner partition guide](private-runner-partition.md) before
+Linux CI, Android, container, publish, secret-scan, and generic Windows jobs
+run on GitHub-hosted images. desktop-win remains only for the named Windows
+hardware-reference performance lane and for recovering a leaked physical-host
+capacity lease. If a Linux job is reintroduced on that host, `ci:fast` alone
+requests `fast-feedback` and every other leased Linux job requests
+`heavy-host`. The fast listener must not carry `kontour-linux`, because GitHub
+matches a job when the runner has a *superset* of its requested labels;
+retaining that shared label would let an unrelated heavy job occupy the
+feedback listener before its lease is admitted. The actionlint policy still
+enforces that partition for any persistent Linux job. See
+[the private-runner partition guide](private-runner-partition.md) before
 changing fleet labels or adding a capacity-leased workflow.
 
 ### Opt-in load reliability evidence

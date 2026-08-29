@@ -11,11 +11,10 @@ permissions:
 jobs:
   classify:
     name: Exact full-diff classification
-    # station#1931: same defect as ci.yml carried here. `smoke` needs: this,
-    # so while provider-hosted jobs cannot start (org billing, 2026-08-01) a
-    # zero-step failure here skips the self-hosted smoke job entirely — 5 of
-    # the last 5 runs on `main`. Classification runs one node script.
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    # Classifies a diff with one node script so container-only changes still
+    # skip the smoke job. Hosted because the public repo has free GitHub-hosted
+    # minutes; this job does not need desktop-win.
+    runs-on: ubuntu-22.04
     if: ${{ github.event_name != 'pull_request' }}
     timeout-minutes: 10
     outputs:
@@ -25,18 +24,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "1"
-          timeout-seconds: "300"
-          owner-lifetime-seconds: "7800"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -55,27 +42,13 @@ jobs:
     concurrency:
       group: container-smoke-${{ github.ref }}
       cancel-in-progress: true
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-        with:
-          require-docker: "true"
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "9"
-          timeout-seconds: "600"
-          owner-lifetime-seconds: "7800"
       - name: Isolate Docker client state
-        # Persistent WSL hosts may also use Docker Desktop interactively. Keep
-        # CI independent from its credential helper and Windows logon state.
         run: |
           umask 077
           docker_config="$(mktemp -d "$RUNNER_TEMP/station-docker-config.XXXXXX")"
@@ -84,8 +57,6 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: npm run dependencies:ci
-      # The fleet image owns OS-level Chromium dependencies. The unprivileged
-      # persistent runner reuses the repo-pinned browser payload by version.
       - name: Install repo-pinned Chromium
         run: |
           echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"

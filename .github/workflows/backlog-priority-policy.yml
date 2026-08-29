@@ -17,43 +17,21 @@ concurrency:
 
 jobs:
   enforce:
-    # `fast-feedback` is reserved for ci.yml's fast-checks job. This audit is
-    # deliberately lightweight, but still uses the available self-hosted heavy
-    # listener and its one-unit lease so it cannot starve or overbook the host.
     if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
+    runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "1"
-          timeout-seconds: "300"
-          owner-lifetime-seconds: "7800"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      - name: Provide a pinned gh binary (fleet runner image ships none)
-        run: |
-          curl -fsSL --retry 3 -o "$RUNNER_TEMP/gh.tar.gz" \
-            "https://github.com/cli/cli/releases/download/v2.97.0/gh_2.97.0_linux_amd64.tar.gz"
-          echo "a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112  $RUNNER_TEMP/gh.tar.gz" | sha256sum -c -
-          tar -xzf "$RUNNER_TEMP/gh.tar.gz" -C "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/gh_2.97.0_linux_amd64/bin" >> "$GITHUB_PATH"
       - name: Enforce durable backlog dispositions
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # curl, not gh: the fleet runner image does not ship the gh binary,
-          # and this is the workflow's only gh call (exit 127 on first real run).
           curl -fsSL --retry 3 \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \

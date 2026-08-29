@@ -210,17 +210,9 @@ describe('CI verification workflow contracts', () => {
     expect(secretScan).toContain(
       'secret-scan.yml@02f40a67901a79ce4004c44d91e350b93782644c',
     );
-    expect(secretScan).toContain(
-      'runner: \'["self-hosted","Linux","X64","kontour-linux","heavy-host"]\'',
-    );
-    expect(secretScan).toContain(
-      'capacity-coordination-root: /mnt/e/kontour-runner-capacity',
-    );
-    expect(secretScan).toContain('capacity-host-id: desktop-win');
-    expect(secretScan).toContain('capacity-units: 10');
-    expect(secretScan).toContain('capacity-lease-weight: 1');
-    expect(secretScan).toContain('capacity-timeout-seconds: 600');
-    expect(secretScan).toContain('capacity-owner-lifetime-seconds: 7800');
+    expect(secretScan).toContain('runner: \'"ubuntu-22.04"\'');
+    expect(secretScan).not.toContain('capacity-coordination-root:');
+    expect(secretScan).not.toContain('capacity-host-id:');
     expect(secretScan).toContain(
       `group: station-secret-scan-\${{ github.ref }}`,
     );
@@ -245,12 +237,10 @@ describe('CI verification workflow contracts', () => {
       expect(source).toContain('scripts/classify-ci-change.mjs');
       expect(source).toContain('workflow_dispatch:');
     }
-    expect(ci).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]',
-    );
-    expect(containerSmoke).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]',
-    );
+    expect(ci).toContain('runs-on: ubuntu-22.04');
+    expect(containerSmoke).toContain('runs-on: ubuntu-22.04');
+    expect(ci).not.toContain('runs-on: [self-hosted, Linux');
+    expect(containerSmoke).not.toContain('runs-on: [self-hosted, Linux');
     expect(ci).toContain(
       `group: ci-fast-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}`,
     );
@@ -267,34 +257,32 @@ describe('CI verification workflow contracts', () => {
     expect(containerSmoke).not.toMatch(/^concurrency:/m);
   });
 
-  it('pins every direct capacity lease to a bounded shared lifetime', () => {
+  it('pins remaining desktop-win capacity leases to a bounded shared lifetime', () => {
     const reviewedSha = REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA;
-    const directCallers = [
-      ['android-test.yml', 3],
-      ['build-android.yml', 1],
-      ['ci.yml', 4],
-      ['ci-extended.yml', 2],
-      ['container-smoke.yml', 2],
-      ['windows-verification.yml', 1],
-    ] as const;
-
-    for (const [name, expectedCalls] of directCallers) {
-      const source = workflow(name);
-      expect(
-        source.match(new RegExp(`physical-host-capacity@${reviewedSha}`, 'g')),
-        name,
-      ).toHaveLength(expectedCalls);
-      expect(
-        source.match(/owner-lifetime-seconds: "7800"/g),
-        name,
-      ).toHaveLength(expectedCalls);
-    }
+    const performance = workflow('interactive-workspace-performance.yml');
     expect(
-      directCallers.flatMap(
-        ([name]) =>
-          workflow(name).match(/physical-host-capacity@[a-f0-9]+/g) ?? [],
+      performance.match(
+        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
       ),
-    ).toHaveLength(13);
+    ).toHaveLength(3);
+    expect(performance.match(/owner-lifetime-seconds: "7800"/g)).toHaveLength(
+      3,
+    );
+
+    for (const name of [
+      'android-test.yml',
+      'build-android.yml',
+      'ci.yml',
+      'ci-extended.yml',
+      'container-smoke.yml',
+      'windows-verification.yml',
+      'windows-vitest-diagnostic.yml',
+      'nightly.yml',
+      'publish-packages.yml',
+      'backlog-priority-policy.yml',
+    ]) {
+      expect(workflow(name), name).not.toContain('physical-host-capacity@');
+    }
 
     const android = workflow('android-test.yml');
     const resolveBuild = android.slice(
@@ -330,21 +318,12 @@ describe('CI verification workflow contracts', () => {
       "always() && !cancelled() && github.event_name != 'pull_request'",
     );
     expect(playwrightFull).not.toContain('needs: coverage');
-    expect(coverage).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]',
-    );
-    expect(playwrightFull).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
-    );
+    expect(coverage).toContain('runs-on: ubuntu-22.04');
+    expect(playwrightFull).toContain('runs-on: ubuntu-22.04');
     for (const job of [coverage, playwrightFull]) {
       expect(job).toContain("github.event_name != 'pull_request'");
-      expect(job).toContain('physical-host-capacity@');
-      expect(job).toContain('lease-weight: "6"');
-      expect(job).toContain('owner-lifetime-seconds: "7800"');
-      expect(job).not.toContain('cache: npm');
-      expect(job.indexOf('physical-host-capacity@')).toBeLessThan(
-        job.indexOf('run: npm run dependencies:ci'),
-      );
+      expect(job).not.toContain('physical-host-capacity@');
+      expect(job).not.toContain('self-hosted');
     }
   });
 
@@ -356,7 +335,9 @@ describe('CI verification workflow contracts', () => {
     expect(browserSmoke).toContain(
       "if: github.event_name != 'pull_request_target'",
     );
-    expect(browserSmoke).toContain('completion gate owns weight 6');
+    expect(browserSmoke).toContain(
+      'Start browser smoke only after the completion gate',
+    );
     expect(browserSmoke).toContain(
       'GitHub skips failed dependencies by default',
     );
@@ -366,7 +347,7 @@ describe('CI verification workflow contracts', () => {
     const ci = workflow('ci.yml');
     const fastChecks = ci.slice(
       ci.indexOf('  fast-checks:'),
-      ci.indexOf('  full-regression:'),
+      ci.indexOf('  fork-smoke:'),
     );
     const fullRegression = ci.slice(
       ci.indexOf('  full-regression:'),
@@ -377,17 +358,9 @@ describe('CI verification workflow contracts', () => {
     expect(fastChecks).toContain('timeout-minutes: 20');
     expect(fastChecks).toContain('run: npm run ci:fast');
     expect(fastChecks).toContain("needs.classify.outputs.heavy == 'true'");
-    expect(fastChecks).toContain(
-      'runs-on: [self-hosted, Linux, X64, fast-feedback]',
-    );
-    expect(fastChecks).not.toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux',
-    );
-    expect(fastChecks).not.toContain(
-      'runs-on: [self-hosted, Linux, X64, fast-feedback, heavy-host]',
-    );
-    expect(fastChecks).toContain('lease-weight: "1"');
-    expect(fastChecks).toContain('timeout-seconds: "300"');
+    expect(fastChecks).toContain('runs-on: ubuntu-22.04');
+    expect(fastChecks).not.toContain('self-hosted');
+    expect(fastChecks).not.toContain('physical-host-capacity@');
     expect(fastChecks).toContain('STATION_CI_FAST_BASE');
     expect(fastChecks).toContain('run: npm run ci:fast');
     expect(fastChecks).toContain('name: Enforce candidate UI bundle budget');
@@ -413,27 +386,16 @@ describe('CI verification workflow contracts', () => {
       "needs.classify.outputs.heavy == 'true'",
     );
     expect(fullRegression).toContain('timeout-minutes: 90');
-    expect(fullRegression).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]',
-    );
-    expect(fullRegression).toContain('lease-weight: "6"');
-    const nonFastDesktopWinLeaseWeights = [
-      workflow('ci.yml').slice(
-        workflow('ci.yml').indexOf('  full-regression:'),
+    expect(fullRegression).toContain('runs-on: ubuntu-22.04');
+    expect(fullRegression).not.toContain('self-hosted');
+    expect(fullRegression).not.toContain('physical-host-capacity@');
+    const desktopWinLeaseWeights = [
+      ...workflow('interactive-workspace-performance.yml').matchAll(
+        /^\s+lease-weight: ["']?(\d+)["']?$/gm,
       ),
-      workflow('ci-extended.yml'),
-      workflow('android-test.yml'),
-      workflow('build-android.yml'),
-      workflow('container-smoke.yml'),
-      workflow('windows-verification.yml'),
-    ].flatMap((source) =>
-      [...source.matchAll(/^\s+lease-weight: ["']?(\d+)["']?$/gm)].map(
-        ([, weight]) => Number(weight),
-      ),
-    );
-    expect(nonFastDesktopWinLeaseWeights).not.toHaveLength(0);
-    expect(Math.max(...nonFastDesktopWinLeaseWeights)).toBeLessThanOrEqual(9);
-    expect(workflow('secret-scan.yml')).toContain('capacity-lease-weight: 1');
+    ].map(([, weight]) => Number(weight));
+    expect(desktopWinLeaseWeights).toEqual([6, 6, 6]);
+    expect(workflow('secret-scan.yml')).not.toContain('capacity-lease-weight:');
     expect(fullRegression).toContain('run: npm run full:regression');
     expect(fullRegression).toContain('run: npm run test:connected-agents');
   });
@@ -676,49 +638,43 @@ describe('CI verification workflow contracts', () => {
     expect(extractRunBodies(android)).toContain(
       'PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright"',
     );
-    expect(android).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
-    );
-    expect(android).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, android-kvm]',
-    );
+    expect(android).toContain('runs-on: ubuntu-22.04');
+    expect(android).not.toContain('self-hosted');
+    expect(android).toContain('reactivecircus/android-emulator-runner@');
     expect(android).toContain('run: npm run test:android');
     expect(android).not.toContain('npx vite preview');
     expect(android).not.toContain('npx playwright test --project=android');
     expect(android).toContain('test-results/');
   });
 
-  it('partitions leased Linux work away from the ci:fast listener', () => {
-    const ci = workflow('ci.yml');
-    const android = workflow('android-test.yml');
-    const heavyJobs = [
-      ci.slice(
-        ci.indexOf('  full-regression:'),
-        ci.indexOf('  browser-smoke:'),
-      ),
-      ci.slice(ci.indexOf('  browser-smoke:')),
-      workflow('ci-extended.yml'),
-      android,
-      workflow('build-android.yml'),
-      workflow('container-smoke.yml'),
-      workflow('secret-scan.yml'),
+  it('keeps Linux CI on GitHub-hosted runners and desktop-win for hardware reference', () => {
+    const linuxWorkflows = [
+      'ci.yml',
+      'ci-extended.yml',
+      'android-test.yml',
+      'build-android.yml',
+      'container-smoke.yml',
+      'secret-scan.yml',
+      'nightly.yml',
+      'publish-packages.yml',
+      'backlog-priority-policy.yml',
     ];
-
-    for (const job of heavyJobs) {
-      expect(job).toContain('heavy-host');
-      expect(job).not.toContain('fast-feedback');
+    for (const name of linuxWorkflows) {
+      const source = workflow(name);
+      expect(source, name).not.toContain('runs-on: [self-hosted, Linux');
+      expect(source, name).not.toMatch(/runs-on:.*fast-feedback/);
     }
 
-    const fastChecks = ci.slice(
-      ci.indexOf('  fast-checks:'),
-      ci.indexOf('  full-regression:'),
+    const performance = workflow('interactive-workspace-performance.yml');
+    expect(performance).toContain(
+      'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
     );
-    expect(fastChecks).toContain('fast-feedback');
-    expect(fastChecks).not.toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux',
+    const recovery = workflow('recover-terminal-capacity-owner.yml');
+    expect(recovery).toContain(
+      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]',
     );
-    expect(fastChecks).not.toContain(
-      'runs-on: [self-hosted, Linux, X64, fast-feedback, heavy-host]',
+    expect(recovery).toContain(
+      'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
     );
   });
 
@@ -1008,9 +964,8 @@ describe('CI verification workflow contracts', () => {
     expect(windows).toContain('branches: [main]');
     expect(windows).not.toContain('pull_request:');
     expect(windows).toContain('paths:');
-    expect(windows).toContain(
-      'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
-    );
+    expect(windows).toContain('runs-on: windows-latest');
+    expect(windows).not.toContain('self-hosted');
     expect(windows).toContain('run: npm run verification:policy:gate');
     expect(windows).toContain('run: npm run typecheck');
     expect(windows).toContain('run: npm run test:windows:portable');
@@ -1028,9 +983,8 @@ describe('CI verification workflow contracts', () => {
     expect(diagnostic).toContain('workflow_dispatch:');
     expect(diagnostic).not.toContain('push:');
     expect(diagnostic).not.toContain('continue-on-error');
-    expect(diagnostic).toContain(
-      'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
-    );
+    expect(diagnostic).toContain('runs-on: windows-latest');
+    expect(diagnostic).not.toContain('self-hosted');
     expect(diagnostic).toContain('run: npm run test:windows:diagnostic');
     expect(diagnostic).toContain('if: always()');
     expect(diagnostic).toContain('.kontourai/windows-vitest/');

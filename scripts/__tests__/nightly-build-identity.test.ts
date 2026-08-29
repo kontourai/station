@@ -503,7 +503,10 @@ describe('the nightly workflow keeps its promises', () => {
     expect(gateJob).toContain('ref: $' + '{{ github.sha }}');
     const nightlyCheckout = workflow.slice(
       nightlyStart,
-      workflow.indexOf('runner-preflight', nightlyStart),
+      workflow.indexOf(
+        'Validate requested Nightly rebuild index',
+        nightlyStart,
+      ),
     );
     expect(nightlyCheckout).toContain('ref: $' + '{{ github.sha }}');
   });
@@ -614,20 +617,17 @@ describe('the nightly workflow keeps its promises', () => {
     );
   });
 
-  it("uses an explicit non-boolean rebuild input and validates it before the nightly job's own capacity is reserved", () => {
-    // Scoped to the nightly job, and titled to claim no more: the
-    // `test-gate` job reserves physical host capacity earlier in the file
-    // deliberately (see the disclosure at its lease), so a whole-file
-    // indexOf would compare this prevalidation against the gate's lease
-    // instead of the nightly job's own.
+  it('uses an explicit non-boolean rebuild input and validates it before the nightly job builds', () => {
     const nightlyJob = workflow.slice(workflow.indexOf('\n  nightly:'));
     const validation = nightlyJob.indexOf(
       'Validate requested Nightly rebuild index',
     );
-    const capacity = nightlyJob.indexOf('Reserve physical host capacity');
+    const decide = nightlyJob.indexOf(
+      'Decide whether there is anything to build',
+    );
     expect(validation).toBeGreaterThanOrEqual(0);
-    expect(validation).toBeLessThan(capacity);
-    const validationStep = nightlyJob.slice(validation, capacity);
+    expect(validation).toBeLessThan(decide);
+    const validationStep = nightlyJob.slice(validation, decide);
     expect(workflow).toContain('rebuild_index:');
     expect(workflow).not.toMatch(/^\s{6}build:/m);
     expect(workflow).not.toContain('inputs.build');
