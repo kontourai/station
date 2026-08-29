@@ -4,10 +4,10 @@ import { runBoundedCommand } from './macos-notarized-artifacts.mjs';
 export const KEYCHAIN_UNLOCK_LIFETIME_SECONDS = 105 * 60;
 export const PRIVATE_KEY_PROBE_TIMEOUT_MS = 60 * 1000;
 
-function lifetimeFromDeadline(epoch) {
+export function lifetimeFromDeadline(epoch, now = Date.now) {
   if (typeof epoch !== 'string' || !/^[1-9][0-9]{9,10}$/.test(epoch))
     throw new Error('Expected a valid macOS signing deadline epoch.');
-  const remaining = Number(epoch) * 1000 - Date.now() - 10_000;
+  const remaining = Number(epoch) * 1000 - now() - 10_000;
   if (!Number.isSafeInteger(remaining) || remaining <= 0)
     throw new Error('macOS signing deadline lacks cleanup grace.');
   return Math.min(KEYCHAIN_UNLOCK_LIFETIME_SECONDS, Math.floor(remaining / 1000));
@@ -45,11 +45,14 @@ export async function prepareMacosSigningKeychain({
   password,
   state,
   deadlineEpoch,
+  now,
   run,
 }) {
   const previous = await previousSearchList(run);
+  writeFileSync(state, JSON.stringify({ keychain, previous, stage: 'captured' }), { mode: 0o600 });
   await security('create', ['create-keychain', '-p', password, keychain], run);
-  await security('set bounded lifetime', ['set-keychain-settings', '-lut', String(lifetimeFromDeadline(deadlineEpoch)), keychain], run);
+  writeFileSync(state, JSON.stringify({ keychain, previous, stage: 'created' }), { mode: 0o600 });
+  await security('set bounded lifetime', ['set-keychain-settings', '-lut', String(lifetimeFromDeadline(deadlineEpoch, now)), keychain], run);
   await security('unlock', ['unlock-keychain', '-p', password, keychain], run);
   await security('import', ['import', certificate, '-k', keychain, '-P', password, '-T', '/usr/bin/codesign'], run);
   // Retain the existing least-privilege partition set; do not broaden it with
@@ -57,12 +60,12 @@ export async function prepareMacosSigningKeychain({
   await security('set partition list', ['set-key-partition-list', '-S', 'apple-tool:,apple:', '-s', '-k', password, keychain], run);
   const matches = exactIdentityMatches((await security('validate identity', ['find-identity', '-v', '-p', 'codesigning', keychain], run)).stdout, identity);
   if (matches !== 1) throw new Error('Configured Developer ID signing identity is not uniquely available.');
-  writeFileSync(state, JSON.stringify({ keychain, previous }), { mode: 0o600 });
   await security('set search list', ['list-keychains', '-d', 'user', '-s', keychain], run);
+  writeFileSync(state, JSON.stringify({ keychain, previous, stage: 'search-set' }), { mode: 0o600 });
 }
 
-export async function unlockMacosSigningKeychain({ identity, keychain, password, deadlineEpoch, run }) {
-  lifetimeFromDeadline(deadlineEpoch);
+export async function unlockMacosSigningKeychain({ identity, keychain, password, deadlineEpoch, now, run }) {
+  await security('refresh bounded lifetime', ['set-keychain-settings', '-lut', String(lifetimeFromDeadline(deadlineEpoch, now)), keychain], run);
   await security('re-unlock', ['unlock-keychain', '-p', password, keychain], run);
   const matches = exactIdentityMatches((await security('validate identity', ['find-identity', '-v', '-p', 'codesigning', keychain], run)).stdout, identity);
   if (matches !== 1) throw new Error('Configured Developer ID signing identity is not uniquely available.');
@@ -91,10 +94,11 @@ export async function cleanupMacosSigningKeychain({ keychain, state, run }) {
   const prepared = existsSync(state);
   const failures = [];
   try {
-    const previous = JSON.parse(readFileSync(state, 'utf8')).previous;
-    if (Array.isArray(previous))
+    const parsed = JSON.parse(readFileSync(state, 'utf8'));
+    const { previous, stage } = parsed;
+    if (stage === 'search-set' && Array.isArray(previous))
       await security('restore search list', ['list-keychains', '-d', 'user', '-s', ...previous], run);
-    else failures.push('state');
+    else if (!['captured', 'created'].includes(stage)) failures.push('state');
   } catch { if (prepared) failures.push('restore'); }
   try { await security('lock', ['lock-keychain', keychain], run); } catch { if (prepared) failures.push('lock'); }
   try { await security('delete', ['delete-keychain', keychain], run); } catch { if (prepared) failures.push('delete'); }
