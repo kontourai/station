@@ -859,7 +859,7 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     expect(ledger).toBeGreaterThan(advance);
   });
 
-  it('refuses to upload into an existing draft release, and drops the dead --target (station#575 L5)', () => {
+  it('refuses draft and unbootstrapped rolling releases rather than asking GITHUB_TOKEN to create a workflow-changing ref', () => {
     const publish = desktopJob.slice(
       desktopJob.indexOf(
         'name: Publish the rolling desktop nightly prerelease',
@@ -869,9 +869,9 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     expect(publish).toContain('--json isDraft');
     expect(publish).toMatch(/grep -qx true/);
     expect(publish).toMatch(/::error::[^\n]*draft[^\n]*\n\s+exit 1/i);
-    // --target on `gh release create` only mattered when the tag was
-    // pre-pushed; now that the advance runs after publish, the flag is
-    // dead weight the create call never needs.
+    expect(publish).toContain('nightly-desktop does not exist; bootstrap');
+    expect(publish).toContain('workflow-changing target is blocked');
+    expect(publish).not.toContain('gh release create nightly-desktop');
     expect(publish).not.toContain('--target');
   });
 
@@ -882,7 +882,7 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
       ),
       desktopJob.indexOf('name: Advance the rolling desktop nightly tag'),
     );
-    expect(publish).toContain('--prerelease');
+    expect(publish).toContain('gh release view nightly-desktop');
     expect(publish).toContain('--clobber');
     const invocations =
       publish.match(/gh release upload nightly-desktop/g) ?? [];

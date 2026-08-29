@@ -508,18 +508,17 @@ describe('native release workflow topology', () => {
     ).toContain('--no-sign');
     expect(macosArtifacts).toContain('ops/nightly/macos-embedded-signing.mjs');
     expect(macosArtifacts.indexOf('macos-embedded-signing.mjs')).toBeLessThan(
-      macosArtifacts.indexOf('submit(run, zip, key, keyId, issuer);'),
+      macosArtifacts.indexOf(
+        'await submit(command, zip, key, keyId, issuer, logger);',
+      ),
     );
     expect(macosArtifacts).toContain("receipt.status !== 'Accepted'");
     expect(macosArtifacts).toContain(
       'fs.rmSync(root, { recursive: true, force: true })',
     );
-    expect(macosArtifacts).toContain(
-      "run('xcrun', ['stapler', 'validate', dmg]);",
-    );
-    expect(macosArtifacts).toContain(
-      "run('tar', ['-C', join(app, '..'), '-czf', updater, appName])",
-    );
+    expect(macosArtifacts).toContain("'DMG staple validation'");
+    expect(macosArtifacts).toContain("'updater archive derivation'");
+    expect(macosArtifacts).toContain('runBoundedCommand');
   });
 
   it('admits exactly one relative macOS app discovered by the release workflow', () => {
@@ -640,7 +639,7 @@ describe('native release workflow topology', () => {
     >;
     expect(stableMacos.macOS.hardenedRuntime).toBe(true);
     expect(release).toContain('embedded.mobileprovision');
-    expect(macosArtifacts).toContain("['stapler', 'validate', dmg]");
+    expect(macosArtifacts).toContain("'DMG staple validation'");
     expect(release).toContain('apksigner verify');
     expect(release).toContain('station-ios-simulator-verification');
   });
