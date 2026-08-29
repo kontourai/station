@@ -186,12 +186,14 @@ export class CodexAdapterTransport {
       );
     });
     // archive#3451 fix round D3: a third teardown door — spawn failure is
-    // the common case (no turn active yet), but `ChildProcess` 'error' also
-    // fires for a stdin WRITE failure after the process has started, and
-    // `sendRequest` writes to stdin on every RPC (including turn/start and
-    // turn/interrupt). A mid-turn write failure strands the turn exactly as
-    // archive#3473 describes for the other two teardown doors; this one was never
-    // enumerated.
+    // the common case (no turn active yet); `sendRequest` writes to stdin
+    // on every RPC (including turn/start and turn/interrupt), and a mid-turn
+    // write failure strands the turn exactly as archive#3473 describes for
+    // the other two teardown doors; this one was never enumerated.
+    // NOTE (archive#3451 D3, corrected by #774): `ChildProcess` 'error' does
+    // NOT fire for a stdin write failure after the process has started —
+    // that EPIPE is emitted on the stdin stream itself, which is why the
+    // dedicated `stdin.on('error')` door below exists.
     record.process.on('error', (error) => {
       if (record.stopped) return;
       record.stopped = true;
@@ -211,6 +213,64 @@ export class CodexAdapterTransport {
         },
       );
       this.unregisterSession(record);
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: nowIso,
+        method: 'session.exited',
+        sessionId: record.externalThreadId,
+        reason: 'process-error',
+      });
+    });
+    // #774: a stdin WRITE landing after the reader is gone emits 'error'
+    // (EPIPE) on the stdin stream — NOT on the ChildProcess, whose 'error'
+    // only covers spawn/kill failures. Unhandled, that error took down the
+    // whole server. Same teardown door and shape as the ChildProcess
+    // 'error' handler above. Idempotent against a simultaneous process
+    // 'exit': whichever fires first wins (`record.stopped` for the
+    // stdin-order, the session-registry check inside
+    // `finalizeUnexpectedExit` and `publishOrphanedTurnFailure`'s
+    // terminalPublishedForTurnId guard for the exit-order).
+    record.process.stdin.on('error', (error) => {
+      // Exit-first double fire: `finalizeUnexpectedExit` already unregistered
+      // the session — nothing is in flight anymore, and re-running this door
+      // would duplicate `session.exited`. (For the stdin-first order the
+      // same idempotence runs through `record.stopped`, set here and read by
+      // the process 'exit' handler.)
+      if (
+        record.stopped ||
+        this.sessions.get(record.externalThreadId) !== record
+      ) {
+        return;
+      }
+      record.stopped = true;
+      const nowIso = this.now().toISOString();
+      const interruptedTurnId = this.rejectPendingRpcRequests(
+        record,
+        () =>
+          new Error(`Codex app-server stdin write failed: ${error.message}`),
+      );
+      this.publishOrphanedTurnFailure(
+        record,
+        nowIso,
+        `Codex app-server stdin write failed before the turn finished: ${error.message}`,
+        {
+          skipSynthesis:
+            interruptedTurnId !== undefined &&
+            interruptedTurnId === record.activeTurnId,
+        },
+      );
+      this.unregisterSession(record);
+      record.session = {
+        ...record.session,
+        status: 'closed',
+        updatedAt: nowIso,
+      };
+      // The reader being gone does not guarantee the process is dead
+      // (a wedged child can simply stop reading); reap it like the other
+      // unexpected-exit doors do.
+      void this.terminateRecord(record).catch(() => undefined);
       this.publish({
         eventId: crypto.randomUUID(),
         provider: 'codex',
