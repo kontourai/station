@@ -3606,8 +3606,14 @@ fn reclaim_stale_profile_lock(
     let Some(_guard) = acquire_profile_reclaim_guard(path, record_bytes, birth_for_pid)? else {
         return Ok(false);
     };
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|error| format!("inspect saved Station lock: {error}"))?;
+    let metadata = match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        // Another waiter can observe the exclusive lock just before its owner
+        // releases it. That disappearance is not stale-reclaim authority or a
+        // bootstrap failure; the outer acquisition loop simply retries.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("inspect saved Station lock: {error}")),
+    };
     if !metadata.file_type().is_file() {
         return Ok(false);
     }
@@ -3618,8 +3624,11 @@ fn reclaim_stale_profile_lock(
             return Ok(false);
         }
     }
-    let contents = std::fs::read_to_string(path)
-        .map_err(|error| format!("read saved Station lock: {error}"))?;
+    let contents = match std::fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(format!("read saved Station lock: {error}")),
+    };
     let record: Option<ParsedStationProfileLockRecord> = match serde_json::from_str(&contents) {
         Ok(record) => Some(record),
         // A process can crash after exclusive creation but before its JSON
@@ -4317,6 +4326,55 @@ fn resolve_bundled_profile_ui_port(
         .or_else(|| channel_ports_generated::default_desktop_ui_port(channel))
 }
 
+/// Reconcile one native-owned bundled profile with a shared store under an
+/// optimistic revision CAS. Keeping the retry here, rather than in the Tauri
+/// command wrapper, makes the actual desktop bootstrap behavior independently
+/// exercisable under real multi-process contention.
+#[cfg(not(mobile))]
+fn reconcile_bundled_local_profile_with_retry(
+    station_root: &std::path::Path,
+    station_home: &std::path::Path,
+    endpoint: &str,
+    instance_id: &str,
+    server_port: u16,
+    ui_port: u16,
+    read: &mut dyn FnMut() -> Result<CredentialProfileStore, String>,
+    write: &mut dyn FnMut(String, u64) -> Result<(), String>,
+) -> Result<String, String> {
+    // Stable, Beta, and Nightly can all reach this point during their first
+    // shared-root boot. Re-read after a lost CAS instead of retaining the
+    // empty/revision-N snapshot that made the loser overwrite or abandon the
+    // other channel's owner record.
+    for attempt in 0..3 {
+        let current = read()?;
+        let (next, profile_name) = reconciled_bundled_local_profile_store(
+            &current,
+            station_root,
+            endpoint.to_string(),
+            instance_id.to_string(),
+            station_home.to_string_lossy().to_string(),
+            server_port,
+            ui_port,
+            now_millis_f64()?,
+        );
+        if next.revision == current.revision {
+            return Ok(profile_name);
+        }
+        let contents = serde_json::to_string(&next)
+            .map_err(|_| "invalid bundled Station metadata".to_string())?;
+        match write(contents, current.revision) {
+            Ok(()) => return Ok(profile_name),
+            Err(error)
+                if error.starts_with("saved Station revision conflict:") && attempt < 2 =>
+            {
+                continue
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err("saved Station metadata kept changing during bundled bootstrap; retry after the other channel finishes".to_string())
+}
+
 /// Bootstrap only the desktop-owned sidecar in a truly empty channel home.
 /// The renderer supplies no endpoint, path, port, or profile contents: every
 /// field is derived from the native ownership/status contract. This makes the
@@ -4369,51 +4427,35 @@ fn station_ensure_bundled_local_profile(
     let explicit_ui_port = std::env::var("STATION_UI_PORT").ok();
     let ui_port = resolve_bundled_profile_ui_port(explicit_ui_port.as_deref(), channel)
         .ok_or_else(|| "running Station sidecar has no UI port contract".to_string())?;
-    // Stable, Beta, and Nightly can all reach this point during their first
-    // shared-root boot.  Re-read after a lost CAS instead of retaining the
-    // empty/revision-N snapshot that made the loser overwrite or abandon the
-    // other channel's owner record.
-    for attempt in 0..3 {
-        let current = match read_station_profile_store(&path) {
-            Ok(contents) => parse_station_profile_store(&contents)?,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Err(
-                "saved Station metadata disappeared after shared-root admission; refusing to recreate it"
-                    .to_string(),
-            ),
-            Err(error) => return Err(format!("read saved Station metadata: {error}")),
-        };
-        let (next, profile_name) = reconciled_bundled_local_profile_store(
-            &current,
-            &station_root,
-            endpoint.clone(),
-            instance_id.clone(),
-            station_home.to_string_lossy().to_string(),
-            server_port,
-            ui_port,
-            now_millis_f64()?,
-        );
-        if next.revision == current.revision {
-            return Ok(Some(profile_name));
-        }
-        match station_profile_store_write_internal(
+    let mut read = || match read_station_profile_store(&path) {
+        Ok(contents) => parse_station_profile_store(&contents),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(
+            "saved Station metadata disappeared after shared-root admission; refusing to recreate it"
+                .to_string(),
+        ),
+        Err(error) => Err(format!("read saved Station metadata: {error}")),
+    };
+    let mut write = |contents, expected_revision| {
+        station_profile_store_write_internal(
             &app,
             &authority,
             &pending,
-            serde_json::to_string(&next)
-                .map_err(|_| "invalid bundled Station metadata".to_string())?,
-            current.revision,
+            contents,
+            expected_revision,
             None,
-        ) {
-            Ok(()) => return Ok(Some(profile_name)),
-            Err(error)
-                if error.starts_with("saved Station revision conflict:") && attempt < 2 =>
-            {
-                continue
-            }
-            Err(error) => return Err(error),
-        }
-    }
-    Err("saved Station metadata kept changing during bundled bootstrap; retry after the other channel finishes".to_string())
+        )
+    };
+    reconcile_bundled_local_profile_with_retry(
+        &station_root,
+        &station_home,
+        &endpoint,
+        &instance_id,
+        server_port,
+        ui_port,
+        &mut read,
+        &mut write,
+    )
+    .map(Some)
 }
 
 /// Three outcomes of asking whether a stored credential can actually be
@@ -12079,6 +12121,183 @@ mod tests {
             }"#,
         )
         .unwrap()
+    }
+
+    /// A test-only CAS publisher with the same native profile lock and
+    /// revision contract as `station_profile_store_write_internal`. The real
+    /// multiprocess worker below drives the production bootstrap retry helper
+    /// through this boundary; it never uses the CLI writer.
+    #[cfg(not(mobile))]
+    fn write_native_bootstrap_process_store(
+        path: &std::path::Path,
+        contents: String,
+        expected_revision: u64,
+    ) -> Result<(), String> {
+        let _lock = lock_station_profiles(path)?;
+        let current = parse_station_profile_store(
+            &read_station_profile_store(path)
+                .map_err(|error| format!("read saved Station metadata for revision: {error}"))?,
+        )?;
+        if current.revision != expected_revision {
+            return Err(format!(
+                "saved Station revision conflict: expected {expected_revision}, found {}. Reload and retry the explicit change.",
+                current.revision,
+            ));
+        }
+        let next = parse_station_profile_store(&contents)?;
+        if next.revision != expected_revision.saturating_add(1) {
+            return Err("saved Station revision is invalid for native bootstrap test".to_string());
+        }
+        #[cfg(unix)]
+        use std::os::unix::fs::OpenOptionsExt;
+        let temporary = path.with_extension(format!(
+            "json.native-bootstrap-{}.tmp",
+            std::process::id(),
+        ));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        options.mode(0o600);
+        let mut file = options
+            .open(&temporary)
+            .map_err(|error| format!("stage native bootstrap profile store: {error}"))?;
+        file.write_all(contents.as_bytes())
+            .map_err(|error| format!("write native bootstrap profile store: {error}"))?;
+        file.sync_all()
+            .map_err(|error| format!("sync native bootstrap profile store: {error}"))?;
+        std::fs::rename(&temporary, path)
+            .map_err(|error| format!("publish native bootstrap profile store: {error}"))?;
+        Ok(())
+    }
+
+    /// Each child test process invokes the same native reconcile/CAS loop used
+    /// by `station_ensure_bundled_local_profile`; the parent below supplies one
+    /// Stable/Beta/Nightly shared root and verifies their durable convergence.
+    #[cfg(not(mobile))]
+    #[test]
+    fn native_bundled_profile_process_worker() {
+        let Ok(root) = std::env::var("STATION_NATIVE_BOOTSTRAP_RACE_ROOT") else {
+            return;
+        };
+        let channel = std::env::var("STATION_NATIVE_BOOTSTRAP_RACE_CHANNEL")
+            .expect("worker channel");
+        let (server_port, ui_port) = match channel.as_str() {
+            "stable" => (18141, 18000),
+            "beta" => (28141, 28000),
+            "nightly" => (38141, 38000),
+            _ => panic!("unexpected test channel"),
+        };
+        let root = std::path::PathBuf::from(root);
+        let home = root.join("instances").join(&channel);
+        let path = root.join("config").join("profiles.json");
+        let endpoint = format!("http://127.0.0.1:{server_port}");
+        let instance_id = format!("desktop-sidecar-{channel}");
+        let mut read = || {
+            read_station_profile_store(&path)
+                .map_err(|error| format!("read saved Station metadata: {error}"))
+                .and_then(|contents| parse_station_profile_store(&contents))
+        };
+        let mut write = |contents, expected_revision| {
+            write_native_bootstrap_process_store(&path, contents, expected_revision)
+        };
+        reconcile_bundled_local_profile_with_retry(
+            &root,
+            &home,
+            &endpoint,
+            &instance_id,
+            server_port,
+            ui_port,
+            &mut read,
+            &mut write,
+        )
+        .expect("native bundled bootstrap worker converges");
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn native_bundled_profile_bootstraps_three_channels_in_independent_processes() {
+        use std::process::Command;
+
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join(".station");
+        let config = root.join("config");
+        std::fs::create_dir_all(&config).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+            std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        let path = config.join("profiles.json");
+        let seeded = serde_json::json!({
+            "schemaVersion": 1,
+            "revision": 22,
+            "defaultProfile": "stable-paired",
+            "projectProfiles": {},
+            "profiles": [
+                {"schemaVersion":1,"name":"stable-paired","endpoint":"https://stable.example.test","credentialRef":{"kind":"station-bearer","id":"stable-ref"},"environmentId":"stable-environment","setupSource":"paired","configurationState":"configured","createdAt":1,"updatedAt":1},
+                {"schemaVersion":1,"name":"beta-paired","endpoint":"https://beta.example.test","credentialRef":{"kind":"station-bearer","id":"beta-ref"},"environmentId":"beta-environment","setupSource":"paired","configurationState":"configured","createdAt":1,"updatedAt":1},
+                {"schemaVersion":1,"name":"nightly-paired","endpoint":"https://nightly.example.test","credentialRef":{"kind":"station-bearer","id":"nightly-ref"},"environmentId":"nightly-environment","setupSource":"paired","configurationState":"configured","createdAt":1,"updatedAt":1}
+            ]
+        })
+        .to_string();
+        std::fs::write(&path, seeded).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+
+        let executable = std::env::current_exe().unwrap();
+        let children = ["stable", "beta", "nightly"]
+            .into_iter()
+            .map(|channel| {
+                let mut command = Command::new(&executable);
+                command
+                    .args([
+                        "--exact",
+                        "tests::native_bundled_profile_process_worker",
+                        "--nocapture",
+                    ])
+                    .env("STATION_NATIVE_BOOTSTRAP_RACE_ROOT", &root)
+                    .env("STATION_NATIVE_BOOTSTRAP_RACE_CHANNEL", channel)
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::piped());
+                apply_no_window(&mut command);
+                command.spawn().expect("spawn native bundled bootstrap worker")
+            })
+            .collect::<Vec<_>>();
+        for child in children {
+            let child = child.wait_with_output().expect("wait for native worker");
+            assert!(
+                child.status.success(),
+                "native worker failed: {}",
+                String::from_utf8_lossy(&child.stderr)
+            );
+        }
+        let store = parse_station_profile_store(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(store.revision, 25);
+        assert_eq!(store.default_profile.as_deref(), Some("stable-paired"));
+        for (name, reference, environment) in [
+            ("stable-paired", "stable-ref", "stable-environment"),
+            ("beta-paired", "beta-ref", "beta-environment"),
+            ("nightly-paired", "nightly-ref", "nightly-environment"),
+        ] {
+            let profile = store.profiles.iter().find(|profile| profile.name == name).unwrap();
+            assert_eq!(profile.credential_ref.as_ref().map(|value| value.id.as_str()), Some(reference));
+            assert_eq!(profile._environment_id.as_deref(), Some(environment));
+        }
+        for (channel, port) in [("stable", 18141), ("beta", 28141), ("nightly", 38141)] {
+            assert!(store.profiles.iter().any(|profile| {
+                profile.setup_source == "local"
+                    && profile.credential_ref.is_none()
+                    && profile.local_service.as_ref().is_some_and(|service| {
+                        service.instance_id == format!("desktop-sidecar-{channel}")
+                            && service.base_dir == root.join("instances").join(channel).to_string_lossy()
+                            && service.server_port == port
+                    })
+            }));
+        }
     }
 
     #[test]
