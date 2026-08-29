@@ -441,9 +441,18 @@ export function useChatInput({
       );
       // A durable offline row owns queued text. Clearing its draft prevents
       // the composer from rendering a second editable copy after a resume.
+      //
+      // #765 A2: the same ownership transfer applies to the mid-turn queue —
+      // a send while a turn is running lands in `chat.queuedMessages`
+      // (rendered as "N messages queued", with its own retry/steer controls)
+      // and returns neither `true` nor a `'queued'` status. Leaving the
+      // debounce-persisted draft behind meant every queued message ALSO
+      // surfaced as a global "Unsent draft" row in the sidebar, forever.
+      const postSendState = activeChatsStore.getSnapshot()[sessionId];
       if (
         sent === true ||
-        activeChatsStore.getSnapshot()[sessionId]?.status === 'queued'
+        postSendState?.status === 'queued' ||
+        postSendState?.queuedMessages?.includes(text.trim())
       ) {
         pendingDraftRef.current = null;
         if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
