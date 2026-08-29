@@ -2,8 +2,8 @@
 
 Station's Linux CI, Android, publish, and secret-scan jobs run on
 GitHub-hosted images now that the repository is public. Container-smoke
-Playwright stays on the docker fleet listener. desktop-win
-remains the named native-Windows host for interactive-workspace performance,
+Playwright stays on the docker fleet listener. A private native Windows host
+remains available for interactive-workspace performance,
 the Windows portable floor, the Windows Vitest diagnostic, and recovering a
 leaked physical-host capacity lease.
 
@@ -29,8 +29,8 @@ Both listeners retain GitHub's default `self-hosted`, `Linux`, and `X64`
 labels. Keep the existing native Windows listener and its `kontour-windows` /
 `native` routing unchanged.
 
-Station no longer routes Linux CI to these listeners. Remaining desktop-win
-jobs request the native Windows labels (`kontour-windows`, `native`) and still
+Station no longer routes Linux CI to these listeners. Remaining native Windows
+jobs request the hardware labels (`kontour-windows`, `native`) and still
 take a physical-host lease. If a Linux job is reintroduced on this host, route
 only `ci.yml`'s `fast-checks` to `fast-feedback` and every other leased Linux
 job to `heavy-host`. The lease is still required: the two listeners may run a
