@@ -185,15 +185,10 @@ export class CodexAdapterTransport {
           interruptedTurnId === record.activeTurnId,
       );
     });
-    // archive#3451 fix round D3: a third teardown door — spawn failure is
-    // the common case (no turn active yet); `sendRequest` writes to stdin
-    // on every RPC (including turn/start and turn/interrupt), and a mid-turn
-    // write failure strands the turn exactly as archive#3473 describes for
-    // the other two teardown doors; this one was never enumerated.
-    // NOTE (archive#3451 D3, corrected by #774): `ChildProcess` 'error' does
-    // NOT fire for a stdin write failure after the process has started —
-    // that EPIPE is emitted on the stdin stream itself, which is why the
-    // dedicated `stdin.on('error')` door below exists.
+    // archive#3451 fix round D3: a third teardown door for spawn/kill
+    // failures on the ChildProcess itself. It does NOT see stdin write
+    // failures (#774 corrected D3's claim that it did): that EPIPE emits on
+    // the stdin stream, handled by the dedicated door below.
     record.process.on('error', (error) => {
       if (record.stopped) return;
       record.stopped = true;
@@ -269,8 +264,21 @@ export class CodexAdapterTransport {
       };
       // The reader being gone does not guarantee the process is dead
       // (a wedged child can simply stop reading); reap it like the other
-      // unexpected-exit doors do.
-      void this.terminateRecord(record).catch(() => undefined);
+      // unexpected-exit doors do — and like them, an unconfirmed reap
+      // warns instead of vanishing.
+      void this.terminateRecord(record).catch(() => {
+        this.publish({
+          eventId: crypto.randomUUID(),
+          provider: 'codex',
+          threadId: record.externalThreadId,
+          createdAt: nowIso,
+          method: 'runtime.warning',
+          severity: 'warning',
+          message:
+            'Codex process tree cleanup was not confirmed after a stdin write failure.',
+          code: 'codex-process-cleanup-unconfirmed',
+        });
+      });
       this.publish({
         eventId: crypto.randomUUID(),
         provider: 'codex',
