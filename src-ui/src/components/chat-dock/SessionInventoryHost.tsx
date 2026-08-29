@@ -11,7 +11,10 @@ import { SessionInventoryFullFallback } from './SessionInventoryFullFallback';
 import { resolveSessionInventoryCompactHost } from './sessionInventoryCompactHost';
 import './SessionInventoryCompact.css';
 import { registerSessionInventoryLiveBinding } from './sessionInventoryLiveBinding';
-import { registerSessionInventoryFullHost } from './sessionInventoryOccurrence';
+
+type FullBasisTrigger = HTMLElement & {
+  focusFullBasis?: () => boolean;
+};
 
 /**
  * The activation-only inventory composition seam. ChatDock deliberately only
@@ -75,13 +78,15 @@ export function SessionInventoryHost({
     setFullTrigger(null);
     close();
   }, [close]);
-  useEffect(
-    () =>
-      hostId && focusFullHost
-        ? registerSessionInventoryFullHost(hostId, focusFullHost)
-        : undefined,
-    [focusFullHost, hostId],
-  );
+  useEffect(() => {
+    const fullBasisTrigger = trigger as FullBasisTrigger | null;
+    if (!fullBasisTrigger || !focusFullHost) return;
+    fullBasisTrigger.focusFullBasis = focusFullHost;
+    return () => {
+      if (fullBasisTrigger.focusFullBasis === focusFullHost)
+        delete fullBasisTrigger.focusFullBasis;
+    };
+  }, [focusFullHost, trigger]);
   const host = resolveSessionInventoryCompactHost({
     isMobile,
     dockMode,

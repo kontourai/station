@@ -2,10 +2,7 @@
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import {
-  closeSessionInventoryOccurrence,
-  focusSessionInventoryFullHost,
-} from '../sessionInventoryOccurrence';
+import { closeSessionInventoryOccurrence } from '../sessionInventoryOccurrence';
 
 const hooks = vi.hoisted(() => ({
   fallback: vi.fn(),
@@ -115,7 +112,7 @@ describe('SessionInventoryHost', () => {
   });
 
   test('re-activating a hosted full pane focuses it instead of remounting compact inventory', () => {
-    renderHost();
+    const { trigger } = renderHost();
     fireEvent.click(screen.getByRole('button', { name: 'Open full Basis' }));
     const fallback = hooks.fallback.mock.lastCall?.[0] as {
       onHostOpened?(focus: () => boolean): void;
@@ -124,7 +121,11 @@ describe('SessionInventoryHost', () => {
 
     act(() => fallback.onHostOpened?.(focus));
 
-    expect(focusSessionInventoryFullHost('host-a')).toBe(true);
+    expect(
+      (
+        trigger as HTMLElement & { focusFullBasis?: () => boolean }
+      ).focusFullBasis?.(),
+    ).toBe(true);
     expect(focus).toHaveBeenCalledOnce();
     expect(screen.queryByLabelText('Session inventory')).toBeNull();
   });

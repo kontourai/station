@@ -69,6 +69,3 @@
 .session-inventory-compact__previews bdi {
   overflow-wrap: anywhere;
 }
-.session-inventory-compact__preview-state {
-  white-space: nowrap;
-}

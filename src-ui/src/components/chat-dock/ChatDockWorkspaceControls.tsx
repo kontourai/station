@@ -13,7 +13,6 @@ import { LazyBoundary } from '../LazyBoundary';
 import type { ChatDockWorkspaceControls as Controls } from './ChatDockHeader';
 import {
   closeSessionInventoryOccurrence,
-  focusSessionInventoryFullHost,
   openSessionInventoryOccurrence,
   registerSessionInventoryHost,
   useSessionInventoryOccurrence,
@@ -56,10 +55,12 @@ export function ChatDockWorkspaceControls(props: Controls) {
   );
   const toggleInventory = (trigger: HTMLElement) => {
     if (!inventory || !authority) return;
-    if (occurrence) {
-      if (focusSessionInventoryFullHost(hostId)) return;
-      return closeSessionInventoryOccurrence(hostId);
-    }
+    if (occurrence)
+      return (
+        (
+          trigger as HTMLElement & { focusFullBasis?: () => boolean }
+        ).focusFullBasis?.() || closeSessionInventoryOccurrence(hostId)
+      );
     openSessionInventoryOccurrence({
       hostId,
       authorityKey: authority.authorityKey,
