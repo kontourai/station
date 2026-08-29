@@ -74,6 +74,13 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).toContain('label == "main"');
     expect(lib).not.toContain('NATIVE_STARTUP_BOOTSTRAP_SCRIPT');
     expect(lib).not.toContain("invoke('renderer_startup_ready')");
+    const nativeWake = lib.slice(
+      lib.indexOf('fn notify_startup_readiness_if_waiting'),
+      lib.indexOf('struct PendingMainWindowActivation'),
+    );
+    expect(nativeWake.indexOf('request_native_startup_commit(app);')).toBeLessThan(
+      nativeWake.indexOf('app.emit("station://startup-readiness-retry"'),
+    );
     expect([
       ...lib.matchAll(/\.name\("station-native-cover-dispatcher"\.into\(\)\)/g),
     ]).toHaveLength(1);

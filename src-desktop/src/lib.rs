@@ -6489,8 +6489,11 @@ fn notify_startup_readiness_if_waiting(app: &AppHandle) {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .phase;
     if startup_readiness_accepts_retry(phase) {
-        let _ = app.emit("station://startup-readiness-retry", ());
+        // Native owns the credential and identity proof. Claim it before the
+        // compatibility renderer wake so an already-mounted WebView cannot
+        // win the single-flight slot and recreate the bootstrap dependency.
         request_native_startup_commit(app);
+        let _ = app.emit("station://startup-readiness-retry", ());
     }
 }
 
