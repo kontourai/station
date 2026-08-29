@@ -29,13 +29,16 @@ test.
 
 ## Migration and ratchet
 
-The app shell, page navigation, Schedule surfaces, transient notifications, and
-chat now consume the shared grammar. The reviewed legacy inventory is 103
-declarations; each remaining file has an explicit ceiling in
-`scripts/motion-contract-baseline.json`. A migrated file has no ceiling, so a
-new literal duration or easing fails the ratchet immediately. Lower both the
-global count and the affected per-file ceiling whenever another surface is
-migrated.
+The app shell, page navigation, Schedule surfaces, transient notifications,
+chat, and (station#753) every remaining legacy surface now consume the shared
+grammar. A migrated file has no ceiling, so a new literal duration or easing
+fails the ratchet immediately. `scripts/motion-contract-baseline.json` carries
+exactly one exception: `NotificationHistory.css`'s dismiss-collapse animation
+duration is `4s` because it visually encodes `UNDO_WINDOW_MS` (the undo
+window's actual dwell time, from `NotificationHistory.tsx`) rather than a
+motion-grammar duration — a token would decouple the animation from the timer
+it represents. Lower both the global count and the affected per-file ceiling
+whenever a future addition needs a temporary exception.
 
 ## Route entrance
 

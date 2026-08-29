@@ -126,7 +126,13 @@ describe('motion contract ratchet', () => {
         'utf8',
       ),
     ) as { hardCodedDeclarationCeiling: number };
-    expect(baseline.hardCodedDeclarationCeiling).toBe(100);
+    // station#753 item 6 migrated the last 25 legacy-ceiling files (99 of the
+    // 100 declarations) to tokens; the one remaining declaration
+    // (NotificationHistory.css's `notification-dismiss-collapse`, `4s`) is
+    // load-bearing — it encodes `UNDO_WINDOW_MS` from NotificationHistory.tsx,
+    // not a motion-grammar duration a token could express without breaking
+    // that correspondence.
+    expect(baseline.hardCodedDeclarationCeiling).toBe(1);
   });
 
   it('rejects hard-coded motion and transition all', () => {

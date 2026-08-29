@@ -24,7 +24,7 @@
   color: var(--text-muted);
   background: transparent;
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 
 .page-breadcrumb__link:hover,
