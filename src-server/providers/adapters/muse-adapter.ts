@@ -47,10 +47,15 @@ import {
 import type {
   MuseActiveTurn,
   MuseProcessLike,
+  MuseProviderMode,
   MuseSessionRecord,
   MuseSpawnResult,
 } from './muse-adapter-types.js';
-import { MUSE_MODEL_LAUNCH } from './muse-adapter-types.js';
+import {
+  isMuseProviderMode,
+  MUSE_MODEL_LAUNCH,
+  MUSE_PROVIDER_MODES,
+} from './muse-adapter-types.js';
 
 /**
  * Only `warn`/`info` are used, so the option is typed to exactly that slice —
@@ -142,6 +147,53 @@ export function museCredentialState(
   return fileExists(museCredentialPath(env))
     ? 'authenticated'
     : 'unauthenticated';
+}
+
+/**
+ * Selects the startup provider every `muse exec` of this process runs under.
+ *
+ * Station has never passed `--provider`, so muse's own default (`meta`) has
+ * always applied — which makes a muse turn cost a real Meta key and a network
+ * round trip, and is why no journey has ever run one. muse ships an `echo`
+ * provider precisely for this: a byte-compatible event envelope produced from
+ * the prompt alone, no key, no network, deterministic reply.
+ *
+ * Deliberately part of the `STATION_E2E_*` family rather than a documented
+ * operator setting. It is a test-determinism knob (`docs/reference/env-vars.md`
+ * documents product configuration and lists none of this family), and naming
+ * it as one avoids promising an operator-facing provider-selection feature
+ * that the capability matrix does not declare.
+ */
+export const MUSE_PROVIDER_OVERRIDE_ENV = 'STATION_E2E_MUSE_PROVIDER';
+
+/** Bound on the refused value echoed back in the construction-time warning. */
+export const MUSE_REFUSED_VALUE_MAX_CHARS = 120;
+
+/**
+ * Narrows the raw env value to muse's own closed vocabulary before it can
+ * become argv.
+ *
+ * Unset (or whitespace) means UNSET: the caller emits no `--provider` at all
+ * and the invocation is byte-identical to the one Station has always built.
+ * A value outside {@link MUSE_PROVIDER_MODES} is REFUSED — reported through
+ * `onRefused` and then treated as unset — rather than forwarded: this value is
+ * spliced straight into the engine's option surface, so `--workspace` or
+ * `-w /etc` sitting in a misconfigured environment would otherwise be an argv
+ * injection into a state-mutating flag. Refusing to the pre-existing default
+ * is chosen over throwing so a typo in one environment variable cannot take
+ * the whole runtime down at construction.
+ */
+export function resolveMuseProviderOverride(
+  env: NodeJS.ProcessEnv,
+  onRefused?: (rawValue: string) => void,
+): MuseProviderMode | undefined {
+  const raw = env[MUSE_PROVIDER_OVERRIDE_ENV]?.trim();
+  if (!raw) return undefined;
+  if (!isMuseProviderMode(raw)) {
+    onRefused?.(raw);
+    return undefined;
+  }
+  return raw;
 }
 
 /**
@@ -310,6 +362,13 @@ export class MuseAdapter implements ProviderAdapterShape {
   private readonly credentialFileExists: (path: string) => boolean;
   private readonly findBinary: (command: string) => string | null;
   private readonly turnTimeoutMs: number;
+  /**
+   * Resolved ONCE, at construction, from {@link MUSE_PROVIDER_OVERRIDE_ENV}:
+   * one refusal warning per process instead of one per turn, and no way for a
+   * mid-run env mutation to change what a session's later turns run under.
+   * `undefined` is the default and means no `--provider` is emitted at all.
+   */
+  private readonly providerOverride: MuseProviderMode | undefined;
 
   constructor(private readonly options: MuseAdapterOptions = {}) {
     this.processFactory = options.processFactory ?? createMuseProcess;
@@ -320,6 +379,25 @@ export class MuseAdapter implements ProviderAdapterShape {
     this.credentialFileExists = options.credentialFileExists ?? existsSync;
     this.findBinary = options.findBinary ?? findCliBinary;
     this.turnTimeoutMs = options.turnTimeoutMs ?? MUSE_DEFAULT_TURN_TIMEOUT_MS;
+    this.providerOverride = resolveMuseProviderOverride(
+      this.env,
+      (rawValue) => {
+        options.logger?.warn?.(
+          `Ignoring ${MUSE_PROVIDER_OVERRIDE_ENV}: not one of ${MUSE_PROVIDER_MODES.join(
+            ', ',
+          )}. Muse turns keep the engine's own default provider.`,
+          // Scrubbed and bounded: the refused value is arbitrary environment
+          // content, and the point of echoing it is to show the operator their
+          // typo, not to relay whatever else was mis-assigned to the variable.
+          {
+            value: redactSecrets(rawValue).slice(
+              0,
+              MUSE_REFUSED_VALUE_MAX_CHARS,
+            ),
+          },
+        );
+      },
+    );
   }
 
   async getPrerequisites(options?: {
@@ -451,6 +529,9 @@ export class MuseAdapter implements ProviderAdapterShape {
       prompt: input.input,
       modelId,
       cwd: record.cwd,
+      // Omitted entirely when unset, which is the default: the argv is then
+      // byte-identical to the one Station has always built.
+      ...(this.providerOverride ? { provider: this.providerOverride } : {}),
     });
 
     const spawned = this.processFactory(args, record.cwd);

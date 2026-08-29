@@ -213,6 +213,76 @@ describe('buildMuseExecArgs', () => {
     expect(args[args.length - 2]).toBe('--');
     expect(args.indexOf('--')).toBe(args.length - 2);
   });
+
+  // #550: the provider override. The two tests above already pin the UNSET
+  // argv byte-for-byte; these pin what the override adds and where.
+  test('emits --provider after the session id, leaving the stable prefix intact', () => {
+    expect(
+      buildMuseExecArgs({
+        sessionId: 'session-1',
+        prompt: 'go',
+        provider: 'echo',
+        cwd: '/tmp/project',
+      }),
+    ).toEqual([
+      'exec',
+      '--json',
+      '--session-id',
+      'session-1',
+      '--provider',
+      'echo',
+      '--workspace',
+      '/tmp/project',
+      '--',
+      'go',
+    ]);
+  });
+
+  test('passes --model through under meta, which is the mode that accepts it', () => {
+    expect(
+      buildMuseExecArgs({
+        sessionId: 'session-1',
+        prompt: 'go',
+        provider: 'meta',
+        modelId: 'muse-spark-1.2-contributor',
+      }),
+    ).toEqual([
+      'exec',
+      '--json',
+      '--session-id',
+      'session-1',
+      '--provider',
+      'meta',
+      '--model',
+      'muse-spark-1.2-contributor',
+      '--',
+      'go',
+    ]);
+  });
+
+  // Live-verified against muse 0.1.0-R708.1: `muse exec --json --provider echo
+  // --model <id>` exits 2 with `--model requires --provider meta` and emits no
+  // JSONL at all, so forwarding both would produce a turn that could only die.
+  test('drops --model under echo, which muse refuses to accept it with', () => {
+    const args = buildMuseExecArgs({
+      sessionId: 'session-1',
+      prompt: 'go',
+      provider: 'echo',
+      modelId: 'muse-spark-1.2-contributor',
+    });
+    expect(args).toEqual([
+      'exec',
+      '--json',
+      '--session-id',
+      'session-1',
+      '--provider',
+      'echo',
+      '--',
+      'go',
+    ]);
+    expect(args).not.toContain('--model');
+    expect(args).not.toContain('muse-spark-1.2-contributor');
+  });
 });
 
 describe('tool_result translation', () => {

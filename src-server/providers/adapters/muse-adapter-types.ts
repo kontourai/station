@@ -33,6 +33,27 @@ export const MUSE_MODEL_LAUNCH: ModelLaunchCapabilities = {
 };
 
 /**
+ * The two startup providers `muse exec --provider <MODE>` accepts, exactly as
+ * `muse exec --help` spells them ("Startup provider: echo or meta (default:
+ * meta)"). Declared as a closed vocabulary because the value becomes engine
+ * ARGV: anything outside this list is refused rather than forwarded, so a
+ * hostile or fat-fingered configuration cannot inject a flag of its own into
+ * the binary's option surface (the same line `install-provenance.ts` draws
+ * before a value reaches `git ls-remote`).
+ *
+ * `meta` is muse's own default. Naming it explicitly is a no-op on the wire
+ * and is admitted only so the knob speaks muse's vocabulary rather than a
+ * Station-invented subset.
+ */
+export const MUSE_PROVIDER_MODES = ['echo', 'meta'] as const;
+
+export type MuseProviderMode = (typeof MUSE_PROVIDER_MODES)[number];
+
+export function isMuseProviderMode(value: string): value is MuseProviderMode {
+  return (MUSE_PROVIDER_MODES as readonly string[]).includes(value);
+}
+
+/**
  * Structural view of the per-turn `muse exec --json` child.
  *
  * Deliberately narrower than `CodexProcessLike`: muse never reads from stdin
