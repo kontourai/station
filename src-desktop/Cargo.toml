@@ -92,6 +92,9 @@ tauri-plugin-single-instance = { version = "=2.4.3", features = ["deep-link"] }
 # plaintext fallback.
 [target."cfg(target_os = \"macos\")".dependencies]
 apple-native-keyring-store = { version = "=1.0.2", features = ["keychain"] }
+objc2 = "=0.6.4"
+objc2-app-kit = { version = "=0.3.2", features = ["NSBox", "NSColor", "NSView", "NSWindow"] }
+objc2-foundation = "=0.3.2"
 # Direct pin: Station inspects Security.framework's typed OSStatus for the
 # narrow stale-item ACL recovery path. Do not infer it from localized Display
 # text supplied by the transitive keyring adapter.
