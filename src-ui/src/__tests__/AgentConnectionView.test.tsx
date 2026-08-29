@@ -472,7 +472,8 @@ describe('AgentConnectionView', () => {
         id: 'kiro',
         name: 'Kiro CLI',
         command: 'kiro',
-        description: 'Connect Kiro through ACP',
+        description:
+          'Connect the Kiro CLI installed on this machine as an engine.',
         installed: false,
         detected: true,
       },
@@ -480,7 +481,8 @@ describe('AgentConnectionView', () => {
         id: 'opencode',
         name: 'OpenCode',
         command: 'opencode',
-        description: 'Connect OpenCode through ACP',
+        description:
+          'Connect the OpenCode CLI installed on this machine as an engine.',
         installed: false,
         detected: false,
       },
