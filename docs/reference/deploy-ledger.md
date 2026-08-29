@@ -27,6 +27,7 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-29T14:30:53Z | nightly-desktop | 0.1.2-nightly.2432 | `15401e2` | nightly test-gate success on 15401e2708722905149cbe54003bafc448d19848 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33256579723) |
 | 2026-08-29T14:27:15Z | nightly-android | 0.1.2-nightly.2432 | `15401e2` | nightly test-gate success on 15401e2708722905149cbe54003bafc448d19848 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33256579723) |
 | 2026-08-29T10:21:21Z | nightly-desktop | 0.1.2-nightly.2432 | `c9968e5` | nightly test-gate success on c9968e5b096c6489e4ce17215db0e26c40924635 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33246144107) |
 | 2026-08-29T10:08:01Z | nightly-android | 0.1.2-nightly.2432 | `c9968e5` | nightly test-gate success on c9968e5b096c6489e4ce17215db0e26c40924635 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33246144107) |
@@ -38,6 +39,28 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-08-29T14:30:53Z · nightly-desktop · 0.1.2-nightly.2432
+
+- Ship SHA: `15401e2708722905149cbe54003bafc448d19848`
+- Artifact: github-release:nightly-desktop (station-nightly-desktop-macos-aarch64.dmg, .app.tar.gz, latest.json)
+
+### Changelog
+
+Commits since `c9968e5` ([full sha](https://github.com/kontourai/station/commit/c9968e5b096c6489e4ce17215db0e26c40924635)):
+
+**Fixes**
+
+- [#789](https://github.com/kontourai/station/pull/789) fix(ui): pin the Registry layouts-tab eyebrow derivation (#765 F1)
+- [#789](https://github.com/kontourai/station/pull/789) fix(ui): restyle the engine row Needs state as a muted warning chip (#765 B3)
+- [#789](https://github.com/kontourai/station/pull/789) fix(ui): use a real glyph for the Review Queue empty state (#765 F3c)
+- [#789](https://github.com/kontourai/station/pull/789) fix(ui): dedupe the Telemetry fleet empty-state sentence (#765 F3b)
+- [#788](https://github.com/kontourai/station/pull/788) fix(deps): flow 5.1.1 — directory-fsync tolerance unblocks Windows
+- [#787](https://github.com/kontourai/station/pull/787) fix(ci): derive the emulator smoke's launch identity from the APK
+
+**Other**
+
+- [#788](https://github.com/kontourai/station/pull/788) chore(ui): raise the entry JS gzip ceiling to the measured 306937
 
 ## 2026-08-29T14:27:15Z · nightly-android · 0.1.2-nightly.2432
 
