@@ -1000,55 +1000,59 @@ test.describe('Connections CRUD', () => {
   test('keeps the catalog behind explicit Add and checks a detected provider in one dialog', async ({
     page,
   }) => {
-    // `/connections/acp` redirects to the Engines SECTION, whose one add
-    // action is "Add engine" (`connection-sections.ts:12-26`,
-    // `ConnectionsSectionFrame.tsx:40-53`). The ACP provider setup surface —
-    // and with it the `Add engine` trigger and its catalog dialog — now
-    // mounts only on the item route (`app-shell/routing.ts` →
-    // `AppViewContent.tsx`), which opens straight onto the custom stage.
+    // #592 slice 2: the ACP registry's catalog and this file's own native
+    // catalog are one list now — the Engines tab's single "Add engine"
+    // action (`connection-sections.ts:12-26`, `ConnectionsSectionFrame.tsx`)
+    // reaches it at `/connections/engines/new`
+    // (`AgentConnectionView`'s `EngineAddCatalog`). The ACP section itself no
+    // longer owns a header or an add trigger of its own — it only opens
+    // pre-addressed, via a provider id named in the route
+    // (`/connections/engines/new/<id>`, e.g. a legacy `/connections/acp/...`
+    // deep link).
     await page.goto('/connections/engines/new/custom');
     await page
       .getByRole('dialog', { name: 'Custom engine' })
       .getByRole('button', { name: 'Cancel' })
       .click();
 
-    // With no dialog open the catalog is not on the page: that is the claim.
+    // With no dialog open, neither the ACP section's retired header nor the
+    // catalog it used to hold are on the page.
+    await expect(page.locator('.acp-connections-section__header')).toHaveCount(
+      0,
+    );
     await expect(page.getByRole('button', { name: /Kiro CLI/ })).toHaveCount(0);
-    // Scoped to the ACP section: the page frame's own add action carries the
-    // same accessible name.
+
+    // The frame's one add action is the only entry point left.
     const add = page
-      .locator('.acp-connections-section__header')
-      .getByRole('button', {
-        name: 'Add engine',
-        exact: true,
-      });
+      .locator('.page__actions')
+      .getByRole('button', { name: 'Add engine', exact: true });
     await add.click();
-    // The deep link names a provider, so the dialog reopens on that provider's
-    // stage; the catalog is the stage behind it.
-    await page
-      .getByRole('dialog', { name: 'Custom engine' })
-      .getByRole('button', { name: 'Back' })
-      .click();
-    const dialog = page.getByRole('dialog', {
-      name: 'Add engine',
-    });
-    const kiro = dialog.getByRole('button', { name: /Kiro CLI/ });
-    await expect(kiro).toContainText(
+    await expect(page).toHaveURL(/\/connections\/engines\/new$/);
+
+    const kiroRow = page
+      .locator('.plugins__registry-item')
+      .filter({ hasText: 'Kiro CLI' });
+    await expect(kiroRow).toContainText(
       'Found on this computer — not yet connected to this Station.',
     );
+    const kiro = kiroRow.getByRole('button', { name: 'Connect' });
 
-    // Enter proves the catalog choice is a keyboard-reachable action; it
-    // starts the existing install-and-probe mutation directly.
+    // Enter proves the catalog choice is a keyboard-reachable action.
     await kiro.focus();
     await kiro.press('Enter');
 
+    // Choosing an ACP engine from the merged catalogue continues into the
+    // existing setup route (CI-R8: it confirms before writing anything —
+    // this is a route arrival, same as any deep link naming a provider).
+    await expect(page).toHaveURL(/\/connections\/engines\/new\/kiro$/);
+    const dialog = page.getByRole('dialog', { name: 'Add engine' });
+    await dialog.getByRole('button', { name: 'Connect Kiro CLI' }).click();
+
     await expect(dialog.getByRole('status')).toContainText('Ready');
+    await dialog.getByRole('button', { name: 'Done' }).click();
     await expect(
-      page.locator('.acp-connections-section__header').getByRole('button', {
-        name: 'Add engine',
-        exact: true,
-      }),
-    ).toHaveCount(1);
+      page.getByRole('button', { name: 'Open Kiro CLI connection details' }),
+    ).toBeVisible();
   });
 
   test('custom setup checks in the same dialog and failures stay repairable', async ({
@@ -1133,7 +1137,13 @@ test.describe('Connections CRUD', () => {
       devices['Pixel 7'];
     test.use(pixel7);
 
-    test('contains the Add sheet with touch-sized choices and legible themes', async ({
+    // #592 slice 2: the catalog this used to measure inside the Add dialog
+    // is now inline page content (`EngineAddCatalog`, reached at
+    // `/connections/engines/new`, not a modal) — only a chosen ACP engine's
+    // confirm step still opens a dialog. This covers both: the catalog's own
+    // row touch targets and page-width containment, then the confirm
+    // dialog's viewport containment once Kiro CLI is chosen.
+    test('contains touch-sized Add-engine catalog choices and a legible, viewport-contained confirm dialog', async ({
       page,
     }) => {
       await installVisualViewportFixture(page);
@@ -1143,45 +1153,33 @@ test.describe('Connections CRUD', () => {
         .getByRole('button', { name: 'Cancel' })
         .click();
       const add = page
-        .locator('.acp-connections-section__header')
-        .getByRole('button', {
-          name: 'Add engine',
-          exact: true,
-        });
+        .locator('.page__actions')
+        .getByRole('button', { name: 'Add engine', exact: true });
       // Measured before opening: the trigger itself has to be tappable.
       expect((await add.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
         MIN_TOUCH_TARGET_PX,
       );
       await add.click();
-      // The deep link names a provider, so the dialog reopens on that stage;
-      // the catalog is behind it.
-      await page
-        .getByRole('dialog', { name: 'Custom engine' })
-        .getByRole('button', { name: 'Back' })
-        .click();
+      await expect(page).toHaveURL(/\/connections\/engines\/new$/);
 
-      const dialog = page.getByRole('dialog', {
-        name: 'Add engine',
-      });
-      const kiro = dialog.getByRole('button', { name: /Kiro CLI/ });
-      const custom = dialog.getByRole('button', {
-        name: 'Custom engine',
-      });
+      const kiroRow = page
+        .locator('.plugins__registry-item')
+        .filter({ hasText: 'Kiro CLI' });
+      const kiro = kiroRow.getByRole('button', { name: 'Connect' });
+      const customRow = page
+        .locator('.plugins__registry-item')
+        .filter({ hasText: 'Custom engine' });
+      const custom = customRow.getByRole('button', { name: 'Set up' });
       for (const control of [kiro, custom]) {
         expect(
           (await control.boundingBox())?.height ?? 0,
         ).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
       }
 
-      const geometry = await dialog.evaluate((element) => ({
-        overflows: element.scrollWidth > element.clientWidth,
-        bottom: element.getBoundingClientRect().bottom,
-        visualBottom:
-          (window.visualViewport?.offsetTop ?? 0) +
-          (window.visualViewport?.height ?? window.innerHeight),
-      }));
-      expect(geometry.overflows).toBe(false);
-      expect(geometry.bottom).toBeLessThanOrEqual(geometry.visualBottom + 1);
+      const overflowsX = await page
+        .locator('.pane-host.connections-section-frame')
+        .evaluate((element) => element.scrollWidth > element.clientWidth);
+      expect(overflowsX).toBe(false);
 
       for (const theme of ['light', 'dark'] as const) {
         await page.evaluate((value) => {
@@ -1191,10 +1189,23 @@ test.describe('Connections CRUD', () => {
           .poll(() => contrastRatio(kiro))
           .toBeGreaterThanOrEqual(4.5);
       }
+
+      await kiro.click();
+      await expect(page).toHaveURL(/\/connections\/engines\/new\/kiro$/);
+      const dialog = page.getByRole('dialog', { name: 'Add engine' });
+      const geometry = await dialog.evaluate((element) => ({
+        overflows: element.scrollWidth > element.clientWidth,
+        bottom: element.getBoundingClientRect().bottom,
+        visualBottom:
+          (window.visualViewport?.offsetTop ?? 0) +
+          (window.visualViewport?.height ?? window.innerHeight),
+      }));
+      expect(geometry.overflows).toBe(false);
+      expect(geometry.bottom).toBeLessThanOrEqual(geometry.visualBottom + 1);
     });
   });
 
-  test('discovery miss remains an honest available Add entry', async ({
+  test('discovery miss remains an honest, truthfully labeled Add entry', async ({
     page,
   }) => {
     await page.route('**/api/connections/agents', (route) =>
@@ -1236,12 +1247,19 @@ test.describe('Connections CRUD', () => {
       .getByRole('button', { name: 'Add engine', exact: true })
       .click();
     await expect(page).toHaveURL(/\/connections\/engines\/new$/);
-    await expect(
-      page.locator('.plugins__registry-name', { hasText: 'Claude Code' }),
-    ).toBeVisible();
-    await expect(
-      page.locator('.plugins__registry-name .plugins__cap'),
-    ).toHaveText('Available');
+    const claudeRow = page.locator('.plugins__registry-item').filter({
+      has: page.locator('.plugins__registry-name', {
+        hasText: 'Claude Code',
+      }),
+    });
+    await expect(claudeRow).toBeVisible();
+    // #592 slice 2: the bespoke Detected/Available chip retired in favor of
+    // the same ProviderReadiness vocabulary the rest of Connections uses —
+    // `setup.state: 'available', detected: false` reads "Setup required"
+    // everywhere else on Connections, not a bespoke "Available".
+    await expect(claudeRow.locator('.plugins__cap')).toHaveText(
+      'Setup required',
+    );
   });
 
   test('model-only first run does not invent an engine connection', async ({

@@ -42,6 +42,10 @@ import {
   ErrorState,
   SkeletonBlock,
 } from '../components/state';
+import {
+  type ACPConnectionRegistryEntry,
+  useACPConnectionRegistry,
+} from '../hooks/useACPConnections';
 import type { NavigationView } from '../types';
 import {
   capabilityLabel,
@@ -117,6 +121,22 @@ export function AgentConnectionView({
   const { data: catalog = [] } = useAgentConnectionCatalogQuery() as {
     data?: AgentConnectionViewData[];
   };
+  // The merged Add-engine catalogue's second population (#592 slice 2):
+  // registry entries not yet installed as a connection. `installed` already
+  // reflects a configured ACP connection, the same fact
+  // `ACPConnectionsSection` filters on for its own registry read.
+  const { data: acpRegistryEntries = [] } = useACPConnectionRegistry() as {
+    data?: ACPConnectionRegistryEntry[];
+  };
+  const availableCommandEntries = useMemo(
+    () => acpRegistryEntries.filter((entry) => !entry.installed),
+    [acpRegistryEntries],
+  );
+  const onChooseCommand = (choice: ACPConnectionRegistryEntry | 'custom') =>
+    onNavigate({
+      type: 'connections-acp-new',
+      providerId: choice === 'custom' ? 'custom' : choice.id,
+    });
 
   const selectedEngineConnectionId =
     selectedRuntimeId && !isAddRoute
@@ -304,8 +324,9 @@ export function AgentConnectionView({
       emptyDescription="Select an engine to review its status and setup."
       emptyContent={
         addCatalogOpen ? (
-          <AgentAppAddCatalog
+          <EngineAddCatalog
             connections={availableAgentApps}
+            commandEntries={availableCommandEntries}
             error={error}
             pendingId={
               saveMutation.isPending
@@ -315,6 +336,7 @@ export function AgentConnectionView({
             onAdd={(connection) =>
               saveMutation.mutate({ connection, isNew: false })
             }
+            onChooseCommand={onChooseCommand}
           />
         ) : undefined
       }
@@ -753,47 +775,78 @@ export function AgentConnectionView({
   );
 }
 
-function AgentAppAddCatalog({
+/**
+ * The Engines tab's one Add catalogue (#592 slice 2): the two catalogues that
+ * used to live on separate routes — this file's own detected/supported
+ * native engines, and the ACP registry's CLI list inside its add modal — are
+ * one list here, sharing the readiness vocabulary every other picker on
+ * Connections already uses (`resolveProviderPresentation`) instead of the
+ * bespoke Detected/Available chips this replaces.
+ *
+ * A native engine keeps its existing one-click add (`onAdd`, no
+ * confirmation step — this catalogue only ever offers `setup.state ===
+ * 'available'` rows, so there is nothing to confirm). An ACP registry entry
+ * or the trailing custom option instead navigates into the existing
+ * `/connections/engines/new/<id>` setup flow (`ACPConnectionSetupStages`),
+ * which still owns confirm/checking/result — that flow is the setup
+ * machinery, not a second catalogue.
+ */
+function EngineAddCatalog({
   connections,
+  commandEntries,
   error,
   pendingId,
   onAdd,
+  onChooseCommand,
 }: {
   connections: AgentConnectionViewData[];
+  commandEntries: ACPConnectionRegistryEntry[];
   error?: string | null;
   pendingId?: string;
   onAdd: (connection: AgentConnectionViewData) => void;
+  onChooseCommand: (entry: ACPConnectionRegistryEntry | 'custom') => void;
 }) {
+  const hasCatalogEntries = connections.length > 0 || commandEntries.length > 0;
   return (
     <div className="editor-layout agent-app-catalog">
       <DetailHeader
         title="Add engine"
-        subtitle="Station checks local apps before showing them as ready."
+        subtitle="Station checks local apps and commands before showing them as ready."
       />
       {error ? <div className="editor-error">{error}</div> : null}
-      {connections.length === 0 ? (
+      {!hasCatalogEntries && (
         <Empty
           variant="prominent"
           label="Every supported engine is already listed"
-          description="Detected apps that are ready appear in the main list automatically. Install another supported app and reopen this catalog to configure it."
+          description="Detected apps and commands that are ready appear in the main list automatically. Connect a custom command below, or install another supported app and reopen this catalog."
         />
-      ) : (
-        <div className="plugins__registry-list">
-          {connections.map((connection) => (
+      )}
+      <div className="plugins__registry-list">
+        {connections.map((connection) => {
+          const presentation = resolveProviderPresentation({
+            id: connection.id,
+            kind: 'agent',
+            type: connection.type,
+            name: connection.name,
+            enabled: connection.enabled,
+            status: connection.status,
+            prerequisites: connection.prerequisites,
+            setup: connection.setup,
+            description: connection.description,
+            href: '',
+          });
+          return (
             <div className="plugins__registry-item" key={connection.id}>
               <BrandIcon name={connection.name} id={connection.id} size={28} />
               <div className="plugins__registry-info">
                 <div className="plugins__registry-name">
                   {connection.name}
                   <span className="plugins__cap plugins__cap--ref">
-                    {connection.setup.detected ? 'Detected' : 'Available'}
+                    {presentation.readiness}
                   </span>
                 </div>
                 <div className="plugins__registry-desc">
-                  {connection.setup.detected
-                    ? 'Installed locally. Add it to finish any required setup.'
-                    : connection.description ||
-                      'Supported by Station. Install it to make it available.'}
+                  {presentation.detail}
                 </div>
               </div>
               <button
@@ -805,9 +858,61 @@ function AgentAppAddCatalog({
                 {pendingId === connection.id ? 'Adding…' : 'Add'}
               </button>
             </div>
-          ))}
+          );
+        })}
+        {commandEntries.map((entry) => {
+          const presentation = resolveProviderPresentation({
+            id: entry.id,
+            kind: 'command',
+            type: 'acp',
+            name: entry.name,
+            enabled: true,
+            status: 'unknown',
+            setup: null,
+            discovery: entry.detected ? 'detected-unconfigured' : undefined,
+            description: entry.description,
+            href: '',
+          });
+          return (
+            <div className="plugins__registry-item" key={entry.id}>
+              <BrandIcon name={entry.name} id={entry.id} size={28} />
+              <div className="plugins__registry-info">
+                <div className="plugins__registry-name">
+                  {entry.name}
+                  <span className="plugins__cap plugins__cap--ref">
+                    {presentation.readiness}
+                  </span>
+                </div>
+                <div className="plugins__registry-desc">
+                  {presentation.detail}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="editor-btn"
+                onClick={() => onChooseCommand(entry)}
+              >
+                {presentation.actionLabel}
+              </button>
+            </div>
+          );
+        })}
+        <div className="plugins__registry-item">
+          <div className="plugins__registry-info">
+            <div className="plugins__registry-name">Custom engine</div>
+            <div className="plugins__registry-desc">
+              Connect an engine that runs its own tools from a local command.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="editor-btn"
+            onClick={() => onChooseCommand('custom')}
+          >
+            Set up
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }

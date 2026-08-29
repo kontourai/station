@@ -64,9 +64,7 @@ export function ProviderTypePicker({
         />
         {presets.length > 0 && (
           <>
-            <div className="provider-overview__group-label">
-              Popular providers
-            </div>
+            <div className="provider-overview__group-label">Popular</div>
             <div className="provider-overview__quickstart-options">
               {presets.map((preset) => (
                 <button
@@ -98,7 +96,7 @@ export function ProviderTypePicker({
         )}
         {types.length > 0 && (
           <>
-            <div className="provider-overview__group-label">More providers</div>
+            <div className="provider-overview__group-label">More</div>
             <div className="provider-overview__quickstart-options">
               {types.map((option) => (
                 <button
@@ -123,11 +121,16 @@ export function ProviderTypePicker({
             </div>
           </>
         )}
-        {agents.length > 0 && (
+        {(agents.length > 0 || commands.length > 0 || onChooseCommand) && (
           <>
-            <div className="provider-overview__group-label">
-              Coding providers
-            </div>
+            {/*
+              #592 slice 2: the picker's cross-reference to the Engines tab
+              used to be two groups with different chrome (a native-app list
+              here, the ACP registry there) for what the Engines tab itself
+              now treats as one catalogue. One group, one noun, routing every
+              choice into that same Add-engine flow.
+            */}
+            <div className="provider-overview__group-label">Engines</div>
             <div className="provider-overview__quickstart-options">
               {agents.map((connection) => {
                 const presentation = resolveProviderChoicePresentation({
@@ -162,15 +165,6 @@ export function ProviderTypePicker({
                   </button>
                 );
               })}
-            </div>
-          </>
-        )}
-        {(commands.length > 0 || onChooseCommand) && (
-          <>
-            <div className="provider-overview__group-label">
-              Local and command providers
-            </div>
-            <div className="provider-overview__quickstart-options">
               {commands.map((entry) => {
                 const presentation = resolveProviderChoicePresentation({
                   id: entry.id,
@@ -207,6 +201,14 @@ export function ProviderTypePicker({
                   </button>
                 );
               })}
+              {/*
+                What this creates: an ACP engine connection
+                (`onChooseCommand('custom')` routes into the same
+                `connections-acp-new` custom setup stage every other command
+                choice above does) — never the OpenAI-compatible custom MODEL
+                connection, which lives under "More" and stays a model
+                connection.
+              */}
               <button
                 type="button"
                 className="provider-overview__quickstart-btn"
@@ -214,10 +216,10 @@ export function ProviderTypePicker({
               >
                 <div>
                   <div className="provider-overview__quickstart-name">
-                    Custom provider
+                    Custom engine
                   </div>
                   <div className="provider-overview__quickstart-meta">
-                    Connect a provider that runs from a local command
+                    Connect an engine that runs from a local command
                   </div>
                 </div>
               </button>

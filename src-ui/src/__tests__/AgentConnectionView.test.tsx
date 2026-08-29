@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const save = vi.fn();
@@ -80,6 +80,12 @@ const DEFAULT_AGENT_CATALOG: unknown[] = [
 ];
 let agentConnections: unknown[] = DEFAULT_AGENT_CONNECTIONS;
 let agentCatalog: unknown[] = DEFAULT_AGENT_CATALOG;
+/**
+ * #592 slice 2: the merged Add-engine catalogue's second population. Empty
+ * by default so every pre-existing native-only test is unchanged; tests that
+ * exercise the ACP half set this explicitly.
+ */
+let acpRegistryEntries: unknown[] = [];
 
 vi.mock('@kontourai/station-sdk', () => ({
   useSkillsQuery: () => ({
@@ -191,6 +197,11 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: vi.fn() }),
 }));
 
+vi.mock('../hooks/useACPConnections', () => ({
+  useACPConnections: () => ({ data: [] }),
+  useACPConnectionRegistry: () => ({ data: acpRegistryEntries }),
+}));
+
 import { AgentConnectionView } from '../views/AgentConnectionView';
 
 describe('AgentConnectionView', () => {
@@ -206,6 +217,7 @@ describe('AgentConnectionView', () => {
     saveFailure = null;
     agentConnections = DEFAULT_AGENT_CONNECTIONS;
     agentCatalog = DEFAULT_AGENT_CATALOG;
+    acpRegistryEntries = [];
     connectionQueryData = null;
     appHomeProfileQueryData = null;
     credentialRecoveryQueryData = null;
@@ -362,13 +374,105 @@ describe('AgentConnectionView', () => {
 
     expect(screen.getByRole('heading', { name: 'Add engine' })).toBeTruthy();
     expect(screen.getByText('Claude Code')).toBeTruthy();
-    expect(screen.getByText('Detected')).toBeTruthy();
+    // #592 slice 2: the bespoke Detected/Available chip retired in favor of
+    // the same ProviderReadiness vocabulary every other picker uses —
+    // `setup.state: 'available', detected: true` reads "Found, not
+    // connected" everywhere else on Connections.
+    expect(screen.getByText('Found, not connected')).toBeTruthy();
     expect(screen.queryByText('Station engine')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: /^Add$/ }));
     expect(save).toHaveBeenCalledWith({
       connection: expect.objectContaining({ id: 'claude' }),
       isNew: false,
+    });
+  });
+
+  // #592 slice 2: the catalogue that used to live only inside the ACP add
+  // modal (reached via a second "Add engine" button the ACP section owned)
+  // is now this same list's second population, sharing its readiness
+  // vocabulary and continuing into the existing ACP setup route rather than
+  // a second catalogue.
+  test('the merged catalogue offers both populations and routes an ACP choice into its setup route', () => {
+    acpRegistryEntries = [
+      {
+        id: 'kiro',
+        name: 'Kiro CLI',
+        command: 'kiro',
+        description: 'Connect Kiro through ACP',
+        installed: false,
+        detected: true,
+      },
+      {
+        id: 'opencode',
+        name: 'OpenCode',
+        command: 'opencode',
+        description: 'Connect OpenCode through ACP',
+        installed: false,
+        detected: false,
+      },
+      // Already configured — must not reappear as an add choice.
+      {
+        id: 'configured-cli',
+        name: 'Configured CLI',
+        command: 'configured-cli',
+        installed: true,
+        detected: true,
+      },
+    ];
+    const onNavigate = vi.fn();
+
+    render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={onNavigate} />,
+    );
+
+    // Native population, unchanged.
+    expect(screen.getByText('Claude Code')).toBeTruthy();
+    // ACP population, sharing the same readiness vocabulary.
+    expect(screen.getByText('Kiro CLI')).toBeTruthy();
+    expect(screen.getAllByText('Found, not connected').length).toBeGreaterThan(
+      0,
+    );
+    expect(screen.getByText('OpenCode')).toBeTruthy();
+    expect(screen.getByText('Setup required')).toBeTruthy();
+    expect(screen.queryByText('Configured CLI')).toBeNull();
+    // The always-available manual escape hatch.
+    expect(screen.getByText('Custom engine')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    expect(onNavigate).toHaveBeenCalledWith({
+      type: 'connections-acp-new',
+      providerId: 'kiro',
+    });
+
+    // Two 'Set up' actions exist (OpenCode and the trailing Custom engine
+    // entry); scope to OpenCode's own row.
+    const openCodeRow = screen
+      .getByText('OpenCode')
+      .closest('.plugins__registry-item') as HTMLElement;
+    fireEvent.click(
+      within(openCodeRow).getByRole('button', { name: 'Set up' }),
+    );
+    expect(onNavigate).toHaveBeenCalledWith({
+      type: 'connections-acp-new',
+      providerId: 'opencode',
+    });
+  });
+
+  test('the merged catalogue routes the trailing custom entry into the ACP custom setup route', () => {
+    const onNavigate = vi.fn();
+
+    render(
+      <AgentConnectionView selectedRuntimeId="new" onNavigate={onNavigate} />,
+    );
+
+    expect(screen.getByText('Custom engine')).toBeTruthy();
+    // No registry entries in this test, so 'Set up' names only the trailing
+    // custom entry's own action.
+    fireEvent.click(screen.getByRole('button', { name: 'Set up' }));
+    expect(onNavigate).toHaveBeenCalledWith({
+      type: 'connections-acp-new',
+      providerId: 'custom',
     });
   });
 

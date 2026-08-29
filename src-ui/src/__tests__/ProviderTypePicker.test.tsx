@@ -11,8 +11,8 @@ describe('ProviderTypePicker', () => {
   test('groups presets above raw connection types', () => {
     render(<ProviderTypePicker onAdd={vi.fn()} onCancel={vi.fn()} />);
 
-    expect(screen.getByText('Popular providers')).toBeTruthy();
-    expect(screen.getByText('More providers')).toBeTruthy();
+    expect(screen.getByText('Popular')).toBeTruthy();
+    expect(screen.getByText('More')).toBeTruthy();
     expect(screen.getByRole('button', { name: /OpenRouter/ })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: /^OpenAI-Compatible/ }),
@@ -41,7 +41,7 @@ describe('ProviderTypePicker', () => {
     expect(onAdd).toHaveBeenCalledWith('ollama', 'Ollama');
   });
 
-  test('preserves coding, registered command, and custom provider choices', () => {
+  test('groups engine choices (agents, registered commands) and a truthfully labeled custom engine under one Engines group', () => {
     const onChooseAgent = vi.fn();
     const onChooseCommand = vi.fn();
     const agent = {
@@ -96,6 +96,13 @@ describe('ProviderTypePicker', () => {
       />,
     );
 
+    // One group, one noun — the picker's cross-reference to the Engines tab
+    // no longer splits agents and registered commands under different
+    // chrome ("Coding providers" / "Local and command providers").
+    expect(screen.getByText('Engines')).toBeTruthy();
+    expect(screen.queryByText('Coding providers')).toBeNull();
+    expect(screen.queryByText('Local and command providers')).toBeNull();
+
     expect(screen.getByRole('button', { name: /Codex/ }).textContent).toContain(
       agentPresentation.badge,
     );
@@ -106,9 +113,15 @@ describe('ProviderTypePicker', () => {
       screen.getByRole('button', { name: /Kiro CLI/ }).textContent,
     ).toContain(commandPresentation.detail);
 
+    // The trailing custom choice creates an ACP engine connection (routes
+    // through the same `onChooseCommand('custom')` as every command choice
+    // above), so it is labeled truthfully as an engine, not a provider.
+    expect(screen.queryByText('Custom provider')).toBeNull();
+    expect(screen.getByText('Custom engine')).toBeTruthy();
+
     fireEvent.click(screen.getByRole('button', { name: /Codex/ }));
     fireEvent.click(screen.getByRole('button', { name: /Kiro CLI/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Custom provider/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Custom engine/ }));
 
     expect(onChooseAgent).toHaveBeenCalledWith(agent);
     expect(onChooseCommand).toHaveBeenNthCalledWith(1, command);

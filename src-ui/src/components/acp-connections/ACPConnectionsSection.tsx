@@ -5,7 +5,7 @@ import {
   useReconnectACPConnectionMutation,
   useUpdateACPConnectionMutation,
 } from '@kontourai/station-sdk';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import {
   useACPConnectionRegistry,
   useACPConnections,
@@ -54,8 +54,13 @@ export function ACPConnectionsSection({
   const updateToolServersMutation = useUpdateACPConnectionMutation();
   const deleteConnectionMutation = useDeleteACPConnectionMutation();
   const reconnectConnectionMutation = useReconnectACPConnectionMutation();
+  // #592 slice 2: this section no longer owns an add trigger of its own —
+  // the merged Add-engine catalogue on the Engines tab
+  // (`AgentConnectionView`'s `EngineAddCatalog`, reached from the frame's one
+  // "Add engine" action) is the sole entry point. Arriving here with a
+  // provider already named (`/connections/engines/new/<id>`) is therefore
+  // the only way this modal opens.
   const [showAddModal, setShowAddModal] = useState(Boolean(initialProviderId));
-  const addTriggerRef = useRef<HTMLButtonElement>(null);
   const [selectedConnId, setSelectedConnId] = useState<string | null>(null);
   // Derived (not a snapshot) so the detail modal reflects the connection's
   // latest `provideToolServers` selection immediately after a mutation.
@@ -99,18 +104,6 @@ export function ACPConnectionsSection({
 
   return (
     <>
-      <div className="acp-connections-section__header">
-        <h2 className="acp-connections-section__title">Engines</h2>
-        <button
-          ref={addTriggerRef}
-          type="button"
-          className="button button--secondary"
-          onClick={() => setShowAddModal(true)}
-        >
-          Add engine
-        </button>
-      </div>
-
       {showAddModal && (
         <ACPAddConnectionModal
           registryEntries={availableRegistryEntries}
@@ -125,7 +118,6 @@ export function ACPConnectionsSection({
           onInstallRegistryEntry={installRegistryEntry}
           onRefreshConnections={refetchConnections}
           onCancel={() => setShowAddModal(false)}
-          returnFocusTarget={addTriggerRef.current}
           initialProviderId={initialProviderId}
         />
       )}
