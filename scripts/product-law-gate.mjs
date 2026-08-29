@@ -67,7 +67,18 @@ export function structuredLawObservationVerdict(report, selector) {
       reason: `structured Vitest result named ${JSON.stringify(selector)} occurred ${matches.length} times`,
     };
   if (matches[0].status === 'passed') return { status: 'PASS' };
-  if (matches[0].status === 'failed') return { status: 'FAIL' };
+  if (matches[0].status === 'failed') {
+    // Carry the assertion's own failure text: a FAIL whose only output is
+    // the one-line summary is undiagnosable from CI (station#743 —
+    // Windows-only failure with no way to read the assertion).
+    const failureText = (matches[0].failureMessages ?? [])
+      .join('\n')
+      .slice(0, 4000)
+      .trim();
+    return failureText
+      ? { status: 'FAIL', reason: failureText }
+      : { status: 'FAIL' };
+  }
   return {
     status: 'NOT_VERIFIED',
     reason: `structured Vitest result named ${JSON.stringify(selector)} was ${matches[0].status}`,
