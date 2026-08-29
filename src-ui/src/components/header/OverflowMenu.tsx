@@ -1,7 +1,10 @@
 import { ConnectionStatusDot } from '@kontourai/station-connect';
 import type { ComponentProps } from 'react';
 import { createPortal } from 'react-dom';
+import { toastStore } from '../../contexts/ToastContext';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
+import { nativePlatformPromise } from '../../platform/native';
+import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import './HeaderMenu.css';
 
 type ConnectionStatus = ComponentProps<typeof ConnectionStatusDot>['status'];
@@ -28,7 +31,21 @@ export function OverflowMenu({
   onOpenProfile,
 }: OverflowMenuProps) {
   const menuRef = useMenuFocus<HTMLDivElement>(isOpen, onClose);
+  const { isDesktop } = usePlatformProfile();
   if (!isOpen) return null;
+  const openDesktopTrayMenu =
+    onOpenDesktopTrayMenu ??
+    (isDesktop
+      ? async () => {
+          const native = await nativePlatformPromise;
+          const result = await native.openDesktopTrayMenu();
+          if (result.status !== 'ok') {
+            toastStore.show(
+              result.status === 'unsupported' ? result.reason : result.message,
+            );
+          }
+        }
+      : undefined);
 
   // Portalled to the document: the toolbar is `position: sticky; z-index: 200`
   // on mobile, which makes it a stacking context, so a descendant cannot
@@ -66,12 +83,12 @@ export function OverflowMenu({
           <ConnectionStatusDot status={connStatus} size={7} />
           Connections
         </button>
-        {onOpenDesktopTrayMenu && (
+        {openDesktopTrayMenu && (
           <button
             type="button"
             onClick={() => {
               onClose();
-              void onOpenDesktopTrayMenu();
+              void openDesktopTrayMenu();
             }}
           >
             <svg

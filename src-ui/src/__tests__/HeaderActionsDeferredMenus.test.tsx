@@ -36,9 +36,8 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
 
-let isDesktop = false;
 vi.mock('../platform/PlatformProfileContext', () => ({
-  usePlatformProfile: () => ({ supervisesBundledServer: false, isDesktop }),
+  usePlatformProfile: () => ({ supervisesBundledServer: false }),
 }));
 
 vi.mock('../platform/useBundledServerStatus', () => ({
@@ -142,17 +141,7 @@ const surfaces = [
 
 describe('HeaderActions deferred dropdowns', () => {
   beforeEach(() => {
-    isDesktop = false;
     for (const surface of surfaces) surface.stub.mockClear();
-  });
-
-  test('offers native tray reveal only from a desktop host', async () => {
-    isDesktop = true;
-    renderHeader({ showOverflow: true });
-    await screen.findByTestId('deferred-overflow-menu');
-    expect(stubs.overflowMenu).toHaveBeenLastCalledWith(
-      expect.objectContaining({ onOpenDesktopTrayMenu: expect.any(Function) }),
-    );
   });
 
   for (const surface of surfaces) {
