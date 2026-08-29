@@ -341,6 +341,7 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/ecosystem-packaging.yml',
   '.github/workflows/install-smoke.yml',
   '.github/workflows/security-analysis.yml',
+  '.github/workflows/windows-pr-verification.yml',
 ]);
 
 function hasRequiredCapacityOwnerLifetime(value) {

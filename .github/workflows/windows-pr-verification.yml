@@ -1,0 +1,48 @@
+name: Windows PR Verification
+
+# Base-controlled routing keeps candidate YAML off the execution boundary.
+# Candidate code runs only on an ephemeral GitHub-hosted Windows runner with
+# read-only permissions, so fork PRs receive the same proof instead of a
+# skipped required check that GitHub would incorrectly count as success.
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-pr-verification-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  windows-pr-portable:
+    name: Windows PR portable floor
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - run: npm run dependencies:ci
+
+      - name: Verify verification policy contract
+        run: npm run verification:policy:gate
+
+      - name: Run bounded Windows portable floor
+        run: npm run test:windows:portable
+
+      - name: Typecheck Station contracts
+        run: npm run typecheck
+
+      - name: Run focused static ratchets
+        run: npm run gate:naming && npm run gate:ui-contracts

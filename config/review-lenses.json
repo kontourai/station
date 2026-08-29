@@ -43,6 +43,11 @@
       "instructions": "Assess whether changed verification and delivery behavior proves what it claims, including fault and boundary cases. Findings are evidence input only."
     },
     {
+      "id": "state-honesty",
+      "nodeIds": ["product.src-ui", "product.src-ui.trust-surfaces"],
+      "instructions": "For any user-visible status string touched by the diff — a badge, count chip, step counter, READY/Available label, or a 'needs attention' bucket — ask: what computes it, and what happens when the computation disagrees with the label? A label nothing derives is a defect even when it happens to be true today. Examples of the class from the v0.1.2 UX audit (#765): B2 (engines shown READY beside a 'cannot verify ready' toast), E4 (sibling tabs showing different counts for the same collection), D5 ('Nothing needs you right now' above a pending pairing approval). Findings are evidence input only."
+    },
+    {
       "id": "native",
       "nodeIds": ["product.src-desktop"],
       "instructions": "Assess desktop and native-platform behavior, isolation, and platform-specific failure modes. Findings are evidence input only."
