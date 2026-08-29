@@ -27,11 +27,71 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-29T06:25:39Z | nightly-android | 0.1.2-nightly.2432 | `68cd081` | nightly test-gate success on 68cd081f90ef766268d856bbcb056624276310ae (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33237355902) |
 | 2026-08-29T02:01:11Z | nightly-android | 0.1.2-nightly.2432 | `b0ac1b7` | nightly test-gate success on b0ac1b7b186a9d8f941616938321d09930c2ad38 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33225213529) |
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-08-29T06:25:39Z · nightly-android · 0.1.2-nightly.2432
+
+- Ship SHA: `68cd081f90ef766268d856bbcb056624276310ae`
+- Artifact: play-internal-aab:io.kontourai.station.nightly@versionCode 243201
+- Artifact: workflow-artifact:station-nightly-243201 (7-day retention)
+
+### Changelog
+
+Commits since `b0ac1b7` ([full sha](https://github.com/kontourai/station/commit/b0ac1b7b186a9d8f941616938321d09930c2ad38)):
+
+**Fixes**
+
+- [#773](https://github.com/kontourai/station/pull/773) fix(chat): stabilize nightly project and agent activation reads
+- [#769](https://github.com/kontourai/station/pull/769) fix(ui): label the dock copy chip and separate path from session count (#765 A7)
+- [#769](https://github.com/kontourai/station/pull/769) fix(ui): pin the scrollable dock body for docked non-chat panes (#765 C1)
+- [#768](https://github.com/kontourai/station/pull/768) fix(scripts): carry assertion failure text through product-law FAIL verdicts
+- [#767](https://github.com/kontourai/station/pull/767) fix(desktop): admit migrated paired startup owner
+- [#762](https://github.com/kontourai/station/pull/762) fix(ui): update the regex pin the literal sweep missed; smooth the found-detail copy
+- [#763](https://github.com/kontourai/station/pull/763) fix(basis): select an existing pane before fallback
+- [#761](https://github.com/kontourai/station/pull/761) fix(desktop): bind startup readiness to sidecar profile
+- [#762](https://github.com/kontourai/station/pull/762) fix(ui): review round — scope ambiguous locators, neutralize shared readiness copy
+- [#763](https://github.com/kontourai/station/pull/763) fix(basis): reject ambient panes without renderers
+- [#760](https://github.com/kontourai/station/pull/760) fix(release): retain timeout wrapper through descendants
+- [#762](https://github.com/kontourai/station/pull/762) fix(ui): conform Connections vocabulary to model connection / engine
+- [#763](https://github.com/kontourai/station/pull/763) fix(basis): focus existing full inventory pane
+- [#760](https://github.com/kontourai/station/pull/760) fix(release): retain macOS timeout group ownership
+- [#763](https://github.com/kontourai/station/pull/763) fix(basis): hand off compact session inventory
+- [#756](https://github.com/kontourai/station/pull/756) fix(ci): normalize ledger-only nightly commits
+- [#752](https://github.com/kontourai/station/pull/752) fix(desktop): use supported AppKit cover identity
+- [#747](https://github.com/kontourai/station/pull/747) fix(ci): harden the ledger token path per review
+- [#751](https://github.com/kontourai/station/pull/751) fix(pairing): select exact Tailscale Serve origin
+- [#747](https://github.com/kontourai/station/pull/747) fix(ci): push ledger commits with the release app's token
+- [#744](https://github.com/kontourai/station/pull/744) fix(ci): enable KVM for the hosted-runner Android emulator job
+- [#760](https://github.com/kontourai/station/pull/760) fix(release): bound macOS notarization commands
+- [#746](https://github.com/kontourai/station/pull/746) fix(desktop): serialize native cover dispatch
+- [#740](https://github.com/kontourai/station/pull/740) fix(ci): harden the tag advance and decouple ledger records from it
+- [#740](https://github.com/kontourai/station/pull/740) fix(scripts): disclose an unreachable previous ship SHA instead of failing the channel
+- [#740](https://github.com/kontourai/station/pull/740) fix(ci): advance rolling nightly tags via the refs API and widen the desktop timeout
+- [#739](https://github.com/kontourai/station/pull/739) fix(e2e): build the plugin-preview fixture through the sanctioned ./station entry (#537)
+- [#738](https://github.com/kontourai/station/pull/738) fix(ci): run container-smoke Playwright on the docker fleet
+- [#736](https://github.com/kontourai/station/pull/736) fix(ci): copy lifecycle helper into the image and keep Windows on desktop-win
+- [#735](https://github.com/kontourai/station/pull/735) fix(desktop): harden native startup cover
+- [#735](https://github.com/kontourai/station/pull/735) fix(desktop): use native startup cover on macOS
+- [#734](https://github.com/kontourai/station/pull/734) fix(desktop): recover readiness after activation timeout
+- [#732](https://github.com/kontourai/station/pull/732) fix(desktop): retain cold pairing window activation
+
+**CI / workflow**
+
+- [#733](https://github.com/kontourai/station/pull/733) ci: move public CI off desktop-win onto GitHub-hosted runners
+
+**Other**
+
+- [#773](https://github.com/kontourai/station/pull/773) refactor(chat): own merged UI bundle delta (-18B gzip)
+- [#763](https://github.com/kontourai/station/pull/763) test(chat): follow canonical new-chat binding path
+- [#762](https://github.com/kontourai/station/pull/762) chore(ui): raise the entry JS gzip ceiling to the measured 306850
+- [#763](https://github.com/kontourai/station/pull/763) chore(ui): account for Basis handoff bundle cost (+27 gzip)
+- [#740](https://github.com/kontourai/station/pull/740) refactor(ci): trim tag-advance commentary to constraints and strengthen per-step pins
+- [#740](https://github.com/kontourai/station/pull/740) style: format the unreachable-probe test fixture
 
 ## 2026-08-29T02:01:11Z · nightly-android · 0.1.2-nightly.2432
 
