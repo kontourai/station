@@ -1,8 +1,17 @@
-import { copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { runBoundedCommand } from './macos-notarized-artifacts.mjs';
 
 export const KEYCHAIN_UNLOCK_LIFETIME_SECONDS = 105 * 60;
 export const PRIVATE_KEY_PROBE_TIMEOUT_MS = 60 * 1000;
+
+function lifetimeFromDeadline(epoch) {
+  if (typeof epoch !== 'string' || !/^[1-9][0-9]{9,10}$/.test(epoch))
+    throw new Error('Expected a valid macOS signing deadline epoch.');
+  const remaining = Number(epoch) * 1000 - Date.now() - 10_000;
+  if (!Number.isSafeInteger(remaining) || remaining <= 0)
+    throw new Error('macOS signing deadline lacks cleanup grace.');
+  return Math.min(KEYCHAIN_UNLOCK_LIFETIME_SECONDS, Math.floor(remaining / 1000));
+}
 
 async function security(phase, args, run = runBoundedCommand) {
   try {
@@ -35,11 +44,12 @@ export async function prepareMacosSigningKeychain({
   keychain,
   password,
   state,
+  deadlineEpoch,
   run,
 }) {
   const previous = await previousSearchList(run);
   await security('create', ['create-keychain', '-p', password, keychain], run);
-  await security('set bounded lifetime', ['set-keychain-settings', '-lut', String(KEYCHAIN_UNLOCK_LIFETIME_SECONDS), keychain], run);
+  await security('set bounded lifetime', ['set-keychain-settings', '-lut', String(lifetimeFromDeadline(deadlineEpoch)), keychain], run);
   await security('unlock', ['unlock-keychain', '-p', password, keychain], run);
   await security('import', ['import', certificate, '-k', keychain, '-P', password, '-T', '/usr/bin/codesign'], run);
   // Retain the existing least-privilege partition set; do not broaden it with
@@ -51,7 +61,8 @@ export async function prepareMacosSigningKeychain({
   await security('set search list', ['list-keychains', '-d', 'user', '-s', keychain], run);
 }
 
-export async function unlockMacosSigningKeychain({ identity, keychain, password, run }) {
+export async function unlockMacosSigningKeychain({ identity, keychain, password, deadlineEpoch, run }) {
+  lifetimeFromDeadline(deadlineEpoch);
   await security('re-unlock', ['unlock-keychain', '-p', password, keychain], run);
   const matches = exactIdentityMatches((await security('validate identity', ['find-identity', '-v', '-p', 'codesigning', keychain], run)).stdout, identity);
   if (matches !== 1) throw new Error('Configured Developer ID signing identity is not uniquely available.');
@@ -77,15 +88,17 @@ export async function probeMacosPrivateKey({
 }
 
 export async function cleanupMacosSigningKeychain({ keychain, state, run }) {
+  const prepared = existsSync(state);
+  const failures = [];
   try {
     const previous = JSON.parse(readFileSync(state, 'utf8')).previous;
-    if (Array.isArray(previous) && previous.length)
+    if (Array.isArray(previous))
       await security('restore search list', ['list-keychains', '-d', 'user', '-s', ...previous], run);
-  } catch {
-    // Never replace an unknown caller search list during cleanup.
-  }
-  try { await security('lock', ['lock-keychain', keychain], run); } catch {}
-  try { await security('delete', ['delete-keychain', keychain], run); } catch {}
+    else failures.push('state');
+  } catch { if (prepared) failures.push('restore'); }
+  try { await security('lock', ['lock-keychain', keychain], run); } catch { if (prepared) failures.push('lock'); }
+  try { await security('delete', ['delete-keychain', keychain], run); } catch { if (prepared) failures.push('delete'); }
+  if (failures.length) throw new Error('macOS signing keychain cleanup failed.');
   rmSync(state, { force: true });
 }
 
@@ -93,11 +106,11 @@ if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
   const [mode, ...raw] = process.argv.slice(2);
   const keys = raw.filter((_, index) => index % 2 === 0);
   const values = Object.fromEntries(keys.map((key, index) => [key.slice(2), raw[index * 2 + 1]]));
-  if (raw.length % 2 || new Set(keys).size !== keys.length || Object.keys(values).some((key) => !['certificate', 'keychain', 'probe', 'state'].includes(key))) throw new Error('Expected unique known non-secret arguments.');
+  if (raw.length % 2 || new Set(keys).size !== keys.length || Object.keys(values).some((key) => !['certificate', 'deadline-epoch', 'keychain', 'probe', 'state'].includes(key))) throw new Error('Expected unique known non-secret arguments.');
   const common = { identity: process.env.APPLE_DEVELOPER_ID_SIGNING_IDENTITY, keychain: values.keychain, password: process.env.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD };
   if (!common.keychain || ((mode === 'prepare' || mode === 'unlock') && (!common.identity || !common.password)) || (mode === 'probe' && !common.identity)) throw new Error('Expected required signing environment inputs.');
-  if (mode === 'prepare') await prepareMacosSigningKeychain({ ...common, certificate: values.certificate, state: values.state });
-  else if (mode === 'unlock') await unlockMacosSigningKeychain(common);
+  if (mode === 'prepare') await prepareMacosSigningKeychain({ ...common, certificate: values.certificate, deadlineEpoch: values['deadline-epoch'], state: values.state });
+  else if (mode === 'unlock') await unlockMacosSigningKeychain({ ...common, deadlineEpoch: values['deadline-epoch'] });
   else if (mode === 'probe') await probeMacosPrivateKey({ ...common, probe: values.probe });
   else if (mode === 'cleanup') await cleanupMacosSigningKeychain({ keychain: values.keychain, state: values.state });
   else throw new Error('Expected prepare, unlock, probe, or cleanup mode.');

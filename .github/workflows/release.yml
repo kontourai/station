@@ -146,12 +146,13 @@ jobs:
         env:
           APPLE_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 }}
           APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_SIGNING_IDENTITY }}
         run: |
           certificate="$RUNNER_TEMP/station-developer-id.p12"
           keychain="$RUNNER_TEMP/station-developer-id.keychain-db"
           state="$RUNNER_TEMP/station-developer-id-search-state.json"
           printf '%s' "$APPLE_DEVELOPER_ID_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
-          node ops/release/macos-signing-readiness.mjs prepare --certificate "$certificate" --keychain "$keychain" --state "$state"
+          node ops/release/macos-signing-readiness.mjs prepare --certificate "$certificate" --keychain "$keychain" --state "$state" --deadline-epoch "${{ steps.macos_release_deadline.outputs.epoch }}"
       - name: Build an unsigned macOS staging candidate
         working-directory: src-desktop
         env:
@@ -168,7 +169,7 @@ jobs:
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
         run: |
-          node ops/release/macos-signing-readiness.mjs unlock --keychain "$RUNNER_TEMP/station-developer-id.keychain-db"
+          node ops/release/macos-signing-readiness.mjs unlock --keychain "$RUNNER_TEMP/station-developer-id.keychain-db" --deadline-epoch "${{ steps.macos_release_deadline.outputs.epoch }}"
           node ops/release/macos-signing-readiness.mjs probe --keychain "$RUNNER_TEMP/station-developer-id.keychain-db" --probe "$RUNNER_TEMP/station-developer-id-probe"
           umask 077
           notary_key="$RUNNER_TEMP/station-notary-api-key.p8"
@@ -190,8 +191,11 @@ jobs:
       - name: Cleanup macOS Developer ID keychain
         if: always()
         run: |
+          set +e
           node ops/release/macos-signing-readiness.mjs cleanup --keychain "$RUNNER_TEMP/station-developer-id.keychain-db" --state "$RUNNER_TEMP/station-developer-id-search-state.json"
+          status=$?
           rm -f "$RUNNER_TEMP/station-developer-id.p12" "$RUNNER_TEMP/station-developer-id-probe"
+          exit "$status"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: release-assets/*
