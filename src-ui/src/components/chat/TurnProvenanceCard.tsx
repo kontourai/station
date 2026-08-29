@@ -13,6 +13,10 @@ import {
   providerPromptCacheInclusivity,
 } from '@kontourai/station-shared/usage-fold';
 import { useId, useState } from 'react';
+import {
+  exactTokenCount,
+  formatTokenCount,
+} from '../../utils/formatTokenCount';
 import { displayModelIdentifier } from '../../utils/modelDisplay';
 import { engineLabelForProvider } from '../../utils/sessionDisplay';
 import './TurnProvenanceCard.css';
@@ -183,11 +187,20 @@ function usageText(
  * naming every cache/read/write field the way the detail row does would bury
  * the one-line takeaway in a token ledger. Falls back to in/out only when no
  * total was reported.
+ *
+ * #765 A8: the figure is compact ("50.9k tokens") and, on the total paths,
+ * carries the "incl. context" qualifier — the total counts the prompt and
+ * conversation context, and an unqualified 50k beside a one-line answer read
+ * as a cost bomb. Both total paths include prompt/context by construction:
+ * `cacheInclusiveTotalTokens` sums input + output + cache, and a reported
+ * `totalTokens` includes `inputTokens` (the prompt and its context). The
+ * in/out fallback already names its components, so it takes no qualifier.
+ * `exactTitle` preserves the exact figure for the summary tooltip.
  */
-function headlineUsageText(
+function headlineUsage(
   usage: TurnProvenanceUsage,
   provider: string | undefined,
-): string | null {
+): { text: string; exactTitle: string } | null {
   // archive#4196: when the provider's declared cache-inclusivity backs the
   // sum ('disjoint' — Claude, whose totalTokens is input + output and
   // excludes cache), the one-line figure includes cache read/write, because
@@ -196,16 +209,29 @@ function headlineUsageText(
   // 'unverified'/'subset'/undeclared provider the derivation returns
   // `undefined` and the provider's own total stands, unsummed.
   const inclusiveTotal = cacheInclusiveTotalTokens(provider, usage);
-  if (inclusiveTotal !== undefined) {
-    return `${inclusiveTotal} tokens`;
-  }
-  if (usage.totalTokens !== undefined) {
-    return `${usage.totalTokens} tokens`;
+  const total = inclusiveTotal ?? usage.totalTokens;
+  if (total !== undefined) {
+    return {
+      text: `${formatTokenCount(total)} tokens · incl. context`,
+      exactTitle: `${exactTokenCount(total)} tokens`,
+    };
   }
   const parts: string[] = [];
-  if (usage.inputTokens !== undefined) parts.push(`${usage.inputTokens} in`);
-  if (usage.outputTokens !== undefined) parts.push(`${usage.outputTokens} out`);
-  return parts.length > 0 ? parts.join(' · ') : null;
+  const exactParts: string[] = [];
+  if (usage.inputTokens !== undefined) {
+    parts.push(`${formatTokenCount(usage.inputTokens)} in`);
+    exactParts.push(`${exactTokenCount(usage.inputTokens)} in`);
+  }
+  if (usage.outputTokens !== undefined) {
+    parts.push(`${formatTokenCount(usage.outputTokens)} out`);
+    exactParts.push(`${exactTokenCount(usage.outputTokens)} out`);
+  }
+  return parts.length > 0
+    ? {
+        text: parts.join(' · '),
+        exactTitle: `${exactParts.join(' · ')} tokens`,
+      }
+    : null;
 }
 
 /**
@@ -445,15 +471,38 @@ function summaryText(
     parts.push(displayModelIdentifier(envelope.reportedModel.value));
   }
   if (envelope.usage.state === 'observed') {
-    const usage = headlineUsageText(
+    const usage = headlineUsage(
       envelope.usage.value,
       envelope.engine.state === 'observed'
         ? envelope.engine.value.provider
         : undefined,
     );
-    if (usage) parts.push(usage);
+    if (usage) parts.push(usage.text);
   }
   return parts.length > 0 ? parts.join(' · ') : 'Provenance';
+}
+
+/**
+ * The summary button's tooltip: the engine slug (the checkable identifier
+ * behind the product name) plus the EXACT token figure behind the compact
+ * "50.9k" headline (#765 A8). Exactness lives here and in the detail row;
+ * the visible line stays magnitude-first.
+ */
+function summaryTitle(envelope: TurnProvenanceEnvelope): string | undefined {
+  const parts: string[] = [];
+  if (envelope.engine.state === 'observed') {
+    parts.push(`Engine: ${envelope.engine.value.provider}`);
+  }
+  if (envelope.usage.state === 'observed') {
+    const usage = headlineUsage(
+      envelope.usage.value,
+      envelope.engine.state === 'observed'
+        ? envelope.engine.value.provider
+        : undefined,
+    );
+    if (usage) parts.push(usage.exactTitle);
+  }
+  return parts.length > 0 ? parts.join(' · ') : undefined;
 }
 
 /**
@@ -640,11 +689,7 @@ export function TurnProvenanceCard({
         className="turn-provenance__summary"
         aria-expanded={open}
         aria-controls={detailsId}
-        title={
-          provenance.engine.state === 'observed'
-            ? `Engine: ${provenance.engine.value.provider}`
-            : undefined
-        }
+        title={summaryTitle(provenance)}
         onClick={() => setOpen((previous) => !previous)}
       >
         <span className="turn-provenance__headline">
