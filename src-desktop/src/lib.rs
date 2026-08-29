@@ -6944,8 +6944,12 @@ fn bundled_startup_credential_receipt(
         .profiles
         .iter()
         .filter(|profile| {
-            profile.setup_source == "local"
-                && profile.configuration_state == "configured"
+            // `localService.baseDir` is the native-owned channel boundary.
+            // `setupSource` records how the credential arrived and may be
+            // `paired` after a reviewed home/profile cutover; it is not
+            // authority for this startup proof.
+            profile.configuration_state == "configured"
+                && profile.credential_ref.is_some()
                 && profile.local_service.as_ref().is_some_and(|service| {
                     service.instance_id == ticket.instance_id
                         && same_runtime_home_identity(
@@ -9174,7 +9178,7 @@ mod tests {
 
     #[test]
     #[cfg(not(mobile))]
-    fn startup_credential_is_bound_to_exact_channel_home_not_ambient_default() {
+    fn startup_credential_admits_a_migrated_paired_owner_by_exact_channel_home() {
         let temp = tempfile::tempdir().unwrap();
         let station_root = temp.path().join(".station");
         let beta_home = station_root.join("instances").join("beta");
@@ -9217,10 +9221,26 @@ mod tests {
                             "serverPort": 28141,
                             "uiPort": 28000
                         },
-                        "setupSource": "local",
+                        "setupSource": "paired",
                         "configurationState": "configured",
                         "createdAt": 2,
                         "updatedAt": 2
+                    },
+                    {
+                        "schemaVersion": 1,
+                        "name": "beta-placeholder",
+                        "endpoint": "http://127.0.0.1:28141",
+                        "environmentId": null,
+                        "localService": {
+                            "instanceId": "desktop-sidecar-beta",
+                            "baseDir": beta_home,
+                            "serverPort": 28141,
+                            "uiPort": 28000
+                        },
+                        "setupSource": "local",
+                        "configurationState": "configured",
+                        "createdAt": 3,
+                        "updatedAt": 3
                     }
                 ]
             })
