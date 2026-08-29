@@ -72,8 +72,8 @@ service needs a durable home.
 
 The truth-bearing startup source is
 [`src-desktop/src/startup_readiness.rs`](../../src-desktop/src/startup_readiness.rs):
-the native host may reveal only after its initialization script observes the
-main renderer document and its authenticated proof commits the ticket matching
+the native host may reveal only after its invoke initialization task observes
+the exact main WebView without waiting for application chunks, and its authenticated proof commits the ticket matching
 the current generation, instance ID, boot ID, and API base. The native host arms one
 30-second deadline, shows Retry/Exit once per epoch, and routes Retry according
 to ownership in [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs).

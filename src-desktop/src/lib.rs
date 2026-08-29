@@ -6364,11 +6364,7 @@ const NATIVE_STARTUP_BOOTSTRAP_SCRIPT: &str = r#"
     if (window.__TAURI_INTERNALS__.metadata?.currentWindow?.label !== 'main') return;
     window.__TAURI_INTERNALS__.invoke('renderer_startup_ready').catch(() => {});
   };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', signalReady, { once: true });
-  } else {
-    signalReady();
-  }
+  setTimeout(signalReady, 0);
 })();
 "#;
 
