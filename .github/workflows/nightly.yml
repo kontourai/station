@@ -876,6 +876,14 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Reserve nightly macOS release cleanup window
+        id: nightly_macos_release_deadline
+        shell: bash
+        run: |
+          # Reserve cleanup time before checkout and toolchain setup consume
+          # the 120-minute hosted-job budget.
+          epoch="$(( $(date -u +%s) + 105 * 60 ))"
+          printf 'epoch=%s\n' "$epoch" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
@@ -1002,7 +1010,7 @@ jobs:
           app="${app_candidates[0]}"
           printf '%s' "$APPLE_API_PRIVATE_KEY" > "$notary_key"
           chmod 600 "$notary_key"
-          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir release-assets --release-tag nightly-desktop --architecture aarch64 --bundle-id io.kontourai.station.nightly
+          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir release-assets --release-tag nightly-desktop --architecture aarch64 --bundle-id io.kontourai.station.nightly --deadline-epoch "${{ steps.nightly_macos_release_deadline.outputs.epoch }}"
           # A config overlay that silently failed to apply would otherwise
           # publish a production-identified build to the nightly channel —
           # the same check the Android leg's badging grep proves, here
