@@ -448,7 +448,7 @@ const messageSearchQuerySchema = z.object({
   query: z.string().trim().min(2).max(256),
 });
 
-async function listPersonalFileConversationItems(
+async function _listPersonalFileConversationItems(
   memoryAdapters: Map<string, FileMemoryAdapter>,
   userId: string,
   limit: number,
@@ -1172,7 +1172,6 @@ export function createConversationRoutes(
     try {
       conversationOps.add(1, { operation: 'list' });
       const slug = param(c, 'slug');
-      const runtimeSlug = runtimeAgentKey(slug);
       const authority = authorityFor(c.req.raw);
       const hosted = isHostedSessionReadAuthority(authority);
       const pageQuery = conversationHistoryPageQuerySchema.safeParse({
@@ -1194,15 +1193,15 @@ export function createConversationRoutes(
           400,
         );
       }
-      const adapter = getAdapter(runtimeSlug);
-
       // File-store records carry projectSlug (if any) inside `metadata`
       // (stamped by `ensureChatConversation`) — project it to a top-level
       // field so it lines up with the session-projection leg below, whose
       // items already carry `projectSlug` at the top level.
+      const runtimeSlug = runtimeAgentKey(slug);
+      const adapter = getAdapter(runtimeSlug);
       const storePage =
         adapter && !hosted
-          ? await listPersonalFileConversationItems(
+          ? await _listPersonalFileConversationItems(
               new Map([[runtimeSlug, adapter]]),
               authority.userId,
               pageQuery.data.limit,
@@ -2408,9 +2407,9 @@ export function createGlobalConversationRoutes(
       }));
       const storePage = hosted
         ? { items: [], hasMore: false }
-        : await listPersonalFileConversationItems(
+        : await _listPersonalFileConversationItems(
             memoryAdapters,
-            userId,
+            authority.userId,
             pageQuery.data.limit,
           );
       const byId = new Map(

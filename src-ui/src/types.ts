@@ -262,6 +262,8 @@ export interface ChatSession {
    * a model, or an inventory row when controls subsequently render.
    */
   conversationOpenState?: import('@kontourai/station-contracts/orchestration').ConversationOpenResolution;
+  conversationOpenPending?: boolean;
+  conversationOpenFailed?: boolean;
   agentSlug: AgentId;
   agentName: string;
   title: string;

@@ -7,7 +7,6 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { _setApiBase } from '../api-core';
 import {
-  ConversationOpenResolutionError,
   fetchSessionSummary,
   resolveConversationOpen,
   useConversationInventoryQuery,
@@ -60,14 +59,13 @@ describe('conversation intent summary normalization', () => {
     );
 
     await expect(resolveConversationOpen('c')).rejects.toMatchObject({
-      name: 'ConversationOpenResolutionError',
       kind: 'invalid-response',
-    } satisfies Partial<ConversationOpenResolutionError>);
+    });
 
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     await expect(resolveConversationOpen('c')).rejects.toMatchObject({
       kind: 'network',
-    } satisfies Partial<ConversationOpenResolutionError>);
+    });
   });
 
   test('preserves v2 ranges, usage, and observed references while rejecting future/corrupt payloads', async () => {

@@ -459,42 +459,44 @@ export async function resolveConversationOpen(
       `${resolvedApiBase}/api/conversations/${encodeURIComponent(conversationId)}/open`,
     );
   } catch (cause) {
-    throw new ConversationOpenResolutionError('network', cause);
+    throw conversationOpenResolutionError('network', cause);
   }
   let result: { success?: unknown; data?: unknown; error?: unknown };
   try {
     result = (await response.json()) as typeof result;
   } catch (cause) {
-    throw new ConversationOpenResolutionError('invalid-response', cause);
+    throw conversationOpenResolutionError('invalid-response', cause);
   }
   if (!response.ok || result.success !== true) {
-    throw new ConversationOpenResolutionError(
+    throw conversationOpenResolutionError(
       response.status === 404 ? 'not-found' : 'rejected',
       typeof result.error === 'string' ? result.error : undefined,
     );
   }
   if (!parseConversationOpenResolution(result.data)) {
-    throw new ConversationOpenResolutionError('invalid-response');
+    throw conversationOpenResolutionError('invalid-response');
   }
   return result.data;
 }
 
 /** A caller-visible open failure; never turn a transport/parser failure into an empty chat. */
-export class ConversationOpenResolutionError extends Error {
-  readonly cause?: unknown;
+export type ConversationOpenResolutionFailure = Error & {
+  kind: 'network' | 'not-found' | 'rejected' | 'invalid-response';
+  cause?: unknown;
+};
 
-  constructor(
-    readonly kind: 'network' | 'not-found' | 'rejected' | 'invalid-response',
-    cause?: unknown,
-  ) {
-    super(
-      typeof cause === 'string'
-        ? cause
-        : `Conversation open resolution failed: ${kind}`,
-    );
-    this.name = 'ConversationOpenResolutionError';
-    if (cause !== undefined && typeof cause !== 'string') this.cause = cause;
-  }
+function conversationOpenResolutionError(
+  kind: ConversationOpenResolutionFailure['kind'],
+  cause?: unknown,
+): ConversationOpenResolutionFailure {
+  const error = new Error(
+    typeof cause === 'string'
+      ? cause
+      : `Conversation open resolution failed: ${kind}`,
+  ) as ConversationOpenResolutionFailure;
+  error.kind = kind;
+  if (cause !== undefined && typeof cause !== 'string') error.cause = cause;
+  return error;
 }
 
 /** Reject hostile/old wire shapes rather than letting UI infer a Session. */
@@ -551,11 +553,25 @@ function parseConversationOpenResolution(
       actions.length === 0
     );
   }
+  if (
+    typeof record.currentSessionId !== 'undefined' ||
+    record.canContinue !== false ||
+    !actions.includes('retry') ||
+    !actions.includes('start-new')
+  )
+    return false;
+  if (record.status === 'transcript-only') {
+    return (
+      transcript.available === true &&
+      (transcript.owner === 'store' || transcript.owner === 'runtime')
+    );
+  }
+  if (record.status === 'missing-session') {
+    return transcript.available === false && transcript.owner === 'runtime';
+  }
   return (
-    typeof record.currentSessionId === 'undefined' &&
-    record.canContinue === false &&
-    actions.includes('retry') &&
-    actions.includes('start-new')
+    transcript.available === false &&
+    (transcript.owner === 'store' || transcript.owner === 'runtime')
   );
 }
 

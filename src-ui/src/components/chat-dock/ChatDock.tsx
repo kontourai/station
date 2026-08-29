@@ -7,7 +7,6 @@ import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspa
 import {
   conversationQueries,
   orchestrationQueries,
-  resolveConversationOpen,
   telemetry,
   useAcknowledgeConversationMutation,
   useAgentConnectionsQuery,
@@ -392,6 +391,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const taskSwitcherTriggerRef = useRef<HTMLButtonElement>(null);
   // Get data from contexts
   const { apiBase } = useApiBase();
+  const resolveConversationOpenAuthoritatively = useCallback(
+    async (conversationId: string) => {
+      const { resolveConversationOpen } = await import(
+        '@kontourai/station-sdk'
+      );
+      return resolveConversationOpen(conversationId, apiBase);
+    },
+    [apiBase],
+  );
   const sessionInventoryMountRef = useRef<HTMLDivElement>(null);
   const {
     isDockOpen,
@@ -772,9 +780,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   });
   const inventoryChatStoreId = activeSession?.id;
   const conversationCanMutate =
-    activeSession?.conversationOpenState === undefined ||
-    (activeSession.conversationOpenState.status === 'resolved' &&
-      activeSession.conversationOpenState.canContinue);
+    activeSession?.conversationOpenPending !== true &&
+    activeSession?.conversationOpenFailed !== true &&
+    (activeSession?.conversationOpenState === undefined ||
+      (activeSession.conversationOpenState.status === 'resolved' &&
+        activeSession.conversationOpenState.canContinue));
   const inventoryExecutionId = conversationCanMutate
     ? (activeSession?.currentSessionId ?? inventoryChatStoreId)
     : undefined;
@@ -1534,7 +1544,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         title: conversation.title,
         conversationOpenState: resolution,
         ...(resolution.status === 'resolved'
-          ? { currentSessionId: resolution.currentSessionId }
+          ? {
+              currentSessionId: resolution.currentSessionId,
+              orchestrationSessionStarted: true,
+            }
           : {}),
       });
       setConversationOpenRecovery(null);
@@ -1545,17 +1558,21 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const retryActiveConversationOpen = useCallback(async () => {
     if (!activeSession?.conversationId) return;
     try {
-      const resolution = await resolveConversationOpen(
+      const resolution = await resolveConversationOpenAuthoritatively(
         activeSession.conversationId,
-        apiBase,
       );
       if (resolution.status !== 'resolved') {
-        updateChat(activeSession.id, { conversationOpenState: resolution });
+        updateChat(activeSession.id, {
+          conversationOpenState: resolution,
+          currentSessionId: undefined,
+          orchestrationSessionStarted: false,
+        });
         return;
       }
       updateChat(activeSession.id, {
         title: resolution.conversation.title,
         currentSessionId: resolution.currentSessionId,
+        orchestrationSessionStarted: true,
         conversationOpenState: resolution,
       });
     } catch {
@@ -1563,13 +1580,70 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       // fault is not permission to clear it or expose the composer.
       showToast('Conversation resolution is unavailable. Try again.');
     }
-  }, [activeSession, apiBase, showToast, updateChat]);
+  }, [
+    activeSession,
+    resolveConversationOpenAuthoritatively,
+    showToast,
+    updateChat,
+  ]);
+  // Reload restores only durable identities. Before a persisted tab regains
+  // any mutation or Basis/inventory affordance, ask the server again for the
+  // current child and its lifecycle decision.
+  useEffect(() => {
+    if (
+      !activeSession?.conversationId ||
+      !activeSession.conversationOpenPending
+    )
+      return;
+    let cancelled = false;
+    void resolveConversationOpenAuthoritatively(activeSession.conversationId)
+      .then((resolution) => {
+        if (cancelled) return;
+        updateChat(activeSession.id, {
+          conversationOpenPending: false,
+          conversationOpenFailed: false,
+          conversationOpenState: resolution,
+          title: resolution.conversation.title,
+          currentSessionId: undefined,
+          orchestrationSessionStarted: false,
+          ...(resolution.status === 'resolved'
+            ? {
+                currentSessionId: resolution.currentSessionId,
+                orchestrationSessionStarted: true,
+              }
+            : {}),
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        updateChat(activeSession.id, {
+          conversationOpenPending: false,
+          conversationOpenFailed: true,
+        });
+        setConversationOpenRecovery({
+          conversation: {
+            id: activeSession.conversationId!,
+            source: 'runtime',
+            agentSlug: activeSession.agentSlug,
+            title: activeSession.title,
+            createdAt: new Date(activeSession.createdAt).toISOString(),
+            updatedAt: new Date(activeSession.updatedAt).toISOString(),
+            messageCount: activeSession.messages.length,
+            mutable: false,
+            answerability: { answerable: false },
+          },
+          status: 'error',
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSession, resolveConversationOpenAuthoritatively, updateChat]);
   const retryConversationOpenRecovery = useCallback(async () => {
     if (!conversationOpenRecovery) return;
     try {
-      const resolution = await resolveConversationOpen(
+      const resolution = await resolveConversationOpenAuthoritatively(
         conversationOpenRecovery.conversation.id,
-        apiBase,
       );
       await commitConversationOpenResolution(resolution);
     } catch {
@@ -1578,7 +1652,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         current ? { ...current, status: 'error' } : current,
       );
     }
-  }, [apiBase, commitConversationOpenResolution, conversationOpenRecovery]);
+  }, [
+    commitConversationOpenResolution,
+    conversationOpenRecovery,
+    resolveConversationOpenAuthoritatively,
+  ]);
   const startNewFromConversationRecovery = useCallback(() => {
     // Direct-new creates and selects a replacement synchronously. If a picker
     // is required it creates nothing, so keep the failed recovery visible
@@ -2958,7 +3036,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             // creating a tab; recovery states deliberately do not fall
             // through to the old "New chat" hydration path.
             try {
-              const resolved = await resolveConversationOpen(row.id, apiBase);
+              const resolved = await resolveConversationOpenAuthoritatively(
+                row.id,
+              );
               return await commitConversationOpenResolution(resolved);
             } catch {
               // Commit the error surface before allowing the picker to close.

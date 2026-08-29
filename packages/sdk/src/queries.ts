@@ -150,7 +150,6 @@ export {
   type ConversationLookup,
   type ConversationMessage,
   type ConversationMessagePart,
-  ConversationOpenResolutionError,
   type ConversationSummary,
   cleanupTerminalProcess,
   createAdoptOrchestrationSessionIntent,

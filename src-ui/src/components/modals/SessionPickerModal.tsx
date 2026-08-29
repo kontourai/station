@@ -33,10 +33,15 @@ export function SessionPickerModal({
   const inventoryQuery = useConversationInventoryQuery({ enabled: isOpen });
   const conversations = useMemo(
     () =>
-      [...(inventoryQuery.data ?? [])].sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      ),
+      [...(inventoryQuery.data ?? [])]
+        // File-store history is still listed elsewhere, but lacks the
+        // principal-aware point-read contract this picker requires. Never
+        // offer a row that authoritative open must deny.
+        .filter((conversation) => conversation.source === 'runtime')
+        .sort(
+          (a, b) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+        ),
     [inventoryQuery.data],
   );
 

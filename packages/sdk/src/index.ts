@@ -376,7 +376,6 @@ export {
   type ConversationLookup,
   type ConversationMessage,
   type ConversationMessagePart,
-  ConversationOpenResolutionError,
   type ConversationSummary,
   type CoreUpdateRestartExpectation,
   type CoreUpdateRestartStatus,

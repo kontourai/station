@@ -498,9 +498,11 @@ export function ChatDockBody({
   // tab. Provider/model availability today cannot convert a recovery view
   // into a writable continuation of a different child session.
   const readOnlyOpen =
-    activeSession.conversationOpenState !== undefined &&
-    (activeSession.conversationOpenState.status !== 'resolved' ||
-      !activeSession.conversationOpenState.canContinue);
+    activeSession.conversationOpenPending === true ||
+    activeSession.conversationOpenFailed === true ||
+    (activeSession.conversationOpenState !== undefined &&
+      (activeSession.conversationOpenState.status !== 'resolved' ||
+        !activeSession.conversationOpenState.canContinue));
 
   // TTS readback when streaming ends
   const prevStatusRef = useRef(isExecutionActive);
@@ -1052,17 +1054,21 @@ export function ChatDockBody({
             )}
           </div>
         )}
-      {readOnlyOpen && activeSession.conversationOpenState ? (
+      {readOnlyOpen ? (
         <div className="session-history-error" role="alert">
           <strong>
-            {activeSession.conversationOpenState.conversation.title} is
-            read-only.
+            {activeSession.conversationOpenState?.conversation.title ??
+              activeSession.title}{' '}
+            is read-only.
           </strong>
           <span className="session-history-error__detail">
             {' '}
-            {activeSession.conversationOpenState.status === 'missing-session'
-              ? 'Its execution session is no longer available.'
-              : 'Station could not prove a writable continuation for its current session.'}
+            {activeSession.conversationOpenPending
+              ? 'Station is resolving its current session.'
+              : activeSession.conversationOpenState?.status ===
+                  'missing-session'
+                ? 'Its execution session is no longer available.'
+                : 'Station could not prove a writable continuation for its current session.'}
           </span>
           {onRetryConversationOpen ? (
             <button
