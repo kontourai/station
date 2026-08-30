@@ -3293,6 +3293,39 @@ describe('SessionsView', () => {
       expect(coordinator.textContent).not.toContain('needs_input');
     });
 
+    test('surfaces a peer delegation record without offering local-session controls (#847)', () => {
+      sessions = [
+        {
+          ...sessions[0],
+          threadId: 'peer-delegation:847',
+          displayTitle: 'Run the peer checks',
+          lifecycleState: 'queued',
+          hasActiveTurn: false,
+          delegation: {
+            taskId: 'task-peer-847',
+            environmentId: 'environment-peer',
+            environmentName: 'Station B',
+            environmentKind: 'peer',
+            targetKind: 'agent',
+            targetId: 'codex',
+          },
+        },
+      ];
+
+      const { container } = renderView();
+      const coordinator = screen.getByTestId('delegated-task-coordinator');
+
+      expect(rowNames(container)).toContain('Run the peer checks');
+      expect(within(coordinator).getByText('Paired Station')).toBeTruthy();
+      expect(coordinator.textContent).toContain(
+        'Its transcript and final answer remain on the paired Station.',
+      );
+      expect(
+        within(coordinator).queryByLabelText('Direct worker follow-up'),
+      ).toBeNull();
+      expect(within(coordinator).queryByText('Stop active task')).toBeNull();
+    });
+
     test('every row carries a relative time', () => {
       sessions = [
         attachedSession({

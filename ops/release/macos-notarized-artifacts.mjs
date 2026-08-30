@@ -29,6 +29,10 @@ export const EMBEDDED_MACHO_COMMAND_TIMEOUT_MS = 30 * 1000;
 // every candidate, while still allowing one bounded transport retry.
 export const EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS = 90 * 1000;
 export const NOTARY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
+// Compressing an application into UDZO is the one release step whose duration
+// scales directly with the staged payload.  Keep it bounded, but give a
+// multi-hundred-megabyte application enough time on a contended CI runner.
+export const DMG_CREATION_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 export const COMMAND_TERMINATION_GRACE_MS = 10 * 1000;
 export const MAX_RETRY_ATTEMPTS = 2;
 // Standalone callers retain a bounded relative deadline. Hosted release passes
@@ -477,9 +481,18 @@ export function outerAppDesignatedRequirement(output) {
 }
 
 export function assertOuterAppCertificateBackedRequirement(output, bundleId) {
+  return assertKontourDeveloperIdRequirement(output, bundleId);
+}
+
+/**
+ * Require the signed object's designated requirement to bind it to Kontour's
+ * Developer ID chain. App bundles additionally bind the identifier to their
+ * release-channel bundle id; disk images have a distinct codesign identifier
+ * and therefore intentionally omit that app-specific constraint.
+ */
+export function assertKontourDeveloperIdRequirement(output, bundleId) {
   const requirement = outerAppDesignatedRequirement(output);
   const requiredClauses = [
-    new RegExp(`\\bidentifier\\s+"${escapedRegExp(bundleId)}"(?=\\s|$)`),
     /\banchor\s+apple\s+generic\b/,
     existsClause(
       `certificate\\s+1\\s*\\[\\s*field\\.${escapedRegExp(DEVELOPER_ID_INTERMEDIATE_OID)}\\s*\\]`,
@@ -491,6 +504,10 @@ export function assertOuterAppCertificateBackedRequirement(output, bundleId) {
       `\\bcertificate\\s+leaf\\s*\\[\\s*subject\\.OU\\s*\\]\\s*=\\s*"?${KONTOUR_TEAM_ID}"?(?=\\s|$)`,
     ),
   ];
+  if (bundleId !== undefined)
+    requiredClauses.unshift(
+      new RegExp(`\\bidentifier\\s+"${escapedRegExp(bundleId)}"(?=\\s|$)`),
+    );
   const combinedOutput =
     typeof output === 'string'
       ? output
@@ -505,6 +522,18 @@ export function assertOuterAppCertificateBackedRequirement(output, bundleId) {
     );
   }
   return requirement;
+}
+
+export function assertKontourDeveloperIdSigningMetadata(metadata) {
+  if (typeof metadata !== 'string')
+    throw new Error('Signing metadata must be text.');
+  for (const field of [
+    'Authority=Developer ID Application: Kontour AI LLC (U7KHF2QAC4)',
+    'TeamIdentifier=U7KHF2QAC4',
+    'Timestamp=',
+  ])
+    if (!metadata.includes(field))
+      throw new Error(`Signing metadata lacks ${field}.`);
 }
 
 export function assertAcceptedNotaryReceipt(stdout, file) {
@@ -618,6 +647,9 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     rmSync,
   };
   const app = admitMacosAppBundle(need(options.app, 'app'), fs, injected.path);
+  if (options.dmgOnly !== undefined && options.dmgOnly !== true)
+    throw new Error('DMG-only mode must be explicitly enabled.');
+  const dmgOnly = options.dmgOnly === true;
   const identity = need(options.identity, 'identity');
   const key = need(options.notaryKey, 'notaryKey');
   const keyId = need(options.notaryKeyId, 'notaryKeyId');
@@ -673,39 +705,41 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         ),
         commandOptions,
       );
-    const retryEmbeddedSign = (phase, args, operation) =>
-      retryRetryableTransportFailure(phase, args, operation, logger);
-    await sealEmbeddedMacosMachOBounded(app, identity, {
-      ...injected.embeddedMacos,
-      command: embeddedCommand,
-      deadlineMs: Math.min(
-        EMBEDDED_MACHO_SEALING_DEADLINE_MS,
-        deadlineAt - now() - COMMAND_TERMINATION_GRACE_MS,
-      ),
-      retrySign: retryEmbeddedSign,
-      sign: embeddedSign,
-    });
-    const outerSigningArgs = [
-      '--force',
-      '--sign',
-      identity,
-      '--options',
-      'runtime',
-      '--timestamp',
-      app,
-    ];
-    await retryRetryableTransportFailure(
-      'outer app signing',
-      outerSigningArgs,
-      () =>
-        command(
-          'outer app signing',
-          'codesign',
-          outerSigningArgs,
-          SIGNING_COMMAND_TIMEOUT_MS,
+    if (!dmgOnly) {
+      const retryEmbeddedSign = (phase, args, operation) =>
+        retryRetryableTransportFailure(phase, args, operation, logger);
+      await sealEmbeddedMacosMachOBounded(app, identity, {
+        ...injected.embeddedMacos,
+        command: embeddedCommand,
+        deadlineMs: Math.min(
+          EMBEDDED_MACHO_SEALING_DEADLINE_MS,
+          deadlineAt - now() - COMMAND_TERMINATION_GRACE_MS,
         ),
-      logger,
-    );
+        retrySign: retryEmbeddedSign,
+        sign: embeddedSign,
+      });
+      const outerSigningArgs = [
+        '--force',
+        '--sign',
+        identity,
+        '--options',
+        'runtime',
+        '--timestamp',
+        app,
+      ];
+      await retryRetryableTransportFailure(
+        'outer app signing',
+        outerSigningArgs,
+        () =>
+          command(
+            'outer app signing',
+            'codesign',
+            outerSigningArgs,
+            SIGNING_COMMAND_TIMEOUT_MS,
+          ),
+        logger,
+      );
+    }
     await command(
       'outer app signature verification',
       'codesign',
@@ -731,14 +765,9 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         SIGNING_COMMAND_TIMEOUT_MS,
       )
     ).stderr;
-    for (const field of [
-      'Authority=Developer ID Application: Kontour AI LLC (U7KHF2QAC4)',
-      'TeamIdentifier=U7KHF2QAC4',
-      'Timestamp=',
-      'runtime',
-    ])
-      if (!metadata.includes(field))
-        throw new Error(`Outer app signing metadata lacks ${field}.`);
+    assertKontourDeveloperIdSigningMetadata(metadata);
+    if (!metadata.includes('runtime'))
+      throw new Error('Outer app signing metadata lacks runtime.');
     const dr = await command(
       'outer app designated requirement',
       'codesign',
@@ -765,16 +794,22 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         entitlementOutput.stderr !== `${entitlementDiagnostic}\n`)
     )
       throw new Error('Outer app has unexpected entitlements.');
-    await command('application notarization archive', 'ditto', [
-      '-c',
-      '-k',
-      '--sequesterRsrc',
-      '--keepParent',
-      app,
-      zip,
-    ]);
-    await submit(command, zip, key, keyId, issuer, logger);
-    await command('application stapling', 'xcrun', ['stapler', 'staple', app]);
+    if (!dmgOnly) {
+      await command('application notarization archive', 'ditto', [
+        '-c',
+        '-k',
+        '--sequesterRsrc',
+        '--keepParent',
+        app,
+        zip,
+      ]);
+      await submit(command, zip, key, keyId, issuer, logger);
+      await command('application stapling', 'xcrun', [
+        'stapler',
+        'staple',
+        app,
+      ]);
+    }
     await command('application staple validation', 'xcrun', [
       'stapler',
       'validate',
@@ -789,17 +824,22 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     ]);
     fs.mkdirSync(dmgRoot, { recursive: true });
     await command('DMG staging', 'ditto', [app, join(dmgRoot, appName)]);
-    await command('DMG creation', 'hdiutil', [
-      'create',
-      '-volname',
-      'Station',
-      '-srcfolder',
-      dmgRoot,
-      '-ov',
-      '-format',
-      'UDZO',
-      dmg,
-    ]);
+    await command(
+      'DMG creation',
+      'hdiutil',
+      [
+        'create',
+        '-volname',
+        'Station',
+        '-srcfolder',
+        dmgRoot,
+        '-ov',
+        '-format',
+        'UDZO',
+        dmg,
+      ],
+      DMG_CREATION_COMMAND_TIMEOUT_MS,
+    );
     const dmgSigningArgs = ['--force', '--sign', identity, '--timestamp', dmg];
     await retryRetryableTransportFailure(
       'DMG signing',
@@ -813,6 +853,32 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         ),
       logger,
     );
+    await command(
+      'DMG signature verification',
+      'codesign',
+      ['--verify', '--strict', '--verbose=2', dmg],
+      SIGNING_COMMAND_TIMEOUT_MS,
+    );
+    const dmgMetadata = (
+      await command(
+        'DMG signing metadata',
+        'codesign',
+        ['-dvv', dmg],
+        SIGNING_COMMAND_TIMEOUT_MS,
+      )
+    ).stderr;
+    assertKontourDeveloperIdSigningMetadata(dmgMetadata);
+    const dmgRequirement = await command(
+      'DMG designated requirement',
+      'codesign',
+      ['-d', '-r-', dmg],
+      SIGNING_COMMAND_TIMEOUT_MS,
+    );
+    if (dmgRequirement.status !== 0)
+      throw new Error(
+        `DMG designated requirement query failed with status ${dmgRequirement.status}.`,
+      );
+    assertKontourDeveloperIdRequirement(dmgRequirement);
     await submit(command, dmg, key, keyId, issuer, logger);
     await command('DMG stapling', 'xcrun', ['stapler', 'staple', dmg]);
     await command('DMG staple validation', 'xcrun', [
@@ -911,18 +977,42 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
   }
 }
 
-if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
+export function parseMacosNotarizedArtifactsCli(argv) {
+  const valueFlags = new Set([
+    '--app',
+    '--identity',
+    '--notary-key',
+    '--notary-key-id',
+    '--notary-issuer',
+    '--assets-dir',
+    '--release-tag',
+    '--architecture',
+    '--bundle-id',
+    '--deadline-epoch',
+  ]);
   const raw = {};
-  for (let i = 2; i < process.argv.length; i += 2) {
+  for (let index = 0; index < argv.length; ) {
+    const name = argv[index];
+    if (name === '--dmg-only') {
+      if (raw['--dmg-only'])
+        throw new Error('Expected unique --name value arguments.');
+      raw['--dmg-only'] = true;
+      index += 1;
+      continue;
+    }
+    const value = argv[index + 1];
     if (
-      !process.argv[i]?.startsWith('--') ||
-      !process.argv[i + 1] ||
-      raw[process.argv[i]]
+      !valueFlags.has(name) ||
+      typeof value !== 'string' ||
+      value.length === 0 ||
+      value.startsWith('-') ||
+      raw[name]
     )
       throw new Error('Expected unique --name value arguments.');
-    raw[process.argv[i]] = process.argv[i + 1];
+    raw[name] = value;
+    index += 2;
   }
-  createMacosNotarizedArtifacts({
+  return {
     app: raw['--app'],
     identity: raw['--identity'],
     notaryKey: raw['--notary-key'],
@@ -933,7 +1023,14 @@ if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
     architecture: raw['--architecture'],
     bundleId: raw['--bundle-id'],
     deadlineEpoch: raw['--deadline-epoch'],
-  }).catch((error) => {
+    dmgOnly: raw['--dmg-only'] === true ? true : undefined,
+  };
+}
+
+if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
+  createMacosNotarizedArtifacts(
+    parseMacosNotarizedArtifactsCli(process.argv.slice(2)),
+  ).catch((error) => {
     console.error(`::error::macOS release failed: ${error.message}`);
     process.exitCode = 1;
   });

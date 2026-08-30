@@ -12,9 +12,11 @@ import {
   admitMacosAppBundle,
   assertAcceptedNotaryReceipt,
   createMacosNotarizedArtifacts,
+  DMG_CREATION_COMMAND_TIMEOUT_MS,
   EMBEDDED_MACHO_COMMAND_TIMEOUT_MS,
   EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS,
   outerAppDesignatedRequirement,
+  parseMacosNotarizedArtifactsCli,
   parseReleaseDeadlineEpoch,
   ReleaseCommandError,
   retryRetryableTransportFailure,
@@ -271,6 +273,176 @@ test('does not assess Gatekeeper until the accepted app has been stapled', async
   );
   expect(submit).toBeLessThan(staple);
   expect(staple).toBeLessThan(assess);
+});
+
+test('DMG-only mode revalidates a notarized app but never signs, archives, submits, or staples it', async () => {
+  const release = fixture();
+  await createMacosNotarizedArtifacts(
+    { ...release.options, dmgOnly: true },
+    release,
+  );
+  const phase = (name) =>
+    release.calls.find(([_program, _args, options]) => options.phase === name);
+  const appSubmission = release.calls.find(
+    ([program, args]) =>
+      program === 'xcrun' &&
+      args[0] === 'notarytool' &&
+      args.includes('/scratch/notarization-input.zip'),
+  );
+  const dmgSubmission = release.calls.find(
+    ([program, args]) =>
+      program === 'xcrun' &&
+      args[0] === 'notarytool' &&
+      args.some((arg) => arg.endsWith('.dmg')),
+  );
+  expect(phase('outer app signature verification')).toBeDefined();
+  expect(phase('outer app designated requirement')).toBeDefined();
+  expect(phase('outer app entitlements')).toBeDefined();
+  expect(phase('application staple validation')).toBeDefined();
+  expect(phase('application Gatekeeper assessment')).toBeDefined();
+  expect(phase('embedded Mach-O inventory file scan')).toBeUndefined();
+  expect(phase('outer app signing')).toBeUndefined();
+  expect(phase('application notarization archive')).toBeUndefined();
+  expect(phase('application stapling')).toBeUndefined();
+  expect(appSubmission).toBeUndefined();
+  expect(dmgSubmission).toBeDefined();
+  expect(
+    release.calls.indexOf(phase('application Gatekeeper assessment')),
+  ).toBeLessThan(release.calls.indexOf(phase('DMG staging')));
+});
+
+test('DMG-only mode refuses an app that has not passed stapler and Gatekeeper preflight', async () => {
+  for (const failedPhase of [
+    'application staple validation',
+    'application Gatekeeper assessment',
+  ]) {
+    const release = fixture();
+    const baseRun = release.run;
+    release.run = (program, args, options) => {
+      if (options.phase === failedPhase)
+        throw new Error(`refused ${failedPhase}`);
+      return baseRun(program, args, options);
+    };
+    await expect(
+      createMacosNotarizedArtifacts(
+        { ...release.options, dmgOnly: true },
+        release,
+      ),
+    ).rejects.toThrow(`refused ${failedPhase}`);
+    expect(
+      release.calls.some(
+        ([_program, _args, options]) => options.phase === 'DMG staging',
+      ),
+    ).toBe(false);
+    expect(
+      release.calls.some(
+        ([program, args]) => program === 'xcrun' && args[0] === 'notarytool',
+      ),
+    ).toBe(false);
+  }
+});
+
+test('bounds size-dependent DMG creation to ten minutes', async () => {
+  const release = fixture();
+  const now = 1_700_000_000_000;
+  await createMacosNotarizedArtifacts(release.options, {
+    ...release,
+    now: () => now,
+  });
+  expect(
+    release.calls.find(
+      ([program, _args, options]) =>
+        program === 'hdiutil' && options.phase === 'DMG creation',
+    )?.[2].timeoutMs,
+  ).toBe(DMG_CREATION_COMMAND_TIMEOUT_MS);
+});
+
+test('parses the DMG-only CLI flag as a bare opt-in and rejects a value for it', () => {
+  const args = [
+    '--app',
+    '/app/Station.app',
+    '--identity',
+    'Developer ID',
+    '--notary-key',
+    '/key',
+    '--notary-key-id',
+    'key',
+    '--notary-issuer',
+    'issuer',
+    '--assets-dir',
+    '/assets',
+    '--release-tag',
+    'v1.2.3',
+    '--architecture',
+    'aarch64',
+    '--bundle-id',
+    'io.kontourai.station',
+  ];
+  expect(
+    parseMacosNotarizedArtifactsCli([...args, '--dmg-only']),
+  ).toMatchObject({
+    dmgOnly: true,
+  });
+  expect(parseMacosNotarizedArtifactsCli(args)).toMatchObject({
+    dmgOnly: undefined,
+  });
+  expect(() =>
+    parseMacosNotarizedArtifactsCli([...args, '--dmg-only', 'true']),
+  ).toThrow(/unique --name value/);
+  for (const invalid of [
+    [...args, '--dmg-onyl', 'true'],
+    [...args, '--unknown', '--dmg-only'],
+    [...args, '--app', '--dmg-only'],
+    [...args, '--app', '-x'],
+    [...args, '--app', '-dmg-only'],
+  ])
+    expect(() => parseMacosNotarizedArtifactsCli(invalid)).toThrow(
+      /unique --name value/,
+    );
+});
+
+test('refuses a DMG whose signed authority or designated requirement is not Kontour before notarization', async () => {
+  for (const mutation of [
+    (release) => {
+      const baseRun = release.run;
+      release.run = (program, args, options) => {
+        if (options.phase === 'DMG signing metadata')
+          return {
+            status: 0,
+            stdout: '',
+            stderr:
+              'Authority=Developer ID Application: Other LLC (NOTKONTOUR)\nTeamIdentifier=NOTKONTOUR\nTimestamp=now',
+          };
+        return baseRun(program, args, options);
+      };
+    },
+    (release) => {
+      const baseRun = release.run;
+      release.run = (program, args, options) => {
+        if (options.phase === 'DMG designated requirement')
+          return {
+            status: 0,
+            stdout: '',
+            stderr: 'designated => identifier "station.dmg" and cdhash H"deadbeef"',
+          };
+        return baseRun(program, args, options);
+      };
+    },
+  ]) {
+    const release = fixture();
+    mutation(release);
+    await expect(
+      createMacosNotarizedArtifacts(release.options, release),
+    ).rejects.toThrow(/Signing metadata lacks|certificate-backed/);
+    expect(
+      release.calls.some(
+        ([program, args]) =>
+          program === 'xcrun' &&
+          args[0] === 'notarytool' &&
+          args.some((arg) => arg.endsWith('.dmg')),
+      ),
+    ).toBe(false);
+  }
 });
 
 test('cleans scratch state on terminal notary rejection and rejects an unexpected DMG root', async () => {
