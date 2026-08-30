@@ -137,6 +137,12 @@ describe('SessionTranscriptReads: the fold drop reaches the composition (#464)',
   // is only worth anything if the read actually wires a sink — an optional dep
   // that no composition supplies is silence with extra steps, which is what
   // usage-fold's own drop contract forbids.
+  //
+  // SCOPE, stated because an injection proved it: this pins the SEAM, not the
+  // COMPOSITION. Deleting `reportDroppedUsageFigure` from
+  // `orchestration-service.ts`'s deps leaves this test green, because the test
+  // supplies its own reporter. Catching that needs a test over the real
+  // service construction — tracked as its own gap rather than implied here.
   test('readSessionUsage forwards a refused durable figure to the reporter', () => {
     const dropped: Array<{ field: string; value: unknown }> = [];
     const reads = new SessionTranscriptReads({
