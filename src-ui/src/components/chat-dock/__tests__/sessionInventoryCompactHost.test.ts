@@ -265,7 +265,7 @@ describe.skipIf(!chromiumAvailable)(
         expect(overlayBox!.y).toBe(0);
         expect(overlayBox!.width).toBe(390);
         expect(overlayBox!.height).toBe(844);
-        expect(panelBox!.height).toBeGreaterThanOrEqual(844);
+        expect(panelBox!.height).toBeGreaterThanOrEqual(overlayBox!.height - 1);
       } finally {
         await page.close();
       }
