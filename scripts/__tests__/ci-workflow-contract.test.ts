@@ -389,7 +389,37 @@ describe('CI verification workflow contracts', () => {
     expect(gallery).toContain('if: always()');
     expect(gallery).toContain('continue-on-error: true');
     expect(gallery).toContain('gallery/');
-    expect(gallery).toContain('gallery/diffs/');
+
+    // The rot alarm is only an alarm if a pixel mismatch FAILS the job. A
+    // file-level `toContain('continue-on-error')` would stay green if that
+    // key migrated onto the capture/diff step, so pin it to the upload step:
+    // everything before the upload must be able to fail the job.
+    const uploadIndex = gallery.indexOf('name: Upload gallery and pixel diffs');
+    expect(uploadIndex).toBeGreaterThan(-1);
+    expect(gallery.slice(0, uploadIndex)).not.toContain('continue-on-error');
+  });
+
+  it('the nightly gallery entrypoint reaches the suppression-injecting suite (station#875)', () => {
+    // nightly-gallery.yml runs run-e2e-coverage.mjs, but the hermetic-roster
+    // flag lives in run-e2e-suite.mjs. Nothing else asserts that chain, so a
+    // renamed bucket script would leave every test green while the nightly
+    // captured with the fleet host's real CLIs — the exact daily re-red this
+    // lane exists to prevent.
+    const coverage = readFileSync(
+      resolve(root, 'scripts/run-e2e-coverage.mjs'),
+      'utf8',
+    );
+    expect(coverage).toContain("name: 'screenshot'");
+    expect(coverage).toContain("script: 'test:e2e:screenshot'");
+    const pkg = JSON.parse(
+      readFileSync(resolve(root, 'package.json'), 'utf8'),
+    ) as { scripts: Record<string, string> };
+    expect(pkg.scripts['test:e2e:screenshot']).toContain('--suite=screenshot');
+    const suite = readFileSync(
+      resolve(root, 'scripts/run-e2e-suite.mjs'),
+      'utf8',
+    );
+    expect(suite).toContain('STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION');
   });
 
   it('runs browser smoke only after the full completion gate releases capacity', () => {
