@@ -1,6 +1,7 @@
 import {
   agentId,
   engineConnectionId,
+  engineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentRegistry } from '../../../domain/agent-registry.js';
@@ -878,6 +879,7 @@ describe('ConnectionService', () => {
     });
     expect(readQuotaSnapshot).toHaveBeenLastCalledWith({
       connectionId: 'codex',
+      credentialProfileRef: 'profile-a',
     });
     registry.engineConnections = [
       {
@@ -2707,9 +2709,8 @@ describe('ConnectionService', () => {
                 'approvals',
                 'reasoning-events',
               ] as const,
-              runtimeId: 'claude',
               connectionId: 'claude',
-              engineId: 'claude-code',
+              engineId: 'claude',
               builtin: true,
             },
             getPrerequisites: vi.fn().mockResolvedValue([]),
@@ -2770,7 +2771,7 @@ describe('ConnectionService', () => {
     expect(saved.config).toMatchObject({
       defaultModel: 'claude-3-7-sonnet',
     });
-    expect(register).toHaveBeenCalledWith('claude', 'claude');
+    expect(register).toHaveBeenCalledWith('claude');
     expect(registry.defaultAgents).toContainEqual(
       expect.objectContaining({
         id: 'claude',
@@ -2779,7 +2780,7 @@ describe('ConnectionService', () => {
     );
     await expect(service.listEngineConnectionStates()).resolves.toEqual([
       {
-        runtimeId: 'claude',
+        engineId: 'claude',
         engineConnectionId: 'claude',
         enabled: false,
       },
@@ -2954,7 +2955,8 @@ describe('ConnectionService', () => {
         displayName: 'Station Runtime',
         description: 'Station-managed runtime',
         capabilities: ['agent-runtime'] as const,
-        runtimeId: 'bedrock-runtime',
+        connectionId: engineConnectionId('bedrock-runtime'),
+        engineId: engineId('station'),
         builtin: true,
         modelLaunch: {
           defaultAtStart: 'station-resolved' as const,

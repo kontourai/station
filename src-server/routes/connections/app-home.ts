@@ -59,7 +59,7 @@ import {
 
 interface AppHomeEngine {
   provider: 'claude' | 'codex';
-  credentialProfileEngineId: 'claude-code' | 'codex';
+  credentialProfileEngineId: 'claude' | 'codex';
   globalDir: () => string;
   importSnapshot: (opts: {
     globalDir: string;
@@ -79,7 +79,7 @@ interface AppHomeEngine {
 const APP_HOME_ENGINES: Record<string, AppHomeEngine> = {
   claude: {
     provider: 'claude',
-    credentialProfileEngineId: 'claude-code',
+    credentialProfileEngineId: 'claude',
     globalDir: () =>
       defaultClaudeGlobalConfigDirs()[0] ?? join(homedir(), '.claude'),
     importSnapshot: importClaudeGlobalSnapshot,

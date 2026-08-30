@@ -57,6 +57,12 @@ import {
 } from './station-control-delegation.js';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
 
+export const MONITORING_ENGINE_FILTER_VALUES = [
+  'station',
+  'claude',
+  'codex',
+] as const;
+
 import {
   api,
   controlRequestOptions,
@@ -573,7 +579,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         .string()
         .optional()
         .describe(
-          "Engine that ran it: 'station', 'claude-code', 'codex'. Absent on events written before engine attribution shipped, so this filter excludes them rather than guessing.",
+          `Engine that ran it: ${MONITORING_ENGINE_FILTER_VALUES.map((id) => `'${id}'`).join(', ')}. Absent on events written before engine attribution shipped, so this filter excludes them rather than guessing.`,
         ),
       conversation: z.string().optional().describe('Exact conversation id'),
       tools: z

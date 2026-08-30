@@ -1,5 +1,8 @@
 import { execFile } from 'node:child_process';
-import type { EngineId } from '@kontourai/station-contracts/agent-identity';
+import type {
+  EngineConnectionId,
+  EngineId,
+} from '@kontourai/station-contracts/agent-identity';
 import {
   ENGINE_CAPABILITY_MATRICES,
   UNKNOWN_EXTERNAL_ENGINE_MATRIX,
@@ -276,18 +279,33 @@ async function discoverDeveloperServices(): Promise<DeveloperServiceStatus[]> {
  *   call succeeds-> the connection's own `enabled`, defaulting to true only
  *                   for an id the live list does not mention at all.
  */
-async function resolveRuntimeEnabledPredicate(
-  deps: SystemStatusDeps,
-): Promise<(engineId: EngineId) => boolean> {
-  if (typeof deps.listEngineConnectionStates !== 'function') return () => true;
+async function resolveRuntimeConnectionState(deps: SystemStatusDeps): Promise<{
+  isEnabled: (engineId: EngineId) => boolean;
+  connectionIdFor: (engineId: EngineId) => EngineConnectionId | undefined;
+}> {
+  if (typeof deps.listEngineConnectionStates !== 'function') {
+    return {
+      isEnabled: () => true,
+      connectionIdFor: () => undefined,
+    };
+  }
   try {
     const connections = await deps.listEngineConnectionStates();
     const disabled = new Set(
       connections.filter((c) => !c.enabled).map((c) => c.engineId),
     );
-    return (engineId) => !disabled.has(engineId);
+    const connectionIds = new Map(
+      connections.map((connection) => [
+        connection.engineId,
+        connection.engineConnectionId,
+      ]),
+    );
+    return {
+      isEnabled: (engineId) => !disabled.has(engineId),
+      connectionIdFor: (engineId) => connectionIds.get(engineId),
+    };
   } catch {
-    return () => false;
+    return { isEnabled: () => false, connectionIdFor: () => undefined };
   }
 }
 
@@ -311,6 +329,9 @@ export async function resolveExternalEngineReadiness(
   adapters: ProviderAdapterShape[] = getProviderAdapters(),
   signal?: AbortSignal,
   isRuntimeEnabled: (engineId: EngineId) => boolean = () => true,
+  resolveEngineConnectionId: (
+    adapter: ProviderAdapterShape,
+  ) => EngineConnectionId | undefined = connectionIdForAdapter,
 ): Promise<ExternalEngineReadiness> {
   const candidates = adapters.filter(
     (adapter) =>
@@ -324,7 +345,10 @@ export async function resolveExternalEngineReadiness(
       async (adapter): Promise<ExternalEngineReadinessProjection> => {
         const engineId = engineIdForAdapter(adapter);
         const name = adapter.metadata.displayName;
-        const publicEngineConnectionId = connectionIdForAdapter(adapter);
+        const publicEngineConnectionId = resolveEngineConnectionId(adapter);
+        const navigationIdentity = publicEngineConnectionId
+          ? { engineConnectionId: publicEngineConnectionId }
+          : {};
         // Fail-closed (archive#1193 review finding 1): `getPrerequisites` is
         // OPTIONAL on `ProviderAdapterShape`. Treating an adapter that doesn't
         // implement it as `prerequisites: []` would let
@@ -337,7 +361,7 @@ export async function resolveExternalEngineReadiness(
           return {
             engineId,
             name,
-            engineConnectionId: publicEngineConnectionId,
+            ...navigationIdentity,
             detected: false,
             ready: false,
             source: null,
@@ -371,7 +395,7 @@ export async function resolveExternalEngineReadiness(
             return {
               engineId,
               name,
-              engineConnectionId: publicEngineConnectionId,
+              ...navigationIdentity,
               detected,
               ready: false,
               source: null,
@@ -382,7 +406,7 @@ export async function resolveExternalEngineReadiness(
             return {
               engineId,
               name,
-              engineConnectionId: publicEngineConnectionId,
+              ...navigationIdentity,
               detected,
               ready: true,
               source: `${adapter.provider}-cli`,
@@ -409,7 +433,7 @@ export async function resolveExternalEngineReadiness(
           return {
             engineId,
             name,
-            engineConnectionId: publicEngineConnectionId,
+            ...navigationIdentity,
             detected,
             ready: false,
             source: null,
@@ -425,7 +449,7 @@ export async function resolveExternalEngineReadiness(
           return {
             engineId,
             name,
-            engineConnectionId: publicEngineConnectionId,
+            ...navigationIdentity,
             detected: false,
             ready: false,
             source: null,
@@ -721,10 +745,13 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
     };
 
     refreshPromise = (async () => {
-      const isRuntimeEnabled = await raceWithSignal(
-        resolveRuntimeEnabledPredicate(deps),
+      const runtimeConnectionState = await raceWithSignal(
+        resolveRuntimeConnectionState(deps),
         controller.signal,
-      ).catch(() => () => false);
+      ).catch(() => ({
+        isEnabled: () => false,
+        connectionIdFor: () => undefined,
+      }));
       const [
         credentialsFound,
         kiroCliInstalled,
@@ -745,7 +772,13 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         resolveExternalEngineReadiness(
           undefined,
           controller.signal,
-          isRuntimeEnabled,
+          runtimeConnectionState.isEnabled,
+          (adapter) =>
+            typeof deps.listEngineConnectionStates === 'function'
+              ? runtimeConnectionState.connectionIdFor(
+                  engineIdForAdapter(adapter),
+                )
+              : connectionIdForAdapter(adapter),
         ),
         getAllPrerequisites({ signal: controller.signal }),
         discoverDeveloperServices(),

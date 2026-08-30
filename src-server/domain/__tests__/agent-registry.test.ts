@@ -37,6 +37,7 @@ import {
 import { ConfigLoader } from '../config-loader.js';
 import {
   ensureStationHomeSchema,
+  STATION_HOME_SCHEMA_VERSION,
   StationHomeResetRequiredError,
 } from '../home-schema-gate.js';
 
@@ -391,7 +392,7 @@ describe('agent registry', () => {
     });
     expect(
       readFileSync(join(home, '.station-home-schema.json'), 'utf8'),
-    ).toContain('"version": 1');
+    ).toContain(`"version": ${STATION_HOME_SCHEMA_VERSION}`);
   });
 
   it('rejects the previous duplicate-identity registry instead of migrating it', async () => {
@@ -576,7 +577,7 @@ describe('agent registry', () => {
     await Promise.all([runSchemaGateInChild(home), runSchemaGateInChild(home)]);
     expect(
       readFileSync(join(home, '.station-home-schema.json'), 'utf8'),
-    ).toContain('"version": 1');
+    ).toContain(`"version": ${STATION_HOME_SCHEMA_VERSION}`);
   });
 
   it('accepts a canonicalized symlinked parent while rejecting a symlinked home root', async () => {
@@ -593,7 +594,7 @@ describe('agent registry', () => {
         join(realParent, 'station-home', '.station-home-schema.json'),
         'utf8',
       ),
-    ).toContain('"version": 1');
+    ).toContain(`"version": ${STATION_HOME_SCHEMA_VERSION}`);
 
     const symlinkedHome = createHome();
     const symlinkTarget = createHome();

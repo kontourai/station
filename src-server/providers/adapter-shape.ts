@@ -51,7 +51,7 @@ export interface ProviderAdapterMetadata {
   /**
    * Canonical engine identity (docs/design/agent-engine-unification.md §4.1):
    * `'station'` for Station's own engine, otherwise the engine's canonical
-   * id (e.g. `'claude-code'`, `'codex'`, `'acp'`). Replaces `executionClass`
+   * id (e.g. `'claude'`, `'codex'`, `'acp'`). Replaces `executionClass`
    * as of Phase B (archive#1003 unification slice 6) — derive engineId via
    * `engineIdForAdapter` (adapter-identity.ts) rather than reading
    * `executionClass` directly.

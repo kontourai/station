@@ -1227,7 +1227,7 @@ describe('System Routes', () => {
       vi.mocked(getProviderAdapters).mockReturnValue([
         fakeExternalEngineAdapter({
           provider: 'claude',
-          engineId: 'claude-code',
+          engineId: 'claude',
           prerequisites: [
             { id: 'claude-cli', status: 'installed' },
             { id: 'claude-auth', status: 'installed' },
@@ -1241,7 +1241,7 @@ describe('System Routes', () => {
       expect(body.capabilities.runtime.source).toBe('claude-cli');
       expect(body.externalEngines).toEqual([
         {
-          engineId: 'claude-code',
+          engineId: 'claude',
           name: 'claude',
           engineConnectionId: 'claude',
           detected: true,
@@ -1301,7 +1301,7 @@ describe('System Routes', () => {
       vi.mocked(getProviderAdapters).mockReturnValueOnce([
         fakeExternalEngineAdapter({
           provider: 'claude',
-          engineId: 'claude-code',
+          engineId: 'claude',
           prerequisites: [
             { id: 'claude-cli', status: 'installed' },
             { id: 'claude-auth', status: 'installed' },
@@ -1327,7 +1327,7 @@ describe('System Routes', () => {
       vi.mocked(getProviderAdapters).mockReturnValueOnce([
         fakeExternalEngineAdapter({
           provider: 'claude',
-          engineId: 'claude-code',
+          engineId: 'claude',
           prerequisites: [
             { id: 'claude-cli', status: 'installed' },
             { id: 'claude-auth', status: 'installed' },
@@ -1367,7 +1367,7 @@ describe('System Routes', () => {
       vi.mocked(getProviderAdapters).mockReturnValueOnce([
         fakeExternalEngineAdapter({
           provider: 'claude',
-          engineId: 'claude-code',
+          engineId: 'claude',
           prerequisites: [
             { id: 'claude-cli', status: 'installed' },
             { id: 'claude-auth', status: 'installed' },
@@ -1382,7 +1382,7 @@ describe('System Routes', () => {
           // availability cannot disagree.
           listEngineConnectionStates: async () => [
             {
-              runtimeId: engineId('claude'),
+              engineId: engineId('claude'),
               engineConnectionId: engineConnectionId('claude'),
               enabled: false,
             },
@@ -1396,7 +1396,7 @@ describe('System Routes', () => {
       expect(body.capabilities.runtime.ready).toBe(false);
       expect(body.externalEngines).toEqual([
         expect.objectContaining({
-          engineId: 'claude-code',
+          engineId: 'claude',
           detected: true,
           ready: false,
           reason: 'disabled',
@@ -1412,7 +1412,7 @@ describe('System Routes', () => {
       vi.mocked(getProviderAdapters).mockReturnValue([
         fakeExternalEngineAdapter({
           provider: 'claude',
-          engineId: 'claude-code',
+          engineId: 'claude',
           prerequisites: [
             { id: 'claude-cli', status: 'installed' },
             { id: 'claude-auth', status: 'installed' },
@@ -1428,7 +1428,7 @@ describe('System Routes', () => {
             ...createMockDeps(),
             listEngineConnectionStates: async () => [
               {
-                runtimeId: engineId('claude'),
+                engineId: engineId('claude'),
                 engineConnectionId: engineConnectionId('claude'),
                 enabled,
               },
@@ -1461,7 +1461,7 @@ describe('System Routes', () => {
       vi.mocked(getProviderAdapters).mockReturnValue([
         fakeExternalEngineAdapter({
           provider: 'claude',
-          engineId: 'claude-code',
+          engineId: 'claude',
           prerequisites: [
             { id: 'claude-cli', status: 'installed' },
             { id: 'claude-auth', status: 'installed' },
@@ -1591,7 +1591,7 @@ describe('System Routes', () => {
         source: null,
         engines: [
           {
-            engineId: 'claude-code',
+            engineId: 'claude',
             name: 'claude',
             detected: true,
             ready: false,
@@ -1605,7 +1605,7 @@ describe('System Routes', () => {
         source: null,
         engines: [
           {
-            engineId: 'claude-code',
+            engineId: 'claude',
             name: 'claude',
             detected: false,
             ready: false,
@@ -1632,7 +1632,7 @@ describe('System Routes', () => {
       vi.mocked(checkBedrockCredentials).mockResolvedValue(false);
       const readyAdapter = fakeExternalEngineAdapter({
         provider: 'claude',
-        engineId: 'claude-code',
+        engineId: 'claude',
         prerequisites: [
           { id: 'claude-cli', status: 'installed' },
           { id: 'claude-auth', status: 'installed' },
@@ -1691,7 +1691,7 @@ describe('System Routes', () => {
       vi.mocked(checkBedrockCredentials).mockResolvedValue(false);
       const readyAdapter = fakeExternalEngineAdapter({
         provider: 'claude',
-        engineId: 'claude-code',
+        engineId: 'claude',
         prerequisites: [
           { id: 'claude-cli', status: 'installed' },
           { id: 'claude-auth', status: 'installed' },
@@ -1733,7 +1733,7 @@ describe('System Routes', () => {
       vi.mocked(getProviderAdapters).mockReturnValueOnce([
         fakeExternalEngineAdapter({
           provider: 'claude',
-          engineId: 'claude-code',
+          engineId: 'claude',
           prerequisites: [
             { id: 'claude-cli', status: 'missing' },
             { id: 'claude-auth', status: 'missing' },
@@ -1745,7 +1745,7 @@ describe('System Routes', () => {
           ...createMockDeps(),
           listEngineConnectionStates: () => [
             {
-              runtimeId: engineId('claude'),
+              engineId: engineId('claude'),
               engineConnectionId: engineConnectionId('claude'),
               enabled: false,
             },
@@ -1756,7 +1756,7 @@ describe('System Routes', () => {
       const body = await waitForStatusDiscovery(app);
       expect(body.externalEngines).toEqual([
         expect.objectContaining({
-          engineId: 'claude-code',
+          engineId: 'claude',
           engineConnectionId: 'claude',
           detected: false,
           ready: false,
@@ -1777,7 +1777,7 @@ describe('System Routes', () => {
         source: 'claude-cli',
         engines: [
           {
-            engineId: 'claude-code',
+            engineId: 'claude',
             name: 'claude',
             detected: true,
             ready: true,
@@ -1792,7 +1792,7 @@ describe('System Routes', () => {
           source: null,
           engines: [
             {
-              engineId: 'claude-code',
+              engineId: 'claude',
               name: 'claude',
               detected: false,
               ready: false,
@@ -1817,7 +1817,7 @@ describe('System Routes', () => {
             source: null,
             engines: [
               {
-                engineId: 'claude-code',
+                engineId: 'claude',
                 name: 'claude',
                 detected: true,
                 ready: false,
@@ -1838,7 +1838,7 @@ describe('System Routes', () => {
           source: null,
           engines: [
             {
-              engineId: 'claude-code',
+              engineId: 'claude',
               name: 'claude',
               detected: true,
               ready: false,
@@ -1852,7 +1852,7 @@ describe('System Routes', () => {
           source: null,
           engines: [
             {
-              engineId: 'claude-code',
+              engineId: 'claude',
               name: 'claude',
               detected: false,
               ready: false,
@@ -1875,7 +1875,7 @@ describe('System Routes', () => {
       vi.mocked(checkBedrockCredentials).mockResolvedValue(false);
       const readyAdapter = fakeExternalEngineAdapter({
         provider: 'claude',
-        engineId: 'claude-code',
+        engineId: 'claude',
         prerequisites: [
           { id: 'claude-cli', status: 'installed' },
           { id: 'claude-auth', status: 'installed' },
@@ -1896,7 +1896,7 @@ describe('System Routes', () => {
       const app = createSystemRoutes(createMockDeps() as any, mockLogger);
       const first = await waitForStatusDiscovery(app);
       expect(first.externalEngines[0]).toMatchObject({
-        engineId: 'claude-code',
+        engineId: 'claude',
         ready: true,
         source: 'claude-cli',
       });
@@ -1919,7 +1919,7 @@ describe('System Routes', () => {
             // only returns to 'ready' once the second refresh has written.
             expect(body.prerequisitesState).toBe('ready');
             expect(body.externalEngines[0]).toMatchObject({
-              engineId: 'claude-code',
+              engineId: 'claude',
               ready: true,
               source: 'claude-cli',
             });
@@ -1951,7 +1951,15 @@ describe('System Routes', () => {
           omitGetPrerequisites: true,
         }),
       ]);
-      const app = createSystemRoutes(createMockDeps() as any, mockLogger);
+      const app = createSystemRoutes(
+        {
+          ...createMockDeps(),
+          // The adapter registered, but its authoritative registry CAS did
+          // not publish a navigable connection row.
+          listEngineConnectionStates: async () => [],
+        } as any,
+        mockLogger,
+      );
       const body = await waitForStatusDiscovery(app);
       expect(body.ready).toBe(false);
       expect(body.capabilities.runtime.ready).toBe(false);
@@ -1960,12 +1968,12 @@ describe('System Routes', () => {
       expect(body.externalEngines).toEqual([
         expect.objectContaining({
           engineId: 'some-plugin-engine',
-          engineConnectionId: 'some-plugin-engine',
           detected: false,
           ready: false,
           reason: 'cannot_verify',
         }),
       ]);
+      expect(body.externalEngines[0]).not.toHaveProperty('engineConnectionId');
     });
 
     test('a Station model connection alone is still ready, symmetric with an external engine', async () => {

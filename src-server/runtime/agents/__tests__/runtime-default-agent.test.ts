@@ -415,7 +415,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
 describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding', () => {
   const ENGINE_CAPABILITY_MATRICES = {
     claude: {
-      engineId: 'claude-code',
+      engineId: 'claude',
       systemPrompt: { state: 'session', channel: 'flag' },
       toolServers: { state: 'session', channel: 'subprocess' },
       skills: { state: 'session', channel: 'workspace-overlay' },

@@ -232,7 +232,7 @@ describe('Chat Routes', () => {
             name: 'Claude Code',
             enabled: true,
             capabilities: ['agent-runtime'],
-            config: { provider: 'claude', engineId: 'claude-code' },
+            config: { provider: 'claude', engineId: 'claude' },
             status: 'ready',
             prerequisites: [],
           },

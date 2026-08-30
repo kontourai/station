@@ -558,7 +558,7 @@ export class StationRuntime {
         selectedProfileRef = profileRef;
         if (profileRef) {
           const { dir } = await ensureCredentialProfileAppHome(
-            'claude-code',
+            'claude',
             profileRef,
           );
           return claudeAppHomeEnv(dir);
