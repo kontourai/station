@@ -663,20 +663,95 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
   ): NativeEventSubscription {
     let disposed = false;
     let unlisten: UnlistenFn | undefined;
+    let drainInFlight = false;
+    let drainAgain = false;
+    const reportReplayFailure = (message: string) => {
+      const error: NativePlatformError = {
+        code: 'listener-registration-failed',
+        message,
+      };
+      if (onError) onError(error);
+      else console.error(`station: ${message}`);
+    };
+    const drainPending = () => {
+      if (disposed) return;
+      if (drainInFlight) {
+        drainAgain = true;
+        return;
+      }
+      drainInFlight = true;
+      void this.bridge
+        .invoke<unknown>('take_pending_tray_navigation')
+        .then(async (replay) => {
+          if (typeof replay !== 'object' || replay === null) return;
+          if (disposed) {
+            reportReplayFailure(
+              'Station deferred tray navigation because its renderer subscription was disposed before delivery.',
+            );
+            return;
+          }
+          const { id, destination } = replay as Record<string, unknown>;
+          if (
+            !Number.isSafeInteger(id) ||
+            (destination !== 'connections' &&
+              destination !== 'pairedDevices' &&
+              destination !== 'coreUpdates')
+          ) {
+            reportReplayFailure(
+              'Station refused a malformed tray navigation replay; the native lease was left for renderer recovery.',
+            );
+            return;
+          }
+          // Native acknowledgement is also the freshness verdict: only the
+          // renderer that still owns this exact destination may navigate.
+          // Keep that authority ahead of delivery, and report every later
+          // drop so the at-most-once trade never becomes a silent menu click.
+          const acknowledged = await this.bridge.invoke<unknown>(
+            'ack_pending_tray_navigation',
+            {
+              id,
+            },
+          );
+          if (acknowledged !== true) {
+            reportReplayFailure(
+              'Station refused a stale tray navigation replay before delivery.',
+            );
+            return;
+          }
+          if (disposed) {
+            reportReplayFailure(
+              'Station consumed tray navigation but its renderer subscription was disposed before delivery.',
+            );
+            return;
+          }
+          listener({ destination });
+        })
+        .catch((error) => {
+          reportReplayFailure(
+            `Station could not replay tray navigation: ${errorMessage(error)}`,
+          );
+        })
+        .finally(() => {
+          drainInFlight = false;
+          if (drainAgain && !disposed) {
+            drainAgain = false;
+            drainPending();
+          }
+        });
+    };
     void this.bridge
-      .listen<unknown>('station://tray-navigation', ({ payload }) => {
-        if (
-          disposed ||
-          (payload !== 'connections' &&
-            payload !== 'pairedDevices' &&
-            payload !== 'coreUpdates')
-        )
-          return;
-        listener({ destination: payload });
+      .listen('station://tray-navigation', () => {
+        void drainPending();
       })
       .then((registered) => {
         unlisten = registered;
-        if (disposed) unlisten();
+        if (disposed) {
+          unlisten();
+          return;
+        }
+        // Subscribe first, then drain. A click before subscription is retained
+        // natively; a click after subscription wakes this same drain path.
+        void drainPending();
       })
       .catch((error) => {
         if (!disposed)

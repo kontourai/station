@@ -87,7 +87,6 @@ interface ApiEnvelope<T> {
   receipt?: unknown;
   receiptStatus?: unknown;
   session?: unknown;
-  resourceAdmissionOverride?: unknown;
 }
 
 interface StationHandshake {
@@ -924,23 +923,9 @@ async function postForegroundMessage(
     const error = new Error(payload.error || unavailableMessage) as Error & {
       status?: number;
       code?: string;
-      resourceAdmissionOverride?: { token: string; expiresAt: number };
     };
     error.status = response.status;
     if (typeof payload.code === 'string') error.code = payload.code;
-    const override = payload.resourceAdmissionOverride;
-    if (
-      payload.code === 'resource_posture_override_required' &&
-      typeof override === 'object' &&
-      override !== null &&
-      typeof (override as { token?: unknown }).token === 'string' &&
-      typeof (override as { expiresAt?: unknown }).expiresAt === 'number'
-    ) {
-      error.resourceAdmissionOverride = {
-        token: (override as { token: string }).token,
-        expiresAt: (override as { expiresAt: number }).expiresAt,
-      };
-    }
     throw error;
   }
   if (
@@ -3208,14 +3193,8 @@ export async function delegateTask(
       );
     }
     if (started.status !== 'accepted') {
-      const error = new Error(started.message) as Error & {
-        code?: string;
-        retryable?: boolean;
-      };
+      const error = new Error(started.message) as Error & { code?: string };
       error.code = started.code;
-      error.retryable =
-        started.code === 'resource_posture_critical' ||
-        started.code === 'resource_posture_deferred';
       throw error;
     }
   }
@@ -3560,12 +3539,6 @@ export async function executeExecutionTargetMessage(
               : startInput.metadata?.delegation
                 ? 'delegated_background'
                 : 'interactive_user'),
-          ...(startContext?.resourceAdmissionOverrideToken
-            ? {
-                resourceAdmissionOverrideToken:
-                  startContext.resourceAdmissionOverrideToken,
-              }
-            : {}),
           conversationIdentity: { conversationId, environmentId },
           ...(typeof startInput.metadata?.contextBoundary === 'object' &&
           startInput.metadata.contextBoundary !== null &&
@@ -3597,11 +3570,6 @@ export async function executeExecutionTargetMessage(
       if (started.status !== 'accepted') {
         const error = new Error(started.message);
         if (started.code) Object.assign(error, { code: started.code });
-        if (started.resourceAdmissionOverride) {
-          Object.assign(error, {
-            resourceAdmissionOverride: started.resourceAdmissionOverride,
-          });
-        }
         throw error;
       }
       return {
