@@ -102,9 +102,11 @@ export const FULL_REGRESSION_PHASES = Object.freeze([
     // tests; its former 259.24s measurement predated the current handoff and
     // Basis coverage. #881 then reproduced a ten-minute infrastructure
     // timeout with the supported 60+20+20 host-capacity overlap and no failed
-    // test identity. Twenty minutes is still an execution fence, not an
-    // assertion target or permission to add sleeps.
-    timeoutMs: 20 * 60_000,
+    // test identity. After the wave-3/native corpus expansion, #881 then hit
+    // the twenty-minute fence on an unshared host with no failed test identity.
+    // Thirty minutes is still an execution fence, not an assertion target or
+    // permission to add sleeps.
+    timeoutMs: 30 * 60_000,
   }),
   Object.freeze({
     id: 'test-full-process-exclusive',

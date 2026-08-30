@@ -377,7 +377,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 - `sdk-builds` — 50-unit host reservation; 10-minute execution deadline.
 - `verify-static` — 60-unit host reservation; 15-minute execution deadline.
 - `test-full-ordinary` — 80-unit host reservation; 18-minute execution deadline.
-- `test-full-process-heavy` — 60-unit host reservation; 20-minute execution deadline.
+- `test-full-process-heavy` — 60-unit host reservation; 30-minute execution deadline.
 - `test-full-process-exclusive` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-shared-output` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-dogfood-reconcile` — 60-unit host reservation; 5-minute execution deadline.
