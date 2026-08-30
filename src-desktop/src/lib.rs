@@ -7250,8 +7250,9 @@ fn with_native_startup_cover(
 ) -> Result<(), tauri::Error> {
     use objc2::{ClassType, MainThreadMarker};
     use objc2_app_kit::{
-        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSFont, NSTextAlignment,
-        NSTextField, NSUserInterfaceItemIdentification, NSView,
+        NSAccessibilityLayoutChangedNotification, NSAccessibilityPostNotification,
+        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSFont, NSTextAlignment, NSTextField,
+        NSUserInterfaceItemIdentification, NSView,
     };
     use objc2_foundation::{ns_string, NSArray, NSObjectProtocol, NSPoint, NSRect, NSSize};
 
@@ -7356,6 +7357,11 @@ fn with_native_startup_cover(
                 // would retain stale children and omit later replacements.
                 let _: () = objc2::msg_send![&*content, setAccessibilityChildren: None::<&NSArray<NSView>>];
                 let _: () = objc2::msg_send![webview_view, setAlphaValue: 1.0f64];
+                // The content view temporarily advertised only the native
+                // cover. Clearing that override changes its hierarchy, but a
+                // live assistive client may retain the covered snapshot until
+                // AppKit is explicitly told to query again (#869).
+                NSAccessibilityPostNotification(&content, NSAccessibilityLayoutChangedNotification);
             }
             ns_window.deminiaturize(None);
             ns_window.makeFirstResponder(Some(webview_view));
@@ -9660,6 +9666,18 @@ mod tests {
         assert!(cover.contains("NSArray::arrayWithObject(&*protected_cover)"));
         assert!(cover.contains("setAccessibilityChildren: &*protected_children"));
         assert!(cover.contains("setAccessibilityChildren: None::<&NSArray<NSView>>"));
+        assert!(cover.contains("NSAccessibilityLayoutChangedNotification"));
+        assert!(cover.contains("NSAccessibilityPostNotification("));
+        let clear = cover
+            .find("setAccessibilityChildren: None::<&NSArray<NSView>>")
+            .expect("reveal clears the temporary accessibility child override");
+        let notify = cover
+            .find("NSAccessibilityPostNotification(")
+            .expect("reveal notifies assistive clients after clearing the override");
+        assert!(
+            clear < notify,
+            "the layout-change notification must follow the hierarchy change"
+        );
         assert!(!cover.contains("let revealed_children = content.subviews()"));
         assert!(cover.contains("setAlphaValue: 0.0f64"));
         assert!(cover.contains("setAlphaValue: 1.0f64"));
