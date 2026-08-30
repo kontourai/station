@@ -1034,8 +1034,11 @@ export {
   confirmDevicePairingRequest,
   DevicePairingRequestActionError,
   denyDevicePairingRequest,
+  fetchPairedDevices,
+  pairedDeviceQueries,
   useConfirmDevicePairingRequestMutation,
   useDenyDevicePairingRequestMutation,
+  usePairedDevicesQuery,
 } from './query-domains/devicePairingRequests.js';
 export {
   type FeaturePreview,
