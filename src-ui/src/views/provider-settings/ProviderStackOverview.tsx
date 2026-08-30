@@ -192,6 +192,7 @@ export function ProviderStackOverview({
                   <BrandIcon
                     name={option.name}
                     id={option.id}
+                    icon={option.icon}
                     identiconSeed={`provider:${option.id}`}
                     size={22}
                   />

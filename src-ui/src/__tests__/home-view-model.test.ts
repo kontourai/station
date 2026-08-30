@@ -730,13 +730,13 @@ describe('buildHomeWorkItems', () => {
     });
     expect(tasks).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ title: 'codex Chat' }),
+        expect.objectContaining({ title: 'Codex Chat' }),
         // archive#3227 A2: was `'codex task'` — see the engine-vs-agent note
         // above. `agentLabel` still pins the slug, which is what this test
         // is actually about (no raw runtime id reaches either field).
         expect.objectContaining({
           title: 'Codex session',
-          agentLabel: 'codex',
+          agentLabel: 'Codex',
         }),
       ]),
     );

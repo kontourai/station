@@ -1,3 +1,4 @@
+import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { unanswerableRequestNotice } from '@kontourai/station-contracts/orchestration';
 import type {
@@ -201,9 +202,13 @@ function safeAgentLabel({
   provider?: string;
 }): string {
   if (name?.trim()) return name;
-  if (slug) return slug;
+  if (slug) {
+    const engineId = parseEngineId(slug);
+    return (engineId && engineDisplayLabel(engineId)) ?? slug;
+  }
   if (!provider) return 'Agent not reported';
-  return engineDisplayLabel(provider) ?? provider;
+  const engineId = parseEngineId(provider);
+  return (engineId && engineDisplayLabel(engineId)) ?? provider;
 }
 
 /**
