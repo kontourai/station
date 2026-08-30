@@ -1,10 +1,10 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   ApprovalAttentionItem,
   AttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
 import { notificationCategoryLabel } from './notificationLabels';
-import { engineLabelForProvider } from './sessionDisplay';
 import { NO_FAILURE_DETAIL_RECORDED } from './sessionFailure';
 
 /**
@@ -139,7 +139,7 @@ export function sessionFailureCause(item: SessionFailedAttentionItem): string {
  * archive#3203: the identity line that makes three failed sessions tellable
  * apart — the engine that ran it and the agent it was assigned to, both read
  * straight off the projection. `engine` arrives as the raw provider id and is
- * labelled HERE, through the same `engineLabelForProvider` every other engine
+ * labelled HERE, through the same `engineDisplayLabel` every other engine
  * chip uses, falling back to the observed id for a provider this build does
  * not know (that helper's `null` contract).
  *
@@ -151,7 +151,7 @@ export function sessionFailedIdentity(
   item: SessionFailedAttentionItem,
 ): string | null {
   const parts = [
-    item.engine ? (engineLabelForProvider(item.engine) ?? item.engine) : null,
+    item.engine ? (engineDisplayLabel(item.engine) ?? item.engine) : null,
     item.agent ?? null,
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(' · ') : null;

@@ -1,3 +1,4 @@
+import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import { BrandIcon } from './BrandIcon';
 
 interface AgentIconProps {
@@ -7,6 +8,7 @@ interface AgentIconProps {
     slug?: string;
     id?: string;
     iconUrl?: string;
+    engineId?: EngineId;
   };
   size?: 'small' | 'medium' | 'large' | number;
   className?: string;
@@ -31,6 +33,7 @@ export function AgentIcon({
       id={agent.slug ?? agent.id}
       icon={agent.icon}
       iconUrl={agent.iconUrl}
+      engineId={agent.engineId}
       allowSafeImageIcon
       size={px}
       className={className}

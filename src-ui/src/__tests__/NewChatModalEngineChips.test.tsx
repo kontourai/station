@@ -307,7 +307,7 @@ describe('NewChatModal engine chips', () => {
     // disambiguating model suffix.
     expect(nativeRow?.textContent).toContain('OpenCode');
     expect(nativeRow?.textContent).not.toContain('GLM-4.7');
-    expect(acpRow?.textContent).toContain('OpenCode · GLM-4.7');
+    expect(acpRow?.textContent).toContain('OpenCode - GLM-4.7');
 
     // Station agents and engine-managed connections now render a "Station"
     // chip — the pre-#894 quiet default case is gone.
@@ -480,7 +480,7 @@ describe('NewChatModal row hierarchy', () => {
     // competing with it for the first line.
     expect(header?.querySelector('.engine-chip')).toBeNull();
     expect(meta?.querySelector('.engine-chip')?.textContent).toBe(
-      'OpenCode · GLM-4.7',
+      'OpenCode - GLM-4.7',
     );
   });
 

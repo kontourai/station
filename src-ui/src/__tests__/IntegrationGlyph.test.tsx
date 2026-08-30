@@ -5,22 +5,23 @@
 import { fireEvent, render } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import { AgentIcon } from '../components/icons/AgentIcon';
-import { resolveBrandKey } from '../components/icons/BrandIcon';
+import { BrandIcon, resolveBrandKey } from '../components/icons/BrandIcon';
 import { IntegrationGlyph } from '../components/icons/IntegrationGlyph';
 
 describe('IntegrationGlyph (issue #691)', () => {
   test.each([
+    ['Station', 'station'],
     ['Claude Code', 'claude'],
-    ['OpenAI Codex', 'codex'],
+    ['Codex', 'codex'],
     ['Pi', 'pi'],
-    ['Kiro CLI', 'kiro'],
+    ['Kiro', 'kiro'],
     ['OpenCode', 'opencode'],
     ['Muse Code', 'muse'],
-    ['Cursor Agent', 'cursor'],
+    ['Cursor', 'cursor'],
     ['Goose', 'goose'],
-    ['Qwen Code', 'qwen'],
-  ])('uses the shared bundled %s mark', (name, key) => {
-    const { container } = render(<IntegrationGlyph id={name} />);
+    ['Qwen', 'qwen'],
+  ])('uses the shared bundled %s mark for its exact EngineId', (name, key) => {
+    const { container } = render(<BrandIcon name={name} engineId={key} />);
     expect(
       container
         .querySelector('[data-brand-key]')
@@ -30,17 +31,19 @@ describe('IntegrationGlyph (issue #691)', () => {
   });
 
   test.each([
-    ['Muse Code', '/provider-icons/muse.svg'],
-    ['Cursor Agent', '/provider-icons/cursor.svg'],
-    ['Goose', '/provider-icons/goose.svg'],
-    ['Qwen Code', '/provider-icons/qwen.svg'],
-  ])('uses the reviewed static asset for %s', (name, source) => {
-    const { container } = render(<IntegrationGlyph id={name} />);
+    ['Muse Code', 'muse', '/provider-icons/muse.svg'],
+    ['Cursor Agent', 'cursor', '/provider-icons/cursor.svg'],
+    ['Goose', 'goose', '/provider-icons/goose.svg'],
+    ['Qwen Code', 'qwen', '/provider-icons/qwen.svg'],
+  ])('uses the reviewed static asset for %s', (name, engineId, source) => {
+    const { container } = render(<BrandIcon name={name} engineId={engineId} />);
     expect(container.querySelector('img')?.getAttribute('src')).toBe(source);
   });
 
   test.each([
     'API server',
+    'Claude Code',
+    'Anthropic Claude',
     'Pipelines',
     'Alpine',
     'Museum guide',

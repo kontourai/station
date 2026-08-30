@@ -11,6 +11,7 @@ import {
   sessionDeliveryChannels,
   UNKNOWN_EXTERNAL_ENGINE_MATRIX,
 } from '../engine-capability-matrix';
+import { engineDisplayLabel } from '../engine-display';
 
 /**
  * The ACP adapter's declared capabilities, restated here rather than imported:
@@ -329,7 +330,7 @@ describe('station#1194: engineControlPlaneCapability (can the engine host statio
     );
     expect(controlPlaneCapableEngineNames().sort()).toEqual(
       capable
-        .map((matrix) => matrix.displayName)
+        .map((matrix) => engineDisplayLabel(matrix.engineId))
         .filter((name): name is string => name !== null)
         .sort(),
     );
@@ -337,11 +338,11 @@ describe('station#1194: engineControlPlaneCapability (can the engine host statio
     // assistant but cannot say so would silently vanish from the sentence
     // that tells the user what to connect.
     for (const matrix of capable) {
-      expect(matrix.displayName).not.toBeNull();
+      expect(engineDisplayLabel(matrix.engineId)).not.toBeNull();
     }
   });
 
-  test('displayName is null exactly where only the live connection can name the engine', () => {
+  test('engineDisplayLabel preserves the canonical engine vocabulary', () => {
     // A command-backed connection is shown by its own name ("Kiro"), never
     // by the protocol it speaks; the unknown-engine fallback has nothing
     // honest to call itself. Neither derives 'full' from the matrix ALONE
@@ -349,11 +350,21 @@ describe('station#1194: engineControlPlaneCapability (can the engine host statio
     // is chat-only), so neither can reach controlPlaneCapableEngineNames() —
     // which deliberately passes no observation because it is a statement
     // about engines, not connections.
-    expect(ENGINE_CAPABILITY_MATRICES.acp.displayName).toBeNull();
-    expect(UNKNOWN_EXTERNAL_ENGINE_MATRIX.displayName).toBeNull();
-    expect(ENGINE_CAPABILITY_MATRICES.station.displayName).toBe('Station');
-    expect(ENGINE_CAPABILITY_MATRICES.claude.displayName).toBe('Claude Code');
-    expect(ENGINE_CAPABILITY_MATRICES.codex.displayName).toBe('Codex');
+    expect(engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.acp.engineId)).toBe(
+      'Custom engine',
+    );
+    expect(
+      engineDisplayLabel(UNKNOWN_EXTERNAL_ENGINE_MATRIX.engineId),
+    ).toBeNull();
+    expect(
+      engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.station.engineId),
+    ).toBe('Station');
+    expect(engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.claude.engineId)).toBe(
+      'Claude Code',
+    );
+    expect(engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.codex.engineId)).toBe(
+      'Codex',
+    );
   });
 
   test('a session channel WITHOUT a delivery mechanism is chat-only regardless of channel name — proves this keys on the delivery field, not a channel or engine list', () => {

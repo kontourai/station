@@ -272,7 +272,7 @@ describe('EngineChip', () => {
 
   test('renders "<engine> · <model>" for ACP-connected agents with a distinguishing model', () => {
     render(<EngineChip engine={{ name: 'OpenCode', model: 'GLM-4.7' }} />);
-    expect(screen.getByText('OpenCode · GLM-4.7')).toBeTruthy();
+    expect(screen.getByText('OpenCode - GLM-4.7')).toBeTruthy();
   });
 
   test('never renders "External" or "ACP" — permanent regression guard', () => {

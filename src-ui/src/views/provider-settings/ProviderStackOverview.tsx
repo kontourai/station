@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { BrandIcon } from '../../components/icons/BrandIcon';
-import { connectionTypeLabel } from '../../utils/execution';
+import { modelProviderDisplayLabel } from '../../utils/modelProviderDisplay';
 import { MODEL_PROVIDER_CHOICES } from './providerCatalog';
 import type { ProviderConnection } from './types';
 
@@ -73,7 +73,7 @@ function ProviderOverviewSection({
                   marginLeft: 'auto',
                 }}
               >
-                {connectionTypeLabel(provider.type)}
+                {modelProviderDisplayLabel(provider.type)}
               </span>
             </button>
           ))}

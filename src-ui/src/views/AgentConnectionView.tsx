@@ -1,11 +1,13 @@
 import {
   type EngineConnectionId,
   engineConnectionId,
+  engineId as toEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type {
   CredentialProfile,
   CredentialProfileApplicationProjection,
 } from '@kontourai/station-contracts/connection-recovery';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   AgentConnectionView as AgentConnectionViewData,
   ConnectionConfig,
@@ -49,10 +51,8 @@ import {
 import type { NavigationView } from '../types';
 import {
   capabilityLabel,
-  connectionDisplayLabel,
   connectionEngineId,
   connectionStatusLabel,
-  connectionTypeLabel,
   prerequisiteCategoryLabel,
   prerequisiteStatusLabel,
   runtimeCatalogSourceLabel,
@@ -237,7 +237,12 @@ export function AgentConnectionView({
           // The row is already named; the subtitle says what is true of it.
           subtitle: `${connectionStatusLabel(connection.status)} · ${runtimeCatalogSourceSentence(connection.runtimeCatalog?.source ?? 'none')}`,
           icon: (
-            <BrandIcon name={connection.name} id={connection.id} size={22} />
+            <BrandIcon
+              name={connection.name}
+              id={connection.id}
+              engineId={connectionEngineId(connection)}
+              size={22}
+            />
           ),
         })),
     [addedAgentApps, search],
@@ -265,8 +270,13 @@ export function AgentConnectionView({
   }
 
   const providerLabel = form
-    ? connectionDisplayLabel(form)
-    : connectionTypeLabel('');
+    ? typeof form.config?.providerLabel === 'string' &&
+      form.config.providerLabel.trim()
+      ? form.config.providerLabel
+      : form.name.trim() ||
+        engineDisplayLabel(connectionEngineId(form) ?? form.type) ||
+        form.type
+    : '';
   const runtimeCatalog = (form as AgentConnectionViewData | null)
     ?.runtimeCatalog;
   const capabilityInventory = (form as AgentConnectionViewData | null)
@@ -359,7 +369,14 @@ export function AgentConnectionView({
         <div className="editor-layout">
           <DetailHeader
             title={form.name}
-            icon={<BrandIcon name={form.name} id={form.id} size={28} />}
+            icon={
+              <BrandIcon
+                name={form.name}
+                id={form.id}
+                engineId={connectionEngineId(form)}
+                size={28}
+              />
+            }
           />
           <div className="agent-editor__section">
             <nav
@@ -428,7 +445,9 @@ export function AgentConnectionView({
                 <div className="editor-field">
                   <span className="editor-label">Type</span>
                   <div className="editor-input editor-input--readonly">
-                    {connectionTypeLabel(form.type)}
+                    {engineDisplayLabel(
+                      connectionEngineId(form) ?? form.type,
+                    ) ?? form.type}
                   </div>
                 </div>
 
@@ -563,7 +582,9 @@ export function AgentConnectionView({
                   <AppHomeProfileField
                     connectionId={form.id}
                     engineLabel={
-                      form.type === 'claude' ? 'Claude Code' : 'Codex'
+                      engineDisplayLabel(
+                        connectionEngineId(form) ?? form.type,
+                      ) ?? form.name
                     }
                     useAppHome={form.config.useAppHome === true}
                     onToggle={(value) => setConfigField('useAppHome', value)}
@@ -848,7 +869,12 @@ function EngineAddCatalog({
           });
           return (
             <div className="plugins__registry-item" key={connection.id}>
-              <BrandIcon name={connection.name} id={connection.id} size={28} />
+              <BrandIcon
+                name={connection.name}
+                id={connection.id}
+                engineId={connectionEngineId(connection)}
+                size={28}
+              />
               <div className="plugins__registry-info">
                 <div className="plugins__registry-name">
                   {connection.name}
@@ -891,7 +917,12 @@ function EngineAddCatalog({
           });
           return (
             <div className="plugins__registry-item" key={entry.id}>
-              <BrandIcon name={entry.name} id={entry.id} size={28} />
+              <BrandIcon
+                name={entry.name}
+                id={entry.id}
+                engineId={toEngineId(entry.id)}
+                size={28}
+              />
               <div className="plugins__registry-info">
                 <div className="plugins__registry-name">
                   {entry.name}

@@ -4,13 +4,11 @@ import {
   agentEngineValidationFindings,
 } from '@kontourai/station-contracts/agent-validation';
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { useAgentConnectionsQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
-import {
-  agentConnectionLabel,
-  runtimeCatalogVisibleModels,
-} from '../utils/execution';
+import { runtimeCatalogVisibleModels } from '../utils/execution';
 import { AgentDelegationDenialCatalog } from './agent-editor/AgentDelegationDenialCatalog';
 import { AgentEditorBasicTab } from './agent-editor/AgentEditorBasicTab';
 import { AgentEditorCommandsTab } from './agent-editor/AgentEditorCommandsTab';
@@ -75,9 +73,7 @@ export function AgentEditorForm(props: AgentEditorFormProps) {
   const sections = deriveAgentEditorTabs(matrix, authored);
 
   const engineDisplayName =
-    boundConnection?.name ||
-    agentConnectionLabel(form.execution.agentConnectionId) ||
-    'Station';
+    boundConnection?.name || engineDisplayLabel(matrix.engineId) || 'Station';
   const findings = agentEngineValidationFindings(
     matrix,
     authored,
