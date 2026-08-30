@@ -1164,10 +1164,11 @@ describe('every Tauri invocation is rooted at the app directory', () => {
 describe('iOS verification proves packaged runtime readiness', () => {
   const ios = workflow('build-ios.yml');
 
-  it('uses the free public macOS 26 runner on affected pull requests', () => {
+  it('emits a stable check while reserving macOS for affected pull requests', () => {
     expect(ios).toContain('pull_request_target:');
-    expect(ios).toContain("- 'src-desktop/**'");
-    expect(ios).toContain("- 'src-ui/**'");
+    expect(ios).toContain('src-desktop/*|src-ui/*|packages/connect/*');
+    expect(ios).toContain('needs: classify');
+    expect(ios).toContain("if: needs.classify.outputs.relevant == 'true'");
     expect(ios).toContain('runs-on: macos-26');
     expect(ios).toContain('/Applications/Xcode_26.6.app/Contents/Developer');
     expect(ios).not.toContain('self-hosted');
