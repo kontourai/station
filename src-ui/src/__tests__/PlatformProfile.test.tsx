@@ -3,6 +3,7 @@
  */
 
 import { act, cleanup, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type {
   NativeCapabilityReport,
@@ -21,6 +22,7 @@ type PlatformProfileAdapter = Pick<
 
 const state = vi.hoisted(() => ({
   adapter: null as PlatformProfileAdapter | null,
+  profileHydrate: async () => {},
   profileRefresh: async () => false,
   authorizeDefaultProfile: async () => false,
   authorizeActiveConnection: async (_connectionId: string) => false,
@@ -34,7 +36,7 @@ vi.mock('../platform/native', () => ({
 
 vi.mock('../platform/native/stationProfileStorage', () => ({
   nativeStationProfileStorage: () => ({
-    hydrate: async () => {},
+    hydrate: () => state.profileHydrate(),
     refresh: () => state.profileRefresh(),
     get: () => null,
     set: () => {},
@@ -51,7 +53,21 @@ vi.mock('../platform/native/stationProfileStorage', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
-  FullScreenLoader: ({ label }: { label?: string }) => <div>{label}</div>,
+  FullScreenLoader: ({
+    label,
+    message,
+    action,
+  }: {
+    label?: string;
+    message?: string;
+    action?: ReactNode;
+  }) => (
+    <div>
+      {label}
+      {message}
+      {action}
+    </div>
+  ),
 }));
 
 function platformProfileAdapter(
@@ -164,6 +180,7 @@ describe('PlatformProfile derivation', () => {
   // "disabled tray" test below able to see a leak if that ever regresses.
   afterEach(() => {
     cleanup();
+    state.profileHydrate = async () => {};
     state.profileRefresh = async () => false;
     state.authorizeDefaultProfile = async () => false;
     state.authorizeActiveConnection = async (_connectionId: string) => false;
@@ -400,6 +417,32 @@ describe('PlatformProfile derivation', () => {
       isDevBuild: false,
       productName: 'Station',
     });
+  });
+
+  test('a native profile bootstrap failure replaces the unbounded loader with an actionable error', async () => {
+    state.adapter = tauriAdapter('ios', 'disabled');
+    state.profileHydrate = async () => {
+      throw new Error(
+        'saved Station directory must be current-user owned and owner-only',
+      );
+    };
+    vi.resetModules();
+    const mod = await import('../platform/PlatformProfileContext');
+
+    render(
+      <mod.PlatformBootstrap>
+        <span data-testid="protected-shell">protected</span>
+      </mod.PlatformBootstrap>,
+    );
+
+    const alert = await screen.findByRole('alert', {
+      name: 'Station couldn’t finish starting',
+    });
+    expect(alert.textContent).toContain(
+      'saved Station directory must be current-user owned and owner-only',
+    );
+    expect(screen.getByRole('button', { name: 'Reload Station' })).toBeTruthy();
+    expect(screen.queryByTestId('protected-shell')).toBeNull();
   });
 
   test('leaves automatic startup readiness to the native host', async () => {

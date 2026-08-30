@@ -49,6 +49,7 @@ const GITHUB_HOSTED_RUNNER_IMAGES = new Set([
   'macos-latest',
   'macos-15',
   'macos-15-intel',
+  'macos-26',
 ]);
 
 /** `null` when actionlint is not on PATH. */
@@ -335,6 +336,7 @@ const EXACT_TARGET_SKIP_GUARDS = Object.freeze({
     "github.event_name != 'pull_request_target' && (github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')",
 });
 const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
+  '.github/workflows/build-ios.yml',
   '.github/workflows/ci.yml',
   '.github/workflows/desktop-clean-checkout.yml',
   '.github/workflows/desktop-rust.yml',
@@ -1618,6 +1620,10 @@ function baseControlledPrWorkflowFindings(file, document) {
           'actions/setup-node@',
           'dtolnay/rust-toolchain@',
         ].some((prefix) => step.uses.startsWith(prefix)) &&
+        !(
+          file === '.github/workflows/build-ios.yml' &&
+          step.uses.startsWith('actions/upload-artifact@')
+        ) &&
         !(
           file === SECURITY_ANALYSIS_WORKFLOW &&
           jobId === SECURITY_ANALYSIS_CODEQL_JOB &&

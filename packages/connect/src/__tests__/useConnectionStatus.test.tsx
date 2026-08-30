@@ -46,6 +46,31 @@ function wrapper(store: ConnectionStore) {
 const POLL = 80;
 
 describe('useConnectionStatus', () => {
+  it('does not turn a clean native no-connection state into an invalid address', async () => {
+    const checkHealth = vi.fn();
+    const emptyStore = new ConnectionStore({ storage: memoryAdapter() });
+
+    const { result } = renderHook(
+      () => useConnectionStatus({ checkHealth, pollInterval: 60_000 }),
+      {
+        wrapper: ({ children }: { children: React.ReactNode }) => (
+          <ConnectionsProvider
+            store={emptyStore}
+            defaultUrl=""
+            seedDefault={false}
+            nativeShell
+          >
+            {children}
+          </ConnectionsProvider>
+        ),
+      },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe('error'));
+    expect(result.current.reason).toBe('undetermined');
+    expect(checkHealth).not.toHaveBeenCalled();
+  });
+
   it('deduplicates health traffic across multiple UI consumers', async () => {
     const checkHealth = vi.fn().mockResolvedValue(true);
     const store = storeWithUrl('http://shared-server:3141');
