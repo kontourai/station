@@ -420,6 +420,45 @@ describe('useSessionEventStream', () => {
     ).toEqual(['evt-1', 'evt-2']);
   });
 
+  test('the cheap ISO comparator preserves localeCompare order and equality stability for canonical UTC events', () => {
+    const normalizedOffsetInstants = [
+      '2026-07-18T01:30:00+02:00',
+      '2026-07-17T18:45:00-05:00',
+    ].map((value) => new Date(value).toISOString());
+    const timestamps = [
+      '2026-07-18T00:00:00.001Z',
+      normalizedOffsetInstants[1]!,
+      '2026-07-18T00:00:00.000Z',
+      normalizedOffsetInstants[0]!,
+      '2026-07-18T00:00:00.000Z',
+    ];
+    const corpus = timestamps.map((createdAt, index) =>
+      event(`iso-${index}`, createdAt),
+    );
+    const oldOrder = [...corpus]
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+      .map((item) => item.eventId);
+
+    expect(mergeSessionEvents([], corpus).map((item) => item.eventId)).toEqual(
+      oldOrder,
+    );
+    expect(normalizedOffsetInstants).toEqual([
+      '2026-07-17T23:30:00.000Z',
+      '2026-07-17T23:45:00.000Z',
+    ]);
+  });
+
+  test('normalizes the valid source offsets retained by attached transcripts before ordering', () => {
+    const withOffsets = [
+      event('later', '2026-07-17T18:45:00-05:00'),
+      event('earlier', '2026-07-18T01:30:00+02:00'),
+    ];
+
+    expect(
+      mergeSessionEvents([], withOffsets).map((item) => item.eventId),
+    ).toEqual(['earlier', 'later']);
+  });
+
   test('retains more than 200 explicitly loaded events when a live frame arrives', () => {
     const loaded = Array.from({ length: 240 }, (_, index) => {
       const common = {

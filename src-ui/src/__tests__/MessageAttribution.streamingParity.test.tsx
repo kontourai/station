@@ -58,6 +58,7 @@ vi.mock('../hooks/useStreamingContent', () => ({
     streamingText: 'Working on it…',
     hasContent: true,
     contentParts: [],
+    contentRevision: 1,
   }),
 }));
 

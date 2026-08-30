@@ -142,6 +142,59 @@ describe('ToolCallDisplay — policy-denied state (station#3091, #3117)', () => 
   });
 });
 
+describe('ToolCallDisplay — bounded result cost (station#330)', () => {
+  test('renders a multi-MB object through a bounded head/tail projection and serializes it fully only on demand', () => {
+    const result = {
+      output: 'h'.repeat(2 * 1024 * 1024),
+      end: 'SELECTABLE_END',
+    };
+    const stringify = vi.spyOn(JSON, 'stringify');
+    render(
+      <ToolCallDisplay
+        toolCall={{
+          type: 'tool-invocation',
+          toolCallId: 'bounded-result',
+          toolName: 'search_files',
+          result,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /search files/i }));
+    const response = document.querySelector('.tool-call__code--scrollable')!;
+    expect(response.textContent?.length).toBeLessThan(4_000);
+    expect(response.textContent).toContain('2.0 MB withheld');
+    expect(response.textContent).toContain('SELECTABLE_END');
+    expect(stringify).not.toHaveBeenCalledWith(result, null, 2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show full result' }));
+    expect(response.textContent?.length).toBeGreaterThan(2 * 1024 * 1024);
+    expect(stringify).toHaveBeenCalledWith(result, null, 2);
+  });
+
+  test('mounting many tool cards adds no document listeners', () => {
+    const warmup = render(<div />);
+    warmup.unmount();
+    const addDocumentListener = vi.spyOn(document, 'addEventListener');
+
+    render(
+      Array.from({ length: 50 }, (_, index) => (
+        <ToolCallDisplay
+          key={index}
+          toolCall={{
+            type: 'tool-invocation',
+            toolCallId: `listener-${index}`,
+            toolName: 'read_file',
+            result: 'done',
+          }}
+        />
+      )),
+    );
+
+    expect(addDocumentListener).not.toHaveBeenCalled();
+  });
+});
+
 describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () => {
   test('a settled successful call reads as one quiet verb-first line with no status noise', () => {
     render(

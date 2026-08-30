@@ -9,6 +9,11 @@ import {
   TerminalGlyph,
 } from '../icons/Glyph';
 import {
+  boundedToolResultText,
+  formatWithheldBytes,
+  fullToolResultText,
+} from './bounded-tool-result';
+import {
   callLabel,
   classifyToolName,
   type ToolCallKind,
@@ -335,6 +340,7 @@ function ToolCallDetails({
    * shown here rather than as a collapsed line that would read as live. */
   lastProgress?: string;
 }) {
+  const [showFullResult, setShowFullResult] = useState(false);
   // A shell-style `command` argument renders as its own readable, wrapped
   // monospace block instead of going through the generic JSON dump — inside
   // `JSON.stringify`, a command containing quotes (`git commit -m "fix"`)
@@ -371,31 +377,13 @@ function ToolCallDetails({
         : JSON.stringify(remainingArgs, null, 2),
     [remainingArgs],
   );
-  // archive#3507: `result` is already a string on the restored (event-window)
-  // path — `runtime-event-projection.ts`'s `resultText` returns a string for
-  // EVERY tool result unconditionally (a non-string `output` is
-  // JSON-serialised there; a string `output` passes through as-is), so the
-  // restored `result` this component receives is always a string, never
-  // sometimes. Upstream of that, `event-store.ts`'s `snapshotEvent` also
-  // JSON-serialises a structured `output` before it reaches the client
-  // (archive#3462) rather than collapsing it to `"[object Object]"`, but
-  // `resultText` is the derivation that actually guarantees the string-ness
-  // this component sees — a future fix to `snapshotEvent` alone would not
-  // change that. The live path (`streamHandlers.ts`) sets `result` to the
-  // raw object instead. Re-stringifying an already-string result wraps it in
-  // an extra layer of quotes/escapes; only a non-string value needs encoding.
-  //
-  // Disclosed remaining asymmetry, not fixed here: this closes the escaping
-  // layer, not a formatting one. Live still renders 2-space pretty JSON
-  // (`JSON.stringify(result, null, 2)`); restored renders `resultText`'s
-  // compact one-line form verbatim, because that string is what arrives.
-  // Same event, still two different renderings — just no longer an escaped
-  // one. archive#3507's own prescribed fix is this type check; reformatting
-  // the restored string is a separate, undecided change.
-  const resultJson = useMemo(
-    () =>
-      typeof result === 'string' ? result : JSON.stringify(result, null, 2),
-    [result],
+  // Restored results are already strings while the live path can carry raw
+  // objects (archive#3507). The bounded collector preserves that distinction
+  // without eagerly allocating a complete JSON rendering for the live shape.
+  const boundedResult = useMemo(() => boundedToolResultText(result), [result]);
+  const fullResult = useMemo(
+    () => (showFullResult ? fullToolResultText(result) : undefined),
+    [result, showFullResult],
   );
 
   // The truthful terminal status — claimed only when a terminal outcome was
@@ -429,7 +417,24 @@ function ToolCallDetails({
         <div className="tool-call__section">
           <strong>Response:</strong>
           <pre className="tool-call__code tool-call__code--scrollable">
-            {resultJson}
+            {fullResult ?? boundedResult.head}
+            {!showFullResult && boundedResult.truncated && (
+              <>
+                <span className="tool-call__status-badge tool-call__status-badge--warning">
+                  {'\n'}… {formatWithheldBytes(boundedResult.withheldBytes)}
+                  {' withheld — '}
+                  <button
+                    type="button"
+                    className="tool-call__approve-btn tool-call__approve-btn--secondary"
+                    onClick={() => setShowFullResult(true)}
+                  >
+                    Show full result
+                  </button>
+                  {'\n'}
+                </span>
+                {boundedResult.tail}
+              </>
+            )}
           </pre>
         </div>
       )}
