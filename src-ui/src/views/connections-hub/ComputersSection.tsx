@@ -384,12 +384,28 @@ export function ComputersSection() {
                   <>
                     {peer.label ?? peer.environmentId}{' '}
                     <span className="connections-computers__chip">
-                      Peer credential
+                      Peer Station
                     </span>
                   </>
                 }
                 description={`${peer.apiBase} · ${peer.scope}`}
-              />
+                status={
+                  /* Derived from the row's existence: the peer list only
+                     returns entries whose stored credential validated, and the
+                     wire shape never carries the credential itself. Not
+                     "Ready" — a saved credential proves nothing about
+                     reachability, which is checked when work is sent. */
+                  <span className="connections-computers__state connections-computers__state--disabled">
+                    Credential saved
+                  </span>
+                }
+              >
+                <span className="connections-computers__note">
+                  This Station can delegate tasks here — choose it under Station
+                  in the Delegate dialog. It presents the saved credential when
+                  sending work; reachability is checked at dispatch.
+                </span>
+              </PageRow>
             ))
           ))}
       </div>
