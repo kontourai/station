@@ -183,6 +183,23 @@ export async function calculateUsageCost(
           : {}),
       });
       if (estimated !== undefined) return estimated;
+      const reportedFigures = [
+        usage.promptTokens,
+        usage.inputTokens,
+        usage.completionTokens,
+        usage.outputTokens,
+        usage.cacheReadTokens,
+        usage.cacheWriteTokens,
+      ].filter((value): value is number => value !== undefined);
+      if (
+        reportedFigures.some((value) => !Number.isFinite(value) || value < 0)
+      ) {
+        logger.warn(
+          'Reported usage contains an invalid token figure, cost unavailable',
+          { modelId },
+        );
+        return null;
+      }
       logger.warn('Pricing incomplete for reported usage, cost unavailable', {
         modelId,
       });

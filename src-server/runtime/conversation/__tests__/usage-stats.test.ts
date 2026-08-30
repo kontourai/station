@@ -209,4 +209,31 @@ describe('usage-stats', () => {
       { modelId: 'claude-4-sonnet' },
     );
   });
+
+  it('logs malformed producer usage separately from missing pricing', async () => {
+    const logger = { warn: vi.fn() };
+    const modelCatalog = {
+      getModelPricing: vi.fn().mockResolvedValue([
+        {
+          modelId: 'Claude 4 Sonnet',
+          inputTokenPrice: 0.003,
+          outputTokenPrice: 0.015,
+        },
+      ]),
+    };
+
+    await expect(
+      calculateUsageCost(
+        'claude-4-sonnet',
+        { promptTokens: Number.NaN, completionTokens: 500 },
+        modelCatalog as any,
+        { region: 'us-west-2' } as any,
+        logger,
+      ),
+    ).resolves.toBeNull();
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Reported usage contains an invalid token figure, cost unavailable',
+      { modelId: 'claude-4-sonnet' },
+    );
+  });
 });
