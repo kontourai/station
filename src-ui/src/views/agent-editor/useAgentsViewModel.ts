@@ -62,6 +62,19 @@ interface UseAgentsViewModelArgs {
   onNavigate: (view: NavigationView) => void;
 }
 
+export function resolveAuthoritativeLoadedAgent(
+  authoritativeDetail: { generation: number; agent: AgentData } | undefined,
+  routeGeneration: number,
+  selectedAgentSlug: string | undefined,
+  successfulMismatch: boolean,
+): AgentData | undefined {
+  if (successfulMismatch) return undefined;
+  return authoritativeDetail?.generation === routeGeneration &&
+    authoritativeDetail.agent.slug === selectedAgentSlug
+    ? authoritativeDetail.agent
+    : undefined;
+}
+
 /**
  * One route table for the row's single fixing verb, shared by the list, the
  * copy picker and anything else that offers the repair — the label and the
@@ -168,13 +181,102 @@ export function useAgentsViewModel({
   };
   const {
     data: loadedAgent,
-    isLoading,
+    dataUpdatedAt,
+    isError: agentLoadFailed,
+    isFetchedAfterMount,
+    isPending,
+    isSuccess: agentLoadSucceeded,
     isFetching,
     error: loadError,
     refetch: refetchAgent,
   } = useAgentQuery(selectedAgentSlug, {
     enabled: !!selectedAgentSlug && !isCreating,
+    // Agent detail authorizes edits and destructive actions. A persisted
+    // pre-update cache entry may render optimistically elsewhere, but the
+    // editor must re-establish current detail authority whenever it mounts.
+    refetchOnMount: 'always',
   });
+  // A route generation prevents an A -> B -> A cycle from reusing A's old
+  // authority. Capture the data timestamp already present when each route is
+  // selected; only a later successful data update can establish authority for
+  // that generation. Query errors do not advance dataUpdatedAt.
+  const detailRouteRef = useRef({
+    slug: selectedAgentSlug,
+    generation: 0,
+    baselineDataUpdatedAt: dataUpdatedAt,
+    fromNoSelection: true,
+    sawFetching: isFetching,
+  });
+  if (detailRouteRef.current.slug !== selectedAgentSlug) {
+    const priorSlug = detailRouteRef.current.slug;
+    detailRouteRef.current = {
+      slug: selectedAgentSlug,
+      generation: detailRouteRef.current.generation + 1,
+      baselineDataUpdatedAt: dataUpdatedAt,
+      fromNoSelection: priorSlug === undefined,
+      sawFetching: isFetching,
+    };
+  } else if (isFetching) {
+    detailRouteRef.current.sawFetching = true;
+  }
+  const detailRoute = detailRouteRef.current;
+  const receivedFreshDetail =
+    agentLoadSucceeded &&
+    !agentLoadFailed &&
+    !isFetching &&
+    isFetchedAfterMount &&
+    (dataUpdatedAt > detailRoute.baselineDataUpdatedAt ||
+      detailRoute.sawFetching ||
+      detailRoute.fromNoSelection);
+  const successfulMismatch =
+    receivedFreshDetail &&
+    !!loadedAgent &&
+    loadedAgent.slug !== selectedAgentSlug;
+  const [authoritativeDetail, setAuthoritativeDetail] = useState<{
+    generation: number;
+    agent: AgentData;
+  }>();
+  useEffect(() => {
+    if (isCreating || !selectedAgentSlug) {
+      setAuthoritativeDetail(undefined);
+      return;
+    }
+    if (!receivedFreshDetail) return;
+    if (loadedAgent?.slug === selectedAgentSlug) {
+      setAuthoritativeDetail({
+        generation: detailRoute.generation,
+        agent: loadedAgent as AgentData,
+      });
+      return;
+    }
+    // A successful response for the wrong identity actively revokes prior
+    // authority. Only a later transport/refresh error may retain an already
+    // established exact response.
+    setAuthoritativeDetail(undefined);
+  }, [
+    detailRoute.generation,
+    isCreating,
+    loadedAgent,
+    receivedFreshDetail,
+    selectedAgentSlug,
+  ]);
+  // Suppress stale authority in the same render a successful mismatch lands;
+  // the effect below clears the latch for subsequent renders.
+  const authoritativeLoadedAgent = resolveAuthoritativeLoadedAgent(
+    authoritativeDetail,
+    detailRoute.generation,
+    selectedAgentSlug,
+    successfulMismatch,
+  );
+  const authoritativeLoadError =
+    !isCreating && successfulMismatch
+      ? new Error('Agent detail did not match the selected Agent.')
+      : loadError;
+  const detailAuthorityPending =
+    !isCreating &&
+    !!selectedAgentSlug &&
+    !authoritativeLoadedAgent &&
+    !authoritativeLoadError;
   const selectedCatalogAgent = agents.find(
     (agent) => agent.slug === selectedAgentSlug,
   );
@@ -316,15 +418,15 @@ export function useAgentsViewModel({
   }, [defaultManagedRuntimeId, urlSlug]);
 
   useEffect(() => {
-    if (!loadedAgent || isCreating) {
+    if (!authoritativeLoadedAgent || isCreating) {
       return;
     }
 
-    const nextForm = formFromAgent(loadedAgent);
+    const nextForm = formFromAgent(authoritativeLoadedAgent);
     setForm(nextForm);
     setSavedForm(nextForm);
     setIsLocked(true);
-  }, [loadedAgent, isCreating]);
+  }, [authoritativeLoadedAgent, isCreating]);
 
   // archive#3662: CREATE ONLY. A new Agent's form is built
   // before the connections query resolves, so it legitimately picks up the
@@ -523,6 +625,9 @@ export function useAgentsViewModel({
   }
 
   async function handleSave() {
+    // Existing writes require the detail read for this exact route. A list
+    // row alone cannot authorize a blank or mismatched form to overwrite it.
+    if (!isCreating && !authoritativeLoadedAgent) return;
     // Keyboard/form submission reaches this handler without consulting the
     // disabled button. Do not create an Agent on an explicitly unready
     // connection just because another connection happens to be ready.
@@ -576,7 +681,17 @@ export function useAgentsViewModel({
     }
   }
 
-  const selectedAgent = allAgents.find((agent) => agent.slug === selectedSlug);
+  // The collection is a projection, not the authority for whether an exact
+  // persisted Agent exists. Immediately after a durable write its row can be
+  // absent while the runtime catalog reconciles, even though the detail read
+  // has already returned the complete enriched Agent projection. Use that
+  // exact-slug detail as the bounded fallback so the editor keeps its actions
+  // without guessing ownership from the route. The detail projection carries
+  // the same plugin/engineConnectionType facts as the collection, so ACP and
+  // plugin Agents remain locked; a missing or mismatched detail fails closed.
+  const selectedAgent =
+    allAgents.find((agent) => agent.slug === selectedSlug) ??
+    authoritativeLoadedAgent;
   const isPlugin = !!selectedAgent?.plugin && !isCreating;
   const isAcp = selectedAgent?.engineConnectionType === 'acp';
   // (archive#3027 follow-up): `engineDefault` is NOT a lock any more.
@@ -598,9 +713,13 @@ export function useAgentsViewModel({
   // with an honest banner instead of replacing in-progress edits.
   const { blockingLoadError, editorIsLoading, notFound, visibleRefreshError } =
     resolveAgentEditorReadState({
-      hasLoadedAgent: !!loadedAgent,
-      loadError,
-      isLoading,
+      hasLoadedAgent: !!authoritativeLoadedAgent,
+      loadError: authoritativeLoadError,
+      // `isLoading` becomes false during a query's retry delay even though no
+      // detail has arrived. `isPending` remains true for that whole initial
+      // read, preventing an editable blank form from appearing between
+      // attempts and becoming an accidental source of truth.
+      isPending: isPending || detailAuthorityPending,
       isFetching,
       isCreating,
     });

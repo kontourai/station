@@ -24,6 +24,8 @@ const state = {
   agents: [] as AgentData[],
   selectedId: null as string | null,
   detail: undefined as unknown,
+  detailDataUpdatedAt: 0,
+  detailFetchedAfterMount: false,
   detailLoading: false,
   detailFetching: false,
   detailError: undefined as unknown,
@@ -78,6 +80,11 @@ vi.mock('@kontourai/station-sdk', () => ({
   useModelConnectionsQuery: () => ({ data: MODEL_CONNECTIONS }),
   useAgentQuery: () => ({
     data: state.detail,
+    dataUpdatedAt: state.detailDataUpdatedAt,
+    isError: state.detailError !== undefined,
+    isFetchedAfterMount: state.detailFetchedAfterMount,
+    isPending: state.detailLoading,
+    isSuccess: state.detail !== undefined && state.detailError === undefined,
     isLoading: state.detailLoading,
     isFetching: state.detailFetching,
     error: state.detailError,
@@ -139,7 +146,9 @@ vi.mock('../../../hooks/useUrlSelection', () => ({
   }),
 }));
 
-const { useAgentsViewModel } = await import('../useAgentsViewModel');
+const { resolveAuthoritativeLoadedAgent, useAgentsViewModel } = await import(
+  '../useAgentsViewModel'
+);
 
 function agent(overrides: Record<string, unknown>): AgentData {
   return { slug: 'a', name: 'A', ...overrides } as unknown as AgentData;
@@ -149,6 +158,8 @@ beforeEach(() => {
   state.agents = [];
   state.selectedId = null;
   state.detail = undefined;
+  state.detailDataUpdatedAt = 0;
+  state.detailFetchedAfterMount = false;
   state.detailLoading = false;
   state.detailFetching = false;
   state.detailError = undefined;
@@ -172,9 +183,25 @@ afterEach(() => {
 });
 
 function render() {
-  return renderHook(() =>
+  const freshDetail =
+    state.detail !== undefined &&
+    state.detailError === undefined &&
+    !state.detailLoading &&
+    state.detailDataUpdatedAt === 0;
+  const pendingDetail = state.detail;
+  if (freshDetail) state.detail = undefined;
+  const rendered = renderHook(() =>
     useAgentsViewModel({ agents: state.agents, onNavigate: vi.fn() }),
   );
+  if (freshDetail) {
+    act(() => {
+      state.detail = pendingDetail;
+      state.detailDataUpdatedAt = 1;
+      state.detailFetchedAfterMount = true;
+      rendered.rerender();
+    });
+  }
+  return rendered;
 }
 
 describe('AC5 — a created Agent is in the list and selected, with no reload', () => {
@@ -430,7 +457,9 @@ describe('AC5 — "Loading agent…" is bounded', () => {
     });
     state.detailLoading = false;
     state.detail = { slug: 'writer', name: 'Writer' };
-    rerender();
+    state.detailDataUpdatedAt = 1;
+    state.detailFetchedAfterMount = true;
+    act(() => rerender());
     await act(async () => {
       vi.advanceTimersByTime(30_000);
     });
@@ -542,6 +571,209 @@ describe('AC7 — engineDefault is not a lock', () => {
       result.current.handleConfigureConnection();
     });
     expect(navigate).toHaveBeenCalledWith('/connections/engines/oc');
+  });
+});
+
+describe('persisted detail remains authoritative while the collection reconciles', () => {
+  test('a successful mismatch suppresses established authority before effect cleanup', () => {
+    const established = agent({ slug: 'writer', name: 'Writer' });
+    expect(
+      resolveAuthoritativeLoadedAgent(
+        { generation: 3, agent: established },
+        3,
+        'writer',
+        true,
+      ),
+    ).toBeUndefined();
+    expect(
+      resolveAuthoritativeLoadedAgent(
+        { generation: 3, agent: established },
+        3,
+        'writer',
+        false,
+      ),
+    ).toBe(established);
+  });
+
+  test('a cached exact detail cannot authorize the editor before a mount refresh', async () => {
+    state.selectedId = 'writer';
+    state.agents = [];
+    state.detail = agent({
+      slug: 'writer',
+      name: 'Stale Writer',
+      description: 'Before the saved update',
+    });
+    state.detailDataUpdatedAt = 1;
+    state.detailFetchedAfterMount = false;
+    state.detailFetching = true;
+
+    const { result } = render();
+
+    expect(result.current.selectedAgent).toBeUndefined();
+    expect(result.current.form.name).toBe('');
+    expect(result.current.isLoading).toBe(true);
+    await act(async () => {
+      await result.current.handleSave();
+    });
+    expect(updateAgent).not.toHaveBeenCalled();
+  });
+
+  test('a failed first mount refresh cannot promote cached detail into write authority', async () => {
+    state.selectedId = 'writer';
+    state.agents = [];
+    state.detail = agent({
+      slug: 'writer',
+      name: 'Stale Writer',
+      description: 'Before the saved update',
+    });
+    // TanStack reports fetched-after-mount for this error update even though
+    // the only data is still the pre-mount cache entry.
+    state.detailDataUpdatedAt = 1;
+    state.detailFetchedAfterMount = true;
+    state.detailError = new Error('Refresh failed');
+
+    const { result } = render();
+
+    expect(result.current.selectedAgent).toBeUndefined();
+    expect(result.current.form.name).toBe('');
+    expect(result.current.loadError).toBe('Refresh failed');
+    await act(async () => {
+      await result.current.handleSave();
+    });
+    expect(updateAgent).not.toHaveBeenCalled();
+  });
+
+  test('A to pending B to cached A requires a new A response', () => {
+    state.selectedId = 'agent-a';
+    state.detail = agent({ slug: 'agent-a', name: 'Agent A' });
+    const { result, rerender } = render();
+    expect(result.current.selectedAgent?.slug).toBe('agent-a');
+
+    act(() => {
+      state.selectedId = 'agent-b';
+      state.detail = undefined;
+      state.detailDataUpdatedAt = 0;
+      state.detailFetchedAfterMount = false;
+      state.detailLoading = true;
+      rerender();
+    });
+    expect(result.current.selectedAgent).toBeUndefined();
+
+    act(() => {
+      state.selectedId = 'agent-a';
+      state.detail = agent({ slug: 'agent-a', name: 'Cached Agent A' });
+      state.detailDataUpdatedAt = 1;
+      state.detailFetchedAfterMount = false;
+      state.detailLoading = false;
+      state.detailFetching = true;
+      rerender();
+    });
+    expect(result.current.selectedAgent).toBeUndefined();
+    expect(result.current.isLoading).toBe(true);
+  });
+
+  test('a successful mismatched detail revokes established authority', () => {
+    state.selectedId = 'writer';
+    state.detail = agent({ slug: 'writer', name: 'Writer' });
+    const { result, rerender } = render();
+    expect(result.current.selectedAgent?.slug).toBe('writer');
+
+    act(() => {
+      state.detail = agent({ slug: 'someone-else', name: 'Someone else' });
+      state.detailDataUpdatedAt = 2;
+      rerender();
+    });
+    expect(result.current.selectedAgent).toBeUndefined();
+    expect(result.current.loadError).toMatch(/did not match/i);
+  });
+
+  test('a later refresh error retains already-established exact authority', () => {
+    state.selectedId = 'writer';
+    state.detail = agent({ slug: 'writer', name: 'Writer' });
+    const { result, rerender } = render();
+    expect(result.current.selectedAgent?.slug).toBe('writer');
+
+    act(() => {
+      state.detailError = new Error('Later refresh failed');
+      rerender();
+    });
+    expect(result.current.selectedAgent?.slug).toBe('writer');
+    expect(result.current.error).toBe('Later refresh failed');
+  });
+
+  test('an exact loaded custom Agent restores its actions without a collection row', () => {
+    state.selectedId = 'writer';
+    state.agents = [];
+    state.detail = agent({
+      slug: 'writer',
+      name: 'Writer',
+      engineId: 'station',
+    });
+
+    const { result } = render();
+
+    expect(result.current.selectedAgent).toBe(state.detail);
+    expect(result.current.isAcp).toBe(false);
+    expect(result.current.isPlugin).toBe(false);
+    expect(result.current.locked).toBe(false);
+  });
+
+  test('an exact loaded ACP Agent remains read-only without a collection row', () => {
+    state.selectedId = 'opencode';
+    state.agents = [];
+    state.detail = agent({
+      slug: 'opencode',
+      name: 'OpenCode',
+      engineConnectionType: 'acp',
+      execution: { agentConnectionId: 'oc' },
+    });
+
+    const { result } = render();
+
+    expect(result.current.selectedAgent).toBe(state.detail);
+    expect(result.current.isAcp).toBe(true);
+    expect(result.current.locked).toBe(true);
+  });
+
+  test('an exact loaded plugin Agent keeps its ownership lock without a collection row', () => {
+    state.selectedId = 'plugin-agent';
+    state.agents = [];
+    state.detail = agent({
+      slug: 'plugin-agent',
+      name: 'Plugin Agent',
+      plugin: 'example-plugin',
+    });
+
+    const { result } = render();
+
+    expect(result.current.selectedAgent).toBe(state.detail);
+    expect(result.current.isPlugin).toBe(true);
+    expect(result.current.locked).toBe(true);
+  });
+
+  test('a mismatched detail cannot hydrate or write the selected route', async () => {
+    state.selectedId = 'writer';
+    state.agents = [];
+    state.detail = agent({ slug: 'someone-else', name: 'Someone else' });
+
+    const { result } = render();
+
+    expect(result.current.selectedAgent).toBeUndefined();
+    expect(result.current.form.name).toBe('');
+    expect(result.current.loadError).toMatch(/did not match/i);
+
+    act(() => {
+      result.current.setForm((form) => ({
+        ...form,
+        slug: 'writer',
+        name: 'Injected Writer',
+        prompt: 'This must not be written.',
+      }));
+    });
+    await act(async () => {
+      await result.current.handleSave();
+    });
+    expect(updateAgent).not.toHaveBeenCalled();
   });
 });
 
