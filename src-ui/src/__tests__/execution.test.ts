@@ -49,11 +49,9 @@ describe('execution utils', () => {
       'anthropic',
       'google',
       'lancedb',
-      'bedrock-runtime',
       'claude',
       'codex',
       'muse',
-      'ollama-runtime',
       'acp',
     ]) {
       expect(connectionTypeLabel(type)).not.toBe(type);

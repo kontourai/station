@@ -1761,6 +1761,9 @@ describe('Muse registration', () => {
       .filter(Boolean);
     expect(registered).toContain('museAdapter');
     expect(registered).toContain('codexAdapter');
+    expect(registered).toContain('stationAgentAdapter');
+    expect(registered).not.toContain('bedrockAdapter');
+    expect(registered).not.toContain('ollamaAdapter');
   });
 
   test('resolveEngineCapabilityMatrix does not fall back to UNKNOWN for muse', () => {

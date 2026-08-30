@@ -50,7 +50,6 @@ import type { NavigationView } from '../types';
 import {
   capabilityLabel,
   connectionDisplayLabel,
-  connectionEngineId,
   connectionStatusLabel,
   connectionTypeLabel,
   prerequisiteCategoryLabel,
@@ -187,20 +186,13 @@ export function AgentConnectionView({
 
   const testMutation = useTestAgentConnectionMutation();
 
-  const externalAgentApps = useMemo(
-    () =>
-      runtimes.filter(
-        (connection) => connectionEngineId(connection) !== 'station',
-      ),
-    [runtimes],
-  );
+  const externalAgentApps = runtimes;
   const availableAgentApps = useMemo(() => {
     const addedIds = new Set(
       externalAgentApps.filter(isAddedEngine).map(({ id }) => id),
     );
     return (
       catalog
-        .filter((connection) => connectionEngineId(connection) !== 'station')
         // Review fix (#592 slice 2, M1): the catalog endpoint is not
         // registration-authoritative — it can carry entries this Station
         // already considers 'ready'/'configured' (an adapter the runtime
