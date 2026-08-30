@@ -234,10 +234,18 @@ describe('Basis Pane launcher', () => {
   });
 
   test('uses the same renderer in a dismissible responsive fallback', async () => {
-    render(<Harness />);
+    const { container } = render(<Harness />);
     const trigger = screen.getByRole('button', { name: 'Open' });
     fireEvent.click(trigger);
-    expect(screen.getByRole('dialog', { name: 'Basis' })).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Basis' });
+    expect(dialog).toBeTruthy();
+    expect(dialog.classList.contains('station-dialog')).toBe(true);
+    expect(dialog.classList.contains('station-dialog--lg')).toBe(true);
+    expect(
+      dialog.parentElement?.classList.contains('station-dialog__overlay'),
+    ).toBe(true);
+    expect(container.contains(dialog)).toBe(false);
+    expect(dialog.parentElement?.parentElement).toBe(document.body);
     expect(await screen.findByText('Shared Basis renderer')).toBeTruthy();
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();

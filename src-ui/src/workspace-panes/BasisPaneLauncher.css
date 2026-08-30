@@ -1,17 +1,10 @@
 .basis-pane-fallback-overlay {
-  position: fixed;
-  inset: var(--app-toolbar-total-height, 46px) 0 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  padding: 12px;
-  background: color-mix(in srgb, var(--bg-primary, #fff) 35%, transparent);
+  inset: 0;
 }
 .basis-pane-fallback {
-  width: min(760px, calc(100vw - 24px));
-  max-height: min(90dvh, 900px);
-  overflow: auto;
+  width: min(1120px, calc(100vw - 48px));
+  height: min(900px, calc(100dvh - 48px));
+  max-height: calc(100dvh - 48px);
 }
 @media (max-width: 767px) {
   .basis-pane-fallback-overlay {
@@ -23,6 +16,17 @@
     width: 100%;
     height: 100dvh;
     max-height: 100dvh;
+    border: 0;
     border-radius: 0;
+  }
+  .basis-pane-fallback > .station-dialog__header {
+    padding-top: max(12px, calc(var(--safe-top, 0px) + 8px));
+    padding-right: max(12px, calc(var(--safe-right, 0px) + 12px));
+    padding-left: max(12px, calc(var(--safe-left, 0px) + 12px));
+  }
+  .basis-pane-fallback > .station-dialog__body {
+    padding-right: max(12px, calc(var(--safe-right, 0px) + 12px));
+    padding-bottom: max(12px, calc(var(--safe-bottom, 0px) + 12px));
+    padding-left: max(12px, calc(var(--safe-left, 0px) + 12px));
   }
 }
