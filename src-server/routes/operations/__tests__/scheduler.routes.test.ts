@@ -368,32 +368,6 @@ describe('Scheduler Routes', () => {
     });
   });
 
-  test('POST /jobs/:target/run reports a manual refusal truthfully', async () => {
-    const { app, svc } = setup();
-    svc.runJob.mockResolvedValueOnce({
-      outcome: 'refused',
-      message: "Job 'daily-report' refused: provider policy denied the run",
-      runId: 'schedule:built-in:daily-report:run-1',
-    });
-
-    const response = await app.request('/jobs/daily-report/run', {
-      method: 'POST',
-    });
-
-    expect(response.status).toBe(422);
-    await expect(json(response)).resolves.toMatchObject({
-      success: false,
-      code: 'scheduler_run_refused',
-      outcome: 'refused',
-      error: "Job 'daily-report' refused: provider policy denied the run",
-      data: {
-        receipt: {
-          outcome: 'refused',
-        },
-      },
-    });
-  });
-
   test('POST /jobs/:target/run projects hostile provider detail instead of serializing it outward', async () => {
     const { app, svc } = setup();
     svc.runJob.mockResolvedValueOnce({

@@ -459,7 +459,10 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
   // into 400 with the error's code in the body — the drop discriminator must
   // consult the code, or adoption races would permanently discard queued
   // messages (archive#3027 fix-round).
-  for (const retryableCode of ['adoption_continuation_in_progress']) {
+  for (const retryableCode of [
+    'adoption_continuation_in_progress',
+    'resource_engine_start_capacity',
+  ]) {
     test(`a 400 carrying server-retryable code '${retryableCode}' is requeued, not dropped`, async () => {
       activeChatsStore.updateChat(threadId, {
         queuedMessages: ['transiently refused'],

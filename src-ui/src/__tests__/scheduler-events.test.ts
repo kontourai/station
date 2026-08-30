@@ -13,6 +13,9 @@ describe('scheduler event invalidation', () => {
     expect(getSchedulerEventInvalidationKeys('job.missed')).toEqual([
       ['scheduler'],
     ]);
+    expect(getSchedulerEventInvalidationKeys('job.deferred')).toEqual([
+      ['scheduler'],
+    ]);
   });
 
   test('refreshes runs only for terminal or run-state-changing events', () => {

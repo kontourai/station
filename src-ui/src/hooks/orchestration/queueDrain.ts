@@ -33,6 +33,7 @@ import { sendExecutionMessage } from '../useOrchestration';
  * and status.
  */
 const RETRYABLE_REJECTION_CODES: ReadonlySet<string> = new Set([
+  'resource_engine_start_capacity',
   'adoption_continuation_in_progress',
   // A direct conversation can be lazily bound when its queued follow-up is
   // retried. Dropping the message here discarded the only user-owned copy

@@ -2457,6 +2457,18 @@ describe('OrchestrationService', () => {
       status: 'rejected',
       code: 'resource_engine_start_capacity',
     });
+    await expect(
+      service.dispatch(
+        {
+          type: 'startSession',
+          input: { threadId: 'start-lease-c', provider: 'claude' },
+        },
+        { userId: 'owner-user' },
+      ),
+    ).rejects.toMatchObject({
+      code: 'resource_engine_start_capacity',
+      retryable: true,
+    });
     expect(startSession).toHaveBeenCalledOnce();
     releaseFirst();
     const firstOutcome = await first;

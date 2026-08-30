@@ -253,16 +253,21 @@ export type SchedulerMutationResponse = Readonly<{ output: string }>;
 
 /**
  * The truthful terminal result of an authenticated manual scheduler request.
- * `deferred` means no provider effect started and the occurrence remains
- * queued behind the published concurrency ceiling. `indeterminate` means a
- * provider effect may have started and callers must observe the associated
- * run rather than issue an automatic retry.
+ * `deferred` is a provider-only result meaning no provider effect started; it
+ * does not promise that the provider retained the occurrence. The built-in
+ * scheduler never defers an explicit manual run. `refused` is likewise
+ * provider-only. `indeterminate` means a provider effect may have started and
+ * callers must observe the associated run rather than issue an automatic
+ * retry.
  */
 export type SchedulerManualRunReceipt = Readonly<{
   outcome: 'completed' | 'deferred' | 'failed' | 'indeterminate' | 'refused';
   message: string;
-  /** Canonical `RunSummary.runId` for observation; never a claim capability. */
-  runId: string;
+  /**
+   * Canonical `RunSummary.runId` for observation; never a claim capability.
+   * Absent when no run row was written, including a provider deferral.
+   */
+  runId?: string;
 }>;
 
 /**
@@ -281,6 +286,7 @@ export interface SchedulerEvent {
     | 'job.completed'
     | 'job.failed'
     | 'job.retrying'
+    | 'job.deferred'
     | 'job.missed'
     | 'monitor.observed'
     | 'monitor.actionable'
@@ -298,6 +304,7 @@ export interface SchedulerEvent {
   attempt?: number;
   maxAttempts?: number;
   missedCount?: number;
+  reason?: typeof SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason;
   /** Bounded monitor outcome; no source body or secret material. */
   monitorOutcome?: import('./external-monitor').ExternalMonitorOutcome;
   monitorState?: import('./external-monitor').ExternalMonitorState;

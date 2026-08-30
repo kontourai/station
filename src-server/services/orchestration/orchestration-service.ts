@@ -405,7 +405,9 @@ export class OrchestrationCommandDispatchError extends Error {
       // error message tells the user to retry belongs in this set —
       // archive#3493 delta review caught 'session_start_in_flight' saying
       // "retry" while this line still classified it non-retryable.
-      this.retryable = code === 'session_start_in_flight';
+      this.retryable =
+        code === 'session_start_in_flight' ||
+        code === 'resource_engine_start_capacity';
     }
   }
 }

@@ -1443,6 +1443,13 @@ export const schedulerJobDuration = meter.createHistogram(
     unit: 'ms',
   },
 );
+export const schedulerConcurrencyDeferrals = meter.createCounter(
+  'station.scheduler.concurrency.deferrals',
+  {
+    description:
+      'Automatic scheduler occurrences deferred by the invocation ceiling',
+  },
+);
 export const schedulerHealthy = meter.createObservableGauge(
   'station.scheduler.healthy',
   { description: 'Scheduler heartbeat health (1=healthy, 0=unhealthy)' },

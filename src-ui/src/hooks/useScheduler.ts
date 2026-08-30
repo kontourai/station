@@ -65,6 +65,7 @@ export function getSchedulerEventInvalidationKeys(
   switch (event) {
     case 'job.started':
     case 'job.missed':
+    case 'job.deferred':
       return [['scheduler']];
     case 'job.completed':
     case 'job.failed':
@@ -173,6 +174,10 @@ export function useSchedulerEvents(enabled = true) {
             recentErrorRef.current.delete(evt.job);
             invalidateSchedulerEventQueries(qc, evt.event);
           } else if (evt.event === 'job.retrying') {
+            invalidateSchedulerEventQueries(qc, evt.event);
+          } else if (evt.event === 'job.deferred') {
+            runningRef.current.delete(evt.job);
+            clearRunTimeout(evt.job);
             invalidateSchedulerEventQueries(qc, evt.event);
           } else if (evt.event === 'job.missed') {
             missedRef.current.set(evt.job, evt.missedCount ?? 1);
