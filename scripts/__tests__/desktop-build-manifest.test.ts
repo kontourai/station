@@ -89,7 +89,7 @@ describe('desktop build manifest', () => {
     writeFileSync(
       join(root, '.station-release.json'),
       JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         sha: RELEASE_SHA,
         ref: 'v1.2.3',
         createdAt: '2026-07-10T18:00:00.000Z',
@@ -119,19 +119,19 @@ describe('desktop build manifest', () => {
 
     writeFileSync(
       path,
-      JSON.stringify({ schemaVersion: 2, sha: RELEASE_SHA, ref: 'v1.2.3' }),
+      JSON.stringify({ schemaVersion: 3, sha: RELEASE_SHA, ref: 'v1.2.3' }),
     );
     expect(readPackagedReleaseManifest(root)).toBeNull();
 
     writeFileSync(
       path,
-      JSON.stringify({ schemaVersion: 1, sha: 'not-a-sha', ref: 'v1.2.3' }),
+      JSON.stringify({ schemaVersion: 2, sha: 'not-a-sha', ref: 'v1.2.3' }),
     );
     expect(readPackagedReleaseManifest(root)).toBeNull();
 
     writeFileSync(
       path,
-      JSON.stringify({ schemaVersion: 1, sha: RELEASE_SHA, ref: '  ' }),
+      JSON.stringify({ schemaVersion: 2, sha: RELEASE_SHA, ref: '  ' }),
     );
     expect(readPackagedReleaseManifest(root)).toBeNull();
   });
