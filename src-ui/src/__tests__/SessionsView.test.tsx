@@ -166,6 +166,11 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: vi.fn(),
   }),
   useSshEnvironmentsQuery: () => ({ data: [] }),
+  usePeerCredentialsQuery: () => ({
+    data: [],
+    isSuccess: true,
+    isError: false,
+  }),
   useDelegateOrchestrationTaskMutation: () => ({
     mutateAsync: delegateTask,
     reset: resetDelegation,

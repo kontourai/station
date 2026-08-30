@@ -9427,7 +9427,7 @@ button.tool-call__line:hover {
      semantics, zero mobile-css-ratchet cost there (page-frame.css is a
      PRIMITIVE_ALLOWLIST entry: it renders every page header, so it already
      owns this header's one mobile treatment). See page-frame.css's own
-     `@media (max-width: 768px)`/`@media (max-width: 640px)` blocks. */
+     responsive breakpoints. */
 
   .app__main--mobile-dock-fullscreen > .chat-dock .chat-dock__mobile-header {
     padding-top: calc(var(--space-1) + var(--safe-top, 0px));

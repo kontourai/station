@@ -80,7 +80,9 @@ describe('Attention Routes', () => {
     await app.request('/');
     await app.request('/session-failed:alpha/ack', { method: 'POST' });
 
-    expect(list).toHaveBeenCalledWith(authority);
+    expect(list).toHaveBeenCalledWith(authority, {
+      mayDecidePairingRequests: false,
+    });
     expect(acknowledge).toHaveBeenCalledWith('session-failed:alpha', authority);
   });
 });

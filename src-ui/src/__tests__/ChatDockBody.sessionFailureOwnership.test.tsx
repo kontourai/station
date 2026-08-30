@@ -413,7 +413,7 @@ describe('ChatDockBody turn-stall notice (#765)', () => {
       eventCount: 4,
       createdAt: '2026-08-29T11:00:00.000Z',
       updatedAt: '2026-08-29T12:03:00.000Z',
-    } as OrchestrationSessionSummary;
+    };
   }
 
   test('renders the stall notice with a working stop affordance while the turn is in flight', () => {
