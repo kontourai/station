@@ -393,14 +393,14 @@ export async function finalizeChatRequest({
           region,
         );
         estimatedCost = estimateCost(pricing, {
-          ...(usage.promptTokens !== undefined || usage.inputTokens !== undefined
+          ...(usage.promptTokens !== undefined ||
+          usage.inputTokens !== undefined
             ? { inputTokens: usage.promptTokens ?? usage.inputTokens }
             : {}),
           ...(usage.completionTokens !== undefined ||
           usage.outputTokens !== undefined
             ? {
-                outputTokens:
-                  usage.completionTokens ?? usage.outputTokens,
+                outputTokens: usage.completionTokens ?? usage.outputTokens,
               }
             : {}),
           ...(usage.cacheReadTokens !== undefined
