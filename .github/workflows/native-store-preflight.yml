@@ -43,8 +43,7 @@ jobs:
           keychain="$RUNNER_TEMP/station-preflight.keychain-db"
           printf '%s' "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
           printf '%s' "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile"
-          node scripts/check-ios-store-profile.mjs --profile "$profile" --label APPLE_PROVISIONING_PROFILE_BASE64
-          node scripts/ios-store-signing-config.mjs --profile "$profile" --identity "$APPLE_SIGNING_IDENTITY" --team "$APPLE_DEVELOPMENT_TEAM" --bundle-id io.kontourai.station --template src-desktop/gen/apple/project.yml --template-output "$RUNNER_TEMP/station-ios-preflight-project.yml" --overlay-output "$RUNNER_TEMP/station-ios-preflight-overlay.json"
+          node scripts/ios-store-credential-preflight.mjs --station "$profile" --identity "$APPLE_SIGNING_IDENTITY" --team "$APPLE_DEVELOPMENT_TEAM" --bundle-id io.kontourai.station --template src-desktop/gen/apple/project.yml --template-output "$RUNNER_TEMP/station-ios-preflight-project.yml" --overlay-output "$RUNNER_TEMP/station-ios-preflight-overlay.json"
           security create-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
           security unlock-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
           security import "$certificate" -k "$keychain" -P "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
