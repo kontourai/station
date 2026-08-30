@@ -7,6 +7,7 @@ interface ProjectKnowledgeRulesEditorProps {
   onRetryRules?: () => void;
   rulesContent: string;
   savingRules: boolean;
+  rulesSaveFailure?: unknown;
   onRulesChange: (value: string) => void;
   onSaveRules: () => void;
 }
@@ -19,6 +20,7 @@ export function ProjectKnowledgeRulesEditor({
   onRetryRules,
   rulesContent,
   savingRules,
+  rulesSaveFailure,
   onRulesChange,
   onSaveRules,
 }: ProjectKnowledgeRulesEditorProps) {
@@ -63,6 +65,13 @@ export function ProjectKnowledgeRulesEditor({
           >
             {savingRules ? 'Saving…' : 'Save Rules'}
           </button>
+          {rulesSaveFailure != null && (
+            <ErrorState
+              variant="compact"
+              title="Couldn't save project rules"
+              description={describeReadFailure(rulesSaveFailure)}
+            />
+          )}
         </>
       )}
     </div>

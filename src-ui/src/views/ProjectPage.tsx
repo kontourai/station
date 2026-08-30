@@ -67,7 +67,12 @@ export function ProjectPage({ slug }: { slug: string }) {
   } = useProjectLayoutsQuery(slug);
   const { data: gitStatus } = useGitStatus(project?.workingDirectory);
   const { data: gitLog = [] } = useGitLog(project?.workingDirectory, 5);
-  const { data: docs = [] } = useKnowledgeDocsQuery(slug);
+  const {
+    data: docs = [],
+    isError: docsError,
+    error: docsFailure,
+    refetch: refetchDocs,
+  } = useKnowledgeDocsQuery(slug);
   const { data: knowledgeStatus } = useKnowledgeStatusQuery(slug);
   const { data: namespaces = [] } = useKnowledgeNamespacesQuery(slug);
   const { data: conversations = [] } = useProjectConversationsQuery(slug);
@@ -355,6 +360,9 @@ export function ProjectPage({ slug }: { slug: string }) {
           slug={slug}
           projectWorkingDirectory={project.workingDirectory}
           docs={docs}
+          docsError={docsError}
+          docsFailure={docsFailure}
+          onRetryDocs={() => void refetchDocs()}
           namespaces={namespaces}
           knowledgeStatus={knowledgeStatus}
         />
