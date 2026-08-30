@@ -414,7 +414,14 @@ export async function resolveExternalEngineReadiness(
           // particular, CLI auth probes deliberately return `error` when they
           // cannot safely establish auth state.
           const cannotVerify = adapterReadiness.prerequisites.some(
-            (prerequisite) => prerequisite.status === 'error',
+            (prerequisite) =>
+              prerequisite.status === 'error' &&
+              !prerequisite.id.endsWith('-cli'),
+          );
+          const completedCliError = adapterReadiness.prerequisites.some(
+            (prerequisite) =>
+              prerequisite.status === 'error' &&
+              prerequisite.id.endsWith('-cli'),
           );
           const needsSignIn = adapterReadiness.missingPrerequisites.some(
             (prerequisite) =>
@@ -430,9 +437,11 @@ export async function resolveExternalEngineReadiness(
             source: null,
             reason: cannotVerify
               ? 'cannot_verify'
-              : needsSignIn
-                ? 'sign_in_required'
-                : 'missing_prerequisites',
+              : completedCliError
+                ? 'missing_prerequisites'
+                : needsSignIn
+                  ? 'sign_in_required'
+                  : 'missing_prerequisites',
           };
         } catch {
           return {
@@ -464,15 +473,19 @@ export async function resolveExternalEngineReadiness(
  * first-run "Station cannot verify…" launcher minutes into a session, on a
  * host that was busy precisely because the engine was working.
  *
- * So: a `cannot_verify` refresh result keeps the last verified `ready`
- * projection for that engine. Every genuine observation — `ready`,
- * `sign_in_required`, `missing_prerequisites`, `disabled` — still replaces
- * it immediately, so a real regression (CLI uninstalled, signed out,
- * connection disabled) surfaces on the first probe that actually completes.
- * The disclosed residual: an engine whose probe never completes again keeps
- * its last verified `ready` for this process's lifetime — indistinguishable
- * here from the load-induced timeout this exists to absorb, and strictly
- * less wrong than downgrading a verified observation on no evidence.
+ * So: a `cannot_verify` refresh result keeps the last GENUINE projection for
+ * that engine — not only `ready` (#851 extends #765 B2's ready-only hold):
+ * `sign_in_required`, `missing_prerequisites`, and `disabled` are equally
+ * completed observations, and downgrading them to "cannot verify" on a
+ * zero-information flap erases an actionable reason without inventing or
+ * removing readiness (they are all `ready: false`). Every genuine
+ * observation still replaces the held projection immediately, so a real
+ * change (CLI uninstalled, signed out, signed in, connection disabled)
+ * surfaces on the first probe that actually completes. The disclosed
+ * residual: an engine whose probe never completes again keeps its last
+ * genuine projection for this process's lifetime — indistinguishable here
+ * from the load-induced timeout this exists to absorb, and strictly less
+ * wrong than downgrading a completed observation on no evidence.
  */
 export function reconcileExternalEngineReadiness(
   previous: ExternalEngineReadiness | undefined,
@@ -484,8 +497,7 @@ export function reconcileExternalEngineReadiness(
   );
   const engines = next.engines.map((engine) => {
     if (engine.reason !== 'cannot_verify') return engine;
-    const prior = previousByEngineId.get(engine.engineId);
-    return prior?.ready ? prior : engine;
+    return previousByEngineId.get(engine.engineId) ?? engine;
   });
   const ready = engines.find((candidate) => candidate.ready);
   return { ready: !!ready, source: ready?.source ?? null, engines };
@@ -769,8 +781,8 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         claudeInstalled,
         // See `reconcileExternalEngineReadiness`: an aborted/errored probe
         // (`cannot_verify`) must not overwrite an engine this cache has
-        // already verified ready — that flap is what re-armed the first-run
-        // launcher against a working engine (#765 B2).
+        // already genuinely observed — that flap is what re-armed the
+        // first-run launcher against a working engine (#765 B2, #851).
         externalEngineReadiness: reconcileExternalEngineReadiness(
           snapshot?.externalEngineReadiness,
           externalEngineReadiness,

@@ -74,45 +74,16 @@ const SETTLE_TIMEOUT_MS = 30_000;
  * regression. Keep this empty unless a tracked issue names the breakage.
  */
 const EXPECTED_PLUGIN_FAILURES = new Map([
-  // kontourai/station#765 finding D1 (Critical): the bundled Getting Started
-  // Starter installs but its layout renders 'Unsupported layout tab — Plugin
-  // layout component "getting-started-home" is not installed or registered.'
-  // Reproduced by this suite on main (3088300c8, 2026-08-29) with the
-  // identical message — and the same defect class hits every other bundled
-  // layout plugin (their components are equally unregistered after install),
-  // so each carries the same D1 reference below. Remove each entry as the fix
-  // lands; the run FAILS when an expected failure starts passing.
-  // The tracked message quotes the forbidden on-page copy ('Unsupported
-  // layout tab — Plugin layout component "…" is not installed or
-  // registered.'), so that quoted fragment is the discriminating substring.
-  [
-    'getting-started-starter',
-    {
-      issue: 'kontourai/station#765 D1',
-      expectedMessageSubstring: 'Unsupported layout tab',
-    },
-  ],
-  [
-    'coding-starter',
-    {
-      issue: 'kontourai/station#765 D1 (same class)',
-      expectedMessageSubstring: 'Unsupported layout tab',
-    },
-  ],
-  [
-    'knowledge-docs-starter',
-    {
-      issue: 'kontourai/station#765 D1 (same class)',
-      expectedMessageSubstring: 'Unsupported layout tab',
-    },
-  ],
-  [
-    'minimal-layout',
-    {
-      issue: 'kontourai/station#765 D1 (same class)',
-      expectedMessageSubstring: 'Unsupported layout tab',
-    },
-  ],
+  // kontourai/station#765 finding D1 (Critical) hit every bundled layout
+  // plugin: installed layouts rendered 'Unsupported layout tab — Plugin
+  // layout component "…" is not installed or registered.' The renderer was
+  // treating the still-loading lazy PluginRegistry as authoritative absence;
+  // with the loading-state fix in src-ui/src/layouts/index.tsx this suite
+  // reproduced getting-started-starter, coding-starter,
+  // knowledge-docs-starter, and minimal-layout all PASSING live
+  // (2026-08-29, this branch), so their entries are gone. Remove each
+  // remaining entry as its fix lands; the run FAILS when an expected
+  // failure starts passing.
   // demo-layout shows the class one step earlier: it installs, but its
   // declared layout never appears in the layout catalog at all.
   [

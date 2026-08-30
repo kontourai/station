@@ -3,11 +3,14 @@ import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
+import { describeReadFailure, ErrorState } from '../../components/state';
 
 interface ProjectKnowledgeScanModalProps {
   projectWorkingDirectory?: string;
   scanInclude: string;
   scanExclude: string;
+  scanning: boolean;
+  scanFailure?: unknown;
   onClose: () => void;
   onScan: () => void;
   onScanIncludeChange: (value: string) => void;
@@ -18,6 +21,8 @@ export function ProjectKnowledgeScanModal({
   projectWorkingDirectory,
   scanInclude,
   scanExclude,
+  scanning,
+  scanFailure,
   onClose,
   onScan,
   onScanIncludeChange,
@@ -72,11 +77,19 @@ export function ProjectKnowledgeScanModal({
           />
         </label>
       </div>
+      {scanFailure != null && (
+        <ErrorState
+          variant="compact"
+          title="Couldn't index the working directory"
+          description={describeReadFailure(scanFailure)}
+        />
+      )}
       <ResponsiveSurfaceActions className="project-page__scan-actions">
         <button
           type="button"
           className="project-page__add-btn"
           onClick={onClose}
+          disabled={scanning}
         >
           Cancel
         </button>
@@ -84,8 +97,9 @@ export function ProjectKnowledgeScanModal({
           type="button"
           className="project-page__add-btn project-page__add-btn--primary"
           onClick={onScan}
+          disabled={scanning}
         >
-          Index Files
+          {scanning ? 'Indexing…' : 'Index Files'}
         </button>
       </ResponsiveSurfaceActions>
     </ResponsiveDialogSurface>
