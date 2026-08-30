@@ -21,13 +21,25 @@ export interface ResolvedStationRuntimeContext {
 
 /**
  * The one app-owned Station root. It contains shared client configuration and
- * channel/worktree runtime instances; STATION_HOME remains a runtime-only
- * override and is deliberately not consulted here.
+ * channel/worktree runtime instances. An explicit root wins; otherwise an
+ * explicit runtime home derives a containing root so root-scoped writes can
+ * never escape to the ambient user's ~/.station.
  */
 export function resolveStationRoot(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  return resolve(env.STATION_ROOT?.trim() || join(homedir(), '.station'));
+  const explicitRoot = env.STATION_ROOT?.trim();
+  if (explicitRoot) return resolve(explicitRoot);
+  const explicitHome = env.STATION_HOME?.trim();
+  if (!explicitHome) return resolve(join(homedir(), '.station'));
+
+  const home = resolve(explicitHome);
+  const parent = dirname(home);
+  if (basename(parent) === 'instances') return dirname(parent);
+  if (basename(parent) === 'dev' && basename(dirname(parent)) === 'instances') {
+    return dirname(dirname(parent));
+  }
+  return home;
 }
 
 export class StationRuntimeHomeAdmissionError extends Error {

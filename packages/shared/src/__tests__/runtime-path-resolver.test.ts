@@ -33,6 +33,24 @@ afterEach(() => {
 });
 
 describe('Station root runtime path resolver', () => {
+  test('derives the root from a lone explicit STATION_HOME', () => {
+    expect(
+      resolveStationRoot({
+        STATION_HOME: '/tmp/isolated-home',
+      } as NodeJS.ProcessEnv),
+    ).toBe('/tmp/isolated-home');
+    expect(
+      resolveStationRoot({
+        STATION_HOME: '/tmp/isolated-root/instances/e2e',
+      } as NodeJS.ProcessEnv),
+    ).toBe('/tmp/isolated-root');
+    expect(
+      resolveStationRoot({
+        STATION_HOME: '/tmp/isolated-root/instances/dev/e2e',
+      } as NodeJS.ProcessEnv),
+    ).toBe('/tmp/isolated-root');
+  });
+
   test('keeps shared profiles at the root while channel runtimes are isolated', () => {
     const env = { STATION_ROOT: '/tmp/station-root' } as NodeJS.ProcessEnv;
     expect(resolveStationRoot(env)).toBe('/tmp/station-root');

@@ -135,7 +135,8 @@ test.describe('plugin dev hot reload', () => {
     const port = await findFreePort();
     const env = {
       ...process.env,
-      STATION_HOME: join(root, '.station-home'),
+      STATION_ROOT: root,
+      STATION_HOME: join(root, 'instances', 'plugin-dev'),
       npm_config_cache: join(root, '.npm-cache'),
     };
     let dev: ReturnType<typeof startStationCommand> | null = null;
