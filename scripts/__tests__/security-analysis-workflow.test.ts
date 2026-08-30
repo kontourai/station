@@ -9,6 +9,9 @@ const workflow = readFileSync(
 describe('security analysis workflow', () => {
   test('uses the protected workflow definition while containing PR code on a hosted runner', () => {
     expect(workflow).toContain('pull_request_target:\n    branches: [main]');
+    expect(workflow).toContain(
+      'merge_group:\n    branches: [main]\n    types: [checks_requested]',
+    );
     expect(workflow).toContain('push:\n    branches: [main]');
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toContain('runs-on: ubuntu-22.04');
@@ -19,13 +22,13 @@ describe('security analysis workflow', () => {
     expect(workflow).not.toContain('upload-artifact@');
   });
 
-  test('runs the dependency review as one pinned, action-only PR-target job', () => {
+  test('runs dependency review as one pinned, action-only candidate job', () => {
     expect(workflow).toContain(
       'dependency-review:\n    name: Dependency review',
     );
     expect(workflow).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      "if: ${{ github.event_name == 'pull_request_target' }}",
+      "if: ${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}",
     );
     expect(workflow).toContain(
       'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294',
@@ -36,6 +39,14 @@ describe('security analysis workflow', () => {
     expect(workflow).toContain('warn-only: false');
     expect(workflow).toContain('comment-summary-in-pr: never');
     expect(workflow).not.toContain('continue-on-error:');
+    expect(workflow).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'base-ref: ${{ github.event.merge_group.base_sha }}',
+    );
+    expect(workflow).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'head-ref: ${{ github.event.merge_group.head_sha }}',
+    );
   });
 
   test('isolates base policy outside the candidate scan before checking out the exact candidate head', () => {
@@ -53,7 +64,7 @@ describe('security analysis workflow', () => {
     );
     expect(workflow).toContain(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      'ref: ${{ github.event.pull_request.base.sha || github.sha }}',
+      "ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.sha }}",
     );
     expect(workflow).toContain('path: base-policy');
     expect(workflow).toContain('node-version-file: base-policy/.nvmrc');

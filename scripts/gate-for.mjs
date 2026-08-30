@@ -70,7 +70,6 @@ export function gateReport({ changedPaths, baseSha }) {
     `gate:for — ${changedPaths.length} changed path(s)`,
     '',
     'Every push (armed in .githooks/pre-push):',
-    '  node scripts/check-merge-base-fresh.mjs        # branch contains origin/main',
     '  npm run lint:check                             # biome lint/format/imports',
     '  node scripts/commit-message-gate.mjs --prepush-stdin   # commit subjects in the push range',
     '',

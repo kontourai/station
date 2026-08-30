@@ -1,5 +1,70 @@
 [
   {
+    "timestampUtc": "2026-08-30T18:20:57Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.2-nightly.2433",
+    "sha": "1c235104ce09cfbc88cf42b9a529407c7949944e",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/33326401200",
+    "artifacts": [
+      "github-release:nightly-desktop (station-nightly-desktop-macos-aarch64.dmg, .app.tar.gz, latest.json)"
+    ],
+    "gateResult": "nightly test-gate success on 1c235104ce09cfbc88cf42b9a529407c7949944e (station#4539)",
+    "notes": null,
+    "changelog": {
+      "previousSha": "f2430495239251df2e15c36a190a5c0ad3c3812a",
+      "groups": {
+        "feat": [
+          "[#960](https://github.com/kontourai/station/pull/960) feat(basis): redesign Session inventory experience"
+        ],
+        "fix": [
+          "[#957](https://github.com/kontourai/station/pull/957) fix(usage): absent stays absent — durable-history fold guard, honest costs, and the drop nobody was reporting",
+          "[#956](https://github.com/kontourai/station/pull/956) fix: prove bundled startup without keychain read"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#950](https://github.com/kontourai/station/pull/950) build(deps-dev): bump vitest and coverage-v8 to 4.1.11",
+          "[#821](https://github.com/kontourai/station/pull/821) test: restore full-regression baseline invariants"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
+    "timestampUtc": "2026-08-30T18:19:33Z",
+    "channel": "nightly-android",
+    "version": "0.1.2-nightly.2433",
+    "sha": "1c235104ce09cfbc88cf42b9a529407c7949944e",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/33326401200",
+    "artifacts": [
+      "play-internal-aab:io.kontourai.station.nightly@versionCode 243303",
+      "workflow-artifact:station-nightly-243303 (7-day retention)"
+    ],
+    "gateResult": "nightly test-gate success on 1c235104ce09cfbc88cf42b9a529407c7949944e (station#4539)",
+    "notes": null,
+    "changelog": {
+      "previousSha": "f2430495239251df2e15c36a190a5c0ad3c3812a",
+      "groups": {
+        "feat": [
+          "[#960](https://github.com/kontourai/station/pull/960) feat(basis): redesign Session inventory experience"
+        ],
+        "fix": [
+          "[#957](https://github.com/kontourai/station/pull/957) fix(usage): absent stays absent — durable-history fold guard, honest costs, and the drop nobody was reporting",
+          "[#956](https://github.com/kontourai/station/pull/956) fix: prove bundled startup without keychain read"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#950](https://github.com/kontourai/station/pull/950) build(deps-dev): bump vitest and coverage-v8 to 4.1.11",
+          "[#821](https://github.com/kontourai/station/pull/821) test: restore full-regression baseline invariants"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-08-30T16:24:11Z",
     "channel": "nightly-desktop",
     "version": "0.1.2-nightly.2433",

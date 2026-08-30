@@ -15,18 +15,19 @@ function summary(
   threadId: string,
   overrides: Partial<OrchestrationSessionSummary> = {},
 ): OrchestrationSessionSummary {
-  return {
+  const base: OrchestrationSessionSummary = {
     provider: 'claude',
     threadId,
-    status: 'idle',
+    status: 'ready',
+    controlMode: 'station-owned',
     answerability: { answerable: true },
     isLoaded: true,
     isPersisted: true,
     eventCount: 1,
     createdAt: '2026-08-29T00:00:00.000Z',
     updatedAt: '2026-08-29T00:00:01.000Z',
-    ...overrides,
-  } as OrchestrationSessionSummary;
+  };
+  return { ...base, ...overrides };
 }
 
 function flat(
@@ -78,7 +79,7 @@ describe('foldConversationTurns', () => {
       delegation: {
         taskId: 'task:worker',
         mode: 'isolated-child',
-      } as OrchestrationSessionSummary['delegation'],
+      },
     });
     const chat = summary('conv-a:session:2', { conversationId: 'conv-a' });
     const runParent = summary('conv-a:session:1', { conversationId: 'conv-a' });

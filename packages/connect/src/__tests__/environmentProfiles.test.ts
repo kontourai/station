@@ -125,6 +125,7 @@ describe('environment endpoint profiles', () => {
       'identity-mismatch',
       'access-method-mismatch',
       'authentication-failed',
+      'host-unavailable',
       'unsupported-capability-version',
       'timeout',
       'unreachable',
