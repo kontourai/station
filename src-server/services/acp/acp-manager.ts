@@ -1,3 +1,4 @@
+import type { SetProviderRequest } from '@agentclientprotocol/sdk';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
@@ -110,6 +111,28 @@ export class ACPManager {
       probes: this.probes,
       eventBus: this.eventBus,
     });
+  }
+
+  async setProvider(id: string, input: SetProviderRequest): Promise<void> {
+    const probe = this.probes.get(id);
+    if (!probe) throw new Error(`ACP connection '${id}' is not active.`);
+    await probe.setProvider(input);
+  }
+
+  assertProviderSupported(
+    id: string,
+    providerId: string,
+    apiType: string,
+  ): void {
+    const probe = this.probes.get(id);
+    if (!probe) throw new Error(`ACP connection '${id}' is not active.`);
+    probe.assertProviderSupported(providerId, apiType);
+  }
+
+  async disableProvider(id: string, providerId: string): Promise<void> {
+    const probe = this.probes.get(id);
+    if (!probe) throw new Error(`ACP connection '${id}' is not active.`);
+    await probe.disableProvider(providerId);
   }
 
   async shutdown(): Promise<void> {
