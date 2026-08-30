@@ -163,7 +163,9 @@ describe('ToolCallDisplay — bounded result cost (station#330)', () => {
     fireEvent.click(screen.getByRole('button', { name: /search files/i }));
     const response = document.querySelector('.tool-call__code--scrollable')!;
     expect(response.textContent?.length).toBeLessThan(4_000);
-    expect(response.textContent).toContain('2.0 MB withheld');
+    // Names its subject: the upstream "Output truncated" badge is a different
+    // claim (the engine withheld data before it arrived) and both can show.
+    expect(response.textContent).toContain('2.0 MB not shown in this preview');
     expect(response.textContent).toContain('SELECTABLE_END');
     expect(stringify).not.toHaveBeenCalledWith(result, null, 2);
 

@@ -1,6 +1,29 @@
 export const TOOL_RESULT_HEAD_CHARS = 3_000;
 export const TOOL_RESULT_TAIL_CHARS = 512;
 
+function endsOnHighSurrogate(value: string): boolean {
+  const code = value.charCodeAt(value.length - 1);
+  return code >= 0xd800 && code <= 0xdbff;
+}
+
+function startsOnLowSurrogate(value: string): boolean {
+  const code = value.charCodeAt(0);
+  return code >= 0xdc00 && code <= 0xdfff;
+}
+
+/**
+ * Slice a fragment down BEFORE it is concatenated onto the retained tail.
+ * A single fragment is routinely the whole payload (an unescaped run flushes
+ * once; a top-level string appends whole), so concatenating it first would
+ * materialize the very allocation this collector exists to avoid. Exported so
+ * the bound is pinned directly rather than inferred from heap measurements.
+ */
+export function boundTailFragment(value: string): string {
+  return value.length >= TOOL_RESULT_TAIL_CHARS
+    ? value.slice(-TOOL_RESULT_TAIL_CHARS)
+    : value;
+}
+
 export interface BoundedToolResultText {
   head: string;
   tail: string;
@@ -37,7 +60,9 @@ class BoundedTextCollector {
       const remaining = TOOL_RESULT_HEAD_CHARS - this.head.length;
       this.head += value.slice(0, remaining);
     }
-    this.tail = `${this.tail}${value}`.slice(-TOOL_RESULT_TAIL_CHARS);
+    this.tail = (this.tail + boundTailFragment(value)).slice(
+      -TOOL_RESULT_TAIL_CHARS,
+    );
   }
 
   finish(): BoundedToolResultText {
@@ -59,11 +84,20 @@ class BoundedTextCollector {
         truncated: false,
       };
     }
+    // Never end the head on a high surrogate or start the tail on a low one:
+    // the boundary is exactly where the reader looks, and a split pair paints
+    // a replacement glyph there.
+    const head = endsOnHighSurrogate(this.head)
+      ? this.head.slice(0, -1)
+      : this.head;
+    const tail = startsOnLowSurrogate(this.tail)
+      ? this.tail.slice(1)
+      : this.tail;
     const withheldBytes = Math.max(
       0,
-      this.totalBytes - utf8Bytes(this.head) - utf8Bytes(this.tail),
+      this.totalBytes - utf8Bytes(head) - utf8Bytes(tail),
     );
-    return { head: this.head, tail: this.tail, withheldBytes, truncated: true };
+    return { head, tail, withheldBytes, truncated: true };
   }
 }
 
@@ -176,10 +210,21 @@ export function boundedToolResultText(result: unknown): BoundedToolResultText {
   return collector.finish();
 }
 
-/** Full encoding is deliberately reachable only from the explicit reveal. */
+/**
+ * Full encoding is deliberately reachable only from the explicit reveal.
+ * The bounded walker tolerates shapes JSON.stringify refuses (cycles,
+ * BigInt) — unreachable over the SSE wire today, but the reveal must not
+ * throw mid-render where the preview succeeded, so it falls back to the
+ * projection it is expanding.
+ */
 export function fullToolResultText(result: unknown): string {
   if (typeof result === 'string') return result;
-  return JSON.stringify(result, null, 2) ?? '';
+  try {
+    return JSON.stringify(result, null, 2) ?? '';
+  } catch {
+    const bounded = boundedToolResultText(result);
+    return bounded.tail ? `${bounded.head}…${bounded.tail}` : bounded.head;
+  }
 }
 
 export function formatWithheldBytes(bytes: number): string {

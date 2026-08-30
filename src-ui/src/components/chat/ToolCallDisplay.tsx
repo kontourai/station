@@ -421,8 +421,12 @@ function ToolCallDetails({
             {!showFullResult && boundedResult.truncated && (
               <>
                 <span className="tool-call__status-badge tool-call__status-badge--warning">
+                  {/* Names its subject: a row can also carry the upstream
+                      "Output truncated" badge, which says the engine withheld
+                      data before it ever arrived. This one says only that the
+                      preview is showing part of what DID arrive. */}
                   {'\n'}… {formatWithheldBytes(boundedResult.withheldBytes)}
-                  {' withheld — '}
+                  {' not shown in this preview — '}
                   <button
                     type="button"
                     className="tool-call__approve-btn tool-call__approve-btn--secondary"
