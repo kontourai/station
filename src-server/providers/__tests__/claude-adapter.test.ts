@@ -1653,6 +1653,175 @@ describe('ClaudeAdapter', () => {
     expect(session).toMatchObject({ status: 'dead' });
   });
 
+  test('a requested Stop suppresses both the structured error result and its iterator rethrow (#898)', async () => {
+    let releaseResult!: () => void;
+    const resultRequested = new Promise<void>((resolve) => {
+      releaseResult = resolve;
+    });
+    const query = {
+      async *[Symbol.asyncIterator]() {
+        await resultRequested;
+        yield {
+          type: 'result',
+          subtype: 'success',
+          is_error: true,
+          result: 'interrupted',
+          stop_reason: null,
+          usage: { input_tokens: 1, output_tokens: 0 },
+          uuid: 'result-stopped',
+          session_id: 'thread-stopped',
+        };
+        throw new Error('User cancelled');
+      },
+      interrupt: vi.fn().mockImplementation(async () => releaseResult()),
+      close: vi.fn(),
+      setModel: vi.fn().mockResolvedValue(undefined),
+      setPermissionMode: vi.fn().mockResolvedValue(undefined),
+      applyFlagSettings: vi.fn().mockResolvedValue(undefined),
+    };
+    mockQuery.mockReturnValue(query);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-stopped',
+    });
+    await iterator.next(); // session.started
+    await iterator.next(); // session.configured
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-stopped',
+      input: 'long running work',
+    });
+    await iterator.next(); // turn.started
+
+    await expect(
+      adapter.interruptTurn('thread-stopped', turn.turnId),
+    ).resolves.toMatchObject({ outcome: 'cancelled', turnId: turn.turnId });
+
+    const terminalEvents = [
+      (await iterator.next()).value,
+      (await iterator.next()).value,
+    ];
+    expect(terminalEvents.map((event) => event.method).sort()).toEqual([
+      'token-usage.updated',
+      'turn.aborted',
+    ]);
+    const NO_EXTRA_EVENT = Symbol('no-extra-event');
+    const extra = await Promise.race([
+      iterator.next().then((result) => result.value),
+      new Promise((resolve) => setTimeout(() => resolve(NO_EXTRA_EVENT), 50)),
+    ]);
+    expect(extra).toBe(NO_EXTRA_EVENT);
+    expect(terminalEvents).not.toContainEqual(
+      expect.objectContaining({ method: 'runtime.error' }),
+    );
+    await expect(adapter.listSessions()).resolves.toEqual([
+      expect.objectContaining({ status: 'ready' }),
+    ]);
+  });
+
+  test('an interrupt rejection leaves the stopped-result drop armed (#921)', async () => {
+    const controlled = createControlledMockQuery();
+    controlled.interrupt.mockRejectedValueOnce(
+      new Error('interrupt acknowledgement failed'),
+    );
+    mockQuery.mockReturnValue(controlled);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-rejected-interrupt',
+    });
+    await iterator.next();
+    await iterator.next();
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-rejected-interrupt',
+      input: 'work',
+    });
+    await iterator.next();
+
+    await expect(
+      adapter.interruptTurn('thread-rejected-interrupt', turn.turnId),
+    ).rejects.toThrow('interrupt acknowledgement failed');
+    controlled.push({
+      type: 'result',
+      subtype: 'success',
+      is_error: true,
+      result: 'interrupted despite rejected acknowledgement',
+      stop_reason: null,
+      usage: { input_tokens: 1, output_tokens: 0 },
+      uuid: 'result-rejected-interrupt',
+      session_id: 'thread-rejected-interrupt',
+    });
+
+    expect((await iterator.next()).value).toMatchObject({
+      method: 'token-usage.updated',
+    });
+    const NO_ERROR = Symbol('no-error');
+    expect(
+      await Promise.race([
+        iterator.next().then((result) => result.value),
+        new Promise((resolve) => setTimeout(() => resolve(NO_ERROR), 50)),
+      ]),
+    ).toBe(NO_ERROR);
+  });
+
+  test('a rejected second Stop cannot disarm the first Stop result (#921)', async () => {
+    const controlled = createControlledMockQuery();
+    controlled.interrupt
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('already interrupted'));
+    mockQuery.mockReturnValue(controlled);
+    const adapter = new ClaudeAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await adapter.startSession({
+      provider: 'claude',
+      threadId: 'thread-double-stop',
+    });
+    await iterator.next();
+    await iterator.next();
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-double-stop',
+      input: 'work',
+    });
+    await iterator.next();
+
+    await expect(
+      adapter.interruptTurn('thread-double-stop', turn.turnId),
+    ).resolves.toMatchObject({ outcome: 'cancelled' });
+    expect((await iterator.next()).value).toMatchObject({
+      method: 'turn.aborted',
+      turnId: turn.turnId,
+    });
+    await expect(
+      adapter.interruptTurn('thread-double-stop', turn.turnId),
+    ).rejects.toThrow('already interrupted');
+    controlled.push({
+      type: 'result',
+      subtype: 'success',
+      is_error: true,
+      result: 'interrupted',
+      stop_reason: null,
+      usage: { input_tokens: 1, output_tokens: 0 },
+      uuid: 'result-double-stop',
+      session_id: 'thread-double-stop',
+    });
+
+    expect((await iterator.next()).value).toMatchObject({
+      method: 'token-usage.updated',
+    });
+    const NO_ERROR = Symbol('no-error');
+    expect(
+      await Promise.race([
+        iterator.next().then((result) => result.value),
+        new Promise((resolve) => setTimeout(() => resolve(NO_ERROR), 50)),
+      ]),
+    ).toBe(NO_ERROR);
+  });
+
   test('maps a session-level approvalMode to Claude permissionMode at session start (#727)', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const adapter = new ClaudeAdapter();

@@ -432,6 +432,12 @@ describe('claude-adapter-events', () => {
     expect(publish.mock.calls.map(([event]) => event.method)).toEqual([
       'token-usage.updated',
     ]);
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'token-usage.updated',
+        turnId: 'turn-stopped',
+      }),
+    );
     expect(publish).not.toHaveBeenCalledWith(
       expect.objectContaining({ method: 'runtime.error' }),
     );
@@ -439,6 +445,7 @@ describe('claude-adapter-events', () => {
       activeTurnId: undefined,
       dispatchedTurnId: undefined,
       interruptingTurnId: undefined,
+      interruptedResultObserved: true,
     });
     expect(
       (record as ClaudeMessageState).terminalResultObserved,
@@ -450,6 +457,47 @@ describe('claude-adapter-events', () => {
         turnId: 'turn-stopped',
       }),
     );
+  });
+
+  test("a stopped turn's delayed error result does not clear a newer dispatched turn (#921)", () => {
+    const publish = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-new',
+      dispatchedTurnId: 'turn-new',
+      interruptingTurnId: 'turn-stopped',
+    });
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        result: 'interrupted',
+        stop_reason: null,
+        usage: { input_tokens: 1, output_tokens: 0 },
+        uuid: 'msg-delayed-stop',
+        session_id: record.session.threadId,
+      } as any,
+    });
+
+    expect(publish.mock.calls.map(([event]) => event.method)).toEqual([
+      'token-usage.updated',
+    ]);
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'token-usage.updated',
+        turnId: 'turn-stopped',
+      }),
+    );
+    expect(record).toMatchObject({
+      activeTurnId: 'turn-new',
+      dispatchedTurnId: 'turn-new',
+      interruptedResultObserved: true,
+    });
+    expect(record.interruptingTurnId).toBeUndefined();
   });
 
   test('an is_error: true result with no `result` field falls back to joined errors (SDKResultError shape)', () => {
