@@ -8,6 +8,7 @@ import {
   formatProductLawReport,
   loadProductLawManifest,
   MAX_PRODUCT_LAW_FILES,
+  MAX_PRODUCT_LAW_RUNTIME_MS,
   MAX_PRODUCT_LAWS,
   PRODUCT_LAW_OBSERVATION_TIMEOUT_MS,
   productLawDispositions,
@@ -301,6 +302,8 @@ describe('executable product-law manifest', () => {
   });
 
   test('uses only a positive finite environment timeout override', () => {
+    expect(PRODUCT_LAW_OBSERVATION_TIMEOUT_MS).toBe(30_000);
+    expect(MAX_PRODUCT_LAW_RUNTIME_MS).toBe(150_000);
     expect(
       productLawObservationTimeoutMs({
         PRODUCT_LAW_OBSERVATION_TIMEOUT_MS: '2.5',

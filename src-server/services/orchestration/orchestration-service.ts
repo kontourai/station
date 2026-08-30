@@ -6,7 +6,6 @@ import {
   type AgentExecutionConfig,
   isSupportedAgentIconToken,
 } from '@kontourai/station-contracts/agent';
-import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
@@ -98,6 +97,7 @@ import type {
 import { ProviderTurnEndedError } from '../../providers/adapter-shape.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
+import { publicAgentIdFromRuntimeKey } from '../../routes/agents/runtime-agent-identity.js';
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import {
   createAuthorizedTurnCorrelation,
@@ -3404,7 +3404,7 @@ export class OrchestrationService {
     const conversation: ConversationListItem = {
       id: conversationId,
       source: 'runtime',
-      agentSlug: agentId(query.conversation.agentSlug),
+      agentSlug: publicAgentIdFromRuntimeKey(query.conversation.agentSlug),
       ...(query.conversation.projectSlug
         ? { projectSlug: query.conversation.projectSlug }
         : {}),
