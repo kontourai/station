@@ -259,6 +259,49 @@ test.describe('Connection Manager Modal', () => {
     ).toBeVisible();
   });
 
+  test('keeps Add Station fields at the iOS focus-zoom floor', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: /^Manage Stations/ }).click();
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Add a Station address' })
+      .click();
+
+    const fields = [
+      page.getByPlaceholder('Name (optional)'),
+      page.getByPlaceholder('https://station.example.ts.net'),
+    ];
+    for (const field of fields) {
+      await expect(field).toBeVisible();
+      expect(
+        await field.evaluate((element) =>
+          Number.parseFloat(getComputedStyle(element).fontSize),
+        ),
+      ).toBeGreaterThanOrEqual(16);
+    }
+
+    const viewport = page.locator('meta[name="viewport"]');
+    await expect(viewport).toHaveAttribute('content', /initial-scale=1/);
+    await expect(viewport).not.toHaveAttribute(
+      'content',
+      /(?:user-scalable=no|maximum-scale=1)/,
+    );
+
+    const before = await page.evaluate(() => ({
+      scale: window.visualViewport?.scale ?? 1,
+      width: window.visualViewport?.width ?? window.innerWidth,
+    }));
+    await fields[1].focus();
+    const after = await page.evaluate(() => ({
+      scale: window.visualViewport?.scale ?? 1,
+      width: window.visualViewport?.width ?? window.innerWidth,
+    }));
+    expect(after.scale).toBeCloseTo(1, 5);
+    expect(after.width).toBeCloseTo(before.width, 1);
+  });
+
   test('can switch between connections', async ({ page }) => {
     // Add a second connection via the UI
     await page.getByRole('button', { name: /^Manage Stations/ }).click();
