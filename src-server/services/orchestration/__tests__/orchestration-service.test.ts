@@ -13825,7 +13825,11 @@ describe('OrchestrationService', () => {
         connectionId: 'claude-runtime',
         provider: 'claude',
         cwd: tmp,
-        timeoutMs: 1_000,
+        // The assertion is about reasoning-only content classification, not a
+        // one-second latency SLA. The complete related corpus can delay this
+        // synthetic event loop on a two-core runner, so retain a bounded but
+        // non-racy operation window.
+        timeoutMs: 5_000,
       }),
     ).resolves.toMatchObject({ ok: true });
   });
