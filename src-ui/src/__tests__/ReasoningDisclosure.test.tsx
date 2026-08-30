@@ -269,6 +269,51 @@ describe('reasoning disclosure (station#55)', () => {
     expect(count).toBeGreaterThan(1);
   });
 
+  test('a choice made while reasoning is still growing survives the remount', () => {
+    // The phase a reader actually clicks in: reasoning is streaming, so its
+    // text — and therefore its store key — is still changing. A choice
+    // registered once under the partial text would be looked up under the
+    // final text at the handoff and missed.
+    const partial = 'Let me think';
+    const grown = `${partial} about the problem before answering`;
+
+    const view = render(
+      <ReasoningSection
+        content={partial}
+        fontSize={14}
+        show
+        hasAnswerText={false}
+      />,
+    );
+    const summary = screen.getByRole('button', { name: /Reasoning/ });
+    // Automatic starts open with no answer yet; close then reopen so the
+    // intent is explicitly user-open.
+    fireEvent.click(summary);
+    fireEvent.click(summary);
+    expect(summary.getAttribute('aria-expanded')).toBe('true');
+
+    // Reasoning keeps streaming in, then the turn settles.
+    view.rerender(
+      <ReasoningSection
+        content={grown}
+        fontSize={14}
+        show
+        hasAnswerText={false}
+      />,
+    );
+    view.unmount();
+
+    render(
+      <ReasoningSection content={grown} fontSize={14} show hasAnswerText />,
+    );
+    expect(
+      screen
+        .getByRole('button', { name: /Reasoning/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+    expect(screen.getByText(grown)).toBeTruthy();
+  });
+
   test('both chat consumers render the shared ReasoningSection', () => {
     const uiRoot = join(process.cwd(), 'src-ui/src/components/chat');
     const streamingConsumer = readFileSync(

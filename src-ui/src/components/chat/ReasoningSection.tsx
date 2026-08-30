@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 interface ReasoningSectionProps {
   content: string;
@@ -18,10 +18,19 @@ type ExplicitIntent = Exclude<DisclosureIntent, 'automatic'>;
  * — open the reasoning to follow along, and it snaps shut when the turn
  * completes. Explicit choices therefore live here, keyed by the reasoning
  * text's hash, which is the one identity both instances share (no message id
- * reaches both call sites). Only explicit choices are stored, so the map holds
- * what a reader touched rather than every message; the cap bounds a long
- * session. Two messages with byte-identical reasoning share an entry — they
- * open together, which is harmless and rare.
+ * reaches both call sites). What this really holds, then, is "this exact
+ * reasoning text -> reader preference", global for the page load rather than
+ * scoped to a message or conversation: identical reasoning in two places
+ * opens in both, which reads as consistent because it IS the same text.
+ * Only explicit choices are stored, so the map holds what a reader touched;
+ * the cap bounds a long session.
+ *
+ * Reasoning STREAMS, so its hash changes as it grows. A choice made mid-flow
+ * is therefore re-registered under each new key (and the stale entry dropped,
+ * or one flush per keystroke would blow the cap) — without that, a mid-stream
+ * click would be stored under a key that no longer exists when the settled
+ * row looks it up, which is exactly the phase a reader is most likely to
+ * click in.
  */
 const EXPLICIT_INTENTS = new Map<number, ExplicitIntent>();
 const MAX_REMEMBERED_INTENTS = 200;
@@ -35,7 +44,12 @@ function intentKey(content: string): number {
 }
 
 function rememberIntent(key: number, intent: ExplicitIntent): void {
-  if (EXPLICIT_INTENTS.size >= MAX_REMEMBERED_INTENTS) {
+  // Re-setting an existing key does not grow the map, so evicting there would
+  // discard an unrelated reader's choice for nothing.
+  if (
+    !EXPLICIT_INTENTS.has(key) &&
+    EXPLICIT_INTENTS.size >= MAX_REMEMBERED_INTENTS
+  ) {
     const oldest = EXPLICIT_INTENTS.keys().next();
     if (!oldest.done) EXPLICIT_INTENTS.delete(oldest.value);
   }
@@ -49,7 +63,9 @@ export function __resetReasoningDisclosureIntents(): void {
 
 /**
  * Words, counted so the summary stays honest for scripts without whitespace
- * boundaries — a 500-character Chinese chain is not "1 word", and that count
+ * boundaries. The regex fallback is unreachable in every supported
+ * environment (Chromium/WebKit webviews and the Node test runner all ship
+ * Intl.Segmenter) — it is a belt, not covered behavior — a 500-character Chinese chain is not "1 word", and that count
  * is the reader's only signal of how much is hidden.
  */
 function countWords(content: string): number {
@@ -91,6 +107,16 @@ export function ReasoningSection({
   const [intent, setIntent] = useState<DisclosureIntent>(
     () => EXPLICIT_INTENTS.get(key) ?? 'automatic',
   );
+  const registeredKey = useRef<number | null>(null);
+  useEffect(() => {
+    if (intent === 'automatic') return;
+    if (registeredKey.current === key) return;
+    if (registeredKey.current !== null) {
+      EXPLICIT_INTENTS.delete(registeredKey.current);
+    }
+    rememberIntent(key, intent);
+    registeredKey.current = key;
+  }, [key, intent]);
 
   if (!show) return null;
 
@@ -119,9 +145,9 @@ export function ReasoningSection({
         aria-expanded={isOpen}
         aria-controls={detailsId}
         onClick={() => {
-          const next: ExplicitIntent = isOpen ? 'user-closed' : 'user-open';
-          rememberIntent(key, next);
-          setIntent(next);
+          // The effect above owns registration (including re-keying as the
+          // reasoning grows); this only records the choice.
+          setIntent(isOpen ? 'user-closed' : 'user-open');
         }}
       >
         <span>{summary}</span>
