@@ -15,13 +15,30 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
 const transcriptMock = vi.hoisted(() => ({ events: [] as any[] }));
 const chatInputPropsMock = vi.hoisted(() => ({
   current: null as Record<string, any> | null,
+}));
+const queuedMessagesPropsMock = vi.hoisted(() => ({
+  current: null as Record<string, any> | null,
+}));
+const steerOrchestrationTurnMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  steerOrchestrationTurn: (...args: unknown[]) =>
+    steerOrchestrationTurnMock(...args),
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -119,7 +136,10 @@ vi.mock('../components/chat/ChatInputArea', () => ({
 }));
 
 vi.mock('../components/chat/QueuedMessages', () => ({
-  QueuedMessages: () => null,
+  QueuedMessages: (props: Record<string, any>) => {
+    queuedMessagesPropsMock.current = props;
+    return <div data-testid="queued-messages" />;
+  },
 }));
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
@@ -237,6 +257,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     agentsMock.current = [];
     transcriptMock.events = [];
     chatInputPropsMock.current = null;
+    queuedMessagesPropsMock.current = null;
+    steerOrchestrationTurnMock.mockReset();
+    steerOrchestrationTurnMock.mockResolvedValue({ outcome: 'steered' });
   });
 
   /** The reported defect, exactly: nothing live, and nothing shown. */
@@ -265,6 +288,37 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(
       alerts.some((alert) => alert.textContent?.includes('Engine crashed')),
     ).toBe(true);
+  });
+
+  test('queued Steer targets the receipted current execution Session', async () => {
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        threadId: 'thread-alpha:session:child-3',
+        status: 'running',
+        lifecycleState: 'running',
+      }),
+      session: buildSession({
+        status: 'sending',
+        queuedMessages: ['course correct'],
+        orchestrationProvider: 'claude',
+        currentSessionId: 'thread-alpha:session:child-3',
+        openTurnId: 'turn-child-3',
+      }),
+    });
+
+    await waitFor(() =>
+      expect(queuedMessagesPropsMock.current?.canSteer).toBe(true),
+    );
+    await act(async () => {
+      await queuedMessagesPropsMock.current?.onSteer('course correct');
+    });
+
+    expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
+      threadId: 'thread-alpha:session:child-3',
+      text: 'course correct',
+      turnId: 'turn-child-3',
+      apiBase: 'http://localhost:3242',
+    });
   });
 
   test('a failed session with nothing recorded says so, rather than showing an empty banner', () => {
