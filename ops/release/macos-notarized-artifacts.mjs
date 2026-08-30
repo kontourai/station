@@ -29,6 +29,10 @@ export const EMBEDDED_MACHO_COMMAND_TIMEOUT_MS = 30 * 1000;
 // every candidate, while still allowing one bounded transport retry.
 export const EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS = 90 * 1000;
 export const NOTARY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
+// Compressing an application into UDZO is the one release step whose duration
+// scales directly with the staged payload.  Keep it bounded, but give a
+// multi-hundred-megabyte application enough time on a contended CI runner.
+export const DMG_CREATION_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 export const COMMAND_TERMINATION_GRACE_MS = 10 * 1000;
 export const MAX_RETRY_ATTEMPTS = 2;
 // Standalone callers retain a bounded relative deadline. Hosted release passes
@@ -618,6 +622,9 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     rmSync,
   };
   const app = admitMacosAppBundle(need(options.app, 'app'), fs, injected.path);
+  if (options.dmgOnly !== undefined && options.dmgOnly !== true)
+    throw new Error('DMG-only mode must be explicitly enabled.');
+  const dmgOnly = options.dmgOnly === true;
   const identity = need(options.identity, 'identity');
   const key = need(options.notaryKey, 'notaryKey');
   const keyId = need(options.notaryKeyId, 'notaryKeyId');
@@ -673,39 +680,41 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         ),
         commandOptions,
       );
-    const retryEmbeddedSign = (phase, args, operation) =>
-      retryRetryableTransportFailure(phase, args, operation, logger);
-    await sealEmbeddedMacosMachOBounded(app, identity, {
-      ...injected.embeddedMacos,
-      command: embeddedCommand,
-      deadlineMs: Math.min(
-        EMBEDDED_MACHO_SEALING_DEADLINE_MS,
-        deadlineAt - now() - COMMAND_TERMINATION_GRACE_MS,
-      ),
-      retrySign: retryEmbeddedSign,
-      sign: embeddedSign,
-    });
-    const outerSigningArgs = [
-      '--force',
-      '--sign',
-      identity,
-      '--options',
-      'runtime',
-      '--timestamp',
-      app,
-    ];
-    await retryRetryableTransportFailure(
-      'outer app signing',
-      outerSigningArgs,
-      () =>
-        command(
-          'outer app signing',
-          'codesign',
-          outerSigningArgs,
-          SIGNING_COMMAND_TIMEOUT_MS,
+    if (!dmgOnly) {
+      const retryEmbeddedSign = (phase, args, operation) =>
+        retryRetryableTransportFailure(phase, args, operation, logger);
+      await sealEmbeddedMacosMachOBounded(app, identity, {
+        ...injected.embeddedMacos,
+        command: embeddedCommand,
+        deadlineMs: Math.min(
+          EMBEDDED_MACHO_SEALING_DEADLINE_MS,
+          deadlineAt - now() - COMMAND_TERMINATION_GRACE_MS,
         ),
-      logger,
-    );
+        retrySign: retryEmbeddedSign,
+        sign: embeddedSign,
+      });
+      const outerSigningArgs = [
+        '--force',
+        '--sign',
+        identity,
+        '--options',
+        'runtime',
+        '--timestamp',
+        app,
+      ];
+      await retryRetryableTransportFailure(
+        'outer app signing',
+        outerSigningArgs,
+        () =>
+          command(
+            'outer app signing',
+            'codesign',
+            outerSigningArgs,
+            SIGNING_COMMAND_TIMEOUT_MS,
+          ),
+        logger,
+      );
+    }
     await command(
       'outer app signature verification',
       'codesign',
@@ -765,16 +774,22 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         entitlementOutput.stderr !== `${entitlementDiagnostic}\n`)
     )
       throw new Error('Outer app has unexpected entitlements.');
-    await command('application notarization archive', 'ditto', [
-      '-c',
-      '-k',
-      '--sequesterRsrc',
-      '--keepParent',
-      app,
-      zip,
-    ]);
-    await submit(command, zip, key, keyId, issuer, logger);
-    await command('application stapling', 'xcrun', ['stapler', 'staple', app]);
+    if (!dmgOnly) {
+      await command('application notarization archive', 'ditto', [
+        '-c',
+        '-k',
+        '--sequesterRsrc',
+        '--keepParent',
+        app,
+        zip,
+      ]);
+      await submit(command, zip, key, keyId, issuer, logger);
+      await command('application stapling', 'xcrun', [
+        'stapler',
+        'staple',
+        app,
+      ]);
+    }
     await command('application staple validation', 'xcrun', [
       'stapler',
       'validate',
@@ -789,17 +804,22 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     ]);
     fs.mkdirSync(dmgRoot, { recursive: true });
     await command('DMG staging', 'ditto', [app, join(dmgRoot, appName)]);
-    await command('DMG creation', 'hdiutil', [
-      'create',
-      '-volname',
-      'Station',
-      '-srcfolder',
-      dmgRoot,
-      '-ov',
-      '-format',
-      'UDZO',
-      dmg,
-    ]);
+    await command(
+      'DMG creation',
+      'hdiutil',
+      [
+        'create',
+        '-volname',
+        'Station',
+        '-srcfolder',
+        dmgRoot,
+        '-ov',
+        '-format',
+        'UDZO',
+        dmg,
+      ],
+      DMG_CREATION_COMMAND_TIMEOUT_MS,
+    );
     const dmgSigningArgs = ['--force', '--sign', identity, '--timestamp', dmg];
     await retryRetryableTransportFailure(
       'DMG signing',
@@ -911,18 +931,24 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
   }
 }
 
-if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
+export function parseMacosNotarizedArtifactsCli(argv) {
   const raw = {};
-  for (let i = 2; i < process.argv.length; i += 2) {
-    if (
-      !process.argv[i]?.startsWith('--') ||
-      !process.argv[i + 1] ||
-      raw[process.argv[i]]
-    )
+  for (let index = 0; index < argv.length; ) {
+    const name = argv[index];
+    if (name === '--dmg-only') {
+      if (raw['--dmg-only'])
+        throw new Error('Expected unique --name value arguments.');
+      raw['--dmg-only'] = true;
+      index += 1;
+      continue;
+    }
+    const value = argv[index + 1];
+    if (!name?.startsWith('--') || !value || raw[name])
       throw new Error('Expected unique --name value arguments.');
-    raw[process.argv[i]] = process.argv[i + 1];
+    raw[name] = value;
+    index += 2;
   }
-  createMacosNotarizedArtifacts({
+  return {
     app: raw['--app'],
     identity: raw['--identity'],
     notaryKey: raw['--notary-key'],
@@ -933,7 +959,14 @@ if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
     architecture: raw['--architecture'],
     bundleId: raw['--bundle-id'],
     deadlineEpoch: raw['--deadline-epoch'],
-  }).catch((error) => {
+    dmgOnly: raw['--dmg-only'] === true ? true : undefined,
+  };
+}
+
+if (process.argv[1] && new URL(import.meta.url).pathname === process.argv[1]) {
+  createMacosNotarizedArtifacts(
+    parseMacosNotarizedArtifactsCli(process.argv.slice(2)),
+  ).catch((error) => {
     console.error(`::error::macOS release failed: ${error.message}`);
     process.exitCode = 1;
   });
