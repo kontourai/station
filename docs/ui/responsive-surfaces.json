@@ -38,6 +38,12 @@
       "evidence": "src-ui/src/components/modals/__tests__/ConfirmModal.test.tsx"
     },
     {
+      "path": "src-ui/src/components/modals/FolderBrowserModal.tsx",
+      "strategy": "covered",
+      "contract": "ResponsiveDialogSurface",
+      "evidence": "src-ui/src/components/modals/__tests__/FolderBrowserModal.test.tsx covers navigate/up/select/keyboard-roving-focus/empty/error and caller-supplied classnames; #1014 shared folder browser, adopted by plugin management's FolderPickerModal and PathAutocomplete's opt-in Browse button"
+    },
+    {
       "path": "src-ui/src/components/modals/ImportSkillsModal.tsx",
       "strategy": "covered",
       "evidence": "src-ui/src/__tests__/ImportSkillsModal.test.tsx"

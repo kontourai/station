@@ -6,6 +6,13 @@ import { FolderBrowserModal } from '../../components/modals/FolderBrowserModal';
 // `plugins__*` classnames wired through unchanged, so the move is behaviour-
 // and pixel-preserving for this consumer — see
 // `views/plugin-management/__tests__/FolderPickerModal.test.tsx`.
+//
+// This file no longer renders `ResponsiveDialogSurface` directly — it
+// delegates entirely to `FolderBrowserModal`, which does. Named here for
+// `docs/ui/responsive-surfaces.json`'s `contract` adoption check
+// (scripts/responsive-surface-ratchet.mjs), which reads this file's own
+// source: the modal this component puts on screen is still, transitively,
+// a ResponsiveDialogSurface dialog.
 export function FolderPickerModal({
   onSelect,
   onClose,

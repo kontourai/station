@@ -51,6 +51,10 @@
   gap: 0.75rem;
   padding: 0.75rem 1.25rem;
   border-bottom: 1px solid var(--border-primary);
+  /* Lets the path wrap above the select button rather than overflowing on a
+     narrow panel; inert on a wide one where the row already fits on one
+     line, so this needs no width/pointer query of its own. */
+  flex-wrap: wrap;
 }
 
 .folder-browser__path code {
@@ -65,6 +69,7 @@
 
 .folder-browser__select-btn {
   flex-shrink: 0;
+  min-height: 44px;
   padding: 0.45rem 0.85rem;
   font-size: 0.78rem;
   font-weight: 600;
@@ -109,6 +114,7 @@
 .folder-browser__entry {
   display: flex;
   width: 100%;
+  min-height: 44px;
   align-items: center;
   gap: 0.6rem;
   padding: 0.6rem 0.7rem;
@@ -140,21 +146,10 @@
   white-space: nowrap;
 }
 
-@media (max-width: 480px), (max-height: 540px) and (pointer: coarse) {
-  .folder-browser__panel {
-    width: 100%;
-    max-height: 85vh;
-  }
-
-  .folder-browser__entry {
-    min-height: 44px;
-  }
-
-  .folder-browser__select-btn {
-    min-height: 44px;
-  }
-
-  .folder-browser__path {
-    flex-wrap: wrap;
-  }
-}
+/* No dedicated mobile breakpoint: `.folder-browser__panel`'s width/height
+   already use `min()` against the viewport (fluid down to 100% on a narrow
+   screen with no query of its own), and the touch-target/wrap rules above
+   are unconditional because none of them cost anything on a wide viewport
+   — see the responsive-surface-primitives note in mobile-css-ratchet.mjs on
+   preferring the shared surface's own responsiveness over a page-local
+   `@media` block. */
