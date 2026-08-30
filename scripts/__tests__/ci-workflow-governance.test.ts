@@ -15,6 +15,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
   workflow_dispatch:
 
 jobs:
@@ -43,10 +46,12 @@ jobs:
           fi
 `;
 
-const cleanPostMergeWorkflow = cleanWorkflow.replace(
-  '  pull_request:\n    branches: [main]\n',
-  '',
-);
+const cleanPostMergeWorkflow = cleanWorkflow
+  .replace('  pull_request:\n    branches: [main]\n', '')
+  .replace(
+    '  merge_group:\n    branches: [main]\n    types: [checks_requested]\n',
+    '',
+  );
 
 function findingsFor(workflow: string) {
   return collectCiWorkflowGovernanceFindings({
@@ -101,6 +106,20 @@ describe('primary CI workflow governance', () => {
       ),
     ).toContain(
       'Primary CI pull_request_target must include exactly opened, synchronize, reopened, and edited types.',
+    );
+  });
+
+  test('requires the synthesized merge queue candidate trigger', () => {
+    expect(collectPrimaryCiWorkflowTriggerFindings(cleanWorkflow)).toEqual([]);
+    expect(
+      collectPrimaryCiWorkflowTriggerFindings(
+        cleanWorkflow.replace(
+          '  merge_group:\n    branches: [main]\n    types: [checks_requested]\n',
+          '',
+        ),
+      ),
+    ).toContain(
+      'Primary CI workflow must trigger on merge_group checks_requested for main.',
     );
   });
 
@@ -262,6 +281,9 @@ describe('primary CI workflow governance', () => {
     const browserSmoke = parsedJob(workflow, 'browser-smoke');
 
     expect(workflow).toContain('pull_request_target:\n    branches: [main]');
+    expect(workflow).toContain(
+      'merge_group:\n    branches: [main]\n    types: [checks_requested]',
+    );
     expect(classify?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
       "${{ github.event_name != 'pull_request_target' }}",
@@ -269,7 +291,7 @@ describe('primary CI workflow governance', () => {
     expect(classify?.['runs-on']).toBe('ubuntu-22.04');
     expect(fastChecks?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      "${{ always() && !cancelled() && ((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
+      "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
     );
     expect(fastChecks?.['runs-on']).toBe('ubuntu-22.04');
     expect(fastChecks?.['timeout-minutes']).toBe(45);
@@ -369,7 +391,7 @@ describe('primary CI workflow governance', () => {
       'utf8',
     ).replace(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      "if: ${{ always() && !cancelled() && ((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
+      "if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
       "if: false # github.event_name == 'pull_request_target'",
     );
 
