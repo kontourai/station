@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -583,7 +584,10 @@ describe('findStaleInstalledDependencies malformed lockfile (station#4109 review
       expect(error.message).toContain(
         'package-lock.json unreadable/unsupported shape',
       );
-      expect(error.message).toContain('run `npm run dependencies:ci` in');
+      expect(error.message).toContain(
+        `run \`npm run dependencies:ci\` in ${realpathSync(temp.root)}`,
+      );
+      expect(error.repositoryRoot).toBe(realpathSync(temp.root));
     } finally {
       temp.remove();
     }
@@ -682,10 +686,13 @@ describe('assertInstalledDependenciesMatchLockfile (station#4109)', () => {
       const error = caught as InstanceType<
         typeof VerificationEnvironmentStaleError
       >;
-      expect(error.repositoryRoot).toBe(temp.root);
-      expect(error.message).toContain(temp.root);
+      // The canonical root, not the argument: the check realpaths before every
+      // lookup, and on macOS `/var/...` and `/private/var/...` are different
+      // strings. Naming the argument would point at a tree nobody inspected.
+      const inspected = realpathSync(temp.root);
+      expect(error.repositoryRoot).toBe(inspected);
       expect(error.message).toContain(
-        `run \`npm run dependencies:ci\` in ${temp.root}`,
+        `run \`npm run dependencies:ci\` in ${inspected}`,
       );
     } finally {
       temp.remove();
@@ -934,11 +941,17 @@ describe('run-verification CLI end-to-end preflight (station#4109)', () => {
           error: (message: string) => errors.push(message),
         }),
       ).resolves.toBe(2);
-      expect(errors).toHaveLength(1);
       expect(errors[0]).toContain('environment-stale');
       expect(errors[0]).toContain(
         'root → left-pad: installed 1.2.0, locked 1.3.0',
       );
+      // The operator surface is what matters, not the error object: `errorText`
+      // scrubs absolute paths to `[PATH]`, so asserting the root only on the
+      // thrown error proves nothing about what anyone actually reads. This
+      // asserts the tree is named in the CLI's own output.
+      const rendered = errors.join('\n');
+      expect(rendered).toContain(realpathSync(fixture));
+      expect(rendered).toContain('run `npm run dependencies:ci` there');
     } finally {
       process.chdir(originalCwd);
       rmSync(fixture, { recursive: true, force: true });

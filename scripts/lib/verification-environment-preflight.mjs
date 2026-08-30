@@ -330,16 +330,15 @@ function mismatchError(mismatches, skipped, repositoryRoot) {
   return new VerificationEnvironmentStaleError(
     `environment-stale: node_modules does not match package-lock.json for ` +
       `${mismatches.length} package${mismatches.length === 1 ? '' : 's'} ` +
-      `in ${repositoryRoot} (${remedyFor(repositoryRoot)}):\n${lines}`,
+      `-- ${remedyFor(repositoryRoot)}:\n${lines}`,
     { mismatches, skipped, reason: 'dependency-mismatch', repositoryRoot },
   );
 }
 
 function lockfileUnreadableError(repositoryRoot) {
   return new VerificationEnvironmentStaleError(
-    `environment-stale: package-lock.json unreadable/unsupported shape in ` +
-      `${repositoryRoot} -- cannot verify environment ` +
-      `(${remedyFor(repositoryRoot)})`,
+    `environment-stale: package-lock.json unreadable/unsupported shape ` +
+      `-- cannot verify environment -- ${remedyFor(repositoryRoot)}`,
     { reason: 'lockfile-unreadable', repositoryRoot },
   );
 }
@@ -353,8 +352,14 @@ function lockfileUnreadableError(repositoryRoot) {
  * reuse, because nothing was ever created.
  */
 export function assertInstalledDependenciesMatchLockfile({ repositoryRoot }) {
+  // Report the tree the check actually read, not the caller's argument:
+  // `findStaleInstalledDependencies` canonicalizes before every lockfile and
+  // node_modules lookup, and on macOS `/var/...` vs `/private/var/...` makes
+  // those genuinely different strings. Naming the argument would document a
+  // root nobody inspected.
+  const inspectedRoot = canonicalRoot(repositoryRoot);
   const result = findStaleInstalledDependencies({ repositoryRoot });
-  if (result.lockfileUnreadable) throw lockfileUnreadableError(repositoryRoot);
+  if (result.lockfileUnreadable) throw lockfileUnreadableError(inspectedRoot);
   if (result.mismatches.length > 0)
-    throw mismatchError(result.mismatches, result.skipped, repositoryRoot);
+    throw mismatchError(result.mismatches, result.skipped, inspectedRoot);
 }

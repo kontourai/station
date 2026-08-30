@@ -385,6 +385,17 @@ export async function runVerificationCli(
     return result?.receipt?.terminal?.passed === false ? 1 : 0;
   } catch (caught) {
     error(redactVerificationSubmissionError(caught));
+    // `errorText` scrubs every absolute path to `[PATH]`, which is right for
+    // handoff records but destroys the one fact an environment-stale failure
+    // exists to convey: WHICH tree to repair. The coordinator and submission
+    // paths inspect a frozen worktree or a prepared baseline sibling, not the
+    // tree the operator is standing in, so a scrubbed remedy sends them to
+    // repair something that is already correct. Print the root beside the
+    // redacted message rather than loosening the scrub for every error.
+    if (caught?.disposition === 'environment-stale' && caught.repositoryRoot)
+      error(
+        `environment-stale root: ${caught.repositoryRoot} -- run \`npm run dependencies:ci\` there`,
+      );
     return 2;
   }
 }

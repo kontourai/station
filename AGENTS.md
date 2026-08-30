@@ -11,6 +11,12 @@
 - Diagnose the failure rather than rerun-to-green: a red lane is a signal to diagnose, not a request to rerun until green. For a redundant same-digest run, join or reuse the existing lease.
 - After focused proof, freeze the worktree before `npm run full:regression:submit`. Never use shell background or relaunch loops, and do not edit or remove a worktree with a live handoff.
 
+## A test must execute the seam it is named for
+
+Before adding or accepting a test, answer both: does it reach the code its name claims, and would it fail if the fix were reverted? A test that satisfies its name without touching its subject is worse than no test — it retires the question, so the next reader sees coverage and stops looking. Recurring shapes to reject: a constant asserted against its own literal; a source-text or config-shape scan (a regex over a file, a substring of workflow YAML) standing in for behaviour; a pure reducer or helper exercised while the defect lives in the integration that calls it; an assertion sitting behind a catch-all that converts the tested condition into an ordinary return.
+
+When a mutation is the only convincing evidence, commit first and confirm `git status --short` is empty before injecting — restoring a dirty tree discards uncommitted work. Report the red result, not only the green: an injection that does not fail means the test lacks power or the mutation never reached the case. A fix round is where defects are introduced most often, so review the delta of a fix, not only the original change.
+
 ## Issue references
 
 `archive#NNNN` — and any `station#NNNN` or bare `#NNNN` below #550, the reseeded backlog's start — refers to [kontourai/station-archive](https://github.com/kontourai/station-archive), the pre-2026-08-28 backlog and history. Those discussions remain readable there; this repository's own issues start fresh. Write new references as plain `#NNNN` for this repo or `archive#NNNN` for the archive.
