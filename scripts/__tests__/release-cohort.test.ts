@@ -35,7 +35,18 @@ const input = (overrides: any = {}) => ({
   channel: 'nightly',
   sourceSha,
   workflowRunId: '112061',
-  versionIdentities: { android: '1.0.0', desktop: '1.0.0' },
+  versionIdentities: {
+    android: {
+      packageName: 'io.kontourai.station.nightly',
+      versionCode: 242801,
+      versionName: '1.0.0-nightly.1',
+    },
+    desktop: {
+      bundleVersion: '242801',
+      releaseTag: 'nightly-desktop',
+      version: '1.0.0-nightly.1',
+    },
+  },
   availabilityPolicy: {
     releaseMode: 'atomic',
     requiredReceipt: 'provider-backed',
@@ -112,6 +123,32 @@ describe('release cohort content-bound state machine', () => {
     expect(() =>
       createCohortPlan(input({ versionIdentities: { android: '1' } })),
     ).toThrow(CohortValidationError);
+    expect(() =>
+      createCohortPlan(
+        input({
+          versionIdentities: {
+            ...input().versionIdentities,
+            android: {
+              ...input().versionIdentities.android,
+              versionCode: '242801',
+            },
+          },
+        }),
+      ),
+    ).toThrow('versionIdentities.android is invalid');
+    expect(() =>
+      createCohortPlan(
+        input({
+          versionIdentities: {
+            ...input().versionIdentities,
+            desktop: {
+              ...input().versionIdentities.desktop,
+              releaseTag: 'not/a-tag',
+            },
+          },
+        }),
+      ),
+    ).toThrow('versionIdentities.desktop is invalid');
     expect(() =>
       createStageReceipt(
         { ...p, promotionOrder: ['macos', 'android'] },
