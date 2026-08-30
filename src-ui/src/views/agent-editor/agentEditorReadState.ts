@@ -1,7 +1,7 @@
 interface AgentEditorReadStateArgs {
   hasLoadedAgent: boolean;
   loadError: unknown;
-  isLoading: boolean;
+  isPending: boolean;
   isFetching: boolean;
   isCreating: boolean;
 }
@@ -9,7 +9,7 @@ interface AgentEditorReadStateArgs {
 export function resolveAgentEditorReadState({
   hasLoadedAgent,
   loadError,
-  isLoading,
+  isPending,
   isFetching,
   isCreating,
 }: AgentEditorReadStateArgs) {
@@ -29,6 +29,6 @@ export function resolveAgentEditorReadState({
     visibleRefreshError: hasLoadedAgent ? loadErrorMessage : null,
     editorIsLoading:
       !isCreating &&
-      (isLoading || (!!initialLoadError && isFetching && !hasLoadedAgent)),
+      (isPending || (!!initialLoadError && isFetching && !hasLoadedAgent)),
   };
 }
