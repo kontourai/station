@@ -618,6 +618,47 @@ describe('persisted detail remains authoritative while the collection reconciles
     expect(updateAgent).not.toHaveBeenCalled();
   });
 
+  test('a completed data update can establish authority when fetched-after-mount resets', () => {
+    state.selectedId = 'writer';
+    state.detail = agent({ slug: 'writer', name: 'Cached Writer' });
+    state.detailDataUpdatedAt = 1;
+    state.detailFetchedAfterMount = false;
+    state.detailFetching = true;
+    const { result, rerender } = render();
+    expect(result.current.selectedAgent).toBeUndefined();
+
+    act(() => {
+      state.detail = agent({ slug: 'writer', name: 'Fresh Writer' });
+      state.detailDataUpdatedAt = 2;
+      state.detailFetching = false;
+      // Query observer remounts can reset this flag after the response; the
+      // advanced data timestamp remains the positive completion signal.
+      state.detailFetchedAfterMount = false;
+      rerender();
+    });
+    expect(result.current.selectedAgent?.name).toBe('Fresh Writer');
+  });
+
+  test('a cancelled fetch cannot promote unchanged cached detail', () => {
+    state.selectedId = 'writer';
+    state.detail = agent({ slug: 'writer', name: 'Cached Writer' });
+    state.detailDataUpdatedAt = 1;
+    state.detailFetchedAfterMount = false;
+    state.detailFetching = true;
+    const { result, rerender } = render();
+    expect(result.current.selectedAgent).toBeUndefined();
+
+    act(() => {
+      state.detailFetching = false;
+      // Cancellation restores the prior successful query state without a
+      // data update or an error. Request start alone must not authorize it.
+      state.detailFetchedAfterMount = false;
+      rerender();
+    });
+    expect(result.current.selectedAgent).toBeUndefined();
+    expect(result.current.isLoading).toBe(true);
+  });
+
   test('a failed first mount refresh cannot promote cached detail into write authority', async () => {
     state.selectedId = 'writer';
     state.agents = [];

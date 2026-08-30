@@ -205,7 +205,6 @@ export function useAgentsViewModel({
     generation: 0,
     baselineDataUpdatedAt: dataUpdatedAt,
     fromNoSelection: true,
-    sawFetching: isFetching,
   });
   if (detailRouteRef.current.slug !== selectedAgentSlug) {
     const priorSlug = detailRouteRef.current.slug;
@@ -214,20 +213,15 @@ export function useAgentsViewModel({
       generation: detailRouteRef.current.generation + 1,
       baselineDataUpdatedAt: dataUpdatedAt,
       fromNoSelection: priorSlug === undefined,
-      sawFetching: isFetching,
     };
-  } else if (isFetching) {
-    detailRouteRef.current.sawFetching = true;
   }
   const detailRoute = detailRouteRef.current;
   const receivedFreshDetail =
     agentLoadSucceeded &&
     !agentLoadFailed &&
     !isFetching &&
-    isFetchedAfterMount &&
     (dataUpdatedAt > detailRoute.baselineDataUpdatedAt ||
-      detailRoute.sawFetching ||
-      detailRoute.fromNoSelection);
+      (isFetchedAfterMount && detailRoute.fromNoSelection));
   const successfulMismatch =
     receivedFreshDetail &&
     !!loadedAgent &&
