@@ -83,13 +83,21 @@
   gap: 1.25rem;
 }
 
-.new-project-modal__draft-fields {
-  display: flex;
-  /* #765 F7: the form's one shrinkable region — scrolls internally when the
-     viewport is short so the actions row below never leaves the screen. */
+.new-project-modal__draft-scroll {
+  /* #959: Chromium fieldsets retain special intrinsic layout/overflow
+     behaviour even as flex items. Making the fieldset itself the scroll owner
+     let its contents paint past the nominal flex box and under the actions at
+     phone heights. A plain wrapper owns the bounded scrollport; the semantic
+     fieldset remains inside it and can grow to its full content height. */
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  min-inline-size: 0;
+  overscroll-behavior: contain;
+}
+
+.new-project-modal__draft-fields {
+  display: flex;
   min-inline-size: 0;
   margin: 0;
   padding: 0;
@@ -380,8 +388,8 @@
 @media (max-width: 780px) {
   .new-project-modal.responsive-surface-panel {
     /* The shared mobile surface normally scrolls its whole panel. This form
-       already has a dedicated scroll region (`__draft-fields`); keeping the
-       panel clipped prevents the fixed footer from painting over the final
+       already has a dedicated scroll region (`__draft-scroll`); keeping the
+       panel clipped prevents the actions row from painting over the final
        Starter-layout card at 390x844. */
     overflow: hidden;
     padding: 1.1rem;
