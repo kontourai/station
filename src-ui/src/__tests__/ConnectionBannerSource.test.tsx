@@ -119,6 +119,7 @@ describe('ConnectionBannerSource → BannerHost — version drift', () => {
     'undetermined',
     'offline',
     'server-restarted',
+    'host-unavailable',
   ] as const)(
     'never banners a transient %s failure, however long it lasts',
     async (reason) => {

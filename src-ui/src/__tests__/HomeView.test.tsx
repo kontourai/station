@@ -22,10 +22,13 @@ function renderHomeView(props: ComponentProps<typeof HomeView>) {
 
 const fixtures = vi.hoisted(() => ({
   projects: [{ id: 'p1', slug: 'station', name: 'Station' }],
+  projectsLoading: false,
   sessions: [] as any[],
   tasks: [] as any[],
   chats: {} as Record<string, any>,
   agents: [{ slug: 'codex-agent', name: 'Codex', model: 'gpt-5.3-codex' }],
+  agentsLoaded: true,
+  developerToolsEnabled: false,
   sessionsError: false,
   sessionsLoading: false,
   tasksError: false,
@@ -95,7 +98,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: fixtures.inventoryRefetch,
   }),
   useAcknowledgeConversationMutation: () => ({ mutate: vi.fn() }),
-  useProjectsQuery: () => ({ data: fixtures.projects }),
+  useProjectsQuery: () => ({
+    data: fixtures.projects,
+    isLoading: fixtures.projectsLoading,
+  }),
   useOrchestrationSessionsQuery: () => ({
     data: fixtures.sessions,
     isError: fixtures.sessionsError,
@@ -158,8 +164,13 @@ vi.mock('../contexts/ActiveChatsContext', () => ({
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => fixtures.agents,
-  useAgentsLoaded: () => true,
+  useAgentsLoaded: () => fixtures.agentsLoaded,
   useAgentsSettled: () => true,
+}));
+vi.mock('../contexts/DeviceSettingsContext', () => ({
+  useDeviceSettings: () => ({
+    developerToolsEnabled: fixtures.developerToolsEnabled,
+  }),
 }));
 // Home mounts the first-run chapter (UX audit RT-02). These fixtures put the
 // home in the state every test in this file assumes — one that has already
@@ -242,6 +253,9 @@ describe('HomeView', () => {
     fixtures.agents = [
       { slug: 'codex-agent', name: 'Codex', model: 'gpt-5.3-codex' },
     ];
+    fixtures.agentsLoaded = true;
+    fixtures.projectsLoading = false;
+    fixtures.developerToolsEnabled = false;
     fixtures.sessionsError = false;
     fixtures.sessionsLoading = false;
     fixtures.tasksError = false;
@@ -268,6 +282,49 @@ describe('HomeView', () => {
       screen.getByRole('button', { name: /Open local project/i }),
     );
     expect(onNavigate).toHaveBeenCalledWith({ type: 'project-new' });
+  });
+
+  test('renders shimmer cards while Home actions are unresolved instead of claiming an agent is absent', () => {
+    fixtures.agents = [];
+    fixtures.agentsLoaded = false;
+    fixtures.defaultAgent = undefined;
+    const { container } = renderHomeView({
+      continuation: null,
+      onNavigate: vi.fn(),
+    });
+
+    expect(
+      screen.getByRole('status', { name: 'Loading Home actions' }),
+    ).toBeTruthy();
+    expect(
+      container.querySelectorAll(
+        '.home-view__actions--loading > .skeleton--block',
+      ),
+    ).toHaveLength(3);
+    expect(screen.queryByText('No agent is ready yet')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Start direct chat/i }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Set up an agent/i }),
+    ).toBeNull();
+  });
+
+  test('keeps inspection and Scheduler self-test cards off default Home and admits them only in developer mode', () => {
+    const defaultHome = renderHomeView({
+      continuation: null,
+      onNavigate: vi.fn(),
+    });
+    expect(screen.queryByText('Inspect an approval')).toBeNull();
+    expect(screen.queryByText('Inspect review evidence')).toBeNull();
+    expect(screen.queryByText('Run a scheduled readiness check')).toBeNull();
+    defaultHome.unmount();
+
+    fixtures.developerToolsEnabled = true;
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    expect(screen.getByText('Inspect an approval')).toBeTruthy();
+    expect(screen.getByText('Inspect review evidence')).toBeTruthy();
+    expect(screen.getByText('Run a scheduled readiness check')).toBeTruthy();
   });
 
   test('degrades a still-pending recent-work lane to an actionable host-slow state', () => {

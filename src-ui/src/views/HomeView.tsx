@@ -11,6 +11,7 @@ import { StarterScheduledCheckCard } from '../components/home/StarterScheduledCh
 import { StarterWorkCard } from '../components/home/StarterWorkCard';
 import { ErrorState, SkeletonList } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
+import { useDeviceSettings } from '../contexts/DeviceSettingsContext';
 import type { NavigationView } from '../types';
 import { WorkspacePaneAwayState } from '../workspace-panes/WorkspacePaneAwayState';
 import {
@@ -84,6 +85,7 @@ export function HomeView({
 }) {
   const model = useHomeViewModel(onNavigate);
   const config = useConfig();
+  const { developerToolsEnabled } = useDeviceSettings();
   const selection = selectClientWorkspacePaneRenderer(
     WORKSPACE_HOME_PANE_DESCRIPTOR,
     {
@@ -161,8 +163,12 @@ export function HomeView({
       {config?.firstRun?.status === 'completed' && (
         <>
           <StarterWorkCard />
-          <StarterInspectionCards />
-          <StarterScheduledCheckCard />
+          {developerToolsEnabled && (
+            <>
+              <StarterInspectionCards />
+              <StarterScheduledCheckCard />
+            </>
+          )}
         </>
       )}
       {status?.state === 'granted' ? (

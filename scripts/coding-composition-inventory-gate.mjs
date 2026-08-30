@@ -101,6 +101,14 @@ const expectedDependencies = new Map(
     'src-ui/src/hooks/useGitActions.ts': 'git-review',
     'src-ui/src/hooks/useNewProjectStarter.ts': 'distribution',
     'src-ui/src/index.css': 'presentation',
+    // #890: ProjectPage is the navigation composition seam that chooses a
+    // host before opening a layout-bound Workspace Pane. Every renderer in
+    // the current closed requirement set reads Coding layout configuration,
+    // so that coupling is intentional rather than a generic-host claim.
+    // Generalizing it requires a versioned WorkspacePaneDescriptor field for
+    // accepted layout types AND retained-LayoutTab/parser adaptation checks;
+    // a UI-only field would make contributed routing metadata unverifiable.
+    'src-ui/src/views/ProjectPage.tsx': 'navigation',
     'src-ui/src/views/ReviewQueueView.tsx': 'navigation',
     'src-ui/src/views/TaskWorkspaceView.tsx': 'private-import',
     'src-ui/src/workspace-panes/BrowserPreviewPaneLauncher.tsx': 'presentation',

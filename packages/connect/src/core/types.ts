@@ -206,6 +206,12 @@ export type ConnectionFailureReason =
   | 'unreachable'
   | 'server-restarted'
   /**
+   * Station's own UI proxy answered its documented unavailable envelope while
+   * the sibling server process was down or still recovering. This is neither
+   * a network failure nor evidence that a foreign server owns the address.
+   */
+  | 'host-unavailable'
+  /**
    * station#3297 — the host answered and refused this app's web address
    * (`origin_forbidden` / `origin_required`). Deliberately NOT
    * `authentication-failed`: no credential this device can obtain changes
