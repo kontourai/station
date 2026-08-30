@@ -308,6 +308,8 @@ export async function finalizeChatRequest({
         inputTokens?: number;
         outputTokens?: number;
         totalTokens?: number;
+        cacheReadTokens?: number;
+        cacheWriteTokens?: number;
       }
     | undefined;
   try {
@@ -351,7 +353,7 @@ export async function finalizeChatRequest({
 
   const inputTokenCount = usage?.promptTokens || usage?.inputTokens || 0;
   const outputTokenCount = usage?.completionTokens || usage?.outputTokens || 0;
-  let estimatedCost = 0;
+  let estimatedCost: number | undefined;
 
   if (usage && ctx.modelCatalog) {
     try {
@@ -390,14 +392,27 @@ export async function finalizeChatRequest({
           modelId,
           region,
         );
-        estimatedCost = estimateCost(
-          pricing,
-          inputTokenCount,
-          outputTokenCount,
-        );
+        estimatedCost = estimateCost(pricing, {
+          ...(usage.promptTokens !== undefined || usage.inputTokens !== undefined
+            ? { inputTokens: usage.promptTokens ?? usage.inputTokens }
+            : {}),
+          ...(usage.completionTokens !== undefined ||
+          usage.outputTokens !== undefined
+            ? {
+                outputTokens:
+                  usage.completionTokens ?? usage.outputTokens,
+              }
+            : {}),
+          ...(usage.cacheReadTokens !== undefined
+            ? { cacheReadTokens: usage.cacheReadTokens }
+            : {}),
+          ...(usage.cacheWriteTokens !== undefined
+            ? { cacheWriteTokens: usage.cacheWriteTokens }
+            : {}),
+        });
       }
     } catch {
-      estimatedCost = 0;
+      estimatedCost = undefined;
     }
   }
 
@@ -407,7 +422,7 @@ export async function finalizeChatRequest({
     event: 'completion',
     conversationId: operationContext.conversationId,
     messageCount: 2,
-    cost: estimatedCost,
+    ...(estimatedCost !== undefined ? { cost: estimatedCost } : {}),
   });
 
   chatRequests.add(1, { agent: slug, plugin });
@@ -419,7 +434,7 @@ export async function finalizeChatRequest({
     tokensInput.add(inputTokenCount, { agent: slug, plugin });
     tokensOutput.add(outputTokenCount, { agent: slug, plugin });
   }
-  if (estimatedCost > 0) {
+  if (estimatedCost !== undefined && estimatedCost > 0) {
     costEstimated.add(estimatedCost, { agent: slug, plugin });
   }
 

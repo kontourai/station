@@ -37,6 +37,7 @@ import {
   ensureChatAgentStatsInitialized,
   finalizeChatRequest,
 } from '../chat-lifecycle.js';
+import { estimateCost, findModelPricing } from '../../../utils/pricing.js';
 
 function createRuntimeContext() {
   return {
@@ -173,6 +174,8 @@ describe('chat-lifecycle helpers', () => {
         usage: Promise.resolve({
           promptTokens: 11,
           completionTokens: 22,
+          cacheReadTokens: 33,
+          cacheWriteTokens: 44,
         }),
       },
       modelOverride: 'override-model',
@@ -207,7 +210,52 @@ describe('chat-lifecycle helpers', () => {
         cost: 1.25,
       }),
     ]);
+    expect(estimateCost).toHaveBeenLastCalledWith(expect.anything(), {
+      inputTokens: 11,
+      outputTokens: 22,
+      cacheReadTokens: 33,
+      cacheWriteTokens: 44,
+    });
     expect(chatSpan.end).toHaveBeenCalled();
+  });
+
+  test('omits metrics cost when pricing lookup fails', async () => {
+    vi.mocked(findModelPricing).mockRejectedValueOnce(
+      new Error('pricing unavailable'),
+    );
+    const ctx = createRuntimeContext();
+    const chatSpan = {
+      setAttribute: vi.fn(),
+      setStatus: vi.fn(),
+      end: vi.fn(),
+    };
+
+    await finalizeChatRequest({
+      ctx,
+      slug: 'agent-a',
+      plugin: 'plugin-a',
+      input: 'hello',
+      operationContext: {
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        traceId: 'trace-1',
+      },
+      completionReason: 'completed',
+      accumulatedText: 'Answer',
+      reasoningText: '',
+      artifacts: [],
+      result: {
+        usage: Promise.resolve({ promptTokens: 11, completionTokens: 22 }),
+      },
+      memoryAdapter: null,
+      conversationId: 'conversation-1',
+      isNewConversation: false,
+      chatStartMs: Date.now(),
+      chatSpan,
+    });
+
+    expect(ctx.metricsLog).toHaveLength(1);
+    expect(ctx.metricsLog[0]).not.toHaveProperty('cost');
   });
 
   // archive#191 R2 persistence-gap fix: a failed turn that produced zero output

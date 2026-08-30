@@ -1,3 +1,4 @@
+import type { CacheAwareTokenComponents } from '@kontourai/station-shared/usage-fold';
 import type {
   BedrockModelCatalog,
   ModelPricing,
@@ -21,17 +22,36 @@ export async function findModelPricing(
 }
 
 /**
- * Estimate cost in USD from token usage and model pricing.
- * Returns 0 if pricing is unavailable.
+ * Estimate cost in USD from the token components the provider reported.
+ * Every reported component must have a finite, non-negative price; otherwise
+ * the usage is unpriced and the result stays absent. A valid zero rate or a
+ * measured zero-token component is still a real priced result of `0`.
  */
 export function estimateCost(
   pricing: ModelPricing | undefined,
-  inputTokens: number,
-  outputTokens: number,
-): number {
-  if (!pricing?.inputTokenPrice || !pricing?.outputTokenPrice) return 0;
-  return (
-    (inputTokens / 1000) * pricing.inputTokenPrice +
-    (outputTokens / 1000) * pricing.outputTokenPrice
+  usage: CacheAwareTokenComponents,
+): number | undefined {
+  const components = [
+    [usage.inputTokens, pricing?.inputTokenPrice],
+    [usage.outputTokens, pricing?.outputTokenPrice],
+    [usage.cacheReadTokens, pricing?.cacheReadTokenPrice],
+    [usage.cacheWriteTokens, pricing?.cacheWriteTokenPrice],
+  ] as const;
+  const reported = components.filter(([tokens]) => tokens !== undefined);
+  if (reported.length === 0) return undefined;
+  if (
+    reported.some(
+      ([tokens, rate]) => !validFigure(tokens) || !validFigure(rate),
+    )
+  ) {
+    return undefined;
+  }
+  return reported.reduce(
+    (total, [tokens, rate]) => total + ((tokens as number) / 1000) * (rate as number),
+    0,
   );
+}
+
+function validFigure(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }

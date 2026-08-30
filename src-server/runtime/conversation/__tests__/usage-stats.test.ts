@@ -177,4 +177,35 @@ describe('usage-stats', () => {
     expect(modelCatalog.getModelPricing).toHaveBeenCalledWith('us-west-2');
     expect(logger.warn).not.toHaveBeenCalled();
   });
+
+  it('keeps cache-bearing usage unpriced when the catalog has no cache rates', async () => {
+    const logger = { warn: vi.fn() };
+    const modelCatalog = {
+      getModelPricing: vi.fn().mockResolvedValue([
+        {
+          modelId: 'Claude 4 Sonnet',
+          inputTokenPrice: 0.003,
+          outputTokenPrice: 0.015,
+        },
+      ]),
+    };
+
+    await expect(
+      calculateUsageCost(
+        'claude-4-sonnet',
+        {
+          promptTokens: 1_000,
+          completionTokens: 500,
+          cacheReadTokens: 2_000,
+        },
+        modelCatalog as any,
+        { region: 'us-west-2' } as any,
+        logger,
+      ),
+    ).resolves.toBeNull();
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Pricing incomplete for reported usage, cost unavailable',
+      { modelId: 'claude-4-sonnet' },
+    );
+  });
 });

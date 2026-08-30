@@ -9,6 +9,8 @@ export interface UsageLike {
   totalTokens?: number;
   inputTokens?: number;
   outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
 }
 
 export interface ConversationTokenBreakdown {
@@ -161,11 +163,26 @@ export async function calculateUsageCost(
     );
 
     if (match) {
-      return estimateCost(
-        match,
-        getUsageInputTokens(usage),
-        getUsageOutputTokens(usage),
-      );
+      const estimated = estimateCost(match, {
+        ...(usage.promptTokens !== undefined || usage.inputTokens !== undefined
+          ? { inputTokens: usage.promptTokens ?? usage.inputTokens }
+          : {}),
+        ...(usage.completionTokens !== undefined ||
+        usage.outputTokens !== undefined
+          ? { outputTokens: usage.completionTokens ?? usage.outputTokens }
+          : {}),
+        ...(usage.cacheReadTokens !== undefined
+          ? { cacheReadTokens: usage.cacheReadTokens }
+          : {}),
+        ...(usage.cacheWriteTokens !== undefined
+          ? { cacheWriteTokens: usage.cacheWriteTokens }
+          : {}),
+      });
+      if (estimated !== undefined) return estimated;
+      logger.warn('Pricing incomplete for reported usage, cost unavailable', {
+        modelId,
+      });
+      return null;
     }
 
     logger.warn('No pricing found for model, cost unavailable', { modelId });
