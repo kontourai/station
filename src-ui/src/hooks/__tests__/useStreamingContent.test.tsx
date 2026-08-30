@@ -71,6 +71,7 @@ describe('useStreamingContent', () => {
       hasContent: true,
       contentParts: [],
       streamingText: '',
+      contentRevision: 1,
     });
     act(() => vi.advanceTimersByTime(79));
     expect(hook.result.current.streamingText).toBe('');
@@ -137,5 +138,42 @@ describe('useStreamingContent', () => {
       { type: 'text', content: 'completed' },
     ]);
     expect(hook.result.current.streamingText).toBe(' tail');
+  });
+
+  test('publishes a monotonic cheap revision for part and throttled text growth', () => {
+    const hook = renderHook(() => useStreamingContent('session'));
+    expect(hook.result.current.contentRevision).toBe(0);
+
+    act(() => {
+      store.publish({
+        session: {
+          streamingMessage: {
+            role: 'assistant',
+            content: 'a',
+            contentParts: [{ type: 'text', content: 'a' }],
+          },
+        },
+      });
+    });
+    expect(hook.result.current.contentRevision).toBe(1);
+
+    act(() => vi.advanceTimersByTime(80));
+    expect(hook.result.current.contentRevision).toBe(2);
+
+    act(() => {
+      store.publish({
+        session: {
+          streamingMessage: {
+            role: 'assistant',
+            content: 'a',
+            contentParts: [
+              { type: 'text', content: 'a' },
+              { type: 'tool-invocation', toolCallId: 'tool-1' },
+            ],
+          },
+        },
+      });
+    });
+    expect(hook.result.current.contentRevision).toBe(3);
   });
 });

@@ -6,6 +6,7 @@ type StreamingState = {
   hasContent: boolean;
   contentParts: ChatContentPart[];
   streamingText: string;
+  contentRevision: number;
 };
 
 const THROTTLE_MS = 80;
@@ -30,6 +31,7 @@ export function useStreamingContent(sessionId: string) {
     hasContent: false,
     contentParts: [],
     streamingText: '',
+    contentRevision: 0,
   });
 
   // Throttle: track latest value and flush on interval
@@ -43,7 +45,13 @@ export function useStreamingContent(sessionId: string) {
     if (text !== lastFlushedRef.current) {
       lastFlushedRef.current = text;
       setState((prev) =>
-        prev.streamingText === text ? prev : { ...prev, streamingText: text },
+        prev.streamingText === text
+          ? prev
+          : {
+              ...prev,
+              streamingText: text,
+              contentRevision: prev.contentRevision + 1,
+            },
       );
     }
   }, []);
@@ -56,10 +64,11 @@ export function useStreamingContent(sessionId: string) {
       const contentParts = streamingMessage?.contentParts || [];
 
       // Calculate text that's already in contentParts
-      const textInParts = contentParts
-        .filter((p) => p.type === 'text')
-        .map((p) => p.content || '')
-        .join('');
+      let textInPartsLength = 0;
+      for (const part of contentParts) {
+        if (part.type === 'text')
+          textInPartsLength += part.content?.length ?? 0;
+      }
 
       // Orchestration appends every text delta to BOTH `content` and the tail
       // text part. Treat that active tail as the throttled tip rather than
@@ -67,14 +76,14 @@ export function useStreamingContent(sessionId: string) {
       // Providers that retain completed text parts while growing only
       // `content` still use the suffix path.
       const tail = contentParts.at(-1);
-      const hasContentSuffix = content.length > textInParts.length;
+      const hasContentSuffix = content.length > textInPartsLength;
       const hasActiveTailText =
         !hasContentSuffix && tail?.type === 'text' && Boolean(tail.content);
       const completedContentParts = hasActiveTailText
         ? contentParts.slice(0, -1)
         : contentParts;
       const currentStreamingText = hasContentSuffix
-        ? content.slice(textInParts.length)
+        ? content.slice(textInPartsLength)
         : hasActiveTailText
           ? tail.content || ''
           : '';
@@ -112,6 +121,7 @@ export function useStreamingContent(sessionId: string) {
             hasContent,
             contentParts: nextContentParts,
             streamingText: nextStreamingText,
+            contentRevision: prev.contentRevision + 1,
           };
         }
         return prev;
