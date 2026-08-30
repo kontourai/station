@@ -14,6 +14,15 @@ It has no release, package, or image mutation permission.
 
 ## Supported inventory
 
+The cross-platform/channel authority is
+`config/release-platform-matrix.json`. It declares every development, Nightly,
+preview, and Stable cell's artifact, producing job, test lane, signing and
+publication requirements, update authority, rollback source, and evidence
+selector. `node scripts/release-platform-matrix.mjs` fails when a cell or
+workflow job disappears. `--project` resolves current evidence from the deploy
+ledger; only receipt-backed cells become `VERIFIED`, while every other gap
+remains explicit `NOT_VERIFIED` with an owner and reason.
+
 The checked-in [inventory schema](../../schemas/release-artifact-manifest.schema.json)
 requires these variants: portable server, macOS arm64 and x86_64, Windows x86_64,
 Linux x86_64, Android universal APK and AAB, iOS simulator verification archive,
@@ -91,6 +100,16 @@ To request that normal behavior manually, leave the optional field empty:
 
 ```sh
 gh workflow run nightly.yml --repo kontourai/station --ref main
+```
+
+To fan Android and desktop out from an already selected commit even if `main`
+moves while the run queues, pass that exact lowercase 40-character commit. The
+shared test gate proves it is still an ancestor of `origin/main`, then exports
+one SHA that both producing jobs consume:
+
+```sh
+gh workflow run nightly.yml --repo kontourai/station --ref main \
+  -f source_sha=<40-character-main-commit>
 ```
 
 `rebuild_index` is only for an exceptional same-day rebuild of a commit that
@@ -283,7 +302,7 @@ account; Google independently restricts the provider to this repository's
 Nightly-on-main and Release-on-version-tag workflow identities. Secret Manager
 access is scoped only to the two Android upload-key secrets. iOS similarly treats
 `APPLE_API_KEY_ID`/`APPLE_API_ISSUER_ID`/`APPLE_API_PRIVATE_KEY` as the
-required macOS-notary credential and optional store-upload credential. Every signing secret listed above remains required
+required macOS-notary credential and required Stable TestFlight credential. Every signing secret listed above remains required
 and fails closed. See [mobile-release.md](./mobile-release.md) for the trust
 configuration and store-side first-run steps. Never commit certificate,
 provisioning, keystore, updater-key, or store credential files.
@@ -295,11 +314,11 @@ unsigned APK, IPA, desktop bundle, or updater is never uploaded as a
 distributable release asset. Tagged Android releases require the configured
 keyless Play path and fail closed if signing retrieval or upload fails; the
 daily Nightly workflow may still skip publication while its setup is absent.
-App Store upload remains a separately guarded optional final step using
-`APPLE_API_KEY_ID` / `APPLE_API_ISSUER_ID` / `APPLE_API_PRIVATE_KEY` (see
-[mobile-release.md](./mobile-release.md)). Store upload success is not itself
-release-signing evidence — no workflow claim substitutes for Play/App Store's
-own provider receipts.
+Stable App Store upload is required and fail-closed. The iOS job waits for
+processing, queries the exact App Store Connect build number, and retains a
+provider receipt binding Apple's app/build IDs to the source SHA and IPA digest
+(see [mobile-release.md](./mobile-release.md)). Physical tester availability
+remains a separate provider/device observation.
 
 ## Stage, inspect, publish, and roll back
 
