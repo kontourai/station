@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import {
   buildLongSessionTurns,
   createLongSessionEventWindowHandler,
@@ -25,19 +25,40 @@ const json = (body: unknown) => ({
   body: JSON.stringify(body),
 });
 
-async function mockChatShell(page: Page) {
+async function expectSettledTouchTargetHeight(locator: Locator) {
+  // Visibility begins at the first painted animation frame. Geometry must be
+  // sampled after the opening scale reaches its resting size, especially when
+  // a loaded whole-file run advances frames more slowly than a focused case.
+  await expect
+    .poll(async () => (await locator.boundingBox())?.height ?? 0)
+    .toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+}
+
+async function mockChatShell(
+  page: Page,
+  options: { expectedEnvironmentId?: string } = {},
+) {
   let providerCalls = 0;
   page.on('pageerror', (error) => {
     console.error(`mobile-chat page error: ${error.message}`);
   });
   await installVisualViewportFixture(page);
-  await page.addInitScript(() => {
+  await page.addInitScript((expectedEnvironmentId) => {
     localStorage.setItem('station-connect-connections-active', 'mobile');
     localStorage.setItem(
       'station-connect-connections',
-      JSON.stringify([{ id: 'mobile', name: 'Mobile', url: location.origin }]),
+      JSON.stringify([
+        {
+          id: 'mobile',
+          name: 'Mobile',
+          url: location.origin,
+          ...(expectedEnvironmentId
+            ? { environmentId: expectedEnvironmentId }
+            : {}),
+        },
+      ]),
     );
-  });
+  }, options.expectedEnvironmentId ?? null);
   await page.route('**/.well-known/station/v1', (route) =>
     route.fulfill(
       json({
@@ -1695,28 +1716,90 @@ test('keeps delegation actions reachable above the mobile keyboard', async ({
  * archive#3297's always-rendered connection indicator took its slot instead, which is
  * why the count did not improve.
  *
- * Seven 44px slots need 308px before gaps against ~304 available, and the 44px
- * floor is not negotiable. So in THIS configuration the dock toggle defers to
- * the ⋯ sheet, which already carries dock height as named menu items. This
- * pins all of it: the bar contains what it shows, nothing collides, and the
- * deferred dock-height action stays reachable in the sheet.
+ * With the dock toggle deferred, five 44px icon slots (220px), the measured
+ * 53.28125px labelled connection chip, and six 2px gaps consume 285.28125px of
+ * the 304px content row, leaving 18.71875px for the flexible identity button.
+ * The 44px floor is not negotiable. The ⋯ sheet already carries dock height as
+ * named menu items, so this pins all of it: the bar contains what it shows,
+ * nothing collides, and the deferred dock-height action stays reachable.
  */
 test('the 320px header contains every pinned control while maximized (#3309 SF-2)', async ({
   page,
 }) => {
   test.setTimeout(45_000);
   await page.setViewportSize({ width: 320, height: 568 });
-  await mockChatShell(page);
+  await mockChatShell(page, {
+    expectedEnvironmentId: '22222222-2222-4222-8222-222222222222',
+  });
   await openComposer(page, true);
 
   // Maximize: this is what hides the app toolbar and hands this bar the drawer
   // toggle, i.e. the configuration that actually overflows.
-  await page.getByRole('button', { name: 'Chat actions' }).click();
-  await page
+  const chatActions = page.getByRole('button', { name: 'Chat actions' });
+  await chatActions.click();
+  const expandChat = page
     .getByRole('menu', { name: 'Chat actions' })
-    .getByRole('menuitem', { name: /^Expand chat/ })
-    .click();
+    .getByRole('menuitem', { name: /^Expand chat/ });
+
+  // #547's environment-ID mismatch intentionally raises the production
+  // connection banner. Wait for the live card and two paint frames before
+  // proving it does not cover either control needed to reach this geometry;
+  // this fixture previously caught another chrome banner swallowing composer
+  // clicks.
+  const connectionBanner = page.locator(
+    '[role="alert"][data-banner-id="chrome:connection:offline"]',
+  );
+  await expect(connectionBanner).toHaveAttribute('data-phase', 'live');
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+  );
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+  );
+  const bannerBox = await connectionBanner.boundingBox();
+  const chatActionsBox = await chatActions.boundingBox();
+  const expandChatBox = await expandChat.boundingBox();
+  if (!bannerBox || !chatActionsBox || !expandChatBox) {
+    throw new Error('Banner and maximize controls must all be measurable');
+  }
+  const intersects = (
+    first: { x: number; y: number; width: number; height: number },
+    second: { x: number; y: number; width: number; height: number },
+  ) =>
+    first.x < second.x + second.width &&
+    first.x + first.width > second.x &&
+    first.y < second.y + second.height &&
+    first.y + first.height > second.y;
+  expect(
+    intersects(bannerBox, chatActionsBox),
+    'connection banner intersects Chat actions',
+  ).toBe(false);
+  expect(
+    intersects(bannerBox, expandChatBox),
+    'connection banner intersects Expand chat',
+  ).toBe(false);
+
+  await expandChat.click();
   await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
+
+  // The rejected environment identity first exercises the complementary
+  // needs-repair path from this lane before the landed pending-exchange seam
+  // transitions the same control to its widest short label.
+  const header = page.locator('.chat-dock__mobile-header');
+  const connectionChip = header.getByTestId('chat-dock-mobile-connection');
+  await expect(connectionChip).toHaveAttribute(
+    'data-connection-state',
+    'needs-repair',
+  );
+  const connectionLabel = connectionChip.locator(
+    '.chat-dock__mobile-conn-label',
+  );
+  await expect(connectionLabel).toHaveText('Re-pair');
+  const repairLabelBox = await connectionLabel.boundingBox();
+  if (!repairLabelBox) throw new Error('Connection label is not measurable');
+  expect(repairLabelBox.width).toBeLessThanOrEqual(44);
 
   // Put the connection indicator into its widest short-label state only after
   // the maximize precondition is proven. A pending request takes precedence
@@ -1754,15 +1837,14 @@ test('the 320px header contains every pinned control while maximized (#3309 SF-2
   const drawerToggle = page.getByRole('button', { name: 'Toggle menu' });
   await expect(drawerToggle).toBeVisible();
 
-  const header = page.locator('.chat-dock__mobile-header');
-  const connectionChip = header.getByTestId('chat-dock-mobile-connection');
   await expect(connectionChip).toHaveAttribute(
     'data-connection-state',
     'awaiting-approval',
   );
-  await expect(
-    connectionChip.locator('.chat-dock__mobile-conn-label'),
-  ).toHaveText('Waiting');
+  await expect(connectionLabel).toHaveText('Waiting');
+  const waitingLabelBox = await connectionLabel.boundingBox();
+  if (!waitingLabelBox) throw new Error('Connection label is not measurable');
+  expect(waitingLabelBox.width).toBeLessThanOrEqual(44);
   const headerBox = await header.boundingBox();
   if (!headerBox) throw new Error('Mobile dock header is not measurable');
   expect(headerBox.x).toBeGreaterThanOrEqual(0);
@@ -1861,8 +1943,7 @@ test('the 320px header contains every pinned control while maximized (#3309 SF-2
     .getByRole('menu', { name: 'Chat actions' })
     .getByRole('menuitem', { name: /^Collapse chat/ });
   await expect(collapse).toBeVisible();
-  const collapseBox = await collapse.boundingBox();
-  expect(collapseBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  await expectSettledTouchTargetHeight(collapse);
 });
 
 /**
@@ -2432,8 +2513,7 @@ test('drags the mobile dock bar between half and full without stealing taps', as
     .getByRole('menu', { name: 'Chat actions' })
     .getByRole('menuitem', { name: /^Collapse chat/ });
   await expect(collapseItem).toBeVisible();
-  const collapseBox = await collapseItem.boundingBox();
-  expect(collapseBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  await expectSettledTouchTargetHeight(collapseItem);
   await collapseItem.click();
   await expect(dock).toHaveClass(/is-collapsed/);
   await expectVisibleGeometry(false);
