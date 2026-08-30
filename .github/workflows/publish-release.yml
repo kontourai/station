@@ -60,6 +60,8 @@ jobs:
       RELEASE_TAG: ${{ inputs.tag }}
       RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
       RELEASE_CREATED_AT: ${{ needs.resolve.outputs.created_at }}
+      RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+      DESKTOP_UPDATER_TAG: ${{ needs.resolve.outputs.channel == 'preview' && 'beta-desktop' || 'stable-desktop' }}
       GITHUB_REPOSITORY: ${{ github.repository }}
       VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
       VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
@@ -123,6 +125,64 @@ jobs:
             while read -r tag; do
               docker buildx imagetools create --tag "$image:$tag" "$image@$digest"
             done
+      - name: Assemble and validate the rolling desktop updater channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          updater_release_state=$(gh release view "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null || true)
+          if [[ "$updater_release_state" == true ]]; then
+            echo "::error::$DESKTOP_UPDATER_TAG is a draft release; its download URLs are unavailable to installed apps." >&2
+            exit 1
+          fi
+          if [[ -z "$updater_release_state" ]]; then
+            echo "::error::$DESKTOP_UPDATER_TAG does not exist; an owner must bootstrap the rolling prerelease/tag before publishing this channel." >&2
+            exit 1
+          fi
+          if [[ "$updater_release_state" != false ]]; then
+            echo "::error::Could not verify $DESKTOP_UPDATER_TAG is public; refusing to update its assets." >&2
+            exit 1
+          fi
+
+          updater_assets=(
+            "station-${RELEASE_TAG}-macos-aarch64.app.tar.gz"
+            "station-${RELEASE_TAG}-macos-aarch64.app.tar.gz.sig"
+            "station-${RELEASE_TAG}-macos-x86_64.app.tar.gz"
+            "station-${RELEASE_TAG}-macos-x86_64.app.tar.gz.sig"
+            "station-${RELEASE_TAG}-windows-x86_64.msi.zip"
+            "station-${RELEASE_TAG}-windows-x86_64.msi.zip.sig"
+            "station-${RELEASE_TAG}-linux-x86_64.AppImage.tar.gz"
+            "station-${RELEASE_TAG}-linux-x86_64.AppImage.tar.gz.sig"
+          )
+          for asset in "${updater_assets[@]}"; do
+            test -s "release-assets/$asset"
+          done
+
+          mkdir updater-channel-assets
+          node scripts/lib/tauri-updater-manifest.mjs \
+            --version "$RELEASE_VERSION" \
+            --pub-date "$RELEASE_CREATED_AT" \
+            --platform darwin-aarch64 \
+            --asset-file "release-assets/station-${RELEASE_TAG}-macos-aarch64.app.tar.gz" \
+            --signature-file "release-assets/station-${RELEASE_TAG}-macos-aarch64.app.tar.gz.sig" \
+            --url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${DESKTOP_UPDATER_TAG}/station-${RELEASE_TAG}-macos-aarch64.app.tar.gz" \
+            --platform darwin-x86_64 \
+            --asset-file "release-assets/station-${RELEASE_TAG}-macos-x86_64.app.tar.gz" \
+            --signature-file "release-assets/station-${RELEASE_TAG}-macos-x86_64.app.tar.gz.sig" \
+            --url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${DESKTOP_UPDATER_TAG}/station-${RELEASE_TAG}-macos-x86_64.app.tar.gz" \
+            --platform windows-x86_64 \
+            --asset-file "release-assets/station-${RELEASE_TAG}-windows-x86_64.msi.zip" \
+            --signature-file "release-assets/station-${RELEASE_TAG}-windows-x86_64.msi.zip.sig" \
+            --url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${DESKTOP_UPDATER_TAG}/station-${RELEASE_TAG}-windows-x86_64.msi.zip" \
+            --platform linux-x86_64 \
+            --asset-file "release-assets/station-${RELEASE_TAG}-linux-x86_64.AppImage.tar.gz" \
+            --signature-file "release-assets/station-${RELEASE_TAG}-linux-x86_64.AppImage.tar.gz.sig" \
+            --url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${DESKTOP_UPDATER_TAG}/station-${RELEASE_TAG}-linux-x86_64.AppImage.tar.gz" \
+            --release-tag "$DESKTOP_UPDATER_TAG" \
+            --notes "Station ${DESKTOP_UPDATER_TAG} build ${RELEASE_VERSION} (${RELEASE_SHA})" \
+            --output updater-channel-assets/latest.json
+          test -s updater-channel-assets/latest.json
+
       - name: Publish release and compensate to draft until feed verifies
         env:
           GH_TOKEN: ${{ github.token }}
@@ -131,6 +191,50 @@ jobs:
           test -n "$NATIVE_APP_UPDATE_PUBLISH_TOKEN" || { echo "Missing native update provider credential" >&2; exit 1; }
           feed="release-assets/station-mobile-${VITE_NATIVE_APP_UPDATE_CHANNEL}.json"
           scripts/publish-mobile-feed-transaction.sh "$feed"
+
+      # The tag-bound release is public before this pointer advances. Updater
+      # archives are uploaded first and latest.json is a separate invocation,
+      # matching nightly's ordering so the manifest never advertises an asset
+      # that this run has not finished uploading.
+      - name: Publish and verify the rolling desktop updater channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          updater_assets=(
+            "station-${RELEASE_TAG}-macos-aarch64.app.tar.gz"
+            "station-${RELEASE_TAG}-macos-aarch64.app.tar.gz.sig"
+            "station-${RELEASE_TAG}-macos-x86_64.app.tar.gz"
+            "station-${RELEASE_TAG}-macos-x86_64.app.tar.gz.sig"
+            "station-${RELEASE_TAG}-windows-x86_64.msi.zip"
+            "station-${RELEASE_TAG}-windows-x86_64.msi.zip.sig"
+            "station-${RELEASE_TAG}-linux-x86_64.AppImage.tar.gz"
+            "station-${RELEASE_TAG}-linux-x86_64.AppImage.tar.gz.sig"
+          )
+          updater_args=()
+          for asset in "${updater_assets[@]}"; do
+            test -s "release-assets/$asset"
+            updater_args+=("release-assets/$asset")
+          done
+
+          gh release upload "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" --clobber "${updater_args[@]}"
+          gh release upload "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" --clobber updater-channel-assets/latest.json
+          gh release edit "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" \
+            --notes "Rolling desktop updater channel. Latest: ${RELEASE_VERSION} at ${RELEASE_SHA}, published $(date -u +%Y-%m-%dT%H:%M:%SZ)."
+
+          remote_assets=$(mktemp -d)
+          trap 'rm -rf "$remote_assets"' EXIT
+          for asset in "${updater_assets[@]}" latest.json; do
+            gh release download "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" --dir "$remote_assets" --pattern "$asset"
+          done
+          for asset in "${updater_assets[@]}"; do
+            cmp "release-assets/$asset" "$remote_assets/$asset"
+          done
+          cmp updater-channel-assets/latest.json "$remote_assets/latest.json"
+          node scripts/lib/tauri-updater-manifest.mjs --verify \
+            --manifest "$remote_assets/latest.json" \
+            --assets-dir "$remote_assets" \
+            --release-tag "$DESKTOP_UPDATER_TAG"
 
       # Deploy ledger (station#4572). Deliberately HERE, not in release.yml:
       # release.yml assembles a DRAFT; this job is the moment a stable

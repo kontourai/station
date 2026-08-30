@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Assembles a Tauri v2 static updater manifest (`latest.json`) for exactly
- * one platform target.
+ * Assembles a Tauri v2 static updater manifest (`latest.json`) from the
+ * platform targets produced by one release.
  *
  * One nightly ship writes a manifest naming only the platform it just built
  * — it never merges with a previously published manifest, because carrying
@@ -9,7 +9,8 @@
  * key or build never produced.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { lstatSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 
 const PUB_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const HTTPS_URL_PATTERN = /^https:\/\/\S+$/;
@@ -52,6 +53,31 @@ export function createUpdaterManifest({
   url,
   releaseTag,
 }) {
+  return createUpdaterManifestForPlatforms({
+    version,
+    notes,
+    pubDate,
+    releaseTag,
+    platforms: [{ platform, signature, url }],
+  });
+}
+
+/**
+ * @param {{
+ *   version: string,
+ *   notes?: string,
+ *   pubDate: string,
+ *   releaseTag: string,
+ *   platforms: Array<{ platform: string, signature: string, url: string }>,
+ * }} input
+ */
+export function createUpdaterManifestForPlatforms({
+  version,
+  notes = '',
+  pubDate,
+  releaseTag,
+  platforms,
+}) {
   if (typeof version !== 'string' || version.trim().length === 0) {
     fail('version must be non-empty');
   }
@@ -61,28 +87,34 @@ export function createUpdaterManifest({
   if (typeof pubDate !== 'string' || !PUB_DATE_PATTERN.test(pubDate)) {
     fail('pub_date must be an ISO-8601 UTC timestamp');
   }
-  if (typeof platform !== 'string' || platform.trim().length === 0) {
-    fail('platform must be non-empty');
-  }
-  if (typeof signature !== 'string' || signature.trim().length === 0) {
-    fail('signature must be non-empty');
-  }
-  if (typeof url !== 'string' || !HTTPS_URL_PATTERN.test(url)) {
-    fail('url must be an https URL');
-  }
   if (typeof releaseTag !== 'string' || releaseTag.trim().length === 0) {
     fail('releaseTag must be non-empty');
   }
-  if (!url.includes(`/download/${releaseTag}/`)) {
-    fail(
-      `url must be a release-asset download URL under releaseTag ${JSON.stringify(releaseTag)} (expected "/download/${releaseTag}/" in the url); the asset name, --release-tag, and --url must all name the same release`,
-    );
+  if (!Array.isArray(platforms) || platforms.length === 0)
+    fail('platforms must contain at least one entry');
+
+  const entries = {};
+  for (const { platform, signature, url } of platforms) {
+    if (typeof platform !== 'string' || platform.trim().length === 0)
+      fail('platform must be non-empty');
+    if (Object.hasOwn(entries, platform))
+      fail(`platform ${JSON.stringify(platform)} is duplicated`);
+    if (typeof signature !== 'string' || signature.trim().length === 0)
+      fail('signature must be non-empty');
+    if (typeof url !== 'string' || !HTTPS_URL_PATTERN.test(url))
+      fail('url must be an https URL');
+    if (!url.includes(`/download/${releaseTag}/`)) {
+      fail(
+        `url must be a release-asset download URL under releaseTag ${JSON.stringify(releaseTag)} (expected "/download/${releaseTag}/" in the url); the asset name, --release-tag, and --url must all name the same release`,
+      );
+    }
+    entries[platform] = { signature: signature.trim(), url };
   }
   return {
     version,
     notes,
     pub_date: pubDate,
-    platforms: { [platform]: { signature: signature.trim(), url } },
+    platforms: entries,
   };
 }
 
@@ -102,6 +134,54 @@ export function readUpdaterSignatureFile(path) {
   }
 }
 
+export function assertUpdaterAssetFile(path) {
+  try {
+    const stat = lstatSync(path);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size === 0)
+      fail(
+        `--asset-file ${JSON.stringify(path)} must be a non-empty regular file`,
+      );
+  } catch (error) {
+    if (error.message?.startsWith('Invalid Tauri updater manifest:'))
+      throw error;
+    fail(
+      `could not read --asset-file ${JSON.stringify(path)} (${error.code ?? error.message}); the desktop build must produce this updater archive before the manifest step runs`,
+    );
+  }
+}
+
+export function verifyUpdaterManifestAssets({
+  manifestPath,
+  assetsDir,
+  releaseTag,
+}) {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  } catch (error) {
+    fail(
+      `could not read manifest ${JSON.stringify(manifestPath)} (${error.code ?? error.message})`,
+    );
+  }
+  if (!manifest?.platforms || typeof manifest.platforms !== 'object')
+    fail('manifest platforms must be an object');
+  const urls = Object.values(manifest.platforms).map((entry) => entry?.url);
+  if (urls.length === 0) fail('manifest platforms must not be empty');
+  for (const url of urls) {
+    if (typeof url !== 'string' || !url.includes(`/download/${releaseTag}/`))
+      fail(
+        `manifest asset url must be under releaseTag ${JSON.stringify(releaseTag)}`,
+      );
+    let assetName;
+    try {
+      assetName = basename(new URL(url).pathname);
+    } catch {
+      fail(`manifest asset url is invalid: ${JSON.stringify(url)}`);
+    }
+    assertUpdaterAssetFile(join(assetsDir, assetName));
+  }
+}
+
 /** Refuses a flag value that is itself another flag: `--url --output x.json`
  * silently swallowing `--output` (with `url` becoming `x.json`'s value on
  * the NEXT lookup) is a missing-argument bug, not a valid invocation. */
@@ -115,21 +195,44 @@ function option(name, args) {
   return value;
 }
 
+function options(name, args) {
+  const values = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== `--${name}`) continue;
+    const value = args[index + 1];
+    if (value === undefined || value.startsWith('--'))
+      throw new Error(`--${name} requires a value`);
+    values.push(value);
+  }
+  return values;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2);
+  if (args.includes('--verify')) {
+    const manifestPath = option('manifest', args);
+    const assetsDir = option('assets-dir', args);
+    const releaseTag = option('release-tag', args);
+    if (!manifestPath || !assetsDir || !releaseTag)
+      throw new Error(
+        'Usage: tauri-updater-manifest.mjs --verify --manifest <latest.json> --assets-dir <path> --release-tag <tag>',
+      );
+    verifyUpdaterManifestAssets({ manifestPath, assetsDir, releaseTag });
+    console.log(`Verified updater manifest assets for ${releaseTag}`);
+    process.exit(0);
+  }
   const version = option('version', args);
   const pubDate = option('pub-date', args);
-  const platform = option('platform', args);
-  const signatureFile = option('signature-file', args);
-  const url = option('url', args);
+  const platforms = options('platform', args);
+  const signatureFiles = options('signature-file', args);
+  const urls = options('url', args);
+  const assetFiles = options('asset-file', args);
   const releaseTag = option('release-tag', args);
   const outputPath = option('output', args);
   if (
     !version ||
     !pubDate ||
-    !platform ||
-    !signatureFile ||
-    !url ||
+    platforms.length === 0 ||
     !releaseTag ||
     !outputPath
   ) {
@@ -137,15 +240,31 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       'Usage: tauri-updater-manifest.mjs --version <semver> --pub-date <ISO-8601> --platform <darwin-aarch64> --signature-file <path> --url <https-url> --release-tag <tag> --output <path> [--notes <text>]',
     );
   }
-  const manifest = createUpdaterManifest({
+  if (
+    signatureFiles.length !== platforms.length ||
+    urls.length !== platforms.length ||
+    (assetFiles.length > 0 && assetFiles.length !== platforms.length)
+  )
+    throw new Error(
+      'Each --platform requires one --signature-file and --url, and when used one --asset-file',
+    );
+  const entries = platforms.map((platform, index) => {
+    if (assetFiles[index]) assertUpdaterAssetFile(assetFiles[index]);
+    return {
+      platform,
+      signature: readUpdaterSignatureFile(signatureFiles[index]),
+      url: urls[index],
+    };
+  });
+  const manifest = createUpdaterManifestForPlatforms({
     version,
     notes: option('notes', args) ?? '',
     pubDate,
-    platform,
-    signature: readUpdaterSignatureFile(signatureFile),
-    url,
     releaseTag,
+    platforms: entries,
   });
   writeFileSync(outputPath, `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(`Updater manifest ${manifest.version} (${platform}) -> ${url}`);
+  console.log(
+    `Updater manifest ${manifest.version} (${platforms.join(', ')}) -> ${outputPath}`,
+  );
 }

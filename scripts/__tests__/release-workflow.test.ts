@@ -206,6 +206,84 @@ function githubExpression(expression: string): string {
 }
 
 describe('native release workflow topology', () => {
+  it('binds every desktop build to the preflight-selected rolling updater channel', () => {
+    const preflight = workflowJob(release, 'preflight');
+    const source = namedStep(
+      preflight,
+      'Bind tag, package version, and source commit',
+    );
+    expect(source.run).toContain('desktop_updater_tag=beta-desktop');
+    expect(source.run).toContain('desktop_updater_tag=stable-desktop');
+    expect(source.run).toContain(
+      'desktop_updater_endpoint=https://github.com/$' +
+        '{GITHUB_REPOSITORY}/releases/download/$' +
+        '{desktop_updater_tag}/latest.json',
+    );
+
+    for (const jobName of [
+      'desktop-macos',
+      'desktop-windows',
+      'desktop-linux',
+    ]) {
+      const config = namedStep(
+        workflowJob(release, jobName),
+        'Fail closed and create tag-bound updater configuration',
+      );
+      expect(config.run).toContain('--updater-public-key-file');
+      expect(config.run).toContain(
+        `--updater-endpoint "${githubExpression('needs.preflight.outputs.desktop_updater_endpoint')}"`,
+      );
+    }
+  });
+
+  it('publishes only produced updater artifacts before the rolling manifest and verifies the remote result', () => {
+    const promotion = workflowJob(publish, 'publish');
+    const assembly = namedStep(
+      promotion,
+      'Assemble and validate the rolling desktop updater channel',
+    );
+    const publishStep = namedStep(
+      promotion,
+      'Publish and verify the rolling desktop updater channel',
+    );
+    expect(promotion.env?.DESKTOP_UPDATER_TAG).toBe(
+      githubExpression(
+        "needs.resolve.outputs.channel == 'preview' && 'beta-desktop' || 'stable-desktop'",
+      ),
+    );
+    expectStepOrder(promotion, [
+      'Assemble and validate the rolling desktop updater channel',
+      'Publish release and compensate to draft until feed verifies',
+      'Publish and verify the rolling desktop updater channel',
+      'Record the stable release in the deploy ledger',
+    ]);
+
+    for (const platform of [
+      'darwin-aarch64',
+      'darwin-x86_64',
+      'windows-x86_64',
+      'linux-x86_64',
+    ])
+      expect(assembly.run).toContain(`--platform ${platform}`);
+    expect(assembly.run).not.toMatch(
+      /--platform (?:windows|linux)-(?:aarch64|arm64)/,
+    );
+    expect(assembly.run).toContain('.app.tar.gz.sig');
+    expect(assembly.run).toContain('.msi.zip.sig');
+    expect(assembly.run).toContain('.AppImage.tar.gz.sig');
+    expect(assembly.run).toContain('--asset-file');
+    expect(publishStep.run).toContain('--verify');
+    expect(publishStep.run).toContain('cmp updater-channel-assets/latest.json');
+
+    const uploadLines = publishStep.run
+      .split('\n')
+      .filter((line) => line.includes('gh release upload'));
+    expect(uploadLines).toHaveLength(2);
+    expect(uploadLines[0]).toContain('"$' + '{updater_args[@]}"');
+    expect(uploadLines[0]).not.toContain('latest.json');
+    expect(uploadLines[1]).toContain('updater-channel-assets/latest.json');
+  });
+
   it('does not expose write or provider credentials to setup and install steps', () => {
     for (const [file, jobs] of [
       [release, ['assemble-draft']],
