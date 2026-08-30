@@ -417,7 +417,7 @@ export class NativeStationProfileStorage
     const profile = this.profileStore.profiles.find(
       (candidate) => profileConnectionId(candidate) === connectionId,
     );
-    if (!profile?.credentialRef) return false;
+    if (!profile) return false;
 
     const previousActive = this.values.get(ACTIVE_KEY);
     // ConnectionStore republishes ACTIVE_KEY during ordinary metadata writes,
@@ -426,6 +426,7 @@ export class NativeStationProfileStorage
     // process target even when its credential is unavailable.
     if (explicit) this.explicitProcessSelection = connectionId;
     this.values.set(ACTIVE_KEY, connectionId);
+    if (!profile.credentialRef) return false;
     try {
       const exactOrigin = normalizedPairingEndpoint(profile.endpoint);
       const result = await this.bridge.invoke<unknown>(

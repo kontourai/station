@@ -560,6 +560,56 @@ describe('NativeStationProfileStorage', () => {
     ]);
   });
 
+  it('retains an explicit credential-recovery selection without reading another channel keyring entry', async () => {
+    const shared = structuredClone(
+      PROFILE_STORE,
+    ) as unknown as StationProfileStore;
+    shared.profiles.push(
+      {
+        schemaVersion: 1,
+        name: 'recovery-needed',
+        endpoint: 'https://recovery.example.test',
+        setupSource: 'paired',
+        configurationState: 'requires-auth',
+        createdAt: 1,
+        updatedAt: 2,
+      },
+      {
+        schemaVersion: 1,
+        name: 'beta-local',
+        endpoint: 'http://127.0.0.1:28141',
+        credentialRef: hostRef('beta-token'),
+        environmentId: 'environment-beta',
+        localService: {
+          instanceId: 'desktop-sidecar-beta',
+          baseDir: '/home/station/instances/beta',
+          serverPort: 28141,
+          uiPort: 28000,
+        },
+        setupSource: 'local',
+        configurationState: 'configured',
+        createdAt: 1,
+        updatedAt: 2,
+      },
+    );
+    const { calls, storage } = storageWithProfileStore(shared);
+    await storage.hydrate();
+
+    await expect(
+      storage.authorizeActiveConnection(
+        'station-profile:recovery-needed',
+        true,
+      ),
+    ).resolves.toBe(false);
+
+    expect(storage.selectProfileForProcess('beta-local')).toBe(
+      'station-profile:recovery-needed',
+    );
+    expect(calls.map(([command]) => command)).toEqual([
+      'station_profile_store_read',
+    ]);
+  });
+
   it('does not mistake a routine ConnectionStore write for explicit selection', async () => {
     const shared = structuredClone(
       PROFILE_STORE,
