@@ -175,7 +175,7 @@ export function IntegrationEditorPanel({
                 ? 'Connected'
                 : editForm.probe
                   ? 'Needs attention'
-                  : 'Unknown — never probed'}
+                  : 'Not checked yet'}
         </strong>
         {editForm.probe && (
           <span>

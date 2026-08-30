@@ -88,6 +88,15 @@ beforeEach(() => {
 });
 
 describe('secret binding operator UI', () => {
+  test('keeps advanced secret-binding management collapsed by default', () => {
+    render(<SecretBindingsSection />);
+
+    const heading = screen.getByText('Advanced: Secret bindings');
+    const disclosure = heading.closest('details');
+    expect(disclosure).toBeInstanceOf(HTMLDetailsElement);
+    expect((disclosure as HTMLDetailsElement).open).toBe(false);
+  });
+
   test('creates a structured keychain reference, then returns the form to a clean state', async () => {
     render(<SecretBindingsSection />);
     fireEvent.change(screen.getByLabelText('ID'), {
