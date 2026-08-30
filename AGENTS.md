@@ -12,6 +12,36 @@
 - Diagnose locally with the narrowest named lane. If an explicit full-regression investigation is authorized, join or reuse an in-flight same-digest request rather than launching redundant work.
 - If an explicit submission handoff is active, freeze the worktree. Never use shell background or relaunch loops, and do not edit or remove a worktree with a live handoff.
 
+## Landing a pull request
+
+`main` is governed by the **main requires green checks** ruleset, and a merge
+queue is part of it. What that means in practice:
+
+- **Arm auto-merge; do not merge by hand.** `gh pr merge <n> --repo kontourai/station --squash --auto`.
+  Auto-merge is opt-in PER PR — a PR whose checks are green but which nobody
+  armed simply sits forever. That, not a broken gate, is the usual reason a
+  ready PR has not landed.
+- **Match the configured merge method.** The ruleset currently allows
+  `squash` and `merge`, and the queue squashes — so `--squash` is what to
+  pass today. Check `allowed_merge_methods` on the ruleset before assuming;
+  a method the ruleset forbids is rejected at merge time, not at arm time.
+- **The queue serializes.** `max_entries_to_merge: 1` and `ALLGREEN` grouping
+  mean entries land one at a time and a red entry holds the ones behind it.
+  Several PRs waiting is the queue working, not the queue stuck. Its
+  check-response timeout is 120 minutes.
+- **Required checks**: `fast-checks`, `CodeQL JavaScript and TypeScript`,
+  `Dependency review`, `Windows PR portable floor`. Branches are NOT required
+  to be up to date (`strict: false`), so you do not have to rebase onto every
+  intervening commit — but two independently green PRs can still break `main`
+  in combination. `main-health.yml` files a P1 when that happens.
+- **Attribution matters.** The ruleset sets
+  `require_extra_approval_for_unattributed_changes`, so a commit whose author
+  GitHub cannot attribute needs an extra approval. Keep authorship real and
+  put delegate credit in a `Co-authored-by:` trailer.
+- **Do not arm another lane's in-flight PR.** Coordinate with the owning
+  session first (`ListAgents` / `SendMessage`); a merge is not yours to make
+  because the checks happen to be green.
+
 ## A test must execute the seam it is named for
 
 Before adding or accepting a test, answer both: does it reach the code its name claims, and would it fail if the fix were reverted? A test that satisfies its name without touching its subject is worse than no test — it retires the question, so the next reader sees coverage and stops looking. Recurring shapes to reject: a constant asserted against its own literal; a source-text or config-shape scan (a regex over a file, a substring of workflow YAML) standing in for behaviour; a pure reducer or helper exercised while the defect lives in the integration that calls it; an assertion sitting behind a catch-all that converts the tested condition into an ordinary return.
