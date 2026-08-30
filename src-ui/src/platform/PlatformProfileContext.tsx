@@ -265,10 +265,10 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
         .catch(() => undefined)
         .then(async () => {
           if (!profile?.isTauri) return;
+          const repository = nativeProfileRepository();
+          repository.selectExplicitProfileForProcess(connectionId);
           const authorized =
-            await nativeProfileRepository().authorizeActiveConnection(
-              connectionId,
-            );
+            await repository.authorizeActiveConnection(connectionId);
           if (!authorized) return;
           setProfileStoreEpoch((epoch) => epoch + 1);
         });

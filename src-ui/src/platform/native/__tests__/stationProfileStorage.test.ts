@@ -451,6 +451,189 @@ describe('NativeStationProfileStorage', () => {
     expect(storage.pendingLocalSelfProvisionProfileName()).toBe('kontour');
   });
 
+  it('selects each matching bundled channel profile instead of an inherited shared default', async () => {
+    const shared = structuredClone(
+      PROFILE_STORE,
+    ) as unknown as StationProfileStore;
+    shared.defaultProfile = 'kontour';
+    shared.profiles[0] = {
+      ...shared.profiles[0],
+      localService: {
+        instanceId: 'desktop-sidecar-stable',
+        baseDir: '/home/station/instances/stable',
+        serverPort: 18141,
+        uiPort: 18000,
+      },
+    };
+    for (const [channel, serverPort, uiPort] of [
+      ['beta', 28141, 28000],
+      ['nightly', 38141, 38000],
+    ] as const) {
+      shared.profiles.push({
+        schemaVersion: 1,
+        name: `${channel}-local`,
+        endpoint: `http://127.0.0.1:${serverPort}`,
+        credentialRef: hostRef(`${channel}-token`),
+        environmentId: `environment-${channel}`,
+        localService: {
+          instanceId: `desktop-sidecar-${channel}`,
+          baseDir: `/home/station/instances/${channel}`,
+          serverPort,
+          uiPort,
+        },
+        setupSource: 'local',
+        configurationState: 'configured',
+        createdAt: 1,
+        updatedAt: 2,
+      });
+    }
+    const { calls, storage } = storageWithProfileStore(shared);
+    await storage.hydrate();
+
+    expect(storage.get('station-connect-connections-active')).toBe(
+      'station-profile:kontour',
+    );
+    for (const profileName of ['kontour', 'beta-local', 'nightly-local']) {
+      expect(storage.selectProfileForProcess(profileName)).toBe(
+        `station-profile:${profileName}`,
+      );
+    }
+    expect(storage.selectProfileForProcess('beta-local')).toBe(
+      'station-profile:beta-local',
+    );
+    await expect(
+      storage.authorizeActiveConnection('station-profile:beta-local'),
+    ).resolves.toBe(true);
+
+    expect(shared.defaultProfile).toBe('kontour');
+    expect(calls).toContainEqual([
+      'station_profile_authorize_active',
+      { profileName: 'beta-local' },
+    ]);
+    expect(calls).not.toContainEqual([
+      'station_profile_authorize_active',
+      { profileName: 'kontour' },
+    ]);
+  });
+
+  it('preserves an explicit process choice over automatic bundled channel selection', async () => {
+    const shared = structuredClone(
+      PROFILE_STORE,
+    ) as unknown as StationProfileStore;
+    shared.profiles.push({
+      schemaVersion: 1,
+      name: 'beta-local',
+      endpoint: 'http://127.0.0.1:28141',
+      credentialRef: hostRef('beta-token'),
+      environmentId: 'environment-beta',
+      localService: {
+        instanceId: 'desktop-sidecar-beta',
+        baseDir: '/home/station/instances/beta',
+        serverPort: 28141,
+        uiPort: 28000,
+      },
+      setupSource: 'local',
+      configurationState: 'configured',
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    const { calls, storage } = storageWithProfileStore(shared);
+    await storage.hydrate();
+    expect(
+      storage.selectExplicitProfileForProcess(
+        'station-profile:station.kontourai.io',
+      ),
+    ).toBe(true);
+
+    expect(storage.selectProfileForProcess('beta-local')).toBe(
+      'station-profile:station.kontourai.io',
+    );
+    await expect(
+      storage.authorizeActiveConnection('station-profile:station.kontourai.io'),
+    ).resolves.toBe(true);
+
+    expect(shared.defaultProfile).toBe('kontour');
+    expect(calls).toContainEqual([
+      'station_profile_authorize_active',
+      { profileName: 'station.kontourai.io' },
+    ]);
+    expect(calls).not.toContainEqual([
+      'station_profile_authorize_active',
+      { profileName: 'beta-local' },
+    ]);
+  });
+
+  it('does not mistake a routine ConnectionStore write for explicit selection', async () => {
+    const shared = structuredClone(
+      PROFILE_STORE,
+    ) as unknown as StationProfileStore;
+    shared.profiles.push({
+      schemaVersion: 1,
+      name: 'beta-local',
+      endpoint: 'http://127.0.0.1:28141',
+      credentialRef: hostRef('beta-token'),
+      environmentId: 'environment-beta',
+      localService: {
+        instanceId: 'desktop-sidecar-beta',
+        baseDir: '/home/station/instances/beta',
+        serverPort: 28141,
+        uiPort: 28000,
+      },
+      setupSource: 'local',
+      configurationState: 'configured',
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    const { calls, storage } = storageWithProfileStore(shared);
+    await storage.hydrate();
+    const connections = new ConnectionStore({ storage });
+
+    connections.update('station-profile:kontour', { name: 'Stable renamed' });
+    expect(storage.selectProfileForProcess('beta-local')).toBe(
+      'station-profile:beta-local',
+    );
+    await storage.authorizeActiveConnection('station-profile:beta-local');
+
+    expect(calls).toContainEqual([
+      'station_profile_authorize_active',
+      { profileName: 'beta-local' },
+    ]);
+    expect(calls).not.toContainEqual([
+      'station_profile_authorize_active',
+      { profileName: 'kontour' },
+    ]);
+  });
+
+  it('retains an explicit process choice through refresh and drops it when its profile is removed', async () => {
+    const { currentStore, replaceStore, storage } = storageWithKeyring();
+    await storage.hydrate();
+    expect(
+      storage.selectExplicitProfileForProcess(
+        'station-profile:station.kontourai.io',
+      ),
+    ).toBe(true);
+
+    const changed = structuredClone(currentStore());
+    changed.revision += 1;
+    changed.profiles[0] = { ...changed.profiles[0], updatedAt: 3 };
+    replaceStore(changed);
+    await expect(storage.refresh()).resolves.toBe(true);
+    expect(storage.get('station-connect-connections-active')).toBe(
+      'station-profile:station.kontourai.io',
+    );
+
+    const withoutExplicit = structuredClone(currentStore());
+    withoutExplicit.revision += 1;
+    withoutExplicit.profiles = withoutExplicit.profiles.filter(
+      (profile) => profile.name !== 'station.kontourai.io',
+    );
+    replaceStore(withoutExplicit);
+    await expect(storage.refresh()).resolves.toBe(true);
+    expect(storage.get('station-connect-connections-active')).toBe(
+      'station-profile:kontour',
+    );
+  });
+
   it('retains a native request binding only for its exact authorized connection and base', async () => {
     const { storage } = storageWithProfileStore();
     await storage.hydrate();

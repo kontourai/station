@@ -25,6 +25,7 @@ const state = vi.hoisted(() => ({
   profileHydrate: async () => {},
   profileRefresh: async () => false,
   authorizeDefaultProfile: async () => false,
+  selectExplicitProfileForProcess: (_connectionId: string): boolean => false,
   authorizeActiveConnection: async (_connectionId: string) => false,
 }));
 
@@ -46,6 +47,8 @@ vi.mock('../platform/native/stationProfileStorage', () => ({
       throw new Error('not used');
     },
     authorizeDefaultProfile: () => state.authorizeDefaultProfile(),
+    selectExplicitProfileForProcess: (connectionId: string) =>
+      state.selectExplicitProfileForProcess(connectionId),
     authorizeActiveConnection: (connectionId: string) =>
       state.authorizeActiveConnection(connectionId),
     credentialEntries: () => [],
@@ -183,6 +186,7 @@ describe('PlatformProfile derivation', () => {
     state.profileHydrate = async () => {};
     state.profileRefresh = async () => false;
     state.authorizeDefaultProfile = async () => false;
+    state.selectExplicitProfileForProcess = (_connectionId: string) => false;
     state.authorizeActiveConnection = async (_connectionId: string) => false;
     expect(document.documentElement.classList.contains('is-desktop-mac')).toBe(
       false,
@@ -336,6 +340,10 @@ describe('PlatformProfile derivation', () => {
   test('authorizes and republishes a selected native Station before its caller may probe', async () => {
     const events: string[] = [];
     state.adapter = tauriAdapter('macos', 'enabled');
+    state.selectExplicitProfileForProcess = (connectionId: string) => {
+      events.push(`select:${connectionId}`);
+      return true;
+    };
     state.authorizeActiveConnection = async (connectionId: string) => {
       events.push(`authorize:${connectionId}`);
       return true;
@@ -364,7 +372,10 @@ describe('PlatformProfile derivation', () => {
       await selectNativeProfile?.('station-profile:remote');
     });
 
-    expect(events).toEqual(['authorize:station-profile:remote']);
+    expect(events).toEqual([
+      'select:station-profile:remote',
+      'authorize:station-profile:remote',
+    ]);
     expect(screen.getByTestId('profile-store-epoch').textContent).toBe('1');
   });
 

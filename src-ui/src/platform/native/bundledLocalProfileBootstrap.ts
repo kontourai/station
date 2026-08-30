@@ -49,10 +49,12 @@ export async function bootstrapBundledLocalProfile({
     } catch {
       return {};
     }
-    if (profileName === null && status.value.ownership === 'none') {
-      await repository.authorizeDefaultProfile();
-      return {};
-    }
+    // `null` is a confirmed absence of this channel's local owner. A shared
+    // default may name another packaged channel, so authorizing it here would
+    // read that channel's keyring entry merely because this one is missing.
+    // Leave the process without a native authorization and let ordinary
+    // onboarding make the next explicit choice instead.
+    if (profileName === null && status.value.ownership === 'none') return {};
     if (typeof profileName !== 'string' || profileName.length === 0) {
       return {};
     }

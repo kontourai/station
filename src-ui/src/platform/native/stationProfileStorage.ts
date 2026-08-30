@@ -144,7 +144,10 @@ export interface NativeStationProfileRepository {
    * session only. This intentionally does not write `defaultProfile`.
    */
   authorizeActiveConnection(connectionId: string): Promise<boolean>;
-  /** Selects one saved profile for this process without changing CLI default. */
+  /**
+   * Selects the bundled channel's saved profile for this process without
+   * changing the CLI default. An intentional process-local choice wins.
+   */
   selectProfileForProcess(profileName: string): string | undefined;
   /** Re-authorizes the CLI-owned default after each native process start. */
   authorizeDefaultProfile(): Promise<boolean>;
@@ -242,6 +245,14 @@ export class NativeStationProfileStorage
 {
   private values = new Map<string, string>();
   private profileStore: StationProfileStore = emptyStationProfileStore();
+  /**
+   * The shared default initially projects into `ACTIVE_KEY` for the legacy
+   * connection-store view, but it is not an explicit choice made by this
+   * client. Keep that provenance out of the shared profile document: a
+   * packaged channel must be able to replace the inherited default with its
+   * own local Station, while a real in-process choice remains authoritative.
+   */
+  private explicitProcessSelection: string | undefined;
   private activeRequestBinding:
     | (NativeProfileRequestBinding & {
         connectionId: string;
@@ -303,13 +314,24 @@ export class NativeStationProfileStorage
           (profile) => profileConnectionId(profile) === selectedConnectionId,
         )
       : false;
+    const explicitStillExists = this.explicitProcessSelection
+      ? store.profiles.some(
+          (profile) =>
+            profileConnectionId(profile) === this.explicitProcessSelection,
+        )
+      : false;
+    if (this.explicitProcessSelection && !explicitStillExists) {
+      this.explicitProcessSelection = undefined;
+    }
     const defaultProfile = store.defaultProfile
       ? store.profiles.find(
           (profile) =>
             profile.name.toLowerCase() === store.defaultProfile!.toLowerCase(),
         )
       : undefined;
-    if (selectedStillExists) {
+    if (this.explicitProcessSelection && explicitStillExists) {
+      this.values.set(ACTIVE_KEY, this.explicitProcessSelection);
+    } else if (selectedStillExists) {
       this.values.set(ACTIVE_KEY, selectedConnectionId!);
     } else if (defaultProfile) {
       this.values.set(ACTIVE_KEY, profileConnectionId(defaultProfile));
@@ -319,6 +341,14 @@ export class NativeStationProfileStorage
   }
 
   selectProfileForProcess(profileName: string): string | undefined {
+    if (this.explicitProcessSelection) {
+      const explicit = this.profileStore.profiles.find(
+        (candidate) =>
+          profileConnectionId(candidate) === this.explicitProcessSelection,
+      );
+      if (explicit) return this.explicitProcessSelection;
+      this.explicitProcessSelection = undefined;
+    }
     const profile = this.profileStore.profiles.find(
       (candidate) => candidate.name.toLowerCase() === profileName.toLowerCase(),
     );
@@ -326,6 +356,22 @@ export class NativeStationProfileStorage
     const resolved = profileConnectionId(profile);
     this.values.set(ACTIVE_KEY, resolved);
     return resolved;
+  }
+
+  /**
+   * Records one deliberate in-process connection choice. This is distinct
+   * from `StorageAdapter.set(ACTIVE_KEY, ...)`: ConnectionStore republishes
+   * that key while writing unrelated metadata, so the generic storage seam
+   * cannot establish selection intent safely.
+   */
+  selectExplicitProfileForProcess(connectionId: string): boolean {
+    const selected = this.profileStore.profiles.some(
+      (profile) => profileConnectionId(profile) === connectionId,
+    );
+    if (!selected) return false;
+    this.explicitProcessSelection = connectionId;
+    this.values.set(ACTIVE_KEY, connectionId);
+    return true;
   }
 
   get(key: string): string | null {
