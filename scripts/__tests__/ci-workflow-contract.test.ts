@@ -278,6 +278,26 @@ describe('CI verification workflow contracts', () => {
     expect(successJob).not.toContain("conclusion == 'failure'");
   });
 
+  it('refuses to close a main-health issue for a skip-bearing run', () => {
+    const mainHealth = workflow('main-health.yml');
+    const successJob = mainHealth.slice(
+      mainHealth.indexOf('  close-after-success:'),
+    );
+
+    expect(successJob).toContain(
+      'github.rest.actions.listJobsForWorkflowRun',
+    );
+    expect(successJob).toContain(
+      "jobs.some((job) => job.conclusion === 'success')",
+    );
+    expect(successJob).toContain(
+      "jobs.some((job) => job.conclusion === 'skipped')",
+    );
+    expect(successJob).toContain(
+      'if (!hasSuccessfulJob || hasSkippedJob) return;',
+    );
+  });
+
   it('classifies the complete push diff before entering independent heavy concurrency groups', () => {
     const ci = workflow('ci.yml');
     const containerSmoke = workflow('container-smoke.yml');
