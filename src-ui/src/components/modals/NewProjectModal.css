@@ -387,10 +387,14 @@
 
 @media (max-width: 780px) {
   .new-project-modal.responsive-surface-panel {
-    /* The shared mobile surface normally scrolls its whole panel. This form
-       already has a dedicated scroll region (`__draft-scroll`); keeping the
-       panel clipped prevents the actions row from painting over the final
-       Starter-layout card at 390x844. */
+    /* The shared mobile surface supplies only max-height. A max constraint
+       does not give this nested flex column a definite main size, so the form
+       and its `__draft-scroll` child can keep their max-content height and
+       paint the Starter-layout card through the footer. Bind the panel to the
+       overlay's definite content height; min-height:0 then lets the form's
+       plain wrapper become the one bounded scrollport. */
+    height: 100%;
+    min-height: 0;
     overflow: hidden;
     padding: 1.1rem;
   }
