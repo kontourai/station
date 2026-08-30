@@ -18,7 +18,10 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { openChatsStore, useOpenChats } from '../../contexts/open-chats-store';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useBranding } from '../../hooks/useBranding';
-import { usePlatformProfile } from '../../platform/PlatformProfileContext';
+import {
+  type PlatformProfile,
+  usePlatformProfile,
+} from '../../platform/PlatformProfileContext';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
 import {
   projectLiveCount,
@@ -55,6 +58,24 @@ const loadSidebarOpenChats = () =>
  */
 export const OPEN_CHATS_SIDEBAR_CAP = 3;
 
+/**
+ * Channel comes from the native capability report, not the package name.
+ * Keeping it separate lets the installed app retain a short, stable title
+ * while Beta/Nightly/Dev remain immediately identifiable in the chrome.
+ */
+function channelBadge(channel: PlatformProfile['channel']) {
+  switch (channel) {
+    case 'beta':
+      return 'Beta';
+    case 'nightly':
+      return 'Nightly';
+    case 'dev':
+      return 'Dev';
+    default:
+      return undefined;
+  }
+}
+
 export function ProjectSidebar() {
   const { projects, isLoading } = useProjects();
   const { selectedProject, selectedProjectLayout, navigate, pathname } =
@@ -63,9 +84,19 @@ export function ProjectSidebar() {
   const platformProfile = usePlatformProfile();
   // The sidebar is the primary installed-app chrome. Native package identity
   // must win here so a selected remote Station cannot rename Beta/Nightly.
-  const appName = platformProfile.isTauri
-    ? platformProfile.productName || 'Station'
-    : branding.appName;
+  const nativeProductName = platformProfile.productName || 'Station';
+  const releaseChannelBadge = platformProfile.isTauri
+    ? channelBadge(platformProfile.channel)
+    : undefined;
+  // Do not parse a channel out of productName: it is a package identity, not
+  // presentation metadata. Known native variants display a compact label under
+  // the shared Station title; web branding is unaffected.
+  const appName = releaseChannelBadge
+    ? 'Station'
+    : platformProfile.isTauri
+      ? nativeProductName
+      : branding.appName;
+  const homeLabel = platformProfile.isTauri ? nativeProductName : appName;
   const agents = useAgents();
   const activeChats = useAllActiveChats();
   const drafts = useSyncExternalStore(
@@ -242,6 +273,8 @@ export function ProjectSidebar() {
       >
         <ProjectSidebarHeader
           appName={appName}
+          homeLabel={homeLabel}
+          channelBadge={releaseChannelBadge}
           collapsed={effectiveCollapsed}
           isMobile={isMobile}
           onCloseMobile={() => setMobileOpen(false)}

@@ -70,6 +70,14 @@
    its first control under the traffic lights. Same specificity, later in
    this file, so it wins at mobile widths; --titlebar-inset-left is stamped
    by PlatformBootstrap on the macOS desktop shell only. */
+.sidebar__brand-identity {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
 .sidebar__brand-name {
   min-width: 0;
   overflow: hidden;
@@ -80,7 +88,30 @@
   color: var(--text-primary);
 }
 
+/* Release identity is metadata, not part of the name. A second line keeps the
+   channel fully readable in the macOS title-bar inset where an inline suffix
+   would be the first thing flexbox truncates. */
+.sidebar__channel-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 16px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--k-brand) 60%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--k-brand) 16%, transparent);
+  color: var(--k-brand);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
 .sidebar--collapsed .sidebar__brand-name {
+  display: none;
+}
+
+.sidebar--collapsed .sidebar__brand-identity {
   display: none;
 }
 
