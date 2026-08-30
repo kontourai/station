@@ -179,6 +179,7 @@ describe('usage-stats', () => {
   });
 
   it('keeps cache-bearing usage unpriced when the catalog has no cache rates', async () => {
+    // The priced input/output subset must not masquerade as the complete cost.
     const logger = { warn: vi.fn() };
     const modelCatalog = {
       getModelPricing: vi.fn().mockResolvedValue([

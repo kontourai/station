@@ -24,8 +24,11 @@ export async function findModelPricing(
 /**
  * Estimate cost in USD from the token components the provider reported.
  * Every reported component must have a finite, non-negative price; otherwise
- * the usage is unpriced and the result stays absent. A valid zero rate or a
- * measured zero-token component is still a real priced result of `0`.
+ * the usage is unpriced and the result stays absent. This is deliberately
+ * all-or-nothing: callers have no "partial estimate" signal, so returning the
+ * priced subset would present a known underestimate as complete. A valid zero
+ * rate or a measured zero-token component is still a real priced result of
+ * `0`.
  */
 export function estimateCost(
   pricing: ModelPricing | undefined,

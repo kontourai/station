@@ -27,7 +27,7 @@ describe('estimateCost', () => {
     ).toBe(0);
   });
 
-  test('prices cache components only when their rates are declared', () => {
+  test('keeps the whole estimate absent until every reported component has a rate', () => {
     const usage = {
       inputTokens: 1_000,
       outputTokens: 500,
