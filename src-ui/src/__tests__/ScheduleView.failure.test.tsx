@@ -162,7 +162,6 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     runMutation.isPending = false;
     runMutation.variables = undefined;
     toast.showToast.mockReset();
-    posture.kind = 'healthy';
   });
 
   test('an unreachable server is the only case that gets connection advice', async () => {

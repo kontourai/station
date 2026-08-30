@@ -17,6 +17,7 @@ describe('GET /resource-posture', () => {
       sampledAt: 12345,
       sampleMs: 500,
       thresholdPercent: 95,
+      criticalThresholdPercent: 95,
       source: 'test-probe',
     };
     const app = createResourcePostureRoutes({
@@ -39,6 +40,7 @@ describe('GET /resource-posture', () => {
       sampledAt: 12345,
       sampleMs: 500,
       thresholdPercent: 85,
+      criticalThresholdPercent: 95,
       source: 'test-probe',
     };
     const app = createResourcePostureRoutes({

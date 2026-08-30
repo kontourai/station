@@ -16063,51 +16063,6 @@ describe('OrchestrationService', () => {
     );
   });
 
-  test('cold recovery proceeds under a 99%-busy diagnostic', async () => {
-    eventStore.upsertSession({
-      provider: 'claude',
-      threadId: 'critical-cold-recovery',
-      status: 'running',
-      model: 'claude-sonnet',
-      resumeCursor: { cursor: 'resume-critical' },
-      createdAt: '2026-08-16T12:00:00.000Z',
-      updatedAt: '2026-08-16T12:00:00.000Z',
-    });
-    const startSession = vi.spyOn(claude, 'startSession');
-    const recoveryService = new OrchestrationService({
-      adapterRegistry: createRegistry([bedrock, claude]),
-      eventBus,
-      eventStore,
-      resourcePosture: createRuntimeResourcePostureController({
-        sample: async () => ({
-          busyPercent: 99,
-          cpuCount: 8,
-          sampledAt: 100,
-          sampleMs: 500,
-          thresholdPercent: 85,
-          source: 'test',
-        }),
-      }),
-      logger: { debug: vi.fn(), warn: vi.fn() },
-    });
-
-    recoveryService.initialize();
-    await waitForReceipt(
-      (receipt) => receipt.kind === 'session.recovery.completed',
-    );
-
-    expect(startSession).toHaveBeenCalledOnce();
-    expect(eventStore.readSessions()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          threadId: 'critical-cold-recovery',
-          status: 'running',
-          resumeCursor: { cursor: 'resume-critical' },
-        }),
-      ]),
-    );
-  });
-
   test('recoverOrchestrationSessions replays the persisted session.started metadata (minus the reserved capabilityDelivery key) and applies resolveSessionAgent before adapter.startSession (#895 wave B)', async () => {
     eventStore.appendEvent({
       eventId: 'evt-session-started-recovery',

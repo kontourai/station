@@ -87,6 +87,7 @@ describe('executeSchedulerJobAttempt', () => {
   });
 
   test('invokes a scheduled job despite a synthetic 99%-busy diagnostic', async () => {
+    mkdirSync(join(tempDir, 'scheduler', 'logs'), { recursive: true });
     const invoke = vi.fn().mockResolvedValue({
       kind: 'completed',
       output: 'ran under load',
