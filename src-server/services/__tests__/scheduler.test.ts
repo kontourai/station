@@ -870,6 +870,7 @@ describe('BuiltinScheduler', () => {
         provider: 'built-in',
         id: expect.stringMatching(/-1$/),
         reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
+        disposition: 'released',
       });
       expect(logger.warn).toHaveBeenCalledWith(
         'Scheduler occurrence deferred by concurrency limit',
@@ -877,6 +878,7 @@ describe('BuiltinScheduler', () => {
       );
       expect(metric).toHaveBeenCalledWith(1, {
         reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
+        disposition: 'released',
       });
 
       release();
@@ -962,7 +964,7 @@ describe('BuiltinScheduler', () => {
     }
   });
 
-  test('one released permit admits exactly one parked retry invocation', async () => {
+  test('parked retries admit FIFO without a new arrival stealing free capacity', async () => {
     const ledger = createSchedulerLedger({
       directory: join(tempDir, 'retry-capacity-fifo'),
     });
@@ -997,7 +999,9 @@ describe('BuiltinScheduler', () => {
       finishInvocations = resolve;
     });
     let peakActiveInvocations = 0;
-    const invoke = vi.fn(async () => {
+    const admissionOrder: string[] = [];
+    const invoke = vi.fn(async ({ prompt }: { prompt: string }) => {
+      admissionOrder.push(prompt);
       peakActiveInvocations = Math.max(
         peakActiveInvocations,
         (bounded as any).activeInvocations.size,
@@ -1013,6 +1017,7 @@ describe('BuiltinScheduler', () => {
     const executions = retries.map((receipt) =>
       (bounded as any).executeJob(receipt),
     );
+    let lateWaiter!: Promise<(() => void) | undefined>;
     try {
       await vi.waitFor(() =>
         expect((bounded as any).invocationCapacityWaiters.size).toBe(
@@ -1020,9 +1025,14 @@ describe('BuiltinScheduler', () => {
         ),
       );
 
-      releaseOccupied.shift()?.();
+      // Make one permit available without draining, then enqueue a later
+      // arrival. The queued-first fence must admit the oldest waiter.
+      (bounded as any).activeInvocations.delete('occupied-0');
+      lateWaiter = (bounded as any).waitForInvocationCapacity('late');
 
       await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+      expect(admissionOrder).toEqual(['parked-retry-0']);
+      expect((bounded as any).invocationCapacityWaiters.size).toBe(waiterCount);
       expect(peakActiveInvocations).toBeLessThanOrEqual(
         SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
       );
@@ -1033,8 +1043,40 @@ describe('BuiltinScheduler', () => {
       for (const release of releaseOccupied) release();
       finishInvocations();
       await Promise.all(executions);
+      const releaseLate = await lateWaiter;
+      releaseLate?.();
       await bounded.stop();
     }
+  });
+
+  test('one drain admits exactly two FIFO waiters when two permits are free', async () => {
+    const bounded = createBuiltin();
+    const releases = Array.from(
+      { length: SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs },
+      (_, index) => (bounded as any).trackInvocation(`occupied-${index}`),
+    );
+    const waiters = ['first', 'second', 'third'].map((id) =>
+      (bounded as any).waitForInvocationCapacity(id),
+    );
+    await vi.waitFor(() =>
+      expect((bounded as any).invocationCapacityWaiters.size).toBe(3),
+    );
+
+    // Model two releases landing before the single drain turn.
+    (bounded as any).activeInvocations.delete('occupied-0');
+    (bounded as any).activeInvocations.delete('occupied-1');
+    (bounded as any).drainInvocationCapacityWaiters();
+
+    await vi.waitFor(() =>
+      expect((bounded as any).invocationCapacityWaiters.size).toBe(1),
+    );
+    expect((bounded as any).activeInvocations.has('first')).toBe(true);
+    expect((bounded as any).activeInvocations.has('second')).toBe(true);
+    expect((bounded as any).activeInvocations.has('third')).toBe(false);
+
+    for (const release of releases) release();
+    for (const waiter of waiters) (await waiter)?.();
+    await bounded.stop();
   });
 
   test('a parked retry wakes and completes when capacity is released', async () => {
@@ -1103,12 +1145,17 @@ describe('BuiltinScheduler', () => {
         reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
         disposition: 'waiting',
       });
+      expect(metric).toHaveBeenCalledWith(1, {
+        reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
+        disposition: 'admitted',
+      });
       expect(events).toContainEqual({
         event: 'job.deferred',
         job: 'parked-retry',
         provider: 'built-in',
         id: `${advanced.receipt.id}-2`,
         reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
+        disposition: 'waiting',
       });
     } finally {
       for (const release of releaseOccupied) release();
@@ -1140,6 +1187,9 @@ describe('BuiltinScheduler', () => {
       throw new Error('expected an attempt-2 receipt');
 
     const invoke = vi.fn();
+    const metric = vi
+      .spyOn(schedulerConcurrencyDeferrals, 'add')
+      .mockImplementation(() => undefined);
     const bounded = new BuiltinScheduler({ ledger, turnAdapter: { invoke } });
     const releaseOccupied = Array.from(
       { length: SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs },
@@ -1169,6 +1219,10 @@ describe('BuiltinScheduler', () => {
     expect((bounded as any).activeInvocations.has('shutdown-queued')).toBe(
       false,
     );
+    expect(metric).toHaveBeenCalledWith(1, {
+      reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
+      disposition: 'stopped',
+    });
     for (const release of releaseOccupied) release();
   });
 

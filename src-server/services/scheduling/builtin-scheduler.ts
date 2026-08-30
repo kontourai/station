@@ -856,10 +856,17 @@ export class BuiltinScheduler implements ISchedulerProvider {
                 provider: this.id,
                 id,
                 reason,
+                disposition: 'waiting',
               }),
             );
             releaseInvocation = await this.waitForInvocationCapacity(id);
             const admitted = Boolean(releaseInvocation) && !this.stopping;
+            this.observe(() =>
+              schedulerConcurrencyDeferrals.add(1, {
+                reason,
+                disposition: admitted ? 'admitted' : 'stopped',
+              }),
+            );
             this.observe(() =>
               this.options.logger?.info(
                 'Scheduler retry invocation capacity wait ended',
@@ -901,7 +908,10 @@ export class BuiltinScheduler implements ISchedulerProvider {
                 ),
               );
               this.observe(() =>
-                schedulerConcurrencyDeferrals.add(1, { reason }),
+                schedulerConcurrencyDeferrals.add(1, {
+                  reason,
+                  disposition: 'released',
+                }),
               );
               this.observe(() =>
                 this.broadcast({
@@ -910,6 +920,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
                   provider: this.id,
                   id,
                   reason,
+                  disposition: 'released',
                 }),
               );
               return {

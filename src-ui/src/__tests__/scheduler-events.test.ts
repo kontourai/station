@@ -3,7 +3,10 @@
  */
 
 import { describe, expect, test } from 'vitest';
-import { getSchedulerEventInvalidationKeys } from '../hooks/useScheduler';
+import {
+  getSchedulerEventInvalidationKeys,
+  isSchedulerDeferralTerminal,
+} from '../hooks/useScheduler';
 
 describe('scheduler event invalidation', () => {
   test('keeps started and missed events scheduler-only', () => {
@@ -31,5 +34,11 @@ describe('scheduler event invalidation', () => {
       ['scheduler'],
       ['runs'],
     ]);
+  });
+
+  test('keeps a waiting retry live while treating a released occurrence as terminal', () => {
+    expect(isSchedulerDeferralTerminal({ disposition: 'waiting' })).toBe(false);
+    expect(isSchedulerDeferralTerminal({ disposition: 'released' })).toBe(true);
+    expect(isSchedulerDeferralTerminal({})).toBe(true);
   });
 });

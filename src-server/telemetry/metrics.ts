@@ -1447,7 +1447,7 @@ export const schedulerConcurrencyDeferrals = meter.createCounter(
   'station.scheduler.concurrency.deferrals',
   {
     description:
-      'Automatic scheduler occurrences deferred by the invocation ceiling',
+      'Automatic scheduler invocation-ceiling lifecycle outcomes by disposition',
   },
 );
 export const schedulerHealthy = meter.createObservableGauge(

@@ -24,6 +24,9 @@ export const SCHEDULER_EXECUTION_LIMITS = {
   concurrencyDeferralReason: 'scheduler_concurrency_limit',
 } as const;
 
+/** Wire-level outcome of a scheduler concurrency-limit deferral event. */
+export type SchedulerDeferralDisposition = 'waiting' | 'released';
+
 /** Provider-neutral schedule accepted by every operator surface. */
 export type SchedulerSchedule =
   | Readonly<{ kind: 'cron'; expr: string; timezone?: string }>
@@ -307,6 +310,8 @@ export interface SchedulerEvent {
   maxAttempts?: number;
   missedCount?: number;
   reason?: typeof SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason;
+  /** Waiting retries remain live; released occurrences are terminal. */
+  disposition?: SchedulerDeferralDisposition;
   /** Bounded monitor outcome; no source body or secret material. */
   monitorOutcome?: import('./external-monitor').ExternalMonitorOutcome;
   monitorState?: import('./external-monitor').ExternalMonitorState;

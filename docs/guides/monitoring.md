@@ -196,7 +196,7 @@ All instruments are defined in `src-server/telemetry/metrics.ts` and are safe to
 | `station.provider.operations`     | Provider register/remove/health events   | `op`        |
 | `station.notification.operations` | Notification schedule/deliver/dismiss    | `op`        |
 | `station.scheduler.job.runs`      | Scheduler job executions                 | —           |
-| `station.scheduler.concurrency.deferrals` | Automatic occurrences deferred by the invocation ceiling | `reason` |
+| `station.scheduler.concurrency.deferrals` | Automatic invocation-ceiling lifecycle outcomes; parked depth is `waiting - admitted - stopped` | `reason`, `disposition` |
 | `station.mcp.lifecycle`           | MCP connection lifecycle events          | `event`     |
 | `station.mcp.negotiation.total`   | Modern/legacy negotiation outcomes        | `era`, `protocol_version`, `fallback`, `extensions`, `outcome`, `error_class` |
 | `station.mcp.negotiation.duration`| Negotiation plus initial discovery latency| same as negotiation outcome |

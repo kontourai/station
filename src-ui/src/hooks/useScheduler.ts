@@ -85,6 +85,12 @@ function invalidateSchedulerEventQueries(
   }
 }
 
+export function isSchedulerDeferralTerminal(
+  event: Pick<SchedulerEvent, 'disposition'>,
+): boolean {
+  return event.disposition !== 'waiting';
+}
+
 /** Subscribe to scheduler SSE events with exponential backoff reconnection. */
 export function useSchedulerEvents(enabled = true) {
   const { apiBase } = useApiBase();
@@ -176,8 +182,10 @@ export function useSchedulerEvents(enabled = true) {
           } else if (evt.event === 'job.retrying') {
             invalidateSchedulerEventQueries(qc, evt.event);
           } else if (evt.event === 'job.deferred') {
-            runningRef.current.delete(evt.job);
-            clearRunTimeout(evt.job);
+            if (isSchedulerDeferralTerminal(evt)) {
+              runningRef.current.delete(evt.job);
+              clearRunTimeout(evt.job);
+            }
             invalidateSchedulerEventQueries(qc, evt.event);
           } else if (evt.event === 'job.missed') {
             missedRef.current.set(evt.job, evt.missedCount ?? 1);
