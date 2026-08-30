@@ -115,3 +115,8 @@ app-universal-debug.apk
 
 # CI batch scratch marker; was committed by accident once (nothing reads it).
 .ci-final.exit
+
+# Orchestrator lane artifacts (delegation briefs, sentinels) — never committed
+.codex-*.md
+.codex-*.log
+*.exit
