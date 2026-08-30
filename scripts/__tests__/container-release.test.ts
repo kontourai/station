@@ -380,9 +380,7 @@ describe('container source contract', () => {
     );
     expect(release).toContain('group: station-release-$' + '{{ github.ref }}');
     expect(release).toContain('station-container-release.json');
-    expect(publishRelease).toContain(
-      'Resolve draft tag to one immutable commit',
-    );
+    expect(publishRelease).toContain('Resolve tag to one immutable commit');
     expect(publishRelease).toContain(
       'Promote only the recorded immutable GHCR digest',
     );

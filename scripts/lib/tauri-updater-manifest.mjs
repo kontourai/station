@@ -50,6 +50,16 @@ export function assertUpdaterAssetMatchesPlatform(platform, assetName) {
   }
 }
 
+function assertUpdaterSignatureFileMatchesAsset(platform, signaturePath, url) {
+  const signatureName = basename(signaturePath);
+  const assetName = assetNameFromUrl(url);
+  assertUpdaterAssetMatchesPlatform(platform, signatureName);
+  if (signatureName !== `${assetName}.sig`)
+    fail(
+      `--signature-file ${JSON.stringify(signatureName)} does not match updater asset ${JSON.stringify(assetName)} for platform ${JSON.stringify(platform)}`,
+    );
+}
+
 /**
  * `releaseTag` is required and the `url` MUST resolve under that exact tag's
  * download path. Without this, the asset name, the `--release-tag` the
@@ -208,6 +218,17 @@ export function verifyUpdaterManifestAssets({
     const assetName = assetNameFromUrl(url);
     assertUpdaterAssetMatchesPlatform(platform, assetName);
     assertUpdaterAssetFile(join(assetsDir, assetName));
+    const signature = entry?.signature;
+    if (typeof signature !== 'string' || signature.trim().length === 0)
+      fail(
+        `manifest signature for platform ${JSON.stringify(platform)} is empty`,
+      );
+    const signaturePath = join(assetsDir, `${assetName}.sig`);
+    const publishedSignature = readUpdaterSignatureFile(signaturePath).trim();
+    if (signature.trim() !== publishedSignature)
+      fail(
+        `manifest signature for platform ${JSON.stringify(platform)} does not match ${JSON.stringify(basename(signaturePath))}`,
+      );
   }
 }
 
@@ -342,6 +363,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     );
   const entries = platforms.map((platform, index) => {
     if (assetFiles[index]) assertUpdaterAssetFile(assetFiles[index]);
+    assertUpdaterSignatureFileMatchesAsset(
+      platform,
+      signatureFiles[index],
+      urls[index],
+    );
     return {
       platform,
       signature: readUpdaterSignatureFile(signatureFiles[index]),

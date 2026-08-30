@@ -332,7 +332,7 @@ producing job. The inventory and checksum manifest are separately attested
 protocol roots because they cannot hash each other; the inventory covers every
 other uploaded sidecar and payload.
 
-Publish resolves the tag again, requires the release to still be a draft,
+Publish resolves the tag again and normally requires the release to still be a draft,
 downloads every `station-*` asset, verifies every asset's GitHub provenance and
 the inventory/checksums, and compares the live `sha-<source-sha>` image to the
 digest recorded in `station-container-release.json`. It promotes only
@@ -353,18 +353,30 @@ draft cannot silently regress the channel.
 The normal recovery for a bad desktop release is a higher fixed version. If an
 owner must stop offering the bad version before that replacement is ready, use
 the protected `allow_updater_pointer_regression` dispatch input only after
-reviewing the candidate draft, the current rolling `latest.json`, and the
-target channel. This break-glass permits the older pointer and is recorded in
-the workflow dispatch, but Tauri will not downgrade clients that already
-installed the newer version; those clients still require a higher fixed
-release. After the repair, verify the rolling release's archives and
-`latest.json`, then leave the guard enabled only for that single dispatch.
+reviewing the candidate tag, the current rolling `latest.json`, and the target
+channel. This break-glass permits the older pointer and is recorded in the
+workflow dispatch. With the flag set, an already-published older tag is
+accepted as a pointer-repair source: the workflow revalidates its signed assets,
+updates only the rolling desktop archives and `latest.json`, and skips the
+container aliases, mobile feed, and deploy-ledger publication. Tauri will not
+downgrade clients that already installed the newer version; those clients still
+require a higher fixed release. After the repair, verify the rolling release's
+archives and `latest.json`, then leave the guard enabled only for that single
+dispatch.
 
-To roll back a public release, remove it from installer resolution by changing
-it back to a draft, revoke the affected external-store listing, and publish a
-higher replacement version. Container aliases are convenience pointers, not
-rollback evidence: recover by retagging the exact prior `image@sha256:...`
-recorded in its public release descriptor, and verify the alias resolves to
-that digest. Never rebuild a rollback image or infer its digest from a mutable
-alias. The immutable GHCR `sha-<source-sha>` staging tag is retained for
-forensic review and must never be overwritten.
+To withdraw a bad public desktop build, first repair its rolling channel:
+dispatch this workflow with the last known-good published tag and
+`allow_updater_pointer_regression` enabled, then verify that
+`stable-desktop` or `beta-desktop` serves that version's matching archives,
+signatures, and `latest.json`. Changing only the bad tag release back to a
+draft does not repair the independent rolling release and must never be treated
+as desktop rollback. After the rolling pointer is repaired, remove the bad tag
+from installer resolution by changing it back to a draft, revoke any affected
+external-store listing, and publish a higher replacement version. Already
+updated Tauri clients cannot downgrade and still require that higher fixed
+release. Container aliases are convenience pointers, not rollback evidence:
+recover by retagging the exact prior `image@sha256:...` recorded in its public
+release descriptor, and verify the alias resolves to that digest. Never rebuild
+a rollback image or infer its digest from a mutable alias. The immutable GHCR
+`sha-<source-sha>` staging tag is retained for forensic review and must never be
+overwritten.

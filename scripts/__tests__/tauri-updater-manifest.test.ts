@@ -150,6 +150,7 @@ describe('the Tauri updater manifest (station#575)', () => {
     );
     const manifest = join(directory, 'latest.json');
     writeFileSync(asset, 'archive');
+    writeFileSync(`${asset}.sig`, VALID.signature);
     writeFileSync(manifest, JSON.stringify(createUpdaterManifest(VALID)));
 
     expect(() =>
@@ -167,6 +168,35 @@ describe('the Tauri updater manifest (station#575)', () => {
         releaseTag: VALID.releaseTag,
       }),
     ).toThrow(/could not read --asset-file/);
+  });
+
+  test('verifies the manifest signature against the matching published signature file', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-updater-signature-'));
+    const assetName = 'station-v0.1.3-macos-aarch64.app.tar.gz';
+    const asset = join(directory, assetName);
+    const manifest = join(directory, 'latest.json');
+    writeFileSync(asset, 'archive');
+    writeFileSync(`${asset}.sig`, 'published-signature');
+    writeFileSync(
+      manifest,
+      JSON.stringify(
+        createUpdaterManifest({
+          ...VALID,
+          version: '0.1.3',
+          releaseTag: 'stable-desktop',
+          signature: 'crossed-signature',
+          url: `https://github.com/kontourai/station/releases/download/stable-desktop/${assetName}`,
+        }),
+      ),
+    );
+
+    expect(() =>
+      verifyUpdaterManifestAssets({
+        manifestPath: manifest,
+        assetsDir: directory,
+        releaseTag: 'stable-desktop',
+      }),
+    ).toThrow(/manifest signature.*does not match/);
   });
 
   test('refuses a manifest platform paired with a different architecture asset', () => {
@@ -230,7 +260,10 @@ describe('the Tauri updater manifest (station#575)', () => {
 
   test('the CLI writes the same manifest a direct call would produce', () => {
     const directory = mkdtempSync(join(tmpdir(), 'station-updater-manifest-'));
-    const signatureFile = join(directory, 'signature.sig');
+    const signatureFile = join(
+      directory,
+      'station-nightly-desktop-macos-aarch64.app.tar.gz.sig',
+    );
     const output = join(directory, 'latest.json');
     writeFileSync(signatureFile, `${VALID.signature}\n`);
 
@@ -315,16 +348,16 @@ describe('the Tauri updater manifest (station#575)', () => {
     ).toEqual(['darwin-aarch64', 'windows-x86_64']);
 
     const crossedSignatures = [...argumentsForManifest];
-    crossedSignatures[crossedSignatures.indexOf(firstSignature)] =
-      secondSignature;
-    crossedSignatures[crossedSignatures.indexOf(secondSignature)] =
-      firstSignature;
+    const firstSignatureIndex = crossedSignatures.indexOf(firstSignature);
+    const secondSignatureIndex = crossedSignatures.indexOf(secondSignature);
+    crossedSignatures[firstSignatureIndex] = secondSignature;
+    crossedSignatures[secondSignatureIndex] = firstSignature;
     expect(() =>
       execFileSync(process.execPath, crossedSignatures, {
         cwd: join(import.meta.dirname, '../..'),
         stdio: 'pipe',
       }),
-    ).toThrow(/signature-file.*does not match updater asset/);
+    ).toThrow(/does not encode platform/);
   });
 
   test('the CLI refuses a flag value that is itself another flag (station#575 L3)', () => {

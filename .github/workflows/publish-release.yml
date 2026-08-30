@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Draft release tag to revalidate and publish
+        description: Draft release tag, or published rollback target with break glass
         required: true
         type: string
       allow_updater_pointer_regression:
@@ -30,6 +30,7 @@ jobs:
       channel: ${{ steps.source.outputs.channel }}
       desktop_updater_tag: ${{ steps.source.outputs.desktop_updater_tag }}
       has_current_updater_manifest: ${{ steps.source.outputs.has_current_updater_manifest }}
+      pointer_repair_only: ${{ steps.source.outputs.pointer_repair_only }}
     env:
       RELEASE_TAG: ${{ inputs.tag }}
     steps:
@@ -39,15 +40,25 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
       - run: npm run dependencies:ci
-      - name: Resolve draft tag to one immutable commit
+      - name: Resolve tag to one immutable commit
         id: source
         env:
           GH_TOKEN: ${{ github.token }}
+          ALLOW_UPDATER_POINTER_REGRESSION: ${{ inputs.allow_updater_pointer_regression }}
         run: |
           [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$ ]]
           git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           sha=$(git rev-list -n 1 "$RELEASE_TAG")
-          gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' | grep -qx true
+          tag_release=$(gh release view "$RELEASE_TAG" --json isDraft)
+          tag_release_state=$(TAG_RELEASE="$tag_release" node -p 'JSON.parse(process.env.TAG_RELEASE).isDraft')
+          if [[ "$tag_release_state" == true ]]; then
+            pointer_repair_only=false
+          elif [[ "$tag_release_state" == false && "$ALLOW_UPDATER_POINTER_REGRESSION" == true ]]; then
+            pointer_repair_only=true
+          else
+            echo "::error::$RELEASE_TAG must still be a draft unless allow_updater_pointer_regression explicitly selects a published rollback target." >&2
+            exit 1
+          fi
           desktop_updater_tag=$(node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --print-desktop-updater-tag)
           if ! updater_release=$(gh release view "$desktop_updater_tag" --repo "$GITHUB_REPOSITORY" --json isDraft,assets); then
             echo "::error::Could not query rolling release $desktop_updater_tag; see the GitHub CLI diagnostic above. Bootstrap it if it does not exist, otherwise retry after API recovery." >&2
@@ -71,6 +82,7 @@ jobs:
             echo "channel=$([[ "$RELEASE_TAG" == *-preview.* ]] && echo preview || echo stable)"
             echo "desktop_updater_tag=$desktop_updater_tag"
             echo "has_current_updater_manifest=$has_current_updater_manifest"
+            echo "pointer_repair_only=$pointer_repair_only"
           } >> "$GITHUB_OUTPUT"
 
   publish:
@@ -192,12 +204,15 @@ jobs:
           fi
 
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        if: ${{ needs.resolve.outputs.pointer_repair_only != 'true' }}
       - name: Authenticate to GHCR with the ephemeral workflow token
+        if: ${{ needs.resolve.outputs.pointer_repair_only != 'true' }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GH_TOKEN: ${{ github.token }}
         run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
       - name: Promote only the recorded immutable GHCR digest
+        if: ${{ needs.resolve.outputs.pointer_repair_only != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -213,6 +228,7 @@ jobs:
             done
 
       - name: Publish release and compensate to draft until feed verifies
+        if: ${{ needs.resolve.outputs.pointer_repair_only != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           NATIVE_APP_UPDATE_PUBLISH_TOKEN: ${{ secrets.NATIVE_APP_UPDATE_PUBLISH_TOKEN }}
@@ -290,6 +306,7 @@ jobs:
       # Ledger commits push directly to main, which the require-green ruleset
       # blocks for GITHUB_TOKEN; the release app is a ruleset bypass actor.
       - name: Mint the ledger push token
+        if: ${{ needs.resolve.outputs.pointer_repair_only != 'true' }}
         id: ledger_token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
@@ -298,6 +315,7 @@ jobs:
           permission-contents: write
 
       - name: Record the stable release in the deploy ledger
+        if: ${{ needs.resolve.outputs.pointer_repair_only != 'true' }}
         env:
           GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
         run: |
@@ -333,7 +351,7 @@ jobs:
       # above is authoritative. Runs on failure too, so a push that never
       # succeeded still leaves the recorded ledger files in an artifact.
       - name: Retain this run's deploy ledger files
-        if: always()
+        if: ${{ always() && needs.resolve.outputs.pointer_repair_only != 'true' }}
         continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -350,7 +368,8 @@ jobs:
       ${{
         always() &&
         needs.resolve.result == 'success' &&
-        needs.publish.result == 'success'
+        needs.publish.result == 'success' &&
+        needs.resolve.outputs.pointer_repair_only != 'true'
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 5

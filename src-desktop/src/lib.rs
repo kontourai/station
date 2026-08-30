@@ -9029,9 +9029,8 @@ fn resolve_desktop_log_level(raw: Option<String>) -> (log::LevelFilter, Option<S
 ///   defaults to an empty `Vec`. Requiring it non-empty here is deliberate
 ///   inertness policy: a registered plugin with zero endpoints would boot
 ///   without crashing but could never find an update, which is a worse,
-///   quieter failure than not registering at all. This is the shape
-///   `native-release-config.mjs`'s pubkey-only overlay produces today for
-///   every channel before its endpoint ships.
+///   quieter failure than not registering at all. Every distributable desktop
+///   overlay therefore writes both the pubkey and its channel-bound endpoint.
 #[cfg(not(mobile))]
 fn desktop_updater_plugin_configured(
     plugins: &std::collections::HashMap<String, serde_json::Value>,

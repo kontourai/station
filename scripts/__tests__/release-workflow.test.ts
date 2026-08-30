@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -140,10 +141,12 @@ type WorkflowStep = {
 };
 type WorkflowJob = {
   steps?: WorkflowStep[];
+  if?: string;
   needs?: string | string[];
   environment?: string;
   permissions?: Record<string, string>;
   env?: Record<string, unknown>;
+  outputs?: Record<string, unknown>;
 };
 type Workflow = {
   on?: unknown;
@@ -208,6 +211,32 @@ function githubExpression(expression: string): string {
 }
 
 describe('native release workflow topology', () => {
+  it('requires an updater endpoint beside every updater public key in every workflow invocation', () => {
+    const workflowDirectory = resolve(root, '.github/workflows');
+    let publicKeyInvocations = 0;
+    for (const filename of readdirSync(workflowDirectory).filter((name) =>
+      /\.ya?ml$/.test(name),
+    )) {
+      const lines = readFileSync(
+        resolve(workflowDirectory, filename),
+        'utf8',
+      ).split('\n');
+      for (let index = 0; index < lines.length; index += 1) {
+        if (!lines[index].includes('scripts/lib/native-release-config.mjs'))
+          continue;
+        let invocation = lines[index].trim();
+        while (invocation.endsWith('\\')) {
+          index += 1;
+          invocation += ` ${lines[index]?.trim() ?? ''}`;
+        }
+        if (!invocation.includes('--updater-public-key-file')) continue;
+        publicKeyInvocations += 1;
+        expect(invocation, filename).toContain('--updater-endpoint');
+      }
+    }
+    expect(publicKeyInvocations).toBeGreaterThan(0);
+  });
+
   it('binds every desktop build to the preflight-selected rolling updater channel', () => {
     const preflight = workflowJob(release, 'preflight');
     const source = namedStep(
@@ -240,7 +269,7 @@ describe('native release workflow topology', () => {
 
     const publishResolve = namedStep(
       workflowJob(publish, 'resolve'),
-      'Resolve draft tag to one immutable commit',
+      'Resolve tag to one immutable commit',
     );
     expect(publishResolve.run).toContain(
       `desktop_updater_tag=$(${sharedMapping})`,
@@ -282,7 +311,10 @@ describe('native release workflow topology', () => {
     expect(assembly.run).toContain('.AppImage.tar.gz.sig');
     expect(assembly.run).toContain('--asset-file');
     expect(assembly.run).toContain('--assert-not-regressing');
-    expect(assembly.run).toContain('--allow-regression');
+    expect(assembly.run).toMatch(
+      /if \[\[ "\$ALLOW_UPDATER_POINTER_REGRESSION" == true \]\]; then\s+pointer_guard\+=\(--allow-regression\)\s+fi/,
+    );
+    expect(assembly.run.match(/--allow-regression/g)).toHaveLength(1);
     expect(assembly.run).toContain('mkdir -p updater-channel-assets');
     expect(publishStep.run).toContain('--verify');
     expect(publishStep.run).toContain('cmp updater-channel-assets/latest.json');
@@ -300,13 +332,37 @@ describe('native release workflow topology', () => {
     const parsed = workflow(publish);
     const resolve = workflowJob(publish, 'resolve');
     const promotion = workflowJob(publish, 'publish');
-    const source = namedStep(
-      resolve,
-      'Resolve draft tag to one immutable commit',
-    );
+    const source = namedStep(resolve, 'Resolve tag to one immutable commit');
     expect(parsed.permissions).toEqual({ contents: 'read' });
     expect(source.run).toContain('gh release view "$desktop_updater_tag"');
     expect(source.run).not.toContain('2>/dev/null || true');
+    expect(source.env?.ALLOW_UPDATER_POINTER_REGRESSION).toBe(
+      githubExpression('inputs.allow_updater_pointer_regression'),
+    );
+    expect(source.run).toMatch(
+      /tag_release_state" == false && "\$ALLOW_UPDATER_POINTER_REGRESSION" == true/,
+    );
+    expect(source.run).toContain('pointer_repair_only=true');
+    expect(resolve.outputs?.pointer_repair_only).toBe(
+      githubExpression('steps.source.outputs.pointer_repair_only'),
+    );
+    const pointerRepairGuard = githubExpression(
+      "needs.resolve.outputs.pointer_repair_only != 'true'",
+    );
+    for (const stepName of [
+      'Authenticate to GHCR with the ephemeral workflow token',
+      'Promote only the recorded immutable GHCR digest',
+      'Publish release and compensate to draft until feed verifies',
+      'Mint the ledger push token',
+      'Record the stable release in the deploy ledger',
+    ])
+      expect(namedStep(promotion, stepName).if).toBe(pointerRepairGuard);
+    expect(
+      namedStep(
+        promotion,
+        'Publish and verify the rolling desktop updater channel',
+      ).if,
+    ).toBeUndefined();
     expect(promotion.needs).toBe('resolve');
     expect(parsed.concurrency).toEqual({
       group: 'station-release-publish',

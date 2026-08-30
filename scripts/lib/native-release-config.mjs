@@ -152,6 +152,13 @@ export function createNativeReleaseConfig({
     config.productName = nativeProductNameForChannel(channel);
   }
   if (updaterPublicKey !== undefined) {
+    if (updaterEndpoint !== undefined) {
+      const updaterTag = desktopUpdaterTagForReleaseTag(tag);
+      if (!updaterEndpoint.includes(`/download/${updaterTag}/`))
+        fail(
+          `updater endpoint must use the ${updaterTag} rolling channel for tag ${tag}`,
+        );
+    }
     const { createUpdaterArtifacts, plugins } = updaterPluginConfig(
       updaterPublicKey,
       updaterEndpoint,

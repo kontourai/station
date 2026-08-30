@@ -893,9 +893,9 @@ jobs:
   # registered only when the build's `plugins.updater` config has both a
   # pubkey and endpoints, which is exactly what this job's overlay writes —
   # so a nightly-channel app built from this job DOES read what it publishes
-  # here. Stable and beta stay config-only (pubkey, no endpoint) until
-  # `native-release-config.mjs`'s tagged-release overlay is also given an
-  # endpoint — see release.yml's desktop-macos job comment.
+  # here. Stable and beta use the same complete pubkey-plus-endpoint contract;
+  # `native-release-config.mjs` additionally binds their endpoint to the
+  # release tag's stable or beta rolling channel.
   nightly-desktop:
     needs: [test-gate]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}

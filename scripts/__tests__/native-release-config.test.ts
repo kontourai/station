@@ -220,6 +220,25 @@ describe('native release configuration', () => {
     ).toEqual([endpoint]);
   });
 
+  test('rejects a tagged build whose updater endpoint names the other channel', () => {
+    expect(() =>
+      createNativeReleaseConfig({
+        tag: 'v2.3.4',
+        updaterPublicKey: 'trusted-public-key',
+        updaterEndpoint:
+          'https://github.com/kontourai/station/releases/download/beta-desktop/latest.json',
+      }),
+    ).toThrow(/must use the stable-desktop rolling channel/);
+    expect(() =>
+      createNativeReleaseConfig({
+        tag: 'v2.3.4-preview.5',
+        updaterPublicKey: 'trusted-public-key',
+        updaterEndpoint:
+          'https://github.com/kontourai/station/releases/download/stable-desktop/latest.json',
+      }),
+    ).toThrow(/must use the beta-desktop rolling channel/);
+  });
+
   test('the CLI rejects unknown flags instead of silently ignoring them', () => {
     expect(() =>
       execFileSync(
