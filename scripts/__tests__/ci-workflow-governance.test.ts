@@ -221,7 +221,7 @@ describe('primary CI workflow governance', () => {
     );
   });
 
-  test('keeps Secret Scan as a post-merge detector, not PR clearance', () => {
+  test('keeps Secret Scan on candidate pull requests and documents its evidence boundary', () => {
     const secretScan = readFileSync(
       new URL('../../.github/workflows/secret-scan.yml', import.meta.url),
       'utf8',
@@ -235,11 +235,18 @@ describe('primary CI workflow governance', () => {
       'utf8',
     );
 
-    expect(workflowExecutionScope(secretScan)).toBe('post-merge');
-    expect(collectPostMergeDetectorWorkflowFindings(secretScan)).toEqual([]);
-    expect(localProtocol).toContain('post-merge operational detectors');
+    expect(workflowExecutionScope(secretScan)).toBe('pull-request');
+    expect(collectPostMergeDetectorWorkflowFindings(secretScan)).toContain(
+      'Post-merge detector workflow must not trigger on pull_request.',
+    );
     expect(localProtocol).toContain(
-      'cannot clear a\n> candidate pull request diff',
+      'Secret Scan scans all Git history reachable from',
+    );
+    expect(localProtocol).toContain(
+      'a red may come from pre-existing\n> reachable history',
+    );
+    expect(localProtocol).toContain(
+      'does not replace the rest of merge-readiness evidence',
     );
     expect(governanceSource).not.toContain('Primary PR CI');
   });

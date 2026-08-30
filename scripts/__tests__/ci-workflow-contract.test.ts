@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from 'vitest';
 // The gate declares the reviewed capacity-action commit; this test reads it
 // rather than restating it. When those were two literals they drifted (#3443
 // moved this one and left the gate's behind, taking `main` red).
-import { REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA } from '../actionlint-gate.mjs';
+import {
+  REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
+  readWorkflowDocuments,
+} from '../actionlint-gate.mjs';
 import {
   resolveAndroidBuildRun,
   sanitizeLookupDiagnostic,
@@ -203,6 +206,7 @@ describe('CI verification workflow contracts', () => {
     expect(secretScan).toMatch(/^name: Secret Scan$/m);
     expect(secretScan).toContain('    name: Secret Scan');
     expect(secretScan).toMatch(/^ {2}push:\n {4}branches: \[main\]$/m);
+    expect(secretScan).toMatch(/^ {2}pull_request:\n {4}branches: \[main\]$/m);
     expect(secretScan).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(secretScan).toMatch(/^permissions:\n {2}contents: read$/m);
     expect(secretScan).toMatch(/^ {4}permissions:\n {6}contents: read$/m);
@@ -213,6 +217,8 @@ describe('CI verification workflow contracts', () => {
     expect(secretScan).toContain('runner: \'"ubuntu-22.04"\'');
     expect(secretScan).not.toContain('capacity-coordination-root:');
     expect(secretScan).not.toContain('capacity-host-id:');
+    expect(secretScan).not.toContain('pull_request_target:');
+    expect(secretScan).not.toContain("github.event_name != 'pull_request'");
     expect(secretScan).toContain(
       `group: station-secret-scan-\${{ github.ref }}`,
     );
@@ -222,6 +228,94 @@ describe('CI verification workflow contracts', () => {
     expect(ci).toContain('Exact full-diff classification');
     expect(ci).toContain('needs.classify.outputs.heavy');
     expect(ci).not.toContain('  secret-scan:');
+  });
+
+  it('tracks and closes one attributed issue per red main-only workflow', () => {
+    const mainHealth = workflow('main-health.yml');
+    const workflowDocuments = readWorkflowDocuments();
+    const parsedMainHealth = workflowDocuments.find(
+      ({ file }) => file === '.github/workflows/main-health.yml',
+    )?.document as
+      | { on?: { workflow_run?: { workflows?: unknown } } }
+      | undefined;
+    const intendedTargetFiles = [
+      '.github/workflows/container-smoke.yml',
+      '.github/workflows/windows-verification.yml',
+      '.github/workflows/secret-scan.yml',
+      '.github/workflows/backlog-priority-policy.yml',
+    ];
+    const intendedTargetNames = intendedTargetFiles.map((targetFile) => {
+      const target = workflowDocuments.find(({ file }) => file === targetFile)
+        ?.document as { name?: unknown } | undefined;
+      expect(target?.name).toEqual(expect.any(String));
+      return target?.name as string;
+    });
+    const watchedWorkflows = parsedMainHealth?.on?.workflow_run?.workflows;
+    expect(watchedWorkflows).toEqual(expect.any(Array));
+    expect(new Set(watchedWorkflows as string[])).toEqual(
+      new Set(intendedTargetNames),
+    );
+    const trigger = mainHealth.slice(
+      mainHealth.indexOf('  workflow_run:'),
+      mainHealth.indexOf('\npermissions:'),
+    );
+    const failureJob = mainHealth.slice(
+      mainHealth.indexOf('  report-failure:'),
+      mainHealth.indexOf('  close-after-success:'),
+    );
+    const successJob = mainHealth.slice(
+      mainHealth.indexOf('  close-after-success:'),
+    );
+
+    expect(trigger).toContain('types: [completed]');
+    expect(trigger).not.toContain('Main pipeline health');
+    expect(mainHealth).toMatch(/^permissions:\n {2}issues: write$/m);
+    expect(mainHealth).not.toContain('contents:');
+    expect(failureJob).toContain(
+      "github.event.workflow_run.conclusion == 'failure'",
+    );
+    expect(successJob).toContain(
+      "github.event.workflow_run.conclusion == 'success'",
+    );
+    for (const job of [failureJob, successJob]) {
+      expect(job).toContain("github.event.workflow_run.head_branch == 'main'");
+      expect(job).toContain(
+        'github.event.workflow_run.head_repository.full_name == github.repository',
+      );
+      expect(job).toContain(
+        'actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd',
+      );
+      expect(job).toContain('github.event.workflow_run.html_url');
+      expect(job).toContain('github.event.workflow_run.head_sha');
+      expect(job).toContain('Main pipeline red: $' + '{workflowName}');
+    }
+    expect(failureJob).toContain("labels: ['bug', 'P1']");
+    expect(failureJob).toContain("state: 'all'");
+    expect(failureJob).toContain("state: 'open'");
+    expect(failureJob).toContain(
+      'group: main-health-$' + '{{ github.event.workflow_run.name }}',
+    );
+    expect(failureJob).not.toContain('cancel-in-progress');
+    expect(successJob).toContain("state: 'closed'");
+    expect(successJob).not.toContain("conclusion == 'failure'");
+  });
+
+  it('refuses to close a main-health issue for a skip-bearing run', () => {
+    const mainHealth = workflow('main-health.yml');
+    const successJob = mainHealth.slice(
+      mainHealth.indexOf('  close-after-success:'),
+    );
+
+    expect(successJob).toContain('github.rest.actions.listJobsForWorkflowRun');
+    expect(successJob).toContain(
+      "jobs.some((job) => job.conclusion === 'success')",
+    );
+    expect(successJob).toContain(
+      "jobs.some((job) => job.conclusion === 'skipped')",
+    );
+    expect(successJob).toContain(
+      'if (!hasSuccessfulJob || hasSkippedJob) return;',
+    );
   });
 
   it('classifies the complete push diff before entering independent heavy concurrency groups', () => {

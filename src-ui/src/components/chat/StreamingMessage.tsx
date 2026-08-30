@@ -23,7 +23,11 @@ type Props = {
   fontSize: number;
   showReasoning?: boolean;
   renderToolCall?: (part: ChatContentPart, index: number) => React.ReactNode;
-  renderReasoning?: (content: string, index: number) => React.ReactNode;
+  renderReasoning?: (
+    content: string,
+    index: number,
+    hasAnswerText: boolean,
+  ) => React.ReactNode;
   /** Transient provider activity signal (thinking/compacting/…). */
   activityHint?: ChatActivityHint;
   /**
@@ -82,6 +86,14 @@ function StreamingMessageComponent({
   const hasReasoningPart = contentParts.some(
     (part) => part.type === 'reasoning' && Boolean(part.content),
   );
+  // Both disjuncts trim: models routinely emit "\n\n" as the first delta
+  // after a reasoning block, and an untrimmed check would call that an answer
+  // — collapsing the reasoning while the answer area is still visually empty.
+  const hasAnswerText =
+    Boolean(streamingText.trim()) ||
+    contentParts.some(
+      (part) => part.type === 'text' && Boolean(part.content?.trim()),
+    );
   const activityLabel = deriveActivityLabel(activityHint, hasReasoningPart);
   // Consecutive tool-call parts collapse into one batch while the turn is
   // still streaming too — classification (inside the lazy ToolCallBatch
@@ -136,7 +148,7 @@ function StreamingMessageComponent({
             showReasoning &&
             renderReasoning
           ) {
-            return renderReasoning(part.content, i);
+            return renderReasoning(part.content, i, hasAnswerText);
           }
           if (part.type === 'text' && part.content) {
             return <StreamingMarkdown key={i} content={part.content} />;

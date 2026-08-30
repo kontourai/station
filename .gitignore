@@ -113,5 +113,5 @@ docs/audits/
 vite.config.ts.timestamp-*.mjs
 app-universal-debug.apk
 
-# CI batch scratch marker; was committed by accident once (nothing reads it).
-.ci-final.exit
+# Root-level batch/setup scratch markers; one was committed by accident once.
+/*.exit
