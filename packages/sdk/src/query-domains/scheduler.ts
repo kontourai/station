@@ -119,7 +119,7 @@ export function useRunJob() {
       const apiBase = await _getApiBase();
       return runJob(apiBase, target);
     },
-    onSuccess: () => {
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['scheduler'] });
       queryClient.invalidateQueries({ queryKey: runsQueries.list().queryKey });
     },
