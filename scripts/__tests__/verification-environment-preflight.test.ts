@@ -668,6 +668,36 @@ describe('assertInstalledDependenciesMatchLockfile (station#4109)', () => {
     }
   });
 
+  it('reports the realpath target when handed a symlinked root, on every platform', () => {
+    // The sibling test above rides tmpdir's incidental /var -> /private/var
+    // symlink, which exists on macOS and NOT on the Linux lane that gates CI.
+    // This one creates the symlink itself, so the canonicalization is pinned
+    // wherever the suite runs.
+    const temp = tempRoot('station-env-preflight-');
+    try {
+      const target = join(temp.root, 'target');
+      const link = join(temp.root, 'link');
+      mkdirSync(target, { recursive: true });
+      writeCleanWorktree(target);
+      makeStale(target);
+      symlinkSync(target, link);
+      let caught: unknown;
+      try {
+        assertInstalledDependenciesMatchLockfile({ repositoryRoot: link });
+      } catch (error) {
+        caught = error;
+      }
+      const error = caught as InstanceType<
+        typeof VerificationEnvironmentStaleError
+      >;
+      expect(error.repositoryRoot).toBe(realpathSync(target));
+      expect(error.repositoryRoot).not.toBe(link);
+      expect(error.message).toContain(realpathSync(target));
+    } finally {
+      temp.remove();
+    }
+  });
+
   it('names the inspected tree, because the remedy runs there and not in the caller', () => {
     // The gate inspects roots the caller is not standing in — the prepared
     // transfer baseline sibling, or a frozen worktree. An unqualified "run
@@ -686,9 +716,11 @@ describe('assertInstalledDependenciesMatchLockfile (station#4109)', () => {
       const error = caught as InstanceType<
         typeof VerificationEnvironmentStaleError
       >;
-      // The canonical root, not the argument: the check realpaths before every
-      // lookup, and on macOS `/var/...` and `/private/var/...` are different
-      // strings. Naming the argument would point at a tree nobody inspected.
+      // Assert through a SYMLINK we create, not through tmpdir's incidental
+      // symlinking: on macOS `/var` -> `/private/var` gives this power for
+      // free, but on the Linux lane that gates CI `realpathSync(temp.root)`
+      // === `temp.root`, so the assertion would degrade to `expect(x).toBe(x)`
+      // and pass with the canonicalization reverted.
       const inspected = realpathSync(temp.root);
       expect(error.repositoryRoot).toBe(inspected);
       expect(error.message).toContain(
@@ -949,6 +981,10 @@ describe('run-verification CLI end-to-end preflight (station#4109)', () => {
       // scrubs absolute paths to `[PATH]`, so asserting the root only on the
       // thrown error proves nothing about what anyone actually reads. This
       // asserts the tree is named in the CLI's own output.
+      // Two lines exactly: the redacted message, then the unscrubbed root.
+      // The previous round dropped a `toHaveLength` here and replaced it with
+      // `toContain` over a join, which cannot see a duplicate.
+      expect(errors).toHaveLength(2);
       const rendered = errors.join('\n');
       expect(rendered).toContain(realpathSync(fixture));
       expect(rendered).toContain('run `npm run dependencies:ci` there');

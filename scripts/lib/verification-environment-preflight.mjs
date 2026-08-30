@@ -310,11 +310,15 @@ export class VerificationEnvironmentStaleError extends Error {
 /**
  * The remedy is `npm run dependencies:ci` IN THE INSPECTED TREE, which is not
  * always the caller's own worktree: `orchestration-transfer-gate.mjs` inspects
- * the prepared baseline sibling, and the verification coordinator inspects the
- * frozen worktree. Naming the root is the whole point of these messages — an
- * unqualified "run npm run dependencies:ci" reads as being about the tree you
- * are standing in, and running it there repairs nothing while the identical
- * error repeats.
+ * the prepared baseline sibling, whose `node_modules` a freshly created
+ * baseline does not have at all. An unqualified "run npm run dependencies:ci"
+ * reads as being about the tree you are standing in — running it there repairs
+ * nothing while the identical error repeats, naming packages that are correctly
+ * installed where you are.
+ *
+ * The coordinator and submission callers pass their OWN git toplevel (there is
+ * no `--cwd` on `run-verification.mjs`), so for them the root disambiguates
+ * which open lane worktree was read rather than pointing somewhere foreign.
  */
 function remedyFor(repositoryRoot) {
   return `run \`npm run dependencies:ci\` in ${repositoryRoot}`;
@@ -350,6 +354,13 @@ function lockfileUnreadableError(repositoryRoot) {
  * test. Throwing before request admission means the caller never reaches a
  * lease, an admitted phase, or a receipt: there is nothing to quarantine or
  * reuse, because nothing was ever created.
+ *
+ * That holds for the receipt surface, not for every artifact: on the detached
+ * worker path this error is caught and persisted into the handoff record via
+ * `errorText`, which scrubs absolute paths. `repositoryRoot` is a plain own
+ * property and is never spread into that record, so the unredacted root
+ * reaches only the CLI's stderr — do not start serializing this error object
+ * wholesale without revisiting that.
  */
 export function assertInstalledDependenciesMatchLockfile({ repositoryRoot }) {
   // Report the tree the check actually read, not the caller's argument:
