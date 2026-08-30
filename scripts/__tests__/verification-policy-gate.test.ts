@@ -91,9 +91,16 @@ describe('verification policy gate', () => {
       expect(config).toContain(`'${exclusion}'`);
 
     const files = discoverTrackedVitestTestFiles({
+      pathExists: () => true,
       execFile: (command, args) => {
         expect(command).toBe('git');
-        expect(args).toEqual(['ls-files', '-z']);
+        expect(args).toEqual([
+          'ls-files',
+          '-z',
+          '--cached',
+          '--others',
+          '--exclude-standard',
+        ]);
         return [
           ...trackedVitestFixture,
           'scripts/__tests__/café round-trip.test.ts',

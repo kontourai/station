@@ -10,7 +10,7 @@
 // profiles are distinct qualified concepts. It bans only the retired saved-
 // Station use and the old target selector, with explicit vendor-tool exceptions.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { gitLsFiles } from './lib/ratchet-utils.mjs';
 
 const SELF = new Set([
@@ -154,7 +154,9 @@ export function runVocabularyGate({ files, readFile }) {
 }
 
 function main() {
-  const files = gitLsFiles(['.']);
+  // `git ls-files` reads the index; omit intentional unstaged deletions so a
+  // working-tree diagnostic evaluates the files that still exist.
+  const files = gitLsFiles(['.']).filter((file) => existsSync(file));
   const { findings, scanned } = runVocabularyGate({
     files,
     readFile: (file) => readFileSync(file, 'utf8'),

@@ -31,7 +31,7 @@
 // fails if any of them falls out of the scanned list.
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const SCAN_PATHSPECS = ['src-ui/src'];
@@ -56,10 +56,16 @@ export function listScannedFiles() {
   const output = execFileSync('git', ['ls-files', '--', ...SCAN_PATHSPECS], {
     encoding: 'utf8',
   });
-  return output
-    .split('\n')
-    .filter((line) => line.endsWith('.tsx'))
-    .filter((line) => !line.includes('__tests__'));
+  return (
+    output
+      .split('\n')
+      .filter((line) => line.endsWith('.tsx'))
+      .filter((line) => !line.includes('__tests__'))
+      // `git ls-files` reads the index, so an intentional working-tree deletion
+      // remains listed until staging. A pre-push diagnostic must evaluate the
+      // tree it was invoked against instead of crashing while opening that path.
+      .filter((line) => existsSync(line))
+  );
 }
 
 export function countBareMounts(

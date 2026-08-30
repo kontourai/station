@@ -46,7 +46,7 @@
  * The success line is then built from what was ACTUALLY enumerated (roots,
  * extensions, per-root counts) rather than from the pathspec string.
  */
-import { readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { gitLsFiles } from './ratchet-utils.mjs';
 
@@ -75,8 +75,8 @@ export const UI_SCAN_EXTENSIONS = ['.tsx'];
  * `scripts/unsaved-guard-gate.mjs` reached independently.
  */
 export function listTrackedFilesUnder(dir, extensions) {
-  return gitLsFiles([dir]).filter((file) =>
-    extensions.some((ext) => file.endsWith(ext)),
+  return gitLsFiles([dir]).filter(
+    (file) => existsSync(file) && extensions.some((ext) => file.endsWith(ext)),
   );
 }
 

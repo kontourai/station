@@ -25,7 +25,7 @@
  * cannot creep up through per-file edits alone.
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 // These are layout/state primitives, not page homes. Keep the allowlist at
@@ -159,7 +159,10 @@ export function main() {
   )
     .trim()
     .split('\n')
-    .filter(Boolean);
+    .filter(Boolean)
+    // `git ls-files` includes an unstaged working-tree deletion. Evaluate
+    // shipped files that still exist instead of crashing before the ratchet.
+    .filter((file) => existsSync(file));
   const findings = countPageLocalResponsiveQueries(files, (file) =>
     readFileSync(file, 'utf8'),
   );

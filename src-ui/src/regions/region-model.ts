@@ -2,6 +2,11 @@ import type { DeviceSettings } from '@kontourai/station-contracts/device-setting
 
 export const REGION_IDS = ['main', 'left', 'right', 'bottom'] as const;
 export type RegionId = (typeof REGION_IDS)[number];
+export const DOCK_REGION_IDS = [
+  'left',
+  'right',
+  'bottom',
+] as const satisfies readonly RegionId[];
 export type RegionBreakpoint = 'phone' | 'desktop';
 export interface RegionState {
   visible: boolean;
@@ -67,6 +72,10 @@ export interface SurfaceShortcut {
   id: string;
   key: string;
   modifiers: readonly ('cmd' | 'ctrl' | 'shift' | 'alt')[];
+}
+
+export function regionLabel(id: RegionId): string {
+  return id[0]?.toUpperCase() + id.slice(1);
 }
 
 export interface RegisteredSurface {
