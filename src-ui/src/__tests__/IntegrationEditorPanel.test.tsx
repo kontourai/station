@@ -7,6 +7,33 @@ import { describe, expect, test, vi } from 'vitest';
 import { IntegrationEditorPanel } from '../views/integrations/IntegrationEditorPanel';
 
 describe('IntegrationEditorPanel', () => {
+  test('uses user-facing copy before a tool server has been checked', () => {
+    render(
+      <IntegrationEditorPanel
+        editForm={{ id: 'demo-server', kind: 'mcp', enabled: true }}
+        isNew={false}
+        locked={false}
+        message={null}
+        viewMode="form"
+        rawJson=""
+        rawError={null}
+        savePending={false}
+        reconnectPending={false}
+        onReconnect={vi.fn()}
+        onDelete={vi.fn()}
+        onSave={vi.fn()}
+        onSwitchToForm={vi.fn()}
+        onSwitchToRaw={vi.fn()}
+        onRawJsonChange={vi.fn()}
+        onUpdate={vi.fn()}
+        onUnlock={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Not checked yet')).toBeTruthy();
+    expect(screen.queryByText(/never probed/i)).toBeNull();
+  });
+
   test('renders persisted-but-not-live state as a warning and reflects persisted disabled state', () => {
     render(
       <IntegrationEditorPanel

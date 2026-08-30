@@ -290,18 +290,20 @@ export function useSendMessage(
           // live controls/events to the server-receipted child identity.
           currentSessionId: receipt.sessionId,
         });
-        // archive#1146: the send above is what brings this chat's orchestration
-        // session into existence, and a session that has just come into
-        // existence is not in the cached list every reader of
+        // The send above can bring either the conversation's root Session or
+        // a later continuation Session into existence. A newly current child
+        // is not in the cached list every reader of
         // `useOrchestrationSessionsQuery` is holding. Nothing else invalidates
         // that key on this path (`AttentionCard.tsx` is the only other writer,
         // and it fires on a different surface), and `staleTime` alone never
-        // triggers a refetch — measured live, the chat dock's directory label
-        // stayed on its pre-session value indefinitely (120s of polling, no
-        // refetch). Guarded on the false→true transition read from the
-        // pre-send snapshot, so it fires once per chat rather than on every
-        // send.
-        if (!currentState?.orchestrationSessionStarted) {
+        // triggers a refetch. Invalidate on the first start OR when the
+        // receipted execution identity changes; otherwise the dock looks for
+        // the new child in a pre-child cache and falsely reports "Session
+        // record missing" even though that record is durable on the server.
+        if (
+          !currentState?.orchestrationSessionStarted ||
+          currentState.currentSessionId !== receipt.sessionId
+        ) {
           invalidate(['orchestration-sessions']);
           invalidate(conversationQueries.inventory().queryKey);
         }
@@ -666,7 +668,10 @@ export function useCancelMessage(apiBase?: string) {
         // releasing this local observer; otherwise Stop merely hides a turn
         // that continues spending tokens and can later be reported Done.
         const result = await interruptOrchestrationTurn({
-          threadId: state.conversationId ?? sessionId,
+          // A conversation may advance through multiple execution Sessions.
+          // Interrupt the exact receipted current Session, not its durable
+          // conversation/root identity.
+          threadId: state.currentSessionId ?? state.conversationId ?? sessionId,
           // Only meaningful while the engine has not started this turn: it
           // binds a held cancel to THIS dispatch
           ...(state.pendingClientTurnId
