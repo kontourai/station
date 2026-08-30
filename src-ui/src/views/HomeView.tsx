@@ -113,6 +113,8 @@ export function HomeView({
   // `isAmbientDockOccupant` — never a route-local flag — so choosing another
   // dock occupant clears this state without any route-side bookkeeping.
   const dock = useWorkspacePaneDockAction();
+  // Route-owned away state remains until surface placements stop reading the
+  // legacy workspace-pane dock adapter. // #928 step 5
   const paneAway = isAmbientDockOccupant(dock, WORKSPACE_HOME_PANE_INSTANCE);
 
   // The un-removable floor (archive#3122): built once, used by both

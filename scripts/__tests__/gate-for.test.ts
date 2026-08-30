@@ -42,15 +42,17 @@ describe('gate-for report', () => {
   it('always names the unconditional checks and the lane ladder', () => {
     const report = gateReport({ changedPaths: [], baseSha });
     for (const always of [
-      'check-merge-base-fresh.mjs',
       'lint:check',
       'commit-message-gate.mjs --prepush-stdin',
       'test:changed -- --base=origin/main --explain',
       'ci:fast',
       'full:regression',
+      'GitHub merge queue candidate',
+      'manual CI workflow_dispatch',
     ]) {
       expect(report).toContain(always);
     }
+    expect(report).not.toContain('final checkpoint only');
   });
 
   it('with no base sha, every decider fails open to RUNS by its own rule', () => {

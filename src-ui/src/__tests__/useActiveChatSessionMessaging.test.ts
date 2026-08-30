@@ -1300,6 +1300,59 @@ describe('useCancelMessage', () => {
     });
   });
 
+  it('keeps a successful Stop out of the send-failure projection when abort releases the foreground request (#898)', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'idle',
+      abortController: undefined,
+    });
+    sendExecutionMessageMock.mockImplementationOnce(
+      ({ signal }: { signal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), {
+            once: true,
+          });
+        }),
+    );
+    const { result } = renderHook(() => ({
+      send: useSendMessage('http://api.test'),
+      cancel: useCancelMessage('http://api.test'),
+    }));
+
+    let send: Promise<unknown> | undefined;
+    await act(async () => {
+      send = result.current.send(
+        sessionId,
+        'codex',
+        'server-thread-1',
+        'please stop this turn',
+      );
+      await vi.waitFor(() =>
+        expect(sendExecutionMessageMock).toHaveBeenCalledOnce(),
+      );
+    });
+
+    let outcome: StopTurnOutcome | undefined;
+    await act(async () => {
+      outcome = await result.current.cancel(sessionId);
+      await send;
+    });
+
+    expect(outcome).toEqual({ kind: 'settled', result: cooperativeStop });
+    expect(activeChatsStore.getSnapshot()[sessionId]).toMatchObject({
+      status: 'idle',
+      stopPending: false,
+      abortController: undefined,
+    });
+    expect(activeChatsStore.getSnapshot()[sessionId]?.error).toBeUndefined();
+    expect(clearEphemeralMessagesMock).not.toHaveBeenCalled();
+    expect(addEphemeralMessageMock).not.toHaveBeenCalledWith(
+      sessionId,
+      expect.objectContaining({
+        content: expect.stringContaining('An unknown error occurred'),
+      }),
+    );
+  });
+
   it('interrupts the receipted continuation Session instead of the conversation root', async () => {
     activeChatsStore.updateChat(sessionId, {
       currentSessionId: 'server-thread-1:session:child-2',
@@ -1409,6 +1462,39 @@ describe('useCancelMessage', () => {
       status: 'idle',
       stopPending: false,
     });
+  });
+
+  it('does not dispatch a second interrupt after the first receipt settles but before its terminal event arrives (#921)', async () => {
+    interruptOrchestrationTurnMock
+      .mockResolvedValueOnce(cooperativeStop)
+      .mockResolvedValueOnce({
+        outcome: 'no-active-turn',
+        threadId: 'server-thread-1',
+      });
+    activeChatsStore.updateChat(sessionId, {
+      orchestrationTurnOpen: true,
+      error: undefined,
+    });
+    const { result } = renderHook(() => useCancelMessage('http://api.test'));
+
+    let first: StopTurnOutcome | undefined;
+    let second: StopTurnOutcome | undefined;
+    await act(async () => {
+      first = await result.current(sessionId);
+      // A real double-click can put the second click after the fast HTTP
+      // receipt but before turn.aborted reaches the browser event stream.
+      second = await result.current(sessionId);
+    });
+
+    expect(first).toEqual({ kind: 'settled', result: cooperativeStop });
+    expect(second).toEqual({ kind: 'not-running' });
+    expect(interruptOrchestrationTurnMock).toHaveBeenCalledTimes(1);
+    expect(activeChatsStore.getSnapshot()[sessionId]).toMatchObject({
+      status: 'idle',
+      orchestrationTurnOpen: false,
+      stopPending: false,
+    });
+    expect(activeChatsStore.getSnapshot()[sessionId]?.error).toBeUndefined();
   });
 
   // (live verification): the send path clears `abortController`

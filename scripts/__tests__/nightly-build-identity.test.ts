@@ -536,14 +536,14 @@ describe('the nightly workflow keeps its promises', () => {
     );
   });
 
-  it('makes the nightly build job need the test gate', () => {
+  it('makes the nightly build job need both promotion gates', () => {
     const nightlyJob = workflow.slice(workflow.indexOf('\n  nightly:'));
     expect(nightlyJob.slice(0, nightlyJob.indexOf('runs-on:'))).toContain(
-      'needs: [test-gate]',
+      'needs: [test-gate, full-regression]',
     );
   });
 
-  it('publishes only on a literal success result from the test gate', () => {
+  it('publishes only on literal success from both promotion gates', () => {
     // `!= 'failure'` would admit a skipped or cancelled gate — the exact
     // green-looking hole this predicate exists to close. Pinned as one
     // literal LINE (not a whole-file substring: a `#`-commented copy of the
@@ -552,7 +552,7 @@ describe('the nightly workflow keeps its promises', () => {
     // load-bearing (gate:workflows accepts only the literal prefix ladder).
     const ifLiteral =
       'if: $' +
-      "{{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}";
+      "{{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' }}";
     const lines = workflow.split('\n').map((line) => line.trim());
     expect(lines).toContain(ifLiteral);
   });
@@ -868,7 +868,7 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
   it('exists as its own job, gated identically to the Android job', () => {
     expect(jobStart).toBeGreaterThan(0);
     expect(desktopJob.slice(0, desktopJob.indexOf('runs-on:'))).toContain(
-      'needs: [test-gate]',
+      'needs: [test-gate, full-regression]',
     );
   });
 
@@ -890,13 +890,13 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     );
   });
 
-  it('publishes only on a literal success result from the test gate', () => {
+  it('publishes only on literal success from both promotion gates', () => {
     // Same literal line as the Android job's pin above, and the same
     // conjunct-order reasoning: scripts/actionlint-gate.mjs's
     // skipsAutomaticPullRequest accepts only this exact prefix ladder.
     const ifLiteral =
       'if: $' +
-      "{{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}";
+      "{{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' }}";
     const lines = desktopJob.split('\n').map((line) => line.trim());
     expect(lines).toContain(ifLiteral);
   });
@@ -956,10 +956,9 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
       .split('\n')
       .map((line) => line.trim())
       .find((line) => line.startsWith('needs:'));
-    // Exactly [test-gate]: a broader needs edge (e.g. adding `nightly`) would
-    // make the Android build a silent precondition for the desktop ship,
-    // which the header comment above explicitly disclaims.
-    expect(needsLine).toBe('needs: [test-gate]');
+    // Exactly the two shared gates: adding `nightly` would make the Android
+    // build a silent precondition for the desktop ship.
+    expect(needsLine).toBe('needs: [test-gate, full-regression]');
     expect(desktopJob).not.toContain('allocate-nightly-version-code.mjs');
   });
 

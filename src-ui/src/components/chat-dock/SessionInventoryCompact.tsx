@@ -110,6 +110,23 @@ export function SessionInventoryCompact({
       </aside>
     );
   if (!model) return null;
+  const reportedGroups = model.groups.filter(
+    (group) =>
+      group.items.length > 0 ||
+      (group.count !== null && group.count !== '0') ||
+      (group.id === 'attention' && group.gaps.length > 0),
+  );
+  const highlightGroups = (
+    reportedGroups.length
+      ? reportedGroups
+      : model.groups.filter(
+          (group) => group.id === 'inputs' || group.id === 'sources',
+        )
+  ).slice(0, 4);
+  const remainingGroupCount = Math.max(
+    0,
+    model.groups.length - highlightGroups.length,
+  );
   const previews = model.groups
     .filter((group) => PREVIEW_GROUPS.has(group.id))
     .flatMap((group) =>
@@ -123,8 +140,11 @@ export function SessionInventoryCompact({
       aria-label="Session inventory"
     >
       <div className="session-inventory-compact__heading">
-        <h2>Session inventory</h2>
-        <bdi>{model.scopeLabel}</bdi>
+        <div>
+          <p>Basis</p>
+          <h2>Session inventory</h2>
+          <bdi>{model.scopeLabel}</bdi>
+        </div>
         <button
           type="button"
           onClick={onClose}
@@ -133,9 +153,15 @@ export function SessionInventoryCompact({
           ×
         </button>
       </div>
-      <fieldset className="session-inventory-compact__groups">
-        <legend>Inventory groups</legend>
-        {model.groups.map((group) => (
+      <p className="session-inventory-compact__intro">
+        Highlights from this scope. Open full Basis to browse every group and
+        exact detail.
+      </p>
+      <section
+        className="session-inventory-compact__highlights"
+        aria-label="Inventory highlights"
+      >
+        {highlightGroups.map((group) => (
           <button
             key={group.key}
             type="button"
@@ -151,7 +177,13 @@ export function SessionInventoryCompact({
             <span>{group.count ?? '—'}</span>
           </button>
         ))}
-      </fieldset>
+        {remainingGroupCount > 0 ? (
+          <p>
+            {remainingGroupCount} more{' '}
+            {remainingGroupCount === 1 ? 'group' : 'groups'} in full Basis
+          </p>
+        ) : null}
+      </section>
       {liveNow.running.length || liveNow.pendingApprovalIds.length ? (
         <p className="session-inventory-compact__live" role="status">
           Live now: {liveNow.running.length} running
@@ -185,6 +217,7 @@ export function SessionInventoryCompact({
         </ul>
       ) : null}
       <button
+        className="session-inventory-compact__full"
         type="button"
         onClick={(event) => onOpenFull(event.currentTarget, selection)}
       >

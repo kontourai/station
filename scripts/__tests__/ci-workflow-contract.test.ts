@@ -342,8 +342,9 @@ describe('CI verification workflow contracts', () => {
     expect(ci).toContain(
       `group: ci-fast-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}`,
     );
-    expect(ci).toContain(
-      `group: ci-full-regression-\${{ github.event_name }}-\${{ github.ref }}`,
+    expect(workflow('full-regression.yml')).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'group: hosted-full-regression-${{ inputs.source_sha }}',
     );
     expect(ci).toContain(
       `group: ci-browser-smoke-\${{ github.event_name }}-\${{ github.ref }}`,
@@ -574,8 +575,13 @@ describe('CI verification workflow contracts', () => {
     expect(fullRegression).not.toContain(
       "needs.classify.outputs.heavy == 'true'",
     );
-    expect(fullRegression).toContain('timeout-minutes: 90');
-    expect(fullRegression).toContain('runs-on: ubuntu-22.04');
+    expect(fullRegression).toContain(
+      'uses: ./.github/workflows/full-regression.yml',
+    );
+    expect(fullRegression).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'source_sha: ${{ github.sha }}',
+    );
     expect(fullRegression).not.toContain('self-hosted');
     expect(fullRegression).not.toContain('physical-host-capacity@');
     const desktopWinLeaseWeights = [
@@ -591,8 +597,7 @@ describe('CI verification workflow contracts', () => {
     expect(desktopWinLeaseWeights).toEqual([6, 6, 6, 5, 9, 9]);
     expect(Math.max(...desktopWinLeaseWeights)).toBeLessThanOrEqual(9);
     expect(workflow('secret-scan.yml')).not.toContain('capacity-lease-weight:');
-    expect(fullRegression).toContain('run: npm run full:regression');
-    expect(fullRegression).toContain('run: npm run test:connected-agents');
+    expect(fullRegression).not.toContain('run: npm run full:regression');
   });
 
   it('validates pull-request titles from exact base policy before either candidate checkout', () => {
@@ -648,6 +653,42 @@ describe('CI verification workflow contracts', () => {
     }
   });
 
+  it('runs required checks against the synthesized merge-group candidate', () => {
+    const ci = workflow('ci.yml');
+    const security = workflow('security-analysis.yml');
+    const windows = workflow('windows-pr-verification.yml');
+    const ios = workflow('build-ios.yml');
+
+    for (const source of [ci, security, windows, ios]) {
+      expect(source).toContain(
+        'merge_group:\n    branches: [main]\n    types: [checks_requested]',
+      );
+    }
+    expect(ci).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "BEFORE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '0000000000000000000000000000000000000000' }}",
+    );
+    expect(ci).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}",
+    );
+    expect(security).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'base-ref: ${{ github.event.merge_group.base_sha }}',
+    );
+    expect(security).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'head-ref: ${{ github.event.merge_group.head_sha }}',
+    );
+    expect(windows).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'group: windows-pr-verification-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}',
+    );
+    expect(ios).toContain(
+      "github.event_name == 'merge_group' && github.event.merge_group.head_sha",
+    );
+  });
+
   it('keeps coordinated lane receipts and failure artifacts downloadable', () => {
     for (const name of [
       'ci.yml',
@@ -684,10 +725,7 @@ describe('CI verification workflow contracts', () => {
     const inNodeModulesPathZero = /PLAYWRIGHT_BROWSERS_PATH=0/;
 
     const ci = workflow('ci.yml');
-    const fullRegression = ci.slice(
-      ci.indexOf('  full-regression:'),
-      ci.indexOf('  browser-smoke:'),
-    );
+    const fullRegression = workflow('full-regression.yml');
     const browserSmoke = ci.slice(ci.indexOf('  browser-smoke:'));
     const extended = workflow('ci-extended.yml');
     const coverage = extended.slice(
@@ -782,7 +820,7 @@ describe('CI verification workflow contracts', () => {
     expect(coverageRunBody).not.toMatch(inNodeModulesPathZero);
   });
 
-  it('checks out enough history for exact Veritas PR evidence', () => {
+  it('checks out enough history for exact candidate and completion identities', () => {
     const ci = workflow('ci.yml');
     const fastChecks = ci.slice(
       ci.indexOf('  fast-checks:'),
@@ -790,9 +828,12 @@ describe('CI verification workflow contracts', () => {
     );
 
     expect(fastChecks).toContain('fetch-depth: 0');
-    expect(fastChecks).toContain('--changed-from "$BASE_REF"');
-    expect(fastChecks).toContain('--changed-to "$HEAD_REF"');
-    expect(fastChecks).toContain('run: npm run test:connected-agents');
+    expect(fastChecks).toContain('STATION_CI_FAST_BASE');
+    expect(workflow('full-regression.yml')).toContain('fetch-depth: 0');
+    expect(workflow('full-regression.yml')).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'ref: ${{ inputs.source_sha }}',
+    );
     expect(ci).not.toContain('  connected-agents:');
   });
 
@@ -1185,6 +1226,7 @@ describe('CI verification workflow contracts', () => {
   it('runs the bounded Windows floor on every PR head from base-controlled hosted policy', () => {
     const windows = workflow('windows-pr-verification.yml');
     expect(windows).toContain('pull_request_target:');
+    expect(windows).toContain('merge_group:');
     expect(windows).not.toContain('  pull_request:\n');
     expect(windows).toContain('branches: [main]');
     expect(windows).not.toContain(
@@ -1271,7 +1313,6 @@ describe('artifact storage does not accumulate or gate verdicts', () => {
 
   it.each([
     ['ci.yml', 'ci-fast-verification'],
-    ['ci.yml', 'full-regression-verification'],
     ['ci-extended.yml', 'coverage-verification'],
     ['nightly-gallery.yml', 'nightly-gallery'],
   ])('%s: the %s diagnostic upload cannot fail its job', (file, artifact) => {
@@ -1345,6 +1386,7 @@ describe('iOS verification proves packaged runtime readiness', () => {
 
   it('emits a stable check while reserving macOS for affected pull requests', () => {
     expect(ios).toContain('pull_request_target:');
+    expect(ios).toContain('merge_group:');
     expect(ios).toContain('src-desktop/*|src-ui/*|packages/connect/*');
     expect(ios).toContain('needs: classify');
     expect(ios).toContain("if: needs.classify.outputs.relevant == 'true'");
@@ -1354,7 +1396,7 @@ describe('iOS verification proves packaged runtime readiness', () => {
     expect(ios).toContain('persist-credentials: false');
     expect(ios).toContain("github.event_name == 'pull_request_target'");
     expect(ios).toContain(
-      `--source-sha "\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}"`,
+      `--source-sha "\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}"`,
     );
   });
 

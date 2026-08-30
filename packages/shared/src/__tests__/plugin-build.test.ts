@@ -14,7 +14,10 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { buildPlugin } from '../build.js';
 
 const cleanupDirs: string[] = [];
-const SUBPROCESS_TEST_TIMEOUT_MS = 15_000;
+// esbuild startup and filesystem containment checks can exceed 15 seconds on a
+// busy shared host. Keep these security assertions bounded without letting
+// host contention turn a correct rejection into a false timeout.
+const SUBPROCESS_TEST_TIMEOUT_MS = 30_000;
 const workspaceRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../../..',

@@ -78,7 +78,17 @@ export function AgentPicker({
   if (!runnableAgents.length) {
     return (
       <button type="button" className="agent-picker__trigger" disabled>
-        No runnable agents
+        {selected ? (
+          <>
+            <AgentIcon agent={selected} size="small" />
+            <span className="agent-picker__trigger-name">{selected.name}</span>
+            <span className="agent-picker__trigger-model">
+              Not runnable here
+            </span>
+          </>
+        ) : (
+          'No runnable agents'
+        )}
       </button>
     );
   }

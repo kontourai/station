@@ -27,9 +27,9 @@ just dev --instance=docs-smoke --temp-home --clean --force --port=3242 --ui-port
 just test "scripts/__tests__/product-laws.test.ts"
 ```
 
-`just full` delegates to `npm run full:regression`. It is convenient, but the
-npm completion command and its verification coordinator are the only
-completion-receipt authority.
+`just full` delegates to `npm run full:regression`, but it is an explicit
+diagnostic tool rather than the ordinary delivery loop. Hosted promotion owns
+the canonical completion receipt.
 
 ## Local Runtime
 
@@ -256,29 +256,23 @@ host-coordinated lanes consume shared CPU and mutable-output leases.
 Use `npm run ci:fast` for bounded per-push feedback: it runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
 and verification-policy invariants—never broad static verification or the full
-corpus. Its reserved coordinator and physical-host capacity overlap the full
-gate safely, so feedback can admit while completion work runs. When its changed
-selector exits 3, `ci:fast` reports a diagnostic deferral after its invariants;
-that result is never completion evidence and `npm run full:regression` remains
-required. After focused implementation proof, freeze the worktree and use
-`npm run full:regression:submit` to hand completion off. Never use shell
-polling, background, or relaunch loops. Do not edit or remove a worktree with a
-live handoff; inspect it with
-`node scripts/run-verification.mjs submit-status <request-key>`. Synchronous
-`npm run full:regression` remains the sole evidence command and final consumer
-of the canonical receipt; a matching coordinated request may be executed,
-joined, or reused with exit 0. Inspect host capacity with
-`node scripts/run-verification.mjs status`; the bounded result links only to
-redacted retained artifacts, never raw suite output. Escalate to public native
-or full E2E lanes only when selector/policy output names them or the final risk
-surface requires them.
+corpus.
+Ordinary pull requests use focused evidence plus `npm run ci:fast`.
+GitHub's merge queue verifies the synthesized latest-main candidate.
+Do not run `npm run full:regression`
+locally merely because `main` moved.
 
-When recording a passing Builder `tests-evidence` claim, use
-`npm run full:regression` as its command. That exact command is Station's required CI
-lane and `trust-reconcile-manifest` entry. Keep focused test commands in the
-delivery artifact or evidence summary: they are useful diagnostics, but they
-are not independently rerun by the trust anchor and must not be classified as
-CI-reconcilable command evidence.
+The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
+canonical receipt. Nightly and tagged preview and stable promotions bind it to
+one exact source SHA before any artifact build or publication.
+A manual `workflow_dispatch` of CI remains the explicit diagnostic escape hatch.
+Escalate to public native or full E2E lanes only when selector/policy output
+names them or the final risk surface requires them.
+
+When recording a promotion-level Builder `tests-evidence` claim, use the
+hosted exact-SHA receipt whose command is `npm run full:regression`. Keep
+focused test commands in ordinary delivery evidence; they remain useful
+diagnostics but are not canonical promotion receipts.
 
 Useful focused commands:
 

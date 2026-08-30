@@ -8,6 +8,11 @@ on:
   pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened, edited]
+  # Merge queue evaluates the synthesized latest-main candidate rather than
+  # asking each contributor to chase a moving main branch locally.
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
   # Manual trigger for bounded fast feedback and the completion gate on demand.
   workflow_dispatch:
 
@@ -40,15 +45,15 @@ jobs:
       - id: classify
         name: Classify the complete before..sha diff
         env:
-          BEFORE: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
-          AFTER: ${{ github.sha }}
+          BEFORE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '0000000000000000000000000000000000000000' }}
+          AFTER: ${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
         run: node scripts/classify-ci-change.mjs --before "$BEFORE" --after "$AFTER" >> "$GITHUB_OUTPUT"
 
   fast-checks:
     needs: classify
     # `always()` permits same-repository PR feedback after its intentionally
     # skipped classifier. Fork PRs stay on the isolated fork-smoke job below.
-    if: ${{ always() && !cancelled() && ((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
@@ -134,7 +139,7 @@ jobs:
       - name: Run fast CI lane
         id: fast_ci
         env:
-          STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
+          STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
         run: npm run ci:fast
 
       # Synthetic fixture only: the reference-hardware lane owns actual
@@ -224,18 +229,28 @@ jobs:
         run: npm run ci:fast
 
   full-regression:
-    # Avoid a ~65-minute completion gate on every push or PR; dispatch remains
-    # available for an explicitly requested run.
+    # Manual escape hatch only. Nightly and tagged releases call the same
+    # reusable workflow with their own already-bound immutable source SHA.
     needs: [classify, fast-checks]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request_target' && github.event_name == 'workflow_dispatch' }}
-    concurrency:
-      group: ci-full-regression-${{ github.event_name }}-${{ github.ref }}
-      cancel-in-progress: true
+    uses: ./.github/workflows/full-regression.yml
+    with:
+      source_sha: ${{ github.sha }}
+
+  manual-completion-diagnostics:
+    # Existing manual-only adjuncts remain available without becoming a second
+    # promotion contract. The canonical command already includes the complete
+    # Vitest corpus and Veritas repo-governance; this job preserves the focused
+    # connected-agent projection and diff-oriented readiness report for an
+    # operator who explicitly dispatched CI.
+    needs: [classify, full-regression]
+    if: ${{ always() && !cancelled() && github.event_name == 'workflow_dispatch' && (needs['full-regression'].result == 'success' || needs['full-regression'].result == 'failure') }}
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -244,72 +259,25 @@ jobs:
           node-version-file: .nvmrc
 
       - run: npm run dependencies:ci
-
-      - name: Install Chromium (BannerHost.touch-target.test.tsx, station#3453)
-        # `npm run dependencies:ci` does not provision Playwright browsers — root `postinstall`
-        # is `patch-package` only. `full:regression`'s ordinary Vitest corpus
-        # now includes a real-Chromium touch-target check that fails loud
-        # (not a silent skip) without this.
-        #
-        # Installed to `$HOME/.cache/ms-playwright`, exported job-wide via
-        # `$GITHUB_ENV` — the same convention `browser-smoke` below already
-        # uses. Hosted runners are ephemeral, so this installs every job.
-        # This intentionally does NOT use `npm run install:playwright`: that
-        # script hardcodes an in-`node_modules` browsers path as a package.json
-        # prefix, which would override the exported env var. Calling
-        # `playwright install` directly lets the export win. The touch-target
-        # test's own default (`tests/helpers/css-cascade-fixture.ts`) and
-        # `scripts/run-e2e-suite.mjs` both honor any already-*set*
-        # `PLAYWRIGHT_BROWSERS_PATH` rather than forcing `0`, so they resolve
-        # the same path this step just installed to.
-        #
-        # Bounded + retried, mirroring ci-extended.yml's `playwright-full`
-        # install: the previous single 5-minute attempt with no retry was
-        # #3517's headline harm on a slow/flaky first run.
-        timeout-minutes: 20
-        run: |
-          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
-          for attempt in 1 2 3; do
-            echo "Playwright install attempt $attempt"
-            if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
-              exit 0
-            fi
-            echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
-            sleep 15
-          done
-          echo "::error::Playwright install failed after 3 attempts"
-          exit 1
-
-      - name: Run full regression completion gate
-        id: full_regression
-        run: npm run full:regression
-
-      - name: Rebuild connected-agent prerequisites after a failed completion gate
-        if: ${{ !cancelled() && steps.full_regression.outcome == 'failure' }}
-        run: npm run build:sdk && npm run build:connect
-
+      - run: npm run build:sdk && npm run build:connect
       - name: Run connected-agents suite
-        if: ${{ !cancelled() && (steps.full_regression.outcome == 'success' || steps.full_regression.outcome == 'failure') }}
         run: npm run test:connected-agents
 
       - name: Veritas readiness evidence
         if: always()
         env:
-          BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          HEAD_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-          FULL_REGRESSION_RESULT: ${{ steps.full_regression.outcome }}
+          HEAD_REF: ${{ github.sha }}
         run: |
+          if BASE_REF=$(git rev-parse "${HEAD_REF}^" 2>/dev/null); then
+            :
+          else
+            BASE_REF=
+          fi
           if [ -n "$BASE_REF" ] && [ -n "$HEAD_REF" ]; then
-            BASELINE_STATUS="unknown"
-            if [ "$FULL_REGRESSION_RESULT" = "success" ]; then
-              BASELINE_STATUS="success"
-            elif [ "$FULL_REGRESSION_RESULT" = "failure" ]; then
-              BASELINE_STATUS="failed"
-            fi
             if node scripts/veritas-readiness-evidence.mjs --check evidence \
               --run-id veritas-${{ github.run_id }} \
-              --source-ref "${{ github.event_name }}:${{ github.ref }}" \
-              --baseline-ci-fast-status "$BASELINE_STATUS" \
+              --source-ref "workflow_dispatch:${{ github.ref }}" \
+              --baseline-ci-fast-status success \
               --changed-from "$BASE_REF" \
               --changed-to "$HEAD_REF"; then
               echo "Veritas readiness evidence recorded."
@@ -334,21 +302,6 @@ jobs:
             echo "NOT_VERIFIED: Veritas readiness evidence has no diff range available." >&2
             exit 2
           fi
-
-      - name: Upload full-regression diagnostics
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        # Diagnostics: a storage/quota failure here is an infrastructure
-        # condition, not a verdict on the code. It must not redden a job
-        # whose work passed (station#2218).
-        continue-on-error: true
-        with:
-          name: full-regression-verification-${{ github.run_id }}
-          path: |
-            .kontourai/verification-receipts/
-            .kontourai/verification-output/
-          if-no-files-found: ignore
-          retention-days: 14
 
   browser-smoke:
     name: Deterministic Browser Smoke

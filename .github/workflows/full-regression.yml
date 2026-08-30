@@ -1,0 +1,85 @@
+name: Hosted full regression
+
+# One implementation of the expensive completion gate, consumed only by
+# explicit/manual verification and by artifact-promotion workflows. It has no
+# push, pull_request, pull_request_target, merge_group, or schedule trigger.
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Exact 40-character lowercase commit SHA to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  full-regression:
+    name: Exact-SHA full regression
+    concurrency:
+      group: hosted-full-regression-${{ inputs.source_sha }}
+      cancel-in-progress: false
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Validate immutable source identity
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error::source_sha must be exactly 40 lowercase hexadecimal characters."
+            exit 1
+          }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prove checkout matches the requested source
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - run: npm run dependencies:ci
+
+      - name: Install Chromium for full-corpus browser assertions
+        timeout-minutes: 20
+        run: |
+          echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
+          for attempt in 1 2 3; do
+            echo "Playwright install attempt $attempt"
+            if PLAYWRIGHT_BROWSERS_PATH="$HOME/.cache/ms-playwright" timeout 360 npx playwright install chromium; then
+              exit 0
+            fi
+            echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
+            sleep 15
+          done
+          echo "::error::Playwright install failed after 3 attempts"
+          exit 1
+
+      - name: Run canonical completion gate
+        # This command already composes required Veritas repo-governance and
+        # the complete profiled Vitest corpus. `test:connected-agents` is a
+        # focused subset of that corpus; the former manual CI follow-up was
+        # duplicate diagnostic evidence, not an additional promotion gate.
+        run: npm run full:regression
+
+      - name: Retain exact-SHA completion receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: full-regression-${{ inputs.source_sha }}-${{ github.run_id }}
+          path: |
+            .kontourai/verification-receipts/
+            .kontourai/verification-output/
+            .kontourai/verification-phase-records/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14

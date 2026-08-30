@@ -5,8 +5,18 @@ import {
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
-import { describe, expect, test } from 'vitest';
-import { schedulerRunnableAgents } from '../components/scheduler/AgentPicker';
+import { render, screen } from '@testing-library/react';
+import { createElement } from 'react';
+import { describe, expect, test, vi } from 'vitest';
+
+const useAgents = vi.hoisted(() => vi.fn());
+
+vi.mock('../contexts/AgentsContext', () => ({ useAgents }));
+
+import {
+  AgentPicker,
+  schedulerRunnableAgents,
+} from '../components/scheduler/AgentPicker';
 
 const agent = (
   slug: string,
@@ -32,5 +42,22 @@ describe('scheduler Agent picker', () => {
     ]);
 
     expect(offered.map(({ slug }) => slug)).toEqual(['station', 'reviewer']);
+  });
+
+  test('keeps a bound non-runnable agent visible when no agent is selectable', () => {
+    useAgents.mockReturnValue([
+      agent('claude', {
+        name: 'Claude Code',
+        execution: { agentConnectionId: engineConnectionId('claude') },
+      }),
+    ]);
+
+    render(createElement(AgentPicker, { value: 'claude', onChange: vi.fn() }));
+
+    const trigger = screen.getByRole('button', {
+      name: /Claude Code.*not runnable here/i,
+    });
+    expect((trigger as HTMLButtonElement).disabled).toBe(true);
+    expect(trigger.textContent).not.toContain('No runnable agents');
   });
 });

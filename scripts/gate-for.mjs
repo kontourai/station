@@ -70,7 +70,6 @@ export function gateReport({ changedPaths, baseSha }) {
     `gate:for — ${changedPaths.length} changed path(s)`,
     '',
     'Every push (armed in .githooks/pre-push):',
-    '  node scripts/check-merge-base-fresh.mjs        # branch contains origin/main',
     '  npm run lint:check                             # biome lint/format/imports',
     '  node scripts/commit-message-gate.mjs --prepush-stdin   # commit subjects in the push range',
     '',
@@ -86,7 +85,9 @@ export function gateReport({ changedPaths, baseSha }) {
     'Tests — derive the focused selection (do not guess):',
     '  npm run test:changed -- --base=origin/main --explain',
     'Bounded feedback before push:  npm run ci:fast',
-    'Completion evidence (final checkpoint only):  npm run full:regression',
+    'Ordinary PR integration:  required checks on the GitHub merge queue candidate',
+    'Promotion completion:  hosted Nightly/tag workflow runs npm run full:regression',
+    'Explicit diagnostic escape hatch:  manual CI workflow_dispatch',
   );
   return lines.join('\n');
 }

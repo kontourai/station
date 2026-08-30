@@ -15,6 +15,8 @@ export function WorkspacePaneDockAction({
   instance: WorkspacePaneInstance;
 }) {
   const dock = useWorkspacePaneDockAction();
+  // Existing surface-side placement control is intentionally unchanged in
+  // step 1; shell chrome takes it over later. // #928 step 2
   // A synchronous host replacement has no waiting phase. More importantly,
   // a renderer outside the ambient host must not offer an action that has no
   // persistence owner to answer it.

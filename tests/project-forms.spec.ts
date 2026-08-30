@@ -355,6 +355,83 @@ test.describe('Project forms', () => {
     });
   }
 
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 360, height: 800 },
+  ]) {
+    test(`new project footer clears the starter card at ${viewport.width}x${viewport.height} (#959)`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport);
+      await page.addInitScript(() => {
+        localStorage.setItem(
+          'recentLayouts',
+          JSON.stringify(['plugin:planning-board']),
+        );
+      });
+      await page.route('**/api/projects/layouts/available', (route) =>
+        route.fulfill(json({ success: true, data: STARTER_CATALOG })),
+      );
+      await page.goto('/projects/new');
+
+      const scrollRegion = page.locator('.new-project-modal__draft-scroll');
+      const starter = page.locator('.new-project-modal__starter');
+      const footer = page.locator('.new-project-modal__actions');
+      await expect(starter).toBeVisible();
+      await scrollRegion.evaluate((node) => {
+        node.scrollTop = node.scrollHeight;
+      });
+
+      const geometry = await page.evaluate(() => {
+        const overlay = document.querySelector('.responsive-surface-overlay');
+        const panel = document.querySelector('.new-project-modal');
+        const form = document.querySelector('.new-project-modal__form');
+        const scroll = document.querySelector(
+          '.new-project-modal__draft-scroll',
+        );
+        const card = document.querySelector('.new-project-modal__starter');
+        const actions = document.querySelector('.new-project-modal__actions');
+        if (!overlay || !panel || !form || !scroll || !card || !actions)
+          return null;
+        const overlayBox = overlay.getBoundingClientRect();
+        const panelBox = panel.getBoundingClientRect();
+        const formBox = form.getBoundingClientRect();
+        const scrollBox = scroll.getBoundingClientRect();
+        const cardBox = card.getBoundingClientRect();
+        const actionsBox = actions.getBoundingClientRect();
+        return {
+          overlayBottom: overlayBox.bottom,
+          panelBottom: panelBox.bottom,
+          formBottom: formBox.bottom,
+          scrollBottom: scrollBox.bottom,
+          cardBottom: cardBox.bottom,
+          footerTop: actionsBox.top,
+          footerBottom: actionsBox.bottom,
+          scrollHeight: scroll.scrollHeight,
+          clientHeight: scroll.clientHeight,
+          scrollTop: scroll.scrollTop,
+          overflowY: getComputedStyle(scroll).overflowY,
+        };
+      });
+
+      expect(geometry).not.toBeNull();
+      expect(geometry!.panelBottom).toBeLessThanOrEqual(
+        geometry!.overlayBottom,
+      );
+      expect(geometry!.formBottom).toBeLessThanOrEqual(geometry!.panelBottom);
+      expect(geometry!.overflowY).toBe('auto');
+      expect(geometry!.scrollHeight).toBeGreaterThan(geometry!.clientHeight);
+      expect(geometry!.scrollTop).toBe(
+        geometry!.scrollHeight - geometry!.clientHeight,
+      );
+      expect(geometry!.cardBottom).toBeLessThanOrEqual(geometry!.scrollBottom);
+      expect(geometry!.scrollBottom).toBeLessThanOrEqual(geometry!.footerTop);
+      expect(geometry!.cardBottom).toBeLessThanOrEqual(geometry!.footerTop);
+      expect(geometry!.footerBottom).toBeLessThanOrEqual(geometry!.panelBottom);
+      await expect(footer).toBeInViewport();
+    });
+  }
+
   /**
    * #765 residue (F7-class): two independent audit passes saw real pointer
    * clicks on Create ignored while a programmatic click "worked". The state

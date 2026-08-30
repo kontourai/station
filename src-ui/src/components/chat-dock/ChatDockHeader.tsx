@@ -128,6 +128,9 @@ export function ChatDockHeader({
   const { isDockOpen, isDockMaximized, dockMode } = useNavigation();
   const toggleDockShortcut = useShortcutDisplay('dock.toggle');
   const maximizeShortcut = useShortcutDisplay('dock.maximize');
+  // Legacy placement glyph semantics remain until left/right become live
+  // regions; changing this to effective placement can move chrome on a phone.
+  // #928 step 3
   const side = dockMode === 'bottom' ? null : dockMode;
 
   const activeSessions = (chatControls?.sessions ?? []).filter((s) =>
