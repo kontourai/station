@@ -36,11 +36,11 @@
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveRef } from './check-merge-base-fresh.mjs';
 import {
   changedPathsSince,
   describeMatches,
 } from './check-prepush-ui-bundle.mjs';
+import { resolveRef } from './lib/git-ref.mjs';
 
 const BASE_REF = process.env.STATION_BASE_REF ?? 'origin/main';
 

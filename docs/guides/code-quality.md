@@ -23,12 +23,11 @@ npm run hooks:install    # git config core.hooksPath .githooks
 change surface feeds, using the hook's own scope deciders — ask it before
 writing to know what a change will owe.
 
-The pre-push hook runs seven checks, in this order (the hook file,
+The pre-push hook runs six checks, in this order (the hook file,
 `.githooks/pre-push`, is the source of truth if this table drifts):
 
 | Check | Cost | Refuses |
 | --- | --- | --- |
-| `node scripts/check-merge-base-fresh.mjs` | instant | a branch that does not contain current `origin/main` |
 | `npm run lint:check` | ~4s | a lint, formatting, or organize-imports error |
 | `node scripts/check-prepush-ui-bundle.mjs` | ~9s, and only when the push changes a UI build input | a tree over the entry-bundle ceiling |
 | `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a prepared exact-main baseline when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
@@ -104,58 +103,20 @@ measures rather than assuming — see *a default that decides*, below. It builds
 into `dist-ui-prepush/` so a push never replaces the `dist-ui/` a running dev
 server or desktop app is serving.
 
-There is deliberately no per-check escape hatch for either. Unlike a stale
-base, which can be a legitimate state of a branch you do not fully control,
-both of these are properties of your own tree that you can fix in seconds —
-and a bypass would reproduce exactly the unowned-raise loop #3033 exists to
-close. `git push --no-verify` remains for a genuine emergency.
+There is deliberately no per-check escape hatch for either. Both are
+properties of your own tree that you can fix in seconds, and a bypass would
+reproduce exactly the unowned-raise loop #3033 exists to close. `git push
+--no-verify` remains for a genuine emergency.
 
-**Why the merge-base check still exists during merge-queue rollout.** A
-pre-push gate verifies the branch you are pushing, not
-the tree that will land. Once `main` moves, a squash-merge produces a
-combination nobody ran the gate against. On 2026-07-25 that broke `main` four
-times in one day — a lint error, unorganized imports, three
-accessibility-ratchet violations, and a typecheck failure from a usage-field
-mapping that has been reverted three times. Every one of those branches was
-green when pushed.
+### Composition freshness belongs to the merge queue
 
-GitHub's merge queue is the durable replacement: its `merge_group` event runs
-the required checks against the synthesized latest-`main` candidate, so a
-contributor does not need to merge a moving base and repay the same local test
-cost. The local refusal remains enforced until the repository ruleset requires
-the queue and a canary has received every required check on the merge-group
-SHA. Remove the hook invocation only after that external rollout evidence is
-recorded; doing it in the workflow-support change would create an unguarded
-window between merge and ruleset activation.
-
-Deliberate exception to the merge-base check, for a single push:
-
-```bash
-STATION_ALLOW_STALE_BASE=1 git push ...
-```
-
-Prefer that over `--no-verify`, which skips every hook rather than this one.
-
-### Merge-queue activation and hook retirement
-
-Roll this boundary forward in two phases so there is never a gap with neither
-local freshness nor server-side composition evidence:
-
-1. Merge the workflow-support change while the freshness hook still refuses a
-   stale branch.
-2. Add the ruleset's pull-request and merge-queue rules without changing the
-   existing required status contexts or bypass actors. Start with `MERGE`,
-   `ALLGREEN`, one pull request per merge group, two concurrent builds, and a
-   120-minute required-check timeout.
-3. Open the hook-retirement pull request from the then-current `main` and use
-   that pull request as the canary. Queue it rather than merging it directly.
-4. Before allowing it to land, verify `fast-checks`, CodeQL, dependency review,
-   and the Windows portable floor all completed on the same
-   `refs/heads/gh-readonly-queue/main/...` merge-group SHA.
-5. Only that canary removes `node scripts/check-merge-base-fresh.mjs` from
-   `.githooks/pre-push` and updates its contract test/table. If the queue stalls,
-   remove the merge-queue rule first; keep the local hook in place while
-   diagnosing.
+The local hook intentionally does not require a branch to contain the current
+`origin/main`. GitHub's required merge queue synthesizes the candidate from the
+latest protected base and runs `fast-checks`, CodeQL, dependency review, and
+the Windows portable floor, plus the stable iOS verification context, on that
+exact merge-group SHA. A contributor can therefore push one reviewed branch
+identity while `main` keeps moving; the server-side queue, not repeated local
+merges and test runs, owns composition freshness.
 
 
 ## Local CI Pipeline
