@@ -389,6 +389,56 @@ test('parses the DMG-only CLI flag as a bare opt-in and rejects a value for it',
   expect(() =>
     parseMacosNotarizedArtifactsCli([...args, '--dmg-only', 'true']),
   ).toThrow(/unique --name value/);
+  for (const invalid of [
+    [...args, '--dmg-onyl', 'true'],
+    [...args, '--unknown', '--dmg-only'],
+    [...args, '--app', '--dmg-only'],
+  ])
+    expect(() => parseMacosNotarizedArtifactsCli(invalid)).toThrow(
+      /unique --name value/,
+    );
+});
+
+test('refuses a DMG whose signed authority or designated requirement is not Kontour before notarization', async () => {
+  for (const mutation of [
+    (release) => {
+      const baseRun = release.run;
+      release.run = (program, args, options) => {
+        if (options.phase === 'DMG signing metadata')
+          return {
+            status: 0,
+            stdout: '',
+            stderr:
+              'Authority=Developer ID Application: Other LLC (NOTKONTOUR)\nTeamIdentifier=NOTKONTOUR\nTimestamp=now',
+          };
+        return baseRun(program, args, options);
+      };
+    },
+    (release) => {
+      const baseRun = release.run;
+      release.run = (program, args, options) => {
+        if (options.phase === 'DMG designated requirement')
+          return {
+            status: 0,
+            stdout: '',
+            stderr: 'designated => identifier "station.dmg" and cdhash H"deadbeef"',
+          };
+        return baseRun(program, args, options);
+      };
+    },
+  ]) {
+    const release = fixture();
+    mutation(release);
+    await expect(
+      createMacosNotarizedArtifacts(release.options, release),
+    ).rejects.toThrow(/Signing metadata lacks|certificate-backed/);
+    expect(
+      release.calls.some(
+        ([program, args]) =>
+          program === 'xcrun' && args[0] === 'notarytool' && args.includes('.dmg'),
+      ),
+    ).toBe(false);
+  }
 });
 
 test('cleans scratch state on terminal notary rejection and rejects an unexpected DMG root', async () => {

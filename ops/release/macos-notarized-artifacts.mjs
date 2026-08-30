@@ -481,9 +481,18 @@ export function outerAppDesignatedRequirement(output) {
 }
 
 export function assertOuterAppCertificateBackedRequirement(output, bundleId) {
+  return assertKontourDeveloperIdRequirement(output, bundleId);
+}
+
+/**
+ * Require the signed object's designated requirement to bind it to Kontour's
+ * Developer ID chain. App bundles additionally bind the identifier to their
+ * release-channel bundle id; disk images have a distinct codesign identifier
+ * and therefore intentionally omit that app-specific constraint.
+ */
+export function assertKontourDeveloperIdRequirement(output, bundleId) {
   const requirement = outerAppDesignatedRequirement(output);
   const requiredClauses = [
-    new RegExp(`\\bidentifier\\s+"${escapedRegExp(bundleId)}"(?=\\s|$)`),
     /\banchor\s+apple\s+generic\b/,
     existsClause(
       `certificate\\s+1\\s*\\[\\s*field\\.${escapedRegExp(DEVELOPER_ID_INTERMEDIATE_OID)}\\s*\\]`,
@@ -495,6 +504,10 @@ export function assertOuterAppCertificateBackedRequirement(output, bundleId) {
       `\\bcertificate\\s+leaf\\s*\\[\\s*subject\\.OU\\s*\\]\\s*=\\s*"?${KONTOUR_TEAM_ID}"?(?=\\s|$)`,
     ),
   ];
+  if (bundleId !== undefined)
+    requiredClauses.unshift(
+      new RegExp(`\\bidentifier\\s+"${escapedRegExp(bundleId)}"(?=\\s|$)`),
+    );
   const combinedOutput =
     typeof output === 'string'
       ? output
@@ -509,6 +522,18 @@ export function assertOuterAppCertificateBackedRequirement(output, bundleId) {
     );
   }
   return requirement;
+}
+
+export function assertKontourDeveloperIdSigningMetadata(metadata) {
+  if (typeof metadata !== 'string')
+    throw new Error('Signing metadata must be text.');
+  for (const field of [
+    'Authority=Developer ID Application: Kontour AI LLC (U7KHF2QAC4)',
+    'TeamIdentifier=U7KHF2QAC4',
+    'Timestamp=',
+  ])
+    if (!metadata.includes(field))
+      throw new Error(`Signing metadata lacks ${field}.`);
 }
 
 export function assertAcceptedNotaryReceipt(stdout, file) {
@@ -740,14 +765,9 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         SIGNING_COMMAND_TIMEOUT_MS,
       )
     ).stderr;
-    for (const field of [
-      'Authority=Developer ID Application: Kontour AI LLC (U7KHF2QAC4)',
-      'TeamIdentifier=U7KHF2QAC4',
-      'Timestamp=',
-      'runtime',
-    ])
-      if (!metadata.includes(field))
-        throw new Error(`Outer app signing metadata lacks ${field}.`);
+    assertKontourDeveloperIdSigningMetadata(metadata);
+    if (!metadata.includes('runtime'))
+      throw new Error('Outer app signing metadata lacks runtime.');
     const dr = await command(
       'outer app designated requirement',
       'codesign',
@@ -833,6 +853,32 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         ),
       logger,
     );
+    await command(
+      'DMG signature verification',
+      'codesign',
+      ['--verify', '--strict', '--verbose=2', dmg],
+      SIGNING_COMMAND_TIMEOUT_MS,
+    );
+    const dmgMetadata = (
+      await command(
+        'DMG signing metadata',
+        'codesign',
+        ['-dvv', dmg],
+        SIGNING_COMMAND_TIMEOUT_MS,
+      )
+    ).stderr;
+    assertKontourDeveloperIdSigningMetadata(dmgMetadata);
+    const dmgRequirement = await command(
+      'DMG designated requirement',
+      'codesign',
+      ['-d', '-r-', dmg],
+      SIGNING_COMMAND_TIMEOUT_MS,
+    );
+    if (dmgRequirement.status !== 0)
+      throw new Error(
+        `DMG designated requirement query failed with status ${dmgRequirement.status}.`,
+      );
+    assertKontourDeveloperIdRequirement(dmgRequirement);
     await submit(command, dmg, key, keyId, issuer, logger);
     await command('DMG stapling', 'xcrun', ['stapler', 'staple', dmg]);
     await command('DMG staple validation', 'xcrun', [
@@ -932,6 +978,18 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
 }
 
 export function parseMacosNotarizedArtifactsCli(argv) {
+  const valueFlags = new Set([
+    '--app',
+    '--identity',
+    '--notary-key',
+    '--notary-key-id',
+    '--notary-issuer',
+    '--assets-dir',
+    '--release-tag',
+    '--architecture',
+    '--bundle-id',
+    '--deadline-epoch',
+  ]);
   const raw = {};
   for (let index = 0; index < argv.length; ) {
     const name = argv[index];
@@ -943,7 +1001,13 @@ export function parseMacosNotarizedArtifactsCli(argv) {
       continue;
     }
     const value = argv[index + 1];
-    if (!name?.startsWith('--') || !value || raw[name])
+    if (
+      !valueFlags.has(name) ||
+      typeof value !== 'string' ||
+      value.length === 0 ||
+      value.startsWith('--') ||
+      raw[name]
+    )
       throw new Error('Expected unique --name value arguments.');
     raw[name] = value;
     index += 2;
