@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { validateE2EManifest } from '../tests/e2e-manifest.mjs';
@@ -603,23 +603,15 @@ export function verificationPolicyErrors({
 export function discoverTrackedVitestTestFiles({
   rootDir = root,
   execFile = execFileSync,
-  pathExists = (file) => existsSync(resolve(rootDir, file)),
 } = {}) {
-  const output = execFile(
-    'git',
-    ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
-    {
-      cwd: rootDir,
-      encoding: 'utf8',
-      windowsHide: true,
-    },
-  );
+  const output = execFile('git', ['ls-files', '-z'], {
+    cwd: rootDir,
+    encoding: 'utf8',
+    windowsHide: true,
+  });
   const files = String(output)
     .split('\0')
     .filter(Boolean)
-    // Include new working-tree tests and omit intentional unstaged deletions;
-    // Veritas readiness evaluates the candidate tree before it is committed.
-    .filter((file) => pathExists(file))
     .filter(
       (file) =>
         VITEST_TEST_FILE_PATTERN.test(file) &&

@@ -1,7 +1,6 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   copyFileSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
@@ -233,9 +232,8 @@ describe('the gate as a real child process', () => {
       .trim()
       .split('\n')
       .filter(Boolean);
-    const expectedCount = trackedFiles.filter(
-      (file) =>
-        existsSync(join(repoRoot, file)) && TEST_FILE_PATTERN.test(file),
+    const expectedCount = trackedFiles.filter((file) =>
+      TEST_FILE_PATTERN.test(file),
     ).length;
     expect(expectedCount).toBeGreaterThan(0);
 

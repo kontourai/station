@@ -221,16 +221,11 @@ function listTrackedTestFiles(root) {
     encoding: 'utf8',
     windowsHide: true,
   });
-  return (
-    out
-      .trim()
-      .split('\n')
-      .filter(Boolean)
-      // `git ls-files` reads the index; an intentional unstaged deletion is no
-      // longer a candidate test and must not be opened from the working tree.
-      .filter((file) => existsSync(path.join(root, file)))
-      .filter((file) => TEST_FILE_PATTERN.test(file))
-  );
+  return out
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .filter((file) => TEST_FILE_PATTERN.test(file));
 }
 
 // `--root <path>` lets this gate be exercised as a real child process
