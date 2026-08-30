@@ -340,6 +340,20 @@ async function enrichLastMessage(
       `agent:${invocation.agentSlug}`,
       invocation.conversationId!,
     );
+    const promptTokens = usage.promptTokens;
+    const completionTokens = usage.completionTokens;
+    const messageUsage = {
+      ...(promptTokens !== undefined ? { inputTokens: promptTokens } : {}),
+      ...(completionTokens !== undefined
+        ? { outputTokens: completionTokens }
+        : {}),
+      ...(usage.totalTokens !== undefined
+        ? { totalTokens: usage.totalTokens }
+        : promptTokens !== undefined || completionTokens !== undefined
+          ? { totalTokens: (promptTokens ?? 0) + (completionTokens ?? 0) }
+          : {}),
+      estimatedCost: cost,
+    };
     const enrichedMessage = {
       ...last,
       metadata: {
@@ -362,13 +376,7 @@ async function enrichLastMessage(
                 : undefined,
             }
           : undefined,
-        usage: {
-          inputTokens: usage.promptTokens || 0,
-          outputTokens: usage.completionTokens || 0,
-          totalTokens:
-            (usage.promptTokens || 0) + (usage.completionTokens || 0),
-          estimatedCost: cost,
-        },
+        usage: messageUsage,
       },
     };
     await adapter.addMessage(
@@ -394,13 +402,7 @@ async function enrichLastMessage(
                 : undefined,
             }
           : undefined,
-        usage: {
-          inputTokens: usage.promptTokens || 0,
-          outputTokens: usage.completionTokens || 0,
-          totalTokens:
-            (usage.promptTokens || 0) + (usage.completionTokens || 0),
-          estimatedCost: cost,
-        },
+        usage: messageUsage,
         // This replaces the already-persisted assistant message with enriched
         // metadata. Its original write already updated usage statistics.
         suppressUsageAggregation: true,

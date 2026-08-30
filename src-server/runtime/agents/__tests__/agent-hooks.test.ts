@@ -273,6 +273,56 @@ describe('createAgentHooks', () => {
     expect(approved).toBe(true);
     expect(hooks.requestApproval).toHaveBeenCalledOnce();
   });
+
+  test('message enrichment preserves absent token categories', async () => {
+    const addMessage = vi.fn().mockResolvedValue(undefined);
+    const adapter = {
+      getConversation: vi.fn().mockResolvedValue({
+        resourceId: 'planner',
+        metadata: {},
+      }),
+      getMessages: vi.fn().mockResolvedValue([
+        { role: 'user', content: 'hello' },
+        { role: 'assistant', content: 'hi' },
+      ]),
+      updateConversation: vi.fn().mockResolvedValue(undefined),
+      removeLastMessage: vi.fn().mockResolvedValue(undefined),
+      addMessage,
+      applyEnrichmentUsage: vi.fn().mockResolvedValue(undefined),
+    };
+    const deps = createDeps({
+      appConfig: { defaultModel: 'model-a' },
+      configLoader: {
+        loadAgent: vi.fn().mockResolvedValue({ model: 'model-a' }),
+      },
+      memoryAdapters: new Map([['planner', adapter]]),
+    });
+    const hooks = createAgentHooks(deps);
+
+    await hooks.afterInvocation!({
+      invocation: {
+        agentSlug: 'planner',
+        conversationId: 'conv-1',
+        userId: 'user-1',
+      },
+      usage: { completionTokens: 7 },
+      toolCallCount: 0,
+    });
+
+    const enrichedUsage = addMessage.mock.calls[0]?.[0]?.metadata?.usage;
+    const persistedUsage = addMessage.mock.calls[0]?.[3]?.usage;
+    expect(enrichedUsage).toEqual({
+      outputTokens: 7,
+      totalTokens: 7,
+      estimatedCost: null,
+    });
+    expect(persistedUsage).toEqual(enrichedUsage);
+    expect(enrichedUsage).not.toHaveProperty('inputTokens');
+    const persistedStats =
+      adapter.updateConversation.mock.calls[0]?.[1]?.metadata?.stats;
+    expect(persistedStats).not.toHaveProperty('inputTokens');
+    expect(persistedStats).toMatchObject({ outputTokens: 7, totalTokens: 7 });
+  });
 });
 
 describe('createAgentHooks — Flow Agents policy seams (S3)', () => {

@@ -131,3 +131,52 @@ describe('SessionTranscriptReads usage coverage (station#4135)', () => {
     );
   });
 });
+
+describe('SessionTranscriptReads: the fold drop reaches the composition (#464)', () => {
+  // The fold refuses an unusable persisted figure and reports it. That report
+  // is only worth anything if the read actually wires a sink — an optional dep
+  // that no composition supplies is silence with extra steps, which is what
+  // usage-fold's own drop contract forbids.
+  //
+  // SCOPE, stated because an injection proved it: this pins the SEAM, not the
+  // COMPOSITION. Deleting `reportDroppedUsageFigure` from
+  // `orchestration-service.ts`'s deps leaves this test green, because the test
+  // supplies its own reporter. Catching that needs a test over the real
+  // service construction — tracked as its own gap rather than implied here.
+  test('readSessionUsage forwards a refused durable figure to the reporter', () => {
+    const dropped: Array<{ field: string; value: unknown }> = [];
+    const reads = new SessionTranscriptReads({
+      canReadSession: () => true,
+      isEphemeralSession: () => false,
+      sessionAttributionFor: () => null,
+      listEventPayloads: () =>
+        [
+          {
+            eventId: 'e1',
+            method: 'token-usage.updated',
+            provider: 'claude',
+            threadId: 'thread-1',
+            createdAt: '2026-08-30T00:00:00.000Z',
+            // What JSON.stringify writes for a non-finite figure.
+            promptTokens: null,
+            completionTokens: 40,
+          },
+        ] as never,
+      listUsageEventRecords: () => [],
+      listUsageReceiptEvents: () => [],
+      listUsageCoverageEvents: () => [],
+      searchConversationMessages: () => [],
+      readSessionThreadIds: () => [],
+      requireTenantExecutionContext: () => false,
+      reportDroppedUsageFigure: (d) => dropped.push(d),
+    });
+
+    const usage = reads.readSessionUsage('thread-1', authority);
+
+    expect(usage.inputTokens).toBeUndefined();
+    expect(usage.outputTokens).toBe(40);
+    expect(dropped).toEqual([
+      expect.objectContaining({ field: 'promptTokens', value: null }),
+    ]);
+  });
+});

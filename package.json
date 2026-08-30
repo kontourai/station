@@ -402,7 +402,7 @@
     "@types/ws": "^8.18.1",
     "@types/yazl": "^3.3.1",
     "@vitejs/plugin-react": "^5.2.0",
-    "@vitest/coverage-v8": "4.1.10",
+    "@vitest/coverage-v8": "4.1.11",
     "@voltagent/cli": "^0.1.21",
     "esbuild": "^0.28.1",
     "fallow": "^3.16.0",
@@ -416,7 +416,7 @@
     "tsx": "^4.23.12",
     "typescript": "^5.9.3",
     "vite": "^7.3.6",
-    "vitest": "4.1.10",
+    "vitest": "4.1.11",
     "wait-on": "^9.1.0",
     "yauzl": "^3.4.0",
     "yazl": "^3.3.1"
