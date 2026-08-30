@@ -699,13 +699,15 @@ test.describe('Connections CRUD', () => {
     await detected.focus();
     await detected.press('Enter');
     await expect(page).toHaveURL(/\/connections\/models\/new$/);
-    // What it lands on, observed rather than assumed: the section's add flow,
-    // opened on the provider type picker. (Worth a separate look — a
-    // "one-click detected" entry that still asks which provider you meant is
-    // one click short of its name.)
+    // A detected provider is already known, so this entry skips the generic
+    // picker and opens the provider-specific draft with its local endpoint.
     await expect(
-      page.getByRole('heading', { name: 'Add model connection' }),
+      page.getByRole('heading', { name: 'Connect Local Ollama' }),
     ).toBeVisible();
+    await expect(page.getByLabel('Name')).toHaveValue('Local Ollama');
+    await expect(page.getByLabel('Base URL')).toHaveValue(
+      'http://localhost:11434',
+    );
   });
 
   test.describe('Pixel 7 provider overview', () => {

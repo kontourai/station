@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { inspectAppStoreDistributionProfile } from '../check-ios-store-profile.mjs';
+import { parseCredentialPreflightOptions } from '../ios-store-credential-preflight.mjs';
 import {
   mobileCargoConfig,
   parseOptions,
@@ -60,6 +61,29 @@ describe('iOS App Store signing config', () => {
     expect(() => parseOptions(['--profile', 'a', '--profile', 'b'])).toThrow(
       /exactly once/,
     );
+  });
+  test('uses Station vocabulary for the protected credential preflight path', () => {
+    expect(
+      parseCredentialPreflightOptions([
+        '--station',
+        '/tmp/station.mobileprovision',
+        '--identity',
+        'Apple Distribution: Example (ABCDE12345)',
+        '--team',
+        'ABCDE12345',
+        '--bundle-id',
+        'io.kontourai.station',
+        '--template',
+        '/tmp/project.yml',
+        '--template-output',
+        '/tmp/generated.yml',
+        '--overlay-output',
+        '/tmp/overlay.json',
+      ]),
+    ).toMatchObject({
+      profile: '/tmp/station.mobileprovision',
+      bundleId: 'io.kontourai.station',
+    });
   });
   test('writes only a caller-supplied HTTPS endpoint into Cargo config', () => {
     expect(mobileCargoConfig()).toBe('');
