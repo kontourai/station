@@ -66,7 +66,7 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
 //
 // ## The constraint on anything you add here (station#1804)
 //
-// This group runs on **two workers under a five-minute execution deadline**
+// This group runs on **two workers under a twenty-minute execution deadline**
 // (`test-full-process-heavy`), and its members' job is to spawn child
 // processes. Every file admitted here therefore raises the contention floor
 // under every other file in it — including files whose assertions are bounded
