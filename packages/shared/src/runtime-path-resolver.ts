@@ -192,7 +192,17 @@ export function admitStationRuntimeHome(
     }
   }
 
-  if (equalOrDescendant(root, home)) {
+  // `root === home` is legitimate ONLY when the root was derived from this
+  // home — i.e. `STATION_HOME` was given with no explicit `STATION_ROOT`, so
+  // `resolveStationRoot` self-roots it and every root-scoped write lands
+  // inside the directory the operator named. That is what makes `--home`,
+  // `--base`, `--temp-home` and an external `STATION_HOME` work.
+  //
+  // With an explicit `STATION_ROOT`, a home equal to it is the original
+  // escape: the home swallows a root it does not own. Keep rejecting that.
+  const rootWasDerivedFromHome =
+    !env.STATION_ROOT?.trim() && sameRuntimePath(root, home);
+  if (equalOrDescendant(root, home) && !rootWasDerivedFromHome) {
     throw new StationRuntimeHomeAdmissionError(
       home,
       'it is the shared Station root or an ancestor of that root',
