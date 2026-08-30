@@ -35,6 +35,7 @@ export function handleTokenUsageUpdatedEvent(
 
   activeChatsStore.updateChat(event.threadId, {
     liveUsage: {
+      ...chat.liveUsage,
       ...(hasTokenUsage
         ? {
             inputTokens: promptTokens,
