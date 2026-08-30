@@ -180,12 +180,28 @@ describe('DiffPanel', () => {
     expect(screen.getByText('No changes')).toBeTruthy();
   });
 
-  test('renders a parsed patch via @pierre/diffs CodeView without throwing', () => {
+  test('mounts real patch hunks and the inline-comment gutter', async () => {
     diffQueryResult = { data: SAMPLE_PATCH, isLoading: false, error: null };
-    expect(() => render(<DiffPanel workingDir="/repo" />)).not.toThrow();
-    // The @pierre/diffs CodeView mounts its <diffs-container> custom element on
-    // the main thread (disableWorkerPool) rather than the hand-rolled markup.
-    expect(customElements.get('diffs-container')).toBeTruthy();
+    const { container } = render(
+      <DiffPanel workingDir="/repo" projectSlug="project" />,
+    );
+
+    const diffContainer = await waitFor(() => {
+      const element = container.querySelector('diffs-container');
+      expect(element?.shadowRoot).toBeTruthy();
+      return element as HTMLElement;
+    });
+
+    // Exercise the real @pierre/diffs custom element. Header portals and the
+    // gutter live in light DOM, while parsed hunk lines mount in shadow DOM.
+    await waitFor(() => {
+      const rendered = diffContainer.shadowRoot?.textContent ?? '';
+      expect(rendered).toContain('const b = 2');
+      expect(rendered).toContain('const b = 3');
+    });
+    expect(
+      diffContainer.querySelector<HTMLButtonElement>('.diff-comment-add'),
+    ).toBeTruthy();
   });
 
   test('marks the actual parsed diff layout commit without exposing patch content', async () => {
