@@ -1,5 +1,9 @@
 import type { AgentTools } from '@kontourai/station-contracts/agent';
-import { describe, expect, test } from 'vitest';
+import {
+  type AgentResponseError,
+  updateAgentRaw,
+} from '@kontourai/station-sdk/client';
+import { describe, expect, test, vi } from 'vitest';
 import {
   AGENT_SPEC_COPY_CLASSIFICATION,
   agentSaveErrorMessage,
@@ -539,13 +543,30 @@ describe('the Station Agent round-trips as UNBOUND (#3662 review HIGH-2)', () =>
     expect(payload.execution.agentConnectionId).toBe('codex');
   });
 
-  test('maps the structured Station-setting refusal to one short action', () => {
-    expect(
-      agentSaveErrorMessage({
-        code: 'STATION_ENGINE_IS_APP_SETTING',
-        message: 'server implementation detail must not render',
-      }),
-    ).toBe(
+  test('maps the real SDK Station-setting refusal to one short action', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: 'server implementation detail must not render',
+            code: 'STATION_ENGINE_IS_APP_SETTING',
+          }),
+          { status: 409, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+
+    const error = await updateAgentRaw('http://station.test', 'station', {
+      name: 'Station',
+    }).catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as AgentResponseError).code).toBe(
+      'STATION_ENGINE_IS_APP_SETTING',
+    );
+    expect(agentSaveErrorMessage(error)).toBe(
       'Change the built-in Agent engine in Settings, then save your changes again.',
     );
   });
