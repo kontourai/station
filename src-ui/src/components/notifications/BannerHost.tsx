@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import {
+  BANNER_PRIORITY,
   type BannerItem,
   type BannerReserveEntry,
   bannerReservedHeight,
@@ -32,6 +33,13 @@ const BANNER_NATURAL_HEIGHT_PROPERTY = '--banner-natural-height';
 const SWIPE_INTENT_PX = 8;
 const SWIPE_MIN_DISMISS_PX = 56;
 const SWIPE_MAX_DISMISS_PX = 96;
+
+function requiresCriticalChrome(banner: BannerItem): boolean {
+  return (
+    banner.criticalChrome === true ||
+    banner.priority >= BANNER_PRIORITY.connectionBlocking
+  );
+}
 
 type SwipeGesture = {
   pointerId: number;
@@ -231,6 +239,9 @@ function BannerItemView({ banner }: { banner: BannerItem }) {
         'banner-host__item',
         `banner-host__item--${banner.tone}`,
         banner.dismissible ? 'banner-host__item--dismissible' : '',
+        requiresCriticalChrome(banner)
+          ? 'banner-host__item--critical-chrome'
+          : '',
         isSwiping ? 'banner-host__item--swiping' : '',
         collapsed ? 'banner-host__item--collapsed' : '',
         exiting ? 'banner-host__item--exiting' : '',
@@ -460,6 +471,9 @@ export function BannerHost({
   const liveCount = banners.filter(
     (banner) => banner.phase !== 'exiting',
   ).length;
+  const hasCriticalChrome = banners.some(
+    (banner) => banner.phase !== 'exiting' && requiresCriticalChrome(banner),
+  );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: banners/expanded are intentional triggers (archive#3432) — the body reads live DOM geometry, not either value, but ResizeObserver alone misses a box already pinned at its cap; re-running the effect on every banner-set/mode change forces a synchronous re-measure that does not depend on RO firing. This suppression comment is the only thing standing between this list and `biome check --write --unsafe`, whose FIXABLE suggestion for this diagnostic is to remove the extra deps — do not let an automated unsafe-fix pass delete `banners`/`expanded` here.
   useEffect(() => {
@@ -658,6 +672,11 @@ export function BannerHost({
   if (banners.length === 0) return null;
 
   const view = buildBannerStackView(banners, expanded);
+  const hasHiddenCriticalChrome =
+    hasCriticalChrome &&
+    !view.visible.some(
+      (banner) => banner.phase !== 'exiting' && requiresCriticalChrome(banner),
+    );
   // One button plays both roles so toggling never unmounts the control the
   // keyboard user's focus is sitting on.
   const showToggle = expanded || view.cap !== null;
@@ -669,6 +688,7 @@ export function BannerHost({
         'banner-host',
         connectionSlot ? 'banner-host--connection-slot' : '',
         expanded ? 'banner-host--expanded' : '',
+        hasCriticalChrome ? 'banner-host--critical-chrome' : '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -695,6 +715,7 @@ export function BannerHost({
           className={[
             'banner-host__cap',
             view.cap ? `banner-host__cap--${view.cap.tone}` : '',
+            hasHiddenCriticalChrome ? 'banner-host__cap--critical-chrome' : '',
           ]
             .filter(Boolean)
             .join(' ')}

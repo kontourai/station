@@ -166,6 +166,7 @@
     "test": "npm run test:prepush",
     "test:changed": "node scripts/run-changed-verification.mjs",
     "test:focused": "node scripts/run-focused-tests.mjs",
+    "sweep:src-ui": "vitest run src-ui --exclude='src-ui/src/__tests__/ConnectionsSectionFrame.banner-hittest.test.tsx' --exclude='src-ui/src/__tests__/HeaderActions.connection-reflow.test.tsx' --exclude='src-ui/src/__tests__/SplitPaneLayout.skeleton-geometry.test.tsx' --exclude='src-ui/src/components/action-operations/__tests__/ActionOperationsSection.reflow.test.tsx' --exclude='src-ui/src/components/chat-dock/__tests__/sessionInventoryCompactHost.test.ts' --exclude='src-ui/src/components/notifications/__tests__/BannerHost.collapsed-controls.test.tsx' --exclude='src-ui/src/components/notifications/__tests__/BannerHost.disclosure-overlap.test.tsx' --exclude='src-ui/src/components/notifications/__tests__/BannerHost.touch-target.test.tsx' --exclude='src-ui/src/components/notifications/__tests__/NotificationContainer.touch-target.test.tsx' --exclude='src-ui/src/workspace-panes/__tests__/ConnectedSessionInventory.test.tsx'",
     "transfer:gate": "node scripts/orchestration-transfer-gate.mjs",
     "test:prepush": "node scripts/run-verification.mjs request prepush",
     "test:prepush:raw": "npm run prepare:verify-static && node scripts/run-prepush-tier.mjs",
