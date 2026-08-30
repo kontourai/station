@@ -121,9 +121,13 @@ function corruptHome(): { homeDir: string; store: string; bytes: Buffer } {
 describe('StationRuntime acts on a recorded corruption before it opens the store', () => {
   // The dynamic import pulls the whole station-runtime graph; the boundary
   // test in this directory measures that at ~5s cold, riding the default
-  // budget. Give it the same headroom.
+  // budget. Measured 28.2s wall on an M-series host inside a linux/node:24
+  // container — a 30s budget is knife-edge there and deterministically
+  // times out on 2-core hosted CI runners (the opaque #862 fast-checks
+  // reds: vitest-related selects this file for any system-status/cli-auth
+  // change). 120s is headroom for slow hardware, not a target runtime.
   it('quarantines the store during construction, above its own runtime lease', {
-    timeout: 30_000,
+    timeout: 120_000,
   }, async () => {
     const { homeDir, store, bytes } = corruptHome();
     runtimeMocks.eventStore.mockClear();
@@ -151,7 +155,7 @@ describe('StationRuntime acts on a recorded corruption before it opens the store
   });
 
   it('leaves the store alone while a peer runtime holds the home', {
-    timeout: 30_000,
+    timeout: 120_000,
   }, async () => {
     const { homeDir, store, bytes } = corruptHome();
     runtimeMocks.eventStore.mockClear();
@@ -174,7 +178,7 @@ describe('StationRuntime acts on a recorded corruption before it opens the store
   });
 
   it('tells the operator, and counts it, from the running product', {
-    timeout: 30_000,
+    timeout: 120_000,
   }, async () => {
     // The acceptance criterion is that the MESSAGE names the path and
     // `station home restore`. Proving that against the string function only
@@ -228,7 +232,7 @@ describe('StationRuntime acts on a recorded corruption before it opens the store
   });
 
   it('says so when it declined, rather than dying silently', {
-    timeout: 30_000,
+    timeout: 120_000,
   }, async () => {
     // `home-active` is followed by the store failing to open. Without this
     // line the operator reads the pre-branch error and cannot tell whether
