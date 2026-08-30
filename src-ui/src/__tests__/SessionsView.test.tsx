@@ -124,6 +124,13 @@ vi.mock('@kontourai/station-sdk', () => ({
     isLoading: false,
     isError: false,
   }),
+  // #790: peer-credential read the DelegationLauncher performs when open;
+  // undefined models the 403 a non-operator browser session receives.
+  usePeerCredentialsQuery: () => ({
+    data: undefined,
+    isSuccess: false,
+    isError: true,
+  }),
   useDelegationOptionsQuery: () => ({
     data: {
       environment: {

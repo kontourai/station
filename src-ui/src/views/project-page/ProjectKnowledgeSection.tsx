@@ -17,6 +17,7 @@ import {
   FolderGlyph,
   TimeGlyph,
 } from '../../components/icons/Glyph';
+import { describeReadFailure, ErrorState } from '../../components/state';
 import { ProjectKnowledgeDocGroup } from './ProjectKnowledgeDocGroup';
 import { ProjectKnowledgeNamespaceConfig } from './ProjectKnowledgeNamespaceConfig';
 import { ProjectKnowledgeRulesEditor } from './ProjectKnowledgeRulesEditor';
@@ -40,6 +41,9 @@ export function ProjectKnowledgeSection({
   slug,
   projectWorkingDirectory,
   docs,
+  docsError = false,
+  docsFailure,
+  onRetryDocs,
   namespaces,
   knowledgeStatus,
 }: {
@@ -47,6 +51,9 @@ export function ProjectKnowledgeSection({
   slug: string;
   projectWorkingDirectory?: string;
   docs: DocMeta[];
+  docsError?: boolean;
+  docsFailure?: unknown;
+  onRetryDocs?: () => void;
   namespaces: KnowledgeNamespace[];
   knowledgeStatus?: KnowledgeStatusSummary | null;
 }) {
@@ -54,9 +61,13 @@ export function ProjectKnowledgeSection({
   const [selectedNs, setSelectedNs] = useState<string | null>(null);
   const [rulesContent, setRulesContent] = useState('');
   const [savingRules, setSavingRules] = useState(false);
+  const [rulesSaveFailure, setRulesSaveFailure] = useState<unknown>(null);
   const [rulesLoaded, setRulesLoaded] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadFailures, setUploadFailures] = useState<
+    Array<{ filename: string; error: unknown }>
+  >([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [scanInclude, setScanInclude] = useState('');
@@ -112,6 +123,7 @@ export function ProjectKnowledgeSection({
   async function handleSaveRules() {
     if (!rulesContent.trim()) return;
     setSavingRules(true);
+    setRulesSaveFailure(null);
     try {
       const rulesDocs = await fetchKnowledgeDocs(slug, 'rules');
       for (const doc of rulesDocs) {
@@ -119,28 +131,30 @@ export function ProjectKnowledgeSection({
       }
       await uploadKnowledge(slug, 'project-rules.md', rulesContent, 'rules');
       qc.invalidateQueries({ queryKey: ['knowledge', 'docs', slug] });
-    } catch {
-      // ignore
+    } catch (error) {
+      setRulesSaveFailure(error);
+    } finally {
+      setSavingRules(false);
     }
-    setSavingRules(false);
   }
 
   async function uploadFiles(files: FileList | File[]) {
     setUploading(true);
-    let failed = 0;
+    setUploadFailures([]);
+    const failures: Array<{ filename: string; error: unknown }> = [];
     for (const file of Array.from(files)) {
       try {
         const content = await file.text();
         await uploadKnowledge(slug, file.name, content);
       } catch (error) {
-        console.error(`Failed to upload ${file.name}:`, error);
-        failed += 1;
+        failures.push({ filename: file.name, error });
       }
     }
     qc.invalidateQueries({ queryKey: ['knowledge', 'docs', slug] });
-    if (failed > 0) {
+    if (failures.length > 0) {
       qc.invalidateQueries({ queryKey: ['knowledge', 'namespaces', slug] });
     }
+    setUploadFailures(failures);
     setUploading(false);
   }
 
@@ -154,9 +168,11 @@ export function ProjectKnowledgeSection({
 
   function handleScan() {
     setScanResult(null);
-    setShowScanDialog(false);
     scanMutation.mutate(buildKnowledgeScanOptions(scanInclude, scanExclude), {
-      onSuccess: (data: any) => setScanResult(data),
+      onSuccess: (data: any) => {
+        setScanResult(data);
+        setShowScanDialog(false);
+      },
     });
   }
 
@@ -206,7 +222,10 @@ export function ProjectKnowledgeSection({
               <button
                 type="button"
                 className="project-page__add-btn"
-                onClick={() => setShowScanDialog(true)}
+                onClick={() => {
+                  scanMutation.reset();
+                  setShowScanDialog(true);
+                }}
                 disabled={scanMutation.isPending}
               >
                 {scanMutation.isPending ? '⟳ Scanning…' : '⟳ Index directory'}
@@ -223,6 +242,21 @@ export function ProjectKnowledgeSection({
           </div>
         )}
       </div>
+
+      {docsError && (
+        <ErrorState
+          variant="compact"
+          title="Couldn't load project knowledge"
+          description={describeReadFailure(docsFailure)}
+          action={
+            onRetryDocs ? (
+              <button type="button" onClick={onRetryDocs}>
+                Retry
+              </button>
+            ) : undefined
+          }
+        />
+      )}
 
       {namespaces.length > 0 && (
         <div className="project-page__ns-tabs">
@@ -255,6 +289,7 @@ export function ProjectKnowledgeSection({
           onRetryRules={() => void refetchRules()}
           rulesContent={rulesContent}
           savingRules={savingRules}
+          rulesSaveFailure={rulesSaveFailure}
           onRulesChange={setRulesContent}
           onSaveRules={handleSaveRules}
         />
@@ -391,6 +426,18 @@ export function ProjectKnowledgeSection({
               .md .txt .json .ts .py .yaml and more
             </span>
           </button>
+          {uploadFailures.length > 0 && (
+            <ErrorState
+              variant="compact"
+              title={`Couldn't upload ${uploadFailures.length === 1 ? uploadFailures[0].filename : `${uploadFailures.length} files`}`}
+              description={uploadFailures
+                .map(
+                  ({ filename, error }) =>
+                    `${filename}: ${describeReadFailure(error)}`,
+                )
+                .join(' ')}
+            />
+          )}
         </div>
       </ProjectKnowledgeDocGroup>
 
@@ -408,6 +455,8 @@ export function ProjectKnowledgeSection({
           projectWorkingDirectory={projectWorkingDirectory}
           scanInclude={scanInclude}
           scanExclude={scanExclude}
+          scanning={scanMutation.isPending}
+          scanFailure={scanMutation.error}
           onClose={() => setShowScanDialog(false)}
           onScan={handleScan}
           onScanIncludeChange={setScanInclude}

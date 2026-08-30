@@ -26,7 +26,7 @@ export function filterIntegrationItems(
             ? integration.probe.ok
               ? `Connected · ${integration.probe.toolCount} ${integration.probe.toolCount === 1 ? 'tool' : 'tools'}`
               : `Needs attention · ${integration.probe.error}`
-            : 'Never probed',
+            : 'Not checked yet',
         integration.description,
       ]
         .filter(Boolean)
@@ -51,7 +51,7 @@ export function filterIntegrationItems(
                   ? 'Connected'
                   : integration.probe
                     ? 'Needs attention'
-                    : 'Never probed'
+                    : 'Not checked yet'
             }
           />
         </span>

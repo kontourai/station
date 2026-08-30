@@ -1,4 +1,5 @@
 import {
+  type LayoutComponent,
   type LayoutComponentProps,
   useAgents,
   useNavigation,
@@ -14,16 +15,14 @@ import './layout.css';
  * - Controlling chat dock via useNavigation()
  * - Showing notifications via useToast()
  */
-function MinimalWorkspace({
-  layout,
-  onShowChat: _onShowChat,
-}: LayoutComponentProps) {
+function MinimalWorkspace({ layout, onShowChat }: LayoutComponentProps) {
   const agents = useAgents();
   const { setDockState } = useNavigation();
   const { showToast } = useToast();
 
   const handleOpenChat = () => {
     setDockState(true);
+    onShowChat?.();
     showToast({
       type: 'info',
       message: 'Chat dock opened',
@@ -66,6 +65,6 @@ function MinimalWorkspace({
 
 export const components = {
   'minimal-workspace': MinimalWorkspace,
-};
+} satisfies Record<string, LayoutComponent>;
 
 export default MinimalWorkspace;

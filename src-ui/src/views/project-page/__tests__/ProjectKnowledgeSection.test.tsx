@@ -9,6 +9,7 @@ let rulesLoading = false;
 let rulesError = false;
 let rulesFailure: unknown;
 const refetchRules = vi.fn();
+const uploadKnowledge = vi.hoisted(() => vi.fn());
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
@@ -22,7 +23,13 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   useKnowledgeDocContentQuery: () => ({ data: undefined, isLoading: false }),
   useKnowledgeDeleteMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useKnowledgeBulkDeleteMutation: () => ({ mutate: vi.fn(), isPending: false }),
-  useKnowledgeScanMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useKnowledgeScanMutation: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+    error: null,
+    reset: vi.fn(),
+  }),
+  uploadKnowledge,
 }));
 
 // Scoped to the container→RulesEditor wiring under test: the namespace
@@ -34,7 +41,9 @@ vi.mock('../ProjectKnowledgeNamespaceConfig', () => ({
 
 import { ProjectKnowledgeSection } from '../ProjectKnowledgeSection';
 
-function renderSection() {
+function renderSection(
+  props: Partial<React.ComponentProps<typeof ProjectKnowledgeSection>> = {},
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -45,6 +54,7 @@ function renderSection() {
         slug="demo"
         docs={[]}
         namespaces={[{ id: 'rules', label: 'Rules', behavior: 'inject' }]}
+        {...props}
       />
     </QueryClientProvider>,
   );
@@ -67,6 +77,7 @@ describe('ProjectKnowledgeSection — rules query error threading (#771)', () =>
     rulesError = false;
     rulesFailure = undefined;
     refetchRules.mockReset();
+    uploadKnowledge.mockReset();
   });
 
   test('renders the rules editor error state, with the specific failure text, when the rules query errors with no cached data', () => {
@@ -82,5 +93,47 @@ describe('ProjectKnowledgeSection — rules query error threading (#771)', () =>
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetchRules).toHaveBeenCalledTimes(1);
+  });
+
+  test('renders and retries a knowledge document list failure', () => {
+    const onRetryDocs = vi.fn();
+    renderSection({
+      docsError: true,
+      docsFailure: new Error('knowledge list unavailable'),
+      onRetryDocs,
+    });
+
+    expect(screen.getByText("Couldn't load project knowledge")).toBeTruthy();
+    expect(screen.getByText('knowledge list unavailable')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(onRetryDocs).toHaveBeenCalledTimes(1);
+  });
+
+  test('renders the specific error when an uploaded file fails', async () => {
+    uploadKnowledge.mockRejectedValue(
+      new Error('knowledge service unavailable'),
+    );
+    renderSection();
+
+    const input = document.querySelector('input[type="file"]');
+    expect(input).toBeTruthy();
+    const file = new File(['hello'], 'notes.md', { type: 'text/markdown' });
+    Object.defineProperty(file, 'text', {
+      value: () => Promise.resolve('hello'),
+    });
+    fireEvent.change(input!, {
+      target: { files: [file] },
+    });
+
+    expect(await screen.findByText("Couldn't upload notes.md")).toBeTruthy();
+    expect(
+      screen.getByText('notes.md: knowledge service unavailable'),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByText('notes.md: knowledge service unavailable')
+        .closest('[role="alert"]'),
+    ).toBeTruthy();
   });
 });

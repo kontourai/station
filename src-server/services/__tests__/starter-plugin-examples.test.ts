@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 import { readPluginManifestFile } from '../plugins/plugin-manifest-loader.js';
 
@@ -37,6 +38,124 @@ const starterPlugins = [
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, 'utf-8')) as T;
+}
+
+function propertyNameText(name: ts.PropertyName): string | null {
+  if (
+    ts.isIdentifier(name) ||
+    ts.isStringLiteral(name) ||
+    ts.isNumericLiteral(name)
+  ) {
+    return name.text;
+  }
+  return null;
+}
+
+function registrationObject(
+  expression: ts.Expression,
+): ts.ObjectLiteralExpression | undefined {
+  if (ts.isObjectLiteralExpression(expression)) return expression;
+  if (
+    ts.isSatisfiesExpression(expression) ||
+    ts.isAsExpression(expression) ||
+    ts.isParenthesizedExpression(expression)
+  ) {
+    return registrationObject(expression.expression);
+  }
+  return undefined;
+}
+
+function componentRegistrations(sourceText: string, entrypointPath: string) {
+  const sourceFile = ts.createSourceFile(
+    entrypointPath,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const implementations = new Map<string, ts.FunctionLikeDeclaration>();
+  let registrations: ts.ObjectLiteralExpression | undefined;
+
+  for (const statement of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name) {
+      implementations.set(statement.name.text, statement);
+      continue;
+    }
+    if (!ts.isVariableStatement(statement)) continue;
+    const exported = statement.modifiers?.some(
+      (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+    );
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name)) continue;
+      if (
+        declaration.name.text === 'components' &&
+        exported &&
+        declaration.initializer
+      ) {
+        registrations = registrationObject(declaration.initializer);
+      }
+      if (
+        declaration.initializer &&
+        (ts.isArrowFunction(declaration.initializer) ||
+          ts.isFunctionExpression(declaration.initializer))
+      ) {
+        implementations.set(declaration.name.text, declaration.initializer);
+      }
+    }
+  }
+
+  if (!registrations) {
+    throw new Error(`${entrypointPath}: missing exported components object`);
+  }
+
+  const registered = new Map<string, ts.FunctionLikeDeclaration>();
+  for (const property of registrations.properties) {
+    if (
+      !ts.isPropertyAssignment(property) &&
+      !ts.isShorthandPropertyAssignment(property)
+    ) {
+      continue;
+    }
+    const componentName = propertyNameText(property.name);
+    const implementationName = ts.isShorthandPropertyAssignment(property)
+      ? property.name.text
+      : ts.isIdentifier(property.initializer)
+        ? property.initializer.text
+        : null;
+    if (!componentName || !implementationName) continue;
+    const implementation = implementations.get(implementationName);
+    if (implementation) registered.set(componentName, implementation);
+  }
+  return { registered, sourceFile };
+}
+
+function exportedComponentRegistrations(entrypointPath: string) {
+  return componentRegistrations(
+    readFileSync(entrypointPath, 'utf-8'),
+    entrypointPath,
+  );
+}
+
+function hasRenderedImplementation(
+  implementation: ts.FunctionLikeDeclaration,
+): boolean {
+  if (!implementation.body) return false;
+  if (!ts.isBlock(implementation.body)) {
+    return implementation.body.kind !== ts.SyntaxKind.NullKeyword;
+  }
+  let rendered = false;
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isReturnStatement(node) &&
+      node.expression &&
+      node.expression.kind !== ts.SyntaxKind.NullKeyword
+    ) {
+      rendered = true;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(implementation.body);
+  return rendered;
 }
 
 describe('starter plugin examples', () => {
@@ -127,7 +246,11 @@ describe('starter plugin examples', () => {
   /**
    * #765 D1 class pin, over the WHOLE bundled default registry rather than
    * one plugin. Every layout component a bundled plugin's layout declares
-   * must be a name its entrypoint registers, and the plugin must be buildable
+   * must be a key in its exported `components` object, backed by a component
+   * function with rendered output. The old text search only proved that a
+   * quoted name occurred somewhere in the entrypoint; a comment, constant,
+   * or unrelated object could satisfy it without registering anything.
+   * The plugin must also be buildable
    * by the host pipeline at all: an `entrypoint` (that is what produces
    * `dist/bundle.js` — without it the client PluginRegistry skips the plugin
    * and each declared component renders "Unsupported layout tab"), and no
@@ -154,10 +277,8 @@ describe('starter plugin examples', () => {
         manifest.entrypoint,
         `${entry.id}: a layout plugin needs an entrypoint to build a bundle`,
       ).toBeTruthy();
-      const entrypoint = readFileSync(
-        join(pluginDir, manifest.entrypoint ?? ''),
-        'utf-8',
-      );
+      const entrypointPath = join(pluginDir, manifest.entrypoint ?? '');
+      const { registered } = exportedComponentRegistrations(entrypointPath);
       const layout = readJson<{
         tabs?: Array<{ id: string; component?: unknown }>;
       }>(join(pluginDir, manifest.layout.source));
@@ -165,12 +286,31 @@ describe('starter plugin examples', () => {
         // Only plain-string components are plugin components the bundle must
         // register; builtin/mcp references resolve elsewhere.
         if (typeof tab.component !== 'string') continue;
+        const implementation = registered.get(tab.component);
         expect(
-          entrypoint,
+          implementation,
           `${entry.id}: layout tab '${tab.id}' declares component '${tab.component}' the entrypoint never registers`,
-        ).toContain(`'${tab.component}'`);
+        ).toBeDefined();
+        expect(
+          implementation && hasRenderedImplementation(implementation),
+          `${entry.id}: registered component '${tab.component}' has no rendered implementation`,
+        ).toBe(true);
       }
     }
+  });
+
+  test('component registration proof does not accept a name mentioned outside the exported map', () => {
+    const { registered } = componentRegistrations(
+      [
+        'const Missing = () => <main>real UI</main>;',
+        "const declaredName = 'declared-but-unregistered';",
+        "export const components = { 'something-else': Missing };",
+      ].join('\n'),
+      'false-positive.tsx',
+    );
+
+    expect(registered.has('declared-but-unregistered')).toBe(false);
+    expect(registered.has('something-else')).toBe(true);
   });
 
   test('starter READMEs explain copyable scope and local registry install', () => {

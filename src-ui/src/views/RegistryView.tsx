@@ -253,6 +253,10 @@ export function RegistryView({
     ) {
       const tab = activeTab;
       setMessage(null);
+      // A failed preview is terminal mutation state, not a disabled install
+      // action. Clear it before each attempt so the selected-card entry point
+      // remains live after a refusal, transport error, or malformed response.
+      previewMutation.reset();
       previewMutation.mutate(itemId, {
         onSuccess: (data: PreviewData & { code?: string }) => {
           if (data.code === 'registry-plugin-not-found' && tab === 'agents') {
@@ -262,7 +266,13 @@ export function RegistryView({
             );
             return;
           }
-          if (!data.valid || !data.contentDigest || !data.permissions) {
+          if (
+            !data.valid ||
+            !data.contentDigest ||
+            !data.permissions ||
+            !Array.isArray(data.components) ||
+            !Array.isArray(data.conflicts)
+          ) {
             setMessage(
               data.error ||
                 `Could not preview ${item.displayName || itemId} before install`,

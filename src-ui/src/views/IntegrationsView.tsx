@@ -272,11 +272,6 @@ export function IntegrationsView({
 
   return (
     <>
-      <LazyBoundary
-        load={loadSecretBindingsSection}
-        componentProps={{}}
-        pending={null}
-      />
       <SplitPaneLayout
         label="connections / tools"
         title="Tool Servers"
@@ -381,6 +376,12 @@ export function IntegrationsView({
           />
         )}
       </SplitPaneLayout>
+
+      <LazyBoundary
+        load={loadSecretBindingsSection}
+        componentProps={{}}
+        pending={null}
+      />
 
       {deleteConfirm && (
         <DeleteIntegrationModal
