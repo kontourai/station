@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  type ClientOrigin,
+  isClientOrigin,
+} from '@kontourai/station-contracts/client-origin';
 import type {
   AgentRunFailureKind,
   AgentRunStatus,
@@ -298,6 +302,7 @@ export function buildOrchestrationSessionSummary(options: {
   const reportedModel = extractReportedModel(events);
   const conversationIdentity = extractConversationIdentity(events);
   const displayTitle = extractDisplayTitle(events) ?? delegation?.title;
+  const turnOrigin = extractTurnOrigin(events);
   const controlMode = base.controlMode ?? 'station-owned';
   const {
     projectSlug: lifecycleProjectSlug,
@@ -368,6 +373,7 @@ export function buildOrchestrationSessionSummary(options: {
     isLoaded: Boolean(options.loaded),
     isPersisted: Boolean(options.persisted),
     eventCount: options.eventCount ?? events.length,
+    ...(turnOrigin ? { turnOrigin } : {}),
     ...lifecycleWithoutProjectSlug,
     ...(assignedAgentSlug
       ? { assignedAgentSlug: agentId(assignedAgentSlug) }
@@ -398,6 +404,38 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelLaunchPlan ? { modelLaunchPlan } : {}),
     ...(reportedModel ? { reportedModel } : {}),
     hasActiveTurn: hasOpenTurn(events),
+  };
+}
+
+export function clientOriginIdentity(origin: ClientOrigin): string {
+  const actor =
+    origin.actor.kind === 'device'
+      ? `device:${origin.actor.deviceId}`
+      : origin.actor.kind;
+  return JSON.stringify([actor, origin.reported.surface]);
+}
+
+function extractTurnOrigin(
+  events: CanonicalRuntimeEvent[],
+): OrchestrationSessionSummary['turnOrigin'] {
+  let latestTurn: CanonicalRuntimeEvent | undefined;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    if (events[index]?.method === 'turn.started') {
+      latestTurn = events[index];
+      break;
+    }
+  }
+  if (!latestTurn || !isClientOrigin(latestTurn.clientOrigin)) return undefined;
+
+  const latestIdentity = clientOriginIdentity(latestTurn.clientOrigin);
+  return {
+    latest: latestTurn.clientOrigin,
+    hasOtherOrigins: events.some(
+      (event) =>
+        event.method === 'turn.started' &&
+        isClientOrigin(event.clientOrigin) &&
+        clientOriginIdentity(event.clientOrigin) !== latestIdentity,
+    ),
   };
 }
 
@@ -753,6 +791,12 @@ export function projectionFactKeysForEvent(
   event: CanonicalRuntimeEvent,
 ): Array<{ key: string; first?: boolean }> {
   const facts: Array<{ key: string; first?: boolean }> = [];
+  if (event.method === 'turn.started' && isClientOrigin(event.clientOrigin)) {
+    // The write projector adds at most one `turn-origin:other` fact relative
+    // to this fixed first fact. Together with the dedicated latest-turn slot,
+    // those two rows answer diversity without retaining one row per device.
+    facts.push({ key: 'turn-origin:first', first: true });
+  }
   if (extractModelLaunchPlan([event])) {
     facts.push({ key: 'model-launch-plan', first: true });
   }

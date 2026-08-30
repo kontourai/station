@@ -1485,6 +1485,86 @@ describe('EventStore', () => {
     }
   });
 
+  test('backfills turn-origin diversity facts for an existing event store', () => {
+    const databasePath = join(dir, 'orchestration-pre-origin-facts.sqlite');
+    const threadId = 'pre-origin-facts';
+    const legacy = new EventStore(databasePath);
+    for (const [index, clientOrigin] of [
+      {
+        version: 1 as const,
+        actor: { kind: 'device' as const, deviceId: 'phone-1' },
+        reported: {
+          version: 1 as const,
+          surface: 'mobile' as const,
+          build: null,
+        },
+      },
+      {
+        version: 1 as const,
+        actor: { kind: 'operator' as const },
+        reported: {
+          version: 1 as const,
+          surface: 'desktop' as const,
+          build: null,
+        },
+      },
+    ].entries()) {
+      legacy.appendEvent({
+        eventId: `legacy-origin-${index}`,
+        provider: 'claude',
+        threadId,
+        turnId: `turn-${index}`,
+        createdAt: `2026-08-30T00:00:0${index}.000Z`,
+        method: 'turn.started',
+        clientOrigin,
+      } as CanonicalRuntimeEvent);
+    }
+    legacy.close();
+
+    const beforeUpgrade = new DatabaseSync(databasePath);
+    try {
+      beforeUpgrade.exec(
+        "DELETE FROM orchestration_session_projection_facts WHERE fact_key LIKE 'turn-origin:%'",
+      );
+      beforeUpgrade
+        .prepare(
+          'DELETE FROM orchestration_event_store_backfills WHERE name = ?',
+        )
+        .run('event-facts-v5-turn-origin');
+    } finally {
+      beforeUpgrade.close();
+    }
+
+    const upgraded = new EventStore(databasePath);
+    try {
+      const projection = upgraded
+        .listSessionProjectionEvents(threadId)
+        .map((event) => event.payload);
+      const summary = buildOrchestrationSessionSummary({
+        persisted: {
+          provider: 'claude',
+          threadId,
+          status: 'ready',
+          createdAt: '2026-08-30T00:00:00.000Z',
+          updatedAt: '2026-08-30T00:00:01.000Z',
+        },
+        answerability: {
+          threadAttachment: 'detached',
+          providerRegistered: true,
+          observedBy: 'test',
+          observedAt: '2026-08-30T00:00:02.000Z',
+        },
+        events: projection,
+      });
+      expect(summary.turnOrigin).toMatchObject({
+        latest: { actor: { kind: 'operator' } },
+        hasOtherOrigins: true,
+      });
+    } finally {
+      upgraded.close();
+    }
+  });
+
   test('retains only the latest settled-stop fact per initiator across two restarts', () => {
     const threadId = 'settled-stop-fact-bound';
     const append = (event: CanonicalRuntimeEvent) => store.appendEvent(event);

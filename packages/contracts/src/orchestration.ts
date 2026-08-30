@@ -549,6 +549,18 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   isLoaded: boolean;
   isPersisted: boolean;
   eventCount: number;
+  /**
+   * Provenance of the most recent `turn.started` event, when that exact event
+   * carried a valid origin. The whole member is absent when the latest turn
+   * carried none; consumers must not substitute an "unknown" origin.
+   *
+   * `hasOtherOrigins` compares actor + reported surface across attributed
+   * turns. Build changes alone do not turn one device/surface into two origins.
+   */
+  turnOrigin?: {
+    latest: ClientOrigin;
+    hasOtherOrigins: boolean;
+  };
   lastEventAt?: string;
   lastEventMethod?: CanonicalRuntimeEvent['method'];
   /** Present only while this process is watching this session's active turn. */

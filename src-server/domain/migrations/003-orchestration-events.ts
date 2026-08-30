@@ -2,9 +2,13 @@ import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import type { DatabaseSync as NodeDatabaseSync } from 'node:sqlite';
+import { isClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { orchestrationStorePath } from '@kontourai/station-shared/sqlite-store-integrity';
-import { projectionFactKeysForEvent } from '../../services/orchestration/orchestration-session-state.js';
+import {
+  clientOriginIdentity,
+  projectionFactKeysForEvent,
+} from '../../services/orchestration/orchestration-session-state.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { PROJECT_TASK_ROOM_RUNTIME_MIGRATION } from './006-project-task-room-runtime.js';
 
@@ -910,6 +914,8 @@ function backfillGlobalSequence(db: EventStoreSchemaDatabase): void {
  */
 const SETTLED_STOP_FACT_REPAIR_NAME = 'event-facts-v4';
 const SETTLED_STOP_FACT_REPAIR_BATCH_SIZE = 100;
+const TURN_ORIGIN_FACT_REPAIR_NAME = 'event-facts-v5-turn-origin';
+const TURN_ORIGIN_FACT_REPAIR_BATCH_SIZE = 100;
 
 export function ensureOrchestrationEventStoreColumns(
   db: EventStoreSchemaDatabase,
@@ -1087,6 +1093,7 @@ export function ensureOrchestrationEventStoreColumns(
   // that used to run at this function's end, moved before its first consumer.
   backfillGlobalSequence(db);
   repairSettledStopProjectionFacts(db);
+  repairTurnOriginProjectionFacts(db);
 
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_events_global_sequence ON orchestration_events(global_sequence)',
@@ -1133,6 +1140,127 @@ export function ensureOrchestrationEventStoreColumns(
        WHERE json_valid(payload)
          AND json_extract(payload, '$.metadata.userId') IS NOT NULL`,
   );
+}
+
+/** Resumable backfill for origin facts added after the complete V3 rebuild. */
+function repairTurnOriginProjectionFacts(db: EventStoreSchemaDatabase): void {
+  const settled = () =>
+    (
+      db
+        .prepare(
+          'SELECT name FROM orchestration_event_store_backfills WHERE name = ?',
+        )
+        .all(TURN_ORIGIN_FACT_REPAIR_NAME) as Array<{ name?: string }>
+    ).length > 0;
+
+  while (!settled()) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      if (settled()) {
+        db.exec('ROLLBACK');
+        return;
+      }
+      const progress = db
+        .prepare(
+          'SELECT cursor FROM orchestration_event_store_backfill_progress WHERE name = ?',
+        )
+        .all(TURN_ORIGIN_FACT_REPAIR_NAME) as Array<{ cursor?: unknown }>;
+      const cursor = progress[0]?.cursor;
+      const hasProgress = typeof cursor === 'number';
+      if (!hasProgress) {
+        db.prepare(
+          "DELETE FROM orchestration_session_projection_facts WHERE fact_key LIKE 'turn-origin:%'",
+        ).run();
+        db.prepare(
+          'INSERT INTO orchestration_event_store_backfill_progress (name, cursor) VALUES (?, ?)',
+        ).run(TURN_ORIGIN_FACT_REPAIR_NAME, 0);
+      }
+      const batchCursor = hasProgress ? cursor : 0;
+      const rows = db
+        .prepare(
+          `SELECT id, thread_id, payload, global_sequence
+           FROM orchestration_events
+           WHERE method = 'turn.started' AND global_sequence > ?
+           ORDER BY global_sequence ASC
+           LIMIT ?`,
+        )
+        .all(batchCursor, TURN_ORIGIN_FACT_REPAIR_BATCH_SIZE) as Array<{
+        id?: unknown;
+        thread_id?: unknown;
+        payload?: unknown;
+        global_sequence?: unknown;
+      }>;
+      const insertFirstFact = db.prepare(
+        `INSERT OR IGNORE INTO orchestration_session_projection_facts
+          (thread_id, fact_key, event_id) VALUES (?, 'turn-origin:first', ?)`,
+      );
+      const readFirstFact = db.prepare(
+        `SELECT origin.payload
+         FROM orchestration_session_projection_facts AS fact
+         INNER JOIN orchestration_events AS origin ON origin.id = fact.event_id
+         WHERE fact.thread_id = ? AND fact.fact_key = 'turn-origin:first'`,
+      );
+      const insertOtherFact = db.prepare(
+        `INSERT OR IGNORE INTO orchestration_session_projection_facts
+          (thread_id, fact_key, event_id) VALUES (?, 'turn-origin:other', ?)`,
+      );
+      let nextCursor = batchCursor;
+      for (const row of rows) {
+        let event: CanonicalRuntimeEvent;
+        try {
+          event = JSON.parse(String(row.payload)) as CanonicalRuntimeEvent;
+        } catch {
+          throw new Error(
+            `Malformed persisted projection event: ${String(row.id ?? 'unknown event')}`,
+          );
+        }
+        if (isClientOrigin(event.clientOrigin)) {
+          insertFirstFact.run(row.thread_id, row.id);
+          const first = (
+            readFirstFact.all(row.thread_id) as Array<{ payload?: unknown }>
+          )[0];
+          let firstEvent: CanonicalRuntimeEvent | undefined;
+          try {
+            firstEvent = first
+              ? (JSON.parse(String(first.payload)) as CanonicalRuntimeEvent)
+              : undefined;
+          } catch {
+            firstEvent = undefined;
+          }
+          if (
+            firstEvent &&
+            isClientOrigin(firstEvent.clientOrigin) &&
+            clientOriginIdentity(firstEvent.clientOrigin) !==
+              clientOriginIdentity(event.clientOrigin)
+          ) {
+            insertOtherFact.run(row.thread_id, row.id);
+          }
+        }
+        if (typeof row.global_sequence !== 'number') {
+          throw new Error(
+            `Malformed turn-origin global sequence: ${String(row.id ?? 'unknown event')}`,
+          );
+        }
+        nextCursor = row.global_sequence;
+      }
+      if (rows.length === TURN_ORIGIN_FACT_REPAIR_BATCH_SIZE) {
+        db.prepare(
+          'UPDATE orchestration_event_store_backfill_progress SET cursor = ? WHERE name = ?',
+        ).run(nextCursor, TURN_ORIGIN_FACT_REPAIR_NAME);
+      } else {
+        db.prepare(
+          'INSERT INTO orchestration_event_store_backfills (name, completed_at) VALUES (?, ?)',
+        ).run(TURN_ORIGIN_FACT_REPAIR_NAME, new Date().toISOString());
+        db.prepare(
+          'DELETE FROM orchestration_event_store_backfill_progress WHERE name = ?',
+        ).run(TURN_ORIGIN_FACT_REPAIR_NAME);
+      }
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  }
 }
 
 /**
