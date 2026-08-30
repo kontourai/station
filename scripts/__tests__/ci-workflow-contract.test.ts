@@ -292,6 +292,10 @@ describe('CI verification workflow contracts', () => {
     expect(failureJob).toContain("labels: ['bug', 'P1']");
     expect(failureJob).toContain("state: 'all'");
     expect(failureJob).toContain("state: 'open'");
+    expect(failureJob).toContain(
+      'group: main-health-$' + '{{ github.event.workflow_run.name }}',
+    );
+    expect(failureJob).not.toContain('cancel-in-progress');
     expect(successJob).toContain("state: 'closed'");
     expect(successJob).not.toContain("conclusion == 'failure'");
   });
