@@ -2,7 +2,6 @@ import type {
   SchedulerJob,
   SchedulerSchedule,
 } from '@kontourai/station-contracts/scheduler';
-import { useResourcePostureQuery } from '@kontourai/station-sdk/resource-posture';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { PageFrameActions } from '../components/page-frame';
@@ -21,7 +20,6 @@ import {
   useToggleJob,
 } from '../hooks/useScheduler';
 import { errorText } from '../utils/errorText';
-import { hostPressureKind } from '../utils/resourcePosture';
 import { useSortableTable } from './SortableTable';
 import { ScheduleEmptyState } from './schedule/ScheduleEmptyState';
 import { ScheduleJobsTable } from './schedule/ScheduleJobsTable';
@@ -61,8 +59,6 @@ export function ScheduleView() {
   } = useSchedulerStatus();
   const { data: providers = [] } = useSchedulerProviders();
   const { data: runs = [], isLoading: runsLoading } = useRunsQuery();
-  // The same server-derived signal that raises the chrome capacity notice.
-  const { data: resourcePosture } = useResourcePostureQuery();
   const schedulerAvailable = !jobsError && !statusError;
   const { isRunning, markErrorShown, getMissedCount } =
     useSchedulerEvents(schedulerAvailable);
@@ -136,7 +132,6 @@ export function ScheduleView() {
   // pressing Run now on a healthy job produced no feedback at all, and the
   // only evidence the run happened was a row that eventually changed. Both
   // outcomes get a toast; a primary action the user pressed always answers.
-  const hostPressure = hostPressureKind(resourcePosture);
   const startRun = useCallback(
     (name: string) => {
       setRunError(null);
@@ -155,25 +150,7 @@ export function ScheduleView() {
     [runJob, showToast, markErrorShown],
   );
 
-  const handleRun = useCallback(
-    (name: string) => {
-      if (!hostPressure) {
-        startRun(name);
-        return;
-      }
-      setConfirmAction({
-        title: 'Run while host is busy?',
-        message: `The host is under pressure. Start '${name}' anyway?`,
-        variant: 'warning',
-        confirmLabel: 'Run anyway',
-        onConfirm: () => {
-          setConfirmAction(null);
-          startRun(name);
-        },
-      });
-    },
-    [hostPressure, startRun],
-  );
+  const handleRun = startRun;
 
   // Both scheduler reads failed. What we may say about that is derived from
   // the errors themselves, not assumed — see `selectSchedulerFailure`.
@@ -203,9 +180,6 @@ export function ScheduleView() {
   ) as { lastTickAt?: string } | undefined;
   const totalRuns = stats?.summary?.totalRuns ?? 0;
   const successRate = totalRuns > 0 ? (stats?.summary?.successRate ?? -1) : -1;
-  // Undefined unless the host is under the pressure that defers scheduled
-  // runs; the kind carries which words this posture gets (banner and Schedule
-  // share that derivation).
   // Scoped to the job actually being run: React Query reports the in-flight
   // mutation's own variables, so one job's request cannot disable every other
   // job's Run button.
@@ -236,7 +210,6 @@ export function ScheduleView() {
             daemonOk={daemonOk}
             jobsCount={jobs.length}
             lastTickAt={lastTickAt?.lastTickAt}
-            hostPressure={hostPressure}
             schedulerHealthy={schedulerHealthy}
             statusError={statusError}
             successRate={successRate}
@@ -277,7 +250,6 @@ export function ScheduleView() {
             <ScheduleJobsTable
               autoOpenRun={runTarget}
               daemonOk={daemonOk}
-              hostPressure={hostPressure}
               expanded={expanded}
               filterText={filterText}
               getMissedCount={getMissedCount}
