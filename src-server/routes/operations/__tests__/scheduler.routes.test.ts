@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { SchedulerJobConflictError } from '../../../services/scheduling/builtin-scheduler.js';
 import {
   SchedulerStorageCorruptError,
   SchedulerStorageUnavailableError,
@@ -291,6 +292,23 @@ describe('Scheduler Routes', () => {
     expect(body.success).toBe(true);
     expect(body.data).toBeDefined();
     expect(svc.addJob).toHaveBeenCalled();
+  });
+
+  test('POST /jobs returns a rendered conflict contract for a duplicate name', async () => {
+    const { app, svc } = setup();
+    svc.addJob.mockRejectedValueOnce(new SchedulerJobConflictError('test-job'));
+
+    const response = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'test-job', prompt: 'do stuff' }),
+    });
+
+    expect(response.status).toBe(409);
+    await expect(json(response)).resolves.toEqual({
+      success: false,
+      error: "Job 'test-job' already exists",
+    });
   });
 
   test.each([

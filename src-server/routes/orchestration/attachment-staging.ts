@@ -85,10 +85,7 @@ export function createAttachmentStagingRoutes(
         );
       }
       const grant = bearerGrant(c.req.raw.headers.get('authorization'));
-      if (
-        !grant ||
-        c.req.raw.headers.get('content-type') !== 'text/plain;charset=utf-8'
-      ) {
+      if (!grant || !isUtf8PlainText(c.req.raw.headers.get('content-type'))) {
         return c.json(
           { error: 'Attachment upload authority is invalid.' },
           403,
@@ -122,6 +119,10 @@ export function createAttachmentStagingRoutes(
     }
   });
   return app;
+}
+
+function isUtf8PlainText(value: string | null): boolean {
+  return /^text\/plain\s*;\s*charset\s*=\s*utf-8$/iu.test(value ?? '');
 }
 
 function bearerGrant(value: string | null): string | undefined {

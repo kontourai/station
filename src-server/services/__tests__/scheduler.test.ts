@@ -26,7 +26,9 @@ const mockChatFn = vi.fn(async () => {
 });
 
 // Must import AFTER mock so module-level constants use the mocked homedir
-const { BuiltinScheduler } = await import('../scheduling/builtin-scheduler.js');
+const { BuiltinScheduler, SchedulerJobConflictError } = await import(
+  '../scheduling/builtin-scheduler.js'
+);
 const { ANNOUNCEMENT_LEASE_MS, createSchedulerLedger } = await import(
   '../scheduling/scheduler-ledger.js'
 );
@@ -188,7 +190,7 @@ describe('BuiltinScheduler', () => {
     await scheduler.addJob({ name: 'dup', prompt: 'a' });
     await expect(
       scheduler.addJob({ name: 'dup', prompt: 'b' }),
-    ).rejects.toThrow("Job 'dup' already exists");
+    ).rejects.toBeInstanceOf(SchedulerJobConflictError);
   });
 
   test('replays a Starter manual operation without invoking the job twice', async () => {

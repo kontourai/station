@@ -436,6 +436,27 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     expect(toast.showToast).toHaveBeenCalledWith(
       "Failed to run 'nightly-digest': Scheduler job refused due to resource posture.",
     );
+    expect(screen.getByRole('alert').textContent).toBe(
+      "Failed to run 'nightly-digest': Scheduler job refused due to resource posture.",
+    );
+  });
+
+  test('asks before an explicit run while the host is under pressure', () => {
+    seedTwoRunnableJobs();
+    posture.kind = 'degraded';
+    render(<ScheduleView />);
+
+    fireEvent.click(runButton('nightly-digest'));
+    expect(runMutation.mutate).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('dialog', { name: 'Run while host is busy?' }),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run anyway' }));
+    expect(runMutation.mutate).toHaveBeenCalledWith(
+      'nightly-digest',
+      expect.any(Object),
+    );
   });
 
   test('a pending Run now disables that job only, not every job', () => {
