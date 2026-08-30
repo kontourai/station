@@ -18,6 +18,7 @@ interface ImportSkillsModalProps {
    * 207 hides which two failed and why.
    */
   results: SkillImportResultRow[] | null;
+  error: string | null;
   onImport: (files: SkillImportFile[]) => void;
   onCancel: () => void;
 }
@@ -34,6 +35,7 @@ export function ImportSkillsModal({
   isOpen,
   pending,
   results,
+  error,
   onImport,
   onCancel,
 }: ImportSkillsModalProps) {
@@ -146,6 +148,11 @@ export function ImportSkillsModal({
               </div>
             ))}
           </div>
+        )}
+        {error && (
+          <p className="editor-error" role="alert">
+            {error}
+          </p>
         )}
       </div>
     </Dialog>

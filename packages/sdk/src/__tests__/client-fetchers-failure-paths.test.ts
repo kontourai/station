@@ -15,7 +15,7 @@ import {
   respondToRequest,
 } from '../client/orchestration';
 import { createProject, listProjects } from '../client/projects';
-import { fetchSystemSkills } from '../client/skills';
+import { fetchSystemSkills, importSkills } from '../client/skills';
 
 /**
  * #167 iteration-2 (H1 sweep): one representative failure-path test per
@@ -40,6 +40,45 @@ function nonOkJsonResponse(body: unknown, status = 500): Response {
 describe('client/** fetcher failure paths (#167 iteration-2)', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
+  });
+
+  it('skills import dispatches one POST with the selected markdown files', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        success: true,
+        data: {
+          imported: 1,
+          results: [
+            {
+              filename: 'release-check.md',
+              success: true,
+              name: 'release-check',
+            },
+          ],
+        },
+      }),
+    } as Response);
+
+    await expect(
+      importSkills('http://example.test', [
+        { filename: 'release-check.md', content: '# Release check' },
+      ]),
+    ).resolves.toEqual(
+      expect.objectContaining({ imported: 1 }),
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      'http://example.test/api/skills/import',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          files: [
+            { filename: 'release-check.md', content: '# Release check' },
+          ],
+        }),
+      }),
+    );
   });
 
   /**
