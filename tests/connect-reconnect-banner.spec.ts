@@ -133,9 +133,24 @@ test.describe('compatibility-aware reconnect', () => {
       page.getByRole('heading', { name: 'What do you want to work on?' }),
     ).toBeVisible();
 
+    // #530: recovery owns only the offline banner. The load-induced
+    // resource-posture alert may be present concurrently without becoming this
+    // test's subject. Injecting it from the start makes the strict-mode red
+    // deterministic; production reaches the same collision after recovery
+    // re-resolves resource posture.
+    await page.evaluate(() => {
+      const concurrentAlert = document.createElement('div');
+      concurrentAlert.setAttribute('role', 'alert');
+      concurrentAlert.dataset.bannerId = 'test:concurrent-alert';
+      concurrentAlert.textContent = 'Concurrent host notice';
+      document.body.append(concurrentAlert);
+    });
+
     state.healthy = false;
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
-    const banner = page.getByRole('alert');
+    const banner = page.locator(
+      '[role="alert"][data-banner-id="chrome:connection:offline"]',
+    );
     await expect(banner).toContainText("Can't reach Dev Server");
     // archive#3297: the banner is one line now, and the caveats live behind
     // its disclosure. They are still reachable, and still say the same thing
@@ -198,7 +213,9 @@ test.describe('compatibility-aware reconnect', () => {
     ).toBeVisible();
     state.healthy = false;
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
-    const banner = page.getByRole('alert');
+    const banner = page.locator(
+      '[role="alert"][data-banner-id="chrome:connection:offline"]',
+    );
     await expect(banner).toBeVisible();
     const bannerBox = await banner.boundingBox();
     const actionBox = await banner
