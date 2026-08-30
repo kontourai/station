@@ -1,6 +1,7 @@
 import {
   createAccessEndpoint,
   createDirectHttpAccessMethod,
+  defaultStorage,
   type SavedConnection,
   type StationHandshakeIdentity,
   type StorageAdapter,
@@ -16,6 +17,12 @@ import { invokeTauri } from './tauriInvoke';
 
 const CONNECTIONS_KEY = 'station-connect-connections';
 const ACTIVE_KEY = `${CONNECTIONS_KEY}-active`;
+const EXPLICIT_SELECTION_KEY = 'station-native-profile-selection-v1';
+
+interface ExplicitSelectionRecord {
+  schemaVersion: 1;
+  connectionId: string;
+}
 
 interface TauriInvoker {
   invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>;
@@ -141,8 +148,9 @@ export interface NativeStationProfileRepository {
   makeDefault(connectionId: string): Promise<StationProfile>;
   /**
    * Makes a saved Station the native credential projection for this UI
-   * session only. `explicit` records deliberate client intent without writing
-   * `defaultProfile`; automatic bundled/default authorization leaves it false.
+   * client only. `explicit` records deliberate per-client intent without
+   * writing `defaultProfile`; automatic bundled/default authorization leaves
+   * it false.
    */
   authorizeActiveConnection(
     connectionId: string,
@@ -257,6 +265,7 @@ export class NativeStationProfileStorage
    * own local Station, while a real in-process choice remains authoritative.
    */
   private explicitProcessSelection: string | undefined;
+  private selectionProvenanceHydrated = false;
   private activeRequestBinding:
     | (NativeProfileRequestBinding & {
         connectionId: string;
@@ -265,7 +274,10 @@ export class NativeStationProfileStorage
       })
     | undefined;
 
-  constructor(private readonly bridge: TauriInvoker = TAURI_INVOKER) {}
+  constructor(
+    private readonly bridge: TauriInvoker = TAURI_INVOKER,
+    private readonly clientSelectionStorage: StorageAdapter = defaultStorage,
+  ) {}
 
   async hydrate(): Promise<void> {
     await this.refresh();
@@ -310,6 +322,7 @@ export class NativeStationProfileStorage
     );
     if (!preservesBinding) this.activeRequestBinding = undefined;
     this.profileStore = store;
+    this.hydrateClientSelectionProvenance();
     const connections = store.profiles.map(savedConnectionFromStationProfile);
     this.values.set(CONNECTIONS_KEY, JSON.stringify(connections));
     const selectedConnectionId = this.values.get(ACTIVE_KEY);
@@ -326,6 +339,7 @@ export class NativeStationProfileStorage
       : false;
     if (this.explicitProcessSelection && !explicitStillExists) {
       this.explicitProcessSelection = undefined;
+      this.clientSelectionStorage.remove(EXPLICIT_SELECTION_KEY);
     }
     const defaultProfile = store.defaultProfile
       ? store.profiles.find(
@@ -342,6 +356,89 @@ export class NativeStationProfileStorage
     } else {
       this.values.delete(ACTIVE_KEY);
     }
+  }
+
+  /**
+   * Recover only selection intent that an installed client can prove it owns.
+   *
+   * Older builds persisted the generic ConnectionStore active pointer without
+   * recording why it was active. A pointer to the shared default or any local
+   * profile is therefore inherited state, not proof that this client chose
+   * it; packaged bootstrap must replace it with the exact home owner returned
+   * by the native grant. A non-default foreign profile is the one legacy shape
+   * that can represent deliberate client-local intent, so migrate it once to
+   * the versioned marker. New builds write that marker only through the
+   * explicit native-selection seam below.
+   *
+   * This store contains metadata only. Migration never invokes the keyring,
+   * changes profiles.json, or reads/writes a pairing credential.
+   */
+  private hydrateClientSelectionProvenance(): void {
+    if (this.selectionProvenanceHydrated) return;
+    this.selectionProvenanceHydrated = true;
+
+    const persisted = this.parseExplicitSelectionRecord(
+      this.clientSelectionStorage.get(EXPLICIT_SELECTION_KEY),
+    );
+    if (persisted) {
+      const exists = this.profileStore.profiles.some(
+        (profile) => profileConnectionId(profile) === persisted.connectionId,
+      );
+      if (exists) {
+        this.explicitProcessSelection = persisted.connectionId;
+      } else {
+        this.clientSelectionStorage.remove(EXPLICIT_SELECTION_KEY);
+      }
+    } else {
+      this.clientSelectionStorage.remove(EXPLICIT_SELECTION_KEY);
+      const legacyConnectionId = this.clientSelectionStorage.get(ACTIVE_KEY);
+      const legacyProfile = legacyConnectionId
+        ? this.profileStore.profiles.find(
+            (profile) => profileConnectionId(profile) === legacyConnectionId,
+          )
+        : undefined;
+      const inheritedDefault = Boolean(
+        legacyProfile &&
+          this.profileStore.defaultProfile &&
+          legacyProfile.name.toLowerCase() ===
+            this.profileStore.defaultProfile.toLowerCase(),
+      );
+      if (
+        legacyProfile &&
+        legacyProfile.setupSource !== 'local' &&
+        !inheritedDefault
+      ) {
+        this.explicitProcessSelection = legacyConnectionId!;
+        this.persistExplicitSelection(legacyConnectionId!);
+      }
+    }
+
+    // The native adapter owns the live ConnectionStore projection now. Leave
+    // no ambiguous legacy pointer for a later upgrade to reinterpret.
+    this.clientSelectionStorage.remove(ACTIVE_KEY);
+  }
+
+  private parseExplicitSelectionRecord(
+    raw: string | null,
+  ): ExplicitSelectionRecord | undefined {
+    if (!raw) return undefined;
+    try {
+      const parsed = JSON.parse(raw) as Partial<ExplicitSelectionRecord>;
+      return parsed.schemaVersion === 1 &&
+        typeof parsed.connectionId === 'string' &&
+        parsed.connectionId.length > 0
+        ? { schemaVersion: 1, connectionId: parsed.connectionId }
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private persistExplicitSelection(connectionId: string): void {
+    this.clientSelectionStorage.set(
+      EXPLICIT_SELECTION_KEY,
+      JSON.stringify({ schemaVersion: 1, connectionId }),
+    );
   }
 
   selectProfileForProcess(profileName: string): string | undefined {
@@ -406,9 +503,8 @@ export class NativeStationProfileStorage
 
   /**
    * The native host, not the webview, binds a selected saved Station to the
-   * active keyring credential. Keeping the selected id only in this adapter
-   * makes a connection-list choice transient; `makeDefault` is the sole CLI
-   * default mutation.
+   * active keyring credential. The selected id remains client-local;
+   * `makeDefault` is the sole CLI default mutation.
    */
   async authorizeActiveConnection(
     connectionId: string,
@@ -425,6 +521,7 @@ export class NativeStationProfileStorage
     // Record it before the keyring call: an intentional selection remains the
     // process target even when its credential is unavailable.
     if (explicit) this.explicitProcessSelection = connectionId;
+    if (explicit) this.persistExplicitSelection(connectionId);
     this.values.set(ACTIVE_KEY, connectionId);
     if (!profile.credentialRef) return false;
     try {
