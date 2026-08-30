@@ -202,3 +202,4 @@ function MarkdownRendererComponent({
 }
 
 export const MarkdownRenderer = memo(MarkdownRendererComponent);
+export default MarkdownRenderer;

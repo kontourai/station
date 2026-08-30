@@ -1,10 +1,5 @@
-import { lazy, memo, Suspense } from 'react';
-
-const LazyIncrementalMarkdownRenderer = lazy(() =>
-  import('./MarkdownRenderer').then(({ MarkdownRenderer }) => ({
-    default: MarkdownRenderer,
-  })),
-);
+import { memo } from 'react';
+import { LazyMarkdown } from './LazyMarkdown';
 
 /**
  * archive#3354 — markdown for text that is still growing.
@@ -18,13 +13,7 @@ const LazyIncrementalMarkdownRenderer = lazy(() =>
  * honestly. Settled messages use the normal full-render path in `LazyMarkdown`.
  */
 function StreamingMarkdownComponent({ content }: { content: string }) {
-  return (
-    <Suspense fallback={content}>
-      <LazyIncrementalMarkdownRenderer incremental>
-        {content}
-      </LazyIncrementalMarkdownRenderer>
-    </Suspense>
-  );
+  return <LazyMarkdown incremental>{content}</LazyMarkdown>;
 }
 
 export const StreamingMarkdown = memo(StreamingMarkdownComponent);

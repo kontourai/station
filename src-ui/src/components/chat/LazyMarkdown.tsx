@@ -1,11 +1,14 @@
-import { lazy, memo, type ReactNode, Suspense } from 'react';
+import {
+  lazy,
+  memo,
+  type ReactNode,
+  Suspense,
+  useEffect,
+  useState,
+} from 'react';
 import type { Options } from 'react-markdown';
 
-const LazyMarkdownRenderer = lazy(() =>
-  import('./MarkdownRenderer').then(({ MarkdownRenderer }) => ({
-    default: MarkdownRenderer,
-  })),
-);
+const LazyMarkdownRenderer = lazy(() => import('./MarkdownRenderer'));
 
 /**
  * Keeps Markdown parsing out of the initial application payload.  The plain
@@ -16,7 +19,15 @@ function LazyMarkdownComponent({
   children,
   loadingProjection = children,
   ...options
-}: Options & { loadingProjection?: ReactNode }) {
+}: Options & { loadingProjection?: ReactNode; incremental?: boolean }) {
+  // Let a newly loaded parent capability commit its readable source before
+  // this nested lazy renderer can suspend. Without this first-commit gate,
+  // React may retain the parent's conversation-level fallback until the
+  // markdown chunk resolves even though this boundary has its own fallback.
+  const [rendererEnabled, setRendererEnabled] = useState(false);
+  useEffect(() => setRendererEnabled(true), []);
+  if (!rendererEnabled) return loadingProjection;
+
   return (
     <Suspense fallback={loadingProjection}>
       <LazyMarkdownRenderer {...options}>{children}</LazyMarkdownRenderer>
