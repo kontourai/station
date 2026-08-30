@@ -213,8 +213,10 @@ export const REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA =
   '563effe7ec559c6f4fcc6c80b3532acb71d86373';
 const REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA =
   '02f40a67901a79ce4004c44d91e350b93782644c';
+const REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA =
+  '02f40a67901a79ce4004c44d91e350b93782644c';
 const SECRET_SCAN_WORKFLOW = '.github/workflows/secret-scan.yml';
-const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA}`;
+const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`;
 /**
  * `owner-lifetime-seconds` is part of the host manifest, so it is one shared
  * physical-host setting rather than a per-job tuning knob. The pinned action
