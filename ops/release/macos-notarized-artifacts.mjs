@@ -1005,7 +1005,7 @@ export function parseMacosNotarizedArtifactsCli(argv) {
       !valueFlags.has(name) ||
       typeof value !== 'string' ||
       value.length === 0 ||
-      value.startsWith('--') ||
+      value.startsWith('-') ||
       raw[name]
     )
       throw new Error('Expected unique --name value arguments.');

@@ -393,6 +393,8 @@ test('parses the DMG-only CLI flag as a bare opt-in and rejects a value for it',
     [...args, '--dmg-onyl', 'true'],
     [...args, '--unknown', '--dmg-only'],
     [...args, '--app', '--dmg-only'],
+    [...args, '--app', '-x'],
+    [...args, '--app', '-dmg-only'],
   ])
     expect(() => parseMacosNotarizedArtifactsCli(invalid)).toThrow(
       /unique --name value/,
@@ -435,7 +437,9 @@ test('refuses a DMG whose signed authority or designated requirement is not Kont
     expect(
       release.calls.some(
         ([program, args]) =>
-          program === 'xcrun' && args[0] === 'notarytool' && args.includes('.dmg'),
+          program === 'xcrun' &&
+          args[0] === 'notarytool' &&
+          args.some((arg) => arg.endsWith('.dmg')),
       ),
     ).toBe(false);
   }
