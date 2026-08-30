@@ -55,7 +55,7 @@ describe('Run Routes', () => {
       readOutput: vi.fn(),
     };
     const app = createRunRoutes(service as any, logger as any, () =>
-      sessionReadAuthorityFromRequest('test-user'),
+      sessionReadAuthorityFromRequest('test-user', undefined, undefined),
     );
 
     const res = await app.request('/?source=schedule&providerId=built-in');
@@ -80,7 +80,7 @@ describe('Run Routes', () => {
       readOutput: vi.fn(),
     };
     const app = createRunRoutes(service as any, logger as any, () =>
-      sessionReadAuthorityFromRequest('test-user'),
+      sessionReadAuthorityFromRequest('test-user', undefined, undefined),
     );
     const res = await app.request('/?source=voice');
     expect(res.status).toBe(200);
@@ -108,7 +108,7 @@ describe('Run Routes', () => {
       readOutput: vi.fn(),
     };
     const app = createRunRoutes(service as any, logger as any, () =>
-      sessionReadAuthorityFromRequest('test-user'),
+      sessionReadAuthorityFromRequest('test-user', undefined, undefined),
     );
 
     const res = await app.request('/schedule:built-in:daily:daily-1');
@@ -128,7 +128,7 @@ describe('Run Routes', () => {
       readOutput: vi.fn().mockResolvedValue('run output'),
     };
     const app = createRunRoutes(service as any, logger as any, () =>
-      sessionReadAuthorityFromRequest('test-user'),
+      sessionReadAuthorityFromRequest('test-user', undefined, undefined),
     );
 
     const ref = {
