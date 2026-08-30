@@ -54,16 +54,18 @@ redacted raw output is digest-addressed under `.kontourai/verification-output/`.
 
 Run `npm run ci:fast` for bounded (twelve-minute) per-push feedback after focused
 evidence: it runs base-pinned affected Vitest tests followed by fixed bounded
-invariants, not the global static/build chain or full corpus. After focused
-implementation proof, freeze the worktree and use
-`npm run full:regression:submit` to hand completion off. Never use shell
-polling, background, or relaunch loops. Do not edit or remove a worktree with a
-live handoff; inspect it with
-`node scripts/run-verification.mjs submit-status <request-key>`. Synchronous
-`npm run full:regression` remains the sole evidence command and final consumer
-of the canonical receipt. Its coordinated lane exit 0 may mean executed,
-joined, or reused. The full Vitest corpus is phase-attested there, separately
-from the fast feedback loop.
+invariants, not the global static/build chain or full corpus.
+Ordinary pull requests use focused evidence plus `npm run ci:fast`.
+GitHub's merge queue runs the required checks on the synthesized latest-main candidate.
+Do not run `npm run full:regression`
+locally merely because `main` moved.
+
+The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
+canonical completion receipt. Nightly and tagged preview and stable promotions
+pass it one exact source SHA and cannot build or publish unless it succeeds. A
+manual `workflow_dispatch` of CI remains the explicit diagnostic escape hatch.
+The full Vitest corpus is phase-attested there, separately from the fast
+feedback loop.
 
 The `ci:fast` owner receipt requires a redacted, digest-addressed copy of the
 changed-test diagnostic under `.kontourai/verification-output/`. If the stable
@@ -364,7 +366,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 
 | Lane | Command | Trigger | Expected scope | Resource class | Evidence | Invalidated by |
 | --- | --- | --- | --- | --- | --- | --- |
-| `full-regression` | `npm run full:regression` | pre-merge / final completion | repo-governance + sdk/app builds + static gates + full Vitest corpus | completion gate | completion (trust floor) | command only |
+| `full-regression` | `npm run full:regression` | promotion / explicit diagnosis | repo-governance + sdk/app builds + static gates + full Vitest corpus | completion gate | completion (trust floor) | command only |
 | `ci-fast` | `npm run ci:fast` | per-push / bounded feedback | base-pinned affected Vitest tests + fixed static invariants (≤12m) | static / integration | diagnostic | test-impact manifest |
 | `test-changed` | `npm run test:changed` | per-edit local feedback | Vitest related imports + dynamic-boundary edges | changed-scope selector | diagnostic | test-impact manifest |
 | `prepush` | `npm run test:prepush` | pre-push / focused floor | prepare:verify-static + prepush test tier | focused floor | diagnostic | prepush test-group manifest |
