@@ -135,3 +135,39 @@ jobs:
           path: test-results/core-loop-journeys/
           if-no-files-found: ignore
           retention-days: 14
+
+  src-ui-sweep:
+    name: Full src-ui Vitest sweep
+    # test:changed follows import-graph impact from changed importers, so it
+    # cannot find an untouched consumer broken by a component's new context
+    # requirement. This scheduled sweep exists for that broader harness check;
+    # making the selector context-aware remains a separate design question.
+    #
+    # Explicit browser-dependent exclusions (each launches real Chromium):
+    # - ConnectionsSectionFrame.banner-hittest.test.tsx
+    # - HeaderActions.connection-reflow.test.tsx
+    # - SplitPaneLayout.skeleton-geometry.test.tsx
+    # - ActionOperationsSection.reflow.test.tsx
+    # - sessionInventoryCompactHost.test.ts
+    # - BannerHost.collapsed-controls.test.tsx
+    # - BannerHost.disclosure-overlap.test.tsx
+    # - BannerHost.touch-target.test.tsx
+    # - NotificationContainer.touch-target.test.tsx
+    # - ConnectedSessionInventory.test.tsx
+    # The Vitest-only job deliberately does not install a browser; those files
+    # remain covered by the full-regression lane after install:playwright.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc }
+
+      - run: npm run dependencies:ci
+
+      - name: Run full src-ui Vitest sweep
+        run: npm run sweep:src-ui
