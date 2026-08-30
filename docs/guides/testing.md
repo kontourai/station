@@ -121,12 +121,16 @@ OpenSSH argv, cleanup, and broken-pipe contracts. Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
 `continue-on-error` to relabel that gap green.
 
-Every pull request runs that bounded floor as the stable
+Every pull request and every synthesized merge-queue candidate runs that
+bounded floor as the stable
 `Windows PR portable floor` check. Its workflow is read from the protected base
 through `pull_request_target`, checks out the exact candidate repository and
 SHA, and executes on an ephemeral GitHub-hosted Windows runner with read-only
 permissions and no persisted credentials. Forks run the same proof; they are
-not silently converted into a skipped required check. The physical Windows
+not silently converted into a skipped required check. Once a pull request enters
+the queue, `merge_group` runs the same floor against GitHub's temporary commit,
+which already contains current `main` and any earlier queued changes. The
+physical Windows
 workflow remains a separate post-merge hardware-reference diagnostic and does
 not replace the PR gate.
 

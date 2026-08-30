@@ -23,6 +23,8 @@ function workflowTriggerDeclaration(workflowText) {
     pushIncludesMain: false,
     pullRequestIncludesMain: false,
     pullRequestTargetTypes: null,
+    mergeGroupIncludesMain: false,
+    mergeGroupTypes: null,
   });
   const declarationIndices = lines.flatMap((line, index) =>
     /^(?:on|"on"|'on')\s*:\s*.*$/.test(line) ? [index] : [],
@@ -57,7 +59,8 @@ function workflowTriggerDeclaration(workflowText) {
       if (
         name === 'push' ||
         name === 'pull_request' ||
-        name === 'pull_request_target'
+        name === 'pull_request_target' ||
+        name === 'merge_group'
       ) {
         if (value) return invalid(triggers);
         activeTrigger = name;
@@ -79,7 +82,8 @@ function workflowTriggerDeclaration(workflowText) {
     if (
       activeTrigger !== 'push' &&
       activeTrigger !== 'pull_request' &&
-      activeTrigger !== 'pull_request_target'
+      activeTrigger !== 'pull_request_target' &&
+      activeTrigger !== 'merge_group'
     ) {
       return invalid(triggers);
     }
@@ -93,7 +97,11 @@ function workflowTriggerDeclaration(workflowText) {
         .match(/^(branches|types):\s*(\[[^[]*\]|[A-Za-z0-9_-]+)?\s*(?:#.*)?$/);
       if (!filterMapping) return invalid(triggers);
       const [, filter, value] = filterMapping;
-      if (filter === 'types' && activeTrigger !== 'pull_request_target')
+      if (
+        filter === 'types' &&
+        activeTrigger !== 'pull_request_target' &&
+        activeTrigger !== 'merge_group'
+      )
         return invalid(triggers);
       filterIndent = indent;
       activeFilter = filter;
@@ -136,13 +144,17 @@ function workflowTriggerDeclaration(workflowText) {
     pullRequestIncludesMain: includesOnlyMain('pull_request'),
     pullRequestTargetIncludesMain: includesOnlyMain('pull_request_target'),
     pullRequestTargetTypes: typesByTrigger.get('pull_request_target'),
+    mergeGroupIncludesMain: includesOnlyMain('merge_group'),
+    mergeGroupTypes: typesByTrigger.get('merge_group'),
   };
 }
 
 export function workflowExecutionScope(workflowText) {
   const { valid, triggers } = workflowTriggerDeclaration(workflowText);
   if (!valid) return 'invalid';
-  return triggers.has('pull_request') || triggers.has('pull_request_target')
+  return triggers.has('pull_request') ||
+    triggers.has('pull_request_target') ||
+    triggers.has('merge_group')
     ? 'pull-request'
     : 'post-merge';
 }
@@ -165,7 +177,11 @@ export function collectPostMergeDetectorWorkflowFindings(workflowText) {
       'Post-merge detector workflow must support workflow_dispatch.',
     );
   }
-  if (triggers.has('pull_request') || triggers.has('pull_request_target')) {
+  if (
+    triggers.has('pull_request') ||
+    triggers.has('pull_request_target') ||
+    triggers.has('merge_group')
+  ) {
     findings.push(
       'Post-merge detector workflow must not trigger on pull_request.',
     );
@@ -181,6 +197,8 @@ export function collectPrimaryCiWorkflowTriggerFindings(workflowText) {
     pullRequestIncludesMain,
     pullRequestTargetIncludesMain,
     pullRequestTargetTypes,
+    mergeGroupIncludesMain,
+    mergeGroupTypes,
   } = workflowTriggerDeclaration(workflowText);
   const findings = [];
   if (!valid) {
@@ -197,6 +215,15 @@ export function collectPrimaryCiWorkflowTriggerFindings(workflowText) {
     (!triggers.has('pull_request_target') || !pullRequestTargetIncludesMain)
   ) {
     findings.push('Primary CI workflow must trigger on pull requests to main.');
+  }
+  if (
+    !triggers.has('merge_group') ||
+    !mergeGroupIncludesMain ||
+    JSON.stringify(mergeGroupTypes) !== JSON.stringify(['checks_requested'])
+  ) {
+    findings.push(
+      'Primary CI workflow must trigger on merge_group checks_requested for main.',
+    );
   }
   if (
     triggers.has('pull_request_target') &&
