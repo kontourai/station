@@ -18,7 +18,7 @@ function summary(
   const base: OrchestrationSessionSummary = {
     provider: 'claude',
     threadId,
-    status: 'idle',
+    status: 'ready',
     controlMode: 'station-owned',
     answerability: { answerable: true },
     isLoaded: true,
