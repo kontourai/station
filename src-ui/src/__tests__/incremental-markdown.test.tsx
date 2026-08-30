@@ -241,6 +241,9 @@ describe('incremental Markdown rendering', () => {
     );
   });
 
+  // The console.warn latch is MODULE-GLOBAL and never resets: this must stay
+  // the only fallback-triggering test in this file, or an earlier trigger
+  // consumes the single warn and this test reds pointing at the wrong subject.
   test('splitter failure visibly falls back to the whole-text parser', () => {
     const error = new Error('injected splitter failure');
     const onFallback = vi.fn();

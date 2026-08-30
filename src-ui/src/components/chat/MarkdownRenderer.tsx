@@ -92,6 +92,8 @@ const MarkdownBlockView = memo(
     previous.probe === next.probe,
 );
 
+let warnedSplitterFallback = false;
+
 /**
  * Canonical markdown renderer with an append-only optimization for streaming.
  * Definition-free streaming content is parsed as memoized source blocks; any
@@ -99,8 +101,6 @@ const MarkdownBlockView = memo(
  * whole-document parse so cross-block resolution stays canonical. Settled
  * content always takes that canonical whole-document path immediately.
  */
-let warnedSplitterFallback = false;
-
 function MarkdownRendererComponent({
   incremental = false,
   splitBlocks = splitMarkdownBlocks,
