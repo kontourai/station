@@ -17,8 +17,11 @@ describe('bounded tool result — allocation', () => {
     // The dominant real shape: file contents / command output arriving as one
     // unescaped string. Concatenating it onto the tail first would materialize
     // the whole payload — the exact allocation this collector exists to avoid.
-    // Pinned on the seam the collector calls, so a revert to `tail + value`
-    // reds here rather than only showing up as heap growth in production.
+    // NOTE ON POWER: this pins the helper's contract, NOT its call site.
+    // Reverting `append` to `(this.tail + value).slice(-512)` produces
+    // byte-identical output, so nothing here would red — only the allocation
+    // differs, and ESM makes spying on a same-module call ineffective. The
+    // binding is held by review; do not read a green run as proof of it.
     const huge = 'x'.repeat(2_000_000);
     expect(boundTailFragment(huge)).toHaveLength(TOOL_RESULT_TAIL_CHARS);
     expect(boundTailFragment('short')).toBe('short');
