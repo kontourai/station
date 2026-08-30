@@ -468,6 +468,12 @@ export function foldUsageEvents(
     if (event.provider) aggregate.provider = event.provider;
     switch (event.method) {
       case 'token-usage.updated': {
+        // This fold deliberately does not silently discard malformed token
+        // figures: producer boundaries own that signal. Claude guards with
+        // tokenCount, Codex with extractNumber, Bedrock and Ollama with
+        // usableTokenFigure, and ACP publishes only the separately validated
+        // context pair. Keep those birth-site guards exhaustive so a future
+        // producer defect remains visible instead of disappearing here.
         const cumulative = CUMULATIVE_USAGE_PROVIDERS.has(event.provider);
         const promptTokens = event.promptTokens;
         const completionTokens = event.completionTokens;

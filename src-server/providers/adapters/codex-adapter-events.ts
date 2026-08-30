@@ -44,7 +44,9 @@ export function extractStringField(
 }
 
 export function extractNumber(value: unknown): number | null {
-  return typeof value === 'number' ? value : null;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
 }
 
 export function isResumeCursor(
