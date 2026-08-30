@@ -405,7 +405,9 @@ export function ChatInputArea({
                 : 'Continue this conversation with another Agent'
             }
           >
-            <span className="chat-input__control-label">Agent</span>
+            <span className="chat-input__agent-avatar" aria-hidden="true">
+              {(agentLabel ?? 'A').trim().slice(0, 1).toUpperCase()}
+            </span>
             <span className="chat-input__agent-name">
               {agentLabel ?? 'Current Agent'}
             </span>
@@ -433,7 +435,6 @@ export function ChatInputArea({
                 : 'Click to change model'
           }
         >
-          <span className="chat-input__control-label">Model</span>
           <span className="chat-input__model-identity" aria-hidden="true">
             {modelProviderLabel && (
               <>

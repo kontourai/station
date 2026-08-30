@@ -11,7 +11,7 @@ import {
   cacheInclusiveTotalTokens,
   providerPromptCacheInclusivity,
 } from '@kontourai/station-shared/usage-fold';
-import { useId, useState } from 'react';
+import { type ReactNode, useId, useState } from 'react';
 import {
   exactTokenCount,
   formatTokenCount,
@@ -527,12 +527,15 @@ export interface TurnProvenanceCardProps {
   statedInRow?: TurnProvenanceStatedInRow;
   /** Display name of the human accountable for this Station, if available. */
   accountableHuman?: string | null;
+  /** Per-turn evidence navigation belongs inside this disclosure, not beside actions. */
+  basisContent?: ReactNode;
 }
 
 export function TurnProvenanceCard({
   provenance,
   statedInRow = NOTHING_STATED_IN_ROW,
   accountableHuman,
+  basisContent,
 }: TurnProvenanceCardProps) {
   const [open, setOpen] = useState(false);
   const detailsId = useId();
@@ -608,6 +611,10 @@ export function TurnProvenanceCard({
               </div>
             ))}
           </dl>
+
+          {basisContent && (
+            <div className="turn-provenance__basis">{basisContent}</div>
+          )}
 
           {provenance.contextInjection?.state === 'observed' && (
             <LazyBoundary
