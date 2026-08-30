@@ -86,10 +86,7 @@ function scanMountedRouteBases(): string[] {
 describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () => {
   test('a standard paired chat tier admits every attachment staging control leaf', () => {
     const standard = pairingScopePresetString('standard');
-    const chatScope = requiredPairingScope(
-      'POST',
-      '/api/orchestration/chat',
-    );
+    const chatScope = requiredPairingScope('POST', '/api/orchestration/chat');
     expect(chatScope).toBe('orchestration:operate');
 
     for (const [method, path] of [
