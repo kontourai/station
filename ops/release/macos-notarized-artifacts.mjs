@@ -29,10 +29,16 @@ export const EMBEDDED_MACHO_COMMAND_TIMEOUT_MS = 30 * 1000;
 // every candidate, while still allowing one bounded transport retry.
 export const EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS = 90 * 1000;
 export const NOTARY_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
-// Compressing an application into UDZO is the one release step whose duration
-// scales directly with the staged payload.  Keep it bounded, but give a
-// multi-hundred-megabyte application enough time on a contended CI runner.
-export const DMG_CREATION_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
+// These operations either copy or compress the complete staged application.
+// Their duration scales with payload size and host I/O contention, unlike
+// probes, validation, signing inspection, and network operations. Keep them
+// bounded by one explicit authority so every complete-payload operation gets
+// the same release budget without widening the short command default.
+export const LARGE_ARTIFACT_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
+// Retain the named export for downstream release checks while making the
+// common large-artifact policy the single timeout authority.
+export const DMG_CREATION_COMMAND_TIMEOUT_MS =
+  LARGE_ARTIFACT_COMMAND_TIMEOUT_MS;
 export const COMMAND_TERMINATION_GRACE_MS = 10 * 1000;
 export const MAX_RETRY_ATTEMPTS = 2;
 // Standalone callers retain a bounded relative deadline. Hosted release passes
@@ -795,14 +801,12 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     )
       throw new Error('Outer app has unexpected entitlements.');
     if (!dmgOnly) {
-      await command('application notarization archive', 'ditto', [
-        '-c',
-        '-k',
-        '--sequesterRsrc',
-        '--keepParent',
-        app,
-        zip,
-      ]);
+      await command(
+        'application notarization archive',
+        'ditto',
+        ['-c', '-k', '--sequesterRsrc', '--keepParent', app, zip],
+        LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
+      );
       await submit(command, zip, key, keyId, issuer, logger);
       await command('application stapling', 'xcrun', [
         'stapler',
@@ -823,7 +827,12 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
       app,
     ]);
     fs.mkdirSync(dmgRoot, { recursive: true });
-    await command('DMG staging', 'ditto', [app, join(dmgRoot, appName)]);
+    await command(
+      'DMG staging',
+      'ditto',
+      [app, join(dmgRoot, appName)],
+      LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
+    );
     await command(
       'DMG creation',
       'hdiutil',
@@ -838,7 +847,7 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
         'UDZO',
         dmg,
       ],
-      DMG_CREATION_COMMAND_TIMEOUT_MS,
+      LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
     );
     const dmgSigningArgs = ['--force', '--sign', identity, '--timestamp', dmg];
     await retryRetryableTransportFailure(
@@ -941,14 +950,12 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     ]);
     await command('DMG detach', 'hdiutil', ['detach', mount]);
     detachNeeded = false;
-    await command('updater archive derivation', 'tar', [
-      '-C',
-      join(app, '..'),
-      '-czf',
-      updater,
-      '--',
-      appName,
-    ]);
+    await command(
+      'updater archive derivation',
+      'tar',
+      ['-C', join(app, '..'), '-czf', updater, '--', appName],
+      LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
+    );
     await command(
       'updater archive validation',
       'tar',
