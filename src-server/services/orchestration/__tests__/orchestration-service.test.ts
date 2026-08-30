@@ -17,7 +17,6 @@ import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import {
   engineConnectionId,
   engineId,
-  engineRuntimeId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationCommand } from '@kontourai/station-contracts/orchestration';
 import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
@@ -244,16 +243,19 @@ class FakeAdapter implements ProviderAdapterShape {
           : provider === 'codex' || provider === 'acp'
             ? ['agent-runtime', 'image-input']
             : ['agent-runtime'],
-      runtimeId: engineRuntimeId(`${provider}-runtime`),
+      engineId: engineId(
+        provider === 'bedrock' ||
+          provider === 'ollama' ||
+          provider === 'station-agent'
+          ? 'station'
+          : provider,
+      ),
       builtin: true,
       executionClass: provider === 'bedrock' ? 'managed' : 'connected',
       // archive#980: the private `station-agent` adapter carries the real
       // `engineId: 'station'` (station-agent-adapter.ts:237), not the legacy
       // `executionClass` — mirrored here so `engineExecutionForAdapter`
       // resolves `'station'` for it exactly as it does in production.
-      ...(provider === 'station-agent'
-        ? { engineId: engineId('station') }
-        : {}),
       modelLaunch:
         provider === 'acp'
           ? {
@@ -11977,7 +11979,7 @@ describe('OrchestrationService', () => {
       getRuntimeConnections: async () => [
         {
           id: 'claude',
-          type: 'claude-runtime',
+          type: 'claude',
           provider: 'claude',
           name: 'Claude Code',
           enabled: true,
@@ -13717,7 +13719,7 @@ describe('OrchestrationService', () => {
     });
 
     const result = await service.runConnectionSmoke({
-      connectionId: 'claude-runtime',
+      connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
       cwd: tmp,
@@ -13774,7 +13776,7 @@ describe('OrchestrationService', () => {
     });
 
     const result = await service.runConnectionSmoke({
-      connectionId: 'claude-runtime',
+      connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
       cwd: tmp,
@@ -13822,7 +13824,7 @@ describe('OrchestrationService', () => {
 
     await expect(
       service.runConnectionSmoke({
-        connectionId: 'claude-runtime',
+        connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
         timeoutMs: 1_000,
@@ -13850,7 +13852,7 @@ describe('OrchestrationService', () => {
 
     await expect(
       service.runConnectionSmoke({
-        connectionId: 'claude-runtime',
+        connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
         timeoutMs: 1_000,
@@ -14035,7 +14037,7 @@ describe('OrchestrationService', () => {
       });
 
       const result = await service.runConnectionSmoke({
-        connectionId: 'claude-runtime',
+        connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
         timeoutMs: 1_000,
@@ -14084,7 +14086,7 @@ describe('OrchestrationService', () => {
 
     await expect(
       service.runConnectionSmoke({
-        connectionId: 'claude-runtime',
+        connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
         timeoutMs: 1_000,
@@ -14122,7 +14124,7 @@ describe('OrchestrationService', () => {
 
     await expect(
       service.runConnectionSmoke({
-        connectionId: 'claude-runtime',
+        connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
         timeoutMs: 1_000,
@@ -14163,7 +14165,7 @@ describe('OrchestrationService', () => {
 
     await expect(
       service.runConnectionSmoke({
-        connectionId: 'claude-runtime',
+        connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
         timeoutMs: 1_000,
@@ -14200,7 +14202,7 @@ describe('OrchestrationService', () => {
 
     await expect(
       service.runConnectionSmoke({
-        connectionId: 'claude-runtime',
+        connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
         timeoutMs: 1_000,
@@ -14247,7 +14249,7 @@ describe('OrchestrationService', () => {
 
     await expect(
       service.runConnectionSmoke({
-        connectionId: 'claude-runtime',
+        connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
         timeoutMs: 1_000,
@@ -14271,7 +14273,7 @@ describe('OrchestrationService', () => {
       return { threadId: input.threadId, turnId: 'silent-smoke-turn' };
     });
     const result = await service.runConnectionSmoke({
-      connectionId: 'claude-runtime',
+      connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
       cwd: tmp,
@@ -14312,7 +14314,7 @@ describe('OrchestrationService', () => {
       return { threadId: input.threadId, turnId: 'suppressed-smoke-turn' };
     });
     const result = await service.runConnectionSmoke({
-      connectionId: 'claude-runtime',
+      connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
       cwd: tmp,
@@ -14339,7 +14341,7 @@ describe('OrchestrationService', () => {
     });
 
     const result = await boundedService.runConnectionSmoke({
-      connectionId: 'claude-runtime',
+      connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
       cwd: tmp,
@@ -14356,7 +14358,7 @@ describe('OrchestrationService', () => {
     );
 
     const result = await service.runConnectionSmoke({
-      connectionId: 'claude-runtime',
+      connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
       cwd: tmp,
@@ -14667,7 +14669,7 @@ describe('OrchestrationService', () => {
     });
 
     const result = await service.runConnectionSmoke({
-      connectionId: 'claude-runtime',
+      connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
       cwd: tmp,
@@ -14687,7 +14689,7 @@ describe('OrchestrationService', () => {
 
     await expect(
       service.runConnectionSmoke({
-        connectionId: 'claude-runtime',
+        connectionId: 'claude',
         provider: 'claude',
         modelId: 'claude-sonnet',
         cwd: tmp,
@@ -14728,7 +14730,7 @@ describe('OrchestrationService', () => {
     });
 
     const result = await boundedService.runConnectionSmoke({
-      connectionId: 'claude-runtime',
+      connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
       cwd: tmp,
@@ -14785,7 +14787,7 @@ describe('OrchestrationService', () => {
     });
 
     await armService.runConnectionSmoke({
-      connectionId: 'claude-runtime',
+      connectionId: 'claude',
       provider: 'claude',
       modelId: 'claude-sonnet',
       cwd: tmp,
@@ -14828,7 +14830,7 @@ describe('OrchestrationService', () => {
       });
 
       const resultPromise = boundedService.runConnectionSmoke({
-        connectionId: 'claude-runtime',
+        connectionId: 'claude',
         provider: 'claude',
         modelId: 'claude-sonnet',
         cwd: tmp,
@@ -16952,7 +16954,7 @@ describe('OrchestrationService', () => {
     ).rejects.toBeInstanceOf(OrchestrationCommandDispatchError);
     expect(orchestrationSteerDispatches.add).toHaveBeenCalledWith(1, {
       outcome: 'failed',
-      engine: 'claude-code',
+      engine: 'claude',
     });
   });
 

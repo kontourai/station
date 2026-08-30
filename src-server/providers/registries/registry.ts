@@ -2,7 +2,7 @@
  * Provider registry — generic workspace-scoped store with backward-compat wrappers
  */
 
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import { adapterRegistration } from '../../telemetry/metrics.js';
 import {
   awaitSettlementWithin,
@@ -481,7 +481,7 @@ export function getProviderAdapters(): ProviderAdapterShape[] {
 }
 
 export function getProviderAdapter(
-  provider: ProviderKind,
+  provider: EngineId,
 ): ProviderAdapterShape | undefined {
   return getProviderAdapters().find((adapter) => adapter.provider === provider);
 }

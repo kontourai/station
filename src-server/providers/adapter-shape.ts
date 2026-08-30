@@ -1,20 +1,15 @@
-import type {
-  EngineConnectionId,
-  EngineId,
-  EngineRuntimeId,
-} from '@kontourai/station-contracts/agent-identity';
+import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
   parseEngineConnectionId,
   parseEngineId,
-  parseEngineRuntimeId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type { ConnectionRecoveryCapability } from '@kontourai/station-contracts/connection-recovery';
 import type { ModelInventoryExecutionIdentity } from '@kontourai/station-contracts/model-inventory';
 import type {
+  EngineId,
   ModelLaunchCapabilities,
   ProviderContinuityCapabilities,
-  ProviderKind,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
@@ -50,7 +45,6 @@ export interface ProviderAdapterMetadata {
   displayName: string;
   description: string;
   capabilities: readonly ConnectionCapability[];
-  runtimeId?: EngineRuntimeId;
   /** Stable public registry/navigation identity for this Adapter. */
   connectionId?: EngineConnectionId;
   builtin?: boolean;
@@ -162,7 +156,7 @@ export function isProviderInterruptTurnResult(
 }
 
 export interface ProviderAdapterShape {
-  readonly provider: ProviderKind;
+  readonly provider: EngineId;
   readonly metadata: ProviderAdapterMetadata;
 
   startSession(input: ProviderSessionStartInput): Promise<ProviderSession>;
@@ -279,17 +273,12 @@ export function isProviderAdapterShape(
     'stopAll',
     'streamEvents',
   ];
-  const derivedRuntimeId =
-    typeof candidate.provider === 'string'
-      ? (metadata?.runtimeId ?? `${candidate.provider}-runtime`)
-      : undefined;
   return (
     typeof candidate.provider === 'string' &&
     !!metadata &&
     typeof metadata.displayName === 'string' &&
     typeof metadata.description === 'string' &&
     Array.isArray(metadata.capabilities) &&
-    parseEngineRuntimeId(derivedRuntimeId) !== undefined &&
     (metadata.connectionId === undefined ||
       parseEngineConnectionId(metadata.connectionId) !== undefined) &&
     (metadata.engineId === undefined ||

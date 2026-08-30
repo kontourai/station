@@ -338,7 +338,7 @@ describe('ChatInputArea', () => {
     renderChatInputArea({
       modelQuery: '',
       input: 'keep this draft',
-      agentConnectionId: 'claude-runtime',
+      agentConnectionId: 'claude',
       modelRuntimeOptions: { effort: 'high' },
       availableModels: [
         {

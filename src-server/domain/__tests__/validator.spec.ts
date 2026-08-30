@@ -75,7 +75,7 @@ describe('Agent schema validation', () => {
       name: 'Claude Runtime Chat',
       prompt: 'You are a project-aware chat assistant.',
       execution: {
-        agentConnectionId: 'claude-runtime',
+        agentConnectionId: 'claude',
         modelId: 'claude-sonnet-4',
         runtimeOptions: {
           thinking: true,
@@ -114,7 +114,7 @@ describe('Agent schema validation', () => {
       name: 'Codex Runtime Chat',
       prompt: '',
       execution: {
-        agentConnectionId: 'codex-runtime',
+        agentConnectionId: 'codex',
       },
     };
 

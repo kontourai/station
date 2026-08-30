@@ -1,8 +1,5 @@
 import { execFile } from 'node:child_process';
-import {
-  type EngineConnectionId,
-  type EngineRuntimeId,
-} from '@kontourai/station-contracts/agent-identity';
+import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import {
   ENGINE_CAPABILITY_MATRICES,
   UNKNOWN_EXTERNAL_ENGINE_MATRIX,
@@ -12,8 +9,8 @@ import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import { Hono } from 'hono';
 import { resolveDeploymentCapabilities } from '../../capabilities/deployment-capabilities.js';
 import {
+  connectionIdForAdapter,
   engineIdForAdapter,
-  runtimeIdForAdapter,
 } from '../../providers/adapter-identity.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { checkBedrockCredentials } from '../../providers/llm/bedrock.js';
@@ -281,14 +278,14 @@ async function discoverDeveloperServices(): Promise<DeveloperServiceStatus[]> {
  */
 async function resolveRuntimeEnabledPredicate(
   deps: SystemStatusDeps,
-): Promise<(runtimeId: EngineRuntimeId) => boolean> {
+): Promise<(engineId: EngineId) => boolean> {
   if (typeof deps.listEngineConnectionStates !== 'function') return () => true;
   try {
     const connections = await deps.listEngineConnectionStates();
     const disabled = new Set(
-      connections.filter((c) => !c.enabled).map((c) => c.runtimeId),
+      connections.filter((c) => !c.enabled).map((c) => c.engineId),
     );
-    return (runtimeId) => !disabled.has(runtimeId);
+    return (engineId) => !disabled.has(engineId);
   } catch {
     return () => false;
   }
@@ -313,10 +310,7 @@ async function resolveRuntimeEnabledPredicate(
 export async function resolveExternalEngineReadiness(
   adapters: ProviderAdapterShape[] = getProviderAdapters(),
   signal?: AbortSignal,
-  isRuntimeEnabled: (runtimeId: EngineRuntimeId) => boolean = () => true,
-  resolveEngineConnectionId: (
-    runtimeConnectionId: EngineRuntimeId,
-  ) => Promise<EngineConnectionId | undefined> = async () => undefined,
+  isRuntimeEnabled: (engineId: EngineId) => boolean = () => true,
 ): Promise<ExternalEngineReadiness> {
   const candidates = adapters.filter(
     (adapter) =>
@@ -330,20 +324,7 @@ export async function resolveExternalEngineReadiness(
       async (adapter): Promise<ExternalEngineReadinessProjection> => {
         const engineId = engineIdForAdapter(adapter);
         const name = adapter.metadata.displayName;
-        const runtimeId = runtimeIdForAdapter(adapter);
-        // The registry maps the adapter-private runtime selector to the public
-        // EngineConnectionId consumed by the Agent Apps detail route. Do not
-        // infer a target from the provider: plugins may replace a built-in
-        // provider while owning a distinct public identity. An unbound adapter
-        // deliberately emits no target so the UI falls back to the hub.
-        let publicEngineConnectionId: EngineConnectionId | undefined;
-        try {
-          publicEngineConnectionId = await resolveEngineConnectionId(runtimeId);
-        } catch {
-          // Registry lookup is navigation enrichment only. An unavailable
-          // projection must withhold the CTA rather than fail status discovery
-          // or invent a plausible connection ID.
-        }
+        const publicEngineConnectionId = connectionIdForAdapter(adapter);
         // Fail-closed (archive#1193 review finding 1): `getPrerequisites` is
         // OPTIONAL on `ProviderAdapterShape`. Treating an adapter that doesn't
         // implement it as `prerequisites: []` would let
@@ -363,11 +344,8 @@ export async function resolveExternalEngineReadiness(
             reason: 'cannot_verify',
           };
         }
-        // Must match `runtimeIdForAdapter` in adapter-identity, which
-        // is the key `runtimeSettingsFor` (and therefore the real enabled flag)
-        // is stored under. Its fallback is `${provider}-runtime`, NOT the bare
-        // provider — using the bare provider here looked right and silently
-        // missed the setting for any adapter without an explicit runtimeId.
+        // Must match `engineIdForAdapter`, which is the key used for the
+        // engine's enabled setting.
         try {
           const prerequisites =
             (await raceWithSignal(
@@ -376,7 +354,7 @@ export async function resolveExternalEngineReadiness(
             )) ?? [];
           const adapterReadiness = resolveRuntimeAdapterReadiness({
             adapter,
-            runtimeId,
+            engineId,
             enabled: true,
             prerequisites,
           });
@@ -389,7 +367,7 @@ export async function resolveExternalEngineReadiness(
           // the agent-manufacture path withholds it. We still probe first so
           // `detected` remains an observation, not an assertion about an
           // executable that might not exist.
-          if (!isRuntimeEnabled(runtimeId)) {
+          if (!isRuntimeEnabled(engineId)) {
             return {
               engineId,
               name,
@@ -768,7 +746,6 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
           undefined,
           controller.signal,
           isRuntimeEnabled,
-          deps.resolveEngineConnectionId,
         ),
         getAllPrerequisites({ signal: controller.signal }),
         discoverDeveloperServices(),

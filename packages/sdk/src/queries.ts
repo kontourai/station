@@ -206,7 +206,7 @@ export {
   type OrchestrationCommandDispatchResult,
   type OrchestrationCommandInput,
   type OrchestrationCommandReceipt,
-  type OrchestrationProviderKind,
+  type OrchestrationEngineId,
   type OrchestrationProviderSummary,
   type OrchestrationSessionDetail,
   type OrchestrationSessionSummary,

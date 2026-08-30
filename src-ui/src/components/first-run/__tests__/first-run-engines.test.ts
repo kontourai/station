@@ -216,8 +216,7 @@ describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
   });
 
   test('a ready engine with no connection identity is shown, not offered', () => {
-    // `resolveEngineConnectionId` returns undefined for an adapter the
-    // registry does not know. There is nothing an Agent could bind to, and
+    // There is nothing an Agent could bind to, and
     // dropping the row would be indistinguishable from Station not supporting
     // the engine at all.
     const [option] = buildFirstRunEngineOptions({

@@ -1,12 +1,10 @@
 import {
-  agentId,
   engineConnectionId,
-  engineRuntimeId,
+  engineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { HEALTH_PROBE_TIMEOUT_MS } from '@kontourai/station-contracts/http';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
-import { createConnectionServiceForTest } from '../../../services/connections/__tests__/connection-service-test-helper.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   onboardingRecommendations: { add: vi.fn() },
@@ -50,8 +48,6 @@ function createMockDeps() {
   return {
     getACPStatus: () => ({ connected: false, connections: [] }),
     listProviderConnections: () => [],
-    resolveEngineConnectionId: async (runtimeConnectionId: string) =>
-      engineConnectionId(runtimeConnectionId.replace(/-runtime$/, '')),
     checkOllamaAvailability: async () => false,
     getAppConfig: () => ({
       region: 'us-east-1',
@@ -64,41 +60,6 @@ function createMockDeps() {
       listSkills: () => [{ name: 'test-skill', description: 'A test' }],
     },
   };
-}
-
-function connectionServiceWithRegistryProjection(
-  engineConnectionIdValue: string,
-  runtimeConnectionId: string,
-) {
-  const registry = {
-    version: 1 as const,
-    revision: 0,
-    engineConnections: [
-      {
-        id: engineConnectionId(engineConnectionIdValue),
-        runtimeConnectionId,
-      },
-    ],
-    defaultAgents: [{ id: agentId('station'), kind: 'station' as const }],
-  };
-  return createConnectionServiceForTest(
-    {
-      listProviderConnections: vi.fn(() => []),
-      saveProviderConnection: vi.fn(),
-      deleteProviderConnection: vi.fn(),
-      checkHealth: vi.fn(),
-    } as any,
-    () => [],
-    async () => [],
-    () => ({ connections: [] }),
-    async () => ({}) as any,
-    vi.fn(async (updates: any) => updates),
-    undefined,
-    undefined,
-    [],
-    undefined,
-    { load: async () => registry, register: vi.fn(), unregister: vi.fn() },
-  );
 }
 
 // Minimal test double for a registered external-engine `ProviderAdapterShape`
@@ -1421,7 +1382,7 @@ describe('System Routes', () => {
           // availability cannot disagree.
           listEngineConnectionStates: async () => [
             {
-              runtimeId: engineRuntimeId('claude-runtime'),
+              runtimeId: engineId('claude'),
               engineConnectionId: engineConnectionId('claude'),
               enabled: false,
             },
@@ -1467,7 +1428,7 @@ describe('System Routes', () => {
             ...createMockDeps(),
             listEngineConnectionStates: async () => [
               {
-                runtimeId: engineRuntimeId('claude-runtime'),
+                runtimeId: engineId('claude'),
                 engineConnectionId: engineConnectionId('claude'),
                 enabled,
               },
@@ -1582,7 +1543,7 @@ describe('System Routes', () => {
             ? {
                 id: 'codex',
                 kind: 'agent',
-                type: 'codex-runtime',
+                type: 'codex',
                 name: 'Codex',
                 enabled: true,
                 capabilities: ['agent-runtime'],
@@ -1784,7 +1745,7 @@ describe('System Routes', () => {
           ...createMockDeps(),
           listEngineConnectionStates: () => [
             {
-              runtimeId: engineRuntimeId('claude-runtime'),
+              runtimeId: engineId('claude'),
               engineConnectionId: engineConnectionId('claude'),
               enabled: false,
             },
@@ -1978,7 +1939,7 @@ describe('System Routes', () => {
     // `ProviderAdapterShape`. A plugin external-engine adapter that never
     // wired one up must fail closed (NOT ready) rather than reading as
     // "ready" from an empty-but-unverified prerequisite list.
-    test('uses the registry-projected plugin identity instead of the provider identity mismatch', async () => {
+    test('uses the adapter engine identity instead of the provider identity mismatch', async () => {
       vi.mocked(checkBedrockCredentials).mockResolvedValueOnce(false);
       vi.mocked(getProviderAdapters).mockReturnValue([
         fakeExternalEngineAdapter({
@@ -1990,25 +1951,7 @@ describe('System Routes', () => {
           omitGetPrerequisites: true,
         }),
       ]);
-      const connectionService = connectionServiceWithRegistryProjection(
-        'some-plugin-engine',
-        'codex-runtime',
-      );
-      // This is the same production registry projection the Agent Apps route
-      // uses, not a getConnection test double accepting any requested ID.
-      await expect(
-        connectionService.resolveEngineConnectionId(
-          engineRuntimeId('codex-runtime'),
-        ),
-      ).resolves.toBe('some-plugin-engine');
-      const app = createSystemRoutes(
-        {
-          ...createMockDeps(),
-          resolveEngineConnectionId:
-            connectionService.resolveEngineConnectionId.bind(connectionService),
-        } as any,
-        mockLogger,
-      );
+      const app = createSystemRoutes(createMockDeps() as any, mockLogger);
       const body = await waitForStatusDiscovery(app);
       expect(body.ready).toBe(false);
       expect(body.capabilities.runtime.ready).toBe(false);
@@ -2023,31 +1966,6 @@ describe('System Routes', () => {
           reason: 'cannot_verify',
         }),
       ]);
-    });
-
-    test('omits an unresolvable plugin engine CTA instead of guessing from its provider', async () => {
-      vi.mocked(checkBedrockCredentials).mockResolvedValueOnce(false);
-      vi.mocked(getProviderAdapters).mockReturnValue([
-        fakeExternalEngineAdapter({
-          provider: 'codex',
-          engineId: 'unregistered-plugin-engine',
-          omitGetPrerequisites: true,
-        }),
-      ]);
-      const app = createSystemRoutes(
-        {
-          ...createMockDeps(),
-          resolveEngineConnectionId: async () => undefined,
-        } as any,
-        mockLogger,
-      );
-
-      const body = await waitForStatusDiscovery(app);
-      expect(body.externalEngines[0]).toMatchObject({
-        engineId: 'unregistered-plugin-engine',
-        reason: 'cannot_verify',
-      });
-      expect(body.externalEngines[0]).not.toHaveProperty('engineConnectionId');
     });
 
     test('a Station model connection alone is still ready, symmetric with an external engine', async () => {

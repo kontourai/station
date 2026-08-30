@@ -16,7 +16,6 @@ import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages/mes
 import {
   engineConnectionId,
   engineId,
-  engineRuntimeId,
 } from '@kontourai/station-contracts/agent-identity';
 import type {
   CapabilityDeliveryChannelReport,
@@ -254,7 +253,7 @@ type ClaudeAdapterLogger = any;
 
 export interface ClaudeAdapterOptions {
   /**
-   * Resolve the claude-runtime connection's opted-in skill ids
+   * Resolve the claude connection's opted-in skill ids
    * (`AgentConnectionSettings.config.provideSkills`,
    * docs/design/connections-onboarding.md §5). Returns `undefined`/empty
    * ⇒ off — the default. Absent entirely ⇒ materialization never runs.
@@ -268,7 +267,7 @@ export interface ClaudeAdapterOptions {
   resolveSkillDir?: (id: string) => Promise<string | null>;
   /**
    * App-home profile env (archive#896, agent-engine-unification.md §6.1's overlay
-   * model, channel 2) — `undefined` when the claude-runtime connection has
+   * model, channel 2) — `undefined` when the claude connection has
    * not opted in (`config.useAppHome`) or on any resolution failure; the
    * caller degrades to `undefined` rather than throwing. Applied at
    * `startSession` only — see `adoptSession`'s doc comment for why
@@ -424,10 +423,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       'file-input',
     ],
     continuity: { resume: 'same-session', fork: 'none', rewind: 'none' },
-    runtimeId: engineRuntimeId('claude-runtime'),
     connectionId: engineConnectionId('claude'),
     builtin: true,
-    engineId: engineId('claude-code'),
+    engineId: engineId('claude'),
     abortSettlement: 'await',
     recovery: {
       sameSession: true,
@@ -664,7 +662,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // state).
       approvalMode: mapPermissionModeToApprovalMode(permissionMode),
       // archive#896: whether this session's SDK spawn env was layered with the
-      // claude-runtime app-home profile, or left at the global config
+      // claude app-home profile, or left at the global config
       // (opted out, adoption, or a degraded lookup).
       appHome,
     };

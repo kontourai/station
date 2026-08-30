@@ -27,7 +27,7 @@ export const STATUS_READY = JSON.stringify({
     configuredChatReady: true,
     configured: [
       {
-        id: 'codex-runtime',
+        id: 'codex',
         type: 'codex',
         enabled: true,
         capabilities: ['llm'],
@@ -38,7 +38,7 @@ export const STATUS_READY = JSON.stringify({
   capabilities: {
     chat: {
       ready: true,
-      source: 'codex-runtime',
+      source: 'codex',
     },
   },
 });

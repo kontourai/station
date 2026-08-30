@@ -105,18 +105,13 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
     // engine's own record, every reboot after the first would refuse to
     // materialize the engine's Agent — the ordinary steady state.
     const loader = createLoader();
-    // The engine's OWN record: same source AND the same runtime id the
-    // candidate table declares. Both halves matter — a mismatch on either is
-    // a genuine collision, which is what the sibling test below covers.
+    // The engine's own record uses the same canonical id and source.
     const [claudeCandidate] = NATIVE_ENGINE_CANDIDATES.filter(
       (candidate) => candidate.id === 'claude',
     );
-    await registerEngineConnection(
-      loader,
-      claudeCandidate.id,
-      claudeCandidate.runtimeConnectionId,
-      { kind: 'native' },
-    );
+    await registerEngineConnection(loader, claudeCandidate.id, {
+      kind: 'native',
+    });
 
     const summary = await adoptDetectedNativeEngines({
       configLoader: loader,
@@ -135,26 +130,6 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
     });
   });
 
-  it('a native id bound to a DIFFERENT runtime is a collision, not this engine', async () => {
-    // Same source, different adapter. Treating it as "exists" would point the
-    // engine's Agent at a runtime the detected CLI does not drive.
-    const loader = createLoader();
-    await registerEngineConnection(loader, 'claude', 'some-other-runtime', {
-      kind: 'native',
-    });
-
-    const summary = await adoptDetectedNativeEngines({
-      configLoader: loader,
-      logger: silentLogger,
-      detect: async () => true,
-      delaysMs: [0],
-    });
-
-    expect(summary.outcomes.claude).toBe('connection-collision');
-    const agents = await loader.listAgents();
-    expect(agents.some((agent) => agent.slug === 'claude')).toBe(false);
-  });
-
   it('never brands a foreign connection sharing a native id as that engine', async () => {
     // A user's own ACP command registered as `claude`. Detection then finds
     // the real Claude CLI on PATH. The id is taken by something else, so the
@@ -162,7 +137,7 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
     // bootstrap materialize an Agent named "Claude Code" bound to the
     // stranger's engine.
     const loader = createLoader();
-    await registerEngineConnection(loader, 'claude', 'my-own-acp', {
+    await registerEngineConnection(loader, 'claude', {
       kind: 'user-acp',
     });
 
@@ -311,26 +286,21 @@ describe('adoptDetectedNativeEngines (#1575)', () => {
 });
 
 describe('native engine candidates', () => {
-  it('adopts muse under its engine id, bound to the muse runtime connection', () => {
-    // Pinned explicitly: the outcome-map assertions above would still pass if
-    // muse were adopted under the wrong id or bound to another runtime.
+  it('adopts muse under its engine id', () => {
     const muse = NATIVE_ENGINE_CANDIDATES.find(
       (candidate) => candidate.id === 'muse',
     );
     expect(muse).toEqual({
       id: 'muse',
-      runtimeConnectionId: 'muse-runtime',
       cli: 'muse',
     });
   });
 
-  it('binds every candidate to a distinct id, cli and runtime connection', () => {
+  it('binds every candidate to a distinct id and cli', () => {
     const ids = NATIVE_ENGINE_CANDIDATES.map((c) => c.id);
     const clis = NATIVE_ENGINE_CANDIDATES.map((c) => c.cli);
-    const runtimes = NATIVE_ENGINE_CANDIDATES.map((c) => c.runtimeConnectionId);
     expect(new Set(ids).size).toBe(ids.length);
     expect(new Set(clis).size).toBe(clis.length);
-    expect(new Set(runtimes).size).toBe(runtimes.length);
   });
 });
 
@@ -425,7 +395,7 @@ describe("the Station Agent's own definition (#3662)", () => {
     // `AppConfig.builtinAgentEngineConnectionId` is the one place that choice
     // lives (§7.1.1), so the record carries no binding at all.
     const loader = createLoader();
-    await registerEngineConnection(loader, 'claude', 'claude-runtime');
+    await registerEngineConnection(loader, 'claude');
     await seedLegacyStationRecord(loader, {
       agentConnectionId: 'claude',
       modelId: 'my-pinned-model',
@@ -444,7 +414,7 @@ describe("the Station Agent's own definition (#3662)", () => {
     // The write boundary, not just the startup heal: a heal that runs once at
     // boot cannot stop the editor round-trip that happens every save.
     const loader = createLoader();
-    await registerEngineConnection(loader, 'claude', 'claude-runtime');
+    await registerEngineConnection(loader, 'claude');
     await loader.createAgent({
       slug: 'station',
       name: 'Station',

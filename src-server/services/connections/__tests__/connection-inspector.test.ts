@@ -14,7 +14,6 @@ describe('ConnectionInspector Interface', () => {
         displayName: `${provider} Runtime`,
         description: 'test',
         capabilities: [],
-        runtimeId: `${provider}-runtime`,
         engineId: provider,
         ...((metadataOverrides as object | undefined) ?? {}),
       },
@@ -29,13 +28,13 @@ describe('ConnectionInspector Interface', () => {
       adapters: () => [adapter],
       appConfig: () =>
         ({
-          agentConnections: { 'codex-runtime': { enabled: true, config: {} } },
+          agentConnections: { codex: { enabled: true, config: {} } },
         }) as any,
       acpConnections: () => [],
       acpStatus: () => ({}),
       publicConnection: (runtimeId) => ({
         id: engineConnectionId('codex'),
-        runtimeId,
+        engineId: runtimeId,
       }),
       now: () => Date.parse('2026-08-13T00:00:00.000Z'),
     });
@@ -51,7 +50,6 @@ describe('ConnectionInspector Interface', () => {
         displayName: 'Codex Runtime',
         description: 'test',
         capabilities: [],
-        runtimeId: 'codex-runtime',
         engineId: 'codex',
       },
       getPrerequisites: vi.fn(async () => []),
@@ -84,7 +82,6 @@ describe('ConnectionInspector Interface', () => {
         displayName: 'Codex Runtime',
         description: 'test',
         capabilities: [],
-        runtimeId: 'codex-runtime',
         engineId: 'codex',
         knownModels: [{ id: 'fallback', name: 'Fallback' }],
       },
@@ -116,7 +113,6 @@ describe('ConnectionInspector Interface', () => {
         displayName: 'Codex Runtime',
         description: 'test',
         capabilities: [],
-        runtimeId: 'codex-runtime',
         engineId: 'codex',
       },
       getPrerequisites: vi.fn(async () => []),
@@ -156,7 +152,7 @@ describe('ConnectionInspector Interface', () => {
         acpStatus: () => ({}),
         publicConnection: (runtimeId) => ({
           id: engineConnectionId('kiro'),
-          runtimeId,
+          engineId: runtimeId,
         }),
         now: () => Date.now(),
       });
@@ -193,7 +189,7 @@ describe('ConnectionInspector Interface', () => {
       }),
       publicConnection: (runtimeId) => ({
         id: engineConnectionId('kiro'),
-        runtimeId,
+        engineId: runtimeId,
       }),
       now: () => Date.now(),
     });
@@ -225,7 +221,6 @@ describe('ConnectionInspector Interface', () => {
         displayName: 'Codex Runtime',
         description: 'test',
         capabilities: [],
-        runtimeId: 'codex-runtime',
         engineId: 'codex',
       },
       getPrerequisites: vi.fn(async () => []),
@@ -260,7 +255,6 @@ describe('ConnectionInspector Interface', () => {
         displayName: 'Codex Runtime',
         description: 'test',
         capabilities: [],
-        runtimeId: 'codex-runtime',
         engineId: 'codex',
       },
       getPrerequisites,
@@ -302,7 +296,7 @@ describe('ConnectionInspector Interface', () => {
       }),
       publicConnection: (runtimeId) => ({
         id: engineConnectionId('kiro'),
-        runtimeId,
+        engineId: runtimeId,
       }),
       now: () => Date.now(),
     });
@@ -329,7 +323,6 @@ describe('ConnectionInspector Interface', () => {
         displayName: 'Codex Runtime',
         description: 'test',
         capabilities: [],
-        runtimeId: 'codex-runtime',
         engineId: 'codex',
       },
       getPrerequisites: vi.fn(async () => {
@@ -371,7 +364,7 @@ describe('ConnectionInspector Interface', () => {
       acpStatus: () => ({}),
       publicConnection: (runtimeId) => ({
         id: engineConnectionId(runtimeId.replace('-runtime', '')),
-        runtimeId,
+        engineId: runtimeId,
       }),
       now: () => Date.now(),
     });
@@ -403,7 +396,7 @@ describe('ConnectionInspector Interface', () => {
       acpStatus: () => ({}),
       publicConnection: (runtimeId) => ({
         id: engineConnectionId(runtimeId.replace('-runtime', '')),
-        runtimeId,
+        engineId: runtimeId,
       }),
       now: () => Date.now(),
     });
@@ -433,7 +426,7 @@ describe('ConnectionInspector Interface', () => {
       acpStatus: () => ({}),
       publicConnection: (runtimeId) => ({
         id: engineConnectionId(runtimeId.replace('-runtime', '')),
-        runtimeId,
+        engineId: runtimeId,
       }),
       now: () => Date.now(),
     });
@@ -540,7 +533,7 @@ describe('ConnectionInspector Interface', () => {
       }),
       publicConnection: (runtimeId) => ({
         id: engineConnectionId(runtimeId),
-        runtimeId,
+        engineId: runtimeId,
       }),
       now: () => Date.now(),
     });
@@ -592,19 +585,19 @@ describe('ConnectionInspector Interface', () => {
     }
   });
 
-  test('uses the explicit public EngineConnectionId for an Adapter with canonical omitted runtimeId', async () => {
+  test('uses the explicit public EngineConnectionId for an Adapter EngineId', async () => {
     const subject = createConnectionInspector({
       adapters: () => [
         adapter('muse', {
-          metadata: { runtimeId: undefined, engineId: 'muse-engine' },
+          metadata: { engineId: 'muse-engine' },
         }),
       ],
       appConfig: () => ({}) as any,
       acpConnections: () => [],
       acpStatus: () => ({}),
-      publicConnection: (runtimeId) => {
-        expect(runtimeId).toBe('muse-runtime');
-        return { id: engineConnectionId('muse-engine'), runtimeId };
+      publicConnection: (engineId) => {
+        expect(engineId).toBe('muse-engine');
+        return { id: engineConnectionId('muse-engine'), engineId };
       },
       now: () => Date.now(),
     });
@@ -612,7 +605,7 @@ describe('ConnectionInspector Interface', () => {
       subject.inspect({ kind: 'runtime-capability-inventory' }),
     ).resolves.toMatchObject({
       connections: [
-        expect.objectContaining({ id: 'muse-engine', type: 'muse-runtime' }),
+        expect.objectContaining({ id: 'muse-engine', type: 'muse-engine' }),
       ],
     });
   });
@@ -631,7 +624,7 @@ describe('ConnectionInspector Interface', () => {
         acpStatus: () => ({}),
         publicConnection: (runtimeId) => ({
           id: engineConnectionId('codex'),
-          runtimeId,
+          engineId: runtimeId,
         }),
         now: () => Date.now(),
       });
@@ -642,7 +635,7 @@ describe('ConnectionInspector Interface', () => {
       acpStatus: () => ({}),
       publicConnection: (runtimeId) => ({
         id: engineConnectionId('muse'),
-        runtimeId,
+        engineId: runtimeId,
       }),
       now: () => Date.now(),
     });
@@ -660,7 +653,7 @@ describe('ConnectionInspector Interface', () => {
       ],
     });
     await expect(
-      make({ 'codex-runtime': { enabled: true } }, [
+      make({ codex: { enabled: true } }, [
         { id: 'auth', category: 'required', status: 'missing' },
       ]).inspect({ kind: 'runtime-capability-inventory' }),
     ).resolves.toMatchObject({
@@ -671,7 +664,7 @@ describe('ConnectionInspector Interface', () => {
       ],
     });
     await expect(
-      make({ 'codex-runtime': { enabled: true } }, []).inspect({
+      make({ codex: { enabled: true } }, []).inspect({
         kind: 'runtime-capability-inventory',
       }),
     ).resolves.toMatchObject({
@@ -723,7 +716,7 @@ describe('ConnectionInspector Interface', () => {
       }),
       publicConnection: (runtimeId) => ({
         id: engineConnectionId(runtimeId === 'kiro' ? 'kiro' : 'codex'),
-        runtimeId,
+        engineId: runtimeId,
       }),
       now: () => Date.now(),
     });
@@ -777,7 +770,7 @@ describe('ConnectionInspector Interface', () => {
         }),
         publicConnection: (runtimeId) => ({
           id: engineConnectionId(runtimeId),
-          runtimeId,
+          engineId: runtimeId,
         }),
         now: () => Date.now(),
       });

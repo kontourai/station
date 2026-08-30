@@ -1,4 +1,4 @@
-import type { EngineRuntimeId } from '@kontourai/station-contracts/agent-identity';
+import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import type {
   ConnectionStatus,
   Prerequisite,
@@ -19,7 +19,7 @@ export interface RuntimeAdapterReadiness {
   state: RuntimeAdapterReadinessState;
   ready: boolean;
   enabled: boolean;
-  runtimeId: EngineRuntimeId;
+  engineId: EngineId;
   provider: string;
   capabilities: string[];
   prerequisites: Prerequisite[];
@@ -45,12 +45,12 @@ export function hasRequiredMissingPrerequisites(
 
 export function resolveRuntimeAdapterReadiness({
   adapter,
-  runtimeId,
+  engineId,
   enabled,
   prerequisites,
 }: {
   adapter: ProviderAdapterShape;
-  runtimeId: EngineRuntimeId;
+  engineId: EngineId;
   enabled: boolean;
   prerequisites: Prerequisite[];
 }): RuntimeAdapterReadiness {
@@ -64,7 +64,7 @@ export function resolveRuntimeAdapterReadiness({
       getProviderAdapterRegistrationProvenance(adapter) === 'builtin';
     adapterReadiness.add(1, {
       adapter_id: builtin ? adapter.provider : 'plugin',
-      runtime_type: builtin ? runtimeId : 'plugin',
+      runtime_type: builtin ? engineId : 'plugin',
       state,
       reason,
       source: builtin ? 'builtin' : 'plugin',
@@ -76,7 +76,7 @@ export function resolveRuntimeAdapterReadiness({
       state: 'runtime_connection_missing',
       ready: false,
       enabled,
-      runtimeId,
+      engineId,
       provider: adapter.provider,
       capabilities,
       prerequisites,
@@ -90,7 +90,7 @@ export function resolveRuntimeAdapterReadiness({
       state: 'unavailable_prerequisites',
       ready: false,
       enabled,
-      runtimeId,
+      engineId,
       provider: adapter.provider,
       capabilities,
       prerequisites,
@@ -104,7 +104,7 @@ export function resolveRuntimeAdapterReadiness({
       state: 'unusable_for_chat',
       ready: false,
       enabled,
-      runtimeId,
+      engineId,
       provider: adapter.provider,
       capabilities,
       prerequisites,
@@ -117,7 +117,7 @@ export function resolveRuntimeAdapterReadiness({
     state: 'configured',
     ready: true,
     enabled,
-    runtimeId,
+    engineId,
     provider: adapter.provider,
     capabilities,
     prerequisites,

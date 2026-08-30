@@ -1,7 +1,7 @@
 /**
  * App-home profile status + explicit import (archive#896,
  * `docs/design/agent-engine-unification.md` §6.1's overlay model, channel
- * 2). Wave 1 supported `claude-runtime` only; wave 2 adds `codex-runtime`
+ * 2). Wave 1 supported `claude` only; wave 2 adds `codex`
  * to the same table (`APP_HOME_ENGINES`) — any other connection id 404s.
  * Mounted at `/api/connections` alongside (not merged into) `connections.ts`
  * so its `/agent/:id/app-home…` path never collides with that file's
@@ -72,7 +72,7 @@ interface AppHomeEngine {
 
 /**
  * archive#896 wave 2: the two-entry engine table replacing wave 1's
- * claude-runtime-only guard. The claude entry preserves wave 1's behavior
+ * claude-only guard. The claude entry preserves wave 1's behavior
  * byte-for-byte; the codex entry is new this wave (Step 4's import
  * allowlist, Step 3's `auth.json` auth detection).
  */

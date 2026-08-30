@@ -2600,7 +2600,7 @@ describe('ClaudeAdapter', () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter({
         getAppHomeEnv: async () => ({
-          CLAUDE_CONFIG_DIR: '/station/app-homes/claude-runtime',
+          CLAUDE_CONFIG_DIR: '/station/app-homes/claude',
         }),
       });
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -2615,7 +2615,7 @@ describe('ClaudeAdapter', () => {
         prompt: expect.anything(),
         options: expect.objectContaining({
           env: expect.objectContaining({
-            CLAUDE_CONFIG_DIR: '/station/app-homes/claude-runtime',
+            CLAUDE_CONFIG_DIR: '/station/app-homes/claude',
             PATH: process.env.PATH,
           }),
         }),
@@ -2707,7 +2707,7 @@ describe('ClaudeAdapter', () => {
       mockForkSession.mockResolvedValue({ sessionId: 'vendor-child' });
       mockQuery.mockReturnValue(createMockQuery([]));
       const getAppHomeEnv = vi.fn().mockResolvedValue({
-        CLAUDE_CONFIG_DIR: '/station/app-homes/claude-runtime',
+        CLAUDE_CONFIG_DIR: '/station/app-homes/claude',
       });
       const adapter = new ClaudeAdapter({ getAppHomeEnv });
 
@@ -2803,7 +2803,7 @@ describe('ClaudeAdapter', () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter({
         getAppHomeEnv: async () => ({
-          CLAUDE_CONFIG_DIR: '/station/app-homes/claude-runtime',
+          CLAUDE_CONFIG_DIR: '/station/app-homes/claude',
         }),
       });
 
@@ -2817,7 +2817,7 @@ describe('ClaudeAdapter', () => {
       expect(call.options.env).toEqual(
         scrubBootInternalSecrets({
           ...augmentedEnv,
-          CLAUDE_CONFIG_DIR: '/station/app-homes/claude-runtime',
+          CLAUDE_CONFIG_DIR: '/station/app-homes/claude',
           TMPDIR: engineSpawnTmpDirPath(),
         }),
       );

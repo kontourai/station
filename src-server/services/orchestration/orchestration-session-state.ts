@@ -9,9 +9,9 @@ import type {
   TurnProgressObservation,
 } from '@kontourai/station-contracts/orchestration';
 import type {
+  EngineId,
   ModelLaunchPlan,
   ModelSelectionReceipt,
-  ProviderKind,
   ProviderSession,
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
@@ -104,7 +104,7 @@ function hasOpenTurn(events: CanonicalRuntimeEvent[]): boolean {
 }
 
 export function trackOrchestrationSession(options: {
-  threadProviders: Map<string, ProviderKind>;
+  threadProviders: Map<string, EngineId>;
   sessionReadModel: Map<string, ProviderSession>;
   session: ProviderSession;
 }): void {
@@ -117,8 +117,8 @@ export function trackOrchestrationSession(options: {
 
 export async function resolveOrchestrationAdapterForThread(options: {
   threadId: string;
-  threadProviders: Map<string, ProviderKind>;
-  requireAdapter: (provider: ProviderKind) => ProviderAdapterShape;
+  threadProviders: Map<string, EngineId>;
+  requireAdapter: (provider: EngineId) => ProviderAdapterShape;
   adapters: ProviderAdapterShape[];
   /**
    * archive#3476: the lazy-materialisation escape hatch, invoked ONLY when no
@@ -163,7 +163,7 @@ export async function resolveOrchestrationAdapterForThread(options: {
 
 export function projectOrchestrationEventToReadModel(options: {
   event: CanonicalRuntimeEvent;
-  threadProviders: Map<string, ProviderKind>;
+  threadProviders: Map<string, EngineId>;
   sessionReadModel: Map<string, ProviderSession>;
   eventStore?: EventStore;
 }): void {

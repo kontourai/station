@@ -41,7 +41,7 @@ Consequences:
 ## 1.1 Engine config ownership: the overlay model
 
 Shipped: the audit that grounds the overlay model, the global-config refusal guard, and the
-app-home profile channel — wave 1 (#896) shipped claude-runtime; wave 2 (#896) closes the
+app-home profile channel — wave 1 (#896) shipped claude; wave 2 (#896) closes the
 Codex spawn/import/auth/registry gaps the wave-1 audit named and adds bounded profile GC
 (both below). The binding contract is `docs/design/agent-engine-unification.md` §6.1 —
 Station never installs into the user's global CLI config; base config stays read-only, and
@@ -54,11 +54,11 @@ the shipped slices.
 | Engine | Spawn path today | Env at spawn | Config-home override | Station read paths of that config |
 |---|---|---|---|---|
 | Claude Code | SDK `query()` in `claude-adapter.ts` (`startTrackedSession` → `buildOptions`) — **verified-in-code** | Inherited full server env until this wave; now optionally layered with the app-home profile — **verified-in-code**. SDK contract: `Options.env` REPLACES the subprocess environment entirely (never merges with `process.env`) | `CLAUDE_CONFIG_DIR` (plain env var; default `~/.claude`) — **verified-in-code** | `claude-auth.ts` (injectable `env` param); `claude-transcript-session-source.ts`; in-process SDK helpers `listSessions`/`forkSession`/`deleteSession` resolve the config root from the *server's* `process.env` and have no per-call config-dir override — **verified-in-code** |
-| Codex | `spawnCodexProcess()` in `codex-adapter-transport.ts` (via `codexSpawnEnv()`, `CodexAdapter.startReservedSession` → `resolveAppHomeEnv`) — **verified-in-code** | Full inherit by default; layered with the app-home profile (`{ CODEX_HOME: dir }`) when the `codex-runtime` connection's `config.useAppHome` is `true` — **verified-in-code** (#896 wave 2). Model discovery (`listModelCatalog`) deliberately keeps the byte-identical global env — the profile is scoped to the session's own process only | `CODEX_HOME` (plain env var; default `~/.codex`) — **verified-in-code**, now wired end-to-end (spawn seam, import allowlist, auth detection) | `filesystem-skill-registry.ts`'s `defaultSkillRoots()` now also lists both engines' app-home profile `skills/` dirs (`<STATION_HOME>/app-homes/{codex,claude}-runtime/skills`), alongside the pre-existing `~/.codex/skills`/`~/.claude/.agents/skills` — **verified-in-code** (#896 wave 2, closing §1.1's previously-named gap) |
+| Codex | `spawnCodexProcess()` in `codex-adapter-transport.ts` (via `codexSpawnEnv()`, `CodexAdapter.startReservedSession` → `resolveAppHomeEnv`) — **verified-in-code** | Full inherit by default; layered with the app-home profile (`{ CODEX_HOME: dir }`) when the `codex` connection's `config.useAppHome` is `true` — **verified-in-code** (#896 wave 2). Model discovery (`listModelCatalog`) deliberately keeps the byte-identical global env — the profile is scoped to the session's own process only | `CODEX_HOME` (plain env var; default `~/.codex`) — **verified-in-code**, now wired end-to-end (spawn seam, import allowlist, auth detection) | `filesystem-skill-registry.ts`'s `defaultSkillRoots()` now also lists both engines' app-home profile `skills/` dirs (`<STATION_HOME>/app-homes/{codex,claude}-runtime/skills`), alongside the pre-existing `~/.codex/skills`/`~/.claude/.agents/skills` — **verified-in-code** (#896 wave 2, closing §1.1's previously-named gap) |
 | opencode / ACP CLIs | `ACPProcess.start()` in `acp-process.ts` — `spawn(bin, args, {stdio, cwd, windowsHide, detached})`, no `env` key ⇒ full inherit — **verified-in-code** | Full inherit — **verified-in-code** | XDG (`XDG_CONFIG_HOME`/`XDG_DATA_HOME`) + `OPENCODE_CONFIG` — **to-probe**: spawn the CLI with overridden `XDG_CONFIG_HOME`/`XDG_DATA_HOME` in a temp home and observe where config/auth are actually read/written; Windows XDG honoring is unknown and also **to-probe** | none |
 
 **The profile-dir contract:** `<STATION_HOME>/app-homes/<engineId>/`, keyed by the stable
-connection id (`claude-runtime`, `codex-runtime` — `AppConfig.agentConnections` keys, also
+connection id (`claude`, `codex` — `AppConfig.agentConnections` keys, also
 each adapter's `runtimeId`). Created lazily on first opt-in / first profile-run session,
 never at startup (`ensureAppHomeProfile`, `src-server/providers/app-home/app-home-profiles.ts`).
 `claudeAppHomeEnv`/`codexAppHomeEnv` map a profile dir to the engine's env override; both
@@ -78,8 +78,8 @@ child under a different config home would orphan it there. Codex has no analogou
 transcript-adoption path this wave, so no codex equivalent of this caveat exists — see the
 toggle-boundary resume caveat below for codex's own analogous cross-config-home hazard.
 
-**Import-from-global rules (claude-runtime):** an explicit, dedicated user action —
-`POST /api/connections/agent/claude-runtime/app-home/import` — never automatic, never
+**Import-from-global rules (claude):** an explicit, dedicated user action —
+`POST /api/connections/agent/claude/app-home/import` — never automatic, never
 triggered by the `useAppHome` toggle or a connection save. This is permitted under §1's
 detection principle *because* it is explicit, not detection: the user affirmatively asks
 Station to copy specific files. Allowlist (top-level entries of the global config dir
@@ -97,9 +97,9 @@ import module (`importClaudeGlobalSnapshot`) never writes outside the resolved p
 dir and never writes to the global source dir — both checked, not just documented, before
 any write.
 
-**Import-from-global rules (codex-runtime, #896 wave 2):** `POST
-/api/connections/agent/codex-runtime/app-home/import`, the same explicit-action contract as
-claude-runtime, sharing `importGlobalSnapshot`'s transactional/security machinery
+**Import-from-global rules (codex, #896 wave 2):** `POST
+/api/connections/agent/codex/app-home/import`, the same explicit-action contract as
+claude, sharing `importGlobalSnapshot`'s transactional/security machinery
 parameterized over a codex-specific allowlist (`AppHomeImportProfile`). Allowlist: config =
 `config.toml`, `AGENTS.md`, `prompts/`, `skills/`; secret = `auth.json` (holds ChatGPT OAuth
 tokens / an API key) — copied ONLY under the same explicit `includeCredentials: true`
@@ -185,7 +185,7 @@ own Station-owned config. No background job, watcher, or timer exists or is plan
 is the deliberate non-machinery direction under this repo's over-engineering guardrails; GC
 is always a human's explicit action.
 
-**Toggle-boundary resume caveat (codex-runtime, #896 wave 2):** a codex `resumeCursor`
+**Toggle-boundary resume caveat (codex, #896 wave 2):** a codex `resumeCursor`
 (`{ codexThreadId }`) recorded while `useAppHome` was on lives under that profile's
 `CODEX_HOME`; recorded while off, it lives under the global `~/.codex`. Toggling `useAppHome`
 between a session's start and a later `thread/resume` attempt points the resume at the WRONG
@@ -514,7 +514,7 @@ prefers — not only a competing runtime. The mechanisms:
 - **Skills materialization — SHIPPED (2026-07-26, security-redesigned same
   week after review):** Station skills are standard `SKILL.md` directories — the cross-CLI
   format Claude Code consumes natively. Passthrough = materialize the connection's opted-in
-  skills (`AgentConnectionSettings.config.provideSkills` on the claude-runtime connection, off
+  skills (`AgentConnectionSettings.config.provideSkills` on the claude connection, off
   by default — same "never silent" rule as MCP passthrough) into
   `<sessionCwd>/.claude/skills/<id>/` before session start, so Claude Code's native skill
   loader picks them up with no Station involvement at chat time. Because this mechanism writes
@@ -564,7 +564,7 @@ prefers — not only a competing runtime. The mechanisms:
 - **App-home profiles (#896, shipped):** a second, opt-in delivery channel — see §1.1 for
   the full contract (profile-dir layout, per-session env layering, explicit import-from-
   global rules). Off by default (`AgentConnectionSettings.config.useAppHome` on
-  claude-runtime), same never-silent posture as `provideSkills`.
+  claude), same never-silent posture as `provideSkills`.
 - **Hygiene rule:** never silent, for either mechanism — same trust argument as §1 — but the
   *shape* of that rule differs per mechanism. MCP passthrough (shipped) is a wire-based,
   per-**connection** opt-in (`ACPConnectionConfig.provideToolServers`, off by default): nothing
@@ -604,8 +604,8 @@ gates, live receipts (partially reachable for Claude Code via hooks; out of scop
 | Preset catalog as plugin-contributable descriptors | Target |
 | MCP passthrough spike (one ACP CLI) | Done — GO (2026-07-26, nonce-proven live tool execution) |
 | MCP passthrough productization (explicit per-connection opt-in `provideToolServers`, stdio-only, ACP session/new) | Shipped (2026-07-26, nonce-proven live tool execution via opencode + `filesystem_read_text_file`) |
-| Skills materialization for External agents (claude-runtime, `provideSkills`) | Shipped (2026-07-26) |
-| #896 wave 1: config-surface audit doc, global-config refusal guard (receipt-only), claude-runtime app-home profile + per-session env layering, explicit import-from-global | Shipped |
+| Skills materialization for External agents (claude, `provideSkills`) | Shipped (2026-07-26) |
+| #896 wave 1: config-surface audit doc, global-config refusal guard (receipt-only), claude app-home profile + per-session env layering, explicit import-from-global | Shipped |
 | #896 wave 2: Codex `CODEX_HOME` wiring, opencode/ACP XDG overrides, refused-materialization auto-fallback into app-home | Target |
 | First-run gate: durable `AppConfig.firstRun`, Home dialog + re-offer card, shared dialog/Button/Checkbox (§4.1) | Shipped (UX audit RT-02, SHELL-12) |
 | Azure OpenAI / Vertex shapes | Target, unprioritized |

@@ -25,9 +25,9 @@ import type { ConfigLoader } from '../../domain/config-loader.js';
 import { detectCliOnPath } from '../../utils/cli-detection.js';
 
 export const NATIVE_ENGINE_CANDIDATES = [
-  { id: 'claude', runtimeConnectionId: 'claude-runtime', cli: 'claude' },
-  { id: 'codex', runtimeConnectionId: 'codex-runtime', cli: 'codex' },
-  { id: 'muse', runtimeConnectionId: 'muse-runtime', cli: 'muse' },
+  { id: 'claude', cli: 'claude' },
+  { id: 'codex', cli: 'codex' },
+  { id: 'muse', cli: 'muse' },
 ] as const;
 
 /** Gallery-only request to keep native host CLIs out of screenshot fixtures. */
@@ -197,7 +197,6 @@ export async function adoptDetectedNativeEngines(
         const outcome = await adoptNativeEngineConnection(
           deps.configLoader,
           candidate.id,
-          candidate.runtimeConnectionId,
         );
         outcomes[candidate.id] = outcome;
         unresolved.delete(candidate.id);

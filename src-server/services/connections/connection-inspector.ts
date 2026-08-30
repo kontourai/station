@@ -1,18 +1,15 @@
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
   type EngineConnectionId,
-  type EngineRuntimeId,
-  engineRuntimeId,
+  type EngineId,
+  engineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type {
   AgentConnectionView,
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
-import {
-  engineIdForAdapter,
-  runtimeIdForAdapter,
-} from '../../providers/adapter-identity.js';
+import { engineIdForAdapter } from '../../providers/adapter-identity.js';
 import type {
   ProviderAdapterModelCatalog,
   ProviderAdapterShape,
@@ -47,10 +44,10 @@ import {
 const MODEL_OPTION_MAX_ENTRIES = 1000;
 const ADAPTER_ABORT_SETTLEMENT_MS = 650;
 
-/** A public identity is never inferred from an Adapter-private runtime selector. */
+/** A public connection identity paired with its canonical engine identity. */
 export type InspectedPublicConnection = {
   id: EngineConnectionId;
-  runtimeId: EngineRuntimeId;
+  engineId: EngineId;
 };
 
 export type ConnectionInspectionRequest = {
@@ -101,9 +98,9 @@ interface ConnectionInspectorDependencies {
   appConfig(): AppConfig;
   acpConnections(): ACPConnectionConfig[];
   acpStatus(): { connections?: ACPConnectionStatus[] };
-  /** Composition Seam mapping from Adapter-private runtime to public identity. */
+  /** Composition seam mapping a canonical engine to its public connection. */
   publicConnection(
-    runtimeId: EngineRuntimeId,
+    engineIdValue: EngineId,
   ): InspectedPublicConnection | undefined;
   now(): number;
   onInspectionFailure?(error: unknown): void;
@@ -210,8 +207,8 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
     );
     const acpSettings = runtimeSettingsFor(appConfig, 'acp');
     for (const config of this.dependencies.acpConnections()) {
-      const runtimeId = engineRuntimeId(config.id);
-      const identity = this.dependencies.publicConnection(runtimeId);
+      const engineIdValue = engineId(config.id);
+      const identity = this.dependencies.publicConnection(engineIdValue);
       if (!identity) continue;
       const liveStatus = this.dependencies
         .acpStatus()
@@ -258,7 +255,6 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         },
         config: {
           engineId: 'acp',
-          runtimeConnectionId: runtimeId,
         },
         setup: {
           state: status === 'ready' ? 'ready' : 'configured',
@@ -289,8 +285,8 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
     appConfig: AppConfig,
     request: ConnectionInspectionRequest,
   ): Promise<AgentConnectionView | undefined> {
-    const runtimeId = runtimeIdForAdapter(adapter);
-    const identity = this.dependencies.publicConnection(runtimeId);
+    const engineIdValue = engineIdForAdapter(adapter);
+    const identity = this.dependencies.publicConnection(engineIdValue);
     if (!identity) return undefined;
     const hostDiscoveryDisabled =
       request.disableHostDiscovery === true &&
@@ -299,7 +295,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
     const prerequisites = hostDiscoveryDisabled
       ? [
           {
-            id: `${runtimeId}-host-discovery`,
+            id: `${engineIdValue}-host-discovery`,
             name: `${adapter.metadata.displayName} host discovery`,
             description: 'Host discovery is disabled for this run.',
             status: 'missing' as const,
@@ -308,14 +304,19 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         ]
       : request.includePrerequisites === false
         ? []
-        : await this.prerequisites(adapter, runtimeId, request.signal, () => {
-            probePartial = true;
-          });
-    const settings = runtimeSettingsFor(appConfig, runtimeId);
+        : await this.prerequisites(
+            adapter,
+            engineIdValue,
+            request.signal,
+            () => {
+              probePartial = true;
+            },
+          );
+    const settings = runtimeSettingsFor(appConfig, engineIdValue);
     const enabled = settings.enabled ?? true;
     const readiness = resolveRuntimeAdapterReadiness({
       adapter,
-      runtimeId,
+      engineId: engineIdValue,
       enabled,
       prerequisites,
     });
@@ -374,25 +375,24 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
     return {
       id: identity.id,
       kind: 'agent',
-      type: runtimeId,
+      type: engineIdValue,
       name,
       enabled,
       description: adapter.metadata.description,
       capabilities: [...adapter.metadata.capabilities],
       continuity: adapter.metadata.continuity,
       config: {
-        ...mergeRuntimeConfig(runtimeId, appConfig, settings),
+        ...mergeRuntimeConfig(engineIdValue, appConfig, settings),
         provider: adapter.provider,
         providerLabel: providerLabelForAdapter(adapter),
         engineId: engineIdForAdapter(adapter),
-        runtimeConnectionId: runtimeId,
         inspectionPartial: probePartial,
         readinessState: readiness.state,
         readinessReason: readiness.reason,
       },
       setup: runtimeSetupState(
         appConfig,
-        runtimeId,
+        engineIdValue,
         prerequisites,
         readiness.ready,
       ),
@@ -400,7 +400,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       runtimeCatalog,
       capabilityInventory: buildRuntimeCapabilityInventory({
         adapter,
-        id: runtimeId,
+        id: engineIdValue,
         displayName: name,
         enabled,
         prerequisites,
@@ -419,7 +419,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
 
   private async prerequisites(
     adapter: ProviderAdapterShape,
-    runtimeId: EngineRuntimeId,
+    engineIdValue: EngineId,
     signal: AbortSignal | undefined,
     partial: () => void,
   ): Promise<Prerequisite[]> {
@@ -435,7 +435,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       partial();
       return [
         {
-          id: `${runtimeId}-inspection`,
+          id: `${engineIdValue}-inspection`,
           name: `${adapter.metadata.displayName} inspection`,
           description:
             'Station could not verify this connection’s prerequisites. Retry inspection before using it.',

@@ -71,11 +71,7 @@ if (!inventoryResponse.ok || !inventoryBody.success) {
 }
 
 const requested = optionValues('connection');
-const defaultIds = new Set([
-  'claude-runtime',
-  'codex-runtime',
-  'ollama-runtime',
-]);
+const defaultIds = new Set(['claude', 'codex', 'ollama-runtime']);
 for (const connection of inventoryBody.data) {
   if (connection.type === 'acp' && connection.enabled)
     defaultIds.add(connection.id);

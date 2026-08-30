@@ -235,7 +235,6 @@ describe('MuseAdapter', () => {
     const adapter: ProviderAdapterShape = new MuseAdapter();
     expect(adapter.provider).toBe('muse');
     expect(adapter.metadata.displayName).toBe('Muse Code');
-    expect(adapter.metadata.runtimeId).toBe('muse-runtime');
     expect(adapter.metadata.engineId).toBe('muse');
     expect(adapter.metadata.builtin).toBe(true);
     // `abortSettlement` is consulted ONLY where a discovery call must settle
@@ -1766,7 +1765,7 @@ describe('Muse registration', () => {
 
   test('resolveEngineCapabilityMatrix does not fall back to UNKNOWN for muse', () => {
     expect(ENGINE_CAPABILITY_MATRICES.muse).toBeDefined();
-    const matrix = resolveEngineCapabilityMatrix('muse-runtime', {
+    const matrix = resolveEngineCapabilityMatrix('muse', {
       type: 'muse',
     });
     expect(matrix).toBe(ENGINE_CAPABILITY_MATRICES.muse);

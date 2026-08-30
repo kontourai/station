@@ -196,8 +196,6 @@ export interface InitializeRuntimeDeps {
   resolveBuiltinEngineBinding?: (
     appConfig: AppConfig,
   ) => Promise<BuiltinAgentEngineBinding | null>;
-  /** Runs after runtime plugins are composed, before revision-fenced agents. */
-  migrateBuiltinEngineConnectionSelection?: () => Promise<AppConfig>;
   orchestrationEventStore: EventStore;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -308,11 +306,7 @@ export function initializeRuntimeBackgroundTasks(
     loadACPConfig: async () => (await configLoader.loadACPConfig()) as any,
     loadRegisteredRuntimeConnectionIds: async () => {
       const registry = await loadOrCreateAgentRegistry(configLoader as any);
-      return new Set(
-        registry.engineConnections.map(({ id, runtimeConnectionId }) =>
-          String(runtimeConnectionId ?? id),
-        ),
-      );
+      return new Set(registry.engineConnections.map(({ id }) => String(id)));
     },
     acpBridge,
     logger,
@@ -748,19 +742,6 @@ export async function initializeRuntime(
   });
 
   // Plugin/native Adapter identity exists only after the asset composition
-  // above. Upgrade legacy runtime selectors here, before the agent revision
-  // snapshot below, and project the authoritative value into the boot config
-  // object every already-composed caller shares.
-  const migratedAppConfig =
-    await deps.migrateBuiltinEngineConnectionSelection?.();
-  if (migratedAppConfig) {
-    if (migratedAppConfig.builtinAgentEngineConnectionId === undefined) {
-      delete appConfig.builtinAgentEngineConnectionId;
-    } else {
-      appConfig.builtinAgentEngineConnectionId =
-        migratedAppConfig.builtinAgentEngineConnectionId;
-    }
-  }
 
   // archive#208: hand appConfig/framework/modelCatalog to StationRuntime immediately —
   // initializeRuntimeAgents() (below) and new VoltAgent(...)/configureRoutes()

@@ -732,7 +732,7 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     // archive#1398 §10 OQ-2: the model-inventory leaf override.
     ['GET', '/api/connections/model-inventory', 'inference:invoke'],
     ['HEAD', '/api/connections/model-inventory', 'inference:invoke'],
-    ['GET', '/api/connections/codex-runtime/quota', 'orchestration:read'],
+    ['GET', '/api/connections/codex/quota', 'orchestration:read'],
     // archive#1398 (security review, M-4): the fleet receipt leaves
     // name OTHER Stations — peer ids, operator-facing labels, contributed
     // model ids, and the fingerprints of peers that called in. Their source,
@@ -992,30 +992,24 @@ describe('pairing-route-scopes: table-driven lookups', () => {
 
   test('credential-profile management requires access:manage for every declared leaf', async () => {
     const leaves = [
-      ['GET', '/api/connections/agent/codex-runtime/credential-recovery'],
-      [
-        'POST',
-        '/api/connections/agent/codex-runtime/credential-recovery/profiles',
-      ],
+      ['GET', '/api/connections/agent/codex/credential-recovery'],
+      ['POST', '/api/connections/agent/codex/credential-recovery/profiles'],
       [
         'DELETE',
-        '/api/connections/agent/codex-runtime/credential-recovery/profiles/profile-a',
+        '/api/connections/agent/codex/credential-recovery/profiles/profile-a',
       ],
       [
         'PUT',
-        '/api/connections/agent/codex-runtime/credential-recovery/profiles/profile-a/enrollment',
+        '/api/connections/agent/codex/credential-recovery/profiles/profile-a/enrollment',
       ],
+      ['PUT', '/api/connections/agent/codex/credential-recovery/policy'],
       [
-        'PUT',
-        '/api/connections/agent/codex-runtime/credential-recovery/policy',
+        'POST',
+        '/api/connections/agent/codex/credential-recovery/profiles/profile-a/import',
       ],
       [
         'POST',
-        '/api/connections/agent/codex-runtime/credential-recovery/profiles/profile-a/import',
-      ],
-      [
-        'POST',
-        '/api/connections/agent/codex-runtime/credential-recovery/profiles/profile-a/apply',
+        '/api/connections/agent/codex/credential-recovery/profiles/profile-a/apply',
       ],
     ] as const;
     const standardResolver = {

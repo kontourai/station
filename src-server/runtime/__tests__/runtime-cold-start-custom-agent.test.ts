@@ -745,7 +745,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
           prompt: '',
           description:
             'Direct chat using Claude Code with project working directory context when available.',
-          execution: { agentConnectionId: 'claude-runtime' },
+          execution: { agentConnectionId: 'claude' },
         },
         null,
         2,
@@ -795,7 +795,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       'Skipping agent record with no instance to build',
       expect.objectContaining({
         agent: 'claude-code',
-        agentConnectionId: 'claude-runtime',
+        agentConnectionId: 'claude',
       }),
     );
 

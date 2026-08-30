@@ -209,7 +209,7 @@ describe('Chat Routes', () => {
       // archive#977: the reload lifecycle (runtime-agent-lifecycle.ts) never
       // builds a Station-engine agent for an external-engine-bound record —
       // this agent is deliberately never in `activeAgents`, exactly mirroring
-      // production for a real 'engine-lab' agent bound to claude-runtime.
+      // production for a real 'engine-lab' agent bound to claude.
       configLoader: {
         getProjectHomeDir: () => '/tmp/station-test-home',
         getLaunchabilityRevision: () => 0,
@@ -217,7 +217,7 @@ describe('Chat Routes', () => {
           if (slug === 'engine-lab') {
             return {
               name: 'Engine Lab',
-              execution: { agentConnectionId: 'claude-runtime' },
+              execution: { agentConnectionId: 'claude' },
             };
           }
           throw new Error('Agent not found');
@@ -226,9 +226,9 @@ describe('Chat Routes', () => {
       connectionService: {
         listRuntimeConnections: vi.fn(async () => [
           {
-            id: 'claude-runtime',
+            id: 'claude',
             kind: 'agent',
-            type: 'claude-runtime',
+            type: 'claude',
             name: 'Claude Code',
             enabled: true,
             capabilities: ['agent-runtime'],
@@ -284,7 +284,7 @@ describe('Chat Routes', () => {
       connectionService: {
         listRuntimeConnections: vi.fn(async () => [
           {
-            id: 'codex-runtime',
+            id: 'codex',
             kind: 'agent',
             type: 'codex',
             name: 'Codex',
@@ -300,7 +300,7 @@ describe('Chat Routes', () => {
         {
           slug: 'codex',
           name: 'codex',
-          execution: { agentConnectionId: 'codex-runtime' },
+          execution: { agentConnectionId: 'codex' },
         },
       ]),
       getDefaultAgentIds: vi.fn(async () => new Set(['station', 'codex'])),
@@ -382,7 +382,7 @@ describe('Chat Routes', () => {
           if (slug === 'engine-lab') {
             return {
               name: 'Engine Lab',
-              execution: { agentConnectionId: 'claude-runtime' },
+              execution: { agentConnectionId: 'claude' },
             };
           }
           throw new Error('Agent not found');

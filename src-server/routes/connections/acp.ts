@@ -4,10 +4,7 @@ import {
   type ACPConnectionRegistryEntry,
   ACPStatus,
 } from '@kontourai/station-contracts/acp';
-import {
-  engineConnectionId,
-  engineRuntimeId,
-} from '@kontourai/station-contracts/agent-identity';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { Hono } from 'hono';
 import {
   loadOrCreateAgentRegistry,
@@ -125,7 +122,6 @@ async function registerPersistedACPConnection(
   await registerEngineConnection(
     ctx.configLoader as ConfigLoader,
     engineConnectionId(id),
-    engineRuntimeId(id),
     { kind: 'user-acp' },
   );
   await materializeEngineAgent(ctx.configLoader as ConfigLoader, id, name);
@@ -151,11 +147,7 @@ async function registeredRuntimeConnectionIds(
   const registry = await loadOrCreateAgentRegistry(
     ctx.configLoader as ConfigLoader,
   );
-  return new Set(
-    registry.engineConnections.map(({ id, runtimeConnectionId }) =>
-      String(runtimeConnectionId ?? id),
-    ),
-  );
+  return new Set(registry.engineConnections.map(({ id }) => String(id)));
 }
 
 export function createACPRoutes(ctx: RuntimeContext) {
