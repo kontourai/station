@@ -229,6 +229,59 @@ describe('CI verification workflow contracts', () => {
     expect(ci).not.toContain('  secret-scan:');
   });
 
+  it('tracks and closes one attributed issue per red main-only workflow', () => {
+    const mainHealth = workflow('main-health.yml');
+    const trigger = mainHealth.slice(
+      mainHealth.indexOf('  workflow_run:'),
+      mainHealth.indexOf('\npermissions:'),
+    );
+    const failureJob = mainHealth.slice(
+      mainHealth.indexOf('  report-failure:'),
+      mainHealth.indexOf('  close-after-success:'),
+    );
+    const successJob = mainHealth.slice(
+      mainHealth.indexOf('  close-after-success:'),
+    );
+
+    expect(trigger).toContain('types: [completed]');
+    for (const name of [
+      'Container smoke',
+      'Windows Verification',
+      'Secret Scan',
+      'Backlog disposition policy',
+    ]) {
+      expect(trigger).toContain(`- ${name}`);
+    }
+    expect(trigger).not.toContain('Main pipeline health');
+    expect(mainHealth).toMatch(/^permissions:\n {2}issues: write$/m);
+    expect(mainHealth).not.toContain('contents:');
+    expect(failureJob).toContain(
+      "github.event.workflow_run.conclusion == 'failure'",
+    );
+    expect(successJob).toContain(
+      "github.event.workflow_run.conclusion == 'success'",
+    );
+    for (const job of [failureJob, successJob]) {
+      expect(job).toContain(
+        "github.event.workflow_run.head_branch == 'main'",
+      );
+      expect(job).toContain(
+        'github.event.workflow_run.head_repository.full_name == github.repository',
+      );
+      expect(job).toContain(
+        'actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd',
+      );
+      expect(job).toContain('github.event.workflow_run.html_url');
+      expect(job).toContain('github.event.workflow_run.head_sha');
+      expect(job).toContain('Main pipeline red: ${workflowName}');
+    }
+    expect(failureJob).toContain("labels: ['bug', 'P1']");
+    expect(failureJob).toContain("state: 'all'");
+    expect(failureJob).toContain("state: 'open'");
+    expect(successJob).toContain("state: 'closed'");
+    expect(successJob).not.toContain("conclusion == 'failure'");
+  });
+
   it('classifies the complete push diff before entering independent heavy concurrency groups', () => {
     const ci = workflow('ci.yml');
     const containerSmoke = workflow('container-smoke.yml');
