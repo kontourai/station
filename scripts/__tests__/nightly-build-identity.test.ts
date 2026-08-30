@@ -515,10 +515,15 @@ describe('the nightly workflow keeps its promises', () => {
     expect(nightlyStart).toBeGreaterThan(gateStart);
     const gateJob = workflow.slice(gateStart, nightlyStart);
     expect(gateJob).toContain('run: npm run test:e2e:pr-smoke');
-    // Gate-SHA == ship-SHA, written out on both sides rather than left to
-    // checkout's implicit default, so the tests' verdict stays bound to the
-    // exact bytes the build ships.
-    expect(gateJob).toContain('ref: $' + '{{ github.sha }}');
+    // Gate-SHA == ship-SHA even for an exact historical-main promotion: the
+    // gate validates one optional input, exports it, and both producers use
+    // that output rather than independently resolving a moving branch.
+    expect(gateJob).toContain(
+      'ref: $' + '{{ inputs.source_sha || github.sha }}',
+    );
+    expect(gateJob).toContain(
+      'source_sha: $' + '{{ steps.source.outputs.sha }}',
+    );
     const nightlyCheckout = workflow.slice(
       nightlyStart,
       workflow.indexOf(
@@ -526,7 +531,9 @@ describe('the nightly workflow keeps its promises', () => {
         nightlyStart,
       ),
     );
-    expect(nightlyCheckout).toContain('ref: $' + '{{ github.sha }}');
+    expect(nightlyCheckout).toContain(
+      'ref: $' + '{{ needs.test-gate.outputs.source_sha }}',
+    );
   });
 
   it('makes the nightly build job need the test gate', () => {
@@ -896,7 +903,9 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
 
   it('builds at the pinned decide-step SHA, never an implicit checkout default', () => {
     const checkout = desktopJob.slice(0, desktopJob.indexOf('Decide whether'));
-    expect(checkout).toContain('ref: $' + '{{ github.sha }}');
+    expect(checkout).toContain(
+      'ref: $' + '{{ needs.test-gate.outputs.source_sha }}',
+    );
     const decide = desktopJob.slice(
       desktopJob.indexOf('Decide whether'),
       desktopJob.indexOf('Build an unsigned macOS nightly staging candidate'),

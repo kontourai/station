@@ -1,12 +1,13 @@
 # Station Nightly
 
-Station Nightly is the main-edge dogfood channel. It exists on two platforms
-with two different build and delivery mechanisms, sharing one identifier:
+Station Nightly is the main-edge dogfood channel. Its configured macOS and
+Android legs consume one SHA from the shared Nightly test gate and use separate
+platform delivery authorities while sharing one channel identifier:
 
 | Platform | Artifact | Identifier | Built by | Delivered by |
 | --- | --- | --- | --- | --- |
-| macOS | `/Applications/Station Nightly.app` | `io.kontourai.station.nightly` | `ops/nightly/install-macos.zsh` on the local Mac | Local install only |
-| Android | Signed AAB/APK | `io.kontourai.station.nightly` | `.github/workflows/nightly.yml` on GitHub-hosted `ubuntu-22.04` | Play internal testing track |
+| macOS | notarized app, DMG, updater archive | `io.kontourai.station.nightly` | `.github/workflows/nightly.yml#nightly-desktop` | rolling GitHub prerelease and signed Tauri feed |
+| Android | signed AAB/APK | `io.kontourai.station.nightly` | `.github/workflows/nightly.yml#nightly` | Play internal testing track |
 
 Because the nightly uses its own identifier, both lanes install alongside a
 stable Station install (`io.kontourai.station`) and never touch it.
@@ -45,6 +46,12 @@ pre-ledger published code is pinned as a permanent floor in the same module).
 See [native-releases.md](./native-releases.md) for the ledger and its
 [Manually dispatching Nightly](./native-releases.md#manually-dispatching-nightly)
 section for an exceptional same-day rebuild (`rebuild_index`).
+
+A manual cross-platform promotion may also pass `source_sha`. The test gate
+validates that exact commit is still on `main`, and Android and desktop check
+out the gate's one output instead of independently resolving a moving branch.
+This is the supported way to make both Nightly artifacts companions of a
+specific Stable/TestFlight candidate.
 
 **Signing and upload.** The job authenticates to Google Cloud with GitHub
 OIDC, fetches the upload keystore from Secret Manager, verifies the built APK

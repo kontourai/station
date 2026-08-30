@@ -1,0 +1,361 @@
+{
+  "schemaVersion": 1,
+  "channels": {
+    "development": {
+      "sourceAuthority": "one explicit worktree revision",
+      "versionAuthority": "worktree-derived development identity"
+    },
+    "nightly": {
+      "sourceAuthority": "one validated commit that is an ancestor of main",
+      "versionAuthority": "UTC-day identity plus immutable Android build reservation"
+    },
+    "preview": {
+      "sourceAuthority": "one immutable vMAJOR.MINOR.PATCH-preview.N tag",
+      "versionAuthority": "the exact preview tag"
+    },
+    "stable": {
+      "sourceAuthority": "one immutable vMAJOR.MINOR.PATCH tag",
+      "versionAuthority": "the exact stable tag"
+    }
+  },
+  "platforms": {
+    "web-portable": {
+      "artifactIdentity": "checksummed portable server bundle and two-platform container digest",
+      "signingRequirement": "checksums, provenance attestations, and immutable container digest"
+    },
+    "macos": {
+      "artifactIdentity": "signed and notarized app, DMG, updater archive, updater signature",
+      "signingRequirement": "Apple Developer ID, notarization staple, and Tauri updater signature"
+    },
+    "windows": {
+      "artifactIdentity": "signed MSI/installer and updater archive/signature",
+      "signingRequirement": "Authenticode and Tauri updater signature"
+    },
+    "linux": {
+      "artifactIdentity": "AppImage, deb, rpm, updater archive/signature",
+      "signingRequirement": "Tauri updater signature and checksummed release inventory"
+    },
+    "android": {
+      "artifactIdentity": "verified universal APK and Play-ready AAB",
+      "signingRequirement": "Google Secret Manager upload key and verified package signature"
+    },
+    "ios": {
+      "artifactIdentity": "verification-only simulator archive and signed App Store IPA",
+      "signingRequirement": "Apple Distribution identity, App Store profile, and App Store Connect API receipt"
+    }
+  },
+  "cells": {
+    "development": {
+      "web-portable": {
+        "state": "configured",
+        "buildJob": "local:npm run package:portable",
+        "testLane": "verify:local",
+        "publicationTarget": "none; local development only",
+        "updateAuthority": "explicit worktree checkout",
+        "rollbackSource": "previous explicit worktree revision",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "No retained cross-platform development receipt."
+        }
+      },
+      "macos": {
+        "state": "configured",
+        "buildJob": "local:npx tauri build",
+        "testLane": "desktop-rust plus local shell smoke",
+        "publicationTarget": "none; isolated Station Dev app",
+        "updateAuthority": "explicit worktree rebuild",
+        "rollbackSource": "previous explicit worktree revision",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "No retained current development install receipt."
+        }
+      },
+      "windows": {
+        "state": "configured",
+        "buildJob": "local:npx tauri build on Windows",
+        "testLane": "Windows portable floor and physical shell smoke",
+        "publicationTarget": "none; isolated Station Dev app",
+        "updateAuthority": "explicit worktree rebuild",
+        "rollbackSource": "previous explicit worktree revision",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "Physical Windows development install is not retained here."
+        }
+      },
+      "linux": {
+        "state": "configured",
+        "buildJob": "local:npx tauri build on supported Linux",
+        "testLane": "Linux package layout and launch smoke",
+        "publicationTarget": "none; isolated Station Dev app",
+        "updateAuthority": "explicit worktree rebuild",
+        "rollbackSource": "previous explicit worktree revision",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "Physical Linux development install is not retained here."
+        }
+      },
+      "android": {
+        "state": "configured",
+        "buildJob": "build-android.yml#build-android-verification",
+        "testLane": "Android package checks and device smoke",
+        "publicationTarget": "workflow artifact or direct adb install",
+        "updateAuthority": "explicit APK install",
+        "rollbackSource": "previous retained APK",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "No revision-wide development matrix receipt."
+        }
+      },
+      "ios": {
+        "state": "configured",
+        "buildJob": "build-ios.yml#build-ios-verification",
+        "testLane": "packaged iOS Simulator XCUITest",
+        "publicationTarget": "verification artifact only",
+        "updateAuthority": "simctl install of the exact app",
+        "rollbackSource": "previous simulator app artifact",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#827",
+          "reason": "The packaged-runtime lane is in PR #853 and is not yet on main."
+        }
+      }
+    },
+    "nightly": {
+      "web-portable": {
+        "state": "gated",
+        "buildJob": null,
+        "testLane": "Nightly shared test gate",
+        "publicationTarget": "not configured",
+        "updateAuthority": "not configured",
+        "rollbackSource": "last stable portable release",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "Nightly does not yet produce portable/container artifacts."
+        }
+      },
+      "macos": {
+        "state": "configured",
+        "buildJob": "nightly.yml#nightly-desktop",
+        "testLane": "nightly.yml#test-gate plus notarized artifact checks",
+        "publicationTarget": "rolling GitHub prerelease nightly-desktop",
+        "updateAuthority": "signed Tauri Nightly updater feed",
+        "rollbackSource": "previous rolling prerelease asset retained by release history",
+        "evidence": { "kind": "deploy-ledger", "selector": "nightly-desktop" }
+      },
+      "windows": {
+        "state": "gated",
+        "buildJob": null,
+        "testLane": "Windows portable floor",
+        "publicationTarget": "not configured",
+        "updateAuthority": "not configured",
+        "rollbackSource": "last stable Windows release",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "Nightly Windows artifacts are not configured."
+        }
+      },
+      "linux": {
+        "state": "gated",
+        "buildJob": null,
+        "testLane": "Linux package layout checks",
+        "publicationTarget": "not configured",
+        "updateAuthority": "not configured",
+        "rollbackSource": "last stable Linux release",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "Nightly Linux artifacts are not configured."
+        }
+      },
+      "android": {
+        "state": "configured",
+        "buildJob": "nightly.yml#nightly",
+        "testLane": "nightly.yml#test-gate plus signed AAB identity checks",
+        "publicationTarget": "Google Play Internal io.kontourai.station.nightly",
+        "updateAuthority": "Google Play Internal testing track",
+        "rollbackSource": "previous immutable Play version code",
+        "evidence": { "kind": "deploy-ledger", "selector": "nightly-android" }
+      },
+      "ios": {
+        "state": "gated",
+        "buildJob": null,
+        "testLane": "packaged iOS Simulator XCUITest",
+        "publicationTarget": "TestFlight Nightly listing not configured",
+        "updateAuthority": "TestFlight after separate Nightly App ID exists",
+        "rollbackSource": "previous processed TestFlight Nightly build",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "Separate Nightly App ID, profile, icon, and TestFlight listing are absent."
+        }
+      }
+    },
+    "preview": {
+      "web-portable": {
+        "state": "configured",
+        "buildJob": "release.yml#portable and release.yml#container",
+        "testLane": "tag preflight, release inventory, SBOM, and container checks",
+        "publicationTarget": "draft GitHub preview release and GHCR preview digest",
+        "updateAuthority": "approved preview release/feed",
+        "rollbackSource": "previous immutable preview tag",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "No current-repository preview release run receipt."
+        }
+      },
+      "macos": {
+        "state": "configured",
+        "buildJob": "release.yml#desktop-macos",
+        "testLane": "signature, notarization, inventory, and updater checks",
+        "publicationTarget": "draft GitHub preview release",
+        "updateAuthority": "approved signed preview updater feed",
+        "rollbackSource": "previous immutable preview tag",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "No current-repository preview release run receipt."
+        }
+      },
+      "windows": {
+        "state": "configured",
+        "buildJob": "release.yml#desktop-windows",
+        "testLane": "Authenticode, installer, inventory, and updater checks",
+        "publicationTarget": "draft GitHub preview release",
+        "updateAuthority": "approved signed preview updater feed",
+        "rollbackSource": "previous immutable preview tag",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "No current-repository preview release run receipt."
+        }
+      },
+      "linux": {
+        "state": "configured",
+        "buildJob": "release.yml#desktop-linux",
+        "testLane": "package layout, inventory, and updater checks",
+        "publicationTarget": "draft GitHub preview release",
+        "updateAuthority": "approved signed preview updater feed",
+        "rollbackSource": "previous immutable preview tag",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "No current-repository preview release run receipt."
+        }
+      },
+      "android": {
+        "state": "configured",
+        "buildJob": "release.yml#android",
+        "testLane": "signed APK/AAB, 16 KiB, package identity, and inventory checks",
+        "publicationTarget": "Google Play Internal io.kontourai.station.beta",
+        "updateAuthority": "Google Play Internal testing track",
+        "rollbackSource": "previous immutable preview version code",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "No current-repository preview Play receipt."
+        }
+      },
+      "ios": {
+        "state": "gated",
+        "buildJob": null,
+        "testLane": "simulator verification remains stable-only in release.yml",
+        "publicationTarget": "TestFlight Beta listing not configured",
+        "updateAuthority": "TestFlight after separate Beta App ID exists",
+        "rollbackSource": "previous processed TestFlight Beta build",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "Separate Beta App ID, profile, icon, and TestFlight listing are absent."
+        }
+      }
+    },
+    "stable": {
+      "web-portable": {
+        "state": "configured",
+        "buildJob": "release.yml#portable and release.yml#container",
+        "testLane": "tag preflight, release inventory, SBOM, and container checks",
+        "publicationTarget": "approved GitHub release and GHCR stable digest",
+        "updateAuthority": "approved stable release/feed",
+        "rollbackSource": "previous immutable stable tag",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "No current-repository stable release run receipt."
+        }
+      },
+      "macos": {
+        "state": "configured",
+        "buildJob": "release.yml#desktop-macos",
+        "testLane": "signature, notarization, inventory, and updater checks",
+        "publicationTarget": "approved GitHub stable release",
+        "updateAuthority": "approved signed stable updater feed",
+        "rollbackSource": "previous immutable stable tag",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "No current-repository stable release run receipt."
+        }
+      },
+      "windows": {
+        "state": "configured",
+        "buildJob": "release.yml#desktop-windows",
+        "testLane": "Authenticode, installer, inventory, and updater checks",
+        "publicationTarget": "approved GitHub stable release",
+        "updateAuthority": "approved signed stable updater feed",
+        "rollbackSource": "previous immutable stable tag",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "No current-repository stable release run receipt."
+        }
+      },
+      "linux": {
+        "state": "configured",
+        "buildJob": "release.yml#desktop-linux",
+        "testLane": "package layout, inventory, and updater checks",
+        "publicationTarget": "approved GitHub stable release",
+        "updateAuthority": "approved signed stable updater feed",
+        "rollbackSource": "previous immutable stable tag",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "No current-repository stable release run receipt."
+        }
+      },
+      "android": {
+        "state": "configured",
+        "buildJob": "release.yml#android",
+        "testLane": "signed APK/AAB, 16 KiB, package identity, and inventory checks",
+        "publicationTarget": "Google Play Internal io.kontourai.station",
+        "updateAuthority": "Google Play staged stable track after approval",
+        "rollbackSource": "previous immutable stable version code",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "No current-repository stable Play receipt."
+        }
+      },
+      "ios": {
+        "state": "configured",
+        "buildJob": "release.yml#ios-simulator and release.yml#ios-device",
+        "testLane": "packaged simulator XCUITest plus IPA profile/signature/package checks",
+        "publicationTarget": "TestFlight for io.kontourai.station before App Store promotion",
+        "updateAuthority": "TestFlight and App Store Connect",
+        "rollbackSource": "previous processed TestFlight build and immutable stable tag",
+        "evidence": {
+          "kind": "not-verified",
+          "owner": "#844",
+          "reason": "No processed TestFlight build receipt is retained yet."
+        }
+      }
+    }
+  }
+}
