@@ -197,6 +197,8 @@
     "walkthrough:fresh-home": "tsx tests/live/fresh-home-walkthrough.mjs",
     "journeys:core-loop": "tsx tests/live/core-loop-journeys.mjs",
     "test:e2e:screenshot": "node scripts/run-e2e-suite.mjs --suite=screenshot",
+    "test:tauri-shell": "node scripts/run-tauri-shell-e2e.mjs",
+    "test:tauri-shell:build": "node scripts/run-tauri-shell-e2e.mjs --build",
     "screenshot:baseline": "node scripts/screenshot-diff.mjs baseline",
     "screenshot:diff": "node scripts/screenshot-diff.mjs diff",
     "sync:e2e:latest": "node scripts/sync-latest-e2e-evidence.mjs",

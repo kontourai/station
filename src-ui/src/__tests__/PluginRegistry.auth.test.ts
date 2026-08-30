@@ -117,6 +117,47 @@ describe('PluginRegistry remote authentication', () => {
     expect(registry.getLoadStatus().failure).toBe('remote-isolation');
   });
 
+  test('isolates a consented native remote profile even through loopback', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        plugins: [
+          {
+            name: 'remote-layout',
+            version: '1.0.0',
+            hasBundle: true,
+            layout: { slug: 'remote-panel' },
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const registry = new PluginRegistry(
+      Promise.resolve({ platform: 'tauri' as const }),
+    );
+    registry.setApiBase(ORIGIN, 'paired-loopback', {
+      allowRemoteBundles: true,
+      remoteProfile: true,
+    });
+
+    await expect(registry.reload()).resolves.toBe('ready');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(document.head.querySelector('[data-station-plugin]')).toBeNull();
+    expect((window as any).__station_ai_plugins).toBeUndefined();
+    expect(
+      registry.getTrustedLayout('remote-panel', {
+        id: 'plugin:remote-layout:remote-panel',
+        version: '1.0.0',
+        sourceIdentity: {
+          id: 'remote-layout',
+          kind: 'remote',
+          source: 'plugins/remote-layout',
+        },
+        provenance: { origin: 'plugin', pluginId: 'remote-layout' },
+      }),
+    ).not.toBeNull();
+  });
+
   test('loads remote bundles only with explicit connection consent', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = input.toString();
