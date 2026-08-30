@@ -41,7 +41,7 @@ export function StarterWorkCard() {
   if (starter.isLoading || !status)
     return (
       <section
-        className="starter-work-card"
+        className="starter-work-card starter-work-card--loading"
         aria-label="Starter work"
         aria-busy="true"
       >
@@ -63,7 +63,7 @@ export function StarterWorkCard() {
     if (boundTask.isLoading)
       return (
         <section
-          className="starter-work-card"
+          className="starter-work-card starter-work-card--loading"
           aria-label="Starter work"
           aria-busy="true"
         >

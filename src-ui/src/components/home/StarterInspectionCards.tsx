@@ -129,7 +129,7 @@ function StarterInspectionCard({
   if (loading)
     return (
       <section
-        className="starter-work-card"
+        className="starter-work-card starter-work-card--loading"
         aria-label={title}
         aria-busy="true"
       >

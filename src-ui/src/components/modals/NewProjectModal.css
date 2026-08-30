@@ -246,9 +246,13 @@
 
 .new-project-modal__actions {
   display: flex;
+  flex: 0 0 auto;
   justify-content: flex-end;
   gap: 0.75rem;
   margin-top: 0.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-primary);
 }
 
 .new-project-modal__error {
@@ -374,7 +378,12 @@
 }
 
 @media (max-width: 780px) {
-  .new-project-modal {
+  .new-project-modal.responsive-surface-panel {
+    /* The shared mobile surface normally scrolls its whole panel. This form
+       already has a dedicated scroll region (`__draft-fields`); keeping the
+       panel clipped prevents the fixed footer from painting over the final
+       Starter-layout card at 390x844. */
+    overflow: hidden;
     padding: 1.1rem;
   }
 
