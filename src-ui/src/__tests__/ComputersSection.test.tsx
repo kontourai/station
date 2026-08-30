@@ -504,6 +504,16 @@ describe('ComputersSection', () => {
     expect(
       screen.getByText('https://unlabeled.tailnet.ts.net · orchestration:read'),
     ).toBeTruthy();
+    // #790: a provisioned peer is a first-class delegation surface — kind
+    // chip, credential-present state, and the pointer to the Delegate dialog.
+    expect(screen.getByText('Peer Station')).toBeTruthy();
+    expect(screen.getByText('Credential saved')).toBeTruthy();
+    expect(
+      screen.getByText(/This Station can delegate tasks here/),
+    ).toBeTruthy();
+    // Never a liveness claim: a saved credential proves nothing about
+    // reachability.
+    expect(screen.queryByText('Ready')).toBeNull();
   });
 
   test('renders nothing for peer credentials while the fetch has not succeeded', () => {

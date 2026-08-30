@@ -1,5 +1,9 @@
-import { describe, expect, test, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { PeerCredentialStore } from '../../../services/peers/peer-credential-store.js';
 import { getInternalApiToken } from '../../../utils/internal-api-token.js';
 import { createPeerCredentialRoutes } from '../peer-credential-routes.js';
 
@@ -23,7 +27,50 @@ function store() {
   };
 }
 
+const wireHomes: string[] = [];
+afterAll(() => {
+  for (const dir of wireHomes) rmSync(dir, { recursive: true, force: true });
+});
+
 describe('peer credential routes (station#1123 slice 2)', () => {
+  test('the list wire shape from a REAL store carries no credential material (#790)', async () => {
+    // The mocked-store tests above prove the route passes `list()` through;
+    // this proves the composed wire shape — real store, real routes — never
+    // grows a credential field. The UI (Computers page, Delegate dialog)
+    // renders exactly this payload.
+    const homeDir = mkdtempSync(join(tmpdir(), 'station-peer-route-wire-'));
+    wireHomes.push(homeDir);
+    const store = new PeerCredentialStore(homeDir);
+    const secret = 'wire-shape-secret-0123456789abcdef';
+    await store.upsert({
+      environmentId: 'env-peer-wire',
+      apiBase: 'https://box-b.example.test',
+      scope: 'orchestration:read orchestration:operate',
+      credential: secret,
+      label: 'box-b',
+    });
+    const app = createPeerCredentialRoutes(store);
+    const response = await app.request('/');
+    expect(response.status).toBe(200);
+    const raw = await response.text();
+    expect(raw).not.toContain(secret);
+    expect(raw).not.toContain('"credential"');
+    const body = JSON.parse(raw) as {
+      success: boolean;
+      data: Array<Record<string, unknown>>;
+    };
+    expect(body.success).toBe(true);
+    expect(body.data).toHaveLength(1);
+    expect(Object.keys(body.data[0]).sort()).toEqual([
+      'apiBase',
+      'createdAt',
+      'environmentId',
+      'label',
+      'scope',
+      'updatedAt',
+    ]);
+  });
+
   test('lists and creates through typed routes, never returning a credential', async () => {
     const mock = store();
     const app = createPeerCredentialRoutes(mock as any);

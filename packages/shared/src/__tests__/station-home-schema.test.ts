@@ -163,6 +163,7 @@ describe('portable installer data-root claim', () => {
     // appends the newline the TS constant carries, so pin BOTH halves — the
     // write expression and the constant's terminal newline. Either side
     // drifting alone re-breaks every fresh install silently.
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: asserting the literal source text of the installer's template expression
     expect(installer).toContain('fs.writeFileSync(fd, `${signature}\\n`)');
     expect(PORTABLE_INSTALL_DATA_ROOT_SIGNATURE).toBe(
       `${PORTABLE_INSTALL_DATA_ROOT_SIGNATURE.trimEnd()}\n`,
