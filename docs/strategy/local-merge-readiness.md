@@ -5,8 +5,9 @@
 > CI, container, Windows, and Android, while provider-hosted publish and
 > Pages jobs can still fail before executing because of organization billing. A green
 > detector result describes the `main` tree it ran against and **cannot clear a
-> candidate pull request diff**. Secret Scan evaluates the candidate diff before
-> merge, but it does not replace the rest of merge-readiness evidence. Inspect the
+> candidate pull request diff**. Secret Scan scans all Git history reachable from
+> the candidate merge ref before merge, so a red may come from pre-existing
+> reachable history; it does not replace the rest of merge-readiness evidence. Inspect the
 > live job steps before classifying a
 > failure: zero executed steps are `NOT_VERIFIED`, not green and not a product
 > regression. When provider-hosted execution returns, re-run those lanes on main's

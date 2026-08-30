@@ -239,7 +239,12 @@ describe('primary CI workflow governance', () => {
     expect(collectPostMergeDetectorWorkflowFindings(secretScan)).toContain(
       'Post-merge detector workflow must not trigger on pull_request.',
     );
-    expect(localProtocol).toContain('Secret Scan evaluates the candidate diff');
+    expect(localProtocol).toContain(
+      'Secret Scan scans all Git history reachable from',
+    );
+    expect(localProtocol).toContain(
+      'a red may come from pre-existing\n> reachable history',
+    );
     expect(localProtocol).toContain(
       'does not replace the rest of merge-readiness evidence',
     );
