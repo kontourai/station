@@ -9668,15 +9668,21 @@ mod tests {
         assert!(cover.contains("setAccessibilityChildren: None::<&NSArray<NSView>>"));
         assert!(cover.contains("NSAccessibilityLayoutChangedNotification"));
         assert!(cover.contains("NSAccessibilityPostNotification("));
+        let unhide = cover
+            .find("setAccessibilityHidden: false")
+            .expect("reveal unhides the WebView from assistive clients");
         let clear = cover
             .find("setAccessibilityChildren: None::<&NSArray<NSView>>")
             .expect("reveal clears the temporary accessibility child override");
+        let visible = cover
+            .find("setAlphaValue: 1.0f64")
+            .expect("reveal restores the WebView visual state");
         let notify = cover
             .find("NSAccessibilityPostNotification(")
             .expect("reveal notifies assistive clients after clearing the override");
         assert!(
-            clear < notify,
-            "the layout-change notification must follow the hierarchy change"
+            unhide < clear && clear < visible && visible < notify,
+            "the layout-change notification must follow the complete WebView reveal"
         );
         assert!(!cover.contains("let revealed_children = content.subviews()"));
         assert!(cover.contains("setAlphaValue: 0.0f64"));
