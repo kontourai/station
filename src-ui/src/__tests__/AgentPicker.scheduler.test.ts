@@ -57,7 +57,7 @@ describe('scheduler Agent picker', () => {
     const trigger = screen.getByRole('button', {
       name: /Claude Code.*not runnable here/i,
     });
-    expect(trigger).toBeDisabled();
-    expect(trigger).not.toHaveTextContent('No runnable agents');
+    expect((trigger as HTMLButtonElement).disabled).toBe(true);
+    expect(trigger.textContent).not.toContain('No runnable agents');
   });
 });
