@@ -10,6 +10,7 @@ import {
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { SSE_KEEPALIVE_INTERVAL_MS } from '../../constants.js';
+import { SchedulerJobConflictError } from '../../services/scheduling/builtin-scheduler.js';
 import { SchedulerStorageUnavailableError } from '../../services/scheduling/scheduler-ledger.js';
 import type {
   SchedulerManualRunResult,
@@ -372,6 +373,7 @@ export function createSchedulerRoutes(
   return app;
 }
 
-function schedulerErrorStatus(error: unknown): 500 | 503 {
+function schedulerErrorStatus(error: unknown): 409 | 500 | 503 {
+  if (error instanceof SchedulerJobConflictError) return 409;
   return error instanceof SchedulerStorageUnavailableError ? 503 : 500;
 }
