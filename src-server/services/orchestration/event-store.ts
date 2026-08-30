@@ -168,7 +168,10 @@ import {
   type NativeInvocationStarter,
   releaseNativeInvocationOwner,
 } from './native-invocation-runs.js';
-import { projectionFactKeysForEvent } from './orchestration-session-state.js';
+import {
+  clientOriginIdentity,
+  projectionFactKeysForEvent,
+} from './orchestration-session-state.js';
 import {
   createProjectTaskRoomHistory,
   type ProjectTaskRoomAgentGrantAuthority,
@@ -3502,6 +3505,40 @@ export class EventStore {
         )
         .run(event.threadId, fact.key, event.eventId);
     }
+    if (
+      event.method !== 'turn.started' ||
+      !isClientOrigin(event.clientOrigin)
+    ) {
+      return;
+    }
+    const first = this.db
+      .prepare(
+        `SELECT origin.payload
+         FROM orchestration_session_projection_facts AS fact
+         INNER JOIN orchestration_events AS origin ON origin.id = fact.event_id
+         WHERE fact.thread_id = ? AND fact.fact_key = 'turn-origin:first'`,
+      )
+      .get(event.threadId) as { payload?: unknown } | undefined;
+    if (!first) return;
+    let firstEvent: CanonicalRuntimeEvent;
+    try {
+      firstEvent = JSON.parse(String(first.payload)) as CanonicalRuntimeEvent;
+    } catch {
+      return;
+    }
+    if (
+      !isClientOrigin(firstEvent.clientOrigin) ||
+      clientOriginIdentity(firstEvent.clientOrigin) ===
+        clientOriginIdentity(event.clientOrigin)
+    ) {
+      return;
+    }
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO orchestration_session_projection_facts
+          (thread_id, fact_key, event_id) VALUES (?, 'turn-origin:other', ?)`,
+      )
+      .run(event.threadId, event.eventId);
   }
 
   listEvents(threadId?: string): PersistedRuntimeEvent[] {
