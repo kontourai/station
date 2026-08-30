@@ -36,6 +36,8 @@ export interface ModelPricing {
   provider?: string;
   inputTokenPrice?: number; // per 1K tokens
   outputTokenPrice?: number; // per 1K tokens
+  cacheReadTokenPrice?: number; // per 1K tokens
+  cacheWriteTokenPrice?: number; // per 1K tokens
   region: string;
   feature: string; // "On-demand Inference", "Batch Inference", etc.
 }

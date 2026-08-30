@@ -90,6 +90,18 @@ describe('mapStrandsStreamEvent', () => {
     });
   });
 
+  test('keeps an absent metadata token category absent', () => {
+    expect(
+      mapStrandsStreamEvent({
+        type: 'modelStreamUpdateEvent',
+        event: {
+          type: 'modelMetadataEvent',
+          usage: { outputTokens: 4 },
+        },
+      } as any),
+    ).toEqual({ type: 'usage', completionTokens: 4 });
+  });
+
   test('maps tool results into runtime tool-result chunks', () => {
     expect(
       mapStrandsStreamEvent({
