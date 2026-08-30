@@ -78,7 +78,7 @@ export function StarterScheduledCheckCard() {
   if (loading)
     return (
       <section
-        className="starter-work-card"
+        className="starter-work-card starter-work-card--loading"
         aria-label="Run a scheduled readiness check"
         aria-busy="true"
       >
