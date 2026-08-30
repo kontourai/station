@@ -213,6 +213,9 @@ export const REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA =
   '563effe7ec559c6f4fcc6c80b3532acb71d86373';
 const REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA =
   '02f40a67901a79ce4004c44d91e350b93782644c';
+const SECRET_SCAN_WORKFLOW = '.github/workflows/secret-scan.yml';
+const SECRET_SCAN_REUSABLE_WORKFLOW =
+  `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA}`;
 /**
  * `owner-lifetime-seconds` is part of the host manifest, so it is one shared
  * physical-host setting rather than a per-job tuning knob. The pinned action
@@ -1241,6 +1244,36 @@ function hasExactMainBranchTrigger(trigger) {
   );
 }
 
+function hasExactPullRequestSecretScanWorkflow(file, document) {
+  const scan = document?.jobs?.scan;
+  return (
+    file === SECRET_SCAN_WORKFLOW &&
+    hasExactKeys(document, [
+      'name',
+      'on',
+      'permissions',
+      'concurrency',
+      'jobs',
+    ]) &&
+    document.name === 'Secret Scan' &&
+    hasExactKeys(document.on, ['push', 'pull_request', 'workflow_dispatch']) &&
+    hasExactMainBranchTrigger(document.on.push) &&
+    hasExactMainBranchTrigger(document.on.pull_request) &&
+    document.on.workflow_dispatch === null &&
+    hasOnlyReadContentsPermission(document.permissions) &&
+    hasExactKeys(document.concurrency, ['group', 'cancel-in-progress']) &&
+    document.concurrency.group === 'station-secret-scan-${{ github.ref }}' &&
+    document.concurrency['cancel-in-progress'] === true &&
+    hasExactKeys(document.jobs, ['scan']) &&
+    hasExactKeys(scan, ['name', 'uses', 'with', 'permissions']) &&
+    scan.name === 'Secret Scan' &&
+    scan.uses === SECRET_SCAN_REUSABLE_WORKFLOW &&
+    hasExactKeys(scan.with, ['runner']) &&
+    scan.with.runner === '"ubuntu-22.04"' &&
+    hasOnlyReadContentsPermission(scan.permissions)
+  );
+}
+
 function hasExactSecurityAnalysisWorkflow(document) {
   return (
     hasExactKeys(document, [
@@ -1284,6 +1317,7 @@ function hasExactCiRouterPrTargetTrigger(document) {
 
 function candidatePullRequestWorkflowFindings(file, document) {
   if (!workflowHasTrigger(document, 'pull_request')) return [];
+  if (hasExactPullRequestSecretScanWorkflow(file, document)) return [];
   return [
     {
       file,

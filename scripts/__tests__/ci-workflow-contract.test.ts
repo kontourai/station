@@ -203,6 +203,9 @@ describe('CI verification workflow contracts', () => {
     expect(secretScan).toMatch(/^name: Secret Scan$/m);
     expect(secretScan).toContain('    name: Secret Scan');
     expect(secretScan).toMatch(/^ {2}push:\n {4}branches: \[main\]$/m);
+    expect(secretScan).toMatch(
+      /^ {2}pull_request:\n {4}branches: \[main\]$/m,
+    );
     expect(secretScan).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(secretScan).toMatch(/^permissions:\n {2}contents: read$/m);
     expect(secretScan).toMatch(/^ {4}permissions:\n {6}contents: read$/m);
@@ -213,6 +216,8 @@ describe('CI verification workflow contracts', () => {
     expect(secretScan).toContain('runner: \'"ubuntu-22.04"\'');
     expect(secretScan).not.toContain('capacity-coordination-root:');
     expect(secretScan).not.toContain('capacity-host-id:');
+    expect(secretScan).not.toContain('pull_request_target:');
+    expect(secretScan).not.toContain("github.event_name != 'pull_request'");
     expect(secretScan).toContain(
       `group: station-secret-scan-\${{ github.ref }}`,
     );

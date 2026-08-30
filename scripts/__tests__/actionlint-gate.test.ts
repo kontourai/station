@@ -860,6 +860,27 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test('admits only the exact read-only hosted Secret Scan pull_request workflow', () => {
+    const workflow = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/secret-scan.yml',
+    );
+    if (!workflow) throw new Error('Expected the Secret Scan workflow.');
+
+    expect(persistentRunnerPolicyFindings([workflow])).toEqual([]);
+
+    const widened = structuredClone(workflow.document) as {
+      permissions: { contents: string };
+    };
+    widened.permissions.contents = 'write';
+    expect(persistentRunnerPolicyFindings([{ ...workflow, document: widened }]))
+      .toContainEqual({
+        file: '.github/workflows/secret-scan.yml',
+        jobId: 'workflow',
+        message:
+          'candidate-controlled pull_request workflows are prohibited; use the reviewed pull_request_target topology',
+      });
+  });
+
   test('keeps every automatic PR workflow on the reviewed base-controlled topology', () => {
     const workflows = readWorkflowDocuments();
     const expected = [
@@ -2393,7 +2414,7 @@ describe('the real workflow corpus', () => {
       }
     }
 
-    expect(directCapacityJobs).toBe(6);
+    expect(directCapacityJobs).toBe(9);
     expect(recoveryJobs).toBe(2);
     expect(reusableCapacityJobs).toBe(0);
   });

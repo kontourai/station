@@ -2,10 +2,12 @@
 
 > Status: **active while provider-hosted jobs fail at zero steps**. As of 2026-08-01,
 > the private self-hosted build fleet supplies post-merge operational detectors for
-> CI, container, Windows, Android, and Secret Scan, while provider-hosted publish and
+> CI, container, Windows, and Android, while provider-hosted publish and
 > Pages jobs can still fail before executing because of organization billing. A green
 > detector result describes the `main` tree it ran against and **cannot clear a
-> candidate pull request diff**. Inspect the live job steps before classifying a
+> candidate pull request diff**. Secret Scan evaluates the candidate diff before
+> merge, but it does not replace the rest of merge-readiness evidence. Inspect the
+> live job steps before classifying a
 > failure: zero executed steps are `NOT_VERIFIED`, not green and not a product
 > regression. When provider-hosted execution returns, re-run those lanes on main's
 > tip, confirm their result, and retain this document as the outage record.
@@ -29,8 +31,9 @@ subsequent merges operating under it (2026-07-26).
    in the same environment; disclose any baseline result and any NOT_VERIFIED gap.
 4. Keep the branch fresh with `origin/main`, use independent review or fault injection
    where the change's risk warrants it, and state the local evidence basis in the PR.
-   Do not cite a green self-hosted CI or Secret Scan result as PR clearance: those
-   workflows run after merge and do not evaluate the candidate diff.
+   Do not cite a green self-hosted CI result as PR clearance: those workflows run
+   after merge and do not evaluate the candidate diff. Secret Scan is candidate
+   evidence only for the secret-scanning surface.
 5. Use `npm run ci:fast` for bounded affected-test feedback, then run
    `npm run full:regression` once as the final local checkpoint. Its coordinated
    lane exit 0 may mean executed, joined, or reused; it is the sole completion receipt.
