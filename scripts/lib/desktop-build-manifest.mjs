@@ -80,7 +80,7 @@ export function readPackagedReleaseManifest(projectRoot) {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return null;
     }
-    if (parsed.schemaVersion !== 1) return null;
+    if (parsed.schemaVersion !== 2) return null;
     if (typeof parsed.sha !== 'string' || !FULL_GIT_SHA.test(parsed.sha)) {
       return null;
     }
