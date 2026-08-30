@@ -80,6 +80,7 @@ import type { SessionLifecycleState } from '../../../packages/contracts/src/sess
 import {
   foldedSessionLifecycleState,
   SESSION_ENDED_REJECTION_CODE,
+  SESSION_LIFECYCLE_TRANSITIONS,
 } from '../../../packages/contracts/src/session-lifecycle.js';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
 import type { UsagePricingSnapshotCapture } from '../../analytics/usage-pricing-snapshot-capture.js';
@@ -470,6 +471,8 @@ export class SessionEndedError extends Error {
 
 export const ATTACHED_SESSION_READ_ONLY_ERROR =
   'Attached sessions are read-only.';
+export const PEER_DELEGATION_ACTIVITY_READ_ONLY_ERROR =
+  'Peer delegation Activity records are read-only.';
 
 /** A request authority or deliberately named process-wide aggregate scope. */
 export type SessionReadScope = SessionReadAuthority | InternalSessionReadScope;
@@ -690,6 +693,26 @@ function peerDelegationActivityThreadId(
     .digest('hex')
     .slice(0, 32);
   return `peer-delegation:${digest}`;
+}
+
+function peerDelegationLifecyclePath(
+  from: SessionLifecycleState,
+  to: SessionLifecycleState,
+): SessionLifecycleState[] | undefined {
+  const queue: SessionLifecycleState[][] = [[from]];
+  const visited = new Set<SessionLifecycleState>([from]);
+  while (queue.length > 0) {
+    const path = queue.shift()!;
+    const current = path.at(-1)!;
+    for (const next of SESSION_LIFECYCLE_TRANSITIONS[current]) {
+      if (visited.has(next)) continue;
+      const nextPath = [...path, next];
+      if (next === to) return nextPath;
+      visited.add(next);
+      queue.push(nextPath);
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -2598,16 +2621,26 @@ export class OrchestrationService {
         .map((event) => event.payload) ?? [];
     const current = projectSessionLifecycle({ session, events }).lifecycleState;
     if (current === input.status) return false;
-    const event = createManualSessionTransitionEvent({
-      provider: session.provider,
-      threadId,
-      from: current,
-      to: input.status,
-      reason: 'manual_update',
-      source: 'system_recovery',
-      message: 'Observed from the paired Station delegation status endpoint',
-    });
-    this.projectAndPublishEvent(event);
+    const path = peerDelegationLifecyclePath(current, input.status);
+    if (!path) {
+      this.options.logger.warn(
+        'Could not reconcile peer delegation Activity lifecycle',
+        { threadId, from: current, to: input.status },
+      );
+      return false;
+    }
+    for (let index = 1; index < path.length; index += 1) {
+      const event = createManualSessionTransitionEvent({
+        provider: session.provider,
+        threadId,
+        from: path[index - 1],
+        to: path[index],
+        reason: 'manual_update',
+        source: 'system_recovery',
+        message: 'Observed from the paired Station delegation status endpoint',
+      });
+      this.projectAndPublishEvent(event);
+    }
     return true;
   }
 
@@ -3984,6 +4017,15 @@ export class OrchestrationService {
       );
     }
 
+    if (this.isPeerDelegationActivityRecord(commandThreadId)) {
+      const rejectedReceipt = { ...receipt, status: 'rejected' as const };
+      this.persistReceipt(rejectedReceipt);
+      throw new OrchestrationCommandDispatchError(
+        PEER_DELEGATION_ACTIVITY_READ_ONLY_ERROR,
+        rejectedReceipt,
+      );
+    }
+
     if (
       command.type !== 'adoptSession' &&
       this.isReadOnlyAttachedSession(this.commandThreadId(command))
@@ -5078,6 +5120,14 @@ export class OrchestrationService {
         ?.readSessions()
         .find((candidate) => candidate.threadId === threadId);
     return session?.controlMode === 'read-only-attached';
+  }
+
+  private isPeerDelegationActivityRecord(threadId: string): boolean {
+    if (!threadId.startsWith('peer-delegation:')) return false;
+    return Boolean(
+      this.sessionReadModel.get(threadId) ??
+        this.options.eventStore?.readSessionByThread(threadId),
+    );
   }
 
   /**
@@ -6295,6 +6345,7 @@ export class OrchestrationService {
   ): Promise<ProviderAdapterShape | undefined> {
     if (this.quarantinedThreads.has(threadId)) return undefined;
     if (this.isReadOnlyAttachedSession(threadId)) return undefined;
+    if (this.isPeerDelegationActivityRecord(threadId)) return undefined;
     const session =
       this.sessionReadModel.get(threadId) ??
       this.options.eventStore?.readSessionByThread(threadId);

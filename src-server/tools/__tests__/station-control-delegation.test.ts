@@ -879,6 +879,149 @@ describe('Station Control canonical Environment + Agent execution', () => {
     });
   });
 
+  test('returns a successful peer observation when local Activity bookkeeping throws (#847 fix round)', async () => {
+    const recordPeerDelegationActivityOutcome = vi.fn(() => {
+      throw new Error('local projection failed');
+    });
+    const snapshot = {
+      conversationId: 'task-peer-847-observe',
+      taskId: 'task-peer-847-observe',
+      sessionId: 'task-peer-847-observe',
+      currentSessionId: 'task-peer-847-observe',
+      status: 'needs_input',
+      environment: {
+        id: 'environment-current',
+        name: 'Current environment',
+        kind: 'current',
+      },
+      target: { kind: 'agent', id: 'codex' },
+      eventCount: 1,
+      canInterrupt: false,
+      resumable: false,
+    };
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`) {
+        return json({ environmentId: 'environment-current' });
+      }
+      if (url === `${CURRENT_API}/api/environments/ssh`) {
+        return json({ success: true, data: [] });
+      }
+      if (
+        url ===
+        `${CURRENT_API}/api/environments/peers/environment-remote/credential`
+      ) {
+        return json({
+          success: true,
+          data: {
+            environmentId: 'environment-remote',
+            apiBase: REMOTE_API,
+            scope: 'station:peer',
+            credential: 'peer-secret',
+            label: 'Station B',
+          },
+        });
+      }
+      if (
+        url ===
+        `${REMOTE_API}/api/orchestration/delegations/task-peer-847-observe`
+      ) {
+        return json({ success: true, data: snapshot });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await expect(
+      observeDelegatedTask(
+        {
+          taskId: 'task-peer-847-observe',
+          environmentId: 'environment-remote',
+        },
+        { recordPeerDelegationActivityOutcome } as never,
+      ),
+    ).resolves.toMatchObject({ status: 'needs_input' });
+    expect(recordPeerDelegationActivityOutcome).toHaveBeenCalledWith({
+      taskId: 'task-peer-847-observe',
+      environmentId: 'environment-remote',
+      status: 'needs_input',
+    });
+  });
+
+  test('bounds the older-peer 404 fallback session read with the observation timeout (#847 fix round)', async () => {
+    let fallbackSignal: AbortSignal | undefined;
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`) {
+        return json({ environmentId: 'environment-current' });
+      }
+      if (url === `${CURRENT_API}/api/environments/ssh`) {
+        return json({ success: true, data: [] });
+      }
+      if (
+        url ===
+        `${CURRENT_API}/api/environments/peers/environment-remote/credential`
+      ) {
+        return json({
+          success: true,
+          data: {
+            environmentId: 'environment-remote',
+            apiBase: REMOTE_API,
+            scope: 'station:peer',
+            credential: 'peer-secret',
+            label: 'Station B',
+          },
+        });
+      }
+      if (
+        url === `${REMOTE_API}/api/orchestration/delegations/task-peer-legacy`
+      ) {
+        return json({ success: false, error: 'route not found' }, 404);
+      }
+      if (url === `${REMOTE_API}/api/orchestration/sessions/task-peer-legacy`) {
+        fallbackSignal = init?.signal ?? undefined;
+        return json({
+          success: true,
+          data: {
+            session: {
+              provider: 'codex',
+              threadId: 'task-peer-legacy',
+              lifecycleState: 'running',
+            },
+            events: [
+              {
+                method: 'session.started',
+                metadata: {
+                  taskId: 'task-peer-legacy',
+                  conversationId: 'task-peer-legacy',
+                  environmentId: 'environment-remote',
+                  environmentName: 'Station B',
+                  targetKind: 'agent',
+                  targetId: 'codex',
+                },
+              },
+            ],
+          },
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await expect(
+      observeDelegatedTask({
+        taskId: 'task-peer-legacy',
+        environmentId: 'environment-remote',
+        readTimeoutMs: 1_500,
+      }),
+    ).resolves.toMatchObject({ status: 'running' });
+    expect(fallbackSignal).toBeInstanceOf(AbortSignal);
+  });
+
   test('relays target-side delegation validation errors without a fallback', async () => {
     installRemoteStationFetch('/api/orchestration/delegations', undefined);
     // Replace only the canonical target response with a rejection while the

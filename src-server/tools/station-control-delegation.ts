@@ -1723,6 +1723,7 @@ async function existingSession(
   sessionId: string,
   orchestrationService?: OrchestrationService,
   readAuthority?: SessionReadAuthority,
+  signal?: AbortSignal,
 ): Promise<{
   session?: Record<string, unknown>;
   events?: Array<Record<string, unknown>>;
@@ -1740,7 +1741,10 @@ async function existingSession(
     return await getOrchestrationSession<{
       session?: Record<string, unknown>;
       events?: Array<Record<string, unknown>>;
-    }>(target.apiBase, sessionId, target.requestOptions);
+    }>(target.apiBase, sessionId, {
+      ...target.requestOptions,
+      ...(signal ? { signal } : {}),
+    });
   } catch (error) {
     if (error instanceof Error && error.message === 'Session not found') {
       return null;
@@ -1849,11 +1853,15 @@ async function loadDelegatedTask(
   const readAuthority = readAuthorityForInput(input);
   const target = await resolveTarget({ environmentId: input.environmentId });
   localServiceRequiredInHostedMode(target, readAuthority, orchestrationService);
+  const signal = input.readTimeoutMs
+    ? AbortSignal.timeout(input.readTimeoutMs)
+    : undefined;
   let detail = await existingSession(
     target,
     input.taskId,
     orchestrationService,
     readAuthority,
+    signal,
   );
   // archive#4543 MED-1 (issue-author ruling): a delegated task's real
   // session id always carries the `task:` prefix (`delegateTask` mints
@@ -1873,6 +1881,7 @@ async function loadDelegatedTask(
       prefixedId,
       orchestrationService,
       readAuthority,
+      signal,
     );
     if (prefixedDetail?.session) {
       detail = prefixedDetail;
@@ -2691,11 +2700,15 @@ export async function observeDelegatedTask(
         orchestrationService &&
         isSessionLifecycleState(snapshot.status)
       ) {
-        orchestrationService.recordPeerDelegationActivityOutcome({
-          taskId: snapshot.taskId,
-          environmentId: target.environmentId,
-          status: snapshot.status,
-        });
+        try {
+          orchestrationService.recordPeerDelegationActivityOutcome({
+            taskId: snapshot.taskId,
+            environmentId: target.environmentId,
+            status: snapshot.status,
+          });
+        } catch {
+          // The peer read is authoritative; local Activity bookkeeping is not.
+        }
       }
       return snapshot;
     } catch (error) {
@@ -2717,11 +2730,15 @@ export async function observeDelegatedTask(
         orchestrationService &&
         isSessionLifecycleState(snapshot.status)
       ) {
-        orchestrationService.recordPeerDelegationActivityOutcome({
-          taskId: snapshot.taskId,
-          environmentId: target.environmentId,
-          status: snapshot.status,
-        });
+        try {
+          orchestrationService.recordPeerDelegationActivityOutcome({
+            taskId: snapshot.taskId,
+            environmentId: target.environmentId,
+            status: snapshot.status,
+          });
+        } catch {
+          // The peer read is authoritative; local Activity bookkeeping is not.
+        }
       }
       return snapshot;
     }
