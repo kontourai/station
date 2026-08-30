@@ -116,6 +116,15 @@
     font-size: 1.35rem;
   }
 
+  /* #536: page actions are a named PageFrame primitive, not a legacy action
+     row. Own their mobile/coarse-screen touch floor here so every portalled
+     action receives the same 44px target without enlarging `Button size="sm"`
+     in dense non-page contexts. */
+  .page__actions > :is(button, a, .button, [role='button']) {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
   /* station#541 (moved from index.css, review round 2): when the ambient
      dock owns the whole mobile viewport, App.tsx hides the app toolbar and
      reduces --app-toolbar-total-height to the bare safe-area inset
