@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SessionInventoryProjection } from '@kontourai/station-contracts/session-inventory';
@@ -172,7 +173,7 @@ function renderWorkItemMarkup(): string {
       currentProjectId="project"
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: /^Work items1$/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Work items, 1 item' }));
   const markup = view.container.innerHTML;
   view.unmount();
   return markup;
@@ -209,6 +210,22 @@ const { ConnectedSessionInventory } = await import(
 );
 
 describe('ConnectedSessionInventory', () => {
+  test('keeps compact chip text independent of channel accent contrast', () => {
+    const css = readFileSync(INVENTORY_CSS_PATH, 'utf8');
+    // Beta, nightly, and user accents may be intentionally vivid. Tone stays
+    // in the border/tint; readable chip text must remain on the canonical
+    // theme foreground rather than inheriting the channel accent.
+    expect(css).toMatch(
+      /\.session-inventory__state,\s*\.session-inventory__classification\s*\{[^}]*color:\s*var\(--text-primary\)/,
+    );
+    expect(css).toMatch(
+      /\.session-inventory__item--kept \.session-inventory__classification\s*\{[^}]*color:\s*var\(--text-primary\)/,
+    );
+    expect(css).toMatch(
+      /^\.session-inventory__classification\s*\{[^}]*color:\s*var\(--text-primary\)/m,
+    );
+  });
+
   test('renders only a valid structured work item as a safe keyboard link', () => {
     configure();
     hooks.inventory.mockReturnValue({
@@ -222,7 +239,7 @@ describe('ConnectedSessionInventory', () => {
         currentProjectId="project"
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /^Work items1$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Work items, 1 item' }));
     const itemSelection = screen.getByRole('button', {
       name: 'Select item 1 in Work items',
     });
@@ -275,7 +292,9 @@ describe('ConnectedSessionInventory', () => {
       undefined,
       expect.objectContaining({ enabled: false, requestScope }),
     );
-    fireEvent.click(screen.getByRole('button', { name: /^Outputs2\+$/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Inspect output' }));
     await waitFor(() =>
       expect(hooks.inspection).toHaveBeenLastCalledWith(
@@ -314,7 +333,9 @@ describe('ConnectedSessionInventory', () => {
         currentProjectId="project"
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /^Outputs2\+$/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Keep file' }));
     fireEvent.click(await screen.findByRole('button', { name: /Task A/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Add to Task' }));
@@ -345,7 +366,9 @@ describe('ConnectedSessionInventory', () => {
         currentProjectId="project"
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /^Outputs2\+$/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Load more Outputs' }));
     expect(screen.getByRole('alert').textContent).toContain('unavailable');
     expect(screen.queryByText('report.txt')).toBeNull();
@@ -406,7 +429,9 @@ describe('ConnectedSessionInventory', () => {
         currentProjectId="project"
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /^Outputs2\+$/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Outputs, at least 2 items' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Load more Outputs' }));
     await waitFor(() => expect(screen.getByText('page two')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: 'Load more Outputs' }));
@@ -518,6 +543,19 @@ describe('ConnectedSessionInventory', () => {
     expect(screen.queryByText(/^Evidence 21/)).toBeNull();
     hooks.authority = requestScope;
   });
+
+  test('does not turn whole-Session inventory into an aggregate standing', () => {
+    configure();
+    render(
+      <ConnectedSessionInventory
+        sessionId="session"
+        currentProjectId="project"
+      />,
+    );
+    expect(screen.queryByText('Grounded')).toBeNull();
+    expect(screen.getByText('What this session contains')).toBeTruthy();
+    expect(screen.getByText('Session inventory')).toBeTruthy();
+  });
 });
 
 describe.skipIf(!chromiumAvailable)(
@@ -570,6 +608,74 @@ describe.skipIf(!chromiumAvailable)(
           'https://github.com/kontourai/station/issues/235',
         );
         await popupPage.close();
+      } finally {
+        await page.close();
+      }
+    });
+
+    test('adapts desktop, phone, and narrow-pane geometry without horizontal overflow', async () => {
+      const markup = renderWorkItemMarkup();
+      const css = buildInventoryFixtureCss();
+      const page = await browser.newPage({
+        viewport: { width: 1152, height: 768 },
+      });
+      try {
+        await page.setContent(
+          `<!doctype html><style>${css}</style><main id="fixture">${markup}</main>`,
+        );
+        const inventory = page.locator('.session-inventory');
+        const rail = page.locator('.session-inventory__index');
+        const selector = page.locator(
+          '.session-inventory__compact-selector-label',
+        );
+        const detail = page.locator('.session-inventory__detail');
+
+        await expectPlaywright(rail).toHaveCSS('display', 'grid');
+        await expectPlaywright(selector).toHaveCSS('display', 'none');
+        const desktopInventory = await inventory.boundingBox();
+        const desktopDetail = await detail.boundingBox();
+        expect(desktopInventory).not.toBeNull();
+        expect(desktopDetail).not.toBeNull();
+        expect(desktopDetail!.x).toBeGreaterThan(desktopInventory!.x + 150);
+        expect(
+          await page.evaluate(() => document.body.scrollWidth),
+        ).toBeLessThanOrEqual(1152);
+
+        await page.setViewportSize({ width: 390, height: 844 });
+        await expectPlaywright(rail).toHaveCSS('display', 'none');
+        await expectPlaywright(selector).toHaveCSS('display', 'grid');
+        const selectBox = await selector.locator('select').boundingBox();
+        const phoneDetail = await detail.boundingBox();
+        const phoneItem = await page
+          .locator('.session-inventory__item')
+          .boundingBox();
+        const phoneAction = await page
+          .getByRole('link', { name: /Open work item/ })
+          .boundingBox();
+        expect(selectBox?.height).toBeGreaterThanOrEqual(44);
+        expect(phoneDetail).not.toBeNull();
+        expect(phoneItem).not.toBeNull();
+        expect(phoneAction).not.toBeNull();
+        expect(phoneAction!.width).toBeGreaterThanOrEqual(
+          phoneItem!.width - 32,
+        );
+        expect(phoneDetail!.x).toBeGreaterThanOrEqual(0);
+        expect(phoneDetail!.x + phoneDetail!.width).toBeLessThanOrEqual(390);
+        expect(
+          await page.evaluate(() => document.body.scrollWidth),
+        ).toBeLessThanOrEqual(390);
+
+        await page.setViewportSize({ width: 1152, height: 600 });
+        await page.locator('#fixture').evaluate((node) => {
+          (node as HTMLElement).style.width = '420px';
+        });
+        await expectPlaywright(rail).toHaveCSS('display', 'none');
+        await expectPlaywright(selector).toHaveCSS('display', 'grid');
+        expect(
+          await page.evaluate(
+            () => document.querySelector('#fixture')!.scrollWidth,
+          ),
+        ).toBeLessThanOrEqual(420);
       } finally {
         await page.close();
       }
