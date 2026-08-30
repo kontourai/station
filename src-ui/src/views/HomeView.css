@@ -56,6 +56,15 @@
 .home-view__top-actions {
   flex: 0 0 auto;
 }
+
+/* Docking is desktop composition. At phone/tablet widths the ambient dock
+   already owns the mobile pane picker/maximize contract, so this second
+   in-content control is both redundant and visually stranded. */
+@media (max-width: 1024px) {
+  .home-view__top-actions {
+    display: none;
+  }
+}
 .home-view__intro {
   max-width: 680px;
 }
