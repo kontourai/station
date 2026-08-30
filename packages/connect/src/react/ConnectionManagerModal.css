@@ -196,22 +196,6 @@
   font-weight: 600;
 }
 
-.station-connect-chip {
-  flex-shrink: 0;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--accent-primary, #3b82f6);
-  background: color-mix(
-    in srgb,
-    var(--accent-primary, #3b82f6) 15%,
-    transparent
-  );
-}
-
 .station-connect-row__url {
   margin-top: 2px;
   overflow: hidden;
@@ -258,6 +242,45 @@
   gap: 2px;
   opacity: 0.6;
   transition: opacity var(--motion-fast, 0.15s) ease;
+}
+
+.station-connect-row__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: var(--layer-popover, 300);
+  display: grid;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+  background: var(--bg-secondary, #1a1a1a);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+}
+
+.station-connect-row__menu button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary, #e5e5e5);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.station-connect-row__menu button:hover:not(:disabled) {
+  background: var(--bg-hover, #252525);
+}
+
+.station-connect-row__menu button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.station-connect-row__menu .station-connect-row__menu-danger {
+  color: var(--error-text, #ef4444);
 }
 
 .station-connect-row:hover .station-connect-row__actions,
