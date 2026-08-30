@@ -99,20 +99,6 @@ const EXPECTED_PLUGIN_FAILURES = new Map([
       expectedMessageSubstring: 'Unsupported layout tab',
     },
   ],
-  [
-    'knowledge-docs-starter',
-    {
-      issue: 'kontourai/station#765 D1 (same class)',
-      expectedMessageSubstring: 'Unsupported layout tab',
-    },
-  ],
-  [
-    'minimal-layout',
-    {
-      issue: 'kontourai/station#765 D1 (same class)',
-      expectedMessageSubstring: 'Unsupported layout tab',
-    },
-  ],
   // demo-layout shows the class one step earlier: it installs, but its
   // declared layout never appears in the layout catalog at all.
   [
