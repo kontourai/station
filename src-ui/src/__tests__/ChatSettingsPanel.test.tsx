@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ChatSettingsPanel } from '../components/chat/ChatSettingsPanel';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 
 const dismissSummary = vi.fn();
 const showSummary = vi.fn();
@@ -32,6 +33,21 @@ function props() {
 }
 
 describe('ChatSettingsPanel accessibility', () => {
+  test('persists smooth answer reveal to this device and defaults it off', () => {
+    deviceSettingsStore.reset('featureSettings');
+    const rendered = render(<ChatSettingsPanel {...props()} />);
+
+    const toggle = screen.getByRole('switch', {
+      name: 'Smooth answer reveal',
+    });
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+
+    fireEvent.click(toggle);
+    expect(deviceSettingsStore.get('featureSettings').smoothReveal).toBe(true);
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    rendered.unmount();
+    deviceSettingsStore.reset('featureSettings');
+  });
   test('owns focus, traps both Tab directions, closes on Escape, and restores the trigger', async () => {
     const trigger = document.createElement('button');
     trigger.textContent = 'Settings trigger';

@@ -23,6 +23,8 @@ export interface FeatureSettings {
   voiceS2SEnabled: boolean;
   /** Show mobile pairing QR code and network discovery in Settings. */
   mobilePairingEnabled: boolean;
+  /** Reveal streamed assistant text at a steady paint cadence on this device. */
+  smoothReveal?: boolean;
   /** Per-category foreground notification sounds for this device. */
   notificationSounds: NotificationSoundPreferences;
 }
@@ -468,9 +470,8 @@ export const DEVICE_SETTINGS_REGISTRY = [
     key: 'featureSettings',
     scope: 'device',
     descriptor: { kind: 'composite' },
-    label: 'Feature toggles',
-    description:
-      'Per-feature toggles (TTS readback, push notifications, voice pill, mobile pairing).',
+    label: 'Features',
+    description: 'Per-device feature toggles.',
     priorStorageKey: 'station-feature-settings',
     // Confirmed against useFeatureSettings.ts's own DEFAULTS: all off
     // (privacy-sensitive features default conservative).
