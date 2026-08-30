@@ -61,6 +61,35 @@ function eventKey(event: OrchestrationEvent): string {
   return event.eventId || `${event.method}:${event.createdAt}`;
 }
 
+const CANONICAL_UTC_TIMESTAMP =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+
+function compareCreatedAt(
+  left: OrchestrationEvent,
+  right: OrchestrationEvent,
+): number {
+  if (left.createdAt === right.createdAt) return 0;
+  // Normal Station producers use Date#toISOString, whose fixed-width UTC
+  // spelling is chronologically lexicographic. Attached Claude transcripts
+  // may retain a valid source offset, so normalize only that exceptional
+  // shape rather than paying Date.parse/Intl cost for every live event.
+  if (
+    !CANONICAL_UTC_TIMESTAMP.test(left.createdAt) ||
+    !CANONICAL_UTC_TIMESTAMP.test(right.createdAt)
+  ) {
+    const leftEpoch = Date.parse(left.createdAt);
+    const rightEpoch = Date.parse(right.createdAt);
+    if (
+      Number.isFinite(leftEpoch) &&
+      Number.isFinite(rightEpoch) &&
+      leftEpoch !== rightEpoch
+    ) {
+      return leftEpoch < rightEpoch ? -1 : 1;
+    }
+  }
+  return left.createdAt < right.createdAt ? -1 : 1;
+}
+
 /** Merge persisted recovery state and live frames without replay duplicates. */
 export function mergeSessionEvents(
   current: OrchestrationEvent[],
@@ -71,9 +100,7 @@ export function mergeSessionEvents(
   for (const event of [...current, ...incoming]) {
     byId.set(eventKey(event), event);
   }
-  const ordered = [...byId.values()].sort((a, b) =>
-    a.createdAt.localeCompare(b.createdAt),
-  );
+  const ordered = [...byId.values()].sort(compareCreatedAt);
   const live = ordered.filter((event) => !persistedKeys.has(eventKey(event)));
   let retained = live.slice(-MAX_FEED_EVENTS);
   const boundaryTurnId = retained[0]?.turnId;
@@ -124,9 +151,7 @@ function prependOlderSessionEvents(
 ): OrchestrationEvent[] {
   const byId = new Map<string, OrchestrationEvent>();
   for (const event of [...older, ...current]) byId.set(eventKey(event), event);
-  return [...byId.values()].sort((a, b) =>
-    a.createdAt.localeCompare(b.createdAt),
-  );
+  return [...byId.values()].sort(compareCreatedAt);
 }
 
 export interface SessionEventStream {

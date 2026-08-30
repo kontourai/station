@@ -65,6 +65,30 @@ describe('Attention Routes', () => {
     expect(body).toEqual(expect.objectContaining({ success: false }));
   });
 
+  /**
+   * Contract pin (#890 review). The SDK's `acknowledgeAttentionItem` treats a
+   * 404 carrying THIS EXACT message as a no-op — the item left the projection
+   * between render and click, which is not a failure worth reporting — while
+   * letting every other 404 propagate. That discrimination is only sound while
+   * the message is stable, and nothing else pins it, so changing the string
+   * below without updating `packages/sdk/src/query-domains/attention.ts` must
+   * fail here rather than silently turn benign staleness back into a rendered
+   * error in the user's inbox.
+   */
+  test('the 404 body carries the exact message the SDK discriminates on', async () => {
+    const app = createAttentionRoutes({
+      list: vi.fn(),
+      acknowledge: vi.fn().mockResolvedValue(false),
+    } as never);
+
+    const response = await app.request('/no-such-item/ack', { method: 'POST' });
+
+    expect(await json(response)).toEqual({
+      success: false,
+      error: 'Attention item is not acknowledgeable',
+    });
+  });
+
   test('threads request authority through both session-derived reads and acknowledgement', async () => {
     const authority = sessionReadAuthorityFromRequest(
       'alpha',
@@ -80,6 +104,10 @@ describe('Attention Routes', () => {
     await app.request('/');
     await app.request('/session-failed:alpha/ack', { method: 'POST' });
 
+    // The second argument arrived with #765 D5 (`viewerCanDecide` is derived
+    // from the request principal, and defaults closed when no predicate is
+    // wired). Asserted explicitly rather than relaxed to `expect.anything()`:
+    // the fail-closed `false` is the security-relevant half of this call.
     expect(list).toHaveBeenCalledWith(authority, {
       mayDecidePairingRequests: false,
     });

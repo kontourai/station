@@ -99,6 +99,21 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ChatInputArea', () => {
+  test('surfaces a microphone permission failure in the composer', () => {
+    renderChatInputArea({
+      voiceState: 'error',
+      voiceSupported: true,
+      voiceError:
+        'Microphone permission was denied. Allow access and try again.',
+      onVoiceStart: vi.fn(),
+      onVoiceStop: vi.fn(),
+    });
+
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Microphone permission was denied',
+    );
+  });
+
   test('autosizes the textarea to measured content and clamps overflow', () => {
     const { rerender } = render(
       <ChatInputArea {...renderProps({ input: 'one' })} />,

@@ -20,6 +20,7 @@ import {
   useSchedulerStatus,
   useToggleJob,
 } from '../hooks/useScheduler';
+import { errorText } from '../utils/errorText';
 import { hostPressureKind } from '../utils/resourcePosture';
 import { useSortableTable } from './SortableTable';
 import { ScheduleEmptyState } from './schedule/ScheduleEmptyState';
@@ -78,6 +79,7 @@ export function ScheduleView() {
         cron: string;
         schedule: SchedulerSchedule;
         prompt: string;
+        agent: string;
       }>
     | undefined
   >(undefined);
@@ -85,8 +87,10 @@ export function ScheduleView() {
     title: string;
     message: string;
     variant: 'danger' | 'warning';
+    confirmLabel?: string;
     onConfirm: () => void;
   } | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
   const [runTarget, setRunTarget] = useState(() =>
     new URLSearchParams(window.location.search).get('run'),
   );
@@ -132,19 +136,43 @@ export function ScheduleView() {
   // pressing Run now on a healthy job produced no feedback at all, and the
   // only evidence the run happened was a row that eventually changed. Both
   // outcomes get a toast; a primary action the user pressed always answers.
-  const handleRun = useCallback(
+  const hostPressure = hostPressureKind(resourcePosture);
+  const startRun = useCallback(
     (name: string) => {
+      setRunError(null);
       runJob.mutate(name, {
         onSuccess: () => {
           showToast(`Started a run of '${name}'.`);
         },
         onError: (e: Error) => {
           markErrorShown(name);
-          showToast(`Failed to run '${name}': ${e.message}`);
+          const message = errorText(e);
+          setRunError(`Failed to run '${name}': ${message}`);
+          showToast(`Failed to run '${name}': ${message}`);
         },
       });
     },
     [runJob, showToast, markErrorShown],
+  );
+
+  const handleRun = useCallback(
+    (name: string) => {
+      if (!hostPressure) {
+        startRun(name);
+        return;
+      }
+      setConfirmAction({
+        title: 'Run while host is busy?',
+        message: `The host is under pressure. Start '${name}' anyway?`,
+        variant: 'warning',
+        confirmLabel: 'Run anyway',
+        onConfirm: () => {
+          setConfirmAction(null);
+          startRun(name);
+        },
+      });
+    },
+    [hostPressure, startRun],
   );
 
   // Both scheduler reads failed. What we may say about that is derived from
@@ -178,7 +206,6 @@ export function ScheduleView() {
   // Undefined unless the host is under the pressure that defers scheduled
   // runs; the kind carries which words this posture gets (banner and Schedule
   // share that derivation).
-  const hostPressure = hostPressureKind(resourcePosture);
   // Scoped to the job actually being run: React Query reports the in-flight
   // mutation's own variables, so one job's request cannot disable every other
   // job's Run button.
@@ -215,6 +242,8 @@ export function ScheduleView() {
             successRate={successRate}
             totalRuns={totalRuns}
           />
+
+          {runError && <p role="alert">{runError}</p>}
 
           {runTarget && !runsLoading && !exactRun && (
             <p role="status">
@@ -272,6 +301,7 @@ export function ScheduleView() {
                   cron: job.cron,
                   schedule: job.schedule,
                   prompt: job.prompt,
+                  agent: job.agent,
                 });
                 setShowAddForm(true);
               }}
@@ -332,7 +362,8 @@ export function ScheduleView() {
           message={confirmAction.message}
           variant={confirmAction.variant}
           confirmLabel={
-            confirmAction.variant === 'danger' ? 'Delete' : 'Disable'
+            confirmAction.confirmLabel ??
+            (confirmAction.variant === 'danger' ? 'Delete' : 'Disable')
           }
           onConfirm={confirmAction.onConfirm}
           onCancel={() => setConfirmAction(null)}

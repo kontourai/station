@@ -75,7 +75,7 @@ function StreamingMessageComponent({
   owner,
   onContentChange,
 }: Props) {
-  const { streamingText, hasContent, contentParts } =
+  const { streamingText, hasContent, contentParts, contentRevision } =
     useStreamingContent(sessionId);
   useStreamingHaptics(sessionId, streamingText.length);
   const progressSummary = deriveToolProgressSummary(contentParts);
@@ -89,20 +89,12 @@ function StreamingMessageComponent({
   // one of its calls is still `running`, so the collapsed summary never
   // claims a batch is done before it is.
   const blocks = useMemo(() => splitToolCallRuns(contentParts), [contentParts]);
-  const contentGrowthKey = useMemo(
-    () =>
-      `${streamingText}\u0000${contentParts
-        .map((part) => `${part.type}:${part.content ?? ''}`)
-        .join('\u0001')}`,
-    [contentParts, streamingText],
-  );
-
   useEffect(() => {
-    // The key is the measured streaming-content revision; reading it here
-    // keeps this effect tied to text and part growth without changing rows.
-    void contentGrowthKey;
+    // The numeric revision is intentionally read here: it is the O(1)
+    // dependency that replaces rebuilding the complete transcript string.
+    void contentRevision;
     onContentChange?.();
-  }, [contentGrowthKey, onContentChange]);
+  }, [contentRevision, onContentChange]);
 
   return (
     <div className="streaming-message">

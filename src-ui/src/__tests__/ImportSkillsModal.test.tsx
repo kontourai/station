@@ -26,6 +26,7 @@ describe('ImportSkillsModal', () => {
         isOpen
         pending={false}
         results={null}
+        error={null}
         onImport={onImport}
         onCancel={vi.fn()}
       />,
@@ -74,6 +75,7 @@ describe('ImportSkillsModal', () => {
           },
           { filename: 'empty.md', success: false, error: 'File has no body' },
         ]}
+        error={null}
         onImport={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -94,11 +96,29 @@ describe('ImportSkillsModal', () => {
         isOpen
         pending
         results={null}
+        error={null}
         onImport={vi.fn()}
         onCancel={vi.fn()}
       />,
     );
 
     expect(screen.getByText('Importing…')).toBeTruthy();
+  });
+
+  test('renders a request failure in the import dialog', () => {
+    render(
+      <ImportSkillsModal
+        isOpen
+        pending={false}
+        results={null}
+        error="Station could not import that file"
+        onImport={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Station could not import that file',
+    );
   });
 });

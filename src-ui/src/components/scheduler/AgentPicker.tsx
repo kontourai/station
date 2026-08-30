@@ -5,6 +5,12 @@ import { AgentIcon } from '../icons/AgentIcon';
 import { CheckGlyph } from '../icons/Glyph';
 import { Empty } from '../state';
 
+export function schedulerRunnableAgents(agents: AgentData[]): AgentData[] {
+  return agents.filter(
+    (agent) => agent.available !== false && !agent.execution?.agentConnectionId,
+  );
+}
+
 export function AgentPicker({
   value,
   onChange,
@@ -13,6 +19,10 @@ export function AgentPicker({
   onChange: (slug: string) => void;
 }) {
   const agents = useAgents();
+  const runnableAgents = useMemo(
+    () => schedulerRunnableAgents(agents),
+    [agents],
+  );
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -20,13 +30,13 @@ export function AgentPicker({
   const selected = agents.find((a) => a.slug === value);
 
   const filtered = useMemo(() => {
-    if (!filter) return agents;
+    if (!filter) return runnableAgents;
     const q = filter.toLowerCase();
-    return agents.filter(
+    return runnableAgents.filter(
       (a) =>
         a.name.toLowerCase().includes(q) || a.slug.toLowerCase().includes(q),
     );
-  }, [agents, filter]);
+  }, [runnableAgents, filter]);
 
   useEffect(() => {
     if (!open) return;
@@ -65,13 +75,11 @@ export function AgentPicker({
     setFilter('');
   };
 
-  if (!agents.length) {
+  if (!runnableAgents.length) {
     return (
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="agent slug"
-      />
+      <button type="button" className="agent-picker__trigger" disabled>
+        No runnable agents
+      </button>
     );
   }
 
@@ -102,7 +110,7 @@ export function AgentPicker({
             className="agent-picker__dropdown"
             style={{ top: pos.top, left: pos.left, width: pos.width }}
           >
-            {agents.length > 1 && (
+            {runnableAgents.length > 1 && (
               <div className="agent-picker__filter-wrap">
                 <input
                   value={filter}
