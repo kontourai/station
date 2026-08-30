@@ -605,8 +605,8 @@ jobs:
       RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
       IOS_BUNDLE_VERSION: ${{ needs.preflight.outputs.ios_bundle_version }}
       STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
-      # Store-upload credentials. Deliberately optional: their absence must
-      # never fail this job, only skip the TestFlight upload step below.
+      # A stable iOS tag declares TestFlight as its delivery authority. These
+      # credentials are therefore required and checked before signing work.
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
       APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
@@ -652,8 +652,16 @@ jobs:
             echo "configured=false" >> "$GITHUB_OUTPUT"
           fi
       - run: npm run dependencies:ci && npm run build:native-client
+      - name: Verify App Store Connect app authority
+        id: app_store
+        run: |
+          mkdir -p provider-receipts
+          node scripts/app-store-connect-receipt.mjs app-preflight \
+            --bundle-id io.kontourai.station \
+            --output provider-receipts/app-store-connect-app-preflight.json \
+            --github-output "$GITHUB_OUTPUT"
       - run: node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --output "$RUNNER_TEMP/tauri.release.conf.json"
-      - name: Import protected Apple signing material
+      - name: Import protected Apple signing and store material
         env:
           APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
           APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
@@ -661,7 +669,7 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_IOS_SIGNING_IDENTITY }}
           APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
         run: |
-          for name in APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD APPLE_DEVELOPMENT_TEAM APPLE_SIGNING_IDENTITY APPLE_PROVISIONING_PROFILE_BASE64; do
+          for name in APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD APPLE_DEVELOPMENT_TEAM APPLE_SIGNING_IDENTITY APPLE_PROVISIONING_PROFILE_BASE64 APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY; do
             test -n "${!name}" || { echo "Missing required protected secret: $name" >&2; exit 1; }
           done
           certificate="$RUNNER_TEMP/station.p12"
@@ -711,7 +719,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: { name: station-ios-device, path: release-assets, if-no-files-found: error, retention-days: 14 }
       - name: Upload to TestFlight
-        if: ${{ env.APPLE_API_KEY_ID != '' }}
+        id: testflight_upload
         uses: apple-actions/upload-testflight-build@5e75ff58276689011512ba87a381d93dc67dbcf8 # v5.3.0
         with:
           app-path: release-assets/station-${{ env.RELEASE_TAG }}-ios-device.ipa
@@ -719,9 +727,27 @@ jobs:
           issuer-id: ${{ env.APPLE_API_ISSUER_ID }}
           api-key-id: ${{ env.APPLE_API_KEY_ID }}
           api-private-key: ${{ env.APPLE_API_PRIVATE_KEY }}
-      - name: Note skipped TestFlight upload
-        if: ${{ env.APPLE_API_KEY_ID == '' }}
-        run: echo "::notice::APPLE_API_KEY_ID is not configured; skipping the TestFlight upload. The signed IPA is still attached to the GitHub release. See docs/guides/mobile-release.md to configure store upload."
+          wait-for-processing: 'true'
+      - name: Record the processed TestFlight build receipt
+        env:
+          APP_STORE_APP_ID: ${{ steps.app_store.outputs.app_id }}
+          WORKFLOW_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node scripts/app-store-connect-receipt.mjs build-receipt \
+            --app-id "$APP_STORE_APP_ID" \
+            --bundle-id io.kontourai.station \
+            --bundle-version "$IOS_BUNDLE_VERSION" \
+            --source-sha "${{ needs.preflight.outputs.sha }}" \
+            --ipa "release-assets/station-${RELEASE_TAG}-ios-device.ipa" \
+            --workflow-run-url "$WORKFLOW_RUN_URL" \
+            --output provider-receipts/testflight-build-receipt.json
+      - name: Retain TestFlight provider receipts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: station-ios-testflight-receipts
+          path: provider-receipts
+          if-no-files-found: error
+          retention-days: 30
 
   container:
     needs: preflight

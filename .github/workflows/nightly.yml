@@ -31,6 +31,9 @@ on:
     - cron: '0 9 * * *'
   workflow_dispatch:
     inputs:
+      source_sha:
+        description: 'Optional exact 40-character commit from main to build across every Nightly leg. Leave empty to bind the workflow event SHA.'
+        required: false
       rebuild_index:
         description: 'Optional same-day rebuild index (0-99), not a boolean. Leave empty to build the latest main once; an explicit index must be unused and above existing same-day reservations.'
         required: false
@@ -71,14 +74,41 @@ jobs:
       contents: read
     runs-on: ubuntu-22.04
     timeout-minutes: 45
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Same workflow run as the build job, and both jobs resolve this
-          # same immutable event SHA; writing it out keeps the "exact commit
-          # the nightly ships" contract readable.
-          ref: ${{ github.sha }}
+          # A manual promotion may deliberately pin an earlier commit that is
+          # still on main. Every build job consumes the validated output below,
+          # never its own independently resolved "latest" revision.
+          ref: ${{ inputs.source_sha || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
+
+      - id: source
+        name: Bind every Nightly leg to one main revision
+        env:
+          REQUESTED_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          source_sha=$(git rev-parse HEAD)
+          if [ -n "$REQUESTED_SOURCE_SHA" ]; then
+            [[ "$REQUESTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::source_sha must be exactly 40 lowercase hexadecimal characters."
+              exit 1
+            }
+            test "$source_sha" = "$REQUESTED_SOURCE_SHA" || {
+              echo "::error::checkout resolved $source_sha instead of requested $REQUESTED_SOURCE_SHA."
+              exit 1
+            }
+            git fetch --no-tags origin main
+            git merge-base --is-ancestor "$source_sha" origin/main || {
+              echo "::error::requested source_sha is not an ancestor of origin/main."
+              exit 1
+            }
+          fi
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "Nightly source revision: $source_sha" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc }
@@ -178,7 +208,7 @@ jobs:
           # gate job checks out the same immutable event SHA, so the SHA the
           # tests verdict applies to stays identical to the SHA this job
           # builds and ships even if that default ever changes.
-          ref: ${{ github.sha }}
+          ref: ${{ needs.test-gate.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -886,7 +916,7 @@ jobs:
           printf 'epoch=%s\n' "$epoch" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.test-gate.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
 
