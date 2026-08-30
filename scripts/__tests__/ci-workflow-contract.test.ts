@@ -287,12 +287,21 @@ describe('CI verification workflow contracts', () => {
         new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
       ),
     ).toHaveLength(1);
+    expect(
+      workflow('ci-extended.yml').match(
+        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
+      ),
+    ).toHaveLength(2);
+    expect(
+      workflow('nightly-gallery.yml').match(
+        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
+      ),
+    ).toHaveLength(1);
 
     for (const name of [
       'android-test.yml',
       'build-android.yml',
       'ci.yml',
-      'ci-extended.yml',
       'nightly.yml',
       'publish-packages.yml',
       'backlog-priority-policy.yml',
@@ -310,7 +319,7 @@ describe('CI verification workflow contracts', () => {
     expect(emulatorSmoke).toContain('timeout-minutes: 90');
   });
 
-  it('keeps CI Extended as the sole manual full-browser surface without rerunning ci:fast', () => {
+  it('keeps CI Extended as the weekly and manual full-browser surface without rerunning ci:fast', () => {
     const ci = workflow('ci.yml');
     const extended = workflow('ci-extended.yml');
     const coverage = extended.slice(
@@ -329,18 +338,88 @@ describe('CI verification workflow contracts', () => {
     expect(extended).not.toContain('run: npm run ci:fast');
     expect(extended).toContain('run: npm run test:coverage');
     expect(extended).toContain('run: npm run verify:e2e:full');
+    expect(extended).toContain("- cron: '30 11 * * 6'");
+    expect(extended).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(coverage).toContain('needs: playwright-full');
     expect(coverage).toContain(
       "always() && !cancelled() && github.event_name != 'pull_request'",
     );
     expect(playwrightFull).not.toContain('needs: coverage');
-    expect(coverage).toContain('runs-on: ubuntu-22.04');
-    expect(playwrightFull).toContain('runs-on: ubuntu-22.04');
+    expect(coverage).toContain(
+      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]',
+    );
+    expect(playwrightFull).toContain(
+      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
+    );
     for (const job of [coverage, playwrightFull]) {
       expect(job).toContain("github.event_name != 'pull_request'");
-      expect(job).not.toContain('physical-host-capacity@');
-      expect(job).not.toContain('self-hosted');
+      expect(job).toContain('runner-preflight@');
+      expect(job).toContain('physical-host-capacity@');
+      expect(job).toContain('owner-lifetime-seconds: "7800"');
     }
+  });
+
+  it('runs only the exact screenshot bucket nightly and fails on baseline drift (#518, #875)', () => {
+    const gallery = workflow('nightly-gallery.yml');
+    const runBodies = extractRunBodies(gallery);
+
+    expect(gallery).toMatch(/^name: Nightly gallery$/m);
+    expect(gallery).toContain("- cron: '30 7 * * *'");
+    expect(gallery).toMatch(/^ {2}workflow_dispatch:$/m);
+    expect(gallery).toContain(`group: nightly-gallery-\${{ github.ref }}`);
+    expect(gallery).toContain('cancel-in-progress: true');
+    expect(gallery).toContain("if: github.event_name != 'pull_request'");
+    expect(gallery).toContain(
+      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
+    );
+    expect(gallery).toContain('runner-preflight@');
+    expect(gallery).toContain('physical-host-capacity@');
+    expect(gallery).toContain('lease-weight: "5"');
+    expect(gallery).toContain('owner-lifetime-seconds: "7800"');
+    expect(runBodies).toContain(
+      'node scripts/run-e2e-coverage.mjs --only=screenshot',
+    );
+    expect(runBodies).toContain('npm run screenshot:diff');
+    expect(runBodies.indexOf('--only=screenshot')).toBeLessThan(
+      runBodies.indexOf('npm run screenshot:diff'),
+    );
+    expect(runBodies).not.toContain('npm run verify:e2e:full');
+    expect(runBodies).not.toContain('npm run test:coverage');
+    expect(gallery).toContain('name: Upload gallery and pixel diffs');
+    expect(gallery).toContain('if: always()');
+    expect(gallery).toContain('continue-on-error: true');
+    expect(gallery).toContain('gallery/');
+
+    // The rot alarm is only an alarm if a pixel mismatch FAILS the job. A
+    // file-level `toContain('continue-on-error')` would stay green if that
+    // key migrated onto the capture/diff step, so pin it to the upload step:
+    // everything before the upload must be able to fail the job.
+    const uploadIndex = gallery.indexOf('name: Upload gallery and pixel diffs');
+    expect(uploadIndex).toBeGreaterThan(-1);
+    expect(gallery.slice(0, uploadIndex)).not.toContain('continue-on-error');
+  });
+
+  it('the nightly gallery entrypoint reaches the suppression-injecting suite (station#875)', () => {
+    // nightly-gallery.yml runs run-e2e-coverage.mjs, but the hermetic-roster
+    // flag lives in run-e2e-suite.mjs. Nothing else asserts that chain, so a
+    // renamed bucket script would leave every test green while the nightly
+    // captured with the fleet host's real CLIs — the exact daily re-red this
+    // lane exists to prevent.
+    const coverage = readFileSync(
+      resolve(root, 'scripts/run-e2e-coverage.mjs'),
+      'utf8',
+    );
+    expect(coverage).toContain("name: 'screenshot'");
+    expect(coverage).toContain("script: 'test:e2e:screenshot'");
+    const pkg = JSON.parse(
+      readFileSync(resolve(root, 'package.json'), 'utf8'),
+    ) as { scripts: Record<string, string> };
+    expect(pkg.scripts['test:e2e:screenshot']).toContain('--suite=screenshot');
+    const suite = readFileSync(
+      resolve(root, 'scripts/run-e2e-suite.mjs'),
+      'utf8',
+    );
+    expect(suite).toContain('STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION');
   });
 
   it('runs browser smoke only after the full completion gate releases capacity', () => {
@@ -672,7 +751,6 @@ describe('CI verification workflow contracts', () => {
   it('keeps Linux CI on GitHub-hosted runners and desktop-win for hardware reference', () => {
     const linuxWorkflows = [
       'ci.yml',
-      'ci-extended.yml',
       'android-test.yml',
       'build-android.yml',
       'secret-scan.yml',
@@ -695,6 +773,12 @@ describe('CI verification workflow contracts', () => {
     );
     expect(workflow('container-smoke.yml')).toContain(
       'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]',
+    );
+    expect(workflow('ci-extended.yml')).toContain(
+      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
+    );
+    expect(workflow('nightly-gallery.yml')).toContain(
+      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
     );
     const recovery = workflow('recover-terminal-capacity-owner.yml');
     expect(recovery).toContain(
@@ -1095,6 +1179,7 @@ describe('artifact storage does not accumulate or gate verdicts', () => {
     ['ci.yml', 'ci-fast-verification'],
     ['ci.yml', 'full-regression-verification'],
     ['ci-extended.yml', 'coverage-verification'],
+    ['nightly-gallery.yml', 'nightly-gallery'],
   ])('%s: the %s diagnostic upload cannot fail its job', (file, artifact) => {
     // A diagnostic that cannot be stored is an infrastructure condition, not
     // a verdict on the code. Read backwards from the artifact name to the
