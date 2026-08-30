@@ -461,6 +461,10 @@ function fulfillScheduleJobsEmptyFixture(route: Route): Promise<void> {
   return route.fulfill({ json: { success: true, data: [] } });
 }
 
+/* Callers MUST capture the returned cleanup and run it in afterGoto's
+   finally — `Screen.beforeGoto`'s void return type accepts a bare
+   `seedScheduleScreenshotApi` shorthand that silently discards it,
+   reinstating the cross-screen route leak this fixes (#573). */
 async function seedScheduleScreenshotApi(
   page: Page,
 ): Promise<() => Promise<void>> {
