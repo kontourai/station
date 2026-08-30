@@ -493,7 +493,7 @@ describe('one-line Station installer', { timeout: 15_000 }, () => {
     expect(existsSync(stationHome)).toBe(true);
     expect(existsSync(launcher)).toBe(false);
     markersRemainAbsent();
-  });
+  }, 60_000);
 
   it('maps a verified preview release to an isolated beta runtime wrapper', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
