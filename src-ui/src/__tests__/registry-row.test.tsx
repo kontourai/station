@@ -126,6 +126,23 @@ describe('renderSettingRow', () => {
       expect(select.value).toBe('strands');
     });
 
+    test('persisted internal settings fail closed instead of rendering a row', () => {
+      const def = stringDef({
+        key: 'runtime' as any,
+        descriptor: { kind: 'enum', values: ['voltagent', 'strands'] },
+        label: 'Station engine framework (internal)',
+        userFacing: false,
+      });
+      const { container } = render(
+        renderSettingRow({
+          definition: def,
+          value: 'voltagent',
+          onChange: vi.fn(),
+        }),
+      );
+      expect(container).toBeEmptyDOMElement();
+    });
+
     test('number: undefined value keeps the input empty and shows the default as the placeholder', () => {
       const def = stringDef({
         key: 'defaultMaxTurns' as any,
