@@ -29,6 +29,7 @@ const NIGHTLY_TRAY_ICON: &[u8] = include_bytes!("../icons/nightly/icon.png");
 const DEV_TRAY_ICON: &[u8] = include_bytes!("../icons/dev/icon.png");
 const CORE_UPDATE_SETTINGS_PATH: &str = "/settings?view=system&highlight=core-app-updates";
 const TRAY_NAVIGATION_EVENT: &str = "station://tray-navigation";
+const UPDATE_SETTINGS_LABEL: &str = "Update settings…";
 
 #[derive(Clone)]
 struct TrayState {
@@ -156,7 +157,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     let updates = MenuItem::with_id(
         app,
         "tray-updates",
-        "Check for updates…",
+        UPDATE_SETTINGS_LABEL,
         false,
         None::<&str>,
     )?;
@@ -337,17 +338,21 @@ fn station_home(app: &AppHandle) -> std::path::PathBuf {
     resolve_station_home_for_channel(packaged_channel(app).map(std::ffi::OsStr::new))
 }
 
-fn apply_primary_health(state: &TrayState, snapshot: TrayBackendSnapshot) {
+fn apply_primary_health(
+    state: &TrayState,
+    snapshot: TrayBackendSnapshot,
+    destinations: TrayDestinationAvailability,
+) {
     let label = snapshot.health.label();
     let _ = state.status.set_text(format!("Status: {label}"));
     let _ = state.backend.set_text(&snapshot.label);
     let _ = state.open_ui.set_text(&snapshot.ui_label);
-    let _ = state.open_ui.set_enabled(snapshot.can_open_ui());
+    let _ = state.open_ui.set_enabled(destinations.open_ui);
     let _ = state.api_docs.set_text(&snapshot.api_docs_label);
     let _ = state.api_docs.set_enabled(snapshot.can_open_api_docs());
-    let _ = state.connections.set_enabled(snapshot.can_navigate());
-    let _ = state.connected_clients.set_enabled(snapshot.can_navigate());
-    let _ = state.updates.set_enabled(snapshot.can_navigate());
+    let _ = state.connections.set_enabled(destinations.navigation);
+    let _ = state.connected_clients.set_enabled(destinations.navigation);
+    let _ = state.updates.set_enabled(destinations.navigation);
     let _ = state.service_action.set_text(snapshot.action.label);
     let _ = state.service_action.set_enabled(snapshot.action.enabled);
     let _ = state.tray.set_tooltip(Some(tray_tooltip(
@@ -430,13 +435,33 @@ impl TrayBackendSnapshot {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TrayDestinationAvailability {
+    open_ui: bool,
+    navigation: bool,
+}
+
+/// Service destinations open in the system browser and do not require a
+/// webview. Built-in sidecar destinations are native-to-webview routes, so a
+/// missing main window makes them unreachable and must render them disabled.
+fn tray_destination_availability(
+    snapshot: &TrayBackendSnapshot,
+    main_window_available: bool,
+) -> TrayDestinationAvailability {
+    let route_available = snapshot.kind != TrayBackendKind::Sidecar || main_window_available;
+    TrayDestinationAvailability {
+        open_ui: snapshot.can_open_ui() && route_available,
+        navigation: snapshot.can_navigate() && route_available,
+    }
+}
+
 struct TrayContext {
     snapshot: TrayBackendSnapshot,
     service: Option<ResolvedLocalService>,
     api_origin: Option<String>,
 }
 
-#[derive(Clone, Copy, serde::Serialize)]
+#[derive(Clone, Copy, Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 enum TrayNavigationDestination {
     Connections,
@@ -686,8 +711,9 @@ fn open_paired_devices(app: &AppHandle) {
 }
 
 fn open_core_update_settings(app: &AppHandle) {
-    // Settings' CoreUpdateCheck is the sole update authority: it owns the
-    // check/recheck/apply/restart lifecycle. The tray only opens its fixed UI.
+    // This intentionally promises only navigation. The connected Station's
+    // CoreUpdateCheck and the native desktop updater are different mechanisms;
+    // opening this fixed settings destination does not check the desktop app.
     open_station_destination(
         app,
         TrayNavigationDestination::CoreUpdates,
@@ -703,25 +729,49 @@ fn open_station_destination(
     let context = tray_context(app);
     match context.snapshot.kind {
         TrayBackendKind::Service => {
-            if let Some(service) = context.service {
-                if let Ok(url) = destination(&service.manifest) {
-                    let _ = app.opener().open_url(url, None::<&str>);
+            let Some(service) = context.service else {
+                log::warn!(
+                    "Station tray could not open {destination_kind:?}: trusted service disappeared"
+                );
+                return;
+            };
+            match destination(&service.manifest) {
+                Ok(url) => {
+                    if let Err(error) = app.opener().open_url(url, None::<&str>) {
+                        log::error!(
+                            "Station tray could not open {destination_kind:?}: native opener rejected the destination: {error}"
+                        );
+                    }
+                }
+                Err(error) => log::error!(
+                    "Station tray refused the {destination_kind:?} destination: {error}"
+                ),
+            }
+        }
+        TrayBackendKind::Sidecar => match focus_station_window(app) {
+            Ok(label) => {
+                if let Err(error) = app.emit_to(label, TRAY_NAVIGATION_EVENT, destination_kind) {
+                    log::error!("Station tray could not navigate to {destination_kind:?}: {error}");
                 }
             }
-        }
-        TrayBackendKind::Sidecar => {
-            if let Some(label) = focus_station_window(app) {
-                let _ = app.emit_to(label, TRAY_NAVIGATION_EVENT, destination_kind);
+            Err(error) => {
+                log::warn!("Station tray could not navigate to {destination_kind:?}: {error}")
             }
+        },
+        TrayBackendKind::Unavailable => {
+            log::warn!("Station tray could not open {destination_kind:?}: backend is unavailable")
         }
-        TrayBackendKind::Unavailable => {}
     }
 }
 
-fn focus_station_window(app: &AppHandle) -> Option<String> {
-    let label = app.get_webview_window("main")?.label().to_string();
+fn focus_station_window(app: &AppHandle) -> Result<String, &'static str> {
+    let label = app
+        .get_webview_window("main")
+        .ok_or("main window does not exist")?
+        .label()
+        .to_string();
     crate::request_main_window_activation(app);
-    Some(label)
+    Ok(label)
 }
 
 fn tray_icon_bytes(channel: Option<&str>) -> &'static [u8] {
@@ -743,18 +793,24 @@ fn open_station_ui(app: &AppHandle) {
     let context = tray_context(app);
     match context.snapshot.kind {
         TrayBackendKind::Service => {
-            if let Some(service) = context.service {
-                if let Err(error) = open_manifest_ui(&service.manifest, |url| {
-                    app.opener().open_url(url.to_owned(), None::<&str>)
-                }) {
-                    log::error!("Station tray could not open the UI: {error}");
-                }
+            let Some(service) = context.service else {
+                log::warn!("Station tray could not open the UI: trusted service disappeared");
+                return;
+            };
+            if let Err(error) = open_manifest_ui(&service.manifest, |url| {
+                app.opener().open_url(url.to_owned(), None::<&str>)
+            }) {
+                log::error!("Station tray could not open the UI: {error}");
             }
         }
         TrayBackendKind::Sidecar => {
-            let _ = focus_station_window(app);
+            if let Err(error) = focus_station_window(app) {
+                log::warn!("Station tray could not show the UI: {error}");
+            }
         }
-        TrayBackendKind::Unavailable => {}
+        TrayBackendKind::Unavailable => {
+            log::warn!("Station tray could not open the UI: backend is unavailable");
+        }
     }
 }
 
@@ -1032,6 +1088,8 @@ fn update_once(app: &AppHandle) -> ServiceHealth {
     let context = tray_context(app);
     let health = context.snapshot.health;
     let snapshot = context.snapshot.clone();
+    let destinations =
+        tray_destination_availability(&snapshot, app.get_webview_window("main").is_some());
     // Advance for every primary context, including when the previous optional
     // projection is still waiting on Keychain or HTTP. Its eventual result
     // must never overwrite a newer owner/backend presentation.
@@ -1048,7 +1106,7 @@ fn update_once(app: &AppHandle) -> ServiceHealth {
         move || {
             record_dispatch_result(primary_app.run_on_main_thread({
                 let state = primary_state;
-                move || apply_primary_health(&state, snapshot)
+                move || apply_primary_health(&state, snapshot, destinations)
             }));
             crate::emit_service_status(&primary_app);
         },
@@ -1345,6 +1403,65 @@ mod tests {
         assert!(running_snapshot.can_open_api_docs());
         assert!(running_snapshot.can_navigate());
         assert!(!running_snapshot.action.enabled);
+    }
+
+    #[test]
+    fn sidecar_destinations_require_a_main_window_but_service_destinations_do_not() {
+        let sidecar = tray_backend_snapshot(
+            &status(ServerOwnership::Sidecar, Some(4310)),
+            &DesktopOwnerSnapshot::Sidecar,
+            None,
+            None,
+        );
+        assert_eq!(
+            tray_destination_availability(&sidecar, false),
+            TrayDestinationAvailability {
+                open_ui: false,
+                navigation: false,
+            }
+        );
+        assert_eq!(
+            tray_destination_availability(&sidecar, true),
+            TrayDestinationAvailability {
+                open_ui: true,
+                navigation: true,
+            }
+        );
+
+        let service_manifest = manifest("127.0.0.1");
+        let service = tray_backend_snapshot(
+            &status(ServerOwnership::Service, Some(3141)),
+            &service_owner("default", 3141),
+            Some(&service_manifest),
+            Some(ServiceHealth::Running),
+        );
+        assert_eq!(
+            tray_destination_availability(&service, false),
+            TrayDestinationAvailability {
+                open_ui: true,
+                navigation: true,
+            }
+        );
+
+        let unavailable = tray_backend_snapshot(
+            &status(ServerOwnership::None, None),
+            &DesktopOwnerSnapshot::Unavailable,
+            None,
+            None,
+        );
+        assert_eq!(
+            tray_destination_availability(&unavailable, true),
+            TrayDestinationAvailability {
+                open_ui: false,
+                navigation: false,
+            }
+        );
+    }
+
+    #[test]
+    fn update_item_promises_settings_navigation_not_a_desktop_update_check() {
+        assert_eq!(UPDATE_SETTINGS_LABEL, "Update settings…");
+        assert!(!UPDATE_SETTINGS_LABEL.to_lowercase().contains("check"));
     }
 
     #[test]
