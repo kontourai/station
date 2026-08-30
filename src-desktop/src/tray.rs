@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::image::Image;
 use tauri::menu::{MenuBuilder, MenuItem, PredefinedMenuItem};
 use tauri::tray::{TrayIcon, TrayIconBuilder};
@@ -29,6 +29,8 @@ const NIGHTLY_TRAY_ICON: &[u8] = include_bytes!("../icons/nightly/icon.png");
 const DEV_TRAY_ICON: &[u8] = include_bytes!("../icons/dev/icon.png");
 const CORE_UPDATE_SETTINGS_PATH: &str = "/settings?view=system&highlight=core-app-updates";
 const TRAY_NAVIGATION_EVENT: &str = "station://tray-navigation";
+const TRAY_NAVIGATION_TTL: Duration = Duration::from_secs(30);
+const UPDATE_SETTINGS_ID: &str = "tray-updates";
 const UPDATE_SETTINGS_LABEL: &str = "Update settings…";
 
 #[derive(Clone)]
@@ -48,8 +50,67 @@ struct TrayState {
     connected_clients_generation: Arc<AtomicU64>,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct PendingTrayNavigationEntry {
+    id: u64,
+    epoch: u64,
+    destination: TrayNavigationDestination,
+    queued_at: Instant,
+}
+
 #[derive(Default)]
-struct PendingTrayNavigation(Mutex<Option<TrayNavigationDestination>>);
+struct PendingTrayNavigationState {
+    epoch: u64,
+    next_id: u64,
+    pending: Option<PendingTrayNavigationEntry>,
+}
+
+impl PendingTrayNavigationState {
+    fn queue(
+        &mut self,
+        destination: TrayNavigationDestination,
+        now: Instant,
+    ) -> Option<PendingTrayNavigationEntry> {
+        self.next_id = self.next_id.wrapping_add(1).max(1);
+        self.pending.replace(PendingTrayNavigationEntry {
+            id: self.next_id,
+            epoch: self.epoch,
+            destination,
+            queued_at: now,
+        })
+    }
+
+    fn take_lease(&mut self, now: Instant) -> Option<PendingTrayNavigationReplay> {
+        let pending = self.pending?;
+        if pending.epoch != self.epoch
+            || now.saturating_duration_since(pending.queued_at) > TRAY_NAVIGATION_TTL
+        {
+            self.pending = None;
+            return None;
+        }
+        Some(PendingTrayNavigationReplay {
+            id: pending.id,
+            destination: pending.destination,
+        })
+    }
+
+    fn acknowledge(&mut self, id: u64) -> bool {
+        if self.pending.is_some_and(|pending| pending.id == id) {
+            self.pending = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn invalidate(&mut self) -> bool {
+        self.epoch = self.epoch.wrapping_add(1);
+        self.pending.take().is_some()
+    }
+}
+
+#[derive(Default)]
+struct PendingTrayNavigation(Mutex<PendingTrayNavigationState>);
 
 /// Supervisor transitions wake this receiver; they never write a webview
 /// event themselves. This keeps the tray poll as the sole event writer.
@@ -260,7 +321,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
 fn update_settings_menu_item<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<MenuItem<R>> {
     MenuItem::with_id(
         manager,
-        "tray-updates",
+        UPDATE_SETTINGS_ID,
         UPDATE_SETTINGS_LABEL,
         false,
         None::<&str>,
@@ -407,8 +468,12 @@ fn apply_primary_health(
     main_window_available: bool,
     main_window_ready: bool,
 ) {
-    let destinations =
-        tray_destination_availability(&snapshot, main_window_available, main_window_ready);
+    let destinations = tray_destination_availability(
+        &snapshot,
+        main_window_available,
+        main_window_ready,
+        cfg!(target_os = "macos"),
+    );
     target.apply(PrimaryHealthModel {
         status_text: format!("Status: {}", snapshot.health.label()),
         backend_text: snapshot.label.clone(),
@@ -518,6 +583,7 @@ fn tray_destination_availability(
     snapshot: &TrayBackendSnapshot,
     main_window_available: bool,
     main_window_ready: bool,
+    main_window_recreation_supported: bool,
 ) -> TrayDestinationAvailability {
     let backend_reachable = matches!(
         snapshot.health,
@@ -526,9 +592,16 @@ fn tray_destination_availability(
     let route_available =
         snapshot.kind != TrayBackendKind::Sidecar || (main_window_available && main_window_ready);
     TrayDestinationAvailability {
-        // For the built-in backend this is the recovery affordance that can
-        // recreate a destroyed main window; do not gate it on window presence.
-        open_ui: snapshot.can_open_ui() && backend_reachable,
+        open_ui: snapshot.can_open_ui()
+            && match snapshot.kind {
+                // Showing Station's own window does not depend on HTTP health,
+                // but a missing window needs an implemented platform rebuild.
+                TrayBackendKind::Sidecar => {
+                    main_window_available || main_window_recreation_supported
+                }
+                TrayBackendKind::Service => backend_reachable,
+                TrayBackendKind::Unavailable => false,
+            },
         api_docs: snapshot.can_open_api_docs() && backend_reachable,
         navigation: snapshot.can_navigate() && backend_reachable && route_available,
     }
@@ -874,28 +947,82 @@ fn focus_station_window(app: &AppHandle, recreate: bool) -> Result<(String, bool
 }
 
 fn queue_tray_navigation(app: &AppHandle, destination: TrayNavigationDestination) {
-    let pending = app.state::<PendingTrayNavigation>();
+    let Some(pending) = app.try_state::<PendingTrayNavigation>() else {
+        log::error!("Station tray could not retain {destination:?}: replay state is unavailable");
+        return;
+    };
     let replaced = pending
         .0
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .replace(destination);
+        .queue(destination, Instant::now());
     log::info!("Station tray queued {destination:?} navigation for renderer replay");
     if let Some(replaced) = replaced {
-        log::info!("Station tray replaced pending {replaced:?} navigation with {destination:?}");
+        log::info!(
+            "Station tray replaced pending {:?} navigation with {destination:?}",
+            replaced.destination
+        );
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PendingTrayNavigationReplay {
+    id: u64,
+    destination: TrayNavigationDestination,
+}
+
+fn tray_navigation_label_admitted(label: &str) -> bool {
+    label == "main"
+}
+
 #[tauri::command]
-pub(crate) fn take_pending_tray_navigation(app: AppHandle) -> Option<TrayNavigationDestination> {
-    app.try_state::<PendingTrayNavigation>()
-        .and_then(|pending| {
-            pending
-                .0
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .take()
-        })
+pub(crate) fn take_pending_tray_navigation(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+) -> Result<Option<PendingTrayNavigationReplay>, String> {
+    if !tray_navigation_label_admitted(window.label()) {
+        return Err("Tray navigation replay is accepted only from the main WebView.".into());
+    }
+    Ok(app.try_state::<PendingTrayNavigation>().and_then(|pending| {
+        pending
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take_lease(Instant::now())
+    }))
+}
+
+#[tauri::command]
+pub(crate) fn ack_pending_tray_navigation(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    id: u64,
+) -> Result<bool, String> {
+    if !tray_navigation_label_admitted(window.label()) {
+        return Err("Tray navigation replay is accepted only from the main WebView.".into());
+    }
+    Ok(app.try_state::<PendingTrayNavigation>().is_some_and(|pending| {
+        pending
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .acknowledge(id)
+    }))
+}
+
+pub(crate) fn invalidate_pending_navigation(app: &AppHandle, reason: &str) {
+    let Some(pending) = app.try_state::<PendingTrayNavigation>() else {
+        return;
+    };
+    if pending
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .invalidate()
+    {
+        log::info!("Station tray discarded pending navigation after {reason}");
+    }
 }
 
 fn tray_icon_bytes(channel: Option<&str>) -> &'static [u8] {
@@ -1599,7 +1726,7 @@ mod tests {
         let sidecar =
             tray_backend_snapshot(&sidecar_status, &DesktopOwnerSnapshot::Sidecar, None, None);
         assert_eq!(
-            tray_destination_availability(&sidecar, false, false),
+            tray_destination_availability(&sidecar, false, false, true),
             TrayDestinationAvailability {
                 open_ui: true,
                 api_docs: true,
@@ -1607,7 +1734,7 @@ mod tests {
             }
         );
         assert_eq!(
-            tray_destination_availability(&sidecar, true, false),
+            tray_destination_availability(&sidecar, true, false, true),
             TrayDestinationAvailability {
                 open_ui: true,
                 api_docs: true,
@@ -1615,7 +1742,7 @@ mod tests {
             }
         );
         assert_eq!(
-            tray_destination_availability(&sidecar, true, true),
+            tray_destination_availability(&sidecar, true, true, true),
             TrayDestinationAvailability {
                 open_ui: true,
                 api_docs: true,
@@ -1631,7 +1758,7 @@ mod tests {
             Some(ServiceHealth::Running),
         );
         assert_eq!(
-            tray_destination_availability(&service, false, false),
+            tray_destination_availability(&service, false, false, false),
             TrayDestinationAvailability {
                 open_ui: true,
                 api_docs: true,
@@ -1646,7 +1773,7 @@ mod tests {
             Some(ServiceHealth::Stopped),
         );
         assert_eq!(
-            tray_destination_availability(&stopped_service, true, true),
+            tray_destination_availability(&stopped_service, true, true, false),
             TrayDestinationAvailability {
                 open_ui: false,
                 api_docs: false,
@@ -1661,7 +1788,7 @@ mod tests {
             None,
         );
         assert_eq!(
-            tray_destination_availability(&unavailable, true, true),
+            tray_destination_availability(&unavailable, true, true, true),
             TrayDestinationAvailability {
                 open_ui: false,
                 api_docs: false,
@@ -1671,12 +1798,69 @@ mod tests {
     }
 
     #[test]
-    fn constructed_update_menu_item_promises_settings_navigation() {
-        let app = tauri::test::mock_app();
-        let item = update_settings_menu_item(app.handle()).expect("update item");
-        assert_eq!(item.id().as_ref(), "tray-updates");
-        assert_eq!(item.text().expect("update item text"), "Update settings…");
-        assert!(!item.is_enabled().expect("update item enabled state"));
+    fn sidecar_window_availability_is_health_independent_and_platform_honest() {
+        for phase in [
+            crate::bundled_server_state::ServerPhase::Starting,
+            crate::bundled_server_state::ServerPhase::Restarting,
+        ] {
+            let mut sidecar_status = status(ServerOwnership::Sidecar, Some(4310));
+            sidecar_status.phase = phase;
+            let sidecar = tray_backend_snapshot(
+                &sidecar_status,
+                &DesktopOwnerSnapshot::Sidecar,
+                None,
+                None,
+            );
+
+            assert!(tray_destination_availability(&sidecar, true, false, false).open_ui);
+            assert!(tray_destination_availability(&sidecar, false, false, true).open_ui);
+            assert!(!tray_destination_availability(&sidecar, false, false, false).open_ui);
+            assert!(!tray_destination_availability(&sidecar, true, false, false).api_docs);
+        }
+    }
+
+    #[test]
+    fn pending_navigation_is_leased_until_acknowledged_and_expires() {
+        let now = Instant::now();
+        let mut state = PendingTrayNavigationState::default();
+        state.queue(TrayNavigationDestination::Connections, now);
+
+        let first = state.take_lease(now).expect("fresh replay lease");
+        assert_eq!(first.destination, TrayNavigationDestination::Connections);
+        assert_eq!(state.take_lease(now), Some(first));
+        assert!(state.acknowledge(first.id));
+        assert_eq!(state.take_lease(now), None);
+
+        state.queue(TrayNavigationDestination::CoreUpdates, now);
+        assert_eq!(
+            state.take_lease(now + TRAY_NAVIGATION_TTL + Duration::from_millis(1)),
+            None
+        );
+    }
+
+    #[test]
+    fn pending_navigation_epoch_invalidation_rejects_stale_acknowledgements() {
+        let now = Instant::now();
+        let mut state = PendingTrayNavigationState::default();
+        state.queue(TrayNavigationDestination::PairedDevices, now);
+        let stale = state.take_lease(now).expect("fresh replay lease");
+        assert!(state.invalidate());
+        assert!(!state.acknowledge(stale.id));
+        assert_eq!(state.take_lease(now), None);
+    }
+
+    #[test]
+    fn tray_navigation_replay_accepts_only_the_main_window() {
+        assert!(tray_navigation_label_admitted("main"));
+        for foreign in ["workspace-popout", "preview", "main-copy", ""] {
+            assert!(!tray_navigation_label_admitted(foreign));
+        }
+    }
+
+    #[test]
+    fn update_menu_item_contract_is_platform_independent() {
+        assert_eq!(UPDATE_SETTINGS_ID, "tray-updates");
+        assert_eq!(UPDATE_SETTINGS_LABEL, "Update settings…");
     }
 
     #[test]

@@ -6930,6 +6930,33 @@ fn release_failed_startup_commit_claim(in_flight: &AtomicBool, pending: &AtomicB
 }
 
 #[cfg(not(mobile))]
+fn reset_startup_commit_claim(in_flight: &AtomicBool, pending: &AtomicBool) {
+    pending.store(false, Ordering::Release);
+    in_flight.store(false, Ordering::Release);
+}
+
+#[cfg(not(mobile))]
+fn begin_main_window_recreation(
+    readiness: &mut startup_readiness::StartupReadiness,
+    in_flight: &AtomicBool,
+    pending: &AtomicBool,
+    dev_bypass: bool,
+) -> u64 {
+    let (next, _) = startup_readiness::transition(
+        readiness,
+        startup_readiness::ReadinessInput::MainWindowRecreated {
+            now_ms: 0,
+            timeout_ms: 30_000,
+            dev_bypass,
+        },
+    );
+    let epoch = next.epoch;
+    *readiness = next;
+    reset_startup_commit_claim(in_flight, pending);
+    epoch
+}
+
+#[cfg(not(mobile))]
 fn release_failed_startup_commit(app: &AppHandle) {
     if let Some(state) = app.try_state::<DesktopServerState>() {
         if release_failed_startup_commit_claim(
@@ -7558,32 +7585,24 @@ pub(crate) fn ensure_main_window(app: &AppHandle) -> Result<(), String> {
         let state = app
             .try_state::<DesktopServerState>()
             .ok_or_else(|| "desktop startup readiness is unavailable".to_string())?;
-        let previous = state
+        let mut readiness = state
             .readiness
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone();
-        let (next, _) = startup_readiness::transition(
-            &previous,
-            startup_readiness::ReadinessInput::MainWindowRecreated {
-                now_ms: 0,
-                timeout_ms: 30_000,
-                dev_bypass: cfg!(debug_assertions),
-            },
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let epoch = begin_main_window_recreation(
+            &mut readiness,
+            &state.startup_commit_in_flight,
+            &state.startup_commit_pending,
+            cfg!(debug_assertions),
         );
-        let epoch = next.epoch;
-        *state
-            .readiness
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = next;
+        tray::invalidate_pending_navigation(app, "main-window recreation");
+        drop(readiness);
 
         if let Err(error) =
             WebviewWindowBuilder::from_config(app, &config).and_then(WebviewWindowBuilder::build)
         {
-            *state
-                .readiness
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) = previous;
+            // Keep the new epoch. Rolling the state back would let a stale
+            // deadline thread act on an epoch that became current again.
             return Err(format!("could not recreate the main window: {error}"));
         }
         tray::kick(app);
@@ -7612,6 +7631,7 @@ fn continue_startup_readiness(
     if !resumed {
         return;
     }
+    tray::invalidate_pending_navigation(app, "startup-readiness restart");
     if effects.contains(&startup_readiness::ReadinessEffect::RestartOwnedSidecar) {
         let _ = state.supervisor.tx.send(SupervisorMessage::Restart);
     } else {
@@ -9389,6 +9409,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         bundled_server_status,
         open_desktop_tray_menu,
         tray::take_pending_tray_navigation,
+        tray::ack_pending_tray_navigation,
         restart_bundled_server,
         commit_renderer_mount,
         commit_startup_readiness,
@@ -9630,6 +9651,7 @@ If a stable instance is running, this launch will focus its window and exit.",
             #[cfg(not(mobile))]
             if let tauri::RunEvent::WindowEvent { label, event, .. } = &event {
                 if label == "main" && matches!(event, WindowEvent::Destroyed) {
+                    tray::invalidate_pending_navigation(app, "main-window destruction");
                     let kick_app = app.clone();
                     if let Err(error) = app.run_on_main_thread(move || tray::kick(&kick_app)) {
                         log::error!(
@@ -10365,6 +10387,72 @@ mod tests {
         ] {
             assert!(!native_startup_uses_sidecar_proof(&owner));
         }
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn reconstructed_main_window_can_claim_a_fresh_identity_proof() {
+        let in_flight = AtomicBool::new(false);
+        let pending = AtomicBool::new(false);
+        let mut readiness = startup_readiness::StartupReadiness::default();
+        let ticket = startup_readiness::StartupTicket {
+            generation: 1,
+            instance_id: "desktop-sidecar-stable".into(),
+            boot_id: "boot-1".into(),
+            api_base: "http://127.0.0.1:4123".into(),
+        };
+        readiness = startup_readiness::transition(
+            &readiness,
+            startup_readiness::ReadinessInput::ServerTicket(ticket.clone()),
+        )
+        .0;
+
+        assert!(claim_startup_commit(
+            true,
+            readiness.phase,
+            &in_flight,
+            &pending,
+        ));
+        readiness = startup_readiness::transition(
+            &readiness,
+            startup_readiness::ReadinessInput::NativeIdentityCommitted(ticket.clone()),
+        )
+        .0;
+        readiness = startup_readiness::transition(
+            &readiness,
+            startup_readiness::ReadinessInput::RendererMounted,
+        )
+        .0;
+        assert_eq!(readiness.phase, startup_readiness::ReadinessPhase::Ready);
+        // Successful completion deliberately retains the claim for this
+        // epoch; reconstruction is the explicit lifecycle boundary.
+        pending.store(false, Ordering::Release);
+        begin_main_window_recreation(
+            &mut readiness,
+            &in_flight,
+            &pending,
+            false,
+        );
+
+        assert!(claim_startup_commit(
+            true,
+            readiness.phase,
+            &in_flight,
+            &pending,
+        ));
+        let (readiness, _) = startup_readiness::transition(
+            &readiness,
+            startup_readiness::ReadinessInput::NativeIdentityCommitted(ticket),
+        );
+        let (readiness, effects) = startup_readiness::transition(
+            &readiness,
+            startup_readiness::ReadinessInput::RendererMounted,
+        );
+        assert_eq!(readiness.phase, startup_readiness::ReadinessPhase::Ready);
+        assert_eq!(
+            effects,
+            vec![startup_readiness::ReadinessEffect::RevealMainWindow]
+        );
     }
 
     #[test]

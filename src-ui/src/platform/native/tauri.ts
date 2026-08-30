@@ -663,18 +663,35 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
   ): NativeEventSubscription {
     let disposed = false;
     let unlisten: UnlistenFn | undefined;
-    const drainPending = () =>
-      this.bridge
+    let drainInFlight = false;
+    let drainAgain = false;
+    const drainPending = () => {
+      if (disposed) return;
+      if (drainInFlight) {
+        drainAgain = true;
+        return;
+      }
+      drainInFlight = true;
+      void this.bridge
         .invoke<unknown>('take_pending_tray_navigation')
-        .then((destination) => {
+        .then(async (replay) => {
+          if (disposed || typeof replay !== 'object' || replay === null) return;
+          const { id, destination } = replay as Record<string, unknown>;
           if (
-            !disposed &&
-            (destination === 'connections' ||
-              destination === 'pairedDevices' ||
-              destination === 'coreUpdates')
+            !Number.isSafeInteger(id) ||
+            (destination !== 'connections' &&
+              destination !== 'pairedDevices' &&
+              destination !== 'coreUpdates')
           ) {
-            listener({ destination });
+            return;
           }
+          listener({ destination });
+          // The native slot is a lease until this exact delivery is accepted.
+          // Disposal during either invoke leaves it available to a successor.
+          if (disposed) return;
+          await this.bridge.invoke<unknown>('ack_pending_tray_navigation', {
+            id,
+          });
         })
         .catch((error) => {
           if (!disposed)
@@ -682,7 +699,15 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
               code: 'listener-registration-failed',
               message: `Station could not replay tray navigation: ${errorMessage(error)}`,
             });
+        })
+        .finally(() => {
+          drainInFlight = false;
+          if (drainAgain && !disposed) {
+            drainAgain = false;
+            drainPending();
+          }
         });
+    };
     void this.bridge
       .listen('station://tray-navigation', () => {
         void drainPending();

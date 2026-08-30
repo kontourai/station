@@ -56,11 +56,17 @@ disabled while the endpoint is stopped or not installed.
 
 Built-in navigation is enabled only after the hidden main window has completed
 its native startup-readiness proof. A tray destination is retained natively and
-drained after the renderer subscribes, so a click cannot be lost while deferred
-overlays are still mounting. If another Tauri window keeps the process alive
-after the main window closes, **Show Station UI** recreates the main window from
-the checked-in Tauri configuration and requires a fresh identity and renderer
-mount proof before revealing its contents.
+leased to the renderer after it subscribes, so disposal during delivery cannot
+consume the native slot. The lease expires after 30 seconds and is invalidated
+when the main window is destroyed or startup readiness restarts. Showing the
+desktop app's own window remains available while the built-in backend is
+starting or restarting; browser destinations remain health-gated.
+
+On macOS, if another Tauri window keeps the process alive after the main window
+closes, **Show Station UI** recreates the main window from the checked-in Tauri
+configuration and requires a fresh identity and renderer-mount proof before
+revealing its contents. Windows and Linux disable that item when the main window
+is absent because their native reconstruction path is not implemented.
 
 ## Service actions and CLI parity
 
