@@ -6,6 +6,7 @@ import {
   type AgentExecutionConfig,
   isSupportedAgentIconToken,
 } from '@kontourai/station-contracts/agent';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
@@ -3393,8 +3394,7 @@ export class OrchestrationService {
     const conversation: ConversationListItem = {
       id: conversationId,
       source: 'runtime',
-      agentSlug: query.conversation
-        .agentSlug as ConversationListItem['agentSlug'],
+      agentSlug: agentId(query.conversation.agentSlug),
       ...(query.conversation.projectSlug
         ? { projectSlug: query.conversation.projectSlug }
         : {}),
