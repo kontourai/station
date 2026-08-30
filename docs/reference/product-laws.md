@@ -1,7 +1,7 @@
 <!-- station:product-laws:start -->
 # Executable product laws
 
-This file is generated from the product-law manifest. The manifest is the authority; this Markdown is a readable projection. Each law has exact behavior and fault observations evaluated through structured test results. A PASS means both named observations passed, a FAIL means either failed, and NOT_VERIFIED means the runner could not produce a trustworthy structured observation. The manifest is bounded to 5 laws, 5 test files, and 75s total runtime. None of these results create a second completion lane.
+This file is generated from the product-law manifest. The manifest is the authority; this Markdown is a readable projection. Each law has exact behavior and fault observations evaluated through structured test results. A PASS means both named observations passed, a FAIL means either failed, and NOT_VERIFIED means the runner could not produce a trustworthy structured observation. The manifest is bounded to 5 laws, 5 test files, and 150s total runtime. None of these results create a second completion lane.
 
 | Law ID | Observable invariant | Owning Module | Affected Interface | Behavior observation | Fault observation | Remediation owner |
 | --- | --- | --- | --- | --- | --- | --- |
