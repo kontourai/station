@@ -17,13 +17,7 @@ import {
   CodeView,
   type CodeViewDiffItem,
   type CodeViewItem,
-  useWorkerPool,
-  WorkerPoolContextProvider,
 } from '@pierre/diffs/react';
-// Vite (the UI bundler) compiles `?worker` to a Worker constructor. The pool
-// parses diffs + runs Shiki tokenization off the main thread so large diffs
-// don't jank the UI.
-import DiffsWorker from '@pierre/diffs/worker/worker.js?worker';
 import {
   type ReactNode,
   useCallback,
@@ -72,10 +66,6 @@ const DIFF_THEME_NAMES = {
 
 type StationTheme = 'light' | 'dark';
 
-// Workers exist in the browser but not in jsdom (unit tests) or SSR; fall back
-// to main-thread rendering there.
-const WORKER_SUPPORTED = typeof Worker !== 'undefined';
-
 function readStationTheme(): StationTheme {
   if (typeof document === 'undefined') return 'dark';
   return document.documentElement.getAttribute('data-theme') === 'light'
@@ -104,59 +94,6 @@ function useStationTheme(): StationTheme {
   }, []);
 
   return theme;
-}
-
-function diffWorkerPoolSize(): number {
-  const cores =
-    typeof navigator === 'undefined'
-      ? 4
-      : Math.max(1, navigator.hardwareConcurrency || 4);
-  return Math.max(2, Math.min(6, Math.floor(cores / 2)));
-}
-
-/** Keeps the worker pool's render theme in sync with Station's theme. */
-function DiffWorkerThemeSync({ themeName }: { themeName: string }) {
-  const workerPool = useWorkerPool();
-  useEffect(() => {
-    if (!workerPool) return;
-    void (async () => {
-      try {
-        const current = workerPool.getDiffRenderOptions();
-        if (current.theme === themeName) return;
-        await workerPool.setRenderOptions({ ...current, theme: themeName });
-      } catch {
-        // Theme sync is best-effort; the diff still renders.
-      }
-    })();
-  }, [themeName, workerPool]);
-  return null;
-}
-
-function DiffWorkerPoolProvider({
-  themeName,
-  children,
-}: {
-  themeName: string;
-  children?: ReactNode;
-}) {
-  const poolSize = useMemo(diffWorkerPoolSize, []);
-  return (
-    <WorkerPoolContextProvider
-      poolOptions={{
-        workerFactory: () => new DiffsWorker(),
-        poolSize,
-        totalASTLRUCacheSize: 240,
-      }}
-      highlighterOptions={{
-        theme: themeName,
-        tokenizeMaxLineLength: 1_000,
-        useTokenTransformer: true,
-      }}
-    >
-      <DiffWorkerThemeSync themeName={themeName} />
-      {children}
-    </WorkerPoolContextProvider>
-  );
 }
 
 /**
@@ -343,10 +280,16 @@ export function DiffPanel({
     [setDeviceSetting],
   );
 
-  // On the main-thread fallback (no worker) the shared highlighter must be
-  // warmed for the active theme; the worker pool warms its own highlighter.
+  // @pierre/diffs returns before mounting hunks while its worker pool is
+  // initializing. A worker that constructs successfully but never becomes
+  // ready (for example after a worker-script load failure) therefore leaves
+  // the custom element with only its SVG sprite indefinitely. The library
+  // exposes no readiness/error fallback at the React seam, so render on its
+  // reliable main-thread path and warm the shared highlighter for the active
+  // theme. Correct diff and comment-gutter rendering takes precedence over
+  // off-main-thread tokenization; large files remain bounded by CodeView's
+  // existing virtualization and tokenizeMaxLineLength option.
   useEffect(() => {
-    if (WORKER_SUPPORTED) return;
     void preloadHighlighter({ themes: [diffTheme], langs: [] }).catch(() => {
       // Highlighter preload is best-effort; CodeView still renders plain text.
     });
@@ -652,10 +595,9 @@ export function DiffPanel({
 
   const codeView = (
     <CodeView<DiffCommentAnnotation>
-      // The fallback re-tokenizes on theme change via remount; the worker pool
-      // re-themes in place (see DiffWorkerThemeSync), so no key is needed there.
-      key={WORKER_SUPPORTED ? undefined : diffTheme}
-      disableWorkerPool={!WORKER_SUPPORTED}
+      // Remount so the main-thread renderer re-tokenizes for the new theme.
+      key={diffTheme}
+      disableWorkerPool
       items={items}
       renderAnnotation={commentsEnabled ? renderAnnotation : undefined}
       renderGutterUtility={commentsEnabled ? renderGutterUtility : undefined}
@@ -764,14 +706,7 @@ export function DiffPanel({
             {error}
           </div>
         )}
-        {hasDiff &&
-          (WORKER_SUPPORTED ? (
-            <DiffWorkerPoolProvider themeName={diffTheme}>
-              {codeView}
-            </DiffWorkerPoolProvider>
-          ) : (
-            codeView
-          ))}
+        {hasDiff && codeView}
         {!loading && !error && !hasDiff && (
           <div
             style={{

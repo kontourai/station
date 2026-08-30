@@ -40,6 +40,7 @@ const mutationCalls: Array<{
  */
 const previewResults = new Map<string, unknown>();
 const previewMutationCalls: string[] = [];
+let previewMutationResets = 0;
 const validDemoPreview = () => ({
   valid: true,
   manifest: {
@@ -198,6 +199,9 @@ vi.mock('@kontourai/station-sdk', () => ({
   usePluginRegistryPreviewMutation: () => ({
     isPending: false,
     variables: undefined,
+    reset: () => {
+      previewMutationResets += 1;
+    },
     mutate: (
       registryId: string,
       callbacks?: {
@@ -206,8 +210,13 @@ vi.mock('@kontourai/station-sdk', () => ({
       },
     ) => {
       previewMutationCalls.push(registryId);
+      const result = previewResults.get(registryId);
+      if (result instanceof Error) {
+        callbacks?.onError?.(result);
+        return;
+      }
       callbacks?.onSuccess?.(
-        previewResults.get(registryId) ?? {
+        result ?? {
           valid: false,
           error: `Plugin '${registryId}' not found in registry`,
           code: 'registry-plugin-not-found',
@@ -281,6 +290,7 @@ afterEach(() => {
   mutationCalls.length = 0;
   previewResults.clear();
   previewMutationCalls.length = 0;
+  previewMutationResets = 0;
   pluginRegistryReload.mockClear();
   requestInstallConsent.mockClear();
   requestInstallConsent.mockResolvedValue(true);
@@ -942,5 +952,26 @@ describe('RegistryView', () => {
     expect(mutationCalls).toEqual([
       { id: 'agent-two', action: 'install', tab: 'agents' },
     ]);
+  });
+
+  test('renders a selected-card preview failure and keeps a repeat install click live', () => {
+    previewResults.set('demo-layout', new Error('Preview staging failed'));
+    render(<RegistryView initialTab="plugins" />);
+
+    const install = within(screen.getByTestId('registry-detail')).getByRole(
+      'button',
+      { name: 'Install' },
+    );
+    fireEvent.click(install);
+
+    expect(screen.getByText('Preview staging failed')).toBeTruthy();
+    expect(previewMutationCalls).toEqual(['demo-layout']);
+
+    previewResults.set('demo-layout', validDemoPreview());
+    fireEvent.click(install);
+
+    expect(previewMutationCalls).toEqual(['demo-layout', 'demo-layout']);
+    expect(previewMutationResets).toBe(2);
+    expect(screen.getByText('Install Preview')).toBeTruthy();
   });
 });

@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { _setApiBase } from '../api-core';
-import { deleteKnowledgeDoc, updateKnowledgeNamespace } from '../api-knowledge';
+import {
+  deleteKnowledgeDoc,
+  searchKnowledge,
+  updateKnowledgeNamespace,
+  uploadKnowledge,
+} from '../api-knowledge';
 import {
   buildKnowledgeFilterQuery,
   knowledgeBase,
@@ -17,10 +22,8 @@ describe('api-knowledge-utils', () => {
   });
 
   test('knowledgeBase encodes project slugs and namespaces', () => {
-    expect(
-      knowledgeBase('http://localhost:3141', 'proj slug', 'notes/core'),
-    ).toBe(
-      'http://localhost:3141/api/projects/proj%20slug/knowledge/ns/notes%2Fcore',
+    expect(knowledgeBase('proj slug', 'notes/core')).toBe(
+      '/api/projects/proj%20slug/knowledge/ns/notes%2Fcore',
     );
   });
 
@@ -55,6 +58,32 @@ describe('api-knowledge-utils', () => {
         errorPrefix: 'Knowledge request failed',
       }),
     ).resolves.toEqual(['record-1']);
+  });
+
+  test('constructs one exact apiBase-prefixed URL for upload, search, and rules routes', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ success: true, data: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await uploadKnowledge('proj slug', 'notes.md', 'hello');
+    await searchKnowledge('proj slug', 'hello', 'notes/core', 3);
+    await uploadKnowledge(
+      'proj slug',
+      'project-rules.md',
+      'Use exact evidence.',
+      'rules',
+    );
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      'https://station.example.test/api/projects/proj%20slug/knowledge/upload',
+      'https://station.example.test/api/projects/proj%20slug/knowledge/ns/notes%2Fcore/search',
+      'https://station.example.test/api/projects/proj%20slug/knowledge/ns/rules/upload',
+    ]);
   });
 
   test('rejects a malformed knowledge response with the operation prefix', async () => {

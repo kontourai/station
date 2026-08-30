@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contracts/chat-attachment';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -49,6 +50,11 @@ import {
   OrchestrationService,
 } from '../../../services/orchestration/orchestration-service.js';
 import { ProjectWorktreeDirectoryError } from '../../../services/projects/project-service.js';
+import {
+  AnswerShareService,
+  NO_CHANNEL_LOG_OBSERVER,
+} from '../../../services/share/answer-share-service.js';
+import type { AnswerShareStore } from '../../../services/share/answer-share-store.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -1154,7 +1160,7 @@ describe('Orchestration Routes', () => {
     });
   });
 
-  test('POST /api/orchestration/chat preserves origin on an early durable turn.started while excluding it from the provider turn input (#3830)', async () => {
+  test('POST /api/orchestration/chat persists a direct answer that the share path can resolve after reopening the store (#3830, #887)', async () => {
     const directory = mkdtempSync(
       join(tmpdir(), 'orchestration-route-origin-'),
     );
@@ -1268,6 +1274,8 @@ describe('Orchestration Routes', () => {
       await next();
     });
     app.route('/api/orchestration', inner);
+    let serviceOpen = true;
+    let eventStoreOpen = true;
 
     try {
       const response = await app.request('/api/orchestration/chat', {
@@ -1285,6 +1293,32 @@ describe('Orchestration Routes', () => {
       expect(response.status).toBe(200);
       expect(providerInputs).toHaveLength(1);
       expect(providerInputs[0]).not.toHaveProperty('clientOrigin');
+      events.push({
+        eventId: 'early-origin-answer-delta',
+        method: 'content.text-delta',
+        provider: 'station-agent',
+        threadId: 'conversation:route-origin',
+        turnId: 'provider-turn-origin',
+        itemId: 'answer-item',
+        delta: 'Durable direct answer',
+        createdAt: '2026-08-23T00:00:01.000Z',
+      });
+      events.push({
+        eventId: 'early-origin-turn-completed',
+        method: 'turn.completed',
+        provider: 'station-agent',
+        threadId: 'conversation:route-origin',
+        turnId: 'provider-turn-origin',
+        finishReason: 'stop',
+        createdAt: '2026-08-23T00:00:02.000Z',
+      });
+      await vi.waitFor(() =>
+        expect(
+          eventStore
+            .listEvents('conversation:route-origin')
+            .map((event) => event.payload.method),
+        ).toContain('turn.completed'),
+      );
       expect(
         eventStore
           .listEvents('conversation:route-origin')
@@ -1302,9 +1336,60 @@ describe('Orchestration Routes', () => {
           }),
         ]),
       );
-    } finally {
+
+      // Close every live owner before reopening. This proves the answer came
+      // through the real foreground route into the on-disk SQLite store, not
+      // from the adapter queue or the process-local read model.
       await service.shutdown();
+      serviceOpen = false;
       eventStore.close();
+      eventStoreOpen = false;
+      const reopened = new EventStore(join(directory, 'orchestration.sqlite'));
+      try {
+        const persistedEvents = reopened
+          .listEvents('conversation:route-origin')
+          .map((event) => event.payload);
+        expect(JSON.stringify(persistedEvents)).toContain(
+          'Durable direct answer',
+        );
+
+        const shareService = new AnswerShareService({
+          store: {
+            mint: async (input: Parameters<AnswerShareStore['mint']>[0]) => ({
+              record: {
+                id: 'share-direct-answer',
+                tokenHash: '0'.repeat(64),
+                sessionId: input.sessionId,
+                turnId: input.turnId,
+                ownerUserId: input.ownerUserId ?? null,
+                label: input.label ?? null,
+                createdAt: '2026-08-23T00:00:03.000Z',
+                expiresAt: '2026-08-30T00:00:03.000Z',
+                revokedAt: null,
+                channel: input.channel,
+                contentDigest: input.contentDigest,
+              },
+              token: 'test-share-token',
+            }),
+          } as never,
+          sessions: {
+            readSessionMessages: () =>
+              projectRuntimeEventsToMessages(persistedEvents),
+          },
+          channelObserver: NO_CHANNEL_LOG_OBSERVER,
+        });
+        const minted = await shareService.mint({
+          sessionId: 'conversation:route-origin',
+          turnId: 'provider-turn-origin',
+          ownerUserId: 'route-user',
+        });
+        expect(minted).not.toEqual({ error: 'answer-not-found' });
+      } finally {
+        reopened.close();
+      }
+    } finally {
+      if (serviceOpen) await service.shutdown();
+      if (eventStoreOpen) eventStore.close();
       rmSync(directory, { recursive: true, force: true });
     }
   });

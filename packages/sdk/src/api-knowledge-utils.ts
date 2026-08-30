@@ -5,13 +5,14 @@ function isJsonRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function knowledgeBase(
-  apiBase: string,
   projectSlug: string,
   namespace?: string,
-): string {
-  const base = `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/knowledge`;
+): KnowledgeApiPath {
+  const base: KnowledgeApiPath = `/api/projects/${encodeURIComponent(projectSlug)}/knowledge`;
   return namespace ? `${base}/ns/${encodeURIComponent(namespace)}` : base;
 }
+
+export type KnowledgeApiPath = `/api/${string}`;
 
 interface KnowledgeJsonRequestOptions {
   method?: string;
@@ -22,17 +23,22 @@ interface KnowledgeJsonRequestOptions {
 }
 
 export function requestKnowledgeJson(
-  path: string,
+  path: KnowledgeApiPath,
   options: KnowledgeJsonRequestOptions & { responseMode: 'void' },
 ): Promise<void>;
 export function requestKnowledgeJson<T>(
-  path: string,
+  path: KnowledgeApiPath,
   options?: KnowledgeJsonRequestOptions & { responseMode?: 'data' },
 ): Promise<T>;
 export async function requestKnowledgeJson<T>(
-  path: string,
+  path: KnowledgeApiPath,
   options?: KnowledgeJsonRequestOptions,
 ): Promise<T | undefined> {
+  if (!path.startsWith('/api/')) {
+    throw new Error(
+      'Knowledge request path must be base-relative and start with /api/',
+    );
+  }
   const apiBase = await _getApiBase();
   const hasBody = options?.body !== undefined;
   const res = await fetch(`${apiBase}${path}`, {
