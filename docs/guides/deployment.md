@@ -143,13 +143,24 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
+        proxy_buffering off;
     }
 }
 ```
 
-WebSocket upgrade headers are required for voice (S2S), terminal sessions, and
-streaming. Configure your public TLS origin normally; this image does not set a
-generic trusted-proxy mode.
+WebSocket upgrade headers are required for voice (S2S) and terminal sessions.
+Station's browser-facing SSE routes send `X-Accel-Buffering: no` so nginx-family
+proxies deliver chat tokens and operational events immediately. Preserve that
+response header.
+
+`proxy_buffering off` is not merely defense in depth: the station-control MCP
+endpoint streams through a handler-built response whose headers Station does not
+set, so it does **not** carry `X-Accel-Buffering`. Without `proxy_buffering off`,
+a long-running MCP tool call's progress notifications can stall behind the proxy.
+Keep the directive if you use that endpoint.
+
+Configure your public TLS origin normally; this image does not set a generic
+trusted-proxy mode.
 
 ## Hosted tenant ingress (foundation only)
 

@@ -686,6 +686,7 @@ export function useCancelMessage(apiBase?: string) {
           true;
       }
       updateChat(sessionId, { stopPending: true });
+      let settledResult: InterruptTurnResult | undefined;
       try {
         // The browser stream is only an observer of the engine turn. Ask the
         // orchestration owner to interrupt the exact server session before
@@ -703,6 +704,7 @@ export function useCancelMessage(apiBase?: string) {
             : {}),
           apiBase,
         });
+        settledResult = result;
         return { kind: 'settled', result };
       } catch (error) {
         const message =
@@ -724,10 +726,23 @@ export function useCancelMessage(apiBase?: string) {
         // to strand both, leaving a stream nobody was reading and a composer
         // that could never be used again.
         abortController?.abort('User cancelled');
+        // A fast interrupt receipt can settle between the two click events of
+        // a real double-click, while turn.aborted is still queued in the
+        // browser event stream. Closing the locally-known turn from that
+        // authoritative receipt prevents the second click from dispatching a
+        // new interrupt against the already-interrupted turn. The deferred
+        // pre-start outcome is the exception: Station has recorded intent but
+        // has not yet interrupted a provider turn.
+        const turnSettled =
+          settledResult !== undefined &&
+          settledResult.outcome !== 'pending-turn-start';
         updateChat(sessionId, {
           status: 'idle',
           abortController: undefined,
           stopPending: false,
+          ...(turnSettled
+            ? { orchestrationTurnOpen: false, error: undefined }
+            : {}),
         });
       }
     },
