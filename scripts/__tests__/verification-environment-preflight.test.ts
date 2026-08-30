@@ -583,7 +583,7 @@ describe('findStaleInstalledDependencies malformed lockfile (station#4109 review
       expect(error.message).toContain(
         'package-lock.json unreadable/unsupported shape',
       );
-      expect(error.message).toContain('run npm run dependencies:ci');
+      expect(error.message).toContain('run `npm run dependencies:ci` in');
     } finally {
       temp.remove();
     }
@@ -657,7 +657,35 @@ describe('assertInstalledDependenciesMatchLockfile (station#4109)', () => {
         { name: 'left-pad', relDir: '', installed: '1.2.0', locked: '1.3.0' },
       ]);
       expect(error.message).toContain(
-        'root → left-pad: installed 1.2.0, locked 1.3.0 (run npm run dependencies:ci)',
+        'root → left-pad: installed 1.2.0, locked 1.3.0',
+      );
+    } finally {
+      temp.remove();
+    }
+  });
+
+  it('names the inspected tree, because the remedy runs there and not in the caller', () => {
+    // The gate inspects roots the caller is not standing in — the prepared
+    // transfer baseline sibling, or a frozen worktree. An unqualified "run
+    // npm run dependencies:ci" sends the operator to repair their own tree,
+    // which changes nothing and reproduces the identical error.
+    const temp = tempRoot('station-env-preflight-');
+    try {
+      writeCleanWorktree(temp.root);
+      makeStale(temp.root);
+      let caught: unknown;
+      try {
+        assertInstalledDependenciesMatchLockfile({ repositoryRoot: temp.root });
+      } catch (error) {
+        caught = error;
+      }
+      const error = caught as InstanceType<
+        typeof VerificationEnvironmentStaleError
+      >;
+      expect(error.repositoryRoot).toBe(temp.root);
+      expect(error.message).toContain(temp.root);
+      expect(error.message).toContain(
+        `run \`npm run dependencies:ci\` in ${temp.root}`,
       );
     } finally {
       temp.remove();
@@ -909,7 +937,7 @@ describe('run-verification CLI end-to-end preflight (station#4109)', () => {
       expect(errors).toHaveLength(1);
       expect(errors[0]).toContain('environment-stale');
       expect(errors[0]).toContain(
-        'root → left-pad: installed 1.2.0, locked 1.3.0 (run npm run dependencies:ci)',
+        'root → left-pad: installed 1.2.0, locked 1.3.0',
       );
     } finally {
       process.chdir(originalCwd);

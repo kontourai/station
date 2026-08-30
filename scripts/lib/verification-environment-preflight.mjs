@@ -292,36 +292,55 @@ function scopeLabel(relDir) {
 }
 
 export class VerificationEnvironmentStaleError extends Error {
-  constructor(message, { mismatches = [], skipped = [], reason } = {}) {
+  constructor(
+    message,
+    { mismatches = [], skipped = [], reason, repositoryRoot } = {},
+  ) {
     super(message);
     this.name = 'VerificationEnvironmentStaleError';
     this.disposition = 'environment-stale';
     this.reason = reason;
     this.mismatches = mismatches;
     this.skipped = skipped;
+    /** The tree that was inspected — where the remedy must be run. */
+    this.repositoryRoot = repositoryRoot;
   }
 }
 
-function mismatchError(mismatches, skipped) {
+/**
+ * The remedy is `npm run dependencies:ci` IN THE INSPECTED TREE, which is not
+ * always the caller's own worktree: `orchestration-transfer-gate.mjs` inspects
+ * the prepared baseline sibling, and the verification coordinator inspects the
+ * frozen worktree. Naming the root is the whole point of these messages — an
+ * unqualified "run npm run dependencies:ci" reads as being about the tree you
+ * are standing in, and running it there repairs nothing while the identical
+ * error repeats.
+ */
+function remedyFor(repositoryRoot) {
+  return `run \`npm run dependencies:ci\` in ${repositoryRoot}`;
+}
+
+function mismatchError(mismatches, skipped, repositoryRoot) {
   const lines = mismatches
     .map(
       ({ name, relDir, installed, locked }) =>
-        `  ${scopeLabel(relDir)} → ${name}: installed ${installed ?? 'missing'}, locked ${locked} (run npm run dependencies:ci)`,
+        `  ${scopeLabel(relDir)} → ${name}: installed ${installed ?? 'missing'}, locked ${locked}`,
     )
     .join('\n');
   return new VerificationEnvironmentStaleError(
     `environment-stale: node_modules does not match package-lock.json for ` +
       `${mismatches.length} package${mismatches.length === 1 ? '' : 's'} ` +
-      `(run npm run dependencies:ci):\n${lines}`,
-    { mismatches, skipped, reason: 'dependency-mismatch' },
+      `in ${repositoryRoot} (${remedyFor(repositoryRoot)}):\n${lines}`,
+    { mismatches, skipped, reason: 'dependency-mismatch', repositoryRoot },
   );
 }
 
-function lockfileUnreadableError() {
+function lockfileUnreadableError(repositoryRoot) {
   return new VerificationEnvironmentStaleError(
-    'environment-stale: package-lock.json unreadable/unsupported shape ' +
-      '-- cannot verify environment (run npm run dependencies:ci)',
-    { reason: 'lockfile-unreadable' },
+    `environment-stale: package-lock.json unreadable/unsupported shape in ` +
+      `${repositoryRoot} -- cannot verify environment ` +
+      `(${remedyFor(repositoryRoot)})`,
+    { reason: 'lockfile-unreadable', repositoryRoot },
   );
 }
 
@@ -335,7 +354,7 @@ function lockfileUnreadableError() {
  */
 export function assertInstalledDependenciesMatchLockfile({ repositoryRoot }) {
   const result = findStaleInstalledDependencies({ repositoryRoot });
-  if (result.lockfileUnreadable) throw lockfileUnreadableError();
+  if (result.lockfileUnreadable) throw lockfileUnreadableError(repositoryRoot);
   if (result.mismatches.length > 0)
-    throw mismatchError(result.mismatches, result.skipped);
+    throw mismatchError(result.mismatches, result.skipped, repositoryRoot);
 }
