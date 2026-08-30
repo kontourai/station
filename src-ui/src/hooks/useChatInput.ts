@@ -686,6 +686,7 @@ export function useChatInput({
       const previousMode =
         activeChatState?.requestedProviderOptions?.approvalMode ??
         activeChatState?.providerOptions?.approvalMode;
+      if (previousMode === mode) return;
       updateChat(sessionId, {
         requestedProviderOptions: {
           ...(activeChatState?.requestedProviderOptions ??
@@ -694,12 +695,10 @@ export function useChatInput({
           approvalMode: mode,
         },
       });
-      if (previousMode !== mode) {
-        addEphemeralMessage(sessionId, {
-          role: 'system',
-          content: `Approval mode changed to **${approvalModeLabel(mode)}**`,
-        });
-      }
+      addEphemeralMessage(sessionId, {
+        role: 'system',
+        content: `Approval mode changed to **${approvalModeLabel(mode)}**`,
+      });
     },
     [
       activeChatState?.providerOptions,

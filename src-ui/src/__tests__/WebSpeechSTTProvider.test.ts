@@ -74,6 +74,12 @@ beforeEach(() => {
   vi.useFakeTimers();
   lastRec = null;
   (globalThis as any).window = { SpeechRecognition: SpeechRecognitionMock };
+  Object.defineProperty(globalThis.navigator, 'mediaDevices', {
+    configurable: true,
+    value: {
+      getUserMedia: vi.fn(() => Promise.resolve({ getTracks: () => [] })),
+    },
+  });
 });
 
 afterEach(() => {
@@ -90,6 +96,11 @@ async function getProvider() {
   return mod.webSpeechSTTProvider;
 }
 
+async function startProvider(p: Awaited<ReturnType<typeof getProvider>>) {
+  p.startListening();
+  await Promise.resolve();
+}
+
 // ---- Tests -----------------------------------------------------------------
 
 describe('WebSpeechSTTProvider', () => {
@@ -104,6 +115,19 @@ describe('WebSpeechSTTProvider', () => {
       const p = await getProvider();
       expect(p.isSupported).toBe(true);
     });
+
+    it('is unsupported up front when microphone capture is unavailable', async () => {
+      Object.defineProperty(globalThis.navigator, 'mediaDevices', {
+        configurable: true,
+        value: undefined,
+      });
+      const p = await getProvider();
+
+      expect(p.isSupported).toBe(false);
+      expect(p.unsupportedReason).toContain('Microphone capture');
+      await startProvider(p);
+      expect(lastRec).toBeNull();
+    });
   });
 
   describe('startListening → listening', () => {
@@ -112,7 +136,7 @@ describe('WebSpeechSTTProvider', () => {
       const listener = vi.fn();
       p.subscribe(listener);
 
-      p.startListening();
+      await startProvider(p);
       lastRec!._fireStart();
 
       expect(p.state).toBe('listening');
@@ -121,7 +145,7 @@ describe('WebSpeechSTTProvider', () => {
 
     it('accumulates transcript from onresult events', async () => {
       const p = await getProvider();
-      p.startListening();
+      await startProvider(p);
       lastRec!._fireStart();
       lastRec!._fireResult('hello world');
 
@@ -130,7 +154,7 @@ describe('WebSpeechSTTProvider', () => {
 
     it('transitions to idle when recognition ends normally', async () => {
       const p = await getProvider();
-      p.startListening();
+      await startProvider(p);
       lastRec!._fireStart();
       lastRec!._fireEnd();
 
@@ -139,9 +163,31 @@ describe('WebSpeechSTTProvider', () => {
   });
 
   describe('error state and recovery', () => {
+    it('publishes a visible permission error when capture is denied at click time', async () => {
+      Object.defineProperty(globalThis.navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          getUserMedia: vi.fn(() =>
+            Promise.reject(
+              new DOMException('Permission denied', 'NotAllowedError'),
+            ),
+          ),
+        },
+      });
+      const p = await getProvider();
+
+      await startProvider(p);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(p.state).toBe('error');
+      expect(p.errorMessage).toContain('permission was denied');
+      expect(lastRec).toBeNull();
+    });
+
     it('transitions to error on onerror', async () => {
       const p = await getProvider();
-      p.startListening();
+      await startProvider(p);
       lastRec!._fireStart();
       lastRec!._fireError();
 
@@ -150,7 +196,7 @@ describe('WebSpeechSTTProvider', () => {
 
     it('auto-recovers to idle after ERROR_RESET_MS', async () => {
       const p = await getProvider();
-      p.startListening();
+      await startProvider(p);
       lastRec!._fireStart();
       lastRec!._fireError();
 
@@ -161,7 +207,7 @@ describe('WebSpeechSTTProvider', () => {
 
     it('does not override error state when recognition fires onend', async () => {
       const p = await getProvider();
-      p.startListening();
+      await startProvider(p);
       lastRec!._fireStart();
       lastRec!._fireError();
       // onend fires after onerror in some browsers
@@ -172,12 +218,12 @@ describe('WebSpeechSTTProvider', () => {
 
     it('clears error timer when startListening is called again', async () => {
       const p = await getProvider();
-      p.startListening();
+      await startProvider(p);
       lastRec!._fireStart();
       lastRec!._fireError();
 
       // Start listening again — timer must be cleared
-      p.startListening();
+      await startProvider(p);
       lastRec!._fireStart();
 
       vi.advanceTimersByTime(1500);
@@ -189,7 +235,7 @@ describe('WebSpeechSTTProvider', () => {
   describe('stopListening', () => {
     it('calls stop on the recognition instance', async () => {
       const p = await getProvider();
-      p.startListening();
+      await startProvider(p);
       const rec = lastRec!;
       p.stopListening();
 
@@ -198,7 +244,7 @@ describe('WebSpeechSTTProvider', () => {
 
     it('clears error timer when stopped', async () => {
       const p = await getProvider();
-      p.startListening();
+      await startProvider(p);
       lastRec!._fireStart();
       lastRec!._fireError();
 
@@ -212,7 +258,7 @@ describe('WebSpeechSTTProvider', () => {
   describe('destroy', () => {
     it('aborts the recognition instance', async () => {
       const p = await getProvider();
-      p.startListening();
+      await startProvider(p);
       const rec = lastRec!;
       p.destroy();
 

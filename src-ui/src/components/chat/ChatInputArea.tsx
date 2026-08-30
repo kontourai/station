@@ -142,6 +142,8 @@ interface ChatInputAreaProps {
   // Voice mode (optional — omit to hide the mic button)
   voiceState?: VoiceState;
   voiceSupported?: boolean;
+  voiceUnsupportedReason?: string;
+  voiceError?: string;
   onVoiceStart?: () => void;
   onVoiceStop?: () => void;
   /**
@@ -225,6 +227,8 @@ export function ChatInputArea({
   closeAll,
   voiceState,
   voiceSupported,
+  voiceUnsupportedReason,
+  voiceError,
   onVoiceStart,
   onVoiceStop,
   secondaryActions,
@@ -615,6 +619,11 @@ export function ChatInputArea({
               {sendBlockedReason}
             </div>
           )}
+          {voiceState === 'error' && voiceError && (
+            <div className="chat-input__attachment-error" role="alert">
+              {voiceError}
+            </div>
+          )}
         </fieldset>
         <div className="chat-controls-row">
           {secondaryActions && <ComposerActionsMenu {...secondaryActions} />}
@@ -631,18 +640,16 @@ export function ChatInputArea({
             supportsImages={modelSupportsAttachments}
             supportsFiles={fileAttachmentsSupported}
           />
-          {voiceSupported &&
-            voiceState !== undefined &&
-            onVoiceStart &&
-            onVoiceStop && (
-              <VoiceOrb
-                state={voiceState}
-                supported={voiceSupported}
-                disabled={disabled || isSending}
-                onStart={onVoiceStart}
-                onStop={onVoiceStop}
-              />
-            )}
+          {voiceState !== undefined && onVoiceStart && onVoiceStop && (
+            <VoiceOrb
+              state={voiceState}
+              supported={voiceSupported ?? false}
+              unsupportedReason={voiceUnsupportedReason}
+              disabled={disabled || isSending}
+              onStart={onVoiceStart}
+              onStop={onVoiceStop}
+            />
+          )}
           <span className="chat-controls-row__spacer" />
           {turnInFlight ? (
             <button

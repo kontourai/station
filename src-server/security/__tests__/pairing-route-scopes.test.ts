@@ -84,6 +84,30 @@ function scanMountedRouteBases(): string[] {
 }
 
 describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () => {
+  test('a standard paired chat tier admits every attachment staging control leaf', () => {
+    const standard = pairingScopePresetString('standard');
+    const chatScope = requiredPairingScope('POST', '/api/orchestration/chat');
+    expect(chatScope).toBe('orchestration:operate');
+
+    for (const [method, path] of [
+      ['POST', '/api/orchestration/attachment-staging/prepare'],
+      ['POST', '/api/orchestration/attachment-staging/reconcile'],
+      ['DELETE', '/api/orchestration/attachment-staging/:stageId'],
+    ] as const) {
+      const attachmentScope = requiredPairingScope(method, path);
+      expect(attachmentScope).toBe(chatScope);
+      expect(pairingScopeIncludes(standard, attachmentScope!)).toBe(true);
+    }
+
+    expect(
+      requiredExternalSurfaceCapability(
+        'http',
+        'PUT',
+        '/api/orchestration/attachment-staging/:stageId',
+      ),
+    ).toMatchObject({ capability: 'stage-grant' });
+  });
+
   test('declares each inherited leaf exactly once', () => {
     const identities = PAIRING_SCOPE_FAMILY_INHERITED_LEAVES.map(
       ({ method, path }) => `${method} ${path}`,
