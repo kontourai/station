@@ -436,28 +436,6 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     expect(notices.some((text) => /as it is/i.test(text ?? ''))).toBe(true);
   });
 
-  test('an ordinary retry keeps the project workspace it was sent with', async () => {
-    activeChatsStore.updateChat(threadId, {
-      projectSlug: 'station',
-      queuedMessages: ['ordinary follow-up'],
-      queuedMessageFailure: {
-        message: 'Refused for now.',
-        code: 'resource_posture_critical',
-        at: 1,
-      },
-    });
-    sendExecutionMessageMock.mockResolvedValueOnce({ conversationId: 'c' });
-
-    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
-    await vi.advanceTimersByTimeAsync(100);
-
-    const sent = sendExecutionMessageMock.mock.calls.at(-1)?.[0];
-    expect(sent.target.workspace).toEqual({
-      kind: 'project',
-      projectSlug: 'station',
-    });
-  });
-
   test('a fresh drain clears the previous refusal rather than leaving a stale reason', async () => {
     activeChatsStore.updateChat(threadId, {
       queuedMessages: ['retry me'],
@@ -479,12 +457,9 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
 
   // The chat route's catch-all collapses server-declared-retryable refusals
   // into 400 with the error's code in the body — the drop discriminator must
-  // consult the code, or load shedding / adoption races (which clear on
-  // retry) would permanently discard queued messages (archive#3027 fix-round).
-  for (const retryableCode of [
-    'resource_posture_critical',
-    'adoption_continuation_in_progress',
-  ]) {
+  // consult the code, or adoption races would permanently discard queued
+  // messages (archive#3027 fix-round).
+  for (const retryableCode of ['adoption_continuation_in_progress']) {
     test(`a 400 carrying server-retryable code '${retryableCode}' is requeued, not dropped`, async () => {
       activeChatsStore.updateChat(threadId, {
         queuedMessages: ['transiently refused'],

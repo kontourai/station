@@ -1448,14 +1448,6 @@ export const schedulerHealthy = meter.createObservableGauge(
   { description: 'Scheduler heartbeat health (1=healthy, 0=unhealthy)' },
 );
 
-/** Runtime admissions by observed resource posture, never caller configuration. */
-export const resourcePostureDecisions = meter.createCounter(
-  'station.resource_posture.decisions',
-  {
-    description: 'Engine and scheduler admission decisions by observed posture',
-  },
-);
-
 // ── MCP lifecycle ──
 export const mcpLifecycle = meter.createCounter('station.mcp.lifecycle', {
   description: 'MCP connection lifecycle events',

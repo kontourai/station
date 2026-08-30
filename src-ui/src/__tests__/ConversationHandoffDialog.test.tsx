@@ -248,38 +248,6 @@ describe('ConversationHandoffDialog', () => {
     );
   });
 
-  test('retains the handoff identity and consumes a one-shot Start anyway capability', async () => {
-    handoffExecutionMessage
-      .mockRejectedValueOnce(
-        Object.assign(new Error('This Station remains busy.'), {
-          status: 409,
-          code: 'resource_posture_override_required',
-          override: {
-            token: 'handoff-override-1',
-            expiresAt: Date.now() + 30_000,
-          },
-        }),
-      )
-      .mockResolvedValueOnce(receipt());
-    const { onAccepted } = renderDialog();
-    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
-    );
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Start anyway' })).toBeTruthy(),
-    );
-    const firstKey = handoffExecutionMessage.mock.calls[0][2].idempotencyKey;
-
-    fireEvent.click(screen.getByRole('button', { name: 'Start anyway' }));
-
-    await waitFor(() => expect(onAccepted).toHaveBeenCalledOnce());
-    expect(handoffExecutionMessage.mock.calls[1][2]).toMatchObject({
-      idempotencyKey: firstKey,
-      resourceAdmissionOverrideToken: 'handoff-override-1',
-    });
-  });
-
   test('always targets current on a production-shaped Environment id', async () => {
     handoffExecutionMessage.mockResolvedValueOnce(receipt());
     renderDialog(
