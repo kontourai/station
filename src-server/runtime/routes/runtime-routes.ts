@@ -406,6 +406,7 @@ import {
   listDelegatedTasks,
   observeDelegatedTask,
   observeDelegatedTaskEvents,
+  refreshPeerDelegationActivity,
   respondToDelegatedTaskRequest,
 } from '../../tools/station-control-delegation.js';
 import { INTERNAL_CONTROL_CALLER_BINDING_HEADER } from '../../tools/station-control-shared.js';
@@ -2580,6 +2581,11 @@ export function configureRuntimeRoutes(
         ),
       observeDelegatedTask: (input) =>
         observeDelegatedTask(
+          { ...input, readAuthority: readAuthorityForExecution(input.userId) },
+          context.orchestrationService,
+        ),
+      refreshDelegatedTaskActivity: (input) =>
+        refreshPeerDelegationActivity(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
