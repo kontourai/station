@@ -9,6 +9,7 @@ import './VoiceOrb.css';
 interface VoiceOrbProps {
   state: STTState;
   supported: boolean;
+  unsupportedReason?: string;
   disabled?: boolean;
   onStart: () => void;
   onStop: () => void;
@@ -17,12 +18,11 @@ interface VoiceOrbProps {
 export function VoiceOrb({
   state,
   supported,
+  unsupportedReason,
   disabled = false,
   onStart,
   onStop,
 }: VoiceOrbProps) {
-  if (!supported) return null;
-
   const isListening = state === 'listening';
   const isError = state === 'error';
 
@@ -40,13 +40,16 @@ export function VoiceOrb({
       className={className}
       data-testid="voice-orb"
       onClick={() => (isListening ? onStop() : onStart())}
-      disabled={disabled}
+      disabled={disabled || !supported}
+      aria-label={supported ? 'Speak message' : 'Microphone unavailable'}
       title={
-        isListening
-          ? 'Click to stop'
-          : isError
-            ? 'Mic error — try again'
-            : 'Click to speak'
+        !supported
+          ? (unsupportedReason ?? 'Microphone input is unavailable.')
+          : isListening
+            ? 'Click to stop'
+            : isError
+              ? 'Mic error — try again'
+              : 'Click to speak'
       }
     >
       {isListening && <span className="voice-orb__pulse" aria-hidden />}

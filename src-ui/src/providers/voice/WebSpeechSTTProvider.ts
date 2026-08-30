@@ -13,11 +13,29 @@ class WebSpeechSTTProvider extends ListenerManager implements STTProvider {
   private _state: STTState = 'idle';
   private _transcript = '';
   private _rec: any = null;
+  private _errorMessage: string | undefined;
   private _errorTimer: ReturnType<typeof setTimeout> | null = null;
 
   get isSupported(): boolean {
+    return this.unsupportedReason === undefined;
+  }
+
+  get unsupportedReason(): string | undefined {
     const win = window as any;
-    return !!(win.SpeechRecognition ?? win.webkitSpeechRecognition);
+    if (!(win.SpeechRecognition ?? win.webkitSpeechRecognition)) {
+      return 'Speech recognition is unavailable in this browser.';
+    }
+    if (typeof navigator.mediaDevices?.getUserMedia !== 'function') {
+      return 'Microphone capture is unavailable in this browser.';
+    }
+    if (window.isSecureContext === false) {
+      return 'Microphone input requires a secure browser connection.';
+    }
+    return undefined;
+  }
+
+  get errorMessage(): string | undefined {
+    return this._errorMessage;
   }
 
   get state(): STTState {
@@ -30,9 +48,10 @@ class WebSpeechSTTProvider extends ListenerManager implements STTProvider {
   startListening(opts?: STTOptions): void {
     const win = window as any;
     const SpeechRec = win.SpeechRecognition ?? win.webkitSpeechRecognition;
-    if (!SpeechRec) return;
+    if (!SpeechRec || !this.isSupported) return;
 
     this._clearErrorTimer();
+    this._errorMessage = undefined;
     this._rec?.abort();
     this._transcript = '';
 
@@ -58,7 +77,7 @@ class WebSpeechSTTProvider extends ListenerManager implements STTProvider {
 
       rec.onerror = (e: any) => {
         console.warn('[STT] SpeechRecognition error:', e?.error ?? e);
-        this._setError();
+        this._setError('Speech recognition failed. Try the microphone again.');
       };
 
       rec.onend = () => {
@@ -71,7 +90,7 @@ class WebSpeechSTTProvider extends ListenerManager implements STTProvider {
         rec.start();
       } catch (err) {
         console.warn('[STT] Failed to start:', err);
-        this._setError();
+        this._setError('The microphone could not start. Try again.');
       }
     };
 
@@ -86,11 +105,12 @@ class WebSpeechSTTProvider extends ListenerManager implements STTProvider {
         })
         .catch((err) => {
           console.warn('[STT] Mic permission denied:', err);
-          this._setError();
+          this._setError(
+            err instanceof DOMException && err.name === 'NotAllowedError'
+              ? 'Microphone permission was denied. Allow microphone access and try again.'
+              : 'Microphone input is unavailable. Check browser support and permissions.',
+          );
         });
-    } else {
-      // No getUserMedia (older browser) — try SpeechRecognition directly
-      startRec();
     }
   }
 
@@ -107,11 +127,13 @@ class WebSpeechSTTProvider extends ListenerManager implements STTProvider {
     this._clearListeners();
   }
 
-  private _setError(): void {
+  private _setError(message: string): void {
     this._clearErrorTimer();
+    this._errorMessage = message;
     this._setState('error');
     this._errorTimer = setTimeout(() => {
       this._errorTimer = null;
+      this._errorMessage = undefined;
       this._setState('idle');
     }, ERROR_RESET_MS);
   }
