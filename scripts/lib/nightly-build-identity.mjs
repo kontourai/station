@@ -325,7 +325,9 @@ export function createNightlyConfig({
  * today and stay inert until each also gets an endpoint.
  * There is no Android-style version-code reservation here: Tauri's updater
  * orders releases by the SemVer `version` string, not a numeric build
- * index, so this needs no monotonic allocation.
+ * index, so this needs no monotonic allocation. macOS still requires a
+ * numeric CFBundleVersion, so the desktop config derives the deterministic
+ * day code through the same `nightlyVersionCode()` authority with build 0.
  *
  * The parameter object is declared rather than left to inference, for the
  * same TS2345 reason documented on `allocateNightlyVersionCode` above: an
@@ -355,7 +357,10 @@ export function createNightlyDesktopConfig({
     productName: NIGHTLY_PRODUCT_NAME,
     version: nightlyVersion(packageVersion, date),
     identifier: nightlyIdentifier(productionIdentifier),
-    bundle: { createUpdaterArtifacts },
+    bundle: {
+      createUpdaterArtifacts,
+      macOS: { bundleVersion: String(nightlyVersionCode(date, 0)) },
+    },
     plugins,
   };
 }
@@ -370,8 +375,20 @@ function option(name, args) {
   return index === -1 ? undefined : args[index + 1];
 }
 
-/** Writes one ephemeral desktop Nightly overlay from the stable checked-in
- * authority and the caller-supplied updater material. */
+/**
+ * Writes one ephemeral desktop Nightly overlay from the stable checked-in
+ * authority and the caller-supplied updater material.
+ *
+ * @param {{
+ *   packageJsonPath: string,
+ *   tauriConfigPath: string,
+ *   date: string,
+ *   updaterPublicKey: string,
+ *   updaterEndpoint?: string,
+ *   outputPath: string,
+ *   githubOutput?: string,
+ * }} input
+ */
 export function writeNightlyDesktopConfig({
   packageJsonPath,
   tauriConfigPath,
@@ -404,6 +421,7 @@ export function writeNightlyDesktopConfig({
         `version=${config.version}`,
         `identifier=${config.identifier}`,
         `product_name=${config.productName}`,
+        `bundle_version=${config.bundle.macOS.bundleVersion}`,
       ].join('\n')}\n`,
       { flag: 'a' },
     );

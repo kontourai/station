@@ -21,10 +21,12 @@ import {
  * toolbar chip's full-sentence-length forms ("Pair", "Awaiting approval",
  * "Needs re-pairing") — that chip has an entire desktop toolbar row to
  * itself. This bar is ONE row shared with six other 44px controls at a
- * 320px minimum width — a budget pinned by
- * `tests/mobile-chat-composer.spec.ts` with a labelled `needs-repair` chip
- * inside the maximized header's containment checks. This bar gets its own
- * short vocabulary instead of the chip's; `needs-credential` keeps "Pair" —
+ * 320px minimum width — a budget measured in `index.css`'s comment on
+ * `.chat-dock__mobile-conn-label` and spec-pinned by the labelled
+ * needs-repair/awaiting-approval transitions in
+ * `tests/mobile-chat-composer.spec.ts`'s "320px header contains every pinned
+ * control" case (#547). This bar gets its own short vocabulary instead of the
+ * chip's; `needs-credential` keeps "Pair" —
  * already short — so this is really only two new words.
  */
 const SHORT_ACTION_LABEL: Partial<Record<ConnectionIndicatorState, string>> = {

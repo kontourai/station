@@ -406,6 +406,7 @@ import {
   listDelegatedTasks,
   observeDelegatedTask,
   observeDelegatedTaskEvents,
+  refreshPeerDelegationActivity,
   respondToDelegatedTaskRequest,
 } from '../../tools/station-control-delegation.js';
 import { INTERNAL_CONTROL_CALLER_BINDING_HEADER } from '../../tools/station-control-shared.js';
@@ -2580,6 +2581,11 @@ export function configureRuntimeRoutes(
         ),
       observeDelegatedTask: (input) =>
         observeDelegatedTask(
+          { ...input, readAuthority: readAuthorityForExecution(input.userId) },
+          context.orchestrationService,
+        ),
+      refreshDelegatedTaskActivity: (input) =>
+        refreshPeerDelegationActivity(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
           context.orchestrationService,
         ),
@@ -5450,8 +5456,24 @@ export function configureDevicePairingHostRoutes(
       options.connectedClientPresence?.disconnectDevice(deviceId);
       return c.json(device);
     } catch (error) {
+      const code = pairingErrorCode(error);
       return c.json(
-        { error: pairingErrorCode(error) },
+        {
+          error: code,
+          // #831 (resolved as operator-channel-only): the refusal is
+          // deliberate, so say what the caller should do instead of leaving a
+          // bare code. `access:manage` — the tier that decides pairing
+          // requests and provisions outbound peer credentials — is never
+          // grantable through this route; those decisions stay on the
+          // operator channel (the host CLI, or a session already holding the
+          // operator credential).
+          ...(code === 'scope_not_grantable'
+            ? {
+                detail:
+                  'This access tier cannot be granted here. Pairing decisions and peer-credential provisioning are operator-channel-only: use the host CLI or a session holding the operator credential.',
+              }
+            : {}),
+        },
         pairingErrorStatus(error),
       );
     }

@@ -4,6 +4,7 @@ import {
   type DelegationTargetOption,
   useDelegateOrchestrationTaskMutation,
   useDelegationOptionsQuery,
+  usePeerCredentialsQuery,
   useProjectQuery,
   useSshEnvironmentsQuery,
 } from '@kontourai/station-sdk';
@@ -67,6 +68,31 @@ export function DelegationLauncher({
   const { data: project } = useProjectQuery(projectSlug ?? '', {
     enabled: isOpen && Boolean(projectSlug),
   });
+  // #790 (#765 D4): Stations paired via `station environment peers add` are
+  // selectable delegation targets. The server's `resolveTarget` already falls
+  // back from SSH to the outbound peer-credential store for a
+  // `{ kind: 'saved' }` environment id, so listing peers here is the only
+  // missing wiring. `GET /api/environments/peers` is `access:manage`-gated
+  // for a remote caller — a non-operator browser session 403s, so peers are
+  // rendered only on success, exactly like the Computers page.
+  const peerCredentialsQuery = usePeerCredentialsQuery({ enabled: isOpen });
+  const peerStations = useMemo(() => {
+    const sshEnvironmentIds = new Set(
+      (environments ?? [])
+        .map((environment) => environment.profile.environmentId)
+        .filter(Boolean),
+    );
+    return (peerCredentialsQuery.data ?? []).filter(
+      (peer) =>
+        // An environmentId with a saved SSH profile resolves through SSH
+        // server-side (the peer credential rides that tunnel); its SSH option
+        // is already listed, so a second entry would dispatch identically.
+        !sshEnvironmentIds.has(peer.environmentId) &&
+        // 'current' is this select's sentinel for "This Station"; a peer that
+        // somehow stored it could never be dispatched as itself.
+        peer.environmentId !== 'current',
+    );
+  }, [environments, peerCredentialsQuery.data]);
   const configuredEnvironmentId =
     project?.defaultEnvironment?.kind === 'saved'
       ? project.defaultEnvironment.id
@@ -186,10 +212,15 @@ export function DelegationLauncher({
   const selectedEnvironment = environments?.find(
     (environment) => environment.profile.environmentId === environmentId,
   );
+  const selectedPeer = peerStations.find(
+    (peer) => peer.environmentId === environmentId,
+  );
   const selectedEnvironmentName =
     environmentId === 'current'
       ? 'This Station'
       : (selectedEnvironment?.profile.name ??
+        selectedPeer?.label ??
+        selectedPeer?.apiBase ??
         delegationOptions?.environment.name ??
         'Selected Station');
   const resolvedModelId = model.trim() || selectedTarget?.defaultModel || '';
@@ -439,6 +470,14 @@ export function DelegationLauncher({
                               : ' (connects to check)'}
                         </option>
                       ))}
+                    {peerStations.map((peer) => (
+                      <option
+                        key={`peer:${peer.environmentId}`}
+                        value={peer.environmentId}
+                      >
+                        {peer.label ?? peer.apiBase} — Paired Station
+                      </option>
+                    ))}
                   </select>
                 </label>
               </div>

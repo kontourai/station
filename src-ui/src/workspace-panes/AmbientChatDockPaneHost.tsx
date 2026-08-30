@@ -25,14 +25,18 @@ import {
 } from '@kontourai/station-contracts/workspace-pane-host';
 import {
   lazy,
+  type ReactElement,
   type ReactNode,
   Suspense,
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
 import { DockShell } from '../components/chat-dock/DockShell';
+import type { DockSnap } from '../components/chat-dock/dockSnap';
+import { shouldMaximizeAfterDockingAsOnlyContent } from '../components/chat-dock/mobile-chrome';
 import { SkeletonBlock } from '../components/state';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import type { DockSlotGeometry } from '../hooks/dock-slot-geometry';
@@ -48,7 +52,10 @@ import {
   useHomeViewModel,
 } from '../views/home/useHomeViewModel';
 import { ambientDockDescriptorFor } from './ambientDockOccupants';
-import { DockOccupantPicker } from './DockOccupantPicker';
+import {
+  DockOccupantPicker,
+  type DockOccupantPickerProps,
+} from './DockOccupantPicker';
 import { WorkspacePaneDockContext } from './WorkspacePaneDockContext';
 import { WorkspacePaneHost } from './WorkspacePaneHost';
 
@@ -92,9 +99,21 @@ const ambientChatDockPaneDocument = createAmbientChatDockPaneDocument();
  * `activeInstanceId`), republished on every occupant change so route
  * placements can derive "my pane is away" from the one source of truth
  * (archive#4090). `undockOccupant` restores the slot's baseline occupant.
+ *
+ * `dockPaneAsOnlyContent` — station#520 — is `dockPane` plus one more fact
+ * only its caller can honestly supply: that `instance` is what the MAIN
+ * VIEWPORT currently, entirely renders (`WorkspacePaneDockAction`'s "Dock
+ * this pane" is rendered BY that pane's own content, so every call through
+ * it is, by construction, "dock what's on screen now" — never an occupant
+ * switch chosen from elsewhere). See its doc on `WorkspacePaneDockAction`
+ * (the interface) for the full contract.
  */
 export function ambientWorkspacePaneDockAction(
   dockPane: (
+    descriptor: WorkspacePaneDescriptor,
+    instance: WorkspacePaneInstance,
+  ) => void,
+  dockPaneAsOnlyContent: (
     descriptor: WorkspacePaneDescriptor,
     instance: WorkspacePaneInstance,
   ) => void,
@@ -104,6 +123,7 @@ export function ambientWorkspacePaneDockAction(
   return {
     suppliable: workspacePaneHostSuppliableContexts({ kind: 'ambient' }),
     dockPane,
+    dockPaneAsOnlyContent,
     occupantInstanceId,
     undockOccupant,
   };
@@ -248,13 +268,17 @@ function AmbientHomeDock({
 }
 
 /**
- * The full dock-chrome surface (`DockShellChrome`) plus the two things it
+ * The full dock-chrome surface (`DockShellChrome`) plus the things it
  * cannot itself derive: `dockPane`, the ambient host's own admission-checked
- * replace action, and `occupantPicker`, a pre-rendered `DockOccupantPicker`
- * naming THIS occupant (a different node per occupant — Chat's names "Chat",
- * Home's names "Home"). Every occupant (Chat, Home, Activity) receives
- * exactly this shape (archive#4460) — one contract, not three per-occupant
- * ones.
+ * replace action; `dockPaneAsOnlyContent` (station#520, review round 3,
+ * B1), the SAME action's mobile-maximizing sibling — needed by every
+ * occupant-switch surface (the header's `DockOccupantPicker` AND the ⋯
+ * overflow sheet), not only the docked-pane host, because both are reachable
+ * at every dock state and both can strand the main area the same way; and
+ * `occupantPicker`, a pre-rendered `DockOccupantPicker` naming THIS occupant
+ * (a different node per occupant — Chat's names "Chat", Home's names
+ * "Home"). Every occupant (Chat, Home, Activity) receives exactly this shape
+ * (archive#4460) — one contract, not three per-occupant ones.
  *
  * `occupantPicker` is pre-rendered, not `{current, onChoose}` data:
  * `DockOccupantPicker` pulls in `ambientDockOccupants.ts` and all
@@ -270,7 +294,12 @@ export type AmbientDockShellApi = DockShellChrome & {
     descriptor: WorkspacePaneDescriptor,
     instance: WorkspacePaneInstance,
   ) => void;
-  occupantPicker: ReactNode;
+  /** See the type doc above — station#520 review round 3, B1. */
+  dockPaneAsOnlyContent: (
+    descriptor: WorkspacePaneDescriptor,
+    instance: WorkspacePaneInstance,
+  ) => void;
+  occupantPicker: ReactElement<DockOccupantPickerProps> | null;
 };
 
 /** The ambient shell mounts Chat through the same host/frame lifecycle as every pane. */
@@ -296,6 +325,10 @@ export function AmbientChatDockPaneHost({
         descriptor: WorkspacePaneDescriptor,
         instance: WorkspacePaneInstance,
       ): void;
+      dockPaneAsOnlyContent(
+        descriptor: WorkspacePaneDescriptor,
+        instance: WorkspacePaneInstance,
+      ): void;
     } | null,
   ): void;
 }) {
@@ -306,16 +339,84 @@ export function AmbientChatDockPaneHost({
     ambientChatDockPaneDocument.activeInstanceId,
   );
   const writeDockSlotGeometry = useAmbientDockSlotGeometryWriter();
-  const dockPane = useCallback(
-    (descriptor: WorkspacePaneDescriptor, instance: WorkspacePaneInstance) => {
+  // Internal, boolean-returning: `dockPane`'s PUBLIC shape (both on
+  // `AmbientDockShellApi` and `WorkspacePaneDockAction`) returns `void`, but
+  // `dockPaneAsOnlyContent` below must not maximize the dock for a request
+  // this admission check actually refused (station#520 review — maximizing
+  // on a no-op would be a real bug, not the contract this ships).
+  const attemptDockPane = useCallback(
+    (
+      descriptor: WorkspacePaneDescriptor,
+      instance: WorkspacePaneInstance,
+    ): boolean => {
       // `ambientDockDescriptorFor` already folds in the modes-satisfiability
       // derivation, so the request is refused unless the occurrence is the
       // canonical one of an ambient-satisfiable pane this host renders AND
       // the caller's descriptor is that exact declaration.
-      if (ambientDockDescriptorFor(instance) !== descriptor || !replace) return;
+      if (ambientDockDescriptorFor(instance) !== descriptor || !replace)
+        return false;
       replace(instance);
+      return true;
     },
     [replace],
+  );
+  const dockPane = useCallback(
+    (descriptor: WorkspacePaneDescriptor, instance: WorkspacePaneInstance) => {
+      attemptDockPane(descriptor, instance);
+    },
+    [attemptDockPane],
+  );
+  // station#520: `DockShell`'s live chrome (`isMobile`, `applyDockSnap`) only
+  // exists inside its render prop below, while `dockPane` and the action this
+  // host publishes are defined up here so `onDockActionChange` can react to
+  // occupant changes via `activeInstanceId` alone. A ref mirrors the latest
+  // chrome out of the render prop on every render — cheaper than threading
+  // `DockShell`'s mount timing into this callback's own dependency graph, and
+  // always current because it is written the same render it is read.
+  const mobileDockSnapRef = useRef<{
+    isMobile: boolean;
+    applyDockSnap: (next: DockSnap) => void;
+  } | null>(null);
+  // station#520 (mobile dock-and-empty contract): "docking a pane never
+  // yields a viewport whose only content is the placeholder card"
+  // (`WorkspacePaneAwayState`). The crisp version of that — does the route
+  // behind the dock have OTHER meaningful content — needs the current
+  // route's composition, which THIS FILE still cannot see: it is ambient,
+  // occupant-agnostic infrastructure with no `pathname`/`NavigationView` of
+  // its own (review round 2 correction: that is true of this file, not of
+  // every caller — see below). Two callers reach this function, each
+  // deriving what it can honestly know:
+  //
+  // - `WorkspacePaneDockAction` ("Dock this pane") is rendered BY the pane's
+  //   own content, so every call through it is, by construction, "dock the
+  //   pane that is CURRENTLY the main viewport's only content" — no route
+  //   lookup needed, the caller already IS that content.
+  // - `DockOccupantPicker`'s onChoose seam IS a real component (unlike this
+  //   file) and reads `useNavigation()`/`resolveViewFromPath` itself,
+  //   calling this function instead of plain `dockPane` exactly when the
+  //   PICKED pane's own route is the route already on screen
+  //   (`shouldMaximizeOnOccupantChoice`) — closing what was a disclosed gap.
+  //
+  // Either way, on mobile this opens the dock MAXIMIZED instead of whatever
+  // snap it already had, so the dock itself — not an empty main area behind
+  // it — occupies the screen. Remaining scope (a choice, not an inability):
+  // both derivations are route-IDENTITY matches, not full route-composition
+  // awareness — see the fuller writeup on `WorkspacePaneDockContext.tsx`'s
+  // `dockPaneAsOnlyContent`.
+  const dockPaneAsOnlyContent = useCallback(
+    (descriptor: WorkspacePaneDescriptor, instance: WorkspacePaneInstance) => {
+      const docked = attemptDockPane(descriptor, instance);
+      const chrome = mobileDockSnapRef.current;
+      if (
+        shouldMaximizeAfterDockingAsOnlyContent(
+          chrome?.isMobile ?? false,
+          docked,
+        )
+      ) {
+        chrome?.applyDockSnap('full');
+      }
+    },
+    [attemptDockPane],
   );
   // "Remove from the dock" = restore the slot's baseline occupant, which is
   // Chat — the same occurrence the baseline document places. Owned by the
@@ -337,12 +438,20 @@ export function AmbientChatDockPaneHost({
     onDockActionChange?.(
       ambientWorkspacePaneDockAction(
         dockPane,
+        dockPaneAsOnlyContent,
         activeInstanceId,
         undockOccupant,
       ),
     );
     return () => onDockActionChange?.(null);
-  }, [activeInstanceId, dockPane, onDockActionChange, replace, undockOccupant]);
+  }, [
+    activeInstanceId,
+    dockPane,
+    dockPaneAsOnlyContent,
+    onDockActionChange,
+    replace,
+    undockOccupant,
+  ]);
   const host = (
     // DockShell wraps every occupant (Chat, Home, Activity) — the one dock
     // chrome shell (archive#4460): root box, resize handle, geometry/snap/
@@ -352,6 +461,12 @@ export function AmbientChatDockPaneHost({
     // one writer).
     <DockShell onGeometryChange={writeDockSlotGeometry}>
       {(shellChrome) => {
+        // station#520: keep `dockPaneAsOnlyContent`'s mobile-maximize ref
+        // current every render — see the ref's own doc above.
+        mobileDockSnapRef.current = {
+          isMobile: shellChrome.isMobile,
+          applyDockSnap: shellChrome.applyDockSnap,
+        };
         // `occupantPicker` is built PER OCCUPANT below, not once here: each
         // one names a different `current` descriptor — see
         // `AmbientDockShellApi`'s doc for why it is pre-rendered at all.
@@ -360,8 +475,17 @@ export function AmbientChatDockPaneHost({
         ): AmbientDockShellApi => ({
           ...shellChrome,
           dockPane,
+          // station#520 (review round 3, B1): every occupant-switch
+          // consumer of this shape — the header's picker AND (via
+          // `ChatDock.tsx`) the ⋯ overflow sheet — needs this, not only the
+          // picker the object below already carries it into.
+          dockPaneAsOnlyContent,
           occupantPicker: (
-            <DockOccupantPicker current={current} onChoose={dockPane} />
+            <DockOccupantPicker
+              current={current}
+              onChoose={dockPane}
+              onChooseAsOnlyContent={dockPaneAsOnlyContent}
+            />
           ),
         });
         return (

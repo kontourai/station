@@ -2141,6 +2141,123 @@ describe('OrchestrationService', () => {
     );
   });
 
+  test('projects a durable peer delegation Activity record without claiming completion before peer evidence (#847)', async () => {
+    service.recordPeerDelegationActivityDispatch({
+      taskId: 'task:peer-847',
+      conversationId: 'task:peer-847',
+      prompt: 'Verify the release candidate',
+      userId: 'owner-user',
+      environment: {
+        id: 'environment-peer',
+        name: 'Station B',
+        kind: 'peer',
+      },
+      target: { kind: 'agent', id: 'codex' },
+    });
+
+    const dispatched = (await service.listSessionReadModel()).find(
+      (session) => session.delegation?.taskId === 'task:peer-847',
+    );
+    expect(dispatched).toMatchObject({
+      lifecycleState: 'queued',
+      displayTitle: 'Verify the release candidate',
+      delegation: {
+        taskId: 'task:peer-847',
+        environmentId: 'environment-peer',
+        environmentName: 'Station B',
+        environmentKind: 'peer',
+        targetKind: 'agent',
+        targetId: 'codex',
+      },
+    });
+    expect(dispatched?.lifecycleState).not.toBe('completed');
+
+    expect(
+      service.recordPeerDelegationActivityOutcome({
+        taskId: 'task:peer-847',
+        environmentId: 'environment-peer',
+        status: 'completed',
+      }),
+    ).toBe(true);
+    expect(
+      (await service.listSessionReadModel()).find(
+        (session) => session.delegation?.taskId === 'task:peer-847',
+      ),
+    ).toMatchObject({ lifecycleState: 'completed' });
+  });
+
+  test.each(['needs_input', 'review_pending'] as const)(
+    'advances a queued peer Activity record through contract-derived hops to %s (#847 fix round)',
+    async (status) => {
+      service.recordPeerDelegationActivityDispatch({
+        taskId: `task:peer-847-${status}`,
+        conversationId: `task:peer-847-${status}`,
+        prompt: `Observe ${status}`,
+        userId: 'owner-user',
+        environment: {
+          id: 'environment-peer',
+          name: 'Station B',
+          kind: 'peer',
+        },
+        target: { kind: 'agent', id: 'codex' },
+      });
+
+      expect(
+        service.recordPeerDelegationActivityOutcome({
+          taskId: `task:peer-847-${status}`,
+          environmentId: 'environment-peer',
+          status,
+        }),
+      ).toBe(true);
+      const projected = (await service.listSessionReadModel()).find(
+        (session) => session.delegation?.taskId === `task:peer-847-${status}`,
+      );
+      expect(projected).toMatchObject({ lifecycleState: status });
+      expect(projected?.eventCount).toBe(3);
+    },
+  );
+
+  test('rejects local execution and recovery materialization for peer Activity records (#847 fix round)', async () => {
+    const stationAgent = new FakeAdapter('station-agent');
+    const peerService = new OrchestrationService({
+      adapterRegistry: createRegistry([stationAgent]),
+      eventBus: new EventBus(),
+      eventStore,
+      ownerlessSessionAccess: 'single-user-compat',
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = peerService.recordPeerDelegationActivityDispatch({
+      taskId: 'task:peer-847-non-executable',
+      conversationId: 'task:peer-847-non-executable',
+      prompt: 'Must remain remote',
+      userId: 'owner-user',
+      environment: {
+        id: 'environment-peer',
+        name: 'Station B',
+        kind: 'peer',
+      },
+      target: { kind: 'agent', id: 'codex' },
+    });
+
+    await expect(
+      peerService.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: 'run locally' },
+      }),
+    ).rejects.toThrow('Peer delegation Activity records are read-only.');
+    await expect(
+      (peerService as any).materializeRecoveredSession(threadId),
+    ).resolves.toBeUndefined();
+    expect(stationAgent.startSession).not.toHaveBeenCalled();
+    expect(stationAgent.sendTurn).not.toHaveBeenCalled();
+    expect(
+      (await peerService.listSessionReadModel()).find(
+        (session) => session.threadId === threadId,
+      ),
+    ).toMatchObject({ lifecycleState: 'queued' });
+    await peerService.shutdown();
+  });
+
   // archive#4543 MED-2: the combined test above asserts BOTH keys absent in
   // one `not.objectContaining({conversationId, environmentId})` — Jest/
   // Vitest's `objectContaining` requires every listed key to match, so

@@ -154,6 +154,12 @@ export function getLegacyPathRedirect(path: string): string | null {
     // deep links are exact-lookup-safe: `/tasks/<id>` never matches here.
     '/tasks': '/',
     '/tasks/': '/',
+    // #765 residue (D2 class): the nav item says "Review" but the canonical
+    // route is '/review-queue', so the hand-typed short spelling 404'd.
+    // Both spellings, like '/sessions' above. Exact-only is safe: no view
+    // ever mounts under a '/review/<id>' deep link.
+    '/review': '/review-queue',
+    '/review/': '/review-queue',
   };
   const exactRedirect = exactRedirects[pathname];
   if (exactRedirect) return preserveSearch(exactRedirect);

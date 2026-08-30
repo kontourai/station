@@ -2919,6 +2919,55 @@ describe('Orchestration Routes', () => {
     );
   });
 
+  test('GET /sessions/read-model reconciles peer delegation evidence before publishing Activity (#847)', async () => {
+    const refreshDelegatedTaskActivity = vi.fn().mockResolvedValue(undefined);
+    const service = {
+      listSessionReadModel: vi.fn().mockResolvedValue([
+        {
+          provider: 'station-agent',
+          threadId: 'peer-delegation:847',
+          status: 'closed',
+          lifecycleState: 'completed',
+          isLoaded: false,
+          isPersisted: true,
+          eventCount: 2,
+          createdAt: '2026-08-29T00:00:00.000Z',
+          updatedAt: '2026-08-29T00:00:01.000Z',
+          delegation: {
+            taskId: 'task-peer-847',
+            environmentKind: 'peer',
+            environmentId: 'environment-peer',
+          },
+        },
+      ]),
+    };
+    const app = createOrchestrationRoutes(service as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+      refreshDelegatedTaskActivity,
+    });
+
+    const response = await app.request('/sessions/read-model');
+
+    expect(response.status).toBe(200);
+    expect(await readJson(response)).toEqual({
+      success: true,
+      data: [
+        expect.objectContaining({
+          lifecycleState: 'completed',
+          delegation: expect.objectContaining({ environmentKind: 'peer' }),
+        }),
+      ],
+    });
+    expect(refreshDelegatedTaskActivity).toHaveBeenCalledWith({
+      userId: ROUTE_TEST_USER_ID,
+    });
+    expect(
+      refreshDelegatedTaskActivity.mock.invocationCallOrder[0],
+    ).toBeLessThan(service.listSessionReadModel.mock.invocationCallOrder[0]);
+  });
+
   // archive#4466: the test above mocks `OrchestrationService` entirely, so
   // it proves the route calls `listSessionReadModel` but says nothing about
   // how that method reads the store. This test enters through the REAL

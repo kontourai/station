@@ -216,6 +216,11 @@ export interface OrchestrationCommandDispatchResult<T = unknown> {
 
 export interface OrchestrationDelegationContext {
   taskId: string;
+  /**
+   * Transport that owns the task. Present on delegator-side peer records so
+   * Activity never offers local-session controls for work running elsewhere.
+   */
+  environmentKind?: 'current' | 'ssh' | 'peer';
   environmentId?: string;
   environmentName?: string;
   connectionId?: string;
@@ -267,6 +272,8 @@ export interface OrchestrationDelegationContext {
     | 'directory-corroborated'
     | 'unverified-cross-machine';
   parentTaskId?: string;
+  /** Bounded dispatch prompt used only as the delegator-side Activity label. */
+  title?: string;
   mode?: string;
 }
 

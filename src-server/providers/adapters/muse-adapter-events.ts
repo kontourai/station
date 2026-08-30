@@ -10,6 +10,8 @@
  * on the Codex adapter's lifetime or its JSON-RPC vocabulary.
  */
 
+import type { MuseProviderMode } from './muse-adapter-types.js';
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -242,13 +244,33 @@ export function buildMuseExecArgs(input: {
   prompt: string;
   modelId?: string;
   cwd?: string;
+  /**
+   * Startup provider override, already narrowed to muse's own closed
+   * vocabulary by {@link resolveMuseProviderOverride}. Omitted by default, and
+   * omission is byte-identical to the argv Station has always built — muse's
+   * own default (`meta`) then applies, exactly as before.
+   *
+   * Placed AFTER the `--session-id` pair rather than before it so the first
+   * four elements of every invocation stay `exec --json --session-id <id>`
+   * whether or not the knob is set; a stable prefix is what the adapter's
+   * argv assertions read.
+   */
+  provider?: MuseProviderMode;
 }): string[] {
   const args = ['exec', '--json', '--session-id', input.sessionId];
+  if (input.provider) {
+    args.push('--provider', input.provider);
+  }
   // `--model` is validated by muse against its own catalog (an unknown id
   // exits 1 before any JSONL), so passing it is a real applied selection —
-  // but muse rejects it outright under `--provider echo`. Station never
-  // passes `--provider`, so the default (`meta`) always applies here.
-  if (input.modelId) {
+  // but muse rejects it outright under `--provider echo`: live-verified
+  // against Muse Code 1.0.1-R1848.1, `muse exec --json --provider echo --model <id>`
+  // exits 2 with `--model requires --provider meta` before emitting a single
+  // JSONL line. So under `echo` the model is DROPPED rather than forwarded
+  // into a turn that could only die — echo answers from the prompt alone and
+  // has no model to select. Under no override, or under `meta`, the selection
+  // is passed through unchanged.
+  if (input.modelId && input.provider !== 'echo') {
     args.push('--model', input.modelId);
   }
   if (input.cwd) {

@@ -379,3 +379,26 @@ store.
   (`packages/cli/src/commands/profile-store.ts`) was not part of this earlier
   peer-store assessment; its interaction with a server-side peer store remains
   outside this document's evidence.
+
+## 11. Resolved decisions (2026-08-29)
+
+- **#790 — paired peers are first-class delegation targets in the UI.** A peer
+  provisioned in the outbound `PeerCredentialStore` (`station environment peers
+  add`) appears on Connections → Computers as a `Peer Station` row (name,
+  endpoint, credential-present state — never the credential) and as a selectable
+  entry in the Delegate dialog's Station menu. Selection dispatches the
+  existing `{ kind: 'saved', id: <environmentId> }` execution target;
+  `resolveTarget` (`station-control-delegation.ts`) resolves it through the
+  SSH-then-peer fallback that already existed, so no new execution path was
+  built. An environmentId that also has a saved SSH profile is listed once, as
+  its SSH entry — server-side SSH precedence (§7) makes a second entry dispatch
+  identically.
+- **#831 — pairing decisions are operator-channel-only.** The public promotion
+  route (`POST /api/pairing/devices/:id/scope`) deliberately refuses to grant
+  `access:manage` (`scope_not_grantable`), and `/api/pairing/**` decisions plus
+  peer-credential provisioning (`/api/environments/peers`) sit at that tier —
+  so no publicly-reachable promotion can mint a pairing-decision-capable
+  device. That is the intended shape, not a gap: pairing decisions and
+  outbound peer-credential provisioning happen on the operator channel (host
+  CLI, or a session already holding the operator credential). The route's
+  `scope_not_grantable` refusal now says so in its `detail` field.
