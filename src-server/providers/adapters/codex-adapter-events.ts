@@ -43,7 +43,8 @@ export function extractStringField(
   return extractString(value[field]);
 }
 
-export function extractNumber(value: unknown): number | null {
+/** Extracts a non-negative finite token figure from an unknown value. */
+export function extractTokenFigure(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? value
     : null;
