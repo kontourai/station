@@ -210,7 +210,7 @@ describe('verification policy gate', () => {
       '`npm run test:changed -- --base=origin/main --explain` selects a diagnostic lane',
     );
     expect(guidance).toContain(
-      'Builder `tests-evidence` requires the canonical completion receipt',
+      'Builder `tests-evidence` uses that exact-SHA promotion receipt',
     );
     expect(guidance).not.toContain('Broad verification: `npm run verify`.');
     expect(readFileSync('CLAUDE.md', 'utf8').startsWith('@AGENTS.md\n\n')).toBe(
@@ -548,7 +548,7 @@ describe('verification policy gate', () => {
     }
   });
 
-  test('requires detached submission handoff guidance in every contributor guide', () => {
+  test('requires hosted promotion guidance in every contributor guide', () => {
     const docs = SUBMISSION_HANDOFF_GUIDANCE_DOCS.map((file) => ({
       file,
       text: guideText(file),

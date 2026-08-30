@@ -1,5 +1,9 @@
 name: Stage Station release
 
+# Preview and stable tags share one preflight-bound source. The reusable
+# full-regression job must succeed on that exact SHA before any platform or
+# container producer is eligible to run.
+
 on:
   push:
     tags: ['v*']
@@ -74,6 +78,13 @@ jobs:
             echo "created_at=$created_at"
           } >> "$GITHUB_OUTPUT"
 
+  full-regression:
+    name: Tagged release exact-SHA full regression
+    needs: [preflight]
+    uses: ./.github/workflows/full-regression.yml
+    with:
+      source_sha: ${{ needs.preflight.outputs.sha }}
+
   # Every desktop job below (macOS/Windows/Linux) writes its tag-bound
   # updater overlay via `native-release-config.mjs --updater-public-key-file`,
   # which supplies the signing pubkey ONLY — no endpoint. The desktop
@@ -83,7 +94,8 @@ jobs:
   # self-update is inert on those channels until this workflow's overlay
   # also supplies an endpoint. Nightly already ships both (nightly.yml).
   desktop-macos:
-    needs: preflight
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -204,7 +216,8 @@ jobs:
         with: { name: "${{ matrix.artifact }}", path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   desktop-windows:
-    needs: preflight
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: windows-latest
     environment: native-release
     permissions:
@@ -278,7 +291,8 @@ jobs:
         with: { name: station-desktop-windows-x86_64, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   desktop-linux:
-    needs: preflight
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-22.04
     environment: native-release
     permissions:
@@ -338,7 +352,8 @@ jobs:
         with: { name: station-desktop-linux-x86_64, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   portable:
-    needs: preflight
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -356,7 +371,8 @@ jobs:
         with: { name: station-portable, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   android:
-    needs: preflight
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-latest
     environment: native-release
     permissions:
@@ -550,8 +566,8 @@ jobs:
           track: internal
           status: completed
   ios-simulator:
-    needs: preflight
-    if: needs.preflight.outputs.channel == 'stable'
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' && needs.preflight.outputs.channel == 'stable' }}
     runs-on: macos-15
     permissions:
       contents: read
@@ -592,8 +608,8 @@ jobs:
   ios-device:
     # Preview/Beta iOS is NOT_VERIFIED: Station has no separately signed Beta
     # iOS identity, so this stable-only lane must not imply channel parity.
-    needs: preflight
-    if: needs.preflight.outputs.channel == 'stable'
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' && needs.preflight.outputs.channel == 'stable' }}
     runs-on: macos-15
     environment: native-release
     permissions:
@@ -750,7 +766,8 @@ jobs:
           retention-days: 30
 
   container:
-    needs: preflight
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
