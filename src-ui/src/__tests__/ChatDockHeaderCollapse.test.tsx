@@ -19,6 +19,9 @@ vi.mock('../contexts/NavigationContext', () => ({
     isDockMaximized,
     setDockState,
     dockMode,
+    // station#520: `DockOccupantPicker` now reads `pathname` (its onChoose
+    // seam) — a real string so `resolveViewFromPath` doesn't see `undefined`.
+    pathname: '/',
   }),
 }));
 
@@ -258,6 +261,7 @@ describe('occupant picker (station#4460)', () => {
           <DockOccupantPicker
             current={{ id: 'pane:builtin:chat', name: 'Chat' } as never}
             onChoose={vi.fn()}
+            onChooseAsOnlyContent={vi.fn()}
           />
         }
       />,
@@ -288,6 +292,7 @@ describe('occupant picker (station#4460)', () => {
           <DockOccupantPicker
             current={{ id: 'pane:builtin:chat', name: 'Chat' } as never}
             onChoose={vi.fn()}
+            onChooseAsOnlyContent={vi.fn()}
           />
         }
       />,
