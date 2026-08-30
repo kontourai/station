@@ -416,6 +416,7 @@ function App() {
    */
   const isAmbientMobileDockFullscreen = isMobileDockFullscreenState({
     isMobile: isMobileViewport,
+    // URL compatibility mirrors the bottom region during step 1. // #928 step 4
     isDockOpen,
     isDockMaximized,
     isDockOwnedView: isDockOwnedViewType(displayCurrentView.type),
@@ -507,6 +508,8 @@ function App() {
     ['cmd', 'shift'],
     'Cycle dock mode',
     useCallback(() => {
+      // Legacy placement cycling remains shell chrome until fixed left/right
+      // regions go live. Surfaces do not participate. // #928 step 3
       if (availableDockSlotPlacements.length <= 1) return;
       const next =
         availableDockSlotPlacements[

@@ -133,24 +133,17 @@ export const LANE_REUSE_MARKERS = Object.freeze([
   'redundant same-digest run',
   'join or reuse the existing lease',
 ]);
-/**
- * Submission is a detached handoff rather than completion evidence. These
- * phrases keep every contributor-facing guide aligned with that boundary and
- * prevent shell-managed relaunch loops from returning as advice.
- */
+/** Contributor guidance keeps ordinary delivery separate from promotion. */
 export const SUBMISSION_HANDOFF_GUIDANCE_DOCS = Object.freeze([
   'docs/guides/testing.md',
   'docs/guides/development.md',
 ]);
 export const SUBMISSION_HANDOFF_GUIDANCE_MARKERS = Object.freeze([
-  'freeze the worktree',
-  '`npm run full:regression:submit`',
-  'Never use shell',
-  'background, or relaunch loops.',
-  'Do not edit or remove a worktree',
-  'live handoff;',
-  '`node scripts/run-verification.mjs submit-status <request-key>`',
-  'Synchronous\n`npm run full:regression` remains the sole evidence command and final consumer',
+  'Ordinary pull requests use focused evidence plus `npm run ci:fast`.',
+  'Do not run `npm run full:regression`\nlocally merely because `main` moved.',
+  'Nightly and tagged preview and stable promotions',
+  'manual `workflow_dispatch` of CI remains the explicit diagnostic escape hatch.',
+  'one exact source SHA',
 ]);
 /** The single document that carries the rendered lane catalog table. */
 export const LANE_TABLE_DOC = 'docs/guides/testing.md';

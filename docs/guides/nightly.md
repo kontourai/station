@@ -47,11 +47,12 @@ See [native-releases.md](./native-releases.md) for the ledger and its
 [Manually dispatching Nightly](./native-releases.md#manually-dispatching-nightly)
 section for an exceptional same-day rebuild (`rebuild_index`).
 
-A manual cross-platform promotion may also pass `source_sha`. The test gate
-validates that exact commit is still on `main`, and Android and desktop check
-out the gate's one output instead of independently resolving a moving branch.
-This is the supported way to make both Nightly artifacts companions of a
-specific Stable/TestFlight candidate.
+A manual cross-platform promotion may also pass `source_sha`. The source and
+browser gate validates that exact commit is still on `main`; the reusable
+hosted full-regression gate then proves the same SHA before Android or desktop
+can start. Both producers check out the source gate's one output instead of
+independently resolving a moving branch. This is the supported way to make
+both Nightly artifacts companions of a specific Stable/TestFlight candidate.
 
 **Signing and upload.** The job authenticates to Google Cloud with GitHub
 OIDC, fetches the upload keystore from Secret Manager, verifies the built APK
