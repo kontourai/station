@@ -97,10 +97,11 @@ export class UnknownEngineIdentityError extends Error {
  * result. A silent no-op is the label-vs-derivation defect wearing a success
  * code: the caller is told its write took effect and it did not.
  *
- * The UI never reaches this (its Engine row states the value and points at
- * Settings) and station-control's typed tool does not expose `execution`, but
- * REST, the SDK and the CLI all do — so the refusal lives at the SERVICE seam
- * they share rather than in any one route.
+ * The Agent editor's payload builder removes this read-only projection for the
+ * reserved identity while its Engine row states the value and points at
+ * Settings. station-control's typed tool does not expose `execution`, but
+ * REST, the SDK and the CLI all do — so the refusal remains at the SERVICE
+ * seam they share rather than in any one route.
  *
  * Only a NON-EMPTY `agentConnectionId` is refused. `execution: null` (the
  * editor's "runs on Station's own engine" signal) and a modelId-only

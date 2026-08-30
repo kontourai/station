@@ -2,6 +2,7 @@ import type { AgentTools } from '@kontourai/station-contracts/agent';
 import { describe, expect, test } from 'vitest';
 import {
   AGENT_SPEC_COPY_CLASSIFICATION,
+  agentSaveErrorMessage,
   buildAgentPayload,
   cloneableAgentFields,
   createEmptyAgentForm,
@@ -497,6 +498,19 @@ describe('the Station Agent round-trips as UNBOUND (#3662 review HIGH-2)', () =>
     expect(JSON.stringify(payload)).not.toContain('agentConnectionId');
   });
 
+  test('saving an unrelated field drops the runtime-projected Station binding', () => {
+    const projected = formFromAgent({
+      ...STATION,
+      execution: { agentConnectionId: 'codex' },
+    });
+    const payload = buildAgentPayload({
+      ...projected,
+      description: 'Edited elsewhere in the form',
+    });
+
+    expect(JSON.stringify(payload)).not.toContain('agentConnectionId');
+  });
+
   test('a Station-engine model pin survives, still with no binding', () => {
     // The old payload gated the whole `execution` block on the binding, so an
     // unbound Agent could not persist a model pin at all.
@@ -523,6 +537,17 @@ describe('the Station Agent round-trips as UNBOUND (#3662 review HIGH-2)', () =>
       execution: Record<string, unknown>;
     };
     expect(payload.execution.agentConnectionId).toBe('codex');
+  });
+
+  test('maps the structured Station-setting refusal to one short action', () => {
+    expect(
+      agentSaveErrorMessage({
+        code: 'STATION_ENGINE_IS_APP_SETTING',
+        message: 'server implementation detail must not render',
+      }),
+    ).toBe(
+      'Change the built-in Agent engine in Settings, then save your changes again.',
+    );
   });
 
   test('switching an external Agent to Station CLEARS the binding', () => {

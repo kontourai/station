@@ -458,10 +458,6 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-}
-
-/* ── Global themed scrollbars ── */
-* {
   scrollbar-width: thin;
   scrollbar-color: var(--border-secondary) transparent;
 }
@@ -930,12 +926,6 @@ button:hover {
 }
 .app-toolbar__brand {
   display: none;
-}
-
-.header-nav {
-  display: flex;
-  gap: 4px;
-  align-items: center;
 }
 
 .header-divider {
@@ -4276,17 +4266,15 @@ button.tool-call__line:hover {
   margin-left: 0.25rem;
 }
 
-/* --success-secondary / --success-primary were defined nowhere either, so the
-   badge that says a tool call was APPROVED rendered exactly like the one that
-   says nothing: unpainted, with the `color` declaration invalid at
-   computed-value time and therefore falling back to `inherit` — measured live
-   at rgba(0, 0, 0, 0) on #eef3f8 body copy in dark and #202124 in light. This
-   is the mirror of the --error-* pair one rule below, missed because
-   station#1168's sweep was scoped to the --error- prefix (station#1246).
-   --success-bg / --success-text are the tinted-success pair the rest of the
-   app already uses for this shape, and they measure 5.01:1 light /
-   8.84:1 dark composited. */
-.tool-call__status-badge--success {
+/* --success-bg / --success-text are the tinted-success pair the app already
+   uses for this shape, and they measure 5.01:1 light /
+   8.84:1 dark composited. The kit's positive tone previously coupled
+   --k-positive to the unrelated --k-brand-contrast; beta/nightly make that
+   foreground white, producing 1.92:1 in dark. This rule moves every
+   positive StatusBadge, including both Agent READY hosts, onto the proven
+   quiet-success pair. It replaces the old tool-call success selector, which
+   has no markup caller in Station. */
+.tone-positive {
   background: var(--success-bg);
   color: var(--success-text);
 }
