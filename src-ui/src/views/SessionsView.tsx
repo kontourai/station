@@ -2,7 +2,10 @@ import type {
   AdoptedSessionResult,
   OrchestrationSessionSummary,
 } from '@kontourai/station-sdk';
-import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
+import {
+  useOrchestrationSessionsQuery,
+  usePairedDevicesQuery,
+} from '@kontourai/station-sdk';
 import {
   captureReturnFocus,
   restoreReturnFocus,
@@ -27,11 +30,13 @@ import {
   type SessionEvidenceReveal,
 } from '../components/session-detail/MutableSessionDetail';
 import { StatusGlyph } from '../components/status/StatusGlyph';
+import { Tabs, tabElementId, tabPanelElementId } from '../components/Tabs';
 import { useAgents } from '../contexts/AgentsContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useOpenChats } from '../contexts/open-chats-store';
 import { useSessionEventStream } from '../hooks/orchestration/useSessionEventStream';
 import { useMobileVisualViewport } from '../hooks/useMobileVisualViewport';
+import { resolveClientOriginActor } from '../utils/clientOrigin';
 import { elidedHistoryNoticeText } from '../utils/elidedHistory';
 import { modelDisplayLabel } from '../utils/modelCapabilities';
 import { relativeTimeAgo } from '../utils/relativeTime';
@@ -66,6 +71,21 @@ import './page-layout.css';
 
 /** Live-refresh cadence for the all-sessions list (the SSE feed is per-session). */
 const SESSION_LIST_REFRESH_MS = 5000;
+
+type ActivityAxis = 'task' | 'origin';
+const ACTIVITY_AXIS_TABS = [
+  { key: 'task', label: 'By task' },
+  { key: 'origin', label: 'By origin' },
+] as const;
+
+function originSection(
+  session: OrchestrationSessionSummary,
+  devices: readonly { id: string; name: string }[],
+): string {
+  const origin = session.turnOrigin?.latest;
+  if (!origin) return 'Origin not recorded';
+  return resolveClientOriginActor(origin.actor, devices).label;
+}
 
 // Keep the archive#4072 observation on the same lazy-boundary rail as Home. The
 // renderer, its relative-time wording, and the watchdog-owned silence
@@ -355,6 +375,7 @@ export function SessionsView({
     error: sessionsError,
     refetch,
   } = useOrchestrationSessionsQuery();
+  const { data: pairedDevices = [] } = usePairedDevicesQuery(apiBase);
   const agents = useAgents();
   const openChats = useOpenChats(agents, sessions);
   const openConversationIds = useMemo(
@@ -380,6 +401,7 @@ export function SessionsView({
   const [evidenceReveal, setEvidenceReveal] =
     useState<SessionEvidenceReveal | null>(null);
   const [search, setSearch] = useState('');
+  const [axis, setAxis] = useState<ActivityAxis>('task');
   /** Active project filter, set by clicking a row's project pill. */
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [delegationParent, setDelegationParent] =
@@ -601,7 +623,7 @@ export function SessionsView({
     );
     return { presentation, members, laneId, order };
   });
-  const items = SESSION_LANE_ORDER.flatMap((laneId) => {
+  const laneItems = SESSION_LANE_ORDER.flatMap((laneId) => {
     const lanePresentations = presentationRows
       .filter((row) => row.laneId === laneId)
       .sort((left, right) => left.order - right.order);
@@ -656,9 +678,18 @@ export function SessionsView({
         return {
           id: s.threadId,
           name: sessionTitle(s),
-          subtitle: group
-            ? sessionMemberStatusLine(s, agents, now)
-            : sessionMetaLine(s, now, turnCounts.get(s.threadId)),
+          subtitle: (
+            <>
+              {group
+                ? sessionMemberStatusLine(s, agents, now)
+                : sessionMetaLine(s, now, turnCounts.get(s.threadId))}
+              {s.turnOrigin?.hasOtherOrigins && (
+                <span className="session-origin-history">
+                  Also driven from another origin
+                </span>
+              )}
+            </>
+          ),
           // EVERY row in the lane carries the lane section —
           // the layout emits a heading only when section CHANGES between
           // neighbors, so a member with undefined reset the comparison and a
@@ -705,6 +736,56 @@ export function SessionsView({
     });
   });
 
+  const delegatedTaskIds = new Set(
+    presentationRows
+      .filter((row) => row.members.some((member) => member.delegation))
+      .flatMap((row) => row.members.map((member) => member.threadId)),
+  );
+  const delegatedCount = laneItems.filter((item) =>
+    delegatedTaskIds.has(item.id),
+  ).length;
+  const operatorCount = laneItems.length - delegatedCount;
+  const taskSectionById = new Map<string, string>();
+  for (const row of presentationRows) {
+    const isDelegated = row.members.some((member) => member.delegation);
+    const section = isDelegated
+      ? `Delegated/background work · ${delegatedCount}`
+      : `Operator sessions · ${operatorCount}`;
+    for (const member of row.members) {
+      taskSectionById.set(member.threadId, section);
+    }
+  }
+  const originSectionById = new Map(
+    sessions.map((session) => [
+      session.threadId,
+      originSection(session, pairedDevices),
+    ]),
+  );
+  const items = laneItems
+    .map((item) => ({
+      ...item,
+      section:
+        axis === 'task'
+          ? taskSectionById.get(item.id)
+          : originSectionById.get(item.id),
+    }))
+    .sort((left, right) => {
+      if (axis === 'task') {
+        const leftDelegated = left.section?.startsWith('Delegated/') ? 0 : 1;
+        const rightDelegated = right.section?.startsWith('Delegated/') ? 0 : 1;
+        return leftDelegated - rightDelegated;
+      }
+      const deviceOrder = new Map(
+        pairedDevices.map((device, index) => [device.name, index]),
+      );
+      return (
+        (deviceOrder.get(left.section ?? '') ?? Number.MAX_SAFE_INTEGER) -
+        (deviceOrder.get(right.section ?? '') ?? Number.MAX_SAFE_INTEGER)
+      );
+    });
+  const emptySections =
+    axis === 'origin' ? pairedDevices.map((device) => device.name) : [];
+
   const selected = sessions.find((s) => s.threadId === selectedId) ?? null;
   const delegatedTasks = useMemo(
     () => prioritizedDelegatedTasks(sessions),
@@ -747,6 +828,7 @@ export function SessionsView({
       {/* empty-state action: delegation starter and filter reset are adjacent */}
       <SplitPaneLayout
         items={items}
+        emptySections={emptySections}
         selectedId={selectedId}
         onSelect={selectWithIntent}
         onDeselect={() => selectWithIntent(null)}
@@ -765,6 +847,25 @@ export function SessionsView({
            space to tell most of them nothing. */
         listIntro={
           <>
+            <Tabs
+              id="activity-axis"
+              items={ACTIVITY_AXIS_TABS}
+              activeKey={axis}
+              onSelect={(key) => setAxis(key as ActivityAxis)}
+              aria-label="Group Activity"
+              activation="automatic"
+              className="sessions-axis-tabs"
+            />
+            <div
+              role="tabpanel"
+              id={tabPanelElementId('activity-axis', axis)}
+              aria-labelledby={tabElementId('activity-axis', axis)}
+              className="sessions-axis-description"
+            >
+              {axis === 'task'
+                ? 'Delegated work is separated from sessions you are driving directly.'
+                : 'Sessions are grouped by their recorded origin; paired devices remain listed when empty.'}
+            </div>
             <ActionOperationsSection />
             <LiveCollaboratorsSection />
             {projectFilter ? (
