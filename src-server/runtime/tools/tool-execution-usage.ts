@@ -86,9 +86,15 @@ export async function recordToolExecutionUsage(input: {
 
     logger.info('[Usage Stats]', {
       conversationId: context.conversationId,
-      promptTokens: usage?.promptTokens || 0,
-      completionTokens: usage?.completionTokens || 0,
-      totalTokens: usage?.totalTokens || 0,
+      ...(usage?.promptTokens !== undefined
+        ? { promptTokens: usage.promptTokens }
+        : {}),
+      ...(usage?.completionTokens !== undefined
+        ? { completionTokens: usage.completionTokens }
+        : {}),
+      ...(usage?.totalTokens !== undefined
+        ? { totalTokens: usage.totalTokens }
+        : {}),
       messageCount: messages.length,
       toolCallCount,
       aborted: !usage,

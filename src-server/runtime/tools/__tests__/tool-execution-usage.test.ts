@@ -59,6 +59,10 @@ describe('tool-execution-usage', () => {
       '[Usage Stats]',
       expect.objectContaining({ aborted: true, toolCallCount: 2 }),
     );
+    const loggedUsage = logger.info.mock.calls[0]?.[1];
+    expect(loggedUsage).not.toHaveProperty('promptTokens');
+    expect(loggedUsage).not.toHaveProperty('completionTokens');
+    expect(loggedUsage).not.toHaveProperty('totalTokens');
     expect(updateConversation).not.toHaveBeenCalled();
   });
 });
