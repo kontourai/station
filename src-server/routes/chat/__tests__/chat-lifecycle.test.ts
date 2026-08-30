@@ -175,6 +175,8 @@ describe('chat-lifecycle helpers', () => {
         usage: Promise.resolve({
           promptTokens: 11,
           completionTokens: 22,
+          // Fixture-vs-reality: this pins the cache-aware input shape, but no
+          // current chat-lifecycle producer supplies cache figures here.
           cacheReadTokens: 33,
           cacheWriteTokens: 44,
         }),
