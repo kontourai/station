@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-08-30T19-18-40-052Z-f1dc45c14bd6",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": "brian.anderson@kontourai.io",
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-08-30T19:18:40.052Z",
+  "repoStandardsHash": "sha256:626ff97d3f92697a8ce1de8ddc64a205ecfa7e0cee9ff95915bea0cc4b7123b1",
+  "repoMapHash": "sha256:d7814a9ff5f898115b845f39e32979a6bff12fcc7841809dd3ba9c6ca670d519",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-08-14T21-09-01-040Z-d41da4cb3636",
+  "validUntilDays": 90,
+  "notes": "Owner-directed verification policy change: ordinary pull requests use focused and ci:fast evidence with merge-queue integration; canonical full regression moves to exact-SHA Nightly and tagged promotion workflows, with manual CI dispatch retained for explicit diagnosis.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-08-14T21-09-01-040Z-d41da4cb3636",
+    "approvalRef": "station#961",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-08-30T19-18-40-052Z-f1dc45c14bd6",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "44dd049f15b460fe8b12cdf2ba3f15976f6af850db2a77707dec86a9bea5cb28",
+        "validUntil": "2026-11-28T19:18:40.052Z"
+      },
+      "createdAt": "2026-08-30T19:18:40.052Z",
+      "updatedAt": "2026-08-30T19:18:40.052Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-08-30T19-18-40-052Z-f1dc45c14bd6",
+      "claimId": "veritas.attestation.policy-change-2026-08-30T19-18-40-052Z-f1dc45c14bd6",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Owner-directed verification policy change: ordinary pull requests use focused and ci:fast evidence with merge-queue integration; canonical full regression moves to exact-SHA Nightly and tagged promotion workflows, with manual CI dispatch retained for explicit diagnosis.",
+      "observedAt": "2026-08-30T19:18:40.052Z",
+      "collectedBy": "brian",
+      "integrityRef": "44dd049f15b460fe8b12cdf2ba3f15976f6af850db2a77707dec86a9bea5cb28",
+      "metadata": {
+        "actor": {
+          "id": "brian",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-08-30T19:18:40.052Z",
+        "validUntil": "2026-11-28T19:18:40.052Z",
+        "contentHash": "44dd049f15b460fe8b12cdf2ba3f15976f6af850db2a77707dec86a9bea5cb28"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-08-30T19-18-40-052Z-f1dc45c14bd6.verified",
+      "claimId": "veritas.attestation.policy-change-2026-08-30T19-18-40-052Z-f1dc45c14bd6",
+      "status": "verified",
+      "actor": "brian",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-08-30T19-18-40-052Z-f1dc45c14bd6"
+      ],
+      "createdAt": "2026-08-30T19:18:40.052Z",
+      "verifiedAt": "2026-08-30T19:18:40.052Z"
+    }
+  }
+}
