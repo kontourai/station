@@ -113,6 +113,9 @@ describe('ResourcePostureBannerSource', () => {
     expect(alert.textContent).toMatch(/observed 3s ago/i);
     expect(alert.textContent).toMatch(/automatic work is paused/i);
     expect(alert.textContent).toMatch(/explicit starts ask before continuing/i);
+    expect(screen.getByTestId('banner-host').className).toMatch(
+      /banner-host--critical-chrome/,
+    );
   });
 
   it('renders a degraded banner distinguishable from the critical wording', async () => {
@@ -134,5 +137,8 @@ describe('ResourcePostureBannerSource', () => {
     expect(alert.textContent).not.toMatch(/very busy/i);
     expect(alert.textContent).not.toMatch(/new engine starts are refused/i);
     expect(alert.textContent).toMatch(/automatic work is paused/i);
+    expect(screen.getByTestId('banner-host').className).toMatch(
+      /banner-host--critical-chrome/,
+    );
   });
 });
