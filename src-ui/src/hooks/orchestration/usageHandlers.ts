@@ -31,32 +31,37 @@ export function handleTokenUsageUpdatedEvent(
   );
   if (!hasTokenUsage && !hasContextObservation) return;
 
+  const mergedUsage = {
+    ...chat.liveUsage,
+    ...(event.promptTokens !== undefined
+      ? { inputTokens: event.promptTokens }
+      : {}),
+    ...(event.completionTokens !== undefined
+      ? { outputTokens: event.completionTokens }
+      : {}),
+    ...(event.cacheReadTokens !== undefined
+      ? { cacheReadTokens: event.cacheReadTokens }
+      : {}),
+    ...(event.cacheWriteTokens !== undefined
+      ? { cacheWriteTokens: event.cacheWriteTokens }
+      : {}),
+  };
+
   activeChatsStore.updateChat(event.threadId, {
     liveUsage: {
-      ...chat.liveUsage,
+      ...mergedUsage,
       ...(hasTokenUsage
         ? {
-            ...(event.promptTokens !== undefined
-              ? { inputTokens: event.promptTokens }
-              : {}),
-            ...(event.completionTokens !== undefined
-              ? { outputTokens: event.completionTokens }
-              : {}),
             ...(event.totalTokens !== undefined
               ? { totalTokens: event.totalTokens }
               : event.promptTokens !== undefined ||
                   event.completionTokens !== undefined
                 ? {
                     totalTokens:
-                      (event.promptTokens ?? 0) + (event.completionTokens ?? 0),
+                      (mergedUsage.inputTokens ?? 0) +
+                      (mergedUsage.outputTokens ?? 0),
                   }
                 : {}),
-            ...(event.cacheReadTokens !== undefined
-              ? { cacheReadTokens: event.cacheReadTokens }
-              : {}),
-            ...(event.cacheWriteTokens !== undefined
-              ? { cacheWriteTokens: event.cacheWriteTokens }
-              : {}),
           }
         : {}),
       ...(hasContextObservation

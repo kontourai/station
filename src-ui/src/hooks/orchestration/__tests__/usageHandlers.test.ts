@@ -107,6 +107,60 @@ describe('handleTokenUsageUpdatedEvent', () => {
     ).toBe(15);
   });
 
+  test('a prompt-only frame derives a total with the carried completion', () => {
+    handleTokenUsageUpdatedEvent({
+      eventId: 'evt-full',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-07-29T00:00:00.000Z',
+      method: 'token-usage.updated',
+      promptTokens: 120,
+      completionTokens: 40,
+      totalTokens: 160,
+    });
+    handleTokenUsageUpdatedEvent({
+      eventId: 'evt-prompt',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-07-29T00:00:01.000Z',
+      method: 'token-usage.updated',
+      promptTokens: 200,
+    });
+
+    expect(activeChatsStore.getSnapshot()[threadId]?.liveUsage).toEqual({
+      inputTokens: 200,
+      outputTokens: 40,
+      totalTokens: 240,
+    });
+  });
+
+  test('a completion-only frame derives a total with the carried prompt', () => {
+    handleTokenUsageUpdatedEvent({
+      eventId: 'evt-full',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-07-29T00:00:00.000Z',
+      method: 'token-usage.updated',
+      promptTokens: 120,
+      completionTokens: 40,
+      totalTokens: 160,
+    });
+    handleTokenUsageUpdatedEvent({
+      eventId: 'evt-completion',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-07-29T00:00:01.000Z',
+      method: 'token-usage.updated',
+      completionTokens: 55,
+    });
+
+    expect(activeChatsStore.getSnapshot()[threadId]?.liveUsage).toEqual({
+      inputTokens: 120,
+      outputTokens: 55,
+      totalTokens: 175,
+    });
+  });
+
   test('keeps ACP context usage exact without fabricating token categories', () => {
     handleTokenUsageUpdatedEvent({
       eventId: 'evt-acp-1',
