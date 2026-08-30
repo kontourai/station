@@ -213,9 +213,20 @@ function confirmRequestFor(intent: ConsoleBoardIntentInput): {
 export interface ConsoleBoardPaneProps {
   projectSlug: string;
   host: ConsoleBoardPaneHost;
+  /**
+   * The legacy standalone route exists only when Builder has produced a run.
+   * An explicitly installed Session Board layout is a durable workspace and
+   * remains openable before its first run, where it renders the normal empty
+   * state instead of redirecting out of the selected layout.
+   */
+  requireBuilderRun?: boolean;
 }
 
-export function ConsoleBoardPane({ projectSlug, host }: ConsoleBoardPaneProps) {
+export function ConsoleBoardPane({
+  projectSlug,
+  host,
+  requireBuilderRun = true,
+}: ConsoleBoardPaneProps) {
   /**
    * The shell's single mobile derivation, read through the contract's facts
    * channel: `read` is the snapshot, `subscribe` the change push — which is
@@ -236,14 +247,18 @@ export function ConsoleBoardPane({ projectSlug, host }: ConsoleBoardPaneProps) {
   } = useOperatingStateQuery(projectSlug);
   const presentUnavailable = host.presentUnavailable;
   useEffect(() => {
-    if (boardAvailability && !boardAvailability.hasBuilderRun) {
+    if (
+      requireBuilderRun &&
+      boardAvailability &&
+      !boardAvailability.hasBuilderRun
+    ) {
       // D8: the redirect has to SAY why, on the page it lands on. The host
       // owns both halves of that (the banner stack is shell chrome and the
       // route table is the shell's); what stays here is the derivation —
       // the server said it knows no Builder run for this project.
       presentUnavailable('no-builder-run');
     }
-  }, [boardAvailability, presentUnavailable]);
+  }, [boardAvailability, presentUnavailable, requireBuilderRun]);
   const intentMutation = useConsoleBoardIntentMutation();
 
   /**
@@ -326,7 +341,8 @@ export function ConsoleBoardPane({ projectSlug, host }: ConsoleBoardPaneProps) {
     <div className="page-layout console-board-view">
       {!availabilityLoading &&
       boardAvailability &&
-      !boardAvailability.hasBuilderRun ? (
+      !boardAvailability.hasBuilderRun &&
+      requireBuilderRun ? (
         /* The redirect above is already in flight; the notice travels with it
            on the banner stack, so this frame renders nothing rather than a
            second copy of the same sentence that vanishes a tick later. */

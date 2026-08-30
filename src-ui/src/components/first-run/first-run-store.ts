@@ -158,10 +158,19 @@ class FirstRunStore {
     });
   };
 
+  /** Snooze automatic presentation without throwing away the resume point. */
+  defer = () => {
+    const current = this.getSnapshot();
+    if (current.deferred === true) return;
+    deviceSettingsStore.set('firstRunProgress', {
+      ...current,
+      deferred: true,
+    });
+  };
+
   /**
-   * The run is over — by finishing it or by skipping out of it. Both persist
-   * the same way on purpose: a skip is a decision, and re-asking someone who
-   * already said no is how first-run experiences get resented.
+   * The run is terminal — either the tour finished or its explicit Skip action
+   * retired it. Plain chapter deferral uses `defer()` and remains resumable.
    */
   finish = () => {
     const current = this.getSnapshot();

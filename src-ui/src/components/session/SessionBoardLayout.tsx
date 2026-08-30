@@ -22,5 +22,7 @@ export function SessionBoardLayout({
   layoutSlug: string;
   config: Record<string, unknown>;
 }) {
-  return <ConsoleBoardView projectSlug={projectSlug} />;
+  return (
+    <ConsoleBoardView projectSlug={projectSlug} requireBuilderRun={false} />
+  );
 }
