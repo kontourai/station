@@ -8853,14 +8853,10 @@ button.tool-call__line:hover {
    the fix — `ChatDockMobileConnection.tsx`'s own short-form vocabulary
    ("Pair", "Re-pair", "Waiting", vs the toolbar chip's full "Awaiting
    approval" / "Needs re-pairing") is the actual fix for this bar's tight
-   320px-viewport budget. That budget is MEASURED here, not yet
-   spec-pinned: `tests/mobile-chat-composer.spec.ts`'s "320px header
-   contains every pinned control" test fails BEFORE it reaches its own
-   containment assertions (a pre-existing, reproduced-on-`main` maximize
-   defect, unrelated to this fix — see the review's A/B), and even passing
-   it never renders a labelled/attention chip, so it cannot pin this
-   specific budget either way yet. A follow-up is filed to fix that spec
-   and add a labelled-chip case to it. This bound exists because the icon
+   320px-viewport budget. That budget is spec-pinned: the "320px header
+   contains every pinned control" case in tests/mobile-chat-composer.spec.ts
+   drives an awaiting-approval 'Waiting' chip and runs its containment and
+   eyebrow/title assertions with the label rendered (#547). This bound exists because the icon
    cluster this label sits in (`.chat-dock__mobile-header-icon`) is
    `flex-shrink: 0` — it never gives ground itself, so an unbounded label
    could only ever grow the row, not fit into it. Measured (real Chromium,
