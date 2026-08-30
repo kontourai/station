@@ -25,11 +25,12 @@ export function createPackagedReleaseManifest({ tag, sha, createdAt }) {
   }
   const preview = PREVIEW.test(tag);
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sha: sha.toLowerCase(),
     ref: tag,
     createdAt,
-    channel: preview ? 'preview' : 'stable',
+    channel: preview ? 'beta' : 'stable',
+    releaseChannel: preview ? 'preview' : 'stable',
     prerelease: preview,
   };
 }
@@ -54,7 +55,7 @@ export function createContainerReleaseMetadata({
     tag,
     sha: manifest.sha,
     createdAt,
-    channel: manifest.channel,
+    channel: manifest.releaseChannel,
     tags: [tag, version, shaTag, manifest.prerelease ? 'preview' : 'latest'],
     labels: {
       'org.opencontainers.image.created': createdAt,
