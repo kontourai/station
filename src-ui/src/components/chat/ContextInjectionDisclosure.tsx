@@ -81,7 +81,23 @@ export function ContextInjectionDisclosure({
   const detailsId = useId();
   const blocks = contextBlocks(contextInjection);
 
-  if (blocks.length === 0) return null;
+  // An OBSERVED record with no blocks is a fact the pipeline earned — Station
+  // composed nothing for this turn — and it is not the same as the host's
+  // `unavailable` slot, which means nothing was recorded either way. The host
+  // only renders this component for `observed`, so reaching here with zero
+  // blocks states the fact rather than discarding it.
+  if (blocks.length === 0) {
+    return (
+      <section
+        className="context-injection context-injection--empty"
+        aria-label="Injected context for this turn"
+      >
+        <p className="context-injection__qualification">
+          Station composed no additional context for this turn.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section
@@ -121,8 +137,15 @@ export function ContextInjectionDisclosure({
               </div>
             ))}
           </dl>
+          {/* Two caveats, and the second matters more: without it a reader
+              takes "N blocks" for everything Station sent the model. The
+              record covers only what Station composed for this turn — the
+              agent's own system prompt, its tool schemas and the prior
+              conversation are assembled elsewhere and are not counted here. */}
           <p className="context-injection__qualification">
             Token figures are approximate, derived from the injected text size.
+            This covers the context Station composed for this turn — not the
+            agent's system prompt, its tools, or the conversation history.
           </p>
         </div>
       )}

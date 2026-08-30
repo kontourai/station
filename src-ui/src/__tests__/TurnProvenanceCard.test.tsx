@@ -843,7 +843,7 @@ describe('TurnProvenanceCard', () => {
       expect(screen.queryByText('Project knowledge')).toBeNull();
     });
 
-    it('renders no disclosure for an observed-empty receipt', async () => {
+    it('states the earned fact for an observed-empty receipt', async () => {
       render(
         <TurnProvenanceCard
           provenance={envelope({
@@ -857,6 +857,27 @@ describe('TurnProvenanceCard', () => {
         />,
       );
       expand();
+      await Promise.resolve();
+      // An OBSERVED record with no blocks means Station composed nothing —
+      // a fact the pipeline earned, distinct from the `unavailable` slot
+      // that means nothing was recorded either way. Rendering nothing would
+      // discard the distinction and make the two indistinguishable.
+      expect(
+        await screen.findByText(
+          'Station composed no additional context for this turn.',
+        ),
+      ).toBeTruthy();
+    });
+
+    it('renders nothing at all when the receipt is unavailable', async () => {
+      render(
+        <TurnProvenanceCard
+          provenance={envelope({
+            engine: stationEngine,
+            contextInjection: gap,
+          })}
+        />,
+      );
       await Promise.resolve();
       expect(
         screen.queryByLabelText('Injected context for this turn'),
@@ -910,11 +931,16 @@ describe('TurnProvenanceCard', () => {
       ).toBeTruthy();
       expect(screen.getByText('~121 tokens')).toBeTruthy();
       expect(screen.queryByText('121 tokens')).toBeNull();
-      expect(
-        screen.getByText(
-          'Token figures are approximate, derived from the injected text size.',
-        ),
-      ).toBeTruthy();
+      // Both caveats: the numbers are estimates, AND the record is not a
+      // census of the whole model input. Without the second, "N blocks"
+      // reads as everything Station sent.
+      const qualification = screen.getByText(/Token figures are approximate/);
+      expect(qualification.textContent).toContain(
+        'derived from the injected text size',
+      );
+      expect(qualification.textContent).toContain(
+        "not the agent's system prompt, its tools, or the conversation history",
+      );
     });
 
     it('does not turn an absent size into zero or a guessed token count', () => {
