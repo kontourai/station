@@ -54,7 +54,9 @@ describe('Run Routes', () => {
       readRun: vi.fn(),
       readOutput: vi.fn(),
     };
-    const app = createRunRoutes(service as any, logger as any);
+    const app = createRunRoutes(service as any, logger as any, () =>
+      sessionReadAuthorityFromRequest('test-user'),
+    );
 
     const res = await app.request('/?source=schedule&providerId=built-in');
     const body = await readJson(res);
@@ -62,7 +64,7 @@ describe('Run Routes', () => {
     expect(body.success).toBe(true);
     expect(body.data).toHaveLength(2);
     expect(service.listRuns).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'brian', mode: 'personal' }),
+      expect.objectContaining({ userId: 'test-user', mode: 'personal' }),
       {
         source: 'schedule',
         providerId: 'built-in',
@@ -77,7 +79,9 @@ describe('Run Routes', () => {
       readRun: vi.fn(),
       readOutput: vi.fn(),
     };
-    const app = createRunRoutes(service as any, logger as any);
+    const app = createRunRoutes(service as any, logger as any, () =>
+      sessionReadAuthorityFromRequest('test-user'),
+    );
     const res = await app.request('/?source=voice');
     expect(res.status).toBe(200);
     expect(service.listRuns).toHaveBeenCalledWith(expect.anything(), {
@@ -103,7 +107,9 @@ describe('Run Routes', () => {
       }),
       readOutput: vi.fn(),
     };
-    const app = createRunRoutes(service as any, logger as any);
+    const app = createRunRoutes(service as any, logger as any, () =>
+      sessionReadAuthorityFromRequest('test-user'),
+    );
 
     const res = await app.request('/schedule:built-in:daily:daily-1');
     const body = await readJson(res);
@@ -121,7 +127,9 @@ describe('Run Routes', () => {
       readRun: vi.fn(),
       readOutput: vi.fn().mockResolvedValue('run output'),
     };
-    const app = createRunRoutes(service as any, logger as any);
+    const app = createRunRoutes(service as any, logger as any, () =>
+      sessionReadAuthorityFromRequest('test-user'),
+    );
 
     const ref = {
       source: 'schedule',
@@ -140,7 +148,7 @@ describe('Run Routes', () => {
     expect(body).toEqual({ success: true, data: { content: 'run output' } });
     expect(service.readOutput).toHaveBeenCalledWith(
       ref,
-      expect.objectContaining({ userId: 'brian', mode: 'personal' }),
+      expect.objectContaining({ userId: 'test-user', mode: 'personal' }),
     );
   });
 
