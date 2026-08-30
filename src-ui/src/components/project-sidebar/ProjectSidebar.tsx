@@ -7,6 +7,7 @@ import {
   restoreReturnFocus,
 } from '@kontourai/station-shared/return-focus';
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { buildInfo } from '../../build-info';
 import { useAllActiveChats } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
@@ -84,19 +85,18 @@ export function ProjectSidebar() {
   const platformProfile = usePlatformProfile();
   // The sidebar is the primary installed-app chrome. Native package identity
   // must win here so a selected remote Station cannot rename Beta/Nightly.
-  const nativeProductName = platformProfile.productName || 'Station';
   const releaseChannelBadge = platformProfile.isTauri
     ? channelBadge(platformProfile.channel)
     : undefined;
-  // Do not parse a channel out of productName: it is a package identity, not
-  // presentation metadata. Known native variants display a compact label under
-  // the shared Station title; web branding is unaffected.
-  const appName = releaseChannelBadge
-    ? 'Station'
-    : platformProfile.isTauri
-      ? nativeProductName
-      : branding.appName;
-  const homeLabel = platformProfile.isTauri ? nativeProductName : appName;
+  // Do not parse a channel out of productName: it is package metadata, not
+  // presentation authority. Native chrome derives its visible and accessible
+  // identity from the same trusted channel report and build metadata.
+  const appName = platformProfile.isTauri ? 'Station' : branding.appName;
+  const homeLabel = platformProfile.isTauri
+    ? [appName, releaseChannelBadge, `v${buildInfo.version}`]
+        .filter(Boolean)
+        .join(' ')
+    : appName;
   const agents = useAgents();
   const activeChats = useAllActiveChats();
   const drafts = useSyncExternalStore(

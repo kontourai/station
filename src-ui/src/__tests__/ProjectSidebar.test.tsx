@@ -13,6 +13,10 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { openChatsStore } from '../contexts/open-chats-store';
 
+vi.mock('../build-info', () => ({
+  buildInfo: { version: '0.1.2', commit: 'test' },
+}));
+
 const {
   chats,
   agents,
@@ -134,12 +138,12 @@ function resetState() {
 
 describe('ProjectSidebar WORK list labeling (station#1300)', () => {
   test.each([
-    ['Stable', 'Station', 'stable', undefined],
-    ['Beta', 'Station Beta', 'beta', 'Beta'],
-    ['Nightly', 'Station Nightly', 'nightly', 'Nightly'],
-    ['Dev', 'Station Dev (sidebar-worktree)', 'dev', 'Dev'],
+    ['Stable', 'unexpected package title', 'stable', undefined],
+    ['Beta', 'unexpected package title', 'beta', 'Beta'],
+    ['Nightly', 'unexpected package title', 'nightly', 'Nightly'],
+    ['Dev', 'unexpected package title', 'dev', 'Dev'],
   ])(
-    'uses the local %s identity while presenting its channel as a readable badge',
+    'uses trusted %s release identity while presenting its channel as a readable badge',
     (_name, packageName, channel, badge) => {
       resetState();
       platformProfile.isTauri = true;
@@ -147,9 +151,11 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
       platformProfile.channel = channel as typeof platformProfile.channel;
       branding.appName = 'Remote Station';
       render(<ProjectSidebar />);
-      const home = screen.getByRole('button', { name: `${packageName} home` });
+      const home = screen.getByRole('button', {
+        name: `Station${badge ? ` ${badge}` : ''} v0.1.2 home`,
+      });
       expect(home.querySelector('.sidebar__brand-name')?.textContent).toBe(
-        badge ? 'Station' : packageName,
+        'Station',
       );
       if (badge) {
         expect(home.querySelector('.sidebar__channel-badge')?.textContent).toBe(
