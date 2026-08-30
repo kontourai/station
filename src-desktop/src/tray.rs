@@ -106,6 +106,10 @@ impl PendingTrayNavigationState {
         }
     }
 
+    fn release_lease(&mut self) -> bool {
+        self.leased_to.take().is_some()
+    }
+
     fn invalidate(&mut self) -> bool {
         self.leased_to = None;
         self.pending.take().is_some()
@@ -321,12 +325,28 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct UpdateSettingsMenuItemSpec {
+    id: &'static str,
+    label: &'static str,
+    enabled: bool,
+}
+
+fn update_settings_menu_item_spec() -> UpdateSettingsMenuItemSpec {
+    UpdateSettingsMenuItemSpec {
+        id: UPDATE_SETTINGS_ID,
+        label: UPDATE_SETTINGS_LABEL,
+        enabled: false,
+    }
+}
+
 fn update_settings_menu_item<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<MenuItem<R>> {
+    let spec = update_settings_menu_item_spec();
     MenuItem::with_id(
         manager,
-        UPDATE_SETTINGS_ID,
-        UPDATE_SETTINGS_LABEL,
-        false,
+        spec.id,
+        spec.label,
+        spec.enabled,
         None::<&str>,
     )
 }
@@ -980,9 +1000,9 @@ fn tray_navigation_label_admitted(label: &str) -> bool {
 }
 
 #[tauri::command]
-pub(crate) fn take_pending_tray_navigation(
-    window: tauri::WebviewWindow,
-    app: AppHandle,
+pub(crate) fn take_pending_tray_navigation<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    app: AppHandle<R>,
 ) -> Result<Option<PendingTrayNavigationReplay>, String> {
     if !tray_navigation_label_admitted(window.label()) {
         return Err("Tray navigation replay is accepted only from the main WebView.".into());
@@ -997,9 +1017,9 @@ pub(crate) fn take_pending_tray_navigation(
 }
 
 #[tauri::command]
-pub(crate) fn ack_pending_tray_navigation(
-    window: tauri::WebviewWindow,
-    app: AppHandle,
+pub(crate) fn ack_pending_tray_navigation<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    app: AppHandle<R>,
     id: u64,
 ) -> Result<bool, String> {
     if !tray_navigation_label_admitted(window.label()) {
@@ -1012,6 +1032,20 @@ pub(crate) fn ack_pending_tray_navigation(
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .acknowledge(id)
     }))
+}
+
+pub(crate) fn release_pending_navigation_lease<R: Runtime>(app: &AppHandle<R>, reason: &str) {
+    let Some(pending) = app.try_state::<PendingTrayNavigation>() else {
+        return;
+    };
+    if pending
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .release_lease()
+    {
+        log::info!("Station tray released pending navigation lease after {reason}");
+    }
 }
 
 pub(crate) fn invalidate_pending_navigation(app: &AppHandle, reason: &str) {
@@ -1854,34 +1888,55 @@ mod tests {
         state.queue(TrayNavigationDestination::PairedDevices, now);
         let stale = state.take_lease(now).expect("fresh replay lease");
         assert!(state.invalidate());
+        assert_eq!(state.leased_to, None);
         assert!(!state.acknowledge(stale.id));
         assert_eq!(state.take_lease(now), None);
     }
 
     #[test]
-    fn tray_navigation_replay_accepts_only_the_main_window() {
-        assert!(tray_navigation_label_admitted("main"));
-        for foreign in ["workspace-popout", "preview", "main-copy", ""] {
-            assert!(!tray_navigation_label_admitted(foreign));
-        }
+    fn tray_navigation_commands_reject_a_non_main_window() {
+        let app = tauri::test::mock_app();
+        assert!(app.manage(PendingTrayNavigation::default()));
+        let foreign = tauri::WebviewWindowBuilder::new(
+            &app,
+            "workspace-popout",
+            tauri::WebviewUrl::App("index.html".into()),
+        )
+        .build()
+        .expect("foreign test window");
 
-        let source = include_str!("tray.rs");
-        for command in [
-            "pub(crate) fn take_pending_tray_navigation(",
-            "pub(crate) fn ack_pending_tray_navigation(",
-        ] {
-            let body = source
-                .split_once(command)
-                .unwrap_or_else(|| panic!("{command} command exists"))
-                .1
-                .split_once("\n}")
-                .expect("command body closes")
-                .0;
-            assert!(
-                body.contains("tray_navigation_label_admitted(window.label())"),
-                "{command} must wire the main-window admission guard"
-            );
-        }
+        assert_eq!(
+            take_pending_tray_navigation(foreign.clone(), app.handle().clone()),
+            Err("Tray navigation replay is accepted only from the main WebView.".into())
+        );
+        assert_eq!(
+            ack_pending_tray_navigation(foreign, app.handle().clone(), 1),
+            Err("Tray navigation replay is accepted only from the main WebView.".into())
+        );
+    }
+
+    #[test]
+    fn a_successor_renderer_can_reclaim_a_dead_holders_lease() {
+        let now = Instant::now();
+        let mut state = PendingTrayNavigationState::default();
+        state.queue(TrayNavigationDestination::PairedDevices, now);
+        let abandoned = state.take_lease(now).expect("first renderer lease");
+
+        assert!(state.release_lease());
+        let successor = state.take_lease(now).expect("successor renderer lease");
+        assert_eq!(successor, abandoned);
+    }
+
+    #[test]
+    fn update_settings_menu_item_contract_is_portable() {
+        assert_eq!(
+            update_settings_menu_item_spec(),
+            UpdateSettingsMenuItemSpec {
+                id: "tray-updates",
+                label: "Update settings…",
+                enabled: false,
+            }
+        );
     }
 
     #[test]

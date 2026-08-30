@@ -49,7 +49,7 @@ use tauri::{ipc::Channel, AppHandle, State};
 #[cfg(not(mobile))]
 use tauri::{
     webview::{DownloadEvent, NewWindowResponse, PageLoadEvent},
-    WebviewUrl, WebviewWindowBuilder, WindowEvent,
+    Runtime, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 #[cfg(not(mobile))]
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -6923,7 +6923,9 @@ fn claim_startup_commit(
         claim.pending_epoch = None;
         true
     } else {
-        claim.pending_epoch = Some(epoch);
+        if claim.pending_epoch.is_none_or(|pending| epoch >= pending) {
+            claim.pending_epoch = Some(epoch);
+        }
         false
     }
 }
@@ -6991,19 +6993,26 @@ fn release_failed_startup_commit(app: &AppHandle, claim_epoch: u64) {
 }
 
 #[cfg(not(mobile))]
-fn complete_startup_commit(app: &AppHandle, claim_epoch: u64) {
+fn complete_startup_commit<R: Runtime>(
+    app: &AppHandle<R>,
+    claim_epoch: u64,
+    request_retry: impl FnOnce(&AppHandle<R>),
+) {
     if let Some(state) = app.try_state::<DesktopServerState>() {
-        let current_epoch = state
-            .readiness
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .epoch;
-        if finish_startup_commit_claim(
+        let (current_epoch, identity_committed) = {
+            let readiness = state
+                .readiness
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            (readiness.epoch, readiness.identity_committed)
+        };
+        let retry_current = finish_startup_commit_claim(
             &state.startup_commit_claim,
             claim_epoch,
             current_epoch,
-        ) {
-            request_native_startup_commit(app);
+        );
+        if retry_current && !identity_committed {
+            request_retry(app);
         }
     }
 }
@@ -7090,7 +7099,9 @@ fn request_native_startup_commit_for_ticket(
         })
         .await
         {
-            Ok(Ok(())) => complete_startup_commit(&app_for_commit, epoch),
+            Ok(Ok(())) => complete_startup_commit(&app_for_commit, epoch, |app| {
+                request_native_startup_commit(app)
+            }),
             Ok(Err(error)) => {
                 log::warn!("native startup bootstrap proof refused: {error}");
                 release_failed_startup_commit(&app_for_commit, epoch);
@@ -8061,6 +8072,7 @@ fn observe_native_startup_page(app: &AppHandle, label: &str, event: PageLoadEven
     if !native_startup_page_admitted(label, event) {
         return;
     }
+    tray::release_pending_navigation_lease(app, "main renderer page start");
     let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
         return;
     };
@@ -8126,7 +8138,7 @@ async fn commit_startup_readiness(
     if result.is_err() {
         release_failed_startup_commit(&app, epoch);
     } else {
-        complete_startup_commit(&app, epoch);
+        complete_startup_commit(&app, epoch, |app| request_native_startup_commit(app));
     }
     result
 }
@@ -10444,6 +10456,35 @@ mod tests {
 
     #[test]
     #[cfg(not(mobile))]
+    fn stale_claimer_cannot_clobber_a_newer_pending_epoch() {
+        let claim = Mutex::new(StartupCommitClaim::default());
+        assert!(claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Waiting,
+            false,
+            1,
+            &claim,
+        ));
+        assert!(!claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Waiting,
+            false,
+            3,
+            &claim,
+        ));
+        assert!(!claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Waiting,
+            false,
+            2,
+            &claim,
+        ));
+        assert_eq!(startup_commit_claim_snapshot(&claim), (Some(1), Some(3)));
+        assert!(finish_startup_commit_claim(&claim, 1, 3));
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
     fn reconstruction_waits_for_the_old_claim_and_rejects_its_commit() {
         let claim = Mutex::new(StartupCommitClaim::default());
         let mut status = BundledServerStatus::initial("out".into(), "err".into());
@@ -10569,39 +10610,52 @@ mod tests {
         )
         .0;
         assert_eq!(readiness.phase, startup_readiness::ReadinessPhase::Waiting);
-        assert!(finish_startup_commit_claim(&claim, epoch, epoch));
-        assert!(!claim_startup_commit(
-            true,
-            readiness.phase,
-            readiness.identity_committed,
-            epoch,
-            &claim,
-        ));
 
-        readiness = startup_readiness::transition(
-            &readiness,
-            startup_readiness::ReadinessInput::ServerLost { generation: 4 },
-        )
-        .0;
-        let next_ticket = startup_readiness::StartupTicket {
-            generation: 5,
-            instance_id: "desktop-sidecar-stable".into(),
-            boot_id: "boot-5".into(),
-            api_base: "http://127.0.0.1:4123".into(),
-        };
-        readiness = startup_readiness::transition(
-            &readiness,
-            startup_readiness::ReadinessInput::ServerTicket(next_ticket),
-        )
-        .0;
-        assert_eq!(readiness.epoch, epoch);
-        assert!(claim_startup_commit(
-            true,
-            readiness.phase,
-            readiness.identity_committed,
-            readiness.epoch,
-            &claim,
-        ));
+        let temp = tempfile::tempdir().expect("test home");
+        let (tx, _rx) = channel();
+        let supervisor = Arc::new(ServerSupervisor {
+            child: Mutex::new(None),
+            status: Arc::new(Mutex::new(BundledServerStatus::initial(
+                "out".into(),
+                "err".into(),
+            ))),
+            stderr_reader: Mutex::new(None),
+            shutting_down: AtomicBool::new(false),
+            tx,
+            thread: Mutex::new(None),
+            context: SidecarRuntimeContext {
+                launch: SidecarLaunchContext {
+                    resource_dir: temp.path().into(),
+                    station_root: temp.path().into(),
+                    station_home: temp.path().into(),
+                    home: temp.path().display().to_string(),
+                    shell_path: String::new(),
+                    channel: None,
+                    pinned_port: None,
+                    supervisor_birth: "test-birth".into(),
+                    instance_id: "desktop-sidecar-test".into(),
+                },
+                registry_id: "desktop-sidecar-test".into(),
+            },
+        });
+        let app = tauri::test::mock_app();
+        assert!(app.manage(DesktopServerState {
+            owner: Mutex::new(DesktopOwner::Sidecar),
+            supervisor,
+            readiness: Mutex::new(readiness),
+            startup_commit_claim: claim,
+            ownership_checked_at: Mutex::new(Some(Instant::now())),
+        }));
+
+        complete_startup_commit(app.handle(), epoch, |_| {
+            panic!("a successful identity commit must not schedule a redundant retry")
+        });
+        let state = app.state::<DesktopServerState>();
+        assert_eq!(
+            startup_commit_claim_snapshot(&state.startup_commit_claim),
+            (None, None),
+            "complete_startup_commit must release both parts of the single-flight slot"
+        );
     }
 
     #[test]

@@ -665,6 +665,14 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     let unlisten: UnlistenFn | undefined;
     let drainInFlight = false;
     let drainAgain = false;
+    const reportReplayFailure = (message: string) => {
+      const error: NativePlatformError = {
+        code: 'listener-registration-failed',
+        message,
+      };
+      if (onError) onError(error);
+      else console.error(`station: ${message}`);
+    };
     const drainPending = () => {
       if (disposed) return;
       if (drainInFlight) {
@@ -675,7 +683,13 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
       void this.bridge
         .invoke<unknown>('take_pending_tray_navigation')
         .then(async (replay) => {
-          if (disposed || typeof replay !== 'object' || replay === null) return;
+          if (typeof replay !== 'object' || replay === null) return;
+          if (disposed) {
+            reportReplayFailure(
+              'Station deferred tray navigation because its renderer subscription was disposed before delivery.',
+            );
+            return;
+          }
           const { id, destination } = replay as Record<string, unknown>;
           if (
             !Number.isSafeInteger(id) ||
@@ -683,23 +697,39 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
               destination !== 'pairedDevices' &&
               destination !== 'coreUpdates')
           ) {
+            reportReplayFailure(
+              'Station refused a malformed tray navigation replay; the native lease was left for renderer recovery.',
+            );
             return;
           }
-          // Acknowledgement consumes the single native lease before user code
-          // can navigate or dispose this subscription. Delivery is best effort
-          // after that at-most-once handoff.
-          await this.bridge.invoke<unknown>('ack_pending_tray_navigation', {
-            id,
-          });
-          if (disposed) return;
+          // Native acknowledgement is also the freshness verdict: only the
+          // renderer that still owns this exact destination may navigate.
+          // Keep that authority ahead of delivery, and report every later
+          // drop so the at-most-once trade never becomes a silent menu click.
+          const acknowledged = await this.bridge.invoke<unknown>(
+            'ack_pending_tray_navigation',
+            {
+              id,
+            },
+          );
+          if (acknowledged !== true) {
+            reportReplayFailure(
+              'Station refused a stale tray navigation replay before delivery.',
+            );
+            return;
+          }
+          if (disposed) {
+            reportReplayFailure(
+              'Station consumed tray navigation but its renderer subscription was disposed before delivery.',
+            );
+            return;
+          }
           listener({ destination });
         })
         .catch((error) => {
-          if (!disposed)
-            onError?.({
-              code: 'listener-registration-failed',
-              message: `Station could not replay tray navigation: ${errorMessage(error)}`,
-            });
+          reportReplayFailure(
+            `Station could not replay tray navigation: ${errorMessage(error)}`,
+          );
         })
         .finally(() => {
           drainInFlight = false;

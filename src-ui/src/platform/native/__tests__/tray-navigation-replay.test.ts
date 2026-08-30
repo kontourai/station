@@ -56,9 +56,10 @@ describe('Tauri tray navigation replay', () => {
       listen: vi.fn().mockResolvedValue(vi.fn()),
     };
     const listener = vi.fn();
+    const onError = vi.fn();
     const adapter = new TauriNativePlatformAdapter(bridge);
 
-    const subscription = adapter.subscribeToTrayNavigation(listener);
+    const subscription = adapter.subscribeToTrayNavigation(listener, onError);
     await vi.waitFor(() =>
       expect(bridge.invoke).toHaveBeenCalledWith(
         'take_pending_tray_navigation',
@@ -74,6 +75,11 @@ describe('Tauri tray navigation replay', () => {
       'ack_pending_tray_navigation',
       expect.anything(),
     );
+    expect(onError).toHaveBeenCalledWith({
+      code: 'listener-registration-failed',
+      message:
+        'Station deferred tray navigation because its renderer subscription was disposed before delivery.',
+    });
   });
 
   it('acknowledges before listener disposal can hand the destination to a successor', async () => {
@@ -101,6 +107,70 @@ describe('Tauri tray navigation replay', () => {
     ]);
     expect(bridge.invoke).toHaveBeenCalledWith('ack_pending_tray_navigation', {
       id: 9,
+    });
+  });
+
+  it('does not deliver a replay after native acknowledgement rejects ownership', async () => {
+    const bridge: TauriEventBridge = {
+      invoke: vi.fn(async (command) => {
+        if (command === 'take_pending_tray_navigation') {
+          return { id: 10, destination: 'connections' } as never;
+        }
+        return false as never;
+      }),
+      listen: vi.fn().mockResolvedValue(vi.fn()),
+    };
+    const listener = vi.fn();
+    const onError = vi.fn();
+    const adapter = new TauriNativePlatformAdapter(bridge);
+
+    adapter.subscribeToTrayNavigation(listener, onError);
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith({
+      code: 'listener-registration-failed',
+      message:
+        'Station refused a stale tray navigation replay before delivery.',
+    });
+  });
+
+  it('reports when disposal wins after acknowledgement consumed the replay', async () => {
+    let resolveAcknowledgement: ((value: unknown) => void) | undefined;
+    const bridge: TauriEventBridge = {
+      invoke: vi.fn((command) => {
+        if (command === 'take_pending_tray_navigation') {
+          return Promise.resolve({
+            id: 11,
+            destination: 'pairedDevices',
+          }) as never;
+        }
+        return new Promise((resolve) => {
+          resolveAcknowledgement = resolve;
+        }) as never;
+      }),
+      listen: vi.fn().mockResolvedValue(vi.fn()),
+    };
+    const listener = vi.fn();
+    const onError = vi.fn();
+    const adapter = new TauriNativePlatformAdapter(bridge);
+
+    const subscription = adapter.subscribeToTrayNavigation(listener, onError);
+    await vi.waitFor(() =>
+      expect(bridge.invoke).toHaveBeenCalledWith(
+        'ack_pending_tray_navigation',
+        { id: 11 },
+      ),
+    );
+    subscription.dispose();
+    resolveAcknowledgement?.(true);
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith({
+      code: 'listener-registration-failed',
+      message:
+        'Station consumed tray navigation but its renderer subscription was disposed before delivery.',
     });
   });
 
