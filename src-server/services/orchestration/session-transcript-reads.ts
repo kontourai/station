@@ -6,7 +6,10 @@ import {
 import type { UsageReceipt } from '@kontourai/station-contracts/usage-rollup';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
-import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
+import type {
+  DroppedUsageFigure,
+  SessionUsageAggregate,
+} from '@kontourai/station-shared/usage-fold';
 import {
   foldUsageEvents,
   providerCostScope,
@@ -49,6 +52,12 @@ export interface SessionTranscriptReadsDeps {
   searchConversationMessages: EventStore['searchConversationMessages'];
   readSessionThreadIds: (authority: SessionReadScope) => string[];
   requireTenantExecutionContext: () => boolean;
+  /**
+   * Optional: receives a token figure the fold refused as unusable while
+   * replaying durable history. Absent in tests and in any composition that
+   * has no logger yet; the read stays correct either way.
+   */
+  reportDroppedUsageFigure?: (dropped: DroppedUsageFigure) => void;
 }
 
 /**
@@ -124,7 +133,13 @@ export class SessionTranscriptReads {
     if (!this.deps.canReadSession(threadId, authority)) {
       return foldUsageEvents([]);
     }
-    return foldUsageEvents(this.deps.listEventPayloads(threadId));
+    // The fold replays durable history, so it can meet a figure written
+    // before its producer's guard existed. Dropping it keeps the read
+    // answerable; reporting it keeps the producer defect visible rather
+    // than absorbed (packages/shared/src/usage-fold.ts's drop contract).
+    return foldUsageEvents(this.deps.listEventPayloads(threadId), (dropped) =>
+      this.deps.reportDroppedUsageFigure?.(dropped),
+    );
   }
 
   listSessionUsage(authority: SessionReadScope): OrchestrationSessionUsage[] {
