@@ -48,6 +48,8 @@ describe('parseCliAuthState', () => {
 });
 
 describe('buildCliRuntimePrerequisites', () => {
+  const findInstalledTestBinary = (command: string) => `/test/bin/${command}`;
+
   test('runs independent version and auth probes concurrently', async () => {
     const resolvers: Array<(result: CliCommandResult) => void> = [];
     const calls: string[][] = [];
@@ -58,6 +60,7 @@ describe('buildCliRuntimePrerequisites', () => {
       authArgs: ['login', 'status'],
       installStep: 'Install it.',
       authStep: 'Log in.',
+      findBinary: findInstalledTestBinary,
       runCommand: async (_command, args) => {
         calls.push(args);
         return new Promise((resolve) => resolvers.push(resolve));
@@ -85,6 +88,7 @@ describe('buildCliRuntimePrerequisites', () => {
       authArgs: ['--version'],
       installStep: 'Install it.',
       authStep: 'Log in.',
+      findBinary: findInstalledTestBinary,
       runCommand: async (_command, args) => {
         calls.push(args);
         return { stdout: 'v1.0.0', stderr: '', code: 0 };
@@ -103,6 +107,7 @@ describe('buildCliRuntimePrerequisites', () => {
       authArgs: [],
       installStep: 'Install it.',
       authStep: 'Log in.',
+      findBinary: findInstalledTestBinary,
       runCommand: async (_command, args) => {
         calls.push(args);
         return { stdout: 'v1.0.0', stderr: '', code: 0 };
@@ -126,6 +131,7 @@ describe('buildCliRuntimePrerequisites', () => {
       authArgs: ['--version'],
       installStep: 'Install it.',
       authStep: 'Log in.',
+      findBinary: findInstalledTestBinary,
       runCommand: async () => ({
         stdout: '',
         stderr: 'launcher failed',
@@ -146,6 +152,7 @@ describe('buildCliRuntimePrerequisites', () => {
       authArgs: ['--version'],
       installStep: 'Install it.',
       authStep: 'Log in.',
+      findBinary: findInstalledTestBinary,
       runCommand: async () => null,
     });
 
@@ -167,6 +174,7 @@ describe('buildCliRuntimePrerequisites', () => {
       installStep: 'Install it.',
       authStep: 'Log in.',
       signal: controller.signal,
+      findBinary: findInstalledTestBinary,
       runCommand: async (_command, _args, signal) => {
         if (signal) observedSignals.push(signal);
         return new Promise((_, reject) => {

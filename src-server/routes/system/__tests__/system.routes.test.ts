@@ -1236,6 +1236,8 @@ describe('System Routes', () => {
   // symmetric with a ready Station model connection, and readiness for a
   // native engine means CLI resolvable AND authenticated, never bare `which`.
   describe('engine-agnostic chat readiness (station#1193)', () => {
+    const findInstalledTestBinary = (command: string) => `/test/bin/${command}`;
+
     test('ready when an ACP engine is connected, with no model connection at all', async () => {
       vi.mocked(checkBedrockCredentials).mockResolvedValueOnce(false);
       const app = createSystemRoutes(
@@ -1685,7 +1687,7 @@ describe('System Routes', () => {
             authArgs: ['--version'],
             installStep: 'Install Claude.',
             authStep: 'Log in.',
-            findBinary: () => '/bin/claude',
+            findBinary: findInstalledTestBinary,
             runCommand: async () => ({
               stdout: '',
               stderr: 'launcher failed',
