@@ -597,11 +597,11 @@
  * underneath the dock: `elementFromPoint` at their centers resolved to
  * `chat-dock__tabs` and a trial click timed out (1440x900, dock-right, open).
  *
- * One rule decides all of it: THE OVERLAY STEPS ASIDE WHEN THERE IS SOMEWHERE
- * TO STEP, AND OUTRANKS THE DOCK WHEN THERE IS NOT. A side dock leaves a
- * content column, so the overlay insets into it (below). A bottom or maximized
- * dock leaves no column — the two contend for the same band — so the notice
- * wins that band instead of being clipped out of reach.
+ * One rule decides ordinary dock coexistence: the overlay steps aside when
+ * there is somewhere to step and outranks a non-maximized bottom sheet where
+ * there is not. Maximization is different: the dock is the active full work
+ * surface, so its header/search must remain reachable and the banner returns
+ * to its named notice layer underneath it.
  *
  * Keep the widths in lockstep with the dock grid in index.css
  * (`--chat-dock-width`, and the 36px collapsed rail). */
@@ -649,16 +649,14 @@
 /* Mobile renders EVERY dock mode as a fixed bottom sheet (the side-panel and
  * inline-grid rules above are desktop-scoped), so the bottom-dock reasoning
  * applies to all three modes here. */
-/* Maximized: there is no content column left to sit beside — a side dock spans
- * every column with `.main-content` set to `display: none`, and a bottom dock
- * claims the content row. A blocking pairing/credential banner must still be
- * readable and dismissible, so in THIS state only, the notice outranks the
-* dock. Scoped by `:has` rather than raised on `.banner-host` itself, so the
- * dock keeps its layer in every other state. */
+/* Maximized: the dock is the active full work surface. A banner laid over it
+ * covered the occupant's own header/search and made Full expose less usable
+ * content than the normal dock. Keep the banner alive underneath so restoring
+ * the dock reveals it; the dock's own connection indicator remains visible. */
 .app__main:has(> .chat-dock.is-maximized) > .banner-host {
   left: 0;
   right: 0;
-  z-index: calc(var(--layer-dock) + 1);
+  z-index: var(--layer-notice);
 }
 
 /* Shell mobile breakpoint — keep in lockstep with index.css. */

@@ -7638,7 +7638,7 @@ button.tool-call__line:hover {
   .app__main--dock-bottom > .main-content {
     grid-row: 2;
     /* Explicit column pin (archive#1055 empirical follow-up): once the maximized
-       dock below also explicitly claims column 1 for its rows 2/-1 span,
+       dock below also explicitly claims column 1 for row 2,
        CSS Grid's auto-placement algorithm treats that explicitly-placed
        cell as occupied and pushes THIS item — still `grid-column: auto` —
        into a new implicit shrink-to-fit column instead, which only moves
@@ -7671,7 +7671,7 @@ button.tool-call__line:hover {
   }
 
   .app__main--dock-bottom > .chat-dock.is-maximized {
-    grid-row: 2 / -1;
+    grid-row: 2;
     /* Without an explicit column, CSS Grid's auto-placement algorithm finds
        row 2 already claimed (by `.main-content`, above) and opens a new
        implicit shrink-to-fit column to the right instead of reusing column 1
@@ -7683,6 +7683,14 @@ button.tool-call__line:hover {
        onto whichever one is still `auto`. FOOTGUN: a future third row-2
        item left `grid-column: auto` reintroduces this bug (#1055). */
     grid-column: 1;
+  }
+
+  /* A maximized bottom dock owns one real fill row. Keeping the normal
+     `var(--dock-slot-size)` third row and spanning across it left percentage
+     height resolution anchored to the content row in Chromium, producing a
+     dead band roughly the size of the former dock at the viewport bottom. */
+  .app__main--dock-bottom:has(> .chat-dock.is-maximized) {
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   /* Collapsed: size the row to the header's real rendered height instead of
