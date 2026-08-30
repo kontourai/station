@@ -53,16 +53,15 @@ struct TrayState {
 #[derive(Clone, Copy, Debug)]
 struct PendingTrayNavigationEntry {
     id: u64,
-    epoch: u64,
     destination: TrayNavigationDestination,
     queued_at: Instant,
 }
 
 #[derive(Default)]
 struct PendingTrayNavigationState {
-    epoch: u64,
     next_id: u64,
     pending: Option<PendingTrayNavigationEntry>,
+    leased_to: Option<u64>,
 }
 
 impl PendingTrayNavigationState {
@@ -72,9 +71,9 @@ impl PendingTrayNavigationState {
         now: Instant,
     ) -> Option<PendingTrayNavigationEntry> {
         self.next_id = self.next_id.wrapping_add(1).max(1);
+        self.leased_to = None;
         self.pending.replace(PendingTrayNavigationEntry {
             id: self.next_id,
-            epoch: self.epoch,
             destination,
             queued_at: now,
         })
@@ -82,12 +81,15 @@ impl PendingTrayNavigationState {
 
     fn take_lease(&mut self, now: Instant) -> Option<PendingTrayNavigationReplay> {
         let pending = self.pending?;
-        if pending.epoch != self.epoch
-            || now.saturating_duration_since(pending.queued_at) > TRAY_NAVIGATION_TTL
-        {
+        if now.saturating_duration_since(pending.queued_at) >= TRAY_NAVIGATION_TTL {
             self.pending = None;
+            self.leased_to = None;
             return None;
         }
+        if self.leased_to.is_some() {
+            return None;
+        }
+        self.leased_to = Some(pending.id);
         Some(PendingTrayNavigationReplay {
             id: pending.id,
             destination: pending.destination,
@@ -95,8 +97,9 @@ impl PendingTrayNavigationState {
     }
 
     fn acknowledge(&mut self, id: u64) -> bool {
-        if self.pending.is_some_and(|pending| pending.id == id) {
+        if self.pending.is_some_and(|pending| pending.id == id) && self.leased_to == Some(id) {
             self.pending = None;
+            self.leased_to = None;
             true
         } else {
             false
@@ -104,7 +107,7 @@ impl PendingTrayNavigationState {
     }
 
     fn invalidate(&mut self) -> bool {
-        self.epoch = self.epoch.wrapping_add(1);
+        self.leased_to = None;
         self.pending.take().is_some()
     }
 }
@@ -1827,10 +1830,16 @@ mod tests {
 
         let first = state.take_lease(now).expect("fresh replay lease");
         assert_eq!(first.destination, TrayNavigationDestination::Connections);
-        assert_eq!(state.take_lease(now), Some(first));
+        assert_eq!(state.take_lease(now), None);
         assert!(state.acknowledge(first.id));
         assert_eq!(state.take_lease(now), None);
 
+        state.queue(TrayNavigationDestination::CoreUpdates, now);
+        assert_eq!(
+            state.take_lease(now + TRAY_NAVIGATION_TTL),
+            None,
+            "the TTL boundary is expired"
+        );
         state.queue(TrayNavigationDestination::CoreUpdates, now);
         assert_eq!(
             state.take_lease(now + TRAY_NAVIGATION_TTL + Duration::from_millis(1)),
@@ -1839,7 +1848,7 @@ mod tests {
     }
 
     #[test]
-    fn pending_navigation_epoch_invalidation_rejects_stale_acknowledgements() {
+    fn pending_navigation_invalidation_rejects_stale_acknowledgements() {
         let now = Instant::now();
         let mut state = PendingTrayNavigationState::default();
         state.queue(TrayNavigationDestination::PairedDevices, now);
@@ -1855,12 +1864,34 @@ mod tests {
         for foreign in ["workspace-popout", "preview", "main-copy", ""] {
             assert!(!tray_navigation_label_admitted(foreign));
         }
+
+        let source = include_str!("tray.rs");
+        for command in [
+            "pub(crate) fn take_pending_tray_navigation(",
+            "pub(crate) fn ack_pending_tray_navigation(",
+        ] {
+            let body = source
+                .split_once(command)
+                .unwrap_or_else(|| panic!("{command} command exists"))
+                .1
+                .split_once("\n}")
+                .expect("command body closes")
+                .0;
+            assert!(
+                body.contains("tray_navigation_label_admitted(window.label())"),
+                "{command} must wire the main-window admission guard"
+            );
+        }
     }
 
     #[test]
-    fn update_menu_item_contract_is_platform_independent() {
-        assert_eq!(UPDATE_SETTINGS_ID, "tray-updates");
-        assert_eq!(UPDATE_SETTINGS_LABEL, "Update settings…");
+    #[cfg(target_os = "macos")]
+    fn constructed_update_menu_item_promises_settings_navigation() {
+        let app = tauri::test::mock_app();
+        let item = update_settings_menu_item(app.handle()).expect("update item");
+        assert_eq!(item.id().as_ref(), "tray-updates");
+        assert_eq!(item.text().expect("update item text"), "Update settings…");
+        assert!(!item.is_enabled().expect("update item enabled state"));
     }
 
     #[test]

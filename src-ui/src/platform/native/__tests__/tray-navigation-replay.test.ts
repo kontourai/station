@@ -76,6 +76,34 @@ describe('Tauri tray navigation replay', () => {
     );
   });
 
+  it('acknowledges before listener disposal can hand the destination to a successor', async () => {
+    const calls: string[] = [];
+    const bridge: TauriEventBridge = {
+      invoke: vi.fn(async (command) => {
+        calls.push(command);
+        if (command === 'take_pending_tray_navigation') {
+          return { id: 9, destination: 'pairedDevices' } as never;
+        }
+        return true as never;
+      }),
+      listen: vi.fn().mockResolvedValue(vi.fn()),
+    };
+    const adapter = new TauriNativePlatformAdapter(bridge);
+    let subscription: ReturnType<typeof adapter.subscribeToTrayNavigation>;
+    const listener = vi.fn(() => subscription.dispose());
+
+    subscription = adapter.subscribeToTrayNavigation(listener);
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce());
+
+    expect(calls).toEqual([
+      'take_pending_tray_navigation',
+      'ack_pending_tray_navigation',
+    ]);
+    expect(bridge.invoke).toHaveBeenCalledWith('ack_pending_tray_navigation', {
+      id: 9,
+    });
+  });
+
   it('reports a failed pending-destination drain instead of dropping it silently', async () => {
     const bridge: TauriEventBridge = {
       invoke: vi.fn().mockRejectedValue(new Error('IPC unavailable')),

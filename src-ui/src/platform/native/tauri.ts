@@ -685,13 +685,14 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
           ) {
             return;
           }
-          listener({ destination });
-          // The native slot is a lease until this exact delivery is accepted.
-          // Disposal during either invoke leaves it available to a successor.
-          if (disposed) return;
+          // Acknowledgement consumes the single native lease before user code
+          // can navigate or dispose this subscription. Delivery is best effort
+          // after that at-most-once handoff.
           await this.bridge.invoke<unknown>('ack_pending_tray_navigation', {
             id,
           });
+          if (disposed) return;
+          listener({ destination });
         })
         .catch((error) => {
           if (!disposed)
