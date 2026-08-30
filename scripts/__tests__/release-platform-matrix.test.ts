@@ -48,15 +48,57 @@ describe('cross-platform release invariant matrix', () => {
     );
     expect(nightlyAndroid?.currentEvidence).toMatchObject({
       status: 'VERIFIED',
-      sha: '15401e2708722905149cbe54003bafc448d19848',
+      sha: ledger.find((entry: any) => entry.channel === 'nightly-android').sha,
     });
     expect(nightlyDesktop?.currentEvidence).toMatchObject({
       status: 'VERIFIED',
-      sha: '15401e2708722905149cbe54003bafc448d19848',
+      sha: ledger.find((entry: any) => entry.channel === 'nightly-desktop').sha,
     });
     expect(stableIos?.currentEvidence).toMatchObject({
       status: 'NOT_VERIFIED',
       owner: '#844',
+    });
+  });
+
+  test('requires every configured channel receipt to converge on one source SHA', () => {
+    const matrix = readReleasePlatformMatrix();
+    const sharedSha = 'a'.repeat(40);
+    const companionLedger = [
+      {
+        channel: 'nightly-android',
+        sha: sharedSha,
+        version: 'nightly-one',
+        workflowRunUrl: 'https://example.test/run',
+        timestampUtc: '2026-08-29T00:00:00Z',
+      },
+      {
+        channel: 'nightly-desktop',
+        sha: sharedSha,
+        version: 'nightly-one',
+        workflowRunUrl: 'https://example.test/run',
+        timestampUtc: '2026-08-29T00:00:00Z',
+      },
+    ];
+    const converged = projectReleasePlatformMatrix({
+      matrix,
+      ledger: companionLedger,
+    }).channelEvidence.find((entry) => entry.channel === 'nightly');
+    expect(converged).toMatchObject({
+      status: 'VERIFIED',
+      sourceSha: sharedSha,
+      configuredPlatforms: ['macos', 'android'],
+      verifiedPlatforms: ['macos', 'android'],
+    });
+
+    companionLedger[0].sha = 'b'.repeat(40);
+    const divergent = projectReleasePlatformMatrix({
+      matrix,
+      ledger: companionLedger,
+    }).channelEvidence.find((entry) => entry.channel === 'nightly');
+    expect(divergent).toMatchObject({
+      status: 'NOT_VERIFIED',
+      sourceSha: null,
+      reason: 'Configured nightly receipts disagree on source SHA.',
     });
   });
 

@@ -183,7 +183,33 @@ export function projectReleasePlatformMatrix({ matrix, ledger }) {
       });
     }
   }
-  return { schemaVersion: 1, cells };
+  const channelEvidence = CHANNELS.map((channel) => {
+    const configured = cells.filter(
+      (cell) => cell.channel === channel && cell.state === 'configured',
+    );
+    const verified = configured.filter(
+      (cell) => cell.currentEvidence.status === 'VERIFIED',
+    );
+    const shas = [...new Set(verified.map((cell) => cell.currentEvidence.sha))];
+    const complete =
+      configured.length > 0 &&
+      verified.length === configured.length &&
+      shas.length === 1;
+    return {
+      channel,
+      status: complete ? 'VERIFIED' : 'NOT_VERIFIED',
+      sourceSha: complete ? shas[0] : null,
+      configuredPlatforms: configured.map((cell) => cell.platform),
+      verifiedPlatforms: verified.map((cell) => cell.platform),
+      observedShas: shas,
+      reason: complete
+        ? null
+        : shas.length > 1
+          ? `Configured ${channel} receipts disagree on source SHA.`
+          : `${verified.length}/${configured.length} configured ${channel} cells have provider-backed receipts.`,
+    };
+  });
+  return { schemaVersion: 1, channelEvidence, cells };
 }
 
 export function main(argv = process.argv.slice(2), root = defaultRoot) {
