@@ -261,7 +261,7 @@ describe('the Tauri updater manifest (station#575)', () => {
     );
   });
 
-  test('the CLI assembles repeated platform arguments only when every archive exists', () => {
+  test('the CLI binds every repeated signature file to its platform asset', () => {
     const directory = mkdtempSync(join(tmpdir(), 'station-updater-multi-'));
     const output = join(directory, 'latest.json');
     const firstAsset = join(
@@ -276,44 +276,55 @@ describe('the Tauri updater manifest (station#575)', () => {
     const secondSignature = `${secondAsset}.sig`;
     for (const asset of [firstAsset, secondAsset])
       writeFileSync(asset, 'archive');
-    for (const signature of [firstSignature, secondSignature])
-      writeFileSync(signature, 'signature');
+    writeFileSync(firstSignature, 'mac-signature');
+    writeFileSync(secondSignature, 'windows-signature');
 
-    execFileSync(
-      process.execPath,
-      [
-        'scripts/lib/tauri-updater-manifest.mjs',
-        '--version',
-        '0.1.3',
-        '--pub-date',
-        VALID.pubDate,
-        '--platform',
-        'darwin-aarch64',
-        '--asset-file',
-        firstAsset,
-        '--signature-file',
-        firstSignature,
-        '--url',
-        'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-macos-aarch64.app.tar.gz',
-        '--platform',
-        'windows-x86_64',
-        '--asset-file',
-        secondAsset,
-        '--signature-file',
-        secondSignature,
-        '--url',
-        'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-windows-x86_64.msi.zip',
-        '--release-tag',
-        'stable-desktop',
-        '--output',
-        output,
-      ],
-      { cwd: join(import.meta.dirname, '../..') },
-    );
+    const argumentsForManifest = [
+      'scripts/lib/tauri-updater-manifest.mjs',
+      '--version',
+      '0.1.3',
+      '--pub-date',
+      VALID.pubDate,
+      '--platform',
+      'darwin-aarch64',
+      '--asset-file',
+      firstAsset,
+      '--signature-file',
+      firstSignature,
+      '--url',
+      'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-macos-aarch64.app.tar.gz',
+      '--platform',
+      'windows-x86_64',
+      '--asset-file',
+      secondAsset,
+      '--signature-file',
+      secondSignature,
+      '--url',
+      'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-windows-x86_64.msi.zip',
+      '--release-tag',
+      'stable-desktop',
+      '--output',
+      output,
+    ];
+    execFileSync(process.execPath, argumentsForManifest, {
+      cwd: join(import.meta.dirname, '../..'),
+    });
 
     expect(
       Object.keys(JSON.parse(readFileSync(output, 'utf8')).platforms),
     ).toEqual(['darwin-aarch64', 'windows-x86_64']);
+
+    const crossedSignatures = [...argumentsForManifest];
+    crossedSignatures[crossedSignatures.indexOf(firstSignature)] =
+      secondSignature;
+    crossedSignatures[crossedSignatures.indexOf(secondSignature)] =
+      firstSignature;
+    expect(() =>
+      execFileSync(process.execPath, crossedSignatures, {
+        cwd: join(import.meta.dirname, '../..'),
+        stdio: 'pipe',
+      }),
+    ).toThrow(/signature-file.*does not match updater asset/);
   });
 
   test('the CLI refuses a flag value that is itself another flag (station#575 L3)', () => {
