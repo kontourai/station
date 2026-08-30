@@ -308,6 +308,8 @@ export async function finalizeChatRequest({
         inputTokens?: number;
         outputTokens?: number;
         totalTokens?: number;
+        cacheReadTokens?: number;
+        cacheWriteTokens?: number;
       }
     | undefined;
   try {
@@ -317,6 +319,8 @@ export async function finalizeChatRequest({
   }
 
   if (ctx.monitoringEmitter) {
+    const inputTokens = usage?.promptTokens ?? usage?.inputTokens;
+    const outputTokens = usage?.completionTokens ?? usage?.outputTokens;
     ctx.monitoringEmitter.emitAgentComplete({
       slug,
       conversationId: operationContext.conversationId,
@@ -332,8 +336,8 @@ export async function finalizeChatRequest({
       outputChars: finalOutput.length,
       usage: usage
         ? {
-            inputTokens: usage.promptTokens || usage.inputTokens || 0,
-            outputTokens: usage.completionTokens || usage.outputTokens || 0,
+            ...(inputTokens !== undefined ? { inputTokens } : {}),
+            ...(outputTokens !== undefined ? { outputTokens } : {}),
           }
         : undefined,
       artifacts,
@@ -349,9 +353,9 @@ export async function finalizeChatRequest({
     }
   }
 
-  const inputTokenCount = usage?.promptTokens || usage?.inputTokens || 0;
-  const outputTokenCount = usage?.completionTokens || usage?.outputTokens || 0;
-  let estimatedCost = 0;
+  const inputTokenCount = usage?.promptTokens ?? usage?.inputTokens;
+  const outputTokenCount = usage?.completionTokens ?? usage?.outputTokens;
+  let estimatedCost: number | undefined;
 
   if (usage && ctx.modelCatalog) {
     try {
@@ -390,24 +394,39 @@ export async function finalizeChatRequest({
           modelId,
           region,
         );
-        estimatedCost = estimateCost(
-          pricing,
-          inputTokenCount,
-          outputTokenCount,
-        );
+        estimatedCost = estimateCost(pricing, {
+          ...(usage.promptTokens !== undefined ||
+          usage.inputTokens !== undefined
+            ? { inputTokens: usage.promptTokens ?? usage.inputTokens }
+            : {}),
+          ...(usage.completionTokens !== undefined ||
+          usage.outputTokens !== undefined
+            ? {
+                outputTokens: usage.completionTokens ?? usage.outputTokens,
+              }
+            : {}),
+          ...(usage.cacheReadTokens !== undefined
+            ? { cacheReadTokens: usage.cacheReadTokens }
+            : {}),
+          ...(usage.cacheWriteTokens !== undefined
+            ? { cacheWriteTokens: usage.cacheWriteTokens }
+            : {}),
+        });
       }
     } catch {
-      estimatedCost = 0;
+      estimatedCost = undefined;
     }
   }
 
+  // An omitted cost means UNPRICED, never free. The metrics log preserves
+  // that signal for #463(b), which will make the aggregate consumer expose it.
   ctx.metricsLog.push({
     timestamp: Date.now(),
     agentSlug: slug,
     event: 'completion',
     conversationId: operationContext.conversationId,
     messageCount: 2,
-    cost: estimatedCost,
+    ...(estimatedCost !== undefined ? { cost: estimatedCost } : {}),
   });
 
   chatRequests.add(1, { agent: slug, plugin });
@@ -415,11 +434,15 @@ export async function finalizeChatRequest({
     agent: slug,
     plugin,
   });
-  if (usage) {
+  // Counters require a number. An absent provider figure is not zero, so skip
+  // that counter instead of manufacturing a measurement.
+  if (inputTokenCount !== undefined) {
     tokensInput.add(inputTokenCount, { agent: slug, plugin });
+  }
+  if (outputTokenCount !== undefined) {
     tokensOutput.add(outputTokenCount, { agent: slug, plugin });
   }
-  if (estimatedCost > 0) {
+  if (estimatedCost !== undefined && estimatedCost > 0) {
     costEstimated.add(estimatedCost, { agent: slug, plugin });
   }
 
@@ -427,8 +450,12 @@ export async function finalizeChatRequest({
     'station.conversation_id',
     operationContext.conversationId || '',
   );
-  chatSpan.setAttribute('station.tokens.input', inputTokenCount);
-  chatSpan.setAttribute('station.tokens.output', outputTokenCount);
+  if (inputTokenCount !== undefined) {
+    chatSpan.setAttribute('station.tokens.input', inputTokenCount);
+  }
+  if (outputTokenCount !== undefined) {
+    chatSpan.setAttribute('station.tokens.output', outputTokenCount);
+  }
   chatSpan.setStatus?.({ code: SpanStatusCode.OK });
   chatSpan.end();
 }

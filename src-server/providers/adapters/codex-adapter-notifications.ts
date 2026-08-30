@@ -5,8 +5,8 @@ import {
   deriveToolArguments,
   deriveToolName,
   deriveToolOutput,
-  extractNumber,
   extractString,
+  extractTokenFigure,
   extractToolError,
   extractToolStatus,
   isRecord,
@@ -129,10 +129,11 @@ export function handleCodexNotification(
         createdAt: nowIso(),
         method: 'token-usage.updated',
         turnId: extractString(notification.params.turnId) ?? undefined,
-        promptTokens: extractNumber(usage.inputTokens) ?? undefined,
-        completionTokens: extractNumber(usage.outputTokens) ?? undefined,
-        totalTokens: extractNumber(usage.totalTokens) ?? undefined,
-        cacheReadTokens: extractNumber(usage.cachedInputTokens) ?? undefined,
+        promptTokens: extractTokenFigure(usage.inputTokens) ?? undefined,
+        completionTokens: extractTokenFigure(usage.outputTokens) ?? undefined,
+        totalTokens: extractTokenFigure(usage.totalTokens) ?? undefined,
+        cacheReadTokens:
+          extractTokenFigure(usage.cachedInputTokens) ?? undefined,
       });
       return;
     }

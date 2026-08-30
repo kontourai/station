@@ -616,3 +616,72 @@ describe('bedrock/ollama reported usage through the fold (station#4197)', () => 
     ).toBeUndefined();
   });
 });
+
+describe('foldUsageEvents: durable rows written before the birth-site guards', () => {
+  // The fold's input is the durable event stream, so it replays rows written
+  // by producers that predate their own guards. `JSON.stringify` writes a
+  // non-finite figure as `null`, and `null` passes an `!== undefined` gate —
+  // reaching `conversation-manager`'s `reportedTokenFigureIsBroken`, which
+  // throws and 500s that conversation's stats on EVERY read. Absence is what
+  // makes the historical row readable again without inventing a measurement.
+  it('treats a persisted null token figure as absent, and reports the drop', () => {
+    const dropped: unknown[] = [];
+    const aggregate = foldUsageEvents(
+      [
+        ev({
+          method: 'token-usage.updated',
+          provider: 'claude',
+          promptTokens: null as unknown as number,
+          completionTokens: 40,
+        }),
+      ],
+      (d) => dropped.push(d),
+    );
+
+    expect(aggregate.inputTokens).toBeUndefined();
+    expect(aggregate.outputTokens).toBe(40);
+    expect(dropped).toEqual([
+      expect.objectContaining({
+        field: 'promptTokens',
+        value: null,
+        provider: 'claude',
+        threadId: 't1',
+      }),
+    ]);
+  });
+
+  it('treats a persisted negative token figure as absent', () => {
+    const dropped: unknown[] = [];
+    const aggregate = foldUsageEvents(
+      [
+        ev({
+          method: 'token-usage.updated',
+          provider: 'claude',
+          promptTokens: -5,
+          cacheReadTokens: -1,
+        }),
+      ],
+      (d) => dropped.push(d),
+    );
+
+    expect(aggregate.inputTokens).toBeUndefined();
+    expect(aggregate.cacheReadTokens).toBeUndefined();
+    expect(dropped).toHaveLength(2);
+  });
+
+  it('does not report a drop for a genuinely absent figure', () => {
+    const dropped: unknown[] = [];
+    foldUsageEvents(
+      [
+        ev({
+          method: 'token-usage.updated',
+          provider: 'claude',
+          completionTokens: 40,
+        }),
+      ],
+      (d) => dropped.push(d),
+    );
+
+    expect(dropped).toEqual([]);
+  });
+});

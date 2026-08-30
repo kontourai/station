@@ -60,6 +60,40 @@ function buildRecord(
 }
 
 describe('codex-adapter-notifications', () => {
+  test('drops malformed token figures at the Codex notification boundary', () => {
+    const events: any[] = [];
+
+    handleCodexNotification({
+      record: buildRecord(),
+      notification: {
+        method: 'thread/tokenUsage/updated',
+        params: {
+          turnId: 'turn-1',
+          tokenUsage: {
+            total: {
+              inputTokens: Number.POSITIVE_INFINITY,
+              outputTokens: -1,
+              totalTokens: 9,
+              cachedInputTokens: 2,
+            },
+          },
+        },
+      },
+      nowIso: () => '2026-01-02T00:00:00.000Z',
+      publish: (event) => events.push(event),
+    });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        method: 'token-usage.updated',
+        totalTokens: 9,
+        cacheReadTokens: 2,
+      }),
+    ]);
+    expect(events[0].promptTokens).toBeUndefined();
+    expect(events[0].completionTokens).toBeUndefined();
+  });
+
   test('updates session state and emits state change events', () => {
     const record = buildRecord();
     const events: any[] = [];
