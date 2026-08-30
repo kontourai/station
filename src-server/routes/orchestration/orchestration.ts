@@ -902,6 +902,7 @@ export function createOrchestrationRoutes(
     observeDelegatedTask?: (
       input: DelegatedTaskReferenceRequest,
     ) => Promise<unknown>;
+    refreshDelegatedTaskActivity?: (input: { userId: string }) => Promise<void>;
     observeDelegatedTaskEvents?: (
       input: DelegatedTaskEventsRequest,
     ) => Promise<unknown>;
@@ -1031,9 +1032,13 @@ export function createOrchestrationRoutes(
   });
 
   app.get('/sessions/read-model', async (c) => {
-    const data = await orchestrationService.listSessionReadModel(
-      readAuthorityFor(c),
-    );
+    const authority = readAuthorityFor(c);
+    if (deps.refreshDelegatedTaskActivity) {
+      await deps.refreshDelegatedTaskActivity({
+        userId: resolveActorPrincipal(deps, c).userId,
+      });
+    }
+    const data = await orchestrationService.listSessionReadModel(authority);
     return c.json({ success: true, data });
   });
 

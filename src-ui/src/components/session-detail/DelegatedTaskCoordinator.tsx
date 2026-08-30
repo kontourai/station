@@ -94,6 +94,7 @@ export function DelegatedTaskCoordinator({
   const environment =
     task.delegation?.environmentName ??
     displayEnvironment(task.delegation?.environmentId);
+  const isPeerActivityRecord = task.delegation?.environmentKind === 'peer';
   const mutationError = sendTurn.error ?? stopTask.error;
 
   return (
@@ -124,7 +125,11 @@ export function DelegatedTaskCoordinator({
 
       <div className="sessions-coordinator__meta">
         <span>{delegationTargetLabel(task)}</span>
-        <span>{task.model ?? task.provider}</span>
+        <span>
+          {isPeerActivityRecord
+            ? 'Paired Station'
+            : (task.model ?? task.provider)}
+        </span>
         {environment && <span>{environment}</span>}
         <span>{state}</span>
       </div>
@@ -145,6 +150,12 @@ export function DelegatedTaskCoordinator({
       {task.blockedReason && (
         <p className="sessions-coordinator__notice">{task.blockedReason}</p>
       )}
+      {isPeerActivityRecord && (
+        <p className="sessions-coordinator__notice">
+          Station tracks this peer task&apos;s lifecycle here. Its transcript
+          and final answer remain on the paired Station.
+        </p>
+      )}
       {mutationError && (
         <p className="sessions-coordinator__error" role="alert">
           {mutationError instanceof Error
@@ -158,7 +169,7 @@ export function DelegatedTaskCoordinator({
           suppressing the composer for it left the card with no way to act at
           all. Sending still round-trips and fails loudly server-side —
           enforcement stays there, never here. */}
-      {!liveReview && !isStreaming && !isTerminal && (
+      {!isPeerActivityRecord && !liveReview && !isStreaming && !isTerminal && (
         <form
           className="sessions-coordinator__compose"
           onSubmit={(event) => {
@@ -188,7 +199,7 @@ export function DelegatedTaskCoordinator({
             Review request
           </Button>
         )}
-        {isStreaming && !isTerminal && (
+        {!isPeerActivityRecord && isStreaming && !isTerminal && (
           <Button
             variant="danger-outline"
             disabled={stopTask.isPending}
