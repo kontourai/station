@@ -206,6 +206,8 @@ type ClaudeSessionRecord = {
    * The SDK result mapper consumes it for the exact requested Stop only.
    */
   interruptingTurnId?: string;
+  /** Mirrors `ClaudeMessageState.interruptedResultObserved`. */
+  interruptedResultObserved?: boolean;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** Tracks the live SDK permission mode so sendTurn only calls
@@ -738,10 +740,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
     const turnId = crypto.randomUUID();
-    // A prior interrupt can finish without Claude emitting its result row.
-    // A new turn supersedes that exact-turn marker; it must never suppress a
-    // later turn's genuine SDK failure.
-    record.interruptingTurnId = undefined;
     record.activeTurnId = turnId;
     // archive#1182: a fresh turn has not reported anything yet — clear the
     // previous turn's value so a turn that ends before any assistant
@@ -956,14 +954,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // `is_error` result before `interrupt()` resolves. The mapper consumes
     // this marker only for this exact dispatched turn.
     record.interruptingTurnId = targetTurnId;
-    try {
-      await record.query.interrupt();
-    } catch (error) {
-      if (record.interruptingTurnId === targetTurnId) {
-        record.interruptingTurnId = undefined;
-      }
-      throw error;
-    }
+    // A rejected control promise does not prove the engine ignored the
+    // interrupt. Keep the exact-turn marker armed until the SDK result stream
+    // confirms what happened; a second Stop must not clear the first one's
+    // still-pending receipt either.
+    await record.query.interrupt();
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,
@@ -1586,9 +1581,23 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   private async consumeMessages(record: ClaudeSessionRecord): Promise<void> {
     try {
       for await (const message of record.query) {
+        // `interruptedResultObserved` suppresses only the iterator rejection
+        // immediately following the consumed result. If the iterator yields
+        // another message instead, that proves there was no wrapper to
+        // suppress and the marker must not leak into a later failure.
+        record.interruptedResultObserved = false;
         this.mapMessage(record, message);
       }
+      record.interruptedResultObserved = false;
     } catch (error) {
+      // Claude rethrows a structured `is_error` result after the mapper has
+      // already consumed it. For a requested interruption that wrapper is not
+      // a second terminal fact and must not become an unscoped runtime.error.
+      if (record.interruptedResultObserved) {
+        record.interruptedResultObserved = false;
+        record.session.status = 'ready';
+        return;
+      }
       // archive#1827: once `mapMessage` has already published a structured
       // `runtime.error` for a `terminal`-classified `result` message
       // (`classifyClaudeResultOutcome`, `claude-adapter-events.ts`), the SDK

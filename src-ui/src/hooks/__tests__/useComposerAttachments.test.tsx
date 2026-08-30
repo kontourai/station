@@ -283,6 +283,102 @@ describe('useComposerAttachments', () => {
     expect(reconcileAttachmentStages).toHaveBeenCalledTimes(1);
   });
 
+  test('does not reconcile an uploading stage before its supervised transfer settles', async () => {
+    const stage: ComposerAttachmentStageSnapshot = {
+      clientAttachmentId: 'active-upload',
+      name: 'active.txt',
+      mimeType: 'text/plain',
+      size: 5,
+      state: 'uploading',
+      progress: 0,
+      stageId: 'stage-active',
+    };
+    reconcileAttachmentStages.mockResolvedValueOnce([
+      {
+        stageId: 'stage-active',
+        state: 'pending',
+        expiresAt: '2030-01-01T00:00:00.000Z',
+      },
+    ]);
+    const onStagesChange = vi.fn();
+
+    renderHook(() =>
+      useComposerAttachments({
+        apiBase: 'http://station.test',
+        attachments: [attachment('active-upload')],
+        stages: [stage],
+        capabilities: { images: true, files: true },
+        onAddAttachments: vi.fn(),
+        onStagesChange,
+      }),
+    );
+    await act(async () => await Promise.resolve());
+
+    expect(reconcileAttachmentStages).not.toHaveBeenCalled();
+    expect(onStagesChange).not.toHaveBeenCalled();
+  });
+
+  test('retry starts a fresh upload after settled-stage reconciliation', async () => {
+    const file = attachment('retry-after-reconcile');
+    let stages: ComposerAttachmentStageSnapshot[] = [];
+    const onStagesChange = vi.fn((next: ComposerAttachmentStageSnapshot[]) => {
+      stages = next;
+    });
+    readChatAttachmentFiles.mockResolvedValueOnce({
+      attachments: [file],
+      errors: [],
+    });
+    stageComposerAttachments
+      .mockImplementationOnce(async (_apiBase, _files, _signal, update) => {
+        update({
+          clientAttachmentId: file.id,
+          state: 'retryable',
+          progress: 0,
+          stageId: 'stage-retry',
+          error: 'network failed',
+        });
+        throw new Error('network failed');
+      })
+      .mockResolvedValueOnce(undefined);
+    reconcileAttachmentStages.mockResolvedValueOnce([
+      {
+        stageId: 'stage-retry',
+        state: 'pending',
+        expiresAt: '2030-01-01T00:00:00.000Z',
+      },
+    ]);
+    const { result, rerender } = renderHook(
+      ({ hookStages }) =>
+        useComposerAttachments({
+          apiBase: 'http://station.test',
+          attachments: [file],
+          stages: hookStages,
+          capabilities: { images: true, files: true },
+          onAddAttachments: vi.fn(),
+          onStagesChange,
+        }),
+      { initialProps: { hookStages: stages } },
+    );
+
+    await act(async () => {
+      await result.current.selectFiles([new File(['hello'], file.name)]);
+    });
+    await waitFor(() =>
+      expect(stageComposerAttachments).toHaveBeenCalledOnce(),
+    );
+    rerender({ hookStages: stages });
+    await waitFor(() =>
+      expect(reconcileAttachmentStages).toHaveBeenCalledOnce(),
+    );
+
+    await act(async () => {
+      await result.current.retry(file.id);
+    });
+    await waitFor(() =>
+      expect(stageComposerAttachments).toHaveBeenCalledTimes(2),
+    );
+  });
+
   test('keeps a committed sibling sendable when the same batch partially fails', async () => {
     const complete = attachment('complete');
     const retryable = attachment('retryable');
