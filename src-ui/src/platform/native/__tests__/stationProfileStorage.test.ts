@@ -539,19 +539,16 @@ describe('NativeStationProfileStorage', () => {
     });
     const { calls, storage } = storageWithProfileStore(shared);
     await storage.hydrate();
-    expect(
-      storage.selectExplicitProfileForProcess(
+    await expect(
+      storage.authorizeActiveConnection(
         'station-profile:station.kontourai.io',
+        true,
       ),
-    ).toBe(true);
+    ).resolves.toBe(true);
 
     expect(storage.selectProfileForProcess('beta-local')).toBe(
       'station-profile:station.kontourai.io',
     );
-    await expect(
-      storage.authorizeActiveConnection('station-profile:station.kontourai.io'),
-    ).resolves.toBe(true);
-
     expect(shared.defaultProfile).toBe('kontour');
     expect(calls).toContainEqual([
       'station_profile_authorize_active',
@@ -607,11 +604,12 @@ describe('NativeStationProfileStorage', () => {
   it('retains an explicit process choice through refresh and drops it when its profile is removed', async () => {
     const { currentStore, replaceStore, storage } = storageWithKeyring();
     await storage.hydrate();
-    expect(
-      storage.selectExplicitProfileForProcess(
+    await expect(
+      storage.authorizeActiveConnection(
         'station-profile:station.kontourai.io',
+        true,
       ),
-    ).toBe(true);
+    ).resolves.toBe(true);
 
     const changed = structuredClone(currentStore());
     changed.revision += 1;
