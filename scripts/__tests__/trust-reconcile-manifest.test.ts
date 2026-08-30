@@ -114,9 +114,16 @@ describe('Station trust-reconcile manifest', () => {
       { id: 'full-regression', command: 'npm run full:regression' },
     ]);
 
-    const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
-    expect(workflow.match(/run: npm run full:regression/g)).toHaveLength(1);
-    expect(workflow).toContain('id: fast_ci');
+    const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
+    const completion = readFileSync(
+      '.github/workflows/full-regression.yml',
+      'utf8',
+    );
+    expect(ci).toContain('uses: ./.github/workflows/full-regression.yml');
+    expect(ci).not.toContain('run: npm run full:regression');
+    expect(completion.match(/run: npm run full:regression/g)).toHaveLength(1);
+    expect(completion).toContain('workflow_call:');
+    expect(ci).toContain('id: fast_ci');
   });
 
   it('accepts the canonical full-regression gate and rejects non-required command evidence', () => {
