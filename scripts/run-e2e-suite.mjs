@@ -1668,6 +1668,11 @@ export function suiteStationE2EEnv(suite) {
   // non-smoke-live suites hand the child no such variable at all.
   const museProvider =
     suite === 'smoke-live' ? SMOKE_LIVE_MUSE_PROVIDER : undefined;
+  // #875: explicit in every branch for the same inherited-environment reason
+  // as the Muse override. Only the screenshot server requests suppression;
+  // the server still requires its temp-home + e2e-screenshot instance
+  // conjunction before honoring this value.
+  const suppressNativeEngineAdoption = suite === 'screenshot' ? '1' : undefined;
   if (suite === 'starter-clean-install') {
     return {
       STATION_E2E_FIRST_RUN: '1',
@@ -1678,16 +1683,19 @@ export function suiteStationE2EEnv(suite) {
       OTEL_EXPORTER_OTLP_ENDPOINT: '',
       STATION_TELEMETRY_API_KEY: '',
       STATION_E2E_MUSE_PROVIDER: museProvider,
+      STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION: suppressNativeEngineAdoption,
     };
   }
   if (suite === 'first-run')
     return {
       STATION_E2E_FIRST_RUN: '1',
       STATION_E2E_MUSE_PROVIDER: museProvider,
+      STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION: suppressNativeEngineAdoption,
     };
   return {
     STATION_E2E_SYSTEM_STATUS_READY: '1',
     STATION_E2E_MUSE_PROVIDER: museProvider,
+    STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION: suppressNativeEngineAdoption,
   };
 }
 
@@ -1844,7 +1852,7 @@ async function main() {
       `[e2e] reclaimed ${recoveredCount} interrupted E2E run${recoveredCount === 1 ? '' : 's'}`,
     );
   }
-  // CROSS-FILE COUPLE — two server-side containment gates transcribe this
+  // CROSS-FILE COUPLE — three server-side containment gates transcribe this
   // exact `e2e-${suite}-${Date.now()}-${base36}` shape as a regex and treat a
   // match as evidence of a disposable runner-owned runtime; change them
   // together with any change here:
@@ -1852,6 +1860,8 @@ async function main() {
   //     MUSE_E2E_SMOKE_LIVE_INSTANCE (#550)
   //   - `src-server/services/infra/resource-posture.ts`'s
   //     STARTER_CLEAN_INSTALL_INSTANCE
+  //   - `src-server/runtime/bootstrap/native-engine-adoption.ts`'s
+  //     SCREENSHOT_E2E_INSTANCE (#875)
   // Nothing fails if they drift; the affected suite simply stops getting the
   // behavior it asks for, which is safe but reads as a mystery.
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
