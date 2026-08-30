@@ -90,7 +90,7 @@ describe('the Tauri updater manifest (station#575)', () => {
         ...VALID,
         url: 'https://github.com/kontourai/station/releases/download/nightly-npm/station-nightly-desktop-macos-aarch64.app.tar.gz',
       }),
-    ).toThrow(/url must be a release-asset download URL under releaseTag/);
+    ).toThrow(/url must be exactly one Station release asset under releaseTag/);
     // A url for the right tag but missing the exact "/download/<tag>/"
     // shape (e.g. a tag name that is a prefix of another) must also fail.
     expect(() =>
@@ -99,7 +99,19 @@ describe('the Tauri updater manifest (station#575)', () => {
         releaseTag: 'nightly-desktop',
         url: 'https://github.com/kontourai/station/releases/download/nightly-desktop-preview/station-nightly-desktop-macos-aarch64.app.tar.gz',
       }),
-    ).toThrow(/url must be a release-asset download URL under releaseTag/);
+    ).toThrow(/url must be exactly one Station release asset under releaseTag/);
+  });
+
+  test.each([
+    'https://github.com/kontourai/station/releases/download/nightly-npm/station-nightly-desktop-macos-aarch64.app.tar.gz?x=/download/nightly-desktop/',
+    'https://github.com/kontourai/station/releases/download/nightly-npm/station-nightly-desktop-macos-aarch64.app.tar.gz#/download/nightly-desktop/',
+    'https://github.com/kontourai/station/releases/download/nightly-desktop/../nightly-npm/station-nightly-desktop-macos-aarch64.app.tar.gz',
+    'https://attacker.tld/kontourai/station/releases/download/nightly-desktop/station-nightly-desktop-macos-aarch64.app.tar.gz',
+    'https://github.com/kontourai/station/releases/download/nightly-desktop/subdir/station-nightly-desktop-macos-aarch64.app.tar.gz',
+  ])('rejects non-identical release asset URL %s', (url) => {
+    expect(() => createUpdaterManifest({ ...VALID, url })).toThrow(
+      /url must be exactly one Station release asset under releaseTag/,
+    );
   });
 
   test('never merges a previous platforms map: one call names exactly one platform', () => {
@@ -358,6 +370,15 @@ describe('the Tauri updater manifest (station#575)', () => {
         stdio: 'pipe',
       }),
     ).toThrow(/does not encode platform/);
+
+    const crossedAssets = [...argumentsForManifest];
+    crossedAssets[crossedAssets.indexOf(firstAsset)] = secondAsset;
+    expect(() =>
+      execFileSync(process.execPath, crossedAssets, {
+        cwd: join(import.meta.dirname, '../..'),
+        stdio: 'pipe',
+      }),
+    ).toThrow(/--asset-file.*does not match updater asset/);
   });
 
   test('the CLI refuses a flag value that is itself another flag (station#575 L3)', () => {
@@ -415,5 +436,29 @@ describe('the Tauri updater manifest (station#575)', () => {
         { cwd: join(import.meta.dirname, '../..'), stdio: 'pipe' },
       ),
     ).toThrow(/Each --platform requires one --signature-file/);
+  });
+
+  test.each([
+    ['unknown flag', ['--unknown'], /unknown argument/],
+    ['duplicate scalar', ['--verify', '--verify'], /may be supplied only once/],
+    ['boolean with value', ['--verify', 'manifest.json'], /unknown argument/],
+    [
+      'orphan break glass',
+      ['--allow-regression'],
+      /requires --assert-not-regressing/,
+    ],
+    [
+      'a valid flag from another mode',
+      ['--verify', '--manifest', 'latest.json', '--notes', 'ignored'],
+      /not valid in this command mode/,
+    ],
+  ])('the CLI refuses %s', (_label, args, message) => {
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        ['scripts/lib/tauri-updater-manifest.mjs', ...args],
+        { cwd: join(import.meta.dirname, '../..'), stdio: 'pipe' },
+      ),
+    ).toThrow(message);
   });
 });

@@ -272,7 +272,7 @@ describe('native release workflow topology', () => {
       'Resolve tag to one immutable commit',
     );
     expect(publishResolve.run).toContain(
-      `desktop_updater_tag=$(${sharedMapping})`,
+      'desktop_updater_tag=$(node release-policy/scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --print-desktop-updater-tag)',
     );
   });
 
@@ -316,12 +316,29 @@ describe('native release workflow topology', () => {
     );
     expect(assembly.run.match(/--allow-regression/g)).toHaveLength(1);
     expect(assembly.run).toContain('mkdir -p updater-channel-assets');
+    expect(assembly.run).toContain(
+      'policy_script=release-policy/scripts/lib/tauri-updater-manifest.mjs',
+    );
+    expect(assembly.run).not.toContain(
+      'node scripts/lib/tauri-updater-manifest.mjs',
+    );
+    expect(assembly.run).toContain('--verify');
     expect(publishStep.run).toContain('--verify');
+    expect(publishStep.run).not.toContain(
+      'node scripts/lib/tauri-updater-manifest.mjs',
+    );
     expect(publishStep.run).toContain('cmp updater-channel-assets/latest.json');
+    expect(publishStep.run).toContain('compensate_pointer');
+    expect(publishStep.run).toContain('updater-channel-current/latest.json');
+    expect(publishStep.run).toContain('gh release delete-asset');
 
     const uploadLines = publishStep.run
       .split('\n')
-      .filter((line) => line.includes('gh release upload'));
+      .filter(
+        (line) =>
+          line.includes('gh release upload') &&
+          !line.includes('updater-channel-current'),
+      );
     expect(uploadLines).toHaveLength(2);
     expect(uploadLines[0]).toContain('"$' + '{updater_args[@]}"');
     expect(uploadLines[0]).not.toContain('latest.json');
@@ -336,12 +353,14 @@ describe('native release workflow topology', () => {
     expect(parsed.permissions).toEqual({ contents: 'read' });
     expect(source.run).toContain('gh release view "$desktop_updater_tag"');
     expect(source.run).not.toContain('2>/dev/null || true');
-    expect(source.env?.ALLOW_UPDATER_POINTER_REGRESSION).toBe(
-      githubExpression('inputs.allow_updater_pointer_regression'),
+    expect(source.env?.ALLOW_PUBLISHED_POINTER_REPAIR).toBe(
+      githubExpression('inputs.allow_published_pointer_repair'),
     );
     expect(source.run).toMatch(
-      /tag_release_state" == false && "\$ALLOW_UPDATER_POINTER_REGRESSION" == true/,
+      /tag_release_state" == false && "\$ALLOW_PUBLISHED_POINTER_REPAIR" == true/,
     );
+    expect(source.run).toContain('ALLOW_EMPTY_UPDATER_CHANNEL_BOOTSTRAP');
+    expect(source.run).toContain('has assets but no latest.json');
     expect(source.run).toContain('pointer_repair_only=true');
     expect(resolve.outputs?.pointer_repair_only).toBe(
       githubExpression('steps.source.outputs.pointer_repair_only'),
@@ -368,6 +387,16 @@ describe('native release workflow topology', () => {
       group: 'station-release-publish',
       'cancel-in-progress': false,
     });
+    for (const jobName of ['resolve', 'publish']) {
+      const checkout = namedStep(
+        workflowJob(publish, jobName),
+        'Check out default-branch release policy',
+      );
+      expect(checkout.with).toMatchObject({
+        ref: githubExpression('github.event.repository.default_branch'),
+        path: 'release-policy',
+      });
+    }
     expectStepOrder(promotion, [
       'Assemble and validate the rolling desktop updater channel',
       'Promote only the recorded immutable GHCR digest',

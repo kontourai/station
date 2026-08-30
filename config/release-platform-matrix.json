@@ -33,7 +33,7 @@
     },
     "linux": {
       "artifactIdentity": "AppImage, deb, rpm, updater archive/signature",
-      "signingRequirement": "Tauri updater signature and checksummed release inventory"
+      "signingRequirement": "Tauri updater signature for AppImage only; deb/rpm rely on the checksummed release inventory and have no in-app updater"
     },
     "android": {
       "artifactIdentity": "verified universal APK and Play-ready AAB",
@@ -242,7 +242,7 @@
         "buildJob": "release.yml#desktop-linux",
         "testLane": "package layout, inventory, and updater checks",
         "publicationTarget": "immutable GitHub preview release plus rolling beta-desktop release",
-        "updateAuthority": "signed Tauri updater endpoint on beta-desktop/latest.json",
+        "updateAuthority": "AppImage only: signed Tauri updater endpoint on beta-desktop/latest.json; deb/rpm have no in-app updater",
         "rollbackSource": "higher fixed preview tag or protected rolling-pointer repair",
         "evidence": {
           "kind": "not-verified",
@@ -322,7 +322,7 @@
         "buildJob": "release.yml#desktop-linux",
         "testLane": "package layout, inventory, and updater checks",
         "publicationTarget": "immutable GitHub stable release plus rolling stable-desktop release",
-        "updateAuthority": "signed Tauri updater endpoint on stable-desktop/latest.json",
+        "updateAuthority": "AppImage only: signed Tauri updater endpoint on stable-desktop/latest.json; deb/rpm have no in-app updater",
         "rollbackSource": "higher fixed stable tag or protected rolling-pointer repair",
         "evidence": {
           "kind": "not-verified",

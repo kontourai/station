@@ -341,21 +341,36 @@ the draft visibility. One repository-wide publish lock serializes Stable and
 Preview releases because both mutate rolling container aliases and desktop
 updater releases. Before any public mutation, the read-only resolve job also
 requires the selected `stable-desktop` or `beta-desktop` release to exist and
-be public. A failed draft is fixed with a new tag; never replace an immutable
-tag release asset under the same tag.
+be public. Bootstrap each rolling release once with signed-in owner credentials,
+for example:
+
+```sh
+gh release create stable-desktop --title stable-desktop --notes "Rolling desktop updater channel."
+```
+
+Repeat for `beta-desktop`. A workflow `GITHUB_TOKEN` must not create this
+workflow-crossing ref. Leave the new release public and empty, then explicitly enable
+`allow_empty_updater_channel_bootstrap` for its first publish only. A missing
+`latest.json` on a non-empty rolling release is treated as damage and fails
+closed. A failed draft is fixed with a new tag; never replace an immutable tag
+release asset under the same tag.
 
 Stable and Preview desktop builds embed the endpoint for their rolling release.
-Publish uploads the signed updater archives to that release before replacing
+The default branch's policy checkout assembles and verifies the candidate before
+any rolling asset changes; tag-frozen policy scripts are never executed. Publish
+uploads the signed updater archives to that release before replacing
 `latest.json`, then redownloads and verifies the complete result. The pointer
 guard refuses to replace a newer manifest with an older version, so a delayed
-draft cannot silently regress the channel.
+draft cannot silently regress the channel. A failed remote verification restores
+the prior `latest.json` (or removes the first bootstrap pointer).
 
 The normal recovery for a bad desktop release is a higher fixed version. If an
 owner must stop offering the bad version before that replacement is ready, use
-the protected `allow_updater_pointer_regression` dispatch input only after
+the protected `allow_published_pointer_repair` and
+`allow_updater_pointer_regression` dispatch inputs only after
 reviewing the candidate tag, the current rolling `latest.json`, and the target
 channel. This break-glass permits the older pointer and is recorded in the
-workflow dispatch. With the flag set, an already-published older tag is
+workflow dispatch. With both flags set, an already-published older tag is
 accepted as a pointer-repair source: the workflow revalidates its signed assets,
 updates only the rolling desktop archives and `latest.json`, and skips the
 container aliases, mobile feed, and deploy-ledger publication. Tauri will not
@@ -366,11 +381,15 @@ dispatch.
 
 To withdraw a bad public desktop build, first repair its rolling channel:
 dispatch this workflow with the last known-good published tag and
-`allow_updater_pointer_regression` enabled, then verify that
+both `allow_published_pointer_repair` and `allow_updater_pointer_regression`
+enabled, then verify that
 `stable-desktop` or `beta-desktop` serves that version's matching archives,
-signatures, and `latest.json`. Changing only the bad tag release back to a
-draft does not repair the independent rolling release and must never be treated
-as desktop rollback. After the rolling pointer is repaired, remove the bad tag
+signatures, and `latest.json`. The tag selects the channel: a Stable tag repairs
+`stable-desktop`, while a Preview tag repairs `beta-desktop`. Using the wrong
+channel's tag can successfully repair the wrong rolling release, so confirm the
+computed target before approving the dispatch. Changing only the bad tag release
+back to a draft does not repair the independent rolling release and must never be
+treated as desktop rollback. After the rolling pointer is repaired, remove the bad tag
 from installer resolution by changing it back to a draft, revoke any affected
 external-store listing, and publish a higher replacement version. Already
 updated Tauri clients cannot downgrade and still require that higher fixed

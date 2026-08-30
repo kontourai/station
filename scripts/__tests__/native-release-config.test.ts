@@ -155,40 +155,34 @@ describe('native release configuration', () => {
     ).toThrow('does not match package version');
   });
 
-  test('creates a desktop updater overlay without exposing the key on argv', () => {
+  test('refuses a desktop updater key without its endpoint at the library and CLI boundaries', () => {
     const directory = mkdtempSync(join(tmpdir(), 'station-native-release-'));
     const publicKey = join(directory, 'updater.pub');
     const output = join(directory, 'tauri.release.conf.json');
     writeFileSync(publicKey, 'trusted-public-key\n', { mode: 0o600 });
 
-    execFileSync(
-      process.execPath,
-      [
-        'scripts/lib/native-release-config.mjs',
-        '--tag',
-        'v2.3.4-preview.5',
-        '--channel-identity',
-        '--output',
-        output,
-        '--updater-public-key-file',
-        publicKey,
-      ],
-      { cwd: join(import.meta.dirname, '../..') },
-    );
-
-    expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual({
-      version: '2.3.4-preview.5',
-      identifier: 'io.kontourai.station.beta',
-      productName: 'Station Beta',
-      bundle: {
-        android: { versionCode: 20_030_405 },
-        iOS: { bundleVersion: '20030405' },
-        macOS: { bundleVersion: '20030405' },
-        createUpdaterArtifacts: NATIVE_UPDATER_ARTIFACT_MODE,
-      },
-      plugins: { updater: { pubkey: 'trusted-public-key' } },
-    });
-    expect(NATIVE_UPDATER_ARTIFACT_MODE).toBe('v1Compatible');
+    expect(() =>
+      createNativeReleaseConfig({
+        tag: 'v2.3.4-preview.5',
+        updaterPublicKey: 'trusted-public-key',
+      }),
+    ).toThrow('updater public key requires an updater endpoint');
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          'scripts/lib/native-release-config.mjs',
+          '--tag',
+          'v2.3.4-preview.5',
+          '--channel-identity',
+          '--output',
+          output,
+          '--updater-public-key-file',
+          publicKey,
+        ],
+        { cwd: join(import.meta.dirname, '../..'), stdio: 'pipe' },
+      ),
+    ).toThrow(/updater public key requires an updater endpoint/);
   });
 
   test('the CLI embeds the selected rolling updater endpoint', () => {
@@ -228,7 +222,7 @@ describe('native release configuration', () => {
         updaterEndpoint:
           'https://github.com/kontourai/station/releases/download/beta-desktop/latest.json',
       }),
-    ).toThrow(/must use the stable-desktop rolling channel/);
+    ).toThrow(/must be exactly.*stable-desktop/);
     expect(() =>
       createNativeReleaseConfig({
         tag: 'v2.3.4-preview.5',
@@ -236,7 +230,24 @@ describe('native release configuration', () => {
         updaterEndpoint:
           'https://github.com/kontourai/station/releases/download/stable-desktop/latest.json',
       }),
-    ).toThrow(/must use the beta-desktop rolling channel/);
+    ).toThrow(/must be exactly.*beta-desktop/);
+  });
+
+  test.each([
+    'https://github.com/kontourai/station/releases/download/beta-desktop/latest.json?x=/download/stable-desktop/',
+    'https://github.com/kontourai/station/releases/download/beta-desktop/latest.json#/download/stable-desktop/',
+    'https://github.com/kontourai/station/releases/download/stable-desktop/../beta-desktop/latest.json',
+    'https://attacker.tld/kontourai/station/releases/download/stable-desktop/latest.json',
+    'https://github.com/kontourai/station/releases/download/stable-desktop/subdir/latest.json',
+    'https://github.com/kontourai/station/releases/download/stable-desktop/subdir/anything.txt',
+  ])('rejects non-identical stable updater endpoint %s', (updaterEndpoint) => {
+    expect(() =>
+      createNativeReleaseConfig({
+        tag: 'v2.3.4',
+        updaterPublicKey: 'trusted-public-key',
+        updaterEndpoint,
+      }),
+    ).toThrow(/updater endpoint must be exactly/);
   });
 
   test('the CLI rejects unknown flags instead of silently ignoring them', () => {

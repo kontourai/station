@@ -22,17 +22,34 @@ const PLATFORM_ASSET_TOKENS = Object.freeze({
   'windows-x86_64': ['windows', 'x86_64'],
   'linux-x86_64': ['linux', 'x86_64'],
 });
+const GITHUB_RELEASE_ORIGIN = 'https://github.com';
+const STATION_RELEASE_DOWNLOAD_ROOT = '/kontourai/station/releases/download';
 
 function fail(message) {
   throw new Error(`Invalid Tauri updater manifest: ${message}`);
 }
 
-function assetNameFromUrl(url) {
+function releaseAssetNameFromUrl(url, releaseTag) {
+  let parsed;
   try {
-    return basename(new URL(url).pathname);
+    parsed = new URL(url);
   } catch {
     fail(`manifest asset url is invalid: ${JSON.stringify(url)}`);
   }
+  const assetName = basename(parsed.pathname);
+  const expectedPath = `${STATION_RELEASE_DOWNLOAD_ROOT}/${releaseTag}/${assetName}`;
+  if (
+    parsed.origin !== GITHUB_RELEASE_ORIGIN ||
+    parsed.username !== '' ||
+    parsed.password !== '' ||
+    parsed.pathname !== expectedPath ||
+    parsed.search !== '' ||
+    parsed.hash !== ''
+  )
+    fail(
+      `url must be exactly one Station release asset under releaseTag ${JSON.stringify(releaseTag)} (expected ${JSON.stringify(`${GITHUB_RELEASE_ORIGIN}${expectedPath}`)})`,
+    );
+  return assetName;
 }
 
 export function assertUpdaterAssetMatchesPlatform(platform, assetName) {
@@ -50,13 +67,32 @@ export function assertUpdaterAssetMatchesPlatform(platform, assetName) {
   }
 }
 
-function assertUpdaterSignatureFileMatchesAsset(platform, signaturePath, url) {
+function assertUpdaterSignatureFileMatchesAsset(
+  platform,
+  signaturePath,
+  url,
+  releaseTag,
+) {
   const signatureName = basename(signaturePath);
-  const assetName = assetNameFromUrl(url);
+  const assetName = releaseAssetNameFromUrl(url, releaseTag);
   assertUpdaterAssetMatchesPlatform(platform, signatureName);
   if (signatureName !== `${assetName}.sig`)
     fail(
       `--signature-file ${JSON.stringify(signatureName)} does not match updater asset ${JSON.stringify(assetName)} for platform ${JSON.stringify(platform)}`,
+    );
+}
+
+function assertUpdaterAssetFileMatchesUrl(
+  platform,
+  assetPath,
+  url,
+  releaseTag,
+) {
+  const assetName = releaseAssetNameFromUrl(url, releaseTag);
+  const assetFileName = basename(assetPath);
+  if (assetFileName !== assetName)
+    fail(
+      `--asset-file ${JSON.stringify(assetFileName)} does not match updater asset ${JSON.stringify(assetName)} for platform ${JSON.stringify(platform)}`,
     );
 }
 
@@ -144,12 +180,8 @@ export function createUpdaterManifestForPlatforms({
       fail('signature must be non-empty');
     if (typeof url !== 'string' || !HTTPS_URL_PATTERN.test(url))
       fail('url must be an https URL');
-    if (!url.includes(`/download/${releaseTag}/`)) {
-      fail(
-        `url must be a release-asset download URL under releaseTag ${JSON.stringify(releaseTag)} (expected "/download/${releaseTag}/" in the url); the asset name, --release-tag, and --url must all name the same release`,
-      );
-    }
-    assertUpdaterAssetMatchesPlatform(platform, assetNameFromUrl(url));
+    const assetName = releaseAssetNameFromUrl(url, releaseTag);
+    assertUpdaterAssetMatchesPlatform(platform, assetName);
     entries[platform] = { signature: signature.trim(), url };
   }
   return {
@@ -211,11 +243,8 @@ export function verifyUpdaterManifestAssets({
   if (entries.length === 0) fail('manifest platforms must not be empty');
   for (const [platform, entry] of entries) {
     const url = entry?.url;
-    if (typeof url !== 'string' || !url.includes(`/download/${releaseTag}/`))
-      fail(
-        `manifest asset url must be under releaseTag ${JSON.stringify(releaseTag)}`,
-      );
-    const assetName = assetNameFromUrl(url);
+    if (typeof url !== 'string') fail('manifest asset url must be a string');
+    const assetName = releaseAssetNameFromUrl(url, releaseTag);
     assertUpdaterAssetMatchesPlatform(platform, assetName);
     assertUpdaterAssetFile(join(assetsDir, assetName));
     const signature = entry?.signature;
@@ -303,8 +332,90 @@ function options(name, args) {
   return values;
 }
 
+function assertKnownCliArguments(args) {
+  const repeatableValueOptions = new Set([
+    '--platform',
+    '--asset-file',
+    '--signature-file',
+    '--url',
+  ]);
+  const singleValueOptions = new Set([
+    '--version',
+    '--pub-date',
+    '--release-tag',
+    '--output',
+    '--notes',
+    '--candidate-manifest',
+    '--current-manifest',
+    '--manifest',
+    '--assets-dir',
+  ]);
+  const booleanOptions = new Set([
+    '--assert-not-regressing',
+    '--allow-regression',
+    '--verify',
+  ]);
+  const seenSingle = new Set();
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    const takesValue =
+      repeatableValueOptions.has(argument) || singleValueOptions.has(argument);
+    if (!takesValue && !booleanOptions.has(argument))
+      fail(`unknown argument ${JSON.stringify(argument)}`);
+    if (!repeatableValueOptions.has(argument)) {
+      if (seenSingle.has(argument))
+        fail(`argument ${argument} may be supplied only once`);
+      seenSingle.add(argument);
+    }
+    if (takesValue) {
+      const value = args[index + 1];
+      if (value === undefined || value.startsWith('--'))
+        fail(`${argument} requires a value`);
+      index += 1;
+    }
+  }
+  if (args.includes('--verify') && args.includes('--assert-not-regressing'))
+    fail('--verify and --assert-not-regressing are mutually exclusive');
+  if (
+    args.includes('--allow-regression') &&
+    !args.includes('--assert-not-regressing')
+  )
+    fail('--allow-regression requires --assert-not-regressing');
+
+  const assemblyOptions = new Set([
+    ...repeatableValueOptions,
+    '--version',
+    '--pub-date',
+    '--release-tag',
+    '--output',
+    '--notes',
+  ]);
+  const regressionOptions = new Set([
+    '--assert-not-regressing',
+    '--candidate-manifest',
+    '--current-manifest',
+    '--allow-regression',
+  ]);
+  const verificationOptions = new Set([
+    '--verify',
+    '--manifest',
+    '--assets-dir',
+    '--release-tag',
+  ]);
+  const modeOptions = args.includes('--verify')
+    ? verificationOptions
+    : args.includes('--assert-not-regressing')
+      ? regressionOptions
+      : assemblyOptions;
+  for (const argument of args.filter((value) => value.startsWith('--'))) {
+    if (!modeOptions.has(argument))
+      fail(`argument ${argument} is not valid in this command mode`);
+  }
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2);
+  assertKnownCliArguments(args);
   if (args.includes('--assert-not-regressing')) {
     const candidatePath = option('candidate-manifest', args);
     const currentPath = option('current-manifest', args);
@@ -362,11 +473,20 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       'Each --platform requires one --signature-file and --url, and when used one --asset-file',
     );
   const entries = platforms.map((platform, index) => {
-    if (assetFiles[index]) assertUpdaterAssetFile(assetFiles[index]);
+    if (assetFiles[index]) {
+      assertUpdaterAssetFile(assetFiles[index]);
+      assertUpdaterAssetFileMatchesUrl(
+        platform,
+        assetFiles[index],
+        urls[index],
+        releaseTag,
+      );
+    }
     assertUpdaterSignatureFileMatchesAsset(
       platform,
       signatureFiles[index],
       urls[index],
+      releaseTag,
     );
     return {
       platform,

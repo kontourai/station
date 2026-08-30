@@ -12,6 +12,16 @@ on:
         required: false
         default: false
         type: boolean
+      allow_published_pointer_repair:
+        description: Break glass only - admit a published tag as a desktop pointer repair source
+        required: false
+        default: false
+        type: boolean
+      allow_empty_updater_channel_bootstrap:
+        description: Owner bootstrap only - initialize a new empty rolling desktop release
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: station-release-publish
@@ -37,6 +47,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Check out default-branch release policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: release-policy
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
       - run: npm run dependencies:ci
@@ -44,7 +59,8 @@ jobs:
         id: source
         env:
           GH_TOKEN: ${{ github.token }}
-          ALLOW_UPDATER_POINTER_REGRESSION: ${{ inputs.allow_updater_pointer_regression }}
+          ALLOW_PUBLISHED_POINTER_REPAIR: ${{ inputs.allow_published_pointer_repair }}
+          ALLOW_EMPTY_UPDATER_CHANNEL_BOOTSTRAP: ${{ inputs.allow_empty_updater_channel_bootstrap }}
         run: |
           [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$ ]]
           git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
@@ -53,13 +69,13 @@ jobs:
           tag_release_state=$(TAG_RELEASE="$tag_release" node -p 'JSON.parse(process.env.TAG_RELEASE).isDraft')
           if [[ "$tag_release_state" == true ]]; then
             pointer_repair_only=false
-          elif [[ "$tag_release_state" == false && "$ALLOW_UPDATER_POINTER_REGRESSION" == true ]]; then
+          elif [[ "$tag_release_state" == false && "$ALLOW_PUBLISHED_POINTER_REPAIR" == true ]]; then
             pointer_repair_only=true
           else
-            echo "::error::$RELEASE_TAG must still be a draft unless allow_updater_pointer_regression explicitly selects a published rollback target." >&2
+            echo "::error::$RELEASE_TAG must still be a draft unless allow_published_pointer_repair explicitly admits a published repair source." >&2
             exit 1
           fi
-          desktop_updater_tag=$(node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --print-desktop-updater-tag)
+          desktop_updater_tag=$(node release-policy/scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --print-desktop-updater-tag)
           if ! updater_release=$(gh release view "$desktop_updater_tag" --repo "$GITHUB_REPOSITORY" --json isDraft,assets); then
             echo "::error::Could not query rolling release $desktop_updater_tag; see the GitHub CLI diagnostic above. Bootstrap it if it does not exist, otherwise retry after API recovery." >&2
             exit 1
@@ -74,6 +90,17 @@ jobs:
             exit 1
           fi
           has_current_updater_manifest=$(UPDATER_RELEASE="$updater_release" node -p 'JSON.parse(process.env.UPDATER_RELEASE).assets.some(({name}) => name === "latest.json")')
+          updater_asset_count=$(UPDATER_RELEASE="$updater_release" node -p 'JSON.parse(process.env.UPDATER_RELEASE).assets.length')
+          if [[ "$has_current_updater_manifest" != true ]]; then
+            if [[ "$updater_asset_count" != 0 ]]; then
+              echo "::error::$desktop_updater_tag has assets but no latest.json; refusing to treat a damaged channel as a bootstrap." >&2
+              exit 1
+            fi
+            if [[ "$ALLOW_EMPTY_UPDATER_CHANNEL_BOOTSTRAP" != true ]]; then
+              echo "::error::$desktop_updater_tag is empty; an owner must explicitly allow its first publish with allow_empty_updater_channel_bootstrap." >&2
+              exit 1
+            fi
+          fi
           created_at=$(node -e 'process.stdout.write(new Date(Number(process.argv[1]) * 1000).toISOString())' "$(git show -s --format=%ct "$sha")")
           {
             echo "sha=$sha"
@@ -112,6 +139,11 @@ jobs:
         with:
           ref: ${{ needs.resolve.outputs.sha }}
           fetch-depth: 0
+      - name: Check out default-branch release policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: release-policy
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
       - run: npm run dependencies:ci
@@ -149,6 +181,7 @@ jobs:
           ALLOW_UPDATER_POINTER_REGRESSION: ${{ inputs.allow_updater_pointer_regression }}
         run: |
           set -euo pipefail
+          policy_script=release-policy/scripts/lib/tauri-updater-manifest.mjs
           updater_assets=(
             "station-${RELEASE_TAG}-macos-aarch64.app.tar.gz"
             "station-${RELEASE_TAG}-macos-aarch64.app.tar.gz.sig"
@@ -164,7 +197,7 @@ jobs:
           done
 
           mkdir -p updater-channel-assets
-          node scripts/lib/tauri-updater-manifest.mjs \
+          node "$policy_script" \
             --version "$RELEASE_VERSION" \
             --pub-date "$RELEASE_CREATED_AT" \
             --platform darwin-aarch64 \
@@ -188,11 +221,18 @@ jobs:
             --output updater-channel-assets/latest.json
           test -s updater-channel-assets/latest.json
 
+          # This verifies URL identity, platform/asset/signature binding, and
+          # every local archive before any rolling-release asset is changed.
+          node "$policy_script" --verify \
+            --manifest updater-channel-assets/latest.json \
+            --assets-dir release-assets \
+            --release-tag "$DESKTOP_UPDATER_TAG"
+
           if [[ "$HAS_CURRENT_UPDATER_MANIFEST" == true ]]; then
             mkdir -p updater-channel-current
             gh release download "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" --dir updater-channel-current --pattern latest.json
             pointer_guard=(
-              node scripts/lib/tauri-updater-manifest.mjs
+              node "$policy_script"
               --assert-not-regressing
               --candidate-manifest updater-channel-assets/latest.json
               --current-manifest updater-channel-current/latest.json
@@ -201,6 +241,8 @@ jobs:
               pointer_guard+=(--allow-regression)
             fi
             "${pointer_guard[@]}"
+          else
+            echo "Initializing explicitly authorized empty rolling release $DESKTOP_UPDATER_TAG"
           fi
 
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
@@ -244,8 +286,10 @@ jobs:
       - name: Publish and verify the rolling desktop updater channel
         env:
           GH_TOKEN: ${{ github.token }}
+          HAS_CURRENT_UPDATER_MANIFEST: ${{ needs.resolve.outputs.has_current_updater_manifest }}
         run: |
           set -euo pipefail
+          policy_script=release-policy/scripts/lib/tauri-updater-manifest.mjs
           updater_assets=(
             "station-${RELEASE_TAG}-macos-aarch64.app.tar.gz"
             "station-${RELEASE_TAG}-macos-aarch64.app.tar.gz.sig"
@@ -262,11 +306,26 @@ jobs:
             updater_args+=("release-assets/$asset")
           done
 
-          gh release upload "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" --clobber "${updater_args[@]}"
-          gh release upload "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" --clobber updater-channel-assets/latest.json
-          gh release edit "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" \
-            --notes "Rolling desktop updater channel. Latest: ${RELEASE_VERSION} at ${RELEASE_SHA}, published $(date -u +%Y-%m-%dT%H:%M:%SZ)."
+          pointer_mutation_started=false
+          compensate_pointer() {
+            status=$?
+            if [[ "$pointer_mutation_started" == true ]]; then
+              echo "::warning::Rolling pointer verification failed; restoring the prior channel state." >&2
+              if [[ "$HAS_CURRENT_UPDATER_MANIFEST" == true ]]; then
+                gh release upload "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" --clobber updater-channel-current/latest.json || \
+                  echo "::error::Could not restore the prior latest.json; repair $DESKTOP_UPDATER_TAG immediately." >&2
+              else
+                gh release delete-asset "$DESKTOP_UPDATER_TAG" latest.json --repo "$GITHUB_REPOSITORY" --yes || \
+                  echo "::error::Could not remove the failed bootstrap latest.json; repair $DESKTOP_UPDATER_TAG immediately." >&2
+              fi
+            fi
+            exit "$status"
+          }
+          trap compensate_pointer ERR
 
+          gh release upload "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" --clobber "${updater_args[@]}"
+          pointer_mutation_started=true
+          gh release upload "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" --clobber updater-channel-assets/latest.json
           remote_assets=$(mktemp -d)
           trap 'rm -rf "$remote_assets"' EXIT
           for asset in "${updater_assets[@]}" latest.json; do
@@ -276,10 +335,13 @@ jobs:
             cmp "release-assets/$asset" "$remote_assets/$asset"
           done
           cmp updater-channel-assets/latest.json "$remote_assets/latest.json"
-          node scripts/lib/tauri-updater-manifest.mjs --verify \
+          node "$policy_script" --verify \
             --manifest "$remote_assets/latest.json" \
             --assets-dir "$remote_assets" \
             --release-tag "$DESKTOP_UPDATER_TAG"
+          gh release edit "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" \
+            --notes "Rolling desktop updater channel. Latest: ${RELEASE_VERSION} at ${RELEASE_SHA}, published $(date -u +%Y-%m-%dT%H:%M:%SZ)."
+          trap - ERR
 
       # Deploy ledger (station#4572). Deliberately HERE, not in release.yml:
       # release.yml assembles a DRAFT; this job is the moment a stable

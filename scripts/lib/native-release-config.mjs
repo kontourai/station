@@ -102,6 +102,29 @@ function storeBundle(identity) {
 }
 
 const HTTPS_URL_PATTERN = /^https:\/\/\S+$/;
+const GITHUB_RELEASE_ORIGIN = 'https://github.com';
+const STATION_RELEASE_DOWNLOAD_ROOT = '/kontourai/station/releases/download';
+
+function assertUpdaterEndpointIdentity(endpoint, updaterTag, tag) {
+  let parsed;
+  try {
+    parsed = new URL(endpoint);
+  } catch {
+    fail('updater endpoint must be a non-empty https URL');
+  }
+  const expectedPath = `${STATION_RELEASE_DOWNLOAD_ROOT}/${updaterTag}/latest.json`;
+  if (
+    parsed.origin !== GITHUB_RELEASE_ORIGIN ||
+    parsed.username !== '' ||
+    parsed.password !== '' ||
+    parsed.pathname !== expectedPath ||
+    parsed.search !== '' ||
+    parsed.hash !== ''
+  )
+    fail(
+      `updater endpoint must be exactly ${GITHUB_RELEASE_ORIGIN}${expectedPath} for tag ${tag}`,
+    );
+}
 
 /**
  * Tauri updater plugin overlay shared by every channel that ships a signed
@@ -152,13 +175,10 @@ export function createNativeReleaseConfig({
     config.productName = nativeProductNameForChannel(channel);
   }
   if (updaterPublicKey !== undefined) {
-    if (updaterEndpoint !== undefined) {
-      const updaterTag = desktopUpdaterTagForReleaseTag(tag);
-      if (!updaterEndpoint.includes(`/download/${updaterTag}/`))
-        fail(
-          `updater endpoint must use the ${updaterTag} rolling channel for tag ${tag}`,
-        );
-    }
+    if (updaterEndpoint === undefined)
+      fail('updater public key requires an updater endpoint');
+    const updaterTag = desktopUpdaterTagForReleaseTag(tag);
+    assertUpdaterEndpointIdentity(updaterEndpoint, updaterTag, tag);
     const { createUpdaterArtifacts, plugins } = updaterPluginConfig(
       updaterPublicKey,
       updaterEndpoint,
