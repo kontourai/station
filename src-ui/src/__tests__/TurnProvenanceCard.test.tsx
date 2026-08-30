@@ -6,6 +6,7 @@ import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-p
 import type { TurnProvenanceContextInjection } from '@kontourai/station-contracts/turn-provenance-context';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { ContextInjectionDisclosure } from '../components/chat/ContextInjectionDisclosure';
 import { TurnProvenanceCard } from '../components/chat/TurnProvenanceCard';
 
 /**
@@ -805,151 +806,141 @@ describe('TurnProvenanceCard', () => {
     expect(screen.getByText('The answer text.')).toBeTruthy();
   });
 
-  // --- archive#2649: the Context row ---
-  //
-  // Four shapes, and the card must never render a fifth. The failure this
-  // row exists to prevent is a Station context section appearing on a turn
-  // Station never composed context for — so the external-engine case is
-  // asserted by what it must NOT say, not only by what it does.
-  describe('Context row (station#2649)', () => {
+  describe('injected-context disclosure (#236 item 2)', () => {
     const stationEngine: TurnProvenanceEnvelope['engine'] = {
       state: 'observed',
       value: { provider: 'station-agent' },
       observedFrom: [{ eventId: 'e1', method: 'turn.completed' }],
     };
 
-    function observedContext(
-      value: TurnProvenanceContextInjection,
-    ): TurnProvenanceEnvelope['contextInjection'] {
-      return {
-        state: 'observed',
-        value,
-        observedFrom: [{ eventId: 'ec', method: 'turn.completed' }],
-      };
-    }
-
-    it('itemizes what Station injected, marking every token figure approximate', () => {
+    it('reuses the expanded provenance surface for a real context receipt', async () => {
       render(
         <TurnProvenanceCard
           provenance={envelope({
             engine: stationEngine,
-            contextInjection: observedContext({
-              knowledge: {
-                chunkCount: 3,
-                sources: ['guide.md', 'api.md'],
-                omittedSources: 0,
-                approxTokens: 120,
+            contextInjection: {
+              state: 'observed',
+              value: {
+                knowledge: {
+                  chunkCount: 3,
+                  sources: ['guide.md', 'api.md'],
+                  omittedSources: 0,
+                  approxTokens: 120,
+                },
+                guidelines: { reinforce: 2, avoid: 1, approxTokens: 40 },
               },
-              guidelines: { reinforce: 2, avoid: 1, approxTokens: 40 },
-              projectRules: { approxTokens: 15 },
-            }),
+              observedFrom: [{ eventId: 'ec', method: 'turn.completed' }],
+            },
           })}
         />,
       );
       expand();
 
-      const text = valueFor('Context');
-      expect(text).toContain('3 chunks from guide.md, api.md');
-      expect(text).toContain('Guidelines: 2 reinforce / 1 avoid');
-      expect(text).toContain('Project rules');
-      // Approximate by construction (bytes/4 of the injected strings), so
-      // the reader is never handed an estimate dressed as a measurement.
-      expect(text).toContain('~120 tokens');
-      expect(text).toContain('~40 tokens');
-      expect(text).not.toMatch(/[^~]\b120 tokens/);
-      // An earned claim, in the checkable list — not a gap, not the backlog.
-      const value = screen.getByText('Context').nextElementSibling;
-      expect(value?.className).toContain('turn-provenance__value--earned');
-      expect(value?.closest('.turn-provenance__facts--backlog')).toBeNull();
+      const contextSummary = await screen.findByRole('button', {
+        name: /Injected context · 2 blocks/,
+      });
+      expect(contextSummary.getAttribute('aria-expanded')).toBe('false');
+      expect(screen.queryByText('Project knowledge')).toBeNull();
     });
 
-    it('discloses sources dropped by the cap instead of silently shortening the list', () => {
+    it('renders no disclosure for an observed-empty receipt', async () => {
       render(
         <TurnProvenanceCard
           provenance={envelope({
             engine: stationEngine,
-            contextInjection: observedContext({
-              knowledge: {
-                chunkCount: 11,
-                sources: ['a.md'],
-                omittedSources: 4,
-                approxTokens: 900,
-              },
-            }),
+            contextInjection: {
+              state: 'observed',
+              value: {},
+              observedFrom: [{ eventId: 'ec', method: 'turn.completed' }],
+            },
           })}
         />,
       );
       expand();
-      expect(valueFor('Context')).toContain('a.md — and 4 more');
-    });
-
-    it('names ambient context as its own block (station#2649 review fix)', () => {
-      render(
-        <TurnProvenanceCard
-          provenance={envelope({
-            engine: stationEngine,
-            contextInjection: observedContext({ ambient: { approxTokens: 9 } }),
-          })}
-        />,
-      );
-      expand();
-      // Ambient is Station-composed at the same choke point, so a turn that
-      // carried it must never read as "nothing was composed".
-      expect(valueFor('Context')).toBe('Ambient (~9 tokens)');
-      expect(valueFor('Context')).not.toContain('No Station-composed context');
-    });
-
-    it('renders an observed-EMPTY record as an honest "No Station-composed context", still an earned claim', () => {
-      render(
-        <TurnProvenanceCard
-          provenance={envelope({
-            engine: stationEngine,
-            contextInjection: observedContext({}),
-          })}
-        />,
-      );
-      expand();
-
-      expect(valueFor('Context')).toBe('No Station-composed context');
-      // The wording names the record's real scope. It must not overclaim
-      // "no context" over a model input that always carries a system prompt,
-      // tool schemas, and prior history assembled elsewhere.
-      expect(valueFor('Context')).not.toBe('No context');
+      await Promise.resolve();
       expect(
-        screen.getByText('Context').nextElementSibling?.className,
-      ).toContain('turn-provenance__value--earned');
+        screen.queryByLabelText('Injected context for this turn'),
+      ).toBeNull();
     });
 
-    it('never claims a Station context section on an external engine’s turn', () => {
-      // Claude Code owns its own context end-to-end. The card may say who
-      // manages it; it may not imply Station injected anything, and it may
-      // not borrow the Station-engine wording for "we injected nothing".
-      render(<TurnProvenanceCard provenance={envelope()} />);
-      expand();
-
-      const value = screen.getByText('Context').nextElementSibling;
-      expect(value?.textContent).toBe('Managed by Claude Code');
-      expect(value?.className).toContain('turn-provenance__value--absence');
-      expect(value?.textContent).not.toContain('No Station-composed context');
-      expect(value?.textContent).not.toMatch(/token/);
-      expect(value?.textContent).not.toMatch(/chunk/);
-      // And it is not demoted to Station's backlog: this is a property of
-      // the engine, not a slot Station has yet to build.
-      expect(value?.closest('.turn-provenance__facts--backlog')).toBeNull();
-    });
-
-    it('reads a Station-engine turn with no record as Station’s own gap (pre-slice envelopes)', () => {
-      const preSlice = envelope({ engine: stationEngine });
-      delete (preSlice as unknown as Record<string, unknown>).contextInjection;
-      render(<TurnProvenanceCard provenance={preSlice} />);
-      expand();
-
-      const value = screen.getByText('Context').nextElementSibling;
-      expect(value?.className).toContain(
-        'turn-provenance__value--not-captured',
+    it('derives one row per injected block and truthfully qualifies server estimates', () => {
+      render(
+        <ContextInjectionDisclosure
+          contextInjection={{
+            knowledge: {
+              chunkCount: 3,
+              sources: ['guide.md', 'api.md'],
+              omittedSources: 2,
+              approxTokens: 121,
+            },
+            projectRules: { approxTokens: 15 },
+            guidelines: { reinforce: 2, avoid: 1, approxTokens: 40 },
+            workflowSteering: { approxTokens: 17 },
+            conversationFeedback: { flaggedMessages: 1, approxTokens: 23 },
+            ambient: { approxTokens: 9 },
+          }}
+        />,
       );
-      expect(value?.closest('.turn-provenance__facts--backlog')).toBeTruthy();
-      expect(value?.textContent).not.toContain('No Station-composed context');
+
+      const summary = screen.getByRole('button', {
+        name: /Injected context · 6 blocks/,
+      });
+      expect(summary.tagName).toBe('BUTTON');
+      expect(summary.getAttribute('aria-expanded')).toBe('false');
+      const detailsId = summary.getAttribute('aria-controls');
+      expect(detailsId).toBeTruthy();
+      expect(document.getElementById(detailsId!)).toBeNull();
+      expect(screen.queryByText('Project knowledge')).toBeNull();
+
+      summary.focus();
+      expect(document.activeElement).toBe(summary);
+      fireEvent.click(summary);
+
+      expect(summary.getAttribute('aria-expanded')).toBe('true');
+      expect(document.getElementById(detailsId!)).toBeTruthy();
+      expect(screen.getAllByRole('term')).toHaveLength(6);
+      expect(screen.getByText('Project knowledge')).toBeTruthy();
+      expect(screen.getByText('Project rules')).toBeTruthy();
+      expect(screen.getByText('Behavior guidelines')).toBeTruthy();
+      expect(screen.getByText('Workflow steering')).toBeTruthy();
+      expect(screen.getByText('Conversation feedback')).toBeTruthy();
+      expect(screen.getByText('Ambient context')).toBeTruthy();
+      expect(
+        screen.getByText('3 chunks from guide.md, api.md — and 2 more'),
+      ).toBeTruthy();
+      expect(screen.getByText('~121 tokens')).toBeTruthy();
+      expect(screen.queryByText('121 tokens')).toBeNull();
+      expect(
+        screen.getByText(
+          'Token figures are approximate, derived from the injected text size.',
+        ),
+      ).toBeTruthy();
+    });
+
+    it('does not turn an absent size into zero or a guessed token count', () => {
+      const missingSize = {
+        projectRules: {},
+      } as unknown as TurnProvenanceContextInjection;
+      render(<ContextInjectionDisclosure contextInjection={missingSize} />);
+      fireEvent.click(screen.getByRole('button'));
+
+      expect(screen.getByText('Project rules')).toBeTruthy();
+      expect(screen.queryByText(/^~?\d+ tokens$/)).toBeNull();
+      expect(screen.queryByText(/\b0\b/)).toBeNull();
+    });
+
+    it('closes by removing its region from the accessible tree', () => {
+      render(
+        <ContextInjectionDisclosure
+          contextInjection={{ ambient: { approxTokens: 9 } }}
+        />,
+      );
+      const summary = screen.getByRole('button');
+      fireEvent.click(summary);
+      expect(screen.getByText('Ambient context')).toBeTruthy();
+      fireEvent.click(summary);
+      expect(summary.getAttribute('aria-expanded')).toBe('false');
+      expect(screen.queryByText('Ambient context')).toBeNull();
     });
   });
 
