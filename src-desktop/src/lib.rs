@@ -9693,6 +9693,10 @@ mod tests {
         let remove = cover
             .find("cover.removeFromSuperview()")
             .expect("reveal removes the native cover");
+        assert!(
+            present < remove,
+            "the covered window must be presented before the reveal branch removes its cover"
+        );
         let unhide = cover
             .find("setAccessibilityHidden: false")
             .expect("reveal unhides the WebView from assistive clients");
