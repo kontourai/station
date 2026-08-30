@@ -375,7 +375,7 @@ struct CredentialProfile {
     client_instance_id: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 struct NativeLocalService {
@@ -7771,20 +7771,21 @@ fn exit_desktop_home_preparation_failure(
 
 #[cfg(not(mobile))]
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct BundledStartupCredentialReceipt {
+struct BundledStartupLocalProofReceipt {
     profile_name: String,
-    reference: NativeCredentialReference,
     exact_origin: String,
+    environment_id: String,
+    local_service: NativeLocalService,
     instance_id: String,
     station_home: PathBuf,
 }
 
 #[cfg(not(mobile))]
-fn bundled_startup_credential_receipt(
+fn bundled_startup_local_proof_receipt(
     store: &CredentialProfileStore,
     launch: &SidecarLaunchContext,
     ticket: &startup_readiness::StartupTicket,
-) -> Result<BundledStartupCredentialReceipt, String> {
+) -> Result<BundledStartupLocalProofReceipt, String> {
     let ticket_url = url::Url::parse(&ticket.api_base)
         .map_err(|_| "Desktop startup readiness API base is invalid.".to_string())?;
     if ticket_url.path() != "/" || ticket_url.query().is_some() || ticket_url.fragment().is_some() {
@@ -7802,9 +7803,11 @@ fn bundled_startup_credential_receipt(
             // `localService.baseDir` is the native-owned channel boundary.
             // `setupSource` records how the credential arrived and may be
             // `paired` after a reviewed home/profile cutover; it is not
-            // authority for this startup proof.
+            // authority for this startup proof. A bundled sidecar's launch
+            // proof uses its owner-only local grant, not a client bearer, so
+            // it intentionally admits a first-run local profile with no
+            // credential reference yet.
             profile.configuration_state == "configured"
-                && profile.credential_ref.is_some()
                 && profile.local_service.as_ref().is_some_and(|service| {
                     service.instance_id == ticket.instance_id
                         && same_runtime_home_identity(
@@ -7822,42 +7825,41 @@ fn bundled_startup_credential_receipt(
                 .to_string(),
         );
     };
-    let reference = profile.credential_ref.clone().ok_or_else(|| {
-        "Desktop startup readiness profile has no native credential reference.".to_string()
+    let environment_id = profile._environment_id.clone().filter(|value| {
+        !value.trim().is_empty() && value.len() <= 512
+    }).ok_or_else(|| {
+        "Desktop startup readiness profile has no exact environment binding.".to_string()
     })?;
-    credential_reference_key(&reference)?;
-    Ok(BundledStartupCredentialReceipt {
+    let local_service = profile.local_service.clone().expect("matched local service");
+    Ok(BundledStartupLocalProofReceipt {
         profile_name: profile.name.clone(),
-        reference,
         exact_origin: ticket_origin,
+        environment_id,
+        local_service,
         instance_id: ticket.instance_id.clone(),
         station_home: launch.station_home.clone(),
     })
 }
 
 #[cfg(not(mobile))]
-fn read_bundled_startup_credential_receipt(
+fn read_bundled_startup_local_proof_receipt(
     launch: &SidecarLaunchContext,
     ticket: &startup_readiness::StartupTicket,
-) -> Result<BundledStartupCredentialReceipt, String> {
+) -> Result<BundledStartupLocalProofReceipt, String> {
     let path = launch.station_root.join("config").join("profiles.json");
     let contents = read_station_profile_store(&path)
         .map_err(|error| format!("read bundled startup profile metadata: {error}"))?;
     let store = parse_station_profile_store(&contents)?;
-    bundled_startup_credential_receipt(&store, launch, ticket)
+    bundled_startup_local_proof_receipt(&store, launch, ticket)
 }
 
 #[cfg(not(mobile))]
-fn startup_identity_matches_ticket(body: &str, ticket: &startup_readiness::StartupTicket) -> bool {
+fn startup_local_proof_is_ready(body: &str) -> bool {
     let Ok(identity) = serde_json::from_str::<serde_json::Value>(body) else {
         return false;
     };
-    identity
-        .get("instanceId")
-        .and_then(serde_json::Value::as_str)
-        == Some(ticket.instance_id.as_str())
-        && identity.get("bootId").and_then(serde_json::Value::as_str)
-            == Some(ticket.boot_id.as_str())
+    identity.as_object().is_some_and(|value| value.len() == 1)
+        && identity.get("ready").and_then(serde_json::Value::as_bool) == Some(true)
 }
 
 #[cfg(not(mobile))]
@@ -7865,13 +7867,13 @@ fn prove_bundled_startup_identity(
     launch: &SidecarLaunchContext,
     ticket: &startup_readiness::StartupTicket,
 ) -> Result<(), String> {
-    let receipt = read_bundled_startup_credential_receipt(launch, ticket)?;
-    let credential = credential_entry(&receipt.reference)?
-        .get_password()
-        .map_err(|error| format!("read bundled startup credential: {error}"))?;
+    let receipt = read_bundled_startup_local_proof_receipt(launch, ticket)?;
+    let local_grant = read_local_grant_secret(&receipt.local_service)?;
     let identity_url = url::Url::parse(&receipt.exact_origin)
-        .and_then(|origin| origin.join("/api/system/identity"))
-        .map_err(|_| "Desktop startup identity URL is invalid.".to_string())?;
+        .and_then(|origin| {
+            origin.join("/.well-known/station/v1/pairing/local-grant-startup-proof")
+        })
+        .map_err(|_| "Desktop startup local proof URL is invalid.".to_string())?;
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .max_redirects(0)
         .timeout_global(Some(Duration::from_secs(5)))
@@ -7879,18 +7881,26 @@ fn prove_bundled_startup_identity(
         .build()
         .into();
     let mut response = agent
-        .get(identity_url.as_str())
-        .header("Authorization", format!("Bearer {credential}"))
-        .call()
+        .post(identity_url.as_str())
+        .header("Content-Type", "application/json")
+        .send(
+            serde_json::to_string(&serde_json::json!({
+                "secret": local_grant,
+                "instanceId": &receipt.instance_id,
+                "bootId": &ticket.boot_id,
+                "environmentId": &receipt.environment_id,
+            }))
+            .map_err(|_| "Desktop startup local proof request is invalid.".to_string())?,
+        )
         .map_err(|error| {
             format!(
-                "Desktop startup identity request failed: {}",
+                "Desktop startup local proof request failed: {}",
                 native_request_transport_detail(&error).detail
             )
         })?;
     if response.status().as_u16() != 200 {
         return Err(format!(
-            "Desktop startup identity request returned HTTP {}.",
+            "Desktop startup local proof returned HTTP {}.",
             response.status().as_u16()
         ));
     }
@@ -7899,18 +7909,18 @@ fn prove_bundled_startup_identity(
         .with_config()
         .limit(16 * 1024)
         .read_to_string()
-        .map_err(|error| format!("Desktop startup identity response was unreadable: {error}"))?;
-    if !startup_identity_matches_ticket(&body, ticket) {
+        .map_err(|error| format!("Desktop startup local proof response was unreadable: {error}"))?;
+    if !startup_local_proof_is_ready(&body) {
         return Err(
-            "Desktop startup identity did not match the current sidecar ticket.".to_string(),
+            "Desktop startup local proof did not confirm the current sidecar ticket.".to_string(),
         );
     }
     // The profile is mutable shared metadata. Re-read the host-owned binding
     // after network I/O so a concurrent profile replacement cannot authorize
     // the reveal with a stale credential receipt.
-    if read_bundled_startup_credential_receipt(launch, ticket)? != receipt {
+    if read_bundled_startup_local_proof_receipt(launch, ticket)? != receipt {
         return Err(
-            "Desktop startup credential binding changed during identity proof.".to_string(),
+            "Desktop startup local proof binding changed during identity proof.".to_string(),
         );
     }
     Ok(())
@@ -10359,7 +10369,7 @@ mod tests {
 
     #[test]
     #[cfg(not(mobile))]
-    fn startup_credential_admits_a_migrated_paired_owner_by_exact_channel_home() {
+    fn startup_local_proof_admits_a_migrated_owner_without_reading_a_credential() {
         let temp = tempfile::tempdir().unwrap();
         let station_root = temp.path().join(".station");
         let beta_home = station_root.join("instances").join("beta");
@@ -10394,7 +10404,6 @@ mod tests {
                         "schemaVersion": 1,
                         "name": "beta-local",
                         "endpoint": "http://127.0.0.1:28141",
-                        "credentialRef": { "kind": "station-bearer", "id": "beta-token" },
                         "environmentId": "beta-environment",
                         "localService": {
                             "instanceId": "desktop-sidecar-beta",
@@ -10413,8 +10422,8 @@ mod tests {
                         "endpoint": "http://127.0.0.1:28141",
                         "environmentId": null,
                         "localService": {
-                            "instanceId": "desktop-sidecar-beta",
-                            "baseDir": beta_home,
+                            "instanceId": "placeholder-sidecar",
+                            "baseDir": stable_home,
                             "serverPort": 28141,
                             "uiPort": 28000
                         },
@@ -10446,16 +10455,17 @@ mod tests {
             api_base: "http://127.0.0.1:28141".into(),
         };
 
-        let receipt = bundled_startup_credential_receipt(&store, &launch, &ticket).unwrap();
+        let receipt = bundled_startup_local_proof_receipt(&store, &launch, &ticket).unwrap();
         assert_eq!(receipt.profile_name, "beta-local");
-        assert_eq!(receipt.reference.id, "beta-token");
         assert_eq!(receipt.station_home, beta_home);
         assert_eq!(receipt.exact_origin, "http://127.0.0.1:28141");
+        assert_eq!(receipt.environment_id, "beta-environment");
+        assert_eq!(receipt.local_service.instance_id, "desktop-sidecar-beta");
     }
 
     #[test]
     #[cfg(not(mobile))]
-    fn startup_credential_refuses_foreign_home_and_non_origin_ticket() {
+    fn startup_local_proof_refuses_foreign_home_missing_environment_and_non_origin_ticket() {
         let temp = tempfile::tempdir().unwrap();
         let station_root = temp.path().join(".station");
         let beta_home = station_root.join("instances").join("beta");
@@ -10506,29 +10516,18 @@ mod tests {
             boot_id: "boot-beta".into(),
             api_base: "http://127.0.0.1:28141".into(),
         };
-        assert!(bundled_startup_credential_receipt(&store, &launch, &ticket).is_err());
+        assert!(bundled_startup_local_proof_receipt(&store, &launch, &ticket).is_err());
         ticket.api_base = "http://127.0.0.1:28141/foreign".into();
-        assert!(bundled_startup_credential_receipt(&store, &launch, &ticket).is_err());
+        assert!(bundled_startup_local_proof_receipt(&store, &launch, &ticket).is_err());
     }
 
     #[test]
     #[cfg(not(mobile))]
-    fn startup_identity_requires_exact_instance_and_boot_ticket() {
-        let ticket = startup_readiness::StartupTicket {
-            generation: 7,
-            instance_id: "desktop-sidecar-beta".into(),
-            boot_id: "boot-beta".into(),
-            api_base: "http://127.0.0.1:28141".into(),
-        };
-        assert!(startup_identity_matches_ticket(
-            r#"{"instanceId":"desktop-sidecar-beta","bootId":"boot-beta","sha":"abc"}"#,
-            &ticket,
-        ));
-        assert!(!startup_identity_matches_ticket(
-            r#"{"instanceId":"desktop-sidecar-beta","bootId":"old"}"#,
-            &ticket,
-        ));
-        assert!(!startup_identity_matches_ticket("not-json", &ticket));
+    fn startup_local_proof_requires_only_the_exact_ready_response_shape() {
+        assert!(startup_local_proof_is_ready(r#"{"ready":true}"#));
+        assert!(!startup_local_proof_is_ready(r#"{"ready":true,"instanceId":"leak"}"#));
+        assert!(!startup_local_proof_is_ready(r#"{"ready":false}"#));
+        assert!(!startup_local_proof_is_ready("not-json"));
     }
 
     #[test]

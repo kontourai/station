@@ -594,7 +594,7 @@ describe('agent registry', () => {
     homes.push(rootLink);
     symlinkSync(symlinkTarget, rootLink);
     await expect(ensureStationHomeSchema(rootLink)).rejects.toMatchObject({
-      code: 'STATION_HOME_RESET_REQUIRED',
+      code: 'STATION_RUNTIME_HOME_REJECTED',
     });
   });
 

@@ -396,6 +396,10 @@ export function applyMessageToUsageStats(
 
   stats.lifetime.totalMessages++;
   if (usage) {
+    // #464(c) write sites now preserve omitted categories as absence. This
+    // legacy lifetime layer still coalesces that absence into its numeric
+    // accumulator, so the downstream analytics half of the harm is not yet
+    // closed here.
     stats.lifetime.totalInputTokens += usage.inputTokens || 0;
     stats.lifetime.totalOutputTokens += usage.outputTokens || 0;
     stats.lifetime.totalCost += usage.estimatedCost || 0;
@@ -429,6 +433,8 @@ export function applyMessageToUsageStats(
     stats.byModel[modelId].messages++;
     if (usage) {
       applyModelPromptCacheAttribution(stats.byModel[modelId], usage);
+      // Same remaining #464(c) boundary as lifetime totals above: writers no
+      // longer manufacture zero, but this numeric model rollup still does.
       stats.byModel[modelId].inputTokens += usage.inputTokens || 0;
       stats.byModel[modelId].outputTokens += usage.outputTokens || 0;
       stats.byModel[modelId].cost += usage.estimatedCost || 0;

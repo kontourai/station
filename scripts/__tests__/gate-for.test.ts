@@ -42,7 +42,6 @@ describe('gate-for report', () => {
   it('always names the unconditional checks and the lane ladder', () => {
     const report = gateReport({ changedPaths: [], baseSha });
     for (const always of [
-      'check-merge-base-fresh.mjs',
       'lint:check',
       'commit-message-gate.mjs --prepush-stdin',
       'test:changed -- --base=origin/main --explain',

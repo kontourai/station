@@ -87,7 +87,7 @@ function materializeRelease(release: string, instance: string, sha: string) {
   const shim = join(release, 'station');
   writeFileSync(
     shim,
-    `#!/bin/sh\nexec "${process.execPath}" "${join(workspace, 'node_modules', 'tsx', 'dist', 'cli.mjs')}" "${join(workspace, 'packages', 'cli', 'src', 'cli.ts')}" "$@"\n`,
+    `#!/bin/sh\nexec "${process.execPath}" "${join(workspace, 'node_modules', 'tsx', 'dist', 'cli.mjs')}" "${join(workspace, 'scripts', 'station-cli.ts')}" "$@"\n`,
   );
   chmodSync(shim, 0o755);
 }
@@ -353,7 +353,7 @@ describe('production reconcile backend-only recovery', () => {
     const shim = join(release, 'station');
     writeFileSync(
       shim,
-      `#!/bin/sh\nexec "${process.execPath}" "${join(workspace, 'node_modules', 'tsx', 'dist', 'cli.mjs')}" "${join(workspace, 'packages', 'cli', 'src', 'cli.ts')}" "$@"\n`,
+      `#!/bin/sh\nexec "${process.execPath}" "${join(workspace, 'node_modules', 'tsx', 'dist', 'cli.mjs')}" "${join(workspace, 'scripts', 'station-cli.ts')}" "$@"\n`,
     );
     chmodSync(shim, 0o755);
     const statePath = join(supportDir, 'state.json');

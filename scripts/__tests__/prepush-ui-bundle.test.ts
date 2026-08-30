@@ -256,6 +256,16 @@ describe('repo hook wiring', () => {
     expect(hook).toContain('check-prepush-ui-bundle.mjs');
   });
 
+  it('leaves moving-main composition freshness to the required merge queue', () => {
+    const commands = hook
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('#'))
+      .join('\n');
+    expect(commands).not.toContain('git fetch');
+    expect(commands).not.toContain('check-merge-base-fresh.mjs');
+    expect(commands).not.toContain('STATION_ALLOW_STALE_BASE');
+  });
+
   it('keeps the hook to seconds-scale checks', () => {
     // full:regression stays the sole completion receipt and ci:fast stays the
     // bounded feedback lane; a hook that runs either becomes a hook people

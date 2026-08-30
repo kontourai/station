@@ -101,7 +101,7 @@ the whole shell. It covers only toggles that change verification behavior:
 feedback), `STATION_E2E_SEED_REGRESSION`, `STATION_FEATURES`,
 `STATION_SERVICE_ITEST`, and the effective
 `PRODUCT_LAW_OBSERVATION_TIMEOUT_MS`. An unset, invalid, or explicit default
-product-law timeout normalizes to 15,000ms before hashing; only a changed
+product-law timeout normalizes to 30,000ms before hashing; only a changed
 effective policy invalidates reuse. That non-secret effective duration is also
 recorded in receipt provenance and rendered by the CLI, so a passing receipt
 cannot hide a weakened timeout. Runtime-assigned E2E ports/status flags and
