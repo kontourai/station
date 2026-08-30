@@ -97,7 +97,7 @@ describe('local iOS release preflight', () => {
     });
   });
 
-  test('keeps Beta explicitly gated even if local tools and profile metadata exist', () => {
+  test('fails closed when a Beta tag is paired with a Stable provisioning profile', () => {
     const result = localIosReleasePreflight({
       tag: betaTag,
       profilePath,
@@ -108,7 +108,7 @@ describe('local iOS release preflight', () => {
     });
     expect(result.ready).toBe(false);
     expect(result.blockers).toContainEqual(
-      expect.stringContaining('iOS beta is not release-enabled'),
+      expect.stringContaining('does not match expected'),
     );
   });
 
