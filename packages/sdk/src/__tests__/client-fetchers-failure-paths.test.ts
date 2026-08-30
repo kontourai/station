@@ -65,17 +65,13 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
       importSkills('http://example.test', [
         { filename: 'release-check.md', content: '# Release check' },
       ]),
-    ).resolves.toEqual(
-      expect.objectContaining({ imported: 1 }),
-    );
+    ).resolves.toEqual(expect.objectContaining({ imported: 1 }));
     expect(fetch).toHaveBeenCalledWith(
       'http://example.test/api/skills/import',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
-          files: [
-            { filename: 'release-check.md', content: '# Release check' },
-          ],
+          files: [{ filename: 'release-check.md', content: '# Release check' }],
         }),
       }),
     );

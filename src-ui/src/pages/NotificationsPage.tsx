@@ -15,8 +15,8 @@ import {
   ErrorState,
   SkeletonList,
 } from '../components/state';
-import { useNavigation } from '../contexts/NavigationContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
+import { useNavigation } from '../contexts/NavigationContext';
 import { useAttentionInbox } from '../hooks/useAttentionInbox';
 import {
   countPendingAttention,

@@ -119,17 +119,17 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: sdkMocks.refetch,
   })),
   useUpdateProjectMutation: vi.fn(() => ({
-      isPending: false,
-      mutateAsync: async (payload: Partial<ProjectConfig> & { slug: string }) => {
-        sdkMocks.updateProject(payload);
-        if (sdkMocks.updateFailure) throw sdkMocks.updateFailure;
-        return {
-          ...(sdkMocks.project as ProjectConfig),
-          ...payload,
-          updatedAt: '2026-07-07T23:45:00.000Z',
-        };
-      },
-    })),
+    isPending: false,
+    mutateAsync: async (payload: Partial<ProjectConfig> & { slug: string }) => {
+      sdkMocks.updateProject(payload);
+      if (sdkMocks.updateFailure) throw sdkMocks.updateFailure;
+      return {
+        ...(sdkMocks.project as ProjectConfig),
+        ...payload,
+        updatedAt: '2026-07-07T23:45:00.000Z',
+      };
+    },
+  })),
   useDeleteProjectMutation: vi.fn(() => ({
     isPending: false,
     mutateAsync: async (slug: string) => {
@@ -397,5 +397,18 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     );
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(navigationMocks.navigate).not.toHaveBeenCalled();
+  });
+
+  test('explains that deleting a Project retains Tasks and chats without a live workspace', () => {
+    renderProjectSettings();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Project' }));
+
+    expect(screen.getByRole('dialog').textContent).toContain(
+      'Tasks and chats stay in history',
+    );
+    expect(screen.getByRole('dialog').textContent).toContain(
+      'no longer have a live Project workspace',
+    );
   });
 });

@@ -226,7 +226,9 @@ describe('SkillsView', () => {
   });
 
   test('renders an import rejection in the dialog', async () => {
-    importSkillsMock.mockRejectedValueOnce(new Error('Import route unavailable'));
+    importSkillsMock.mockRejectedValueOnce(
+      new Error('Import route unavailable'),
+    );
     render(<SkillsView />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Import .md' }));

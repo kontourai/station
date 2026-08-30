@@ -161,6 +161,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   }
 
   async function saveProject() {
+    if (!form) return;
     setSaveError(null);
     try {
       const saved = await saveMutation.mutateAsync({
@@ -438,7 +439,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
       <ConfirmModal
         isOpen={deleteOpen}
         title="Delete Project"
-        message={`Delete "${form.name}"? This cannot be undone.`}
+        message={`Delete "${form.name}"? Project settings and layouts will be deleted. Tasks and chats stay in history, but they will no longer have a live Project workspace. This cannot be undone.`}
         confirmLabel="Delete"
         variant="danger"
         pending={deleteMutation.isPending}
