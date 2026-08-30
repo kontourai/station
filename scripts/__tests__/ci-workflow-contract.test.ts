@@ -5,8 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 // rather than restating it. When those were two literals they drifted (#3443
 // moved this one and left the gate's behind, taking `main` red).
 import {
-  readWorkflowDocuments,
   REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
+  readWorkflowDocuments,
 } from '../actionlint-gate.mjs';
 import {
   resolveAndroidBuildRun,
@@ -306,9 +306,7 @@ describe('CI verification workflow contracts', () => {
       mainHealth.indexOf('  close-after-success:'),
     );
 
-    expect(successJob).toContain(
-      'github.rest.actions.listJobsForWorkflowRun',
-    );
+    expect(successJob).toContain('github.rest.actions.listJobsForWorkflowRun');
     expect(successJob).toContain(
       "jobs.some((job) => job.conclusion === 'success')",
     );
