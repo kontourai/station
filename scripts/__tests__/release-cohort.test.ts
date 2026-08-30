@@ -95,7 +95,7 @@ describe('release cohort content-bound state machine', () => {
     expect(p.requiredPlatforms).toEqual(['android', 'macos']);
     expect(p.promotionOrder).toEqual(['android', 'macos']);
     p.promotionOrder.reverse();
-    p.availabilityPolicy.releaseMode = 'mutable';
+    Reflect.set(p.availabilityPolicy, 'releaseMode', 'mutable');
     expect(createCohortPlan(input())).toMatchObject({
       promotionOrder: ['android', 'macos'],
       availabilityPolicy: { releaseMode: 'atomic' },
