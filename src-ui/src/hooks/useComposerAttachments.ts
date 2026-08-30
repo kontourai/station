@@ -285,12 +285,15 @@ export function useComposerAttachments(options: {
   );
 
   // Reconcile at most five opaque ids on mount/reconnect, including completed
-  // refs: completion is temporary authority, not a forever-ready claim.
+  // refs: completion is temporary authority, not a forever-ready claim. An
+  // uploading stage is still owned by this mount's transfer supervisor; its
+  // prepared id is not yet a reconnect-recovery candidate.
   useEffect(() => {
     const stageIds = options.stages
       .filter(
         (stage) =>
           stage.stageId &&
+          stage.state !== 'uploading' &&
           stage.state !== 'cancelled' &&
           !reconciledStageIds.current.has(stage.stageId),
       )
