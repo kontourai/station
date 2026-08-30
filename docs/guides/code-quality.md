@@ -110,7 +110,8 @@ both of these are properties of your own tree that you can fix in seconds —
 and a bypass would reproduce exactly the unowned-raise loop #3033 exists to
 close. `git push --no-verify` remains for a genuine emergency.
 
-**Why the merge-base check exists.** A pre-push gate verifies the branch you are pushing, not
+**Why the merge-base check still exists during merge-queue rollout.** A
+pre-push gate verifies the branch you are pushing, not
 the tree that will land. Once `main` moves, a squash-merge produces a
 combination nobody ran the gate against. On 2026-07-25 that broke `main` four
 times in one day — a lint error, unorganized imports, three
@@ -118,11 +119,14 @@ accessibility-ratchet violations, and a typecheck failure from a usage-field
 mapping that has been reverted three times. Every one of those branches was
 green when pushed.
 
-GitHub would normally close this with *require branches to be up to date before
-merging*, and required status checks would catch it too. Neither is available
-here: branch protection returns 403 on a private repository without a paid plan,
-and Actions is billing-blocked. A local hook is the enforcement point that
-remains.
+GitHub's merge queue is the durable replacement: its `merge_group` event runs
+the required checks against the synthesized latest-`main` candidate, so a
+contributor does not need to merge a moving base and repay the same local test
+cost. The local refusal remains enforced until the repository ruleset requires
+the queue and a canary has received every required check on the merge-group
+SHA. Remove the hook invocation only after that external rollout evidence is
+recorded; doing it in the workflow-support change would create an unguarded
+window between merge and ruleset activation.
 
 Deliberate exception to the merge-base check, for a single push:
 
@@ -131,6 +135,27 @@ STATION_ALLOW_STALE_BASE=1 git push ...
 ```
 
 Prefer that over `--no-verify`, which skips every hook rather than this one.
+
+### Merge-queue activation and hook retirement
+
+Roll this boundary forward in two phases so there is never a gap with neither
+local freshness nor server-side composition evidence:
+
+1. Merge the workflow-support change while the freshness hook still refuses a
+   stale branch.
+2. Add the ruleset's pull-request and merge-queue rules without changing the
+   existing required status contexts or bypass actors. Start with `MERGE`,
+   `ALLGREEN`, one pull request per merge group, two concurrent builds, and a
+   90-minute required-check timeout.
+3. Open the hook-retirement pull request from the then-current `main` and use
+   that pull request as the canary. Queue it rather than merging it directly.
+4. Before allowing it to land, verify `fast-checks`, CodeQL, dependency review,
+   and the Windows portable floor all completed on the same
+   `refs/heads/gh-readonly-queue/main/...` merge-group SHA.
+5. Only that canary removes `node scripts/check-merge-base-fresh.mjs` from
+   `.githooks/pre-push` and updates its contract test/table. If the queue stalls,
+   remove the merge-queue rule first; keep the local hook in place while
+   diagnosing.
 
 
 ## Local CI Pipeline

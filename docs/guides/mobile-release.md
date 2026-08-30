@@ -63,19 +63,21 @@ change before it reaches a real release tag — they carry no store-upload step
 and no signing secret, and are unrelated to everything else in this doc.
 Android also runs on affected `main` pushes and `workflow_dispatch`. iOS runs
 through the reviewed base-controlled `pull_request_target` topology, on
-affected `main` pushes, and through `workflow_dispatch`. Every pull request
-emits the stable `build-ios-verification` check so the main ruleset can require
-it. A reviewed hosted-Linux classifier runs the `macos-26` job only when the
-pull request changes iOS, native, frontend, or shared package inputs; unrelated
-pull requests receive a successful skipped job without consuming macOS
-capacity. The cancellation group supersedes stale runs for the same pull
-request. The macOS job builds an unsigned iOS 26.5 simulator app, installs it
-on an iPhone 17 Pro simulator, and uses native XCUITest against the packaged
+affected `main` pushes, through `merge_group`, and through `workflow_dispatch`.
+Every pull request and queued merge candidate emits the stable
+`build-ios-verification` check so the main ruleset can require it. A reviewed
+hosted-Linux classifier runs the `macos-26` job only when the pull-request or
+merge-group diff changes iOS, native, frontend, or shared package inputs;
+unrelated candidates receive a successful skipped job without consuming macOS
+capacity. The cancellation group supersedes stale runs for the same candidate.
+The macOS job builds an unsigned iOS 26.5 simulator app, installs it on an
+iPhone 17 Pro simulator, and uses native XCUITest against the packaged
 WKWebView accessibility tree. A clean install must leave the startup surface
 and expose the actionable connection screen within 30 seconds. The lane always
 retains its screenshot, Station/unified logs, process snapshot, Xcode result
-bundle, and machine-readable receipt bound to the tested pull-request head or
-push SHA. No Apple signing identity or developer account is used.
+bundle, and machine-readable receipt bound to the tested pull-request head,
+merge-group head, or push SHA. No Apple signing identity or developer account
+is used.
 `build-android.yml`'s successful completion also triggers
 `.github/workflows/android-test.yml` (`workflow_run`), which downloads its
 artifact by the name `station-android-debug` — keep both names in sync if
