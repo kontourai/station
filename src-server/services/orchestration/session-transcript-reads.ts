@@ -53,9 +53,12 @@ export interface SessionTranscriptReadsDeps {
   readSessionThreadIds: (authority: SessionReadScope) => string[];
   requireTenantExecutionContext: () => boolean;
   /**
-   * Optional: receives a token figure the fold refused as unusable while
-   * replaying durable history. Absent in tests and in any composition that
-   * has no logger yet; the read stays correct either way.
+   * Receives a token figure the fold refused as unusable while replaying
+   * durable history. The production composition
+   * (`orchestration-service.ts`) supplies it from its logger; it is optional
+   * only so a test can construct these deps without one. Leaving it unset in
+   * a real composition would silently swallow the drop — the outcome
+   * `packages/shared/src/usage-fold.ts`'s contract exists to prevent.
    */
   reportDroppedUsageFigure?: (dropped: DroppedUsageFigure) => void;
 }

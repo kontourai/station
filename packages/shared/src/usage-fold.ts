@@ -405,10 +405,19 @@ function isUsableCost(value: unknown): value is number {
  * (`listEventPayloads` → `eventStore.listEvents`), so it replays rows written
  * before those guards existed. Such a row cannot carry `NaN`/`Infinity`:
  * `JSON.stringify` writes both as `null`. `null` then passes an
- * `!== undefined` gate, reaches `conversation-manager`'s
- * `reportedTokenFigureIsBroken`, and throws — a permanent 500 on that
- * conversation's stats, on every read. Treating it as ABSENT is what makes
- * the historical row readable again without inventing a measurement.
+ * `!== undefined` gate, and what happens next depends on the provider's
+ * declared scope — both outcomes are harms this fold exists to prevent:
+ *
+ * - CUMULATIVE providers (codex) ASSIGN the figure, so `null` reaches
+ *   `conversation-manager`'s `reportedTokenFigureIsBroken` and throws — a
+ *   permanent 500 on that conversation's stats, on every read.
+ * - PER-TURN providers (claude, bedrock, ollama, and the undeclared
+ *   default) accumulate through `addOptional`, where `0 + null` coerces to
+ *   `0` — a silent invented measurement rather than a throw.
+ *
+ * Treating the figure as ABSENT is what makes the historical row readable
+ * again without inventing anything. Verified end-to-end against the real
+ * sqlite event store for both branches.
  */
 function isUsableTokenFigure(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
