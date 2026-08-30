@@ -268,6 +268,10 @@ export class MonitorTaskTurnSupervisor {
 
   private usage(session: MonitorSession) {
     const events = this.taskEvents(session);
+    // No reporter: this supervisor has no logger seam, and its own guard
+    // below already refuses a non-finite total. A refused figure is read as
+    // absent here and reported by the transcript read of the same thread,
+    // which is the surface a human actually looks at.
     const usage = foldUsageEvents(events);
     if (usage.totalTokens === undefined || !Number.isFinite(usage.totalTokens))
       return undefined;

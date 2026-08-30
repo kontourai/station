@@ -69,6 +69,7 @@ import {
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
   PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
@@ -1134,6 +1135,15 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       match: 'exact',
       capability: 'public',
       reason: 'loopback owner-secret pairing grant',
+    },
+    {
+      id: 'public:pairing-local-grant-startup-proof',
+      transport: 'http',
+      method: 'POST',
+      prefix: PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
+      match: 'exact',
+      capability: 'public',
+      reason: 'loopback owner-secret sidecar startup proof',
     },
     {
       id: 'public:pairing-ui-bootstrap',

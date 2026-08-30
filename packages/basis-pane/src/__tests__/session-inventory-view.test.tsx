@@ -6,7 +6,7 @@ import {
   SESSION_INVENTORY_V2_GROUP_IDS,
   type SessionInventoryProjection,
 } from '@kontourai/station-contracts/session-inventory';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { SessionInventory } from '../SessionInventory';
 import { renderSessionInventoryDom } from '../session-inventory-dom';
@@ -164,6 +164,57 @@ describe('Session inventory view model', () => {
     expect(screen.getByText('Not captured by this owner.')).toBeTruthy();
   });
 
+  test('routes from direct at-a-glance facts without synthesizing a standing', () => {
+    const onSelect = vi.fn();
+    const model = buildSessionInventoryViewModel(projection, {
+      scope: projection.scope,
+      groupId: 'outputs',
+    });
+    render(<SessionInventory model={model} onSelect={onSelect} />);
+
+    const overview = screen.getByRole('region', { name: 'At a glance' });
+    expect(overview).toBeTruthy();
+    expect(screen.queryByText(/confidence|trusted|verified/i)).toBeNull();
+    const inputs = screen.getByRole('button', {
+      name: /Inputs.*at least 2 items.*Available/i,
+    });
+    fireEvent.click(inputs);
+    expect(onSelect).toHaveBeenCalledWith({
+      scope: projection.scope,
+      groupId: 'inputs',
+    });
+    expect(
+      screen.getByRole('button', {
+        name: /Sources.*count unavailable.*Not captured/i,
+      }),
+    ).toBeTruthy();
+    expect(
+      within(overview).queryByRole('button', { name: /Live now/i }),
+    ).toBeNull();
+  });
+
+  test('keeps stable grouped navigation and exposes the narrow-layout selector', () => {
+    const onSelect = vi.fn();
+    const model = buildSessionInventoryViewModel(projection, {
+      scope: projection.scope,
+      groupId: 'outputs',
+    });
+    render(<SessionInventory model={model} onSelect={onSelect} />);
+
+    for (const label of ['Foundation', 'Work', 'Results', 'Continuity']) {
+      expect(screen.getByRole('region', { name: label })).toBeTruthy();
+    }
+    const selector = screen.getByLabelText('Browse session context');
+    expect(selector.tagName).toBe('SELECT');
+    fireEvent.change(selector, { target: { value: 'sources' } });
+    expect(onSelect).toHaveBeenCalledWith({
+      scope: projection.scope,
+      groupId: 'sources',
+    });
+    expect(selector.textContent).toContain('Inputs — at least 2 items');
+    expect(selector.textContent).toContain('Sources — count unavailable');
+  });
+
   test('keeps available owner gaps visible and derives an Attention cue', () => {
     const withGap = {
       ...projection,
@@ -316,6 +367,34 @@ describe('Session inventory view model', () => {
     expect(
       model.groups.find((candidate) => candidate.id === 'attention')?.stateCopy,
     ).toBe('Some owner context needs attention.');
+    const rendered = render(
+      <SessionInventory model={model} onSelect={() => {}} />,
+    );
+    expect(
+      within(screen.getByRole('region', { name: 'At a glance' })).getByRole(
+        'button',
+        { name: /Work items: 1 item\. Available\./i },
+      ),
+    ).toBeTruthy();
+    rendered.unmount();
+    const withoutCount = buildSessionInventoryViewModel(
+      {
+        ...v2,
+        groups: v2.groups.map((candidate) =>
+          candidate.id === 'work-items'
+            ? { ...candidate, count: undefined }
+            : candidate,
+        ),
+      } as AnySessionInventoryProjection,
+      { scope: v2.scope, groupId: 'work-items' },
+    );
+    render(<SessionInventory model={withoutCount} onSelect={() => {}} />);
+    expect(
+      within(screen.getByRole('region', { name: 'At a glance' })).getByRole(
+        'button',
+        { name: /Work items: count unavailable\. Available\./i },
+      ),
+    ).toBeTruthy();
     const root = document.createElement('section');
     const onAction = vi.fn();
     renderSessionInventoryDom(root, model, onAction);

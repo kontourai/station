@@ -86,9 +86,15 @@ export async function recordToolExecutionUsage(input: {
 
     logger.info('[Usage Stats]', {
       conversationId: context.conversationId,
-      promptTokens: usage?.promptTokens || 0,
-      completionTokens: usage?.completionTokens || 0,
-      totalTokens: usage?.totalTokens || 0,
+      ...(usage?.promptTokens !== undefined
+        ? { promptTokens: usage.promptTokens }
+        : {}),
+      ...(usage?.completionTokens !== undefined
+        ? { completionTokens: usage.completionTokens }
+        : {}),
+      ...(usage?.totalTokens !== undefined
+        ? { totalTokens: usage.totalTokens }
+        : {}),
       messageCount: messages.length,
       toolCallCount,
       aborted: !usage,
@@ -229,6 +235,9 @@ export async function recordToolExecutionUsage(input: {
           `agent:${agentSlug}`,
           context.conversationId,
         );
+        const inputTokens = getUsageInputTokens(usage);
+        const outputTokens = getUsageOutputTokens(usage);
+        const totalTokens = getUsageTotalTokens(usage);
         await adapter.addMessage(
           lastMessage,
           `agent:${agentSlug}`,
@@ -253,9 +262,9 @@ export async function recordToolExecutionUsage(input: {
                 }
               : undefined,
             usage: {
-              inputTokens: getUsageInputTokens(usage),
-              outputTokens: getUsageOutputTokens(usage),
-              totalTokens: getUsageTotalTokens(usage),
+              ...(inputTokens !== undefined ? { inputTokens } : {}),
+              ...(outputTokens !== undefined ? { outputTokens } : {}),
+              ...(totalTokens !== undefined ? { totalTokens } : {}),
               estimatedCost: cost,
             },
           },

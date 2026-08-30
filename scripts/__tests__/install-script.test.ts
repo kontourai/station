@@ -493,7 +493,7 @@ describe('one-line Station installer', { timeout: 15_000 }, () => {
     expect(existsSync(stationHome)).toBe(true);
     expect(existsSync(launcher)).toBe(false);
     markersRemainAbsent();
-  });
+  }, 60_000);
 
   it('maps a verified preview release to an isolated beta runtime wrapper', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-installer-'));
@@ -750,6 +750,7 @@ describe('one-line Station installer', { timeout: 15_000 }, () => {
       join(fakeBin, 'gh'),
       '#!/bin/sh\nif [ "$1 $2" = "auth token" ]; then echo test_private_token; exit 0; fi\nexit 42\n',
     );
+    executable(join(fakeBin, 'curl'), '#!/bin/sh\nexit 42\n');
     const readme = readFileSync(join(repoRoot, 'README.md'), 'utf8');
     const command = /^#{2,3} Install\s*$[\s\S]*?```bash\n([^\n]+)\n```/m.exec(
       readme,

@@ -347,9 +347,9 @@ export function parsePrepushLines(lines) {
 /**
  * The commits a push would introduce, as {sha, subject} pairs, in push order.
  * For a tracked ref: `remoteSha..localSha --not baseSha`. For a new ref (zero remote OID):
- * everything reachable from localSha but not from the base ref — the same
- * containment contract `check-merge-base-fresh.mjs` already enforces, so a
- * branch that does not contain the base never reaches this code.
+ * everything reachable from localSha but not from the base ref. The latter
+ * excludes commits already reachable from the base without assuming the local
+ * branch contains the latest base tip; merge queue owns composition freshness.
  */
 export function pushedCommits({ localSha, remoteSha, baseSha }, run = git) {
   const range =

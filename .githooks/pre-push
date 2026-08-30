@@ -25,7 +25,7 @@ fi
 # Branch deletions arrive with a zero local OID and have no tree to check.
 # station#3160: a deletion must skip ITS OWN ref, not the whole push — a mixed
 # push (delete one branch, update another) previously exited 0 on the first
-# zero-OID line and skipped every check, including the merge-base gate.
+# zero-OID line and skipped every check.
 has_updates=0
 push_ref_lines=()
 while read -r _local_ref local_sha _remote_ref _remote_sha; do
@@ -43,10 +43,6 @@ fi
 # lane and `full:regression` stays the sole completion receipt; what runs here
 # is the subset that is cheap enough to run on every push and whose failure
 # would otherwise land on main and stop every other lane.
-echo "[station pre-push] checking the branch contains origin/main"
-git fetch --quiet origin main 2>/dev/null || true
-node scripts/check-merge-base-fresh.mjs
-
 # ~4s. Formatting and organize-imports break every lane's verify:static the
 # moment they reach main, and the fix is three seconds for whoever wrote it
 # and a whole gate cycle for whoever finds it (#3141).

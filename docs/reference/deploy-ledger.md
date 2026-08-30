@@ -27,6 +27,10 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-30T18:20:57Z | nightly-desktop | 0.1.2-nightly.2433 | `1c23510` | nightly test-gate success on 1c235104ce09cfbc88cf42b9a529407c7949944e (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33326401200) |
+| 2026-08-30T18:19:33Z | nightly-android | 0.1.2-nightly.2433 | `1c23510` | nightly test-gate success on 1c235104ce09cfbc88cf42b9a529407c7949944e (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33326401200) |
+| 2026-08-30T16:24:11Z | nightly-desktop | 0.1.2-nightly.2433 | `f243049` | nightly test-gate success on f2430495239251df2e15c36a190a5c0ad3c3812a (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33320949045) |
+| 2026-08-30T16:17:41Z | nightly-android | 0.1.2-nightly.2433 | `f243049` | nightly test-gate success on f2430495239251df2e15c36a190a5c0ad3c3812a (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33320949045) |
 | 2026-08-30T14:52:43Z | nightly-desktop | 0.1.2-nightly.2433 | `e9f9078` | nightly test-gate success on e9f90789523c44bcd163ce4918baa38bb71bfe91 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33316671076) |
 | 2026-08-30T14:49:02Z | nightly-android | 0.1.2-nightly.2433 | `e9f9078` | nightly test-gate success on e9f90789523c44bcd163ce4918baa38bb71bfe91 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33316671076) |
 | 2026-08-30T02:34:34Z | nightly-desktop | 0.1.2-nightly.2433 | `c03dfbc` | nightly test-gate success on c03dfbced16f0d9f9c46c7b51d2956d7e56ab8c7 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33286914122) |
@@ -45,6 +49,144 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-08-30T18:20:57Z · nightly-desktop · 0.1.2-nightly.2433
+
+- Ship SHA: `1c235104ce09cfbc88cf42b9a529407c7949944e`
+- Artifact: github-release:nightly-desktop (station-nightly-desktop-macos-aarch64.dmg, .app.tar.gz, latest.json)
+
+### Changelog
+
+Commits since `f243049` ([full sha](https://github.com/kontourai/station/commit/f2430495239251df2e15c36a190a5c0ad3c3812a)):
+
+**Features**
+
+- [#960](https://github.com/kontourai/station/pull/960) feat(basis): redesign Session inventory experience
+
+**Fixes**
+
+- [#957](https://github.com/kontourai/station/pull/957) fix(usage): absent stays absent — durable-history fold guard, honest costs, and the drop nobody was reporting
+- [#956](https://github.com/kontourai/station/pull/956) fix: prove bundled startup without keychain read
+
+**Other**
+
+- [#950](https://github.com/kontourai/station/pull/950) build(deps-dev): bump vitest and coverage-v8 to 4.1.11
+- [#821](https://github.com/kontourai/station/pull/821) test: restore full-regression baseline invariants
+
+## 2026-08-30T18:19:33Z · nightly-android · 0.1.2-nightly.2433
+
+- Ship SHA: `1c235104ce09cfbc88cf42b9a529407c7949944e`
+- Artifact: play-internal-aab:io.kontourai.station.nightly@versionCode 243303
+- Artifact: workflow-artifact:station-nightly-243303 (7-day retention)
+
+### Changelog
+
+Commits since `f243049` ([full sha](https://github.com/kontourai/station/commit/f2430495239251df2e15c36a190a5c0ad3c3812a)):
+
+**Features**
+
+- [#960](https://github.com/kontourai/station/pull/960) feat(basis): redesign Session inventory experience
+
+**Fixes**
+
+- [#957](https://github.com/kontourai/station/pull/957) fix(usage): absent stays absent — durable-history fold guard, honest costs, and the drop nobody was reporting
+- [#956](https://github.com/kontourai/station/pull/956) fix: prove bundled startup without keychain read
+
+**Other**
+
+- [#950](https://github.com/kontourai/station/pull/950) build(deps-dev): bump vitest and coverage-v8 to 4.1.11
+- [#821](https://github.com/kontourai/station/pull/821) test: restore full-regression baseline invariants
+
+## 2026-08-30T16:24:11Z · nightly-desktop · 0.1.2-nightly.2433
+
+- Ship SHA: `f2430495239251df2e15c36a190a5c0ad3c3812a`
+- Artifact: github-release:nightly-desktop (station-nightly-desktop-macos-aarch64.dmg, .app.tar.gz, latest.json)
+
+### Changelog
+
+Commits since `e9f9078` ([full sha](https://github.com/kontourai/station/commit/e9f90789523c44bcd163ce4918baa38bb71bfe91)):
+
+**Features**
+
+- [#810](https://github.com/kontourai/station/pull/810) feat(native): add version-aware Tauri context tooling
+- [#913](https://github.com/kontourai/station/pull/913) feat(ui): reasoning is a collapsed-by-default disclosure (#55)
+
+**Fixes**
+
+- [#825](https://github.com/kontourai/station/pull/825) fix(build): invoke Biome portably on Windows
+- [#813](https://github.com/kontourai/station/pull/813) fix(native): bind Browser Preview IPC fixtures to Rust (#261)
+- [#916](https://github.com/kontourai/station/pull/916) fix(basis): make full fallback a real modal
+- [#914](https://github.com/kontourai/station/pull/914) fix(ci): green the container provenance gate, scan PRs for secrets, and make a red main announce itself
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): classify intentional Coding pane host routing
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): keep deferred first run resumable
+- [#912](https://github.com/kontourai/station/pull/912) fix(desktop): retain credential recovery selection intent
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): repair mobile Home dock button and New Project modal footer
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): show a loading state instead of asserting no agent is ready, gate dev-only starter cards
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): fill Home starter cards with shimmer instead of empty outlines
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): present requested turn stops honestly
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): stop bouncing installed Session Board layouts to the project page
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): make Workspace Pane cards honest about layout requirements
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): un-bury and un-shrink the maximized dock
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): persist first-run wizard progress across reload
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): stop misdiagnosing the UI proxy's own outage response
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): preserve paired identity during a UI-proxy host outage
+- [#912](https://github.com/kontourai/station/pull/912) fix(desktop): isolate packaged channel profile selection
+
+**Other**
+
+- [#878](https://github.com/kontourai/station/pull/878) test(ios): dismiss clean-install system prompt
+- [#829](https://github.com/kontourai/station/pull/829) test(native): add real Tauri shell security harness
+- [#919](https://github.com/kontourai/station/pull/919) chore(ui): set bundle ceilings to the wave-3 train's measured actuals
+- [#919](https://github.com/kontourai/station/pull/919) test(ui): rehydrate first-run settings between cases
+- [#919](https://github.com/kontourai/station/pull/919) chore(ui): raise the mobile-css ratchet to measured for HomeView's new at-rule
+- [#912](https://github.com/kontourai/station/pull/912) refactor(desktop): fold profile selection intent into authorization
+- [#919](https://github.com/kontourai/station/pull/919) chore(ui): re-measure the entry ceiling after the stop/Home polish fixes (#898, #890)
+
+## 2026-08-30T16:17:41Z · nightly-android · 0.1.2-nightly.2433
+
+- Ship SHA: `f2430495239251df2e15c36a190a5c0ad3c3812a`
+- Artifact: play-internal-aab:io.kontourai.station.nightly@versionCode 243302
+- Artifact: workflow-artifact:station-nightly-243302 (7-day retention)
+
+### Changelog
+
+Commits since `e9f9078` ([full sha](https://github.com/kontourai/station/commit/e9f90789523c44bcd163ce4918baa38bb71bfe91)):
+
+**Features**
+
+- [#810](https://github.com/kontourai/station/pull/810) feat(native): add version-aware Tauri context tooling
+- [#913](https://github.com/kontourai/station/pull/913) feat(ui): reasoning is a collapsed-by-default disclosure (#55)
+
+**Fixes**
+
+- [#825](https://github.com/kontourai/station/pull/825) fix(build): invoke Biome portably on Windows
+- [#813](https://github.com/kontourai/station/pull/813) fix(native): bind Browser Preview IPC fixtures to Rust (#261)
+- [#916](https://github.com/kontourai/station/pull/916) fix(basis): make full fallback a real modal
+- [#914](https://github.com/kontourai/station/pull/914) fix(ci): green the container provenance gate, scan PRs for secrets, and make a red main announce itself
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): classify intentional Coding pane host routing
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): keep deferred first run resumable
+- [#912](https://github.com/kontourai/station/pull/912) fix(desktop): retain credential recovery selection intent
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): repair mobile Home dock button and New Project modal footer
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): show a loading state instead of asserting no agent is ready, gate dev-only starter cards
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): fill Home starter cards with shimmer instead of empty outlines
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): present requested turn stops honestly
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): stop bouncing installed Session Board layouts to the project page
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): make Workspace Pane cards honest about layout requirements
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): un-bury and un-shrink the maximized dock
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): persist first-run wizard progress across reload
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): stop misdiagnosing the UI proxy's own outage response
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): preserve paired identity during a UI-proxy host outage
+- [#912](https://github.com/kontourai/station/pull/912) fix(desktop): isolate packaged channel profile selection
+
+**Other**
+
+- [#878](https://github.com/kontourai/station/pull/878) test(ios): dismiss clean-install system prompt
+- [#829](https://github.com/kontourai/station/pull/829) test(native): add real Tauri shell security harness
+- [#919](https://github.com/kontourai/station/pull/919) chore(ui): set bundle ceilings to the wave-3 train's measured actuals
+- [#919](https://github.com/kontourai/station/pull/919) test(ui): rehydrate first-run settings between cases
+- [#919](https://github.com/kontourai/station/pull/919) chore(ui): raise the mobile-css ratchet to measured for HomeView's new at-rule
+- [#912](https://github.com/kontourai/station/pull/912) refactor(desktop): fold profile selection intent into authorization
+- [#919](https://github.com/kontourai/station/pull/919) chore(ui): re-measure the entry ceiling after the stop/Home polish fixes (#898, #890)
 
 ## 2026-08-30T14:52:43Z · nightly-desktop · 0.1.2-nightly.2433
 
