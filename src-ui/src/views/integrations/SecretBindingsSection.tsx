@@ -156,151 +156,192 @@ export function SecretBindingsSection() {
     }
   };
   return (
-    <section className="agent-editor__section" aria-label="Secret bindings">
-      <div className="agent-editor__section-header">
-        <h3 className="agent-editor__section-title">Secret bindings</h3>
-        <p className="agent-editor__section-desc">
-          Operator-owned MCP references. Secret material never enters this
-          editor.
-        </p>
-      </div>
-      <form className="integration-binding-picker" onSubmit={submit}>
-        <label>
-          ID
-          <input
-            value={form.id}
-            disabled={editing}
-            onChange={(event) => setForm({ ...form, id: event.target.value })}
-          />
-        </label>
-        <label>
-          Name
-          <input
-            value={form.name}
-            onChange={(event) => setForm({ ...form, name: event.target.value })}
-          />
-        </label>
-        <label>
-          Backend
-          <select
-            value={form.backend}
-            onChange={(event) =>
-              setForm({ ...form, backend: event.target.value as Backend })
-            }
-          >
-            <option value="env">Environment</option>
-            <option value="keychain">Keychain</option>
-            <option value="op">1Password</option>
-          </select>
-        </label>
-        <label>
-          Reference
-          <input
-            value={form.reference}
-            placeholder={
-              form.backend === 'op'
-                ? 'op://vault/item/field'
-                : form.backend === 'env'
-                  ? 'TOKEN_NAME'
-                  : 'service name'
-            }
-            onChange={(event) =>
-              setForm({ ...form, reference: event.target.value })
-            }
-          />
-        </label>
-        {form.backend === 'keychain' && (
-          <label>
-            Account (optional)
-            <input
-              value={form.account}
-              onChange={(event) =>
-                setForm({ ...form, account: event.target.value })
+    <section
+      className="agent-editor__section"
+      aria-labelledby="secret-bindings-heading"
+    >
+      <details className="editor__expandable">
+        <summary className="editor__expandable-header">
+          <span id="secret-bindings-heading" className="editor__section-title">
+            Advanced: Secret bindings
+          </span>
+        </summary>
+        <div className="editor__expandable-content">
+          <p className="agent-editor__section-desc">
+            Operator-owned MCP references. Secret material never enters this
+            editor.
+          </p>
+          <form onSubmit={submit}>
+            <div className="editor-field">
+              <label className="editor-label" htmlFor="secret-binding-id">
+                ID
+              </label>
+              <input
+                id="secret-binding-id"
+                className="editor-input"
+                value={form.id}
+                disabled={editing}
+                onChange={(event) =>
+                  setForm({ ...form, id: event.target.value })
+                }
+              />
+            </div>
+            <div className="editor-field">
+              <label className="editor-label" htmlFor="secret-binding-name">
+                Name
+              </label>
+              <input
+                id="secret-binding-name"
+                className="editor-input"
+                value={form.name}
+                onChange={(event) =>
+                  setForm({ ...form, name: event.target.value })
+                }
+              />
+            </div>
+            <div className="editor-field">
+              <label className="editor-label" htmlFor="secret-binding-backend">
+                Backend
+              </label>
+              <select
+                id="secret-binding-backend"
+                className="editor-select"
+                value={form.backend}
+                onChange={(event) =>
+                  setForm({ ...form, backend: event.target.value as Backend })
+                }
+              >
+                <option value="env">Environment</option>
+                <option value="keychain">Keychain</option>
+                <option value="op">1Password</option>
+              </select>
+            </div>
+            <div className="editor-field">
+              <label
+                className="editor-label"
+                htmlFor="secret-binding-reference"
+              >
+                Reference
+              </label>
+              <input
+                id="secret-binding-reference"
+                className="editor-input"
+                value={form.reference}
+                placeholder={
+                  form.backend === 'op'
+                    ? 'op://vault/item/field'
+                    : form.backend === 'env'
+                      ? 'TOKEN_NAME'
+                      : 'service name'
+                }
+                onChange={(event) =>
+                  setForm({ ...form, reference: event.target.value })
+                }
+              />
+            </div>
+            {form.backend === 'keychain' && (
+              <div className="editor-field">
+                <label
+                  className="editor-label"
+                  htmlFor="secret-binding-account"
+                >
+                  Account (optional)
+                </label>
+                <input
+                  id="secret-binding-account"
+                  className="editor-input"
+                  value={form.account}
+                  onChange={(event) =>
+                    setForm({ ...form, account: event.target.value })
+                  }
+                />
+              </div>
+            )}
+            <div className="editor-label-row__actions">
+              <Button
+                type="submit"
+                variant="primary"
+                pending={pending}
+                pendingLabel="Saving…"
+                disabled={!form.id || !form.name || !form.reference}
+              >
+                {editing ? 'Save binding' : 'Create binding'}
+              </Button>
+              {(editing || dirty) && (
+                <Button variant="secondary" onClick={() => guard(resetForm)}>
+                  {editing ? 'Cancel edit' : 'Cancel create'}
+                </Button>
+              )}
+            </div>
+          </form>
+          {message && <p role="status">{message}</p>}
+          {isLoading ? (
+            <SkeletonList count={2} />
+          ) : error ? (
+            <ErrorState
+              title="Secret bindings unavailable"
+              description={error.message}
+              action={
+                <Button size="sm" onClick={() => void refetch()}>
+                  Retry
+                </Button>
               }
             />
-          </label>
-        )}
-        <Button
-          type="submit"
-          variant="primary"
-          pending={pending}
-          pendingLabel="Saving…"
-          disabled={!form.id || !form.name || !form.reference}
-        >
-          {editing ? 'Save binding' : 'Create binding'}
-        </Button>
-        {(editing || dirty) && (
-          <Button variant="secondary" onClick={() => guard(resetForm)}>
-            {editing ? 'Cancel edit' : 'Cancel create'}
-          </Button>
-        )}
-      </form>
-      {message && <p role="status">{message}</p>}
-      {isLoading ? (
-        <SkeletonList count={2} />
-      ) : error ? (
-        <ErrorState
-          title="Secret bindings unavailable"
-          description={error.message}
-          action={
-            <Button size="sm" onClick={() => void refetch()}>
-              Retry
-            </Button>
-          }
-        />
-      ) : bindings.length === 0 ? (
-        <Empty
-          label="Nothing here yet"
-          description="Create an operator-owned reference before binding an MCP environment."
-        />
-      ) : (
-        <ul className="integration-binding-list">
-          {bindings.map((binding) => (
-            <li key={binding.id}>
-              <strong>{binding.name}</strong>{' '}
-              <span>
-                {binding.availability.backend} reference (
-                {referenceMetadata(binding.authRef)}) ·{' '}
-                {binding.availability.available
-                  ? 'backend available'
-                  : 'backend unavailable'}{' '}
-                · revision {binding.revision}
-              </span>{' '}
-              <span>{binding.revokedAt ? 'revoked' : 'active'}</span>
-              <ul aria-label={`${binding.name} grants`}>
-                {binding.grants.length === 0 ? (
-                  <li>
-                    <Empty variant="compact" label="Nothing here yet" />
-                  </li>
-                ) : (
-                  binding.grants.map((grant) => (
-                    <li key={`${grant.integrationId}:${grant.envName}`}>
-                      {grant.integrationId} · {grant.envName}
-                    </li>
-                  ))
-                )}
-              </ul>
-              {!binding.revokedAt && (
-                <>
-                  <Button
-                    size="sm"
-                    onClick={() => guard(() => beginEdit(binding))}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={() => setRevokeTarget(binding)}
-                  >
-                    Revoke
-                  </Button>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+          ) : bindings.length === 0 ? (
+            <Empty
+              label="Nothing here yet"
+              description="Create an operator-owned reference before binding an MCP environment."
+            />
+          ) : (
+            <ul className="integration-binding-list">
+              {bindings.map((binding) => (
+                <li key={binding.id}>
+                  <strong>{binding.name}</strong>{' '}
+                  <span>
+                    {binding.availability.backend} reference (
+                    {referenceMetadata(binding.authRef)}) ·{' '}
+                    {binding.availability.available
+                      ? 'backend available'
+                      : 'backend unavailable'}{' '}
+                    · revision {binding.revision}
+                  </span>{' '}
+                  <span>{binding.revokedAt ? 'revoked' : 'active'}</span>
+                  <ul aria-label={`${binding.name} grants`}>
+                    {binding.grants.length === 0 ? (
+                      <li>
+                        <Empty variant="compact" label="Nothing here yet" />
+                      </li>
+                    ) : (
+                      binding.grants.map((grant) => (
+                        <li key={`${grant.integrationId}:${grant.envName}`}>
+                          {grant.integrationId} · {grant.envName}
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                  {!binding.revokedAt && (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() => guard(() => beginEdit(binding))}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => setRevokeTarget(binding)}
+                      >
+                        Revoke
+                      </Button>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </details>
       <ConfirmModal
         isOpen={revokeTarget !== null}
         title="Revoke secret binding"
