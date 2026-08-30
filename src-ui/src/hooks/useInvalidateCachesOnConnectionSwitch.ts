@@ -94,10 +94,20 @@ export function useInvalidateCachesOnConnectionSwitch(
     const previous = previousRef.current;
     previousRef.current = { apiBase, hasActiveConnection, connectionScope };
 
-    // Initial establishment (no active connection -> one) — including the
-    // native two-stage apiBase resolution described above — is never a
-    // switch, regardless of how many boot-settling renders it took.
-    if (!previous.hasActiveConnection && hasActiveConnection) return;
+    // Initial establishment normally happens before any server-scoped query
+    // exists. If a query did win that race, however, its data belongs to the
+    // placeholder/bundled origin and must not survive selection of a saved
+    // profile. Invalidate only that evidenced case; an empty native boot keeps
+    // the no-op path this guard was introduced for.
+    if (!previous.hasActiveConnection && hasActiveConnection) {
+      if (
+        previous.apiBase !== apiBase &&
+        queryClient.getQueryCache().getAll().length > 0
+      ) {
+        void queryClient.invalidateQueries();
+      }
+      return;
+    }
 
     // Distinct saved Stations can intentionally share one endpoint. Their
     // credential/identity boundary is still a real server-context switch:

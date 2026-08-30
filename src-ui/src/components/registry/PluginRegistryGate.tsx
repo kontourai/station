@@ -50,6 +50,9 @@ export function PluginRegistryBootstrap() {
     pluginRegistry.getLoadStatus,
   );
   const activeConnectionId = activeConnection?.id ?? 'default';
+  const remoteProfile = Boolean(
+    activeConnection && !activeConnection.injected && !activeConnection.ownerId,
+  );
   const [allowRemoteBundles, setAllowRemoteBundles] = useState(() =>
     remotePluginBundlesAllowed(activeConnectionId, apiBase),
   );
@@ -72,9 +75,12 @@ export function PluginRegistryBootstrap() {
     previousConnectionStatus.current !== 'connected';
 
   useEffect(() => {
-    pluginRegistry.setApiBase(apiBase, connectionKey, { allowRemoteBundles });
+    pluginRegistry.setApiBase(apiBase, connectionKey, {
+      allowRemoteBundles,
+      remoteProfile,
+    });
     void pluginRegistry.reload();
-  }, [allowRemoteBundles, apiBase, connectionKey]);
+  }, [allowRemoteBundles, apiBase, connectionKey, remoteProfile]);
 
   useEffect(() => {
     if (loadStatus.state === 'loading') return;

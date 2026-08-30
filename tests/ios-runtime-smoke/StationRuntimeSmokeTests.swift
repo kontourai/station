@@ -9,6 +9,12 @@ final class StationRuntimeSmokeTests: XCTestCase {
         let app = XCUIApplication(bundleIdentifier: "io.kontourai.station")
         app.launch()
 
+        // A clean hosted simulator can present the notification permission
+        // sheet before XCTest is allowed to query or tap the WKWebView. Handle
+        // it before asking the app process for its actionable shell.
+        dismissSystemAlertIfPresent()
+        app.activate()
+
         addTeardownBlock {
             let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             attachment.name = "station-ios-final-state"
@@ -26,7 +32,6 @@ final class StationRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(app.buttons["Open settings"].isHittable)
         XCTAssertFalse(app.staticTexts["That doesn't look like a Station address."].exists)
 
-        dismissSystemAlertIfPresent()
         connect.tap()
 
         let addAddress = app.buttons["Add a Station address"]
@@ -82,10 +87,14 @@ final class StationRuntimeSmokeTests: XCTestCase {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let alert = springboard.alerts.firstMatch
         guard alert.waitForExistence(timeout: 2) else { return }
-        let deny = alert.buttons["Don’t Allow"]
-        if deny.exists {
-            deny.tap()
-        } else if alert.buttons.firstMatch.exists {
+        for label in ["Don’t Allow", "Don't Allow"] {
+            let deny = alert.buttons[label]
+            if deny.exists {
+                deny.tap()
+                return
+            }
+        }
+        if alert.buttons.firstMatch.exists {
             alert.buttons.firstMatch.tap()
         }
     }
