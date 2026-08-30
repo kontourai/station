@@ -146,7 +146,7 @@ local freshness nor server-side composition evidence:
 2. Add the ruleset's pull-request and merge-queue rules without changing the
    existing required status contexts or bypass actors. Start with `MERGE`,
    `ALLGREEN`, one pull request per merge group, two concurrent builds, and a
-   90-minute required-check timeout.
+   120-minute required-check timeout.
 3. Open the hook-retirement pull request from the then-current `main` and use
    that pull request as the canary. Queue it rather than merging it directly.
 4. Before allowing it to land, verify `fast-checks`, CodeQL, dependency review,
