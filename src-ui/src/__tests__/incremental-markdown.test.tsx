@@ -8,7 +8,10 @@ import {
   type MarkdownRenderProbe,
 } from '../components/chat/MarkdownRenderer';
 import { splitMarkdownBlocks } from '../components/chat/markdown-blocks';
-import { REAL_TRANSCRIPT_DERIVED_MARKDOWN } from './fixtures/incremental-markdown-corpus';
+import {
+  DEFINITION_DEPENDENT_MARKDOWN,
+  REAL_TRANSCRIPT_DERIVED_MARKDOWN,
+} from './fixtures/incremental-markdown-corpus';
 
 afterEach(cleanup);
 
@@ -28,6 +31,24 @@ function incrementalHtml(source: string): string {
   ).container.innerHTML;
 }
 
+const DEFINITION_CASES = [
+  [
+    DEFINITION_DEPENDENT_MARKDOWN[0],
+    'a[href="https://example.invalid/guide"]',
+    'release guide',
+  ],
+  [
+    DEFINITION_DEPENDENT_MARKDOWN[1],
+    'img[src="https://example.invalid/diagram.png"]',
+    null,
+  ],
+  [
+    DEFINITION_DEPENDENT_MARKDOWN[2],
+    'section[data-footnotes="true"]',
+    'definition-only block must remain available',
+  ],
+] as const;
+
 describe('incremental Markdown rendering', () => {
   test.each(REAL_TRANSCRIPT_DERIVED_MARKDOWN)(
     'matches one full GFM parse for complete derived transcript %#',
@@ -35,6 +56,32 @@ describe('incremental Markdown rendering', () => {
       const expected = baselineHtml(source);
       cleanup();
       expect(incrementalHtml(source)).toBe(expected);
+    },
+  );
+
+  test.each(DEFINITION_CASES)(
+    'uses one canonical parse for definition-dependent construct %#',
+    (source, selector, expectedText) => {
+      const expected = baselineHtml(source);
+      cleanup();
+      const onBlockRender = vi.fn();
+      const view = render(
+        <MarkdownRenderer
+          incremental
+          components={{}}
+          renderProbe={{ onBlockRender }}
+        >
+          {source}
+        </MarkdownRenderer>,
+      );
+
+      expect(onBlockRender).not.toHaveBeenCalled();
+      expect(view.container.innerHTML).toBe(expected);
+      const resolvedConstruct = view.container.querySelector(selector);
+      expect(resolvedConstruct).not.toBeNull();
+      if (expectedText) {
+        expect(resolvedConstruct?.textContent).toContain(expectedText);
+      }
     },
   );
 
@@ -142,6 +189,18 @@ describe('incremental Markdown rendering', () => {
     ).toContain('const pending = true;');
   });
 
+  test('renders ordinary pipe prose as a paragraph while it is the tail', () => {
+    const view = render(
+      <MarkdownRenderer incremental components={{}}>
+        {'Use `a | b` here.'}
+      </MarkdownRenderer>,
+    );
+    expect(view.container.querySelector('pre')).toBeNull();
+    expect(view.container.querySelector('p')?.textContent).toBe(
+      'Use a | b here.',
+    );
+  });
+
   test('holds a table header, then parses it without replacing the keyed block', () => {
     const mounts = vi.fn();
     const unmounts = vi.fn();
@@ -185,6 +244,7 @@ describe('incremental Markdown rendering', () => {
   test('splitter failure visibly falls back to the whole-text parser', () => {
     const error = new Error('injected splitter failure');
     const onFallback = vi.fn();
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const view = render(
       <MarkdownRenderer
         incremental
@@ -199,6 +259,12 @@ describe('incremental Markdown rendering', () => {
     );
 
     expect(onFallback).toHaveBeenCalledWith(error);
+    expect(warning).toHaveBeenCalledOnce();
+    expect(warning).toHaveBeenCalledWith(
+      'Incremental markdown splitter failed; using the canonical whole parse:',
+      'injected splitter failure',
+    );
     expect(view.container.querySelector('strong')?.textContent).toBe('visible');
+    warning.mockRestore();
   });
 });

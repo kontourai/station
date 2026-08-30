@@ -1,9 +1,16 @@
 import { describe, expect, test } from 'vitest';
-import { splitMarkdownBlocks } from '../components/chat/markdown-blocks';
-import { REAL_TRANSCRIPT_DERIVED_MARKDOWN } from './fixtures/incremental-markdown-corpus';
+import {
+  markdownBlocksRequireWholeParse,
+  splitMarkdownBlocks,
+} from '../components/chat/markdown-blocks';
+import {
+  DEFINITION_DEPENDENT_MARKDOWN,
+  MARKDOWN_RENDER_CORPUS,
+  REAL_TRANSCRIPT_DERIVED_MARKDOWN,
+} from './fixtures/incremental-markdown-corpus';
 
 const LOSSLESS_CORPUS = [
-  ...REAL_TRANSCRIPT_DERIVED_MARKDOWN,
+  ...MARKDOWN_RENDER_CORPUS,
   '',
   'one paragraph',
   'first\r\n\r\nsecond\r\n',
@@ -44,6 +51,35 @@ describe('splitMarkdownBlocks', () => {
     expect(
       splitMarkdownBlocks('| name | result |\n| --- | --- |')[0],
     ).toMatchObject({ flavor: 'table', provisionalReason: 'tail' });
+  });
+
+  test.each(['Use `a | b` here.', 'Run cat file | grep x for the list.'])(
+    'does not classify ordinary pipe prose as a table: %s',
+    (source) => {
+      expect(splitMarkdownBlocks(source)[0]).toMatchObject({
+        flavor: 'plain',
+        provisionalReason: 'tail',
+      });
+    },
+  );
+
+  test.each(DEFINITION_DEPENDENT_MARKDOWN)(
+    'requires a whole parse for document-scoped definition %#',
+    (source) => {
+      const blocks = splitMarkdownBlocks(source);
+      expect(
+        blocks.some((block) => /^\s*\[(?:\^)?[^\]]+\]:/m.test(block.text)),
+      ).toBe(true);
+      expect(markdownBlocksRequireWholeParse(blocks)).toBe(true);
+    },
+  );
+
+  test('keeps definition-free blocks on the incremental path', () => {
+    expect(
+      markdownBlocksRequireWholeParse(
+        splitMarkdownBlocks('A [direct link](https://example.invalid).'),
+      ),
+    ).toBe(false);
   });
 
   test('recognizes info strings and preserves an unclosed fence as source', () => {

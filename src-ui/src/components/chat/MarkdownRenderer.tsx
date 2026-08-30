@@ -3,7 +3,11 @@ import type { Options } from 'react-markdown';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { markdownCodeComponents } from './HighlightedCodeBlock';
-import { type MarkdownBlock, splitMarkdownBlocks } from './markdown-blocks';
+import {
+  type MarkdownBlock,
+  markdownBlocksRequireWholeParse,
+  splitMarkdownBlocks,
+} from './markdown-blocks';
 
 export type MarkdownRenderProbe = {
   onBlockMount?: (startLine: number) => void;
@@ -14,7 +18,10 @@ export type MarkdownRenderProbe = {
 };
 
 export type MarkdownRendererProps = Options & {
-  /** Append-only streaming mode; settled callers always take the full parser. */
+  /**
+   * Append-only streaming mode. Definition-free content uses memoized blocks;
+   * reference/footnote definitions and settled callers use the full parser.
+   */
   incremental?: boolean;
   /** Deterministic test seam for splitter failure and render-cost probes. */
   splitBlocks?: typeof splitMarkdownBlocks;
@@ -85,6 +92,13 @@ const MarkdownBlockView = memo(
     previous.probe === next.probe,
 );
 
+/**
+ * Canonical markdown renderer with an append-only optimization for streaming.
+ * Definition-free streaming content is parsed as memoized source blocks; any
+ * reference-link/image or footnote definition automatically escapes to one
+ * whole-document parse so cross-block resolution stays canonical. Settled
+ * content always takes that canonical whole-document path immediately.
+ */
 function MarkdownRendererComponent({
   incremental = false,
   splitBlocks = splitMarkdownBlocks,
@@ -150,7 +164,19 @@ function MarkdownRendererComponent({
   try {
     blocks = splitBlocks(children);
   } catch (error) {
+    console.warn(
+      'Incremental markdown splitter failed; using the canonical whole parse:',
+      error instanceof Error ? error.message : String(error),
+    );
     renderProbe?.onFallback?.(error);
+    return <FullMarkdown {...options}>{children}</FullMarkdown>;
+  }
+
+  // Definitions are document-scoped: a link/image in one block may resolve
+  // against a definition-only block elsewhere. Preserve canonical semantics by
+  // escaping incremental parsing for these rare messages before any block is
+  // rendered; definition-free content keeps the incremental fast path.
+  if (markdownBlocksRequireWholeParse(blocks)) {
     return <FullMarkdown {...options}>{children}</FullMarkdown>;
   }
 

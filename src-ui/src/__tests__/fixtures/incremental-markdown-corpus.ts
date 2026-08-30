@@ -49,3 +49,14 @@ The browser response and the diagnostic log both stayed clean.`,
 
 That distinction prevents a partial check from becoming a release claim.`,
 ] as const;
+
+export const DEFINITION_DEPENDENT_MARKDOWN = [
+  'Read the [release guide][guide].\n\n[guide]: https://example.invalid/guide',
+  '![Build diagram][diagram]\n\n[diagram]: https://example.invalid/diagram.png "Build diagram"',
+  'This result has supporting context.[^context]\n\n[^context]: The definition-only block must remain available to the full document parse.',
+] as const;
+
+export const MARKDOWN_RENDER_CORPUS = [
+  ...REAL_TRANSCRIPT_DERIVED_MARKDOWN,
+  ...DEFINITION_DEPENDENT_MARKDOWN,
+] as const;

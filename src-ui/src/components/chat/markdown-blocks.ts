@@ -171,14 +171,15 @@ function classifyBlock(
 
   if (sawFence) return { flavor: 'fence', provisionalReason: 'tail' };
 
-  const header = contentLines[0]?.trim() ?? '';
+  const header = contentLines[0] ?? '';
   const delimiter = contentLines[1]?.trim();
-  if (
-    header.includes('|') &&
-    (delimiter === undefined ||
-      (PARTIAL_TABLE_DELIMITER.test(delimiter) &&
-        !TABLE_DELIMITER.test(delimiter)))
-  ) {
+  const startsWithTablePipe = /^ {0,3}\|/.test(header);
+  const hasPartialDelimiter = Boolean(
+    delimiter !== undefined &&
+      PARTIAL_TABLE_DELIMITER.test(delimiter) &&
+      !TABLE_DELIMITER.test(delimiter),
+  );
+  if ((startsWithTablePipe && delimiter === undefined) || hasPartialDelimiter) {
     return { flavor: 'table', provisionalReason: 'incomplete-table' };
   }
   if (header.includes('|') && delimiter && TABLE_DELIMITER.test(delimiter)) {
@@ -305,4 +306,22 @@ export function splitMarkdownBlocks(markdown: string): MarkdownBlock[] {
 
   finish(lines.length, false, fence !== null);
   return blocks;
+}
+
+const REFERENCE_DEFINITION = /^ {0,3}\[[^\]]+\]:/m;
+const FOOTNOTE_DEFINITION = /^ {0,3}\[\^[^\]]+\]:/m;
+
+/**
+ * Reference links/images and footnotes share definitions across block
+ * boundaries. Parsing those blocks independently loses that document-level
+ * context, so rare definition-bearing messages use the canonical whole parse.
+ */
+export function markdownBlocksRequireWholeParse(
+  blocks: readonly MarkdownBlock[],
+): boolean {
+  return blocks.some(
+    (block) =>
+      REFERENCE_DEFINITION.test(block.text) ||
+      FOOTNOTE_DEFINITION.test(block.text),
+  );
 }
