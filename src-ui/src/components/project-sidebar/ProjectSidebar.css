@@ -80,6 +80,12 @@
   color: var(--text-primary);
 }
 
+.sidebar__channel-badge {
+  color: var(--k-brand);
+  font-size: var(--text-xs);
+  text-transform: capitalize;
+}
+
 .sidebar--collapsed .sidebar__brand-name {
   display: none;
 }

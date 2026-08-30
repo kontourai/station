@@ -12,9 +12,11 @@ import {
   admitMacosAppBundle,
   assertAcceptedNotaryReceipt,
   createMacosNotarizedArtifacts,
+  DEFAULT_COMMAND_TIMEOUT_MS,
   DMG_CREATION_COMMAND_TIMEOUT_MS,
   EMBEDDED_MACHO_COMMAND_TIMEOUT_MS,
   EMBEDDED_TIMESTAMP_SIGNING_TIMEOUT_MS,
+  LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
   outerAppDesignatedRequirement,
   parseMacosNotarizedArtifactsCli,
   parseReleaseDeadlineEpoch,
@@ -342,19 +344,43 @@ test('DMG-only mode refuses an app that has not passed stapler and Gatekeeper pr
   }
 });
 
-test('bounds size-dependent DMG creation to ten minutes', async () => {
+test('uses the explicit ten-minute authority for every complete-payload artifact operation', async () => {
   const release = fixture();
   const now = 1_700_000_000_000;
+  expect(LARGE_ARTIFACT_COMMAND_TIMEOUT_MS).toBe(10 * 60 * 1000);
   await createMacosNotarizedArtifacts(release.options, {
     ...release,
     now: () => now,
   });
+  const artifactOperations = [
+    ['ditto', 'application notarization archive'],
+    ['ditto', 'DMG staging'],
+    ['hdiutil', 'DMG creation'],
+    ['tar', 'updater archive derivation'],
+  ];
+  for (const [program, phase] of artifactOperations) {
+    expect(
+      release.calls.find(
+        ([calledProgram, _args, options]) =>
+          calledProgram === program && options.phase === phase,
+      )?.[2].timeoutMs,
+    ).toBe(LARGE_ARTIFACT_COMMAND_TIMEOUT_MS);
+  }
+  expect(DMG_CREATION_COMMAND_TIMEOUT_MS).toBe(
+    LARGE_ARTIFACT_COMMAND_TIMEOUT_MS,
+  );
+});
+
+test('keeps the short default timeout for non-payload release probes', async () => {
+  const release = fixture();
+  await createMacosNotarizedArtifacts(release.options, release);
   expect(
     release.calls.find(
       ([program, _args, options]) =>
-        program === 'hdiutil' && options.phase === 'DMG creation',
+        program === '/usr/libexec/PlistBuddy' &&
+        options.phase === 'outer app bundle identity',
     )?.[2].timeoutMs,
-  ).toBe(DMG_CREATION_COMMAND_TIMEOUT_MS);
+  ).toBe(DEFAULT_COMMAND_TIMEOUT_MS);
 });
 
 test('parses the DMG-only CLI flag as a bare opt-in and rejects a value for it', () => {

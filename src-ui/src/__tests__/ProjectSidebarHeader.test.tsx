@@ -9,9 +9,11 @@ import { ProjectSidebarHeader } from '../components/project-sidebar/ProjectSideb
 function renderHeader({
   collapsed = false,
   isMobile = false,
+  channelBadge,
 }: {
   collapsed?: boolean;
   isMobile?: boolean;
+  channelBadge?: string;
 } = {}) {
   const onCloseMobile = vi.fn();
   const onGoHome = vi.fn();
@@ -19,6 +21,10 @@ function renderHeader({
   const result = render(
     <ProjectSidebarHeader
       appName="Station"
+      homeLabel={
+        channelBadge ? `Station ${channelBadge} v0.1.2` : 'Station v0.1.2'
+      }
+      channelBadge={channelBadge}
       collapsed={collapsed}
       isMobile={isMobile}
       onCloseMobile={onCloseMobile}
@@ -43,7 +49,7 @@ describe('ProjectSidebarHeader', () => {
     });
 
     expect(collapse.getAttribute('title')).toBe('Collapse sidebar');
-    const home = screen.getByRole('button', { name: 'Station home' });
+    const home = screen.getByRole('button', { name: 'Station v0.1.2 home' });
     expect(home.tagName).toBe('BUTTON');
     expect(home.getAttribute('type')).toBe('button');
     expect(home.querySelector('img')?.getAttribute('aria-hidden')).toBe('true');
@@ -61,6 +67,7 @@ describe('ProjectSidebarHeader', () => {
     expanded.rerender(
       <ProjectSidebarHeader
         appName="Station"
+        homeLabel="Station v0.1.2"
         collapsed
         isMobile={false}
         onCloseMobile={expanded.onCloseMobile}
@@ -74,6 +81,21 @@ describe('ProjectSidebarHeader', () => {
     fireEvent.click(expand);
     expect(expanded.onToggleCollapse).toHaveBeenCalledTimes(2);
     expect(expanded.onGoHome).toHaveBeenCalledOnce();
+  });
+
+  test('keeps an installed channel out of the wordmark and visible as a badge', () => {
+    const { container } = renderHeader({ channelBadge: 'Nightly' });
+    const home = screen.getByRole('button', {
+      name: 'Station Nightly v0.1.2 home',
+    });
+
+    expect(home.getAttribute('title')).toBe('Station Nightly v0.1.2 home');
+    expect(
+      container.querySelector('.sidebar__brand-name > span')?.textContent,
+    ).toBe('Station');
+    expect(
+      container.querySelector('.sidebar__channel-badge')?.textContent,
+    ).toBe('Nightly');
   });
 
   test('places the collapse button after the brand-name lockup on desktop (header lockup order)', () => {

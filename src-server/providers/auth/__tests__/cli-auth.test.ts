@@ -48,6 +48,8 @@ describe('parseCliAuthState', () => {
 });
 
 describe('buildCliRuntimePrerequisites', () => {
+  const findInstalledTestBinary = (command: string) => `/test/bin/${command}`;
+
   test('runs independent version and auth probes concurrently', async () => {
     const resolvers: Array<(result: CliCommandResult) => void> = [];
     const calls: string[][] = [];
@@ -58,6 +60,7 @@ describe('buildCliRuntimePrerequisites', () => {
       authArgs: ['login', 'status'],
       installStep: 'Install it.',
       authStep: 'Log in.',
+      findBinary: findInstalledTestBinary,
       runCommand: async (_command, args) => {
         calls.push(args);
         return new Promise((resolve) => resolvers.push(resolve));
@@ -85,6 +88,7 @@ describe('buildCliRuntimePrerequisites', () => {
       authArgs: ['--version'],
       installStep: 'Install it.',
       authStep: 'Log in.',
+      findBinary: findInstalledTestBinary,
       runCommand: async (_command, args) => {
         calls.push(args);
         return { stdout: 'v1.0.0', stderr: '', code: 0 };
@@ -103,6 +107,7 @@ describe('buildCliRuntimePrerequisites', () => {
       authArgs: [],
       installStep: 'Install it.',
       authStep: 'Log in.',
+      findBinary: findInstalledTestBinary,
       runCommand: async (_command, args) => {
         calls.push(args);
         return { stdout: 'v1.0.0', stderr: '', code: 0 };
@@ -111,6 +116,46 @@ describe('buildCliRuntimePrerequisites', () => {
     });
 
     expect(calls).toEqual([['--version']]);
+    expect(prerequisites).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'node-auth', status: 'error' }),
+      ]),
+    );
+  });
+
+  test('records a completed version-probe failure on the CLI prerequisite', async () => {
+    const prerequisites = await buildCliRuntimePrerequisites({
+      command: 'node',
+      displayName: 'Test CLI',
+      versionArgs: ['--version'],
+      authArgs: ['--version'],
+      installStep: 'Install it.',
+      authStep: 'Log in.',
+      findBinary: findInstalledTestBinary,
+      runCommand: async () => ({
+        stdout: '',
+        stderr: 'launcher failed',
+        code: 1,
+      }),
+    });
+
+    expect(prerequisites).toEqual([
+      expect.objectContaining({ id: 'node-cli', status: 'error' }),
+    ]);
+  });
+
+  test('keeps a probe with no result as unverifiable auth evidence', async () => {
+    const prerequisites = await buildCliRuntimePrerequisites({
+      command: 'node',
+      displayName: 'Test CLI',
+      versionArgs: ['--version'],
+      authArgs: ['--version'],
+      installStep: 'Install it.',
+      authStep: 'Log in.',
+      findBinary: findInstalledTestBinary,
+      runCommand: async () => null,
+    });
+
     expect(prerequisites).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: 'node-auth', status: 'error' }),
@@ -129,6 +174,7 @@ describe('buildCliRuntimePrerequisites', () => {
       installStep: 'Install it.',
       authStep: 'Log in.',
       signal: controller.signal,
+      findBinary: findInstalledTestBinary,
       runCommand: async (_command, _args, signal) => {
         if (signal) observedSignals.push(signal);
         return new Promise((_, reject) => {
