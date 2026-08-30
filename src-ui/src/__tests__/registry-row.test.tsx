@@ -140,7 +140,7 @@ describe('renderSettingRow', () => {
           onChange: vi.fn(),
         }),
       );
-      expect(container).toBeEmptyDOMElement();
+      expect(container.firstChild).toBeNull();
     });
 
     test('number: undefined value keeps the input empty and shows the default as the placeholder', () => {
