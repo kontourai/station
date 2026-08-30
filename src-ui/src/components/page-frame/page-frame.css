@@ -120,7 +120,7 @@
      row. Own their mobile/coarse-screen touch floor here so every portalled
      action receives the same 44px target without enlarging `Button size="sm"`
      in dense non-page contexts. */
-  .page__actions > :is(button, a, .button, [role='button']) {
+  .page__actions > :is(button, a, .button, [role="button"]) {
     min-width: 44px;
     min-height: 44px;
   }
