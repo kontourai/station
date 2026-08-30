@@ -8,6 +8,15 @@ import {
 } from '../usage-stats.js';
 
 describe('usage-stats', () => {
+  it('does not manufacture token figures for empty conversation stats', () => {
+    expect(createEmptyConversationStats()).toEqual({
+      contextTokens: 0,
+      turns: 0,
+      toolCalls: 0,
+      estimatedCost: null,
+    });
+  });
+
   it('builds updated conversation stats from prior state', () => {
     const existingStats = {
       ...createEmptyConversationStats(),

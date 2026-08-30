@@ -47,9 +47,6 @@ export interface StatsUpdateParams {
 
 export function createEmptyConversationStats(): ConversationStats {
   return {
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
     contextTokens: 0,
     turns: 0,
     toolCalls: 0,
@@ -245,18 +242,9 @@ export function buildConversationStatsUpdate({
   ) {
     throw new Error('Conversation usage update was invalid');
   }
-  const stats = existingStats ?? {
-    ...createEmptyConversationStats(),
-    inputTokens: undefined,
-    outputTokens: undefined,
-    totalTokens: undefined,
-  };
-  const currentModelStats = existingModelStats[modelId] ?? {
-    ...createEmptyConversationStats(),
-    inputTokens: undefined,
-    outputTokens: undefined,
-    totalTokens: undefined,
-  };
+  const stats = existingStats ?? createEmptyConversationStats();
+  const currentModelStats =
+    existingModelStats[modelId] ?? createEmptyConversationStats();
   const inputTokens = getUsageInputTokens(usage);
   const outputTokens = getUsageOutputTokens(usage);
   const systemPromptTokens = fixedTokens?.systemPromptTokens ?? 0;
