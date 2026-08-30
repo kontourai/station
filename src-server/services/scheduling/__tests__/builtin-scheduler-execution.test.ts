@@ -86,11 +86,14 @@ describe('executeSchedulerJobAttempt', () => {
     ).toBe(true);
   });
 
-  test('defers a degraded scheduled job before invocation and emits a distinct event', async () => {
-    const invoke = vi.fn();
+  test('invokes a scheduled job despite a synthetic 99%-busy diagnostic', async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      kind: 'completed',
+      output: 'ran under load',
+    });
     const releaseDeferred = vi.fn().mockReturnValue({ kind: 'applied' });
     const broadcast = vi.fn();
-    const result = await executeSchedulerJobAttempt({
+    const deps = {
       job: {
         name: 'degraded-job',
         prompt: 'run',
@@ -108,10 +111,12 @@ describe('executeSchedulerJobAttempt', () => {
       turnAdapter: { invoke },
       notificationService: null,
       broadcast,
+      // Deliberately supplied as an excess legacy property: execution must
+      // neither sample nor branch on this diagnostic.
       resourcePosture: {
         observe: async () => ({
-          kind: 'degraded',
-          busyPercent: 90,
+          kind: 'critical',
+          busyPercent: 99,
           cpuCount: 8,
           sampledAt: 100,
           sampleMs: 500,
@@ -119,24 +124,16 @@ describe('executeSchedulerJobAttempt', () => {
           source: 'test',
         }),
       },
-    });
+    };
+    const result = await executeSchedulerJobAttempt(deps);
 
-    expect(result).toMatchObject({ outcome: 'deferred', success: false });
-    // archive#3089: a deferred scheduled job and a refused engine start are
-    // different facts and must not collapse into one message — this names
-    // the scheduler explicitly and carries the exact observed busyPercent
-    // the posture probe returned, never a re-sampled value.
-    expect(result.error).toBe(
-      'Scheduler job deferred: resource posture=degraded, observed busyPercent=90',
-    );
-    expect(result.error).not.toMatch(/Engine start refused/);
-    expect(releaseDeferred).toHaveBeenCalledOnce();
-    expect(invoke).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ outcome: 'completed', success: true });
+    expect(releaseDeferred).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledOnce();
     expect(broadcast).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'job.deferred',
-        posture: 'degraded',
-        busy_percent: 90,
+        event: 'job.completed',
+        job: 'degraded-job',
       }),
     );
     expect(

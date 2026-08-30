@@ -3,7 +3,10 @@ import {
   type Schedule,
   validateSchedule,
 } from '@kontourai/ephemeris';
-import type { SchedulerManualRunReceipt } from '@kontourai/station-contracts/scheduler';
+import {
+  SCHEDULER_EXECUTION_LIMITS,
+  type SchedulerManualRunReceipt,
+} from '@kontourai/station-contracts/scheduler';
 import { SCHEDULED_CHECK_STARTER_DEFINITION_VERSION } from '@kontourai/station-contracts/starter-work';
 import type {
   AddJobOpts,
@@ -17,7 +20,6 @@ import type { ISchedulerProvider } from '../../providers/provider-interfaces.js'
 import { schedulerHealthy } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import { schedulerJobCorrelationBindings } from '../../utils/logger-correlation.js';
-import type { RuntimeResourcePostureProbe } from '../infra/resource-posture.js';
 import { SSEBroadcaster } from '../infra/sse-broadcaster.js';
 import type { NotificationService } from '../notifications/notification-service.js';
 import { createScheduleRunId } from '../orchestration/run-projection.js';
@@ -177,7 +179,6 @@ export interface BuiltinSchedulerOptions {
   ledger?: SchedulerLedger;
   turnAdapter: ScheduledTurnAdapter;
   notificationService?: NotificationService | null;
-  resourcePosture?: RuntimeResourcePostureProbe;
   integrationSecretResolver?: IntegrationSecretResolver;
   onActionableMonitor?: (input: {
     jobName: string;
@@ -716,6 +717,33 @@ export class BuiltinScheduler implements ISchedulerProvider {
 
   private async executeJob(initialReceipt: SchedulerDispatchReceipt) {
     const { job } = initialReceipt;
+    if (this.runningJobs.size >= SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs) {
+      const released = initialReceipt.releaseDeferred();
+      const reason = SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason;
+      if (released.kind === 'applied') {
+        this.broadcast({
+          event: 'job.deferred',
+          job: job.name,
+          provider: this.id,
+          id: initialReceipt.id,
+          reason,
+        });
+        return {
+          logId: `${initialReceipt.id}-${initialReceipt.attempt}`,
+          outcome: 'deferred' as const,
+          success: false,
+          error: `Scheduler job deferred: ${reason} (${SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs} concurrent jobs)`,
+          durationSecs: 0,
+        };
+      }
+      return {
+        logId: `${initialReceipt.id}-${initialReceipt.attempt}`,
+        outcome: 'indeterminate' as const,
+        success: false,
+        error: `Scheduler concurrency deferral receipt is ${released.kind}`,
+        durationSecs: 0,
+      };
+    }
     const done = this.trackJob(initialReceipt.id);
     let receipt = initialReceipt;
     // archive#1897 logging slice 3: bound ONCE per execution attempt, so
@@ -779,7 +807,6 @@ export class BuiltinScheduler implements ISchedulerProvider {
             broadcast: (event) => this.broadcast(event),
             announcementOutbox: this.announcementOutbox,
             logger: jobLogger,
-            resourcePosture: this.options.resourcePosture,
             signal: this.stopController.signal,
           }));
         if (result.pendingNotInvoked) {
@@ -1751,15 +1778,17 @@ export class BuiltinScheduler implements ISchedulerProvider {
     }
     return {
       outcome:
-        result.outcome === 'refused'
-          ? starter
-            ? 'failed'
-            : 'refused'
-          : result.outcome === 'failed' ||
-              result.outcome === 'not-invoked' ||
-              (starter && result.outcome === 'deferred')
-            ? 'failed'
-            : 'indeterminate',
+        result.outcome === 'deferred'
+          ? 'deferred'
+          : result.outcome === 'refused'
+            ? starter
+              ? 'failed'
+              : 'refused'
+            : result.outcome === 'failed' ||
+                result.outcome === 'not-invoked' ||
+                (starter && result.outcome === 'deferred')
+              ? 'failed'
+              : 'indeterminate',
       message: `Job '${target}' ${result.outcome}: ${result.error ?? 'scheduler receipt unavailable'}`,
       runId,
     };

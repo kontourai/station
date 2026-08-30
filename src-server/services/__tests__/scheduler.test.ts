@@ -3,6 +3,7 @@ import { once } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SCHEDULER_EXECUTION_LIMITS } from '@kontourai/station-contracts/scheduler';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../__test-utils__/read-json.js';
 import { createLogger } from '../../utils/logger.js';
@@ -220,7 +221,7 @@ describe('BuiltinScheduler', () => {
     expect(mockChatFn).toHaveBeenCalledTimes(1);
   });
 
-  test('keeps an explicit Starter operation interactive under degraded posture', async () => {
+  test('executes an explicit Starter operation directly', async () => {
     const invoke = vi.fn().mockResolvedValue({
       kind: 'completed',
       output: 'ready',
@@ -230,17 +231,6 @@ describe('BuiltinScheduler', () => {
         directory: join(tempDir, 'starter-resource-deferral'),
       }),
       turnAdapter: { invoke },
-      resourcePosture: {
-        observe: async () => ({
-          kind: 'degraded',
-          busyPercent: 90,
-          cpuCount: 8,
-          sampledAt: 100,
-          sampleMs: 500,
-          thresholdPercent: 85,
-          source: 'test',
-        }),
-      },
     });
     try {
       const prepared = deferred.prepareStarterManualIntent(
@@ -740,7 +730,7 @@ describe('BuiltinScheduler', () => {
     expect(owedIds(directory)).toEqual([]);
   });
 
-  test('admits a manual run under degraded posture instead of treating it as cron', async () => {
+  test('executes a manual run directly', async () => {
     const ledger = createSchedulerLedger({
       directory: join(tempDir, 'manual-resource-posture'),
     });
@@ -751,17 +741,6 @@ describe('BuiltinScheduler', () => {
     const manualScheduler = new BuiltinScheduler({
       ledger,
       turnAdapter: { invoke },
-      resourcePosture: {
-        observe: async () => ({
-          kind: 'degraded' as const,
-          busyPercent: 90,
-          cpuCount: 8,
-          sampledAt: 100,
-          sampleMs: 500,
-          thresholdPercent: 85,
-          source: 'test',
-        }),
-      },
     });
     try {
       await manualScheduler.addJob({ name: 'manual-posture', prompt: 'run' });
@@ -772,6 +751,58 @@ describe('BuiltinScheduler', () => {
       expect(invoke).toHaveBeenCalledOnce();
     } finally {
       await manualScheduler.stop();
+    }
+  });
+
+  test('defers excess fan-out with the published concurrency reason', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const invoke = vi.fn(async () => {
+      await gate;
+      return { kind: 'completed' as const, output: 'done' };
+    });
+    const bounded = new BuiltinScheduler({
+      ledger: createSchedulerLedger({
+        directory: join(tempDir, 'scheduler-concurrency-limit'),
+      }),
+      turnAdapter: { invoke },
+    });
+    try {
+      const names = Array.from(
+        { length: SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs + 1 },
+        (_, index) => `bounded-${index}`,
+      );
+      for (const name of names)
+        await bounded.addJob({ name, prompt: `run ${name}` });
+      const running = names
+        .slice(0, SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs)
+        .map((name) => bounded.runJob(name));
+      await vi.waitFor(() =>
+        expect(invoke).toHaveBeenCalledTimes(
+          SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
+        ),
+      );
+
+      await expect(bounded.runJob(names.at(-1)!)).resolves.toMatchObject({
+        outcome: 'deferred',
+        message: expect.stringContaining(
+          SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
+        ),
+      });
+      expect(invoke).toHaveBeenCalledTimes(
+        SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
+      );
+      release();
+      await expect(Promise.all(running)).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ outcome: 'completed' }),
+        ]),
+      );
+    } finally {
+      release?.();
+      await bounded.stop();
     }
   });
 

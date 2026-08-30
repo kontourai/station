@@ -52,7 +52,6 @@ const runMutation = vi.hoisted(() => ({
   isPending: false,
   variables: undefined as string | undefined,
 }));
-const posture = vi.hoisted(() => ({ kind: 'healthy' as string }));
 const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
 
 vi.mock('../hooks/useScheduler', () => ({
@@ -84,10 +83,6 @@ vi.mock('../hooks/useScheduler', () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
-}));
-
-vi.mock('@kontourai/station-sdk/resource-posture', () => ({
-  useResourcePostureQuery: () => ({ data: posture }),
 }));
 
 vi.mock('../contexts/NavigationContext', () => ({
@@ -423,36 +418,27 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     ).toBeNull();
   });
 
-  test('a refused Run now request surfaces its 422 error', () => {
+  test('a failed Run now request surfaces its error', () => {
     seedTwoRunnableJobs();
     runMutation.mutate.mockImplementation((_: string, options: any) =>
-      options.onError(
-        new Error('Scheduler job refused due to resource posture.'),
-      ),
+      options.onError(new Error('Scheduler invocation failed.')),
     );
     render(<ScheduleView />);
 
     fireEvent.click(runButton('nightly-digest'));
     expect(toast.showToast).toHaveBeenCalledWith(
-      "Failed to run 'nightly-digest': Scheduler job refused due to resource posture.",
+      "Failed to run 'nightly-digest': Scheduler invocation failed.",
     );
     expect(screen.getByRole('alert').textContent).toBe(
-      "Failed to run 'nightly-digest': Scheduler job refused due to resource posture.",
+      "Failed to run 'nightly-digest': Scheduler invocation failed.",
     );
   });
 
-  test('asks before an explicit run while the host is under pressure', () => {
+  test('starts an explicit run directly', () => {
     seedTwoRunnableJobs();
-    posture.kind = 'degraded';
     render(<ScheduleView />);
 
     fireEvent.click(runButton('nightly-digest'));
-    expect(runMutation.mutate).not.toHaveBeenCalled();
-    expect(
-      screen.getByRole('dialog', { name: 'Run while host is busy?' }),
-    ).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Run anyway' }));
     expect(runMutation.mutate).toHaveBeenCalledWith(
       'nightly-digest',
       expect.any(Object),
@@ -472,19 +458,6 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
 
     expect(runButton('nightly-digest').disabled).toBe(true);
     expect(runButton('weekly-report').disabled).toBe(false);
-  });
-
-  test('a degraded host pauses job rows as busy, a critical host as at capacity', () => {
-    seedTwoRunnableJobs();
-    posture.kind = 'degraded';
-    const { rerender } = render(<ScheduleView />);
-    expect(screen.getAllByText('paused — host busy')).toHaveLength(2);
-    expect(screen.queryByText('paused — host very busy')).toBeNull();
-
-    posture.kind = 'critical';
-    rerender(<ScheduleView />);
-    expect(screen.getAllByText('paused — host very busy')).toHaveLength(2);
-    expect(screen.queryByText('paused — host busy')).toBeNull();
   });
 
   test('an auth failure whose body is an object never renders [object Object]', async () => {

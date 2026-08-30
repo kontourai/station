@@ -2907,7 +2907,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
   }
 
   /**
-   * A posture deferral happens before any Adapter authorization. Releasing the
+   * A concurrency deferral happens before any Adapter authorization. Releasing the
    * claim preserves the original occurrence for a later scheduler tick without
    * recording a false failure or spending its retry budget.
    */

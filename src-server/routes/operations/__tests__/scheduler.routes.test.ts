@@ -368,12 +368,11 @@ describe('Scheduler Routes', () => {
     });
   });
 
-  test('POST /jobs/:target/run reports a manual resource-posture refusal truthfully', async () => {
+  test('POST /jobs/:target/run reports a manual refusal truthfully', async () => {
     const { app, svc } = setup();
     svc.runJob.mockResolvedValueOnce({
       outcome: 'refused',
-      message:
-        "Job 'daily-report' refused: Scheduler job refused: resource posture=degraded, observed busyPercent=90",
+      message: "Job 'daily-report' refused: provider policy denied the run",
       runId: 'schedule:built-in:daily-report:run-1',
     });
 
@@ -386,8 +385,7 @@ describe('Scheduler Routes', () => {
       success: false,
       code: 'scheduler_run_refused',
       outcome: 'refused',
-      error:
-        "Job 'daily-report' refused: Scheduler job refused: resource posture=degraded, observed busyPercent=90",
+      error: "Job 'daily-report' refused: provider policy denied the run",
       data: {
         receipt: {
           outcome: 'refused',

@@ -5,6 +5,19 @@ export type SchedulerCapability =
   | 'working-dir'
   | 'command';
 
+/**
+ * The built-in scheduler's self-imposed execution ceiling. Published here
+ * instead of buried in the runtime so consumers can size bursts and explain
+ * deferral before discovering the limit as a failure. This is a deterministic
+ * fan-out invariant; it never changes in response to host measurements.
+ */
+export const SCHEDULER_EXECUTION_LIMITS = {
+  /** Scheduled jobs one Station process may invoke concurrently. */
+  maxConcurrentJobs: 4,
+  /** Stable reason recorded when an occurrence waits for an execution slot. */
+  concurrencyDeferralReason: 'scheduler_concurrency_limit',
+} as const;
+
 /** Provider-neutral schedule accepted by every operator surface. */
 export type SchedulerSchedule =
   | Readonly<{ kind: 'cron'; expr: string; timezone?: string }>
@@ -236,11 +249,13 @@ export type SchedulerMutationResponse = Readonly<{ output: string }>;
 
 /**
  * The truthful terminal result of an authenticated manual scheduler request.
- * `indeterminate` means a provider effect may have started and callers must
- * observe the associated run rather than issue an automatic retry.
+ * `deferred` means no provider effect started and the occurrence remains
+ * queued behind the published concurrency ceiling. `indeterminate` means a
+ * provider effect may have started and callers must observe the associated
+ * run rather than issue an automatic retry.
  */
 export type SchedulerManualRunReceipt = Readonly<{
-  outcome: 'completed' | 'failed' | 'indeterminate' | 'refused';
+  outcome: 'completed' | 'deferred' | 'failed' | 'indeterminate' | 'refused';
   message: string;
   /** Canonical `RunSummary.runId` for observation; never a claim capability. */
   runId: string;
