@@ -18,6 +18,7 @@ import {
   vi,
 } from 'vitest';
 import type { ParsedCoreArgs } from '../commands/core-api.js';
+import { DEFAULT_SERVER_PORT } from '../commands/helpers.js';
 
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -68,7 +69,10 @@ beforeEach(() => {
   delete process.env.STATION_PORT;
 
   vi.resetModules();
-  vi.doMock('../commands/helpers.js', () => ({ PROJECT_HOME: tempHome }));
+  vi.doMock('../commands/helpers.js', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../commands/helpers.js')>()),
+    PROJECT_HOME: tempHome,
+  }));
 
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
@@ -104,7 +108,9 @@ describe('configSet', () => {
       ([, init]) => init?.method === 'PUT',
     )!;
     const requestInit = request!;
-    expect(requestUrl).toBe('http://127.0.0.1:3141/config/app/log-level');
+    expect(requestUrl).toBe(
+      `http://127.0.0.1:${DEFAULT_SERVER_PORT}/config/app/log-level`,
+    );
     expect(requestInit).toMatchObject({
       method: 'PUT',
       body: JSON.stringify({ value: 'debug' }),
@@ -363,7 +369,9 @@ describe('configGet', () => {
     const { configGet } = await import('../commands/config.js');
     await configGet('region', NONE);
 
-    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:3141/config/app');
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://127.0.0.1:${DEFAULT_SERVER_PORT}/config/app`,
+    );
     expect(consoleLog).toHaveBeenCalledWith('us-west-2');
     expect(consoleError).toHaveBeenCalledWith(
       expect.stringContaining('AWS_REGION'),

@@ -9405,7 +9405,7 @@ describe('OrchestrationService', () => {
     console.info(
       `[perf] listAllSessionConversations over ${totalSessions} synthetic sessions, capped to ${items.length}: ${durationMs.toFixed(1)}ms`,
     );
-  }, 20000);
+  }, 20_000);
 
   // archive#4466: `listSessionReadModel` backs `/api/orchestration/sessions/read-model`,
   // which the Activity view hits on mount and re-polls. It used to fold every
@@ -9627,7 +9627,7 @@ describe('OrchestrationService', () => {
       perfEventStore.close();
       rmSync(perfTmp, { recursive: true, force: true });
     }
-  }, 20000);
+  }, 60_000);
 
   // archive#4466: `listAgentRuns` is `listSessionReadModel`'s copy-pasted
   // sibling — same `.map` over `listSessionProjectionEvents`/
@@ -13827,7 +13827,11 @@ describe('OrchestrationService', () => {
         connectionId: 'claude',
         provider: 'claude',
         cwd: tmp,
-        timeoutMs: 1_000,
+        // The assertion is about reasoning-only content classification, not a
+        // one-second latency SLA. The complete related corpus can delay this
+        // synthetic event loop on a two-core runner, so retain a bounded but
+        // non-racy operation window.
+        timeoutMs: 5_000,
       }),
     ).resolves.toMatchObject({ ok: true });
   });

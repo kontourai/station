@@ -113,5 +113,8 @@ docs/audits/
 vite.config.ts.timestamp-*.mjs
 app-universal-debug.apk
 
-# Root-level batch/setup scratch markers; one was committed by accident once.
+# Orchestrator lane artifacts (delegation briefs, sentinels) and root-level
+# batch/setup scratch markers — never committed; some were, once, by accident.
+/.codex-*.md
+/.codex-*.log
 /*.exit

@@ -3146,7 +3146,7 @@ for (const requiredHelper of [
   'export async function collectDoctorReport',
   'export async function doctor',
   "const awsCredentialsPath = join(homedir(), '.aws', 'credentials');",
-  "label: 'Configured chat providers'",
+  "label: 'Configured chat model connections'",
 ]) {
   if (!cliLifecycleDoctor.includes(requiredHelper)) {
     errors.push(

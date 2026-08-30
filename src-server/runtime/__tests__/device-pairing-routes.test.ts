@@ -17,6 +17,7 @@ import {
   type PairedDevice,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
 } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
@@ -62,6 +63,7 @@ function createHarness(
     maxActiveOffers?: number;
     maxActiveCredentialsWithoutVerifiedIdentity?: number;
     localGrant?: boolean;
+    startupIdentity?: { instanceId: string; bootId: string } | null;
     uiBootstrapToken?: string;
     now?: () => number;
     failureLimiter?: PairingFailureLimiter;
@@ -101,6 +103,15 @@ function createHarness(
     ...(options.localGrant
       ? { localGrant: { secretPath: localGrantSecretPath } }
       : {}),
+    ...(options.startupIdentity === null
+      ? {}
+      : {
+          startupIdentity: () =>
+            options.startupIdentity ?? {
+              instanceId: 'desktop-sidecar-beta',
+              bootId: 'boot-beta',
+            },
+        }),
     uiBootstrapToken: options.uiBootstrapToken,
     audit: (record) => auditRecords.push(record),
     authFailureAudit: (record) => authFailureAuditRecords.push(record),
@@ -1856,6 +1867,103 @@ describe('additive tolerance on the public pairing endpoints (station#1673)', ()
       '127.0.0.99',
     );
     expect(response.status).toBe(200);
+  });
+});
+
+describe('local-grant startup proof', () => {
+  const LOOPBACK_PEER = '127.0.0.1';
+  const requestBody = (
+    secret: string,
+    overrides: Record<string, unknown> = {},
+  ) => ({
+    secret,
+    instanceId: 'desktop-sidecar-beta',
+    bootId: 'boot-beta',
+    environmentId: ENVIRONMENT_ID,
+    ...overrides,
+  });
+
+  test('confirms only the exact boot/home-owned environment without minting a credential', async () => {
+    const harness = createHarness({ localGrant: true });
+    const response = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
+      harness.json(requestBody(harness.readLocalGrantSecret())),
+      LOOPBACK_PEER,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ready: true });
+    expect(harness.auditRecords).toEqual([]);
+    expect(harness.pairing.listDevices()).toEqual([]);
+  });
+
+  test('refuses wrong secret, instance, boot, and environment with the same opaque result', async () => {
+    const harness = createHarness({ localGrant: true });
+    const secret = harness.readLocalGrantSecret();
+    for (const overrides of [
+      { secret: 'wrong-secret' },
+      { instanceId: 'desktop-sidecar-stable' },
+      { bootId: 'old-boot' },
+      { environmentId: 'foreign-environment' },
+    ]) {
+      const response = await harness.request(
+        PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
+        harness.json(requestBody(secret, overrides)),
+        LOOPBACK_PEER,
+      );
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: 'local_grant_forbidden' });
+    }
+    expect(harness.pairing.listDevices()).toEqual([]);
+  });
+
+  test('refuses missing local grant, non-loopback/proxied calls, malformed input, and absent process identity', async () => {
+    const noGrant = createHarness();
+    const noGrantResponse = await noGrant.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
+      noGrant.json(requestBody('anything')),
+      LOOPBACK_PEER,
+    );
+    expect(noGrantResponse.status).toBe(403);
+
+    const noIdentity = createHarness({
+      localGrant: true,
+      startupIdentity: null,
+    });
+    const noIdentityResponse = await noIdentity.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
+      noIdentity.json(requestBody(noIdentity.readLocalGrantSecret())),
+      LOOPBACK_PEER,
+    );
+    expect(noIdentityResponse.status).toBe(403);
+
+    const harness = createHarness({ localGrant: true });
+    const secret = harness.readLocalGrantSecret();
+    const remote = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
+      harness.json(requestBody(secret)),
+      '100.96.12.40',
+    );
+    expect(remote.status).toBe(403);
+    const proxied = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
+      {
+        ...harness.json(requestBody(secret)),
+        headers: {
+          'Content-Type': 'application/json',
+          [INTERNAL_PROXY_CALLER_HEADER]: 'loopback',
+          [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        },
+      },
+      LOOPBACK_PEER,
+    );
+    expect(proxied.status).toBe(403);
+    const malformed = await harness.request(
+      PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
+      harness.json({ secret }),
+      LOOPBACK_PEER,
+    );
+    expect(malformed.status).toBe(400);
   });
 });
 

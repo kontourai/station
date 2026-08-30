@@ -34,7 +34,7 @@ test('version pipeline pins lock regeneration and the real gate rejects then rec
     readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
   ).scripts['version-packages'];
   expect(rootScript).toBe(
-    'changeset version && npm install --package-lock-only --ignore-scripts --force && npm run lockfile-sync:gate',
+    'changeset version && npm install --package-lock-only --ignore-scripts --force && npm run dependencies:check && npm run lockfile-sync:gate',
   );
   expect(
     readFileSync(
