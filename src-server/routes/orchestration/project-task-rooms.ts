@@ -6,7 +6,6 @@ import {
   parseProjectTaskRoomBrowserLiveSnapshot,
 } from '@kontourai/station-contracts/project-task-room-browser';
 import { Hono } from 'hono';
-import { streamSSE } from 'hono/streaming';
 import { z } from 'zod/v3';
 import {
   formatInteractiveWorkspaceBatchTiming,
@@ -16,6 +15,7 @@ import {
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
 import type { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
+import { streamSSE } from '../sse-response.js';
 
 export async function settleProjectTaskRoomCadence(input: {
   /** A rejected cadence is operationally incomplete, never authorization proof. */
