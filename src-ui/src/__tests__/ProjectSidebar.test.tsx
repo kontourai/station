@@ -13,6 +13,10 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { openChatsStore } from '../contexts/open-chats-store';
 
+vi.mock('../build-info', () => ({
+  buildInfo: { version: '0.1.2', commit: 'test' },
+}));
+
 const {
   chats,
   agents,
@@ -34,6 +38,7 @@ const {
   platformProfile: {
     isTauri: false,
     productName: undefined as string | undefined,
+    channel: undefined as 'stable' | 'beta' | 'nightly' | 'dev' | undefined,
   },
   branding: { appName: 'Station' },
 }));
@@ -119,6 +124,10 @@ function resetState() {
   navigate.mockClear();
   setProject.mockClear();
   setLayout.mockClear();
+  platformProfile.isTauri = false;
+  platformProfile.productName = undefined;
+  platformProfile.channel = undefined;
+  branding.appName = 'Station';
   vi.mocked(openChatsStore.focus).mockClear();
   chatDraftsStore.clear('session-draft');
   window.localStorage.clear();
@@ -129,21 +138,32 @@ function resetState() {
 
 describe('ProjectSidebar WORK list labeling (station#1300)', () => {
   test.each([
-    ['Stable', 'Station'],
-    ['Beta', 'Station Beta'],
-    ['Nightly', 'Station Nightly'],
-    ['Dev', 'Station Dev (sidebar-worktree)'],
+    ['Stable', 'unexpected package title', 'stable', undefined],
+    ['Beta', 'unexpected package title', 'beta', 'beta'],
+    ['Nightly', 'unexpected package title', 'nightly', 'nightly'],
+    ['Dev', 'unexpected package title', 'dev', 'dev'],
   ])(
-    'uses the local %s identity in native sidebar chrome',
-    (_channel, name) => {
+    'uses trusted %s release identity while presenting its channel as a readable badge',
+    (_name, packageName, channel, badge) => {
       resetState();
       platformProfile.isTauri = true;
-      platformProfile.productName = name;
+      platformProfile.productName = packageName;
+      platformProfile.channel = channel as typeof platformProfile.channel;
       branding.appName = 'Remote Station';
       render(<ProjectSidebar />);
+      const home = screen.getByRole('button', {
+        name: `Station${badge ? ` ${badge}` : ''} v0.1.2 home`,
+      });
       expect(
-        screen.getByRole('button', { name: `${name} home` }).textContent,
-      ).toContain(name);
+        home.querySelector('.sidebar__brand-name > span')?.textContent,
+      ).toBe('Station');
+      if (badge) {
+        expect(home.querySelector('.sidebar__channel-badge')?.textContent).toBe(
+          badge,
+        );
+      } else {
+        expect(home.querySelector('.sidebar__channel-badge')).toBeNull();
+      }
     },
   );
 
@@ -151,6 +171,7 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
     resetState();
     platformProfile.isTauri = false;
     platformProfile.productName = 'Station Nightly';
+    platformProfile.channel = 'nightly';
     branding.appName = 'Acme Station';
     render(<ProjectSidebar />);
     expect(
