@@ -7,57 +7,102 @@ name: Build iOS verification artifact
 # verification lane (workflow_dispatch-only) and iOS had none at all — the
 # first iOS build of any kind ran on a real release tag.
 #
-# Deliberately workflow_dispatch-only, NOT pull_request-triggered, unlike
-# build-android.yml's PR path filter added alongside this file. Two reasons,
-# both disclosed rather than silently decided:
-#   1. macOS GitHub-hosted runners bill at a 10x multiplier over Linux —
-#      meaningfully more expensive per run than the Android lane this
-#      mirrors.
-#   2. This repo's hosted CI is presently suspended repo-wide on org billing
-#      (see AGENTS.md/CLAUDE.md, "Hosted CI is down through July 2026") — the
-#      same constraint that caused that suspension. Arming a new recurring
-#      macOS PR gate while that's unresolved is the wrong default; a
-#      workflow_dispatch lane gives iOS parity with where the Android lane
-#      started (manual, on-demand) without compounding the cost problem.
-# Revisit adding a path-filtered pull_request trigger once hosted CI billing
-# is restored and the actual per-run macOS-minute cost is known.
+# Station is public, so standard GitHub-hosted runners are free and unlimited.
+# This lane is path-filtered and cancellation-bound: iOS/native/frontend
+# changes get a fresh unsigned simulator build and packaged-WKWebView runtime
+# assertion, while unrelated PRs consume no macOS capacity.
 on:
+  pull_request_target:
+    paths:
+      - '.github/workflows/build-ios.yml'
+      - 'src-desktop/**'
+      - 'src-ui/**'
+      - 'packages/connect/**'
+      - 'packages/contracts/**'
+      - 'packages/sdk/**'
+      - 'scripts/ios-simulator-runtime-smoke.mjs'
+      - 'scripts/__tests__/ios-simulator-runtime-smoke.test.ts'
+      - 'tests/ios-runtime-smoke/**'
+      - 'package.json'
+      - 'package-lock.json'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-ios.yml'
+      - 'src-desktop/**'
+      - 'src-ui/**'
+      - 'packages/connect/**'
+      - 'packages/contracts/**'
+      - 'packages/sdk/**'
+      - 'scripts/ios-simulator-runtime-smoke.mjs'
+      - 'scripts/__tests__/ios-simulator-runtime-smoke.test.ts'
+      - 'tests/ios-runtime-smoke/**'
+      - 'package.json'
+      - 'package-lock.json'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: build-ios-${{ github.workflow }}-${{ github.ref }}
+  group: build-ios-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-ios-verification:
-    runs-on: macos-15
+    runs-on: macos-26
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
+        with: { node-version-file: .nvmrc }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-apple-ios-sim }
-      - run: brew install xcodegen libimobiledevice cocoapods
-      - run: npm run dependencies:ci && npm run build:sdk && npm run build:connect && npm run build:desktop:resources
+      - name: Select the reviewed Xcode and iOS simulator image
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          xcrun simctl list runtimes | grep -F 'iOS 26.5'
+      - run: brew install xcodegen
+      - run: npm run dependencies:ci && npm run build:native-client
       # See station#2306: the app ROOT comes from cwd, not from --config.
       - working-directory: src-desktop
         run: npx tauri ios init --ci --skip-targets-install --config tauri.conf.json
       - working-directory: src-desktop
         run: rm -rf gen/apple/build && npx tauri ios build --target aarch64-sim --no-sign --ci --config tauri.conf.json
-      - name: Verify and package simulator artifact
+      - id: simulator_artifact
+        name: Verify and package simulator artifact
         run: |
           simulator_app=$(find src-desktop/gen/apple -type d -name '*.app' -print -quit)
           test -n "$simulator_app"
+          simulator_app=$(cd "$simulator_app" && pwd -P)
+          echo "app=$simulator_app" >> "$GITHUB_OUTPUT"
           mkdir release-assets
           tar -C "$(dirname "$simulator_app")" -czf "release-assets/station-ios-simulator-debug.app.tar.gz" "$(basename "$simulator_app")"
+      - name: Prove the packaged WKWebView leaves startup
+        run: >-
+          npm run test:ios-runtime-smoke --
+          --app "${{ steps.simulator_artifact.outputs.app }}"
+          --artifacts "$GITHUB_WORKSPACE/.kontourai/ios-simulator-runtime-smoke"
+          --source-sha "$GITHUB_SHA"
+      - name: Upload iOS runtime evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: station-ios-simulator-runtime
+          path: .kontourai/ios-simulator-runtime-smoke
+          if-no-files-found: warn
+          retention-days: 5
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
         with:
           name: station-ios-simulator-debug
           path: release-assets
-          if-no-files-found: error
+          if-no-files-found: warn
           # A reproducible simulator build, not a deliverable. Kept days, not
           # weeks: station#2218 filled the org artifact quota (688 MB against a
           # 500 MB allowance) and blocked every `fast-checks` run, because an

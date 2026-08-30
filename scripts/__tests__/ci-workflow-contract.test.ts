@@ -1161,6 +1161,29 @@ describe('every Tauri invocation is rooted at the app directory', () => {
   });
 });
 
+describe('iOS verification proves packaged runtime readiness', () => {
+  const ios = workflow('build-ios.yml');
+
+  it('uses the free public macOS 26 runner on affected pull requests', () => {
+    expect(ios).toContain('pull_request_target:');
+    expect(ios).toContain("- 'src-desktop/**'");
+    expect(ios).toContain("- 'src-ui/**'");
+    expect(ios).toContain('runs-on: macos-26');
+    expect(ios).toContain('/Applications/Xcode_26.6.app/Contents/Developer');
+    expect(ios).not.toContain('self-hosted');
+    expect(ios).toContain('persist-credentials: false');
+    expect(ios).toContain("github.event_name == 'pull_request_target'");
+  });
+
+  it('runs the native accessibility smoke and always retains its evidence', () => {
+    expect(ios).toContain('npm run test:ios-runtime-smoke --');
+    expect(ios).toContain('station-ios-simulator-runtime');
+    const evidence = ios.indexOf('name: Upload iOS runtime evidence');
+    expect(evidence).toBeGreaterThan(-1);
+    expect(ios.slice(evidence - 120, evidence + 500)).toContain('if: always()');
+  });
+});
+
 /**
  * Gradle's generated BuildTask.kt re-invokes the CLI as
  * `npm run -- tauri android android-studio-script`, and npm runs a script from

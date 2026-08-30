@@ -392,70 +392,131 @@ function connectionsHubBadgeSettleHooks(): Pick<
   };
 }
 
-async function seedScheduleScreenshotApi(page: Page) {
-  await page.route('**/api/system/status', (route) =>
-    route.fulfill({
-      json: {
-        ready: true,
-        acp: { connected: false, connections: [] },
-        clis: {},
-        prerequisites: [],
-        providers: {
-          configuredChatReady: true,
-          configured: [],
-          detected: { ollama: false, bedrock: false },
-        },
+function fulfillScheduleSystemStatusFixture(route: Route): Promise<void> {
+  return route.fulfill({
+    json: {
+      ready: true,
+      acp: { connected: false, connections: [] },
+      clis: {},
+      prerequisites: [],
+      providers: {
+        configuredChatReady: true,
+        configured: [],
+        detected: { ollama: false, bedrock: false },
       },
-    }),
-  );
-  await page.route('**/api/agents', (route) =>
-    route.fulfill({ json: { success: true, data: [] } }),
-  );
-  await page.route('**/scheduler/providers', (route) =>
-    route.fulfill({
-      json: {
-        success: true,
-        data: [
-          {
+    },
+  });
+}
+
+function fulfillScheduleAgentsFixture(route: Route): Promise<void> {
+  return route.fulfill({ json: { success: true, data: [] } });
+}
+
+function fulfillScheduleProvidersFixture(route: Route): Promise<void> {
+  return route.fulfill({
+    json: {
+      success: true,
+      data: [
+        {
+          id: 'built-in',
+          displayName: 'Built-in Scheduler',
+          capabilities: ['prompt'],
+        },
+      ],
+    },
+  });
+}
+
+function fulfillScheduleStatusFixture(route: Route): Promise<void> {
+  return route.fulfill({
+    json: {
+      success: true,
+      data: {
+        providers: {
+          'built-in': {
             id: 'built-in',
             displayName: 'Built-in Scheduler',
-            capabilities: ['prompt'],
-          },
-        ],
-      },
-    }),
-  );
-  await page.route('**/scheduler/status', (route) =>
-    route.fulfill({
-      json: {
-        success: true,
-        data: {
-          providers: {
-            'built-in': {
-              id: 'built-in',
-              displayName: 'Built-in Scheduler',
-              running: true,
-              healthy: true,
-            },
+            running: true,
+            healthy: true,
           },
         },
       },
-    }),
-  );
-  await page.route('**/scheduler/stats', (route) =>
-    route.fulfill({
-      json: {
-        success: true,
-        data: {
-          providers: {},
-          summary: { totalJobs: 0, totalRuns: 0, successRate: -1 },
-        },
+    },
+  });
+}
+
+function fulfillScheduleStatsFixture(route: Route): Promise<void> {
+  return route.fulfill({
+    json: {
+      success: true,
+      data: {
+        providers: {},
+        summary: { totalJobs: 0, totalRuns: 0, successRate: -1 },
       },
-    }),
-  );
-  await page.route('**/scheduler/jobs', (route) =>
-    route.fulfill({ json: { success: true, data: [] } }),
-  );
+    },
+  });
+}
+
+function fulfillScheduleJobsEmptyFixture(route: Route): Promise<void> {
+  return route.fulfill({ json: { success: true, data: [] } });
+}
+
+/* Callers MUST capture the returned cleanup and run it in afterGoto's
+   finally — `Screen.beforeGoto`'s void return type accepts a bare
+   `seedScheduleScreenshotApi` shorthand that silently discards it,
+   reinstating the cross-screen route leak this fixes (#573). */
+async function seedScheduleScreenshotApi(
+  page: Page,
+): Promise<() => Promise<void>> {
+  const cleanups = [
+    await withRoute(
+      page,
+      '**/api/system/status',
+      fulfillScheduleSystemStatusFixture,
+    ),
+    await withRoute(page, '**/api/agents', fulfillScheduleAgentsFixture),
+    await withRoute(
+      page,
+      '**/scheduler/providers',
+      fulfillScheduleProvidersFixture,
+    ),
+    await withRoute(page, '**/scheduler/status', fulfillScheduleStatusFixture),
+    await withRoute(page, '**/scheduler/stats', fulfillScheduleStatsFixture),
+    await withRoute(page, '**/scheduler/jobs', fulfillScheduleJobsEmptyFixture),
+  ];
+  return async () => {
+    for (const cleanup of cleanups.reverse()) await cleanup();
+  };
+}
+
+async function fulfillScheduleLoadingJobsFixture(route: Route): Promise<void> {
+  await new Promise((resolveDelay) => setTimeout(resolveDelay, 15_000));
+  await route.fulfill({ json: { success: true, data: [] } });
+}
+
+function fulfillScheduleGalleryJobFixture(route: Route): Promise<void> {
+  return route.fulfill({
+    json: {
+      success: true,
+      data: [
+        {
+          name: 'gallery-demo-job',
+          provider: 'built-in',
+          cron: '30 14 * * *',
+          prompt: 'Demo job for the screenshot gallery.',
+          enabled: true,
+        },
+      ],
+    },
+  });
+}
+
+function fulfillAgentsEmptyFixture(route: Route): Promise<void> {
+  return route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ success: true, data: [] }),
+  });
 }
 
 /**
@@ -1156,16 +1217,22 @@ const SCREENS: Screen[] = [
     viewport: DESKTOP,
   },
   { name: 'plugins', title: 'Plugins', path: '/plugins', viewport: DESKTOP },
-  {
-    name: 'schedule',
-    title: 'Schedule',
-    path: '/schedule',
-    viewport: DESKTOP,
-    // archive#4464: without this, ScheduleView hits the live (unmocked)
-    // scheduler/system endpoints on a freshly booted temp-home server —
-    // real content whose exact bytes vary run to run.
-    beforeGoto: seedScheduleScreenshotApi,
-  },
+  (() => {
+    let cleanup: () => Promise<void> = async () => {};
+    return {
+      name: 'schedule',
+      title: 'Schedule',
+      path: '/schedule',
+      viewport: DESKTOP,
+      // archive#4464: without this, ScheduleView hits the live (unmocked)
+      // scheduler/system endpoints on a freshly booted temp-home server —
+      // real content whose exact bytes vary run to run.
+      beforeGoto: async (page) => {
+        cleanup = await seedScheduleScreenshotApi(page);
+      },
+      afterGoto: () => cleanup(),
+    } satisfies Screen;
+  })(),
   {
     name: 'developer-telemetry',
     title: 'Developer telemetry',
@@ -1332,31 +1399,36 @@ const SCREENS: Screen[] = [
   },
   // archive#192 converged empty-state screens — both should render the shared
   // Console Kit `Empty` visual (dashed-border card), not bespoke markup.
-  {
-    name: 'agents-empty',
-    title: 'Agents — empty state',
-    path: '/agents',
-    viewport: DESKTOP,
-    beforeGoto: async (page) => {
-      await page.route('**/api/agents', (route) =>
-        route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ success: true, data: [] }),
-        }),
-      );
-    },
-    afterGoto: async (page) => {
-      // Stability guard: the mocked, empty `/api/agents` response can still
-      // land a beat after the generic post-navigation settle, leaving a
-      // loading skeleton on screen instead of the converged `Empty` tile.
-      // Assert the actual empty-state copy is visible immediately before the
-      // shot rather than trusting the fixed settle delay.
-      await expect(page.getByText('No agents yet')).toBeVisible({
-        timeout: 10_000,
-      });
-    },
-  },
+  (() => {
+    let cleanup: () => Promise<void> = async () => {};
+    return {
+      name: 'agents-empty',
+      title: 'Agents — empty state',
+      path: '/agents',
+      viewport: DESKTOP,
+      beforeGoto: async (page) => {
+        cleanup = await withRoute(
+          page,
+          '**/api/agents',
+          fulfillAgentsEmptyFixture,
+        );
+      },
+      afterGoto: async (page) => {
+        try {
+          // Stability guard: the mocked, empty `/api/agents` response can still
+          // land a beat after the generic post-navigation settle, leaving a
+          // loading skeleton on screen instead of the converged `Empty` tile.
+          // Assert the actual empty-state copy is visible immediately before the
+          // shot rather than trusting the fixed settle delay.
+          await expect(page.getByText('No agents yet')).toBeVisible({
+            timeout: 10_000,
+          });
+        } finally {
+          await cleanup();
+        }
+      },
+    } satisfies Screen;
+  })(),
   {
     name: 'command-palette-empty',
     title: 'Command palette — no matches',
@@ -1443,54 +1515,75 @@ const SCREENS: Screen[] = [
     // upgrading these probes to getAnimations().
     afterGoto: (page) => assertReducedMotion(page, '.route-transition'),
   },
-  {
-    name: 'motion-reduced-schedule-loading',
-    title: 'Reduced motion — Schedule loading',
-    path: '/schedule',
-    viewport: DESKTOP,
-    reducedMotion: true,
-    // This screen's whole point is capturing the skeleton itself (with the
-    // `/scheduler/jobs` fetch held open below) — opt out of the universal
-    // assertNoLoadingSkeleton wait, which would otherwise wait out its
-    // entire 15s deadline every run.
-    expectSkeleton: true,
-    beforeGoto: async (page) => {
-      await seedScheduleScreenshotApi(page);
-      await page.route('**/scheduler/jobs', async (route) => {
-        await new Promise((resolveDelay) => setTimeout(resolveDelay, 15_000));
-        await route.fulfill({
-          json: { success: true, data: [] },
-        });
-      });
-    },
-    // archive#4461: NOT `.station-spinner` — that class is gone entirely.
-    // `ScheduleView` now renders its loading state via the shared
-    // `SkeletonBlock` (ScheduleView.tsx:204-205), whose blocks carry
-    // `@kontourai/ui`'s animated `.skeleton` class. Same honest scope as the
-    // navigation screen above: this derives the global reduce collapse on an
-    // animated element, not the ui package's own reduce override (archive#4467).
-    afterGoto: (page) => assertReducedMotion(page, '.skeleton'),
-  },
-  {
-    name: 'motion-reduced-schedule-modal',
-    title: 'Reduced motion — Schedule modal',
-    path: '/schedule',
-    viewport: DESKTOP,
-    reducedMotion: true,
-    beforeGoto: seedScheduleScreenshotApi,
-    afterGoto: async (page) => {
-      await page.getByRole('button', { name: 'Add job', exact: true }).click();
-      // archive#4461: NOT `.schedule__modal-overlay` — Add Job migrated onto
-      // the shared `Dialog` chrome (components/Dialog.tsx), which renders its
-      // backdrop as `.station-dialog__overlay` (Dialog.tsx:118, index.css:699).
-      // `.schedule__modal` survives unchanged: it's still passed through as
-      // `panelClassName` onto the dialog panel
-      // (components/scheduler/JobFormModal.tsx:274). Same honest scope as the
-      // other motion screens: these derive the global reduce collapse (archive#4467).
-      await assertReducedMotion(page, '.station-dialog__overlay');
-      await assertReducedMotion(page, '.schedule__modal');
-    },
-  },
+  (() => {
+    let cleanups: (() => Promise<void>)[] = [];
+    return {
+      name: 'motion-reduced-schedule-loading',
+      title: 'Reduced motion — Schedule loading',
+      path: '/schedule',
+      viewport: DESKTOP,
+      reducedMotion: true,
+      // This screen's whole point is capturing the skeleton itself (with the
+      // `/scheduler/jobs` fetch held open below) — opt out of the universal
+      // assertNoLoadingSkeleton wait, which would otherwise wait out its
+      // entire 15s deadline every run.
+      expectSkeleton: true,
+      beforeGoto: async (page) => {
+        cleanups = [
+          await seedScheduleScreenshotApi(page),
+          await withRoute(
+            page,
+            '**/scheduler/jobs',
+            fulfillScheduleLoadingJobsFixture,
+          ),
+        ];
+      },
+      // archive#4461: NOT `.station-spinner` — that class is gone entirely.
+      // `ScheduleView` now renders its loading state via the shared
+      // `SkeletonBlock` (ScheduleView.tsx:204-205), whose blocks carry
+      // `@kontourai/ui`'s animated `.skeleton` class. Same honest scope as the
+      // navigation screen above: this derives the global reduce collapse on an
+      // animated element, not the ui package's own reduce override (archive#4467).
+      afterGoto: async (page) => {
+        try {
+          await assertReducedMotion(page, '.skeleton');
+        } finally {
+          for (const cleanup of cleanups.reverse()) await cleanup();
+        }
+      },
+    } satisfies Screen;
+  })(),
+  (() => {
+    let cleanup: () => Promise<void> = async () => {};
+    return {
+      name: 'motion-reduced-schedule-modal',
+      title: 'Reduced motion — Schedule modal',
+      path: '/schedule',
+      viewport: DESKTOP,
+      reducedMotion: true,
+      beforeGoto: async (page) => {
+        cleanup = await seedScheduleScreenshotApi(page);
+      },
+      afterGoto: async (page) => {
+        try {
+          await page
+            .getByRole('button', { name: 'Add job', exact: true })
+            .click();
+          // archive#4461: NOT `.schedule__modal-overlay` — Add Job migrated onto
+          // the shared `Dialog` chrome (components/Dialog.tsx), which renders its
+          // backdrop as `.station-dialog__overlay` (Dialog.tsx:118, index.css:699).
+          // `.schedule__modal` survives unchanged: it's still passed through as
+          // `panelClassName` onto the dialog panel
+          // (components/scheduler/JobFormModal.tsx:274). Same honest scope as the
+          // other motion screens: these derive the global reduce collapse (archive#4467).
+          await assertReducedMotion(page, '.station-dialog__overlay');
+          await assertReducedMotion(page, '.schedule__modal');
+        } finally {
+          await cleanup();
+        }
+      },
+    } satisfies Screen;
+  })(),
   {
     name: 'motion-reduced-notification',
     title: 'Reduced motion — notification',
@@ -1743,64 +1836,73 @@ const SCREENS: Screen[] = [
       await expect(newProjectOverlay(page)).toBeVisible({ timeout: 10_000 });
     },
   },
-  {
-    name: 'overlay-add-job-modal',
-    title: 'Overlay — Add Job modal',
-    path: '/schedule',
-    viewport: DESKTOP,
-    beforeGoto: seedScheduleScreenshotApi,
-    afterGoto: async (page) => {
-      await page.getByRole('button', { name: 'Add job', exact: true }).click();
-      await expect(page.locator('.station-dialog__overlay')).toBeVisible({
-        timeout: 10_000,
-      });
-      await expect(page.locator('.schedule__modal')).toBeVisible();
-    },
-  },
-  {
-    name: 'overlay-confirm-dialog',
-    title: 'Overlay — Destructive confirm (Delete Job)',
-    path: '/schedule',
-    viewport: DESKTOP,
-    beforeGoto: async (page) => {
-      await seedScheduleScreenshotApi(page);
-      // Override the empty-list default with one job so the table (and its
-      // per-row Delete action) renders. `lastRun`/`nextRun`/`successRate`
-      // are deliberately omitted — each renders live-relative-time text
-      // ('never'/'-'/'—') only when present, which is otherwise exactly
-      // the kind of two-runs-disagree noise this gallery's own settle
-      // guards exist to avoid. The cron's minute/hour are fully specified
-      // (no wildcards) so `cronToHuman`'s rendered clock time depends only
-      // on those digits, never on the capture's wall-clock moment.
-      await page.route('**/scheduler/jobs', (route) =>
-        route.fulfill({
-          json: {
-            success: true,
-            data: [
-              {
-                name: 'gallery-demo-job',
-                provider: 'built-in',
-                cron: '30 14 * * *',
-                prompt: 'Demo job for the screenshot gallery.',
-                enabled: true,
-              },
-            ],
-          },
-        }),
-      );
-    },
-    afterGoto: async (page) => {
-      await page
-        .getByRole('button', { name: 'Delete gallery-demo-job' })
-        .click();
-      // Deliberately never confirmed: this screen captures the OPEN confirm
-      // dialog, not the deletion it would perform.
-      await expect(
-        page.getByRole('heading', { name: 'Delete Job' }),
-      ).toBeVisible({ timeout: 10_000 });
-      await expect(page.locator('.station-dialog__overlay')).toBeVisible();
-    },
-  },
+  (() => {
+    let cleanup: () => Promise<void> = async () => {};
+    return {
+      name: 'overlay-add-job-modal',
+      title: 'Overlay — Add Job modal',
+      path: '/schedule',
+      viewport: DESKTOP,
+      beforeGoto: async (page) => {
+        cleanup = await seedScheduleScreenshotApi(page);
+      },
+      afterGoto: async (page) => {
+        try {
+          await page
+            .getByRole('button', { name: 'Add job', exact: true })
+            .click();
+          await expect(page.locator('.station-dialog__overlay')).toBeVisible({
+            timeout: 10_000,
+          });
+          await expect(page.locator('.schedule__modal')).toBeVisible();
+        } finally {
+          await cleanup();
+        }
+      },
+    } satisfies Screen;
+  })(),
+  (() => {
+    let cleanups: (() => Promise<void>)[] = [];
+    return {
+      name: 'overlay-confirm-dialog',
+      title: 'Overlay — Destructive confirm (Delete Job)',
+      path: '/schedule',
+      viewport: DESKTOP,
+      beforeGoto: async (page) => {
+        cleanups = [
+          await seedScheduleScreenshotApi(page),
+          // Override the empty-list default with one job so the table (and its
+          // per-row Delete action) renders. `lastRun`/`nextRun`/`successRate`
+          // are deliberately omitted — each renders live-relative-time text
+          // ('never'/'-'/'—') only when present, which is otherwise exactly
+          // the kind of two-runs-disagree noise this gallery's own settle
+          // guards exist to avoid. The cron's minute/hour are fully specified
+          // (no wildcards) so `cronToHuman`'s rendered clock time depends only
+          // on those digits, never on the capture's wall-clock moment.
+          await withRoute(
+            page,
+            '**/scheduler/jobs',
+            fulfillScheduleGalleryJobFixture,
+          ),
+        ];
+      },
+      afterGoto: async (page) => {
+        try {
+          await page
+            .getByRole('button', { name: 'Delete gallery-demo-job' })
+            .click();
+          // Deliberately never confirmed: this screen captures the OPEN confirm
+          // dialog, not the deletion it would perform.
+          await expect(
+            page.getByRole('heading', { name: 'Delete Job' }),
+          ).toBeVisible({ timeout: 10_000 });
+          await expect(page.locator('.station-dialog__overlay')).toBeVisible();
+        } finally {
+          for (const cleanup of cleanups.reverse()) await cleanup();
+        }
+      },
+    } satisfies Screen;
+  })(),
   {
     name: 'overlay-mobile-sheet',
     title: 'Overlay — Mobile project-switcher sheet',
