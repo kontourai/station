@@ -124,9 +124,19 @@ const JOURNEY_FILTER = (process.env.CORE_LOOP_JOURNEYS ?? '')
  * here that PASSES fails the run: the entry is stale and must be removed.
  */
 const EXPECTED_JOURNEY_FAILURES = new Map([
-  // (empty since kontourai/station#834 was fixed: the continuation
-  // eligibility gate now treats a stopped, unloaded current child as
-  // continuable through the successor reserve path.)
+  // 2-capacity-gate asserts the pre-#837 refusal contract (critical posture
+  // -> HTTP 409). Since #837, an interactive dispatch under critical posture
+  // is admitted and returns HTTP 200 (surfacing as an override requirement,
+  // not a flat refusal). kontourai/station#958 tracks retiring this journey
+  // alongside the owner's in-flight removal of capacity gating; do not fix
+  // the assertion here — remove this entry and the journey when #958 lands.
+  [
+    '2-capacity-gate',
+    {
+      issue: 'kontourai/station#958',
+      expectedMessageSubstring: 'returned HTTP 200, expected 409',
+    },
+  ],
 ]);
 
 async function runJourney(id, title, fn) {
