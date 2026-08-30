@@ -8792,7 +8792,9 @@ button.tool-call__line:hover {
 
   /* The maximized chat is the ONLY state that adds the drawer toggle (the app
      toolbar is hidden, so this bar carries navigation), and it is the state
-     that overflows: seven 44px slots need 308px before gaps, against 304.
+     that overflows: six 44px icon slots plus the measured 53.28px labelled
+     connection chip and seven 2px gaps need 331.28px before the identity block,
+     against 304px.
      The 44px floor is not negotiable and every other control here is the sole
      entry point for its action — but dock height is not: the ⋯ sheet already
      carries Expand/Restore/Collapse as named menu items, precisely so the drag
@@ -8839,6 +8841,7 @@ button.tool-call__line:hover {
    neither is the only channel. */
 .chat-dock__mobile-conn {
   gap: var(--space-2);
+  padding: 0;
 }
 
 .chat-dock__mobile-conn--attention {
@@ -8849,20 +8852,19 @@ button.tool-call__line:hover {
   background: color-mix(in srgb, #f59e0b 18%, transparent);
 }
 
-/* archive#4512: `max-width` + ellipsis is a BELT, not
-   the fix — `ChatDockMobileConnection.tsx`'s own short-form vocabulary
-   ("Pair", "Re-pair", "Waiting", vs the toolbar chip's full "Awaiting
-   approval" / "Needs re-pairing") is the actual fix for this bar's tight
-   320px-viewport budget. That budget is spec-pinned: the "320px header
-   contains every pinned control" case in tests/mobile-chat-composer.spec.ts
-   drives an awaiting-approval 'Waiting' chip and runs its containment and
-   eyebrow/title assertions with the label rendered (#547). This bound exists because the icon
-   cluster this label sits in (`.chat-dock__mobile-header-icon`) is
-   `flex-shrink: 0` — it never gives ground itself, so an unbounded label
-   could only ever grow the row, not fit into it. Measured (real Chromium,
-   the app's self-hosted DM Sans, this exact font-size/weight): the widest
-   short form, "Waiting", renders at ~38px; 44px is that plus headroom, not
-   a fix for an overflow that reproduces today. */
+/* archive#4512: `max-width` + ellipsis is a BELT, not the primary fit
+   mechanism. `ChatDockMobileConnection.tsx` supplies the short forms "Pair",
+   "Re-pair", and "Waiting" instead of the toolbar chip's full sentences, and
+   this control drops inherited horizontal button padding while retaining one
+   `--space-2` icon/label gap. The "320px header contains every pinned control"
+   case in tests/mobile-chat-composer.spec.ts drives both `needs-repair` and an
+   awaiting-approval "Waiting" chip, then includes the labelled chip in its
+   containment and eyebrow/title assertions (#547). Its merged-tree A/B
+   overlapped Switch project with Chat actions without `padding: 0` (expected
+   >=107px, received 103.390625px). The bound still matters because this icon
+   cluster is `flex-shrink: 0`: an unbounded label could only grow the row.
+   Measured in real Chromium with the app's self-hosted DM Sans, the widest
+   short form, "Waiting", renders at ~38px; 44px is that plus headroom. */
 .chat-dock__mobile-conn-label {
   font-size: var(--text-xs);
   font-weight: 600;
