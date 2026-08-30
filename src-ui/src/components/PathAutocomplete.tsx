@@ -183,6 +183,18 @@ export function PathAutocomplete({
     setActive(false);
   }, []);
 
+  // A blur can be armed for reasons that have nothing to do with the user
+  // choosing to leave the field (e.g. a remount elsewhere in the tree
+  // stealing then returning focus). If the input is re-engaged before the
+  // 200ms blur timer fires, that timer is stale and must not dismiss a
+  // dropdown the user never asked to close.
+  const cancelBlurTimer = useCallback(() => {
+    if (blurTimerRef.current) {
+      clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     if (!show) return;
     const isInside = (target: EventTarget | null) =>
@@ -316,6 +328,7 @@ export function PathAutocomplete({
         type="text"
         value={value}
         onChange={(e) => {
+          cancelBlurTimer();
           onChange(e.target.value);
           setUserDismissed(false);
           setActive(true);
@@ -331,6 +344,7 @@ export function PathAutocomplete({
           }, 200);
         }}
         onFocus={() => {
+          cancelBlurTimer();
           setUserDismissed(false);
           setActive(true);
         }}
