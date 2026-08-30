@@ -32,6 +32,7 @@ vi.mock('../chat-persistence.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../chat-persistence.js')>()),
 }));
 
+import { tokensInput, tokensOutput } from '../../../telemetry/metrics.js';
 import { estimateCost, findModelPricing } from '../../../utils/pricing.js';
 import {
   emitChatAgentStart,
@@ -256,6 +257,56 @@ describe('chat-lifecycle helpers', () => {
 
     expect(ctx.metricsLog).toHaveLength(1);
     expect(ctx.metricsLog[0]).not.toHaveProperty('cost');
+  });
+
+  test('does not manufacture input usage when only output tokens were reported', async () => {
+    vi.mocked(tokensInput.add).mockClear();
+    vi.mocked(tokensOutput.add).mockClear();
+    const ctx = createRuntimeContext();
+    const chatSpan = {
+      setAttribute: vi.fn(),
+      setStatus: vi.fn(),
+      end: vi.fn(),
+    };
+
+    await finalizeChatRequest({
+      ctx,
+      slug: 'agent-a',
+      plugin: 'plugin-a',
+      input: 'hello',
+      operationContext: {
+        userId: 'user-1',
+        conversationId: 'conversation-1',
+        traceId: 'trace-1',
+      },
+      completionReason: 'completed',
+      accumulatedText: 'Answer',
+      reasoningText: '',
+      artifacts: [],
+      result: { usage: Promise.resolve({ completionTokens: 7 }) },
+      memoryAdapter: null,
+      conversationId: 'conversation-1',
+      isNewConversation: false,
+      chatStartMs: Date.now(),
+      chatSpan,
+    });
+
+    expect(ctx.monitoringEmitter.emitAgentComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ usage: { outputTokens: 7 } }),
+    );
+    expect(tokensInput.add).not.toHaveBeenCalled();
+    expect(tokensOutput.add).toHaveBeenCalledWith(7, {
+      agent: 'agent-a',
+      plugin: 'plugin-a',
+    });
+    expect(chatSpan.setAttribute).not.toHaveBeenCalledWith(
+      'station.tokens.input',
+      expect.anything(),
+    );
+    expect(chatSpan.setAttribute).toHaveBeenCalledWith(
+      'station.tokens.output',
+      7,
+    );
   });
 
   // archive#191 R2 persistence-gap fix: a failed turn that produced zero output

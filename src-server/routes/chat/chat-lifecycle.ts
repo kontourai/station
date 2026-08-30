@@ -319,6 +319,8 @@ export async function finalizeChatRequest({
   }
 
   if (ctx.monitoringEmitter) {
+    const inputTokens = usage?.promptTokens ?? usage?.inputTokens;
+    const outputTokens = usage?.completionTokens ?? usage?.outputTokens;
     ctx.monitoringEmitter.emitAgentComplete({
       slug,
       conversationId: operationContext.conversationId,
@@ -334,8 +336,8 @@ export async function finalizeChatRequest({
       outputChars: finalOutput.length,
       usage: usage
         ? {
-            inputTokens: usage.promptTokens || usage.inputTokens || 0,
-            outputTokens: usage.completionTokens || usage.outputTokens || 0,
+            ...(inputTokens !== undefined ? { inputTokens } : {}),
+            ...(outputTokens !== undefined ? { outputTokens } : {}),
           }
         : undefined,
       artifacts,
@@ -351,8 +353,8 @@ export async function finalizeChatRequest({
     }
   }
 
-  const inputTokenCount = usage?.promptTokens || usage?.inputTokens || 0;
-  const outputTokenCount = usage?.completionTokens || usage?.outputTokens || 0;
+  const inputTokenCount = usage?.promptTokens ?? usage?.inputTokens;
+  const outputTokenCount = usage?.completionTokens ?? usage?.outputTokens;
   let estimatedCost: number | undefined;
 
   if (usage && ctx.modelCatalog) {
@@ -432,8 +434,12 @@ export async function finalizeChatRequest({
     agent: slug,
     plugin,
   });
-  if (usage) {
+  // Counters require a number. An absent provider figure is not zero, so skip
+  // that counter instead of manufacturing a measurement.
+  if (inputTokenCount !== undefined) {
     tokensInput.add(inputTokenCount, { agent: slug, plugin });
+  }
+  if (outputTokenCount !== undefined) {
     tokensOutput.add(outputTokenCount, { agent: slug, plugin });
   }
   if (estimatedCost !== undefined && estimatedCost > 0) {
@@ -444,8 +450,12 @@ export async function finalizeChatRequest({
     'station.conversation_id',
     operationContext.conversationId || '',
   );
-  chatSpan.setAttribute('station.tokens.input', inputTokenCount);
-  chatSpan.setAttribute('station.tokens.output', outputTokenCount);
+  if (inputTokenCount !== undefined) {
+    chatSpan.setAttribute('station.tokens.input', inputTokenCount);
+  }
+  if (outputTokenCount !== undefined) {
+    chatSpan.setAttribute('station.tokens.output', outputTokenCount);
+  }
   chatSpan.setStatus?.({ code: SpanStatusCode.OK });
   chatSpan.end();
 }
