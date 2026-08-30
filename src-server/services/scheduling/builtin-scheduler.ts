@@ -284,7 +284,11 @@ export class BuiltinScheduler implements ISchedulerProvider {
   private runningJobs = new Map<string, Promise<void>>();
   /** Invocation permits, intentionally narrower than whole retry lifecycles. */
   private activeInvocations = new Set<string>();
-  private invocationCapacityWaiters = new Set<() => void>();
+  private invocationCapacityWaiters = new Set<{
+    invocationId: string;
+    resolve: (release: (() => void) | undefined) => void;
+    abort: () => void;
+  }>();
   private sse = new SSEBroadcaster();
   private readonly notificationService: NotificationService | null;
   private readonly ledger: SchedulerLedger;
@@ -480,36 +484,74 @@ export class BuiltinScheduler implements ISchedulerProvider {
 
   private trackInvocation(invocationId: string): () => void {
     this.activeInvocations.add(invocationId);
+    let released = false;
     return () => {
+      if (released) return;
+      released = true;
       this.activeInvocations.delete(invocationId);
-      for (const wake of this.invocationCapacityWaiters) wake();
+      this.drainInvocationCapacityWaiters();
     };
+  }
+
+  /**
+   * FIFO handoff is synchronous: a released slot is inserted into
+   * `activeInvocations` before its waiter Promise resolves. Another waiter can
+   * therefore never observe or claim the same slot. Shutdown removes queued
+   * waiters without claiming; a waiter already handed a release capability is
+   * covered by `executeJob`'s `finally`, even if shutdown wins the next turn.
+   */
+  private drainInvocationCapacityWaiters(): void {
+    while (
+      !this.stopping &&
+      this.activeInvocations.size < SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs
+    ) {
+      const waiter = this.invocationCapacityWaiters.values().next().value;
+      if (!waiter) return;
+      this.invocationCapacityWaiters.delete(waiter);
+      this.stopController.signal.removeEventListener('abort', waiter.abort);
+      waiter.resolve(this.trackInvocation(waiter.invocationId));
+    }
   }
 
   /**
    * Retried/recovered receipts retain durable ownership while waiting. They
    * must not be deleted and reclaimed as attempt 1, so they wait for a permit
-   * in memory and wake on either a release or scheduler shutdown.
+   * in memory and wake on either a release or scheduler shutdown. There is no
+   * wall-clock bound: timing out would abandon the one durable retry claim and
+   * weaken a proved-not-invoked result to indeterminate. Process shutdown is
+   * the explicit abort bound.
    */
-  private async waitForInvocationCapacity(): Promise<boolean> {
-    while (
-      !this.stopping &&
-      this.activeInvocations.size >=
-        SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs
+  private async waitForInvocationCapacity(
+    invocationId: string,
+  ): Promise<(() => void) | undefined> {
+    if (this.stopping) return undefined;
+    if (
+      this.invocationCapacityWaiters.size === 0 &&
+      this.activeInvocations.size < SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs
     ) {
-      await new Promise<void>((resolve) => {
-        const wake = () => {
-          this.invocationCapacityWaiters.delete(wake);
-          this.stopController.signal.removeEventListener('abort', wake);
-          resolve();
-        };
-        this.invocationCapacityWaiters.add(wake);
-        this.stopController.signal.addEventListener('abort', wake, {
-          once: true,
-        });
-      });
+      return this.trackInvocation(invocationId);
     }
-    return !this.stopping;
+    return new Promise<(() => void) | undefined>((resolve) => {
+      const waiter: {
+        invocationId: string;
+        resolve: (release: (() => void) | undefined) => void;
+        abort: () => void;
+      } = {
+        invocationId,
+        resolve,
+        abort: () => {
+          this.invocationCapacityWaiters.delete(waiter);
+          resolve(undefined);
+        },
+      };
+      this.invocationCapacityWaiters.add(waiter);
+      this.stopController.signal.addEventListener('abort', waiter.abort, {
+        once: true,
+      });
+      // This closes the check/enqueue race and also serves capacity that was
+      // already free while an earlier FIFO waiter was being installed.
+      this.drainInvocationCapacityWaiters();
+    });
   }
 
   /** Replays terminal Task bells left owed by a crash or a refused queue. */
@@ -776,15 +818,67 @@ export class BuiltinScheduler implements ISchedulerProvider {
             durationSecs: 0,
           };
         }
+        const attempt = receipt.attempt;
+        const maxAttempts = receipt.maxAttempts;
+        const id = `${receipt.id}-${attempt}`;
         if (
           !receipt.manual &&
           this.activeInvocations.size >=
             SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs
         ) {
-          if (receipt.attempt > 1) {
-            if (!(await this.waitForInvocationCapacity())) {
+          if (attempt > 1) {
+            const reason = SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason;
+            const waitingSince = Date.now();
+            this.observe(() =>
+              this.options.logger?.warn(
+                'Scheduler retry waiting for invocation capacity',
+                {
+                  job: job.name,
+                  id,
+                  attempt,
+                  maxAttempts,
+                  reason,
+                  maxConcurrentJobs:
+                    SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
+                },
+              ),
+            );
+            this.observe(() =>
+              schedulerConcurrencyDeferrals.add(1, {
+                reason,
+                disposition: 'waiting',
+              }),
+            );
+            this.observe(() =>
+              this.broadcast({
+                event: 'job.deferred',
+                job: job.name,
+                provider: this.id,
+                id,
+                reason,
+              }),
+            );
+            releaseInvocation = await this.waitForInvocationCapacity(id);
+            const admitted = Boolean(releaseInvocation) && !this.stopping;
+            this.observe(() =>
+              this.options.logger?.info(
+                'Scheduler retry invocation capacity wait ended',
+                {
+                  job: job.name,
+                  id,
+                  attempt,
+                  maxAttempts,
+                  reason,
+                  disposition: admitted ? 'admitted' : 'stopped',
+                  waitMs: Date.now() - waitingSince,
+                },
+              ),
+            );
+            if (!admitted) {
+              releaseInvocation?.();
+              releaseInvocation = undefined;
               return {
-                logId: `${receipt.id}-${receipt.attempt}`,
+                logId: id,
                 outcome: 'indeterminate' as const,
                 success: false,
                 error: 'Scheduler stopped before the next retry invocation',
@@ -814,6 +908,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
                   event: 'job.deferred',
                   job: job.name,
                   provider: this.id,
+                  id,
                   reason,
                 }),
               );
@@ -825,8 +920,25 @@ export class BuiltinScheduler implements ISchedulerProvider {
                 durationSecs: 0,
               };
             }
+            this.observe(() =>
+              this.options.logger?.warn(
+                'Scheduler concurrency deferral receipt was indeterminate',
+                {
+                  job: job.name,
+                  id,
+                  reason,
+                  receiptKind: released.kind,
+                },
+              ),
+            );
+            this.observe(() =>
+              schedulerConcurrencyDeferrals.add(1, {
+                reason,
+                disposition: 'indeterminate',
+              }),
+            );
             return {
-              logId: `${receipt.id}-${receipt.attempt}`,
+              logId: id,
               outcome: 'indeterminate' as const,
               success: false,
               error: `Scheduler concurrency deferral receipt is ${released.kind}`,
@@ -834,10 +946,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
             };
           }
         }
-        const attempt = receipt.attempt;
-        const maxAttempts = receipt.maxAttempts;
-        const id = `${receipt.id}-${attempt}`;
-        releaseInvocation = this.trackInvocation(id);
+        releaseInvocation ??= this.trackInvocation(id);
         let jobLogger: Logger | undefined;
         try {
           jobLogger = this.options.logger?.child(

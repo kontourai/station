@@ -761,8 +761,10 @@ describe('BuiltinScheduler', () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+    let manualActiveInvocations = 0;
     const invoke = vi.fn(async ({ prompt }: { prompt: string }) => {
       if (prompt === 'run manual-bypass') {
+        manualActiveInvocations = (bounded as any).activeInvocations.size;
         return { kind: 'completed' as const, output: 'manual completed' };
       }
       await gate;
@@ -798,6 +800,9 @@ describe('BuiltinScheduler', () => {
         outcome: 'completed',
       });
       expect(invoke).toHaveBeenCalledTimes(
+        SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs + 1,
+      );
+      expect(manualActiveInvocations).toBe(
         SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs + 1,
       );
       release();
@@ -863,6 +868,7 @@ describe('BuiltinScheduler', () => {
         event: 'job.deferred',
         job: names.at(-1),
         provider: 'built-in',
+        id: expect.stringMatching(/-1$/),
         reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
       });
       expect(logger.warn).toHaveBeenCalledWith(
@@ -903,7 +909,12 @@ describe('BuiltinScheduler', () => {
       enabled: true,
       createdAt: new Date(Date.now() - 10_000).toISOString(),
     });
+    let peakActiveInvocations = 0;
     const invoke = vi.fn(async ({ prompt, receipt }: any) => {
+      peakActiveInvocations = Math.max(
+        peakActiveInvocations,
+        (retrying as any).activeInvocations.size,
+      );
       if (prompt === 'automatic') {
         return { kind: 'completed' as const, output: 'admitted' };
       }
@@ -932,6 +943,11 @@ describe('BuiltinScheduler', () => {
         runs.push(retrying.runJob(name));
       }
       await vi.waitFor(() =>
+        expect(peakActiveInvocations).toBe(
+          SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
+        ),
+      );
+      await vi.waitFor(() =>
         expect((retrying as any).activeInvocations.size).toBe(0),
       );
       (retrying as any).tick();
@@ -944,6 +960,216 @@ describe('BuiltinScheduler', () => {
       await retrying.stop();
       await Promise.all(runs);
     }
+  });
+
+  test('one released permit admits exactly one parked retry invocation', async () => {
+    const ledger = createSchedulerLedger({
+      directory: join(tempDir, 'retry-capacity-fifo'),
+    });
+    const waiterCount = 3;
+    const createdAt = new Date(Date.now() - 10_000).toISOString();
+    for (let index = 0; index < waiterCount; index += 1) {
+      ledger.create({
+        name: `parked-retry-${index}`,
+        prompt: `parked-retry-${index}`,
+        schedule: { kind: 'every', everyMs: 1_000 },
+        enabled: true,
+        retryCount: 1,
+        createdAt,
+      });
+    }
+    const claimed = ledger.claimDue(Date.now());
+    if (claimed.kind !== 'available' || claimed.value.length !== waiterCount)
+      throw new Error('expected one automatic receipt per parked retry');
+    const retries = claimed.value.map((receipt) => {
+      expect(receipt.beginInvocation()).toEqual({ kind: 'applied' });
+      const advanced = receipt.recordNotInvoked({
+        completedAt: new Date().toISOString(),
+        error: 'retry safely',
+      });
+      if (advanced.kind !== 'claimed')
+        throw new Error('expected an attempt-2 receipt');
+      return advanced.receipt;
+    });
+
+    let finishInvocations!: () => void;
+    const invocationGate = new Promise<void>((resolve) => {
+      finishInvocations = resolve;
+    });
+    let peakActiveInvocations = 0;
+    const invoke = vi.fn(async () => {
+      peakActiveInvocations = Math.max(
+        peakActiveInvocations,
+        (bounded as any).activeInvocations.size,
+      );
+      await invocationGate;
+      return { kind: 'completed' as const, output: 'retried' };
+    });
+    const bounded = new BuiltinScheduler({ ledger, turnAdapter: { invoke } });
+    const releaseOccupied = Array.from(
+      { length: SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs },
+      (_, index) => (bounded as any).trackInvocation(`occupied-${index}`),
+    );
+    const executions = retries.map((receipt) =>
+      (bounded as any).executeJob(receipt),
+    );
+    try {
+      await vi.waitFor(() =>
+        expect((bounded as any).invocationCapacityWaiters.size).toBe(
+          waiterCount,
+        ),
+      );
+
+      releaseOccupied.shift()?.();
+
+      await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+      expect(peakActiveInvocations).toBeLessThanOrEqual(
+        SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
+      );
+      expect((bounded as any).activeInvocations.size).toBe(
+        SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
+      );
+    } finally {
+      for (const release of releaseOccupied) release();
+      finishInvocations();
+      await Promise.all(executions);
+      await bounded.stop();
+    }
+  });
+
+  test('a parked retry wakes and completes when capacity is released', async () => {
+    const ledger = createSchedulerLedger({
+      directory: join(tempDir, 'retry-capacity-wake'),
+    });
+    ledger.create({
+      name: 'parked-retry',
+      prompt: 'parked-retry',
+      schedule: { kind: 'every', everyMs: 1_000 },
+      enabled: true,
+      retryCount: 1,
+      createdAt: new Date(Date.now() - 10_000).toISOString(),
+    });
+    const claimed = ledger.claimDue(Date.now());
+    if (claimed.kind !== 'available' || !claimed.value[0])
+      throw new Error('expected an automatic receipt');
+    expect(claimed.value[0].beginInvocation()).toEqual({ kind: 'applied' });
+    const advanced = claimed.value[0].recordNotInvoked({
+      completedAt: new Date().toISOString(),
+      error: 'retry safely',
+    });
+    if (advanced.kind !== 'claimed')
+      throw new Error('expected an attempt-2 receipt');
+
+    const invoke = vi
+      .fn()
+      .mockResolvedValue({ kind: 'completed', output: 'retried' });
+    const logger = { ...mockLogger, warn: vi.fn(), info: vi.fn() } as any;
+    logger.child.mockReturnValue(logger);
+    const metric = vi
+      .spyOn(schedulerConcurrencyDeferrals, 'add')
+      .mockImplementation(() => undefined);
+    const bounded = new BuiltinScheduler({
+      ledger,
+      logger,
+      turnAdapter: { invoke },
+    });
+    const events: Array<Record<string, unknown>> = [];
+    bounded.subscribe((data) => events.push(JSON.parse(data)));
+    const releaseOccupied = Array.from(
+      { length: SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs },
+      (_, index) => (bounded as any).trackInvocation(`occupied-${index}`),
+    );
+    const execution = (bounded as any).executeJob(advanced.receipt);
+    try {
+      await vi.waitFor(() =>
+        expect((bounded as any).invocationCapacityWaiters.size).toBe(1),
+      );
+      releaseOccupied.shift()?.();
+      await expect(execution).resolves.toMatchObject({ outcome: 'completed' });
+      expect(invoke).toHaveBeenCalledOnce();
+      expect((bounded as any).invocationCapacityWaiters.size).toBe(0);
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Scheduler retry waiting for invocation capacity',
+        expect.objectContaining({
+          id: `${advanced.receipt.id}-2`,
+          reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
+        }),
+      );
+      expect(logger.info).toHaveBeenCalledWith(
+        'Scheduler retry invocation capacity wait ended',
+        expect.objectContaining({ disposition: 'admitted' }),
+      );
+      expect(metric).toHaveBeenCalledWith(1, {
+        reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
+        disposition: 'waiting',
+      });
+      expect(events).toContainEqual({
+        event: 'job.deferred',
+        job: 'parked-retry',
+        provider: 'built-in',
+        id: `${advanced.receipt.id}-2`,
+        reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
+      });
+    } finally {
+      for (const release of releaseOccupied) release();
+      await bounded.stop();
+    }
+  });
+
+  test('shutdown drains a handed-off retry without stranding invocation capacity', async () => {
+    const ledger = createSchedulerLedger({
+      directory: join(tempDir, 'retry-capacity-shutdown'),
+    });
+    ledger.create({
+      name: 'shutdown-retry',
+      prompt: 'shutdown-retry',
+      schedule: { kind: 'every', everyMs: 1_000 },
+      enabled: true,
+      retryCount: 1,
+      createdAt: new Date(Date.now() - 10_000).toISOString(),
+    });
+    const claimed = ledger.claimDue(Date.now());
+    if (claimed.kind !== 'available' || !claimed.value[0])
+      throw new Error('expected an automatic receipt');
+    expect(claimed.value[0].beginInvocation()).toEqual({ kind: 'applied' });
+    const advanced = claimed.value[0].recordNotInvoked({
+      completedAt: new Date().toISOString(),
+      error: 'retry safely',
+    });
+    if (advanced.kind !== 'claimed')
+      throw new Error('expected an attempt-2 receipt');
+
+    const invoke = vi.fn();
+    const bounded = new BuiltinScheduler({ ledger, turnAdapter: { invoke } });
+    const releaseOccupied = Array.from(
+      { length: SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs },
+      (_, index) => (bounded as any).trackInvocation(`occupied-${index}`),
+    );
+    const execution = (bounded as any).executeJob(advanced.receipt);
+    const queuedOnly = (bounded as any).waitForInvocationCapacity(
+      'shutdown-queued',
+    );
+    await vi.waitFor(() =>
+      expect((bounded as any).invocationCapacityWaiters.size).toBe(2),
+    );
+
+    releaseOccupied.shift()?.();
+    await bounded.stop();
+
+    await expect(execution).resolves.toMatchObject({
+      outcome: 'indeterminate',
+      error: 'Scheduler stopped before the next retry invocation',
+    });
+    expect(invoke).not.toHaveBeenCalled();
+    await expect(queuedOnly).resolves.toBeUndefined();
+    expect((bounded as any).invocationCapacityWaiters.size).toBe(0);
+    expect(
+      (bounded as any).activeInvocations.has(`${advanced.receipt.id}-2`),
+    ).toBe(false);
+    expect((bounded as any).activeInvocations.has('shutdown-queued')).toBe(
+      false,
+    );
+    for (const release of releaseOccupied) release();
   });
 
   test('a failed concurrency release reports indeterminate without broadcasting a deferral', async () => {
@@ -966,8 +1192,14 @@ describe('BuiltinScheduler', () => {
       ...claimed.value[0],
       releaseDeferred,
     });
+    const logger = { ...mockLogger, warn: vi.fn() } as any;
+    logger.child.mockReturnValue(logger);
+    const metric = vi
+      .spyOn(schedulerConcurrencyDeferrals, 'add')
+      .mockImplementation(() => undefined);
     const bounded = new BuiltinScheduler({
       ledger,
+      logger,
       turnAdapter: { invoke: vi.fn() },
     });
     const events: Array<Record<string, unknown>> = [];
@@ -989,6 +1221,14 @@ describe('BuiltinScheduler', () => {
       expect(events).not.toContainEqual(
         expect.objectContaining({ event: 'job.deferred' }),
       );
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Scheduler concurrency deferral receipt was indeterminate',
+        expect.objectContaining({ receiptKind: 'stale' }),
+      );
+      expect(metric).toHaveBeenCalledWith(1, {
+        reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
+        disposition: 'indeterminate',
+      });
     } finally {
       (bounded as any).activeInvocations.clear();
       await bounded.stop();
@@ -1032,59 +1272,56 @@ describe('BuiltinScheduler', () => {
     }
   });
 
-  test('throwing and timed-out invocations release their slots for subsequent jobs', async () => {
-    const throwingInvoke = vi
+  test('an escaping monitor probe cleanup releases its invocation slot', async () => {
+    const invoke = vi
       .fn()
-      .mockImplementationOnce(() => {
-        throw new Error('adapter exploded');
-      })
-      .mockResolvedValue({ kind: 'completed', output: 'after throw' });
-    const throwing = new BuiltinScheduler({
+      .mockResolvedValue({ kind: 'completed', output: 'after probe failure' });
+    const escaping = new BuiltinScheduler({
       ledger: createSchedulerLedger({
-        directory: join(tempDir, 'throw-slot-release'),
+        directory: join(tempDir, 'escaping-monitor-slot-release'),
       }),
-      turnAdapter: { invoke: throwingInvoke },
+      turnAdapter: { invoke },
+      integrationSecretResolver: {
+        resolveForIntegration: vi.fn().mockResolvedValue({
+          environment: { GITHUB_TOKEN: 'test-token' },
+          settlement: {
+            settle: vi.fn(() => {
+              throw new Error('monitor settlement exploded');
+            }),
+          },
+        }),
+      } as any,
     });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new Error('monitor transport exploded')),
+    );
     try {
-      await throwing.addJob({ name: 'throws', prompt: 'throw' });
-      await throwing.addJob({ name: 'after-throw', prompt: 'continue' });
-      await expect(throwing.runJob('throws')).resolves.toMatchObject({
-        outcome: 'indeterminate',
+      await escaping.addJob({
+        name: 'escaping-monitor',
+        prompt: 'observe',
+        schedule: { kind: 'every', everyMs: 60_000 },
+        monitor: {
+          kind: 'github-pull-request',
+          objective: 'review-ready',
+          target: 'https://github.com/kontourai/station/pull/971',
+          projectId: 'personal',
+          agentId: 'station',
+          credentialSecretBinding: 'github-monitor',
+        },
       });
-      expect((throwing as any).activeInvocations.size).toBe(0);
-      await expect(throwing.runJob('after-throw')).resolves.toMatchObject({
+      await escaping.addJob({ name: 'after-probe', prompt: 'continue' });
+      await expect(escaping.runJob('escaping-monitor')).rejects.toThrow(
+        'monitor settlement exploded',
+      );
+      expect((escaping as any).activeInvocations.size).toBe(0);
+      await expect(escaping.runJob('after-probe')).resolves.toMatchObject({
         outcome: 'completed',
       });
+      expect(invoke).toHaveBeenCalledOnce();
     } finally {
-      await throwing.stop();
-    }
-
-    vi.useFakeTimers();
-    const timeoutInvoke = vi
-      .fn()
-      .mockImplementationOnce(() => new Promise<never>(() => {}))
-      .mockResolvedValue({ kind: 'completed', output: 'after timeout' });
-    const timingOut = new BuiltinScheduler({
-      ledger: createSchedulerLedger({
-        directory: join(tempDir, 'timeout-slot-release'),
-      }),
-      turnAdapter: { invoke: timeoutInvoke },
-    });
-    try {
-      await timingOut.addJob({ name: 'times-out', prompt: 'hang' });
-      await timingOut.addJob({ name: 'after-timeout', prompt: 'continue' });
-      const timedOut = timingOut.runJob('times-out');
-      await vi.advanceTimersByTimeAsync(10 * 60_000 + 1);
-      await expect(timedOut).resolves.toMatchObject({
-        outcome: 'indeterminate',
-      });
-      expect((timingOut as any).activeInvocations.size).toBe(0);
-      await expect(timingOut.runJob('after-timeout')).resolves.toMatchObject({
-        outcome: 'completed',
-      });
-    } finally {
-      await timingOut.stop();
-      vi.useRealTimers();
+      await escaping.stop();
+      vi.unstubAllGlobals();
     }
   });
 

@@ -6,19 +6,21 @@ export type SchedulerCapability =
   | 'command';
 
 /**
- * The built-in scheduler's self-imposed execution ceiling. Published here
- * instead of buried in the runtime so consumers can size bursts and explain
- * deferral before discovering the limit as a failure. This is a deterministic
- * fan-out invariant; it never changes in response to host measurements.
+ * The built-in scheduler's self-imposed automatic-execution ceiling. Published
+ * here instead of buried in the runtime so consumers can explain deterministic
+ * deferral and retry waiting. Explicit manual runs are exempt so an operator
+ * can always act, but they are counted while active: automatic retries do not
+ * add more work until total active invocations fall below the ceiling. The
+ * limit never changes in response to host measurements.
  */
 export const SCHEDULER_EXECUTION_LIMITS = {
   /**
-   * Scheduled jobs one Station process may invoke concurrently. Four permits
-   * a modest burst of independent jobs while bounding provider/process fan-out
-   * identically on every host; changing it is an explicit contract change.
+   * Automatic jobs one Station process admits concurrently when no exempt
+   * manual work is active. Four permits a modest burst of independent jobs;
+   * changing it is an explicit contract change.
    */
   maxConcurrentJobs: 4,
-  /** Stable reason recorded when an occurrence waits for an execution slot. */
+  /** Stable reason recorded when an occurrence defers or waits for a slot. */
   concurrencyDeferralReason: 'scheduler_concurrency_limit',
 } as const;
 
