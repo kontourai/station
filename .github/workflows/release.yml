@@ -19,6 +19,7 @@ jobs:
       tag: ${{ steps.source.outputs.tag }}
       version: ${{ steps.source.outputs.version }}
       channel: ${{ steps.source.outputs.channel }}
+      desktop_updater_tag: ${{ steps.source.outputs.desktop_updater_tag }}
       desktop_updater_endpoint: ${{ steps.source.outputs.desktop_updater_endpoint }}
       beta_desktop_config: ${{ steps.source.outputs.beta_desktop_config }}
       android_package: ${{ steps.source.outputs.android_package }}
@@ -38,15 +39,14 @@ jobs:
         run: |
           [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$ ]]
           release_version="${RELEASE_TAG#v}"
+          desktop_updater_tag=$(node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --print-desktop-updater-tag)
           if [[ "$RELEASE_TAG" == *-preview.* ]]; then
             release_channel=preview
-            desktop_updater_tag=beta-desktop
             beta_desktop_config=src-desktop/tauri.beta.conf.json
             android_package=io.kontourai.station.beta
             android_product_name='Station Beta'
           else
             release_channel=stable
-            desktop_updater_tag=stable-desktop
             beta_desktop_config=
             android_package=io.kontourai.station
             android_product_name=Station
@@ -68,6 +68,7 @@ jobs:
             echo "tag=$RELEASE_TAG"
             echo "version=$release_version"
             echo "channel=$release_channel"
+            echo "desktop_updater_tag=$desktop_updater_tag"
             echo "desktop_updater_endpoint=https://github.com/${GITHUB_REPOSITORY}/releases/download/${desktop_updater_tag}/latest.json"
             echo "beta_desktop_config=$beta_desktop_config"
             echo "android_package=$android_package"

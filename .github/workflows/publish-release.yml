@@ -7,6 +7,15 @@ on:
         description: Draft release tag to revalidate and publish
         required: true
         type: string
+      allow_updater_pointer_regression:
+        description: Break glass only - permit an older rolling desktop pointer after owner review
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: station-release-publish
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -19,6 +28,8 @@ jobs:
       created_at: ${{ steps.source.outputs.created_at }}
       version: ${{ steps.source.outputs.version }}
       channel: ${{ steps.source.outputs.channel }}
+      desktop_updater_tag: ${{ steps.source.outputs.desktop_updater_tag }}
+      has_current_updater_manifest: ${{ steps.source.outputs.has_current_updater_manifest }}
     env:
       RELEASE_TAG: ${{ inputs.tag }}
     steps:
@@ -37,21 +48,35 @@ jobs:
           git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           sha=$(git rev-list -n 1 "$RELEASE_TAG")
           gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' | grep -qx true
+          desktop_updater_tag=$(node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --print-desktop-updater-tag)
+          if ! updater_release=$(gh release view "$desktop_updater_tag" --repo "$GITHUB_REPOSITORY" --json isDraft,assets); then
+            echo "::error::Could not query rolling release $desktop_updater_tag; see the GitHub CLI diagnostic above. Bootstrap it if it does not exist, otherwise retry after API recovery." >&2
+            exit 1
+          fi
+          updater_release_state=$(UPDATER_RELEASE="$updater_release" node -p 'JSON.parse(process.env.UPDATER_RELEASE).isDraft')
+          if [[ "$updater_release_state" == true ]]; then
+            echo "::error::$desktop_updater_tag is a draft release; its download URLs are unavailable to installed apps." >&2
+            exit 1
+          fi
+          if [[ "$updater_release_state" != false ]]; then
+            echo "::error::Could not verify $desktop_updater_tag is public; refusing to publish this channel." >&2
+            exit 1
+          fi
+          has_current_updater_manifest=$(UPDATER_RELEASE="$updater_release" node -p 'JSON.parse(process.env.UPDATER_RELEASE).assets.some(({name}) => name === "latest.json")')
           created_at=$(node -e 'process.stdout.write(new Date(Number(process.argv[1]) * 1000).toISOString())' "$(git show -s --format=%ct "$sha")")
           {
             echo "sha=$sha"
             echo "created_at=$created_at"
             echo "version=${RELEASE_TAG#v}"
             echo "channel=$([[ "$RELEASE_TAG" == *-preview.* ]] && echo preview || echo stable)"
+            echo "desktop_updater_tag=$desktop_updater_tag"
+            echo "has_current_updater_manifest=$has_current_updater_manifest"
           } >> "$GITHUB_OUTPUT"
 
   publish:
     needs: resolve
     runs-on: ubuntu-latest
     environment: native-release-publish
-    concurrency:
-      group: station-release-publish-${{ needs.resolve.outputs.sha }}
-      cancel-in-progress: false
     permissions:
       contents: write
       packages: write
@@ -61,7 +86,7 @@ jobs:
       RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
       RELEASE_CREATED_AT: ${{ needs.resolve.outputs.created_at }}
       RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
-      DESKTOP_UPDATER_TAG: ${{ needs.resolve.outputs.channel == 'preview' && 'beta-desktop' || 'stable-desktop' }}
+      DESKTOP_UPDATER_TAG: ${{ needs.resolve.outputs.desktop_updater_tag }}
       GITHUB_REPOSITORY: ${{ github.repository }}
       VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
       VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
@@ -105,45 +130,13 @@ jobs:
               --cert-oidc-issuer https://token.actions.githubusercontent.com \
               --deny-self-hosted-runners
           done
-      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
-      - name: Authenticate to GHCR with the ephemeral workflow token
-        env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GH_TOKEN: ${{ github.token }}
-        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-      - name: Promote only the recorded immutable GHCR digest
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          descriptor=release-assets/station-container-release.json
-          image=$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1])).image)' "$descriptor")
-          digest=$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1])).digest)' "$descriptor")
-          staging="$image:sha-$RELEASE_SHA"
-          resolved=$(docker buildx imagetools inspect "$staging" --format '{{.Manifest.Digest}}')
-          test "$resolved" = "$digest"
-          node -e 'for (const tag of JSON.parse(require("node:fs").readFileSync(process.argv[1])).tags) console.log(tag)' "$descriptor" |
-            while read -r tag; do
-              docker buildx imagetools create --tag "$image:$tag" "$image@$digest"
-            done
       - name: Assemble and validate the rolling desktop updater channel
         env:
           GH_TOKEN: ${{ github.token }}
+          HAS_CURRENT_UPDATER_MANIFEST: ${{ needs.resolve.outputs.has_current_updater_manifest }}
+          ALLOW_UPDATER_POINTER_REGRESSION: ${{ inputs.allow_updater_pointer_regression }}
         run: |
           set -euo pipefail
-          updater_release_state=$(gh release view "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null || true)
-          if [[ "$updater_release_state" == true ]]; then
-            echo "::error::$DESKTOP_UPDATER_TAG is a draft release; its download URLs are unavailable to installed apps." >&2
-            exit 1
-          fi
-          if [[ -z "$updater_release_state" ]]; then
-            echo "::error::$DESKTOP_UPDATER_TAG does not exist; an owner must bootstrap the rolling prerelease/tag before publishing this channel." >&2
-            exit 1
-          fi
-          if [[ "$updater_release_state" != false ]]; then
-            echo "::error::Could not verify $DESKTOP_UPDATER_TAG is public; refusing to update its assets." >&2
-            exit 1
-          fi
-
           updater_assets=(
             "station-${RELEASE_TAG}-macos-aarch64.app.tar.gz"
             "station-${RELEASE_TAG}-macos-aarch64.app.tar.gz.sig"
@@ -158,7 +151,7 @@ jobs:
             test -s "release-assets/$asset"
           done
 
-          mkdir updater-channel-assets
+          mkdir -p updater-channel-assets
           node scripts/lib/tauri-updater-manifest.mjs \
             --version "$RELEASE_VERSION" \
             --pub-date "$RELEASE_CREATED_AT" \
@@ -182,6 +175,42 @@ jobs:
             --notes "Station ${DESKTOP_UPDATER_TAG} build ${RELEASE_VERSION} (${RELEASE_SHA})" \
             --output updater-channel-assets/latest.json
           test -s updater-channel-assets/latest.json
+
+          if [[ "$HAS_CURRENT_UPDATER_MANIFEST" == true ]]; then
+            mkdir -p updater-channel-current
+            gh release download "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" --dir updater-channel-current --pattern latest.json
+            pointer_guard=(
+              node scripts/lib/tauri-updater-manifest.mjs
+              --assert-not-regressing
+              --candidate-manifest updater-channel-assets/latest.json
+              --current-manifest updater-channel-current/latest.json
+            )
+            if [[ "$ALLOW_UPDATER_POINTER_REGRESSION" == true ]]; then
+              pointer_guard+=(--allow-regression)
+            fi
+            "${pointer_guard[@]}"
+          fi
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - name: Authenticate to GHCR with the ephemeral workflow token
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Promote only the recorded immutable GHCR digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          descriptor=release-assets/station-container-release.json
+          image=$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1])).image)' "$descriptor")
+          digest=$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1])).digest)' "$descriptor")
+          staging="$image:sha-$RELEASE_SHA"
+          resolved=$(docker buildx imagetools inspect "$staging" --format '{{.Manifest.Digest}}')
+          test "$resolved" = "$digest"
+          node -e 'for (const tag of JSON.parse(require("node:fs").readFileSync(process.argv[1])).tags) console.log(tag)' "$descriptor" |
+            while read -r tag; do
+              docker buildx imagetools create --tag "$image:$tag" "$image@$digest"
+            done
 
       - name: Publish release and compensate to draft until feed verifies
         env:

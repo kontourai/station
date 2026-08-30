@@ -337,9 +337,28 @@ downloads every `station-*` asset, verifies every asset's GitHub provenance and
 the inventory/checksums, and compares the live `sha-<source-sha>` image to the
 digest recorded in `station-container-release.json`. It promotes only
 `image@recorded-digest` to the recorded version/channel aliases, then changes
-the draft visibility. Publish concurrency is source-SHA scoped, so two tags for
-one commit cannot race alias mutation. A failed draft is fixed with a new tag;
-never replace a release asset under the same tag.
+the draft visibility. One repository-wide publish lock serializes Stable and
+Preview releases because both mutate rolling container aliases and desktop
+updater releases. Before any public mutation, the read-only resolve job also
+requires the selected `stable-desktop` or `beta-desktop` release to exist and
+be public. A failed draft is fixed with a new tag; never replace an immutable
+tag release asset under the same tag.
+
+Stable and Preview desktop builds embed the endpoint for their rolling release.
+Publish uploads the signed updater archives to that release before replacing
+`latest.json`, then redownloads and verifies the complete result. The pointer
+guard refuses to replace a newer manifest with an older version, so a delayed
+draft cannot silently regress the channel.
+
+The normal recovery for a bad desktop release is a higher fixed version. If an
+owner must stop offering the bad version before that replacement is ready, use
+the protected `allow_updater_pointer_regression` dispatch input only after
+reviewing the candidate draft, the current rolling `latest.json`, and the
+target channel. This break-glass permits the older pointer and is recorded in
+the workflow dispatch, but Tauri will not downgrade clients that already
+installed the newer version; those clients still require a higher fixed
+release. After the repair, verify the rolling release's archives and
+`latest.json`, then leave the guard enabled only for that single dispatch.
 
 To roll back a public release, remove it from installer resolution by changing
 it back to a draft, revoke the affected external-store listing, and publish a

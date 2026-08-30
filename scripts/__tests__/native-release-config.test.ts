@@ -6,6 +6,7 @@ import { describe, expect, test } from 'vitest';
 import {
   assertRepositoryVersion,
   createNativeReleaseConfig,
+  desktopUpdaterTagForReleaseTag,
   NATIVE_UPDATER_ARTIFACT_MODE,
   nativeIdentifierForChannel,
   nativeProductNameForChannel,
@@ -66,6 +67,13 @@ describe('native release configuration', () => {
     expect(
       createNativeReleaseConfig({ tag: 'v2.3.4-preview.5' }),
     ).not.toHaveProperty('identifier');
+  });
+
+  test('maps release tags to the rolling desktop channel once', () => {
+    expect(desktopUpdaterTagForReleaseTag('v2.3.4-preview.5')).toBe(
+      'beta-desktop',
+    );
+    expect(desktopUpdaterTagForReleaseTag('v2.3.4')).toBe('stable-desktop');
   });
 
   test('keeps Preview marketing SemVer while assigning its macOS numeric build number', () => {
@@ -183,6 +191,71 @@ describe('native release configuration', () => {
     expect(NATIVE_UPDATER_ARTIFACT_MODE).toBe('v1Compatible');
   });
 
+  test('the CLI embeds the selected rolling updater endpoint', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-native-endpoint-'));
+    const publicKey = join(directory, 'updater.pub');
+    const output = join(directory, 'tauri.release.conf.json');
+    const endpoint =
+      'https://github.com/kontourai/station/releases/download/stable-desktop/latest.json';
+    writeFileSync(publicKey, 'trusted-public-key\n', { mode: 0o600 });
+
+    execFileSync(
+      process.execPath,
+      [
+        'scripts/lib/native-release-config.mjs',
+        '--tag',
+        'v2.3.4',
+        '--updater-public-key-file',
+        publicKey,
+        '--updater-endpoint',
+        endpoint,
+        '--output',
+        output,
+      ],
+      { cwd: join(import.meta.dirname, '../..') },
+    );
+
+    expect(
+      JSON.parse(readFileSync(output, 'utf8')).plugins.updater.endpoints,
+    ).toEqual([endpoint]);
+  });
+
+  test('the CLI rejects unknown flags instead of silently ignoring them', () => {
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          'scripts/lib/native-release-config.mjs',
+          '--tag',
+          'v2.3.4',
+          '--updater-endpont',
+          'https://example.com/latest.json',
+          '--output',
+          'unused.json',
+        ],
+        { cwd: join(import.meta.dirname, '../..'), stdio: 'pipe' },
+      ),
+    ).toThrow(/unknown argument/);
+  });
+
+  test('the CLI exposes the shared release-tag to updater-channel mapping', () => {
+    expect(
+      execFileSync(
+        process.execPath,
+        [
+          'scripts/lib/native-release-config.mjs',
+          '--tag',
+          'v2.3.4-preview.5',
+          '--print-desktop-updater-tag',
+        ],
+        {
+          cwd: join(import.meta.dirname, '../..'),
+          encoding: 'utf8',
+        },
+      ),
+    ).toBe('beta-desktop');
+  });
+
   test('the shared updater plugin overlay adds an endpoint only when one is given (station#575)', () => {
     expect(updaterPluginConfig('trusted-public-key')).toEqual({
       createUpdaterArtifacts: NATIVE_UPDATER_ARTIFACT_MODE,
@@ -233,8 +306,13 @@ describe('native release configuration', () => {
     const config = createNativeReleaseConfig({
       tag: 'v1.2.3',
       updaterPublicKey: 'pin-check-key',
+      updaterEndpoint:
+        'https://github.com/kontourai/station/releases/download/stable-desktop/latest.json',
     });
     expect(config.plugins?.updater?.pubkey).toBe('pin-check-key');
+    expect(config.plugins?.updater?.endpoints).toEqual([
+      'https://github.com/kontourai/station/releases/download/stable-desktop/latest.json',
+    ]);
 
     // Nightly is the one channel shipping BOTH fields today — pin its
     // emitter against the predicate's actual contract (non-empty pubkey,

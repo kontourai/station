@@ -14,9 +14,40 @@ import { basename, join } from 'node:path';
 
 const PUB_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const HTTPS_URL_PATTERN = /^https:\/\/\S+$/;
+const RELEASE_VERSION_PATTERN =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-preview\.([1-9]\d*))?$/;
+const PLATFORM_ASSET_TOKENS = Object.freeze({
+  'darwin-aarch64': ['macos', 'aarch64'],
+  'darwin-x86_64': ['macos', 'x86_64'],
+  'windows-x86_64': ['windows', 'x86_64'],
+  'linux-x86_64': ['linux', 'x86_64'],
+});
 
 function fail(message) {
   throw new Error(`Invalid Tauri updater manifest: ${message}`);
+}
+
+function assetNameFromUrl(url) {
+  try {
+    return basename(new URL(url).pathname);
+  } catch {
+    fail(`manifest asset url is invalid: ${JSON.stringify(url)}`);
+  }
+}
+
+export function assertUpdaterAssetMatchesPlatform(platform, assetName) {
+  const tokens = PLATFORM_ASSET_TOKENS[platform];
+  if (!tokens)
+    fail(`platform ${JSON.stringify(platform)} has no asset identity contract`);
+  for (const token of tokens) {
+    const tokenPattern = new RegExp(
+      `(?:^|[-_.])${token.replaceAll('_', '\\_')}(?=[-_.]|$)`,
+    );
+    if (!tokenPattern.test(assetName))
+      fail(
+        `asset ${JSON.stringify(assetName)} does not encode platform ${JSON.stringify(platform)} token ${JSON.stringify(token)}`,
+      );
+  }
 }
 
 /**
@@ -108,6 +139,7 @@ export function createUpdaterManifestForPlatforms({
         `url must be a release-asset download URL under releaseTag ${JSON.stringify(releaseTag)} (expected "/download/${releaseTag}/" in the url); the asset name, --release-tag, and --url must all name the same release`,
       );
     }
+    assertUpdaterAssetMatchesPlatform(platform, assetNameFromUrl(url));
     entries[platform] = { signature: signature.trim(), url };
   }
   return {
@@ -165,21 +197,64 @@ export function verifyUpdaterManifestAssets({
   }
   if (!manifest?.platforms || typeof manifest.platforms !== 'object')
     fail('manifest platforms must be an object');
-  const urls = Object.values(manifest.platforms).map((entry) => entry?.url);
-  if (urls.length === 0) fail('manifest platforms must not be empty');
-  for (const url of urls) {
+  const entries = Object.entries(manifest.platforms);
+  if (entries.length === 0) fail('manifest platforms must not be empty');
+  for (const [platform, entry] of entries) {
+    const url = entry?.url;
     if (typeof url !== 'string' || !url.includes(`/download/${releaseTag}/`))
       fail(
         `manifest asset url must be under releaseTag ${JSON.stringify(releaseTag)}`,
       );
-    let assetName;
-    try {
-      assetName = basename(new URL(url).pathname);
-    } catch {
-      fail(`manifest asset url is invalid: ${JSON.stringify(url)}`);
-    }
+    const assetName = assetNameFromUrl(url);
+    assertUpdaterAssetMatchesPlatform(platform, assetName);
     assertUpdaterAssetFile(join(assetsDir, assetName));
   }
+}
+
+function releaseVersionParts(version) {
+  const match =
+    typeof version === 'string' ? RELEASE_VERSION_PATTERN.exec(version) : null;
+  if (!match)
+    fail(
+      `version ${JSON.stringify(version)} is not a stable or preview release version`,
+    );
+  return [
+    Number(match[1]),
+    Number(match[2]),
+    Number(match[3]),
+    match[4] === undefined ? Number.POSITIVE_INFINITY : Number(match[4]),
+  ];
+}
+
+function readManifestVersion(path, label) {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')).version;
+  } catch (error) {
+    fail(
+      `could not read ${label} manifest ${JSON.stringify(path)} (${error.code ?? error.message})`,
+    );
+  }
+}
+
+export function assertUpdaterManifestNotRegressing({
+  candidatePath,
+  currentPath,
+  allowRegression = false,
+}) {
+  const candidate = readManifestVersion(candidatePath, 'candidate');
+  const current = readManifestVersion(currentPath, 'current');
+  const candidateParts = releaseVersionParts(candidate);
+  const currentParts = releaseVersionParts(current);
+  const comparison = candidateParts.findIndex(
+    (value, index) => value !== currentParts[index],
+  );
+  const regresses =
+    comparison !== -1 && candidateParts[comparison] < currentParts[comparison];
+  if (regresses && !allowRegression)
+    fail(
+      `candidate version ${candidate} is older than current version ${current}; use the protected break-glass repair only after owner review`,
+    );
+  return { candidate, current, regresses };
 }
 
 /** Refuses a flag value that is itself another flag: `--url --output x.json`
@@ -209,6 +284,23 @@ function options(name, args) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2);
+  if (args.includes('--assert-not-regressing')) {
+    const candidatePath = option('candidate-manifest', args);
+    const currentPath = option('current-manifest', args);
+    if (!candidatePath || !currentPath)
+      throw new Error(
+        'Usage: tauri-updater-manifest.mjs --assert-not-regressing --candidate-manifest <latest.json> --current-manifest <latest.json> [--allow-regression]',
+      );
+    const result = assertUpdaterManifestNotRegressing({
+      candidatePath,
+      currentPath,
+      allowRegression: args.includes('--allow-regression'),
+    });
+    console.log(
+      `Updater pointer ${result.current} -> ${result.candidate}${result.regresses ? ' (protected break-glass regression)' : ''}`,
+    );
+    process.exit(0);
+  }
   if (args.includes('--verify')) {
     const manifestPath = option('manifest', args);
     const assetsDir = option('assets-dir', args);

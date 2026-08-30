@@ -147,6 +147,8 @@ type WorkflowJob = {
 };
 type Workflow = {
   on?: unknown;
+  concurrency?: { group?: string; 'cancel-in-progress'?: boolean };
+  permissions?: Record<string, string>;
   jobs?: Record<string, WorkflowJob>;
 };
 
@@ -212,8 +214,9 @@ describe('native release workflow topology', () => {
       preflight,
       'Bind tag, package version, and source commit',
     );
-    expect(source.run).toContain('desktop_updater_tag=beta-desktop');
-    expect(source.run).toContain('desktop_updater_tag=stable-desktop');
+    const sharedMapping =
+      'node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --print-desktop-updater-tag';
+    expect(source.run).toContain(`desktop_updater_tag=$(${sharedMapping})`);
     expect(source.run).toContain(
       'desktop_updater_endpoint=https://github.com/$' +
         '{GITHUB_REPOSITORY}/releases/download/$' +
@@ -234,6 +237,14 @@ describe('native release workflow topology', () => {
         `--updater-endpoint "${githubExpression('needs.preflight.outputs.desktop_updater_endpoint')}"`,
       );
     }
+
+    const publishResolve = namedStep(
+      workflowJob(publish, 'resolve'),
+      'Resolve draft tag to one immutable commit',
+    );
+    expect(publishResolve.run).toContain(
+      `desktop_updater_tag=$(${sharedMapping})`,
+    );
   });
 
   it('publishes only produced updater artifacts before the rolling manifest and verifies the remote result', () => {
@@ -247,9 +258,7 @@ describe('native release workflow topology', () => {
       'Publish and verify the rolling desktop updater channel',
     );
     expect(promotion.env?.DESKTOP_UPDATER_TAG).toBe(
-      githubExpression(
-        "needs.resolve.outputs.channel == 'preview' && 'beta-desktop' || 'stable-desktop'",
-      ),
+      githubExpression('needs.resolve.outputs.desktop_updater_tag'),
     );
     expectStepOrder(promotion, [
       'Assemble and validate the rolling desktop updater channel',
@@ -272,6 +281,9 @@ describe('native release workflow topology', () => {
     expect(assembly.run).toContain('.msi.zip.sig');
     expect(assembly.run).toContain('.AppImage.tar.gz.sig');
     expect(assembly.run).toContain('--asset-file');
+    expect(assembly.run).toContain('--assert-not-regressing');
+    expect(assembly.run).toContain('--allow-regression');
+    expect(assembly.run).toContain('mkdir -p updater-channel-assets');
     expect(publishStep.run).toContain('--verify');
     expect(publishStep.run).toContain('cmp updater-channel-assets/latest.json');
 
@@ -282,6 +294,29 @@ describe('native release workflow topology', () => {
     expect(uploadLines[0]).toContain('"$' + '{updater_args[@]}"');
     expect(uploadLines[0]).not.toContain('latest.json');
     expect(uploadLines[1]).toContain('updater-channel-assets/latest.json');
+  });
+
+  it('probes the rolling release before public mutation and serializes all channel writers', () => {
+    const parsed = workflow(publish);
+    const resolve = workflowJob(publish, 'resolve');
+    const promotion = workflowJob(publish, 'publish');
+    const source = namedStep(
+      resolve,
+      'Resolve draft tag to one immutable commit',
+    );
+    expect(parsed.permissions).toEqual({ contents: 'read' });
+    expect(source.run).toContain('gh release view "$desktop_updater_tag"');
+    expect(source.run).not.toContain('2>/dev/null || true');
+    expect(promotion.needs).toBe('resolve');
+    expect(parsed.concurrency).toEqual({
+      group: 'station-release-publish',
+      'cancel-in-progress': false,
+    });
+    expectStepOrder(promotion, [
+      'Assemble and validate the rolling desktop updater channel',
+      'Promote only the recorded immutable GHCR digest',
+      'Publish release and compensate to draft until feed verifies',
+    ]);
   });
 
   it('does not expose write or provider credentials to setup and install steps', () => {
@@ -505,6 +540,7 @@ describe('native release workflow topology', () => {
     expectStepOrder(promotion, [
       'Download and revalidate every staged release asset',
       'Verify GitHub provenance for every downloaded asset',
+      'Assemble and validate the rolling desktop updater channel',
       'Promote only the recorded immutable GHCR digest',
     ]);
     const installIndex = promotion.steps?.findIndex(
@@ -685,11 +721,16 @@ describe('native release workflow topology', () => {
     const effectiveReleaseConfig = createNativeReleaseConfig({
       tag: 'v0.1.0',
       updaterPublicKey: 'test-public-key',
+      updaterEndpoint:
+        'https://github.com/kontourai/station/releases/download/stable-desktop/latest.json',
     });
     expect(effectiveReleaseConfig.bundle?.createUpdaterArtifacts).toBe(
       NATIVE_UPDATER_ARTIFACT_MODE,
     );
     expect(NATIVE_UPDATER_ARTIFACT_MODE).toBe('v1Compatible');
+    expect(effectiveReleaseConfig.plugins?.updater?.endpoints).toEqual([
+      'https://github.com/kontourai/station/releases/download/stable-desktop/latest.json',
+    ]);
     expect(macosArtifacts).toContain(
       'Tauri updater signer did not produce a signature',
     );
@@ -774,9 +815,7 @@ describe('native release workflow topology', () => {
     expect(release).toContain('station-container-release.json');
     expect(publish).toContain('test "$resolved" = "$digest"');
     expect(publish).toContain('"$image@$digest"');
-    expect(publish).toContain(
-      'group: station-release-publish-$' + '{{ needs.resolve.outputs.sha }}',
-    );
+    expect(publish).toContain('group: station-release-publish');
   });
 
   it('binds every native build to the authoritative package version', () => {

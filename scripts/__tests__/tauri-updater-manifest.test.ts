@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
+  assertUpdaterManifestNotRegressing,
   createUpdaterManifest,
   createUpdaterManifestForPlatforms,
   readUpdaterSignatureFile,
@@ -168,6 +169,56 @@ describe('the Tauri updater manifest (station#575)', () => {
     ).toThrow(/could not read --asset-file/);
   });
 
+  test('refuses a manifest platform paired with a different architecture asset', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-updater-arch-'));
+    const assetName = 'station-v0.1.3-macos-x86_64.app.tar.gz';
+    const manifest = join(directory, 'latest.json');
+    writeFileSync(join(directory, assetName), 'archive');
+    writeFileSync(
+      manifest,
+      JSON.stringify({
+        version: '0.1.3',
+        notes: '',
+        pub_date: VALID.pubDate,
+        platforms: {
+          'darwin-aarch64': {
+            signature: 'signature',
+            url: `https://github.com/kontourai/station/releases/download/stable-desktop/${assetName}`,
+          },
+        },
+      }),
+    );
+
+    expect(() =>
+      verifyUpdaterManifestAssets({
+        manifestPath: manifest,
+        assetsDir: directory,
+        releaseTag: 'stable-desktop',
+      }),
+    ).toThrow(/does not encode platform.*aarch64/);
+  });
+
+  test('refuses to regress a rolling release pointer without break-glass', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-updater-order-'));
+    const candidatePath = join(directory, 'candidate.json');
+    const currentPath = join(directory, 'current.json');
+    writeFileSync(candidatePath, JSON.stringify({ version: '0.1.3' }));
+    writeFileSync(currentPath, JSON.stringify({ version: '0.1.4' }));
+
+    expect(() =>
+      assertUpdaterManifestNotRegressing({ candidatePath, currentPath }),
+    ).toThrow(
+      /candidate version 0\.1\.3 is older than current version 0\.1\.4/,
+    );
+    expect(
+      assertUpdaterManifestNotRegressing({
+        candidatePath,
+        currentPath,
+        allowRegression: true,
+      }),
+    ).toMatchObject({ regresses: true });
+  });
+
   test('readUpdaterSignatureFile converts a missing file into the teaching-message form, not a raw ENOENT (station#575 L4)', () => {
     expect(() =>
       readUpdaterSignatureFile('/nonexistent/station-signature.sig'),
@@ -286,5 +337,39 @@ describe('the Tauri updater manifest (station#575)', () => {
         { cwd: join(import.meta.dirname, '../..'), stdio: 'pipe' },
       ),
     ).toThrow();
+  });
+
+  test('the CLI refuses fewer signature files than platform entries', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-updater-arity-'));
+    const signatureFile = join(directory, 'signature.sig');
+    writeFileSync(signatureFile, 'signature');
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          'scripts/lib/tauri-updater-manifest.mjs',
+          '--version',
+          '0.1.3',
+          '--pub-date',
+          VALID.pubDate,
+          '--platform',
+          'darwin-aarch64',
+          '--signature-file',
+          signatureFile,
+          '--url',
+          'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-macos-aarch64.app.tar.gz',
+          '--platform',
+          'windows-x86_64',
+          '--url',
+          'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-windows-x86_64.msi.zip',
+          '--release-tag',
+          'stable-desktop',
+          '--output',
+          join(directory, 'latest.json'),
+        ],
+        { cwd: join(import.meta.dirname, '../..'), stdio: 'pipe' },
+      ),
+    ).toThrow(/Each --platform requires one --signature-file/);
   });
 });
