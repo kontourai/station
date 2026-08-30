@@ -90,3 +90,15 @@ condition = "AND"
 regexTarget = "secret"
 regexes = ['''^HANDOFF-CARRY-731$''']
 paths = ['''(^|/)src-server/routes/orchestration/__tests__/conversation-handoff\.qualification\.test\.ts$''']
+
+[[allowlists]]
+# Synthetic by construction: the value names itself ("wire-shape-secret-")
+# and its tail is sequential hex. It exists so the peer-credential route
+# test can assert the WIRE SHAPE of a stored credential; entropy 4.37 trips
+# `generic-api-key`. Scoped to the exact literal AND the one file, so a real
+# credential committed beside it is still caught.
+description = "Synthetic peer-credential secret used by the environments route wire-shape test"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^wire-shape-secret-0123456789abcdef$''']
+paths = ['''(^|/)src-server/routes/environments/__tests__/peer-credential-routes\.test\.ts$''']
