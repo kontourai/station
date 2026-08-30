@@ -29,6 +29,7 @@ import { useWorkspacePaneDockAction } from './WorkspacePaneDockContext';
  */
 export function WorkspacePaneAwayState({ paneName }: { paneName: string }) {
   const dock = useWorkspacePaneDockAction();
+  // Compatibility action for the route-owned away surface. // #928 step 5
   const isMobile = useIsMobile();
   if (!dock) return null;
   return (
