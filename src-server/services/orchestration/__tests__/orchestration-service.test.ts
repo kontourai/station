@@ -17323,6 +17323,121 @@ describe('OrchestrationService', () => {
     ]);
   });
 
+  test('projects the latest turn origin and honest diversity through the persisted session read model', async () => {
+    const base = '2026-08-30T12:00:00.000Z';
+    for (const threadId of [
+      'thread-two-origins',
+      'thread-no-turns',
+      'thread-unattributed-turn',
+      'thread-latest-unattributed',
+    ]) {
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId,
+        status: 'ready',
+        createdAt: base,
+        updatedAt: base,
+      });
+    }
+
+    const mobileDeviceOrigin = {
+      version: 1 as const,
+      actor: { kind: 'device' as const, deviceId: 'pixel-10' },
+      reported: { version: 1 as const, surface: 'mobile' as const, build: '1' },
+    };
+    const desktopOperatorOrigin = {
+      version: 1 as const,
+      actor: { kind: 'operator' as const },
+      reported: {
+        version: 1 as const,
+        surface: 'desktop' as const,
+        build: '2',
+      },
+    };
+    eventStore.appendEvent({
+      eventId: 'origin-turn-mobile',
+      provider: 'claude',
+      threadId: 'thread-two-origins',
+      turnId: 'turn-mobile',
+      method: 'turn.started',
+      createdAt: '2026-08-30T12:00:01.000Z',
+      clientOrigin: mobileDeviceOrigin,
+    } as any);
+    eventStore.appendEvent({
+      eventId: 'origin-turn-desktop-latest',
+      provider: 'claude',
+      threadId: 'thread-two-origins',
+      turnId: 'turn-desktop',
+      method: 'turn.started',
+      createdAt: '2026-08-30T12:00:02.000Z',
+      clientOrigin: desktopOperatorOrigin,
+    } as any);
+    eventStore.appendEvent({
+      eventId: 'origin-turn-mobile-again',
+      provider: 'claude',
+      threadId: 'thread-two-origins',
+      turnId: 'turn-mobile-again',
+      method: 'turn.started',
+      createdAt: '2026-08-30T12:00:02.500Z',
+      clientOrigin: mobileDeviceOrigin,
+    } as any);
+    eventStore.appendEvent({
+      eventId: 'origin-turn-desktop-actually-latest',
+      provider: 'claude',
+      threadId: 'thread-two-origins',
+      turnId: 'turn-desktop-again',
+      method: 'turn.started',
+      createdAt: '2026-08-30T12:00:02.750Z',
+      clientOrigin: desktopOperatorOrigin,
+    } as any);
+    eventStore.appendEvent({
+      eventId: 'unattributed-turn',
+      provider: 'claude',
+      threadId: 'thread-unattributed-turn',
+      turnId: 'turn-without-origin',
+      method: 'turn.started',
+      createdAt: '2026-08-30T12:00:03.000Z',
+    } as any);
+    eventStore.appendEvent({
+      eventId: 'older-attributed-turn',
+      provider: 'claude',
+      threadId: 'thread-latest-unattributed',
+      turnId: 'turn-older-attributed',
+      method: 'turn.started',
+      createdAt: '2026-08-30T12:00:04.000Z',
+      clientOrigin: mobileDeviceOrigin,
+    } as any);
+    eventStore.appendEvent({
+      eventId: 'latest-unattributed-turn',
+      provider: 'claude',
+      threadId: 'thread-latest-unattributed',
+      turnId: 'turn-latest-unattributed',
+      method: 'turn.started',
+      createdAt: '2026-08-30T12:00:05.000Z',
+    } as any);
+
+    const sessions = await service.listSessionReadModel();
+    const byThread = new Map(
+      sessions.map((session) => [session.threadId, session]),
+    );
+
+    // The intentionally later desktop event makes this fail if the fold takes
+    // the first attributed turn rather than the most recent turn.
+    expect(byThread.get('thread-two-origins')?.turnOrigin).toEqual({
+      latest: desktopOperatorOrigin,
+      hasOtherOrigins: true,
+    });
+    // Absence is structural: neither case can masquerade as a concrete
+    // `{ actor: unknown, surface: unknown }` value in a renderer.
+    expect(byThread.get('thread-no-turns')).not.toHaveProperty('turnOrigin');
+    expect(byThread.get('thread-unattributed-turn')).not.toHaveProperty(
+      'turnOrigin',
+    );
+    expect(byThread.get('thread-latest-unattributed')).not.toHaveProperty(
+      'turnOrigin',
+    );
+  });
+
   test('reads one session detail with canonical event history', async () => {
     eventStore.upsertSession({
       provider: 'claude',
