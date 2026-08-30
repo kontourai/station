@@ -396,7 +396,7 @@ describe('PluginRegistryGate', () => {
     expect(mocks.setApiBase).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(String),
-      { allowRemoteBundles: true },
+      { allowRemoteBundles: true, remoteProfile: true },
     );
     expect(bannerStore.getSnapshot()).toEqual([]);
   });
