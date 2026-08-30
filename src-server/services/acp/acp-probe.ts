@@ -1017,6 +1017,11 @@ export class ACPProbe {
     );
   }
   assertProviderSupported(providerId: string, apiType: string): void {
+    // A stale or absent cache can never refuse a write: the mutation process
+    // performs a fresh providers/list and is the final transport authority.
+    // Current observations still reject early, before secret materialization.
+    if (!this.getProviderRoutingCurrent() || !this.cachedProviderRouting)
+      return;
     assertACPProviderRouteSupported(
       this.cachedProviderRouting,
       providerId,

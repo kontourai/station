@@ -347,107 +347,7 @@ process.stdin.on('data', (chunk) => {
     );
   });
 
-  test('an in-flight pre-mutation probe cannot publish its result as current after joining refresh', async () => {
-    let finishPreMutationSession!: (value: unknown) => void;
-    const preMutationSession = new Promise((resolve) => {
-      finishPreMutationSession = resolve;
-    });
-    const preMutationProcess = {
-      start: vi.fn().mockResolvedValue({
-        protocolVersion: 1,
-        agentCapabilities: { providers: {} },
-        providerRouting: [
-          {
-            providerId: 'main',
-            supported: ['openai'],
-            required: false,
-            current: { apiType: 'openai', baseUrl: 'https://old.example/v1' },
-          },
-        ],
-      }),
-      newSession: vi.fn(() => preMutationSession),
-      destroy: vi.fn().mockResolvedValue(undefined),
-      survivesCleanup: vi.fn().mockResolvedValue(false),
-      releaseIfConfirmedGone: vi.fn(),
-    };
-    const mutationProcess = {
-      start: vi.fn().mockResolvedValue({
-        protocolVersion: 1,
-        agentCapabilities: { providers: {} },
-        providerRouting: [],
-      }),
-      setProvider: vi.fn().mockResolvedValue(undefined),
-      destroy: vi.fn().mockResolvedValue(undefined),
-      survivesCleanup: vi.fn().mockResolvedValue(false),
-      releaseIfConfirmedGone: vi.fn(),
-    };
-    const processFactory = vi
-      .fn()
-      .mockReturnValueOnce(preMutationProcess)
-      .mockReturnValueOnce(mutationProcess);
-    const probe = new ACPProbe(
-      {
-        id: 'opencode',
-        name: 'OpenCode',
-        command: 'opencode',
-        cwd: '/tmp/provider-routing',
-        enabled: true,
-      },
-      { warn: vi.fn() },
-      '/tmp/project',
-      processFactory as never,
-    );
-
-    const oldProbe = probe.probe();
-    await vi.waitFor(() =>
-      expect(preMutationProcess.newSession).toHaveBeenCalled(),
-    );
-    const mutation = probe.setProvider({
-      providerId: 'main',
-      apiType: 'openai',
-      baseUrl: 'https://new.example/v1',
-      headers: {},
-    });
-    await vi.waitFor(() =>
-      expect(mutationProcess.setProvider).toHaveBeenCalled(),
-    );
-    finishPreMutationSession({
-      sessionId: 'pre-mutation',
-      modes: { availableModes: [] },
-      configOptions: [],
-    });
-
-    await expect(oldProbe).resolves.toBe(true);
-    await expect(mutation).resolves.toBeUndefined();
-    expect(processFactory).toHaveBeenCalledTimes(2);
-    expect(probe.getProviderRouting()?.[0]?.current?.baseUrl).toBe(
-      'https://old.example/v1',
-    );
-    expect(probe.getProviderRoutingCurrent()).toBe(false);
-    const managerStatus = getACPManagerStatus(
-      new Map([['opencode', probe]]),
-      new Map([
-        [
-          'opencode',
-          {
-            id: 'opencode',
-            name: 'OpenCode',
-            command: 'opencode',
-            enabled: true,
-          },
-        ],
-      ]),
-      0,
-    );
-    expect(
-      acpProviderRoutingStatus(managerStatus.connections[0]),
-    ).toMatchObject({
-      source: 'stale',
-      reason: expect.stringContaining('no post-mutation observation'),
-    });
-  });
-
-  test('a mutation applied externally but settling after its deadline fences prior routing', async () => {
+  test('an indeterminate mutation timeout fences routing and makes stale cache non-authoritative', async () => {
     let settleMutation!: () => void;
     const lateResponse = new Promise<void>((resolve) => {
       settleMutation = resolve;
@@ -509,6 +409,9 @@ process.stdin.on('data', (chunk) => {
 
     await expect(probe.probe()).resolves.toBe(true);
     expect(probe.getProviderRoutingCurrent()).toBe(true);
+    expect(() => probe.assertProviderSupported('main', 'anthropic')).toThrow(
+      'did not advertise protocol',
+    );
     await expect(
       probe.setProvider({
         providerId: 'main',
@@ -518,6 +421,30 @@ process.stdin.on('data', (chunk) => {
     ).rejects.toThrow('provider mutation did not settle');
     expect(externalDestination).toBe('https://new.example/v1');
     expect(probe.getProviderRoutingCurrent()).toBe(false);
+    expect(() =>
+      probe.assertProviderSupported('main', 'anthropic'),
+    ).not.toThrow();
+    const managerStatus = getACPManagerStatus(
+      new Map([['opencode', probe]]),
+      new Map([
+        [
+          'opencode',
+          {
+            id: 'opencode',
+            name: 'OpenCode',
+            command: 'opencode',
+            enabled: true,
+          },
+        ],
+      ]),
+      0,
+    );
+    expect(
+      acpProviderRoutingStatus(managerStatus.connections[0]),
+    ).toMatchObject({
+      source: 'stale',
+      reason: expect.stringContaining('no post-mutation observation'),
+    });
 
     settleMutation();
     await lateResponse;

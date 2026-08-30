@@ -789,8 +789,8 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     },
   );
 
-  test('does not let the ACP provider overrides classify a future sibling', () => {
-    const path = '/acp/connections/:id/providers/refresh';
+  test('does not let an exact ACP provider override classify a trailing descendant', () => {
+    const path = '/acp/connections/:id/providers/set/future';
     expect(matchPairingScopeRule('POST', path)).toMatchObject({
       origin: 'family',
       prefix: '/acp',

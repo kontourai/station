@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { ACPProviderRouteValidationError } from '../../../services/acp/acp-process.js';
+import { SecretBindingResolutionError } from '../../../services/secrets/secret-binding-administration.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   acpOps: { add: vi.fn() },
@@ -166,5 +167,30 @@ describe('ACP provider routes (#944)', () => {
       outcome: 'failure',
       reason: 'child_establishment_failed',
     });
+  });
+
+  test('returns 400 when the secret boundary reports an ungranted binding', async () => {
+    const ctx = context();
+    ctx.acpProviderSecretResolver.resolveForAcpProvider.mockRejectedValue(
+      new SecretBindingResolutionError('grant_missing'),
+    );
+    const app = createACPRoutes(ctx as never);
+    const response = await app.request('/connections/kiro/providers/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        providerId: 'main',
+        apiType: 'openai',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        secretHeaderRefs: { Authorization: 'ungranted-key' },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      success: false,
+      error: 'The ACP provider secret binding cannot be established.',
+    });
+    expect(ctx.acpBridge.setProvider).not.toHaveBeenCalled();
   });
 });
