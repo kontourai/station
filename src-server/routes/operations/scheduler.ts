@@ -8,7 +8,6 @@ import {
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
-import { streamSSE } from 'hono/streaming';
 import { SSE_KEEPALIVE_INTERVAL_MS } from '../../constants.js';
 import { SchedulerJobConflictError } from '../../services/scheduling/builtin-scheduler.js';
 import { SchedulerStorageUnavailableError } from '../../services/scheduling/scheduler-ledger.js';
@@ -26,6 +25,7 @@ import {
   param,
   validate,
 } from '../schemas/schemas.js';
+import { streamSSE } from '../sse-response.js';
 
 function publicManualRunMessage(
   outcome: SchedulerManualRunReceipt['outcome'],

@@ -1392,6 +1392,39 @@ describe('useCancelMessage', () => {
     });
   });
 
+  it('does not dispatch a second interrupt after the first receipt settles but before its terminal event arrives (#921)', async () => {
+    interruptOrchestrationTurnMock
+      .mockResolvedValueOnce(cooperativeStop)
+      .mockResolvedValueOnce({
+        outcome: 'no-active-turn',
+        threadId: 'server-thread-1',
+      });
+    activeChatsStore.updateChat(sessionId, {
+      orchestrationTurnOpen: true,
+      error: undefined,
+    });
+    const { result } = renderHook(() => useCancelMessage('http://api.test'));
+
+    let first: StopTurnOutcome | undefined;
+    let second: StopTurnOutcome | undefined;
+    await act(async () => {
+      first = await result.current(sessionId);
+      // A real double-click can put the second click after the fast HTTP
+      // receipt but before turn.aborted reaches the browser event stream.
+      second = await result.current(sessionId);
+    });
+
+    expect(first).toEqual({ kind: 'settled', result: cooperativeStop });
+    expect(second).toEqual({ kind: 'not-running' });
+    expect(interruptOrchestrationTurnMock).toHaveBeenCalledTimes(1);
+    expect(activeChatsStore.getSnapshot()[sessionId]).toMatchObject({
+      status: 'idle',
+      orchestrationTurnOpen: false,
+      stopPending: false,
+    });
+    expect(activeChatsStore.getSnapshot()[sessionId]?.error).toBeUndefined();
+  });
+
   // (live verification): the send path clears `abortController`
   // the moment the orchestration POST returns its receipt — seconds into a
   // turn that then streams for minutes. Stop must still work for the whole of

@@ -383,30 +383,51 @@ test.describe('Project forms', () => {
       });
 
       const geometry = await page.evaluate(() => {
+        const overlay = document.querySelector('.responsive-surface-overlay');
+        const panel = document.querySelector('.new-project-modal');
+        const form = document.querySelector('.new-project-modal__form');
         const scroll = document.querySelector(
           '.new-project-modal__draft-scroll',
         );
         const card = document.querySelector('.new-project-modal__starter');
         const actions = document.querySelector('.new-project-modal__actions');
-        if (!scroll || !card || !actions) return null;
+        if (!overlay || !panel || !form || !scroll || !card || !actions)
+          return null;
+        const overlayBox = overlay.getBoundingClientRect();
+        const panelBox = panel.getBoundingClientRect();
+        const formBox = form.getBoundingClientRect();
         const scrollBox = scroll.getBoundingClientRect();
         const cardBox = card.getBoundingClientRect();
         const actionsBox = actions.getBoundingClientRect();
         return {
+          overlayBottom: overlayBox.bottom,
+          panelBottom: panelBox.bottom,
+          formBottom: formBox.bottom,
           scrollBottom: scrollBox.bottom,
           cardBottom: cardBox.bottom,
           footerTop: actionsBox.top,
+          footerBottom: actionsBox.bottom,
           scrollHeight: scroll.scrollHeight,
           clientHeight: scroll.clientHeight,
           scrollTop: scroll.scrollTop,
+          overflowY: getComputedStyle(scroll).overflowY,
         };
       });
 
       expect(geometry).not.toBeNull();
+      expect(geometry!.panelBottom).toBeLessThanOrEqual(
+        geometry!.overlayBottom,
+      );
+      expect(geometry!.formBottom).toBeLessThanOrEqual(geometry!.panelBottom);
+      expect(geometry!.overflowY).toBe('auto');
       expect(geometry!.scrollHeight).toBeGreaterThan(geometry!.clientHeight);
-      expect(geometry!.scrollTop).toBeGreaterThan(0);
+      expect(geometry!.scrollTop).toBe(
+        geometry!.scrollHeight - geometry!.clientHeight,
+      );
       expect(geometry!.cardBottom).toBeLessThanOrEqual(geometry!.scrollBottom);
+      expect(geometry!.scrollBottom).toBeLessThanOrEqual(geometry!.footerTop);
       expect(geometry!.cardBottom).toBeLessThanOrEqual(geometry!.footerTop);
+      expect(geometry!.footerBottom).toBeLessThanOrEqual(geometry!.panelBottom);
       await expect(footer).toBeInViewport();
     });
   }
