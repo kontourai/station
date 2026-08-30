@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from 'vitest';
 // The gate declares the reviewed capacity-action commit; this test reads it
 // rather than restating it. When those were two literals they drifted (#3443
 // moved this one and left the gate's behind, taking `main` red).
-import { REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA } from '../actionlint-gate.mjs';
+import {
+  readWorkflowDocuments,
+  REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
+} from '../actionlint-gate.mjs';
 import {
   resolveAndroidBuildRun,
   sanitizeLookupDiagnostic,
@@ -229,6 +232,29 @@ describe('CI verification workflow contracts', () => {
 
   it('tracks and closes one attributed issue per red main-only workflow', () => {
     const mainHealth = workflow('main-health.yml');
+    const workflowDocuments = readWorkflowDocuments();
+    const parsedMainHealth = workflowDocuments.find(
+      ({ file }) => file === '.github/workflows/main-health.yml',
+    )?.document as
+      | { on?: { workflow_run?: { workflows?: unknown } } }
+      | undefined;
+    const intendedTargetFiles = [
+      '.github/workflows/container-smoke.yml',
+      '.github/workflows/windows-verification.yml',
+      '.github/workflows/secret-scan.yml',
+      '.github/workflows/backlog-priority-policy.yml',
+    ];
+    const intendedTargetNames = intendedTargetFiles.map((targetFile) => {
+      const target = workflowDocuments.find(({ file }) => file === targetFile)
+        ?.document as { name?: unknown } | undefined;
+      expect(target?.name).toEqual(expect.any(String));
+      return target?.name as string;
+    });
+    const watchedWorkflows = parsedMainHealth?.on?.workflow_run?.workflows;
+    expect(watchedWorkflows).toEqual(expect.any(Array));
+    expect(new Set(watchedWorkflows as string[])).toEqual(
+      new Set(intendedTargetNames),
+    );
     const trigger = mainHealth.slice(
       mainHealth.indexOf('  workflow_run:'),
       mainHealth.indexOf('\npermissions:'),
@@ -242,14 +268,6 @@ describe('CI verification workflow contracts', () => {
     );
 
     expect(trigger).toContain('types: [completed]');
-    for (const name of [
-      'Container smoke',
-      'Windows Verification',
-      'Secret Scan',
-      'Backlog disposition policy',
-    ]) {
-      expect(trigger).toContain(`- ${name}`);
-    }
     expect(trigger).not.toContain('Main pipeline health');
     expect(mainHealth).toMatch(/^permissions:\n {2}issues: write$/m);
     expect(mainHealth).not.toContain('contents:');
