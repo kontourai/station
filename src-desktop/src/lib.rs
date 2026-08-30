@@ -1209,8 +1209,31 @@ fn station_profiles_path(app: &AppHandle) -> Result<std::path::PathBuf, String> 
 }
 
 #[cfg(any(mobile, test))]
-fn mobile_station_profiles_path_with(app_config_dir: &std::path::Path) -> std::path::PathBuf {
-    app_config_dir.join("profiles.json")
+fn secure_mobile_station_profiles_path(
+    app_config_dir: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    match std::fs::symlink_metadata(app_config_dir) {
+        Ok(metadata) if metadata.file_type().is_dir() => {}
+        Ok(_) => {
+            return Err(
+                "Station mobile config path must not be a symlink or non-directory".to_string(),
+            )
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            std::fs::create_dir_all(app_config_dir)
+                .map_err(|error| format!("create Station mobile config directory: {error}"))?;
+        }
+        Err(error) => {
+            return Err(format!("inspect Station mobile config directory: {error}"));
+        }
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(app_config_dir, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| format!("secure Station mobile config directory: {error}"))?;
+    }
+    Ok(app_config_dir.join("profiles.json"))
 }
 
 #[cfg(mobile)]
@@ -1225,7 +1248,7 @@ fn station_profiles_path(app: &AppHandle) -> Result<std::path::PathBuf, String> 
         .path()
         .app_config_dir()
         .map_err(|error| format!("resolve Station mobile config directory: {error}"))?;
-    Ok(mobile_station_profiles_path_with(&app_config_dir))
+    secure_mobile_station_profiles_path(&app_config_dir)
 }
 
 /// Profile metadata controls which native credentials and local service are
@@ -11071,11 +11094,46 @@ mod tests {
 
     #[test]
     fn mobile_profiles_stay_inside_the_app_private_config_directory() {
-        let private_config = std::path::Path::new("app-private-config");
+        let temp = tempfile::tempdir().expect("tempdir");
+        let private_config = temp.path().join("app-private-config");
+        std::fs::create_dir(&private_config).expect("create config dir");
         assert_eq!(
-            mobile_station_profiles_path_with(private_config),
+            secure_mobile_station_profiles_path(&private_config).expect("secure mobile path"),
             private_config.join("profiles.json")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mobile_profiles_secure_the_platform_created_config_directory() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let private_config = temp.path().join("app-private-config");
+        std::fs::create_dir(&private_config).expect("create config dir");
+        std::fs::set_permissions(&private_config, std::fs::Permissions::from_mode(0o755))
+            .expect("set permissive fixture mode");
+        secure_mobile_station_profiles_path(&private_config).expect("secure mobile path");
+        let mode = std::fs::symlink_metadata(&private_config)
+            .expect("config metadata")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o077, 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mobile_profiles_refuse_a_symlinked_config_directory() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let target = temp.path().join("target");
+        let link = temp.path().join("app-private-config");
+        std::fs::create_dir(&target).expect("create target");
+        symlink(&target, &link).expect("create config symlink");
+        assert!(secure_mobile_station_profiles_path(&link)
+            .unwrap_err()
+            .contains("must not be a symlink"));
     }
 
     #[test]
