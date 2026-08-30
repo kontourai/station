@@ -7,6 +7,7 @@ import {
   restoreReturnFocus,
 } from '@kontourai/station-shared/return-focus';
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { buildInfo } from '../../build-info';
 import { useAllActiveChats } from '../../contexts/ActiveChatsContext';
 import { useAgents } from '../../contexts/AgentsContext';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
@@ -63,9 +64,19 @@ export function ProjectSidebar() {
   const platformProfile = usePlatformProfile();
   // The sidebar is the primary installed-app chrome. Native package identity
   // must win here so a selected remote Station cannot rename Beta/Nightly.
-  const appName = platformProfile.isTauri
-    ? platformProfile.productName || 'Station'
-    : branding.appName;
+  const releaseChannelBadge =
+    platformProfile.isTauri && platformProfile.channel !== 'stable'
+      ? platformProfile.channel
+      : undefined;
+  // Do not parse a channel out of productName: it is package metadata, not
+  // presentation authority. Native chrome derives its visible and accessible
+  // identity from the same trusted channel report and build metadata.
+  const appName = platformProfile.isTauri ? 'Station' : branding.appName;
+  const homeLabel = platformProfile.isTauri
+    ? [appName, releaseChannelBadge, `v${buildInfo.version}`]
+        .filter(Boolean)
+        .join(' ')
+    : appName;
   const agents = useAgents();
   const activeChats = useAllActiveChats();
   const drafts = useSyncExternalStore(
@@ -242,6 +253,8 @@ export function ProjectSidebar() {
       >
         <ProjectSidebarHeader
           appName={appName}
+          homeLabel={homeLabel}
+          channelBadge={releaseChannelBadge}
           collapsed={effectiveCollapsed}
           isMobile={isMobile}
           onCloseMobile={() => setMobileOpen(false)}

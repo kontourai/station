@@ -1,5 +1,9 @@
 interface ProjectSidebarHeaderProps {
   appName: string;
+  /** Exact local package identity for assistive technology and the tooltip. */
+  homeLabel: string;
+  /** Release-channel presentation is intentionally separate from the title. */
+  channelBadge?: string;
   collapsed: boolean;
   isMobile: boolean;
   onCloseMobile: () => void;
@@ -9,6 +13,8 @@ interface ProjectSidebarHeaderProps {
 
 export function ProjectSidebarHeader({
   appName,
+  homeLabel,
+  channelBadge,
   collapsed,
   isMobile,
   onCloseMobile,
@@ -22,8 +28,8 @@ export function ProjectSidebarHeader({
       <button
         type="button"
         className="sidebar__home-button"
-        aria-label={`${appName} home`}
-        title={`${appName} home`}
+        aria-label={`${homeLabel} home`}
+        title={`${homeLabel} home`}
         onClick={onGoHome}
       >
         <img
@@ -32,7 +38,15 @@ export function ProjectSidebarHeader({
           aria-hidden="true"
           className="sidebar__logo"
         />
-        <span className="sidebar__brand-name">{appName}</span>
+        <span className="sidebar__brand-name">
+          <span>{appName}</span>
+          {channelBadge && (
+            <>
+              <br />
+              <small className="sidebar__channel-badge">{channelBadge}</small>
+            </>
+          )}
+        </span>
       </button>
       {!isMobile && (
         <button
