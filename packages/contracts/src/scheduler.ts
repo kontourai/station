@@ -12,7 +12,11 @@ export type SchedulerCapability =
  * fan-out invariant; it never changes in response to host measurements.
  */
 export const SCHEDULER_EXECUTION_LIMITS = {
-  /** Scheduled jobs one Station process may invoke concurrently. */
+  /**
+   * Scheduled jobs one Station process may invoke concurrently. Four permits
+   * a modest burst of independent jobs while bounding provider/process fan-out
+   * identically on every host; changing it is an explicit contract change.
+   */
   maxConcurrentJobs: 4,
   /** Stable reason recorded when an occurrence waits for an execution slot. */
   concurrencyDeferralReason: 'scheduler_concurrency_limit',
