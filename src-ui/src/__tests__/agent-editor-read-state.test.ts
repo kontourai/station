@@ -7,7 +7,7 @@ describe('agent editor read state', () => {
       resolveAgentEditorReadState({
         hasLoadedAgent: false,
         loadError: new Error('Failed to fetch agent'),
-        isLoading: false,
+        isPending: false,
         isFetching: false,
         isCreating: false,
       }),
@@ -23,7 +23,7 @@ describe('agent editor read state', () => {
       resolveAgentEditorReadState({
         hasLoadedAgent: true,
         loadError: new Error('Connection lost'),
-        isLoading: false,
+        isPending: false,
         isFetching: false,
         isCreating: false,
       }),
@@ -39,13 +39,31 @@ describe('agent editor read state', () => {
       resolveAgentEditorReadState({
         hasLoadedAgent: false,
         loadError: 'Agent not found',
-        isLoading: false,
+        isPending: false,
         isFetching: false,
         isCreating: false,
       }),
     ).toMatchObject({
       blockingLoadError: null,
       notFound: true,
+    });
+  });
+
+  test('keeps the initial read blocking throughout a retry delay', () => {
+    expect(
+      resolveAgentEditorReadState({
+        hasLoadedAgent: false,
+        loadError: null,
+        isPending: true,
+        // React Query is not fetching while it waits to retry, but the
+        // initial detail question still has no answer.
+        isFetching: false,
+        isCreating: false,
+      }),
+    ).toMatchObject({
+      blockingLoadError: null,
+      editorIsLoading: true,
+      notFound: false,
     });
   });
 });

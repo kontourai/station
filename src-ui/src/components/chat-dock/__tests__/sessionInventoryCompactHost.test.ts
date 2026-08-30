@@ -47,6 +47,16 @@ const compactScope = {
   taskId: `task-${'bidi-\u202e-path/'.repeat(24)}`,
 };
 
+const MOBILE_VIEWPORT = { width: 390, height: 844 } as const;
+/**
+ * Blink lays out CSS geometry in 1/64th-pixel units. `boundingBox()` then
+ * serializes those layout coordinates through a float, so an exact `100dvh`
+ * edge can arrive as `843.9999718666077` rather than `844`. Keep the bound to
+ * one layout unit: a visible one-pixel gap is still more than sixty times too
+ * large and fails this full-height sheet contract.
+ */
+const BLINK_LAYOUT_UNIT_CSS_PX = 1 / 64;
+
 function buildFixtureCss(): string {
   const css = `${resolveCssImports(INDEX_CSS_PATH)}\n${resolveCssImports(COMPACT_CSS_PATH)}\n${resolveCssImports(BASIS_LAUNCHER_CSS_PATH)}`;
   assertNoImportsSurvive(css);
@@ -161,7 +171,7 @@ describe.skipIf(!chromiumAvailable)(
 
     test('wraps the three-cell heading and preserves tab order without horizontal overflow at 390px', async () => {
       const page = await browser.newPage({
-        viewport: { width: 390, height: 844 },
+        viewport: MOBILE_VIEWPORT,
       });
       try {
         await page.setContent(buildFixtureHtml());
@@ -249,12 +259,20 @@ describe.skipIf(!chromiumAvailable)(
 
     test('preserves the mobile full-height Basis sheet geometry', async () => {
       const page = await browser.newPage({
-        viewport: { width: 390, height: 844 },
+        viewport: MOBILE_VIEWPORT,
       });
       try {
         await page.setContent(buildBasisFallbackHtml());
         const overlay = page.locator('.basis-pane-fallback-overlay');
         const panel = page.getByRole('dialog', { name: 'Basis' });
+        // `.responsive-surface-panel` enters with a shared translateY
+        // animation. Geometry belongs to the settled sheet, not an in-flight
+        // presentation frame whose visual offset is intentionally nonzero.
+        await expectPlaywright
+          .poll(async () =>
+            panel.evaluate((element) => getComputedStyle(element).transform),
+          )
+          .toBe('none');
         const [overlayBox, panelBox] = await Promise.all([
           overlay.boundingBox(),
           panel.boundingBox(),
@@ -263,9 +281,26 @@ describe.skipIf(!chromiumAvailable)(
         expect(panelBox).not.toBeNull();
         expect(overlayBox!.x).toBe(0);
         expect(overlayBox!.y).toBe(0);
-        expect(overlayBox!.width).toBe(390);
-        expect(overlayBox!.height).toBe(844);
-        expect(panelBox!.height).toBeGreaterThanOrEqual(overlayBox!.height - 1);
+        expect(
+          Math.abs(overlayBox!.width - MOBILE_VIEWPORT.width),
+          'the full-sheet overlay spans the visual viewport width',
+        ).toBeLessThanOrEqual(BLINK_LAYOUT_UNIT_CSS_PX);
+        expect(
+          Math.abs(overlayBox!.height - MOBILE_VIEWPORT.height),
+          'the full-sheet overlay spans the visual viewport height',
+        ).toBeLessThanOrEqual(BLINK_LAYOUT_UNIT_CSS_PX);
+        expect(
+          Math.abs(panelBox!.y - overlayBox!.y),
+          'the Basis panel begins at the overlay top edge',
+        ).toBeLessThanOrEqual(BLINK_LAYOUT_UNIT_CSS_PX);
+        expect(
+          Math.abs(
+            panelBox!.y +
+              panelBox!.height -
+              (overlayBox!.y + overlayBox!.height),
+          ),
+          'the Basis panel reaches the overlay bottom edge',
+        ).toBeLessThanOrEqual(BLINK_LAYOUT_UNIT_CSS_PX);
       } finally {
         await page.close();
       }
