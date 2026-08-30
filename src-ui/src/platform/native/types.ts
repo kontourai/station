@@ -71,6 +71,7 @@ export type NativeCommandName =
   | 'open-workspace-pane-pop-out'
   | 'open-desktop-tray-menu'
   | 'restart-bundled-server'
+  | 'commit-renderer-mount'
   | 'commit-startup-readiness'
   | 'commit-startup-recovery-ui'
   | 'review-consent-natively';
@@ -132,6 +133,38 @@ export type NativeBrowserPreviewHostErrorCode =
   | 'target-refused'
   | 'target-dns-failed'
   | 'target-unreachable';
+
+/**
+ * Raw camel-cased payload emitted by Rust before the native adapter validates
+ * and normalizes it. Keep this wire type separate from the public result so a
+ * test fixture cannot fabricate a shape the host never serializes.
+ */
+export type NativeBrowserPreviewWindowResponse =
+  | {
+      status: 'opened';
+      sessionId: string;
+      observation: NativeBrowserPreviewObservation;
+    }
+  | {
+      status: 'rejected';
+      code: NativeBrowserPreviewHostErrorCode;
+      message: string;
+    };
+
+/** Raw Rust discovery/grant payload before runtime validation. */
+export type NativeBrowserPreviewGrantResponse =
+  | {
+      status: 'issued';
+      grantId: string;
+      expiresAtMs: number;
+      observation: NativeBrowserPreviewObservation;
+    }
+  | {
+      status: 'rejected';
+      code: NativeBrowserPreviewHostErrorCode;
+      message: string;
+      observation?: NativeBrowserPreviewObservation;
+    };
 
 /**
  * A separate native window can prove only admission and renderer creation.
@@ -318,6 +351,8 @@ export interface NativePlatformAdapter {
   ): NativeEventSubscription;
   /** Ask the native host to start the configured durable service. */
   restartBundledServer(): Promise<NativeCommandResult<void>>;
+  /** Commit one post-React-layout mount from the exact main WebView. */
+  commitRendererMount(): Promise<NativeCommandResult<void>>;
   /** Recheck and reveal the main window after the renderer commits its exact proof. */
   commitStartupReadiness(
     ticket: NativeStartupReadinessTicket,

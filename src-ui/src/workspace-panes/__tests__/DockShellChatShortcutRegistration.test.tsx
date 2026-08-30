@@ -247,6 +247,7 @@ function DockedFixture({ occupant }: { occupant: 'chat' | 'other' }) {
             shellChrome={{
               ...shellChrome,
               dockPane: () => {},
+              dockPaneAsOnlyContent: () => {},
               occupantPicker: null,
             }}
           />

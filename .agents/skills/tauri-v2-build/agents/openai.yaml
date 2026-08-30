@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tauri v2 Build"
+  short_description: "Build and verify Station across Tauri desktop and mobile shells"
+  default_prompt: "Use $tauri-v2-build to inspect current Station context, change the owning native seam, and collect proportionate platform evidence."

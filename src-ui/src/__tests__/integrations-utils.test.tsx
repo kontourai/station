@@ -155,7 +155,7 @@ describe('integrations utils', () => {
     expect(items.map((item) => item.subtitle)).toEqual([
       'Disabled · Searches docs',
       'Needs attention · verbatim failure · Searches docs',
-      'Never probed · Searches docs',
+      'Not checked yet · Searches docs',
     ]);
   });
 

@@ -28,8 +28,13 @@ const { createSystemRoutes } = await import('../system.js');
 const { createConnectionRoutes } = await import(
   '../../connections/connections.js'
 );
-const { readBuildProvenance, STATUS_PREREQUISITES_CACHE_TTL_MS } = await import(
-  '../system-status-routes.js'
+const {
+  readBuildProvenance,
+  reconcileExternalEngineReadiness,
+  STATUS_PREREQUISITES_CACHE_TTL_MS,
+} = await import('../system-status-routes.js');
+const { buildCliRuntimePrerequisites } = await import(
+  '../../../providers/auth/cli-auth.js'
 );
 const { checkBedrockCredentials } = await import(
   '../../../providers/llm/bedrock.js'
@@ -1231,6 +1236,8 @@ describe('System Routes', () => {
   // symmetric with a ready Station model connection, and readiness for a
   // native engine means CLI resolvable AND authenticated, never bare `which`.
   describe('engine-agnostic chat readiness (station#1193)', () => {
+    const findInstalledTestBinary = (command: string) => `/test/bin/${command}`;
+
     test('ready when an ACP engine is connected, with no model connection at all', async () => {
       vi.mocked(checkBedrockCredentials).mockResolvedValueOnce(false);
       const app = createSystemRoutes(
@@ -1594,13 +1601,7 @@ describe('System Routes', () => {
       });
     });
 
-    test('prefers cannot_verify over sign_in_required when an engine has both', async () => {
-      // The discriminating case for the reason precedence. With only an
-      // errored prerequisite, `needsSignIn` is false whatever the order, so
-      // the sibling test above cannot detect the ternary being swapped. Only
-      // an engine carrying BOTH an errored probe and a genuinely missing
-      // `-auth` prerequisite pins the product rule: an errored probe is not
-      // evidence of an authentication problem, so it must win.
+    test('prefers a completed CLI error over sign_in_required when an engine has both', async () => {
       vi.mocked(checkBedrockCredentials).mockResolvedValueOnce(false);
       vi.mocked(getProviderAdapters).mockReturnValueOnce([
         fakeExternalEngineAdapter({
@@ -1618,9 +1619,152 @@ describe('System Routes', () => {
         expect.objectContaining({
           engineId: 'codex',
           ready: false,
-          reason: 'cannot_verify',
+          reason: 'missing_prerequisites',
         }),
       ]);
+    });
+
+    describe('reconcileExternalEngineReadiness', () => {
+      const signInRequired = {
+        ready: false,
+        source: null,
+        engines: [
+          {
+            engineId: 'claude-code',
+            name: 'claude',
+            detected: true,
+            ready: false,
+            source: null,
+            reason: 'sign_in_required',
+          },
+        ],
+      } as any;
+      const cannotVerify = {
+        ready: false,
+        source: null,
+        engines: [
+          {
+            engineId: 'claude-code',
+            name: 'claude',
+            detected: false,
+            ready: false,
+            source: null,
+            reason: 'cannot_verify',
+          },
+        ],
+      } as any;
+
+      test('holds the last genuine sign-in-required observation through a cannot_verify flap', () => {
+        expect(
+          reconcileExternalEngineReadiness(signInRequired, cannotVerify),
+        ).toEqual(signInRequired);
+      });
+
+      test('does not hold cannot_verify when there is no prior observation', () => {
+        expect(
+          reconcileExternalEngineReadiness(undefined, cannotVerify),
+        ).toEqual(cannotVerify);
+      });
+    });
+
+    test('a completed version-probe error replaces held ready readiness after the TTL', async () => {
+      vi.mocked(checkBedrockCredentials).mockResolvedValue(false);
+      const readyAdapter = fakeExternalEngineAdapter({
+        provider: 'claude',
+        engineId: 'claude-code',
+        prerequisites: [
+          { id: 'claude-cli', status: 'installed' },
+          { id: 'claude-auth', status: 'installed' },
+        ],
+      });
+      const completedErrorAdapter = {
+        ...readyAdapter,
+        getPrerequisites: vi.fn(() =>
+          buildCliRuntimePrerequisites({
+            command: 'claude',
+            displayName: 'Claude',
+            versionArgs: ['--version'],
+            authArgs: ['--version'],
+            installStep: 'Install Claude.',
+            authStep: 'Log in.',
+            findBinary: findInstalledTestBinary,
+            runCommand: async () => ({
+              stdout: '',
+              stderr: 'launcher failed',
+              code: 1,
+            }),
+          }),
+        ),
+      };
+      vi.mocked(getProviderAdapters)
+        .mockReturnValueOnce([readyAdapter])
+        .mockReturnValue([completedErrorAdapter]);
+      const app = createSystemRoutes(createMockDeps() as any, mockLogger);
+      const first = await waitForStatusDiscovery(app);
+      expect(first.externalEngines[0]).toMatchObject({ ready: true });
+
+      const realNow = Date.now.bind(Date);
+      const nowSpy = vi
+        .spyOn(Date, 'now')
+        .mockImplementation(
+          () => realNow() + STATUS_PREREQUISITES_CACHE_TTL_MS + 1_000,
+        );
+      try {
+        await app.request('/status');
+        await vi.waitFor(async () => {
+          const body = await json(await app.request('/status'));
+          expect(body.prerequisitesState).toBe('ready');
+          expect(body.externalEngines[0]).toMatchObject({
+            ready: false,
+            reason: 'missing_prerequisites',
+          });
+        });
+      } finally {
+        nowSpy.mockRestore();
+        vi.mocked(checkBedrockCredentials).mockResolvedValue(true);
+        vi.mocked(getProviderAdapters).mockReturnValue([]);
+      }
+    });
+
+    test('an aborted probe keeps the last genuine ready observation after the TTL', async () => {
+      vi.mocked(checkBedrockCredentials).mockResolvedValue(false);
+      const readyAdapter = fakeExternalEngineAdapter({
+        provider: 'claude',
+        engineId: 'claude-code',
+        prerequisites: [
+          { id: 'claude-cli', status: 'installed' },
+          { id: 'claude-auth', status: 'installed' },
+        ],
+      });
+      const abortedAdapter = {
+        ...readyAdapter,
+        getPrerequisites: vi.fn().mockRejectedValue(new Error('timed out')),
+      };
+      vi.mocked(getProviderAdapters)
+        .mockReturnValueOnce([readyAdapter])
+        .mockReturnValue([abortedAdapter]);
+      const app = createSystemRoutes(createMockDeps() as any, mockLogger);
+      const first = await waitForStatusDiscovery(app);
+      expect(first.externalEngines[0]).toMatchObject({ ready: true });
+
+      const realNow = Date.now.bind(Date);
+      const nowSpy = vi
+        .spyOn(Date, 'now')
+        .mockImplementation(
+          () => realNow() + STATUS_PREREQUISITES_CACHE_TTL_MS + 1_000,
+        );
+      try {
+        await app.request('/status');
+        await vi.waitFor(async () => {
+          const body = await json(await app.request('/status'));
+          expect(body.prerequisitesState).toBe('ready');
+          expect(body.externalEngines[0]).toMatchObject({ ready: true });
+        });
+      } finally {
+        nowSpy.mockRestore();
+        vi.mocked(checkBedrockCredentials).mockResolvedValue(true);
+        vi.mocked(getProviderAdapters).mockReturnValue([]);
+      }
     });
 
     test('does not assert detection for a disabled engine whose CLI is absent', async () => {
@@ -1658,6 +1802,176 @@ describe('System Routes', () => {
           reason: 'disabled',
         }),
       ]);
+    });
+
+    // #765 B2: `cannot_verify` is the shape of a probe that produced NO
+    // observation (aborted at the 2 s discovery budget, threw, or errored).
+    // It must not overwrite a projection this cache already VERIFIED ready —
+    // that flap is what showed a "Station cannot verify…" first-run launcher
+    // for an engine the Engines list (unbudgeted inspector probe) still
+    // reported READY, minutes into a working session.
+    describe('reconcileExternalEngineReadiness', () => {
+      const verified = {
+        ready: true,
+        source: 'claude-cli',
+        engines: [
+          {
+            engineId: 'claude-code',
+            name: 'claude',
+            detected: true,
+            ready: true,
+            source: 'claude-cli',
+          },
+        ],
+      } as any;
+
+      test('keeps a verified ready engine when the next probe cannot verify', () => {
+        const flap = {
+          ready: false,
+          source: null,
+          engines: [
+            {
+              engineId: 'claude-code',
+              name: 'claude',
+              detected: false,
+              ready: false,
+              source: null,
+              reason: 'cannot_verify',
+            },
+          ],
+        } as any;
+        expect(reconcileExternalEngineReadiness(verified, flap)).toEqual(
+          verified,
+        );
+      });
+
+      test('lets every genuine observation replace a held ready projection', () => {
+        for (const reason of [
+          'sign_in_required',
+          'missing_prerequisites',
+          'disabled',
+        ] as const) {
+          const observed = {
+            ready: false,
+            source: null,
+            engines: [
+              {
+                engineId: 'claude-code',
+                name: 'claude',
+                detected: true,
+                ready: false,
+                source: null,
+                reason,
+              },
+            ],
+          } as any;
+          expect(reconcileExternalEngineReadiness(verified, observed)).toEqual(
+            observed,
+          );
+        }
+      });
+
+      test('never invents readiness: a held non-ready observation stays non-ready, and no prior means the flap stands (#851)', () => {
+        const previous = {
+          ready: false,
+          source: null,
+          engines: [
+            {
+              engineId: 'claude-code',
+              name: 'claude',
+              detected: true,
+              ready: false,
+              source: null,
+              reason: 'sign_in_required',
+            },
+          ],
+        } as any;
+        const flap = {
+          ready: false,
+          source: null,
+          engines: [
+            {
+              engineId: 'claude-code',
+              name: 'claude',
+              detected: false,
+              ready: false,
+              source: null,
+              reason: 'cannot_verify',
+            },
+          ],
+        } as any;
+        // #851: the completed sign_in_required observation is HELD through
+        // the zero-information flap — still `ready: false`, so no readiness
+        // is invented; only the actionable reason survives.
+        expect(reconcileExternalEngineReadiness(previous, flap)).toEqual(
+          previous,
+        );
+        expect(reconcileExternalEngineReadiness(undefined, flap)).toEqual(flap);
+      });
+    });
+
+    test('a cannot_verify flap after the cache verified an engine ready keeps it ready across a TTL refresh (#765 B2)', async () => {
+      vi.mocked(checkBedrockCredentials).mockResolvedValue(false);
+      const readyAdapter = fakeExternalEngineAdapter({
+        provider: 'claude',
+        engineId: 'claude-code',
+        prerequisites: [
+          { id: 'claude-cli', status: 'installed' },
+          { id: 'claude-auth', status: 'installed' },
+        ],
+      });
+      // The second refresh's probe dies the way a busy host kills it: the
+      // whole getPrerequisites call rejects (the abort path takes the same
+      // catch), which un-reconciled produces `cannot_verify`.
+      const throwingAdapter = {
+        ...readyAdapter,
+        getPrerequisites: vi
+          .fn()
+          .mockRejectedValue(new Error('probe timed out')),
+      };
+      vi.mocked(getProviderAdapters)
+        .mockReturnValueOnce([readyAdapter])
+        .mockReturnValue([throwingAdapter]);
+      const app = createSystemRoutes(createMockDeps() as any, mockLogger);
+      const first = await waitForStatusDiscovery(app);
+      expect(first.externalEngines[0]).toMatchObject({
+        engineId: 'claude-code',
+        ready: true,
+        source: 'claude-cli',
+      });
+
+      // Expire the TTL so the next read serves stale and refreshes in the
+      // background — the exact moment the audit's launcher appeared.
+      const realNow = Date.now.bind(Date);
+      const nowSpy = vi
+        .spyOn(Date, 'now')
+        .mockImplementation(
+          () => realNow() + STATUS_PREREQUISITES_CACHE_TTL_MS + 1_000,
+        );
+      try {
+        await app.request('/status');
+        await vi.waitFor(
+          async () => {
+            expect(throwingAdapter.getPrerequisites).toHaveBeenCalled();
+            const body = await json(await app.request('/status'));
+            // The refreshed (post-flap) snapshot, not the stale one: state
+            // only returns to 'ready' once the second refresh has written.
+            expect(body.prerequisitesState).toBe('ready');
+            expect(body.externalEngines[0]).toMatchObject({
+              engineId: 'claude-code',
+              ready: true,
+              source: 'claude-cli',
+            });
+          },
+          { timeout: 3_000, interval: 10 },
+        );
+      } finally {
+        nowSpy.mockRestore();
+        // Restore the file-level defaults; this test set durable (non-Once)
+        // mock values because the cache refreshes twice.
+        vi.mocked(checkBedrockCredentials).mockResolvedValue(true);
+        vi.mocked(getProviderAdapters).mockReturnValue([]);
+      }
     });
 
     // archive#1193 review finding 1: `getPrerequisites` is OPTIONAL on

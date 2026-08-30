@@ -1629,7 +1629,13 @@ describe('device scope change (station#3816)', () => {
       ),
     );
     expect(refused.status).toBe(400);
-    expect(await refused.json()).toEqual({ error: 'scope_not_grantable' });
+    // #831 (operator-channel-only): the deliberate refusal carries a detail
+    // pointing the caller at the channel that CAN make this decision.
+    expect(await refused.json()).toEqual({
+      error: 'scope_not_grantable',
+      detail:
+        'This access tier cannot be granted here. Pairing decisions and peer-credential provisioning are operator-channel-only: use the host CLI or a session holding the operator credential.',
+    });
   });
 
   test('a stale editor cannot silently re-grant what another operator removed', async () => {

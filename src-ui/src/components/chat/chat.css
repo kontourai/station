@@ -1032,7 +1032,17 @@
   cursor: pointer;
   transition:
     background var(--motion-base) var(--ease-standard),
-    opacity var(--motion-base) var(--ease-standard);
+    opacity var(--motion-base) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+/* station#753 item 5: press micro-feedback for the composer's primary action.
+   Scoped to Send only (not Stop, which the shared selector above only
+   covers for geometry) — Send is the "primary action button" the design
+   names; Stop is a distinct, always-enabled control. */
+.chat-input__send-btn:active:not(:disabled) {
+  transform: scale(0.97);
+  transition: transform var(--motion-instant) var(--ease-standard);
 }
 
 .chat-input__send-btn--active {
@@ -1249,6 +1259,10 @@
 }
 
 .chat-input__approval-chip-label {
+  /* A flex child's default `min-width: auto` refuses to shrink below its
+     content size, which silently disables `text-overflow: ellipsis` — the
+     chip would just grow the row instead of truncating. */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1258,21 +1272,16 @@
   opacity: 0.7;
 }
 
-/* The readonly chip carries TWO labels — "Set by engine" and the tool-policy
-   coverage. Together they overflowed the composer's meta row on a phone and
-   crowded out the model selector (station#3151). The policy half is
-   aria-hidden already, and the full pairing is the chip's accessible name and
-   its tooltip, so hiding it here narrows only the visible projection: no
-   disclosure is lost, and the chip still says Station is not the thing
-   governing this engine. */
 @media (max-width: 480px) {
   .turn-footer__actions {
     justify-content: flex-start;
   }
 
-  .chat-input__approval-chip-policy {
-    display: none;
-  }
+  /* station#3151's `.chat-input__approval-chip-policy { display: none }`
+     rule that used to live here moved (review round 2, M2/L5) to the wider
+     mobile block below — 480px is a subset of that block's condition, so a
+     second, narrower copy of the same declaration here could never change
+     a computed value. See that rule's comment for the full reasoning. */
 }
 
 .chat-input__meta .chat-input__approval-chip--default {
@@ -2015,6 +2024,25 @@
   .chat-input__meta .chat-input__approval-chip {
     flex: 1 1 12rem;
     max-width: 100%;
+  }
+  /* review round 2 (M2/L5): `.chat-input__approval-chip-policy` (e.g.
+     "Station approvals do not apply") is a security-relevant NEGATION — a
+     read that truncates to "Station approvals do…" reads as the OPPOSITE
+     of what it says, which is worse than the pre-fix hard-clip this file
+     already fixed once. The chip's `flex: 1 1 12rem` right above means it
+     CAN shrink below its 12rem basis anywhere in THIS block's condition —
+     every width this rule reaches, `max-width: 768px` OR the landscape
+     `(max-height: 540px) and (pointer: coarse)` arm — not only below the
+     480px this used to be scoped to (the reported fragment can only have
+     come from the 481-768px arm or landscape-coarse; the label span's own
+     ellipsis is unaffected and stays fine to truncate). Hides the whole
+     block's span here instead of narrowing the old 480px rule, so it is
+     visible ONLY outside this media query entirely — genuine desktop,
+     where the chip is never width-constrained in the first place and the
+     12rem basis always fits untruncated. The full string stays in the
+     chip's `aria-label`/`title` regardless (archive#1010). */
+  .chat-input__approval-chip-policy {
+    display: none;
   }
   .chat-input__meta .chat-input__agent-btn {
     min-width: 44px;

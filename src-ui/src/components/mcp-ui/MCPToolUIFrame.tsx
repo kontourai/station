@@ -60,6 +60,9 @@ import { nativePlatformPromise } from '../../platform/native';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import './MCPToolUIFrame.css';
+import { isDistinctFrameOrigin } from './frameOrigin';
+
+export { isDistinctFrameOrigin } from './frameOrigin';
 
 interface MCPToolUIResourceContent {
   uri: string;
@@ -1406,22 +1409,6 @@ async function proxyResourceRead(
   // The server proxy reads only the tool's resolved resourceUri, so the View's
   // requested uri is advisory — the pinned server/tool determines what is read.
   return fetchMCPToolUIResource(apiBase, { serverId, toolName });
-}
-
-/**
- * allow-same-origin is safe ONLY when the frame loads from an origin distinct
- * from Station's own — otherwise "same-origin" resolves to Station and the
- * sandbox is escaped. Returns true only for a parseable origin that differs
- * from `window.location.origin`; any ambiguity (missing, unparseable, no
- * window, or equal) returns false so the caller stays on the opaque-origin path.
- */
-export function isDistinctFrameOrigin(frameOrigin?: string): boolean {
-  if (!frameOrigin || typeof window === 'undefined') return false;
-  try {
-    return new URL(frameOrigin).origin !== window.location.origin;
-  } catch {
-    return false;
-  }
 }
 
 function clampHeight(value: number): number {

@@ -160,6 +160,7 @@ export function useSendMessage(
       // stay durable, rather than also entering this legacy in-memory queue.
       options?: {
         skipInMemoryQueueOnBusy?: boolean;
+        resourceAdmissionOverrideToken?: string;
         /** State-bound capability supplied only by OutboundDispatchModule. */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
@@ -271,6 +272,9 @@ export function useSendMessage(
           attachmentStages: currentState?.attachmentStages,
           ambientContext,
           clientTurnId: resolvedTurnId,
+          resourceAdmissionOverrideToken:
+            options?.resourceAdmissionOverrideToken,
+          automaticBackground: Boolean(options?.dispatch),
           signal: abortController.signal,
         });
 
@@ -286,18 +290,20 @@ export function useSendMessage(
           // live controls/events to the server-receipted child identity.
           currentSessionId: receipt.sessionId,
         });
-        // archive#1146: the send above is what brings this chat's orchestration
-        // session into existence, and a session that has just come into
-        // existence is not in the cached list every reader of
+        // The send above can bring either the conversation's root Session or
+        // a later continuation Session into existence. A newly current child
+        // is not in the cached list every reader of
         // `useOrchestrationSessionsQuery` is holding. Nothing else invalidates
         // that key on this path (`AttentionCard.tsx` is the only other writer,
         // and it fires on a different surface), and `staleTime` alone never
-        // triggers a refetch — measured live, the chat dock's directory label
-        // stayed on its pre-session value indefinitely (120s of polling, no
-        // refetch). Guarded on the false→true transition read from the
-        // pre-send snapshot, so it fires once per chat rather than on every
-        // send.
-        if (!currentState?.orchestrationSessionStarted) {
+        // triggers a refetch. Invalidate on the first start OR when the
+        // receipted execution identity changes; otherwise the dock looks for
+        // the new child in a pre-child cache and falsely reports "Session
+        // record missing" even though that record is durable on the server.
+        if (
+          !currentState?.orchestrationSessionStarted ||
+          currentState.currentSessionId !== receipt.sessionId
+        ) {
           invalidate(['orchestration-sessions']);
           invalidate(conversationQueries.inventory().queryKey);
         }
@@ -309,7 +315,10 @@ export function useSendMessage(
             } satisfies OutboundDispatchTransportResult)
           : true;
       } catch (error) {
-        const err = error as Error & Partial<ChatHttpError>;
+        const err = error as Error &
+          Partial<ChatHttpError> & {
+            override?: { token: string; expiresAt: number };
+          };
         const latestState = activeChatsStore.getSnapshot()[sessionId];
 
         // archive#1224 (offline): a genuinely offline send (the
@@ -431,7 +440,9 @@ export function useSendMessage(
           ? false
           : (translated as ChatErrorTranslation).terminalSession;
         const dispatchClaim = options?.dispatch;
-        if (dispatchClaim) {
+        const dispatchDeferred =
+          Boolean(dispatchClaim) && err.code === 'resource_posture_deferred';
+        if (dispatchClaim && !dispatchDeferred) {
           // Once the foreground call has begun, neither an abort, a network
           // error, nor an HTTP/receipt error proves the provider did nothing.
           // Latch durable evidence before any observer or return path can
@@ -443,6 +454,12 @@ export function useSendMessage(
           // non-retryable notice, so reload/navigation keeps the evidence.
           assignConversationId(sessionId, observedSessionId);
         }
+        const resourceOverrideToken =
+          err.code === 'resource_posture_override_required' &&
+          err.override &&
+          err.override.expiresAt > Date.now()
+            ? err.override.token
+            : undefined;
         updateChat(sessionId, {
           // `terminalSession` is a Station-side refusal: the conversation has
           // ended, so the send was declined before any engine saw it. Writing
@@ -453,7 +470,13 @@ export function useSendMessage(
           // non-error and let the persisted server lifecycle name it. The
           // refusal itself is carried by the ephemeral notice below, which
           // already suppresses Retry for exactly this case.
-          status: foregroundIndeterminate || terminalSession ? 'idle' : 'error',
+          status:
+            foregroundIndeterminate ||
+            terminalSession ||
+            dispatchDeferred ||
+            err.code === 'resource_posture_override_required'
+              ? 'idle'
+              : 'error',
           error: err.message,
           abortController: undefined,
           ...(foregroundIndeterminate
@@ -490,7 +513,7 @@ export function useSendMessage(
             terminalSession || foregroundIndeterminate || dispatchClaim
               ? undefined
               : {
-                  label: 'Retry',
+                  label: resourceOverrideToken ? 'Start anyway' : 'Retry',
                   handler: () =>
                     sendMessage(
                       sessionId,
@@ -500,6 +523,12 @@ export function useSendMessage(
                       attachments,
                       ambientContext,
                       resolvedTurnId,
+                      resourceOverrideToken
+                        ? {
+                            resourceAdmissionOverrideToken:
+                              resourceOverrideToken,
+                          }
+                        : undefined,
                     ),
                 },
         });
@@ -509,6 +538,12 @@ export function useSendMessage(
           onActiveSessionChange?.(sessionId);
         }
         clearStreamingMessage(sessionId);
+        if (dispatchDeferred) {
+          return {
+            kind: 'deferred',
+            reason: translated.title,
+          } satisfies OutboundDispatchTransportResult;
+        }
         if (foregroundIndeterminate || dispatchClaim) throw err;
         if (options?.dispatch) {
           return {
@@ -633,7 +668,10 @@ export function useCancelMessage(apiBase?: string) {
         // releasing this local observer; otherwise Stop merely hides a turn
         // that continues spending tokens and can later be reported Done.
         const result = await interruptOrchestrationTurn({
-          threadId: state.conversationId ?? sessionId,
+          // A conversation may advance through multiple execution Sessions.
+          // Interrupt the exact receipted current Session, not its durable
+          // conversation/root identity.
+          threadId: state.currentSessionId ?? state.conversationId ?? sessionId,
           // Only meaningful while the engine has not started this turn: it
           // binds a held cancel to THIS dispatch
           ...(state.pendingClientTurnId

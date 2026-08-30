@@ -88,6 +88,7 @@ export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
       {/* empty-state action: creation and filter reset are adjacent */}
       <SplitPaneLayout
         paneId={AGENTS_PANE_ID}
+        listClassName="entrance-stagger"
         label="agents"
         title="Agents"
         subtitle="Who can do work here, and what each one runs on."

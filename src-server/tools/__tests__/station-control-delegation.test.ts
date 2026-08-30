@@ -117,8 +117,11 @@ function localService() {
     ),
   };
   const startSessionInternal = vi.fn(
-    async (command: Record<string, unknown>, context: unknown) =>
-      sessionCommands.execute(command, context),
+    async (
+      command: Record<string, unknown>,
+      context: unknown,
+      _internal?: unknown,
+    ) => sessionCommands.execute(command, context),
   );
   return {
     readSession: vi.fn(async (_sessionId?: string) => null),
@@ -372,6 +375,8 @@ function installRemoteStationFetch(
   canonicalPath:
     | '/api/orchestration/delegations'
     | '/api/orchestration/chat'
+    | '/api/orchestration/chat/delegated'
+    | '/api/orchestration/chat/background'
     | '/api/orchestration/chat/conversation-1/continue',
   responseData: unknown,
   discovery?: {
@@ -652,6 +657,9 @@ describe('Station Control canonical Environment + Agent execution', () => {
       resolution: { engine: { kind: 'station' } },
     });
     expect(service.sessionCommands.execute).toHaveBeenCalledTimes(1);
+    expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
+      resourceAdmissionIntent: 'delegated_background',
+    });
     expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
     expect(service.sessionCommands.execute.mock.calls[0][0]).toMatchObject({
       type: 'start-session',
@@ -807,6 +815,213 @@ describe('Station Control canonical Environment + Agent execution', () => {
     ).toBe(false);
   });
 
+  test('records a peer dispatch on the delegating Station only after the peer accepts it (#847)', async () => {
+    const recordPeerDelegationActivityDispatch = vi.fn();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`) {
+        return json({ environmentId: 'environment-current' });
+      }
+      if (url === `${CURRENT_API}/api/environments/ssh`) {
+        return json({ success: true, data: [] });
+      }
+      if (
+        url ===
+        `${CURRENT_API}/api/environments/peers/environment-remote/credential`
+      ) {
+        return json({
+          success: true,
+          data: {
+            environmentId: 'environment-remote',
+            apiBase: REMOTE_API,
+            scope: 'station:peer',
+            credential: 'peer-secret',
+            label: 'Station B',
+          },
+        });
+      }
+      if (url === `${REMOTE_API}/api/orchestration/delegations`) {
+        return json({
+          success: true,
+          data: delegationHandle({
+            taskId: 'task-peer-847',
+            sessionId: 'task-peer-847',
+            provider: 'codex',
+            environment: {
+              id: 'environment-remote',
+              name: 'Current environment',
+              kind: 'current',
+            },
+            target: { kind: 'agent', id: 'codex' },
+          }),
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const { delegateTask } = await import('../station-control-delegation.js');
+
+    await delegateTask(
+      { prompt: 'Run the peer checks', target: savedTarget() },
+      { recordPeerDelegationActivityDispatch } as never,
+    );
+
+    expect(recordPeerDelegationActivityDispatch).toHaveBeenCalledWith({
+      taskId: 'task-peer-847',
+      conversationId: 'task-peer-847',
+      prompt: 'Run the peer checks',
+      userId: expect.any(String),
+      environment: {
+        id: 'environment-remote',
+        name: 'Station B',
+        kind: 'peer',
+      },
+      target: { kind: 'agent', id: 'codex' },
+    });
+  });
+
+  test('returns a successful peer observation when local Activity bookkeeping throws (#847 fix round)', async () => {
+    const recordPeerDelegationActivityOutcome = vi.fn(() => {
+      throw new Error('local projection failed');
+    });
+    const snapshot = {
+      conversationId: 'task-peer-847-observe',
+      taskId: 'task-peer-847-observe',
+      sessionId: 'task-peer-847-observe',
+      currentSessionId: 'task-peer-847-observe',
+      status: 'needs_input',
+      environment: {
+        id: 'environment-current',
+        name: 'Current environment',
+        kind: 'current',
+      },
+      target: { kind: 'agent', id: 'codex' },
+      eventCount: 1,
+      canInterrupt: false,
+      resumable: false,
+    };
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`) {
+        return json({ environmentId: 'environment-current' });
+      }
+      if (url === `${CURRENT_API}/api/environments/ssh`) {
+        return json({ success: true, data: [] });
+      }
+      if (
+        url ===
+        `${CURRENT_API}/api/environments/peers/environment-remote/credential`
+      ) {
+        return json({
+          success: true,
+          data: {
+            environmentId: 'environment-remote',
+            apiBase: REMOTE_API,
+            scope: 'station:peer',
+            credential: 'peer-secret',
+            label: 'Station B',
+          },
+        });
+      }
+      if (
+        url ===
+        `${REMOTE_API}/api/orchestration/delegations/task-peer-847-observe`
+      ) {
+        return json({ success: true, data: snapshot });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await expect(
+      observeDelegatedTask(
+        {
+          taskId: 'task-peer-847-observe',
+          environmentId: 'environment-remote',
+        },
+        { recordPeerDelegationActivityOutcome } as never,
+      ),
+    ).resolves.toMatchObject({ status: 'needs_input' });
+    expect(recordPeerDelegationActivityOutcome).toHaveBeenCalledWith({
+      taskId: 'task-peer-847-observe',
+      environmentId: 'environment-remote',
+      status: 'needs_input',
+    });
+  });
+
+  test('bounds the older-peer 404 fallback session read with the observation timeout (#847 fix round)', async () => {
+    let fallbackSignal: AbortSignal | undefined;
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === `${CURRENT_API}/.well-known/station/v1`) {
+        return json({ environmentId: 'environment-current' });
+      }
+      if (url === `${CURRENT_API}/api/environments/ssh`) {
+        return json({ success: true, data: [] });
+      }
+      if (
+        url ===
+        `${CURRENT_API}/api/environments/peers/environment-remote/credential`
+      ) {
+        return json({
+          success: true,
+          data: {
+            environmentId: 'environment-remote',
+            apiBase: REMOTE_API,
+            scope: 'station:peer',
+            credential: 'peer-secret',
+            label: 'Station B',
+          },
+        });
+      }
+      if (
+        url === `${REMOTE_API}/api/orchestration/delegations/task-peer-legacy`
+      ) {
+        return json({ success: false, error: 'route not found' }, 404);
+      }
+      if (url === `${REMOTE_API}/api/orchestration/sessions/task-peer-legacy`) {
+        fallbackSignal = init?.signal ?? undefined;
+        return json({
+          success: true,
+          data: {
+            session: {
+              provider: 'codex',
+              threadId: 'task-peer-legacy',
+              lifecycleState: 'running',
+            },
+            events: [
+              {
+                method: 'session.started',
+                metadata: {
+                  taskId: 'task-peer-legacy',
+                  conversationId: 'task-peer-legacy',
+                  environmentId: 'environment-remote',
+                  environmentName: 'Station B',
+                  targetKind: 'agent',
+                  targetId: 'codex',
+                },
+              },
+            ],
+          },
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const { observeDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await expect(
+      observeDelegatedTask({
+        taskId: 'task-peer-legacy',
+        environmentId: 'environment-remote',
+        readTimeoutMs: 1_500,
+      }),
+    ).resolves.toMatchObject({ status: 'running' });
+    expect(fallbackSignal).toBeInstanceOf(AbortSignal);
+  });
+
   test('relays target-side delegation validation errors without a fallback', async () => {
     installRemoteStationFetch('/api/orchestration/delegations', undefined);
     // Replace only the canonical target response with a rejection while the
@@ -915,6 +1130,76 @@ describe('Station Control canonical Environment + Agent execution', () => {
       detail: {
         receiptStatus: 'unavailable',
         session: { threadId: 'conversation-uncertain' },
+      },
+    });
+  });
+
+  test('uses the fixed delegated route for a cross-Station child message', async () => {
+    const handle = foregroundHandle();
+    installRemoteStationFetch('/api/orchestration/chat/delegated', handle);
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    const delegation = {
+      mode: 'isolated-child' as const,
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: 'parent' as never,
+      rootAgentSlug: 'root' as never,
+    };
+
+    await expect(
+      executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'Delegated remote work',
+        conversationId: 'conversation-delegated-remote',
+        delegation,
+      }),
+    ).resolves.toEqual(handle);
+
+    const call = fetchMock.mock.calls.find(
+      ([url]) =>
+        String(url) === `${REMOTE_API}/api/orchestration/chat/delegated`,
+    );
+    expect(bodyOf(call!)).toMatchObject({ delegation });
+  });
+
+  test('preserves a remote one-shot override capability for the controlling UI', async () => {
+    installRemoteStationFetch('/api/orchestration/chat', {});
+    const baseImplementation = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) => {
+      if (String(input) === `${REMOTE_API}/api/orchestration/chat`) {
+        return json(
+          {
+            success: false,
+            error: 'This Station remains busy.',
+            code: 'resource_posture_override_required',
+            resourceAdmissionOverride: {
+              token: 'remote-override-1',
+              expiresAt: 123_456,
+            },
+          },
+          409,
+        );
+      }
+      return baseImplementation(input, init);
+    });
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await expect(
+      executeExecutionTargetMessage({
+        target: savedTarget(),
+        message: 'Start remotely',
+        conversationId: 'conversation-remote-override',
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: 'resource_posture_override_required',
+      resourceAdmissionOverride: {
+        token: 'remote-override-1',
+        expiresAt: 123_456,
       },
     });
   });
@@ -1344,6 +1629,9 @@ describe('Station Control canonical Environment + Agent execution', () => {
       target: { kind: 'agent', id: 'reviewer' },
     });
     expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
+      resourceAdmissionIntent: 'interactive_user',
+    });
     expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
     expect(service.dispatchWithReceipt.mock.calls[0][0]).toMatchObject({
       type: 'sendTurn',
@@ -1360,6 +1648,83 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(service.dispatchWithReceipt.mock.calls[0][1]).toEqual({
       userId: 'shared-user',
       tenantExecutionContext: { tenantId: 'alpha', source: 'request' },
+    });
+  });
+
+  test('derives webhook admission from the server-owned ephemeral seam', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await executeExecutionTargetMessage(
+      {
+        target: currentTarget(),
+        message: 'Webhook delivery',
+        conversationId: 'conversation-webhook',
+        ephemeral: true,
+        webhookTokenId: 'token-1',
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+
+    expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
+      ephemeralSessionVisibility: true,
+      resourceAdmissionIntent: 'webhook',
+    });
+  });
+
+  test('derives delegated/background admission from server-carried delegation metadata', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await executeExecutionTargetMessage(
+      {
+        target: currentTarget(),
+        message: 'Delegated delivery',
+        conversationId: 'conversation-delegated',
+        delegation: {
+          mode: 'isolated-child',
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: 'parent' as never,
+          rootAgentSlug: 'root' as never,
+        },
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+
+    expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
+      resourceAdmissionIntent: 'delegated_background',
+    });
+  });
+
+  test('derives queued/background admission from the fixed background route seam', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+
+    await executeExecutionTargetMessage(
+      {
+        target: currentTarget(),
+        message: 'Queued replay',
+        conversationId: 'conversation-background',
+        automaticBackground: true,
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+
+    expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
+      resourceAdmissionIntent: 'queued_background',
     });
   });
 

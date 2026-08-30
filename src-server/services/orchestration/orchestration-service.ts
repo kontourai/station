@@ -81,6 +81,7 @@ import type { SessionLifecycleState } from '../../../packages/contracts/src/sess
 import {
   foldedSessionLifecycleState,
   SESSION_ENDED_REJECTION_CODE,
+  SESSION_LIFECYCLE_TRANSITIONS,
 } from '../../../packages/contracts/src/session-lifecycle.js';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
 import type { UsagePricingSnapshotCapture } from '../../analytics/usage-pricing-snapshot-capture.js';
@@ -159,8 +160,12 @@ import type {
 import { type SessionFlowBinding } from '../flow/orchestration-flow-gate.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import {
-  admitEngineStart,
+  admitEngineStartForIntent,
+  ConcurrentEngineStartCapacityError,
+  CriticalMemoryPressureError,
   CriticalResourcePostureError,
+  InteractiveResourceOverrideRequiredError,
+  ResourcePostureDeferredError,
   type RuntimeResourcePostureProbe,
 } from '../infra/resource-posture.js';
 import {
@@ -257,6 +262,7 @@ import {
 import {
   ACTIVE_TURN_FOLD_METHODS,
   activeTurnIdForEvents,
+  createManualSessionTransitionEvent,
   isDeferredRetriableTurnError,
   normalizeCanonicalRuntimeEventLifecycle,
   projectSessionLifecycle,
@@ -336,6 +342,8 @@ interface OrchestrationDispatchInternalOptions {
     conversationId: string;
     environmentId: string;
   };
+  resourceAdmissionIntent?: import('../infra/resource-posture.js').RuntimeEngineStartIntent;
+  resourceAdmissionOverrideToken?: string;
 }
 
 function chatStartGateReason(error: unknown): string {
@@ -464,6 +472,8 @@ export class SessionEndedError extends Error {
 
 export const ATTACHED_SESSION_READ_ONLY_ERROR =
   'Attached sessions are read-only.';
+export const PEER_DELEGATION_ACTIVITY_READ_ONLY_ERROR =
+  'Peer delegation Activity records are read-only.';
 
 /** A request authority or deliberately named process-wide aggregate scope. */
 export type SessionReadScope = SessionReadAuthority | InternalSessionReadScope;
@@ -661,6 +671,49 @@ interface OrchestrationServiceOptions {
       warn(message: string, meta?: Record<string, unknown>): void;
     };
   };
+}
+
+export interface PeerDelegationActivityDispatch {
+  taskId: string;
+  conversationId: string;
+  prompt: string;
+  userId: string;
+  environment: { id: string; name: string; kind: 'peer' };
+  target: { kind: 'agent'; id: string };
+  projectSlug?: string;
+  parentTaskId?: string;
+}
+
+function peerDelegationActivityThreadId(
+  environmentId: string,
+  taskId: string,
+): string {
+  const digest = crypto
+    .createHash('sha256')
+    .update(`${environmentId}\0${taskId}`)
+    .digest('hex')
+    .slice(0, 32);
+  return `peer-delegation:${digest}`;
+}
+
+function peerDelegationLifecyclePath(
+  from: SessionLifecycleState,
+  to: SessionLifecycleState,
+): SessionLifecycleState[] | undefined {
+  const queue: SessionLifecycleState[][] = [[from]];
+  const visited = new Set<SessionLifecycleState>([from]);
+  while (queue.length > 0) {
+    const path = queue.shift()!;
+    const current = path.at(-1)!;
+    for (const next of SESSION_LIFECYCLE_TRANSITIONS[current]) {
+      if (visited.has(next)) continue;
+      const nextPath = [...path, next];
+      if (next === to) return nextPath;
+      visited.add(next);
+      queue.push(nextPath);
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -2101,11 +2154,20 @@ export class OrchestrationService {
       // policy context (for Claude, that context is PreToolUse).
       startInput = await this.resolveSessionAgentForStart(startInput);
       throwIfAborted(startInput.signal);
-      await admitEngineStart(this.options.resourcePosture, this.options.logger);
-      const session = await withTenantExecutionContext(
-        tenantExecutionContext,
-        () => adapter.startSession(startInput),
+      const admissionLease = await admitEngineStartForIntent(
+        this.options.resourcePosture,
+        this.options.logger,
+        'recovery',
+        { binding: input.threadId },
       );
+      let session: ProviderSession;
+      try {
+        session = await withTenantExecutionContext(tenantExecutionContext, () =>
+          adapter.startSession(startInput),
+        );
+      } finally {
+        admissionLease?.release();
+      }
       this.trackSession(session, adapter);
       this.options.eventStore?.upsertSession(session);
       return { adapter, armedInternalStopTurnId };
@@ -2484,6 +2546,103 @@ export class OrchestrationService {
     }
 
     return sessions.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  /**
+   * Persist the delegating Station's own dispatch receipt for work owned by a
+   * paired peer. This is a compact Activity record, not a copy of the peer's
+   * runtime event stream: dispatch proves only `queued`; a later point read
+   * must supply lifecycle evidence before this record can advance.
+   */
+  recordPeerDelegationActivityDispatch(
+    input: PeerDelegationActivityDispatch,
+  ): string {
+    this.initialize();
+    const threadId = peerDelegationActivityThreadId(
+      input.environment.id,
+      input.taskId,
+    );
+    if (
+      this.sessionReadModel.has(threadId) ||
+      this.options.eventStore?.readSessionByThread(threadId)
+    ) {
+      return threadId;
+    }
+    const createdAt = new Date().toISOString();
+    const title = Array.from(input.prompt.replace(/\s+/g, ' ').trim())
+      .slice(0, 120)
+      .join('');
+    this.projectAndPublishEvent({
+      eventId: `peer-delegation-dispatched:${threadId}`,
+      provider: 'station-agent',
+      threadId,
+      createdAt,
+      method: 'session.started',
+      sessionId: threadId,
+      initialState: 'created',
+      sessionState: 'queued',
+      transitionReason: 'session_started',
+      transitionSource: 'runtime',
+      metadata: {
+        taskId: input.taskId,
+        conversationId: input.conversationId,
+        environmentId: input.environment.id,
+        environmentName: input.environment.name,
+        environmentKind: input.environment.kind,
+        targetKind: input.target.kind,
+        targetId: input.target.id,
+        assignedAgentSlug: input.target.id,
+        delegationTitle: title,
+        userId: input.userId,
+        ...(input.projectSlug ? { projectSlug: input.projectSlug } : {}),
+        ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+      },
+    });
+    return threadId;
+  }
+
+  /** Advance a peer Activity record only from an observed peer lifecycle. */
+  recordPeerDelegationActivityOutcome(input: {
+    taskId: string;
+    environmentId: string;
+    status: SessionLifecycleState;
+  }): boolean {
+    this.initialize();
+    const threadId = peerDelegationActivityThreadId(
+      input.environmentId,
+      input.taskId,
+    );
+    const persisted = this.options.eventStore?.readSessionByThread(threadId);
+    const loaded = this.sessionReadModel.get(threadId);
+    const session = loaded ?? persisted;
+    if (!session) return false;
+    const events =
+      this.options.eventStore
+        ?.listSessionProjectionEvents(threadId)
+        .map((event) => event.payload) ?? [];
+    const current = projectSessionLifecycle({ session, events }).lifecycleState;
+    if (current === input.status) return false;
+    const path = peerDelegationLifecyclePath(current, input.status);
+    if (!path) {
+      this.options.logger.warn(
+        'Could not reconcile peer delegation Activity lifecycle',
+        { threadId, from: current, to: input.status },
+      );
+      return false;
+    }
+    for (let index = 1; index < path.length; index += 1) {
+      const event = createManualSessionTransitionEvent({
+        provider: session.provider,
+        threadId,
+        from: path[index - 1],
+        to: path[index],
+        reason: 'manual_update',
+        source: 'system_recovery',
+        message: 'Observed from the paired Station delegation status endpoint',
+      });
+      this.projectAndPublishEvent(event);
+    }
+    return true;
   }
 
   async listSessionReadModel(
@@ -3547,10 +3706,6 @@ export class OrchestrationService {
           );
           startInput = await this.resolveSessionAgentForStart(startInput);
           throwIfAborted(startInput.signal);
-          await admitEngineStart(
-            this.options.resourcePosture,
-            this.options.logger,
-          );
           this.assertAdapterCurrent(adapter);
           chatStartGate.add(1, {
             agent_type: chatStartGateAgentType(adapter),
@@ -3560,12 +3715,30 @@ export class OrchestrationService {
           });
           return startInput;
         },
-        start: async (adapter, input, context) => {
+        start: async (adapter, input, context, internal) => {
           const startedAt = performance.now();
-          const session = await withTenantExecutionContext(
-            context.tenantExecutionContext,
-            () => adapter.startSession(input),
+          const admissionLease = await admitEngineStartForIntent(
+            this.options.resourcePosture,
+            this.options.logger,
+            internal?.resourceAdmissionIntent ?? 'interactive_user',
+            {
+              binding: input.threadId,
+              ...(internal?.resourceAdmissionOverrideToken
+                ? {
+                    overrideToken: internal.resourceAdmissionOverrideToken,
+                  }
+                : {}),
+            },
           );
+          let session: ProviderSession;
+          try {
+            session = await withTenantExecutionContext(
+              context.tenantExecutionContext,
+              () => adapter.startSession(input),
+            );
+          } finally {
+            admissionLease?.release();
+          }
           adapterSessionStartDuration.record(performance.now() - startedAt, {
             provider: adapter.provider,
           });
@@ -3625,7 +3798,11 @@ export class OrchestrationService {
       isRejectedError: (error) =>
         error instanceof ModelLaunchPlanUnavailableError ||
         error instanceof SessionReattachConflictError ||
-        error instanceof CriticalResourcePostureError,
+        error instanceof CriticalResourcePostureError ||
+        error instanceof ResourcePostureDeferredError ||
+        error instanceof CriticalMemoryPressureError ||
+        error instanceof ConcurrentEngineStartCapacityError ||
+        error instanceof InteractiveResourceOverrideRequiredError,
       attachedSessionReadOnlyMessage: ATTACHED_SESSION_READ_ONLY_ERROR,
     });
   }
@@ -3836,6 +4013,15 @@ export class OrchestrationService {
       this.persistReceipt(rejectedReceipt);
       throw new OrchestrationCommandDispatchError(
         `Session is unavailable: ${commandThreadId}`,
+        rejectedReceipt,
+      );
+    }
+
+    if (this.isPeerDelegationActivityRecord(commandThreadId)) {
+      const rejectedReceipt = { ...receipt, status: 'rejected' as const };
+      this.persistReceipt(rejectedReceipt);
+      throw new OrchestrationCommandDispatchError(
+        PEER_DELEGATION_ACTIVITY_READ_ONLY_ERROR,
         rejectedReceipt,
       );
     }
@@ -4934,6 +5120,14 @@ export class OrchestrationService {
         ?.readSessions()
         .find((candidate) => candidate.threadId === threadId);
     return session?.controlMode === 'read-only-attached';
+  }
+
+  private isPeerDelegationActivityRecord(threadId: string): boolean {
+    if (!threadId.startsWith('peer-delegation:')) return false;
+    return Boolean(
+      this.sessionReadModel.get(threadId) ??
+        this.options.eventStore?.readSessionByThread(threadId),
+    );
   }
 
   /**
@@ -6092,8 +6286,13 @@ export class OrchestrationService {
           'resume',
           this.modelLaunch.modelLaunchRequestedOverrideFromInput(input),
         ),
-      admitEngineStart: () =>
-        admitEngineStart(this.options.resourcePosture, this.options.logger),
+      admitEngineStart: (threadId) =>
+        admitEngineStartForIntent(
+          this.options.resourcePosture,
+          this.options.logger,
+          'recovery',
+          { binding: threadId },
+        ),
       // archive#1011: recovery replays only the cwd persisted at start, so a
       // project-bound session created before that resolution existed (or by a
       // client that never supplied one) keeps recovering with none — and the
@@ -6146,6 +6345,7 @@ export class OrchestrationService {
   ): Promise<ProviderAdapterShape | undefined> {
     if (this.quarantinedThreads.has(threadId)) return undefined;
     if (this.isReadOnlyAttachedSession(threadId)) return undefined;
+    if (this.isPeerDelegationActivityRecord(threadId)) return undefined;
     const session =
       this.sessionReadModel.get(threadId) ??
       this.options.eventStore?.readSessionByThread(threadId);

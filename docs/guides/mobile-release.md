@@ -20,10 +20,12 @@ release build (signed IPA, `--export-method app-store-connect`) already run insi
 `android` and `ios-device` jobs, triggered by pushing an annotated `vMAJOR.MINOR.PATCH`
 tag — see [native-releases.md](./native-releases.md#stage-inspect-publish-and-roll-back)
 and [release-rings.md](./release-rings.md#publish-a-preview) for that flow.
-Both jobs now have a final store-upload step appended. Each is **guarded on its
-own credential's presence** and does an `::notice::`-only skip, never a job
-failure, when that credential isn't configured — the release still succeeds,
-signs, and attaches artifacts to the GitHub release either way.
+Both jobs have a required final store-upload step. A tagged Stable release
+fails closed when Play or App Store Connect credentials, signing material, or
+provider acceptance is unavailable; it cannot attach artifacts and quietly
+imply the declared mobile delivery happened. The iOS job additionally waits
+for Apple processing and retains an App Store Connect receipt bound to the
+exact source SHA, IPA digest, app ID, build ID, and build number.
 
 ## Native app update feed
 
@@ -59,13 +61,22 @@ provider recovery instead of claiming either feed state.
 build unsigned debug/simulator artifacts to catch a Rust/Gradle/Xcode-breaking
 change before it reaches a real release tag — they carry no store-upload step
 and no signing secret, and are unrelated to everything else in this doc.
-Android also runs on `pull_request` (path-filtered to
-`src-desktop/**`/the workflow file/the 16 KB-alignment script/the npm
-lockfile) in addition to `workflow_dispatch`; iOS is `workflow_dispatch`-only
-— macOS GitHub-hosted runners cost ~10x a Linux runner, and this repo's
-hosted CI is presently suspended org-wide on billing (AGENTS.md/CLAUDE.md), so
-arming a new recurring macOS PR gate on top of that is deliberately deferred,
-not an oversight. `build-android.yml`'s successful completion also triggers
+Android also runs on affected `main` pushes and `workflow_dispatch`. iOS runs
+through the reviewed base-controlled `pull_request_target` topology, on
+affected `main` pushes, and through `workflow_dispatch`. Every pull request
+emits the stable `build-ios-verification` check so the main ruleset can require
+it. A reviewed hosted-Linux classifier runs the `macos-26` job only when the
+pull request changes iOS, native, frontend, or shared package inputs; unrelated
+pull requests receive a successful skipped job without consuming macOS
+capacity. The cancellation group supersedes stale runs for the same pull
+request. The macOS job builds an unsigned iOS 26.5 simulator app, installs it
+on an iPhone 17 Pro simulator, and uses native XCUITest against the packaged
+WKWebView accessibility tree. A clean install must leave the startup surface
+and expose the actionable connection screen within 30 seconds. The lane always
+retains its screenshot, Station/unified logs, process snapshot, Xcode result
+bundle, and machine-readable receipt bound to the tested pull-request head or
+push SHA. No Apple signing identity or developer account is used.
+`build-android.yml`'s successful completion also triggers
 `.github/workflows/android-test.yml` (`workflow_run`), which downloads its
 artifact by the name `station-android-debug` — keep both names in sync if
 either changes.
@@ -184,7 +195,7 @@ scope.
 | Secret | Platform | Used for | Workflow role |
 | --- | --- | --- | --- |
 | `APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64`, `APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`, `APPLE_DEVELOPMENT_TEAM`, `APPLE_IOS_SIGNING_IDENTITY`, `APPLE_PROVISIONING_PROFILE_BASE64` | iOS | Code-signs the release IPA | Required by the iOS build/sign job — see native-releases.md |
-| `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, `APPLE_API_PRIVATE_KEY` | iOS | Authenticates the TestFlight upload | Required only when the guarded TestFlight upload runs; absence produces the documented skip |
+| `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, `APPLE_API_PRIVATE_KEY` | iOS | Authenticates App Store Connect preflight, TestFlight upload, and processed-build receipt | Required; absence fails the Stable iOS release job before signing work |
 
 Google Play authentication deliberately has no secret row. GitHub's OIDC token
 is exchanged through Google Workload Identity Federation for a short-lived
@@ -319,13 +330,13 @@ push (`git tag -s vX.Y.Z -m '...' && git push origin vX.Y.Z`), then:
 1. Watch the `Stage Station release` run. The `android` and `ios-device` jobs
    pause for `native-release` environment approval like every other signing
    job in this workflow — approve once and both proceed.
-2. In the job logs for `android`, confirm either "Upload to Play internal
-   testing track" ran (its own logs report the Play Console edit ID and
-   uploaded version code) or "Note skipped Play Store upload" printed the
-   `::notice::` — the latter means the Play OIDC variables are not configured
-   yet, not that anything failed.
-3. Likewise for `ios-device`: "Upload to TestFlight" vs "Note skipped
-   TestFlight upload".
+2. In the job logs for `android`, confirm "Upload to Play internal testing
+   track" ran; its own logs report the Play Console edit ID and uploaded
+   version code. A missing OIDC or signing prerequisite is a red release.
+3. For `ios-device`, confirm "Upload to TestFlight" and "Record the processed
+   TestFlight build receipt" both ran. Download
+   `station-ios-testflight-receipts` and require the receipt's source SHA,
+   bundle version, processing state, and IPA digest to match the release.
 4. In [Play Console](https://play.google.com/console/) → your app → Testing →
    Internal testing, confirm the new version code appears (Play typically
    processes an upload within a few minutes).
@@ -334,18 +345,16 @@ push (`git tag -s vX.Y.Z -m '...' && git push origin vX.Y.Z`), then:
    take anywhere from a few minutes to over an hour before the build is
    selectable for a test group; a build not yet listed immediately after
    upload is expected, not a failure.
-6. The signed AAB/APK and IPA are attached to the GitHub release regardless
-   of store-upload outcome (`assemble-draft` uploads every `station-*`
-   artifact, store upload or not) — the GitHub release itself is never
-   gated on store credentials being configured.
+6. The draft assembler runs only after the required Android and Stable iOS
+   jobs succeed. Store credential or upload failure therefore prevents the
+   draft rather than producing a release whose declared delivery cell is
+   silently absent.
 
 ## What's NOT verified by this pipeline
 
 Per [native-releases.md](./native-releases.md#required-protected-environments-and-secrets):
-*"Play and App Store upload remain external follow-up steps; no workflow claim
-substitutes for their provider receipts."* A green `android`/`ios-device` job
-proves the build was signed correctly and (if configured) accepted by the
-upload API — it does not prove Play or Apple approved the release for
-testers, and it is not App Store review evidence. Read the actual Play
-Console / App Store Connect processing state, not the workflow's exit code,
-as the source of truth for "did testers get this build."
+The retained TestFlight receipt proves that App Store Connect exposes the exact
+processed build as `VALID`; it does not prove assignment to a tester group,
+installation on a physical iPhone, or App Store review. Play likewise owns
+track visibility and device rollout. Read provider/device state for "did
+testers get this build" rather than generalizing from another platform cell.

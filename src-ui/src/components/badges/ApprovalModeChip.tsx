@@ -135,21 +135,27 @@ export function ApprovalModeChip({
     sessionOverride,
     connectionDefault,
   });
-  const isOverride = effective.source === 'session override';
   const appliedMode = isApprovalMode(lastAppliedApprovalMode)
     ? lastAppliedApprovalMode
     : undefined;
+  // Once the adapter has emitted a durable session/turn receipt, that fact is
+  // the chip's authority. Requested/default state remains the fallback before
+  // the first receipt and the picker input for the next turn.
+  const displayedMode = appliedMode ?? effective.mode;
+  const isOverride = effective.source === 'session override';
   const isPendingApply =
     isOverride && effective.mode === 'never' && appliedMode !== 'never';
 
   // Full text for assistive tech and hover; the pill itself shows the short
   // form so it stops clipping at 390px (archive#1010).
   const selectedLabel = isPendingApply
-    ? `${approvalModeLabel('never')} — pending next turn`
-    : effective.label;
+    ? `${approvalModeLabel(displayedMode)} — full access requested for the next turn`
+    : appliedMode
+      ? approvalModeLabel(appliedMode)
+      : effective.label;
   const chipText = isPendingApply
-    ? `${approvalModeChipLabel('never')} · pending`
-    : approvalModeChipLabel(effective.mode);
+    ? `${approvalModeChipLabel(displayedMode)} · pending`
+    : approvalModeChipLabel(displayedMode);
 
   return (
     <>
@@ -194,7 +200,7 @@ export function ApprovalModeChip({
           load={loadComposerModeSheet}
           componentProps={{
             triggerRef,
-            effectiveMode: effective.mode,
+            effectiveMode: displayedMode,
             engineConnectionId,
             onClose: () => setIsSheetOpen(false),
             onSelect: onChange,

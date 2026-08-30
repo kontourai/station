@@ -391,7 +391,10 @@ describe('the desktop tauri config overlay (station#575)', () => {
       productName: 'Station Nightly',
       version: '0.1.0-nightly.2412',
       identifier: 'io.kontourai.station.nightly',
-      bundle: { createUpdaterArtifacts: 'v1Compatible' },
+      bundle: {
+        createUpdaterArtifacts: 'v1Compatible',
+        macOS: { bundleVersion: '241200' },
+      },
       plugins: {
         updater: {
           pubkey: 'trusted-public-key',
@@ -450,6 +453,7 @@ describe('the desktop tauri config overlay (station#575)', () => {
       join(tmpdir(), 'station-nightly-desktop-identity-'),
     );
     const output = join(directory, 'tauri.nightly-desktop.conf.json');
+    const githubOutput = join(directory, 'github-output');
     const config = writeNightlyDesktopConfig({
       packageJsonPath: resolve(import.meta.dirname, '../../package.json'),
       tauriConfigPath: resolve(
@@ -461,11 +465,25 @@ describe('the desktop tauri config overlay (station#575)', () => {
       updaterEndpoint:
         'https://github.com/kontourai/station/releases/download/nightly-desktop/latest.json',
       outputPath: output,
+      githubOutput,
     });
     expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(config);
-    expect(readdirSync(directory)).toEqual(['tauri.nightly-desktop.conf.json']);
+    expect(readFileSync(githubOutput, 'utf8')).toBe(
+      [
+        'version=0.1.2-nightly.2412',
+        'identifier=io.kontourai.station.nightly',
+        'product_name=Station Nightly',
+        'bundle_version=241200',
+        '',
+      ].join('\n'),
+    );
+    expect(readdirSync(directory).sort()).toEqual([
+      'github-output',
+      'tauri.nightly-desktop.conf.json',
+    ]);
     expect(config.version).toBe('0.1.2-nightly.2412');
     expect(config.identifier).toBe('io.kontourai.station.nightly');
+    expect(config.bundle.macOS.bundleVersion).toBe('241200');
   });
 });
 
@@ -497,10 +515,15 @@ describe('the nightly workflow keeps its promises', () => {
     expect(nightlyStart).toBeGreaterThan(gateStart);
     const gateJob = workflow.slice(gateStart, nightlyStart);
     expect(gateJob).toContain('run: npm run test:e2e:pr-smoke');
-    // Gate-SHA == ship-SHA, written out on both sides rather than left to
-    // checkout's implicit default, so the tests' verdict stays bound to the
-    // exact bytes the build ships.
-    expect(gateJob).toContain('ref: $' + '{{ github.sha }}');
+    // Gate-SHA == ship-SHA even for an exact historical-main promotion: the
+    // gate validates one optional input, exports it, and both producers use
+    // that output rather than independently resolving a moving branch.
+    expect(gateJob).toContain(
+      'ref: $' + '{{ inputs.source_sha || github.sha }}',
+    );
+    expect(gateJob).toContain(
+      'source_sha: $' + '{{ steps.source.outputs.sha }}',
+    );
     const nightlyCheckout = workflow.slice(
       nightlyStart,
       workflow.indexOf(
@@ -508,7 +531,9 @@ describe('the nightly workflow keeps its promises', () => {
         nightlyStart,
       ),
     );
-    expect(nightlyCheckout).toContain('ref: $' + '{{ github.sha }}');
+    expect(nightlyCheckout).toContain(
+      'ref: $' + '{{ needs.test-gate.outputs.source_sha }}',
+    );
   });
 
   it('makes the nightly build job need the test gate', () => {
@@ -878,7 +903,9 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
 
   it('builds at the pinned decide-step SHA, never an implicit checkout default', () => {
     const checkout = desktopJob.slice(0, desktopJob.indexOf('Decide whether'));
-    expect(checkout).toContain('ref: $' + '{{ github.sha }}');
+    expect(checkout).toContain(
+      'ref: $' + '{{ needs.test-gate.outputs.source_sha }}',
+    );
     const decide = desktopJob.slice(
       desktopJob.indexOf('Decide whether'),
       desktopJob.indexOf('Build an unsigned macOS nightly staging candidate'),
@@ -901,9 +928,24 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     );
     expect(notarize).toContain('--release-tag nightly-desktop');
     expect(notarize).toContain('--bundle-id io.kontourai.station.nightly');
+    expect(notarize).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: pins the workflow's literal GitHub expression.
+      'expected_bundle_version="${{ steps.identity.outputs.bundle_version }}"',
+    );
+    expect(notarize).toContain('Print :CFBundleVersion');
+    expect(notarize).toContain('must be numeric before notarization');
+    expect(notarize).toContain(
+      'if [[ "$actual_bundle_version" != "$expected_bundle_version" ]]; then',
+    );
+    expect(notarize).toContain(
+      'CFBundleVersion does not match the generated desktop identity',
+    );
     expect(notarize).toContain('macos-signing-readiness.mjs unlock');
     expect(notarize).toContain('macos-signing-readiness.mjs probe');
     expect(notarize.indexOf('macos-signing-readiness.mjs unlock')).toBeLessThan(
+      notarize.indexOf('macos-notarized-artifacts.mjs'),
+    );
+    expect(notarize.indexOf('Print :CFBundleVersion')).toBeLessThan(
       notarize.indexOf('macos-notarized-artifacts.mjs'),
     );
     expect(desktopJob).toContain('Cleanup macOS Developer ID keychain');

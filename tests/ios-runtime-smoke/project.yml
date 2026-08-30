@@ -1,0 +1,41 @@
+name: StationRuntimeSmoke
+options:
+  bundleIdPrefix: io.kontourai.station.tests
+  deploymentTarget:
+    iOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+targets:
+  SmokeHost:
+    type: application
+    platform: iOS
+    sources:
+      - ${STATION_IOS_SMOKE_ROOT}/tests/ios-runtime-smoke/SmokeHost
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Station Smoke Host
+        PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station.tests.smokehost
+  StationRuntimeSmokeTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - ${STATION_IOS_SMOKE_ROOT}/tests/ios-runtime-smoke/StationRuntimeSmokeTests.swift
+    dependencies:
+      - target: SmokeHost
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station.tests.runtime
+        TEST_TARGET_NAME: SmokeHost
+schemes:
+  StationRuntimeSmoke:
+    build:
+      targets:
+        SmokeHost: all
+        StationRuntimeSmokeTests:
+          - test
+    test:
+      targets:
+        - StationRuntimeSmokeTests

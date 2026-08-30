@@ -157,6 +157,16 @@ describe('firstRunStore persistence', () => {
     );
   });
 
+  test('deferring preserves the resumable chapter instead of finishing', () => {
+    firstRunStore.enterChapter('about-you');
+    firstRunStore.defer();
+
+    expect(firstRunStore.getSnapshot()).toEqual({
+      chapter: 'about-you',
+      deferred: true,
+    });
+  });
+
   test('notifies subscribers when progress moves', () => {
     let notifications = 0;
     const unsubscribe = firstRunStore.subscribe(() => {

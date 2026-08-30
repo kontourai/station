@@ -228,6 +228,15 @@ const profileReady: Promise<PlatformProfile> = resolvePlatformProfile().then(
     return profile;
   },
 );
+let cachedProfileBootstrapError: string | null = null;
+const profileResolution = profileReady.then(
+  (profile) => ({ status: 'ok' as const, profile }),
+  (error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    cachedProfileBootstrapError = message;
+    return { status: 'error' as const, message };
+  },
+);
 
 const PlatformProfileContext = createContext<PlatformProfile>(WEB_PROFILE);
 const NativeProfileStoreEpochContext = createContext(0);
@@ -239,6 +248,9 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<PlatformProfile | null>(
     () => cachedProfile,
   );
+  const [profileBootstrapError, setProfileBootstrapError] = useState<
+    string | null
+  >(() => cachedProfileBootstrapError);
   const [profileStoreEpoch, setProfileStoreEpoch] = useState(0);
   const nativeSelectionTail = useRef<Promise<void>>(Promise.resolve());
 
@@ -253,10 +265,11 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
         .catch(() => undefined)
         .then(async () => {
           if (!profile?.isTauri) return;
-          const authorized =
-            await nativeProfileRepository().authorizeActiveConnection(
-              connectionId,
-            );
+          const repository = nativeProfileRepository();
+          const authorized = await repository.authorizeActiveConnection(
+            connectionId,
+            true,
+          );
           if (!authorized) return;
           setProfileStoreEpoch((epoch) => epoch + 1);
         });
@@ -267,15 +280,17 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    if (profile) return;
+    if (profile || profileBootstrapError) return;
     let active = true;
-    void profileReady.then((resolved) => {
-      if (active) setProfile(resolved);
+    void profileResolution.then((resolved) => {
+      if (!active) return;
+      if (resolved.status === 'ok') setProfile(resolved.profile);
+      else setProfileBootstrapError(resolved.message);
     });
     return () => {
       active = false;
     };
-  }, [profile]);
+  }, [profile, profileBootstrapError]);
 
   // `profiles.json` is shared with the CLI, so native Desktop cannot assume
   // its bootstrap snapshot remains current. Poll the secret-free metadata at a
@@ -394,6 +409,22 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
     };
   }, [profile]);
 
+  if (profileBootstrapError) {
+    return (
+      <FullScreenLoader
+        label="Station"
+        message="Station couldn’t finish starting"
+        action={
+          <div role="alert" aria-label="Station couldn’t finish starting">
+            <pre>{profileBootstrapError}</pre>
+            <button type="button" onClick={() => window.location.reload()}>
+              Reload Station
+            </button>
+          </div>
+        }
+      />
+    );
+  }
   if (!profile) return <FullScreenLoader label="Station" />;
 
   return (

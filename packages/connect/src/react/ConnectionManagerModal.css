@@ -446,6 +446,16 @@
   border-color: var(--accent-primary, #3b82f6);
 }
 
+/* iOS Safari/WKWebView focus-zooms text controls below 16 CSS px. Keep the
+   compact desktop type, but make the real touch and narrow-viewport form
+   primitive meet the platform's no-zoom floor. Do not disable pinch zoom in
+   the viewport meta tag: user zoom remains an accessibility capability. */
+@media (any-pointer: coarse), (max-width: 768px) {
+  .station-connect-input {
+    font-size: 16px;
+  }
+}
+
 /* Inline edit card */
 
 .station-connect-edit {

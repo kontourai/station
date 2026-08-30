@@ -31,7 +31,11 @@ import type { IProviderAdapterRegistry } from '../../providers/provider-interfac
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { receiptBus } from '../infra/receipt-bus.js';
-import { CriticalResourcePostureError } from '../infra/resource-posture.js';
+import {
+  CriticalResourcePostureError,
+  ResourcePostureDeferredError,
+  type RuntimeEngineStartLease,
+} from '../infra/resource-posture.js';
 import type { EventStore } from './event-store.js';
 import {
   projectRequestAnswerability,
@@ -293,7 +297,7 @@ export function buildOrchestrationSessionSummary(options: {
   const modelLaunchPlan = extractModelLaunchPlan(events);
   const reportedModel = extractReportedModel(events);
   const conversationIdentity = extractConversationIdentity(events);
-  const displayTitle = extractDisplayTitle(events);
+  const displayTitle = extractDisplayTitle(events) ?? delegation?.title;
   const controlMode = base.controlMode ?? 'station-owned';
   const {
     projectSlug: lifecycleProjectSlug,
@@ -703,6 +707,9 @@ function extractDelegationContext(
     if (!taskId) continue;
     return {
       taskId,
+      ...(delegationEnvironmentKind(metadata)
+        ? { environmentKind: delegationEnvironmentKind(metadata) }
+        : {}),
       ...(stringMeta(metadata, 'environmentId')
         ? { environmentId: stringMeta(metadata, 'environmentId') }
         : {}),
@@ -726,6 +733,9 @@ function extractDelegationContext(
         : {}),
       ...(stringMeta(metadata, 'parentTaskId')
         ? { parentTaskId: stringMeta(metadata, 'parentTaskId') }
+        : {}),
+      ...(stringMeta(metadata, 'delegationTitle')
+        ? { title: stringMeta(metadata, 'delegationTitle') }
         : {}),
       ...(delegationMode(metadata) ? { mode: delegationMode(metadata) } : {}),
     };
@@ -803,6 +813,15 @@ function delegationProjectSlugJoin(
   return value === 'local' ||
     value === 'directory-corroborated' ||
     value === 'unverified-cross-machine'
+    ? value
+    : undefined;
+}
+
+function delegationEnvironmentKind(
+  metadata: Record<string, unknown> | undefined,
+): OrchestrationDelegationContext['environmentKind'] {
+  const value = metadata?.environmentKind;
+  return value === 'current' || value === 'ssh' || value === 'peer'
     ? value
     : undefined;
 }
@@ -1081,7 +1100,9 @@ export interface RecoveredSessionStartOptions {
    * A critical refusal leaves the persisted session recoverable and writes no
    * recovery-failure event — it is a deferral, not a verdict on the session.
    */
-  admitEngineStart?: () => Promise<void>;
+  admitEngineStart?: (
+    threadId: string,
+  ) => Promise<RuntimeEngineStartLease | undefined>;
 }
 
 /**
@@ -1162,11 +1183,16 @@ export async function startRecoveredOrchestrationSession(options: {
     if (deps.applyCredentialProfile) {
       startInput = await deps.applyCredentialProfile(startInput);
     }
-    await deps.admitEngineStart?.();
-    const recovered = await withTenantExecutionContext(
-      startInput.tenantExecutionContext,
-      () => adapter.startSession(startInput),
-    );
+    const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
+    let recovered: ProviderSession;
+    try {
+      recovered = await withTenantExecutionContext(
+        startInput.tenantExecutionContext,
+        () => adapter.startSession(startInput),
+      );
+    } finally {
+      admissionLease?.release();
+    }
     deps.recordAcceptedModelLaunch?.(adapter, startInput);
     const nextSession = {
       ...session,
@@ -1183,7 +1209,11 @@ export async function startRecoveredOrchestrationSession(options: {
     deps.eventStore?.upsertSession(nextSession);
     return nextSession;
   } catch (error) {
-    if (error instanceof CriticalResourcePostureError) throw error;
+    if (
+      error instanceof CriticalResourcePostureError ||
+      error instanceof ResourcePostureDeferredError
+    )
+      throw error;
     const message = error instanceof Error ? error.message : String(error);
     deps.logger.warn('Failed to recover provider session', {
       provider: session.provider,

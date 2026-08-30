@@ -49,6 +49,7 @@ const GITHUB_HOSTED_RUNNER_IMAGES = new Set([
   'macos-latest',
   'macos-15',
   'macos-15-intel',
+  'macos-26',
 ]);
 
 /** `null` when actionlint is not on PATH. */
@@ -212,6 +213,10 @@ export const REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA =
   '563effe7ec559c6f4fcc6c80b3532acb71d86373';
 const REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA =
   '02f40a67901a79ce4004c44d91e350b93782644c';
+const REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA =
+  '02f40a67901a79ce4004c44d91e350b93782644c';
+const SECRET_SCAN_WORKFLOW = '.github/workflows/secret-scan.yml';
+const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`;
 /**
  * `owner-lifetime-seconds` is part of the host manifest, so it is one shared
  * physical-host setting rather than a per-job tuning knob. The pinned action
@@ -335,6 +340,7 @@ const EXACT_TARGET_SKIP_GUARDS = Object.freeze({
     "github.event_name != 'pull_request_target' && (github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true')",
 });
 const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
+  '.github/workflows/build-ios.yml',
   '.github/workflows/ci.yml',
   '.github/workflows/desktop-clean-checkout.yml',
   '.github/workflows/desktop-rust.yml',
@@ -1239,6 +1245,37 @@ function hasExactMainBranchTrigger(trigger) {
   );
 }
 
+function hasExactPullRequestSecretScanWorkflow(file, document) {
+  const scan = document?.jobs?.scan;
+  return (
+    file === SECRET_SCAN_WORKFLOW &&
+    hasExactKeys(document, [
+      'name',
+      'on',
+      'permissions',
+      'concurrency',
+      'jobs',
+    ]) &&
+    document.name === 'Secret Scan' &&
+    hasExactKeys(document.on, ['push', 'pull_request', 'workflow_dispatch']) &&
+    hasExactMainBranchTrigger(document.on.push) &&
+    hasExactMainBranchTrigger(document.on.pull_request) &&
+    document.on.workflow_dispatch === null &&
+    hasOnlyReadContentsPermission(document.permissions) &&
+    hasExactKeys(document.concurrency, ['group', 'cancel-in-progress']) &&
+    document.concurrency.group ===
+      'station-secret-scan-$' + '{{ github.ref }}' &&
+    document.concurrency['cancel-in-progress'] === true &&
+    hasExactKeys(document.jobs, ['scan']) &&
+    hasExactKeys(scan, ['name', 'uses', 'with', 'permissions']) &&
+    scan.name === 'Secret Scan' &&
+    scan.uses === SECRET_SCAN_REUSABLE_WORKFLOW &&
+    hasExactKeys(scan.with, ['runner']) &&
+    scan.with.runner === '"ubuntu-22.04"' &&
+    hasOnlyReadContentsPermission(scan.permissions)
+  );
+}
+
 function hasExactSecurityAnalysisWorkflow(document) {
   return (
     hasExactKeys(document, [
@@ -1282,6 +1319,7 @@ function hasExactCiRouterPrTargetTrigger(document) {
 
 function candidatePullRequestWorkflowFindings(file, document) {
   if (!workflowHasTrigger(document, 'pull_request')) return [];
+  if (hasExactPullRequestSecretScanWorkflow(file, document)) return [];
   return [
     {
       file,
@@ -1618,6 +1656,10 @@ function baseControlledPrWorkflowFindings(file, document) {
           'actions/setup-node@',
           'dtolnay/rust-toolchain@',
         ].some((prefix) => step.uses.startsWith(prefix)) &&
+        !(
+          file === '.github/workflows/build-ios.yml' &&
+          step.uses.startsWith('actions/upload-artifact@')
+        ) &&
         !(
           file === SECURITY_ANALYSIS_WORKFLOW &&
           jobId === SECURITY_ANALYSIS_CODEQL_JOB &&

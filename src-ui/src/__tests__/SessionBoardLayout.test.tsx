@@ -26,6 +26,6 @@ test('adapts the published Console board view instead of re-implementing it', ()
 
   expect(screen.getByText('Canonical console board')).toBeTruthy();
   expect(consoleBoardView).toHaveBeenCalledWith(
-    expect.objectContaining({ projectSlug: 'demo' }),
+    expect.objectContaining({ projectSlug: 'demo', requireBuilderRun: false }),
   );
 });

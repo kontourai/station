@@ -97,6 +97,7 @@ function NewProjectDirectoryInput({ state }: { state: NewProjectModalState }) {
       apiBase={apiBase}
       directory={draft.directory}
       error={submission.directoryError}
+      notice={submission.directoryNotice}
       onDirectoryChange={(directory) => {
         if (
           normalizeWorkingDirectory(directory) !== draft.normalizedDirectory

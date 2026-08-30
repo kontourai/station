@@ -75,6 +75,19 @@ vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast }),
 }));
 
+/**
+ * #890: `AttentionCard`'s dismiss actions read `useApiBase()` so the ack
+ * reaches the connection the view is actually bound to. `useApiBase` is a thin
+ * read over `useConnections`, which throws outside a provider, and this suite
+ * renders the view without the app-shell providers `main.tsx` supplies. Mocked
+ * the same way `components/attention/__tests__/AttentionCard.test.tsx` mocks
+ * it — the base value is incidental here; these tests are about which
+ * attention items render, not where the ack is sent.
+ */
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
+}));
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>((resolvePromise) => {
@@ -123,6 +136,13 @@ vi.mock('@kontourai/station-sdk', () => ({
     data: [],
     isLoading: false,
     isError: false,
+  }),
+  // #790: peer-credential read the DelegationLauncher performs when open;
+  // undefined models the 403 a non-operator browser session receives.
+  usePeerCredentialsQuery: () => ({
+    data: undefined,
+    isSuccess: false,
+    isError: true,
   }),
   useDelegationOptionsQuery: () => ({
     data: {
@@ -708,6 +728,45 @@ describe('SessionsView', () => {
     expect(accessibleRow.classList.contains('split-pane__item--selected')).toBe(
       true,
     );
+  });
+
+  // #765 residue (A2-adjacent): the runtime opens one engine session per
+  // continuation turn, so a three-turn chat listed three "Recently finished"
+  // rows. The list must show the conversation once — newest member
+  // represents it, the fold's member count rides the meta line, and the lane
+  // heading counts the folded population (the same conversation-folded
+  // population Home counts), not raw turn-sessions.
+  test('folds sibling turn-sessions of one conversation into one row with a turn count', () => {
+    const base = {
+      ...sessions[0],
+      delegation: undefined,
+      lifecycleState: 'completed',
+      displayTitle: 'Say exactly: TURN OK',
+      projectSlug: undefined,
+    };
+    sessions = [
+      {
+        ...base,
+        threadId: 'conv-1:session:2',
+        conversationId: 'conv-1',
+        updatedAt: '2026-06-28T00:20:00.000Z',
+      },
+      {
+        ...base,
+        threadId: 'conv-1',
+        updatedAt: '2026-06-28T00:10:00.000Z',
+      },
+    ];
+    const { container } = renderView();
+
+    const rows = container.querySelectorAll('.split-pane__item');
+    expect(rows).toHaveLength(1);
+    expect(
+      rows[0].querySelector('.split-pane__item-subtitle')?.textContent,
+    ).toMatch(/^Completed · 2 turns · /);
+    expect(
+      container.querySelector('.split-pane__section-header')?.textContent,
+    ).toMatch(/ · 1$/);
   });
 
   test('exposes bounded-history controls and an upgrade-required state', async () => {
@@ -3252,6 +3311,39 @@ describe('SessionsView', () => {
       const coordinator = screen.getByTestId('delegated-task-coordinator');
       expect(within(coordinator).getByText('Waiting on you')).toBeTruthy();
       expect(coordinator.textContent).not.toContain('needs_input');
+    });
+
+    test('surfaces a peer delegation record without offering local-session controls (#847)', () => {
+      sessions = [
+        {
+          ...sessions[0],
+          threadId: 'peer-delegation:847',
+          displayTitle: 'Run the peer checks',
+          lifecycleState: 'queued',
+          hasActiveTurn: false,
+          delegation: {
+            taskId: 'task-peer-847',
+            environmentId: 'environment-peer',
+            environmentName: 'Station B',
+            environmentKind: 'peer',
+            targetKind: 'agent',
+            targetId: 'codex',
+          },
+        },
+      ];
+
+      const { container } = renderView();
+      const coordinator = screen.getByTestId('delegated-task-coordinator');
+
+      expect(rowNames(container)).toContain('Run the peer checks');
+      expect(within(coordinator).getByText('Paired Station')).toBeTruthy();
+      expect(coordinator.textContent).toContain(
+        'Its transcript and final answer remain on the paired Station.',
+      );
+      expect(
+        within(coordinator).queryByLabelText('Direct worker follow-up'),
+      ).toBeNull();
+      expect(within(coordinator).queryByText('Stop active task')).toBeNull();
     });
 
     test('every row carries a relative time', () => {

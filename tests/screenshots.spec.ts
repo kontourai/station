@@ -52,6 +52,128 @@ function parseRequestedScreens(raw: string | undefined): string[] | null {
 
 const DESKTOP = { width: 1440, height: 900 } as const;
 const MOBILE = { width: 390, height: 844 } as const;
+const GALLERY_CONNECTION_ID = 'e2e-host';
+const GALLERY_CONNECTION_NAME = 'Station E2E';
+const GALLERY_ENVIRONMENT_ID = '00000000-0000-4000-8000-000000000531';
+
+/**
+ * station#531: seed the connection chip's complete visible derivation before
+ * every navigation. The profile name is the identity rendered beside the
+ * state; the environment ID makes this a real saved Station even before the
+ * first probe records success. `location.origin` carries the runner's
+ * isolated port, but HeaderActions never renders the URL or port.
+ *
+ * `addInitScript` registrations are page-lifetime global, like the routes in
+ * the main test body: this one registration runs before app code on every
+ * gallery navigation and resets any probe-written timestamps to the same
+ * input shape without leaking a screen-scoped fixture.
+ */
+async function seedGalleryConnectionProfile(page: Page): Promise<void> {
+  await page.addInitScript(
+    ({ connectionId, connectionName, environmentId }) => {
+      window.localStorage.setItem(
+        'station-connect-connections',
+        JSON.stringify([
+          {
+            profileVersion: 4,
+            id: connectionId,
+            name: connectionName,
+            url: window.location.origin,
+            environmentId,
+            credentialRef: {
+              credentialVersion: 1,
+              kind: 'connection',
+              id: connectionId,
+            },
+            credentialState: 'saved',
+          },
+        ]),
+      );
+      window.localStorage.setItem(
+        'station-connect-connections-active',
+        connectionId,
+      );
+    },
+    {
+      connectionId: GALLERY_CONNECTION_ID,
+      connectionName: GALLERY_CONNECTION_NAME,
+      environmentId: GALLERY_ENVIRONMENT_ID,
+    },
+  );
+}
+
+function fulfillGalleryStationHandshake(route: Route): Promise<void> {
+  return route.fulfill({
+    json: {
+      schemaVersion: 1,
+      environmentId: GALLERY_ENVIRONMENT_ID,
+      authentication: { scheme: 'bearer', protocolVersion: 1 },
+      transports: { http: 1, sse: 1, websocket: 1 },
+      compatibility: {
+        serverVersion: '0.0.0-screenshot-gallery',
+        protocolVersion: 1,
+        minClientProtocol: 1,
+        capabilities: {
+          remoteAuth: 1,
+          devicePairing: 1,
+          environmentProof: 1,
+        },
+      },
+    },
+  });
+}
+
+function fulfillGalleryStationIdentity(route: Route): Promise<void> {
+  return route.fulfill({
+    json: {
+      environmentId: GALLERY_ENVIRONMENT_ID,
+      instanceId: 'screenshot-gallery-instance',
+      bootId: 'screenshot-gallery-boot',
+      sha: '0000000000000000000000000000000000000531',
+    },
+  });
+}
+
+function fulfillGalleryConnectionsFixture(route: Route): Promise<void> {
+  if (route.request().method() !== 'GET') return route.fallback();
+  return route.fulfill({
+    json: {
+      success: true,
+      data: [
+        {
+          id: 'lancedb-builtin',
+          kind: 'model',
+          type: 'lancedb',
+          name: 'Station Built-In',
+          enabled: true,
+          capabilities: ['vectordb'],
+          // Existing Knowledge fixtures use this obviously fictional path;
+          // unlike the real temp-home path, its bytes never carry a run ID.
+          config: { dataDir: '/data/lancedb' },
+          status: 'ready',
+          prerequisites: [],
+          lastCheckedAt: null,
+        },
+      ],
+    },
+  });
+}
+
+async function assertGalleryConnectionChrome(page: Page): Promise<void> {
+  const chip = page.getByTestId('app-toolbar-connection');
+  await expect(chip).toHaveClass(/app-toolbar__conn--connected/, {
+    timeout: 10_000,
+  });
+  await expect(chip.locator('.app-toolbar__conn-state')).toHaveText(
+    'Connected',
+  );
+  await expect(chip.locator('.app-toolbar__conn-name')).toHaveText(
+    GALLERY_CONNECTION_NAME,
+  );
+  // The gallery is a browser E2E instance, never a supervised desktop
+  // sidecar; pin the absence of HeaderActions' only remaining optional text.
+  await expect(chip.getByTestId('desktop-sidecar-indicator')).toHaveCount(0);
+}
 
 /**
  * Locator for the New Project dialog's full-screen overlay. `App.tsx`'s
@@ -80,15 +202,8 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  * Hides always-visible chrome/widget regions whose content is genuinely
  * environment/timing-dependent rather than a property of the page under
  * test, so re-capturing the identical build never perturbs the gallery
- * pixel-for-pixel (archive#4464 — the first two of these,
- * present on every route, were the dominant source of "changed" false
- * positives across the whole gallery):
+ * pixel-for-pixel (archive#4464):
  *
- *  - `.app-toolbar__conn` (HeaderActions.tsx ~234): the header's live
- *    connection-status chip. It renders whichever of
- *    connecting/connected/error `useConnectionStatus` observes at the
- *    instant of the shot — a real async race against the browser's own
- *    connection establishment, not anything the screen itself controls.
  *  - `.sidebar__status-version` (ProjectSidebarStatus.tsx, via
  *    `buildLabel` in src-ui/src/build-info.ts): the `v<version> ·
  *    <commit>` build stamp rendered in the persistent project sidebar on
@@ -107,11 +222,6 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  *    temp-home, but the row still measurably disagreed pixel-for-pixel
  *    between two captures (most plausibly reflowing by a sub-pixel amount
  *    alongside the time-filter control it sits beside).
- *  - `#knowledge-data-directory` (KnowledgeConnectionView.tsx, Connections
- *    → Knowledge): the vector-database data-directory input's value is a
- *    real filesystem path under the E2E run's own `--temp-home`
- *    (`/…/station/dev-home-<run-id>/vectordb`) — unique by construction on
- *    every run, not a rendering bug to mock away.
  *  - `.status-badge` (MonitoringHeader.tsx, Developer → Telemetry): yet
  *    another live connected/connecting/disconnected/error dot, this one
  *    for the monitoring event stream specifically — the same class of
@@ -130,24 +240,12 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  *    ~30 pixels, localized to this dot, the moment a mobile screen was
  *    added late enough in the run for the race to actually land).
  *
-
  * CSS-hidden (not Playwright's screenshot `mask` option), so the gallery
  * itself stays clean for a human/design reviewer instead of getting an
  * opaque box stamped over it that a reviewer has to mentally discount on
- * every tile — but NOT via `visibility: hidden` for the connection chip:
- * `visibility: hidden` keeps an element's layout BOX in place, which is
- * only actually deterministic if that box's own size never varies. It
- * measurably doesn't here — the chip's width tracks its (now-invisible)
- * label text ("Connected" / "Reconnecting" / "No Station" / …), so hiding
- * it that way still let its live state silently shift every sibling to its
- * right by a few pixels, exactly the class of noise this function exists
-  * to eliminate (a two-consecutive-runs
-  * acceptance check catches it). `display: none` removes it from flow instead, which
- * collapses to the same zero width on every capture regardless of what
- * text would have been inside — deterministic. The build-stamp label's
- * text is fixed per build (no live state to vary its width), so
- * `visibility: hidden` remains fine there and preserves the sidebar
- * footer's row height exactly as authored.
+ * every tile. The build-stamp label's text is fixed per build (no live state
+ * to vary its width), so `visibility: hidden` preserves the sidebar footer's
+ * row height exactly as authored.
  *
  * Must be called AFTER `page.goto` (a fresh navigation drops any
  * previously injected style tag) and as close to the shot as practical.
@@ -155,11 +253,9 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
 async function hideVolatileChrome(page: Page) {
   await page.addStyleTag({
     content: `
-      .app-toolbar__conn { display: none !important; }
       .sidebar__status-version { visibility: hidden !important; }
       .time-filter-wrapper { visibility: hidden !important; }
       .monitoring-summary { visibility: hidden !important; }
-      #knowledge-data-directory { visibility: hidden !important; }
       .status-badge { visibility: hidden !important; }
       .toast-card__time { visibility: hidden !important; }
       .chat-dock__mobile-conn { display: none !important; }
@@ -392,70 +488,131 @@ function connectionsHubBadgeSettleHooks(): Pick<
   };
 }
 
-async function seedScheduleScreenshotApi(page: Page) {
-  await page.route('**/api/system/status', (route) =>
-    route.fulfill({
-      json: {
-        ready: true,
-        acp: { connected: false, connections: [] },
-        clis: {},
-        prerequisites: [],
-        providers: {
-          configuredChatReady: true,
-          configured: [],
-          detected: { ollama: false, bedrock: false },
-        },
+function fulfillScheduleSystemStatusFixture(route: Route): Promise<void> {
+  return route.fulfill({
+    json: {
+      ready: true,
+      acp: { connected: false, connections: [] },
+      clis: {},
+      prerequisites: [],
+      providers: {
+        configuredChatReady: true,
+        configured: [],
+        detected: { ollama: false, bedrock: false },
       },
-    }),
-  );
-  await page.route('**/api/agents', (route) =>
-    route.fulfill({ json: { success: true, data: [] } }),
-  );
-  await page.route('**/scheduler/providers', (route) =>
-    route.fulfill({
-      json: {
-        success: true,
-        data: [
-          {
+    },
+  });
+}
+
+function fulfillScheduleAgentsFixture(route: Route): Promise<void> {
+  return route.fulfill({ json: { success: true, data: [] } });
+}
+
+function fulfillScheduleProvidersFixture(route: Route): Promise<void> {
+  return route.fulfill({
+    json: {
+      success: true,
+      data: [
+        {
+          id: 'built-in',
+          displayName: 'Built-in Scheduler',
+          capabilities: ['prompt'],
+        },
+      ],
+    },
+  });
+}
+
+function fulfillScheduleStatusFixture(route: Route): Promise<void> {
+  return route.fulfill({
+    json: {
+      success: true,
+      data: {
+        providers: {
+          'built-in': {
             id: 'built-in',
             displayName: 'Built-in Scheduler',
-            capabilities: ['prompt'],
-          },
-        ],
-      },
-    }),
-  );
-  await page.route('**/scheduler/status', (route) =>
-    route.fulfill({
-      json: {
-        success: true,
-        data: {
-          providers: {
-            'built-in': {
-              id: 'built-in',
-              displayName: 'Built-in Scheduler',
-              running: true,
-              healthy: true,
-            },
+            running: true,
+            healthy: true,
           },
         },
       },
-    }),
-  );
-  await page.route('**/scheduler/stats', (route) =>
-    route.fulfill({
-      json: {
-        success: true,
-        data: {
-          providers: {},
-          summary: { totalJobs: 0, totalRuns: 0, successRate: -1 },
-        },
+    },
+  });
+}
+
+function fulfillScheduleStatsFixture(route: Route): Promise<void> {
+  return route.fulfill({
+    json: {
+      success: true,
+      data: {
+        providers: {},
+        summary: { totalJobs: 0, totalRuns: 0, successRate: -1 },
       },
-    }),
-  );
-  await page.route('**/scheduler/jobs', (route) =>
-    route.fulfill({ json: { success: true, data: [] } }),
-  );
+    },
+  });
+}
+
+function fulfillScheduleJobsEmptyFixture(route: Route): Promise<void> {
+  return route.fulfill({ json: { success: true, data: [] } });
+}
+
+/* Callers MUST capture the returned cleanup and run it in afterGoto's
+   finally — `Screen.beforeGoto`'s void return type accepts a bare
+   `seedScheduleScreenshotApi` shorthand that silently discards it,
+   reinstating the cross-screen route leak this fixes (#573). */
+async function seedScheduleScreenshotApi(
+  page: Page,
+): Promise<() => Promise<void>> {
+  const cleanups = [
+    await withRoute(
+      page,
+      '**/api/system/status',
+      fulfillScheduleSystemStatusFixture,
+    ),
+    await withRoute(page, '**/api/agents', fulfillScheduleAgentsFixture),
+    await withRoute(
+      page,
+      '**/scheduler/providers',
+      fulfillScheduleProvidersFixture,
+    ),
+    await withRoute(page, '**/scheduler/status', fulfillScheduleStatusFixture),
+    await withRoute(page, '**/scheduler/stats', fulfillScheduleStatsFixture),
+    await withRoute(page, '**/scheduler/jobs', fulfillScheduleJobsEmptyFixture),
+  ];
+  return async () => {
+    for (const cleanup of cleanups.reverse()) await cleanup();
+  };
+}
+
+async function fulfillScheduleLoadingJobsFixture(route: Route): Promise<void> {
+  await new Promise((resolveDelay) => setTimeout(resolveDelay, 15_000));
+  await route.fulfill({ json: { success: true, data: [] } });
+}
+
+function fulfillScheduleGalleryJobFixture(route: Route): Promise<void> {
+  return route.fulfill({
+    json: {
+      success: true,
+      data: [
+        {
+          name: 'gallery-demo-job',
+          provider: 'built-in',
+          cron: '30 14 * * *',
+          prompt: 'Demo job for the screenshot gallery.',
+          enabled: true,
+        },
+      ],
+    },
+  });
+}
+
+function fulfillAgentsEmptyFixture(route: Route): Promise<void> {
+  return route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ success: true, data: [] }),
+  });
 }
 
 /**
@@ -1156,16 +1313,22 @@ const SCREENS: Screen[] = [
     viewport: DESKTOP,
   },
   { name: 'plugins', title: 'Plugins', path: '/plugins', viewport: DESKTOP },
-  {
-    name: 'schedule',
-    title: 'Schedule',
-    path: '/schedule',
-    viewport: DESKTOP,
-    // archive#4464: without this, ScheduleView hits the live (unmocked)
-    // scheduler/system endpoints on a freshly booted temp-home server —
-    // real content whose exact bytes vary run to run.
-    beforeGoto: seedScheduleScreenshotApi,
-  },
+  (() => {
+    let cleanup: () => Promise<void> = async () => {};
+    return {
+      name: 'schedule',
+      title: 'Schedule',
+      path: '/schedule',
+      viewport: DESKTOP,
+      // archive#4464: without this, ScheduleView hits the live (unmocked)
+      // scheduler/system endpoints on a freshly booted temp-home server —
+      // real content whose exact bytes vary run to run.
+      beforeGoto: async (page) => {
+        cleanup = await seedScheduleScreenshotApi(page);
+      },
+      afterGoto: () => cleanup(),
+    } satisfies Screen;
+  })(),
   {
     name: 'developer-telemetry',
     title: 'Developer telemetry',
@@ -1332,31 +1495,36 @@ const SCREENS: Screen[] = [
   },
   // archive#192 converged empty-state screens — both should render the shared
   // Console Kit `Empty` visual (dashed-border card), not bespoke markup.
-  {
-    name: 'agents-empty',
-    title: 'Agents — empty state',
-    path: '/agents',
-    viewport: DESKTOP,
-    beforeGoto: async (page) => {
-      await page.route('**/api/agents', (route) =>
-        route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ success: true, data: [] }),
-        }),
-      );
-    },
-    afterGoto: async (page) => {
-      // Stability guard: the mocked, empty `/api/agents` response can still
-      // land a beat after the generic post-navigation settle, leaving a
-      // loading skeleton on screen instead of the converged `Empty` tile.
-      // Assert the actual empty-state copy is visible immediately before the
-      // shot rather than trusting the fixed settle delay.
-      await expect(page.getByText('No agents yet')).toBeVisible({
-        timeout: 10_000,
-      });
-    },
-  },
+  (() => {
+    let cleanup: () => Promise<void> = async () => {};
+    return {
+      name: 'agents-empty',
+      title: 'Agents — empty state',
+      path: '/agents',
+      viewport: DESKTOP,
+      beforeGoto: async (page) => {
+        cleanup = await withRoute(
+          page,
+          '**/api/agents',
+          fulfillAgentsEmptyFixture,
+        );
+      },
+      afterGoto: async (page) => {
+        try {
+          // Stability guard: the mocked, empty `/api/agents` response can still
+          // land a beat after the generic post-navigation settle, leaving a
+          // loading skeleton on screen instead of the converged `Empty` tile.
+          // Assert the actual empty-state copy is visible immediately before the
+          // shot rather than trusting the fixed settle delay.
+          await expect(page.getByText('No agents yet')).toBeVisible({
+            timeout: 10_000,
+          });
+        } finally {
+          await cleanup();
+        }
+      },
+    } satisfies Screen;
+  })(),
   {
     name: 'command-palette-empty',
     title: 'Command palette — no matches',
@@ -1443,54 +1611,75 @@ const SCREENS: Screen[] = [
     // upgrading these probes to getAnimations().
     afterGoto: (page) => assertReducedMotion(page, '.route-transition'),
   },
-  {
-    name: 'motion-reduced-schedule-loading',
-    title: 'Reduced motion — Schedule loading',
-    path: '/schedule',
-    viewport: DESKTOP,
-    reducedMotion: true,
-    // This screen's whole point is capturing the skeleton itself (with the
-    // `/scheduler/jobs` fetch held open below) — opt out of the universal
-    // assertNoLoadingSkeleton wait, which would otherwise wait out its
-    // entire 15s deadline every run.
-    expectSkeleton: true,
-    beforeGoto: async (page) => {
-      await seedScheduleScreenshotApi(page);
-      await page.route('**/scheduler/jobs', async (route) => {
-        await new Promise((resolveDelay) => setTimeout(resolveDelay, 15_000));
-        await route.fulfill({
-          json: { success: true, data: [] },
-        });
-      });
-    },
-    // archive#4461: NOT `.station-spinner` — that class is gone entirely.
-    // `ScheduleView` now renders its loading state via the shared
-    // `SkeletonBlock` (ScheduleView.tsx:204-205), whose blocks carry
-    // `@kontourai/ui`'s animated `.skeleton` class. Same honest scope as the
-    // navigation screen above: this derives the global reduce collapse on an
-    // animated element, not the ui package's own reduce override (archive#4467).
-    afterGoto: (page) => assertReducedMotion(page, '.skeleton'),
-  },
-  {
-    name: 'motion-reduced-schedule-modal',
-    title: 'Reduced motion — Schedule modal',
-    path: '/schedule',
-    viewport: DESKTOP,
-    reducedMotion: true,
-    beforeGoto: seedScheduleScreenshotApi,
-    afterGoto: async (page) => {
-      await page.getByRole('button', { name: 'Add job', exact: true }).click();
-      // archive#4461: NOT `.schedule__modal-overlay` — Add Job migrated onto
-      // the shared `Dialog` chrome (components/Dialog.tsx), which renders its
-      // backdrop as `.station-dialog__overlay` (Dialog.tsx:118, index.css:699).
-      // `.schedule__modal` survives unchanged: it's still passed through as
-      // `panelClassName` onto the dialog panel
-      // (components/scheduler/JobFormModal.tsx:274). Same honest scope as the
-      // other motion screens: these derive the global reduce collapse (archive#4467).
-      await assertReducedMotion(page, '.station-dialog__overlay');
-      await assertReducedMotion(page, '.schedule__modal');
-    },
-  },
+  (() => {
+    let cleanups: (() => Promise<void>)[] = [];
+    return {
+      name: 'motion-reduced-schedule-loading',
+      title: 'Reduced motion — Schedule loading',
+      path: '/schedule',
+      viewport: DESKTOP,
+      reducedMotion: true,
+      // This screen's whole point is capturing the skeleton itself (with the
+      // `/scheduler/jobs` fetch held open below) — opt out of the universal
+      // assertNoLoadingSkeleton wait, which would otherwise wait out its
+      // entire 15s deadline every run.
+      expectSkeleton: true,
+      beforeGoto: async (page) => {
+        cleanups = [
+          await seedScheduleScreenshotApi(page),
+          await withRoute(
+            page,
+            '**/scheduler/jobs',
+            fulfillScheduleLoadingJobsFixture,
+          ),
+        ];
+      },
+      // archive#4461: NOT `.station-spinner` — that class is gone entirely.
+      // `ScheduleView` now renders its loading state via the shared
+      // `SkeletonBlock` (ScheduleView.tsx:204-205), whose blocks carry
+      // `@kontourai/ui`'s animated `.skeleton` class. Same honest scope as the
+      // navigation screen above: this derives the global reduce collapse on an
+      // animated element, not the ui package's own reduce override (archive#4467).
+      afterGoto: async (page) => {
+        try {
+          await assertReducedMotion(page, '.skeleton');
+        } finally {
+          for (const cleanup of cleanups.reverse()) await cleanup();
+        }
+      },
+    } satisfies Screen;
+  })(),
+  (() => {
+    let cleanup: () => Promise<void> = async () => {};
+    return {
+      name: 'motion-reduced-schedule-modal',
+      title: 'Reduced motion — Schedule modal',
+      path: '/schedule',
+      viewport: DESKTOP,
+      reducedMotion: true,
+      beforeGoto: async (page) => {
+        cleanup = await seedScheduleScreenshotApi(page);
+      },
+      afterGoto: async (page) => {
+        try {
+          await page
+            .getByRole('button', { name: 'Add job', exact: true })
+            .click();
+          // archive#4461: NOT `.schedule__modal-overlay` — Add Job migrated onto
+          // the shared `Dialog` chrome (components/Dialog.tsx), which renders its
+          // backdrop as `.station-dialog__overlay` (Dialog.tsx:118, index.css:699).
+          // `.schedule__modal` survives unchanged: it's still passed through as
+          // `panelClassName` onto the dialog panel
+          // (components/scheduler/JobFormModal.tsx:274). Same honest scope as the
+          // other motion screens: these derive the global reduce collapse (archive#4467).
+          await assertReducedMotion(page, '.station-dialog__overlay');
+          await assertReducedMotion(page, '.schedule__modal');
+        } finally {
+          await cleanup();
+        }
+      },
+    } satisfies Screen;
+  })(),
   {
     name: 'motion-reduced-notification',
     title: 'Reduced motion — notification',
@@ -1634,100 +1823,100 @@ const SCREENS: Screen[] = [
       }
     },
   },
-  {
-    name: 'overlay-connection-banner',
-    title: 'Overlay — Connection banner (identity mismatch, expanded)',
-    // Deliberately not '/' or '/agents': home's `StarterInspectionCards` /
-    // `StarterScheduledCheckCard` widgets, and Agents' "Engines on this
-    // machine" list (real host CLI detection — order/count varies between
-    // separate server boots; two consecutive captures can disagree
-    // well below the banner itself, which matches byte-for-byte
-    // both times), are real, live-queried content this screen has no
-    // reason to depend on. The banner itself is chrome-wide (mounted
-    // regardless of route); Settings is config-driven, not
-    // detection-driven, and `?view=overview` + the `.settings__search`
-    // wait below are the same route/ready-selector `mobile-settings-overview`
-    // already proves stable.
-    path: '/settings?view=overview',
-    viewport: MOBILE,
-    waitFor: '.settings__search',
-    beforeGoto: async (page) => {
-      // archive#4470's identity-mismatch banner — reachable purely through
-      // the public handshake `probeServerConnection` reads
-      // (`serverHealth.ts`), with no dependency on any real paired
-      // connection: `typeof handshake.environmentId !== 'string'` alone
-      // trips the reason, regardless of what (if anything) this fixture's
-      // own `expectedEnvironmentId` is. Every other field is required by
-      // `probeServerConnection`/`evaluateCompatibility` to clear the
-      // schema/compatibility checks that run before the identity check —
-      // a host that fails any of THOSE would report a different reason.
-      //
-      // Answered only for the first two calls, then left to hang:
-      // `ConnectionBannerSource.tsx`'s `loopbackFromElsewhere` grows a
-      // "Connecting from another device?" sentence into the banner's
-      // `detail` once the coordinator's `failureStreak` crosses 3 — a real
-      // retry ladder running on real timers (500ms/1s/2s backoff), racing
-      // however long this screen takes to reach its shot. Caught live: two
-      // otherwise-identical runs disagreeing on whether that sentence (and
-      // the detail box's height) had appeared yet. `main.tsx` mounts the
-      // app under `React.StrictMode`, whose dev-mode double-invoke can
-      // mount `ConnectionBannerSource` (and its coordinator subscription),
-      // unmount it, then remount — the FIRST answered call can land on the
-      // torn-down instance, leaving the surviving instance's own first
-      // probe to hit whatever comes next. Answering two calls (not one)
-      // absorbs a single such remount while every probe after is left to
-      // hang (never `fulfill`/`continue`/`abort` — Playwright cancels the
-      // in-flight request when the next screen navigates away), which caps
-      // any ONE coordinator instance's failure streak at 2 — always below
-      // the 3-probe threshold that would change the rendered text.
-      let calls = 0;
-      await page.route('**/.well-known/station/v1', async (route) => {
-        calls += 1;
-        if (calls > 2) return;
-        await route.fulfill({
-          json: {
-            schemaVersion: 1,
-            authentication: { scheme: 'bearer', protocolVersion: 1 },
-            transports: { http: 1, sse: 1, websocket: 1 },
-            compatibility: {
-              serverVersion: '0.0.0-screenshot-gallery',
-              protocolVersion: 1,
-              minClientProtocol: 1,
-            },
-            // environmentId deliberately omitted — the exact condition
-            // `probeServerConnection` reads as 'identity-mismatch'.
+  (() => {
+    let cleanup: () => Promise<void> = async () => {};
+    return {
+      name: 'overlay-connection-banner',
+      title: 'Overlay — Connection banner (identity mismatch, expanded)',
+      // Deliberately not '/' or '/agents': home's `StarterInspectionCards` /
+      // `StarterScheduledCheckCard` widgets, and Agents' "Engines on this
+      // machine" list (real host CLI detection — order/count varies between
+      // separate server boots; two consecutive captures can disagree
+      // well below the banner itself, which matches byte-for-byte
+      // both times), are real, live-queried content this screen has no
+      // reason to depend on. The banner itself is chrome-wide (mounted
+      // regardless of route); Settings is config-driven, not
+      // detection-driven, and `?view=overview` + the `.settings__search`
+      // wait below are the same route/ready-selector `mobile-settings-overview`
+      // already proves stable.
+      path: '/settings?view=overview',
+      viewport: MOBILE,
+      waitFor: '.settings__search',
+      beforeGoto: async (page) => {
+        // archive#4470's identity-mismatch banner — reachable purely through
+        // the public handshake `probeServerConnection` reads
+        // (`serverHealth.ts`), with no dependency on any real paired
+        // connection: `typeof handshake.environmentId !== 'string'` alone
+        // trips the reason, regardless of what (if anything) this fixture's
+        // own `expectedEnvironmentId` is. Every other field is required by
+        // `probeServerConnection`/`evaluateCompatibility` to clear the
+        // schema/compatibility checks that run before the identity check —
+        // a host that fails any of THOSE would report a different reason.
+        //
+        // Answered only for the first two calls, then left to hang:
+        // `ConnectionBannerSource.tsx`'s `loopbackFromElsewhere` grows a
+        // "Connecting from another device?" sentence into the banner's
+        // `detail` once the coordinator's `failureStreak` crosses 3 — a real
+        // retry ladder running on real timers (500ms/1s/2s backoff), racing
+        // however long this screen takes to reach its shot. Caught live: two
+        // otherwise-identical runs disagreeing on whether that sentence (and
+        // the detail box's height) had appeared yet. `main.tsx` mounts the
+        // app under `React.StrictMode`, whose dev-mode double-invoke can
+        // mount `ConnectionBannerSource` (and its coordinator subscription),
+        // unmount it, then remount — the FIRST answered call can land on the
+        // torn-down instance, leaving the surviving instance's own first
+        // probe to hit whatever comes next. Answering two calls (not one)
+        // absorbs a single such remount while every probe after is left to
+        // hang (never `fulfill`/`continue`/`abort` — Playwright cancels the
+        // in-flight request when the next screen navigates away), which caps
+        // any ONE coordinator instance's failure streak at 2 — always below
+        // the 3-probe threshold that would change the rendered text.
+        let calls = 0;
+        cleanup = await withRoute(
+          page,
+          '**/.well-known/station/v1',
+          async (route) => {
+            calls += 1;
+            if (calls > 2) return;
+            await route.fulfill({
+              json: {
+                schemaVersion: 1,
+                authentication: { scheme: 'bearer', protocolVersion: 1 },
+                transports: { http: 1, sse: 1, websocket: 1 },
+                compatibility: {
+                  serverVersion: '0.0.0-screenshot-gallery',
+                  protocolVersion: 1,
+                  minClientProtocol: 1,
+                },
+                // environmentId deliberately omitted — the exact condition
+                // `probeServerConnection` reads as 'identity-mismatch'.
+              },
+            });
           },
-        });
-      });
-    },
-    afterGoto: async (page) => {
-      try {
-        const banner = page.locator('.banner-host__item').first();
-        await expect(banner).toBeVisible({ timeout: 15_000 });
-        // archive#4470's expanded surface: reveal the disclosure detail so the
-        // banner's full content (message, detail, and the "Pair
-        // again"/"Remove" actions) is captured, not just the collapsed
-        // one-line summary.
-        const details = page.getByRole('button', { name: 'Details' });
-        await details.click();
-        await expect(details).toHaveAttribute('aria-expanded', 'true');
-        await expect(page.locator('.banner-host__detail')).toBeVisible();
-        await waitForStableLayout(page);
-      } finally {
-        // `page.route` handlers persist across `page.goto()` for the
-        // page's lifetime (see the resource-posture mock's doc comment in
-        // the main test body) — this screen is the only one that wants the
-        // handshake mocked to force identity-mismatch, so unregister it
-        // here or every screen captured after this one in the run inherits
-        // a phantom "isn't the one this device paired with" banner as
-        // chrome (it otherwise bleeds into overlay-add-job-modal,
-        // overlay-confirm-dialog, overlay-mobile-sheet, and overlay-toast).
-        // `finally` so a failed assertion above still
-        // cleans up rather than poisoning every later screen too.
-        await page.unroute('**/.well-known/station/v1');
-      }
-    },
-  },
+        );
+      },
+      afterGoto: async (page) => {
+        try {
+          const banner = page.locator('.banner-host__item').first();
+          await expect(banner).toBeVisible({ timeout: 15_000 });
+          // archive#4470's expanded surface: reveal the disclosure detail so the
+          // banner's full content (message, detail, and the "Pair
+          // again"/"Remove" actions) is captured, not just the collapsed
+          // one-line summary.
+          const details = page.getByRole('button', { name: 'Details' });
+          await details.click();
+          await expect(details).toHaveAttribute('aria-expanded', 'true');
+          await expect(page.locator('.banner-host__detail')).toBeVisible();
+          await waitForStableLayout(page);
+        } finally {
+          // `withRoute` removes only this screen's LIFO override. The healthy
+          // station#531 handshake registered once in the main test body stays
+          // active for every later navigation in this page-long-lived run.
+          await cleanup();
+        }
+      },
+    } satisfies Screen;
+  })(),
   {
     name: 'overlay-new-project-modal',
     title: 'Overlay — New Project modal',
@@ -1743,64 +1932,73 @@ const SCREENS: Screen[] = [
       await expect(newProjectOverlay(page)).toBeVisible({ timeout: 10_000 });
     },
   },
-  {
-    name: 'overlay-add-job-modal',
-    title: 'Overlay — Add Job modal',
-    path: '/schedule',
-    viewport: DESKTOP,
-    beforeGoto: seedScheduleScreenshotApi,
-    afterGoto: async (page) => {
-      await page.getByRole('button', { name: 'Add job', exact: true }).click();
-      await expect(page.locator('.station-dialog__overlay')).toBeVisible({
-        timeout: 10_000,
-      });
-      await expect(page.locator('.schedule__modal')).toBeVisible();
-    },
-  },
-  {
-    name: 'overlay-confirm-dialog',
-    title: 'Overlay — Destructive confirm (Delete Job)',
-    path: '/schedule',
-    viewport: DESKTOP,
-    beforeGoto: async (page) => {
-      await seedScheduleScreenshotApi(page);
-      // Override the empty-list default with one job so the table (and its
-      // per-row Delete action) renders. `lastRun`/`nextRun`/`successRate`
-      // are deliberately omitted — each renders live-relative-time text
-      // ('never'/'-'/'—') only when present, which is otherwise exactly
-      // the kind of two-runs-disagree noise this gallery's own settle
-      // guards exist to avoid. The cron's minute/hour are fully specified
-      // (no wildcards) so `cronToHuman`'s rendered clock time depends only
-      // on those digits, never on the capture's wall-clock moment.
-      await page.route('**/scheduler/jobs', (route) =>
-        route.fulfill({
-          json: {
-            success: true,
-            data: [
-              {
-                name: 'gallery-demo-job',
-                provider: 'built-in',
-                cron: '30 14 * * *',
-                prompt: 'Demo job for the screenshot gallery.',
-                enabled: true,
-              },
-            ],
-          },
-        }),
-      );
-    },
-    afterGoto: async (page) => {
-      await page
-        .getByRole('button', { name: 'Delete gallery-demo-job' })
-        .click();
-      // Deliberately never confirmed: this screen captures the OPEN confirm
-      // dialog, not the deletion it would perform.
-      await expect(
-        page.getByRole('heading', { name: 'Delete Job' }),
-      ).toBeVisible({ timeout: 10_000 });
-      await expect(page.locator('.station-dialog__overlay')).toBeVisible();
-    },
-  },
+  (() => {
+    let cleanup: () => Promise<void> = async () => {};
+    return {
+      name: 'overlay-add-job-modal',
+      title: 'Overlay — Add Job modal',
+      path: '/schedule',
+      viewport: DESKTOP,
+      beforeGoto: async (page) => {
+        cleanup = await seedScheduleScreenshotApi(page);
+      },
+      afterGoto: async (page) => {
+        try {
+          await page
+            .getByRole('button', { name: 'Add job', exact: true })
+            .click();
+          await expect(page.locator('.station-dialog__overlay')).toBeVisible({
+            timeout: 10_000,
+          });
+          await expect(page.locator('.schedule__modal')).toBeVisible();
+        } finally {
+          await cleanup();
+        }
+      },
+    } satisfies Screen;
+  })(),
+  (() => {
+    let cleanups: (() => Promise<void>)[] = [];
+    return {
+      name: 'overlay-confirm-dialog',
+      title: 'Overlay — Destructive confirm (Delete Job)',
+      path: '/schedule',
+      viewport: DESKTOP,
+      beforeGoto: async (page) => {
+        cleanups = [
+          await seedScheduleScreenshotApi(page),
+          // Override the empty-list default with one job so the table (and its
+          // per-row Delete action) renders. `lastRun`/`nextRun`/`successRate`
+          // are deliberately omitted — each renders live-relative-time text
+          // ('never'/'-'/'—') only when present, which is otherwise exactly
+          // the kind of two-runs-disagree noise this gallery's own settle
+          // guards exist to avoid. The cron's minute/hour are fully specified
+          // (no wildcards) so `cronToHuman`'s rendered clock time depends only
+          // on those digits, never on the capture's wall-clock moment.
+          await withRoute(
+            page,
+            '**/scheduler/jobs',
+            fulfillScheduleGalleryJobFixture,
+          ),
+        ];
+      },
+      afterGoto: async (page) => {
+        try {
+          await page
+            .getByRole('button', { name: 'Delete gallery-demo-job' })
+            .click();
+          // Deliberately never confirmed: this screen captures the OPEN confirm
+          // dialog, not the deletion it would perform.
+          await expect(
+            page.getByRole('heading', { name: 'Delete Job' }),
+          ).toBeVisible({ timeout: 10_000 });
+          await expect(page.locator('.station-dialog__overlay')).toBeVisible();
+        } finally {
+          for (const cleanup of cleanups.reverse()) await cleanup();
+        }
+      },
+    } satisfies Screen;
+  })(),
   {
     name: 'overlay-mobile-sheet',
     title: 'Overlay — Mobile project-switcher sheet',
@@ -2174,6 +2372,24 @@ test('build gallery — capture key screens', async ({ page }) => {
   const capturedAt = new Date().toISOString();
   const shots: Shot[] = [];
 
+  // station#531: HeaderActions' gallery-wide connection posture is a healthy,
+  // connected Station at rest. Register the saved identity and both probe
+  // responses once before any navigation: all three are page-lifetime inputs,
+  // and together they pin every rendered substring to
+  // "Connected · Station E2E" (the browser gallery never renders the
+  // desktop-only "App only" qualifier). The screen-scoped identity-mismatch
+  // banner fixture intentionally overrides only the handshake while that one
+  // named screen is active, then unregisters itself via `withRoute`.
+  await seedGalleryConnectionProfile(page);
+  await page.route('**/.well-known/station/v1', fulfillGalleryStationHandshake);
+  await page.route('**/api/system/identity', fulfillGalleryStationIdentity);
+
+  // station#531: a fresh temp-home seeds this same built-in vector connection,
+  // but gives it `<run-specific-home>/vectordb`. Seed the established
+  // `/data/lancedb` E2E fixture once for the page lifetime so Knowledge keeps
+  // the real editable product field visible with stable bytes on every run.
+  await page.route('**/api/connections', fulfillGalleryConnectionsFixture);
+
   // archive#4464: freeze the host's live CPU/resource-posture reading.
   // `ResourcePostureBannerSource` polls `GET /api/system/resource-posture`
   // every 15s and renders a real, chrome-wide "host is busy/at capacity"
@@ -2312,6 +2528,13 @@ test('build gallery — capture key screens', async ({ page }) => {
         }
         if (screen.afterGoto) {
           await screen.afterGoto(page);
+        }
+        // The identity-mismatch tile deliberately overrides the global healthy
+        // handshake and waits for its own deterministic blocked state. Every
+        // other screen must prove the gallery-wide route has reached the fixed
+        // healthy posture before capture rather than racing the opening probe.
+        if (screen.name !== 'overlay-connection-banner') {
+          await assertGalleryConnectionChrome(page);
         }
         await hideVolatileChrome(page);
         await page.screenshot({

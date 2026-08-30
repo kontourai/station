@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contracts/chat-attachment';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { parseHostedTenantRegistry } from '@kontourai/station-contracts/tenancy';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -49,6 +50,11 @@ import {
   OrchestrationService,
 } from '../../../services/orchestration/orchestration-service.js';
 import { ProjectWorktreeDirectoryError } from '../../../services/projects/project-service.js';
+import {
+  AnswerShareService,
+  NO_CHANNEL_LOG_OBSERVER,
+} from '../../../services/share/answer-share-service.js';
+import type { AnswerShareStore } from '../../../services/share/answer-share-store.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -967,6 +973,102 @@ describe('Orchestration Routes', () => {
     });
   });
 
+  test('POST /chat returns a bounded one-shot critical override capability', async () => {
+    const challenge = Object.assign(new Error('This Station remains busy.'), {
+      code: 'resource_posture_override_required',
+      resourceAdmissionOverride: {
+        token: 'override-token-1',
+        expiresAt: 123_456,
+      },
+    });
+    const executeForegroundMessage = vi.fn().mockRejectedValue(challenge);
+    const app = createOrchestrationRoutes({} as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => 'bound-user',
+      executeForegroundMessage,
+    });
+
+    const res = await app.request('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: 'Start under load',
+        target: { environment: { kind: 'current' }, agent: 'claude' },
+        resourceAdmissionOverrideToken: 'retry-token',
+      }),
+    });
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      success: false,
+      error: 'This Station remains busy.',
+      code: 'resource_posture_override_required',
+      resourceAdmissionOverride: {
+        token: 'override-token-1',
+        expiresAt: 123_456,
+      },
+    });
+    expect(executeForegroundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resourceAdmissionOverrideToken: 'retry-token',
+      }),
+    );
+  });
+
+  test('fixed delegated/background chat routes derive only their restrictive server intent', async () => {
+    const executeForegroundMessage = vi.fn().mockResolvedValue({
+      conversationId: 'conversation-fixed-intent',
+      sessionId: 'session-fixed-intent',
+      providerTurnId: 'turn-fixed-intent',
+      target: { kind: 'agent', id: 'claude' },
+      resolution: {},
+    });
+    const app = createOrchestrationRoutes({} as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => 'bound-user',
+      executeForegroundMessage,
+    });
+    const common = {
+      message: 'Run later',
+      target: { environment: { kind: 'current' }, agent: 'claude' },
+    };
+
+    expect(
+      (
+        await app.request('/chat/background', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(common),
+        })
+      ).status,
+    ).toBe(200);
+    expect(executeForegroundMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ automaticBackground: true }),
+    );
+
+    const delegation = {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: 'parent',
+      rootAgentSlug: 'root',
+    };
+    expect(
+      (
+        await app.request('/chat/delegated', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...common, delegation }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(executeForegroundMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ delegation }),
+    );
+  });
+
   test('POST /chat maps an unreachable workspace mount to 503, not 400 (#2552)', async () => {
     const app = createOrchestrationRoutes({} as any, {
       eventBus: new EventBus(),
@@ -1058,7 +1160,7 @@ describe('Orchestration Routes', () => {
     });
   });
 
-  test('POST /api/orchestration/chat preserves origin on an early durable turn.started while excluding it from the provider turn input (#3830)', async () => {
+  test('POST /api/orchestration/chat persists a direct answer that the share path can resolve after reopening the store (#3830, #887)', async () => {
     const directory = mkdtempSync(
       join(tmpdir(), 'orchestration-route-origin-'),
     );
@@ -1172,6 +1274,8 @@ describe('Orchestration Routes', () => {
       await next();
     });
     app.route('/api/orchestration', inner);
+    let serviceOpen = true;
+    let eventStoreOpen = true;
 
     try {
       const response = await app.request('/api/orchestration/chat', {
@@ -1189,6 +1293,32 @@ describe('Orchestration Routes', () => {
       expect(response.status).toBe(200);
       expect(providerInputs).toHaveLength(1);
       expect(providerInputs[0]).not.toHaveProperty('clientOrigin');
+      events.push({
+        eventId: 'early-origin-answer-delta',
+        method: 'content.text-delta',
+        provider: 'station-agent',
+        threadId: 'conversation:route-origin',
+        turnId: 'provider-turn-origin',
+        itemId: 'answer-item',
+        delta: 'Durable direct answer',
+        createdAt: '2026-08-23T00:00:01.000Z',
+      });
+      events.push({
+        eventId: 'early-origin-turn-completed',
+        method: 'turn.completed',
+        provider: 'station-agent',
+        threadId: 'conversation:route-origin',
+        turnId: 'provider-turn-origin',
+        finishReason: 'stop',
+        createdAt: '2026-08-23T00:00:02.000Z',
+      });
+      await vi.waitFor(() =>
+        expect(
+          eventStore
+            .listEvents('conversation:route-origin')
+            .map((event) => event.payload.method),
+        ).toContain('turn.completed'),
+      );
       expect(
         eventStore
           .listEvents('conversation:route-origin')
@@ -1206,9 +1336,60 @@ describe('Orchestration Routes', () => {
           }),
         ]),
       );
-    } finally {
+
+      // Close every live owner before reopening. This proves the answer came
+      // through the real foreground route into the on-disk SQLite store, not
+      // from the adapter queue or the process-local read model.
       await service.shutdown();
+      serviceOpen = false;
       eventStore.close();
+      eventStoreOpen = false;
+      const reopened = new EventStore(join(directory, 'orchestration.sqlite'));
+      try {
+        const persistedEvents = reopened
+          .listEvents('conversation:route-origin')
+          .map((event) => event.payload);
+        expect(JSON.stringify(persistedEvents)).toContain(
+          'Durable direct answer',
+        );
+
+        const shareService = new AnswerShareService({
+          store: {
+            mint: async (input: Parameters<AnswerShareStore['mint']>[0]) => ({
+              record: {
+                id: 'share-direct-answer',
+                tokenHash: '0'.repeat(64),
+                sessionId: input.sessionId,
+                turnId: input.turnId,
+                ownerUserId: input.ownerUserId ?? null,
+                label: input.label ?? null,
+                createdAt: '2026-08-23T00:00:03.000Z',
+                expiresAt: '2026-08-30T00:00:03.000Z',
+                revokedAt: null,
+                channel: input.channel,
+                contentDigest: input.contentDigest,
+              },
+              token: 'test-share-token',
+            }),
+          } as never,
+          sessions: {
+            readSessionMessages: () =>
+              projectRuntimeEventsToMessages(persistedEvents),
+          },
+          channelObserver: NO_CHANNEL_LOG_OBSERVER,
+        });
+        const minted = await shareService.mint({
+          sessionId: 'conversation:route-origin',
+          turnId: 'provider-turn-origin',
+          ownerUserId: 'route-user',
+        });
+        expect(minted).not.toEqual({ error: 'answer-not-found' });
+      } finally {
+        reopened.close();
+      }
+    } finally {
+      if (serviceOpen) await service.shutdown();
+      if (eventStoreOpen) eventStore.close();
       rmSync(directory, { recursive: true, force: true });
     }
   });
@@ -2821,6 +3002,55 @@ describe('Orchestration Routes', () => {
     expect(service.listLoadedSessionReadModel).toHaveBeenCalledWith(
       personalReadAuthority(ROUTE_TEST_USER_ID),
     );
+  });
+
+  test('GET /sessions/read-model reconciles peer delegation evidence before publishing Activity (#847)', async () => {
+    const refreshDelegatedTaskActivity = vi.fn().mockResolvedValue(undefined);
+    const service = {
+      listSessionReadModel: vi.fn().mockResolvedValue([
+        {
+          provider: 'station-agent',
+          threadId: 'peer-delegation:847',
+          status: 'closed',
+          lifecycleState: 'completed',
+          isLoaded: false,
+          isPersisted: true,
+          eventCount: 2,
+          createdAt: '2026-08-29T00:00:00.000Z',
+          updatedAt: '2026-08-29T00:00:01.000Z',
+          delegation: {
+            taskId: 'task-peer-847',
+            environmentKind: 'peer',
+            environmentId: 'environment-peer',
+          },
+        },
+      ]),
+    };
+    const app = createOrchestrationRoutes(service as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => ROUTE_TEST_USER_ID,
+      refreshDelegatedTaskActivity,
+    });
+
+    const response = await app.request('/sessions/read-model');
+
+    expect(response.status).toBe(200);
+    expect(await readJson(response)).toEqual({
+      success: true,
+      data: [
+        expect.objectContaining({
+          lifecycleState: 'completed',
+          delegation: expect.objectContaining({ environmentKind: 'peer' }),
+        }),
+      ],
+    });
+    expect(refreshDelegatedTaskActivity).toHaveBeenCalledWith({
+      userId: ROUTE_TEST_USER_ID,
+    });
+    expect(
+      refreshDelegatedTaskActivity.mock.invocationCallOrder[0],
+    ).toBeLessThan(service.listSessionReadModel.mock.invocationCallOrder[0]);
   });
 
   // archive#4466: the test above mocks `OrchestrationService` entirely, so

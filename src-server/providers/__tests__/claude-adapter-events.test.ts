@@ -403,6 +403,55 @@ describe('claude-adapter-events', () => {
     expect((record as any).terminalResultObserved).toBe(true);
   });
 
+  test("a requested interruption consumes Claude's null-stop-reason error result without replacing Stopped with Failed (#898)", () => {
+    const publish = vi.fn();
+    const logInfo = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-stopped',
+      dispatchedTurnId: 'turn-stopped',
+      interruptingTurnId: 'turn-stopped',
+    });
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      logInfo,
+      message: {
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        result: 'generic-error: stop_reason=null',
+        stop_reason: null,
+        usage: { input_tokens: 3, output_tokens: 0 },
+        uuid: 'msg-stopped',
+        session_id: record.session.threadId,
+      } as any,
+    });
+
+    expect(publish.mock.calls.map(([event]) => event.method)).toEqual([
+      'token-usage.updated',
+    ]);
+    expect(publish).not.toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'runtime.error' }),
+    );
+    expect(record).toMatchObject({
+      activeTurnId: undefined,
+      dispatchedTurnId: undefined,
+      interruptingTurnId: undefined,
+    });
+    expect(
+      (record as ClaudeMessageState).terminalResultObserved,
+    ).toBeUndefined();
+    expect(logInfo).toHaveBeenCalledWith(
+      'Dropped Claude error result for requested interruption',
+      expect.objectContaining({
+        threadId: record.session.threadId,
+        turnId: 'turn-stopped',
+      }),
+    );
+  });
+
   test('an is_error: true result with no `result` field falls back to joined errors (SDKResultError shape)', () => {
     const publish = vi.fn();
     const record = {

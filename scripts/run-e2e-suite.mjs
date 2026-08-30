@@ -1659,6 +1659,20 @@ export function isCleanInstallE2ESuite(suite) {
  * disabled path rather than merely relying on absent configuration.
  */
 export function suiteStationE2EEnv(suite) {
+  // station#4464 arbiter rule, same shape as `STATION_E2E_SCREENS` below: an
+  // EXPLICIT key in every branch, never a conditional spread. Both consumers
+  // spread this after `...process.env`, so a stray `STATION_E2E_MUSE_PROVIDER`
+  // already sitting in the runner's own environment would otherwise survive
+  // into a suite that never asked for it. `undefined` is not stringified —
+  // Node's `spawn` omits any key whose value is `undefined` — so the
+  // non-smoke-live suites hand the child no such variable at all.
+  const museProvider =
+    suite === 'smoke-live' ? SMOKE_LIVE_MUSE_PROVIDER : undefined;
+  // #875: explicit in every branch for the same inherited-environment reason
+  // as the Muse override. Only the screenshot server requests suppression;
+  // the server still requires its temp-home + e2e-screenshot instance
+  // conjunction before honoring this value.
+  const suppressNativeEngineAdoption = suite === 'screenshot' ? '1' : undefined;
   if (suite === 'starter-clean-install') {
     return {
       STATION_E2E_FIRST_RUN: '1',
@@ -1668,12 +1682,43 @@ export function suiteStationE2EEnv(suite) {
       STATION_USAGE_TELEMETRY_KEY: '',
       OTEL_EXPORTER_OTLP_ENDPOINT: '',
       STATION_TELEMETRY_API_KEY: '',
+      STATION_E2E_MUSE_PROVIDER: museProvider,
+      STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION: suppressNativeEngineAdoption,
     };
   }
-  return suite === 'first-run'
-    ? { STATION_E2E_FIRST_RUN: '1' }
-    : { STATION_E2E_SYSTEM_STATUS_READY: '1' };
+  if (suite === 'first-run')
+    return {
+      STATION_E2E_FIRST_RUN: '1',
+      STATION_E2E_MUSE_PROVIDER: museProvider,
+      STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION: suppressNativeEngineAdoption,
+    };
+  return {
+    STATION_E2E_SYSTEM_STATUS_READY: '1',
+    STATION_E2E_MUSE_PROVIDER: museProvider,
+    STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION: suppressNativeEngineAdoption,
+  };
 }
+
+/**
+ * #550 — what makes `agents-new-muse-echo-turn.spec.ts` runnable.
+ *
+ * Station has never passed `--provider` to `muse exec`, so muse's own default
+ * (`meta`) always applied and a muse turn cost a live Meta key plus a network
+ * round trip — which is why muse was the one engine family whose create-an-
+ * agent-and-run-a-turn journey was covered by nothing. `echo` is muse's OWN
+ * provider for this: same event envelope, answered from the prompt alone.
+ *
+ * Scoped to `smoke-live` because that is the only bucket whose server runs a
+ * muse turn; no other spec in it touches the muse engine, so nothing else in
+ * the bucket changes behavior.
+ *
+ * Naming it here does not by itself authorize it. The server honors this only
+ * on a runtime it can attest is disposable — a `--temp-home` under a
+ * runner-owned instance id — so the same variable on a persistent home is
+ * inert (`museProviderOverrideContained` in
+ * `src-server/providers/adapters/muse-adapter.ts`).
+ */
+export const SMOKE_LIVE_MUSE_PROVIDER = 'echo';
 
 export function establishedUserPlaywrightEnv(suite) {
   return isCleanInstallE2ESuite(suite)
@@ -1807,6 +1852,18 @@ async function main() {
       `[e2e] reclaimed ${recoveredCount} interrupted E2E run${recoveredCount === 1 ? '' : 's'}`,
     );
   }
+  // CROSS-FILE COUPLE — three server-side containment gates transcribe this
+  // exact `e2e-${suite}-${Date.now()}-${base36}` shape as a regex and treat a
+  // match as evidence of a disposable runner-owned runtime; change them
+  // together with any change here:
+  //   - `src-server/providers/adapters/muse-adapter.ts`'s
+  //     MUSE_E2E_SMOKE_LIVE_INSTANCE (#550)
+  //   - `src-server/services/infra/resource-posture.ts`'s
+  //     STARTER_CLEAN_INSTALL_INSTANCE
+  //   - `src-server/runtime/bootstrap/native-engine-adoption.ts`'s
+  //     SCREENSHOT_E2E_INSTANCE (#875)
+  // Nothing fails if they drift; the affected suite simply stops getting the
+  // behavior it asks for, which is safe but reads as a mystery.
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const instance = `e2e-${suite}-${suffix}`;
   const outputDirs = [`dist-server-${instance}`, `dist-ui-${instance}`];

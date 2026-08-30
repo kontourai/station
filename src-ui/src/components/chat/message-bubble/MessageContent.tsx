@@ -49,6 +49,13 @@ function MessageContentComponent({
     () => <div>{textContent}</div>,
     [textContent],
   );
+  const hasAnswerText =
+    Boolean(textContent.trim()) ||
+    Boolean(
+      contentParts?.some(
+        (part) => part.type === 'text' && Boolean(part.content?.trim()),
+      ),
+    );
 
   const renderToolCall = (part: MessageContentPart, index: number) => (
     <ToolCallDisplay
@@ -93,6 +100,7 @@ function MessageContentComponent({
                 content={part.content}
                 fontSize={chatFontSize}
                 show={showReasoning}
+                hasAnswerText={hasAnswerText}
               />
             );
           }

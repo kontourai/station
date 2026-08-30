@@ -184,6 +184,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     sdkMocks.refetchPanes.mockClear();
     sdkMocks.sessions = [];
     navigationMocks.navigate.mockClear();
+    navigationMocks.setLayout.mockClear();
   });
 
   /**
@@ -350,6 +351,69 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     expect(
       screen.getByRole('button', { name: /^Open Healthy pane$/ }),
     ).toBeTruthy();
+  });
+
+  test('opens a layout-bound pane through its Coding host, not another installed layout', async () => {
+    sdkMocks.layouts = [
+      {
+        id: 'tasks',
+        slug: 'tasks',
+        name: 'Tasks',
+        type: 'tasks',
+      },
+      {
+        id: 'coding',
+        slug: 'coding',
+        name: 'Coding',
+        type: 'coding',
+      },
+    ];
+    const pane = paneAdaptationFromLayoutTab(
+      {
+        id: 'coding',
+        label: 'Terminal',
+        component: {
+          kind: 'builtin-component',
+          name: 'coding',
+        },
+      },
+      {
+        layoutSlug: 'coding',
+        instanceScope: 'project:project-demo:source:builtin:coding',
+        modeContextRequirement: { project: true, source: true },
+        boundContext: {
+          projectId: 'project-demo',
+          sourceId: 'builtin:coding',
+        },
+      },
+    )!;
+    sdkMocks.panes = [pane.descriptor];
+    sdkMocks.paneAvailability = [
+      {
+        descriptorId: pane.descriptor.id,
+        availability: {
+          state: 'available',
+          reason: { code: 'ready', source: 'resolver' },
+        },
+        input: {
+          rollout: 'available',
+          distribution: 'enabled',
+          host: { state: 'supported' },
+          deployment: { state: 'supported' },
+          renderer: 'present',
+          context: { project: 'present' },
+        },
+      },
+    ];
+    sdkMocks.paneInstances = [pane.instance];
+
+    await renderProjectPage();
+    fireEvent.click(screen.getByRole('button', { name: /^Open Terminal$/ }));
+
+    expect(navigationMocks.setLayout).toHaveBeenCalledWith('demo', 'coding');
+    expect(navigationMocks.navigate).toHaveBeenCalledWith(
+      `/projects/demo/layouts/coding/panes/${encodeURIComponent(pane.descriptor.id)}/${encodeURIComponent(pane.instance.instanceId)}`,
+    );
   });
 
   test('does not present a positively unavailable pane as healthy', async () => {

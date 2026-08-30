@@ -115,6 +115,21 @@
   .page__title {
     font-size: 1.35rem;
   }
+
+  /* station#541 (moved from index.css, review round 2): when the ambient
+     dock owns the whole mobile viewport, App.tsx hides the app toolbar and
+     reduces --app-toolbar-total-height to the bare safe-area inset
+     (index.css's .app__main--mobile-dock-fullscreen). Nothing else then
+     pads a framed route's own header for that inset — the same defect
+     class index.css's `.workspace-tabs__header`/`.chat-dock__mobile-header`
+     rules already guard for their own surfaces — so a maximized dock left a
+     sliver of this header's eyebrow/title painting under Android's status
+     bar. Layers the toolbar's contributed safe-area on top of this header's
+     own top padding (2rem here; 1.5rem under the 640px block below) rather
+     than replacing it. */
+  .app__main--mobile-dock-fullscreen .page-frame__header {
+    padding-top: calc(var(--safe-top) + 2rem);
+  }
 }
 
 .page-frame__body {
@@ -146,6 +161,19 @@
 
   .page-frame--flush > .page-frame__body {
     padding: 0;
+  }
+
+  /* station#541 (moved from index.css, review round 2): mirrors the
+     fullscreen-safe-area rule in the 768px block above, against THIS
+     block's narrower 1.5rem base instead of that one's 2rem — the two stay
+     proportionate. Same selector as the 768px block's rule, same
+     specificity; declared AFTER it in this one file (media queries add no
+     specificity, so source order decides — the same technique this file's
+     own `.page__title` mobile rule above already relies on), which is what
+     lets this narrower rule win at this width without a specificity
+     escalation. */
+  .app__main--mobile-dock-fullscreen .page-frame__header {
+    padding-top: calc(var(--safe-top) + 1.5rem);
   }
 }
 

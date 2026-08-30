@@ -12,7 +12,7 @@ import type { JSX } from 'react';
 import { useSyncExternalStore } from 'react';
 import { FlowRunConsole } from '../components/flow/FlowRunConsole';
 import { MCPToolUIFrame } from '../components/mcp-ui/MCPToolUIFrame';
-import { Empty } from '../components/state';
+import { Empty, SkeletonBlock } from '../components/state';
 import { useNavigationOptional } from '../contexts/NavigationContext';
 import { pluginRegistry } from '../core/PluginRegistry';
 import type { AgentSummary, LayoutDefinition, LayoutTab } from '../types';
@@ -98,6 +98,16 @@ const UnsupportedLayoutComponent: AgentLayoutComponent = ({ activeTab }) => {
   );
   const navigation = useNavigationOptional();
   const component = activeTab?.component;
+
+  // The extension registry is deliberately lazy. On a fresh document the
+  // project layout can resolve before that chunk has fetched the installed
+  // bundles, so an empty component map while the registry is still loading is
+  // not evidence that the declared component is unsupported. Keep the pane in
+  // a real loading state; the registry subscription above re-renders this slot
+  // as soon as the component map is populated (or the load settles degraded).
+  if (typeof component === 'string' && loadStatus.state === 'loading') {
+    return <SkeletonBlock count={3} label="Loading extension layout" />;
+  }
 
   // A plugin-provided view withheld by the remote-isolation policy is not
   // "missing" — naming installation as the cause would send the user to

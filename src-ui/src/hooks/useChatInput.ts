@@ -493,9 +493,11 @@ export function useChatInput({
     // intent rather than the engine's outcome. Now it renders the outcome the
     // server derived (cooperative / forced / already-finished) or an honest
     // indeterminate/failed state, and nothing at all when there was no turn.
-    const outcome = await cancelMessage(
-      currentChat?.currentSessionId ?? sessionId,
-    );
+    // Pass the tab's store key: useCancelMessage keys its activeChatsStore
+    // snapshot by this id and resolves the receipted child session itself.
+    // Passing currentSessionId here made that lookup miss whenever the child
+    // id drifted from the tab id, so Stop silently answered not-running.
+    const outcome = await cancelMessage(sessionId);
     if (outcome.kind === 'not-running') return;
     addEphemeralMessage(sessionId, {
       role: 'system',
@@ -684,6 +686,7 @@ export function useChatInput({
       const previousMode =
         activeChatState?.requestedProviderOptions?.approvalMode ??
         activeChatState?.providerOptions?.approvalMode;
+      if (previousMode === mode) return;
       updateChat(sessionId, {
         requestedProviderOptions: {
           ...(activeChatState?.requestedProviderOptions ??
@@ -692,12 +695,10 @@ export function useChatInput({
           approvalMode: mode,
         },
       });
-      if (previousMode !== mode) {
-        addEphemeralMessage(sessionId, {
-          role: 'system',
-          content: `Approval mode changed to **${approvalModeLabel(mode)}**`,
-        });
-      }
+      addEphemeralMessage(sessionId, {
+        role: 'system',
+        content: `Approval mode changed to **${approvalModeLabel(mode)}**`,
+      });
     },
     [
       activeChatState?.providerOptions,

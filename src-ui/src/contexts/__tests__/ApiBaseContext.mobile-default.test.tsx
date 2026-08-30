@@ -6,6 +6,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const captured = vi.hoisted(() => ({
   props: null as Record<string, unknown> | null,
+  profile: {
+    isTauri: true,
+    target: 'android',
+    isMobile: true,
+    isDesktop: false,
+    supervisesBundledServer: false,
+    isDevBuild: false,
+    channel: 'beta',
+    mobileDefaultEndpoint: 'https://station.example.test:8442',
+  } as {
+    isTauri: boolean;
+    target: string;
+    isMobile: boolean;
+    isDesktop: boolean;
+    supervisesBundledServer: boolean;
+    isDevBuild: boolean;
+    channel: string;
+    mobileDefaultEndpoint?: string;
+  },
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -25,16 +44,7 @@ vi.mock('@kontourai/station-connect', () => ({
 vi.mock('../../platform/PlatformProfileContext', () => ({
   useNativeProfileStoreEpoch: () => 0,
   useNativeProfileSelection: () => async () => {},
-  usePlatformProfile: () => ({
-    isTauri: true,
-    target: 'android',
-    isMobile: true,
-    isDesktop: false,
-    supervisesBundledServer: false,
-    isDevBuild: false,
-    channel: 'beta',
-    mobileDefaultEndpoint: 'https://station.example.test:8442',
-  }),
+  usePlatformProfile: () => captured.profile,
   nativeProfileRepository: () => ({ get: () => null }),
 }));
 
@@ -47,6 +57,8 @@ import { ApiBaseProvider } from '../ApiBaseContext';
 describe('ApiBaseContext native-mobile build default', () => {
   beforeEach(() => {
     captured.props = null;
+    captured.profile.mobileDefaultEndpoint =
+      'https://station.example.test:8442';
     delete (window as Window & { __API_BASE__?: string }).__API_BASE__;
   });
 
@@ -61,5 +73,14 @@ describe('ApiBaseContext native-mobile build default', () => {
       source: 'mobile-default',
     });
     expect(captured.props?.defaultUrl).not.toBe('tauri://localhost');
+  });
+
+  it('publishes no API base on a clean native install with no trusted host', () => {
+    delete captured.profile.mobileDefaultEndpoint;
+    render(<ApiBaseProvider>unused</ApiBaseProvider>);
+
+    expect(captured.props?.seedDefault).toBe(false);
+    expect(captured.props?.injectedConnection).toBeNull();
+    expect(captured.props?.defaultUrl).toBe('');
   });
 });

@@ -83,6 +83,8 @@ const CLI_INJECTED_BASE =
 
 const DEFAULT_API_BASE =
   CLI_INJECTED_BASE || import.meta.env.VITE_API_BASE || window.location.origin;
+const NATIVE_DEFAULT_API_BASE =
+  CLI_INJECTED_BASE || import.meta.env.VITE_API_BASE || '';
 
 export function ApiBaseProvider({ children }: { children: ReactNode }) {
   const profile = usePlatformProfile();
@@ -144,7 +146,7 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
 
   return (
     <ConnectionsProvider
-      defaultUrl={DEFAULT_API_BASE}
+      defaultUrl={profile.isTauri ? NATIVE_DEFAULT_API_BASE : DEFAULT_API_BASE}
       seedDefault={!profile.isTauri}
       injectedConnection={injectedConnection}
       credentialStorage={

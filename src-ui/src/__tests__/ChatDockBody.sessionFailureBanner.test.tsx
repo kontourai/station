@@ -15,13 +15,30 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
 const transcriptMock = vi.hoisted(() => ({ events: [] as any[] }));
 const chatInputPropsMock = vi.hoisted(() => ({
   current: null as Record<string, any> | null,
+}));
+const queuedMessagesPropsMock = vi.hoisted(() => ({
+  current: null as Record<string, any> | null,
+}));
+const steerOrchestrationTurnMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  steerOrchestrationTurn: (...args: unknown[]) =>
+    steerOrchestrationTurnMock(...args),
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -119,10 +136,14 @@ vi.mock('../components/chat/ChatInputArea', () => ({
 }));
 
 vi.mock('../components/chat/QueuedMessages', () => ({
-  QueuedMessages: () => null,
+  QueuedMessages: (props: Record<string, any>) => {
+    queuedMessagesPropsMock.current = props;
+    return <div data-testid="queued-messages" />;
+  },
 }));
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { describeStopTurnOutcome } from '../hooks/useActiveChatSessionMessaging';
 import type { ChatSession } from '../types';
 
 const LONG_UNBREAKABLE_REASON =
@@ -237,6 +258,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     agentsMock.current = [];
     transcriptMock.events = [];
     chatInputPropsMock.current = null;
+    queuedMessagesPropsMock.current = null;
+    steerOrchestrationTurnMock.mockReset();
+    steerOrchestrationTurnMock.mockResolvedValue({ outcome: 'steered' });
   });
 
   /** The reported defect, exactly: nothing live, and nothing shown. */
@@ -265,6 +289,37 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(
       alerts.some((alert) => alert.textContent?.includes('Engine crashed')),
     ).toBe(true);
+  });
+
+  test('queued Steer targets the receipted current execution Session', async () => {
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        threadId: 'thread-alpha:session:child-3',
+        status: 'running',
+        lifecycleState: 'running',
+      }),
+      session: buildSession({
+        status: 'sending',
+        queuedMessages: ['course correct'],
+        orchestrationProvider: 'claude',
+        currentSessionId: 'thread-alpha:session:child-3',
+        openTurnId: 'turn-child-3',
+      }),
+    });
+
+    await waitFor(() =>
+      expect(queuedMessagesPropsMock.current?.canSteer).toBe(true),
+    );
+    await act(async () => {
+      await queuedMessagesPropsMock.current?.onSteer('course correct');
+    });
+
+    expect(steerOrchestrationTurnMock).toHaveBeenCalledWith({
+      threadId: 'thread-alpha:session:child-3',
+      text: 'course correct',
+      turnId: 'turn-child-3',
+      apiBase: 'http://localhost:3242',
+    });
   });
 
   test('a failed session with nothing recorded says so, rather than showing an empty banner', () => {
@@ -365,6 +420,38 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
 
     expect(screen.queryByTestId('chat-dock-session-failure')).toBeNull();
     expect(screen.getByTestId('chat-input-area')).toBeTruthy();
+  });
+
+  test('a requested stop presents Stopped without a missing-record banner, failure state, Retry, or null diagnostic (#898)', () => {
+    const stoppedCopy = describeStopTurnOutcome({
+      kind: 'settled',
+      result: {
+        outcome: 'cooperative',
+        threadId: 'thread-alpha',
+        turnId: 'turn-stopped',
+      },
+    });
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'ready',
+        lifecycleState: 'canceled',
+        terminalAttribution: {
+          kind: 'requested_stop',
+          detail: 'Stopped by request.',
+        },
+      }),
+      session: buildSession({
+        orchestrationSessionStarted: true,
+        orchestrationStatus: 'aborted',
+      }),
+    });
+
+    expect(stoppedCopy).toMatch(/^Stopped\./);
+    expect(stoppedCopy).not.toContain('stop_reason');
+    expect(screen.queryByTestId('chat-dock-session-record-missing')).toBeNull();
+    expect(screen.queryByTestId('chat-dock-session-failure')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(document.body.textContent).not.toContain('stop_reason=null');
   });
 
   test('names a missing record after Station had already recorded the session start', () => {
@@ -534,6 +621,48 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         />
       </QueryClientProvider>,
     );
+    expect(chatInputPropsMock.current?.disabled).toBe(false);
+  });
+
+  // #834: the exact open resolution the server now returns for a STOPPED
+  // conversation — continuable through the successor reserve, while the
+  // current child's answerability decoration stays `past_resume` (the steady
+  // state of every stopped, unloaded session). The composer must key on the
+  // server's continuation decision, not re-derive one from answerability.
+  test('#834 re-enables the composer for a stopped conversation resolved continuable', () => {
+    const stoppedAnswerability = {
+      answerable: false as const,
+      qualification: 'past_resume' as const,
+      observedBy: 'chat-dock-body-test',
+      observedAt: '2026-08-29T00:02:00.000Z',
+    };
+    renderDock({
+      session: buildSession({
+        conversationOpenState: {
+          status: 'resolved' as const,
+          conversation: {
+            id: 'stopped',
+            source: 'runtime' as const,
+            agentSlug: agentId('codex'),
+            title: 'Stopped then continued',
+            createdAt: '2026-08-01T00:00:00.000Z',
+            updatedAt: '2026-08-01T00:01:00.000Z',
+            messageCount: 4,
+            mutable: false,
+            answerability: stoppedAnswerability,
+          },
+          currentSessionId: 'stopped:session:child-1',
+          transcript: {
+            available: true as const,
+            owner: 'runtime' as const,
+            messageCount: 4,
+          },
+          canContinue: true,
+          answerability: stoppedAnswerability,
+          recoveryActions: [] as const,
+        },
+      }),
+    });
     expect(chatInputPropsMock.current?.disabled).toBe(false);
   });
 });

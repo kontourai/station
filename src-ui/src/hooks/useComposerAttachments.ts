@@ -82,6 +82,10 @@ export function useComposerAttachments(options: {
   const tasks = useRef(new Map<string, StageTask>());
   const pending = useRef<string[]>([]);
   const running = useRef(new Set<string>());
+  // Reconciliation is a reconnect observation, not a poller. Remember every
+  // stage this mounted hook has already inspected so writing the resulting
+  // snapshot cannot immediately schedule the same POST again.
+  const reconciledStageIds = useRef(new Set<string>());
   const stagesRef = useRef(options.stages);
   const pumpRef = useRef<() => void>(() => {});
   stagesRef.current = options.stages;
@@ -284,10 +288,16 @@ export function useComposerAttachments(options: {
   // refs: completion is temporary authority, not a forever-ready claim.
   useEffect(() => {
     const stageIds = options.stages
-      .filter((stage) => stage.stageId && stage.state !== 'cancelled')
+      .filter(
+        (stage) =>
+          stage.stageId &&
+          stage.state !== 'cancelled' &&
+          !reconciledStageIds.current.has(stage.stageId),
+      )
       .slice(0, 5)
       .map((stage) => stage.stageId!);
     if (stageIds.length === 0) return;
+    for (const stageId of stageIds) reconciledStageIds.current.add(stageId);
     void import('@kontourai/station-sdk/client')
       .then(({ reconcileAttachmentStages }) =>
         reconcileAttachmentStages(options.apiBase, stageIds),

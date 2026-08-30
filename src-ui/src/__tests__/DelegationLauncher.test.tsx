@@ -10,6 +10,16 @@ const retryDiscovery = vi.fn();
 let discoveryFailure: Error | null = null;
 let projectDefaultEnvironment: { kind: 'saved'; id: string } | undefined;
 let environmentsFailure = false;
+let peerCredentials:
+  | Array<{
+      environmentId: string;
+      apiBase: string;
+      scope: string;
+      label: string | null;
+      createdAt: number;
+      updatedAt: number;
+    }>
+  | undefined;
 
 vi.mock('@kontourai/station-sdk', () => ({
   useProjectQuery: () => ({
@@ -103,6 +113,13 @@ vi.mock('@kontourai/station-sdk', () => ({
     isSuccess: !environmentsFailure,
     isError: environmentsFailure,
   }),
+  // #790: an `access:manage`-gated read — undefined data models the 403 a
+  // non-operator browser session receives.
+  usePeerCredentialsQuery: () => ({
+    data: peerCredentials,
+    isSuccess: peerCredentials !== undefined,
+    isError: peerCredentials === undefined,
+  }),
   useDelegateOrchestrationTaskMutation: () => ({
     mutateAsync,
     reset,
@@ -119,6 +136,7 @@ describe('DelegationLauncher', () => {
     discoveryFailure = null;
     environmentsFailure = false;
     projectDefaultEnvironment = undefined;
+    peerCredentials = undefined;
     mutateAsync.mockResolvedValue({
       taskId: 'task:1',
       sessionId: 'task:1',
@@ -395,5 +413,133 @@ describe('DelegationLauncher', () => {
 
     fireEvent.pointerDown(overlay!);
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  test('lists a paired peer Station and delegates to it as a saved environment (#790)', async () => {
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'box-b',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        projectSlug="station"
+        projectName="Station"
+        initialPrompt="Run on the peer"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    expect(
+      screen.getByRole('option', { name: 'box-b — Paired Station' }),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Station'), {
+      target: { value: 'env-peer-b' },
+    });
+    // The routing summary names the peer, not a generic placeholder.
+    expect(screen.getAllByText(/box-b/).length).toBeGreaterThan(0);
+    await waitFor(() =>
+      expect((screen.getByLabelText('Worker') as HTMLSelectElement).value).toBe(
+        'agent:codex',
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Delegate' }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: expect.objectContaining({
+            environment: { kind: 'saved', id: 'env-peer-b' },
+          }),
+        }),
+      ),
+    );
+  });
+
+  test('an unlabeled peer falls back to its endpoint for a name', () => {
+    peerCredentials = [
+      {
+        environmentId: 'env-peer-b',
+        apiBase: 'https://box-b.example.test',
+        scope: 'orchestration:read',
+        label: null,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        initialPrompt="Run on the peer"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    expect(
+      screen.getByRole('option', {
+        name: 'https://box-b.example.test — Paired Station',
+      }),
+    ).toBeTruthy();
+  });
+
+  test('a peer sharing an SSH environmentId is listed once, as its SSH entry', () => {
+    // Server-side, `resolveTarget` tries SSH first and rides the peer
+    // credential over that tunnel — a second option would dispatch
+    // identically, so listing both would present one computer as two.
+    peerCredentials = [
+      {
+        environmentId: 'env-media',
+        apiBase: 'https://media.example.test',
+        scope: 'orchestration:read orchestration:operate',
+        label: 'Brian Media (peer)',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        initialPrompt="Run somewhere"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    expect(
+      screen.queryByRole('option', {
+        name: 'Brian Media (peer) — Paired Station',
+      }),
+    ).toBeNull();
+    expect(screen.getAllByRole('option', { name: /Brian Media/ }).length).toBe(
+      1,
+    );
+  });
+
+  test('offers only This Station when the peer read is unavailable (403)', () => {
+    peerCredentials = undefined;
+    render(
+      <DelegationLauncher
+        isOpen
+        apiBase="http://station.test"
+        initialPrompt="Run locally"
+        onClose={vi.fn()}
+        onDelegated={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Change routing' }));
+    expect(screen.queryByRole('option', { name: /Paired Station/ })).toBeNull();
+    expect(screen.getByRole('option', { name: 'This Station' })).toBeTruthy();
   });
 });

@@ -16,6 +16,7 @@ const action = vi.fn();
 const dismiss = vi.fn();
 const acknowledge = vi.fn();
 const acknowledgeAsync = vi.fn(() => Promise.resolve());
+let mockAcknowledgeError: Error | null = null;
 const navigate = vi.fn();
 
 const pairingMocks = vi.hoisted(() => {
@@ -47,18 +48,27 @@ vi.mock('../../../utils/attentionOpen', async (importOriginal) => ({
   navigateToAttentionTarget: (href: string) => navigate(href),
 }));
 
+vi.mock('../../../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
+}));
+
+const acknowledgeApiBases: Array<string | undefined> = [];
+
 vi.mock('@kontourai/station-sdk', () => ({
   acceptFlowException: vi.fn(),
   DevicePairingRequestActionError:
     pairingMocks.MockDevicePairingRequestActionError,
   evaluateFlowGate: vi.fn(),
   sendOrchestrationTurn: vi.fn(),
-  useAcknowledgeAttentionItemMutation: () => ({
-    isPending: false,
-    error: null,
-    mutate: acknowledge,
-    mutateAsync: acknowledgeAsync,
-  }),
+  useAcknowledgeAttentionItemMutation: (apiBase?: string) => {
+    acknowledgeApiBases.push(apiBase);
+    return {
+      isPending: false,
+      error: mockAcknowledgeError,
+      mutate: acknowledge,
+      mutateAsync: acknowledgeAsync,
+    };
+  },
   useConfirmDevicePairingRequestMutation: () => ({
     isPending: pairingMocks.confirmPairingState.isPending,
     error: pairingMocks.confirmPairingState.error,
@@ -88,6 +98,8 @@ beforeEach(() => {
   acknowledge.mockReset();
   acknowledgeAsync.mockReset();
   acknowledgeAsync.mockResolvedValue(undefined);
+  mockAcknowledgeError = null;
+  acknowledgeApiBases.length = 0;
   navigate.mockReset();
   pairingMocks.confirmPairing.mockReset();
   pairingMocks.denyPairing.mockReset();
@@ -432,7 +444,17 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
     ).toBe('/connections');
     screen.getByRole('button', { name: 'Dismiss' }).click();
     expect(acknowledge).toHaveBeenCalledWith('device-pairing:pair-req-1');
+    expect(acknowledgeApiBases).toContain('http://station.test');
     expect(dismiss).not.toHaveBeenCalled();
+  });
+
+  test('renders a failed pending-pairing dismissal instead of silently keeping the card', () => {
+    mockAcknowledgeError = new Error('Could not record dismissal');
+    renderCard(basePairing());
+
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Could not record dismissal',
+    );
   });
 });
 

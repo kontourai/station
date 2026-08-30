@@ -32,7 +32,9 @@ vi.mock('../contexts/NavigationContext', () => ({
 }));
 
 vi.mock('../components/LazyBoundary', () => ({
-  LazyBoundary: () => null,
+  LazyBoundary: () => (
+    <section aria-label="Advanced: Secret bindings">Secret bindings</section>
+  ),
 }));
 
 import { IntegrationsView } from '../views/IntegrationsView';
@@ -77,5 +79,30 @@ describe('IntegrationsView (#771)', () => {
     renderView();
 
     expect(screen.getByText('No tool servers yet')).toBeTruthy();
+  });
+
+  test('renders the tool list before advanced secret bindings and uses user-facing unchecked copy', () => {
+    integrations = [
+      {
+        id: 'station-control',
+        kind: 'mcp',
+        displayName: 'Station Control',
+        description: '',
+        enabled: true,
+      },
+    ];
+
+    renderView();
+
+    const tool = screen.getByRole('button', { name: /Station Control/i });
+    const bindings = screen.getByRole('region', {
+      name: 'Advanced: Secret bindings',
+    });
+    expect(
+      tool.compareDocumentPosition(bindings) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'expected the tools list to render before advanced secret bindings',
+    ).toBeTruthy();
+    expect(screen.getByText('Not checked yet')).toBeTruthy();
+    expect(screen.queryByText('Never probed')).toBeNull();
   });
 });

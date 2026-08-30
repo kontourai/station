@@ -1,4 +1,5 @@
 import {
+  type LayoutComponent,
   useNavigation,
   type WorkspaceComponentProps,
 } from '@kontourai/station-sdk';
@@ -95,6 +96,6 @@ export const components = {
   'knowledge-library': KnowledgeLibrary,
   'knowledge-ask': KnowledgeAsk,
   'knowledge-sources': KnowledgeSources,
-};
+} satisfies Record<string, LayoutComponent>;
 
 export default KnowledgeLibrary;

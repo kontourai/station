@@ -26,7 +26,9 @@ const mockChatFn = vi.fn(async () => {
 });
 
 // Must import AFTER mock so module-level constants use the mocked homedir
-const { BuiltinScheduler } = await import('../scheduling/builtin-scheduler.js');
+const { BuiltinScheduler, SchedulerJobConflictError } = await import(
+  '../scheduling/builtin-scheduler.js'
+);
 const { ANNOUNCEMENT_LEASE_MS, createSchedulerLedger } = await import(
   '../scheduling/scheduler-ledger.js'
 );
@@ -188,7 +190,7 @@ describe('BuiltinScheduler', () => {
     await scheduler.addJob({ name: 'dup', prompt: 'a' });
     await expect(
       scheduler.addJob({ name: 'dup', prompt: 'b' }),
-    ).rejects.toThrow("Job 'dup' already exists");
+    ).rejects.toBeInstanceOf(SchedulerJobConflictError);
   });
 
   test('replays a Starter manual operation without invoking the job twice', async () => {
@@ -218,8 +220,11 @@ describe('BuiltinScheduler', () => {
     expect(mockChatFn).toHaveBeenCalledTimes(1);
   });
 
-  test('records Starter resource deferral as a durable no-invocation receipt', async () => {
-    const invoke = vi.fn();
+  test('keeps an explicit Starter operation interactive under degraded posture', async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      kind: 'completed',
+      output: 'ready',
+    });
     const deferred = new BuiltinScheduler({
       ledger: createSchedulerLedger({
         directory: join(tempDir, 'starter-resource-deferral'),
@@ -243,24 +248,23 @@ describe('BuiltinScheduler', () => {
       );
       if (!prepared.activate) throw new Error('expected activation capability');
       await expect(prepared.activate()).resolves.toMatchObject({
-        outcome: 'failed',
+        outcome: 'completed',
         runId: prepared.reference.id,
       });
-      expect(invoke).not.toHaveBeenCalled();
+      expect(invoke).toHaveBeenCalledOnce();
       await expect(
         deferred.getJobLogs('station-starter-check'),
       ).resolves.toMatchObject([
         {
           id: expect.any(String),
-          state: 'failed',
-          error: 'Scheduled-check Starter was deferred before invocation.',
+          state: 'completed',
         },
       ]);
       expect(
         deferred.prepareStarterManualIntent('starter-resource-operation'),
       ).toMatchObject({
         replayed: true,
-        completion: 'failed',
+        completion: 'completed',
         reference: prepared.reference,
       });
     } finally {
@@ -736,11 +740,14 @@ describe('BuiltinScheduler', () => {
     expect(owedIds(directory)).toEqual([]);
   });
 
-  test('refuses a manual run under degraded posture and names the observation', async () => {
+  test('admits a manual run under degraded posture instead of treating it as cron', async () => {
     const ledger = createSchedulerLedger({
       directory: join(tempDir, 'manual-resource-posture'),
     });
-    const invoke = vi.fn();
+    const invoke = vi.fn().mockResolvedValue({
+      kind: 'completed',
+      output: 'manual output',
+    });
     const manualScheduler = new BuiltinScheduler({
       ledger,
       turnAdapter: { invoke },
@@ -760,13 +767,9 @@ describe('BuiltinScheduler', () => {
       await manualScheduler.addJob({ name: 'manual-posture', prompt: 'run' });
 
       await expect(manualScheduler.runJob('manual-posture')).resolves.toEqual(
-        expect.objectContaining({
-          outcome: 'refused',
-          message:
-            "Job 'manual-posture' refused: Scheduler job refused: resource posture=degraded, observed busyPercent=90",
-        }),
+        expect.objectContaining({ outcome: 'completed' }),
       );
-      expect(invoke).not.toHaveBeenCalled();
+      expect(invoke).toHaveBeenCalledOnce();
     } finally {
       await manualScheduler.stop();
     }

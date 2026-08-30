@@ -24,6 +24,10 @@ import {
 } from '../workspace-panes/ProjectWorkspacePaneCatalog';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
 import type { WorkspacePaneAvailabilityCatalogEntry } from '../workspace-panes/workspacePaneAvailabilityPresentation';
+import {
+  workspacePaneDirectRoute,
+  workspacePaneRequiresLayoutIdentity,
+} from '../workspace-panes/workspacePaneDirectRoute';
 import { ProjectConversationsSection } from './project-page/ProjectConversationsSection';
 import { ProjectKnowledgeSection } from './project-page/ProjectKnowledgeSection';
 import {
@@ -67,7 +71,12 @@ export function ProjectPage({ slug }: { slug: string }) {
   } = useProjectLayoutsQuery(slug);
   const { data: gitStatus } = useGitStatus(project?.workingDirectory);
   const { data: gitLog = [] } = useGitLog(project?.workingDirectory, 5);
-  const { data: docs = [] } = useKnowledgeDocsQuery(slug);
+  const {
+    data: docs = [],
+    isError: docsError,
+    error: docsFailure,
+    refetch: refetchDocs,
+  } = useKnowledgeDocsQuery(slug);
   const { data: knowledgeStatus } = useKnowledgeStatusQuery(slug);
   const { data: namespaces = [] } = useKnowledgeNamespacesQuery(slug);
   const { data: conversations = [] } = useProjectConversationsQuery(slug);
@@ -121,9 +130,36 @@ export function ProjectPage({ slug }: { slug: string }) {
   function openPane(entry: WorkspacePaneAvailabilityCatalogEntry) {
     if (!entry.instance) return;
     setShowAddPane(false);
-    navigate(
-      `/projects/${encodeURIComponent(slug)}/panes/${encodeURIComponent(entry.descriptor.id)}/${encodeURIComponent(entry.instance.instanceId)}`,
+    const requiresLayout = workspacePaneRequiresLayoutIdentity(
+      entry.descriptor,
     );
+    // Every renderer in today's closed `requiresLayout` set reads Coding
+    // layout configuration, so Coding is the intentional host capability.
+    // Making this generic requires a versioned descriptor field naming its
+    // accepted layout type(s), plus parser and retained-LayoutTab adaptation
+    // checks so contributed routing metadata cannot bypass integrity checks.
+    const hostingLayout = requiresLayout
+      ? (layouts as Array<{ slug: string; type?: string }>).find(
+          (layout) => layout.type === 'coding',
+        )
+      : undefined;
+    const directRoute = workspacePaneDirectRoute(
+      slug,
+      entry.descriptor,
+      entry.instance,
+      hostingLayout?.slug,
+    );
+    if (!directRoute) {
+      // Layout-bound panes cannot manufacture workspace identity. Start the
+      // existing layout creation flow instead of advertising a route that is
+      // guaranteed to reject the user on its next screen.
+      setShowAddLayout(true);
+      return;
+    }
+    if (hostingLayout && requiresLayout) {
+      setLayout(slug, hostingLayout.slug);
+    }
+    navigate(directRoute);
   }
 
   function canExecutePaneAction(
@@ -355,6 +391,9 @@ export function ProjectPage({ slug }: { slug: string }) {
           slug={slug}
           projectWorkingDirectory={project.workingDirectory}
           docs={docs}
+          docsError={docsError}
+          docsFailure={docsFailure}
+          onRetryDocs={() => void refetchDocs()}
           namespaces={namespaces}
           knowledgeStatus={knowledgeStatus}
         />

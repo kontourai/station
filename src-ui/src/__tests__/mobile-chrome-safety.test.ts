@@ -1,10 +1,26 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import {
+  WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+  WORKSPACE_ACTIVITY_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
+import {
+  WORKSPACE_HOME_PANE_DESCRIPTOR,
+  WORKSPACE_HOME_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-home-pane';
+import { describe, expect, it, vi } from 'vitest';
 import {
   isDockOwnedViewType,
   isMobileDockFullscreen,
+  MOBILE_DOCK_OCCUPANT_PICKER_QUERY,
+  shouldMaximizeAfterDockingAsOnlyContent,
+  shouldMaximizeOnOccupantChoice,
 } from '../components/chat-dock/mobile-chrome';
+import {
+  ambientDockOccupantRouteViewType,
+  chooseAmbientOccupant,
+} from '../workspace-panes/ambientDockOccupants';
 import { ruleBodiesFor } from './helpers/css-rules';
 
 /**
@@ -70,18 +86,36 @@ describe('the connection banner slot bounds without reserving', () => {
       expect(body, `missing rule: ${rule}`).toBeDefined();
       expect(body).toMatch(/(left|right):\s*(var\(--chat-dock-width|36px)/);
     }
-    // Maximized leaves no content column, so the notice deliberately outranks
-    // the dock in that state alone.
+    // Maximized is the active full work surface. Its occupant header/search
+    // must remain reachable, so the notice returns below the dock instead of
+    // covering those controls.
     const [maximized] = ruleBodies(
       css,
       '.app__main:has(> .chat-dock.is-maximized) > .banner-host',
     );
     expect(maximized).toBeDefined();
-    expect(maximized).toMatch(
-      /z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/,
-    );
+    expect(maximized).toMatch(/z-index:\s*var\(--layer-notice\)/);
+    expect(maximized).not.toMatch(/var\(--layer-dock\)/);
     expect(maximized).toMatch(/left:\s*0/);
     expect(maximized).toMatch(/right:\s*0/);
+  });
+
+  it('gives a maximized bottom dock one full remaining viewport row', () => {
+    const css = read('index.css');
+    const [main] = ruleBodies(
+      css,
+      '.app__main--dock-bottom:has(> .chat-dock.is-maximized)',
+    );
+    expect(main).toBeDefined();
+    expect(main).toMatch(/grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)/);
+
+    const [dock] = ruleBodies(
+      css,
+      '.app__main--dock-bottom > .chat-dock.is-maximized',
+    );
+    expect(dock).toBeDefined();
+    expect(dock).toMatch(/grid-row:\s*2\s*;/);
+    expect(dock).not.toMatch(/grid-row:\s*2\s*\/\s*-1/);
   });
 
   it('outranks a bottom-sheet dock, where no column exists to inset into', () => {
@@ -360,9 +394,133 @@ describe('the toolbar replacement carries the inset the toolbar owned', () => {
     expect(body).toMatch(/padding-top:\s*var\(--safe-top\)/);
   });
 
+  it('pads a PageFrame route header the same way (station#541)', () => {
+    // A framed route (Connections, Settings, ...) publishes its eyebrow/
+    // title through `.page-frame__header`, not `.workspace-tabs__header` —
+    // a different route family, the same missing-inset defect: with the
+    // toolbar hidden nothing else accounts for the status-bar inset before
+    // it. Layered on top of the header's own padding, not a replacement —
+    // `padding-top` alone, so the base horizontal/bottom padding survives.
+    //
+    // Review round 2: this rule now lives IN page-frame.css itself (a
+    // mobile-css-ratchet PRIMITIVE_ALLOWLIST entry — it renders every page
+    // header, so it already owns this header's one mobile treatment),
+    // beside the base padding it layers onto, rather than in index.css.
+    const pageFrameCss = read('components/page-frame/page-frame.css');
+    const bodies = ruleBodies(
+      pageFrameCss,
+      '.app__main--mobile-dock-fullscreen .page-frame__header',
+    );
+    expect(
+      bodies.length,
+      '.page-frame__header fullscreen rule (both breakpoints) not found',
+    ).toBe(2);
+    // The 641-768px rule adds the inset to page-frame.css's 2rem base...
+    expect(bodies[0]).toMatch(
+      /padding-top:\s*calc\(var\(--safe-top\)\s*\+\s*2rem\)/,
+    );
+    // ...and the <=640px rule (declared AFTER it, so the tie between two
+    // identical-specificity selectors resolves by source order) adds it to
+    // page-frame.css's narrower 1.5rem base instead.
+    expect(bodies[1]).toMatch(
+      /padding-top:\s*calc\(var\(--safe-top\)\s*\+\s*1\.5rem\)/,
+    );
+  });
+
   it('anchors a mobile dock to the visible viewport bottom', () => {
     const [body] = ruleBodies(css, '.app__main > .chat-dock');
     expect(body).toContain('--chat-visual-viewport-bottom');
+  });
+});
+
+describe('the mobile collapsed-dock header height matches the shared header (station#524)', () => {
+  const css = read('index.css');
+  const chatCss = read('components/chat/chat.css');
+
+  /**
+   * `useDockShellChrome.ts`'s `collapsedHeight` reads this token via
+   * `getComputedStyle(...).getPropertyValue()` + `parseInt` — a custom
+   * property's computed value is the unparsed token text, so `calc()`/
+   * `var()` inside it parse to `NaN` there (documented next to
+   * `--app-toolbar-total-height` in `lib/toolbarGeometry.ts`). It must stay
+   * a bare literal, never a live expression, however it is derived.
+   */
+  it('is a literal, not a calc() JS cannot read', () => {
+    expect(css).toMatch(/--chat-dock-header-height:\s*53px;/);
+    expect(css).not.toMatch(/--chat-dock-header-height:\s*calc\(/);
+  });
+
+  /**
+   * The value itself: Home/Activity's collapsed bar is `ChatDockHeader`'s
+   * `.chat-dock__header` (not Chat's own `.chat-dock__mobile-header`). Its
+   * real mobile box is the 44px touch floor on its tallest control
+   * (`.chat-dock__icon-btn`/`.chat-dock__maximize-btn`) plus its own
+   * mobile `padding: var(--space-2) var(--space-3)` (both vertical sides
+   * `--space-2`) plus its 1px `border-bottom` — 44 + 4 + 4 + 1 = 53. The
+   * old `52px` was 1px short, and `.chat-dock.is-collapsed` sets
+   * `overflow: hidden`, so that header's own bottom border/padding clipped.
+   */
+  it('sums to the real box: control min-height + 2x --space-2 padding + border-bottom width', () => {
+    // review round 2 (L1): every number below is EXTRACTED from the CSS
+    // text the assertions already matched against, not restated as a
+    // literal — a hardcoded `44 + 2 * 4 + 1` would stay green even if any
+    // one of those numbers drifted from what the stylesheets actually say.
+
+    const spaceTwoMatch = /--space-2:\s*(\d+)px;/.exec(read('tokens.css'));
+    expect(spaceTwoMatch, '--space-2 token not found').not.toBeNull();
+    const spaceTwo = Number(spaceTwoMatch?.[1]);
+
+    const headerRules = ruleBodiesFor(chatCss, '.chat-dock__header');
+    const paddingBody = headerRules.find((body) =>
+      /padding:\s*var\(--space-2\)\s+var\(--space-3\)/.test(body),
+    );
+    expect(
+      paddingBody,
+      '.chat-dock__header mobile padding rule not found',
+    ).toBeDefined();
+
+    const maximizeBtnRules = ruleBodiesFor(chatCss, '.chat-dock__maximize-btn');
+    const controlBody = maximizeBtnRules.find((body) =>
+      /min-height:\s*(\d+)px/.test(body),
+    );
+    expect(
+      controlBody,
+      '.chat-dock__maximize-btn 44px mobile floor not found',
+    ).toBeDefined();
+    const controlHeight = Number(
+      /min-height:\s*(\d+)px/.exec(controlBody ?? '')?.[1],
+    );
+
+    // Base rule (index.css): border-bottom on `.chat-dock__header`.
+    const [baseHeaderBody] = ruleBodiesFor(css, '.chat-dock__header');
+    const borderMatch = /border-bottom:\s*(\d+)px solid/.exec(
+      baseHeaderBody ?? '',
+    );
+    expect(
+      borderMatch,
+      '.chat-dock__header border-bottom not found',
+    ).not.toBeNull();
+    const borderWidth = Number(borderMatch?.[1]);
+
+    // The token this whole derivation exists to justify. Two declarations
+    // exist (the desktop default near the top of the file, and this
+    // mobile override inside the responsive block) — the LAST one in
+    // source order is the mobile-scoped value (cascade order), which is
+    // the one this box math is about.
+    const headerHeightMatches = [
+      ...css.matchAll(/--chat-dock-header-height:\s*(\d+)px;/g),
+    ];
+    expect(
+      headerHeightMatches.length,
+      '--chat-dock-header-height literal not found',
+    ).toBeGreaterThan(0);
+    const recordedHeaderHeight = Number(
+      headerHeightMatches[headerHeightMatches.length - 1][1],
+    );
+
+    expect(controlHeight + 2 * spaceTwo + borderWidth).toBe(
+      recordedHeaderHeight,
+    );
   });
 });
 
@@ -485,6 +643,109 @@ describe('mobile chat chrome has one header owner', () => {
     expect(desktopHeader).not.toContain('chat-dock__restore-label');
     expect(chatCss).not.toContain('chat-dock__mobile-task-trigger');
     expect(read('index.css')).not.toContain('chat-dock__restore-label');
+  });
+
+  it('render-gates the mobile occupant picker at the 481px identity boundary', () => {
+    const mobileHeader = read('components/chat-dock/ChatDockMobileHeader.tsx');
+    const picker = read('workspace-panes/DockOccupantPicker.tsx');
+    const css = read('index.css');
+
+    expect(MOBILE_DOCK_OCCUPANT_PICKER_QUERY).toBe('(min-width: 481px)');
+    expect(mobileHeader).toContain('useMobileDockOccupantPicker()');
+    expect(mobileHeader).toContain('mobileDragPassthrough: true');
+    expect(picker).toContain('data-dock-drag-passthrough=');
+    expect(
+      ruleBodiesFor(css, '.chat-dock__mobile-occupant-picker').every(
+        (body) => !/display:\s*none/.test(body),
+      ),
+      'the picker must be DOM-absent below 481px, not merely CSS-hidden',
+    ).toBe(true);
+  });
+});
+
+describe('the mobile dock-and-empty contract derivation (station#520)', () => {
+  it('maximizes only mobile + a request the admission check actually docked', () => {
+    expect(shouldMaximizeAfterDockingAsOnlyContent(true, true)).toBe(true);
+    expect(
+      shouldMaximizeAfterDockingAsOnlyContent(false, true),
+      'desktop already has room beside the dock',
+    ).toBe(false);
+    expect(
+      shouldMaximizeAfterDockingAsOnlyContent(true, false),
+      'a REFUSED dock request must never force Full over nothing',
+    ).toBe(false);
+    expect(shouldMaximizeAfterDockingAsOnlyContent(false, false)).toBe(false);
+  });
+
+  /** review round 2, M3: `DockOccupantPicker`'s onChoose seam. */
+  it('shouldMaximizeOnOccupantChoice matches only mobile + picked-pane-is-current-route', () => {
+    expect(shouldMaximizeOnOccupantChoice(true, 'home', 'home')).toBe(true);
+    expect(
+      shouldMaximizeOnOccupantChoice(false, 'home', 'home'),
+      'desktop already has room beside the dock',
+    ).toBe(false);
+    expect(
+      shouldMaximizeOnOccupantChoice(true, 'settings', 'home'),
+      'the main area is already showing something else — nothing stranded',
+    ).toBe(false);
+    expect(
+      shouldMaximizeOnOccupantChoice(true, 'home', null),
+      'Chat has no route of its own (null) and never matches',
+    ).toBe(false);
+  });
+
+  it('ambientDockOccupantRouteViewType maps Home/Activity to their routes and Chat to null', () => {
+    expect(
+      ambientDockOccupantRouteViewType(WORKSPACE_HOME_PANE_DESCRIPTOR),
+    ).toBe('home');
+    expect(
+      ambientDockOccupantRouteViewType(WORKSPACE_ACTIVITY_PANE_DESCRIPTOR),
+    ).toBe('activity');
+    expect(
+      ambientDockOccupantRouteViewType(WORKSPACE_CHAT_PANE_DESCRIPTOR),
+    ).toBeNull();
+  });
+
+  it('chooseAmbientOccupant dispatches through the maximizing action when the live route would be stranded', () => {
+    const onChoose = vi.fn();
+    const onChooseAsOnlyContent = vi.fn();
+
+    chooseAmbientOccupant({
+      isMobile: true,
+      pathname: '/activity',
+      descriptor: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+      instance: WORKSPACE_ACTIVITY_PANE_INSTANCE,
+      onChoose,
+      onChooseAsOnlyContent,
+    });
+
+    expect(onChooseAsOnlyContent).toHaveBeenCalledOnce();
+    expect(onChooseAsOnlyContent).toHaveBeenCalledWith(
+      WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+      WORKSPACE_ACTIVITY_PANE_INSTANCE,
+    );
+    expect(onChoose).not.toHaveBeenCalled();
+  });
+
+  it('chooseAmbientOccupant keeps ordinary choices on the plain action', () => {
+    const onChoose = vi.fn();
+    const onChooseAsOnlyContent = vi.fn();
+
+    chooseAmbientOccupant({
+      isMobile: true,
+      pathname: '/settings',
+      descriptor: WORKSPACE_HOME_PANE_DESCRIPTOR,
+      instance: WORKSPACE_HOME_PANE_INSTANCE,
+      onChoose,
+      onChooseAsOnlyContent,
+    });
+
+    expect(onChoose).toHaveBeenCalledOnce();
+    expect(onChoose).toHaveBeenCalledWith(
+      WORKSPACE_HOME_PANE_DESCRIPTOR,
+      WORKSPACE_HOME_PANE_INSTANCE,
+    );
+    expect(onChooseAsOnlyContent).not.toHaveBeenCalled();
   });
 });
 

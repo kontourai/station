@@ -904,7 +904,10 @@ export function ChatDockBody({
             onSteer: async (message: string) => {
               try {
                 const result = await steerOrchestrationTurn({
-                  threadId: activeSession.id,
+                  // Steering is a command on the live execution Session. The
+                  // tab id remains the durable conversation identity after a
+                  // continuation child becomes current.
+                  threadId: activeSession.currentSessionId ?? activeSession.id,
                   text: message,
                   turnId: activeSession.openTurnId,
                   apiBase,
@@ -1219,6 +1222,8 @@ export function ChatDockBody({
         closeAll={chatInput.closeAll}
         voiceState={stt.state}
         voiceSupported={stt.supported}
+        voiceUnsupportedReason={stt.unsupportedReason}
+        voiceError={stt.errorMessage}
         onVoiceStart={() => stt.startListening()}
         onVoiceStop={() => stt.stopListening()}
         workspaceRefused={workspaceRefused}

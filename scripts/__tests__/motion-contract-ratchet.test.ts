@@ -126,7 +126,16 @@ describe('motion contract ratchet', () => {
         'utf8',
       ),
     ) as { hardCodedDeclarationCeiling: number };
-    expect(baseline.hardCodedDeclarationCeiling).toBe(100);
+    // station#753 item 6 migrated the last 25 legacy-ceiling files (99 of the
+    // 100 declarations) to tokens; two declarations remain, both load-bearing
+    // coupled timing constants rather than motion-grammar durations a token
+    // could express: NotificationHistory.css's `notification-dismiss-collapse`
+    // (`4s`) encodes `UNDO_WINDOW_MS` from NotificationHistory.tsx; VoicePill
+    // .css's two `transition:` blocks (`.voice-pill--listening`,
+    // `.voice-pill__ring`, `0.08s` each) smooth a live per-microphone-frame
+    // signal (NovaVoiceSessionAdapter.ts `handleMicrophoneFrame`) — Direct-
+    // manipulation category, not Feedback/state. 1 + 2 = 3.
+    expect(baseline.hardCodedDeclarationCeiling).toBe(3);
   });
 
   it('rejects hard-coded motion and transition all', () => {
