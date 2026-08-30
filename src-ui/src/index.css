@@ -8765,7 +8765,9 @@ button.tool-call__line:hover {
 
   /* The maximized chat is the ONLY state that adds the drawer toggle (the app
      toolbar is hidden, so this bar carries navigation), and it is the state
-     that overflows: seven 44px slots need 308px before gaps, against 304.
+     that overflows: six 44px icon slots plus the measured 53.28px labelled
+     connection chip and seven 2px gaps need 331.28px before the identity block,
+     against 304px.
      The 44px floor is not negotiable and every other control here is the sole
      entry point for its action — but dock height is not: the ⋯ sheet already
      carries Expand/Restore/Collapse as named menu items, precisely so the drag
@@ -8811,6 +8813,7 @@ button.tool-call__line:hover {
    reader; the triangle in ConnectionStatusDot is what survives a 7px dot;
    neither is the only channel. */
 .chat-dock__mobile-conn {
+  gap: var(--space-2);
   padding: 0;
 }
 
@@ -8825,9 +8828,11 @@ button.tool-call__line:hover {
 /* archive#4512: `max-width` + ellipsis is a belt, not the primary fit
    mechanism. `ChatDockMobileConnection.tsx` supplies the short forms "Pair",
    "Re-pair", and "Waiting" instead of the toolbar chip's full sentences, and
-   the 320px maximized-header spec exercises this bound with an attention chip.
-   The bound still matters because this icon cluster does not shrink: without
-   it an unexpectedly long label could only grow the row. */
+   the 320px maximized-header spec measures the attention label's rendered box
+   against this bound. The widest short form, "Waiting", renders at ~38px in
+   real Chromium with the app's self-hosted DM Sans; 44px is that measurement
+   plus headroom. The bound still matters because this icon cluster does not
+   shrink: without it an unexpectedly long label could only grow the row. */
 .chat-dock__mobile-conn-label {
   font-size: var(--text-xs);
   font-weight: 600;
@@ -9050,6 +9055,8 @@ button.tool-call__line:hover {
 
 .chat-dock__mobile-title {
   display: flex;
+  align-items: center;
+  gap: 2px;
   max-width: 100%;
   min-width: 0;
   color: var(--text-primary);
