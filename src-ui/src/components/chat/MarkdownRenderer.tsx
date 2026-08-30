@@ -99,6 +99,8 @@ const MarkdownBlockView = memo(
  * whole-document parse so cross-block resolution stays canonical. Settled
  * content always takes that canonical whole-document path immediately.
  */
+let warnedSplitterFallback = false;
+
 function MarkdownRendererComponent({
   incremental = false,
   splitBlocks = splitMarkdownBlocks,
@@ -164,10 +166,15 @@ function MarkdownRendererComponent({
   try {
     blocks = splitBlocks(children);
   } catch (error) {
-    console.warn(
-      'Incremental markdown splitter failed; using the canonical whole parse:',
-      error instanceof Error ? error.message : String(error),
-    );
+    // Deterministic splitter failures recur every ~80ms flush; warn once so
+    // the fallback is observable without flooding the console.
+    if (!warnedSplitterFallback) {
+      warnedSplitterFallback = true;
+      console.warn(
+        'Incremental markdown splitter failed; using the canonical whole parse:',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
     renderProbe?.onFallback?.(error);
     return <FullMarkdown {...options}>{children}</FullMarkdown>;
   }

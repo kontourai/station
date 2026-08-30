@@ -179,7 +179,12 @@ function classifyBlock(
       PARTIAL_TABLE_DELIMITER.test(delimiter) &&
       !TABLE_DELIMITER.test(delimiter),
   );
-  if ((startsWithTablePipe && delimiter === undefined) || hasPartialDelimiter) {
+  // The delimiter arm needs a pipe somewhere in the header, or a setext
+  // heading's `---` underline would hold prose as an incomplete table.
+  if (
+    (startsWithTablePipe && delimiter === undefined) ||
+    ((startsWithTablePipe || header.includes('|')) && hasPartialDelimiter)
+  ) {
     return { flavor: 'table', provisionalReason: 'incomplete-table' };
   }
   if (header.includes('|') && delimiter && TABLE_DELIMITER.test(delimiter)) {
@@ -315,6 +320,9 @@ const FOOTNOTE_DEFINITION = /^ {0,3}\[\^[^\]]+\]:/m;
  * Reference links/images and footnotes share definitions across block
  * boundaries. Parsing those blocks independently loses that document-level
  * context, so rare definition-bearing messages use the canonical whole parse.
+ * The scan is deliberately over-broad and perf-only: it covers fenced text
+ * too, so a code sample containing a `[x]:`-shaped line (or prose beginning
+ * `[INFO]:`) also takes the whole parse — correct output, main's cost.
  */
 export function markdownBlocksRequireWholeParse(
   blocks: readonly MarkdownBlock[],

@@ -63,6 +63,26 @@ describe('splitMarkdownBlocks', () => {
     },
   );
 
+  test.each([
+    'My Heading\n----------',
+    'My Heading\n---',
+    'Some prose line\n---\nmore prose',
+  ])(
+    'does not hold a setext underline as an incomplete table: %s',
+    (source) => {
+      expect(splitMarkdownBlocks(source)[0]).toMatchObject({
+        flavor: 'plain',
+      });
+    },
+  );
+
+  test('still holds a pipeless GFM table forming under its delimiter', () => {
+    expect(splitMarkdownBlocks('a | b\n---')[0]).toMatchObject({
+      flavor: 'table',
+      provisionalReason: 'incomplete-table',
+    });
+  });
+
   test.each(DEFINITION_DEPENDENT_MARKDOWN)(
     'requires a whole parse for document-scoped definition %#',
     (source) => {
