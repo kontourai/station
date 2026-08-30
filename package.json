@@ -234,7 +234,6 @@
     "examples:build": "node scripts/examples-conformance.mjs --build",
     "docs:reference:gate": "node scripts/docs-reference-gate.mjs",
     "typecheck:e2e": "tsc -p tsconfig.e2e.json --noEmit",
-    "gate:merge-base": "node scripts/check-merge-base-fresh.mjs",
     "hooks:install": "node scripts/install-git-hooks.mjs",
     "lockfile-sync:gate": "node scripts/lockfile-sync-gate.mjs",
     "build:android:arm64": "node scripts/apply-android-channel-icons.mjs dev && node scripts/apply-android-native-bootstrap.mjs && node scripts/write-android-build-manifest.mjs && RUSTFLAGS=\"-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384\" tauri android build -t aarch64 --debug --apk",
