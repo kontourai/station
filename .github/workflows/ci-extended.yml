@@ -1,9 +1,12 @@
 name: CI Extended
 
 on:
-  # Free-tier hygiene: the extended lane (coverage + full e2e) is expensive, so
-  # it is manual-only. The daily cron and per-merge push triggers were removed
-  # to stop recurring Actions-minute burn; run it on demand when minutes allow.
+  # #518 owner decision (2026-08-30): the self-hosted fleet consumes zero
+  # Actions minutes. Its cost is physical fleet capacity, coordinated through
+  # the existing leases, so Extended runs weekly plus on explicit dispatch.
+  schedule:
+    # Saturday 11:30 UTC — after the daily gallery (07:30) and Nightly (09:00).
+    - cron: '30 11 * * 6'
   workflow_dispatch:
 
 permissions:
@@ -17,7 +20,7 @@ jobs:
   coverage:
     needs: playwright-full
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' }}
-    runs-on: ubuntu-22.04
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -27,6 +30,18 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "6"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
 
       - run: npm run dependencies:ci
 
@@ -55,7 +70,7 @@ jobs:
   playwright-full:
     name: Full Playwright Coverage
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-22.04
+    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -66,16 +81,28 @@ jobs:
         with:
           node-version-file: .nvmrc
 
+      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
+
+      - name: Reserve physical host capacity
+        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
+        with:
+          coordination-root: /mnt/e/kontour-runner-capacity
+          host-id: desktop-win
+          capacity-units: "10"
+          lease-weight: "9"
+          timeout-seconds: "600"
+          owner-lifetime-seconds: "7800"
+
       - run: npm run dependencies:ci
 
       # Bound + retry the browser install: it occasionally wedges on the CDN /
       # apt deps, and with no timeout it ran toward the 6h job default. Each
       # attempt is capped so a hang dies fast and self-heals on retry.
       #
-      # Installed to `$HOME/.cache/ms-playwright`, exported job-wide via
-      # `$GITHUB_ENV` — same convention as `browser-smoke` and
+      # Installed to the persistent runner's `$HOME/.cache/ms-playwright`,
+      # exported job-wide via `$GITHUB_ENV` — same convention as `browser-smoke` and
       # `full-regression`'s Chromium install in ci.yml (station#3517).
-      # Hosted runners are ephemeral, so this installs every job.
+      # The install is idempotent and ensures the repo-pinned revision exists.
       # `npm run install:playwright:ci` hardcodes an in-`node_modules`
       # browsers path as a package.json prefix, which would override the
       # exported path, so this calls `playwright install --with-deps`
