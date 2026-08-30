@@ -39,12 +39,10 @@ import {
   useOnboardingSetupState,
 } from '../../contexts/onboarding-setup-store';
 import { useSystemStatus } from '../../hooks/useSystemStatus';
-import { LazyBoundary } from '../LazyBoundary';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
-import { SkeletonBlock } from '../state';
 import {
   dismissUsageTelemetryDisclosure,
   UsageTelemetryDisclosureStep,
@@ -61,15 +59,11 @@ import {
   resolveFirstRunOffer,
 } from './first-run-gate';
 import './FirstRunHomeChapter.css';
-import { requestFirstRunTour } from './first-run-store';
-
-// First Run is an eager Home dependency. The optional capability-gated import
-// workflow stays shared with Settings but is loaded only when this chapter is
-// actually open, so it cannot add bytes to every cold application load.
-const loadExistingSetupImportStepper = () =>
-  import('../setup/ExistingSetupImportStepper').then((module) => ({
-    default: module.ExistingSetupImportStepper,
-  }));
+import {
+  firstRunStore,
+  requestFirstRunTour,
+  useFirstRunProgress,
+} from './first-run-store';
 
 /**
  * The run's steps, in order.
@@ -144,6 +138,7 @@ export function FirstRunHomeChapter() {
   const { updateConfig, recordFirstRunDecision } = useConfigActions();
   const configSettled = useConfigSettled();
   const offer = resolveFirstRunOffer(config?.firstRun);
+  const progress = useFirstRunProgress();
   const { options, settled } = useFirstRunEngineOptions();
   // The RAW probe answer, not `isBlockingFullScreen`  Once this
   // chapter is open the launcher is suppressed, so `isBlockingFullScreen` is
@@ -186,11 +181,17 @@ export function FirstRunHomeChapter() {
     const plan = disclosureOutstanding
       ? CHAPTER_STEPS_WITH_DISCLOSURE
       : CHAPTER_STEPS;
+    const resumedStep =
+      progress.chapter === 'about-you'
+        ? 'about-you'
+        : progress.chapter === 'engines'
+          ? 'engines'
+          : plan[0];
     setSteps(plan);
-    setStep(plan[0]);
+    setStep(resumedStep);
     setSaveError(null);
     setOpen(true);
-  }, [disclosureOutstanding]);
+  }, [disclosureOutstanding, progress.chapter]);
 
   // Auto-open is a ONE-SHOT per mount, latched on a ref rather than driven by
   // `offer.autoOpen` every render. Without the latch, closing the dialog while
@@ -219,7 +220,14 @@ export function FirstRunHomeChapter() {
   // the restored copy is fine and stays: it offers, it does not interrupt.
   const autoOpened = useRef(false);
   useEffect(() => {
-    if (autoOpened.current || !offer.autoOpen || launcherWouldShow) return;
+    if (
+      autoOpened.current ||
+      !offer.autoOpen ||
+      launcherWouldShow ||
+      progress.chapter === 'tour' ||
+      progress.chapter === 'done'
+    )
+      return;
     if (!configSettled) return;
     // `launcherWouldShow` is FALSE while the status query is unconfirmed —
     // both while it is in flight (`!!status && …`) and while it is showing a
@@ -243,6 +251,7 @@ export function FirstRunHomeChapter() {
     configSettled,
     systemStatusUnconfirmed,
     disclosureSettled,
+    progress.chapter,
     openChapter,
   ]);
 
@@ -299,6 +308,10 @@ export function FirstRunHomeChapter() {
     if (step === 'disclosure') {
       dismissUsageTelemetryDisclosure(disclosureData?.inventoryRevision);
     }
+    // Device settings are synchronous and durable. Record the decision before
+    // closing so a reload cannot race the server transition and re-arm this
+    // chapter from a restored `pending` config snapshot.
+    firstRunStore.finish();
     setOpen(false);
     if (decided.current) return;
     // Only from `pending`: re-writing `skipped` on every close of a
@@ -326,6 +339,7 @@ export function FirstRunHomeChapter() {
    * stays on offer until it genuinely finishes.
    */
   const giveUp = useCallback(() => {
+    firstRunStore.finish();
     setOpen(false);
     if (decided.current) return;
     if (config?.firstRun?.status !== 'pending') return;
@@ -335,6 +349,10 @@ export function FirstRunHomeChapter() {
 
   const complete = useCallback(() => {
     decided.current = true;
+    // Persist the hand-off before navigation. If the page reloads between the
+    // config write and the tour event, FirstRunFlow resumes at the tour rather
+    // than reopening this chapter from step one.
+    firstRunStore.enterChapter('tour');
     setOpen(false);
     writeStatus('completed');
     // The tour is the one cross-route part of the guided run, and it is that
@@ -366,32 +384,26 @@ export function FirstRunHomeChapter() {
           />
           {step === 'disclosure' ? (
             <UsageTelemetryDisclosureStep
-              onAdvance={() => setStep('engines')}
+              onAdvance={() => {
+                firstRunStore.enterChapter('engines');
+                setStep('engines');
+              }}
               onDefer={defer}
             />
           ) : step === 'engines' ? (
-            <>
-              <LazyBoundary
-                load={loadExistingSetupImportStepper}
-                componentProps={{ compact: true }}
-                pending={
-                  <SkeletonBlock
-                    count={1}
-                    label="Loading existing setup import"
-                  />
-                }
-              />
-              <FirstRunEnginesChapter
-                options={options}
-                // The chapter is already on screen; this only says whether the
-                // LIST can be trusted yet (a flapping status probe changes
-                // the list's contents, never the chapter's presence).
-                loading={!settled}
-                onDone={() => setStep('about-you')}
-                onDefer={defer}
-                onGiveUp={giveUp}
-              />
-            </>
+            <FirstRunEnginesChapter
+              options={options}
+              // The chapter is already on screen; this only says whether the
+              // LIST can be trusted yet (a flapping status probe changes
+              // the list's contents, never the chapter's presence).
+              loading={!settled}
+              onDone={() => {
+                firstRunStore.enterChapter('about-you');
+                setStep('about-you');
+              }}
+              onDefer={defer}
+              onGiveUp={giveUp}
+            />
           ) : (
             <AboutYouStep
               initial={config?.userProfile}
