@@ -76,6 +76,11 @@ pub enum ReadinessInput {
         now_ms: u64,
         timeout_ms: u64,
     },
+    MainWindowRecreated {
+        now_ms: u64,
+        timeout_ms: u64,
+        dev_bypass: bool,
+    },
     ActivationRequested,
 }
 
@@ -264,6 +269,25 @@ pub fn transition(
         }
         ReadinessInput::Retry { now_ms, timeout_ms } if next.phase == ReadinessPhase::Failed => {
             effects.push(restart_readiness(&mut next, now_ms, timeout_ms));
+        }
+        ReadinessInput::MainWindowRecreated {
+            now_ms,
+            timeout_ms,
+            dev_bypass,
+        } => {
+            next.epoch += 1;
+            next.phase = if dev_bypass {
+                ReadinessPhase::Bypassed
+            } else {
+                ReadinessPhase::Waiting
+            };
+            next.deadline_ms = now_ms.saturating_add(timeout_ms);
+            next.timeout_ms = timeout_ms;
+            next.identity_committed = false;
+            next.renderer_mounted = false;
+            next.reprobe_attempted = false;
+            next.activation_pending = false;
+            next.diagnostic_shown = false;
         }
         ReadinessInput::ActivationRequested if next.phase == ReadinessPhase::Waiting => {
             next.activation_pending = true;
@@ -748,6 +772,32 @@ mod tests {
         );
         assert_eq!(s.phase, ReadinessPhase::Bypassed);
         assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
+    }
+    #[test]
+    fn recreated_main_window_must_reprove_identity_and_renderer_mount() {
+        let s = begin(true);
+        let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
+        let (s, _) = commit(&s, ticket(1));
+        assert_eq!(s.phase, ReadinessPhase::Ready);
+
+        let (s, effects) = transition(
+            &s,
+            ReadinessInput::MainWindowRecreated {
+                now_ms: 20,
+                timeout_ms: 30,
+                dev_bypass: false,
+            },
+        );
+        assert!(effects.is_empty());
+        assert_eq!(s.phase, ReadinessPhase::Waiting);
+        assert_eq!(s.epoch, 2);
+        assert_eq!(s.ticket, Some(ticket(1)));
+        assert!(!s.identity_committed);
+        assert!(!s.renderer_mounted);
+        let (s, deferred) = transition(&s, ReadinessInput::ActivationRequested);
+        assert!(deferred.contains(&ReadinessEffect::DeferActivation));
+        let (_, reveal) = commit(&s, ticket(1));
+        assert_eq!(reveal, vec![ReadinessEffect::RevealMainWindow]);
     }
     #[test]
     fn concurrent_ticket_loss_activation_and_deadline_keep_a_newer_epoch_intact() {
