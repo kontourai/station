@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import { useNavigationOptional } from '../../contexts/NavigationContext';
-import { isDistinctFrameOrigin } from '../mcp-ui/MCPToolUIFrame';
+import { isDistinctFrameOrigin } from '../mcp-ui/frameOrigin';
 import {
   type FramePaneHostOutboundMessage,
   useFramePaneHost,
@@ -35,9 +35,51 @@ export function PluginFrameHost({
   const { apiBase } = useApiBase();
   const config = useConfig();
   const [ready, setReady] = useState(false);
-  const origin = config?.pluginFrameOrigin;
+  const configuredOrigin = config?.pluginFrameOrigin;
+  const [profileFrameOrigin, setProfileFrameOrigin] = useState<string>();
+  const origin = isDistinctFrameOrigin(configuredOrigin)
+    ? configuredOrigin
+    : profileFrameOrigin;
   const enabled = isDistinctFrameOrigin(origin);
   const navigation = useNavigationOptional();
+  const onFailureRef = useRef(onFailure);
+  useEffect(() => {
+    onFailureRef.current = onFailure;
+  }, [onFailure]);
+
+  // A saved native profile can become active after the shell's ordinary app
+  // config query has already resolved against the bundled server. Do not let
+  // that boot race make remote isolation permanently unavailable: when the
+  // current config has no usable frame authority, resolve this capability
+  // from the exact authenticated profile endpoint that owns the plugin.
+  useEffect(() => {
+    if (isDistinctFrameOrigin(configuredOrigin)) return;
+    const controller = new AbortController();
+    setProfileFrameOrigin(undefined);
+    void authenticatedFetch(`${apiBase}/config/app`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('plugin frame config unavailable');
+        const result = (await response.json()) as {
+          success?: boolean;
+          data?: { pluginFrameOrigin?: unknown };
+        };
+        const candidate = result.data?.pluginFrameOrigin;
+        if (
+          result.success !== true ||
+          typeof candidate !== 'string' ||
+          !isDistinctFrameOrigin(candidate)
+        ) {
+          throw new Error('plugin frame origin unavailable');
+        }
+        setProfileFrameOrigin(candidate);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) onFailureRef.current();
+      });
+    return () => controller.abort();
+  }, [apiBase, configuredOrigin]);
 
   /**
    * The frame's half of the pane-host contract (archive#4201 step 3). The
