@@ -460,6 +460,27 @@ describe('Registry Routes', () => {
     );
   });
 
+  test('POST /plugins/install preserves an installer failure instead of reporting a false success', async () => {
+    const { app } = setup();
+    vi.mocked(installPluginFromSource).mockResolvedValueOnce({
+      success: false,
+      message: 'Plugin source was not installed',
+    } as never);
+
+    const response = await app.request('/plugins/install', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'p1' }),
+    });
+    const body = await json(response);
+
+    expect(response.status).toBe(500);
+    expect(body).toMatchObject({
+      success: false,
+      message: 'Plugin source was not installed',
+    });
+  });
+
   /**
    * archive#4309 follow-up, defect 1. The second route that can observe a
    * refused plugin content lock. It answers the same 409, from the same

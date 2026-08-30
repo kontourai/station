@@ -722,10 +722,18 @@ export function createRegistryRoutes(
       return c.json(
         {
           ...mutation.value,
-          success: mutation.activation?.status !== 'pending',
+          // Activation can only narrow a successful install. It must never
+          // turn the installer's `success: false` into a 200/success response:
+          // that false success makes Registry optimistically mark the card
+          // installed even though the next inventory read remains empty.
+          success:
+            mutation.value.success &&
+            mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
-        configurationMutationStatus(mutation.activation, 200),
+        mutation.value.success
+          ? configurationMutationStatus(mutation.activation, 200)
+          : 500,
       );
     } catch (error: unknown) {
       // Same refusal, same shape as the direct install route: the request and
