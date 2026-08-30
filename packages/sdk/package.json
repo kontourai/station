@@ -91,8 +91,8 @@
   },
   "devDependencies": {
     "@types/react": "^19.2.18",
-    "typescript": "^5.9.3",
-    "vitest": "4.1.10"
+    "typescript": "^7.0.2",
+    "vitest": "4.1.11"
   },
   "overrides": {
     "nanoid": "3.3.18"
