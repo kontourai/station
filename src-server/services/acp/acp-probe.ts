@@ -508,6 +508,9 @@ export class ACPProbe {
    */
   private cleanupRetryFlight: Promise<void> | null = null;
   private probeFlight: Promise<boolean> | null = null;
+  /** Monotonic epoch separating pre- and post-provider-mutation observations. */
+  private providerMutationGeneration = 0;
+  private providerRoutingObservationGeneration = 0;
   private disposed = false;
   /**
    * archive#3404: aborted when `dispose()` is called, so an in-flight
@@ -660,6 +663,10 @@ export class ACPProbe {
   }
 
   private async runProbe(initiator: ACPProbeInitiator): Promise<boolean> {
+    // Captured before any await. A provider mutation completing while this
+    // probe is in flight makes this generation stale by construction, so its
+    // eventual result can never be projected as post-mutation live evidence.
+    const providerObservationGeneration = this.providerMutationGeneration;
     // archive#3404: "first contact" is `lastHandshakeObservedAt === 0` — no
     // `initialize` has ever SUCCEEDED — not `lastProbeAt === 0`. Both fields
     // are monotonic (see the field's own note: the reset that used to make
@@ -802,6 +809,7 @@ export class ACPProbe {
         initResult.agentCapabilities?.promptCapabilities ?? null;
       this.cachedAgentCapabilities = initResult.agentCapabilities ?? null;
       this.cachedProviderRouting = initResult.providerRouting ?? null;
+      this.providerRoutingObservationGeneration = providerObservationGeneration;
       this.lastHandshakeObservedAt = Date.now();
       this.lastSuccess = true;
       this.lastError = null;
@@ -991,6 +999,12 @@ export class ACPProbe {
   getProviderRouting(): ProviderInfo[] | null {
     return this.cachedProviderRouting;
   }
+  getProviderRoutingCurrent(): boolean {
+    return (
+      this.providerRoutingObservationGeneration ===
+      this.providerMutationGeneration
+    );
+  }
 
   /** Run a capability-gated provider mutation on a fresh, bounded ACP connection. */
   async setProvider(input: SetProviderRequest): Promise<void> {
@@ -1029,6 +1043,7 @@ export class ACPProbe {
         this.operationTimeoutMs,
         this.operationTimeoutMs,
       );
+      this.providerMutationGeneration += 1;
     } finally {
       await this.attemptCleanup(process, 0);
     }

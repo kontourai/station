@@ -192,4 +192,27 @@ describe('acpProviderRoutingStatus (#944)', () => {
       providers: [],
     });
   });
+
+  test('projects retained pre-mutation routing as stale, never live', () => {
+    expect(
+      acpProviderRoutingStatus({
+        id: 'opencode',
+        handshakeObservedAt: '2026-08-30T12:00:00.000Z',
+        capabilities: { providers: true },
+        providerRoutingCurrent: false,
+        providerRouting: [
+          {
+            providerId: 'main',
+            supported: ['openai'],
+            required: false,
+            current: { apiType: 'openai', baseUrl: 'https://old.example/v1' },
+          },
+        ],
+      }),
+    ).toMatchObject({
+      source: 'stale',
+      reason: expect.stringContaining('no post-mutation observation'),
+      providers: [expect.objectContaining({ providerId: 'main' })],
+    });
+  });
 });

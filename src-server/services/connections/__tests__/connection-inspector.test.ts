@@ -535,10 +535,10 @@ describe('ConnectionInspector Interface', () => {
             providerRouting: [
               {
                 providerId: 'main',
-                supported: ['openai'],
+                supported: ['openai', '_ollama'],
                 required: false,
                 current: {
-                  apiType: 'openai',
+                  apiType: '_ollama',
                   baseUrl: 'https://openrouter.ai/api/v1',
                 },
               },
@@ -580,8 +580,9 @@ describe('ConnectionInspector Interface', () => {
         providers: [
           expect.objectContaining({
             providerId: 'main',
+            supported: ['openai', '_ollama'],
             current: {
-              apiType: 'openai',
+              apiType: '_ollama',
               baseUrl: 'https://openrouter.ai/api/v1',
             },
           }),

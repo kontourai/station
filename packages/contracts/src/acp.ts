@@ -48,14 +48,8 @@ export interface ACPConfig {
   connections: ACPConnectionConfig[];
 }
 
-/** ACP's unstable LLM routing protocol vocabulary. Unknown future values stay representable. */
-export type ACPLlmProtocol =
-  | 'anthropic'
-  | 'openai'
-  | 'azure'
-  | 'vertex'
-  | 'bedrock'
-  | 'other';
+/** ACP protocol identifier, preserved losslessly for unstable/future values. */
+export type ACPLlmProtocol = string;
 
 /** Non-secret provider routing state observed from `providers/list`. */
 export interface ACPProviderInfo {
@@ -71,7 +65,7 @@ export interface ACPProviderInfo {
  * observed initialize handshake that advertised no provider capability.
  */
 export interface ACPProviderRoutingStatus {
-  source: 'live' | 'none';
+  source: 'live' | 'stale' | 'none';
   fetchedAt?: string | null;
   reason?: string | null;
   providers: ACPProviderInfo[];
@@ -82,9 +76,7 @@ export interface ACPSetProviderRequest {
   providerId: string;
   apiType: ACPLlmProtocol;
   baseUrl: string;
-  /** Explicitly non-secret headers only. Credential-bearing values use secretHeaderRefs. */
-  headers?: Record<string, string>;
-  /** Header name to Station secret-binding id. Resolved only for the ACP call. */
+  /** Every header value crosses Station's secret boundary; literal values are not accepted. */
   secretHeaderRefs?: Record<string, string>;
 }
 

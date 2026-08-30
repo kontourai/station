@@ -17,6 +17,27 @@ const { secretBindingOperations } = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../telemetry/metrics.js', () => ({ secretBindingOperations }));
+vi.mock(
+  '@kontourai/station-shared/lifecycle-events',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@kontourai/station-shared/lifecycle-events')
+      >();
+    return {
+      ...actual,
+      acquireFileMutationLockAsync: (
+        path: string,
+        options: import('@kontourai/station-shared/lifecycle-events').FileMutationLockOptions = {},
+      ) =>
+        actual.acquireFileMutationLockAsync(path, {
+          ...options,
+          birthFingerprint:
+            options.birthFingerprint ?? ((pid) => `secret-test:${pid}`),
+        }),
+    };
+  },
+);
 
 import {
   FileSecretBindingAdministration,
@@ -46,18 +67,50 @@ afterEach(async () => {
 });
 
 describe('ACP provider secret resolution (#944)', () => {
-  test('materializes opaque header bindings transiently and executes missing-binding refusal', async () => {
+  test('refuses a binding granted to a different ACP consumer before materialization', async () => {
     const root = await home();
     const audit = vi.fn();
+    const reads = vi.fn(() => 'Bearer canary-secret');
     const service = new FileSecretBindingAdministration(root, {
-      environment: { OPENROUTER_KEY: 'Bearer canary-secret' },
-      secretRunner: runner,
+      secretRunner: { ...runner, readKeychain: reads },
       logger: { info: audit },
     });
     await service.create({
       id: 'openrouter-key',
       name: 'OpenRouter key',
-      authRef: { env: 'OPENROUTER_KEY' },
+      authRef: {
+        keychain: { service: 'station-test', account: 'openrouter' },
+      },
+    });
+    await service.grant({
+      id: 'openrouter-key',
+      expectedRevision: 1,
+      grant: {
+        kind: 'acp-provider-header',
+        connectionId: 'different-engine',
+        providerId: 'main',
+        headerName: 'Authorization',
+      },
+    });
+
+    await expect(
+      service.resolveForAcpProvider({
+        connectionId: 'opencode',
+        providerId: 'main',
+        secretHeaderRefs: { Authorization: 'openrouter-key' },
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    expect(reads).not.toHaveBeenCalled();
+
+    await service.grant({
+      id: 'openrouter-key',
+      expectedRevision: 2,
+      grant: {
+        kind: 'acp-provider-header',
+        connectionId: 'opencode',
+        providerId: 'main',
+        headerName: 'Authorization',
+      },
     });
 
     const resolution = await service.resolveForAcpProvider({
@@ -68,17 +121,10 @@ describe('ACP provider secret resolution (#944)', () => {
     expect(resolution.environment).toEqual({
       Authorization: 'Bearer canary-secret',
     });
+    expect(reads).toHaveBeenCalledOnce();
     expect(JSON.stringify(await service.list())).not.toContain('canary-secret');
     resolution.settlement.settle({ outcome: 'success' });
     expect(JSON.stringify(audit.mock.calls)).not.toContain('canary-secret');
-
-    await expect(
-      service.resolveForAcpProvider({
-        connectionId: 'opencode',
-        providerId: 'main',
-        secretHeaderRefs: { Authorization: 'missing-binding' },
-      }),
-    ).rejects.toMatchObject({ reason: 'binding_missing' });
   });
 });
 

@@ -94,6 +94,8 @@ export type ACPConnectionStatus = {
   }>;
   /** Present only after a capability-gated providers/list observation. */
   providerRouting?: ACPProviderInfo[];
+  /** False means a provider mutation outdates the retained observation. */
+  providerRoutingCurrent?: boolean;
 };
 
 export const MODEL_CAPABILITY_SET = new Set<ConnectionCapability>([
@@ -860,6 +862,15 @@ export function acpProviderRoutingStatus(
       reason:
         "The engine's initialize handshake advertises no providers capability.",
       providers: [],
+    };
+  }
+  if (liveStatus.providerRoutingCurrent === false) {
+    return {
+      source: 'stale',
+      fetchedAt: liveStatus.handshakeObservedAt,
+      reason:
+        'Provider routing changed, but no post-mutation observation has succeeded yet.',
+      providers: liveStatus.providerRouting ?? [],
     };
   }
   if (!liveStatus.providerRouting) {

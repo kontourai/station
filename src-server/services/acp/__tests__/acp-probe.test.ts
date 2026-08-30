@@ -338,10 +338,90 @@ process.stdin.on('data', (chunk) => {
     ).resolves.toBeUndefined();
     expect(process.setProvider).toHaveBeenCalledOnce();
     expect(process.start).toHaveBeenCalledTimes(2);
+    expect(probe.getProviderRoutingCurrent()).toBe(false);
     expect(logger.warn).toHaveBeenCalledWith(
       'ACP provider mutation succeeded; refresh failed',
       { id: 'opencode' },
     );
+  });
+
+  test('an in-flight pre-mutation probe cannot publish its result as current after joining refresh', async () => {
+    let finishPreMutationSession!: (value: unknown) => void;
+    const preMutationSession = new Promise((resolve) => {
+      finishPreMutationSession = resolve;
+    });
+    const preMutationProcess = {
+      start: vi.fn().mockResolvedValue({
+        protocolVersion: 1,
+        agentCapabilities: { providers: {} },
+        providerRouting: [
+          {
+            providerId: 'main',
+            supported: ['openai'],
+            required: false,
+            current: { apiType: 'openai', baseUrl: 'https://old.example/v1' },
+          },
+        ],
+      }),
+      newSession: vi.fn(() => preMutationSession),
+      destroy: vi.fn().mockResolvedValue(undefined),
+      survivesCleanup: vi.fn().mockResolvedValue(false),
+      releaseIfConfirmedGone: vi.fn(),
+    };
+    const mutationProcess = {
+      start: vi.fn().mockResolvedValue({
+        protocolVersion: 1,
+        agentCapabilities: { providers: {} },
+        providerRouting: [],
+      }),
+      setProvider: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn().mockResolvedValue(undefined),
+      survivesCleanup: vi.fn().mockResolvedValue(false),
+      releaseIfConfirmedGone: vi.fn(),
+    };
+    const processFactory = vi
+      .fn()
+      .mockReturnValueOnce(preMutationProcess)
+      .mockReturnValueOnce(mutationProcess);
+    const probe = new ACPProbe(
+      {
+        id: 'opencode',
+        name: 'OpenCode',
+        command: 'opencode',
+        cwd: '/tmp/provider-routing',
+        enabled: true,
+      },
+      { warn: vi.fn() },
+      '/tmp/project',
+      processFactory as never,
+    );
+
+    const oldProbe = probe.probe();
+    await vi.waitFor(() =>
+      expect(preMutationProcess.newSession).toHaveBeenCalled(),
+    );
+    const mutation = probe.setProvider({
+      providerId: 'main',
+      apiType: 'openai',
+      baseUrl: 'https://new.example/v1',
+      headers: {},
+    });
+    await vi.waitFor(() =>
+      expect(mutationProcess.setProvider).toHaveBeenCalled(),
+    );
+    finishPreMutationSession({
+      sessionId: 'pre-mutation',
+      modes: { availableModes: [] },
+      configOptions: [],
+    });
+
+    await expect(oldProbe).resolves.toBe(true);
+    await expect(mutation).resolves.toBeUndefined();
+    expect(processFactory).toHaveBeenCalledTimes(2);
+    expect(probe.getProviderRouting()?.[0]?.current?.baseUrl).toBe(
+      'https://old.example/v1',
+    );
+    expect(probe.getProviderRoutingCurrent()).toBe(false);
   });
 
   /**

@@ -771,6 +771,23 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     });
   });
 
+  test.each(['set', 'disable'])(
+    'gives ACP provider %s the explicit credential-management scope',
+    (action) => {
+      const path = `/acp/connections/:id/providers/${action}`;
+      expect(matchPairingScopeRule('POST', path)).toMatchObject({
+        origin: 'explicit',
+        prefix: '/acp/connections/:id/providers',
+        scope: 'access:manage',
+      });
+      expect(isLeafScopeDeclared('POST', path)).toBe(true);
+      expect(PAIRING_SCOPE_FAMILY_INHERITED_LEAVES).not.toContainEqual({
+        method: 'POST',
+        path,
+      });
+    },
+  );
+
   test('declares title regeneration as the local conversation mutation it is', () => {
     const path = '/agents/:slug/conversations/:conversationId/regenerate-title';
     expect(isLeafScopeDeclared('POST', path)).toBe(true);

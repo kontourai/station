@@ -1,7 +1,6 @@
 import type { AgentCapabilities, ProviderInfo } from '@agentclientprotocol/sdk';
 import {
   type ACPConnectionConfig,
-  type ACPLlmProtocol,
   type ACPProviderInfo,
   ACPStatus,
   type ACPStatusValue,
@@ -59,21 +58,13 @@ function projectAgentCapabilities(
 }
 
 function projectProviderInfo(providers: ProviderInfo[]): ACPProviderInfo[] {
-  const protocol = (value: string): ACPLlmProtocol =>
-    value === 'anthropic' ||
-    value === 'openai' ||
-    value === 'azure' ||
-    value === 'vertex' ||
-    value === 'bedrock'
-      ? value
-      : 'other';
   return providers.map((provider) => ({
     providerId: provider.providerId,
-    supported: provider.supported.map(protocol),
+    supported: [...provider.supported],
     required: provider.required,
     current: provider.current
       ? {
-          apiType: protocol(provider.current.apiType),
+          apiType: provider.current.apiType,
           baseUrl: provider.current.baseUrl,
         }
       : null,
@@ -97,6 +88,7 @@ interface ACPProbeLike {
   /** archive#895 wave B: the full initialize agentCapabilities handshake — evidence only. */
   getAgentCapabilities?(): AgentCapabilities | null | undefined;
   getProviderRouting?(): ProviderInfo[] | null;
+  getProviderRoutingCurrent?(): boolean;
   /** archive#1549: epoch ms of the last SUCCESSFUL initialize handshake; `0`/absent when none ever succeeded. */
   getHandshakeObservedAt?(): number;
   isAvailable(): boolean;
@@ -129,6 +121,8 @@ export function getACPManagerStatus(
     capabilities?: ACPConnectionCapabilities;
     /** Present only when providers/list actually ran; [] is observed negative evidence. */
     providerRouting?: ACPProviderInfo[];
+    /** False after a mutation until a probe started afterwards succeeds. */
+    providerRoutingCurrent?: boolean;
     /**
      * archive#1549: ISO-8601 instant of the last SUCCESSFUL `initialize`
      * handshake. Emitted whenever one has happened — INCLUDING a handshake
@@ -160,6 +154,8 @@ export function getACPManagerStatus(
       );
       const observedAt = probe.getHandshakeObservedAt?.() ?? 0;
       const providerRouting = probe.getProviderRouting?.() ?? null;
+      const providerRoutingCurrent =
+        probe.getProviderRoutingCurrent?.() ?? true;
 
       // archive#3404: a connection that has NEVER completed a successful
       // handshake while a probe is in flight is still being met for the
@@ -198,6 +194,7 @@ export function getACPManagerStatus(
           providerRouting === null
             ? undefined
             : projectProviderInfo(providerRouting),
+        providerRoutingCurrent,
         handshakeObservedAt:
           observedAt > 0 ? new Date(observedAt).toISOString() : undefined,
         lastError: probe.lastError ?? undefined,

@@ -18,7 +18,10 @@ import {
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { listProviders } from '../../providers/registries/registry.js';
 import type { RuntimeContext } from '../../runtime/types.js';
-import type { IntegrationSecretResolution } from '../../services/secrets/secret-binding-administration.js';
+import {
+  type IntegrationSecretResolution,
+  SecretBindingResolutionError,
+} from '../../services/secrets/secret-binding-administration.js';
 import { acpOps } from '../../telemetry/metrics.js';
 import {
   acpConnectionSchema,
@@ -388,19 +391,6 @@ export function createACPRoutes(ctx: RuntimeContext) {
     async (c) => {
       const id = param(c, 'id');
       const body = getBody(c);
-      const duplicateHeader = Object.keys(body.secretHeaderRefs ?? {}).find(
-        (name) => Object.hasOwn(body.headers ?? {}, name),
-      );
-      if (duplicateHeader) {
-        return c.json(
-          {
-            success: false,
-            error: `Header '${duplicateHeader}' cannot be both literal and secret-bound.`,
-          },
-          400,
-        );
-      }
-
       let resolution: IntegrationSecretResolution | undefined;
       try {
         if (Object.keys(body.secretHeaderRefs ?? {}).length > 0) {
@@ -418,10 +408,7 @@ export function createACPRoutes(ctx: RuntimeContext) {
           providerId: body.providerId,
           apiType: body.apiType,
           baseUrl: body.baseUrl,
-          headers: {
-            ...(body.headers ?? {}),
-            ...(resolution?.environment ?? {}),
-          },
+          headers: resolution?.environment,
         });
         resolution?.settlement.settle({ outcome: 'success' });
         return c.json({
@@ -437,6 +424,15 @@ export function createACPRoutes(ctx: RuntimeContext) {
           outcome: 'failure',
           reason: 'child_establishment_failed',
         });
+        if (error instanceof SecretBindingResolutionError) {
+          return c.json(
+            {
+              success: false,
+              error: 'The ACP provider secret binding cannot be established.',
+            },
+            400,
+          );
+        }
         if (
           (error as Error | undefined)?.name ===
           'ACPProviderRoutingUnsupportedError'

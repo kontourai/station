@@ -62,39 +62,63 @@ export const acpConnectionSchema = z.object({
 });
 
 const acpProviderIdSchema = z.string().min(1).max(128);
-const acpHeaderMapSchema = z
-  .record(z.string().max(8_192))
+const acpHeaderNameSchema = z
+  .string()
+  .refine((name) => /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$/.test(name), {
+    message: 'must be a valid HTTP header name',
+  });
+const acpBaseUrlSchema = z
+  .string()
+  .url()
+  .max(2_048)
   .refine(
-    (headers) =>
-      Object.keys(headers).every((name) =>
-        /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$/.test(name),
-      ),
-    { message: 'contains an invalid HTTP header name' },
-  )
-  .refine(
-    (headers) =>
-      !Object.keys(headers).some((name) =>
-        /^(authorization|proxy-authorization|x-api-key|api-key)$/i.test(name),
-      ),
-    { message: 'credential headers must use secretHeaderRefs' },
+    (value) => {
+      const url = new URL(value);
+      return (
+        (url.protocol === 'http:' || url.protocol === 'https:') &&
+        url.username.length === 0 &&
+        url.password.length === 0 &&
+        url.search.length === 0 &&
+        url.hash.length === 0
+      );
+    },
+    {
+      message:
+        'must be an HTTP(S) base URL without userinfo, query parameters, or a fragment',
+    },
   );
 
-export const acpSetProviderSchema = z.object({
-  providerId: acpProviderIdSchema,
-  apiType: z.enum([
-    'anthropic',
-    'openai',
-    'azure',
-    'vertex',
-    'bedrock',
-    'other',
-  ]),
-  baseUrl: z.string().url().max(2_048),
-  headers: acpHeaderMapSchema.optional(),
-  secretHeaderRefs: z
-    .record(z.string().regex(/^[a-z][a-z0-9-]{0,63}$/))
-    .optional(),
-});
+export const acpSetProviderSchema = z
+  .object({
+    providerId: acpProviderIdSchema,
+    apiType: z
+      .string()
+      .min(1)
+      .max(128)
+      .refine(
+        (value) =>
+          value.trim() === value &&
+          ![...value].some((character) => {
+            const code = character.charCodeAt(0);
+            return code <= 0x1f || code === 0x7f;
+          }),
+        {
+          message: 'must be a bounded ACP protocol identifier',
+        },
+      ),
+    baseUrl: acpBaseUrlSchema,
+    secretHeaderRefs: z
+      .record(z.string().regex(/^[a-z][a-z0-9-]{0,63}$/))
+      .refine(
+        (refs) =>
+          Object.keys(refs).every(
+            (name) => acpHeaderNameSchema.safeParse(name).success,
+          ),
+        { message: 'contains an invalid HTTP header name' },
+      )
+      .optional(),
+  })
+  .strict();
 
 export const acpDisableProviderSchema = z.object({
   providerId: acpProviderIdSchema,
