@@ -55,6 +55,24 @@ describe('StarterWorkCard', () => {
     });
   });
 
+  it('fills the pending card with the canonical shimmer instead of an empty outline', () => {
+    projects = [{ slug: 'alpha', name: 'Alpha' }];
+    useStarterWorkQuery.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    const { container } = render(<StarterWorkCard />);
+
+    const card = screen.getByLabelText('Starter work');
+    expect(card.classList.contains('starter-work-card--loading')).toBe(true);
+    expect(
+      screen.getByRole('status', { name: 'Checking starter work' }),
+    ).toBeTruthy();
+    expect(container.querySelector('.skeleton--block')).toBeTruthy();
+  });
+
   it('reopens only the exact bound Task', async () => {
     projects = [{ slug: 'alpha', name: 'Alpha' }];
     useStarterWorkQuery.mockReturnValue({

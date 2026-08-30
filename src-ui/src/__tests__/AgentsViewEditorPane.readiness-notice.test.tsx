@@ -276,6 +276,20 @@ describe('AgentsViewEditorPane — Agent actions popover anchoring (station#4521
     // bare with no positioning class at all (the original bug).
     expect(overlay.className).not.toContain('station-dialog__overlay');
   });
+
+  test('a route with no authoritative Agent detail exposes no mutation menu', () => {
+    render(
+      <AgentsViewEditorPane
+        {...(baseProps({
+          agents: [],
+          selectedSlug: 'persisted-route-agent',
+          selectedAgent: undefined,
+        }) as any)}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
+  });
 });
 
 describe('AgentsViewEditorPane — one save affordance on mobile (station#4521 item 4)', () => {

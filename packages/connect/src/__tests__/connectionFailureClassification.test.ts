@@ -46,6 +46,7 @@ describe('classifyConnectionFailure', () => {
       'timeout',
       'unreachable',
       'server-restarted',
+      'host-unavailable',
     ] as const) {
       expect(classifyConnectionFailure(reason)).toBe('transient');
     }
@@ -315,6 +316,7 @@ describe('connectionFailureNeedsDecision', () => {
     'unreachable',
     'offline',
     'server-restarted',
+    'host-unavailable',
     'undetermined',
     'awaiting-approval',
   ] as const)('leaves %s to the indicator, with no banner', (reason) => {

@@ -459,12 +459,13 @@ function ChatMessageListComponent({
   }, [agent, activeSession.agentName]);
 
   const renderReasoning = useCallback(
-    (content: string, i: number) => (
+    (content: string, i: number, hasAnswerText: boolean) => (
       <ReasoningSection
         key={i}
         content={content}
         fontSize={fontSize}
         show={showReasoning}
+        hasAnswerText={hasAnswerText}
       />
     ),
     [fontSize, showReasoning],

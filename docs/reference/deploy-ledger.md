@@ -27,6 +27,10 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-30T16:24:11Z | nightly-desktop | 0.1.2-nightly.2433 | `f243049` | nightly test-gate success on f2430495239251df2e15c36a190a5c0ad3c3812a (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33320949045) |
+| 2026-08-30T16:17:41Z | nightly-android | 0.1.2-nightly.2433 | `f243049` | nightly test-gate success on f2430495239251df2e15c36a190a5c0ad3c3812a (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33320949045) |
+| 2026-08-30T14:52:43Z | nightly-desktop | 0.1.2-nightly.2433 | `e9f9078` | nightly test-gate success on e9f90789523c44bcd163ce4918baa38bb71bfe91 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33316671076) |
+| 2026-08-30T14:49:02Z | nightly-android | 0.1.2-nightly.2433 | `e9f9078` | nightly test-gate success on e9f90789523c44bcd163ce4918baa38bb71bfe91 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33316671076) |
 | 2026-08-30T02:34:34Z | nightly-desktop | 0.1.2-nightly.2433 | `c03dfbc` | nightly test-gate success on c03dfbced16f0d9f9c46c7b51d2956d7e56ab8c7 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33286914122) |
 | 2026-08-30T02:26:57Z | nightly-android | 0.1.2-nightly.2433 | `c03dfbc` | nightly test-gate success on c03dfbced16f0d9f9c46c7b51d2956d7e56ab8c7 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33286914122) |
 | 2026-08-30T00:20:56Z | nightly-desktop | 0.1.2-nightly.2432 | `f2d8fa3` | nightly test-gate success on f2d8fa36f76c0e9bce1ac9c05956215802e4c865 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33281917893) |
@@ -43,6 +47,230 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-08-30T16:24:11Z · nightly-desktop · 0.1.2-nightly.2433
+
+- Ship SHA: `f2430495239251df2e15c36a190a5c0ad3c3812a`
+- Artifact: github-release:nightly-desktop (station-nightly-desktop-macos-aarch64.dmg, .app.tar.gz, latest.json)
+
+### Changelog
+
+Commits since `e9f9078` ([full sha](https://github.com/kontourai/station/commit/e9f90789523c44bcd163ce4918baa38bb71bfe91)):
+
+**Features**
+
+- [#810](https://github.com/kontourai/station/pull/810) feat(native): add version-aware Tauri context tooling
+- [#913](https://github.com/kontourai/station/pull/913) feat(ui): reasoning is a collapsed-by-default disclosure (#55)
+
+**Fixes**
+
+- [#825](https://github.com/kontourai/station/pull/825) fix(build): invoke Biome portably on Windows
+- [#813](https://github.com/kontourai/station/pull/813) fix(native): bind Browser Preview IPC fixtures to Rust (#261)
+- [#916](https://github.com/kontourai/station/pull/916) fix(basis): make full fallback a real modal
+- [#914](https://github.com/kontourai/station/pull/914) fix(ci): green the container provenance gate, scan PRs for secrets, and make a red main announce itself
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): classify intentional Coding pane host routing
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): keep deferred first run resumable
+- [#912](https://github.com/kontourai/station/pull/912) fix(desktop): retain credential recovery selection intent
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): repair mobile Home dock button and New Project modal footer
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): show a loading state instead of asserting no agent is ready, gate dev-only starter cards
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): fill Home starter cards with shimmer instead of empty outlines
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): present requested turn stops honestly
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): stop bouncing installed Session Board layouts to the project page
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): make Workspace Pane cards honest about layout requirements
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): un-bury and un-shrink the maximized dock
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): persist first-run wizard progress across reload
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): stop misdiagnosing the UI proxy's own outage response
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): preserve paired identity during a UI-proxy host outage
+- [#912](https://github.com/kontourai/station/pull/912) fix(desktop): isolate packaged channel profile selection
+
+**Other**
+
+- [#878](https://github.com/kontourai/station/pull/878) test(ios): dismiss clean-install system prompt
+- [#829](https://github.com/kontourai/station/pull/829) test(native): add real Tauri shell security harness
+- [#919](https://github.com/kontourai/station/pull/919) chore(ui): set bundle ceilings to the wave-3 train's measured actuals
+- [#919](https://github.com/kontourai/station/pull/919) test(ui): rehydrate first-run settings between cases
+- [#919](https://github.com/kontourai/station/pull/919) chore(ui): raise the mobile-css ratchet to measured for HomeView's new at-rule
+- [#912](https://github.com/kontourai/station/pull/912) refactor(desktop): fold profile selection intent into authorization
+- [#919](https://github.com/kontourai/station/pull/919) chore(ui): re-measure the entry ceiling after the stop/Home polish fixes (#898, #890)
+
+## 2026-08-30T16:17:41Z · nightly-android · 0.1.2-nightly.2433
+
+- Ship SHA: `f2430495239251df2e15c36a190a5c0ad3c3812a`
+- Artifact: play-internal-aab:io.kontourai.station.nightly@versionCode 243302
+- Artifact: workflow-artifact:station-nightly-243302 (7-day retention)
+
+### Changelog
+
+Commits since `e9f9078` ([full sha](https://github.com/kontourai/station/commit/e9f90789523c44bcd163ce4918baa38bb71bfe91)):
+
+**Features**
+
+- [#810](https://github.com/kontourai/station/pull/810) feat(native): add version-aware Tauri context tooling
+- [#913](https://github.com/kontourai/station/pull/913) feat(ui): reasoning is a collapsed-by-default disclosure (#55)
+
+**Fixes**
+
+- [#825](https://github.com/kontourai/station/pull/825) fix(build): invoke Biome portably on Windows
+- [#813](https://github.com/kontourai/station/pull/813) fix(native): bind Browser Preview IPC fixtures to Rust (#261)
+- [#916](https://github.com/kontourai/station/pull/916) fix(basis): make full fallback a real modal
+- [#914](https://github.com/kontourai/station/pull/914) fix(ci): green the container provenance gate, scan PRs for secrets, and make a red main announce itself
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): classify intentional Coding pane host routing
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): keep deferred first run resumable
+- [#912](https://github.com/kontourai/station/pull/912) fix(desktop): retain credential recovery selection intent
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): repair mobile Home dock button and New Project modal footer
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): show a loading state instead of asserting no agent is ready, gate dev-only starter cards
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): fill Home starter cards with shimmer instead of empty outlines
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): present requested turn stops honestly
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): stop bouncing installed Session Board layouts to the project page
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): make Workspace Pane cards honest about layout requirements
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): un-bury and un-shrink the maximized dock
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): persist first-run wizard progress across reload
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): stop misdiagnosing the UI proxy's own outage response
+- [#919](https://github.com/kontourai/station/pull/919) fix(ui): preserve paired identity during a UI-proxy host outage
+- [#912](https://github.com/kontourai/station/pull/912) fix(desktop): isolate packaged channel profile selection
+
+**Other**
+
+- [#878](https://github.com/kontourai/station/pull/878) test(ios): dismiss clean-install system prompt
+- [#829](https://github.com/kontourai/station/pull/829) test(native): add real Tauri shell security harness
+- [#919](https://github.com/kontourai/station/pull/919) chore(ui): set bundle ceilings to the wave-3 train's measured actuals
+- [#919](https://github.com/kontourai/station/pull/919) test(ui): rehydrate first-run settings between cases
+- [#919](https://github.com/kontourai/station/pull/919) chore(ui): raise the mobile-css ratchet to measured for HomeView's new at-rule
+- [#912](https://github.com/kontourai/station/pull/912) refactor(desktop): fold profile selection intent into authorization
+- [#919](https://github.com/kontourai/station/pull/919) chore(ui): re-measure the entry ceiling after the stop/Home polish fixes (#898, #890)
+
+## 2026-08-30T14:52:43Z · nightly-desktop · 0.1.2-nightly.2433
+
+- Ship SHA: `e9f90789523c44bcd163ce4918baa38bb71bfe91`
+- Artifact: github-release:nightly-desktop (station-nightly-desktop-macos-aarch64.dmg, .app.tar.gz, latest.json)
+
+### Changelog
+
+Commits since `c03dfbc` ([full sha](https://github.com/kontourai/station/commit/c03dfbced16f0d9f9c46c7b51d2956d7e56ab8c7)):
+
+**Features**
+
+- [#904](https://github.com/kontourai/station/pull/904) feat(ui): bound what a single message can cost to render (#330)
+- [#880](https://github.com/kontourai/station/pull/880) feat(ui): incremental block-split markdown for the streaming transcript (#329)
+- [#905](https://github.com/kontourai/station/pull/905) feat(e2e,ci): host-hermetic gallery roster + owner-approved capture cadence (#875, #518)
+
+**Fixes**
+
+- [#886](https://github.com/kontourai/station/pull/886) fix(agents): retain observed detail fetch authority
+- [#886](https://github.com/kontourai/station/pull/886) fix(agents): keep persisted route actions available
+- [#901](https://github.com/kontourai/station/pull/901) fix(ui): restore the SessionsView suite that 890e's apiBase threading broke
+- [#901](https://github.com/kontourai/station/pull/901) fix(sdk): distinguish benign attention-ack 404s from real failures (#890, review prescription)
+- [#901](https://github.com/kontourai/station/pull/901) fix(scheduler): typed 409 conflict for duplicate job names, rendered in the dialog
+- [#901](https://github.com/kontourai/station/pull/901) fix(scheduler): honor the busy-banner promise and reflect real run outcomes
+- [#901](https://github.com/kontourai/station/pull/901) fix(scheduler): offer only runner-resolvable agents in the Add Job picker
+- [#901](https://github.com/kontourai/station/pull/901) fix(ui): disclose retained tasks after project deletion
+- [#901](https://github.com/kontourai/station/pull/901) fix(composer): reflect receipted approval mode
+- [#901](https://github.com/kontourai/station/pull/901) fix(composer): make microphone capability honest
+- [#897](https://github.com/kontourai/station/pull/897) fix(ui): Tools page leads with tools — secret bindings demoted to an advanced disclosure in form grammar
+- [#901](https://github.com/kontourai/station/pull/901) fix(ui): make pending pairing dismissal actionable
+- [#901](https://github.com/kontourai/station/pull/901) fix(ui): make guidance markdown import live
+- [#901](https://github.com/kontourai/station/pull/901) fix(composer): admit and bound attachment staging
+- [#901](https://github.com/kontourai/station/pull/901) fix(ui): surface project mutation failures
+- [#894](https://github.com/kontourai/station/pull/894) fix(chat): Stop button resolves the continuation child via the hook (#887, review prescription)
+- [#895](https://github.com/kontourai/station/pull/895) fix(plugins): register starter layout components at the runtime seam
+- [#894](https://github.com/kontourai/station/pull/894) fix(tests): restore walkthrough expected-fails — live cause persists past source registration
+- [#894](https://github.com/kontourai/station/pull/894) fix(chat): persist direct-chat sessions; repair share/stop/steer record dependencies
+- [#894](https://github.com/kontourai/station/pull/894) fix(plugins): register declared layout components in knowledge-docs and minimal starters
+- [#894](https://github.com/kontourai/station/pull/894) fix(sdk): knowledge routes double-prefixed apiBase; surface knowledge failures
+- [#894](https://github.com/kontourai/station/pull/894) fix(registry): card install routes through the consented pipeline
+- [#894](https://github.com/kontourai/station/pull/894) fix(ui): diff pane renders patch content and comment gutter
+- [#885](https://github.com/kontourai/station/pull/885) fix(release): bound large macOS artifact packaging
+- [#883](https://github.com/kontourai/station/pull/883) fix(macos): preserve automatic WebView accessibility children
+- [#862](https://github.com/kontourai/station/pull/862) fix(test): satisfy sessionReadAuthorityFromRequest arity in runs.routes tests
+- [#862](https://github.com/kontourai/station/pull/862) fix(test): raise store-quarantine per-test budgets to survive 2-core CI runners
+- [#862](https://github.com/kontourai/station/pull/862) fix(test): runs.routes tests inject session-read authority instead of asserting the host username
+- [#879](https://github.com/kontourai/station/pull/879) fix(ui): render release channel as a sidebar badge
+- [#862](https://github.com/kontourai/station/pull/862) fix(test): make readiness-probe tests binary-presence-independent
+- [#862](https://github.com/kontourai/station/pull/862) fix(system): distinguish aborted from completed-error readiness probes; hold genuine observations
+
+**Other**
+
+- [#909](https://github.com/kontourai/station/pull/909) test(ui): pin Basis mobile sheet geometry
+- [#905](https://github.com/kontourai/station/pull/905) test(e2e): re-baseline connections-tools for upstream #897's Tools redesign
+- [#905](https://github.com/kontourai/station/pull/905) test(ci): pin the nightly entrypoint chain and the gallery's fail semantics (#875, #518)
+- [#901](https://github.com/kontourai/station/pull/901) chore(ui): re-measure the entry ceiling after the attention-ack fix
+- [#901](https://github.com/kontourai/station/pull/901) test(server): pin the ack 404 message and repair the #765 D5 list assertion
+- [#901](https://github.com/kontourai/station/pull/901) chore(attribution): record Codex authorship for the 890e commits
+- [#901](https://github.com/kontourai/station/pull/901) chore(ui): re-measure the entry bundle ceiling on the wave-2 combined tree
+- [#893](https://github.com/kontourai/station/pull/893) test(e2e): pin the mobile page-action 44px touch floor per section
+- [#895](https://github.com/kontourai/station/pull/895) test(walkthrough): remove stale expected-fails proven passing live
+- [#894](https://github.com/kontourai/station/pull/894) chore(ui): set bundle ceilings to measured actuals for merged train
+- [#894](https://github.com/kontourai/station/pull/894) style: apply required formatting
+- [#905](https://github.com/kontourai/station/pull/905) test(e2e): re-baseline the four agents-family screens on the hermetic roster
+- [#883](https://github.com/kontourai/station/pull/883) test(macos): distinguish covered presentation from reveal
+- [#883](https://github.com/kontourai/station/pull/883) test(macos): pin covered and reveal accessibility order
+
+## 2026-08-30T14:49:02Z · nightly-android · 0.1.2-nightly.2433
+
+- Ship SHA: `e9f90789523c44bcd163ce4918baa38bb71bfe91`
+- Artifact: play-internal-aab:io.kontourai.station.nightly@versionCode 243301
+- Artifact: workflow-artifact:station-nightly-243301 (7-day retention)
+
+### Changelog
+
+Commits since `c03dfbc` ([full sha](https://github.com/kontourai/station/commit/c03dfbced16f0d9f9c46c7b51d2956d7e56ab8c7)):
+
+**Features**
+
+- [#904](https://github.com/kontourai/station/pull/904) feat(ui): bound what a single message can cost to render (#330)
+- [#880](https://github.com/kontourai/station/pull/880) feat(ui): incremental block-split markdown for the streaming transcript (#329)
+- [#905](https://github.com/kontourai/station/pull/905) feat(e2e,ci): host-hermetic gallery roster + owner-approved capture cadence (#875, #518)
+
+**Fixes**
+
+- [#886](https://github.com/kontourai/station/pull/886) fix(agents): retain observed detail fetch authority
+- [#886](https://github.com/kontourai/station/pull/886) fix(agents): keep persisted route actions available
+- [#901](https://github.com/kontourai/station/pull/901) fix(ui): restore the SessionsView suite that 890e's apiBase threading broke
+- [#901](https://github.com/kontourai/station/pull/901) fix(sdk): distinguish benign attention-ack 404s from real failures (#890, review prescription)
+- [#901](https://github.com/kontourai/station/pull/901) fix(scheduler): typed 409 conflict for duplicate job names, rendered in the dialog
+- [#901](https://github.com/kontourai/station/pull/901) fix(scheduler): honor the busy-banner promise and reflect real run outcomes
+- [#901](https://github.com/kontourai/station/pull/901) fix(scheduler): offer only runner-resolvable agents in the Add Job picker
+- [#901](https://github.com/kontourai/station/pull/901) fix(ui): disclose retained tasks after project deletion
+- [#901](https://github.com/kontourai/station/pull/901) fix(composer): reflect receipted approval mode
+- [#901](https://github.com/kontourai/station/pull/901) fix(composer): make microphone capability honest
+- [#897](https://github.com/kontourai/station/pull/897) fix(ui): Tools page leads with tools — secret bindings demoted to an advanced disclosure in form grammar
+- [#901](https://github.com/kontourai/station/pull/901) fix(ui): make pending pairing dismissal actionable
+- [#901](https://github.com/kontourai/station/pull/901) fix(ui): make guidance markdown import live
+- [#901](https://github.com/kontourai/station/pull/901) fix(composer): admit and bound attachment staging
+- [#901](https://github.com/kontourai/station/pull/901) fix(ui): surface project mutation failures
+- [#894](https://github.com/kontourai/station/pull/894) fix(chat): Stop button resolves the continuation child via the hook (#887, review prescription)
+- [#895](https://github.com/kontourai/station/pull/895) fix(plugins): register starter layout components at the runtime seam
+- [#894](https://github.com/kontourai/station/pull/894) fix(tests): restore walkthrough expected-fails — live cause persists past source registration
+- [#894](https://github.com/kontourai/station/pull/894) fix(chat): persist direct-chat sessions; repair share/stop/steer record dependencies
+- [#894](https://github.com/kontourai/station/pull/894) fix(plugins): register declared layout components in knowledge-docs and minimal starters
+- [#894](https://github.com/kontourai/station/pull/894) fix(sdk): knowledge routes double-prefixed apiBase; surface knowledge failures
+- [#894](https://github.com/kontourai/station/pull/894) fix(registry): card install routes through the consented pipeline
+- [#894](https://github.com/kontourai/station/pull/894) fix(ui): diff pane renders patch content and comment gutter
+- [#885](https://github.com/kontourai/station/pull/885) fix(release): bound large macOS artifact packaging
+- [#883](https://github.com/kontourai/station/pull/883) fix(macos): preserve automatic WebView accessibility children
+- [#862](https://github.com/kontourai/station/pull/862) fix(test): satisfy sessionReadAuthorityFromRequest arity in runs.routes tests
+- [#862](https://github.com/kontourai/station/pull/862) fix(test): raise store-quarantine per-test budgets to survive 2-core CI runners
+- [#862](https://github.com/kontourai/station/pull/862) fix(test): runs.routes tests inject session-read authority instead of asserting the host username
+- [#879](https://github.com/kontourai/station/pull/879) fix(ui): render release channel as a sidebar badge
+- [#862](https://github.com/kontourai/station/pull/862) fix(test): make readiness-probe tests binary-presence-independent
+- [#862](https://github.com/kontourai/station/pull/862) fix(system): distinguish aborted from completed-error readiness probes; hold genuine observations
+
+**Other**
+
+- [#909](https://github.com/kontourai/station/pull/909) test(ui): pin Basis mobile sheet geometry
+- [#905](https://github.com/kontourai/station/pull/905) test(e2e): re-baseline connections-tools for upstream #897's Tools redesign
+- [#905](https://github.com/kontourai/station/pull/905) test(ci): pin the nightly entrypoint chain and the gallery's fail semantics (#875, #518)
+- [#901](https://github.com/kontourai/station/pull/901) chore(ui): re-measure the entry ceiling after the attention-ack fix
+- [#901](https://github.com/kontourai/station/pull/901) test(server): pin the ack 404 message and repair the #765 D5 list assertion
+- [#901](https://github.com/kontourai/station/pull/901) chore(attribution): record Codex authorship for the 890e commits
+- [#901](https://github.com/kontourai/station/pull/901) chore(ui): re-measure the entry bundle ceiling on the wave-2 combined tree
+- [#893](https://github.com/kontourai/station/pull/893) test(e2e): pin the mobile page-action 44px touch floor per section
+- [#895](https://github.com/kontourai/station/pull/895) test(walkthrough): remove stale expected-fails proven passing live
+- [#894](https://github.com/kontourai/station/pull/894) chore(ui): set bundle ceilings to measured actuals for merged train
+- [#894](https://github.com/kontourai/station/pull/894) style: apply required formatting
+- [#905](https://github.com/kontourai/station/pull/905) test(e2e): re-baseline the four agents-family screens on the hermetic roster
+- [#883](https://github.com/kontourai/station/pull/883) test(macos): distinguish covered presentation from reveal
+- [#883](https://github.com/kontourai/station/pull/883) test(macos): pin covered and reveal accessibility order
 
 ## 2026-08-30T02:34:34Z · nightly-desktop · 0.1.2-nightly.2433
 

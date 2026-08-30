@@ -11,7 +11,7 @@ import type { NavigationView } from '../types';
  * renderer to recover it from ambient navigation state.
  */
 export function workspacePaneRequiresLayoutIdentity(
-  descriptor: WorkspacePaneDescriptor,
+  descriptor: Partial<Pick<WorkspacePaneDescriptor, 'renderer'>>,
 ): boolean {
   return (
     descriptor.renderer?.kind === 'builtin-component' &&
@@ -24,7 +24,8 @@ export function workspacePaneRequiresLayoutIdentity(
 
 export function workspacePaneDirectRoute(
   projectSlug: string,
-  descriptor: WorkspacePaneDescriptor,
+  descriptor: Pick<WorkspacePaneDescriptor, 'id'> &
+    Partial<Pick<WorkspacePaneDescriptor, 'renderer'>>,
   instance: Pick<WorkspacePaneInstance, 'instanceId'>,
   layoutSlug?: string | null,
 ): string | null {

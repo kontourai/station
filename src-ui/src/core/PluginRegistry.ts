@@ -46,6 +46,8 @@ export interface PluginRegistryLoadStatus {
 
 export interface PluginRegistryConnectionOptions {
   readonly allowRemoteBundles?: boolean;
+  /** Saved/native profile not owned by this desktop's supervised service. */
+  readonly remoteProfile?: boolean;
 }
 
 interface PluginBundleExports {
@@ -151,6 +153,7 @@ export class PluginRegistry {
   private apiBase = '';
   private connectionKey = '';
   private allowRemoteBundles = false;
+  private remoteProfile = false;
   private nativeHost = false;
   private apiBaseGeneration = 0;
   /** Every inventory pass mints records that cannot survive a later reload. */
@@ -181,12 +184,16 @@ export class PluginRegistry {
   setApiBase(
     apiBase: string,
     connectionKey = apiBase,
-    { allowRemoteBundles = false }: PluginRegistryConnectionOptions = {},
+    {
+      allowRemoteBundles = false,
+      remoteProfile = false,
+    }: PluginRegistryConnectionOptions = {},
   ) {
     if (
       this.apiBase !== apiBase ||
       this.connectionKey !== connectionKey ||
-      this.allowRemoteBundles !== allowRemoteBundles
+      this.allowRemoteBundles !== allowRemoteBundles ||
+      this.remoteProfile !== remoteProfile
     ) {
       this.apiBaseAbortController.abort();
       this.apiBaseAbortController = new AbortController();
@@ -195,6 +202,7 @@ export class PluginRegistry {
     this.apiBase = apiBase;
     this.connectionKey = connectionKey;
     this.allowRemoteBundles = allowRemoteBundles;
+    this.remoteProfile = remoteProfile;
   }
 
   async initialize(): Promise<PluginRegistrySettledLoadState> {
@@ -210,8 +218,14 @@ export class PluginRegistry {
       !isLoopbackPluginOrigin(apiBase) &&
       typeof window !== 'undefined' &&
       !this.nativeHost;
+    // A paired/hosted native profile is remote authority even when its
+    // selected transport terminates on loopback (for example an SSH forward).
+    // Origin shape alone must not promote its plugin bytes into the privileged
+    // root WebView.
+    const remoteNativeIsolation = this.nativeHost && this.remoteProfile;
     if (
-      !isLoopbackPluginOrigin(apiBase) &&
+      ((!isLoopbackPluginOrigin(apiBase) && !remoteBrowserIsolation) ||
+        remoteNativeIsolation) &&
       !this.allowRemoteBundles &&
       !remoteBrowserIsolation
     ) {
@@ -243,7 +257,7 @@ export class PluginRegistry {
       let allBundlesLoaded = true;
       for (const plugin of plugins) {
         if (!plugin.hasBundle) continue;
-        if (remoteBrowserIsolation) {
+        if (remoteBrowserIsolation || remoteNativeIsolation) {
           if (!this.registerIsolatedPlugin(plugin, registryGeneration)) {
             allBundlesLoaded = false;
             this.failedPluginNames.push(plugin.name);

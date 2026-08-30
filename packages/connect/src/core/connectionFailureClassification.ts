@@ -13,7 +13,8 @@ import type { ConnectionFailureReason } from './types';
  * single out as the hot-loop risk) is terminal today. Every other reason
  * ('offline', 'mixed-content', 'invalid-endpoint', 'identity-mismatch',
  * 'access-method-mismatch', 'unsupported-capability-version', 'timeout',
- * 'unreachable', 'server-restarted', 'awaiting-approval') stays transient:
+ * 'unreachable', 'server-restarted', 'host-unavailable',
+ * 'awaiting-approval') stays transient:
  * they are either genuinely retriable (network/timeout/server-restarted), a
  * healthy host simply waiting on a human (`awaiting-approval` — station#1713;
  * never terminal, since nothing about it should stop the retry ladder that
@@ -36,11 +37,12 @@ export function classifyConnectionFailure(
  *
  * The banner slot is for exactly these. Everything else is either a transient
  * reachability blip the retry ladder is already handling ('timeout',
- * 'unreachable', 'server-restarted'), a device-local condition that heals when
- * the network returns ('offline'), a bounded wait ('awaiting-approval'), or a
- * failure this client could not attribute at all ('undetermined') — and a
- * paragraph of prose with an address in it is the wrong instrument for all of
- * them. The connection indicator carries those instead.
+ * 'unreachable', 'server-restarted', 'host-unavailable'), a device-local
+ * condition that heals when the network returns ('offline'), a bounded wait
+ * ('awaiting-approval'), or a failure this client could not attribute at all
+ * ('undetermined') — and a paragraph of prose with an address in it is the
+ * wrong instrument for all of them. The connection indicator carries those
+ * instead.
  *
  * `undetermined` is deliberately on the silent side: a reason nothing derived
  * cannot justify interrupting the reader, and asserting one would reintroduce

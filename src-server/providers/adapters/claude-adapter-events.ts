@@ -99,6 +99,14 @@ export interface ClaudeMessageState {
    * it is not provenance for an SDK result until this marker is set.
    */
   dispatchedTurnId?: string;
+  /**
+   * The exact turn for which Station has an in-flight, user-requested SDK
+   * interrupt. Claude reports that intentional interruption as an
+   * `is_error: true` result with `stop_reason: null`; without this identity,
+   * the normal terminal-result mapper turns the stop receipt into a
+   * `runtime.error` and overwrites the canceled lifecycle with Failed.
+   */
+  interruptingTurnId?: string;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   /**
    * archive#1182: the model reported by the most recent top-level
@@ -548,6 +556,20 @@ export function mapClaudeSdkMessage({
     // exactly once, from the exact signal that proves it.
     if (classifyClaudeResultOutcome(message) === 'terminal') {
       const turnId = record.activeTurnId;
+      if (
+        turnId &&
+        record.dispatchedTurnId === turnId &&
+        record.interruptingTurnId === turnId
+      ) {
+        record.interruptingTurnId = undefined;
+        clearClaudeDispatchedTurn(record);
+        logInfo?.('Dropped Claude error result for requested interruption', {
+          threadId: record.session.threadId,
+          turnId,
+          resultKind: 'requested-interruption',
+        });
+        return;
+      }
       record.terminalResultObserved = true;
       clearClaudeDispatchedTurn(record);
       publish({

@@ -202,6 +202,11 @@ type ClaudeSessionRecord = {
   activeTurnId?: string;
   /** Set only once the prompt has entered the live SDK queue. */
   dispatchedTurnId?: string;
+  /**
+   * Mirrors `ClaudeMessageState.interruptingTurnId`; same object at runtime.
+   * The SDK result mapper consumes it for the exact requested Stop only.
+   */
+  interruptingTurnId?: string;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** Tracks the live SDK permission mode so sendTurn only calls
@@ -735,6 +740,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     const record = this.requireSession(input.threadId);
     const turnId = crypto.randomUUID();
+    // A prior interrupt can finish without Claude emitting its result row.
+    // A new turn supersedes that exact-turn marker; it must never suppress a
+    // later turn's genuine SDK failure.
+    record.interruptingTurnId = undefined;
     record.activeTurnId = turnId;
     // archive#1182: a fresh turn has not reported anything yet — clear the
     // previous turn's value so a turn that ends before any assistant
@@ -945,7 +954,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       } as const;
     }
     const targetTurnId = turnId ?? record.activeTurnId;
-    await record.query.interrupt();
+    // Mark before calling the SDK: its async iterator may publish the
+    // `is_error` result before `interrupt()` resolves. The mapper consumes
+    // this marker only for this exact dispatched turn.
+    record.interruptingTurnId = targetTurnId;
+    try {
+      await record.query.interrupt();
+    } catch (error) {
+      if (record.interruptingTurnId === targetTurnId) {
+        record.interruptingTurnId = undefined;
+      }
+      throw error;
+    }
     this.publish({
       eventId: crypto.randomUUID(),
       provider: this.provider,

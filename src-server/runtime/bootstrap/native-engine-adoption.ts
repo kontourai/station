@@ -30,6 +30,51 @@ export const NATIVE_ENGINE_CANDIDATES = [
   { id: 'muse', runtimeConnectionId: 'muse-runtime', cli: 'muse' },
 ] as const;
 
+/** Gallery-only request to keep native host CLIs out of screenshot fixtures. */
+export const SUPPRESS_NATIVE_ENGINE_ADOPTION_ENV =
+  'STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION';
+
+/**
+ * The runner-owned instance namespace for the screenshot suite.
+ *
+ * CROSS-FILE COUPLE — this pattern must match `scripts/run-e2e-suite.mjs`'s
+ * `e2e-${suite}-${Date.now()}-${base36}` minting. As with the contained Muse
+ * provider override, a mismatch fails safe by making the request inert.
+ */
+const SCREENSHOT_E2E_INSTANCE = /^e2e-screenshot-[a-z0-9]+-[a-z0-9]+$/;
+
+/**
+ * Keep the gallery determinism request inert outside its disposable E2E home.
+ *
+ * The explicit value alone is never authority. The conjunction mirrors the
+ * containment shape used by `museProviderOverrideContained`: the CLI-spawned
+ * server must carry both `--temp-home` provenance and the runner-minted
+ * screenshot instance id. Directly launched dotenv servers retain the same
+ * documented residual as that seam because neither marker is attested there.
+ */
+export function nativeEngineAdoptionSuppressed(
+  env: NodeJS.ProcessEnv,
+): boolean {
+  return (
+    env[SUPPRESS_NATIVE_ENGINE_ADOPTION_ENV] === '1' &&
+    env.STATION_HOME_SOURCE === '--temp-home' &&
+    SCREENSHOT_E2E_INSTANCE.test(env.STATION_INSTANCE_ID ?? '')
+  );
+}
+
+export function nativeEngineAdoptionDetection(
+  env: NodeJS.ProcessEnv,
+  detect: (cli: string) => Promise<boolean>,
+): {
+  suppressed: boolean;
+  detect: (cli: string) => Promise<boolean>;
+} {
+  if (!nativeEngineAdoptionSuppressed(env)) {
+    return { suppressed: false, detect };
+  }
+  return { suppressed: true, detect: async () => false };
+}
+
 /** Backoff between detection attempts; ~2.2 minutes total window. */
 const ADOPTION_ATTEMPT_DELAYS_MS = [0, 10_000, 30_000, 90_000] as const;
 
@@ -50,6 +95,8 @@ export interface NativeEngineAdoptionDeps {
   signal?: AbortSignal;
   detect?: (cli: string) => Promise<boolean>;
   delaysMs?: readonly number[];
+  /** Injectable only so containment is unit-testable without process globals. */
+  env?: NodeJS.ProcessEnv;
 }
 
 export interface NativeEngineAdoptionSummary {
@@ -63,7 +110,11 @@ export interface NativeEngineAdoptionSummary {
 export async function adoptDetectedNativeEngines(
   deps: NativeEngineAdoptionDeps,
 ): Promise<NativeEngineAdoptionSummary> {
-  const detect = deps.detect ?? detectCliOnPath;
+  const detection = nativeEngineAdoptionDetection(
+    deps.env ?? process.env,
+    deps.detect ?? detectCliOnPath,
+  );
+  const detect = detection.detect;
   const delays = deps.delaysMs ?? ADOPTION_ATTEMPT_DELAYS_MS;
   const outcomes: NativeEngineAdoptionSummary['outcomes'] = {};
   // Station itself is an engine too. Persist its ordinary editable definition
@@ -104,6 +155,15 @@ export async function adoptDetectedNativeEngines(
       "The Station Agent's stale 'station' engine binding could not be rewritten; it is ignored at read time, but the on-disk record stays stale until this home is writable",
       { error: error instanceof Error ? error.message : String(error) },
     );
+  }
+  // #875: a screenshot runtime must not persist whatever native CLIs happen
+  // to exist on its capture host. Keep the ordinary Station Agent setup above
+  // intact, but close the adoption window before any host probe can run.
+  if (detection.suppressed) {
+    for (const candidate of NATIVE_ENGINE_CANDIDATES) {
+      outcomes[candidate.id] = 'absent';
+    }
+    return { outcomes };
   }
   const unresolved = new Set(NATIVE_ENGINE_CANDIDATES.map((c) => c.id));
 

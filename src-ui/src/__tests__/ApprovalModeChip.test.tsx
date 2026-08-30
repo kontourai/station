@@ -280,7 +280,7 @@ describe('ApprovalModeChip', () => {
     expect(onChange).toHaveBeenCalledWith('ask');
   });
 
-  test('re-affirming an already-never mode does not require confirmation', async () => {
+  test('re-selecting the receipted mode is a no-op', async () => {
     const onChange = vi.fn();
     render(
       <ApprovalModeChip
@@ -294,13 +294,34 @@ describe('ApprovalModeChip', () => {
     await openSheet();
     fireEvent.click(option(/Never ask \(full access\)/));
 
-    expect(onChange).toHaveBeenCalledWith('never');
+    expect(onChange).not.toHaveBeenCalled();
     expect(
       screen.queryByRole('button', { name: 'Enable full access' }),
     ).toBeNull();
   });
 
-  test('#727 review round 3, item 1 (HIGH): a confirmed never override with no confirmation yet from the adapter shows a pending state, not a plain apply', async () => {
+  test('the chip and picker follow the receipted mode over stale requested state', async () => {
+    render(
+      <ApprovalModeChip
+        engineConnectionId="codex"
+        sessionOverride="ask"
+        connectionDefault={undefined}
+        lastAppliedApprovalMode="auto"
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: /^Approval mode: Auto\./ }),
+    ).toBeTruthy();
+    await openSheet();
+    expect(option(/^Auto/).getAttribute('aria-checked')).toBe('true');
+    expect(option(/^Ask every time/).getAttribute('aria-checked')).toBe(
+      'false',
+    );
+  });
+
+  test('a pending full-access request keeps the receipted mode visible', async () => {
     render(
       <ApprovalModeChip
         engineConnectionId="codex"
@@ -312,7 +333,7 @@ describe('ApprovalModeChip', () => {
     );
 
     const chip = screen.getByRole('button', {
-      name: /^Approval mode: Full access · pending — takes effect next turn\./,
+      name: /^Approval mode: Ask · pending — takes effect next turn\./,
     });
     expect(chip.className).toContain('chat-input__approval-chip--pending');
   });

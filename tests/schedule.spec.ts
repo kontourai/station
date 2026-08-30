@@ -80,7 +80,15 @@ async function seedScheduleCrudApi(page: Page) {
     }),
   );
   await page.route('**/api/agents', (route) =>
-    route.fulfill({ json: { success: true, data: [] } }),
+    route.fulfill({
+      json: {
+        success: true,
+        data: [
+          { id: 'station', slug: 'station', name: 'Station', available: true },
+          { id: 'codex', slug: 'codex', name: 'Codex', available: true },
+        ],
+      },
+    }),
   );
   await page.route('**/scheduler/providers', (route) =>
     route.fulfill({
@@ -150,6 +158,16 @@ async function seedScheduleCrudApi(page: Page) {
   await page.route('**/scheduler/jobs', async (route) => {
     if (route.request().method() === 'POST') {
       const body = route.request().postDataJSON();
+      if (jobs.has(body.name)) {
+        await route.fulfill({
+          status: 409,
+          json: {
+            success: false,
+            error: `Job '${body.name}' already exists`,
+          },
+        });
+        return;
+      }
       const job = makeJob({
         name: body.name,
         provider: body.provider ?? 'built-in',
@@ -275,6 +293,22 @@ test.describe('Schedule Page', () => {
     ).toBeVisible();
     await page.reload();
     await expect(page.getByTestId('job-row-daily-report')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Duplicate daily-report' }).click();
+    const duplicateDialog = page.getByRole('dialog', { name: 'Add Job' });
+    await expect(
+      duplicateDialog.locator('.agent-picker__trigger'),
+    ).toContainText('Codex');
+    await duplicateDialog
+      .getByPlaceholder('my-daily-briefing')
+      .fill('daily-report');
+    await duplicateDialog
+      .getByRole('button', { name: 'Add Job', exact: true })
+      .click();
+    await expect(duplicateDialog.getByRole('alert')).toHaveText(
+      "Job 'daily-report' already exists",
+    );
+    await duplicateDialog.getByRole('button', { name: 'Cancel' }).click();
 
     await page.getByRole('button', { name: 'Add job', exact: true }).click();
     await page.getByPlaceholder('my-daily-briefing').fill('weekly-brief');

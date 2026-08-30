@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from 'vitest';
 // The gate declares the reviewed capacity-action commit; this test reads it
 // rather than restating it. When those were two literals they drifted (#3443
 // moved this one and left the gate's behind, taking `main` red).
-import { REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA } from '../actionlint-gate.mjs';
+import {
+  REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
+  readWorkflowDocuments,
+} from '../actionlint-gate.mjs';
 import {
   resolveAndroidBuildRun,
   sanitizeLookupDiagnostic,
@@ -203,6 +206,7 @@ describe('CI verification workflow contracts', () => {
     expect(secretScan).toMatch(/^name: Secret Scan$/m);
     expect(secretScan).toContain('    name: Secret Scan');
     expect(secretScan).toMatch(/^ {2}push:\n {4}branches: \[main\]$/m);
+    expect(secretScan).toMatch(/^ {2}pull_request:\n {4}branches: \[main\]$/m);
     expect(secretScan).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(secretScan).toMatch(/^permissions:\n {2}contents: read$/m);
     expect(secretScan).toMatch(/^ {4}permissions:\n {6}contents: read$/m);
@@ -213,6 +217,8 @@ describe('CI verification workflow contracts', () => {
     expect(secretScan).toContain('runner: \'"ubuntu-22.04"\'');
     expect(secretScan).not.toContain('capacity-coordination-root:');
     expect(secretScan).not.toContain('capacity-host-id:');
+    expect(secretScan).not.toContain('pull_request_target:');
+    expect(secretScan).not.toContain("github.event_name != 'pull_request'");
     expect(secretScan).toContain(
       `group: station-secret-scan-\${{ github.ref }}`,
     );
@@ -222,6 +228,94 @@ describe('CI verification workflow contracts', () => {
     expect(ci).toContain('Exact full-diff classification');
     expect(ci).toContain('needs.classify.outputs.heavy');
     expect(ci).not.toContain('  secret-scan:');
+  });
+
+  it('tracks and closes one attributed issue per red main-only workflow', () => {
+    const mainHealth = workflow('main-health.yml');
+    const workflowDocuments = readWorkflowDocuments();
+    const parsedMainHealth = workflowDocuments.find(
+      ({ file }) => file === '.github/workflows/main-health.yml',
+    )?.document as
+      | { on?: { workflow_run?: { workflows?: unknown } } }
+      | undefined;
+    const intendedTargetFiles = [
+      '.github/workflows/container-smoke.yml',
+      '.github/workflows/windows-verification.yml',
+      '.github/workflows/secret-scan.yml',
+      '.github/workflows/backlog-priority-policy.yml',
+    ];
+    const intendedTargetNames = intendedTargetFiles.map((targetFile) => {
+      const target = workflowDocuments.find(({ file }) => file === targetFile)
+        ?.document as { name?: unknown } | undefined;
+      expect(target?.name).toEqual(expect.any(String));
+      return target?.name as string;
+    });
+    const watchedWorkflows = parsedMainHealth?.on?.workflow_run?.workflows;
+    expect(watchedWorkflows).toEqual(expect.any(Array));
+    expect(new Set(watchedWorkflows as string[])).toEqual(
+      new Set(intendedTargetNames),
+    );
+    const trigger = mainHealth.slice(
+      mainHealth.indexOf('  workflow_run:'),
+      mainHealth.indexOf('\npermissions:'),
+    );
+    const failureJob = mainHealth.slice(
+      mainHealth.indexOf('  report-failure:'),
+      mainHealth.indexOf('  close-after-success:'),
+    );
+    const successJob = mainHealth.slice(
+      mainHealth.indexOf('  close-after-success:'),
+    );
+
+    expect(trigger).toContain('types: [completed]');
+    expect(trigger).not.toContain('Main pipeline health');
+    expect(mainHealth).toMatch(/^permissions:\n {2}issues: write$/m);
+    expect(mainHealth).not.toContain('contents:');
+    expect(failureJob).toContain(
+      "github.event.workflow_run.conclusion == 'failure'",
+    );
+    expect(successJob).toContain(
+      "github.event.workflow_run.conclusion == 'success'",
+    );
+    for (const job of [failureJob, successJob]) {
+      expect(job).toContain("github.event.workflow_run.head_branch == 'main'");
+      expect(job).toContain(
+        'github.event.workflow_run.head_repository.full_name == github.repository',
+      );
+      expect(job).toContain(
+        'actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd',
+      );
+      expect(job).toContain('github.event.workflow_run.html_url');
+      expect(job).toContain('github.event.workflow_run.head_sha');
+      expect(job).toContain('Main pipeline red: $' + '{workflowName}');
+    }
+    expect(failureJob).toContain("labels: ['bug', 'P1']");
+    expect(failureJob).toContain("state: 'all'");
+    expect(failureJob).toContain("state: 'open'");
+    expect(failureJob).toContain(
+      'group: main-health-$' + '{{ github.event.workflow_run.name }}',
+    );
+    expect(failureJob).not.toContain('cancel-in-progress');
+    expect(successJob).toContain("state: 'closed'");
+    expect(successJob).not.toContain("conclusion == 'failure'");
+  });
+
+  it('refuses to close a main-health issue for a skip-bearing run', () => {
+    const mainHealth = workflow('main-health.yml');
+    const successJob = mainHealth.slice(
+      mainHealth.indexOf('  close-after-success:'),
+    );
+
+    expect(successJob).toContain('github.rest.actions.listJobsForWorkflowRun');
+    expect(successJob).toContain(
+      "jobs.some((job) => job.conclusion === 'success')",
+    );
+    expect(successJob).toContain(
+      "jobs.some((job) => job.conclusion === 'skipped')",
+    );
+    expect(successJob).toContain(
+      'if (!hasSuccessfulJob || hasSkippedJob) return;',
+    );
   });
 
   it('classifies the complete push diff before entering independent heavy concurrency groups', () => {
@@ -287,12 +381,21 @@ describe('CI verification workflow contracts', () => {
         new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
       ),
     ).toHaveLength(1);
+    expect(
+      workflow('ci-extended.yml').match(
+        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
+      ),
+    ).toHaveLength(2);
+    expect(
+      workflow('nightly-gallery.yml').match(
+        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
+      ),
+    ).toHaveLength(1);
 
     for (const name of [
       'android-test.yml',
       'build-android.yml',
       'ci.yml',
-      'ci-extended.yml',
       'nightly.yml',
       'publish-packages.yml',
       'backlog-priority-policy.yml',
@@ -310,7 +413,7 @@ describe('CI verification workflow contracts', () => {
     expect(emulatorSmoke).toContain('timeout-minutes: 90');
   });
 
-  it('keeps CI Extended as the sole manual full-browser surface without rerunning ci:fast', () => {
+  it('keeps CI Extended as the weekly and manual full-browser surface without rerunning ci:fast', () => {
     const ci = workflow('ci.yml');
     const extended = workflow('ci-extended.yml');
     const coverage = extended.slice(
@@ -329,18 +432,88 @@ describe('CI verification workflow contracts', () => {
     expect(extended).not.toContain('run: npm run ci:fast');
     expect(extended).toContain('run: npm run test:coverage');
     expect(extended).toContain('run: npm run verify:e2e:full');
+    expect(extended).toContain("- cron: '30 11 * * 6'");
+    expect(extended).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(coverage).toContain('needs: playwright-full');
     expect(coverage).toContain(
       "always() && !cancelled() && github.event_name != 'pull_request'",
     );
     expect(playwrightFull).not.toContain('needs: coverage');
-    expect(coverage).toContain('runs-on: ubuntu-22.04');
-    expect(playwrightFull).toContain('runs-on: ubuntu-22.04');
+    expect(coverage).toContain(
+      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host]',
+    );
+    expect(playwrightFull).toContain(
+      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
+    );
     for (const job of [coverage, playwrightFull]) {
       expect(job).toContain("github.event_name != 'pull_request'");
-      expect(job).not.toContain('physical-host-capacity@');
-      expect(job).not.toContain('self-hosted');
+      expect(job).toContain('runner-preflight@');
+      expect(job).toContain('physical-host-capacity@');
+      expect(job).toContain('owner-lifetime-seconds: "7800"');
     }
+  });
+
+  it('runs only the exact screenshot bucket nightly and fails on baseline drift (#518, #875)', () => {
+    const gallery = workflow('nightly-gallery.yml');
+    const runBodies = extractRunBodies(gallery);
+
+    expect(gallery).toMatch(/^name: Nightly gallery$/m);
+    expect(gallery).toContain("- cron: '30 7 * * *'");
+    expect(gallery).toMatch(/^ {2}workflow_dispatch:$/m);
+    expect(gallery).toContain(`group: nightly-gallery-\${{ github.ref }}`);
+    expect(gallery).toContain('cancel-in-progress: true');
+    expect(gallery).toContain("if: github.event_name != 'pull_request'");
+    expect(gallery).toContain(
+      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
+    );
+    expect(gallery).toContain('runner-preflight@');
+    expect(gallery).toContain('physical-host-capacity@');
+    expect(gallery).toContain('lease-weight: "5"');
+    expect(gallery).toContain('owner-lifetime-seconds: "7800"');
+    expect(runBodies).toContain(
+      'node scripts/run-e2e-coverage.mjs --only=screenshot',
+    );
+    expect(runBodies).toContain('npm run screenshot:diff');
+    expect(runBodies.indexOf('--only=screenshot')).toBeLessThan(
+      runBodies.indexOf('npm run screenshot:diff'),
+    );
+    expect(runBodies).not.toContain('npm run verify:e2e:full');
+    expect(runBodies).not.toContain('npm run test:coverage');
+    expect(gallery).toContain('name: Upload gallery and pixel diffs');
+    expect(gallery).toContain('if: always()');
+    expect(gallery).toContain('continue-on-error: true');
+    expect(gallery).toContain('gallery/');
+
+    // The rot alarm is only an alarm if a pixel mismatch FAILS the job. A
+    // file-level `toContain('continue-on-error')` would stay green if that
+    // key migrated onto the capture/diff step, so pin it to the upload step:
+    // everything before the upload must be able to fail the job.
+    const uploadIndex = gallery.indexOf('name: Upload gallery and pixel diffs');
+    expect(uploadIndex).toBeGreaterThan(-1);
+    expect(gallery.slice(0, uploadIndex)).not.toContain('continue-on-error');
+  });
+
+  it('the nightly gallery entrypoint reaches the suppression-injecting suite (station#875)', () => {
+    // nightly-gallery.yml runs run-e2e-coverage.mjs, but the hermetic-roster
+    // flag lives in run-e2e-suite.mjs. Nothing else asserts that chain, so a
+    // renamed bucket script would leave every test green while the nightly
+    // captured with the fleet host's real CLIs — the exact daily re-red this
+    // lane exists to prevent.
+    const coverage = readFileSync(
+      resolve(root, 'scripts/run-e2e-coverage.mjs'),
+      'utf8',
+    );
+    expect(coverage).toContain("name: 'screenshot'");
+    expect(coverage).toContain("script: 'test:e2e:screenshot'");
+    const pkg = JSON.parse(
+      readFileSync(resolve(root, 'package.json'), 'utf8'),
+    ) as { scripts: Record<string, string> };
+    expect(pkg.scripts['test:e2e:screenshot']).toContain('--suite=screenshot');
+    const suite = readFileSync(
+      resolve(root, 'scripts/run-e2e-suite.mjs'),
+      'utf8',
+    );
+    expect(suite).toContain('STATION_E2E_SUPPRESS_NATIVE_ENGINE_ADOPTION');
   });
 
   it('runs browser smoke only after the full completion gate releases capacity', () => {
@@ -672,7 +845,6 @@ describe('CI verification workflow contracts', () => {
   it('keeps Linux CI on GitHub-hosted runners and desktop-win for hardware reference', () => {
     const linuxWorkflows = [
       'ci.yml',
-      'ci-extended.yml',
       'android-test.yml',
       'build-android.yml',
       'secret-scan.yml',
@@ -695,6 +867,12 @@ describe('CI verification workflow contracts', () => {
     );
     expect(workflow('container-smoke.yml')).toContain(
       'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]',
+    );
+    expect(workflow('ci-extended.yml')).toContain(
+      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
+    );
+    expect(workflow('nightly-gallery.yml')).toContain(
+      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
     );
     const recovery = workflow('recover-terminal-capacity-owner.yml');
     expect(recovery).toContain(
@@ -1095,6 +1273,7 @@ describe('artifact storage does not accumulate or gate verdicts', () => {
     ['ci.yml', 'ci-fast-verification'],
     ['ci.yml', 'full-regression-verification'],
     ['ci-extended.yml', 'coverage-verification'],
+    ['nightly-gallery.yml', 'nightly-gallery'],
   ])('%s: the %s diagnostic upload cannot fail its job', (file, artifact) => {
     // A diagnostic that cannot be stored is an infrastructure condition, not
     // a verdict on the code. Read backwards from the artifact name to the
@@ -1164,15 +1343,19 @@ describe('every Tauri invocation is rooted at the app directory', () => {
 describe('iOS verification proves packaged runtime readiness', () => {
   const ios = workflow('build-ios.yml');
 
-  it('uses the free public macOS 26 runner on affected pull requests', () => {
+  it('emits a stable check while reserving macOS for affected pull requests', () => {
     expect(ios).toContain('pull_request_target:');
-    expect(ios).toContain("- 'src-desktop/**'");
-    expect(ios).toContain("- 'src-ui/**'");
+    expect(ios).toContain('src-desktop/*|src-ui/*|packages/connect/*');
+    expect(ios).toContain('needs: classify');
+    expect(ios).toContain("if: needs.classify.outputs.relevant == 'true'");
     expect(ios).toContain('runs-on: macos-26');
     expect(ios).toContain('/Applications/Xcode_26.6.app/Contents/Developer');
     expect(ios).not.toContain('self-hosted');
     expect(ios).toContain('persist-credentials: false');
     expect(ios).toContain("github.event_name == 'pull_request_target'");
+    expect(ios).toContain(
+      `--source-sha "\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}"`,
+    );
   });
 
   it('runs the native accessibility smoke and always retains its evidence', () => {

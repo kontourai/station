@@ -47,6 +47,16 @@ const compactScope = {
   taskId: `task-${'bidi-\u202e-path/'.repeat(24)}`,
 };
 
+const MOBILE_VIEWPORT = { width: 390, height: 844 } as const;
+/**
+ * Blink lays out CSS geometry in 1/64th-pixel units. `boundingBox()` then
+ * serializes those layout coordinates through a float, so an exact `100dvh`
+ * edge can arrive as `843.9999718666077` rather than `844`. Keep the bound to
+ * one layout unit: a visible one-pixel gap is still more than sixty times too
+ * large and fails this full-height sheet contract.
+ */
+const BLINK_LAYOUT_UNIT_CSS_PX = 1 / 64;
+
 function buildFixtureCss(): string {
   const css = `${resolveCssImports(INDEX_CSS_PATH)}\n${resolveCssImports(COMPACT_CSS_PATH)}\n${resolveCssImports(BASIS_LAUNCHER_CSS_PATH)}`;
   assertNoImportsSurvive(css);
@@ -58,7 +68,8 @@ function buildBasisFallbackHtml(): string {
 <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <style>${buildFixtureCss()}</style></head>
 <body style="margin:0"><header id="app-header" style="position:fixed;inset:0 0 auto;height:46px;z-index:1;background:#111;color:#fff">App header</header>
-<main style="padding-top:46px"><div class="chat-dock__conversation-surface"><div class="responsive-surface-overlay basis-pane-fallback-overlay" data-responsive-layer="dialog"><div class="basis-pane-fallback responsive-surface-panel" role="dialog" aria-label="Basis"><div class="responsive-dialog-header"><strong>Basis</strong><button type="button" class="responsive-dialog-close" aria-label="Close Basis">Close</button></div><h2>Session inventory</h2></div></div></div></main></body></html>`;
+<main style="padding-top:46px"><div class="chat-dock__conversation-surface" style="width:480px;height:360px;overflow:hidden;transform:translateZ(0)">Chat dock</div></main>
+<div class="station-dialog__overlay responsive-surface-overlay basis-pane-fallback-overlay" data-responsive-layer="dialog"><div class="station-dialog station-dialog--lg basis-pane-fallback responsive-surface-panel" role="dialog" aria-label="Basis"><div class="station-dialog__header"><div class="station-dialog__heading"><h2 class="station-dialog__title">Basis</h2></div><button type="button" class="responsive-dialog-close" aria-label="Close Basis">Close</button></div><div class="station-dialog__body"><section class="session-inventory"><h2>Session inventory</h2></section></div></div></div></body></html>`;
 }
 
 function renderCompactMarkup(): string {
@@ -161,7 +172,7 @@ describe.skipIf(!chromiumAvailable)(
 
     test('wraps the three-cell heading and preserves tab order without horizontal overflow at 390px', async () => {
       const page = await browser.newPage({
-        viewport: { width: 390, height: 844 },
+        viewport: MOBILE_VIEWPORT,
       });
       try {
         await page.setContent(buildFixtureHtml());
@@ -209,30 +220,45 @@ describe.skipIf(!chromiumAvailable)(
       }
     });
 
-    test('keeps desktop Basis fallback below app chrome and wholly inside the supported desktop viewport', async () => {
+    test('makes desktop full Basis a readable viewport surface independent of ChatDock', async () => {
       const page = await browser.newPage({
-        viewport: { width: 1440, height: 900 },
+        viewport: { width: 1152, height: 768 },
       });
       try {
         await page.setContent(buildBasisFallbackHtml());
-        const header = page.locator('#app-header');
         const overlay = page.locator('.basis-pane-fallback-overlay');
         const panel = page.getByRole('dialog', { name: 'Basis' });
-        const [headerBox, overlayBox, panelBox] = await Promise.all([
-          header.boundingBox(),
+        const [overlayBox, panelBox] = await Promise.all([
           overlay.boundingBox(),
           panel.boundingBox(),
         ]);
-        expect(headerBox).not.toBeNull();
         expect(overlayBox).not.toBeNull();
         expect(panelBox).not.toBeNull();
-        expect(overlayBox!.y).toBeGreaterThanOrEqual(
-          headerBox!.y + headerBox!.height,
-        );
+        expect(overlayBox!.x).toBe(0);
+        expect(overlayBox!.y).toBe(0);
+        expect(overlayBox!.width).toBe(1152);
+        expect(overlayBox!.height).toBe(768);
         expect(panelBox!.y).toBeGreaterThanOrEqual(overlayBox!.y);
-        expect(panelBox!.x).toBeGreaterThanOrEqual(0);
-        expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(1440);
-        expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(900);
+        expect(panelBox!.x).toBeGreaterThanOrEqual(overlayBox!.x);
+        expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(1152);
+        expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(768);
+        expect(panelBox!.width).toBeGreaterThanOrEqual(1000);
+        expect(panelBox!.height).toBeGreaterThanOrEqual(650);
+        expect(
+          await overlay.evaluate(
+            (element) => getComputedStyle(element).position,
+          ),
+        ).toBe('fixed');
+        expect(
+          await overlay.evaluate(
+            (element) => getComputedStyle(element).backgroundColor,
+          ),
+        ).not.toBe('rgba(0, 0, 0, 0)');
+        expect(
+          await panel.evaluate(
+            (element) => getComputedStyle(element).backgroundColor,
+          ),
+        ).not.toBe('rgba(0, 0, 0, 0)');
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -249,12 +275,26 @@ describe.skipIf(!chromiumAvailable)(
 
     test('preserves the mobile full-height Basis sheet geometry', async () => {
       const page = await browser.newPage({
-        viewport: { width: 390, height: 844 },
+        viewport: MOBILE_VIEWPORT,
       });
       try {
         await page.setContent(buildBasisFallbackHtml());
+        await page.evaluate(() => {
+          document.documentElement.style.setProperty('--safe-top', '32px');
+          document.documentElement.style.setProperty('--safe-right', '18px');
+          document.documentElement.style.setProperty('--safe-bottom', '24px');
+          document.documentElement.style.setProperty('--safe-left', '14px');
+        });
         const overlay = page.locator('.basis-pane-fallback-overlay');
         const panel = page.getByRole('dialog', { name: 'Basis' });
+        // `.responsive-surface-panel` enters with a shared translateY
+        // animation. Geometry belongs to the settled sheet, not an in-flight
+        // presentation frame whose visual offset is intentionally nonzero.
+        await expectPlaywright
+          .poll(async () =>
+            panel.evaluate((element) => getComputedStyle(element).transform),
+          )
+          .toBe('none');
         const [overlayBox, panelBox] = await Promise.all([
           overlay.boundingBox(),
           panel.boundingBox(),
@@ -263,9 +303,54 @@ describe.skipIf(!chromiumAvailable)(
         expect(panelBox).not.toBeNull();
         expect(overlayBox!.x).toBe(0);
         expect(overlayBox!.y).toBe(0);
-        expect(overlayBox!.width).toBe(390);
-        expect(overlayBox!.height).toBe(844);
-        expect(panelBox!.height).toBeGreaterThanOrEqual(844);
+        expect(
+          Math.abs(overlayBox!.width - MOBILE_VIEWPORT.width),
+          'the full-sheet overlay spans the visual viewport width',
+        ).toBeLessThanOrEqual(BLINK_LAYOUT_UNIT_CSS_PX);
+        expect(
+          Math.abs(overlayBox!.height - MOBILE_VIEWPORT.height),
+          'the full-sheet overlay spans the visual viewport height',
+        ).toBeLessThanOrEqual(BLINK_LAYOUT_UNIT_CSS_PX);
+        expect(
+          Math.abs(panelBox!.y - overlayBox!.y),
+          'the Basis panel begins at the overlay top edge',
+        ).toBeLessThanOrEqual(BLINK_LAYOUT_UNIT_CSS_PX);
+        expect(
+          Math.abs(
+            panelBox!.y +
+              panelBox!.height -
+              (overlayBox!.y + overlayBox!.height),
+          ),
+          'the Basis panel reaches the overlay bottom edge',
+        ).toBeLessThanOrEqual(BLINK_LAYOUT_UNIT_CSS_PX);
+        const closeBox = await panel
+          .getByRole('button', { name: 'Close Basis' })
+          .boundingBox();
+        expect(closeBox).not.toBeNull();
+        expect(closeBox!.y).toBeGreaterThanOrEqual(32);
+        expect(closeBox!.x + closeBox!.width).toBeLessThanOrEqual(
+          MOBILE_VIEWPORT.width - 18,
+        );
+        const safePadding = await panel.evaluate((element) => {
+          const header = element.querySelector<HTMLElement>(
+            '.station-dialog__header',
+          );
+          const body = element.querySelector<HTMLElement>(
+            '.station-dialog__body',
+          );
+          return {
+            headerTop: Number.parseFloat(getComputedStyle(header!).paddingTop),
+            bodyBottom: Number.parseFloat(
+              getComputedStyle(body!).paddingBottom,
+            ),
+            bodyLeft: Number.parseFloat(getComputedStyle(body!).paddingLeft),
+            bodyRight: Number.parseFloat(getComputedStyle(body!).paddingRight),
+          };
+        });
+        expect(safePadding.headerTop).toBeGreaterThanOrEqual(40);
+        expect(safePadding.bodyBottom).toBeGreaterThanOrEqual(36);
+        expect(safePadding.bodyLeft).toBeGreaterThanOrEqual(26);
+        expect(safePadding.bodyRight).toBeGreaterThanOrEqual(30);
       } finally {
         await page.close();
       }

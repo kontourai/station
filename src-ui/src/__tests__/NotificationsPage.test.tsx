@@ -631,10 +631,115 @@ describe('NotificationsPage', () => {
     await waitFor(() =>
       expect(sdkMocks.acknowledgeAttentionItem).toHaveBeenCalledTimes(2),
     );
+    expect(sdkMocks.acknowledgeAttentionItem).toHaveBeenCalledWith(
+      'review_pending:thread-review',
+      'http://station.test',
+    );
     expect(clearActivity, 'activity count unchanged').not.toHaveBeenCalled();
     // The answered confirm closes. It used to stay open and re-render against
     // the emptied queue as "Dismiss 0 items needing attention?".
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  /**
+   * #890 review. One failing item used to reject the whole `Promise.all`, so a
+   * batch that mostly succeeded reported as wholly failed and — because the
+   * refetch only ran `onSuccess` — left the rows that HAD been dismissed
+   * sitting in the inbox. Nothing is rolled back server-side, so the report
+   * and the refetch both have to reflect the partial outcome.
+   *
+   * The benign counterpart (an item that went stale inside the poll window) no
+   * longer reaches this layer at all: the SDK resolves it, which
+   * `attention.test.ts` pins directly. Here the failure is a real one.
+   */
+  test('a partial bulk dismissal reports only what failed and still clears what succeeded', async () => {
+    const timestamp = new Date().toISOString();
+    attention = {
+      pendingCount: 2,
+      items: [
+        {
+          id: 'review_pending:thread-a',
+          kind: 'review_pending',
+          title: 'Review pending A',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          openHref: '/activity?session=thread-a',
+          source: { threadId: 'thread-a' },
+        },
+        {
+          id: 'review_pending:thread-b',
+          kind: 'review_pending',
+          title: 'Review pending B',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          openHref: '/activity?session=thread-b',
+          source: { threadId: 'thread-b' },
+        },
+      ],
+    };
+    acknowledgeAttentionItem.mockImplementation((id: string) =>
+      id === 'review_pending:thread-b'
+        ? Promise.reject(new Error('Could not record dismissal'))
+        : Promise.resolve(),
+    );
+
+    renderPage();
+
+    fireEvent.click(screen.getByText('Dismiss all attention items'));
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Dismiss all attention items',
+      }),
+    );
+
+    // Only the one that failed is reported, and it is reported as one of two.
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('dialog')).getByText(
+          /1 of 2 could not be dismissed: Could not record dismissal/,
+        ),
+      ).toBeTruthy(),
+    );
+    expect(acknowledgeAttentionItem).toHaveBeenCalledTimes(2);
+    // The successful ack is not rolled back, so the inbox must still refetch.
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['attention'],
+    });
+  });
+
+  test('bulk dismissal includes a still-pending device pairing item', async () => {
+    const timestamp = new Date().toISOString();
+    attention = {
+      pendingCount: 1,
+      items: [
+        {
+          id: 'device-pairing:pair-req-1',
+          kind: 'device-pairing',
+          title: 'Phone is waiting for approval',
+          deviceName: 'Phone',
+          viewerCanDecide: true,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          openHref: '/connections',
+          source: { requestId: 'pair-req-1' },
+        },
+      ],
+    };
+    renderPage();
+
+    fireEvent.click(screen.getByText('Dismiss all attention items'));
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Dismiss all attention items',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
+        'device-pairing:pair-req-1',
+        'http://station.test',
+      ),
+    );
   });
 
   test('cancelling the attention dismissal leaves activity untouched', () => {

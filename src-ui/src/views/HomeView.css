@@ -25,6 +25,14 @@
   color: var(--text-muted, #94a3b8);
 }
 
+/* A SkeletonBlock's children are percentage-width blocks. As an auto-sized
+   flex child they previously resolved against a collapsed intrinsic width,
+   leaving only the card's outline visible on a pending fresh Home. */
+.starter-work-card--loading > .skeleton-block {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* Home has no PageFrame action cell
    (`page-frame-registry.ts` maps `home: null`), so `WorkspacePaneDockAction`
    used to render as a bare sibling stacked directly above the intro,
@@ -47,6 +55,15 @@
 
 .home-view__top-actions {
   flex: 0 0 auto;
+}
+
+/* Docking is desktop composition. At phone/tablet widths the ambient dock
+   already owns the mobile pane picker/maximize contract, so this second
+   in-content control is both redundant and visually stranded. */
+@media (max-width: 1024px) {
+  .home-view__top-actions {
+    display: none;
+  }
 }
 .home-view__intro {
   max-width: 680px;
@@ -76,6 +93,10 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin: 32px 0 40px;
+}
+.skeleton-block.home-view__actions--loading {
+  display: grid;
+  padding: 0;
 }
 .home-view__action {
   min-height: 112px;

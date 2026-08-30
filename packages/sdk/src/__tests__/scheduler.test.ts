@@ -182,12 +182,12 @@ describe('scheduler query domain', () => {
     expect(reactQueryMocks.invalidateQueries).not.toHaveBeenCalled();
   });
 
-  it('invalidates both scheduler and runs queries after a manual run mutation succeeds', async () => {
+  it('invalidates scheduler rows and run history after every manual run response', async () => {
     const mutation = useRunJob() as {
-      onSuccess?: (data: unknown, variables: string) => void | Promise<void>;
+      onSettled?: () => void | Promise<void>;
     };
 
-    await mutation.onSuccess?.(undefined, 'daily-report');
+    await mutation.onSettled?.();
 
     expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(1, {
       queryKey: ['scheduler'],

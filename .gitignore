@@ -113,7 +113,8 @@ docs/audits/
 vite.config.ts.timestamp-*.mjs
 app-universal-debug.apk
 
-# Orchestrator lane artifacts (delegation briefs, sentinels) — never committed
+# Orchestrator lane artifacts (delegation briefs, sentinels) and root-level
+# batch/setup scratch markers — never committed; some were, once, by accident.
 /.codex-*.md
 /.codex-*.log
 /*.exit

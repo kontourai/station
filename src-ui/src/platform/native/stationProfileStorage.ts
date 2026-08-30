@@ -141,10 +141,17 @@ export interface NativeStationProfileRepository {
   makeDefault(connectionId: string): Promise<StationProfile>;
   /**
    * Makes a saved Station the native credential projection for this UI
-   * session only. This intentionally does not write `defaultProfile`.
+   * session only. `explicit` records deliberate client intent without writing
+   * `defaultProfile`; automatic bundled/default authorization leaves it false.
    */
-  authorizeActiveConnection(connectionId: string): Promise<boolean>;
-  /** Selects one saved profile for this process without changing CLI default. */
+  authorizeActiveConnection(
+    connectionId: string,
+    explicit?: boolean,
+  ): Promise<boolean>;
+  /**
+   * Selects the bundled channel's saved profile for this process without
+   * changing the CLI default. An intentional process-local choice wins.
+   */
   selectProfileForProcess(profileName: string): string | undefined;
   /** Re-authorizes the CLI-owned default after each native process start. */
   authorizeDefaultProfile(): Promise<boolean>;
@@ -242,6 +249,14 @@ export class NativeStationProfileStorage
 {
   private values = new Map<string, string>();
   private profileStore: StationProfileStore = emptyStationProfileStore();
+  /**
+   * The shared default initially projects into `ACTIVE_KEY` for the legacy
+   * connection-store view, but it is not an explicit choice made by this
+   * client. Keep that provenance out of the shared profile document: a
+   * packaged channel must be able to replace the inherited default with its
+   * own local Station, while a real in-process choice remains authoritative.
+   */
+  private explicitProcessSelection: string | undefined;
   private activeRequestBinding:
     | (NativeProfileRequestBinding & {
         connectionId: string;
@@ -303,13 +318,24 @@ export class NativeStationProfileStorage
           (profile) => profileConnectionId(profile) === selectedConnectionId,
         )
       : false;
+    const explicitStillExists = this.explicitProcessSelection
+      ? store.profiles.some(
+          (profile) =>
+            profileConnectionId(profile) === this.explicitProcessSelection,
+        )
+      : false;
+    if (this.explicitProcessSelection && !explicitStillExists) {
+      this.explicitProcessSelection = undefined;
+    }
     const defaultProfile = store.defaultProfile
       ? store.profiles.find(
           (profile) =>
             profile.name.toLowerCase() === store.defaultProfile!.toLowerCase(),
         )
       : undefined;
-    if (selectedStillExists) {
+    if (this.explicitProcessSelection && explicitStillExists) {
+      this.values.set(ACTIVE_KEY, this.explicitProcessSelection);
+    } else if (selectedStillExists) {
       this.values.set(ACTIVE_KEY, selectedConnectionId!);
     } else if (defaultProfile) {
       this.values.set(ACTIVE_KEY, profileConnectionId(defaultProfile));
@@ -319,6 +345,14 @@ export class NativeStationProfileStorage
   }
 
   selectProfileForProcess(profileName: string): string | undefined {
+    if (this.explicitProcessSelection) {
+      const explicit = this.profileStore.profiles.find(
+        (candidate) =>
+          profileConnectionId(candidate) === this.explicitProcessSelection,
+      );
+      if (explicit) return this.explicitProcessSelection;
+      this.explicitProcessSelection = undefined;
+    }
     const profile = this.profileStore.profiles.find(
       (candidate) => candidate.name.toLowerCase() === profileName.toLowerCase(),
     );
@@ -376,14 +410,23 @@ export class NativeStationProfileStorage
    * makes a connection-list choice transient; `makeDefault` is the sole CLI
    * default mutation.
    */
-  async authorizeActiveConnection(connectionId: string): Promise<boolean> {
+  async authorizeActiveConnection(
+    connectionId: string,
+    explicit = false,
+  ): Promise<boolean> {
     const profile = this.profileStore.profiles.find(
       (candidate) => profileConnectionId(candidate) === connectionId,
     );
-    if (!profile?.credentialRef) return false;
+    if (!profile) return false;
 
     const previousActive = this.values.get(ACTIVE_KEY);
+    // ConnectionStore republishes ACTIVE_KEY during ordinary metadata writes,
+    // so only this explicit authorization call may establish client intent.
+    // Record it before the keyring call: an intentional selection remains the
+    // process target even when its credential is unavailable.
+    if (explicit) this.explicitProcessSelection = connectionId;
     this.values.set(ACTIVE_KEY, connectionId);
+    if (!profile.credentialRef) return false;
     try {
       const exactOrigin = normalizedPairingEndpoint(profile.endpoint);
       const result = await this.bridge.invoke<unknown>(

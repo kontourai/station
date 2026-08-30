@@ -10,10 +10,22 @@ import {
 
 const addMutate = vi.fn();
 const editMutate = vi.fn();
+const mutationState = vi.hoisted(() => ({
+  addError: null as unknown,
+  editError: null as unknown,
+}));
 
 vi.mock('../hooks/useScheduler', () => ({
-  useAddJob: () => ({ isPending: false, mutate: addMutate }),
-  useEditJob: () => ({ isPending: false, mutate: editMutate }),
+  useAddJob: () => ({
+    isPending: false,
+    mutate: addMutate,
+    error: mutationState.addError,
+  }),
+  useEditJob: () => ({
+    isPending: false,
+    mutate: editMutate,
+    error: mutationState.editError,
+  }),
   usePreviewSchedule: () => ({ data: [], isLoading: false }),
 }));
 
@@ -27,6 +39,8 @@ describe('JobFormModal schedule compatibility', () => {
   beforeEach(() => {
     addMutate.mockReset();
     editMutate.mockReset();
+    mutationState.addError = null;
+    mutationState.editError = null;
   });
 
   test('opens an exact-interval job without converting its schedule to text', () => {
@@ -201,5 +215,21 @@ describe('JobFormModal schedule compatibility', () => {
     expect(
       formatSchedule({ kind: 'at', timeMs: Date.UTC(2030, 0, 2, 3, 4) }),
     ).not.toContain('[object Object]');
+  });
+
+  test('renders a duplicate-name conflict without closing the dialog', () => {
+    mutationState.addError = new Error("Job 'daily-report' already exists");
+
+    render(
+      <JobFormModal
+        prefill={{ name: 'daily-report', prompt: 'Duplicate' }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('alert').textContent).toBe(
+      "Job 'daily-report' already exists",
+    );
+    expect(screen.getByRole('dialog', { name: 'Add Job' })).toBeTruthy();
   });
 });
