@@ -235,6 +235,9 @@ export async function recordToolExecutionUsage(input: {
           `agent:${agentSlug}`,
           context.conversationId,
         );
+        const inputTokens = getUsageInputTokens(usage);
+        const outputTokens = getUsageOutputTokens(usage);
+        const totalTokens = getUsageTotalTokens(usage);
         await adapter.addMessage(
           lastMessage,
           `agent:${agentSlug}`,
@@ -259,15 +262,9 @@ export async function recordToolExecutionUsage(input: {
                 }
               : undefined,
             usage: {
-              ...(getUsageInputTokens(usage) !== undefined
-                ? { inputTokens: getUsageInputTokens(usage) }
-                : {}),
-              ...(getUsageOutputTokens(usage) !== undefined
-                ? { outputTokens: getUsageOutputTokens(usage) }
-                : {}),
-              ...(getUsageTotalTokens(usage) !== undefined
-                ? { totalTokens: getUsageTotalTokens(usage) }
-                : {}),
+              ...(inputTokens !== undefined ? { inputTokens } : {}),
+              ...(outputTokens !== undefined ? { outputTokens } : {}),
+              ...(totalTokens !== undefined ? { totalTokens } : {}),
               estimatedCost: cost,
             },
           },

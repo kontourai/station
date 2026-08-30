@@ -132,7 +132,8 @@ export function handleCodexNotification(
         promptTokens: extractTokenFigure(usage.inputTokens) ?? undefined,
         completionTokens: extractTokenFigure(usage.outputTokens) ?? undefined,
         totalTokens: extractTokenFigure(usage.totalTokens) ?? undefined,
-        cacheReadTokens: extractTokenFigure(usage.cachedInputTokens) ?? undefined,
+        cacheReadTokens:
+          extractTokenFigure(usage.cachedInputTokens) ?? undefined,
       });
       return;
     }
