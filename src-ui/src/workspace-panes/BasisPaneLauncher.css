@@ -19,4 +19,14 @@
     border: 0;
     border-radius: 0;
   }
+  .basis-pane-fallback > .station-dialog__header {
+    padding-top: max(12px, calc(var(--safe-top, 0px) + 8px));
+    padding-right: max(12px, calc(var(--safe-right, 0px) + 12px));
+    padding-left: max(12px, calc(var(--safe-left, 0px) + 12px));
+  }
+  .basis-pane-fallback > .station-dialog__body {
+    padding-right: max(12px, calc(var(--safe-right, 0px) + 12px));
+    padding-bottom: max(12px, calc(var(--safe-bottom, 0px) + 12px));
+    padding-left: max(12px, calc(var(--safe-left, 0px) + 12px));
+  }
 }

@@ -67,7 +67,15 @@ function makeRoot({
 function withReleaseManifest(root: string, ref = 'v9.9.9'): string {
   writeFileSync(
     join(root, '.station-release.json'),
-    JSON.stringify({ schemaVersion: 1, sha: SHA, ref }),
+    JSON.stringify({
+      schemaVersion: 2,
+      sha: SHA,
+      ref,
+      createdAt: '2026-08-20T17:00:00.000Z',
+      channel: 'stable',
+      releaseChannel: 'stable',
+      prerelease: false,
+    }),
   );
   return root;
 }

@@ -5624,18 +5624,8 @@ describe('lifecycle build + restart ergonomics', () => {
     );
   });
 
-  it('rejects packaged provenance with any unexpected field', async () => {
+  it('reports the exact missing packaged provenance path', async () => {
     ensureDir(TEST_CWD);
-    writeFileSync(
-      join(TEST_CWD, '.station-release.json'),
-      JSON.stringify({
-        schemaVersion: 1,
-        sha: 'fedcba9876543210fedcba9876543210fedcba98',
-        ref: 'v0.1.0',
-        createdAt: '2026-07-22T12:34:56.000Z',
-        branch: 'main',
-      }),
-    );
     const execSync = vi.fn(
       (command: string, options?: { env?: NodeJS.ProcessEnv }) => {
         if (command === 'npm run build:server') {
@@ -5672,7 +5662,7 @@ describe('lifecycle build + restart ergonomics', () => {
         uiPort: 5274,
       }),
     ).rejects.toThrow(
-      '.git is absent and .station-release.json is missing or invalid',
+      `Git metadata is absent at ${join(TEST_CWD, '.git')}; packaged release manifest is missing at ${join(TEST_CWD, '.station-release.json')}`,
     );
   });
 
@@ -5744,7 +5734,7 @@ describe('lifecycle build + restart ergonomics', () => {
           uiPort: 5274,
         }),
       ).rejects.toThrow(
-        '.git is absent and .station-release.json is missing or invalid',
+        `Git metadata is absent at ${join(TEST_CWD, '.git')}; packaged release manifest is invalid at ${join(TEST_CWD, '.station-release.json')}`,
       );
     },
   );

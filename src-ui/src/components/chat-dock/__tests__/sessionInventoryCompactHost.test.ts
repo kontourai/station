@@ -279,6 +279,12 @@ describe.skipIf(!chromiumAvailable)(
       });
       try {
         await page.setContent(buildBasisFallbackHtml());
+        await page.evaluate(() => {
+          document.documentElement.style.setProperty('--safe-top', '32px');
+          document.documentElement.style.setProperty('--safe-right', '18px');
+          document.documentElement.style.setProperty('--safe-bottom', '24px');
+          document.documentElement.style.setProperty('--safe-left', '14px');
+        });
         const overlay = page.locator('.basis-pane-fallback-overlay');
         const panel = page.getByRole('dialog', { name: 'Basis' });
         // `.responsive-surface-panel` enters with a shared translateY
@@ -317,6 +323,34 @@ describe.skipIf(!chromiumAvailable)(
           ),
           'the Basis panel reaches the overlay bottom edge',
         ).toBeLessThanOrEqual(BLINK_LAYOUT_UNIT_CSS_PX);
+        const closeBox = await panel
+          .getByRole('button', { name: 'Close Basis' })
+          .boundingBox();
+        expect(closeBox).not.toBeNull();
+        expect(closeBox!.y).toBeGreaterThanOrEqual(32);
+        expect(closeBox!.x + closeBox!.width).toBeLessThanOrEqual(
+          MOBILE_VIEWPORT.width - 18,
+        );
+        const safePadding = await panel.evaluate((element) => {
+          const header = element.querySelector<HTMLElement>(
+            '.station-dialog__header',
+          );
+          const body = element.querySelector<HTMLElement>(
+            '.station-dialog__body',
+          );
+          return {
+            headerTop: Number.parseFloat(getComputedStyle(header!).paddingTop),
+            bodyBottom: Number.parseFloat(
+              getComputedStyle(body!).paddingBottom,
+            ),
+            bodyLeft: Number.parseFloat(getComputedStyle(body!).paddingLeft),
+            bodyRight: Number.parseFloat(getComputedStyle(body!).paddingRight),
+          };
+        });
+        expect(safePadding.headerTop).toBeGreaterThanOrEqual(40);
+        expect(safePadding.bodyBottom).toBeGreaterThanOrEqual(36);
+        expect(safePadding.bodyLeft).toBeGreaterThanOrEqual(26);
+        expect(safePadding.bodyRight).toBeGreaterThanOrEqual(30);
       } finally {
         await page.close();
       }
