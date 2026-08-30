@@ -203,9 +203,7 @@ describe('CI verification workflow contracts', () => {
     expect(secretScan).toMatch(/^name: Secret Scan$/m);
     expect(secretScan).toContain('    name: Secret Scan');
     expect(secretScan).toMatch(/^ {2}push:\n {4}branches: \[main\]$/m);
-    expect(secretScan).toMatch(
-      /^ {2}pull_request:\n {4}branches: \[main\]$/m,
-    );
+    expect(secretScan).toMatch(/^ {2}pull_request:\n {4}branches: \[main\]$/m);
     expect(secretScan).toMatch(/^ {2}workflow_dispatch:$/m);
     expect(secretScan).toMatch(/^permissions:\n {2}contents: read$/m);
     expect(secretScan).toMatch(/^ {4}permissions:\n {6}contents: read$/m);
@@ -262,9 +260,7 @@ describe('CI verification workflow contracts', () => {
       "github.event.workflow_run.conclusion == 'success'",
     );
     for (const job of [failureJob, successJob]) {
-      expect(job).toContain(
-        "github.event.workflow_run.head_branch == 'main'",
-      );
+      expect(job).toContain("github.event.workflow_run.head_branch == 'main'");
       expect(job).toContain(
         'github.event.workflow_run.head_repository.full_name == github.repository',
       );
@@ -273,7 +269,7 @@ describe('CI verification workflow contracts', () => {
       );
       expect(job).toContain('github.event.workflow_run.html_url');
       expect(job).toContain('github.event.workflow_run.head_sha');
-      expect(job).toContain('Main pipeline red: ${workflowName}');
+      expect(job).toContain('Main pipeline red: $' + '{workflowName}');
     }
     expect(failureJob).toContain("labels: ['bug', 'P1']");
     expect(failureJob).toContain("state: 'all'");

@@ -872,13 +872,14 @@ describe('persistent runner policy', () => {
       permissions: { contents: string };
     };
     widened.permissions.contents = 'write';
-    expect(persistentRunnerPolicyFindings([{ ...workflow, document: widened }]))
-      .toContainEqual({
-        file: '.github/workflows/secret-scan.yml',
-        jobId: 'workflow',
-        message:
-          'candidate-controlled pull_request workflows are prohibited; use the reviewed pull_request_target topology',
-      });
+    expect(
+      persistentRunnerPolicyFindings([{ ...workflow, document: widened }]),
+    ).toContainEqual({
+      file: '.github/workflows/secret-scan.yml',
+      jobId: 'workflow',
+      message:
+        'candidate-controlled pull_request workflows are prohibited; use the reviewed pull_request_target topology',
+    });
   });
 
   test('keeps every automatic PR workflow on the reviewed base-controlled topology', () => {
