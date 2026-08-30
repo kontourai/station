@@ -8,7 +8,10 @@ import { streamSSE } from '../sse-response.js';
 const ROUTE_ROOT = fileURLToPath(new URL('../', import.meta.url));
 const SSE_RESPONSE_CONSTRUCTION =
   /\bstreamSSE\s*\(|header\s*\(\s*['"]Content-Type['"]\s*,\s*['"]text\/event-stream['"]/i;
-const SHARED_SSE_IMPORT = /from\s+['"](?:\.\.\/)*sse-response\.js['"]/;
+// `(?:\.{1,2}\/)+` not `(?:\.\.\/)*`: a route file directly in `routes/` is a
+// sibling of `sse-response.ts` and imports it as `./sse-response.js`. Matching
+// only `../` failed such a file even though it was correctly guarded.
+const SHARED_SSE_IMPORT = /from\s+['"](?:\.{1,2}\/)+sse-response\.js['"]/;
 const BUFFERING_HEADER =
   /header\s*\(\s*['"]X-Accel-Buffering['"]\s*,\s*['"]no['"]\s*\)/i;
 
