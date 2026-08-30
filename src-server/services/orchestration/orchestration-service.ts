@@ -162,10 +162,6 @@ import { receiptBus } from '../infra/receipt-bus.js';
 import {
   admitEngineStartForIntent,
   ConcurrentEngineStartCapacityError,
-  CriticalMemoryPressureError,
-  CriticalResourcePostureError,
-  InteractiveResourceOverrideRequiredError,
-  ResourcePostureDeferredError,
   type RuntimeResourcePostureProbe,
 } from '../infra/resource-posture.js';
 import {
@@ -343,7 +339,6 @@ interface OrchestrationDispatchInternalOptions {
     environmentId: string;
   };
   resourceAdmissionIntent?: import('../infra/resource-posture.js').RuntimeEngineStartIntent;
-  resourceAdmissionOverrideToken?: string;
 }
 
 function chatStartGateReason(error: unknown): string {
@@ -406,14 +401,13 @@ export class OrchestrationCommandDispatchError extends Error {
       this.outcome = 'indeterminate';
     } else if (code) {
       this.code = code;
-      // A refusal-to-act (not a failed action) is retryable: the host's
-      // posture can clear, and an in-flight start settles. Any code whose
+      // A refusal-to-act (not a failed action) is retryable. Any code whose
       // error message tells the user to retry belongs in this set —
       // archive#3493 delta review caught 'session_start_in_flight' saying
       // "retry" while this line still classified it non-retryable.
       this.retryable =
-        code === 'resource_posture_critical' ||
-        code === 'session_start_in_flight';
+        code === 'session_start_in_flight' ||
+        code === 'resource_engine_start_capacity';
     }
   }
 }
@@ -3733,11 +3727,6 @@ export class OrchestrationService {
             internal?.resourceAdmissionIntent ?? 'interactive_user',
             {
               binding: input.threadId,
-              ...(internal?.resourceAdmissionOverrideToken
-                ? {
-                    overrideToken: internal.resourceAdmissionOverrideToken,
-                  }
-                : {}),
             },
           );
           let session: ProviderSession;
@@ -3808,11 +3797,7 @@ export class OrchestrationService {
       isRejectedError: (error) =>
         error instanceof ModelLaunchPlanUnavailableError ||
         error instanceof SessionReattachConflictError ||
-        error instanceof CriticalResourcePostureError ||
-        error instanceof ResourcePostureDeferredError ||
-        error instanceof CriticalMemoryPressureError ||
-        error instanceof ConcurrentEngineStartCapacityError ||
-        error instanceof InteractiveResourceOverrideRequiredError,
+        error instanceof ConcurrentEngineStartCapacityError,
       attachedSessionReadOnlyMessage: ATTACHED_SESSION_READ_ONLY_ERROR,
     });
   }
@@ -5016,10 +5001,6 @@ export class OrchestrationService {
           error instanceof ModelLaunchPlanUnavailableError ||
           error instanceof SessionReattachConflictError ||
           error instanceof SessionEndedError ||
-          // archive#3493 residual 4: the startSession path already classifies
-          // the host's resource-posture refusal `rejected` (`isRejectedError`
-          // above); the same refusal on the turn path must not read `failed`.
-          error instanceof CriticalResourcePostureError ||
           // archive#3493 fix round: a Stop refused because the session is
           // still starting is a refusal to act, not a failed action.
           error instanceof SessionStopWhileStartingError
@@ -5033,18 +5014,12 @@ export class OrchestrationService {
         undefined,
         'persisted',
         error instanceof SessionTurnStartIndeterminateError,
-        // Narrowly forwarded: the ended-session refusal and the host's
-        // resource-posture refusal carry their codes through the wrapper —
-        // `session_ended` so the chat route's error body lets clients
-        // translate the refusal instead of parroting it, and
-        // `resource_posture_critical` (archive#3493 residual 4) because the
-        // startSession path already carries it (session-command-module's
-        // `fail()`), so the same host refusal is typed on both paths. Other
+        // Narrowly forwarded: the ended-session refusal carries its code
+        // through the wrapper so clients can translate it. Other
         // inner errors keep their existing (message-only) projection
         // deliberately — widening which codes leak through this seam is a
         // separate, per-code decision.
         error instanceof SessionEndedError ||
-          error instanceof CriticalResourcePostureError ||
           error instanceof SessionStopWhileStartingError
           ? error.code
           : undefined,

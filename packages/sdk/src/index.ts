@@ -1053,10 +1053,9 @@ export {
 // implementations stay off the entry bundle graph. See publicBarrel.test.ts's
 // INTERNAL_QUERY_DOMAINS classification.
 //
-// resourcePosture (station#3089) is the same shape: its one consumer
-// (`ResourcePostureBannerSource`) is itself lazy-loaded and renders nothing
-// in the common (healthy) case, so re-exporting it here would pull it into
-// every eager importer of this barrel for no first-paint benefit. Published
+// resourcePosture is diagnostic-only and consumed by the lazy developer
+// System tab, so re-exporting it here would pull it into every eager importer
+// of this barrel for no first-paint benefit. Published
 // exclusively via `@kontourai/station-sdk/resource-posture`.
 export type { GitStatusResult } from './query-domains/projectData.js';
 export {

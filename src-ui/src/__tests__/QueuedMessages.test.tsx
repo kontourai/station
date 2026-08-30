@@ -202,7 +202,7 @@ describe('QueuedMessages — reorder buttons (#613)', () => {
         messages={['retry me']}
         failure={{
           message: 'Refused for now.',
-          code: 'resource_posture_critical',
+          code: 'adoption_continuation_in_progress',
           at: 1,
         }}
         onRetry={onRetry}
