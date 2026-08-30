@@ -1,10 +1,19 @@
-import { lazy, memo, type ReactNode, Suspense } from 'react';
+import {
+  lazy,
+  memo,
+  type ReactNode,
+  Suspense,
+  useLayoutEffect,
+  useState,
+} from 'react';
 import type { Options } from 'react-markdown';
 
+let rendererWarm = false;
 const LazyMarkdownRenderer = lazy(() =>
-  import('./MarkdownRenderer').then(({ MarkdownRenderer }) => ({
-    default: MarkdownRenderer,
-  })),
+  import('./MarkdownRenderer').then((module) => {
+    rendererWarm = true;
+    return module;
+  }),
 );
 
 /**
@@ -16,7 +25,19 @@ function LazyMarkdownComponent({
   children,
   loadingProjection = children,
   ...options
-}: Options & { loadingProjection?: ReactNode }) {
+}: Options & { loadingProjection?: ReactNode; incremental?: boolean }) {
+  // Cold chunk only: let a lazily-loaded PARENT commit its own content before
+  // this nested renderer can suspend (otherwise React can hold the parent's
+  // conversation-level fallback despite this local boundary). useLayoutEffect
+  // flips before paint, so the readable-source frame is never visible; once
+  // the chunk has resolved, the warm flag skips the gate entirely — a warm
+  // mount renders parsed output on its first commit with no extra pass.
+  // act() flushes effects before assertions, so unit suites cannot observe
+  // the cold-mount frame either way.
+  const [rendererEnabled, setRendererEnabled] = useState(rendererWarm);
+  useLayoutEffect(() => setRendererEnabled(true), []);
+  if (!rendererEnabled) return loadingProjection;
+
   return (
     <Suspense fallback={loadingProjection}>
       <LazyMarkdownRenderer {...options}>{children}</LazyMarkdownRenderer>

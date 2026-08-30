@@ -1196,9 +1196,10 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(invalidateMock).toHaveBeenCalledWith(['conversation-inventory']);
   });
 
-  it('does not re-invalidate the session list on a send that starts no session', async () => {
+  it('does not re-invalidate the session list when the same execution Session remains current', async () => {
     activeChatsStore.updateChat(sessionId, {
       orchestrationSessionStarted: true,
+      currentSessionId: sessionId,
     });
 
     const { result } = renderHook(() => useSendMessage('http://api.test'));
@@ -1209,6 +1210,29 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
 
     expect(invalidateMock).not.toHaveBeenCalledWith(['orchestration-sessions']);
     expect(invalidateMock).not.toHaveBeenCalledWith(['conversation-inventory']);
+  });
+
+  it('invalidates inventories when a continuation child becomes the current execution Session', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      orchestrationSessionStarted: true,
+      currentSessionId: sessionId,
+    });
+    sendExecutionMessageMock.mockResolvedValueOnce({
+      ...successReceipt(),
+      sessionId: `${sessionId}:session:child-1`,
+    });
+
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', sessionId, 'continue');
+    });
+
+    expect(activeChatsStore.getSnapshot()[sessionId]?.currentSessionId).toBe(
+      `${sessionId}:session:child-1`,
+    );
+    expect(invalidateMock).toHaveBeenCalledWith(['orchestration-sessions']);
+    expect(invalidateMock).toHaveBeenCalledWith(['conversation-inventory']);
   });
 
   it('does not put a durable replay into the legacy in-memory busy queue', async () => {
@@ -1273,6 +1297,22 @@ describe('useCancelMessage', () => {
       status: 'idle',
       abortController: undefined,
       stopPending: false,
+    });
+  });
+
+  it('interrupts the receipted continuation Session instead of the conversation root', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      currentSessionId: 'server-thread-1:session:child-2',
+    });
+    const { result } = renderHook(() => useCancelMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId);
+    });
+
+    expect(interruptOrchestrationTurnMock).toHaveBeenCalledWith({
+      threadId: 'server-thread-1:session:child-2',
+      apiBase: 'http://api.test',
     });
   });
 
