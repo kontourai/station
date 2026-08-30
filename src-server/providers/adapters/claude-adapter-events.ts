@@ -24,6 +24,30 @@ function tokenCount(value: unknown): number | undefined {
 }
 
 /**
+ * Claude's primary token accounting, retaining only usable figures. A result
+ * may carry a partial or malformed usage block after startup/crash failures;
+ * omitted figures stay omitted while the total is derived from whichever
+ * valid components the engine did report.
+ */
+function claudeTokenUsageFields(usage: unknown): {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+} {
+  if (!usage || typeof usage !== 'object') return {};
+  const raw = usage as Record<string, unknown>;
+  const promptTokens = tokenCount(raw.input_tokens);
+  const completionTokens = tokenCount(raw.output_tokens);
+  return {
+    ...(promptTokens !== undefined ? { promptTokens } : {}),
+    ...(completionTokens !== undefined ? { completionTokens } : {}),
+    ...(promptTokens !== undefined || completionTokens !== undefined
+      ? { totalTokens: (promptTokens ?? 0) + (completionTokens ?? 0) }
+      : {}),
+  };
+}
+
+/**
  * Claude's cache accounting, mapped to the canonical field names. Every
  * field is emitted only when the engine reported it: an absent cache figure
  * means "not reported", and turning that into `0` would claim a measurement
@@ -75,6 +99,21 @@ export interface ClaudeMessageState {
    * it is not provenance for an SDK result until this marker is set.
    */
   dispatchedTurnId?: string;
+  /**
+   * The exact turn for which Station has an in-flight, user-requested SDK
+   * interrupt. Claude reports that intentional interruption as an
+   * `is_error: true` result with `stop_reason: null`; without this identity,
+   * the normal terminal-result mapper turns the stop receipt into a
+   * `runtime.error` and overwrites the canceled lifecycle with Failed.
+   */
+  interruptingTurnId?: string;
+  /**
+   * The SDK result mapper consumed the structured error receipt for a
+   * requested interruption. Claude can immediately rethrow that same receipt
+   * from the Query iterator; the adapter catch consumes this marker so the
+   * wrapper cannot re-enter the lifecycle as an unscoped `runtime.error`.
+   */
+  interruptedResultObserved?: boolean;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   /**
    * archive#1182: the model reported by the most recent top-level
@@ -473,16 +512,18 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'result') {
+    const resultTurnId =
+      message.is_error && record.interruptingTurnId
+        ? record.interruptingTurnId
+        : record.activeTurnId;
     publish({
       eventId: crypto.randomUUID(),
       provider,
       threadId: record.session.threadId,
       createdAt,
-      turnId: record.activeTurnId,
+      turnId: resultTurnId,
       method: 'token-usage.updated',
-      promptTokens: message.usage.input_tokens,
-      completionTokens: message.usage.output_tokens,
-      totalTokens: message.usage.input_tokens + message.usage.output_tokens,
+      ...claudeTokenUsageFields(message.usage),
       // Cache figures Claude reports on every result and Station used to
       // discard, so the session fold and the per-turn envelope now see the
       // same fields the transcript importer already maps
@@ -526,6 +567,26 @@ export function mapClaudeSdkMessage({
     // exactly once, from the exact signal that proves it.
     if (classifyClaudeResultOutcome(message) === 'terminal') {
       const turnId = record.activeTurnId;
+      const interruptingTurnId = record.interruptingTurnId;
+      if (interruptingTurnId) {
+        record.interruptingTurnId = undefined;
+        record.interruptedResultObserved = true;
+        // A new turn can be queued before Claude emits the stopped turn's
+        // result. Consume the older interruption receipt without clearing the
+        // newer turn's provenance.
+        if (
+          turnId === interruptingTurnId &&
+          record.dispatchedTurnId === interruptingTurnId
+        ) {
+          clearClaudeDispatchedTurn(record);
+        }
+        logInfo?.('Dropped Claude error result for requested interruption', {
+          threadId: record.session.threadId,
+          turnId: interruptingTurnId,
+          resultKind: 'requested-interruption',
+        });
+        return;
+      }
       record.terminalResultObserved = true;
       clearClaudeDispatchedTurn(record);
       publish({
@@ -557,6 +618,10 @@ export function mapClaudeSdkMessage({
       });
       return;
     }
+    // A non-error result proves the in-flight exchange completed normally.
+    // An older Stop marker cannot apply to a later result after this ordered
+    // stream point, so do not let it suppress a future genuine failure.
+    record.interruptingTurnId = undefined;
     if (
       record.activeTurnId &&
       record.dispatchedTurnId === record.activeTurnId

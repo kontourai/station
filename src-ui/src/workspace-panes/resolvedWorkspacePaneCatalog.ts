@@ -9,7 +9,7 @@ import {
 } from '@kontourai/station-contracts/workspace-pane-availability';
 import { useProjectWorkspacePanesQuery } from '@kontourai/station-sdk/workspace-pane';
 import { useMemo, useSyncExternalStore } from 'react';
-import { isDistinctFrameOrigin } from '../components/mcp-ui/MCPToolUIFrame';
+import { isDistinctFrameOrigin } from '../components/mcp-ui/frameOrigin';
 import { useConfig } from '../contexts/ConfigContext';
 import { pluginRegistry } from '../core/PluginRegistry';
 import {

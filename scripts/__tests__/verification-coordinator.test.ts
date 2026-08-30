@@ -2695,20 +2695,28 @@ setInterval(() => {
           collectProvenance: () =>
             worktreeProvenance(worktree, 'heartbeat-without-progress'),
           phaseRunner: async ({ signal }: { signal: AbortSignal }) => {
-            await new Promise((resolve) => setTimeout(resolve, 15));
-            observed = verificationStatus({ root: temp.root }).jobs[0];
-            return new Promise((resolve) =>
+            const aborted = new Promise<{
+              status: null;
+              signal: 'SIGTERM';
+              cleanup: { status: 'passed'; survivingOwnedChildren: 0 };
+            }>((resolve) =>
               signal.addEventListener(
                 'abort',
                 () =>
                   resolve({
                     status: null,
                     signal: 'SIGTERM',
-                    cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+                    cleanup: {
+                      status: 'passed',
+                      survivingOwnedChildren: 0,
+                    },
                   }),
                 { once: true },
               ),
             );
+            await new Promise((resolve) => setTimeout(resolve, 15));
+            observed = verificationStatus({ root: temp.root }).jobs[0];
+            return aborted;
           },
         });
         expect(observed).toBeDefined();

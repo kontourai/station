@@ -137,6 +137,10 @@ const FAILURE_COPY: Record<
     summary: `${host} restarted.`,
     action: 'Read-only data stays available while the session reconnects.',
   }),
+  'host-unavailable': (host) => ({
+    summary: `${host}'s server is down or recovering.`,
+    action: 'The Station UI is still available and will keep trying.',
+  }),
   // station#3297. Says what was observed (it answered, and said no) and points
   // at the only place the answer can change — the host's own allow-list. It
   // must not offer pairing: no credential this device can obtain affects it.

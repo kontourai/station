@@ -89,7 +89,7 @@ function persistentNightlyCapacityDocument(): MutableNightlyWorkflow {
  * that a naive `split(':')` would mangle. */
 const REAL_LINE =
   ".github/workflows/install-smoke.yml:44:9: shellcheck reported issue in this script: SC2016:info:98:9: Expressions don't expand in single quotes, use double quotes for that [shellcheck]";
-const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && ((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}`;
+const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}`;
 
 function securityAnalysisWorkflowDocument() {
   const workflow = readWorkflowDocuments().find(
@@ -860,6 +860,28 @@ describe('persistent runner policy', () => {
     });
   });
 
+  test('admits only the exact read-only hosted Secret Scan pull_request workflow', () => {
+    const workflow = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/secret-scan.yml',
+    );
+    if (!workflow) throw new Error('Expected the Secret Scan workflow.');
+
+    expect(persistentRunnerPolicyFindings([workflow])).toEqual([]);
+
+    const widened = structuredClone(workflow.document) as {
+      permissions: { contents: string };
+    };
+    widened.permissions.contents = 'write';
+    expect(
+      persistentRunnerPolicyFindings([{ ...workflow, document: widened }]),
+    ).toContainEqual({
+      file: '.github/workflows/secret-scan.yml',
+      jobId: 'workflow',
+      message:
+        'candidate-controlled pull_request workflows are prohibited; use the reviewed pull_request_target topology',
+    });
+  });
+
   test('keeps every automatic PR workflow on the reviewed base-controlled topology', () => {
     const workflows = readWorkflowDocuments();
     const expected = [
@@ -1231,6 +1253,30 @@ describe('persistent runner policy', () => {
       });
     },
   );
+
+  test.each([
+    '.github/workflows/ci.yml',
+    '.github/workflows/security-analysis.yml',
+    '.github/workflows/windows-pr-verification.yml',
+    '.github/workflows/build-ios.yml',
+  ])('rejects %s without merge_group queue evaluation', (file) => {
+    const workflow = readWorkflowDocuments().find(
+      (candidate) => candidate.file === file,
+    );
+    expect(workflow).toBeTruthy();
+    const document = structuredClone(workflow?.document) as {
+      on: Record<string, unknown>;
+    };
+    delete document.on.merge_group;
+    expect(persistentRunnerPolicyFindings([{ file, document }])).toContainEqual(
+      {
+        file,
+        jobId: 'workflow',
+        message:
+          'merge-queue workflow must retain merge_group checks_requested for branches: [main]',
+      },
+    );
+  });
 
   test.each([
     [
@@ -2393,7 +2439,7 @@ describe('the real workflow corpus', () => {
       }
     }
 
-    expect(directCapacityJobs).toBe(6);
+    expect(directCapacityJobs).toBe(9);
     expect(recoveryJobs).toBe(2);
     expect(reusableCapacityJobs).toBe(0);
   });

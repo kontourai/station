@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { validatePackagedReleaseManifest } from '../../packages/cli/src/commands/lifecycle.js';
 import {
   createContainerReleaseDescriptor,
   createContainerReleaseMetadata,
@@ -184,20 +185,22 @@ describe('container release metadata', () => {
   });
 
   test('derives the strict Station packaged-release manifest from the same parser', () => {
-    expect(
-      createPackagedReleaseManifest({
-        tag: 'v1.2.3-preview.4',
-        sha,
-        createdAt,
-      }),
-    ).toEqual({
-      schemaVersion: 1,
+    const manifest = createPackagedReleaseManifest({
+      tag: 'v1.2.3-preview.4',
+      sha,
+      createdAt,
+    });
+
+    expect(manifest).toEqual({
+      schemaVersion: 2,
       sha,
       ref: 'v1.2.3-preview.4',
       createdAt,
-      channel: 'preview',
+      channel: 'beta',
+      releaseChannel: 'preview',
       prerelease: true,
     });
+    expect(validatePackagedReleaseManifest(manifest)).toEqual(manifest);
   });
 
   test('binds immutable digest promotion to the same release metadata', () => {

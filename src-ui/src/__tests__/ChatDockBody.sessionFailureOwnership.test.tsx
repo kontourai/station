@@ -113,6 +113,7 @@ import type { ChatSession } from '../types';
 
 const RAW_STREAM_ERROR =
   "Failed to execute 'close' on 'ReadableStreamDefaultController': Unexpected end of JSON input";
+const LAZY_TRANSCRIPT_TIMEOUT_MS = 5_000;
 
 function buildChatInput() {
   return {
@@ -236,8 +237,9 @@ describe('ChatDockBody session-failure ownership (station#3299)', () => {
 
     // The transcript card renders the failure (translated). ChatMessageList
     // mounts through a LazyBoundary, so wait for the card to appear.
-    await waitFor(() =>
-      expect(document.querySelector('.system-event')).toBeTruthy(),
+    await waitFor(
+      () => expect(document.querySelector('.system-event')).toBeTruthy(),
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
     );
     // The session banner defers: one failure must not have two surfaces and
     // two dismiss/retry targets in the same frame.
@@ -308,8 +310,9 @@ describe('ChatDockBody session-failure ownership (station#3299)', () => {
 
       renderDock(session, failedOrchestrationSession());
 
-      await waitFor(() =>
-        expect(document.querySelector('.system-event')).toBeTruthy(),
+      await waitFor(
+        () => expect(document.querySelector('.system-event')).toBeTruthy(),
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
       );
       expect(document.querySelectorAll('.system-event')).toHaveLength(1);
       expect(screen.queryByTestId('chat-dock-session-failure')).toBeNull();
@@ -398,7 +401,6 @@ describe('ChatDockBody turn-stall notice (#765)', () => {
       controlMode: 'station-owned',
       hasActiveTurn: true,
       turnProgress: {
-        turnId: 'stalled-turn',
         lastProgressEventAt: '2026-08-29T12:00:00.000Z',
         progressSilence: {
           detectedAt: '2026-08-29T12:03:00.000Z',
@@ -413,7 +415,7 @@ describe('ChatDockBody turn-stall notice (#765)', () => {
       eventCount: 4,
       createdAt: '2026-08-29T11:00:00.000Z',
       updatedAt: '2026-08-29T12:03:00.000Z',
-    } as OrchestrationSessionSummary;
+    };
   }
 
   test('renders the stall notice with a working stop affordance while the turn is in flight', () => {

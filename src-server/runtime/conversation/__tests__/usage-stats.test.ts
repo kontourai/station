@@ -8,6 +8,15 @@ import {
 } from '../usage-stats.js';
 
 describe('usage-stats', () => {
+  it('does not manufacture token figures for empty conversation stats', () => {
+    expect(createEmptyConversationStats()).toEqual({
+      contextTokens: 0,
+      turns: 0,
+      toolCalls: 0,
+      estimatedCost: null,
+    });
+  });
+
   it('builds updated conversation stats from prior state', () => {
     const existingStats = {
       ...createEmptyConversationStats(),
@@ -176,5 +185,64 @@ describe('usage-stats', () => {
     expect(cost).toBeCloseTo(0.0105, 10);
     expect(modelCatalog.getModelPricing).toHaveBeenCalledWith('us-west-2');
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('keeps cache-bearing usage unpriced when the catalog has no cache rates', async () => {
+    // The priced input/output subset must not masquerade as the complete cost.
+    const logger = { warn: vi.fn() };
+    const modelCatalog = {
+      getModelPricing: vi.fn().mockResolvedValue([
+        {
+          modelId: 'Claude 4 Sonnet',
+          inputTokenPrice: 0.003,
+          outputTokenPrice: 0.015,
+        },
+      ]),
+    };
+
+    await expect(
+      calculateUsageCost(
+        'claude-4-sonnet',
+        {
+          promptTokens: 1_000,
+          completionTokens: 500,
+          cacheReadTokens: 2_000,
+        },
+        modelCatalog as any,
+        { region: 'us-west-2' } as any,
+        logger,
+      ),
+    ).resolves.toBeNull();
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Pricing incomplete for reported usage, cost unavailable',
+      { modelId: 'claude-4-sonnet' },
+    );
+  });
+
+  it('logs malformed producer usage separately from missing pricing', async () => {
+    const logger = { warn: vi.fn() };
+    const modelCatalog = {
+      getModelPricing: vi.fn().mockResolvedValue([
+        {
+          modelId: 'Claude 4 Sonnet',
+          inputTokenPrice: 0.003,
+          outputTokenPrice: 0.015,
+        },
+      ]),
+    };
+
+    await expect(
+      calculateUsageCost(
+        'claude-4-sonnet',
+        { promptTokens: Number.NaN, completionTokens: 500 },
+        modelCatalog as any,
+        { region: 'us-west-2' } as any,
+        logger,
+      ),
+    ).resolves.toBeNull();
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Reported usage contains an invalid token figure, cost unavailable',
+      { modelId: 'claude-4-sonnet' },
+    );
   });
 });

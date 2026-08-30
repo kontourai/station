@@ -38,6 +38,15 @@ export const PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH =
 export const PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH =
   '/.well-known/station/v1/pairing/local-grant' as const;
 /**
+ * Bounded same-user startup proof for a desktop-owned local sidecar. Like the
+ * local-grant exchange, it requires the fresh owner-only grant secret on a
+ * direct loopback connection. Unlike that exchange, it never mints, replaces,
+ * or returns a device credential: it only confirms that this server process
+ * owns the exact instance and boot identity the desktop supervisor started.
+ */
+export const PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH =
+  '/.well-known/station/v1/pairing/local-grant-startup-proof' as const;
+/**
  * A launcher-issued, single-use capability carried in a local Station UI URL
  * fragment. The browser exchanges it for the ordinary HttpOnly device-session
  * cookie; the capability itself is never sent as an Authorization header and

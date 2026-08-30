@@ -1,8 +1,8 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveRef } from './check-merge-base-fresh.mjs';
 import { describeMatches } from './check-prepush-ui-bundle.mjs';
+import { resolveRef } from './lib/git-ref.mjs';
 
 const BASE_REF = process.env.STATION_BASE_REF ?? 'origin/main';
 export const ORCHESTRATION_TRANSFER_INPUT_PREFIXES = Object.freeze([

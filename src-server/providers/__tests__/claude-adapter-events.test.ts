@@ -1,5 +1,7 @@
 import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
+import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import { describe, expect, test, vi } from 'vitest';
+import { getConversationStats } from '../../runtime/conversation/conversation-manager.js';
 import type { SessionAnswerabilityObservation } from '../../services/orchestration/open-requests.js';
 import { buildAgentRunSummary } from '../../services/orchestration/orchestration-session-state.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
@@ -401,6 +403,103 @@ describe('claude-adapter-events', () => {
       publish.mock.calls.some(([event]) => event.method === 'turn.completed'),
     ).toBe(false);
     expect((record as any).terminalResultObserved).toBe(true);
+  });
+
+  test("a requested interruption consumes Claude's null-stop-reason error result without replacing Stopped with Failed (#898)", () => {
+    const publish = vi.fn();
+    const logInfo = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-stopped',
+      dispatchedTurnId: 'turn-stopped',
+      interruptingTurnId: 'turn-stopped',
+    });
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      logInfo,
+      message: {
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        result: 'generic-error: stop_reason=null',
+        stop_reason: null,
+        usage: { input_tokens: 3, output_tokens: 0 },
+        uuid: 'msg-stopped',
+        session_id: record.session.threadId,
+      } as any,
+    });
+
+    expect(publish.mock.calls.map(([event]) => event.method)).toEqual([
+      'token-usage.updated',
+    ]);
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'token-usage.updated',
+        turnId: 'turn-stopped',
+      }),
+    );
+    expect(publish).not.toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'runtime.error' }),
+    );
+    expect(record).toMatchObject({
+      activeTurnId: undefined,
+      dispatchedTurnId: undefined,
+      interruptingTurnId: undefined,
+      interruptedResultObserved: true,
+    });
+    expect(
+      (record as ClaudeMessageState).terminalResultObserved,
+    ).toBeUndefined();
+    expect(logInfo).toHaveBeenCalledWith(
+      'Dropped Claude error result for requested interruption',
+      expect.objectContaining({
+        threadId: record.session.threadId,
+        turnId: 'turn-stopped',
+      }),
+    );
+  });
+
+  test("a stopped turn's delayed error result does not clear a newer dispatched turn (#921)", () => {
+    const publish = vi.fn();
+    const record = makeRecord({
+      activeTurnId: 'turn-new',
+      dispatchedTurnId: 'turn-new',
+      interruptingTurnId: 'turn-stopped',
+    });
+
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        result: 'interrupted',
+        stop_reason: null,
+        usage: { input_tokens: 1, output_tokens: 0 },
+        uuid: 'msg-delayed-stop',
+        session_id: record.session.threadId,
+      } as any,
+    });
+
+    expect(publish.mock.calls.map(([event]) => event.method)).toEqual([
+      'token-usage.updated',
+    ]);
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'token-usage.updated',
+        turnId: 'turn-stopped',
+      }),
+    );
+    expect(record).toMatchObject({
+      activeTurnId: 'turn-new',
+      dispatchedTurnId: 'turn-new',
+      interruptedResultObserved: true,
+    });
+    expect(record.interruptingTurnId).toBeUndefined();
   });
 
   test('an is_error: true result with no `result` field falls back to joined errors (SDKResultError shape)', () => {
@@ -1414,4 +1513,42 @@ describe('claude token-usage.updated — provider-reported cost and cache (stati
       'contextTokens',
     );
   });
+
+  test.each([
+    ['missing', undefined],
+    ['non-numeric', 'unknown'],
+  ])(
+    '%s input tokens stay absent without poisoning folded or stats totals',
+    async (_label, input_tokens) => {
+      const event = usageEvent(
+        resultMessage({ input_tokens, output_tokens: 5 }),
+      );
+
+      expect(event).not.toHaveProperty('promptTokens');
+      expect(event).toMatchObject({ completionTokens: 5, totalTokens: 5 });
+      const aggregate = foldUsageEvents([event]);
+      expect(aggregate).toMatchObject({ outputTokens: 5, totalTokens: 5 });
+      expect(aggregate.inputTokens).toBeUndefined();
+
+      await expect(
+        getConversationStats(
+          'claude',
+          'thread-activity',
+          new Map(),
+          new Map(),
+          new Map(),
+          { loadAgent: vi.fn().mockResolvedValue({ prompt: '' }) } as any,
+          { defaultModel: 'anthropic.claude-3-haiku' } as any,
+          undefined,
+          {
+            info: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+            debug: vi.fn(),
+          },
+          () => aggregate,
+        ),
+      ).resolves.toMatchObject({ outputTokens: 5, totalTokens: 5 });
+    },
+  );
 });

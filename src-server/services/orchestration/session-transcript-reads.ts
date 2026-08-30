@@ -6,7 +6,10 @@ import {
 import type { UsageReceipt } from '@kontourai/station-contracts/usage-rollup';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
-import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
+import type {
+  DroppedUsageFigure,
+  SessionUsageAggregate,
+} from '@kontourai/station-shared/usage-fold';
 import {
   foldUsageEvents,
   providerCostScope,
@@ -49,6 +52,20 @@ export interface SessionTranscriptReadsDeps {
   searchConversationMessages: EventStore['searchConversationMessages'];
   readSessionThreadIds: (authority: SessionReadScope) => string[];
   requireTenantExecutionContext: () => boolean;
+  /**
+   * Receives a token figure the fold refused as unusable while replaying
+   * durable history.
+   *
+   * REQUIRED, deliberately (#910). It was optional, and the production
+   * composition simply did not pass it — so every refused figure was
+   * swallowed in the running product while the seam's own tests stayed
+   * green, because a test that supplies its own reporter cannot see a
+   * composition that omits one. An injection proved that gap invisible.
+   * Requiring it moves the failure from silent runtime behaviour to a
+   * compile error. A caller with genuinely nowhere to report passes an
+   * explicit no-op and says why, which is a comment worth having.
+   */
+  reportDroppedUsageFigure: (dropped: DroppedUsageFigure) => void;
 }
 
 /**
@@ -124,7 +141,13 @@ export class SessionTranscriptReads {
     if (!this.deps.canReadSession(threadId, authority)) {
       return foldUsageEvents([]);
     }
-    return foldUsageEvents(this.deps.listEventPayloads(threadId));
+    // The fold replays durable history, so it can meet a figure written
+    // before its producer's guard existed. Dropping it keeps the read
+    // answerable; reporting it keeps the producer defect visible rather
+    // than absorbed (packages/shared/src/usage-fold.ts's drop contract).
+    return foldUsageEvents(this.deps.listEventPayloads(threadId), (dropped) =>
+      this.deps.reportDroppedUsageFigure(dropped),
+    );
   }
 
   listSessionUsage(authority: SessionReadScope): OrchestrationSessionUsage[] {

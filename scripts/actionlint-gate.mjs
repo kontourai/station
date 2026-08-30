@@ -213,6 +213,10 @@ export const REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA =
   '563effe7ec559c6f4fcc6c80b3532acb71d86373';
 const REVIEWED_REUSABLE_CAPACITY_WORKFLOW_SHA =
   '02f40a67901a79ce4004c44d91e350b93782644c';
+const REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA =
+  '02f40a67901a79ce4004c44d91e350b93782644c';
+const SECRET_SCAN_WORKFLOW = '.github/workflows/secret-scan.yml';
+const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`;
 /**
  * `owner-lifetime-seconds` is part of the host manifest, so it is one shared
  * physical-host setting rather than a per-job tuning knob. The pinned action
@@ -246,9 +250,11 @@ const FORK_SMOKE_JOB = Object.freeze({
   file: '.github/workflows/ci.yml',
   jobId: 'fork-smoke',
 });
-const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && ((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}`;
+const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}`;
 const FORK_SMOKE_CONDITION = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository }}`;
 const PULL_REQUEST_TARGET = 'pull_request_target';
+const MERGE_GROUP = 'merge_group';
+const MERGE_GROUP_TYPES = ['checks_requested'];
 const CI_ROUTER_PR_TARGET_TYPES = [
   'opened',
   'synchronize',
@@ -280,7 +286,7 @@ const SECURITY_ANALYSIS_WORKFLOW = '.github/workflows/security-analysis.yml';
 const SECURITY_ANALYSIS_CODEQL_JOB = 'codeql';
 const DEPENDENCY_REVIEW_JOB = 'dependency-review';
 const SECURITY_BASE_CHECKOUT_REPOSITORY = `\${{ github.repository }}`;
-const SECURITY_BASE_CHECKOUT_REF = `\${{ github.event.pull_request.base.sha || github.sha }}`;
+const SECURITY_BASE_CHECKOUT_REF = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.sha }}`;
 const SECURITY_BASE_CHECKOUT_PATH = 'base-policy';
 const SECURITY_CANDIDATE_CHECKOUT_PATH = 'candidate';
 const SECURITY_BASE_POLICY_DIRECTORY = `\${{ runner.temp }}/base-policy`;
@@ -300,7 +306,9 @@ const CODEQL_ANALYZE_ACTION =
   'github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28';
 const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
+const DEPENDENCY_REVIEW_CANDIDATE_GUARD = `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`;
 const DEPENDENCY_REVIEW_PR_GUARD = `\${{ github.event_name == 'pull_request_target' }}`;
+const DEPENDENCY_REVIEW_MERGE_GROUP_GUARD = `\${{ github.event_name == 'merge_group' }}`;
 const SECURITY_ISOLATE_BASE_POLICY_RUN =
   'mv base-policy "$BASE_POLICY_DIRECTORY"';
 const SECURITY_POLICY_RUN = `mapfile -d '' -t SARIF_FILES < <(find "$CODEQL_SARIF_DIRECTORY" -type f -name javascript.sarif -print0)
@@ -313,7 +321,7 @@ node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-normalize.mjs" --input="\${SAR
 # removes is invisible here; warn instead of failing or the baseline
 # could never shrink through a green gate. Push-to-main enforces.
 STALE_BASELINE_MODE=fail
-if [ "$GITHUB_EVENT_NAME" = "pull_request_target" ]; then
+if [ "$GITHUB_EVENT_NAME" = "pull_request_target" ] || [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
   STALE_BASELINE_MODE=warn
 fi
 node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-policy.mjs" --input="$CODEQL_NORMALIZED_SARIF" --baseline="$BASE_POLICY_DIRECTORY/scripts/codeql-error-baseline.json" --stale-baseline="$STALE_BASELINE_MODE"`;
@@ -342,6 +350,12 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/desktop-rust.yml',
   '.github/workflows/ecosystem-packaging.yml',
   '.github/workflows/install-smoke.yml',
+  '.github/workflows/security-analysis.yml',
+  '.github/workflows/windows-pr-verification.yml',
+]);
+const MERGE_QUEUE_WORKFLOWS = new Set([
+  '.github/workflows/build-ios.yml',
+  '.github/workflows/ci.yml',
   '.github/workflows/security-analysis.yml',
   '.github/workflows/windows-pr-verification.yml',
 ]);
@@ -838,6 +852,7 @@ export function persistentRunnerPolicyFindings(workflows) {
     findings.push(...candidatePullRequestWorkflowFindings(file, document));
     findings.push(...primaryCiRouterFindings(file, document));
     findings.push(...baseControlledPrWorkflowFindings(file, document));
+    findings.push(...mergeQueueWorkflowFindings(file, document));
   }
   return findings;
 }
@@ -1101,30 +1116,58 @@ function hasExactSecurityAnalysisSteps(job) {
 }
 
 function hasExactDependencyReviewSteps(job) {
-  const [review] = job?.steps ?? [];
+  const [pullRequestReview, mergeGroupReview] = job?.steps ?? [];
+  const sharedInputs = {
+    'vulnerability-check': true,
+    'fail-on-severity': 'high',
+    'license-check': false,
+    'warn-only': false,
+    'comment-summary-in-pr': 'never',
+  };
   return (
     hasExactKeys(job, ['name', 'if', 'runs-on', 'permissions', 'steps']) &&
     job?.name === 'Dependency review' &&
-    job?.if === DEPENDENCY_REVIEW_PR_GUARD &&
+    job?.if === DEPENDENCY_REVIEW_CANDIDATE_GUARD &&
     job?.['runs-on'] === 'ubuntu-22.04' &&
     hasExactKeys(job?.permissions, ['contents']) &&
     job.permissions.contents === 'read' &&
-    (job?.steps?.length ?? 0) === 1 &&
-    hasExactKeys(review, ['name', 'uses', 'with']) &&
-    review?.name === 'Review dependency changes' &&
-    review?.uses === DEPENDENCY_REVIEW_ACTION &&
-    hasExactKeys(review?.with, [
+    (job?.steps?.length ?? 0) === 2 &&
+    hasExactKeys(pullRequestReview, ['name', 'if', 'uses', 'with']) &&
+    pullRequestReview?.name === 'Review dependency changes' &&
+    pullRequestReview?.if === DEPENDENCY_REVIEW_PR_GUARD &&
+    pullRequestReview?.uses === DEPENDENCY_REVIEW_ACTION &&
+    hasExactKeys(pullRequestReview?.with, [
       'vulnerability-check',
       'fail-on-severity',
       'license-check',
       'warn-only',
       'comment-summary-in-pr',
     ]) &&
-    review.with?.['vulnerability-check'] === true &&
-    review.with?.['fail-on-severity'] === 'high' &&
-    review.with?.['license-check'] === false &&
-    review.with?.['warn-only'] === false &&
-    review.with?.['comment-summary-in-pr'] === 'never'
+    JSON.stringify(pullRequestReview.with) === JSON.stringify(sharedInputs) &&
+    hasExactKeys(mergeGroupReview, ['name', 'if', 'uses', 'with']) &&
+    mergeGroupReview?.name === 'Review merge-group dependency changes' &&
+    mergeGroupReview?.if === DEPENDENCY_REVIEW_MERGE_GROUP_GUARD &&
+    mergeGroupReview?.uses === DEPENDENCY_REVIEW_ACTION &&
+    hasExactKeys(mergeGroupReview?.with, [
+      'base-ref',
+      'head-ref',
+      'vulnerability-check',
+      'fail-on-severity',
+      'license-check',
+      'warn-only',
+      'comment-summary-in-pr',
+    ]) &&
+    mergeGroupReview.with?.['base-ref'] ===
+      `\${{ github.event.merge_group.base_sha }}` &&
+    mergeGroupReview.with?.['head-ref'] ===
+      `\${{ github.event.merge_group.head_sha }}` &&
+    JSON.stringify({
+      'vulnerability-check': mergeGroupReview.with?.['vulnerability-check'],
+      'fail-on-severity': mergeGroupReview.with?.['fail-on-severity'],
+      'license-check': mergeGroupReview.with?.['license-check'],
+      'warn-only': mergeGroupReview.with?.['warn-only'],
+      'comment-summary-in-pr': mergeGroupReview.with?.['comment-summary-in-pr'],
+    }) === JSON.stringify(sharedInputs)
   );
 }
 
@@ -1229,6 +1272,21 @@ function hasExactSecurityAnalysisPrTargetTrigger(document) {
   );
 }
 
+function hasExactMergeGroupTrigger(document) {
+  const trigger = document?.on?.[MERGE_GROUP];
+  return (
+    trigger &&
+    typeof trigger === 'object' &&
+    !Array.isArray(trigger) &&
+    Object.keys(trigger).length === 2 &&
+    Array.isArray(trigger.branches) &&
+    trigger.branches.length === 1 &&
+    trigger.branches[0] === 'main' &&
+    Array.isArray(trigger.types) &&
+    JSON.stringify(trigger.types) === JSON.stringify(MERGE_GROUP_TYPES)
+  );
+}
+
 function hasExactMainBranchTrigger(trigger) {
   return (
     trigger &&
@@ -1238,6 +1296,37 @@ function hasExactMainBranchTrigger(trigger) {
     Array.isArray(trigger.branches) &&
     trigger.branches.length === 1 &&
     trigger.branches[0] === 'main'
+  );
+}
+
+function hasExactPullRequestSecretScanWorkflow(file, document) {
+  const scan = document?.jobs?.scan;
+  return (
+    file === SECRET_SCAN_WORKFLOW &&
+    hasExactKeys(document, [
+      'name',
+      'on',
+      'permissions',
+      'concurrency',
+      'jobs',
+    ]) &&
+    document.name === 'Secret Scan' &&
+    hasExactKeys(document.on, ['push', 'pull_request', 'workflow_dispatch']) &&
+    hasExactMainBranchTrigger(document.on.push) &&
+    hasExactMainBranchTrigger(document.on.pull_request) &&
+    document.on.workflow_dispatch === null &&
+    hasOnlyReadContentsPermission(document.permissions) &&
+    hasExactKeys(document.concurrency, ['group', 'cancel-in-progress']) &&
+    document.concurrency.group ===
+      'station-secret-scan-$' + '{{ github.ref }}' &&
+    document.concurrency['cancel-in-progress'] === true &&
+    hasExactKeys(document.jobs, ['scan']) &&
+    hasExactKeys(scan, ['name', 'uses', 'with', 'permissions']) &&
+    scan.name === 'Secret Scan' &&
+    scan.uses === SECRET_SCAN_REUSABLE_WORKFLOW &&
+    hasExactKeys(scan.with, ['runner']) &&
+    scan.with.runner === '"ubuntu-22.04"' &&
+    hasOnlyReadContentsPermission(scan.permissions)
   );
 }
 
@@ -1254,10 +1343,12 @@ function hasExactSecurityAnalysisWorkflow(document) {
     hasExactKeys(document?.on, [
       'push',
       PULL_REQUEST_TARGET,
+      MERGE_GROUP,
       'workflow_dispatch',
     ]) &&
     hasExactMainBranchTrigger(document.on.push) &&
     hasExactSecurityAnalysisPrTargetTrigger(document) &&
+    hasExactMergeGroupTrigger(document) &&
     document.on.workflow_dispatch === null &&
     hasExactKeys(document.permissions, ['contents']) &&
     document.permissions.contents === 'read' &&
@@ -1265,6 +1356,28 @@ function hasExactSecurityAnalysisWorkflow(document) {
     document.concurrency.group === SECURITY_ANALYSIS_CONCURRENCY_GROUP &&
     document.concurrency['cancel-in-progress'] === true
   );
+}
+
+function mergeQueueWorkflowFindings(file, document) {
+  if (!MERGE_QUEUE_WORKFLOWS.has(file)) return [];
+  // Synthetic runner-policy fixtures intentionally omit the workflow trigger
+  // surface. Enforce this contract only on a candidate-routing document; the
+  // real workflow corpus and trigger-deletion mutations all retain
+  // pull_request_target and therefore remain covered.
+  if (
+    !workflowHasTrigger(document, PULL_REQUEST_TARGET) &&
+    !workflowHasTrigger(document, MERGE_GROUP)
+  )
+    return [];
+  if (hasExactMergeGroupTrigger(document)) return [];
+  return [
+    {
+      file,
+      jobId: 'workflow',
+      message:
+        'merge-queue workflow must retain merge_group checks_requested for branches: [main]',
+    },
+  ];
 }
 
 function hasExactCiRouterPrTargetTrigger(document) {
@@ -1284,6 +1397,7 @@ function hasExactCiRouterPrTargetTrigger(document) {
 
 function candidatePullRequestWorkflowFindings(file, document) {
   if (!workflowHasTrigger(document, 'pull_request')) return [];
+  if (hasExactPullRequestSecretScanWorkflow(file, document)) return [];
   return [
     {
       file,

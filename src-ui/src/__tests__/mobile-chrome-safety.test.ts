@@ -86,18 +86,53 @@ describe('the connection banner slot bounds without reserving', () => {
       expect(body, `missing rule: ${rule}`).toBeDefined();
       expect(body).toMatch(/(left|right):\s*(var\(--chat-dock-width|36px)/);
     }
-    // Maximized leaves no content column, so the notice deliberately outranks
-    // the dock in that state alone.
+    // Maximized is the active full work surface. Its occupant header/search
+    // must remain reachable, so ordinary notices return below the dock.
     const [maximized] = ruleBodies(
       css,
       '.app__main:has(> .chat-dock.is-maximized) > .banner-host',
     );
     expect(maximized).toBeDefined();
-    expect(maximized).toMatch(
-      /z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/,
-    );
+    expect(maximized).toMatch(/z-index:\s*var\(--layer-notice\)/);
+    expect(maximized).not.toMatch(/var\(--layer-dock\)/);
     expect(maximized).toMatch(/left:\s*0/);
     expect(maximized).toMatch(/right:\s*0/);
+
+    // Critical chrome is the narrow exception: blocking pairing/credential
+    // states and explicitly critical sources must remain discoverable while
+    // the dock is maximized. Ordinary hosts do not match this selector.
+    const [critical] = ruleBodiesFor(
+      css,
+      '.app__main:has(> .chat-dock.is-maximized) > .banner-host.banner-host--critical-chrome',
+    );
+    expect(critical).toBeDefined();
+    expect(critical).toMatch(/z-index:\s*auto/);
+    const [criticalCard] = ruleBodiesFor(
+      css,
+      '.app__main:has(> .chat-dock.is-maximized) > .banner-host.banner-host--critical-chrome :is(.banner-host__item--critical-chrome, .banner-host__cap--critical-chrome)',
+    );
+    expect(criticalCard).toBeDefined();
+    expect(criticalCard).toMatch(
+      /z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/,
+    );
+  });
+
+  it('gives a maximized bottom dock one full remaining viewport row', () => {
+    const css = read('index.css');
+    const [main] = ruleBodies(
+      css,
+      '.app__main--dock-bottom:has(> .chat-dock.is-maximized)',
+    );
+    expect(main).toBeDefined();
+    expect(main).toMatch(/grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)/);
+
+    const [dock] = ruleBodies(
+      css,
+      '.app__main--dock-bottom > .chat-dock.is-maximized',
+    );
+    expect(dock).toBeDefined();
+    expect(dock).toMatch(/grid-row:\s*2\s*;/);
+    expect(dock).not.toMatch(/grid-row:\s*2\s*\/\s*-1/);
   });
 
   it('outranks a bottom-sheet dock, where no column exists to inset into', () => {

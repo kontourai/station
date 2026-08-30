@@ -143,6 +143,7 @@ vi.mock('../components/chat/QueuedMessages', () => ({
 }));
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { describeStopTurnOutcome } from '../hooks/useActiveChatSessionMessaging';
 import type { ChatSession } from '../types';
 
 const LONG_UNBREAKABLE_REASON =
@@ -419,6 +420,38 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
 
     expect(screen.queryByTestId('chat-dock-session-failure')).toBeNull();
     expect(screen.getByTestId('chat-input-area')).toBeTruthy();
+  });
+
+  test('a requested stop presents Stopped without a missing-record banner, failure state, Retry, or null diagnostic (#898)', () => {
+    const stoppedCopy = describeStopTurnOutcome({
+      kind: 'settled',
+      result: {
+        outcome: 'cooperative',
+        threadId: 'thread-alpha',
+        turnId: 'turn-stopped',
+      },
+    });
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'ready',
+        lifecycleState: 'canceled',
+        terminalAttribution: {
+          kind: 'requested_stop',
+          detail: 'Stopped by request.',
+        },
+      }),
+      session: buildSession({
+        orchestrationSessionStarted: true,
+        orchestrationStatus: 'aborted',
+      }),
+    });
+
+    expect(stoppedCopy).toMatch(/^Stopped\./);
+    expect(stoppedCopy).not.toContain('stop_reason');
+    expect(screen.queryByTestId('chat-dock-session-record-missing')).toBeNull();
+    expect(screen.queryByTestId('chat-dock-session-failure')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(document.body.textContent).not.toContain('stop_reason=null');
   });
 
   test('names a missing record after Station had already recorded the session start', () => {

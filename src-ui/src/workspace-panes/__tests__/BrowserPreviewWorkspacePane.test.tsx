@@ -7,7 +7,11 @@ import {
 } from '@kontourai/station-contracts/workspace-browser-preview';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import type { NativePlatformAdapter } from '../../platform/native';
+import type {
+  NativeBrowserPreviewGrantResponse,
+  NativeBrowserPreviewWindowResponse,
+  NativePlatformAdapter,
+} from '../../platform/native';
 import { completeNativeCapabilityReport } from '../../platform/native/__tests__/completeNativeCapabilityReportFixture';
 import { TauriNativePlatformAdapter } from '../../platform/native/tauri';
 
@@ -92,17 +96,22 @@ const DESKTOP_REPORT = completeNativeCapabilityReport('macos', {
   'local-browser-preview': { state: 'enabled' },
   'workspace-pane-pop-out': { state: 'enabled' },
 });
-type NativeBrowserPreviewBridgeCall = (value: string) => Promise<unknown>;
+type NativeBrowserPreviewGrantBridgeCall = (
+  value: string,
+) => Promise<NativeBrowserPreviewGrantResponse>;
+type NativeBrowserPreviewWindowBridgeCall = (
+  value: string,
+) => Promise<NativeBrowserPreviewWindowResponse>;
 
 async function nativeDesktopPreviewPlatform({
   discoverLocalBrowserPreviewTarget,
   openLocalBrowserPreviewWindow,
 }: {
   discoverLocalBrowserPreviewTarget: ReturnType<
-    typeof vi.fn<NativeBrowserPreviewBridgeCall>
+    typeof vi.fn<NativeBrowserPreviewGrantBridgeCall>
   >;
   openLocalBrowserPreviewWindow: ReturnType<
-    typeof vi.fn<NativeBrowserPreviewBridgeCall>
+    typeof vi.fn<NativeBrowserPreviewWindowBridgeCall>
   >;
 }): Promise<NativePlatformAdapter> {
   const adapter = new TauriNativePlatformAdapter({
@@ -328,7 +337,7 @@ describe('BrowserPreviewWorkspacePane', () => {
     )!;
     writeBrowserPreviewPaneState(window.localStorage, instance.stateKey, state);
     const discoverLocalBrowserPreviewTarget = vi
-      .fn<NativeBrowserPreviewBridgeCall>()
+      .fn<NativeBrowserPreviewGrantBridgeCall>()
       .mockResolvedValue({
         status: 'issued',
         grantId: 'native-grant-2',
@@ -336,7 +345,7 @@ describe('BrowserPreviewWorkspacePane', () => {
         observation,
       });
     const openLocalBrowserPreviewWindow = vi
-      .fn<NativeBrowserPreviewBridgeCall>()
+      .fn<NativeBrowserPreviewWindowBridgeCall>()
       .mockResolvedValue({
         status: 'opened',
         sessionId: 'native-grant-2',

@@ -116,5 +116,20 @@ export function LocalUiSessionGate({
       </section>
     );
   }
+  if (resolution.kind === 'host-unavailable') {
+    return (
+      <main className="local-ui-session-recovery" aria-live="polite">
+        <h1>Reconnecting to this Station</h1>
+        <p role="alert">
+          Station&rsquo;s host process is down or recovering. This
+          browser&rsquo;s current access stays in place; reload after the host
+          restarts.
+        </p>
+        <button type="button" onClick={() => window.location.reload()}>
+          Try again
+        </button>
+      </main>
+    );
+  }
   return <>{children}</>;
 }

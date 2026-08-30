@@ -33,7 +33,13 @@ import { BoardWorkspacePane } from './board/BoardWorkspacePane';
  * renderer re-derives the Project from that id through
  * `useWorkspacePaneBoundIdentity` like every other Project-bound built-in.
  */
-export function ConsoleBoardView({ projectSlug }: { projectSlug: string }) {
+export function ConsoleBoardView({
+  projectSlug,
+  requireBuilderRun = true,
+}: {
+  projectSlug: string;
+  requireBuilderRun?: boolean;
+}) {
   const config = useConfig();
   const {
     data: projects = [],
@@ -109,6 +115,7 @@ export function ConsoleBoardView({ projectSlug }: { projectSlug: string }) {
     <BoardWorkspacePane
       descriptor={WORKSPACE_BOARD_PANE_DESCRIPTOR}
       instance={instance}
+      requireBuilderRun={requireBuilderRun}
     />
   );
 }
