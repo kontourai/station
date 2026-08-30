@@ -33,6 +33,7 @@ import {
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
+  PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
   PUBLIC_DEVICE_PAIRING_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
@@ -1234,6 +1235,13 @@ export function configureRuntimeRoutes(
         context.environmentSecurityService.pseudonymizePairingAuditSource(
           source,
         ),
+      // Capture this child process's launch identity once. The local startup
+      // proof must answer for the exact sidecar that owns the grant secret,
+      // never for mutable request input or a later environment replacement.
+      startupIdentity: () => ({
+        instanceId: process.env.STATION_INSTANCE_ID ?? '',
+        bootId: process.env.STATION_BOOT_ID ?? '',
+      }),
       resolvePublicIngressOrigin: publicIngressOriginResolver(context.port)
         .resolve,
     },
@@ -4413,6 +4421,8 @@ export function configureDevicePairingPublicRoutes(
      * (no secret to compare against — never a silent "no auth required").
      */
     localGrant?: { secretPath: string };
+    /** Exact process identity exposed only after owner-secret + loopback proof. */
+    startupIdentity?: () => { instanceId: string; bootId: string } | undefined;
     /** Per-boot, launcher-issued capability for one browser UI session. */
     uiBootstrapToken?: string;
     audit?: (record: PairingApprovalAuditRecord) => void;
@@ -4445,6 +4455,7 @@ export function configureDevicePairingPublicRoutes(
     ? writeLocalGrantSecretFile(options.localGrant.secretPath)
     : undefined;
   let uiBootstrapToken = options.uiBootstrapToken;
+  const startupIdentity = options.startupIdentity?.();
   // This id is server-owned and stable for this launcher's lifetime. A
   // browser cannot choose a replacement domain merely by replaying a link,
   // while a preserved HttpOnly session remains the cross-restart identity.
@@ -4471,6 +4482,51 @@ export function configureDevicePairingPublicRoutes(
         ? Math.max(0, state.lockedUntil - (options.now?.() ?? Date.now()))
         : 0,
     });
+  app.post(PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH, async (c) => {
+    if (new URL(c.req.url).search) {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+    // This is deliberately the same capability boundary as the local-grant
+    // exchange. It is not a bearer fallback: a direct loopback caller must
+    // prove possession of THIS boot's owner-only secret, and the endpoint
+    // returns no credential or environment metadata.
+    if (!localGrantSecret || !startupIdentity || !isDirectLoopbackCaller(c)) {
+      return c.json({ error: 'local_grant_forbidden' }, 403);
+    }
+    const body = await readPairingJson(c.req.raw, [
+      'secret',
+      'instanceId',
+      'bootId',
+      'environmentId',
+    ]);
+    if (
+      !body ||
+      typeof body.secret !== 'string' ||
+      body.secret.length === 0 ||
+      typeof body.instanceId !== 'string' ||
+      body.instanceId.length === 0 ||
+      body.instanceId.length > 512 ||
+      typeof body.bootId !== 'string' ||
+      body.bootId.length === 0 ||
+      body.bootId.length > 512 ||
+      typeof body.environmentId !== 'string' ||
+      body.environmentId.length === 0 ||
+      body.environmentId.length > 512
+    ) {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+    // Keep wrong secret, wrong identity, and wrong position indistinguishable:
+    // callers learn only that the exact local proof did not hold.
+    if (
+      !timingSafeSecretEqual(body.secret, localGrantSecret) ||
+      body.instanceId !== startupIdentity.instanceId ||
+      body.bootId !== startupIdentity.bootId ||
+      body.environmentId !== pairing.environmentId()
+    ) {
+      return c.json({ error: 'local_grant_forbidden' }, 403);
+    }
+    return c.json({ ready: true });
+  });
   app.post(PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH, async (c) => {
     if (new URL(c.req.url).search) {
       return c.json({ error: 'invalid_request' }, 400);
