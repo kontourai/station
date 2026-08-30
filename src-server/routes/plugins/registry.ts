@@ -727,8 +727,7 @@ export function createRegistryRoutes(
           // that false success makes Registry optimistically mark the card
           // installed even though the next inventory read remains empty.
           success:
-            mutation.value.success &&
-            mutation.activation?.status !== 'pending',
+            mutation.value.success && mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
         mutation.value.success

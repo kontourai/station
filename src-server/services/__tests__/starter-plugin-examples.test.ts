@@ -302,7 +302,7 @@ describe('starter plugin examples', () => {
   test('component registration proof does not accept a name mentioned outside the exported map', () => {
     const { registered } = componentRegistrations(
       [
-        "const Missing = () => <main>real UI</main>;",
+        'const Missing = () => <main>real UI</main>;',
         "const declaredName = 'declared-but-unregistered';",
         "export const components = { 'something-else': Missing };",
       ].join('\n'),

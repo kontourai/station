@@ -15,10 +15,7 @@ import './layout.css';
  * - Controlling chat dock via useNavigation()
  * - Showing notifications via useToast()
  */
-function MinimalWorkspace({
-  layout,
-  onShowChat,
-}: LayoutComponentProps) {
+function MinimalWorkspace({ layout, onShowChat }: LayoutComponentProps) {
   const agents = useAgents();
   const { setDockState } = useNavigation();
   const { showToast } = useToast();
