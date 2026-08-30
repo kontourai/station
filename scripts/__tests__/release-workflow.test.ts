@@ -331,9 +331,38 @@ describe('native release workflow topology', () => {
     expect(publishStep.run).toContain('compensate_pointer');
     expect(publishStep.run).toContain('updater-channel-current/latest.json');
     expect(publishStep.run).toContain('gh release delete-asset');
-    expect(publishStep.run.indexOf('trap - ERR')).toBeLessThan(
-      publishStep.run.indexOf('gh release edit'),
-    );
+    // The compensation window is the highest-risk sequence in the release
+    // path, so pin it as an ordered CHAIN of line numbers rather than a pair
+    // of `indexOf` offsets. `indexOf` returns -1 when a needle is absent and
+    // -1 is less than any real offset, so a two-term `toBeLessThan` passes
+    // when `trap - ERR` is DELETED — the exact bug it was written to catch —
+    // and also when it is hoisted above `--verify`, which is strictly worse
+    // (the pointer advances to an unverified manifest with no compensation).
+    // Requiring every step to be found makes an absent line fail closed.
+    const publishLines = publishStep.run.split('\n');
+    const lineIndex = (needle: string) => {
+      const index = publishLines.findIndex((line) => line.includes(needle));
+      expect(index, `missing from the publish step: ${needle}`).toBeGreaterThan(
+        -1,
+      );
+      return index;
+    };
+    const armed = lineIndex('trap compensate_pointer ERR');
+    const archives = lineIndex('"${updater_args[@]}"');
+    const flagged = lineIndex('pointer_mutation_started=true');
+    const pointerWrite = lineIndex('updater-channel-assets/latest.json');
+    const verified = lineIndex('--verify');
+    const disarmed = lineIndex('trap - ERR');
+    const notes = lineIndex('gh release edit');
+    // Arm before any upload; set the flag before the clobbering pointer write
+    // so a death mid-`--clobber` is still compensable; verify before
+    // disarming; and leave only the cosmetic notes edit outside the window.
+    expect(armed).toBeLessThan(archives);
+    expect(archives).toBeLessThan(flagged);
+    expect(flagged).toBeLessThan(pointerWrite);
+    expect(pointerWrite).toBeLessThan(verified);
+    expect(verified).toBeLessThan(disarmed);
+    expect(disarmed).toBeLessThan(notes);
 
     const uploadLines = publishStep.run
       .split('\n')
