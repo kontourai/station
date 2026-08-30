@@ -165,6 +165,7 @@ function buildSession(overrides: Partial<ChatSession>): ChatSession {
 
 const RAW_MESSAGE =
   'No conversation found with session ID: d434e194-cc2e-4edc-8733-d8645c512fab';
+const LAZY_TRANSCRIPT_TIMEOUT_MS = 5_000;
 
 function renderDock(
   session: ChatSession,
@@ -216,19 +217,33 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     renderDock(session, onNewChat, chatInput);
 
     // Plain-language headline, not the raw prose.
-    expect(await screen.findByText(/engine session was lost/i)).toBeTruthy();
+    expect(
+      await screen.findByText(
+        /engine session was lost/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
     // The raw engine text is present (the disclosure) but not as a heading —
     // it renders inside the marker's own body text.
-    expect(await screen.findByText(RAW_MESSAGE, { exact: false })).toBeTruthy();
+    expect(
+      await screen.findByText(
+        RAW_MESSAGE,
+        { exact: false },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
 
     // #765 A1: the recovery affordance is "Send again". The server's
     // continuation seam replaces the dead binding with a fresh child session
     // (transcript carried forward), so resending into the same conversation
     // is the truthful first affordance now — station#1827's New-chat-only
     // treatment remains for translations that still claim `terminalSession`.
-    const actionButton = await screen.findByRole('button', {
-      name: 'Send again',
-    });
+    const actionButton = await screen.findByRole(
+      'button',
+      { name: 'Send again' },
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+    );
     expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
 
     fireEvent.click(actionButton);
@@ -304,7 +319,11 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     renderDock(session, onNewChat);
 
     expect(
-      await screen.findByRole('button', { name: 'Send again' }),
+      await screen.findByRole(
+        'button',
+        { name: 'Send again' },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
   });
@@ -342,7 +361,13 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     });
 
     renderDock(session, onNewChat);
-    fireEvent.click(await screen.findByRole('button', { name: 'New chat' }));
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: 'New chat' },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    );
 
     await waitFor(() =>
       expect(addEphemeralSpy).toHaveBeenCalledWith(session.id, {
@@ -382,7 +407,13 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
       ],
     });
     renderDock(session, onNewChat);
-    fireEvent.click(await screen.findByRole('button', { name: 'New chat' }));
+    fireEvent.click(
+      await screen.findByRole(
+        'button',
+        { name: 'New chat' },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    );
     await waitFor(() =>
       expect(addEphemeralSpy).toHaveBeenCalledWith(session.id, {
         role: 'system',

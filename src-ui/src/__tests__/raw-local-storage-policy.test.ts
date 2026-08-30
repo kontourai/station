@@ -32,7 +32,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   // gone from the source, so it is gone from here too rather than left as an
   // allowance for a writer that no longer exists.
   'station.newChat.lastModelByBinding', // Derived per-agent last-choice memory.
-  'station.usage-telemetry-disclosure.snoozed', // Session-only disclosure deferral, not a device setting.
+  'station.usage-telemetry-disclosure.snoozed', // Revision-bound disclosure deferral, not acknowledgement or a preference.
   'station-starter-work-operations-v1', // Exact Starter Work retry-operation evidence.
   'station-layout-tabs', // Per-layout navigation memory.
   'station:chat-drafts:v1', // Draft message content, not a setting.

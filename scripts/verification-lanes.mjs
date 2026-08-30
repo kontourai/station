@@ -88,8 +88,10 @@ export const FULL_REGRESSION_PHASES = Object.freeze([
     // per-push lane while the completion corpus is running.
     weight: 80,
     // The incident behind #1607 exceeded twenty minutes while making no
-    // progress. This is an execution deadline, not a target runtime.
-    timeoutMs: 12 * 60_000,
+    // progress. Keep this fence below that known stalled run, while allowing
+    // the 80-unit corpus to finish under the explicitly supported overlap
+    // with one 20-unit ci:fast reservation (#881).
+    timeoutMs: 18 * 60_000,
   }),
   Object.freeze({
     id: 'test-full-process-heavy',
@@ -98,9 +100,13 @@ export const FULL_REGRESSION_PHASES = Object.freeze([
     weight: 60,
     // The current two-worker corpus measured 471.99s after 2,410 passing
     // tests; its former 259.24s measurement predated the current handoff and
-    // Basis coverage. Ten minutes is an execution fence with proportionate
-    // headroom, not an assertion target or permission to add sleeps.
-    timeoutMs: 10 * 60_000,
+    // Basis coverage. #881 then reproduced a ten-minute infrastructure
+    // timeout with the supported 60+20+20 host-capacity overlap and no failed
+    // test identity. After the wave-3/native corpus expansion, #881 then hit
+    // the twenty-minute fence on an unshared host with no failed test identity.
+    // Thirty minutes is still an execution fence, not an assertion target or
+    // permission to add sleeps.
+    timeoutMs: 30 * 60_000,
   }),
   Object.freeze({
     id: 'test-full-process-exclusive',
