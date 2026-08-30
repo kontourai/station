@@ -462,10 +462,13 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
   });
 
-  test('a reload cannot re-arm after deferral while config still reads pending', () => {
+  test('deferral survives reload without re-arming and stays resumable while config is pending', () => {
     const firstMount = render(<FirstRunHomeChapter />);
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
-    expect(firstRunStore.getSnapshot().chapter).toBe('done');
+    expect(firstRunStore.getSnapshot()).toEqual({
+      chapter: 'connect',
+      deferred: true,
+    });
 
     firstMount.unmount();
     // The server mutation is intentionally fire-and-forget, so the restored
@@ -475,6 +478,12 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
 
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
     expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
+
+    // Deferred is a snooze, not terminal completion: the still-pending run is
+    // offered non-modally and can be resumed explicitly from where it stopped.
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Station' }));
+    expect(screen.getByTestId('first-run-engines')).toBeTruthy();
+    expect(firstRunStore.getSnapshot().chapter).not.toBe('done');
   });
 
   test('a reload resumes the last unfinished chapter instead of step one', () => {

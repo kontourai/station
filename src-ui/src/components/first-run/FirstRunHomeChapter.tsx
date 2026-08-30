@@ -224,6 +224,7 @@ export function FirstRunHomeChapter() {
       autoOpened.current ||
       !offer.autoOpen ||
       launcherWouldShow ||
+      progress.deferred === true ||
       progress.chapter === 'tour' ||
       progress.chapter === 'done'
     )
@@ -251,6 +252,7 @@ export function FirstRunHomeChapter() {
     configSettled,
     systemStatusUnconfirmed,
     disclosureSettled,
+    progress.deferred,
     progress.chapter,
     openChapter,
   ]);
@@ -308,12 +310,13 @@ export function FirstRunHomeChapter() {
     if (step === 'disclosure') {
       dismissUsageTelemetryDisclosure(disclosureData?.inventoryRevision);
     }
-    // Device settings are synchronous and durable. Record the decision before
-    // closing so a reload cannot race the server transition and re-arm this
-    // chapter from a restored `pending` config snapshot.
-    firstRunStore.finish();
     setOpen(false);
     if (decided.current) return;
+    // Device settings are synchronous and durable. Record a resumable snooze
+    // before the asynchronous server transition so a reload cannot race a
+    // restored `pending` config snapshot and re-block the UI. This is not
+    // terminal completion: the Home card continues to offer the saved chapter.
+    firstRunStore.defer();
     // Only from `pending`: re-writing `skipped` on every close of a
     // re-opened, already-deferred chapter would move `skippedAt` to mean
     // "the last time this dialog was closed", which is not what it says.
@@ -339,7 +342,7 @@ export function FirstRunHomeChapter() {
    * stays on offer until it genuinely finishes.
    */
   const giveUp = useCallback(() => {
-    firstRunStore.finish();
+    firstRunStore.defer();
     setOpen(false);
     if (decided.current) return;
     if (config?.firstRun?.status !== 'pending') return;
