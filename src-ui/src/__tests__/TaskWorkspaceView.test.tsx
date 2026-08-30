@@ -18,6 +18,12 @@ let queryResult: {
   error?: Error;
   refetch: ReturnType<typeof vi.fn>;
 };
+let projectsResult: {
+  data?: Array<{ id: string; slug: string }>;
+  isLoading: boolean;
+  error?: Error;
+  refetch: ReturnType<typeof vi.fn>;
+};
 let roomDiscoveryResult: {
   data: any;
   isLoading: boolean;
@@ -91,6 +97,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useCreateTaskOutputMutation: () => createOutputMutation,
   useDeleteTaskOutputMutation: () => deleteOutputMutation,
   usePluginsQuery: () => pluginsResult,
+  useProjectsQuery: () => projectsResult,
 }));
 vi.mock('@kontourai/station-sdk/task-user-input-references', () => ({
   useTaskUserInputReferencesQuery: () => userInputReferencesResult,
@@ -286,6 +293,11 @@ describe('TaskWorkspaceView', () => {
       isLoading: false,
       refetch: vi.fn(),
     };
+    projectsResult = {
+      data: [{ id: 'project-alpha', slug: 'alpha' }],
+      isLoading: false,
+      refetch: vi.fn(),
+    };
     turnReferencesResult = {
       data: [],
       isLoading: false,
@@ -324,6 +336,21 @@ describe('TaskWorkspaceView', () => {
       isFetching: false,
       refetch: vi.fn(),
     };
+  });
+
+  test('renders a retained Task as orphaned when its Project has been deleted', () => {
+    projectsResult.data = [];
+
+    render(<TaskWorkspaceView taskId="task-alpha" />);
+
+    expect(screen.getByText('Project deleted')).toBeTruthy();
+    expect(screen.getByText(/Task is retained in history/)).toBeTruthy();
+    expect(
+      screen.getByText(/live Project workspace controls are unavailable/),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('region', { name: 'Task room workspace' }),
+    ).toBeNull();
   });
 
   test('retains a previously verified Task room as read-only async context', () => {

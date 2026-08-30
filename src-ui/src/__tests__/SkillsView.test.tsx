@@ -137,6 +137,18 @@ afterEach(() => {
 });
 
 describe('SkillsView', () => {
+  function chooseImportFile(name: string, content: string) {
+    const input = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const chosen = new File([content], name, { type: 'text/markdown' });
+    Object.defineProperty(input, 'files', {
+      value: [chosen],
+      configurable: true,
+    });
+    fireEvent.change(input);
+  }
+
   // SHELL-09. `isLoading` was a hardcoded `false`, so for the ~2.2 s the skills
   // read was in flight the list panel asserted "No installed skills yet" — the
   // definitive empty state, with a CTA to create one — and then swapped in 24
@@ -186,6 +198,47 @@ describe('SkillsView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(refetchSkillsMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('imports markdown through the live mutation and refreshes the skill list', async () => {
+    importSkillsMock.mockResolvedValueOnce({
+      imported: 1,
+      results: [
+        { filename: 'release-check.md', success: true, name: 'release-check' },
+      ],
+    });
+    render(<SkillsView />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Import .md' }));
+    chooseImportFile('release-check.md', '# Release check');
+    await screen.findByText('1 file to import');
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1' }));
+
+    await waitFor(() =>
+      expect(importSkillsMock).toHaveBeenCalledWith([
+        { filename: 'release-check.md', content: '# Release check' },
+      ]),
+    );
+    await waitFor(() => expect(refetchSkillsMock).toHaveBeenCalledTimes(1));
+    expect(
+      screen.getByText('release-check.md — imported as release-check'),
+    ).toBeTruthy();
+  });
+
+  test('renders an import rejection in the dialog', async () => {
+    importSkillsMock.mockRejectedValueOnce(
+      new Error('Import route unavailable'),
+    );
+    render(<SkillsView />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Import .md' }));
+    chooseImportFile('release-check.md', '# Release check');
+    await screen.findByText('1 file to import');
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Import route unavailable',
+    );
   });
 
   test('renders the create form when the URL selection is /skills/new', () => {

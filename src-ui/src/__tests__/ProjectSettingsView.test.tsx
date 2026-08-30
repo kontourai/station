@@ -15,6 +15,8 @@ const sdkMocks = vi.hoisted(() => ({
   refetch: vi.fn(),
   updateProject: vi.fn(),
   deleteProject: vi.fn(),
+  updateFailure: null as Error | null,
+  deleteFailure: null as Error | null,
   environments: [] as Array<{
     profile: { id: string; name: string; environmentId?: string };
   }>,
@@ -116,31 +118,23 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: sdkMocks.error,
     refetch: sdkMocks.refetch,
   })),
-  useUpdateProjectMutation: vi.fn(
-    (options?: {
-      onSuccess?: (saved: ProjectConfig) => void;
-      onError?: (err: Error) => void;
-    }) => ({
-      isPending: false,
-      mutate: (payload: Partial<ProjectConfig> & { slug: string }) => {
-        sdkMocks.updateProject(payload);
-        if (payload.name === 'Reject Save') {
-          options?.onError?.(new Error('Name rejected by policy'));
-          return;
-        }
-        options?.onSuccess?.({
-          ...(sdkMocks.project as ProjectConfig),
-          ...payload,
-          updatedAt: '2026-07-07T23:45:00.000Z',
-        });
-      },
-    }),
-  ),
-  useDeleteProjectMutation: vi.fn((options?: { onSuccess?: () => void }) => ({
+  useUpdateProjectMutation: vi.fn(() => ({
     isPending: false,
-    mutate: (slug: string) => {
+    mutateAsync: async (payload: Partial<ProjectConfig> & { slug: string }) => {
+      sdkMocks.updateProject(payload);
+      if (sdkMocks.updateFailure) throw sdkMocks.updateFailure;
+      return {
+        ...(sdkMocks.project as ProjectConfig),
+        ...payload,
+        updatedAt: '2026-07-07T23:45:00.000Z',
+      };
+    },
+  })),
+  useDeleteProjectMutation: vi.fn(() => ({
+    isPending: false,
+    mutateAsync: async (slug: string) => {
       sdkMocks.deleteProject(slug);
-      options?.onSuccess?.();
+      if (sdkMocks.deleteFailure) throw sdkMocks.deleteFailure;
     },
   })),
 }));
@@ -184,6 +178,8 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     sdkMocks.error = undefined;
     sdkMocks.updateProject.mockClear();
     sdkMocks.deleteProject.mockClear();
+    sdkMocks.updateFailure = null;
+    sdkMocks.deleteFailure = null;
     sdkMocks.refetch.mockClear();
     sdkMocks.environments = [];
     sdkMocks.environmentsError = false;
@@ -371,6 +367,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
   });
 
   test('surfaces failed saves through the canonical ErrorState alert', async () => {
+    sdkMocks.updateFailure = new Error('Name rejected by policy');
     const { container } = renderProjectSettings();
 
     fireEvent.change(
@@ -386,5 +383,32 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(screen.getByText('Could not save project settings')).toBeTruthy();
     expect(screen.getByText('Name rejected by policy')).toBeTruthy();
     expect(screen.getByText('unsaved')).toBeTruthy();
+  });
+
+  test('keeps a failed deletion in context and renders the rejection', async () => {
+    sdkMocks.deleteFailure = new Error('Station connection was interrupted');
+    renderProjectSettings();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Project' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Station connection was interrupted',
+    );
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(navigationMocks.navigate).not.toHaveBeenCalled();
+  });
+
+  test('explains that deleting a Project retains Tasks and chats without a live workspace', () => {
+    renderProjectSettings();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Project' }));
+
+    expect(screen.getByRole('dialog').textContent).toContain(
+      'Tasks and chats stay in history',
+    );
+    expect(screen.getByRole('dialog').textContent).toContain(
+      'no longer have a live Project workspace',
+    );
   });
 });

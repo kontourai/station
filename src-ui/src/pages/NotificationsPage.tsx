@@ -15,12 +15,14 @@ import {
   ErrorState,
   SkeletonList,
 } from '../components/state';
+import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useAttentionInbox } from '../hooks/useAttentionInbox';
 import {
   countPendingAttention,
   pendingAttentionItems,
 } from '../utils/attention';
+import { errorText } from '../utils/errorText';
 import '../views/page-layout.css';
 import './NotificationsPage.css';
 import { Button } from '../components/Button';
@@ -38,6 +40,7 @@ import {
 
 export function NotificationsPage() {
   const { navigate } = useNavigation();
+  const { apiBase } = useApiBase();
   const inbox = useAttentionInbox();
   const [showDismissConfirm, setShowDismissConfirm] = useState(false);
   const [filters, setFilters] = useState(() =>
@@ -104,17 +107,40 @@ export function NotificationsPage() {
   );
   const queryClient = useQueryClient();
   const dismissAllAttention = useMutation({
-    mutationFn: () =>
-      Promise.all(
-        attentionItems.map((item) => acknowledgeAttentionItem(item.id)),
-      ),
-    onSuccess: async () => {
+    // `allSettled`, not `all`: these acknowledgements are independent and
+    // already persisted server-side one by one, so there is nothing to roll
+    // back. Rejecting the batch on the first failure (#890 review) discarded
+    // the outcome of every other item — a single failure reported the whole
+    // dismissal as failed while most of it had in fact happened. Settle them
+    // all, then report only what actually failed, with a count so the user
+    // knows the batch was partial rather than lost.
+    mutationFn: async () => {
+      const outcomes = await Promise.allSettled(
+        attentionItems.map((item) =>
+          acknowledgeAttentionItem(item.id, apiBase),
+        ),
+      );
+      const failures = outcomes.filter(
+        (outcome) => outcome.status === 'rejected',
+      );
+      if (failures.length === 0) return;
+      throw new Error(
+        `${failures.length} of ${outcomes.length} could not be dismissed: ${errorText(failures[0].reason)}`,
+      );
+    },
+    // Settled, not success: a partial batch still dismissed some items, and
+    // the rows that did clear must leave the inbox even though the mutation
+    // reports failure. The refetch is the source of truth for what remains.
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['attention'] });
+    },
+    onSuccess: () => {
       // The confirm is answered; leaving it open re-rendered it against the
       // now-empty queue as "Dismiss 0 items needing attention?" over a page
       // that had already dismissed them — a live confirmation for an action
-      // with nothing left to act on.
+      // with nothing left to act on. On failure it stays open, carrying the
+      // error.
       setShowDismissConfirm(false);
-      await queryClient.invalidateQueries({ queryKey: ['attention'] });
     },
   });
 
@@ -274,6 +300,11 @@ export function NotificationsPage() {
         }}
         onCancel={() => setShowDismissConfirm(false)}
         pending={dismissAllAttention.isPending}
+        error={
+          dismissAllAttention.error
+            ? errorText(dismissAllAttention.error)
+            : null
+        }
       />
     </>
   );

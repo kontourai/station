@@ -71,6 +71,13 @@ function storageError(outcome: SchedulerUnavailable): Error {
     : new SchedulerStorageUnavailableError();
 }
 
+export class SchedulerJobConflictError extends Error {
+  constructor(name: string) {
+    super(`Job '${name}' already exists`);
+    this.name = 'SchedulerJobConflictError';
+  }
+}
+
 /** A monitor dispatches a Task through its declared Station authority only. */
 function assertMonitorAuthority(
   input: Pick<AddJobOpts, 'monitor' | 'retryCount' | 'trustAllTools'>,
@@ -1378,7 +1385,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
     });
     if (result.kind === 'unavailable') throw storageError(result);
     if (result.kind === 'exists')
-      throw new Error(`Job '${opts.name}' already exists`);
+      throw new SchedulerJobConflictError(opts.name);
     return `Job '${opts.name}' created`;
   }
 

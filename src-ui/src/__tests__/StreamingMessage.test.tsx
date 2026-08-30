@@ -22,6 +22,7 @@ describe('StreamingMessage', () => {
     useStreamingContent.mockReturnValue({
       streamingText: '',
       hasContent: true,
+      contentRevision: 1,
       contentParts: [
         {
           type: 'tool-invocation',
@@ -52,6 +53,7 @@ describe('StreamingMessage', () => {
     useStreamingContent.mockReturnValue({
       streamingText: '',
       hasContent: true,
+      contentRevision: 1,
       contentParts: [
         {
           type: 'tool-invocation',
@@ -80,6 +82,7 @@ describe('StreamingMessage', () => {
     useStreamingContent.mockReturnValue({
       streamingText: '',
       hasContent: true,
+      contentRevision: 1,
       contentParts: [
         {
           type: 'ui-block',
@@ -107,11 +110,49 @@ describe('StreamingMessage', () => {
     expect(screen.getByText('98%')).toBeTruthy();
   });
 
+  test('notifies scroll ownership from the cheap content revision without concatenating transcript text', () => {
+    const onContentChange = vi.fn();
+    useStreamingContent.mockReturnValue({
+      streamingText: 'same length',
+      hasContent: true,
+      contentRevision: 1,
+      contentParts: [],
+    });
+    const view = render(
+      <StreamingMessage
+        sessionId="session-growth"
+        agentIcon={<div>AI</div>}
+        agentIconStyle={{}}
+        fontSize={14}
+        onContentChange={onContentChange}
+      />,
+    );
+    expect(onContentChange).toHaveBeenCalledTimes(1);
+
+    useStreamingContent.mockReturnValue({
+      streamingText: 'same length',
+      hasContent: true,
+      contentRevision: 2,
+      contentParts: [],
+    });
+    view.rerender(
+      <StreamingMessage
+        sessionId="session-growth"
+        agentIcon={<div>AI</div>}
+        agentIconStyle={{}}
+        fontSize={14}
+        onContentChange={onContentChange}
+      />,
+    );
+    expect(onContentChange).toHaveBeenCalledTimes(2);
+  });
+
   describe('station#1424 review fix (S3, then round 3 NEW-1): attribution renders from the first streaming frame, with the SAME fields a persisted row shows', () => {
     beforeEach(() => {
       useStreamingContent.mockReturnValue({
         streamingText: 'Working on it…',
         hasContent: true,
+        contentRevision: 1,
         contentParts: [],
       });
     });

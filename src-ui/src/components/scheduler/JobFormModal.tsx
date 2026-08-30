@@ -5,6 +5,7 @@ import type {
 import { useEffect, useState } from 'react';
 import type { SchedulerProviderInfo } from '../../hooks/useScheduler';
 import { useAddJob, useEditJob } from '../../hooks/useScheduler';
+import { errorText } from '../../utils/errorText';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { Toggle } from '../Toggle';
@@ -249,6 +250,7 @@ export function JobFormModal({
   };
 
   const pending = addJob.isPending || editJob.isPending;
+  const mutationError = addJob.error ?? editJob.error;
   const scheduleValid =
     form.scheduleKind === 'cron'
       ? form.cron.trim().length > 0
@@ -292,6 +294,11 @@ export function JobFormModal({
       }
     >
       <div className="schedule__modal-body">
+        {mutationError && (
+          <div role="alert" className="schedule__field-error">
+            {errorText(mutationError)}
+          </div>
+        )}
         {!isEdit && providers.length > 1 && (
           <label className="schedule__field">
             <span className="schedule__field-label">Run with</span>
