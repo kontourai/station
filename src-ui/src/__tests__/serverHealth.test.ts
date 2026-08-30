@@ -123,6 +123,34 @@ describe('probeServerConnection', () => {
    * response having arrived, so none of them may read as unreachable.
    */
   describe('a host that answers is never reported as unreachable (station#3297)', () => {
+    it('recognizes Station own UI proxy 503 as a recovering host', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        Response.json({ ready: false, status: 'unavailable' }, { status: 503 }),
+      );
+      await expect(
+        probeServerConnection(
+          'https://station.example.test',
+          'fixture-credential',
+          'environment-1',
+          new AbortController().signal,
+        ),
+      ).resolves.toEqual({ ok: false, reason: 'host-unavailable' });
+    });
+
+    it('keeps an unknown 503 in the foreign or unusable responder bucket', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        Response.json({ status: 'maintenance' }, { status: 503 }),
+      );
+      await expect(
+        probeServerConnection(
+          'https://station.example.test',
+          'fixture-credential',
+          'environment-1',
+          new AbortController().signal,
+        ),
+      ).resolves.toEqual({ ok: false, reason: 'unexpected-response' });
+    });
+
     it('reads a 401 on the public handshake as a rejected device', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
         Response.json(
@@ -413,6 +441,18 @@ describe('probeServerConnection', () => {
 });
 
 describe('checkServerHealthDetailed (401 must not read as unreachable)', () => {
+  it('maps the Station UI proxy unavailable envelope to host recovery copy', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ ready: false, status: 'unavailable' }, { status: 503 }),
+      ),
+    );
+    await expect(
+      checkServerHealthDetailed('http://station.example:3141'),
+    ).resolves.toEqual({ ok: false, reason: 'host-unavailable' });
+  });
+
   it('reports a rejected credential as authentication-failed, not unreachable', async () => {
     // A reachable Station that rejects the saved credential answers 401.
     // Collapsing that to "unreachable" told the user to check the host when the

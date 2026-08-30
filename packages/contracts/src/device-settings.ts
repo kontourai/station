@@ -127,7 +127,8 @@ export type ChatDockMode = 'left' | 'bottom' | 'right';
  * ANSWERS the About-you chapter collects are a different thing and live
  * server-side in `AppConfig.userProfile`, because the model needs them.
  *
- * `chapter` is where a resume lands; `tourStepId` is the tour step the user
+ * `chapter` is where a resume lands; `deferred` snoozes automatic presentation
+ * without discarding that resume point; `tourStepId` is the tour step the user
  * had reached when they left, so a partial tour resumes where it stopped
  * rather than restarting. An unrecognised `tourStepId` (a step retired since
  * it was written) is treated as "start of the tour", never as a crash.
@@ -146,6 +147,8 @@ export type FirstRunChapter =
 
 export interface FirstRunProgress {
   chapter: FirstRunChapter;
+  /** "Not now" on this device: resumable and deliberately distinct from `done`. */
+  deferred?: boolean;
   tourStepId?: string;
 }
 
@@ -613,8 +616,9 @@ export const DEVICE_SETTINGS_REGISTRY = [
     scope: 'device',
     descriptor: { kind: 'composite' },
     label: 'First run',
-    // archive#2652. Persisted as `{ chapter, tourStepId? }`. Records only how
-    // far the guided first run got on this device; the About-you ANSWERS are
+    // archive#2652. Persisted as `{ chapter, deferred?, tourStepId? }`. Records
+    // only how far the guided first run got on this device and whether its
+    // automatic presentation was deferred; the About-you ANSWERS are
     // server-scope (`AppConfig.userProfile`) because the model reads them.
     description: 'Guided first-run progress on this device.',
     defaultValue: DEFAULT_FIRST_RUN_PROGRESS,

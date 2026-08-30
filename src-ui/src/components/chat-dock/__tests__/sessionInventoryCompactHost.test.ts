@@ -68,7 +68,8 @@ function buildBasisFallbackHtml(): string {
 <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <style>${buildFixtureCss()}</style></head>
 <body style="margin:0"><header id="app-header" style="position:fixed;inset:0 0 auto;height:46px;z-index:1;background:#111;color:#fff">App header</header>
-<main style="padding-top:46px"><div class="chat-dock__conversation-surface"><div class="responsive-surface-overlay basis-pane-fallback-overlay" data-responsive-layer="dialog"><div class="basis-pane-fallback responsive-surface-panel" role="dialog" aria-label="Basis"><div class="responsive-dialog-header"><strong>Basis</strong><button type="button" class="responsive-dialog-close" aria-label="Close Basis">Close</button></div><h2>Session inventory</h2></div></div></div></main></body></html>`;
+<main style="padding-top:46px"><div class="chat-dock__conversation-surface" style="width:480px;height:360px;overflow:hidden;transform:translateZ(0)">Chat dock</div></main>
+<div class="station-dialog__overlay responsive-surface-overlay basis-pane-fallback-overlay" data-responsive-layer="dialog"><div class="station-dialog station-dialog--lg basis-pane-fallback responsive-surface-panel" role="dialog" aria-label="Basis"><div class="station-dialog__header"><div class="station-dialog__heading"><h2 class="station-dialog__title">Basis</h2></div><button type="button" class="responsive-dialog-close" aria-label="Close Basis">Close</button></div><div class="station-dialog__body"><section class="session-inventory"><h2>Session inventory</h2></section></div></div></div></body></html>`;
 }
 
 function renderCompactMarkup(): string {
@@ -219,30 +220,45 @@ describe.skipIf(!chromiumAvailable)(
       }
     });
 
-    test('keeps desktop Basis fallback below app chrome and wholly inside the supported desktop viewport', async () => {
+    test('makes desktop full Basis a readable viewport surface independent of ChatDock', async () => {
       const page = await browser.newPage({
-        viewport: { width: 1440, height: 900 },
+        viewport: { width: 1152, height: 768 },
       });
       try {
         await page.setContent(buildBasisFallbackHtml());
-        const header = page.locator('#app-header');
         const overlay = page.locator('.basis-pane-fallback-overlay');
         const panel = page.getByRole('dialog', { name: 'Basis' });
-        const [headerBox, overlayBox, panelBox] = await Promise.all([
-          header.boundingBox(),
+        const [overlayBox, panelBox] = await Promise.all([
           overlay.boundingBox(),
           panel.boundingBox(),
         ]);
-        expect(headerBox).not.toBeNull();
         expect(overlayBox).not.toBeNull();
         expect(panelBox).not.toBeNull();
-        expect(overlayBox!.y).toBeGreaterThanOrEqual(
-          headerBox!.y + headerBox!.height,
-        );
+        expect(overlayBox!.x).toBe(0);
+        expect(overlayBox!.y).toBe(0);
+        expect(overlayBox!.width).toBe(1152);
+        expect(overlayBox!.height).toBe(768);
         expect(panelBox!.y).toBeGreaterThanOrEqual(overlayBox!.y);
-        expect(panelBox!.x).toBeGreaterThanOrEqual(0);
-        expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(1440);
-        expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(900);
+        expect(panelBox!.x).toBeGreaterThanOrEqual(overlayBox!.x);
+        expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(1152);
+        expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(768);
+        expect(panelBox!.width).toBeGreaterThanOrEqual(1000);
+        expect(panelBox!.height).toBeGreaterThanOrEqual(650);
+        expect(
+          await overlay.evaluate(
+            (element) => getComputedStyle(element).position,
+          ),
+        ).toBe('fixed');
+        expect(
+          await overlay.evaluate(
+            (element) => getComputedStyle(element).backgroundColor,
+          ),
+        ).not.toBe('rgba(0, 0, 0, 0)');
+        expect(
+          await panel.evaluate(
+            (element) => getComputedStyle(element).backgroundColor,
+          ),
+        ).not.toBe('rgba(0, 0, 0, 0)');
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -263,6 +279,12 @@ describe.skipIf(!chromiumAvailable)(
       });
       try {
         await page.setContent(buildBasisFallbackHtml());
+        await page.evaluate(() => {
+          document.documentElement.style.setProperty('--safe-top', '32px');
+          document.documentElement.style.setProperty('--safe-right', '18px');
+          document.documentElement.style.setProperty('--safe-bottom', '24px');
+          document.documentElement.style.setProperty('--safe-left', '14px');
+        });
         const overlay = page.locator('.basis-pane-fallback-overlay');
         const panel = page.getByRole('dialog', { name: 'Basis' });
         // `.responsive-surface-panel` enters with a shared translateY
@@ -301,6 +323,34 @@ describe.skipIf(!chromiumAvailable)(
           ),
           'the Basis panel reaches the overlay bottom edge',
         ).toBeLessThanOrEqual(BLINK_LAYOUT_UNIT_CSS_PX);
+        const closeBox = await panel
+          .getByRole('button', { name: 'Close Basis' })
+          .boundingBox();
+        expect(closeBox).not.toBeNull();
+        expect(closeBox!.y).toBeGreaterThanOrEqual(32);
+        expect(closeBox!.x + closeBox!.width).toBeLessThanOrEqual(
+          MOBILE_VIEWPORT.width - 18,
+        );
+        const safePadding = await panel.evaluate((element) => {
+          const header = element.querySelector<HTMLElement>(
+            '.station-dialog__header',
+          );
+          const body = element.querySelector<HTMLElement>(
+            '.station-dialog__body',
+          );
+          return {
+            headerTop: Number.parseFloat(getComputedStyle(header!).paddingTop),
+            bodyBottom: Number.parseFloat(
+              getComputedStyle(body!).paddingBottom,
+            ),
+            bodyLeft: Number.parseFloat(getComputedStyle(body!).paddingLeft),
+            bodyRight: Number.parseFloat(getComputedStyle(body!).paddingRight),
+          };
+        });
+        expect(safePadding.headerTop).toBeGreaterThanOrEqual(40);
+        expect(safePadding.bodyBottom).toBeGreaterThanOrEqual(36);
+        expect(safePadding.bodyLeft).toBeGreaterThanOrEqual(26);
+        expect(safePadding.bodyRight).toBeGreaterThanOrEqual(30);
       } finally {
         await page.close();
       }

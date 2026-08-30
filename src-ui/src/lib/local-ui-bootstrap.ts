@@ -1,4 +1,5 @@
 import { PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH } from '@kontourai/station-contracts/environment-security';
+import { isStationUiProxyUnavailableResponse } from './station-ui-proxy';
 
 const FRAGMENT_KEY = 'station-ui-bootstrap';
 let captured = false;
@@ -6,6 +7,7 @@ let sessionResolution: Promise<LocalUiSessionResolution> | undefined;
 
 export type LocalUiSessionResolution =
   | { kind: 'authenticated' }
+  | { kind: 'host-unavailable' }
   | { kind: 'access-required'; message?: string };
 
 export function captureLocalUiBootstrapToken(): string | undefined {
@@ -63,6 +65,13 @@ export function resolveLocalUiSession(
         credentials: 'include',
         headers: { Accept: 'application/json' },
       });
+      if (await isStationUiProxyUnavailableResponse(response)) {
+        // The Station-owned UI proxy answered, but its sibling host could not.
+        // That says nothing about whether this browser's existing HttpOnly
+        // session is valid, so preserve the access context rather than
+        // demoting the browser to first-run pairing.
+        return { kind: 'host-unavailable' };
+      }
       return response.ok
         ? { kind: 'authenticated' }
         : { kind: 'access-required' };

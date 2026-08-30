@@ -50,7 +50,10 @@ export {
  * unmount, exactly what a redirect notice needs) and the leave for the
  * project page — is the adapter's.
  */
-export function BoardWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
+export function BoardWorkspacePane({
+  instance,
+  requireBuilderRun = true,
+}: BuiltinWorkspacePaneProps & { requireBuilderRun?: boolean }) {
   const identity = useWorkspacePaneBoundIdentity(instance, false);
   const project = identity.state === 'resolved' ? identity.project : null;
   const projectSlug = project?.slug;
@@ -77,7 +80,11 @@ export function BoardWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
     return <WorkspacePaneBindingUnavailable identity={identity} />;
   return (
     <>
-      <ConsoleBoardPane projectSlug={identity.project.slug} host={host} />
+      <ConsoleBoardPane
+        projectSlug={identity.project.slug}
+        host={host}
+        requireBuilderRun={requireBuilderRun}
+      />
       {confirmChrome}
     </>
   );
