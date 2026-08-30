@@ -520,7 +520,7 @@ describe('native release workflow topology', () => {
     const container = workflowJob(release, 'container');
     const assemble = workflowJob(release, 'assemble-draft');
     const promotion = workflowJob(publish, 'publish');
-    expect(container.needs).toBe('preflight');
+    expect(container.needs).toEqual(['preflight', 'full-regression']);
     expect(container.permissions).toMatchObject({
       attestations: 'write',
       'id-token': 'write',
@@ -925,9 +925,7 @@ describe('native release workflow topology', () => {
     expect(release).toContain(
       `packageName: ${githubExpression('needs.preflight.outputs.android_package')}`,
     );
-    expect(release).toContain(
-      "if: needs.preflight.outputs.channel == 'stable'",
-    );
+    expect(release).toContain("needs.preflight.outputs.channel == 'stable'");
     expect(release).not.toContain(
       'ios build --export-method app-store-connect --channel-identity',
     );

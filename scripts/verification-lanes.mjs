@@ -240,11 +240,11 @@ export const LANES = Object.freeze([
       '.kontourai/veritas/evidence/proof-families/',
     ]),
     manifest: MANIFEST_NONE,
-    trigger: 'pre-merge / final completion',
+    trigger: 'promotion / explicit diagnosis',
     scope:
       'repo-governance + sdk/app builds + static gates + full Vitest corpus',
     description:
-      'Canonical full-regression gate (trigger: pre-merge/final). Scope: proof:repo-governance, proof:sdk-builds, verify:static, test:full, proof:app-builds. Evidence: the sole trust-reconcile completion receipt. The full Vitest corpus is resource-profiled into independently safe groups by its runner. Invalidation: command-only (no consumed manifest); the workspace/HEAD/dependency/toolchain request fields still apply.',
+      'Canonical full-regression gate (trigger: hosted promotion or explicit diagnosis). Scope: proof:repo-governance, proof:sdk-builds, verify:static, test:full, proof:app-builds. Evidence: the sole trust-reconcile completion receipt. The full Vitest corpus is resource-profiled into independently safe groups by its runner. Invalidation: command-only (no consumed manifest); the workspace/HEAD/dependency/toolchain request fields still apply.',
   }),
   Object.freeze({
     id: 'ci-fast',

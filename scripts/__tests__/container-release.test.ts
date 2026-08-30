@@ -366,7 +366,7 @@ describe('container source contract', () => {
   });
 
   test('binds release publication and smoke to immutable provenance and cleanup', () => {
-    expect(release).toContain('needs: preflight');
+    expect(release).toContain('needs: [preflight, full-regression]');
     expect(release).toContain(
       'needs: [preflight, desktop-macos, desktop-windows, desktop-linux, portable, android, ios-simulator, ios-device, container]',
     );

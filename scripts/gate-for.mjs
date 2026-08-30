@@ -85,7 +85,9 @@ export function gateReport({ changedPaths, baseSha }) {
     'Tests — derive the focused selection (do not guess):',
     '  npm run test:changed -- --base=origin/main --explain',
     'Bounded feedback before push:  npm run ci:fast',
-    'Completion evidence (final checkpoint only):  npm run full:regression',
+    'Ordinary PR integration:  required checks on the GitHub merge queue candidate',
+    'Promotion completion:  hosted Nightly/tag workflow runs npm run full:regression',
+    'Explicit diagnostic escape hatch:  manual CI workflow_dispatch',
   );
   return lines.join('\n');
 }

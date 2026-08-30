@@ -322,9 +322,12 @@ remains a separate provider/device observation.
 
 ## Stage, inspect, publish, and roll back
 
-Push an immutable tag. The `Stage Station release` workflow preserves the GHCR
-image under `ghcr.io/kontourai/station:sha-<source-sha>` and creates a GitHub
-draft only after the inventory passes. Inspect the draft's
+Push an immutable tag. The `Stage Station release` preflight binds that tag to
+one source SHA, then the reusable hosted full-regression gate must pass on that
+exact SHA before any preview or stable producer can build, sign, upload, or
+publish. The workflow preserves the GHCR image under
+`ghcr.io/kontourai/station:sha-<source-sha>` and creates a GitHub draft only
+after the inventory passes. Inspect the draft's
 `station-release-inventory.json`, `station-release-checksums.txt`, and
 `station-container-release.json`, then run `Publish Station release` with its
 tag through `native-release-publish`. Every platform payload is attested by its
