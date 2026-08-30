@@ -141,6 +141,29 @@ describe('LayoutRenderer component dispatch', () => {
     expect(screen.getByText('Plugin layout rendered')).toBeTruthy();
   });
 
+  test('does not classify a declared plugin component as unsupported before the lazy registry settles', () => {
+    registryLoadStatus = { state: 'loading', failedPluginNames: [] };
+    getLayoutMock.mockReturnValue(undefined);
+
+    renderSingleTab('knowledge-library');
+
+    expect(
+      screen.getByRole('status', { name: 'Loading extension layout' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('Unsupported layout tab')).toBeNull();
+
+    getLayoutMock.mockReturnValue(PluginLayout);
+    act(() => {
+      registryLoadStatus = { state: 'ready', failedPluginNames: [] };
+      notifyRegistryListeners();
+    });
+
+    expect(screen.getByText('Plugin layout rendered')).toBeTruthy();
+    expect(
+      screen.queryByRole('status', { name: 'Loading extension layout' }),
+    ).toBeNull();
+  });
+
   test('names the remote-isolation refusal for a plugin view instead of claiming it is uninstalled', () => {
     // The plugin IS installed server-side; its bundle was refused by policy.
     // The slot must say so (archive#2539 phone report) — and render without a
