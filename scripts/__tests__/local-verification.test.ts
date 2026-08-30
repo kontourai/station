@@ -7,10 +7,9 @@ import {
   mkdtempSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { collectWorkspaceProvenance } from '../lib/test-reliability.mjs';
@@ -233,12 +232,12 @@ describe('local verification Node pinning', () => {
   it.runIf(process.platform !== 'win32')(
     'keeps parent and child processes on Node 24 with a poisoned PATH without entering workspace provenance',
     () => {
-      // Keep mutable fixture state outside the Git worktree. The symlink
-      // resolves to the host Node executable, so resolveSupportedNode still
-      // exercises its production canonical-path ownership and mode checks.
-      // This also works on platforms where the OS temp directory itself is
-      // intentionally not a trusted executable parent.
-      const root = mkdtempSync(join(tmpdir(), 'station-node-path-'));
+      // Keep mutable fixture state outside the Git worktree and under the
+      // caller-owned home, whose ancestors satisfy the production executable
+      // trust policy. Copying Node is load-bearing: a symlink resolves back to
+      // GitHub's intentionally group/world-writable hosted toolcache and is
+      // correctly rejected by assertTrustedPath.
+      const root = mkdtempSync(join(homedir(), '.station-node-path-'));
       tempRoots.push(root);
       const provenanceSubject = createCommittedProvenanceSubject(root);
       const provenanceBeforeFixture = collectWorkspaceProvenance({
@@ -251,7 +250,9 @@ describe('local verification Node pinning', () => {
       const fakeNode = join(poisonedBin, 'node');
       const trustedNode = join(trustedBin, 'node');
       const helperMarker = join(poisonedBin, 'mise-ran');
-      symlinkSync(process.execPath, trustedNode);
+      copyFileSync(process.execPath, trustedNode);
+      chmodSync(trustedNode, 0o755);
+      expect(assertTrustedPath(trustedNode)).toBe(realpathSync(trustedNode));
       const provenanceDuringFixture = collectWorkspaceProvenance({
         cwd: provenanceSubject,
       });
