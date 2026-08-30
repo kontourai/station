@@ -1,4 +1,5 @@
 import { writeFileSync } from 'node:fs';
+import type { SchedulerEvent } from '@kontourai/station-contracts/scheduler';
 import {
   schedulerJobDuration,
   schedulerJobRuns,
@@ -29,7 +30,7 @@ export interface SchedulerExecutionDeps {
   receipt: SchedulerDispatchReceipt;
   turnAdapter: ScheduledTurnAdapter;
   notificationService: NotificationService | null;
-  broadcast: (event: Record<string, unknown>) => void;
+  broadcast: (event: SchedulerEvent) => void;
   /**
    * The ledger's durable announcement record, threaded through so a failure
    * announced here is stamped on the run it belongs to. Absent only where a
@@ -422,7 +423,7 @@ export async function announceSchedulerJobFailure({
   id: string;
   /** Why it failed. Never empty — every caller derives a specific reason. */
   error: string;
-  broadcast: (event: Record<string, unknown>) => void;
+  broadcast: (event: SchedulerEvent) => void;
   notificationService: NotificationService | null;
   /**
    * The durable record of which runs have been announced. Optional so a test

@@ -5,6 +5,8 @@ import {
 } from '@kontourai/ephemeris';
 import {
   SCHEDULER_EXECUTION_LIMITS,
+  type SchedulerConcurrencyDisposition,
+  type SchedulerEvent,
   type SchedulerManualRunReceipt,
 } from '@kontourai/station-contracts/scheduler';
 import { SCHEDULED_CHECK_STARTER_DEFINITION_VERSION } from '@kontourai/station-contracts/starter-work';
@@ -843,12 +845,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
                 },
               ),
             );
-            this.observe(() =>
-              schedulerConcurrencyDeferrals.add(1, {
-                reason,
-                disposition: 'waiting',
-              }),
-            );
+            this.recordConcurrencyDeferral('waiting');
             this.observe(() =>
               this.broadcast({
                 event: 'job.deferred',
@@ -861,12 +858,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
             );
             releaseInvocation = await this.waitForInvocationCapacity(id);
             const admitted = Boolean(releaseInvocation) && !this.stopping;
-            this.observe(() =>
-              schedulerConcurrencyDeferrals.add(1, {
-                reason,
-                disposition: admitted ? 'admitted' : 'stopped',
-              }),
-            );
+            this.recordConcurrencyDeferral(admitted ? 'admitted' : 'stopped');
             this.observe(() =>
               this.options.logger?.info(
                 'Scheduler retry invocation capacity wait ended',
@@ -907,12 +899,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
                   },
                 ),
               );
-              this.observe(() =>
-                schedulerConcurrencyDeferrals.add(1, {
-                  reason,
-                  disposition: 'released',
-                }),
-              );
+              this.recordConcurrencyDeferral('released');
               this.observe(() =>
                 this.broadcast({
                   event: 'job.deferred',
@@ -942,12 +929,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
                 },
               ),
             );
-            this.observe(() =>
-              schedulerConcurrencyDeferrals.add(1, {
-                reason,
-                disposition: 'indeterminate',
-              }),
-            );
+            this.recordConcurrencyDeferral('indeterminate');
             return {
               logId: id,
               outcome: 'indeterminate' as const,
@@ -1514,8 +1496,19 @@ export class BuiltinScheduler implements ISchedulerProvider {
     return undefined;
   }
 
-  private broadcast(event: Record<string, unknown>) {
-    this.sse.broadcast(event);
+  private recordConcurrencyDeferral(
+    disposition: SchedulerConcurrencyDisposition,
+  ): void {
+    this.observe(() =>
+      schedulerConcurrencyDeferrals.add(1, {
+        reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
+        disposition,
+      }),
+    );
+  }
+
+  private broadcast(event: SchedulerEvent) {
+    this.sse.broadcast({ ...event });
   }
 
   private checkHealth() {

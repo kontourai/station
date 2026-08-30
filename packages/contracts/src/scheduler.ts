@@ -24,8 +24,23 @@ export const SCHEDULER_EXECUTION_LIMITS = {
   concurrencyDeferralReason: 'scheduler_concurrency_limit',
 } as const;
 
-/** Wire-level outcome of a scheduler concurrency-limit deferral event. */
-export type SchedulerDeferralDisposition = 'waiting' | 'released';
+/** Every lifecycle outcome emitted by the scheduler concurrency-limit metric. */
+export const SCHEDULER_CONCURRENCY_DISPOSITIONS = [
+  'waiting',
+  'admitted',
+  'stopped',
+  'released',
+  'indeterminate',
+] as const;
+
+export type SchedulerConcurrencyDisposition =
+  (typeof SCHEDULER_CONCURRENCY_DISPOSITIONS)[number];
+
+/** Definite wire-level outcomes of a scheduler concurrency deferral event. */
+export type SchedulerDeferralDisposition = Extract<
+  SchedulerConcurrencyDisposition,
+  'waiting' | 'released'
+>;
 
 /** Provider-neutral schedule accepted by every operator surface. */
 export type SchedulerSchedule =

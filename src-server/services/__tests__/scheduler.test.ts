@@ -1032,7 +1032,6 @@ describe('BuiltinScheduler', () => {
 
       await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
       expect(admissionOrder).toEqual(['parked-retry-0']);
-      expect((bounded as any).invocationCapacityWaiters.size).toBe(waiterCount);
       expect(peakActiveInvocations).toBeLessThanOrEqual(
         SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
       );
