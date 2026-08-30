@@ -65,7 +65,7 @@ jobs:
           [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$ ]]
           git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           sha=$(git rev-list -n 1 "$RELEASE_TAG")
-          tag_release=$(gh release view "$RELEASE_TAG" --json isDraft)
+          tag_release=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft)
           tag_release_state=$(TAG_RELEASE="$tag_release" node -p 'JSON.parse(process.env.TAG_RELEASE).isDraft')
           if [[ "$tag_release_state" == true ]]; then
             pointer_repair_only=false
@@ -339,9 +339,9 @@ jobs:
             --manifest "$remote_assets/latest.json" \
             --assets-dir "$remote_assets" \
             --release-tag "$DESKTOP_UPDATER_TAG"
+          trap - ERR
           gh release edit "$DESKTOP_UPDATER_TAG" --repo "$GITHUB_REPOSITORY" \
             --notes "Rolling desktop updater channel. Latest: ${RELEASE_VERSION} at ${RELEASE_SHA}, published $(date -u +%Y-%m-%dT%H:%M:%SZ)."
-          trap - ERR
 
       # Deploy ledger (station#4572). Deliberately HERE, not in release.yml:
       # release.yml assembles a DRAFT; this job is the moment a stable

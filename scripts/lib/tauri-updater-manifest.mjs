@@ -473,7 +473,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       'Each --platform requires one --signature-file and --url, and when used one --asset-file',
     );
   const entries = platforms.map((platform, index) => {
-    if (assetFiles[index]) {
+    if (assetFiles[index] !== undefined) {
       assertUpdaterAssetFile(assetFiles[index]);
       assertUpdaterAssetFileMatchesUrl(
         platform,

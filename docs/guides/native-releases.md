@@ -359,13 +359,30 @@ closed. A failed draft is fixed with a new tag; never replace an immutable tag
 release asset under the same tag.
 
 Stable and Preview desktop builds embed the endpoint for their rolling release.
-The default branch's policy checkout assembles and verifies the candidate before
-any rolling asset changes; tag-frozen policy scripts are never executed. Publish
-uploads the signed updater archives to that release before replacing
+The default branch's policy checkout runs the updater manifest assembly and
+remote channel verification scripts before and after rolling asset changes.
+The target tag's release-artifact validation still verifies the updater archive
+signatures against the release-bound public key before publication. Publish
+uploads the signed updater archives to the rolling release before replacing
 `latest.json`, then redownloads and verifies the complete result. The pointer
 guard refuses to replace a newer manifest with an older version, so a delayed
 draft cannot silently regress the channel. A failed remote verification restores
 the prior `latest.json` (or removes the first bootstrap pointer).
+
+Rolling release assets require owner-managed retention because every publish
+adds eight versioned archives and signatures. Before a publish, record the
+version named by the current `latest.json`. After the publish and remote
+verification succeed, retain `latest.json`, all eight assets for its current
+version, and all eight assets for that recorded previous version; delete only
+assets from older versions with `gh release delete-asset`. Never prune the
+previous version before the next publish: pointer compensation can restore its
+manifest, which must continue to resolve to those archives. Apply this procedure
+independently to `stable-desktop` and `beta-desktop`, and verify every asset URL
+in the retained current and previous manifests before completing the sweep.
+The locally installed GitHub CLI 2.97.0 help documents the `assets` JSON field
+but does not document whether `gh release view --json assets` imposes a result
+cap, so that availability concern remains unconfirmed; a missing `latest.json`
+still fails closed before the publish job is scheduled.
 
 The normal recovery for a bad desktop release is a higher fixed version. If an
 owner must stop offering the bad version before that replacement is ready, use

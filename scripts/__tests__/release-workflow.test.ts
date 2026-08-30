@@ -331,6 +331,9 @@ describe('native release workflow topology', () => {
     expect(publishStep.run).toContain('compensate_pointer');
     expect(publishStep.run).toContain('updater-channel-current/latest.json');
     expect(publishStep.run).toContain('gh release delete-asset');
+    expect(publishStep.run.indexOf('trap - ERR')).toBeLessThan(
+      publishStep.run.indexOf('gh release edit'),
+    );
 
     const uploadLines = publishStep.run
       .split('\n')

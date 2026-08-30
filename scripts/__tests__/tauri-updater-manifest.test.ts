@@ -438,6 +438,40 @@ describe('the Tauri updater manifest (station#575)', () => {
     ).toThrow(/Each --platform requires one --signature-file/);
   });
 
+  test('the CLI refuses an explicitly empty updater asset path', () => {
+    const directory = mkdtempSync(
+      join(tmpdir(), 'station-updater-empty-asset-'),
+    );
+    const signatureFile = join(directory, 'signature.sig');
+    writeFileSync(signatureFile, 'signature');
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          'scripts/lib/tauri-updater-manifest.mjs',
+          '--version',
+          '0.1.3',
+          '--pub-date',
+          VALID.pubDate,
+          '--platform',
+          'darwin-aarch64',
+          '--asset-file',
+          '',
+          '--signature-file',
+          signatureFile,
+          '--url',
+          'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-macos-aarch64.app.tar.gz',
+          '--release-tag',
+          'stable-desktop',
+          '--output',
+          join(directory, 'latest.json'),
+        ],
+        { cwd: join(import.meta.dirname, '../..'), stdio: 'pipe' },
+      ),
+    ).toThrow(/could not read --asset-file "" \(ENOENT\)/);
+  });
+
   test.each([
     ['unknown flag', ['--unknown'], /unknown argument/],
     ['duplicate scalar', ['--verify', '--verify'], /may be supplied only once/],
