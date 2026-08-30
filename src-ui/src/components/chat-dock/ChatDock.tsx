@@ -346,11 +346,6 @@ type ChatWorkspacePaneProps = ChatWorkspacePaneSharedProps &
     | { placement: 'fullscreen'; shellChrome?: never }
   );
 
-const COMMAND_LAUNCHER_MODIFIERS: ('cmd' | 'ctrl' | 'shift' | 'alt')[] = [
-  'cmd',
-  'shift',
-];
-
 type ProjectChatsEventDetail = {
   projectSlug?: string;
   projectName?: string;
@@ -420,8 +415,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { apiBase } = useApiBase();
   const sessionInventoryMountRef = useRef<HTMLDivElement>(null);
   const {
-    isDockOpen,
-    isDockMaximized,
+    // Legacy placement preference remains exposed to the Chat settings
+    // surface until shell chrome absorbs that control. // #928 step 3
     dockMode,
     activeChat,
     pathname,
@@ -437,6 +432,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // placement's own instance when full-screen) rather than a second local
   // derivation, so Chat, Home and Activity never disagree about them.
   const {
+    isDockOpen,
+    isDockMaximized,
     isMobile,
     visualViewport,
     availableDockSlotPlacements,
@@ -472,6 +469,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // A full-screen layout is a placement of this exact controller, not a
   // maximized dock. It remains usable when the ambient dock is collapsed and
   // intentionally leaves that dock's persisted snap state untouched.
+  // Fullscreen remains a surface-side placement API during the staged
+  // inversion; the region-owned dock branch now arrives through `chrome`.
+  // #928 step 5
   const isPaneOpen = isFullscreenPlacement || isDockOpen;
   const isPaneMaximized = isFullscreenPlacement || isDockMaximized;
 
@@ -722,8 +722,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // content underneath it just changed. Call this explicitly at each such
   // seam instead of only reacting to `pathname`.
   const collapseDockForNavigation = useCallback(() => {
-    if (isFullscreenPlacement || !isDockMaximized) return;
-    restoreDockToDocked();
+    if (!isFullscreenPlacement && isDockMaximized) restoreDockToDocked();
   }, [isDockMaximized, isFullscreenPlacement, restoreDockToDocked]);
 
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -1134,7 +1133,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   useKeyboardShortcut(
     'active-command-launcher',
     'l',
-    COMMAND_LAUNCHER_MODIFIERS,
+    ['cmd', 'shift'],
     'Open active-work command launcher',
     openCommandLauncher,
     commandLauncherEnabled,

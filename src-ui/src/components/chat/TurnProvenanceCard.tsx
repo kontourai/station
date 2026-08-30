@@ -7,7 +7,6 @@ import {
   type TurnProvenanceUnavailableReason,
   type TurnProvenanceUsage,
 } from '@kontourai/station-contracts/turn-provenance';
-import type { TurnProvenanceContextInjection } from '@kontourai/station-contracts/turn-provenance-context';
 import {
   cacheInclusiveTotalTokens,
   providerPromptCacheInclusivity,
@@ -19,7 +18,11 @@ import {
 } from '../../utils/formatTokenCount';
 import { displayModelIdentifier } from '../../utils/modelDisplay';
 import { engineLabelForProvider } from '../../utils/sessionDisplay';
+import { LazyBoundary } from '../LazyBoundary';
 import './TurnProvenanceCard.css';
+
+const loadContextInjectionDisclosure = () =>
+  import('./ContextInjectionDisclosure');
 
 /**
  * Collapsed per-answer provenance card (archive#1410, redesigned archive#1802
@@ -111,13 +114,6 @@ interface ProvenanceRow {
   value: string | null;
   gap: TurnProvenanceUnavailableReason | null;
   trustReportRef?: TurnProvenanceTrustReportRef;
-  /**
-   * archive#2649: an informational line that is neither an earned claim nor
-   * a gap — today only the Context row's "Managed by <engine>", derived from
-   * the observed engine binding rather than from a context observation.
-   * Rendered in the absence style: it reports what Station did NOT do.
-   */
-  note?: string;
 }
 
 function slotRow<TValue>(
@@ -248,101 +244,6 @@ function engineDisplay(provider: string): { label: string; slug: string } {
   };
 }
 
-/**
- * The Context row's rendered sentence (archive#2649). Token figures carry a
- * `~` because they ARE approximate — byte-derived estimates of the real
- * injected strings (see the contract's `TurnProvenanceContextInjection`
- * docblock) — and rendering them unqualified would present an estimate as a
- * measurement.
- */
-function contextInjectionText(record: TurnProvenanceContextInjection): string {
-  const parts: string[] = [];
-  if (record.knowledge) {
-    const { chunkCount, sources, omittedSources, approxTokens } =
-      record.knowledge;
-    const named = sources.join(', ');
-    const sourceText =
-      omittedSources > 0 ? `${named} — and ${omittedSources} more` : named;
-    parts.push(
-      `Knowledge: ${chunkCount} chunk${chunkCount === 1 ? '' : 's'} from ${sourceText} (~${approxTokens} tokens)`,
-    );
-  }
-  if (record.projectRules) {
-    parts.push(`Project rules (~${record.projectRules.approxTokens} tokens)`);
-  }
-  if (record.guidelines) {
-    const { reinforce, avoid, approxTokens } = record.guidelines;
-    parts.push(
-      `Guidelines: ${reinforce} reinforce / ${avoid} avoid (~${approxTokens} tokens)`,
-    );
-  }
-  if (record.workflowSteering) {
-    parts.push(
-      `Workflow steering (~${record.workflowSteering.approxTokens} tokens)`,
-    );
-  }
-  if (record.conversationFeedback) {
-    const { flaggedMessages, approxTokens } = record.conversationFeedback;
-    parts.push(
-      `Conversation feedback: ${flaggedMessages} flagged (~${approxTokens} tokens)`,
-    );
-  }
-  if (record.ambient) {
-    parts.push(`Ambient (~${record.ambient.approxTokens} tokens)`);
-  }
-  // An observed EMPTY record is an earned fact, not a gap: Station's engine
-  // ran this turn and nothing it composed reached the model (archive#2649
-  // honesty rule). Distinct from an unavailable slot, which says Station
-  // recorded nothing either way. The wording names the record's actual
-  // scope — Station-composed context — because the system prompt, tool
-  // schemas, and prior history are assembled elsewhere and are never
-  // counted here.
-  return parts.length > 0 ? parts.join(' · ') : 'No Station-composed context';
-}
-
-/**
- * The Context row (archive#2649): what Station itself put into this turn's
- * model input. Three honest shapes, never a fourth:
- *
- * - **Observed record** → the itemized blocks (or "No retrieved context"
- *   for an observed-empty record).
- * - **No record, external engine** → "Managed by <engine>", derived from
- *   the OBSERVED engine slot, not from a fabricated context observation —
- *   Claude Code/Codex/ACP runtimes own their context end-to-end and a
- *   Station context section here would claim an injection Station never
- *   performed.
- * - **No record, Station engine (or engine unknown)** → the slot's own gap
- *   reason; an envelope persisted before this slice has no slot at all and
- *   reads as `not-captured-by-station`, which is exactly true.
- */
-function contextRow(envelope: TurnProvenanceEnvelope): ProvenanceRow {
-  const slot = envelope.contextInjection;
-  if (slot && slot.state === 'observed') {
-    return {
-      label: 'Context',
-      value: contextInjectionText(slot.value),
-      gap: null,
-    };
-  }
-  const provider =
-    envelope.engine.state === 'observed'
-      ? envelope.engine.value.provider
-      : undefined;
-  if (provider && provider !== 'station-agent') {
-    return {
-      label: 'Context',
-      value: null,
-      gap: null,
-      note: `Managed by ${engineDisplay(provider).label}`,
-    };
-  }
-  return {
-    label: 'Context',
-    value: null,
-    gap: slot?.reason ?? 'not-captured-by-station',
-  };
-}
-
 function contextBoundaryRow(
   envelope: TurnProvenanceEnvelope,
 ): ProvenanceRow | undefined {
@@ -385,7 +286,6 @@ function buildRows(envelope: TurnProvenanceEnvelope): ProvenanceRow[] {
           : undefined,
       ),
     ),
-    contextRow(envelope),
     refRow('Routing receipt', envelope.routingReceipt, (ref) => ref.receiptId),
     refRow('Sources', envelope.sources, (ref) => ref.snapshotId),
     {
@@ -559,16 +459,6 @@ function RowValue({ row }: { row: ProvenanceRow }) {
       </dd>
     );
   }
-  if (row.note) {
-    // archive#2649: informational, styled as an absence — it reports what
-    // Station did NOT do (inject context into an external engine's turn),
-    // so it must not read as an earned per-turn observation.
-    return (
-      <dd className="turn-provenance__value turn-provenance__value--absence">
-        {row.note}
-      </dd>
-    );
-  }
   return (
     <dd className="turn-provenance__value turn-provenance__value--earned">
       {row.value}
@@ -718,6 +608,16 @@ export function TurnProvenanceCard({
               </div>
             ))}
           </dl>
+
+          {provenance.contextInjection?.state === 'observed' && (
+            <LazyBoundary
+              load={loadContextInjectionDisclosure}
+              componentProps={{
+                contextInjection: provenance.contextInjection.value,
+              }}
+              pending={null}
+            />
+          )}
 
           {backlogRows.length > 0 && (
             <>
