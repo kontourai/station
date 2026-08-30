@@ -27,6 +27,8 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-30T19:57:10Z | nightly-desktop | 0.1.2-nightly.2433 | `f1073fa` | nightly test-gate success on f1073fa4cefe4f46a58409e7cfd493f2d6d29228 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33330909248) |
+| 2026-08-30T19:53:22Z | nightly-android | 0.1.2-nightly.2433 | `f1073fa` | nightly test-gate success on f1073fa4cefe4f46a58409e7cfd493f2d6d29228 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33330909248) |
 | 2026-08-30T18:20:57Z | nightly-desktop | 0.1.2-nightly.2433 | `1c23510` | nightly test-gate success on 1c235104ce09cfbc88cf42b9a529407c7949944e (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33326401200) |
 | 2026-08-30T18:19:33Z | nightly-android | 0.1.2-nightly.2433 | `1c23510` | nightly test-gate success on 1c235104ce09cfbc88cf42b9a529407c7949944e (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33326401200) |
 | 2026-08-30T16:24:11Z | nightly-desktop | 0.1.2-nightly.2433 | `f243049` | nightly test-gate success on f2430495239251df2e15c36a190a5c0ad3c3812a (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33320949045) |
@@ -49,6 +51,119 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-08-30T19:57:10Z · nightly-desktop · 0.1.2-nightly.2433
+
+- Ship SHA: `f1073fa4cefe4f46a58409e7cfd493f2d6d29228`
+- Artifact: github-release:nightly-desktop (station-nightly-desktop-macos-aarch64.dmg, .app.tar.gz, latest.json)
+
+### Changelog
+
+Commits since `1c23510` ([full sha](https://github.com/kontourai/station/commit/1c235104ce09cfbc88cf42b9a529407c7949944e)):
+
+**Features**
+
+- [#974](https://github.com/kontourai/station/pull/974) feat(ci): nightly src-ui sweep to catch untouched-consumer breakage
+
+**Fixes**
+
+- [#976](https://github.com/kontourai/station/pull/976) fix(basis): keep compact inventory readable
+- [#974](https://github.com/kontourai/station/pull/974) fix(scheduler): use plain DOM assertions in AgentPicker test
+- [#974](https://github.com/kontourai/station/pull/974) fix(chat): stop-initiated fetch abort no longer renders as Failed
+- [#974](https://github.com/kontourai/station/pull/974) fix(chat): drop Claude Stop rethrow and preserve interrupt races (#898, #921)
+- [#974](https://github.com/kontourai/station/pull/974) fix(ui): surface critical chrome over a maximized dock
+- [#974](https://github.com/kontourai/station/pull/974) fix(ui): keep New Project starter content clear of actions
+- [#967](https://github.com/kontourai/station/pull/967) fix(usage): the drop reporter is a required dep, so omitting it cannot compile
+- [#974](https://github.com/kontourai/station/pull/974) fix(scheduler): retain bound agent identity
+- [#974](https://github.com/kontourai/station/pull/974) fix(composer): avoid reconciling active uploads
+
+**CI / workflow**
+
+- [#966](https://github.com/kontourai/station/pull/966) ci: prepare required checks for merge queue
+
+**Docs**
+
+- [#966](https://github.com/kontourai/station/pull/966) docs: align merge queue check timeout
+
+**Other**
+
+- [#969](https://github.com/kontourai/station/pull/969) chore(ci): retire local stale-base refusal
+- [#974](https://github.com/kontourai/station/pull/974) chore(ui): set entry-bundle ceilings to the merged train's measured actuals
+- [#965](https://github.com/kontourai/station/pull/965) test(shared): budget plugin build containment checks
+- [#965](https://github.com/kontourai/station/pull/965) test(verification): budget product laws for Vitest 4.1.11
+- [#965](https://github.com/kontourai/station/pull/965) test(verification): budget expanded process-heavy corpus
+- [#965](https://github.com/kontourai/station/pull/965) test(connect): cover host-unavailable profile copy
+- [#965](https://github.com/kontourai/station/pull/965) test(plugins): include remote profile isolation input
+- [#965](https://github.com/kontourai/station/pull/965) test(installer): bound hostile-path lifecycle harness
+- [#965](https://github.com/kontourai/station/pull/965) test(verification): register deadline abort before fixture delay
+- [#965](https://github.com/kontourai/station/pull/965) test: repair process-heavy fixture contracts
+- [#965](https://github.com/kontourai/station/pull/965) test(ci): track gallery capacity jobs in workflow corpus
+- [#965](https://github.com/kontourai/station/pull/965) test(verification): budget full phases for allowed contention
+- [#965](https://github.com/kontourai/station/pull/965) test(ui): keep one peer credential mock after merge
+- [#965](https://github.com/kontourai/station/pull/965) test(orchestration): bound synthetic population harness time
+- [#965](https://github.com/kontourai/station/pull/965) test(ui): bound terminal marker lazy queries
+- [#965](https://github.com/kontourai/station/pull/965) test(ui): bound lazy transcript assertions under corpus load
+- [#965](https://github.com/kontourai/station/pull/965) test(orchestration): bound smoke classification without a one-second race
+- [#965](https://github.com/kontourai/station/pull/965) test: align process-heavy fixtures with runtime contracts
+- [#965](https://github.com/kontourai/station/pull/965) test(ui): make orchestration fixtures contract-valid
+- [#965](https://github.com/kontourai/station/pull/965) test: repair current-main full regression drift
+
+## 2026-08-30T19:53:22Z · nightly-android · 0.1.2-nightly.2433
+
+- Ship SHA: `f1073fa4cefe4f46a58409e7cfd493f2d6d29228`
+- Artifact: play-internal-aab:io.kontourai.station.nightly@versionCode 243304
+- Artifact: workflow-artifact:station-nightly-243304 (7-day retention)
+
+### Changelog
+
+Commits since `1c23510` ([full sha](https://github.com/kontourai/station/commit/1c235104ce09cfbc88cf42b9a529407c7949944e)):
+
+**Features**
+
+- [#974](https://github.com/kontourai/station/pull/974) feat(ci): nightly src-ui sweep to catch untouched-consumer breakage
+
+**Fixes**
+
+- [#976](https://github.com/kontourai/station/pull/976) fix(basis): keep compact inventory readable
+- [#974](https://github.com/kontourai/station/pull/974) fix(scheduler): use plain DOM assertions in AgentPicker test
+- [#974](https://github.com/kontourai/station/pull/974) fix(chat): stop-initiated fetch abort no longer renders as Failed
+- [#974](https://github.com/kontourai/station/pull/974) fix(chat): drop Claude Stop rethrow and preserve interrupt races (#898, #921)
+- [#974](https://github.com/kontourai/station/pull/974) fix(ui): surface critical chrome over a maximized dock
+- [#974](https://github.com/kontourai/station/pull/974) fix(ui): keep New Project starter content clear of actions
+- [#967](https://github.com/kontourai/station/pull/967) fix(usage): the drop reporter is a required dep, so omitting it cannot compile
+- [#974](https://github.com/kontourai/station/pull/974) fix(scheduler): retain bound agent identity
+- [#974](https://github.com/kontourai/station/pull/974) fix(composer): avoid reconciling active uploads
+
+**CI / workflow**
+
+- [#966](https://github.com/kontourai/station/pull/966) ci: prepare required checks for merge queue
+
+**Docs**
+
+- [#966](https://github.com/kontourai/station/pull/966) docs: align merge queue check timeout
+
+**Other**
+
+- [#969](https://github.com/kontourai/station/pull/969) chore(ci): retire local stale-base refusal
+- [#974](https://github.com/kontourai/station/pull/974) chore(ui): set entry-bundle ceilings to the merged train's measured actuals
+- [#965](https://github.com/kontourai/station/pull/965) test(shared): budget plugin build containment checks
+- [#965](https://github.com/kontourai/station/pull/965) test(verification): budget product laws for Vitest 4.1.11
+- [#965](https://github.com/kontourai/station/pull/965) test(verification): budget expanded process-heavy corpus
+- [#965](https://github.com/kontourai/station/pull/965) test(connect): cover host-unavailable profile copy
+- [#965](https://github.com/kontourai/station/pull/965) test(plugins): include remote profile isolation input
+- [#965](https://github.com/kontourai/station/pull/965) test(installer): bound hostile-path lifecycle harness
+- [#965](https://github.com/kontourai/station/pull/965) test(verification): register deadline abort before fixture delay
+- [#965](https://github.com/kontourai/station/pull/965) test: repair process-heavy fixture contracts
+- [#965](https://github.com/kontourai/station/pull/965) test(ci): track gallery capacity jobs in workflow corpus
+- [#965](https://github.com/kontourai/station/pull/965) test(verification): budget full phases for allowed contention
+- [#965](https://github.com/kontourai/station/pull/965) test(ui): keep one peer credential mock after merge
+- [#965](https://github.com/kontourai/station/pull/965) test(orchestration): bound synthetic population harness time
+- [#965](https://github.com/kontourai/station/pull/965) test(ui): bound terminal marker lazy queries
+- [#965](https://github.com/kontourai/station/pull/965) test(ui): bound lazy transcript assertions under corpus load
+- [#965](https://github.com/kontourai/station/pull/965) test(orchestration): bound smoke classification without a one-second race
+- [#965](https://github.com/kontourai/station/pull/965) test: align process-heavy fixtures with runtime contracts
+- [#965](https://github.com/kontourai/station/pull/965) test(ui): make orchestration fixtures contract-valid
+- [#965](https://github.com/kontourai/station/pull/965) test: repair current-main full regression drift
 
 ## 2026-08-30T18:20:57Z · nightly-desktop · 0.1.2-nightly.2433
 
