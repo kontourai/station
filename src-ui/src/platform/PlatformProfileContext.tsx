@@ -24,8 +24,10 @@ import {
 import { nativePlatformPromise } from './native';
 import { primeNativeNotifications } from './native/notify';
 import type { NativeStationProfileStorage } from './native/stationProfileStorage';
-import type { NativeCompileTarget } from './native/types';
-import type { NativeClientBuildProvenance } from './native/types';
+import type {
+  NativeClientBuildProvenance,
+  NativeCompileTarget,
+} from './native/types';
 
 export interface PlatformProfile {
   /** True when running inside the Tauri native shell (desktop or mobile). */
@@ -158,7 +160,9 @@ async function resolvePlatformProfile(): Promise<PlatformProfile> {
     ...(isMobile && report.value.mobileDefaultEndpoint
       ? { mobileDefaultEndpoint: report.value.mobileDefaultEndpoint }
       : {}),
-    ...(report.value.clientBuild ? { clientBuild: report.value.clientBuild } : {}),
+    ...(report.value.clientBuild
+      ? { clientBuild: report.value.clientBuild }
+      : {}),
   };
 }
 

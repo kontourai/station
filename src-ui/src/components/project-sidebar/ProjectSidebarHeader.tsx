@@ -54,12 +54,9 @@ export function ProjectSidebarHeader({
           {buildLabel && (
             <>
               <br />
-              <small
-                className="sidebar__build-age"
-                title={buildDescription}
-                aria-label={buildDescription}
-              >
-                {buildLabel}
+              <small className="sidebar__build-age" title={buildDescription}>
+                <span aria-hidden="true">{buildLabel}</span>
+                <span className="sr-only">{buildDescription}</span>
               </small>
             </>
           )}

@@ -1,5 +1,5 @@
-import { formatArtifactBuildTimestamp } from '@kontourai/station-shared/build-provenance';
 import type { SystemStatus } from '@kontourai/station-sdk';
+import { formatArtifactBuildTimestamp } from '@kontourai/station-shared/build-provenance';
 import type { NativeClientBuildProvenance } from '../../platform/native/types';
 
 type Build = NonNullable<SystemStatus['build']>;
@@ -24,8 +24,11 @@ function BuildTimestamp({
     ...(nowMs === undefined ? {} : { nowMs }),
   });
   return presentation.state === 'available' ? (
-    <dd title={presentation.description} aria-label={presentation.description}>
-      {presentation.date} · {presentation.age}
+    <dd title={presentation.description}>
+      <span aria-hidden="true">
+        {presentation.date} · {presentation.age}
+      </span>
+      <span className="sr-only">{presentation.description}</span>
     </dd>
   ) : (
     <dd className="settings__field-hint">{presentation.description}</dd>
@@ -40,7 +43,9 @@ export function InstalledAppBuildProvenance({
   build?: NativeClientBuildProvenance;
   development: boolean;
 }) {
-  const hasIdentity = Boolean(build?.fullSha || build?.branch || build?.builtAt);
+  const hasIdentity = Boolean(
+    build?.fullSha || build?.branch || build?.builtAt,
+  );
   return (
     <div className="settings__field settings__provenance">
       <div className="settings__field-label">Installed app build</div>
@@ -60,7 +65,10 @@ export function InstalledAppBuildProvenance({
             ) : null}
             <div>
               <dt>Built</dt>
-              <BuildTimestamp builtAt={build?.builtAt} development={development} />
+              <BuildTimestamp
+                builtAt={build?.builtAt}
+                development={development}
+              />
             </div>
             {build?.branch ? (
               <div>
@@ -76,8 +84,8 @@ export function InstalledAppBuildProvenance({
         </span>
       )}
       <span className="settings__field-hint">
-        This identifies the app on this device. Store upload and install dates are
-        provider/device events, not build provenance.
+        This identifies the app on this device. Store upload and install dates
+        are provider/device events, not build provenance.
       </span>
     </div>
   );
@@ -108,7 +116,10 @@ export function BuildProvenance({ build }: { build?: Build }) {
             {build.builtAt ? (
               <div>
                 <dt>Built</dt>
-                <BuildTimestamp builtAt={build.builtAt} ageSeconds={build.ageSeconds} />
+                <BuildTimestamp
+                  builtAt={build.builtAt}
+                  ageSeconds={build.ageSeconds}
+                />
               </div>
             ) : null}
             {build.branch ? (
@@ -131,8 +142,8 @@ export function BuildProvenance({ build }: { build?: Build }) {
         </span>
       )}
       <span className="settings__field-hint">
-        This identifies the Station backend currently connected, which can differ
-        from the installed app.
+        This identifies the Station backend currently connected, which can
+        differ from the installed app.
       </span>
     </div>
   );
