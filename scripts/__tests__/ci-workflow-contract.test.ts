@@ -1174,6 +1174,9 @@ describe('iOS verification proves packaged runtime readiness', () => {
     expect(ios).not.toContain('self-hosted');
     expect(ios).toContain('persist-credentials: false');
     expect(ios).toContain("github.event_name == 'pull_request_target'");
+    expect(ios).toContain(
+      `--source-sha "\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}"`,
+    );
   });
 
   it('runs the native accessibility smoke and always retains its evidence', () => {
