@@ -47,7 +47,8 @@ export function estimateCost(
     return undefined;
   }
   return reported.reduce(
-    (total, [tokens, rate]) => total + ((tokens as number) / 1000) * (rate as number),
+    (total, [tokens, rate]) =>
+      total + ((tokens as number) / 1000) * (rate as number),
     0,
   );
 }

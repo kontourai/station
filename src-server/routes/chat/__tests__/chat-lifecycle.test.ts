@@ -32,12 +32,12 @@ vi.mock('../chat-persistence.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../chat-persistence.js')>()),
 }));
 
+import { estimateCost, findModelPricing } from '../../../utils/pricing.js';
 import {
   emitChatAgentStart,
   ensureChatAgentStatsInitialized,
   finalizeChatRequest,
 } from '../chat-lifecycle.js';
-import { estimateCost, findModelPricing } from '../../../utils/pricing.js';
 
 function createRuntimeContext() {
   return {
