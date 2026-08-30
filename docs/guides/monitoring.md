@@ -196,6 +196,7 @@ All instruments are defined in `src-server/telemetry/metrics.ts` and are safe to
 | `station.provider.operations`     | Provider register/remove/health events   | `op`        |
 | `station.notification.operations` | Notification schedule/deliver/dismiss    | `op`        |
 | `station.scheduler.job.runs`      | Scheduler job executions                 | —           |
+| `station.scheduler.concurrency.deferrals` | Automatic invocation-ceiling lifecycle outcomes | `reason`, `disposition` |
 | `station.mcp.lifecycle`           | MCP connection lifecycle events          | `event`     |
 | `station.mcp.negotiation.total`   | Modern/legacy negotiation outcomes        | `era`, `protocol_version`, `fallback`, `extensions`, `outcome`, `error_class` |
 | `station.mcp.negotiation.duration`| Negotiation plus initial discovery latency| same as negotiation outcome |
@@ -211,6 +212,37 @@ All instruments are defined in `src-server/telemetry/metrics.ts` and are safe to
 | `station.auth.operations`         | Auth lifecycle events                    | `op`        |
 | `station.filetree.operations`     | File tree browse events                  | `op`        |
 | `station.registry.operations`     | Registry install/uninstall events        | `op`        |
+
+`station.scheduler.concurrency.deferrals` is a lifecycle counter. Its complete
+`disposition` vocabulary is:
+
+- `waiting`: a durable retry parked for invocation capacity; adds one to parked
+  depth.
+- `admitted`: a parked retry received capacity; subtracts one from parked
+  depth.
+- `stopped`: shutdown ended a parked retry; subtracts one from parked depth.
+- `released`: a first automatic attempt was definitively released without
+  invocation; it does not participate in parked depth.
+- `indeterminate`: the scheduler could not prove that a first-attempt release
+  committed; it does not participate in parked depth.
+
+For one process lifetime, derive parked retry depth as `waiting - admitted -
+stopped`. Graceful shutdown records the matching `stopped` exits. SIGKILL, OOM,
+or another ungraceful process loss can leave unmatched `waiting` increments in
+the last cumulative series, so this formula is not self-healing across process
+loss. Reset or rebase the derived value when the Station process restarts.
+
+This counter is new in this release; no prior Station emitted it, so there are
+no existing dashboards to migrate. Note that its unfiltered total is a
+**lifecycle** count, not a deferral count: a parked retry that later runs
+contributes both `waiting` and `admitted`. Alert on `disposition="released"`
+for occurrences that were actually given up, and use the full set for the
+parked-depth identity above.
+
+The `indeterminate` metric has no matching `job.deferred` SSE event. That state
+means the release receipt could not be confirmed; broadcasting a deferral would
+turn uncertainty into a false claim. Consequently, the metric lifecycle and SSE
+stream are intentionally not reconcilable one-for-one.
 
 #### Skills
 

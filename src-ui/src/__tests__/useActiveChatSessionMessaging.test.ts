@@ -408,44 +408,6 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     );
   });
 
-  it('offers Start anyway with the exact one-shot token and turn binding', async () => {
-    const challenge = Object.assign(
-      new CodedOrchestrationError(
-        409,
-        'This Station remains busy.',
-        'resource_posture_override_required',
-      ),
-      {
-        override: {
-          token: 'override-token-1',
-          expiresAt: Date.now() + 30_000,
-        },
-      },
-    );
-    sendExecutionMessageMock
-      .mockRejectedValueOnce(challenge)
-      .mockResolvedValueOnce(successReceipt());
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-    await act(async () => {
-      await result.current(sessionId, 'codex', undefined, 'start under load');
-    });
-    const firstId = sendExecutionMessageMock.mock.calls[0][0].clientTurnId;
-    const action = activeChatsStore
-      .getSnapshot()
-      [sessionId]?.ephemeralMessages?.at(-1)?.action;
-    expect(action?.label).toBe('Start anyway');
-    expect(activeChatsStore.getSnapshot()[sessionId]?.status).toBe('idle');
-
-    await act(async () => {
-      await action?.handler();
-    });
-    expect(sendExecutionMessageMock.mock.calls[1][0]).toMatchObject({
-      clientTurnId: firstId,
-      resourceAdmissionOverrideToken: 'override-token-1',
-    });
-  });
-
   it('renders a workspace-resume hint instead of a Model-connection hint for an orchestration refusal', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new CodedOrchestrationError(
@@ -951,40 +913,6 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       activeChatsStore.getSnapshot()[sessionId]?.ephemeralMessages?.at(-1)
         ?.action,
     ).toBeUndefined();
-  });
-
-  it('routes durable queue replay as background and defers without possible-effect evidence', async () => {
-    sendExecutionMessageMock.mockRejectedValueOnce(
-      new CodedOrchestrationError(
-        409,
-        'Automatic work is paused while this Station is busy.',
-        'resource_posture_deferred',
-      ),
-    );
-    const claim = { indeterminate: vi.fn(async () => 'applied' as const) };
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-    await expect(
-      result.current(
-        sessionId,
-        'codex',
-        undefined,
-        'send after recovery',
-        undefined,
-        undefined,
-        'queued-background-turn',
-        { skipInMemoryQueueOnBusy: true, dispatch: claim },
-      ),
-    ).resolves.toEqual({
-      kind: 'deferred',
-      reason: expect.any(String),
-    });
-
-    expect(sendExecutionMessageMock).toHaveBeenCalledWith(
-      expect.objectContaining({ automaticBackground: true }),
-    );
-    expect(claim.indeterminate).not.toHaveBeenCalled();
-    expect(activeChatsStore.getSnapshot()[sessionId]?.status).toBe('idle');
   });
 
   it('queues a network-level failure without rolling back the optimistic turn', async () => {

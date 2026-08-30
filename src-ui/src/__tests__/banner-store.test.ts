@@ -637,7 +637,7 @@ describe('sortBanners / buildBannerStackView', () => {
     // FIXTURE-VS-REALITY: a same-tier tiebreak passes an info-vs-info test and
     // still fails in the app. Every passive chrome source that LINGERS on a
     // long-lived instance presents above `info` — deferred capability, the
-    // plugin registry gate and resource posture all at `capabilityFailure`,
+    // plugin registry gate at `capabilityFailure`,
     // the mobile connection notice at `setup` — while the redirect notice is
     // `info`. These are the exact priorities those sources pass today.
     const banners = sortBanners([
@@ -646,13 +646,6 @@ describe('sortBanners / buildBannerStackView', () => {
         priority: BANNER_PRIORITY.capabilityFailure,
         tone: 'warning',
         message: 'A capability failed',
-        phase: 'live',
-      },
-      {
-        id: 'chrome:resource-posture',
-        priority: BANNER_PRIORITY.capabilityFailure,
-        tone: 'warning',
-        message: 'Resource posture degraded',
         phase: 'live',
       },
       {
