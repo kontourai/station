@@ -133,6 +133,11 @@ export function ProjectPage({ slug }: { slug: string }) {
     const requiresLayout = workspacePaneRequiresLayoutIdentity(
       entry.descriptor,
     );
+    // Every renderer in today's closed `requiresLayout` set reads Coding
+    // layout configuration, so Coding is the intentional host capability.
+    // Making this generic requires a versioned descriptor field naming its
+    // accepted layout type(s), plus parser and retained-LayoutTab adaptation
+    // checks so contributed routing metadata cannot bypass integrity checks.
     const hostingLayout = requiresLayout
       ? (layouts as Array<{ slug: string; type?: string }>).find(
           (layout) => layout.type === 'coding',

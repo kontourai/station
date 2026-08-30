@@ -353,8 +353,14 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     ).toBeTruthy();
   });
 
-  test('opens a layout-bound pane through the project hosting layout', async () => {
+  test('opens a layout-bound pane through its Coding host, not another installed layout', async () => {
     sdkMocks.layouts = [
+      {
+        id: 'tasks',
+        slug: 'tasks',
+        name: 'Tasks',
+        type: 'tasks',
+      },
       {
         id: 'coding',
         slug: 'coding',
