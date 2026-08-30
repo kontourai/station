@@ -1717,10 +1717,52 @@ test('the 320px header contains every pinned control while maximized (#3309 SF-2
     .getByRole('menuitem', { name: /^Expand chat/ })
     .click();
   await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
+
+  // Put the connection indicator into its widest short-label state only after
+  // the maximize precondition is proven. A pending request takes precedence
+  // over the rejected credential produced by the next health probe, so the
+  // chip must render "Waiting" rather than the healthy-state bare dot.
+  await page.route('**/api/system/identity', (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: { code: 'authentication_required' } }),
+    }),
+  );
+  await page.evaluate(() => {
+    const now = Date.now();
+    const endpoint = location.origin;
+    localStorage.setItem(
+      `station-pairing-pending-exchange:v1:${endpoint}:direct`,
+      JSON.stringify({
+        endpoint,
+        offerId: 'mobile-header-offer',
+        proof: 'mobile-header-proof',
+        requestId: 'mobile-header-request',
+        requestedAt: now,
+        expiresAt: now + 240_000,
+        browserSession: false,
+        requestKind: 'direct',
+        targetConnectionId: 'mobile',
+        targetConnectionLabel: 'Mobile',
+      }),
+    );
+    window.dispatchEvent(new Event('station-connect:pending-exchange-change'));
+    window.dispatchEvent(new Event('online'));
+  });
+
   const drawerToggle = page.getByRole('button', { name: 'Toggle menu' });
   await expect(drawerToggle).toBeVisible();
 
   const header = page.locator('.chat-dock__mobile-header');
+  const connectionChip = header.getByTestId('chat-dock-mobile-connection');
+  await expect(connectionChip).toHaveAttribute(
+    'data-connection-state',
+    'awaiting-approval',
+  );
+  await expect(
+    connectionChip.locator('.chat-dock__mobile-conn-label'),
+  ).toHaveText('Waiting');
   const headerBox = await header.boundingBox();
   if (!headerBox) throw new Error('Mobile dock header is not measurable');
   expect(headerBox.x).toBeGreaterThanOrEqual(0);
@@ -1735,6 +1777,15 @@ test('the 320px header contains every pinned control while maximized (#3309 SF-2
   // toggle having deferred to the sheet. Pinned as an equality so a control
   // silently vanishing fails here rather than quietly shrinking the bar.
   await expect(buttons).toHaveCount(7);
+  expect(
+    await buttons.evaluateAll((elements) =>
+      elements.some(
+        (element) =>
+          element.getAttribute('data-testid') === 'chat-dock-mobile-connection',
+      ),
+    ),
+    'the labelled connection chip participates in the containment loop',
+  ).toBe(true);
   const count = await buttons.count();
   const boxes: Array<{ x: number; width: number; name: string }> = [];
   for (let i = 0; i < count; i += 1) {
