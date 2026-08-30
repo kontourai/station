@@ -1,5 +1,7 @@
 import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk';
+import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import { describe, expect, test, vi } from 'vitest';
+import { getConversationStats } from '../../runtime/conversation/conversation-manager.js';
 import type { SessionAnswerabilityObservation } from '../../services/orchestration/open-requests.js';
 import { buildAgentRunSummary } from '../../services/orchestration/orchestration-session-state.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
@@ -1414,4 +1416,42 @@ describe('claude token-usage.updated — provider-reported cost and cache (stati
       'contextTokens',
     );
   });
+
+  test.each([
+    ['missing', undefined],
+    ['non-numeric', 'unknown'],
+  ])(
+    '%s input tokens stay absent without poisoning folded or stats totals',
+    async (_label, input_tokens) => {
+      const event = usageEvent(
+        resultMessage({ input_tokens, output_tokens: 5 }),
+      );
+
+      expect(event).not.toHaveProperty('promptTokens');
+      expect(event).toMatchObject({ completionTokens: 5, totalTokens: 5 });
+      const aggregate = foldUsageEvents([event]);
+      expect(aggregate).toMatchObject({ outputTokens: 5, totalTokens: 5 });
+      expect(aggregate.inputTokens).toBeUndefined();
+
+      await expect(
+        getConversationStats(
+          'claude',
+          'thread-activity',
+          new Map(),
+          new Map(),
+          new Map(),
+          { loadAgent: vi.fn().mockResolvedValue({ prompt: '' }) } as any,
+          { defaultModel: 'anthropic.claude-3-haiku' } as any,
+          undefined,
+          {
+            info: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+            debug: vi.fn(),
+          },
+          () => aggregate,
+        ),
+      ).resolves.toMatchObject({ outputTokens: 5, totalTokens: 5 });
+    },
+  );
 });

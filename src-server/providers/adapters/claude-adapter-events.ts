@@ -24,6 +24,30 @@ function tokenCount(value: unknown): number | undefined {
 }
 
 /**
+ * Claude's primary token accounting, retaining only usable figures. A result
+ * may carry a partial or malformed usage block after startup/crash failures;
+ * omitted figures stay omitted while the total is derived from whichever
+ * valid components the engine did report.
+ */
+function claudeTokenUsageFields(usage: unknown): {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+} {
+  if (!usage || typeof usage !== 'object') return {};
+  const raw = usage as Record<string, unknown>;
+  const promptTokens = tokenCount(raw.input_tokens);
+  const completionTokens = tokenCount(raw.output_tokens);
+  return {
+    ...(promptTokens !== undefined ? { promptTokens } : {}),
+    ...(completionTokens !== undefined ? { completionTokens } : {}),
+    ...(promptTokens !== undefined || completionTokens !== undefined
+      ? { totalTokens: (promptTokens ?? 0) + (completionTokens ?? 0) }
+      : {}),
+  };
+}
+
+/**
  * Claude's cache accounting, mapped to the canonical field names. Every
  * field is emitted only when the engine reported it: an absent cache figure
  * means "not reported", and turning that into `0` would claim a measurement
@@ -480,9 +504,7 @@ export function mapClaudeSdkMessage({
       createdAt,
       turnId: record.activeTurnId,
       method: 'token-usage.updated',
-      promptTokens: message.usage.input_tokens,
-      completionTokens: message.usage.output_tokens,
-      totalTokens: message.usage.input_tokens + message.usage.output_tokens,
+      ...claudeTokenUsageFields(message.usage),
       // Cache figures Claude reports on every result and Station used to
       // discard, so the session fold and the per-turn envelope now see the
       // same fields the transcript importer already maps
