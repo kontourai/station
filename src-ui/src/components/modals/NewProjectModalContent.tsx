@@ -177,12 +177,14 @@ function NewProjectForm({
 
   return (
     <form className="new-project-modal__form" onSubmit={submit}>
-      <fieldset
-        className="new-project-modal__draft-fields"
-        disabled={state.submission.hasCreatedProject}
-      >
-        <NewProjectDetails state={state} />
-      </fieldset>
+      <div className="new-project-modal__draft-scroll">
+        <fieldset
+          className="new-project-modal__draft-fields"
+          disabled={state.submission.hasCreatedProject}
+        >
+          <NewProjectDetails state={state} />
+        </fieldset>
+      </div>
       {state.submission.hasCreatedProject && (
         <p className="new-project-modal__recovery" role="status">
           Project created. Retry the selected starter layout to finish setup.

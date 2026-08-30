@@ -80,6 +80,10 @@ export function ResourcePostureBannerSource() {
       // the two surfaces cannot disagree about what this posture is called.
       badge: hostPressureBadge(kind),
       message: postureBannerMessage(kind, data ?? {}),
+      // Host pressure pauses unattended work and changes whether explicit
+      // starts can proceed. Keep that state discoverable even while the dock
+      // is maximized; its capabilityFailure priority still sorts normally.
+      criticalChrome: true,
       // Recurring host-pressure state, not a one-off notice: it clears
       // itself the moment posture recovers (the effect above dismisses it),
       // so a persistent dismiss would only hide a later, distinct episode
