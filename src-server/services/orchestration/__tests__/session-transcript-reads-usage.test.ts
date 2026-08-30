@@ -46,6 +46,10 @@ function reads(coverageEvents: any[]) {
     searchConversationMessages: () => [],
     readSessionThreadIds: () => [],
     requireTenantExecutionContext: () => false,
+    // These cases assert coverage/receipt projections, not the drop
+    // contract; an explicit no-op is what #910 asks a caller with nowhere
+    // to report to say out loud.
+    reportDroppedUsageFigure: () => {},
   });
 }
 

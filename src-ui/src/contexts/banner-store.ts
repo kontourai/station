@@ -132,6 +132,14 @@ export type BannerItem = {
    * those actually mean "the user caused this."
    */
   userInitiated?: boolean;
+  /**
+   * Keeps this banner discoverable above a maximized dock. Use only for a
+   * condition that blocks safe operation or needs immediate operator action;
+   * ordinary notices deliberately remain below the dock so its header stays
+   * reachable. The connectionBlocking priority band implies this contract;
+   * lower-priority sources such as host pressure opt in explicitly.
+   */
+  criticalChrome?: boolean;
   /** Connection progress is informative; do not interrupt current work. */
   ariaLive?: 'polite' | 'assertive' | 'off';
   /** Internal: live vs exit-animating. Sources should not set this. */
@@ -353,6 +361,7 @@ class BannerStore {
       prev.dismissAriaLabel === next.dismissAriaLabel &&
       prev.dragRegion === next.dragRegion &&
       prev.overlay === next.overlay &&
+      prev.criticalChrome === next.criticalChrome &&
       prev.ariaLive === next.ariaLive &&
       actionsEqual(prev.actions, next.actions)
     ) {

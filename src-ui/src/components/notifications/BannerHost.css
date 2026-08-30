@@ -659,6 +659,24 @@
   z-index: var(--layer-notice);
 }
 
+/* #920: a maximized dock still owns the screen for ordinary notices. When a
+ * blocking pairing/credential state or an explicitly critical source exists,
+ * remove the host stacking context so only that critical card can cross the
+ * dock layer. If stack collapse hides the critical card, the cap becomes its
+ * compact discoverability indicator instead. Ordinary cards remain below the
+ * dock in both cases, preserving #919's reachable header/search contract. */
+.app__main:has(> .chat-dock.is-maximized)
+> .banner-host.banner-host--critical-chrome {
+  z-index: auto;
+}
+
+.app__main:has(> .chat-dock.is-maximized)
+  > .banner-host.banner-host--critical-chrome
+  :is(.banner-host__item--critical-chrome, .banner-host__cap--critical-chrome) {
+  position: relative;
+  z-index: calc(var(--layer-dock) + 1);
+}
+
 /* Shell mobile breakpoint — keep in lockstep with index.css. */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .app__main > .banner-host {

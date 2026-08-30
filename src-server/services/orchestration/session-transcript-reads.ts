@@ -54,13 +54,18 @@ export interface SessionTranscriptReadsDeps {
   requireTenantExecutionContext: () => boolean;
   /**
    * Receives a token figure the fold refused as unusable while replaying
-   * durable history. The production composition
-   * (`orchestration-service.ts`) supplies it from its logger; it is optional
-   * only so a test can construct these deps without one. Leaving it unset in
-   * a real composition would silently swallow the drop — the outcome
-   * `packages/shared/src/usage-fold.ts`'s contract exists to prevent.
+   * durable history.
+   *
+   * REQUIRED, deliberately (#910). It was optional, and the production
+   * composition simply did not pass it — so every refused figure was
+   * swallowed in the running product while the seam's own tests stayed
+   * green, because a test that supplies its own reporter cannot see a
+   * composition that omits one. An injection proved that gap invisible.
+   * Requiring it moves the failure from silent runtime behaviour to a
+   * compile error. A caller with genuinely nowhere to report passes an
+   * explicit no-op and says why, which is a comment worth having.
    */
-  reportDroppedUsageFigure?: (dropped: DroppedUsageFigure) => void;
+  reportDroppedUsageFigure: (dropped: DroppedUsageFigure) => void;
 }
 
 /**
@@ -141,7 +146,7 @@ export class SessionTranscriptReads {
     // answerable; reporting it keeps the producer defect visible rather
     // than absorbed (packages/shared/src/usage-fold.ts's drop contract).
     return foldUsageEvents(this.deps.listEventPayloads(threadId), (dropped) =>
-      this.deps.reportDroppedUsageFigure?.(dropped),
+      this.deps.reportDroppedUsageFigure(dropped),
     );
   }
 

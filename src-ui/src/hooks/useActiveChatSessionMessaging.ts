@@ -55,6 +55,11 @@ interface SendTransaction {
   attachmentStages?: ComposerAttachmentStageSnapshot[];
 }
 
+type UserCancelableAbortController = AbortController & {
+  /** Set only by the Stop path before it releases the foreground observer. */
+  _userInitiated?: boolean;
+};
+
 function prepareSendTransaction(options: {
   state: ChatUIState | undefined;
   submittedDraft: string;
@@ -315,6 +320,28 @@ export function useSendMessage(
             } satisfies OutboundDispatchTransportResult)
           : true;
       } catch (error) {
+        // Stop deliberately releases the browser's foreground observer after
+        // the server has settled the interrupt. Fetch rejects with the abort
+        // reason (a string in browsers), which used to fall through as an
+        // empty ChatHttpError and overwrite the honest turn.aborted outcome
+        // with `Error: An unknown error occurred` plus Retry.
+        if (
+          (abortController as UserCancelableAbortController)._userInitiated &&
+          abortController.signal.aborted
+        ) {
+          clearStreamingMessage(sessionId);
+          updateChat(sessionId, {
+            status: 'idle',
+            error: undefined,
+            abortController: undefined,
+          });
+          return options?.dispatch
+            ? ({
+                kind: 'not-invoked',
+                reason: 'Stopped by request',
+              } satisfies OutboundDispatchTransportResult)
+            : false;
+        }
         const err = error as Error &
           Partial<ChatHttpError> & {
             override?: { token: string; expiresAt: number };
@@ -655,11 +682,8 @@ export function useCancelMessage(apiBase?: string) {
       if (state.stopPending) return { kind: 'not-running' };
       const abortController = state.abortController;
       if (abortController) {
-        (
-          abortController as AbortController & {
-            _userInitiated?: boolean;
-          }
-        )._userInitiated = true;
+        (abortController as UserCancelableAbortController)._userInitiated =
+          true;
       }
       updateChat(sessionId, { stopPending: true });
       try {
