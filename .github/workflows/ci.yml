@@ -8,6 +8,11 @@ on:
   pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened, edited]
+  # Merge queue evaluates the synthesized latest-main candidate rather than
+  # asking each contributor to chase a moving main branch locally.
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
   # Manual trigger for bounded fast feedback and the completion gate on demand.
   workflow_dispatch:
 
@@ -40,15 +45,15 @@ jobs:
       - id: classify
         name: Classify the complete before..sha diff
         env:
-          BEFORE: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
-          AFTER: ${{ github.sha }}
+          BEFORE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '0000000000000000000000000000000000000000' }}
+          AFTER: ${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
         run: node scripts/classify-ci-change.mjs --before "$BEFORE" --after "$AFTER" >> "$GITHUB_OUTPUT"
 
   fast-checks:
     needs: classify
     # `always()` permits same-repository PR feedback after its intentionally
     # skipped classifier. Fork PRs stay on the isolated fork-smoke job below.
-    if: ${{ always() && !cancelled() && ((github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
@@ -134,7 +139,7 @@ jobs:
       - name: Run fast CI lane
         id: fast_ci
         env:
-          STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
+          STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}
         run: npm run ci:fast
 
       # Synthetic fixture only: the reference-hardware lane owns actual

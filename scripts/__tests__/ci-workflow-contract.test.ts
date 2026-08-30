@@ -648,6 +648,42 @@ describe('CI verification workflow contracts', () => {
     }
   });
 
+  it('runs required checks against the synthesized merge-group candidate', () => {
+    const ci = workflow('ci.yml');
+    const security = workflow('security-analysis.yml');
+    const windows = workflow('windows-pr-verification.yml');
+    const ios = workflow('build-ios.yml');
+
+    for (const source of [ci, security, windows, ios]) {
+      expect(source).toContain(
+        'merge_group:\n    branches: [main]\n    types: [checks_requested]',
+      );
+    }
+    expect(ci).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "BEFORE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || '0000000000000000000000000000000000000000' }}",
+    );
+    expect(ci).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "STATION_CI_FAST_BASE: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.before || 'origin/main' }}",
+    );
+    expect(security).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'base-ref: ${{ github.event.merge_group.base_sha }}',
+    );
+    expect(security).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'head-ref: ${{ github.event.merge_group.head_sha }}',
+    );
+    expect(windows).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'group: windows-pr-verification-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}',
+    );
+    expect(ios).toContain(
+      "github.event_name == 'merge_group' && github.event.merge_group.head_sha",
+    );
+  });
+
   it('keeps coordinated lane receipts and failure artifacts downloadable', () => {
     for (const name of [
       'ci.yml',
@@ -1185,6 +1221,7 @@ describe('CI verification workflow contracts', () => {
   it('runs the bounded Windows floor on every PR head from base-controlled hosted policy', () => {
     const windows = workflow('windows-pr-verification.yml');
     expect(windows).toContain('pull_request_target:');
+    expect(windows).toContain('merge_group:');
     expect(windows).not.toContain('  pull_request:\n');
     expect(windows).toContain('branches: [main]');
     expect(windows).not.toContain(
@@ -1345,6 +1382,7 @@ describe('iOS verification proves packaged runtime readiness', () => {
 
   it('emits a stable check while reserving macOS for affected pull requests', () => {
     expect(ios).toContain('pull_request_target:');
+    expect(ios).toContain('merge_group:');
     expect(ios).toContain('src-desktop/*|src-ui/*|packages/connect/*');
     expect(ios).toContain('needs: classify');
     expect(ios).toContain("if: needs.classify.outputs.relevant == 'true'");
@@ -1354,7 +1392,7 @@ describe('iOS verification proves packaged runtime readiness', () => {
     expect(ios).toContain('persist-credentials: false');
     expect(ios).toContain("github.event_name == 'pull_request_target'");
     expect(ios).toContain(
-      `--source-sha "\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}"`,
+      `--source-sha "\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}"`,
     );
   });
 
