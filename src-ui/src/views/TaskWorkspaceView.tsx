@@ -13,6 +13,7 @@ import {
   type TaskWorkspaceBinding,
   telemetry,
   usePluginsQuery,
+  useProjectsQuery,
   useQueryClient,
   useTaskGraphQuery,
 } from '@kontourai/station-sdk';
@@ -38,6 +39,7 @@ import {
 } from '../components/state';
 import { useNavigation } from '../contexts/NavigationContext';
 import { clientOriginDetail } from '../utils/clientOrigin';
+import { errorText } from '../utils/errorText';
 import { ProjectTaskRoomProvider } from '../workspace-panes/ProjectTaskRoomContext';
 import { ProjectTaskRoomConversation } from '../workspace-panes/ProjectTaskRoomConversation';
 import { ProjectTaskRoomPresence } from '../workspace-panes/ProjectTaskRoomPresence';
@@ -189,12 +191,18 @@ function statusBadgeVariant(status: string) {
 
 export function TaskWorkspaceView({ taskId }: { taskId: string }) {
   const { data: graph, isLoading, error, refetch } = useTaskGraphQuery(taskId);
+  const projectsQuery = useProjectsQuery() as {
+    data?: Array<{ id: string; slug: string }>;
+    isLoading: boolean;
+    error?: unknown;
+    refetch: () => void;
+  };
   const starterLinkUnverified =
     typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('starterLink') ===
       'not-verified' &&
     new URLSearchParams(window.location.search).get('starter') === 'start-task';
-  if (isLoading) return <TaskLoadingState />;
+  if (isLoading || projectsQuery.isLoading) return <TaskLoadingState />;
   if (error || !graph) {
     return (
       <TaskLoadError
@@ -204,6 +212,21 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
       />
     );
   }
+  if (projectsQuery.error || !Array.isArray(projectsQuery.data)) {
+    return (
+      <TaskProjectCheckError
+        task={graph.task}
+        error={projectsQuery.error}
+        onRetry={() => void projectsQuery.refetch()}
+      />
+    );
+  }
+  const projectExists = projectsQuery.data.some(
+    (project) =>
+      project.id === graph.task.projectId ||
+      project.slug === graph.task.projectId,
+  );
+  if (!projectExists) return <DeletedProjectTaskState task={graph.task} />;
   return (
     <>
       {starterLinkUnverified && <StarterLinkRetry task={graph.task} />}
@@ -1063,6 +1086,52 @@ function TaskLoadingState() {
   return (
     <div className="page page--full task-workspace">
       <SkeletonList count={5} label="Loading task workspace" />
+    </div>
+  );
+}
+
+function DeletedProjectTaskState({ task }: { task: TaskRecord }) {
+  return (
+    <div className="page page--full task-workspace">
+      <TaskHeader task={task} />
+      <div className="task-workspace__body">
+        <ErrorState
+          title="Project deleted"
+          description={`This Task is retained in history, but its Project (${task.projectId}) no longer exists. Chats and recorded Task details remain; live Project workspace controls are unavailable.`}
+        />
+        <TaskIdentitySection task={task} />
+      </div>
+    </div>
+  );
+}
+
+function TaskProjectCheckError({
+  task,
+  error,
+  onRetry,
+}: {
+  task: TaskRecord;
+  error: unknown;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="page page--full task-workspace">
+      <TaskHeader task={task} />
+      <div className="task-workspace__body">
+        <ErrorState
+          title="Unable to verify Task project"
+          description={errorText(error)}
+          action={
+            <button
+              className="editor-btn editor-btn--primary"
+              type="button"
+              onClick={onRetry}
+            >
+              Retry
+            </button>
+          }
+        />
+      </div>
     </div>
   );
 }

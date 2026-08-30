@@ -86,6 +86,26 @@ describe('attachment staging routes', () => {
     ]);
   });
 
+  test('accepts the browser-normalized spelling of the required UTF-8 text media type', async () => {
+    const routes = app();
+    const prepared = await routes.request('/prepare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(descriptor),
+    });
+    const grant = (await prepared.json()) as StageGrant;
+    const uploaded = await routes.request(`/${grant.stageId}`, {
+      method: 'PUT',
+      headers: {
+        ...uploadHeaders(grant),
+        'Content-Type': 'text/plain; charset=UTF-8',
+      },
+      body: DATA,
+    });
+
+    expect(uploaded.status).toBe(200);
+  });
+
   test('fails closed for a missing or lying raw-body length, MIME, and URL grant', async () => {
     const routes = app();
     const prepared = await routes.request('/prepare', {

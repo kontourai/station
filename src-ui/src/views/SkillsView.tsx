@@ -31,6 +31,7 @@ import {
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { useUrlSelection } from '../hooks/useUrlSelection';
+import { errorText } from '../utils/errorText';
 import { SkillCommandSection } from './skills/SkillCommandSection';
 import {
   buildSkillFilename,
@@ -69,6 +70,7 @@ export function SkillsView({
   const [importResults, setImportResults] = useState<
     SkillImportResultRow[] | null
   >(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const splitPaneSelectedId = isCreating ? '__new__' : selectedId;
   const [form, setForm] = useState<SkillForm>(EMPTY_SKILL_FORM);
@@ -167,7 +169,10 @@ export function SkillsView({
   const uninstallMutation = useUninstallSkillMutation();
   const updateLocalMutation = useUpdateLocalSkillMutation();
   const runSkillMutation = useRunSkill();
-  const importSkillsMutation = useImportSkills();
+  // This view already owns the exact active Station origin. Passing it into
+  // the write avoids a second, global SDK-base lookup between the click and
+  // request dispatch — the dead path audited in #890 stalled before fetch.
+  const importSkillsMutation = useImportSkills(apiBase);
   const { guard, DiscardModal } = useUnsavedGuard(dirty);
   useCloseShortcut(() => {
     if (isCreating || selectedId) {
@@ -306,9 +311,11 @@ export function SkillsView({
   }
 
   async function handleImport(files: SkillImportFile[]) {
+    setImportError(null);
     try {
       const result = await importSkillsMutation.mutateAsync(files);
       setImportResults(result.results);
+      await refetchSkills();
       const failed = result.results.length - result.imported;
       showToast(
         failed > 0
@@ -316,7 +323,7 @@ export function SkillsView({
           : `Imported ${result.imported} skill${result.imported === 1 ? '' : 's'}`,
       );
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Import failed');
+      setImportError(errorText(error));
     }
   }
 
@@ -660,10 +667,12 @@ export function SkillsView({
         isOpen={showImportModal}
         pending={importSkillsMutation.isPending}
         results={importResults}
+        error={importError}
         onImport={(files) => void handleImport(files)}
         onCancel={() => {
           setShowImportModal(false);
           setImportResults(null);
+          setImportError(null);
         }}
       />
       <DiscardModal />

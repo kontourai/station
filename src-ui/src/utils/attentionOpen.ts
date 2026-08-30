@@ -27,8 +27,12 @@ export async function acknowledgeThenOpen({
   } catch {
     // A failed acknowledgement must never trap the user on the tray: the
     // request they made was "open this". The next `/api/attention` read is the
-    // source of truth for the count either way, exactly as the SDK's own
-    // `acknowledgeAttentionItem` already treats a 404.
+    // source of truth for the count either way.
+    //
+    // This swallow is BROADER than the SDK's. `acknowledgeAttentionItem`
+    // absorbs only the stale-item 404 and throws for everything else; here we
+    // absorb any failure, because navigation is the user's actual request and
+    // the ack is incidental to it. Do not read this as the SDK being lenient.
   }
   navigate();
 }

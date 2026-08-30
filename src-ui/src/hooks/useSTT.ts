@@ -14,6 +14,8 @@ import { useVoiceProviderContext } from '../contexts/VoiceProviderContext';
 
 export interface UseSTTResult {
   supported: boolean;
+  unsupportedReason?: string;
+  errorMessage?: string;
   state: STTState;
   transcript: string;
   startListening: (opts?: STTOptions) => void;
@@ -44,9 +46,17 @@ export function useSTT(): UseSTTResult {
     () => activeSTT?.transcript ?? '',
     () => activeSTT?.transcript ?? '',
   );
+  const diagnostics = activeSTT as
+    | (typeof activeSTT & {
+        readonly unsupportedReason?: string;
+        readonly errorMessage?: string;
+      })
+    | null;
 
   return {
     supported: activeSTT?.isSupported ?? false,
+    unsupportedReason: diagnostics?.unsupportedReason,
+    errorMessage: diagnostics?.errorMessage,
     state,
     transcript,
     // Preserve the direct plugin contract, including STT options that the

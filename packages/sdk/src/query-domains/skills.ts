@@ -272,12 +272,12 @@ export function useSkillOutcome() {
 }
 
 /** Import markdown files as local skills in one request. */
-export function useImportSkills() {
+export function useImportSkills(apiBase?: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (files: SkillImportFile[]) => {
-      const apiBase = await _getApiBase();
-      return importSkills(apiBase, files);
+      const resolvedApiBase = apiBase ?? (await _getApiBase());
+      return importSkills(resolvedApiBase, files);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   });

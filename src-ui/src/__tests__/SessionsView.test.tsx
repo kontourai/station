@@ -75,6 +75,19 @@ vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast }),
 }));
 
+/**
+ * #890: `AttentionCard`'s dismiss actions read `useApiBase()` so the ack
+ * reaches the connection the view is actually bound to. `useApiBase` is a thin
+ * read over `useConnections`, which throws outside a provider, and this suite
+ * renders the view without the app-shell providers `main.tsx` supplies. Mocked
+ * the same way `components/attention/__tests__/AttentionCard.test.tsx` mocks
+ * it — the base value is incidental here; these tests are about which
+ * attention items render, not where the ack is sent.
+ */
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
+}));
+
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>((resolvePromise) => {

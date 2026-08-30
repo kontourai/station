@@ -23,6 +23,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
+import { useApiBase } from '../../contexts/ApiBaseContext';
 import {
   attentionKindLabel,
   isApprovalLivePending,
@@ -378,7 +379,8 @@ function OpenSessionAction({ item }: { item: ReviewPendingAttentionItem }) {
  * as unacknowledged again, on its own, with no extra plumbing here.
  */
 function SessionFailedAction({ item }: { item: SessionFailedAttentionItem }) {
-  const mutation = useAcknowledgeAttentionItemMutation();
+  const { apiBase } = useApiBase();
+  const mutation = useAcknowledgeAttentionItemMutation(apiBase);
   return (
     <>
       {/*
@@ -406,7 +408,8 @@ function SessionFailedAction({ item }: { item: SessionFailedAttentionItem }) {
  * the shared action model rather than written here.
  */
 function DismissAttentionItem({ item }: { item: AttentionItem }) {
-  const mutation = useAcknowledgeAttentionItemMutation();
+  const { apiBase } = useApiBase();
+  const mutation = useAcknowledgeAttentionItemMutation(apiBase);
   return (
     <div className="attention-item__actions">
       <button

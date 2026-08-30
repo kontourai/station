@@ -239,6 +239,48 @@ describe('useComposerAttachments', () => {
     expect(stages[0]).not.toHaveProperty('reference');
     rerender({ hookStages: stages });
     expect(result.current.sendBlockedReason).toContain('accepted');
+    expect(reconcileAttachmentStages).toHaveBeenCalledTimes(1);
+  });
+
+  test('reconciles each stage once per mount instead of feeding snapshot writes back into POST retries', async () => {
+    const stage: ComposerAttachmentStageSnapshot = {
+      clientAttachmentId: 'bounded-reconcile',
+      name: 'bounded.txt',
+      mimeType: 'text/plain',
+      size: 2,
+      state: 'retryable',
+      progress: 0,
+      stageId: 'stage-bounded',
+    };
+    reconcileAttachmentStages.mockResolvedValue([
+      {
+        stageId: 'stage-bounded',
+        state: 'pending',
+        expiresAt: '2030-01-01T00:00:00.000Z',
+      },
+    ]);
+    let stages = [stage];
+    const onStagesChange = vi.fn((next: ComposerAttachmentStageSnapshot[]) => {
+      stages = next;
+    });
+    const { rerender } = renderHook(
+      ({ hookStages }) =>
+        useComposerAttachments({
+          apiBase: 'http://station.test',
+          attachments: [attachment('bounded-reconcile')],
+          stages: hookStages,
+          capabilities: { images: true, files: true },
+          onAddAttachments: vi.fn(),
+          onStagesChange,
+        }),
+      { initialProps: { hookStages: stages } },
+    );
+
+    await waitFor(() => expect(onStagesChange).toHaveBeenCalledOnce());
+    rerender({ hookStages: stages });
+    rerender({ hookStages: [...stages] });
+
+    expect(reconcileAttachmentStages).toHaveBeenCalledTimes(1);
   });
 
   test('keeps a committed sibling sendable when the same batch partially fails', async () => {

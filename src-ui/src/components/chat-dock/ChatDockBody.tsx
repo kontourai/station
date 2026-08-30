@@ -1222,6 +1222,8 @@ export function ChatDockBody({
         closeAll={chatInput.closeAll}
         voiceState={stt.state}
         voiceSupported={stt.supported}
+        voiceUnsupportedReason={stt.unsupportedReason}
+        voiceError={stt.errorMessage}
         onVoiceStart={() => stt.startListening()}
         onVoiceStop={() => stt.stopListening()}
         workspaceRefused={workspaceRefused}

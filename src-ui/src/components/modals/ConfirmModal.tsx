@@ -20,6 +20,8 @@ export interface ConfirmModalProps {
    */
   role?: 'dialog' | 'alertdialog';
   pending?: boolean;
+  /** A failed confirmation stays in context and is announced in the dialog. */
+  error?: string | null;
 }
 
 /**
@@ -54,6 +56,7 @@ export function ConfirmModal({
   variant = 'default',
   role = 'dialog',
   pending = false,
+  error = null,
 }: ConfirmModalProps) {
   const cancelRef = useRef<HTMLButtonElement>(null);
 
@@ -128,6 +131,11 @@ export function ConfirmModal({
         }
       >
         <p className="station-dialog__message">{message}</p>
+        {error && (
+          <p className="editor-error" role="alert">
+            {error}
+          </p>
+        )}
       </Dialog>
     </div>,
     document.body,
