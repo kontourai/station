@@ -232,12 +232,12 @@ or another ungraceful process loss can leave unmatched `waiting` increments in
 the last cumulative series, so this formula is not self-healing across process
 loss. Reset or rebase the derived value when the Station process restarts.
 
-Migration note: before lifecycle dispositions were added, the unlabeled counter
-represented only definite first-attempt releases. A parked retry that later
-runs now increments the counter for both `waiting` and `admitted`, and shutdown
-and uncertain releases add other non-deferral outcomes. Existing panels and
-alerts over the unfiltered total must add `disposition="released"` to recover
-the old meaning.
+This counter is new in this release; no prior Station emitted it, so there are
+no existing dashboards to migrate. Note that its unfiltered total is a
+**lifecycle** count, not a deferral count: a parked retry that later runs
+contributes both `waiting` and `admitted`. Alert on `disposition="released"`
+for occurrences that were actually given up, and use the full set for the
+parked-depth identity above.
 
 The `indeterminate` metric has no matching `job.deferred` SSE event. That state
 means the release receipt could not be confirmed; broadcasting a deferral would

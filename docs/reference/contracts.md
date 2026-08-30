@@ -64,6 +64,14 @@ value as terminal rather than keeping a job running indefinitely. `admitted`,
 `job.deferred` wire values. See [Monitoring](../guides/monitoring.md) for the
 complete metric vocabulary and parked-depth formula.
 
+**Removed in this release.** Station previously emitted `job.deferred` — and
+`job.refused` for a manual run — with `reason: 'resource_posture'` plus
+`posture` and `busy_percent`, when host CPU load gated scheduled work. Host
+load no longer gates any work, so those events are gone: a consumer branching
+on `reason === 'resource_posture'`, or subscribing to `job.refused`, will stop
+receiving them. `scheduler_concurrency_limit` is the only deferral reason the
+built-in scheduler now emits.
+
 ## Compatibility
 
 `@kontourai/station-shared` still re-exports many of these types so older code can compile during convergence. That is a compatibility layer, not the canonical ownership model. New code should import the owning `@kontourai/station-contracts/*` module directly.
