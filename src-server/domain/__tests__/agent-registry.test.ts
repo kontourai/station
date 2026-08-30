@@ -225,7 +225,6 @@ describe('agent registry', () => {
       (await loadOrCreateAgentRegistry(loader)).engineConnections,
     ).toContainEqual({
       id: 'plugin-agent',
-      runtimeConnectionId: 'plugin-agent',
       source: { kind: 'plugin-acp', plugin: 'one' },
     });
   });
