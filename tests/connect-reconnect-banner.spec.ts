@@ -133,8 +133,11 @@ test.describe('compatibility-aware reconnect', () => {
       page.getByRole('heading', { name: 'What do you want to work on?' }),
     ).toBeVisible();
 
-    // Recovery owns only the offline banner. Another live region may be
-    // present concurrently without becoming this test's subject.
+    // #530: recovery owns only the offline banner. The load-induced
+    // resource-posture alert may be present concurrently without becoming this
+    // test's subject. Injecting it from the start makes the strict-mode red
+    // deterministic; production reaches the same collision after recovery
+    // re-resolves resource posture.
     await page.evaluate(() => {
       const concurrentAlert = document.createElement('div');
       concurrentAlert.setAttribute('role', 'alert');
