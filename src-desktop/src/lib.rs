@@ -7277,7 +7277,7 @@ fn with_native_startup_cover(
         NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSFont, NSTextAlignment, NSTextField,
         NSUserInterfaceItemIdentification, NSView,
     };
-    use objc2_foundation::{ns_string, NSArray, NSObjectProtocol, NSPoint, NSRect, NSSize};
+    use objc2_foundation::{ns_string, NSObjectProtocol, NSPoint, NSRect, NSSize};
 
     window.with_webview(move |webview| {
         let marker = MainThreadMarker::new()
@@ -7342,22 +7342,14 @@ fn with_native_startup_cover(
                 }
                 content.addSubview(&cover);
             }
-            let protected_subviews = content.subviews();
-            if let Some(protected_cover) = protected_subviews.iter().find(|view| {
-                view.identifier()
-                    .as_deref()
-                    .is_some_and(|identifier| identifier.isEqualToString(cover_identifier))
-            }) {
-                let protected_children = NSArray::arrayWithObject(&*protected_cover);
-                unsafe {
-                    let _: () = objc2::msg_send![&*content, setAccessibilityChildren: &*protected_children];
-                }
-            }
             unsafe {
                 let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: true];
                 // Keep WebKit executing the readiness proof. Accessibility is
-                // isolated by the content-view child list above; alpha is now
-                // only the visual half of the protected surface.
+                // isolated by hiding the WebView while the labelled cover
+                // remains visible; alpha is only the visual half of the
+                // protected surface. Do not override the content view's child
+                // list: AppKit cannot resume automatic derivation after a
+                // setter-authored list is later assigned nil (#869).
                 let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64];
             }
             ns_window.makeFirstResponder(None);
@@ -7375,15 +7367,10 @@ fn with_native_startup_cover(
                 let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: false];
             }
             unsafe {
-                // Clear our temporary override. AppKit must resume deriving
-                // the live accessibility hierarchy; a copied subview snapshot
-                // would retain stale children and omit later replacements.
-                let _: () = objc2::msg_send![&*content, setAccessibilityChildren: None::<&NSArray<NSView>>];
                 let _: () = objc2::msg_send![webview_view, setAlphaValue: 1.0f64];
-                // The content view temporarily advertised only the native
-                // cover. Clearing that override changes its hierarchy, but a
-                // live assistive client may retain the covered snapshot until
-                // AppKit is explicitly told to query again (#869).
+                // Unhiding the WebView changes the automatically derived
+                // content hierarchy. Tell live assistive clients to query it
+                // again after both accessibility and visual state are restored.
                 NSAccessibilityPostNotification(&content, NSAccessibilityLayoutChangedNotification);
             }
             ns_window.deminiaturize(None);
@@ -9686,17 +9673,13 @@ mod tests {
 
         assert!(cover.contains("NSTextField::labelWithString(label_text, marker)"));
         assert!(cover.contains("setAccessibilityLabel: label_text"));
-        assert!(cover.contains("NSArray::arrayWithObject(&*protected_cover)"));
-        assert!(cover.contains("setAccessibilityChildren: &*protected_children"));
-        assert!(cover.contains("setAccessibilityChildren: None::<&NSArray<NSView>>"));
+        assert!(!cover.contains("setAccessibilityChildren:"));
+        assert!(!cover.contains("NSArray::arrayWithObject"));
         assert!(cover.contains("NSAccessibilityLayoutChangedNotification"));
         assert!(cover.contains("NSAccessibilityPostNotification("));
         let unhide = cover
             .find("setAccessibilityHidden: false")
             .expect("reveal unhides the WebView from assistive clients");
-        let clear = cover
-            .find("setAccessibilityChildren: None::<&NSArray<NSView>>")
-            .expect("reveal clears the temporary accessibility child override");
         let visible = cover
             .find("setAlphaValue: 1.0f64")
             .expect("reveal restores the WebView visual state");
@@ -9704,7 +9687,7 @@ mod tests {
             .find("NSAccessibilityPostNotification(")
             .expect("reveal notifies assistive clients after clearing the override");
         assert!(
-            unhide < clear && clear < visible && visible < notify,
+            unhide < visible && visible < notify,
             "the layout-change notification must follow the complete WebView reveal"
         );
         assert!(!cover.contains("let revealed_children = content.subviews()"));
