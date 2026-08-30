@@ -394,6 +394,58 @@ function isUsableCost(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
+/**
+ * A token figure this fold may accumulate: finite, non-negative, a real
+ * number. Same contract as {@link isUsableCost} and the birth-site guards
+ * (`tokenCount`, `usableTokenFigure`, `optionalNumber`).
+ *
+ * Birth-site guards remain the primary defence, and this is deliberately NOT
+ * a silent backstop for them — see the drop notice at the call site. It
+ * exists because the fold's input is the DURABLE event stream
+ * (`listEventPayloads` → `eventStore.listEvents`), so it replays rows written
+ * before those guards existed. Such a row cannot carry `NaN`/`Infinity`:
+ * `JSON.stringify` writes both as `null`. `null` then passes an
+ * `!== undefined` gate, reaches `conversation-manager`'s
+ * `reportedTokenFigureIsBroken`, and throws — a permanent 500 on that
+ * conversation's stats, on every read. Treating it as ABSENT is what makes
+ * the historical row readable again without inventing a measurement.
+ */
+function isUsableTokenFigure(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+/** What a dropped token figure reports: enough to find the producer. */
+export interface DroppedUsageFigure {
+  field: string;
+  value: unknown;
+  provider?: string;
+  threadId?: string;
+  turnId?: string;
+}
+
+/**
+ * Returns the figure when usable, or `undefined` after REPORTING the drop.
+ * Absent input is absent, not a drop — only a present-but-unusable value is
+ * a producer defect worth surfacing.
+ */
+function usableTokenFigureOrDrop(
+  value: number | undefined,
+  field: string,
+  event: { provider?: string; threadId?: string; turnId?: string },
+  report?: (dropped: DroppedUsageFigure) => void,
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (isUsableTokenFigure(value)) return value;
+  report?.({
+    field,
+    value,
+    provider: event.provider,
+    threadId: event.threadId,
+    turnId: event.turnId,
+  });
+  return undefined;
+}
+
 /** Adds `value` to `current`, treating an absent `current` as "not yet seen". */
 function addOptional(current: number | undefined, value: number): number {
   return (current ?? 0) + value;
@@ -457,6 +509,7 @@ function readSessionConfiguredModel(
  */
 export function foldUsageEvents(
   events: CanonicalRuntimeEvent[],
+  onDroppedFigure?: (dropped: DroppedUsageFigure) => void,
 ): SessionUsageAggregate {
   const aggregate = emptyAggregate();
   /** Cost committed by engine processes that have already been superseded. */
@@ -468,23 +521,57 @@ export function foldUsageEvents(
     if (event.provider) aggregate.provider = event.provider;
     switch (event.method) {
       case 'token-usage.updated': {
-        // This fold deliberately does not silently discard malformed token
-        // figures: producer boundaries own that signal. Claude guards with
-        // tokenCount, Codex with extractNumber, Bedrock and Ollama with
-        // usableTokenFigure, and ACP publishes only the separately validated
-        // context pair. Keep those birth-site guards exhaustive so a future
-        // producer defect remains visible instead of disappearing here.
+        // Producer boundaries own the malformed-figure signal, and every
+        // live producer of this event guards: Claude with tokenCount, Codex
+        // with extractTokenFigure, Bedrock and Ollama with usableTokenFigure,
+        // the Claude transcript source with its own tokenCount, and ACP
+        // publishes only the separately validated context pair. Keep those
+        // exhaustive so a future producer defect stays visible upstream.
+        //
+        // This gate is not a replacement for them: it exists because the fold
+        // replays DURABLE history, including rows written before those guards
+        // existed (see isUsableTokenFigure). A dropped figure is reported, not
+        // swallowed — silence here would hide exactly the producer defect the
+        // birth-site guards are meant to surface.
         const cumulative = CUMULATIVE_USAGE_PROVIDERS.has(event.provider);
-        const promptTokens = event.promptTokens;
-        const completionTokens = event.completionTokens;
+        const promptTokens = usableTokenFigureOrDrop(
+          event.promptTokens,
+          'promptTokens',
+          event,
+          onDroppedFigure,
+        );
+        const completionTokens = usableTokenFigureOrDrop(
+          event.completionTokens,
+          'completionTokens',
+          event,
+          onDroppedFigure,
+        );
         // A total is reported outright, or derivable from whichever
         // components WERE reported. When none were, there is no total —
         // `0` here would be an invented measurement.
+        const reportedTotal = usableTokenFigureOrDrop(
+          event.totalTokens,
+          'totalTokens',
+          event,
+          onDroppedFigure,
+        );
         const totalTokens =
-          event.totalTokens ??
+          reportedTotal ??
           (promptTokens !== undefined || completionTokens !== undefined
             ? (promptTokens ?? 0) + (completionTokens ?? 0)
             : undefined);
+        const cacheReadTokens = usableTokenFigureOrDrop(
+          event.cacheReadTokens,
+          'cacheReadTokens',
+          event,
+          onDroppedFigure,
+        );
+        const cacheWriteTokens = usableTokenFigureOrDrop(
+          event.cacheWriteTokens,
+          'cacheWriteTokens',
+          event,
+          onDroppedFigure,
+        );
 
         if (promptTokens !== undefined) {
           aggregate.inputTokens = cumulative
@@ -501,15 +588,15 @@ export function foldUsageEvents(
             ? totalTokens
             : addOptional(aggregate.totalTokens, totalTokens);
         }
-        if (event.cacheReadTokens !== undefined) {
+        if (cacheReadTokens !== undefined) {
           aggregate.cacheReadTokens = cumulative
-            ? event.cacheReadTokens
-            : addOptional(aggregate.cacheReadTokens, event.cacheReadTokens);
+            ? cacheReadTokens
+            : addOptional(aggregate.cacheReadTokens, cacheReadTokens);
         }
-        if (event.cacheWriteTokens !== undefined) {
+        if (cacheWriteTokens !== undefined) {
           aggregate.cacheWriteTokens = cumulative
-            ? event.cacheWriteTokens
-            : addOptional(aggregate.cacheWriteTokens, event.cacheWriteTokens);
+            ? cacheWriteTokens
+            : addOptional(aggregate.cacheWriteTokens, cacheWriteTokens);
         }
         if (isUsableCost(event.reportedCostUsd)) {
           currentProcessCostUsd =
