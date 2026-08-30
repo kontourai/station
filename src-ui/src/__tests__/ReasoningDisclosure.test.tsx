@@ -12,7 +12,10 @@ import {
 } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { MessageContent } from '../components/chat/message-bubble/MessageContent';
-import { ReasoningSection } from '../components/chat/ReasoningSection';
+import {
+  __resetReasoningDisclosureIntents,
+  ReasoningSection,
+} from '../components/chat/ReasoningSection';
 
 /**
  * station#55: reasoning is a collapsed-by-default disclosure, subordinate to
@@ -23,6 +26,9 @@ import { ReasoningSection } from '../components/chat/ReasoningSection';
 
 afterEach(() => {
   cleanup();
+  // Explicit intents deliberately outlive components (they must survive the
+  // streaming -> settled remount), so tests must not inherit each other's.
+  __resetReasoningDisclosureIntents();
 });
 
 const REASONING = 'inspect the request compare the evidence choose the answer';
@@ -169,6 +175,98 @@ describe('reasoning disclosure (station#55)', () => {
     await waitFor(() => expect(screen.getByText('pong')).toBeTruthy());
     expect(summary.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByText(REASONING)).toBeTruthy();
+  });
+
+  test('an explicit choice survives the streaming -> settled remount', () => {
+    // The disclosure's main scenario: a reader opens the reasoning mid-turn,
+    // the turn completes, and the row is re-rendered by a DIFFERENT component
+    // instance. Component-local state would snap it shut exactly there.
+    const view = render(reasoningSection());
+    const summary = screen.getByRole('button', { name: /Reasoning/ });
+    fireEvent.click(summary);
+    expect(summary.getAttribute('aria-expanded')).toBe('true');
+
+    view.unmount();
+    render(reasoningSection());
+
+    expect(
+      screen
+        .getByRole('button', { name: /Reasoning/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+    expect(screen.getByText(REASONING)).toBeTruthy();
+  });
+
+  test('an explicit close also survives the remount', () => {
+    const view = render(
+      <ReasoningSection
+        content={REASONING}
+        fontSize={14}
+        show
+        hasAnswerText={false}
+      />,
+    );
+    // Automatic mode starts open with no answer yet; closing is explicit.
+    fireEvent.click(screen.getByRole('button', { name: /Reasoning/ }));
+    view.unmount();
+
+    render(
+      <ReasoningSection
+        content={REASONING}
+        fontSize={14}
+        show
+        hasAnswerText={false}
+      />,
+    );
+    expect(
+      screen
+        .getByRole('button', { name: /Reasoning/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
+  test('a whitespace-only first delta is not an answer', () => {
+    const reasoningPart = { type: 'reasoning', content: REASONING } as const;
+    const view = render(
+      <MessageContent
+        contentParts={[reasoningPart]}
+        textContent=""
+        chatFontSize={14}
+        showReasoning
+        showToolDetails={false}
+        isStreamingMessage
+      />,
+    );
+    const summary = screen.getByRole('button', { name: /Reasoning/ });
+    expect(summary.getAttribute('aria-expanded')).toBe('true');
+
+    // Models routinely emit "\n\n" before the first real token. Collapsing
+    // there empties the surface: reasoning gone, answer not yet visible.
+    view.rerender(
+      <MessageContent
+        contentParts={[reasoningPart, { type: 'text', content: '\n\n' }]}
+        textContent=""
+        chatFontSize={14}
+        showReasoning
+        showToolDetails={false}
+        isStreamingMessage
+      />,
+    );
+    expect(
+      screen
+        .getByRole('button', { name: /Reasoning/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('true');
+  });
+
+  test('counts words in a script without whitespace boundaries', () => {
+    // Whitespace splitting calls this one word; the count is the reader's
+    // only signal of how much is hidden.
+    render(reasoningSection('请求已收到证据已比对答案已选定'));
+    const summary = screen.getByRole('button', { name: /Reasoning/ });
+    const label = summary.textContent ?? '';
+    const count = Number(/([\d,]+)/.exec(label)?.[1]?.replace(/,/g, '') ?? '0');
+    expect(count).toBeGreaterThan(1);
   });
 
   test('both chat consumers render the shared ReasoningSection', () => {

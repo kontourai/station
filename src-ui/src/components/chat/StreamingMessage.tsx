@@ -86,8 +86,11 @@ function StreamingMessageComponent({
   const hasReasoningPart = contentParts.some(
     (part) => part.type === 'reasoning' && Boolean(part.content),
   );
+  // Both disjuncts trim: models routinely emit "\n\n" as the first delta
+  // after a reasoning block, and an untrimmed check would call that an answer
+  // — collapsing the reasoning while the answer area is still visually empty.
   const hasAnswerText =
-    Boolean(streamingText) ||
+    Boolean(streamingText.trim()) ||
     contentParts.some(
       (part) => part.type === 'text' && Boolean(part.content?.trim()),
     );
