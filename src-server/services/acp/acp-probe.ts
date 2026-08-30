@@ -1032,9 +1032,25 @@ export class ACPProbe {
     } finally {
       await this.attemptCleanup(process, 0);
     }
-    // Refresh the manager's declared-vs-observed projection from a complete
-    // probe only after the mutation itself succeeded.
-    await this.probe('request');
+    // The external mutation has committed at this point. Refreshing the
+    // declared-vs-observed projection is useful, but it is a second operation
+    // and must not turn a successful set/disable into a reported failure (or
+    // settle a materialized credential as failed). The ordinary probe path
+    // records its own failure/status evidence; this warning names the partial
+    // observation without lying about the mutation outcome.
+    try {
+      const refreshed = await this.probe('request');
+      if (!refreshed) {
+        this.logger.warn('ACP provider mutation succeeded; refresh failed', {
+          id: this.config.id,
+        });
+      }
+    } catch (error) {
+      this.logger.warn('ACP provider mutation succeeded; refresh rejected', {
+        err: error,
+        id: this.config.id,
+      });
+    }
   }
   /**
    * archive#1549: when the last SUCCESSFUL handshake was observed (epoch ms),

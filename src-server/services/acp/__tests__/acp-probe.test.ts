@@ -298,6 +298,52 @@ process.stdin.on('data', (chunk) => {
     expect(probe.getProviderRouting()).toHaveLength(1);
   });
 
+  test('does not report a committed provider mutation as failed when readback refresh fails', async () => {
+    const process = {
+      start: vi
+        .fn()
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          agentCapabilities: { providers: {} },
+          providerRouting: [],
+        })
+        .mockRejectedValueOnce(new Error('refresh failed')),
+      setProvider: vi.fn().mockResolvedValue(undefined),
+      newSession: vi.fn(),
+      destroy: vi.fn().mockResolvedValue(undefined),
+      survivesCleanup: vi.fn().mockResolvedValue(false),
+      releaseIfConfirmedGone: vi.fn(),
+    };
+    const logger = { warn: vi.fn() };
+    const probe = new ACPProbe(
+      {
+        id: 'opencode',
+        name: 'OpenCode',
+        command: 'opencode',
+        cwd: '/tmp/provider-routing',
+        enabled: true,
+      },
+      logger,
+      '/tmp/project',
+      () => process as unknown as ACPProcess,
+    );
+
+    await expect(
+      probe.setProvider({
+        providerId: 'main',
+        apiType: 'openai',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        headers: { Authorization: 'Bearer transient' },
+      }),
+    ).resolves.toBeUndefined();
+    expect(process.setProvider).toHaveBeenCalledOnce();
+    expect(process.start).toHaveBeenCalledTimes(2);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'ACP provider mutation succeeded; refresh failed',
+      { id: 'opencode' },
+    );
+  });
+
   /**
    * archive#1088. Measured on origin/main (1e5b45d2) with a stub ACP CLI that
    * logs its own `getcwd`: adding a connection with no `cwd` spawned it in
