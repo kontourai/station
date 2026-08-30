@@ -126,6 +126,9 @@ libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
+# The mock runtime lets unit tests inspect the actual native menu item built by
+# tray code without adding test machinery to release artifacts.
+tauri = { version = "=2.11.5", features = ["test"] }
 
 [patch.crates-io]
 # Audited Station patch over android-native-keyring-store 1.0.0. Upstream's

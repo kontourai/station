@@ -49,8 +49,18 @@ host library; the app reports that limitation instead of treating the request
 as successful. Normal indicator clicks remain available.
 
 All endpoint actions are derived from the same exact Desktop ownership snapshot
-as health and service controls. API docs accept only an exact loopback origin;
-the renderer cannot supply a URL, port, or path.
+as health and service controls. API docs accept only an exact loopback origin,
+and that validated origin is also the menu item's enabled-state source; the
+renderer cannot supply a URL, port, or path. Attached-service destinations are
+disabled while the endpoint is stopped or not installed.
+
+Built-in navigation is enabled only after the hidden main window has completed
+its native startup-readiness proof. A tray destination is retained natively and
+drained after the renderer subscribes, so a click cannot be lost while deferred
+overlays are still mounting. If another Tauri window keeps the process alive
+after the main window closes, **Show Station UI** recreates the main window from
+the checked-in Tauri configuration and requires a fresh identity and renderer
+mount proof before revealing its contents.
 
 ## Service actions and CLI parity
 

@@ -7501,9 +7501,23 @@ fn current_startup_ticket(
 }
 
 #[cfg(not(mobile))]
-pub(crate) fn request_main_window_activation(app: &AppHandle) {
+pub(crate) fn main_window_activation_available(app: &AppHandle) -> bool {
+    app.try_state::<DesktopServerState>().is_some_and(|state| {
+        matches!(
+            state
+                .readiness
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .phase,
+            startup_readiness::ReadinessPhase::Ready | startup_readiness::ReadinessPhase::Bypassed
+        )
+    })
+}
+
+#[cfg(not(mobile))]
+pub(crate) fn request_main_window_activation(app: &AppHandle) -> bool {
     let Some(state) = app.try_state::<DesktopServerState>() else {
-        return;
+        return false;
     };
     let effects = transition_startup_readiness(
         state.inner(),
@@ -7512,10 +7526,73 @@ pub(crate) fn request_main_window_activation(app: &AppHandle) {
     if effects.contains(&startup_readiness::ReadinessEffect::PresentStartupRecoverySurface) {
         present_startup_recovery_surface(app);
     }
-    if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
+    let revealed = effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow);
+    if revealed {
         reveal_main_window(app);
     }
     continue_startup_readiness(app, state.inner(), &effects);
+    revealed
+}
+
+#[cfg(not(mobile))]
+pub(crate) fn ensure_main_window(app: &AppHandle) -> Result<(), String> {
+    if app.get_webview_window("main").is_some() {
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        return Err("main-window recreation is currently supported only on macOS".into());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let config = app
+            .config()
+            .app
+            .windows
+            .iter()
+            .find(|window| window.label == "main")
+            .cloned()
+            .ok_or_else(|| "main window configuration is unavailable".to_string())?;
+        let state = app
+            .try_state::<DesktopServerState>()
+            .ok_or_else(|| "desktop startup readiness is unavailable".to_string())?;
+        let previous = state
+            .readiness
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        let (next, _) = startup_readiness::transition(
+            &previous,
+            startup_readiness::ReadinessInput::MainWindowRecreated {
+                now_ms: 0,
+                timeout_ms: 30_000,
+                dev_bypass: cfg!(debug_assertions),
+            },
+        );
+        let epoch = next.epoch;
+        *state
+            .readiness
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = next;
+
+        if let Err(error) =
+            WebviewWindowBuilder::from_config(app, &config).and_then(WebviewWindowBuilder::build)
+        {
+            *state
+                .readiness
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = previous;
+            return Err(format!("could not recreate the main window: {error}"));
+        }
+        tray::kick(app);
+        if !cfg!(debug_assertions) {
+            arm_startup_deadline(app.clone(), epoch);
+        }
+        log::info!("recreated the Station main window from its configured native definition");
+        Ok(())
+    }
 }
 
 #[cfg(not(mobile))]
@@ -9301,6 +9378,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         open_workspace_pane_pop_out,
         bundled_server_status,
         open_desktop_tray_menu,
+        tray::take_pending_tray_navigation,
         restart_bundled_server,
         commit_renderer_mount,
         commit_startup_readiness,
@@ -9530,7 +9608,25 @@ If a stable instance is running, this launch will focus its window and exit.",
         .run(|app, event| {
             #[cfg(all(not(mobile), target_os = "macos"))]
             if let tauri::RunEvent::Reopen { .. } = event {
-                request_main_window_activation(app);
+                match ensure_main_window(app) {
+                    Ok(()) => {
+                        request_main_window_activation(app);
+                    }
+                    Err(error) => {
+                        log::error!("macOS reopen could not restore the main window: {error}")
+                    }
+                }
+            }
+            #[cfg(not(mobile))]
+            if let tauri::RunEvent::WindowEvent { label, event, .. } = &event {
+                if label == "main" && matches!(event, WindowEvent::Destroyed) {
+                    let kick_app = app.clone();
+                    if let Err(error) = app.run_on_main_thread(move || tray::kick(&kick_app)) {
+                        log::error!(
+                            "could not schedule tray refresh after main-window destruction: {error}"
+                        );
+                    }
+                }
             }
             #[cfg(not(mobile))]
             if let tauri::RunEvent::Exit = event { teardown_sidecar(app); }

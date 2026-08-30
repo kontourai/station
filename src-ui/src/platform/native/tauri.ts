@@ -663,20 +663,39 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
   ): NativeEventSubscription {
     let disposed = false;
     let unlisten: UnlistenFn | undefined;
+    const drainPending = () =>
+      this.bridge
+        .invoke<unknown>('take_pending_tray_navigation')
+        .then((destination) => {
+          if (
+            !disposed &&
+            (destination === 'connections' ||
+              destination === 'pairedDevices' ||
+              destination === 'coreUpdates')
+          ) {
+            listener({ destination });
+          }
+        })
+        .catch((error) => {
+          if (!disposed)
+            onError?.({
+              code: 'listener-registration-failed',
+              message: `Station could not replay tray navigation: ${errorMessage(error)}`,
+            });
+        });
     void this.bridge
-      .listen<unknown>('station://tray-navigation', ({ payload }) => {
-        if (
-          disposed ||
-          (payload !== 'connections' &&
-            payload !== 'pairedDevices' &&
-            payload !== 'coreUpdates')
-        )
-          return;
-        listener({ destination: payload });
+      .listen('station://tray-navigation', () => {
+        void drainPending();
       })
       .then((registered) => {
         unlisten = registered;
-        if (disposed) unlisten();
+        if (disposed) {
+          unlisten();
+          return;
+        }
+        // Subscribe first, then drain. A click before subscription is retained
+        // natively; a click after subscription wakes this same drain path.
+        void drainPending();
       })
       .catch((error) => {
         if (!disposed)
