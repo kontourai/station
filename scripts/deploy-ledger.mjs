@@ -56,6 +56,14 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const HTTPS_URL_PATTERN = /^https:\/\/\S+$/;
 
+function validArtifactBuiltAt(value) {
+  if (typeof value !== 'string' || !TIMESTAMP_PATTERN.test(value)) return false;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return false;
+  const canonical = value.includes('.') ? value : value.replace(/Z$/, '.000Z');
+  return new Date(parsed).toISOString() === canonical;
+}
+
 /**
  * Versions the ledger accepts: alphanumeric plus `.`, `+`, `~`, `-` — the
  * charset of every real channel version (semver, npm prerelease tags, the
@@ -139,6 +147,14 @@ export function validateEntry(entry) {
   if (typeof entry.gateResult !== 'string' || entry.gateResult.trim() === '') {
     errors.push(
       `gateResult must be a non-empty string: ${String(entry.gateResult)}`,
+    );
+  }
+  if (
+    entry.artifactBuiltAt !== undefined &&
+    !validArtifactBuiltAt(entry.artifactBuiltAt)
+  ) {
+    errors.push(
+      `artifactBuiltAt must be a canonical artifact UTC timestamp: ${String(entry.artifactBuiltAt)}`,
     );
   }
   if (
@@ -305,6 +321,7 @@ export function renderLedgerMarkdown({ entries, githubRepo }) {
     '### JSON schema (one array element per ship)',
     '',
     '- `timestampUtc` — ISO 8601 UTC. When the recording workflow step ran (immediately after the publish it records); never in the future.',
+    '- `artifactBuiltAt` — optional canonical ISO 8601 UTC from the immutable packaged artifact manifest. It is never a provider upload, device install, or ledger-recording timestamp.',
     `- \`channel\` — one of \`${DEPLOY_LEDGER_CHANNELS.join('`, `')}\`.`,
     '- `version` — the channel-specific version identity users see (`station --version`, Play console, npm); alphanumeric plus `. + ~ -` only.',
     '- `sha` — the exact commit shipped, 40 lowercase hex, taken from the workflow\u2019s own decided ship SHA (never re-derived). A ship is identified by `channel` + `sha` + `version`; a re-record of the same identity is refused regardless of artifact list.',
@@ -335,6 +352,11 @@ export function renderLedgerMarkdown({ entries, githubRepo }) {
       `## ${tableCell(entry.timestampUtc)} · ${tableCell(entry.channel)} · ${tableCell(entry.version)}`,
       '',
       `- Ship SHA: \`${entry.sha}\``,
+      ...(entry.artifactBuiltAt
+        ? [
+            `- Artifact built at: \`${entry.artifactBuiltAt}\` (not provider upload/record time)`,
+          ]
+        : []),
       ...entry.artifacts.map((artifact) => `- Artifact: ${artifact}`),
     );
     if (entry.notes && entry.notes.length > 0) {
@@ -351,7 +373,7 @@ function usage() {
     '         --channel <nightly-android|nightly-npm|nightly-desktop|stable-desktop|stable-npm> \\',
     '         --version <version> --sha <40-hex> --gate-result <sentence> \\',
     '         --github-repo owner/name [--timestamp <ISO-UTC>] [--workflow-run-url <https-url>] [--package <npm-name>]',
-    '         [--artifact <descriptor>]... [--note <caveat>]... \\',
+    '         [--artifact-built-at <ISO-UTC>] [--artifact <descriptor>]... [--note <caveat>]... \\',
     '         [--repo-root <path>] [--ledger-json <path>] [--ledger-md <path>]',
     '',
     '--timestamp defaults to the current UTC moment (the workflow passes its own).',
@@ -447,6 +469,9 @@ export function main(argv) {
       ? { package: flags.get('--package') }
       : {}),
     sha,
+    ...(flags.get('--artifact-built-at') !== undefined
+      ? { artifactBuiltAt: flags.get('--artifact-built-at') }
+      : {}),
     workflowRunUrl: flags.get('--workflow-run-url') ?? null,
     artifacts: repeated.get('--artifact') ?? [],
     gateResult: flags.get('--gate-result'),

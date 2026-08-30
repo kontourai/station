@@ -47,6 +47,16 @@ function entry(overrides = {}) {
 }
 
 describe('deploy ledger entry validation', () => {
+  test('distinguishes immutable artifact build time from the recording timestamp', () => {
+    const candidate = entry({ artifactBuiltAt: '2026-08-20T08:00:00.000Z' });
+    expect(validateEntry(candidate).ok).toBe(true);
+    expect(
+      validateEntry({
+        ...candidate,
+        artifactBuiltAt: '2026-02-31T08:00:00.000Z',
+      }).ok,
+    ).toBe(false);
+  });
   it('accepts a complete entry and nulls for unverifiable fields', () => {
     expect(validateEntry(entry())).toEqual({ ok: true, errors: [] });
     expect(validateEntry(entry({ workflowRunUrl: null, notes: null }))).toEqual(
@@ -337,6 +347,7 @@ describe('markdown regeneration', () => {
     }
     for (const field of [
       'timestampUtc',
+      'artifactBuiltAt',
       'workflowRunUrl',
       'artifacts',
       'gateResult',

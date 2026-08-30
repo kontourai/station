@@ -2,6 +2,7 @@ import { generateKeyPairSync, verify } from 'node:crypto';
 import { describe, expect, test } from 'vitest';
 import {
   appStoreConnectRequest,
+  assertCanonicalArtifactBuiltAt,
   createAppStoreConnectJwt,
   selectAppResource,
   selectProcessedBuildResource,
@@ -11,6 +12,14 @@ const pair = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 const privateKey = pair.privateKey.export({ type: 'pkcs8', format: 'pem' });
 
 describe('App Store Connect receipt authority', () => {
+  test('keeps artifact build time distinct and canonical', () => {
+    expect(() =>
+      assertCanonicalArtifactBuiltAt('2026-08-30T12:00:00.000Z'),
+    ).not.toThrow();
+    expect(() =>
+      assertCanonicalArtifactBuiltAt('2026-02-31T12:00:00.000Z'),
+    ).toThrow(/artifact-built-at/);
+  });
   test('creates a bounded ES256 App Store Connect token', () => {
     const token = createAppStoreConnectJwt({
       issuerId: 'issuer-id',

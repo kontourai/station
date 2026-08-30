@@ -14,7 +14,10 @@ import {
   ANDROID_PROJECT_DIR,
   writeAndroidBuildManifest,
 } from '../lib/android-build-manifest.mjs';
-import { BUILD_MANIFEST_FILENAME } from '../lib/desktop-build-manifest.mjs';
+import {
+  BUILD_MANIFEST_FILENAME,
+  writeNativeClientBuildManifest,
+} from '../lib/desktop-build-manifest.mjs';
 import {
   APK_BUILD_MANIFEST_ENTRY,
   parseAndroidBuildProvenance,
@@ -132,6 +135,22 @@ describe('android build manifest', () => {
       branch: 'v9.9.9',
       builtAt: '2026-08-20T18:00:00.000Z',
     });
+  });
+
+  test('copies the already-frozen native client stamp rather than sampling a later Android timestamp', () => {
+    const root = withReleaseManifest(makeRoot());
+    writeNativeClientBuildManifest(root, {
+      builtAt: '2026-08-20T18:00:00.000Z',
+      env: {},
+      refresh: true,
+    });
+    const manifestPath = writeAndroidBuildManifest(root, {
+      builtAt: '2026-08-20T19:00:00.000Z',
+      env: {},
+    });
+    expect(
+      JSON.parse(readFileSync(manifestPath as string, 'utf8')).builtAt,
+    ).toBe('2026-08-20T18:00:00.000Z');
   });
 
   test('the packaged entry path is derived from the staged filename, not restated', () => {

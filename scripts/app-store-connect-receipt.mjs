@@ -188,9 +188,11 @@ async function buildReceipt(argv, env) {
   const ipa = requiredOption(argv, '--ipa');
   const workflowRunUrl = requiredOption(argv, '--workflow-run-url');
   const output = requiredOption(argv, '--output');
+  const artifactBuiltAt = requiredOption(argv, '--artifact-built-at');
   if (!SHA_PATTERN.test(sourceSha)) {
     throw new Error('--source-sha must be exactly 40 lowercase hex characters');
   }
+  assertCanonicalArtifactBuiltAt(artifactBuiltAt);
   const query = new URLSearchParams({
     'filter[app]': appId,
     'filter[version]': bundleVersion,
@@ -217,10 +219,29 @@ async function buildReceipt(argv, env) {
     expirationDate: build.attributes.expirationDate ?? null,
     minOsVersion: build.attributes.minOsVersion ?? null,
     sourceSha,
+    // Artifact provenance is deliberately distinct from App Store Connect's
+    // uploadedDate and this observer's observedAt.
+    artifactBuiltAt,
     ipaSha256,
     workflowRunUrl,
     observedAt: new Date().toISOString(),
   });
+}
+
+export function assertCanonicalArtifactBuiltAt(value) {
+  if (
+    typeof value !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value) ||
+    !Number.isFinite(Date.parse(value))
+  )
+    throw new Error(
+      '--artifact-built-at must be a canonical ISO 8601 UTC timestamp',
+    );
+  const canonical = value.includes('.') ? value : value.replace(/Z$/, '.000Z');
+  if (new Date(value).toISOString() !== canonical)
+    throw new Error(
+      '--artifact-built-at must be a canonical ISO 8601 UTC timestamp',
+    );
 }
 
 export async function main(argv = process.argv.slice(2), env = process.env) {

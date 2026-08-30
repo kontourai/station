@@ -15,8 +15,10 @@ import {
   BUILD_MANIFEST_FILENAME,
   deriveBuildManifest,
   deriveServerBuildIdentity,
+  readNativeClientBuildManifest,
   readPackagedReleaseManifest,
   writeDesktopBuildManifest,
+  writeNativeClientBuildManifest,
 } from '../lib/desktop-build-manifest.mjs';
 
 const roots: string[] = [];
@@ -161,6 +163,38 @@ describe('desktop build manifest', () => {
     expect(Object.keys(written).sort()).toEqual(['branch', 'builtAt', 'sha']);
     expect(written.branch).toBe('release-lane');
     expect(written.builtAt).toBe('2026-07-10T18:00:00.000Z');
+  });
+
+  test('freezes one native-client timestamp so repeated target preparation cannot restamp it', () => {
+    const root = makeRoot();
+    makeGitCheckout(root);
+    const first = writeNativeClientBuildManifest(root, {
+      builtAt: '2026-08-30T12:00:00.000Z',
+      env: {},
+      refresh: true,
+    });
+    const second = writeNativeClientBuildManifest(root, {
+      builtAt: '2026-08-30T12:01:00.000Z',
+      env: {},
+    });
+    expect(second).toBe(first);
+    expect(readNativeClientBuildManifest(root)?.builtAt).toBe(
+      '2026-08-30T12:00:00.000Z',
+    );
+  });
+
+  test('refuses an impossible staged timestamp rather than normalizing it', () => {
+    const root = makeRoot();
+    mkdirSync(join(root, 'src-desktop'), { recursive: true });
+    writeFileSync(
+      join(root, 'src-desktop', 'station-client-build.json'),
+      JSON.stringify({
+        sha: RELEASE_SHA,
+        branch: 'main',
+        builtAt: '2026-02-31T12:00:00.000Z',
+      }),
+    );
+    expect(readNativeClientBuildManifest(root)).toBeNull();
   });
 
   test('refuses to write when the server bundle it should describe is absent', () => {

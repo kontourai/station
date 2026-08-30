@@ -78,7 +78,7 @@ jobs:
         run: df -h /
       - name: Build Android debug APK and AAB
         working-directory: src-desktop
-        run: RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --debug --apk --aab --config tauri.conf.json
+        run: STATION_CLIENT_BUILD_REUSE=1 RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --debug --apk --aab --config tauri.conf.json
         env:
           NDK_HOME: "${{ env.ANDROID_HOME }}/ndk/27.0.12077973"
           # Optional secret-free Dev backend origin supplied by repository or

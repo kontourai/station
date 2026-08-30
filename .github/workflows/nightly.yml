@@ -607,6 +607,10 @@ jobs:
         if: steps.decide.outputs.build == 'true'
         run: node scripts/apply-android-native-bootstrap.mjs
 
+      - name: Stage frozen nightly client provenance in APK assets
+        if: steps.decide.outputs.build == 'true'
+        run: node scripts/write-android-build-manifest.mjs
+
       - name: Reclaim disk for four Android Rust targets
         if: steps.decide.outputs.build == 'true'
         run: bash scripts/reclaim-android-runner-disk.sh
@@ -655,6 +659,9 @@ jobs:
           # Tauri runs tauri.conf.json's beforeBuildCommand again here. Keep
           # that UI build bound to the exact identity used by the native config.
           STATION_BUILD_VERSION: ${{ steps.identity.outputs.version }}
+          # The desktop-resource build above froze the artifact timestamp;
+          # Tauri's nested beforeBuildCommand must reuse it exactly.
+          STATION_CLIENT_BUILD_REUSE: "1"
         run: |
           keystore="$RUNNER_TEMP/station-nightly.keystore"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
@@ -834,6 +841,7 @@ jobs:
             --channel nightly-android
             --version "$DEPLOY_LEDGER_VERSION"
             --sha "$DEPLOY_LEDGER_SHA"
+            --artifact-built-at "$(node -e 'const fs=require("fs");process.stdout.write(JSON.parse(fs.readFileSync("src-desktop/station-client-build.json","utf8")).builtAt)')"
             --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             --gate-result "nightly test-gate success on $DEPLOY_LEDGER_SHA (station#4539)"

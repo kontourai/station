@@ -7,9 +7,11 @@ use crate::service_state::{
 };
 use crate::{BundledServerStatus, DesktopOwnerSnapshot, ServerOwnership};
 use serde::Deserialize;
+use std::fs::read_to_string;
 use std::fmt::Display;
 use std::io::Read;
 use std::net::IpAddr;
+use std::path::Path;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -175,6 +177,7 @@ pub(crate) fn shutdown(app: &AppHandle) {
 pub fn init(app: &AppHandle) -> tauri::Result<()> {
     let product_name = tray_product_name(app);
     let identity_text = tray_identity(app, &product_name);
+    let build_text = local_client_build_label(app).unwrap_or_else(|| "Build: unavailable".into());
     let icon_bytes = tray_icon_bytes(packaged_channel(app));
     let identity = MenuItem::with_id(
         app,
@@ -187,6 +190,13 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         app,
         "tray-backend",
         "Backend: unavailable",
+        false,
+        None::<&str>,
+    )?;
+    let build = MenuItem::with_id(
+        app,
+        "tray-build",
+        build_text,
         false,
         None::<&str>,
     )?;
@@ -242,6 +252,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     )?;
     let menu = MenuBuilder::new(app)
         .item(&identity)
+        .item(&build)
         .item(&status)
         .item(&backend)
         .separator()
@@ -810,6 +821,60 @@ fn tray_product_name(app: &AppHandle) -> String {
 
 fn tray_identity(app: &AppHandle, product_name: &str) -> String {
     identity_label(product_name, &app.package_info().version.to_string())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalClientBuildManifest {
+    built_at: String,
+}
+
+/// The tray belongs to the installed desktop app, not an attached service.
+/// Read only its packaged resource; service HTTP/mtime/environment metadata
+/// would conflate backend deployment and local artifact provenance.
+fn local_client_build_label(app: &AppHandle) -> Option<String> {
+    let resource_dir = app.path().resource_dir().ok()?;
+    let manifest = read_local_client_build_manifest(&resource_dir.join("dist-server/station-build.json"))?;
+    compact_utc_build_label(&manifest.built_at)
+}
+
+fn read_local_client_build_manifest(path: &Path) -> Option<LocalClientBuildManifest> {
+    let raw = read_to_string(path).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+fn compact_utc_build_label(value: &str) -> Option<String> {
+    // The resource writer normalizes ISO UTC; keep tray parsing deliberately
+    // narrow so malformed input disappears rather than looking plausible.
+    let bytes = value.as_bytes();
+    if value.len() != 24
+        || bytes.get(4) != Some(&b'-')
+        || bytes.get(7) != Some(&b'-')
+        || bytes.get(10) != Some(&b'T')
+        || bytes.get(13) != Some(&b':')
+        || bytes.get(16) != Some(&b':')
+        || bytes.get(19) != Some(&b'.')
+        || !value.ends_with('Z')
+        || !bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| matches!(index, 4 | 7 | 10 | 13 | 16 | 19 | 23) || byte.is_ascii_digit())
+        || !valid_calendar_utc(value)
+    {
+        return None;
+    }
+    Some(format!("Built {} UTC", &value[..19].replace('T', " ")))
+}
+
+fn valid_calendar_utc(value: &str) -> bool {
+    let parse = |start: usize, end: usize| value.get(start..end)?.parse::<u32>().ok();
+    let (Some(year), Some(month), Some(day), Some(hour), Some(minute), Some(second)) = (
+        parse(0, 4), parse(5, 7), parse(8, 10), parse(11, 13), parse(14, 16), parse(17, 19),
+    ) else { return false; };
+    if !(1..=12).contains(&month) || day == 0 || hour > 23 || minute > 59 || second > 59 { return false; }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let max_day = match month { 1 | 3 | 5 | 7 | 8 | 10 | 12 => 31, 4 | 6 | 9 | 11 => 30, 2 if leap => 29, 2 => 28, _ => return false };
+    day <= max_day
 }
 
 fn identity_label(product_name: &str, version: &str) -> String {
@@ -1590,6 +1655,16 @@ mod tests {
         );
         assert_eq!(identity_label("   ", "2.0.0"), "Station v2.0.0");
         assert_eq!(quit_label("Station Nightly"), "Quit Station Nightly");
+    }
+
+    #[test]
+    fn local_build_row_accepts_only_a_real_canonical_utc_date() {
+        assert_eq!(
+            compact_utc_build_label("2026-08-30T12:34:56.000Z"),
+            Some("Built 2026-08-30 12:34:56 UTC".into())
+        );
+        assert_eq!(compact_utc_build_label("2026-02-31T12:34:56.000Z"), None);
+        assert_eq!(compact_utc_build_label("2026-08-30T12:34:56Z"), None);
     }
 
     #[test]

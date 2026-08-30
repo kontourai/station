@@ -510,7 +510,7 @@ jobs:
           if [ -n "$BETA_DESKTOP_CONFIG" ]; then
             beta_config=(--config "$GITHUB_WORKSPACE/$BETA_DESKTOP_CONFIG")
           fi
-          RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --apk --aab "${beta_config[@]}" --config "$RUNNER_TEMP/tauri.release.conf.json"
+          STATION_CLIENT_BUILD_REUSE=1 RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --apk --aab "${beta_config[@]}" --config "$RUNNER_TEMP/tauri.release.conf.json"
       # Observational only: runs even when the build failed so the hosted log
       # reveals post-build/failure headroom. It never affects job outcome.
       - name: Report disk headroom after Android build
@@ -591,8 +591,9 @@ jobs:
       - run: node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --output "$RUNNER_TEMP/tauri.release.conf.json"
       - working-directory: src-desktop
         run: npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.release.conf.json"
+      - run: node scripts/write-ios-build-manifest.mjs
       - working-directory: src-desktop
-        run: rm -rf gen/apple/build && npx tauri ios build --target aarch64-sim --no-sign --ci --config "$RUNNER_TEMP/tauri.release.conf.json"
+        run: rm -rf gen/apple/build && STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --target aarch64-sim --no-sign --ci --config "$RUNNER_TEMP/tauri.release.conf.json"
       - name: Verify and package simulator artifact
         run: |
           simulator_app=$(find src-desktop/gen/apple -type d -name '*.app' -print -quit)
@@ -713,8 +714,9 @@ jobs:
           export IOS_MOBILE_PROVISION
           node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig(process.env.STATION_MOBILE_DEFAULT_ENDPOINT), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
           npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.release.conf.json" --config "$RUNNER_TEMP/station-ios-distribution-overlay.json"
+          node ../scripts/write-ios-build-manifest.mjs
           rm -rf gen/apple/build
-          npx tauri ios build --export-method app-store-connect --ci --config "$RUNNER_TEMP/tauri.release.conf.json" --config "$RUNNER_TEMP/station-ios-distribution-overlay.json" -- --config "$RUNNER_TEMP/station-ios-mobile-env.toml"
+          STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --export-method app-store-connect --ci --config "$RUNNER_TEMP/tauri.release.conf.json" --config "$RUNNER_TEMP/station-ios-distribution-overlay.json" -- --config "$RUNNER_TEMP/station-ios-mobile-env.toml"
       - name: Verify iOS version, profile, and signature
         run: |
           ipa=$(find src-desktop/gen/apple/build -type f -name '*.ipa' -print)
@@ -755,6 +757,7 @@ jobs:
             --bundle-id io.kontourai.station \
             --bundle-version "$IOS_BUNDLE_VERSION" \
             --source-sha "${{ needs.preflight.outputs.sha }}" \
+            --artifact-built-at "$(node -e 'const fs=require("fs");process.stdout.write(JSON.parse(fs.readFileSync("src-desktop/station-client-build.json","utf8")).builtAt)')" \
             --ipa "release-assets/station-${RELEASE_TAG}-ios-device.ipa" \
             --workflow-run-url "$WORKFLOW_RUN_URL" \
             --output provider-receipts/testflight-build-receipt.json

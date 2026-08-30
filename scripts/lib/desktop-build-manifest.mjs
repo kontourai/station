@@ -36,11 +36,22 @@
  * the esbuild banner. Android imports the shared derivation, not either writer.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { sanitizedGitEnvironment } from './git-environment.mjs';
 
 export const BUILD_MANIFEST_FILENAME = 'station-build.json';
+/** The one source-derived stamp every native client target bakes and carries. */
+export const NATIVE_CLIENT_BUILD_MANIFEST_PATH = join(
+  'src-desktop',
+  'station-client-build.json',
+);
 export const PACKAGED_RELEASE_MANIFEST_FILENAME = '.station-release.json';
 
 const FULL_GIT_SHA = /^[0-9a-f]{40}$/i;
@@ -127,6 +138,80 @@ export function deriveBuildManifest(
   return null;
 }
 
+function validBuildManifest(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (
+    typeof value.sha !== 'string' ||
+    !FULL_GIT_SHA.test(value.sha) ||
+    typeof value.branch !== 'string' ||
+    value.branch.trim().length === 0 ||
+    typeof value.builtAt !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(
+      value.builtAt,
+    ) ||
+    !Number.isFinite(Date.parse(value.builtAt))
+  ) {
+    return null;
+  }
+  const canonical = value.builtAt.includes('.')
+    ? value.builtAt
+    : value.builtAt.replace(/Z$/, '.000Z');
+  if (new Date(value.builtAt).toISOString() !== canonical) return null;
+  return {
+    sha: value.sha,
+    branch: value.branch.trim(),
+    builtAt: new Date(value.builtAt).toISOString(),
+  };
+}
+
+/** Reads the already-staged native-client provenance without falling back to mtimes/env. */
+export function readNativeClientBuildManifest(projectRoot) {
+  try {
+    return validBuildManifest(
+      JSON.parse(
+        readFileSync(
+          join(projectRoot, NATIVE_CLIENT_BUILD_MANIFEST_PATH),
+          'utf8',
+        ),
+      ),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stages one immutable source-derived manifest before UI/Rust packaging. The
+ * native host, desktop resource, Android asset, and iOS resource all consume
+ * this exact byte sequence; they must never independently sample a clock.
+ */
+export function writeNativeClientBuildManifest(
+  projectRoot,
+  { refresh = false, ...options } = {},
+) {
+  const existing = readNativeClientBuildManifest(projectRoot);
+  const source = deriveBuildManifest(projectRoot, {
+    ...options,
+    // Only source identity is compared; this must not sample a second clock.
+    builtAt: '2000-01-01T00:00:00.000Z',
+  });
+  if (
+    !refresh &&
+    existing &&
+    source &&
+    existing.sha === source.sha &&
+    existing.branch === source.branch
+  ) {
+    return join(projectRoot, NATIVE_CLIENT_BUILD_MANIFEST_PATH);
+  }
+  const manifest = deriveBuildManifest(projectRoot, options);
+  if (!manifest) return null;
+  const manifestPath = join(projectRoot, NATIVE_CLIENT_BUILD_MANIFEST_PATH);
+  mkdirSync(join(projectRoot, 'src-desktop'), { recursive: true });
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  return manifestPath;
+}
+
 /**
  * `{ sha?, builtAt?, channel?, dirty? } | null` — the server's build-time
  * baked identity, read at runtime as an esbuild banner global
@@ -196,7 +281,9 @@ export function writeDesktopBuildManifest(
       `Cannot write desktop build provenance: ${serverRoot} does not exist. Build the server before staging desktop resources.`,
     );
   }
-  const manifest = deriveBuildManifest(projectRoot, options);
+  const manifest =
+    readNativeClientBuildManifest(projectRoot) ??
+    deriveBuildManifest(projectRoot, options);
   if (!manifest) return null;
   const manifestPath = join(serverRoot, BUILD_MANIFEST_FILENAME);
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);

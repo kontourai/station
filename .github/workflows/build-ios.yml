@@ -101,8 +101,9 @@ jobs:
       # See station#2306: the app ROOT comes from cwd, not from --config.
       - working-directory: src-desktop
         run: npx tauri ios init --ci --skip-targets-install --config tauri.conf.json
+      - run: node scripts/write-ios-build-manifest.mjs
       - working-directory: src-desktop
-        run: rm -rf gen/apple/build && npx tauri ios build --target aarch64-sim --no-sign --ci --config tauri.conf.json
+        run: rm -rf gen/apple/build && STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --target aarch64-sim --no-sign --ci --config tauri.conf.json
       - id: simulator_artifact
         name: Verify and package simulator artifact
         run: |
