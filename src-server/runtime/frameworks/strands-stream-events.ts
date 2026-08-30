@@ -69,8 +69,12 @@ export function mapStrandsStreamEvent(
         if (inner.usage) {
           return {
             type: 'usage',
-            promptTokens: inner.usage.inputTokens || 0,
-            completionTokens: inner.usage.outputTokens || 0,
+            ...(inner.usage.inputTokens !== undefined
+              ? { promptTokens: inner.usage.inputTokens }
+              : {}),
+            ...(inner.usage.outputTokens !== undefined
+              ? { completionTokens: inner.usage.outputTokens }
+              : {}),
           };
         }
         return null;

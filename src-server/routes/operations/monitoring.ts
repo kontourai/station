@@ -301,6 +301,8 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         }
         const stats = agentMetrics.get(metric.agentSlug)!;
         stats.messages += metric.messageCount || 0;
+        // Missing means UNPRICED rather than free. This legacy numeric total
+        // still coalesces the signal; #463(b) will consume and expose it.
         stats.cost += metric.cost || 0;
         if (metric.conversationId) {
           stats.conversations.add(metric.conversationId);

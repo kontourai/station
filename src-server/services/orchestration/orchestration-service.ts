@@ -1281,6 +1281,16 @@ export class OrchestrationService {
       },
       requireTenantExecutionContext: () =>
         this.options.requireTenantExecutionContext?.() === true,
+      // The sink the fold's drop contract depends on. Without it a refused
+      // figure is silently swallowed — the exact outcome
+      // `packages/shared/src/usage-fold.ts` forbids, and the reason the
+      // birth-site guards would stop being able to surface a producer defect.
+      reportDroppedUsageFigure: (dropped) =>
+        (
+          this.options.logger?.warn as ((...a: unknown[]) => void) | undefined
+        )?.(
+          `Usage fold refused a persisted ${dropped.field} (${String(dropped.value)}) while replaying thread ${dropped.threadId ?? 'unknown'}${dropped.provider ? ` from ${dropped.provider}` : ''}: the figure is unusable, so it is read as absent rather than as a measurement.`,
+        ),
     });
     this.sessionEventReads = new SessionEventReads({
       ...(options.eventStore ? { eventStore: options.eventStore } : {}),
