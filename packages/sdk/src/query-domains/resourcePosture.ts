@@ -4,13 +4,8 @@ import { authenticatedFetch } from '../client/http';
 import { type QueryConfig, useApiQuery } from '../query-core';
 // ── Runtime resource posture (station#3089) ───────────────────────────────
 //
-// The one client read of the runtime resource posture
-// `src-server/services/infra/resource-posture.ts` already derives and
-// enforces (`admitEngineStart` refuses engine starts at critical,
-// `admitScheduledJob` defers scheduled jobs at degraded/critical). This
-// fetches `GET /api/system/resource-posture`, which reads the SAME probe —
-// there is no second threshold or derivation on this side of the wire, only
-// a typed projection of the server's response.
+// Developer-facing CPU diagnostics from `GET /api/system/resource-posture`.
+// Product behavior must never branch on this display-only projection.
 
 export type ResourcePostureKind =
   | 'healthy'
@@ -22,8 +17,6 @@ export interface ResourcePostureVM {
   kind: ResourcePostureKind;
   /** Latest raw sample; absent only when observation is unavailable. */
   busyPercent?: number;
-  /** Median of the server controller's bounded rolling window. */
-  smoothedBusyPercent?: number;
   cpuCount: number;
   sampledAt: number | null;
   ageMs?: number | null;
@@ -31,15 +24,16 @@ export interface ResourcePostureVM {
   thresholdPercent: number;
   criticalThresholdPercent?: number;
   source: string;
-  windowLength?: number;
-  postureSince?: number | null;
-  availableMemoryBytes?: number | null;
-  totalMemoryBytes?: number | null;
-  memoryPressure?: 'healthy' | 'critical' | 'unavailable';
 }
 
 export async function fetchResourcePosture(): Promise<ResourcePostureVM> {
   const apiBase = await _getApiBase();
+  return fetchResourcePostureForApiBase(apiBase);
+}
+
+export async function fetchResourcePostureForApiBase(
+  apiBase: string,
+): Promise<ResourcePostureVM> {
   const response = await authenticatedFetch(
     `${apiBase}/api/system/resource-posture`,
   );
@@ -50,17 +44,31 @@ export async function fetchResourcePosture(): Promise<ResourcePostureVM> {
   return result.data as ResourcePostureVM;
 }
 
+export function useResourcePostureForApiBaseQuery(
+  apiBase: string,
+  config?: QueryConfig<ResourcePostureVM>,
+) {
+  return useApiQuery<ResourcePostureVM>(
+    ['resource-posture', apiBase],
+    () => fetchResourcePostureForApiBase(apiBase),
+    {
+      ...config,
+      staleTime: config?.staleTime ?? 10_000,
+      refetchInterval: config?.refetchInterval ?? RESOURCE_POSTURE_POLL_MS,
+    },
+  );
+}
+
 /**
- * Polling honesty (station#3089): posture is time-varying and this app
+ * Polling honesty: this diagnostic is time-varying and this app
  * globally disables refetch-on-focus/refetch-on-mount (`query-core.ts`), so
  * the poll interval is the ONLY freshness mechanism — a 15s cadence bounds
  * how stale a rendered reading can be, matching `operatingState.ts`'s
  * interval for the same class of host-state poll. `staleTime` is kept below
  * the poll interval so a second mount (e.g. the composer and a Schedule view
  * open at once) shares the same cached read rather than double-sampling —
- * each server-side observation costs a real ~500ms CPU sampling window
- * (`scripts/lib/verification-host-pressure.mjs`), so this is not free to
- * over-poll.
+ * each server-side observation costs a real sampling window, so this is not
+ * free to over-poll.
  */
 const RESOURCE_POSTURE_POLL_MS = 15_000;
 

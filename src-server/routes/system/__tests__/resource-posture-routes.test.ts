@@ -5,7 +5,7 @@ import { createResourcePostureRoutes } from '../resource-posture-routes.js';
 // archive#3089: proves the route half of "route -> query -> rendered state"
 // — the SDK-side half (`packages/sdk/src/__tests__/resourcePosture.test.ts`)
 // and the UI-side half
-// (`src-ui/src/__tests__/ResourcePostureBannerSource.test.tsx`) both consume
+// (`src-ui/src/__tests__/SystemTab.test.tsx`) both consume
 // this exact response envelope, so a change to this shape that isn't
 // reflected there is the seam these three tests together are meant to catch.
 describe('GET /resource-posture', () => {

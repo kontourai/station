@@ -2333,9 +2333,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/system/instance' },
     { method: 'POST', path: '/api/system/push-subscribe' },
     { method: 'POST', path: '/api/system/push-unsubscribe' },
-    // archive#3089: a read of this Station's own currently observed CPU
-    // posture (kind + busy percent, the same fields `admitEngineStart`/
-    // `admitScheduledJob` evaluate). No other Environment's or Station's
+    // A diagnostic read of this Station's currently observed CPU utilization.
+    // No other Environment's or Station's
     // data, no mutation — no more sensitive than the surrounding `/api/system`
     // reads it inherits the family tier from.
     { method: 'GET', path: '/api/system/resource-posture' },

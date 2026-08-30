@@ -92,7 +92,7 @@ const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
   liveActivity:
     'station#3819: Activity-only roster query, intentionally published from the `@kontourai/station-sdk/live-activity` subpath to preserve the lazy Activity bundle boundary.',
   resourcePosture:
-    'station#3089: its one consumer (ResourcePostureBannerSource) is itself lazy-loaded and renders nothing in the common (healthy) case; published only from the `@kontourai/station-sdk/resource-posture` subpath to keep it out of the root entry bundle graph.',
+    'diagnostic-only and consumed by the lazy developer System tab; published only from the `@kontourai/station-sdk/resource-posture` subpath to keep it out of the root entry bundle graph.',
   setupImports:
     'published only from the `@kontourai/station-sdk/setup-imports-query` subpath to keep the capability-gated setup-import workflow out of the root entry bundle graph.',
   'secret-bindings':
