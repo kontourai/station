@@ -437,17 +437,29 @@ export async function buildCliRuntimePrerequisites(input: {
     versionProbe,
     authProbe,
   ]);
-  if (versionResult?.code !== 0) {
+  if (!versionResult) {
     prerequisites.push({
       id: `${input.command}-auth`,
       name: `${input.displayName} login`,
-      description: `${input.displayName} CLI is installed but failed to run cleanly.`,
+      description: `${input.displayName} CLI readiness could not be verified safely.`,
       status: 'error',
       category: 'required',
       installGuide: {
         steps: [input.authStep],
       },
     });
+    return prerequisites;
+  }
+  if (versionResult.code !== 0) {
+    // The process completed and told us the installed CLI is not runnable.
+    // Keep that genuine observation on the CLI prerequisite itself. Abort and
+    // timeout paths reject above instead, so callers can retain an earlier
+    // observation only when this probe produced no information.
+    prerequisites[0] = {
+      ...prerequisites[0],
+      description: `${input.displayName} CLI is installed but failed to run cleanly.`,
+      status: 'error',
+    };
     return prerequisites;
   }
 
