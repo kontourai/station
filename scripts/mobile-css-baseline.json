@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 99,
+  "pageLocalMediaQueryCeiling": 100,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -166,8 +166,8 @@
       "reason": "The profile hero and stats grid stack and centre at 700px."
     },
     "src-ui/src/views/HomeView.css": {
-      "count": 1,
-      "reason": "Single-column action cards, a taller card floor, and stacked task rows."
+      "count": 2,
+      "reason": "Single-column action cards, a taller card floor, and stacked task rows; plus hides the desktop-only top-actions row below 1024px, #890 mobile polish."
     },
     "src-ui/src/views/IntegrationsView.css": {
       "count": 1,

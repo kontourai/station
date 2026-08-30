@@ -8,7 +8,7 @@ import {
   useTasksQuery,
 } from '@kontourai/station-sdk';
 import { useMemo, useReducer } from 'react';
-import { useAgents } from '../../contexts/AgentsContext';
+import { useAgents, useAgentsLoaded } from '../../contexts/AgentsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { openChatsStore, useOpenChats } from '../../contexts/open-chats-store';
 import { useDegradedQueryState } from '../../hooks/useDegradedQueryState';
@@ -39,6 +39,7 @@ interface HomeWorkData {
   defaultSelection: ReturnType<
     typeof useNewChatSelectionModel
   >['defaultSelection'];
+  actionsLoading: boolean;
   workItems: HomeWorkItem[];
   workLoading: boolean;
   workDegraded: boolean;
@@ -53,19 +54,22 @@ interface HomeWorkData {
 }
 
 function useHomeWorkData(): HomeWorkData {
-  const { data: projects = [] } = useProjectsQuery();
+  const projectsQuery = useProjectsQuery();
+  const projects = projectsQuery.data ?? [];
   const sessions = useOrchestrationSessionsQuery();
   const inventory = useConversationInventoryQuery();
   const tasks = useTasksQuery();
   const { data: remoteSessionsResult } = useRemoteSessionsQuery();
   const agents = useAgents();
+  const agentsLoaded = useAgentsLoaded();
   // archive#3391. Home's rows name a model; the New Chat surfaces name the
   // same model through `resolveEffectiveModel`, which reads a connection's
   // catalog. Home read the stored id instead, so one session was "Selected
   // Test Model" on one card and `model-selected` on the card beside it. This
   // is that catalog, unioned across every connection this Station knows —
   // a Home row can belong to any of them, not only the default agent's.
-  const { data: pickerCatalog } = useModelPickerCatalogQuery();
+  const { data: pickerCatalog, isLoading: pickerCatalogLoading } =
+    useModelPickerCatalogQuery();
   // Union, so first-match wins if two connections publish the SAME model id
   // under different names (archive#3391). Left as-is deliberately:
   // de-duplicating would have to pick a winner, and the honest winner is the
@@ -151,6 +155,8 @@ function useHomeWorkData(): HomeWorkData {
     projects,
     agents,
     defaultSelection,
+    actionsLoading:
+      !agentsLoaded || projectsQuery.isLoading || pickerCatalogLoading,
     workItems,
     workLoading,
     workDegraded: workQueryState === 'degraded',

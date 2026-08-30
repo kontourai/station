@@ -70,8 +70,13 @@ import {
 } from '../board/BoardWorkspacePane';
 import { ConsoleBoardView } from '../ConsoleBoardView';
 
-function renderView() {
-  return render(<ConsoleBoardView projectSlug="demo" />);
+function renderView(requireBuilderRun = true) {
+  return render(
+    <ConsoleBoardView
+      projectSlug="demo"
+      requireBuilderRun={requireBuilderRun}
+    />,
+  );
 }
 
 /**
@@ -131,6 +136,16 @@ describe('ConsoleBoardView', () => {
         .getSnapshot()
         .some((item) => item.id === BOARD_UNAVAILABLE_BANNER_ID),
     ).toBe(false);
+  });
+
+  test('an installed Session Board layout stays open before its first Builder run', () => {
+    hasBuilderRun = false;
+    queryResult = { data: { processes: [] }, isLoading: false, error: null };
+
+    renderView(false);
+
+    expect(hoisted.navigate).not.toHaveBeenCalled();
+    expect(screen.getByText('No work in flight')).toBeTruthy();
   });
 
   test('renders a loading skeleton while the OperatingState query is pending', () => {

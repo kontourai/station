@@ -48,6 +48,7 @@ const compactScope = {
 };
 
 const MOBILE_VIEWPORT = { width: 390, height: 844 } as const;
+const DOCK_VIEWPORT = { width: 720, height: 720 } as const;
 /**
  * Blink lays out CSS geometry in 1/64th-pixel units. `boundingBox()` then
  * serializes those layout coordinates through a float, so an exact `100dvh`
@@ -68,20 +69,49 @@ function buildBasisFallbackHtml(): string {
 <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <style>${buildFixtureCss()}</style></head>
 <body style="margin:0"><header id="app-header" style="position:fixed;inset:0 0 auto;height:46px;z-index:1;background:#111;color:#fff">App header</header>
-<main style="padding-top:46px"><div class="chat-dock__conversation-surface"><div class="responsive-surface-overlay basis-pane-fallback-overlay" data-responsive-layer="dialog"><div class="basis-pane-fallback responsive-surface-panel" role="dialog" aria-label="Basis"><div class="responsive-dialog-header"><strong>Basis</strong><button type="button" class="responsive-dialog-close" aria-label="Close Basis">Close</button></div><h2>Session inventory</h2></div></div></div></main></body></html>`;
+<main style="padding-top:46px"><div class="chat-dock__conversation-surface" style="width:480px;height:360px;overflow:hidden;transform:translateZ(0)">Chat dock</div></main>
+<div class="station-dialog__overlay responsive-surface-overlay basis-pane-fallback-overlay" data-responsive-layer="dialog"><div class="station-dialog station-dialog--lg basis-pane-fallback responsive-surface-panel" role="dialog" aria-label="Basis"><div class="station-dialog__header"><div class="station-dialog__heading"><h2 class="station-dialog__title">Basis</h2></div><button type="button" class="responsive-dialog-close" aria-label="Close Basis">Close</button></div><div class="station-dialog__body"><section class="session-inventory"><h2>Session inventory</h2></section></div></div></div></body></html>`;
 }
 
-function renderCompactMarkup(): string {
+function renderCompactMarkup(density: 'aside' | 'card'): string {
   hooks.inventory.mockReturnValue({
     data: {
       version: 'station.session-inventory/v2',
       scope: compactScope,
       groups: [
         {
+          id: 'inputs',
+          owner: { owner: 'thread', id: 'inputs' },
+          state: 'available',
+          count: { kind: 'exact', value: 1 },
+          gaps: [],
+          items: [
+            {
+              kind: 'thread-authored-input',
+              key: 'input',
+              owner: { owner: 'thread', id: 'input' },
+              relations: ['observed-during'],
+              sessionId: compactScope.sessionId,
+              eventId: 'event',
+              turnId: 'turn',
+              inputKind: 'message',
+              attachmentDescriptors: [],
+            },
+          ],
+        },
+        {
           id: 'work-items',
           owner: { owner: 'station.session-work-items', id: 'v1' },
           state: 'empty',
           count: { kind: 'exact', value: 0 },
+          gaps: [],
+          items: [],
+        },
+        {
+          id: 'resources',
+          owner: { owner: 'station', id: 'resources' },
+          state: 'available',
+          count: { kind: 'exact', value: 2 },
           gaps: [],
           items: [],
         },
@@ -93,7 +123,7 @@ function renderCompactMarkup(): string {
   const { container, unmount } = render(
     createElement(SessionInventoryCompact, {
       scope: compactScope,
-      density: 'card',
+      density,
       chatStoreId: 'compact-geometry',
       onClose: () => {},
       onOpenFull: () => {},
@@ -104,11 +134,14 @@ function renderCompactMarkup(): string {
   return markup;
 }
 
-function buildFixtureHtml(): string {
+function buildFixtureHtml(
+  density: 'aside' | 'card',
+  hostWidth: number,
+): string {
   return `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <style>${buildFixtureCss()}</style></head>
-<body style="margin:0"><main style="width:390px;max-width:100%">${renderCompactMarkup()}</main></body></html>`;
+<body style="margin:0"><main class="chat-dock__conversation-surface" style="width:${hostWidth}px;max-width:100%;height:680px"><div id="session-inventory-host">${renderCompactMarkup(density)}</div><section id="chat-body" style="flex:1;min-width:0">Conversation</section></main></body></html>`;
 }
 
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
@@ -157,7 +190,7 @@ describe('Session inventory compact host', () => {
 });
 
 describe.skipIf(!chromiumAvailable)(
-  'Session inventory compact host mobile geometry',
+  'Session inventory compact host geometry',
   () => {
     let browser: Awaited<ReturnType<typeof chromium.launch>>;
 
@@ -169,80 +202,143 @@ describe.skipIf(!chromiumAvailable)(
       await browser?.close();
     });
 
-    test('wraps the three-cell heading and preserves tab order without horizontal overflow at 390px', async () => {
+    test('uses the real dock host without collapsing labels into an unreadable sliver', async () => {
       const page = await browser.newPage({
-        viewport: MOBILE_VIEWPORT,
+        viewport: DOCK_VIEWPORT,
       });
       try {
-        await page.setContent(buildFixtureHtml());
-        const inventory = page.locator('.session-inventory-compact');
-        const heading = page.locator('.session-inventory-compact__heading');
-        expect(
-          await page.evaluate(
-            () => document.documentElement.scrollWidth <= window.innerWidth,
-          ),
-        ).toBe(true);
-        expect(
-          await inventory.evaluate(
-            (element) => element.scrollWidth <= element.clientWidth,
-          ),
-        ).toBe(true);
-        expect(
-          await heading.evaluate(
-            (element) => getComputedStyle(element).display,
-          ),
-        ).toBe('flex');
-        expect(
-          await heading.evaluate(
-            (element) => getComputedStyle(element).flexWrap,
-          ),
-        ).toBe('wrap');
-        const titleBox = await heading.locator('h2').boundingBox();
-        const scopeBox = await heading.locator('bdi').boundingBox();
-        const closeBox = await heading.getByRole('button').boundingBox();
-        expect(titleBox).not.toBeNull();
-        expect(scopeBox).not.toBeNull();
-        expect(closeBox).not.toBeNull();
-        expect(scopeBox!.y).toBeGreaterThan(titleBox!.y);
-        expect(closeBox!.x).toBeGreaterThan(scopeBox!.x);
+        for (const fixture of [
+          {
+            density: 'aside' as const,
+            hostWidth: 600,
+            inventoryMin: 240,
+            inventoryMax: 320,
+            chatMin: 240,
+          },
+          {
+            density: 'card' as const,
+            hostWidth: 420,
+            inventoryMin: 190,
+            inventoryMax: 220,
+            chatMin: 170,
+          },
+        ]) {
+          await page.setContent(
+            buildFixtureHtml(fixture.density, fixture.hostWidth),
+          );
+          const inventory = page.locator('.session-inventory-compact');
+          const heading = page.locator('.session-inventory-compact__heading');
+          const chatBody = page.locator('#chat-body');
+          expect(
+            await page.evaluate(
+              () => document.documentElement.scrollWidth <= window.innerWidth,
+            ),
+          ).toBe(true);
+          expect(
+            await inventory.evaluate(
+              (element) => element.scrollWidth <= element.clientWidth,
+            ),
+          ).toBe(true);
+          expect(
+            await page
+              .locator('#session-inventory-host')
+              .evaluate((element) => getComputedStyle(element).display),
+          ).toBe('contents');
+          const inventoryBox = await inventory.boundingBox();
+          const chatBox = await chatBody.boundingBox();
+          const titleBox = await heading.locator('h2').boundingBox();
+          const scopeBox = await heading.locator('bdi').boundingBox();
+          expect(inventoryBox).not.toBeNull();
+          expect(chatBox).not.toBeNull();
+          expect(titleBox).not.toBeNull();
+          expect(scopeBox).not.toBeNull();
+          expect(inventoryBox!.width).toBeGreaterThanOrEqual(
+            fixture.inventoryMin,
+          );
+          expect(inventoryBox!.width).toBeLessThanOrEqual(fixture.inventoryMax);
+          expect(chatBox!.width).toBeGreaterThanOrEqual(fixture.chatMin);
+          expect(titleBox!.width).toBeGreaterThan(100);
+          expect(titleBox!.height).toBeLessThanOrEqual(60);
+          expect(scopeBox!.height).toBeLessThanOrEqual(40);
+          const highlights = page.getByRole('region', {
+            name: 'Inventory highlights',
+          });
+          expect(
+            await highlights.getByRole('button').count(),
+          ).toBeLessThanOrEqual(4);
+          await expectPlaywright(
+            highlights.getByRole('button', { name: /^Inputs/ }),
+          ).toBeVisible();
+          await expectPlaywright(
+            highlights.getByRole('button', { name: /^Resources/ }),
+          ).toBeVisible();
+          await expectPlaywright(
+            highlights.getByText(/more groups in full Basis/),
+          ).toBeVisible();
+          expect(
+            await page.getByRole('group', { name: 'Inventory groups' }).count(),
+          ).toBe(0);
+          const close = heading.getByRole('button', {
+            name: 'Close Session inventory',
+          });
+          const firstHighlight = highlights.getByRole('button').first();
+          const full = page.getByRole('button', { name: 'Open full Basis' });
+          await expectPlaywright(full).toBeVisible();
+          for (const control of [close, firstHighlight, full]) {
+            expect(
+              (await control.boundingBox())?.height,
+            ).toBeGreaterThanOrEqual(44);
+          }
 
-        await page.keyboard.press('Tab');
-        await expectPlaywright(
-          heading.getByRole('button', { name: 'Close Session inventory' }),
-        ).toBeFocused();
-        await page.keyboard.press('Tab');
-        await expectPlaywright(
-          page.getByRole('button', { name: /^Inputs/ }),
-        ).toBeFocused();
+          await page.keyboard.press('Tab');
+          await expectPlaywright(close).toBeFocused();
+          await page.keyboard.press('Tab');
+          await expectPlaywright(firstHighlight).toBeFocused();
+        }
       } finally {
         await page.close();
       }
     });
 
-    test('keeps desktop Basis fallback below app chrome and wholly inside the supported desktop viewport', async () => {
+    test('makes desktop full Basis a readable viewport surface independent of ChatDock', async () => {
       const page = await browser.newPage({
-        viewport: { width: 1440, height: 900 },
+        viewport: { width: 1152, height: 768 },
       });
       try {
         await page.setContent(buildBasisFallbackHtml());
-        const header = page.locator('#app-header');
         const overlay = page.locator('.basis-pane-fallback-overlay');
         const panel = page.getByRole('dialog', { name: 'Basis' });
-        const [headerBox, overlayBox, panelBox] = await Promise.all([
-          header.boundingBox(),
+        const [overlayBox, panelBox] = await Promise.all([
           overlay.boundingBox(),
           panel.boundingBox(),
         ]);
-        expect(headerBox).not.toBeNull();
         expect(overlayBox).not.toBeNull();
         expect(panelBox).not.toBeNull();
-        expect(overlayBox!.y).toBeGreaterThanOrEqual(
-          headerBox!.y + headerBox!.height,
-        );
+        expect(overlayBox!.x).toBe(0);
+        expect(overlayBox!.y).toBe(0);
+        expect(overlayBox!.width).toBe(1152);
+        expect(overlayBox!.height).toBe(768);
         expect(panelBox!.y).toBeGreaterThanOrEqual(overlayBox!.y);
-        expect(panelBox!.x).toBeGreaterThanOrEqual(0);
-        expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(1440);
-        expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(900);
+        expect(panelBox!.x).toBeGreaterThanOrEqual(overlayBox!.x);
+        expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(1152);
+        expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(768);
+        expect(panelBox!.width).toBeGreaterThanOrEqual(1000);
+        expect(panelBox!.height).toBeGreaterThanOrEqual(650);
+        expect(
+          await overlay.evaluate(
+            (element) => getComputedStyle(element).position,
+          ),
+        ).toBe('fixed');
+        expect(
+          await overlay.evaluate(
+            (element) => getComputedStyle(element).backgroundColor,
+          ),
+        ).not.toBe('rgba(0, 0, 0, 0)');
+        expect(
+          await panel.evaluate(
+            (element) => getComputedStyle(element).backgroundColor,
+          ),
+        ).not.toBe('rgba(0, 0, 0, 0)');
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -263,6 +359,12 @@ describe.skipIf(!chromiumAvailable)(
       });
       try {
         await page.setContent(buildBasisFallbackHtml());
+        await page.evaluate(() => {
+          document.documentElement.style.setProperty('--safe-top', '32px');
+          document.documentElement.style.setProperty('--safe-right', '18px');
+          document.documentElement.style.setProperty('--safe-bottom', '24px');
+          document.documentElement.style.setProperty('--safe-left', '14px');
+        });
         const overlay = page.locator('.basis-pane-fallback-overlay');
         const panel = page.getByRole('dialog', { name: 'Basis' });
         // `.responsive-surface-panel` enters with a shared translateY
@@ -301,6 +403,34 @@ describe.skipIf(!chromiumAvailable)(
           ),
           'the Basis panel reaches the overlay bottom edge',
         ).toBeLessThanOrEqual(BLINK_LAYOUT_UNIT_CSS_PX);
+        const closeBox = await panel
+          .getByRole('button', { name: 'Close Basis' })
+          .boundingBox();
+        expect(closeBox).not.toBeNull();
+        expect(closeBox!.y).toBeGreaterThanOrEqual(32);
+        expect(closeBox!.x + closeBox!.width).toBeLessThanOrEqual(
+          MOBILE_VIEWPORT.width - 18,
+        );
+        const safePadding = await panel.evaluate((element) => {
+          const header = element.querySelector<HTMLElement>(
+            '.station-dialog__header',
+          );
+          const body = element.querySelector<HTMLElement>(
+            '.station-dialog__body',
+          );
+          return {
+            headerTop: Number.parseFloat(getComputedStyle(header!).paddingTop),
+            bodyBottom: Number.parseFloat(
+              getComputedStyle(body!).paddingBottom,
+            ),
+            bodyLeft: Number.parseFloat(getComputedStyle(body!).paddingLeft),
+            bodyRight: Number.parseFloat(getComputedStyle(body!).paddingRight),
+          };
+        });
+        expect(safePadding.headerTop).toBeGreaterThanOrEqual(40);
+        expect(safePadding.bodyBottom).toBeGreaterThanOrEqual(36);
+        expect(safePadding.bodyLeft).toBeGreaterThanOrEqual(26);
+        expect(safePadding.bodyRight).toBeGreaterThanOrEqual(30);
       } finally {
         await page.close();
       }

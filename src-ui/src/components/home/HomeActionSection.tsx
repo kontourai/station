@@ -3,6 +3,7 @@ import type {
   HomeViewNavigation,
   useHomeViewModel,
 } from '../../views/home/useHomeViewModel';
+import { SkeletonBlock } from '../state';
 
 const OPEN_NEW_CHAT_EVENT = 'station:open-new-chat';
 
@@ -61,6 +62,15 @@ export function HomeActionSection({
   onNavigate,
   showPrimary = true,
 }: HomeActionSectionProps) {
+  if (model.actionsLoading) {
+    return (
+      <SkeletonBlock
+        count={3}
+        className="home-view__actions home-view__actions--loading"
+        label="Loading Home actions"
+      />
+    );
+  }
   return (
     <section className="home-view__actions" aria-label="Work actions">
       {showPrimary && model.primaryWorkItem && (

@@ -1,8 +1,32 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test, vi } from 'vitest';
-import { generateBasisMcpApps } from '../generate-basis-mcp-apps.mjs';
+import {
+  biomeFormatterInvocation,
+  generateBasisMcpApps,
+} from '../generate-basis-mcp-apps.mjs';
 
 describe('Basis MCP app generator', () => {
+  test('runs the package Biome entrypoint through Node on every host', () => {
+    expect(
+      biomeFormatterInvocation(
+        '/repo',
+        'packages/basis-pane/generated.ts',
+        '/node',
+      ),
+    ).toEqual({
+      command: '/node',
+      args: [
+        expect.stringMatching(
+          /node_modules[/\\]@biomejs[/\\]biome[/\\]bin[/\\]biome$/,
+        ),
+        'format',
+        expect.stringMatching(
+          /--stdin-file-path=.*packages[/\\]basis-pane[/\\]generated\.ts$/,
+        ),
+      ],
+    });
+  });
+
   test('builds every manifest entry twice and writes only after equality', async () => {
     const calls: string[] = [];
     const writes: Array<[string, string]> = [];

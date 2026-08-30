@@ -87,6 +87,31 @@ describe('LocalUiSessionGate (station#2093)', () => {
     );
   });
 
+  test('preserves the browser access context while the Station UI proxy reports its host unavailable', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ ready: false, status: 'unavailable' }, { status: 503 }),
+      );
+    const protectedMount = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderGate(<ProtectedDataProbe onMount={protectedMount} />);
+
+    await screen.findByRole('heading', {
+      name: 'Reconnecting to this Station',
+    });
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /host process is down or recovering/i,
+    );
+    expect(screen.queryByText('Connect to your Station host')).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Pair with a code' }),
+    ).toBeNull();
+    expect(protectedMount).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   test.each([
     ['Pair with a code', /pair.*code/i],
     ['Request access', /request.*access/i],

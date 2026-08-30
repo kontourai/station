@@ -87,14 +87,6 @@ vi.mock('@kontourai/station-sdk/setup-imports-query', () => ({
   }),
   useRollbackSetupImportMutation: () => ({}),
 }));
-vi.mock('../../setup/ExistingSetupImportStepper', () => ({
-  ExistingSetupImportStepper: ({ compact }: { compact?: boolean }) => (
-    <div
-      data-testid="first-run-setup-import-stepper"
-      data-compact={String(compact)}
-    />
-  ),
-}));
 vi.mock('../../../contexts/onboarding-setup-store', () => ({
   useOnboardingSetupState: () => setupState,
   firstRunChapterPresence: { set: (open: boolean) => presence.push(open) },
@@ -209,13 +201,10 @@ describe('AC1 — the gate is a durable fact about the home', () => {
     expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
   });
 
-  test('loads the existing setup stepper in compact first-run mode', async () => {
+  test('the agents step contains no unrelated empty import panel', () => {
     render(<FirstRunHomeChapter />);
-    expect(
-      (
-        await screen.findByTestId('first-run-setup-import-stepper')
-      ).getAttribute('data-compact'),
-    ).toBe('true');
+    expect(screen.getByTestId('first-run-engines')).toBeTruthy();
+    expect(screen.queryByTestId('existing-setup-import-stepper')).toBeNull();
   });
 
   test('a completed home is offered nothing at all', () => {
@@ -471,6 +460,44 @@ describe('AC2 — deferring and completing both write the durable fact', () => {
     expect(recordFirstRunDecision).toHaveBeenCalledWith({ status: 'skipped' });
     expect(screen.queryByTestId('first-run-engines')).toBeNull();
     expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
+  });
+
+  test('deferral survives reload without re-arming and stays resumable while config is pending', () => {
+    const firstMount = render(<FirstRunHomeChapter />);
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(firstRunStore.getSnapshot()).toEqual({
+      chapter: 'connect',
+      deferred: true,
+    });
+
+    firstMount.unmount();
+    // The server mutation is intentionally fire-and-forget, so the restored
+    // config snapshot can still say pending on this next mount.
+    configValue.firstRun = { status: 'pending' };
+    render(<FirstRunHomeChapter />);
+
+    expect(screen.queryByTestId('first-run-engines')).toBeNull();
+    expect(screen.getByTestId('first-run-home-card')).toBeTruthy();
+
+    // Deferred is a snooze, not terminal completion: the still-pending run is
+    // offered non-modally and can be resumed explicitly from where it stopped.
+    fireEvent.click(screen.getByRole('button', { name: 'Set up Station' }));
+    expect(screen.getByTestId('first-run-engines')).toBeTruthy();
+    expect(firstRunStore.getSnapshot().chapter).not.toBe('done');
+  });
+
+  test('a reload resumes the last unfinished chapter instead of step one', () => {
+    engineState.engines = [];
+    const firstMount = render(<FirstRunHomeChapter />);
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByTestId('first-run-about-you')).toBeTruthy();
+    expect(firstRunStore.getSnapshot().chapter).toBe('about-you');
+
+    firstMount.unmount();
+    render(<FirstRunHomeChapter />);
+
+    expect(screen.getByTestId('first-run-about-you')).toBeTruthy();
+    expect(screen.queryByTestId('first-run-engines')).toBeNull();
   });
 
   test('a deferred home does not re-open the chapter, and can re-enter it', () => {

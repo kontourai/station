@@ -2626,7 +2626,7 @@ function validateBuildManifest(value: unknown): BuildManifest | null {
   };
 }
 
-function validatePackagedReleaseManifest(
+export function validatePackagedReleaseManifest(
   value: unknown,
 ): PackagedReleaseManifest | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -2699,20 +2699,23 @@ function resolveSourceBuildManifest(): BuildManifest {
     throw new Error('Cannot write build provenance: git identity is invalid.');
   }
 
+  const gitMetadataPath = join(CWD, '.git');
+  const releaseManifestPath = join(CWD, PACKAGED_RELEASE_MANIFEST_FILENAME);
   const releaseManifest = (() => {
     try {
       return validatePackagedReleaseManifest(
-        JSON.parse(
-          readFileSync(join(CWD, PACKAGED_RELEASE_MANIFEST_FILENAME), 'utf-8'),
-        ),
+        JSON.parse(readFileSync(releaseManifestPath, 'utf-8')),
       );
     } catch {
       return null;
     }
   })();
   if (!releaseManifest) {
+    const manifestCondition = existsSync(releaseManifestPath)
+      ? 'is invalid'
+      : 'is missing';
     throw new Error(
-      'Cannot write build provenance: .git is absent and .station-release.json is missing or invalid.',
+      `Cannot write build provenance: Git metadata is absent at ${gitMetadataPath}; packaged release manifest ${manifestCondition} at ${releaseManifestPath}.`,
     );
   }
   return {

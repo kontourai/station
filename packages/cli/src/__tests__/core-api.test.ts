@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -21,7 +21,6 @@ describe('resolveApiBase', () => {
   beforeEach(() => {
     stationRoot = mkdtempSync(join(tmpdir(), 'station-core-api-root-'));
     stationHome = join(stationRoot, 'instances', 'stable');
-    mkdirSync(stationHome, { recursive: true, mode: 0o700 });
     process.env.STATION_HOME = stationHome;
     process.env.STATION_ROOT = stationRoot;
     delete process.env.STATION_TARGET;

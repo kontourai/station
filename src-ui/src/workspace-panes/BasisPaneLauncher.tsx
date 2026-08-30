@@ -2,10 +2,8 @@ import type { StationBasisPaneScope } from '@kontourai/station-basis-pane/statio
 import type { SessionInventoryScope } from '@kontourai/station-contracts/session-inventory';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import { lazy, type ReactNode, Suspense, useCallback, useState } from 'react';
-import {
-  ResponsiveDialogHeader,
-  ResponsiveDialogSurface,
-} from '../components/ResponsiveDialogSurface';
+import { createPortal } from 'react-dom';
+import { Dialog } from '../components/Dialog';
 import { SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import {
@@ -101,26 +99,32 @@ export function useBasisPaneLauncher(): {
       host?.focusExisting?.(instance.instanceId) ?? false,
     [host],
   );
-  const fallback = fallbackState ? (
-    <ResponsiveDialogSurface
-      ariaLabel="Basis"
+  const fallbackSurface = fallbackState ? (
+    <Dialog
+      title="Basis"
+      closeLabel="Close Basis"
+      size="lg"
       overlayClassName="basis-pane-fallback-overlay"
       panelClassName="basis-pane-fallback"
       returnFocusTarget={fallbackState.returnFocusTarget}
       onClose={closeFallback}
     >
-      <ResponsiveDialogHeader
-        title="Basis"
-        closeLabel="Close Basis"
-        onClose={closeFallback}
-      />
       <Suspense fallback={<SkeletonBlock count={3} label="Loading Basis" />}>
         <LazyConnectedBasisFallbackPane
           scope={fallbackState.scope}
           currentProjectId={fallbackState.currentProjectId}
         />
       </Suspense>
-    </ResponsiveDialogSurface>
+    </Dialog>
   ) : null;
+  // Fallback Basis can be launched from ChatDock, whose transformed and
+  // overflow-bounded pane is a fixed-position containing block. Rendering a
+  // viewport dialog inside that tree clips it to the dock and leaves the rest
+  // of Station visually competing underneath. The fallback is application
+  // chrome, not dock content, so host it at the document boundary.
+  const fallback =
+    fallbackSurface && typeof document !== 'undefined'
+      ? createPortal(fallbackSurface, document.body)
+      : fallbackSurface;
   return { openBasis, focusBasis, fallback };
 }

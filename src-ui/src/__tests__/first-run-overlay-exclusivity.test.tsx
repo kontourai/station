@@ -162,6 +162,7 @@ import {
   firstRunChapterPresence,
   onboardingSetupStore,
 } from '../contexts/onboarding-setup-store';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 
 function status(overrides: Partial<SystemStatus> = {}): SystemStatus {
   return {
@@ -216,6 +217,7 @@ function overlayCounts() {
 
 beforeEach(() => {
   globalThis.localStorage.clear();
+  deviceSettingsStore.reloadFromStorage();
   onboardingSetupStore.reset();
   firstRunChapterPresence.set(false);
   configValue.firstRun = { status: 'pending' };

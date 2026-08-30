@@ -8,23 +8,16 @@ name: Build iOS verification artifact
 # first iOS build of any kind ran on a real release tag.
 #
 # Station is public, so standard GitHub-hosted runners are free and unlimited.
-# This lane is path-filtered and cancellation-bound: iOS/native/frontend
-# changes get a fresh unsigned simulator build and packaged-WKWebView runtime
-# assertion, while unrelated PRs consume no macOS capacity.
+# Every PR emits the stable build-ios-verification check so the repository
+# ruleset can require it. The classifier keeps the macOS build path-filtered:
+# iOS/native/frontend changes get a fresh unsigned simulator build and
+# packaged-WKWebView runtime assertion, while unrelated PRs consume only a
+# small hosted Linux classification job.
 on:
   pull_request_target:
-    paths:
-      - '.github/workflows/build-ios.yml'
-      - 'src-desktop/**'
-      - 'src-ui/**'
-      - 'packages/connect/**'
-      - 'packages/contracts/**'
-      - 'packages/sdk/**'
-      - 'scripts/ios-simulator-runtime-smoke.mjs'
-      - 'scripts/__tests__/ios-simulator-runtime-smoke.test.ts'
-      - 'tests/ios-runtime-smoke/**'
-      - 'package.json'
-      - 'package-lock.json'
+  merge_group:
+    branches: [main]
+    types: [checks_requested]
   push:
     branches: [main]
     paths:
@@ -49,7 +42,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  classify:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      relevant: ${{ steps.relevance.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      - id: relevance
+        name: Classify iOS verification inputs
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != "pull_request_target" ] && [ "$GITHUB_EVENT_NAME" != "merge_group" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          relevant=false
+          while IFS= read -r changed; do
+            case "$changed" in
+              .github/workflows/build-ios.yml|src-desktop/*|src-ui/*|packages/connect/*|packages/contracts/*|packages/sdk/*|scripts/ios-simulator-runtime-smoke.mjs|scripts/__tests__/ios-simulator-runtime-smoke.test.ts|tests/ios-runtime-smoke/*|package.json|package-lock.json)
+                relevant=true
+                break
+                ;;
+            esac
+          done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
+
   build-ios-verification:
+    needs: classify
+    if: needs.classify.outputs.relevant == 'true'
     runs-on: macos-26
     timeout-minutes: 60
     steps:
@@ -88,7 +117,7 @@ jobs:
           npm run test:ios-runtime-smoke --
           --app "${{ steps.simulator_artifact.outputs.app }}"
           --artifacts "$GITHUB_WORKSPACE/.kontourai/ios-simulator-runtime-smoke"
-          --source-sha "$GITHUB_SHA"
+          --source-sha "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}"
       - name: Upload iOS runtime evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
