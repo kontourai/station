@@ -8,6 +8,7 @@ import {
 import { PUBLIC_STATION_HANDSHAKE_PATH } from '@kontourai/station-contracts/environment-security';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { isBlockingCompatibility } from './compatibilityLoader';
+import { isStationUiProxyUnavailableResponse } from './station-ui-proxy';
 
 /**
  * Browser callers retain their explicit per-connection credential behavior.
@@ -60,6 +61,9 @@ async function readStationErrorCode(
 async function reasonForFailedResponse(
   response: Response,
 ): Promise<ConnectionFailureReason> {
+  if (await isStationUiProxyUnavailableResponse(response)) {
+    return 'host-unavailable';
+  }
   return classifyHttpFailureResponse(
     response.status,
     await readStationErrorCode(response),
