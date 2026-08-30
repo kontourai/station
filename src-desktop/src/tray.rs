@@ -16,11 +16,11 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::image::Image;
 use tauri::menu::{MenuBuilder, MenuItem, PredefinedMenuItem};
 use tauri::tray::{TrayIcon, TrayIconBuilder};
-use tauri::{AppHandle, Emitter, Manager, Wry};
+use tauri::{AppHandle, Emitter, Manager, Runtime, Wry};
 use tauri_plugin_opener::OpenerExt;
 
 const STATION_TRAY_ICON: &[u8] = include_bytes!("../icons/icon.png");
@@ -29,6 +29,9 @@ const NIGHTLY_TRAY_ICON: &[u8] = include_bytes!("../icons/nightly/icon.png");
 const DEV_TRAY_ICON: &[u8] = include_bytes!("../icons/dev/icon.png");
 const CORE_UPDATE_SETTINGS_PATH: &str = "/settings?view=system&highlight=core-app-updates";
 const TRAY_NAVIGATION_EVENT: &str = "station://tray-navigation";
+const TRAY_NAVIGATION_TTL: Duration = Duration::from_secs(30);
+const UPDATE_SETTINGS_ID: &str = "tray-updates";
+const UPDATE_SETTINGS_LABEL: &str = "Update settings…";
 
 #[derive(Clone)]
 struct TrayState {
@@ -46,6 +49,75 @@ struct TrayState {
     connected_clients_in_flight: Arc<AtomicBool>,
     connected_clients_generation: Arc<AtomicU64>,
 }
+
+#[derive(Clone, Copy, Debug)]
+struct PendingTrayNavigationEntry {
+    id: u64,
+    destination: TrayNavigationDestination,
+    queued_at: Instant,
+}
+
+#[derive(Default)]
+struct PendingTrayNavigationState {
+    next_id: u64,
+    pending: Option<PendingTrayNavigationEntry>,
+    leased_to: Option<u64>,
+}
+
+impl PendingTrayNavigationState {
+    fn queue(
+        &mut self,
+        destination: TrayNavigationDestination,
+        now: Instant,
+    ) -> Option<PendingTrayNavigationEntry> {
+        self.next_id = self.next_id.wrapping_add(1).max(1);
+        self.leased_to = None;
+        self.pending.replace(PendingTrayNavigationEntry {
+            id: self.next_id,
+            destination,
+            queued_at: now,
+        })
+    }
+
+    fn take_lease(&mut self, now: Instant) -> Option<PendingTrayNavigationReplay> {
+        let pending = self.pending?;
+        if now.saturating_duration_since(pending.queued_at) >= TRAY_NAVIGATION_TTL {
+            self.pending = None;
+            self.leased_to = None;
+            return None;
+        }
+        if self.leased_to.is_some() {
+            return None;
+        }
+        self.leased_to = Some(pending.id);
+        Some(PendingTrayNavigationReplay {
+            id: pending.id,
+            destination: pending.destination,
+        })
+    }
+
+    fn acknowledge(&mut self, id: u64) -> bool {
+        if self.pending.is_some_and(|pending| pending.id == id) && self.leased_to == Some(id) {
+            self.pending = None;
+            self.leased_to = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn release_lease(&mut self) -> bool {
+        self.leased_to.take().is_some()
+    }
+
+    fn invalidate(&mut self) -> bool {
+        self.leased_to = None;
+        self.pending.take().is_some()
+    }
+}
+
+#[derive(Default)]
+struct PendingTrayNavigation(Mutex<PendingTrayNavigationState>);
 
 /// Supervisor transitions wake this receiver; they never write a webview
 /// event themselves. This keeps the tray poll as the sole event writer.
@@ -153,13 +225,7 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         false,
         None::<&str>,
     )?;
-    let updates = MenuItem::with_id(
-        app,
-        "tray-updates",
-        "Check for updates…",
-        false,
-        None::<&str>,
-    )?;
+    let updates = update_settings_menu_item(app)?;
     let service_action = MenuItem::with_id(
         app,
         "tray-service-action",
@@ -234,6 +300,11 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
     }) {
         return Err(std::io::Error::other("Station tray state was already initialized").into());
     }
+    if !app.manage(PendingTrayNavigation::default()) {
+        return Err(
+            std::io::Error::other("Station tray navigation state was already initialized").into(),
+        );
+    }
     let (wake, receiver) = channel();
     let shutting_down = Arc::new(AtomicBool::new(false));
     if !app.manage(TrayPoll {
@@ -252,6 +323,32 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(worker);
     log::info!("Station tray initialized");
     Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct UpdateSettingsMenuItemSpec {
+    id: &'static str,
+    label: &'static str,
+    enabled: bool,
+}
+
+fn update_settings_menu_item_spec() -> UpdateSettingsMenuItemSpec {
+    UpdateSettingsMenuItemSpec {
+        id: UPDATE_SETTINGS_ID,
+        label: UPDATE_SETTINGS_LABEL,
+        enabled: false,
+    }
+}
+
+fn update_settings_menu_item<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<MenuItem<R>> {
+    let spec = update_settings_menu_item_spec();
+    MenuItem::with_id(
+        manager,
+        spec.id,
+        spec.label,
+        spec.enabled,
+        None::<&str>,
+    )
 }
 
 fn spawn_poll_thread(
@@ -337,27 +434,86 @@ fn station_home(app: &AppHandle) -> std::path::PathBuf {
     resolve_station_home_for_channel(packaged_channel(app).map(std::ffi::OsStr::new))
 }
 
-fn apply_primary_health(state: &TrayState, snapshot: TrayBackendSnapshot) {
-    let label = snapshot.health.label();
-    let _ = state.status.set_text(format!("Status: {label}"));
-    let _ = state.backend.set_text(&snapshot.label);
-    let _ = state.open_ui.set_text(&snapshot.ui_label);
-    let _ = state.open_ui.set_enabled(snapshot.can_open_ui());
-    let _ = state.api_docs.set_text(&snapshot.api_docs_label);
-    let _ = state.api_docs.set_enabled(snapshot.can_open_api_docs());
-    let _ = state.connections.set_enabled(snapshot.can_navigate());
-    let _ = state.connected_clients.set_enabled(snapshot.can_navigate());
-    let _ = state.updates.set_enabled(snapshot.can_navigate());
-    let _ = state.service_action.set_text(snapshot.action.label);
-    let _ = state.service_action.set_enabled(snapshot.action.enabled);
-    let _ = state.tray.set_tooltip(Some(tray_tooltip(
-        &state.identity_text,
-        &snapshot.label,
-        snapshot.health,
-    )));
-    if let Ok(icon) = tray_icon(state.icon_bytes) {
-        let _ = state.tray.set_icon(Some(icon));
-        let _ = state.tray.set_icon_as_template(false);
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PrimaryHealthModel {
+    status_text: String,
+    backend_text: String,
+    ui_text: String,
+    ui_enabled: bool,
+    api_docs_text: String,
+    api_docs_enabled: bool,
+    navigation_enabled: bool,
+    service_action_text: &'static str,
+    service_action_enabled: bool,
+    tooltip: String,
+}
+
+trait PrimaryHealthTarget {
+    fn apply(&self, model: PrimaryHealthModel);
+}
+
+struct NativePrimaryHealthTarget<'a>(&'a TrayState);
+
+impl PrimaryHealthTarget for NativePrimaryHealthTarget<'_> {
+    fn apply(&self, model: PrimaryHealthModel) {
+        let state = self.0;
+        let _ = state.status.set_text(model.status_text);
+        let _ = state.backend.set_text(model.backend_text);
+        let _ = state.open_ui.set_text(model.ui_text);
+        set_menu_item_enabled(&state.open_ui, "Open Station UI", model.ui_enabled);
+        let _ = state.api_docs.set_text(model.api_docs_text);
+        set_menu_item_enabled(&state.api_docs, "Open API docs", model.api_docs_enabled);
+        set_menu_item_enabled(&state.connections, "Connections", model.navigation_enabled);
+        set_menu_item_enabled(
+            &state.connected_clients,
+            "Paired devices",
+            model.navigation_enabled,
+        );
+        set_menu_item_enabled(&state.updates, "Update settings", model.navigation_enabled);
+        let _ = state.service_action.set_text(model.service_action_text);
+        set_menu_item_enabled(
+            &state.service_action,
+            "Service action",
+            model.service_action_enabled,
+        );
+        let _ = state.tray.set_tooltip(Some(model.tooltip));
+        if let Ok(icon) = tray_icon(state.icon_bytes) {
+            let _ = state.tray.set_icon(Some(icon));
+            let _ = state.tray.set_icon_as_template(false);
+        }
+    }
+}
+
+fn apply_primary_health(
+    target: &impl PrimaryHealthTarget,
+    identity_text: &str,
+    snapshot: TrayBackendSnapshot,
+    main_window_available: bool,
+    main_window_ready: bool,
+) {
+    let destinations = tray_destination_availability(
+        &snapshot,
+        main_window_available,
+        main_window_ready,
+        cfg!(target_os = "macos"),
+    );
+    target.apply(PrimaryHealthModel {
+        status_text: format!("Status: {}", snapshot.health.label()),
+        backend_text: snapshot.label.clone(),
+        ui_text: snapshot.ui_label,
+        ui_enabled: destinations.open_ui,
+        api_docs_text: snapshot.api_docs_label,
+        api_docs_enabled: destinations.api_docs,
+        navigation_enabled: destinations.navigation,
+        service_action_text: snapshot.action.label,
+        service_action_enabled: snapshot.action.enabled,
+        tooltip: tray_tooltip(identity_text, &snapshot.label, snapshot.health),
+    });
+}
+
+fn set_menu_item_enabled(item: &MenuItem<Wry>, destination: &str, enabled: bool) {
+    if let Err(error) = item.set_enabled(enabled) {
+        log::error!("Station tray could not set {destination} enabled state to {enabled}: {error}");
     }
 }
 
@@ -372,17 +528,17 @@ fn apply_poller_failure_ui(state: &TrayState) {
     let _ = state.status.set_text("Status: unavailable");
     let _ = state.backend.set_text("Backend: unavailable");
     let _ = state.open_ui.set_text("Station UI unavailable");
-    let _ = state.open_ui.set_enabled(false);
+    set_menu_item_enabled(&state.open_ui, "Open Station UI", false);
     let _ = state.api_docs.set_text("API docs unavailable");
-    let _ = state.api_docs.set_enabled(false);
-    let _ = state.connections.set_enabled(false);
+    set_menu_item_enabled(&state.api_docs, "Open API docs", false);
+    set_menu_item_enabled(&state.connections, "Connections", false);
     let _ = state
         .connected_clients
         .set_text("Paired devices: unavailable");
-    let _ = state.connected_clients.set_enabled(false);
-    let _ = state.updates.set_enabled(false);
+    set_menu_item_enabled(&state.connected_clients, "Paired devices", false);
+    set_menu_item_enabled(&state.updates, "Update settings", false);
     let _ = state.service_action.set_text("Service unavailable");
-    let _ = state.service_action.set_enabled(false);
+    set_menu_item_enabled(&state.service_action, "Service action", false);
     let _ = state.tray.set_tooltip(Some(tray_tooltip(
         &state.identity_text,
         "Backend: unavailable",
@@ -411,14 +567,15 @@ struct TrayBackendSnapshot {
     label: String,
     api_docs_label: String,
     ui_label: String,
-    api_docs_available: bool,
+    api_origin: Option<String>,
+    api_docs_url: Option<String>,
     ui_available: bool,
     action: ContextualServiceAction,
 }
 
 impl TrayBackendSnapshot {
     fn can_open_api_docs(&self) -> bool {
-        self.kind != TrayBackendKind::Unavailable && self.api_docs_available
+        self.kind != TrayBackendKind::Unavailable && self.api_docs_url.is_some()
     }
 
     fn can_open_ui(&self) -> bool {
@@ -426,19 +583,61 @@ impl TrayBackendSnapshot {
     }
 
     fn can_navigate(&self) -> bool {
-        self.kind != TrayBackendKind::Unavailable
+        match self.kind {
+            TrayBackendKind::Service => self.ui_available,
+            TrayBackendKind::Sidecar => true,
+            TrayBackendKind::Unavailable => false,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TrayDestinationAvailability {
+    open_ui: bool,
+    api_docs: bool,
+    navigation: bool,
+}
+
+/// Service destinations open in the system browser and do not require a
+/// webview. Built-in sidecar navigation is native-to-webview, so both the main
+/// window and its startup-readiness proof must exist. Its UI affordance stays
+/// available because it owns main-window reconstruction.
+fn tray_destination_availability(
+    snapshot: &TrayBackendSnapshot,
+    main_window_available: bool,
+    main_window_ready: bool,
+    main_window_recreation_supported: bool,
+) -> TrayDestinationAvailability {
+    let backend_reachable = matches!(
+        snapshot.health,
+        ServiceHealth::Running | ServiceHealth::Unhealthy
+    );
+    let route_available =
+        snapshot.kind != TrayBackendKind::Sidecar || (main_window_available && main_window_ready);
+    TrayDestinationAvailability {
+        open_ui: snapshot.can_open_ui()
+            && match snapshot.kind {
+                // Showing Station's own window does not depend on HTTP health,
+                // but a missing window needs an implemented platform rebuild.
+                TrayBackendKind::Sidecar => {
+                    main_window_available || main_window_recreation_supported
+                }
+                TrayBackendKind::Service => backend_reachable,
+                TrayBackendKind::Unavailable => false,
+            },
+        api_docs: snapshot.can_open_api_docs() && backend_reachable,
+        navigation: snapshot.can_navigate() && backend_reachable && route_available,
     }
 }
 
 struct TrayContext {
     snapshot: TrayBackendSnapshot,
     service: Option<ResolvedLocalService>,
-    api_origin: Option<String>,
 }
 
-#[derive(Clone, Copy, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-enum TrayNavigationDestination {
+pub(crate) enum TrayNavigationDestination {
     Connections,
     PairedDevices,
     CoreUpdates,
@@ -495,6 +694,11 @@ fn tray_backend_snapshot(
     let trusted_manifest = trusted_service_manifest(status, owner, manifest);
     if let Some(manifest) = trusted_manifest {
         let health = endpoint_health.unwrap_or(ServiceHealth::NotInstalled);
+        let api_origin = station_api_origin(manifest).ok();
+        let api_docs_url = api_origin
+            .as_deref()
+            .and_then(|origin| station_api_docs_url(origin).ok());
+        let ui_available = station_ui_url(manifest).is_ok();
         let action = match owner {
             DesktopOwnerSnapshot::Service { .. } => Some(ServiceAction::Stop),
             DesktopOwnerSnapshot::Unowned if health == ServiceHealth::Stopped => {
@@ -504,6 +708,16 @@ fn tray_backend_snapshot(
             DesktopOwnerSnapshot::Unowned => None,
         };
         let action = contextual_service_action(health, action);
+        let api_docs_label = if api_docs_url.is_some() {
+            format!("Open API docs (port {})", manifest.server_port)
+        } else {
+            "API docs unavailable".into()
+        };
+        let ui_label = if ui_available {
+            format!("Open Station UI (port {})", manifest.ui_port)
+        } else {
+            "Station UI unavailable".into()
+        };
         return TrayBackendSnapshot {
             kind: TrayBackendKind::Service,
             health,
@@ -511,10 +725,11 @@ fn tray_backend_snapshot(
                 "Backend: local service {}",
                 safe_instance(&manifest.instance_id)
             ),
-            api_docs_label: format!("Open API docs (port {})", manifest.server_port),
-            ui_label: format!("Open Station UI (port {})", manifest.ui_port),
-            api_docs_available: true,
-            ui_available: true,
+            api_docs_label,
+            ui_label,
+            api_origin,
+            api_docs_url,
+            ui_available,
             action,
         };
     }
@@ -525,18 +740,25 @@ fn tray_backend_snapshot(
             Some(_) => "Backend: built-in".into(),
             None => "Backend: built-in · API unavailable".into(),
         };
-        let api_docs_label = match status.port.and_then(display_port) {
-            Some(api_port) => format!("Open API docs (port {api_port})"),
-            None => "API docs unavailable".into(),
+        let api_origin = status
+            .api_base
+            .as_deref()
+            .and_then(|base| crate::exact_origin(base).ok());
+        let api_docs_url = api_origin
+            .as_deref()
+            .and_then(|origin| station_api_docs_url(origin).ok());
+        let api_docs_label = match (status.port.and_then(display_port), api_docs_url.as_ref()) {
+            (Some(api_port), Some(_)) => format!("Open API docs (port {api_port})"),
+            _ => "API docs unavailable".into(),
         };
-        let api_docs_available = status.port.and_then(display_port).is_some();
         return TrayBackendSnapshot {
             kind: TrayBackendKind::Sidecar,
             health,
             label,
             api_docs_label,
             ui_label: "Show Station UI (desktop app)".into(),
-            api_docs_available,
+            api_origin,
+            api_docs_url,
             ui_available: true,
             action: ContextualServiceAction {
                 label: "Built-in service",
@@ -557,7 +779,8 @@ fn tray_backend_snapshot(
         label: "Backend: unavailable".into(),
         api_docs_label: "API docs unavailable".into(),
         ui_label: "Station UI unavailable".into(),
-        api_docs_available: false,
+        api_origin: None,
+        api_docs_url: None,
         ui_available: false,
         action: contextual_service_action(health, None),
     }
@@ -642,20 +865,9 @@ fn tray_context(app: &AppHandle) -> TrayContext {
     let has_trusted_manifest = trusted_manifest.is_some();
     let endpoint_health = trusted_manifest.map(|manifest| probe_service(Some(manifest)));
     let snapshot = tray_backend_snapshot(&status, &owner, trusted_manifest, endpoint_health);
-    let api_origin = match snapshot.kind {
-        TrayBackendKind::Service => {
-            trusted_manifest.and_then(|manifest| station_api_origin(manifest).ok())
-        }
-        TrayBackendKind::Sidecar => status
-            .api_base
-            .as_deref()
-            .and_then(|base| crate::exact_origin(base).ok()),
-        TrayBackendKind::Unavailable => None,
-    };
     TrayContext {
         snapshot,
         service: service_for_trusted_manifest(has_trusted_manifest, || service),
-        api_origin,
     }
 }
 
@@ -686,8 +898,9 @@ fn open_paired_devices(app: &AppHandle) {
 }
 
 fn open_core_update_settings(app: &AppHandle) {
-    // Settings' CoreUpdateCheck is the sole update authority: it owns the
-    // check/recheck/apply/restart lifecycle. The tray only opens its fixed UI.
+    // This intentionally promises only navigation. The connected Station's
+    // CoreUpdateCheck and the native desktop updater are different mechanisms;
+    // opening this fixed settings destination does not check the desktop app.
     open_station_destination(
         app,
         TrayNavigationDestination::CoreUpdates,
@@ -703,25 +916,150 @@ fn open_station_destination(
     let context = tray_context(app);
     match context.snapshot.kind {
         TrayBackendKind::Service => {
-            if let Some(service) = context.service {
-                if let Ok(url) = destination(&service.manifest) {
-                    let _ = app.opener().open_url(url, None::<&str>);
+            let Some(service) = context.service else {
+                log::warn!(
+                    "Station tray could not open {destination_kind:?}: trusted service disappeared"
+                );
+                return;
+            };
+            match destination(&service.manifest) {
+                Ok(url) => {
+                    if let Err(error) = app.opener().open_url(url, None::<&str>) {
+                        log::error!(
+                            "Station tray could not open {destination_kind:?}: native opener rejected the destination: {error}"
+                        );
+                    }
+                }
+                Err(error) => log::error!(
+                    "Station tray refused the {destination_kind:?} destination: {error}"
+                ),
+            }
+        }
+        TrayBackendKind::Sidecar => match focus_station_window(app, false) {
+            Ok((label, revealed)) => {
+                queue_tray_navigation(app, destination_kind);
+                if let Err(error) = app.emit_to(label, TRAY_NAVIGATION_EVENT, destination_kind) {
+                    log::error!("Station tray could not navigate to {destination_kind:?}: {error}");
+                }
+                if !revealed {
+                    log::info!(
+                        "Station tray deferred {destination_kind:?} until main-window startup readiness completes"
+                    );
                 }
             }
-        }
-        TrayBackendKind::Sidecar => {
-            if let Some(label) = focus_station_window(app) {
-                let _ = app.emit_to(label, TRAY_NAVIGATION_EVENT, destination_kind);
+            Err(error) => {
+                log::warn!("Station tray could not navigate to {destination_kind:?}: {error}")
             }
+        },
+        TrayBackendKind::Unavailable => {
+            log::warn!("Station tray could not open {destination_kind:?}: backend is unavailable")
         }
-        TrayBackendKind::Unavailable => {}
     }
 }
 
-fn focus_station_window(app: &AppHandle) -> Option<String> {
-    let label = app.get_webview_window("main")?.label().to_string();
-    crate::request_main_window_activation(app);
-    Some(label)
+fn focus_station_window(app: &AppHandle, recreate: bool) -> Result<(String, bool), String> {
+    if recreate {
+        crate::ensure_main_window(app)?;
+    }
+    let label = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window does not exist".to_string())?
+        .label()
+        .to_string();
+    Ok((label, crate::request_main_window_activation(app)))
+}
+
+fn queue_tray_navigation(app: &AppHandle, destination: TrayNavigationDestination) {
+    let Some(pending) = app.try_state::<PendingTrayNavigation>() else {
+        log::error!("Station tray could not retain {destination:?}: replay state is unavailable");
+        return;
+    };
+    let replaced = pending
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .queue(destination, Instant::now());
+    log::info!("Station tray queued {destination:?} navigation for renderer replay");
+    if let Some(replaced) = replaced {
+        log::info!(
+            "Station tray replaced pending {:?} navigation with {destination:?}",
+            replaced.destination
+        );
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PendingTrayNavigationReplay {
+    id: u64,
+    destination: TrayNavigationDestination,
+}
+
+fn tray_navigation_label_admitted(label: &str) -> bool {
+    label == "main"
+}
+
+#[tauri::command]
+pub(crate) fn take_pending_tray_navigation<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    app: AppHandle<R>,
+) -> Result<Option<PendingTrayNavigationReplay>, String> {
+    if !tray_navigation_label_admitted(window.label()) {
+        return Err("Tray navigation replay is accepted only from the main WebView.".into());
+    }
+    Ok(app.try_state::<PendingTrayNavigation>().and_then(|pending| {
+        pending
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take_lease(Instant::now())
+    }))
+}
+
+#[tauri::command]
+pub(crate) fn ack_pending_tray_navigation<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    app: AppHandle<R>,
+    id: u64,
+) -> Result<bool, String> {
+    if !tray_navigation_label_admitted(window.label()) {
+        return Err("Tray navigation replay is accepted only from the main WebView.".into());
+    }
+    Ok(app.try_state::<PendingTrayNavigation>().is_some_and(|pending| {
+        pending
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .acknowledge(id)
+    }))
+}
+
+pub(crate) fn release_pending_navigation_lease<R: Runtime>(app: &AppHandle<R>, reason: &str) {
+    let Some(pending) = app.try_state::<PendingTrayNavigation>() else {
+        return;
+    };
+    if pending
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .release_lease()
+    {
+        log::info!("Station tray released pending navigation lease after {reason}");
+    }
+}
+
+pub(crate) fn invalidate_pending_navigation(app: &AppHandle, reason: &str) {
+    let Some(pending) = app.try_state::<PendingTrayNavigation>() else {
+        return;
+    };
+    if pending
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .invalidate()
+    {
+        log::info!("Station tray discarded pending navigation after {reason}");
+    }
 }
 
 fn tray_icon_bytes(channel: Option<&str>) -> &'static [u8] {
@@ -743,33 +1081,42 @@ fn open_station_ui(app: &AppHandle) {
     let context = tray_context(app);
     match context.snapshot.kind {
         TrayBackendKind::Service => {
-            if let Some(service) = context.service {
-                if let Err(error) = open_manifest_ui(&service.manifest, |url| {
-                    app.opener().open_url(url.to_owned(), None::<&str>)
-                }) {
-                    log::error!("Station tray could not open the UI: {error}");
-                }
+            let Some(service) = context.service else {
+                log::warn!("Station tray could not open the UI: trusted service disappeared");
+                return;
+            };
+            if let Err(error) = open_manifest_ui(&service.manifest, |url| {
+                app.opener().open_url(url.to_owned(), None::<&str>)
+            }) {
+                log::error!("Station tray could not open the UI: {error}");
             }
         }
         TrayBackendKind::Sidecar => {
-            let _ = focus_station_window(app);
+            match focus_station_window(app, true) {
+                Ok((_label, true)) => {}
+                Ok((_label, false)) => log::info!(
+                    "Station tray deferred showing the UI until main-window startup readiness completes"
+                ),
+                Err(error) => log::error!("Station tray could not show the UI: {error}"),
+            }
         }
-        TrayBackendKind::Unavailable => {}
+        TrayBackendKind::Unavailable => {
+            log::warn!("Station tray could not open the UI: backend is unavailable");
+        }
     }
 }
 
 fn open_station_api_docs(app: &AppHandle) {
     let context = tray_context(app);
-    let Some(api_origin) = context.api_origin else {
+    let Some(url) = context.snapshot.api_docs_url.as_deref() else {
+        log::warn!(
+            "Station tray could not open API docs for {:?}: no validated local API origin is available",
+            context.snapshot.kind
+        );
         return;
     };
-    match station_api_docs_url(&api_origin) {
-        Ok(url) => {
-            if let Err(error) = app.opener().open_url(url, None::<&str>) {
-                log::error!("Station tray could not open API docs: {error}");
-            }
-        }
-        Err(error) => log::error!("Station tray refused the API docs URL: {error}"),
+    if let Err(error) = app.opener().open_url(url, None::<&str>) {
+        log::error!("Station tray could not open API docs: {error}");
     }
 }
 
@@ -892,7 +1239,7 @@ struct ConnectedClientsResponse {
 /// Reads only the bounded aggregate projection. The bearer remains native and
 /// every unavailable authority/transport/shape path stays explicitly unknown.
 fn connected_clients_label(app: &AppHandle, context: &TrayContext) -> String {
-    let Some(origin) = context.api_origin.as_deref() else {
+    let Some(origin) = context.snapshot.api_origin.as_deref() else {
         return "Paired devices: unavailable".to_string();
     };
     let Ok(credential) = crate::native_credential_for_origin(app, &origin) else {
@@ -963,8 +1310,17 @@ fn service_actions_supported() -> bool {
 
 fn run_contextual_service_action(app: &AppHandle) {
     let context = tray_context(app);
-    if let (Some(action), Some(service)) = (context.snapshot.action.action, context.service) {
-        run_service_action(app, action, service);
+    match (context.snapshot.action.action, context.service) {
+        (Some(action), Some(service)) => run_service_action(app, action, service),
+        (Some(action), None) => log::warn!(
+            "Station tray could not run service {} action: trusted service disappeared",
+            action.as_str()
+        ),
+        (None, _) => log::warn!(
+            "Station tray could not run a service action: no action is available for backend {:?} with health {:?}",
+            context.snapshot.kind,
+            context.snapshot.health
+        ),
     }
 }
 
@@ -1032,6 +1388,8 @@ fn update_once(app: &AppHandle) -> ServiceHealth {
     let context = tray_context(app);
     let health = context.snapshot.health;
     let snapshot = context.snapshot.clone();
+    let main_window_available = app.get_webview_window("main").is_some();
+    let main_window_ready = crate::main_window_activation_available(app);
     // Advance for every primary context, including when the previous optional
     // projection is still waiting on Keychain or HTTP. Its eventual result
     // must never overwrite a newer owner/backend presentation.
@@ -1048,7 +1406,15 @@ fn update_once(app: &AppHandle) -> ServiceHealth {
         move || {
             record_dispatch_result(primary_app.run_on_main_thread({
                 let state = primary_state;
-                move || apply_primary_health(&state, snapshot)
+                move || {
+                    apply_primary_health(
+                        &NativePrimaryHealthTarget(&state),
+                        &state.identity_text,
+                        snapshot,
+                        main_window_available,
+                        main_window_ready,
+                    )
+                }
             }));
             crate::emit_service_status(&primary_app);
         },
@@ -1204,6 +1570,7 @@ mod tests {
         let mut status = BundledServerStatus::initial("out.log".into(), "err.log".into());
         status.ownership = ownership;
         status.port = port;
+        status.api_base = port.map(|port| format!("http://127.0.0.1:{port}"));
         status
     }
 
@@ -1312,6 +1679,48 @@ mod tests {
     }
 
     #[test]
+    fn api_docs_enabled_state_uses_the_same_validated_origin_as_the_click() {
+        let invalid_host = manifest("station.internal");
+        let invalid_service = tray_backend_snapshot(
+            &status(ServerOwnership::Service, Some(3141)),
+            &service_owner("default", 3141),
+            Some(&invalid_host),
+            Some(ServiceHealth::Running),
+        );
+        assert_eq!(invalid_service.api_origin, None);
+        assert_eq!(invalid_service.api_docs_url, None);
+        assert_eq!(invalid_service.api_docs_label, "API docs unavailable");
+        assert!(!invalid_service.can_open_api_docs());
+        assert!(!invalid_service.can_open_ui());
+        assert!(!invalid_service.can_navigate());
+
+        let non_loopback = manifest("192.0.2.10");
+        let non_loopback = tray_backend_snapshot(
+            &status(ServerOwnership::Service, Some(3141)),
+            &service_owner("default", 3141),
+            Some(&non_loopback),
+            Some(ServiceHealth::Running),
+        );
+        assert!(non_loopback.api_origin.is_some());
+        assert_eq!(non_loopback.api_docs_url, None);
+        assert!(!non_loopback.can_open_api_docs());
+
+        let mut detached_sidecar = status(ServerOwnership::Sidecar, Some(4310));
+        detached_sidecar.phase = crate::bundled_server_state::ServerPhase::Running;
+        detached_sidecar.api_base = None;
+        let detached_sidecar = tray_backend_snapshot(
+            &detached_sidecar,
+            &DesktopOwnerSnapshot::Sidecar,
+            None,
+            None,
+        );
+        assert_eq!(detached_sidecar.api_origin, None);
+        assert_eq!(detached_sidecar.api_docs_url, None);
+        assert_eq!(detached_sidecar.api_docs_label, "API docs unavailable");
+        assert!(!detached_sidecar.can_open_api_docs());
+    }
+
+    #[test]
     fn selects_the_tray_icon_from_the_packaged_channel() {
         assert_eq!(tray_icon_bytes(Some("stable")), STATION_TRAY_ICON);
         assert_eq!(tray_icon_bytes(Some("beta")), BETA_TRAY_ICON);
@@ -1345,6 +1754,232 @@ mod tests {
         assert!(running_snapshot.can_open_api_docs());
         assert!(running_snapshot.can_navigate());
         assert!(!running_snapshot.action.enabled);
+    }
+
+    #[test]
+    fn sidecar_navigation_requires_a_ready_main_window_but_its_recovery_affordance_does_not() {
+        let mut sidecar_status = status(ServerOwnership::Sidecar, Some(4310));
+        sidecar_status.phase = crate::bundled_server_state::ServerPhase::Running;
+        let sidecar =
+            tray_backend_snapshot(&sidecar_status, &DesktopOwnerSnapshot::Sidecar, None, None);
+        assert_eq!(
+            tray_destination_availability(&sidecar, false, false, true),
+            TrayDestinationAvailability {
+                open_ui: true,
+                api_docs: true,
+                navigation: false,
+            }
+        );
+        assert_eq!(
+            tray_destination_availability(&sidecar, true, false, true),
+            TrayDestinationAvailability {
+                open_ui: true,
+                api_docs: true,
+                navigation: false,
+            }
+        );
+        assert_eq!(
+            tray_destination_availability(&sidecar, true, true, true),
+            TrayDestinationAvailability {
+                open_ui: true,
+                api_docs: true,
+                navigation: true,
+            }
+        );
+
+        let service_manifest = manifest("127.0.0.1");
+        let service = tray_backend_snapshot(
+            &status(ServerOwnership::Service, Some(3141)),
+            &service_owner("default", 3141),
+            Some(&service_manifest),
+            Some(ServiceHealth::Running),
+        );
+        assert_eq!(
+            tray_destination_availability(&service, false, false, false),
+            TrayDestinationAvailability {
+                open_ui: true,
+                api_docs: true,
+                navigation: true,
+            }
+        );
+
+        let stopped_service = tray_backend_snapshot(
+            &status(ServerOwnership::Service, Some(3141)),
+            &service_owner("default", 3141),
+            Some(&service_manifest),
+            Some(ServiceHealth::Stopped),
+        );
+        assert_eq!(
+            tray_destination_availability(&stopped_service, true, true, false),
+            TrayDestinationAvailability {
+                open_ui: false,
+                api_docs: false,
+                navigation: false,
+            }
+        );
+
+        let unavailable = tray_backend_snapshot(
+            &status(ServerOwnership::None, None),
+            &DesktopOwnerSnapshot::Unavailable,
+            None,
+            None,
+        );
+        assert_eq!(
+            tray_destination_availability(&unavailable, true, true, true),
+            TrayDestinationAvailability {
+                open_ui: false,
+                api_docs: false,
+                navigation: false,
+            }
+        );
+    }
+
+    #[test]
+    fn sidecar_window_availability_is_health_independent_and_platform_honest() {
+        for phase in [
+            crate::bundled_server_state::ServerPhase::Starting,
+            crate::bundled_server_state::ServerPhase::Restarting,
+        ] {
+            let mut sidecar_status = status(ServerOwnership::Sidecar, Some(4310));
+            sidecar_status.phase = phase;
+            let sidecar = tray_backend_snapshot(
+                &sidecar_status,
+                &DesktopOwnerSnapshot::Sidecar,
+                None,
+                None,
+            );
+
+            assert!(tray_destination_availability(&sidecar, true, false, false).open_ui);
+            assert!(tray_destination_availability(&sidecar, false, false, true).open_ui);
+            assert!(!tray_destination_availability(&sidecar, false, false, false).open_ui);
+            assert!(!tray_destination_availability(&sidecar, true, false, false).api_docs);
+        }
+    }
+
+    #[test]
+    fn pending_navigation_is_leased_until_acknowledged_and_expires() {
+        let now = Instant::now();
+        let mut state = PendingTrayNavigationState::default();
+        state.queue(TrayNavigationDestination::Connections, now);
+
+        let first = state.take_lease(now).expect("fresh replay lease");
+        assert_eq!(first.destination, TrayNavigationDestination::Connections);
+        assert_eq!(state.take_lease(now), None);
+        assert!(state.acknowledge(first.id));
+        assert_eq!(state.take_lease(now), None);
+
+        state.queue(TrayNavigationDestination::CoreUpdates, now);
+        assert_eq!(
+            state.take_lease(now + TRAY_NAVIGATION_TTL),
+            None,
+            "the TTL boundary is expired"
+        );
+        state.queue(TrayNavigationDestination::CoreUpdates, now);
+        assert_eq!(
+            state.take_lease(now + TRAY_NAVIGATION_TTL + Duration::from_millis(1)),
+            None
+        );
+    }
+
+    #[test]
+    fn pending_navigation_invalidation_rejects_stale_acknowledgements() {
+        let now = Instant::now();
+        let mut state = PendingTrayNavigationState::default();
+        state.queue(TrayNavigationDestination::PairedDevices, now);
+        let stale = state.take_lease(now).expect("fresh replay lease");
+        assert!(state.invalidate());
+        assert_eq!(state.leased_to, None);
+        assert!(!state.acknowledge(stale.id));
+        assert_eq!(state.take_lease(now), None);
+    }
+
+    #[test]
+    fn tray_navigation_commands_reject_a_non_main_window() {
+        let app = tauri::test::mock_app();
+        assert!(app.manage(PendingTrayNavigation::default()));
+        let foreign = tauri::WebviewWindowBuilder::new(
+            &app,
+            "workspace-popout",
+            tauri::WebviewUrl::App("index.html".into()),
+        )
+        .build()
+        .expect("foreign test window");
+
+        assert_eq!(
+            take_pending_tray_navigation(foreign.clone(), app.handle().clone()),
+            Err("Tray navigation replay is accepted only from the main WebView.".into())
+        );
+        assert_eq!(
+            ack_pending_tray_navigation(foreign, app.handle().clone(), 1),
+            Err("Tray navigation replay is accepted only from the main WebView.".into())
+        );
+    }
+
+    #[test]
+    fn a_successor_renderer_can_reclaim_a_dead_holders_lease() {
+        let now = Instant::now();
+        let mut state = PendingTrayNavigationState::default();
+        state.queue(TrayNavigationDestination::PairedDevices, now);
+        let abandoned = state.take_lease(now).expect("first renderer lease");
+
+        assert!(state.release_lease());
+        let successor = state.take_lease(now).expect("successor renderer lease");
+        assert_eq!(successor, abandoned);
+    }
+
+    #[test]
+    fn update_settings_menu_item_contract_is_portable() {
+        assert_eq!(
+            update_settings_menu_item_spec(),
+            UpdateSettingsMenuItemSpec {
+                id: "tray-updates",
+                label: "Update settings…",
+                enabled: false,
+            }
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn constructed_update_menu_item_promises_settings_navigation() {
+        let app = tauri::test::mock_app();
+        let item = update_settings_menu_item(app.handle()).expect("update item");
+        assert_eq!(item.id().as_ref(), "tray-updates");
+        assert_eq!(item.text().expect("update item text"), "Update settings…");
+        assert!(!item.is_enabled().expect("update item enabled state"));
+    }
+
+    #[test]
+    fn apply_primary_health_uses_derived_availability_row_for_row() {
+        #[derive(Default)]
+        struct RecordingTarget(Mutex<Option<PrimaryHealthModel>>);
+        impl PrimaryHealthTarget for RecordingTarget {
+            fn apply(&self, model: PrimaryHealthModel) {
+                *self.0.lock().unwrap() = Some(model);
+            }
+        }
+
+        let mut sidecar_status = status(ServerOwnership::Sidecar, Some(4310));
+        sidecar_status.phase = crate::bundled_server_state::ServerPhase::Running;
+        let sidecar =
+            tray_backend_snapshot(&sidecar_status, &DesktopOwnerSnapshot::Sidecar, None, None);
+        let target = RecordingTarget::default();
+        apply_primary_health(&target, "Station vtest", sidecar, true, false);
+        assert_eq!(
+            target.0.lock().unwrap().clone().expect("applied model"),
+            PrimaryHealthModel {
+                status_text: "Status: Running".into(),
+                backend_text: "Backend: built-in".into(),
+                ui_text: "Show Station UI (desktop app)".into(),
+                ui_enabled: true,
+                api_docs_text: "Open API docs (port 4310)".into(),
+                api_docs_enabled: true,
+                navigation_enabled: false,
+                service_action_text: "Built-in service",
+                service_action_enabled: false,
+                tooltip: "Station vtest\nBackend: built-in\nHealth: Running".into(),
+            }
+        );
     }
 
     #[test]

@@ -49,7 +49,7 @@ use tauri::{ipc::Channel, AppHandle, State};
 #[cfg(not(mobile))]
 use tauri::{
     webview::{DownloadEvent, NewWindowResponse, PageLoadEvent},
-    WebviewUrl, WebviewWindowBuilder, WindowEvent,
+    Runtime, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 #[cfg(not(mobile))]
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -6875,8 +6875,7 @@ struct DesktopServerState {
     owner: Mutex<DesktopOwner>,
     supervisor: Arc<ServerSupervisor>,
     readiness: Mutex<startup_readiness::StartupReadiness>,
-    startup_commit_in_flight: AtomicBool,
-    startup_commit_pending: AtomicBool,
+    startup_commit_claim: Mutex<StartupCommitClaim>,
     /// When the owner was last re-derived. App setup seeds this with the
     /// instant of its own derivation, so in production it is always `Some` —
     /// the boot decision starts the interval rather than making the first
@@ -6884,6 +6883,13 @@ struct DesktopServerState {
     /// happened without this field: a real observation (pid probe + birth
     /// fingerprint) taken at one instant and then asserted forever.
     ownership_checked_at: Mutex<Option<Instant>>,
+}
+
+#[cfg(not(mobile))]
+#[derive(Default)]
+struct StartupCommitClaim {
+    in_flight_epoch: Option<u64>,
+    pending_epoch: Option<u64>,
 }
 
 #[cfg(not(mobile))]
@@ -6902,39 +6908,84 @@ fn startup_readiness_accepts_retry(phase: startup_readiness::ReadinessPhase) -> 
 fn claim_startup_commit(
     renderer_observed: bool,
     phase: startup_readiness::ReadinessPhase,
-    in_flight: &AtomicBool,
-    pending: &AtomicBool,
+    identity_committed: bool,
+    epoch: u64,
+    claim: &Mutex<StartupCommitClaim>,
 ) -> bool {
-    if !renderer_observed || !startup_readiness_accepts_retry(phase) {
+    if !renderer_observed || !startup_readiness_accepts_retry(phase) || identity_committed {
         return false;
     }
-    loop {
-        if in_flight
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok()
-        {
-            pending.store(false, Ordering::Release);
-            return true;
+    let mut claim = claim
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if claim.in_flight_epoch.is_none() {
+        claim.in_flight_epoch = Some(epoch);
+        claim.pending_epoch = None;
+        true
+    } else {
+        if claim.pending_epoch.is_none_or(|pending| epoch >= pending) {
+            claim.pending_epoch = Some(epoch);
         }
-        pending.store(true, Ordering::Release);
-        if in_flight.load(Ordering::Acquire) {
-            return false;
-        }
+        false
     }
 }
 
 #[cfg(not(mobile))]
-fn release_failed_startup_commit_claim(in_flight: &AtomicBool, pending: &AtomicBool) -> bool {
-    in_flight.store(false, Ordering::Release);
-    pending.swap(false, Ordering::AcqRel)
+fn finish_startup_commit_claim(
+    claim: &Mutex<StartupCommitClaim>,
+    claim_epoch: u64,
+    current_epoch: u64,
+) -> bool {
+    let mut claim = claim
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if claim.in_flight_epoch != Some(claim_epoch) {
+        return false;
+    }
+    claim.in_flight_epoch = None;
+    let retry_current = claim.pending_epoch == Some(current_epoch);
+    claim.pending_epoch = None;
+    retry_current
 }
 
 #[cfg(not(mobile))]
-fn release_failed_startup_commit(app: &AppHandle) {
+fn startup_commit_claim_snapshot(claim: &Mutex<StartupCommitClaim>) -> (Option<u64>, Option<u64>) {
+    let claim = claim
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    (claim.in_flight_epoch, claim.pending_epoch)
+}
+
+#[cfg(not(mobile))]
+fn begin_main_window_recreation(
+    readiness: &mut startup_readiness::StartupReadiness,
+    dev_bypass: bool,
+) -> u64 {
+    let (next, _) = startup_readiness::transition(
+        readiness,
+        startup_readiness::ReadinessInput::MainWindowRecreated {
+            now_ms: 0,
+            timeout_ms: 30_000,
+            dev_bypass,
+        },
+    );
+    let epoch = next.epoch;
+    *readiness = next;
+    epoch
+}
+
+#[cfg(not(mobile))]
+fn release_failed_startup_commit(app: &AppHandle, claim_epoch: u64) {
     if let Some(state) = app.try_state::<DesktopServerState>() {
-        if release_failed_startup_commit_claim(
-            &state.startup_commit_in_flight,
-            &state.startup_commit_pending,
+        let current_epoch = state
+            .readiness
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .epoch;
+        if finish_startup_commit_claim(
+            &state.startup_commit_claim,
+            claim_epoch,
+            current_epoch,
         ) {
             request_native_startup_commit(app);
         }
@@ -6942,11 +6993,27 @@ fn release_failed_startup_commit(app: &AppHandle) {
 }
 
 #[cfg(not(mobile))]
-fn complete_startup_commit(app: &AppHandle) {
+fn complete_startup_commit<R: Runtime>(
+    app: &AppHandle<R>,
+    claim_epoch: u64,
+    request_retry: impl FnOnce(&AppHandle<R>),
+) {
     if let Some(state) = app.try_state::<DesktopServerState>() {
-        state
-            .startup_commit_pending
-            .store(false, Ordering::Release);
+        let (current_epoch, identity_committed) = {
+            let readiness = state
+                .readiness
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            (readiness.epoch, readiness.identity_committed)
+        };
+        let retry_current = finish_startup_commit_claim(
+            &state.startup_commit_claim,
+            claim_epoch,
+            current_epoch,
+        );
+        if retry_current && !identity_committed {
+            request_retry(app);
+        }
     }
 }
 
@@ -6994,21 +7061,28 @@ fn request_native_startup_commit_for_ticket(
         log::debug!("native startup bootstrap is waiting for desktop state");
         return;
     };
-    let phase = state
-        .readiness
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .phase;
+    let (phase, identity_committed, epoch) = {
+        let readiness = state
+            .readiness
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        (
+            readiness.phase,
+            readiness.identity_committed,
+            readiness.epoch,
+        )
+    };
     if !claim_startup_commit(
         bootstrap.renderer_observed.load(Ordering::Acquire),
         phase,
-        &state.startup_commit_in_flight,
-        &state.startup_commit_pending,
+        identity_committed,
+        epoch,
+        &state.startup_commit_claim,
     ) {
+        let (in_flight_epoch, pending_epoch) =
+            startup_commit_claim_snapshot(&state.startup_commit_claim);
         log::info!(
-            "native startup bootstrap did not claim: phase={phase:?} inFlight={} pending={} rendererObserved={}",
-            state.startup_commit_in_flight.load(Ordering::Acquire),
-            state.startup_commit_pending.load(Ordering::Acquire),
+            "native startup bootstrap did not claim: phase={phase:?} epoch={epoch} inFlightEpoch={in_flight_epoch:?} pendingEpoch={pending_epoch:?} rendererObserved={}",
             bootstrap.renderer_observed.load(Ordering::Acquire),
         );
         return;
@@ -7021,18 +7095,20 @@ fn request_native_startup_commit_for_ticket(
     tauri::async_runtime::spawn(async move {
         match tauri::async_runtime::spawn_blocking({
             let app_for_task = app_for_commit.clone();
-            move || commit_startup_readiness_blocking(app_for_task, ticket)
+            move || commit_startup_readiness_blocking(app_for_task, ticket, epoch)
         })
         .await
         {
-            Ok(Ok(())) => complete_startup_commit(&app_for_commit),
+            Ok(Ok(())) => complete_startup_commit(&app_for_commit, epoch, |app| {
+                request_native_startup_commit(app)
+            }),
             Ok(Err(error)) => {
                 log::warn!("native startup bootstrap proof refused: {error}");
-                release_failed_startup_commit(&app_for_commit);
+                release_failed_startup_commit(&app_for_commit, epoch);
             }
             Err(error) => {
                 log::warn!("native startup bootstrap task failed: {error}");
-                release_failed_startup_commit(&app_for_commit);
+                release_failed_startup_commit(&app_for_commit, epoch);
             }
         }
     });
@@ -7461,7 +7537,11 @@ fn commit_current_startup_ticket(
     status: &BundledServerStatus,
     readiness: &mut startup_readiness::StartupReadiness,
     ticket: startup_readiness::StartupTicket,
+    claim_epoch: u64,
 ) -> Result<Vec<startup_readiness::ReadinessEffect>, &'static str> {
+    if readiness.epoch != claim_epoch {
+        return Err("Desktop startup readiness proof belongs to a superseded epoch.");
+    }
     let current = current_startup_ticket(status)?;
     if ticket != current {
         return Err("Desktop startup readiness ticket is stale.");
@@ -7501,9 +7581,23 @@ fn current_startup_ticket(
 }
 
 #[cfg(not(mobile))]
-pub(crate) fn request_main_window_activation(app: &AppHandle) {
+pub(crate) fn main_window_activation_available(app: &AppHandle) -> bool {
+    app.try_state::<DesktopServerState>().is_some_and(|state| {
+        matches!(
+            state
+                .readiness
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .phase,
+            startup_readiness::ReadinessPhase::Ready | startup_readiness::ReadinessPhase::Bypassed
+        )
+    })
+}
+
+#[cfg(not(mobile))]
+pub(crate) fn request_main_window_activation(app: &AppHandle) -> bool {
     let Some(state) = app.try_state::<DesktopServerState>() else {
-        return;
+        return false;
     };
     let effects = transition_startup_readiness(
         state.inner(),
@@ -7512,10 +7606,63 @@ pub(crate) fn request_main_window_activation(app: &AppHandle) {
     if effects.contains(&startup_readiness::ReadinessEffect::PresentStartupRecoverySurface) {
         present_startup_recovery_surface(app);
     }
-    if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
+    let revealed = effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow);
+    if revealed {
         reveal_main_window(app);
     }
     continue_startup_readiness(app, state.inner(), &effects);
+    revealed
+}
+
+#[cfg(not(mobile))]
+pub(crate) fn ensure_main_window(app: &AppHandle) -> Result<(), String> {
+    if app.get_webview_window("main").is_some() {
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        return Err("main-window recreation is currently supported only on macOS".into());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let config = app
+            .config()
+            .app
+            .windows
+            .iter()
+            .find(|window| window.label == "main")
+            .cloned()
+            .ok_or_else(|| "main window configuration is unavailable".to_string())?;
+        let state = app
+            .try_state::<DesktopServerState>()
+            .ok_or_else(|| "desktop startup readiness is unavailable".to_string())?;
+        let mut readiness = state
+            .readiness
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let epoch = begin_main_window_recreation(&mut readiness, cfg!(debug_assertions));
+        drop(readiness);
+        tray::invalidate_pending_navigation(app, "main-window recreation");
+
+        if let Err(error) =
+            WebviewWindowBuilder::from_config(app, &config).and_then(WebviewWindowBuilder::build)
+        {
+            // Keep the new epoch. Rolling the state back would let a stale
+            // deadline thread act on an epoch that became current again.
+            if !cfg!(debug_assertions) {
+                arm_startup_deadline(app.clone(), epoch);
+            }
+            return Err(format!("could not recreate the main window: {error}"));
+        }
+        tray::kick(app);
+        if !cfg!(debug_assertions) {
+            arm_startup_deadline(app.clone(), epoch);
+        }
+        log::info!("recreated the Station main window from its configured native definition");
+        Ok(())
+    }
 }
 
 #[cfg(not(mobile))]
@@ -7535,6 +7682,7 @@ fn continue_startup_readiness(
     if !resumed {
         return;
     }
+    tray::invalidate_pending_navigation(app, "startup-readiness restart");
     if effects.contains(&startup_readiness::ReadinessEffect::RestartOwnedSidecar) {
         let _ = state.supervisor.tx.send(SupervisorMessage::Restart);
     } else {
@@ -7853,6 +8001,7 @@ fn prove_bundled_startup_identity(
 fn commit_startup_readiness_blocking(
     app: AppHandle,
     ticket: startup_readiness::StartupTicket,
+    claim_epoch: u64,
 ) -> Result<(), String> {
     let generation = ticket.generation;
     let state = app
@@ -7900,8 +8049,8 @@ fn commit_startup_readiness_blocking(
         .readiness
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let effects =
-        commit_current_startup_ticket(&status, &mut readiness, ticket).map_err(|error| {
+    let effects = commit_current_startup_ticket(&status, &mut readiness, ticket, claim_epoch)
+        .map_err(|error| {
             log::warn!("desktop startup identity proof refused generation {generation}: {error}");
             error.to_string()
         })?;
@@ -7923,6 +8072,7 @@ fn observe_native_startup_page(app: &AppHandle, label: &str, event: PageLoadEven
     if !native_startup_page_admitted(label, event) {
         return;
     }
+    tray::release_pending_navigation_lease(app, "main renderer page start");
     let Some(bootstrap) = app.try_state::<NativeStartupBootstrap>() else {
         return;
     };
@@ -7953,35 +8103,42 @@ async fn commit_startup_readiness(
     let state = app
         .try_state::<DesktopServerState>()
         .ok_or("Desktop startup readiness is not initialized.")?;
-    let phase = state
-        .readiness
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .phase;
+    let (phase, identity_committed, epoch) = {
+        let readiness = state
+            .readiness
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        (
+            readiness.phase,
+            readiness.identity_committed,
+            readiness.epoch,
+        )
+    };
     if !claim_startup_commit(
         true,
         phase,
-        &state.startup_commit_in_flight,
-        &state.startup_commit_pending,
+        identity_committed,
+        epoch,
+        &state.startup_commit_claim,
     ) {
-        return Err("Desktop startup identity proof is already in flight.".to_string());
+        return Err("Desktop startup identity proof is already committed or in flight.".to_string());
     }
     let app_for_commit = app.clone();
     let result = match tauri::async_runtime::spawn_blocking(move || {
-        commit_startup_readiness_blocking(app_for_commit, ticket)
+        commit_startup_readiness_blocking(app_for_commit, ticket, epoch)
     })
     .await
     {
         Ok(result) => result,
         Err(error) => {
-            release_failed_startup_commit(&app);
+            release_failed_startup_commit(&app, epoch);
             return Err(format!("Desktop startup identity task failed: {error}"));
         }
     };
     if result.is_err() {
-        release_failed_startup_commit(&app);
+        release_failed_startup_commit(&app, epoch);
     } else {
-        complete_startup_commit(&app);
+        complete_startup_commit(&app, epoch, |app| request_native_startup_commit(app));
     }
     result
 }
@@ -9311,6 +9468,8 @@ If a stable instance is running, this launch will focus its window and exit.",
         open_workspace_pane_pop_out,
         bundled_server_status,
         open_desktop_tray_menu,
+        tray::take_pending_tray_navigation,
+        tray::ack_pending_tray_navigation,
         restart_bundled_server,
         commit_renderer_mount,
         commit_startup_readiness,
@@ -9514,7 +9673,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                 if let Some(dispatcher) = native_cover_dispatcher(app.handle().clone()) {
                     app.manage(dispatcher);
                 }
-                app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), startup_commit_in_flight: AtomicBool::new(false), startup_commit_pending: AtomicBool::new(false), ownership_checked_at: Mutex::new(Some(Instant::now())) });
+                app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), startup_commit_claim: Mutex::new(StartupCommitClaim::default()), ownership_checked_at: Mutex::new(Some(Instant::now())) });
                 replay_native_startup_renderer_observations(app.handle());
                 replay_pending_main_window_activation(app.handle(), &pending_activation);
                 // The tray poll reads this managed ownership state. Starting
@@ -9540,7 +9699,26 @@ If a stable instance is running, this launch will focus its window and exit.",
         .run(|app, event| {
             #[cfg(all(not(mobile), target_os = "macos"))]
             if let tauri::RunEvent::Reopen { .. } = event {
-                request_main_window_activation(app);
+                match ensure_main_window(app) {
+                    Ok(()) => {
+                        request_main_window_activation(app);
+                    }
+                    Err(error) => {
+                        log::error!("macOS reopen could not restore the main window: {error}")
+                    }
+                }
+            }
+            #[cfg(not(mobile))]
+            if let tauri::RunEvent::WindowEvent { label, event, .. } = &event {
+                if label == "main" && matches!(event, WindowEvent::Destroyed) {
+                    tray::invalidate_pending_navigation(app, "main-window destruction");
+                    let kick_app = app.clone();
+                    if let Err(error) = app.run_on_main_thread(move || tray::kick(&kick_app)) {
+                        log::error!(
+                            "could not schedule tray refresh after main-window destruction: {error}"
+                        );
+                    }
+                }
             }
             #[cfg(not(mobile))]
             if let tauri::RunEvent::Exit = event { teardown_sidecar(app); }
@@ -10162,12 +10340,14 @@ mod tests {
             startup_readiness::ReadinessInput::ServerTicket(current.clone()),
         );
         readiness = next;
+        let epoch = readiness.epoch;
         assert_eq!(
-            commit_current_startup_ticket(&status, &mut readiness, stale),
+            commit_current_startup_ticket(&status, &mut readiness, stale, epoch),
             Err("Desktop startup readiness ticket is stale.")
         );
         assert_eq!(readiness.phase, startup_readiness::ReadinessPhase::Waiting);
-        let effects = commit_current_startup_ticket(&status, &mut readiness, current).unwrap();
+        let effects =
+            commit_current_startup_ticket(&status, &mut readiness, current, epoch).unwrap();
         assert!(effects.is_empty());
         assert!(readiness.identity_committed);
         assert_eq!(readiness.phase, startup_readiness::ReadinessPhase::Waiting);
@@ -10200,52 +10380,55 @@ mod tests {
     #[test]
     #[cfg(not(mobile))]
     fn native_bootstrap_claim_requires_renderer_waiting_and_single_flight() {
-        let in_flight = AtomicBool::new(false);
-        let pending = AtomicBool::new(false);
+        let claim = Mutex::new(StartupCommitClaim::default());
         assert!(!claim_startup_commit(
             false,
             startup_readiness::ReadinessPhase::Waiting,
-            &in_flight,
-            &pending,
+            false,
+            1,
+            &claim,
         ));
         assert!(!claim_startup_commit(
             true,
             startup_readiness::ReadinessPhase::Ready,
-            &in_flight,
-            &pending,
-        ));
-        assert!(claim_startup_commit(
-            true,
-            startup_readiness::ReadinessPhase::Waiting,
-            &in_flight,
-            &pending,
+            false,
+            1,
+            &claim,
         ));
         assert!(!claim_startup_commit(
             true,
             startup_readiness::ReadinessPhase::Waiting,
-            &in_flight,
-            &pending,
+            true,
+            1,
+            &claim,
         ));
-        assert!(pending.load(Ordering::Acquire));
-        assert!(release_failed_startup_commit_claim(
-            &in_flight,
-            &pending,
-        ));
-        assert!(!pending.load(Ordering::Acquire));
         assert!(claim_startup_commit(
             true,
             startup_readiness::ReadinessPhase::Waiting,
-            &in_flight,
-            &pending,
+            false,
+            1,
+            &claim,
         ));
-        assert!(!release_failed_startup_commit_claim(
-            &in_flight,
-            &pending,
+        assert!(!claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Waiting,
+            false,
+            1,
+            &claim,
         ));
-        assert!(native_startup_page_admitted(
-            "main",
-            PageLoadEvent::Started,
+        assert_eq!(startup_commit_claim_snapshot(&claim), (Some(1), Some(1)));
+        assert!(finish_startup_commit_claim(&claim, 1, 1));
+        assert_eq!(startup_commit_claim_snapshot(&claim), (None, None));
+        assert!(claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Waiting,
+            false,
+            1,
+            &claim,
         ));
+        assert!(!finish_startup_commit_claim(&claim, 1, 1));
+        assert_eq!(startup_commit_claim_snapshot(&claim), (None, None));
+        assert!(native_startup_page_admitted("main", PageLoadEvent::Started,));
         assert!(renderer_mount_label_admitted("main"));
         assert!(!renderer_mount_label_admitted("browser-preview-proof"));
         assert!(!native_startup_page_admitted(
@@ -10269,6 +10452,210 @@ mod tests {
         ] {
             assert!(!native_startup_uses_sidecar_proof(&owner));
         }
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn stale_claimer_cannot_clobber_a_newer_pending_epoch() {
+        let claim = Mutex::new(StartupCommitClaim::default());
+        assert!(claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Waiting,
+            false,
+            1,
+            &claim,
+        ));
+        assert!(!claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Waiting,
+            false,
+            3,
+            &claim,
+        ));
+        assert!(!claim_startup_commit(
+            true,
+            startup_readiness::ReadinessPhase::Waiting,
+            false,
+            2,
+            &claim,
+        ));
+        assert_eq!(startup_commit_claim_snapshot(&claim), (Some(1), Some(3)));
+        assert!(finish_startup_commit_claim(&claim, 1, 3));
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn reconstruction_waits_for_the_old_claim_and_rejects_its_commit() {
+        let claim = Mutex::new(StartupCommitClaim::default());
+        let mut status = BundledServerStatus::initial("out".into(), "err".into());
+        status.phase = bundled_server_state::ServerPhase::Running;
+        status.generation = Some(1);
+        status.instance_id = Some("desktop-sidecar-stable".into());
+        status.boot_id = Some("boot-1".into());
+        status.api_base = Some("http://127.0.0.1:4123".into());
+        let mut readiness = startup_readiness::transition(
+            &startup_readiness::StartupReadiness::default(),
+            startup_readiness::ReadinessInput::Begin {
+                now_ms: 0,
+                timeout_ms: 30_000,
+                dev_bypass: false,
+                owned_sidecar: true,
+            },
+        )
+        .0;
+        let ticket = startup_readiness::StartupTicket {
+            generation: 1,
+            instance_id: "desktop-sidecar-stable".into(),
+            boot_id: "boot-1".into(),
+            api_base: "http://127.0.0.1:4123".into(),
+        };
+        readiness = startup_readiness::transition(
+            &readiness,
+            startup_readiness::ReadinessInput::ServerTicket(ticket.clone()),
+        )
+        .0;
+        let old_epoch = readiness.epoch;
+
+        assert!(claim_startup_commit(
+            true,
+            readiness.phase,
+            readiness.identity_committed,
+            old_epoch,
+            &claim,
+        ));
+        let new_epoch = begin_main_window_recreation(&mut readiness, false);
+        assert_ne!(old_epoch, new_epoch);
+
+        assert!(!claim_startup_commit(
+            true,
+            readiness.phase,
+            readiness.identity_committed,
+            new_epoch,
+            &claim,
+        ));
+        assert_eq!(
+            startup_commit_claim_snapshot(&claim),
+            (Some(old_epoch), Some(new_epoch))
+        );
+        assert_eq!(
+            commit_current_startup_ticket(&status, &mut readiness, ticket.clone(), old_epoch),
+            Err("Desktop startup readiness proof belongs to a superseded epoch.")
+        );
+        assert!(!readiness.identity_committed);
+        assert!(finish_startup_commit_claim(&claim, old_epoch, new_epoch));
+        assert!(claim_startup_commit(
+            true,
+            readiness.phase,
+            readiness.identity_committed,
+            new_epoch,
+            &claim,
+        ));
+        assert!(
+            !finish_startup_commit_claim(&claim, old_epoch, new_epoch),
+            "the old proof cannot release the new epoch's live claim"
+        );
+        assert_eq!(
+            startup_commit_claim_snapshot(&claim),
+            (Some(new_epoch), None)
+        );
+        commit_current_startup_ticket(&status, &mut readiness, ticket, new_epoch)
+            .expect("the reconstructed window earns a fresh identity proof");
+        assert!(readiness.identity_committed);
+        assert!(!finish_startup_commit_claim(&claim, new_epoch, new_epoch));
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn successful_proof_releases_the_slot_before_renderer_mount_or_server_loss() {
+        let claim = Mutex::new(StartupCommitClaim::default());
+        let first_ticket = startup_readiness::StartupTicket {
+            generation: 4,
+            instance_id: "desktop-sidecar-stable".into(),
+            boot_id: "boot-4".into(),
+            api_base: "http://127.0.0.1:4123".into(),
+        };
+        let mut readiness = startup_readiness::transition(
+            &startup_readiness::StartupReadiness::default(),
+            startup_readiness::ReadinessInput::Begin {
+                now_ms: 0,
+                timeout_ms: 30_000,
+                dev_bypass: false,
+                owned_sidecar: true,
+            },
+        )
+        .0;
+        readiness = startup_readiness::transition(
+            &readiness,
+            startup_readiness::ReadinessInput::ServerTicket(first_ticket.clone()),
+        )
+        .0;
+        let epoch = readiness.epoch;
+        assert!(claim_startup_commit(
+            true,
+            readiness.phase,
+            readiness.identity_committed,
+            epoch,
+            &claim,
+        ));
+        assert!(!claim_startup_commit(
+            true,
+            readiness.phase,
+            readiness.identity_committed,
+            epoch,
+            &claim,
+        ));
+        readiness = startup_readiness::transition(
+            &readiness,
+            startup_readiness::ReadinessInput::NativeIdentityCommitted(first_ticket),
+        )
+        .0;
+        assert_eq!(readiness.phase, startup_readiness::ReadinessPhase::Waiting);
+
+        let temp = tempfile::tempdir().expect("test home");
+        let (tx, _rx) = channel();
+        let supervisor = Arc::new(ServerSupervisor {
+            child: Mutex::new(None),
+            status: Arc::new(Mutex::new(BundledServerStatus::initial(
+                "out".into(),
+                "err".into(),
+            ))),
+            stderr_reader: Mutex::new(None),
+            shutting_down: AtomicBool::new(false),
+            tx,
+            thread: Mutex::new(None),
+            context: SidecarRuntimeContext {
+                launch: SidecarLaunchContext {
+                    resource_dir: temp.path().into(),
+                    station_root: temp.path().into(),
+                    station_home: temp.path().into(),
+                    home: temp.path().display().to_string(),
+                    shell_path: String::new(),
+                    channel: None,
+                    pinned_port: None,
+                    supervisor_birth: "test-birth".into(),
+                    instance_id: "desktop-sidecar-test".into(),
+                },
+                registry_id: "desktop-sidecar-test".into(),
+            },
+        });
+        let app = tauri::test::mock_app();
+        assert!(app.manage(DesktopServerState {
+            owner: Mutex::new(DesktopOwner::Sidecar),
+            supervisor,
+            readiness: Mutex::new(readiness),
+            startup_commit_claim: claim,
+            ownership_checked_at: Mutex::new(Some(Instant::now())),
+        }));
+
+        complete_startup_commit(app.handle(), epoch, |_| {
+            panic!("a successful identity commit must not schedule a redundant retry")
+        });
+        let state = app.state::<DesktopServerState>();
+        assert_eq!(
+            startup_commit_claim_snapshot(&state.startup_commit_claim),
+            (None, None),
+            "complete_startup_commit must release both parts of the single-flight slot"
+        );
     }
 
     #[test]
