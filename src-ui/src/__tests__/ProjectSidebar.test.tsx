@@ -139,9 +139,9 @@ function resetState() {
 describe('ProjectSidebar WORK list labeling (station#1300)', () => {
   test.each([
     ['Stable', 'unexpected package title', 'stable', undefined],
-    ['Beta', 'unexpected package title', 'beta', 'Beta'],
-    ['Nightly', 'unexpected package title', 'nightly', 'Nightly'],
-    ['Dev', 'unexpected package title', 'dev', 'Dev'],
+    ['Beta', 'unexpected package title', 'beta', 'beta'],
+    ['Nightly', 'unexpected package title', 'nightly', 'nightly'],
+    ['Dev', 'unexpected package title', 'dev', 'dev'],
   ])(
     'uses trusted %s release identity while presenting its channel as a readable badge',
     (_name, packageName, channel, badge) => {
@@ -154,9 +154,9 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
       const home = screen.getByRole('button', {
         name: `Station${badge ? ` ${badge}` : ''} v0.1.2 home`,
       });
-      expect(home.querySelector('.sidebar__brand-name')?.textContent).toBe(
-        'Station',
-      );
+      expect(
+        home.querySelector('.sidebar__brand-name > span')?.textContent,
+      ).toBe('Station');
       if (badge) {
         expect(home.querySelector('.sidebar__channel-badge')?.textContent).toBe(
           badge,

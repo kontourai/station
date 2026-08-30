@@ -90,9 +90,9 @@ describe('ProjectSidebarHeader', () => {
     });
 
     expect(home.getAttribute('title')).toBe('Station Nightly v0.1.2 home');
-    expect(container.querySelector('.sidebar__brand-name')?.textContent).toBe(
-      'Station',
-    );
+    expect(
+      container.querySelector('.sidebar__brand-name > span')?.textContent,
+    ).toBe('Station');
     expect(
       container.querySelector('.sidebar__channel-badge')?.textContent,
     ).toBe('Nightly');

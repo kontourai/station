@@ -38,10 +38,13 @@ export function ProjectSidebarHeader({
           aria-hidden="true"
           className="sidebar__logo"
         />
-        <span className="sidebar__brand-identity">
-          <span className="sidebar__brand-name">{appName}</span>
+        <span className="sidebar__brand-name">
+          <span>{appName}</span>
           {channelBadge && (
-            <span className="sidebar__channel-badge">{channelBadge}</span>
+            <>
+              <br />
+              <small className="sidebar__channel-badge">{channelBadge}</small>
+            </>
           )}
         </span>
       </button>
