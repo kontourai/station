@@ -158,6 +158,36 @@ describe('handleTokenUsageUpdatedEvent', () => {
     });
   });
 
+  test('a cache-only frame retains token fields from the prior frame', () => {
+    handleTokenUsageUpdatedEvent({
+      eventId: 'evt-tokens',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-07-29T00:00:00.000Z',
+      method: 'token-usage.updated',
+      promptTokens: 120,
+      completionTokens: 40,
+      totalTokens: 160,
+    });
+    handleTokenUsageUpdatedEvent({
+      eventId: 'evt-cache',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-07-29T00:00:01.000Z',
+      method: 'token-usage.updated',
+      cacheReadTokens: 10,
+      cacheWriteTokens: 5,
+    });
+
+    expect(activeChatsStore.getSnapshot()[threadId]?.liveUsage).toEqual({
+      inputTokens: 120,
+      outputTokens: 40,
+      totalTokens: 160,
+      cacheReadTokens: 10,
+      cacheWriteTokens: 5,
+    });
+  });
+
   test('ignores an event for a thread with no active chat', () => {
     handleTokenUsageUpdatedEvent({
       eventId: 'evt-1',

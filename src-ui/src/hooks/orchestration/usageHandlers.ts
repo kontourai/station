@@ -30,17 +30,26 @@ export function handleTokenUsageUpdatedEvent(
   );
   if (!hasTokenUsage && !hasContextObservation) return;
 
-  const promptTokens = event.promptTokens ?? 0;
-  const completionTokens = event.completionTokens ?? 0;
-
   activeChatsStore.updateChat(event.threadId, {
     liveUsage: {
       ...chat.liveUsage,
       ...(hasTokenUsage
         ? {
-            inputTokens: promptTokens,
-            outputTokens: completionTokens,
-            totalTokens: event.totalTokens ?? promptTokens + completionTokens,
+            ...(event.promptTokens !== undefined
+              ? { inputTokens: event.promptTokens }
+              : {}),
+            ...(event.completionTokens !== undefined
+              ? { outputTokens: event.completionTokens }
+              : {}),
+            ...(event.totalTokens !== undefined
+              ? { totalTokens: event.totalTokens }
+              : event.promptTokens !== undefined ||
+                  event.completionTokens !== undefined
+                ? {
+                    totalTokens:
+                      (event.promptTokens ?? 0) + (event.completionTokens ?? 0),
+                  }
+                : {}),
             ...(event.cacheReadTokens !== undefined
               ? { cacheReadTokens: event.cacheReadTokens }
               : {}),
