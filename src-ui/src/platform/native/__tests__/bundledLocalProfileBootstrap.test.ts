@@ -81,7 +81,47 @@ describe('bundled local profile bootstrap', () => {
     );
   });
 
-  test('uses the shared default only for a confirmed unowned home', async () => {
+  test('keeps an explicit process selection over the channel-owned sidecar without provisioning another profile', async () => {
+    const repository = {
+      refresh: vi.fn(async () => true),
+      // The repository resolves this to a user-selected remote Station rather
+      // than the automatic beta-local candidate returned by native ownership.
+      selectProfileForProcess: vi.fn(() => 'station-profile:chosen-remote'),
+      pendingLocalSelfProvisionProfileName: vi.fn(() => undefined),
+      authorizeActiveConnection: vi.fn(async () => true),
+    };
+    const invoke = vi.fn(async (command: string) =>
+      command === 'station_ensure_bundled_local_profile'
+        ? 'beta-local'
+        : undefined,
+    );
+
+    await expect(
+      bootstrapBundledLocalProfile({
+        adapter: {
+          getBundledServerStatus: vi.fn(async () => ({
+            status: 'ok',
+            value: { phase: 'running', ownership: 'sidecar' },
+          })),
+        } as never,
+        repository: repository as never,
+        invoke,
+      }),
+    ).resolves.toEqual({});
+
+    expect(repository.selectProfileForProcess).toHaveBeenCalledWith(
+      'beta-local',
+    );
+    expect(invoke).not.toHaveBeenCalledWith(
+      'station_local_self_provision',
+      expect.anything(),
+    );
+    expect(repository.authorizeActiveConnection).toHaveBeenCalledWith(
+      'station-profile:chosen-remote',
+    );
+  });
+
+  test('fails closed for a confirmed unowned channel home without authorizing the shared default', async () => {
     const repository = {
       refresh: vi.fn(),
       selectProfileForProcess: vi.fn(),
@@ -102,7 +142,8 @@ describe('bundled local profile bootstrap', () => {
       }),
     ).resolves.toEqual({});
     expect(repository.selectProfileForProcess).not.toHaveBeenCalled();
-    expect(repository.authorizeDefaultProfile).toHaveBeenCalledOnce();
+    expect(repository.authorizeDefaultProfile).not.toHaveBeenCalled();
+    expect(repository.authorizeActiveConnection).not.toHaveBeenCalled();
   });
 
   test('does not fall back to the shared default when owner resolution fails', async () => {
