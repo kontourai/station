@@ -1,5 +1,10 @@
 import { resolve } from 'node:path';
-import { type Client, RequestError } from '@agentclientprotocol/sdk';
+import {
+  type Client,
+  type ProviderInfo,
+  RequestError,
+  type SetProviderRequest,
+} from '@agentclientprotocol/sdk';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { acpProbeCleanupRetention } from '../../telemetry/metrics.js';
@@ -434,6 +439,8 @@ export class ACPProbe {
    * replacing it — `getCapabilities()` stays as-is for existing callers.
    */
   cachedAgentCapabilities: InitializeResult['agentCapabilities'] | null = null;
+  /** `null` means providers/list was not observed; an empty array is observed negative data. */
+  cachedProviderRouting: ProviderInfo[] | null = null;
   /**
    * archive#1549: the instant of the last SUCCESSFUL `initialize` handshake,
    * NOT `lastProbeAt`. The two differ exactly where it matters: a failed
@@ -794,6 +801,7 @@ export class ACPProbe {
       this.cachedCapabilities =
         initResult.agentCapabilities?.promptCapabilities ?? null;
       this.cachedAgentCapabilities = initResult.agentCapabilities ?? null;
+      this.cachedProviderRouting = initResult.providerRouting ?? null;
       this.lastHandshakeObservedAt = Date.now();
       this.lastSuccess = true;
       this.lastError = null;
@@ -829,6 +837,7 @@ export class ACPProbe {
         this.cachedConfigOptions = [];
         this.cachedCapabilities = null;
         this.cachedAgentCapabilities = null;
+        this.cachedProviderRouting = null;
       }
       this.lastSuccess = false;
     } finally {
@@ -978,6 +987,54 @@ export class ACPProbe {
   /** archive#895 wave B: the full initialize agentCapabilities handshake — evidence only. */
   getAgentCapabilities(): InitializeResult['agentCapabilities'] | null {
     return this.cachedAgentCapabilities;
+  }
+  getProviderRouting(): ProviderInfo[] | null {
+    return this.cachedProviderRouting;
+  }
+
+  /** Run a capability-gated provider mutation on a fresh, bounded ACP connection. */
+  async setProvider(input: SetProviderRequest): Promise<void> {
+    await this.mutateProvider((process) => process.setProvider(input));
+  }
+
+  /** Run a capability-gated provider disable on a fresh, bounded ACP connection. */
+  async disableProvider(providerId: string): Promise<void> {
+    await this.mutateProvider((process) => process.disableProvider(providerId));
+  }
+
+  private async mutateProvider(
+    operation: (process: ACPProcess) => Promise<unknown>,
+  ): Promise<void> {
+    if (this.disposed) throw new Error('ACP probe is disposed.');
+    const cwd = await this.probeCwd();
+    const process = this.processFactory({
+      command: this.config.command,
+      args: this.config.args,
+      cwd,
+      createClient: () => createProbeClient(this.inboundExtensionPolicy),
+      clientCapabilities: {},
+      logger: this.logger,
+    });
+    this.pendingCleanup.set(process, 0);
+    try {
+      await this.runWithinProbeDeadline(
+        process.start(),
+        'initialize',
+        this.operationTimeoutMs,
+        this.operationTimeoutMs,
+      );
+      await this.runWithinProbeDeadline(
+        operation(process),
+        'provider mutation',
+        this.operationTimeoutMs,
+        this.operationTimeoutMs,
+      );
+    } finally {
+      await this.attemptCleanup(process, 0);
+    }
+    // Refresh the manager's declared-vs-observed projection from a complete
+    // probe only after the mutation itself succeeded.
+    await this.probe('request');
   }
   /**
    * archive#1549: when the last SUCCESSFUL handshake was observed (epoch ms),

@@ -45,6 +45,43 @@ afterEach(async () => {
   );
 });
 
+describe('ACP provider secret resolution (#944)', () => {
+  test('materializes opaque header bindings transiently and executes missing-binding refusal', async () => {
+    const root = await home();
+    const audit = vi.fn();
+    const service = new FileSecretBindingAdministration(root, {
+      environment: { OPENROUTER_KEY: 'Bearer canary-secret' },
+      secretRunner: runner,
+      logger: { info: audit },
+    });
+    await service.create({
+      id: 'openrouter-key',
+      name: 'OpenRouter key',
+      authRef: { env: 'OPENROUTER_KEY' },
+    });
+
+    const resolution = await service.resolveForAcpProvider({
+      connectionId: 'opencode',
+      providerId: 'main',
+      secretHeaderRefs: { Authorization: 'openrouter-key' },
+    });
+    expect(resolution.environment).toEqual({
+      Authorization: 'Bearer canary-secret',
+    });
+    expect(JSON.stringify(await service.list())).not.toContain('canary-secret');
+    resolution.settlement.settle({ outcome: 'success' });
+    expect(JSON.stringify(audit.mock.calls)).not.toContain('canary-secret');
+
+    await expect(
+      service.resolveForAcpProvider({
+        connectionId: 'opencode',
+        providerId: 'main',
+        secretHeaderRefs: { Authorization: 'missing-binding' },
+      }),
+    ).rejects.toMatchObject({ reason: 'binding_missing' });
+  });
+});
+
 describe('SecretBindingIntegrationService', () => {
   test('converges bind and unbind retries after an interrupted second half', async () => {
     const root = await home();

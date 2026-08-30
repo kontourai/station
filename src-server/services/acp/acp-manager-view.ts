@@ -1,6 +1,8 @@
-import type { AgentCapabilities } from '@agentclientprotocol/sdk';
+import type { AgentCapabilities, ProviderInfo } from '@agentclientprotocol/sdk';
 import {
   type ACPConnectionConfig,
+  type ACPLlmProtocol,
+  type ACPProviderInfo,
   ACPStatus,
   type ACPStatusValue,
 } from '@kontourai/station-contracts/acp';
@@ -26,6 +28,8 @@ export interface ACPConnectionCapabilities {
     embeddedContext?: boolean;
   };
   sessionCapabilities?: { resume?: unknown };
+  /** True only when initialize explicitly advertised the unstable capability. */
+  providers?: boolean;
 }
 
 function projectAgentCapabilities(
@@ -50,7 +54,30 @@ function projectAgentCapabilities(
     sessionCapabilities: capabilities.sessionCapabilities
       ? { resume: (capabilities.sessionCapabilities as any).resume }
       : undefined,
+    providers: capabilities.providers != null,
   };
+}
+
+function projectProviderInfo(providers: ProviderInfo[]): ACPProviderInfo[] {
+  const protocol = (value: string): ACPLlmProtocol =>
+    value === 'anthropic' ||
+    value === 'openai' ||
+    value === 'azure' ||
+    value === 'vertex' ||
+    value === 'bedrock'
+      ? value
+      : 'other';
+  return providers.map((provider) => ({
+    providerId: provider.providerId,
+    supported: provider.supported.map(protocol),
+    required: provider.required,
+    current: provider.current
+      ? {
+          apiType: protocol(provider.current.apiType),
+          baseUrl: provider.current.baseUrl,
+        }
+      : null,
+  }));
 }
 
 interface ACPModeLike {
@@ -69,6 +96,7 @@ interface ACPProbeLike {
   getCapabilities(): { image?: boolean } | undefined;
   /** archive#895 wave B: the full initialize agentCapabilities handshake — evidence only. */
   getAgentCapabilities?(): AgentCapabilities | null | undefined;
+  getProviderRouting?(): ProviderInfo[] | null;
   /** archive#1549: epoch ms of the last SUCCESSFUL initialize handshake; `0`/absent when none ever succeeded. */
   getHandshakeObservedAt?(): number;
   isAvailable(): boolean;
@@ -99,6 +127,8 @@ export function getACPManagerStatus(
     configOptions: any[];
     currentModel: string | null;
     capabilities?: ACPConnectionCapabilities;
+    /** Present only when providers/list actually ran; [] is observed negative evidence. */
+    providerRouting?: ACPProviderInfo[];
     /**
      * archive#1549: ISO-8601 instant of the last SUCCESSFUL `initialize`
      * handshake. Emitted whenever one has happened — INCLUDING a handshake
@@ -129,6 +159,7 @@ export function getACPManagerStatus(
         probe.getAgentCapabilities?.(),
       );
       const observedAt = probe.getHandshakeObservedAt?.() ?? 0;
+      const providerRouting = probe.getProviderRouting?.() ?? null;
 
       // archive#3404: a connection that has NEVER completed a successful
       // handshake while a probe is in flight is still being met for the
@@ -163,6 +194,10 @@ export function getACPManagerStatus(
         configOptions,
         currentModel: modelConfig?.currentValue || null,
         capabilities,
+        providerRouting:
+          providerRouting === null
+            ? undefined
+            : projectProviderInfo(providerRouting),
         handshakeObservedAt:
           observedAt > 0 ? new Date(observedAt).toISOString() : undefined,
         lastError: probe.lastError ?? undefined,

@@ -437,6 +437,15 @@ export interface IntegrationSecretResolver {
   }): Promise<IntegrationSecretResolution>;
 }
 
+/** Narrow, write-only materialization seam for one ACP provider mutation. */
+export interface ACPProviderSecretResolver {
+  resolveForAcpProvider(input: {
+    connectionId: string;
+    providerId: string;
+    secretHeaderRefs: Record<string, SecretBindingId>;
+  }): Promise<IntegrationSecretResolution>;
+}
+
 /**
  * The only material-bearing result exposed to a fresh-child establishment.
  * Its settlement capability deliberately closes over a metadata snapshot;
@@ -468,7 +477,10 @@ export interface SecretBindingServiceOptions {
  * validates every persisted AuthRef through Datum before returning it.
  */
 export class FileSecretBindingAdministration
-  implements SecretBindingAdministration, IntegrationSecretResolver
+  implements
+    SecretBindingAdministration,
+    IntegrationSecretResolver,
+    ACPProviderSecretResolver
 {
   readonly #store: SecretBindingFileStore;
   readonly #now: () => Date;
@@ -820,6 +832,118 @@ export class FileSecretBindingAdministration
           : 'secret_unavailable';
       this.#audit('auth-refusal', {
         integrationId: input.integrationId,
+        outcome: 'refused',
+        reason,
+      });
+      throw error instanceof SecretBindingResolutionError
+        ? error
+        : new SecretBindingResolutionError(reason);
+    }
+  }
+
+  async resolveForAcpProvider(input: {
+    connectionId: string;
+    providerId: string;
+    secretHeaderRefs: Record<string, SecretBindingId>;
+  }): Promise<IntegrationSecretResolution> {
+    const consumerId = `acp-provider-${input.connectionId}`;
+    try {
+      assertIntegrationId(consumerId);
+      if (
+        typeof input.providerId !== 'string' ||
+        input.providerId.length === 0 ||
+        input.providerId.length > 128
+      )
+        throw new SecretBindingResolutionError('invalid_binding');
+      const entries = Object.entries(input.secretHeaderRefs);
+      if (entries.length > MAX_GRANTS_PER_BINDING)
+        throw new SecretBindingResolutionError('invalid_binding');
+      const document = this.#store.read();
+      const values = new Map<string, string>();
+      const headers: Record<string, string> = Object.create(null);
+      const consumers: Array<{
+        bindingId: string;
+        integrationId: string;
+        envName: string;
+        revision: number;
+        backend: string;
+      }> = [];
+      for (const [headerName, id] of entries) {
+        if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$/.test(headerName))
+          throw new SecretBindingResolutionError('invalid_binding');
+        assertBindingId(id);
+        const binding = document.bindings[id];
+        if (!binding) throw new SecretBindingResolutionError('binding_missing');
+        if (binding.revokedAt)
+          throw new SecretBindingResolutionError('binding_revoked');
+        let value = values.get(id);
+        if (value === undefined) {
+          try {
+            value = materializeAuthRef(binding.authRef, {
+              env: this.#environment,
+              secretRunner: this.#runner,
+            });
+          } catch (error) {
+            if (error instanceof DatumError) {
+              throw new SecretBindingResolutionError(
+                error.code === 'SECRET_BACKEND_UNAVAILABLE'
+                  ? 'backend_unavailable'
+                  : 'secret_unavailable',
+              );
+            }
+            throw new SecretBindingResolutionError('secret_unavailable');
+          }
+          values.set(id, value);
+          this.#audit('materialize', {
+            bindingId: id,
+            integrationId: consumerId,
+            envName: headerName,
+            revision: binding.revision,
+            backend: authBackend(binding.authRef),
+            outcome: 'success',
+          });
+        }
+        headers[headerName] = value;
+        consumers.push({
+          bindingId: id,
+          integrationId: consumerId,
+          envName: headerName,
+          revision: binding.revision,
+          backend: authBackend(binding.authRef),
+        });
+      }
+      this.#audit('resolve', {
+        integrationId: consumerId,
+        providerId: input.providerId,
+        consumers: new Set(Object.values(input.secretHeaderRefs)).size,
+        outcome: 'success',
+      });
+      let settled = false;
+      return {
+        environment: headers,
+        settlement: {
+          settle: ({ outcome, reason }) => {
+            if (settled) return;
+            settled = true;
+            for (const consumer of consumers) {
+              this.#audit('establish', {
+                ...consumer,
+                providerId: input.providerId,
+                outcome,
+                ...(outcome === 'failure' && reason ? { reason } : {}),
+              });
+            }
+          },
+        },
+      };
+    } catch (error) {
+      const reason =
+        error instanceof SecretBindingResolutionError
+          ? error.reason
+          : 'secret_unavailable';
+      this.#audit('auth-refusal', {
+        integrationId: consumerId,
+        providerId: input.providerId,
         outcome: 'refused',
         reason,
       });

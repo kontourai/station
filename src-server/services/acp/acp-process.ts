@@ -13,10 +13,15 @@ import {
   type Client,
   ClientSideConnection,
   type ContentBlock,
+  type DisableProviderResponse,
+  type ListProvidersResponse,
   type McpServer,
   ndJsonStream,
   PROTOCOL_VERSION,
   type PromptResponse,
+  type ProviderInfo,
+  type SetProviderRequest,
+  type SetProviderResponse,
 } from '@agentclientprotocol/sdk';
 import type { ExactProcessIdentityProbe } from '@kontourai/station-shared/process-identity';
 import {
@@ -110,6 +115,34 @@ export interface InitializeResult {
   // the SDK type so probe evidence (acp-probe.ts) can cache the whole
   // handshake without a parallel type to keep in sync.
   agentCapabilities?: AgentCapabilities;
+  /** Present only when initialize advertised `providers` and list succeeded. */
+  providerRouting?: ProviderInfo[];
+}
+
+export class ACPProviderRoutingUnsupportedError extends Error {
+  constructor() {
+    super('This ACP agent did not advertise provider routing support.');
+    this.name = 'ACPProviderRoutingUnsupportedError';
+  }
+}
+
+export class ACPRequiredProviderDisableError extends Error {
+  constructor(providerId: string) {
+    super(`ACP provider '${providerId}' is required and cannot be disabled.`);
+    this.name = 'ACPRequiredProviderDisableError';
+  }
+}
+
+/** Capability-gated unstable provider discovery; absence is an ordinary no-op. */
+export async function observeACPProviderRouting(
+  connection: Pick<ClientSideConnection, 'unstable_listProviders'>,
+  initResult: InitializeResult,
+): Promise<ProviderInfo[] | undefined> {
+  if (initResult.agentCapabilities?.providers == null) return undefined;
+  const response = (await connection.unstable_listProviders(
+    {},
+  )) as ListProvidersResponse;
+  return response.providers;
 }
 
 /**
@@ -378,7 +411,41 @@ export class ACPProcess extends EventEmitter {
       spawnFailed,
     ])) as InitializeResult;
 
+    // UNSTABLE ACP capability: omitted and null both mean unsupported, while
+    // an advertised empty object means supported. Never probe the method on
+    // an agent that did not explicitly advertise it.
+    const providerRouting = await observeACPProviderRouting(
+      this.connection,
+      this._initResult,
+    );
+    if (providerRouting !== undefined)
+      this._initResult.providerRouting = providerRouting;
+
     return this._initResult;
+  }
+
+  /** Replace one agent-owned provider route. Capability-gated at the seam. */
+  async setProvider(params: SetProviderRequest): Promise<SetProviderResponse> {
+    if (!this.connection || !this._initResult)
+      throw new Error('ACPProcess not started');
+    if (this._initResult.agentCapabilities?.providers == null)
+      throw new ACPProviderRoutingUnsupportedError();
+    return this.connection.unstable_setProvider(params);
+  }
+
+  /** Disable one optional agent-owned provider route. */
+  async disableProvider(providerId: string): Promise<DisableProviderResponse> {
+    if (!this.connection || !this._initResult)
+      throw new Error('ACPProcess not started');
+    if (this._initResult.agentCapabilities?.providers == null)
+      throw new ACPProviderRoutingUnsupportedError();
+    if (
+      this._initResult.providerRouting?.some(
+        (provider) => provider.providerId === providerId && provider.required,
+      )
+    )
+      throw new ACPRequiredProviderDisableError(providerId);
+    return this.connection.unstable_disableProvider({ providerId });
   }
 
   /** Create a new ACP session. */

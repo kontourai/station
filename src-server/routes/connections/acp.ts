@@ -18,9 +18,12 @@ import {
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { listProviders } from '../../providers/registries/registry.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import type { IntegrationSecretResolution } from '../../services/secrets/secret-binding-administration.js';
 import { acpOps } from '../../telemetry/metrics.js';
 import {
   acpConnectionSchema,
+  acpDisableProviderSchema,
+  acpSetProviderSchema,
   getBody,
   param,
   validate,
@@ -378,6 +381,116 @@ export function createACPRoutes(ctx: RuntimeContext) {
     const result = await ctx.acpBridge.reconnect(id);
     return c.json({ success: result });
   });
+
+  app.post(
+    '/connections/:id/providers/set',
+    validate(acpSetProviderSchema),
+    async (c) => {
+      const id = param(c, 'id');
+      const body = getBody(c);
+      const duplicateHeader = Object.keys(body.secretHeaderRefs ?? {}).find(
+        (name) => Object.hasOwn(body.headers ?? {}, name),
+      );
+      if (duplicateHeader) {
+        return c.json(
+          {
+            success: false,
+            error: `Header '${duplicateHeader}' cannot be both literal and secret-bound.`,
+          },
+          400,
+        );
+      }
+
+      let resolution: IntegrationSecretResolution | undefined;
+      try {
+        if (Object.keys(body.secretHeaderRefs ?? {}).length > 0) {
+          if (!ctx.acpProviderSecretResolver) {
+            throw new Error('ACP provider secret resolution is unavailable.');
+          }
+          resolution =
+            await ctx.acpProviderSecretResolver.resolveForAcpProvider({
+              connectionId: id,
+              providerId: body.providerId,
+              secretHeaderRefs: body.secretHeaderRefs ?? {},
+            });
+        }
+        await ctx.acpBridge.setProvider(id, {
+          providerId: body.providerId,
+          apiType: body.apiType,
+          baseUrl: body.baseUrl,
+          headers: {
+            ...(body.headers ?? {}),
+            ...(resolution?.environment ?? {}),
+          },
+        });
+        resolution?.settlement.settle({ outcome: 'success' });
+        return c.json({
+          success: true,
+          data: {
+            providerId: body.providerId,
+            apiType: body.apiType,
+            baseUrl: body.baseUrl,
+          },
+        });
+      } catch (error) {
+        resolution?.settlement.settle({
+          outcome: 'failure',
+          reason: 'child_establishment_failed',
+        });
+        if (
+          (error as Error | undefined)?.name ===
+          'ACPProviderRoutingUnsupportedError'
+        ) {
+          return c.json(
+            {
+              success: false,
+              error:
+                'This ACP agent did not advertise provider routing support.',
+            },
+            409,
+          );
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post(
+    '/connections/:id/providers/disable',
+    validate(acpDisableProviderSchema),
+    async (c) => {
+      const id = param(c, 'id');
+      const body = getBody(c);
+      try {
+        await ctx.acpBridge.disableProvider(id, body.providerId);
+        return c.json({ success: true });
+      } catch (error) {
+        if (
+          (error as Error | undefined)?.name ===
+          'ACPRequiredProviderDisableError'
+        ) {
+          return c.json(
+            { success: false, error: (error as Error).message },
+            409,
+          );
+        }
+        if (
+          (error as Error | undefined)?.name ===
+          'ACPProviderRoutingUnsupportedError'
+        ) {
+          return c.json(
+            {
+              success: false,
+              error:
+                'This ACP agent did not advertise provider routing support.',
+            },
+            409,
+          );
+        }
+        throw error;
+      }
+    },
+  );
 
   return app;
 }

@@ -242,11 +242,20 @@ process.stdin.on('data', (chunk) => {
       promptCapabilities: { image: true },
       mcpCapabilities: { http: true, sse: false },
       sessionCapabilities: { resume: {} },
+      providers: {},
     };
     const process = {
       start: vi.fn().mockResolvedValue({
         protocolVersion: 1,
         agentCapabilities,
+        providerRouting: [
+          {
+            providerId: 'main',
+            supported: ['openai'],
+            required: false,
+            current: null,
+          },
+        ],
       }),
       newSession: vi.fn().mockResolvedValue({
         sessionId: 'probe-session',
@@ -272,12 +281,21 @@ process.stdin.on('data', (chunk) => {
 
     await expect(probe.probe()).resolves.toBe(true);
     expect(probe.getAgentCapabilities()).toEqual(agentCapabilities);
+    expect(probe.getProviderRouting()).toEqual([
+      {
+        providerId: 'main',
+        supported: ['openai'],
+        required: false,
+        current: null,
+      },
+    ]);
 
     // A later failed probe retains the stale cache (mirrors
     // cachedCapabilities/cachedModes' existing stale-retention behavior).
     process.start.mockRejectedValueOnce(new Error('handshake failed'));
     await expect(probe.probe()).resolves.toBe(false);
     expect(probe.getAgentCapabilities()).toEqual(agentCapabilities);
+    expect(probe.getProviderRouting()).toHaveLength(1);
   });
 
   /**

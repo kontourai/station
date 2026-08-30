@@ -61,6 +61,45 @@ export const acpConnectionSchema = z.object({
     .optional(),
 });
 
+const acpProviderIdSchema = z.string().min(1).max(128);
+const acpHeaderMapSchema = z
+  .record(z.string().max(8_192))
+  .refine(
+    (headers) =>
+      Object.keys(headers).every((name) =>
+        /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$/.test(name),
+      ),
+    { message: 'contains an invalid HTTP header name' },
+  )
+  .refine(
+    (headers) =>
+      !Object.keys(headers).some((name) =>
+        /^(authorization|proxy-authorization|x-api-key|api-key)$/i.test(name),
+      ),
+    { message: 'credential headers must use secretHeaderRefs' },
+  );
+
+export const acpSetProviderSchema = z.object({
+  providerId: acpProviderIdSchema,
+  apiType: z.enum([
+    'anthropic',
+    'openai',
+    'azure',
+    'vertex',
+    'bedrock',
+    'other',
+  ]),
+  baseUrl: z.string().url().max(2_048),
+  headers: acpHeaderMapSchema.optional(),
+  secretHeaderRefs: z
+    .record(z.string().regex(/^[a-z][a-z0-9-]{0,63}$/))
+    .optional(),
+});
+
+export const acpDisableProviderSchema = z.object({
+  providerId: acpProviderIdSchema,
+});
+
 // App-home profiles (archive#896, docs/design/agent-engine-unification.md §6.1's
 // overlay model). `includeCredentials` is the explicit opt-in checkbox —
 // absent/false ⇒ credentials are never copied (never inferred).
