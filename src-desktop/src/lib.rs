@@ -9677,6 +9677,22 @@ mod tests {
         assert!(!cover.contains("NSArray::arrayWithObject"));
         assert!(cover.contains("NSAccessibilityLayoutChangedNotification"));
         assert!(cover.contains("NSAccessibilityPostNotification("));
+        let hide = cover
+            .find("setAccessibilityHidden: true")
+            .expect("covered startup hides the protected WebView from assistive clients");
+        let hidden_alpha = cover
+            .find("setAlphaValue: 0.0f64")
+            .expect("covered startup hides the protected WebView visually");
+        let present = cover
+            .find("makeKeyAndOrderFront(None)")
+            .expect("covered startup presents the labelled native cover");
+        assert!(
+            hide < hidden_alpha && hidden_alpha < present,
+            "the WebView must be inaccessible and invisible before the covered window is presented"
+        );
+        let remove = cover
+            .find("cover.removeFromSuperview()")
+            .expect("reveal removes the native cover");
         let unhide = cover
             .find("setAccessibilityHidden: false")
             .expect("reveal unhides the WebView from assistive clients");
@@ -9687,7 +9703,7 @@ mod tests {
             .find("NSAccessibilityPostNotification(")
             .expect("reveal notifies assistive clients after clearing the override");
         assert!(
-            unhide < visible && visible < notify,
+            remove < unhide && unhide < visible && visible < notify,
             "the layout-change notification must follow the complete WebView reveal"
         );
         assert!(!cover.contains("let revealed_children = content.subviews()"));
