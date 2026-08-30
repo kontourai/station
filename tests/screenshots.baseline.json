@@ -5,7 +5,7 @@
       "name": "agent-editor",
       "width": 1440,
       "height": 900,
-      "sha256": "45afdc0e992206c0ac08934022fa8f99f3e9dc89e67747eb57f61702bf0e8429"
+      "sha256": "c1acc6ac2568266636cd29c12ae4df747a5b98e9f2fa0ef1ebb3b4945aef6ab8"
     },
     {
       "name": "agent-editor-not-runnable",
@@ -17,7 +17,7 @@
       "name": "agents",
       "width": 1440,
       "height": 900,
-      "sha256": "e3a1c118a3a6145f6ad6a8209e5d64cc139758a041de73bd5347fca507f8882a"
+      "sha256": "9a978bda6139758ab4cd46c08c83def977077a680e624565a57cb2e526ba0387"
     },
     {
       "name": "agents-empty",
@@ -59,7 +59,7 @@
       "name": "connections-tools",
       "width": 1440,
       "height": 900,
-      "sha256": "bd5f2da4187f2dab40f5b53726e43b13ea51ccb93e44d44e0665e1d882cfbea9"
+      "sha256": "6caeecdfbc1089373cb379ab3ea1888cfcd7d03480cf78762912a93325b0a6de"
     },
     {
       "name": "developer-telemetry",
@@ -89,7 +89,7 @@
       "name": "mobile-agents",
       "width": 390,
       "height": 844,
-      "sha256": "9eea18ea5319ed5bdb8ba44471ad1b2a3158ff26d2b222142e7e6bf4c46ff6fe"
+      "sha256": "2b3960c8434ed05494a6765fc825efde1e926df5fb6ddce0f9fc808c30191f67"
     },
     {
       "name": "mobile-chat-dock-header-320",
@@ -130,7 +130,7 @@
       "name": "motion-reduced-navigation",
       "width": 1440,
       "height": 900,
-      "sha256": "b9bc3727de8f4cf50eef82389e7d7d6fe7e230a84962b5ddf844cba5eba9f20b"
+      "sha256": "9a978bda6139758ab4cd46c08c83def977077a680e624565a57cb2e526ba0387"
     },
     {
       "name": "motion-reduced-notification",
