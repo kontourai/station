@@ -1,0 +1,77 @@
+.context-injection {
+  margin-top: var(--k-space-3);
+  padding-top: var(--k-space-2);
+  border-top: 1px solid var(--k-line);
+}
+
+.context-injection__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: 2px var(--k-space-1);
+  border: 0;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-text);
+  cursor: pointer;
+}
+
+.context-injection__summary:hover {
+  background: var(--k-panel);
+}
+
+.context-injection__detail {
+  margin-top: var(--k-space-1);
+}
+
+.context-injection__blocks {
+  margin: 0;
+}
+
+/* Intrinsically responsive: the kind column takes its width from content
+   and wraps to its own line when the row cannot afford both, so this needs
+   no page-local breakpoint (mobile-css-ratchet: responsive behaviour belongs
+   to the shared primitives, and a row that adapts to its own container does
+   not need one at all). */
+.context-injection__block {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--k-space-3);
+  padding: 2px 0;
+}
+
+.context-injection__block > .context-injection__kind {
+  flex: 0 1 auto;
+  min-width: 9rem;
+  max-width: 11rem;
+}
+
+.context-injection__block > .context-injection__value {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.context-injection__kind {
+  color: var(--k-text-muted);
+}
+
+.context-injection__value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin: 0;
+  color: var(--k-text);
+  word-break: break-word;
+}
+
+.context-injection__size {
+  color: var(--k-text-muted);
+  white-space: nowrap;
+}
+
+.context-injection__qualification {
+  margin: var(--k-space-2) 0 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
