@@ -27,7 +27,11 @@ export function WorkspacePaneDockAction({
     <Button
       type="button"
       size="sm"
-      onClick={() => dock.dockPane(descriptor, instance)}
+      // station#520: this button is rendered BY the pane it docks, so every
+      // click is "dock what the main viewport currently, entirely shows" —
+      // the exact case `dockPaneAsOnlyContent`'s mobile-maximize contract
+      // covers. See its doc on `WorkspacePaneDockAction` (the interface).
+      onClick={() => dock.dockPaneAsOnlyContent(descriptor, instance)}
     >
       Dock this pane
     </Button>
