@@ -59,13 +59,18 @@ provider recovery instead of claiming either feed state.
 build unsigned debug/simulator artifacts to catch a Rust/Gradle/Xcode-breaking
 change before it reaches a real release tag — they carry no store-upload step
 and no signing secret, and are unrelated to everything else in this doc.
-Android also runs on `pull_request` (path-filtered to
-`src-desktop/**`/the workflow file/the 16 KB-alignment script/the npm
-lockfile) in addition to `workflow_dispatch`; iOS is `workflow_dispatch`-only
-— macOS GitHub-hosted runners cost ~10x a Linux runner, and this repo's
-hosted CI is presently suspended org-wide on billing (AGENTS.md/CLAUDE.md), so
-arming a new recurring macOS PR gate on top of that is deliberately deferred,
-not an oversight. `build-android.yml`'s successful completion also triggers
+Android also runs on affected `main` pushes and `workflow_dispatch`. iOS runs
+on affected pull requests through the reviewed base-controlled
+`pull_request_target` topology, affected `main` pushes, and
+`workflow_dispatch`. Station is public, so standard GitHub-hosted
+macOS use is free and unlimited; the path filter and cancellation group bound
+capacity. Its `macos-26` job builds an unsigned iOS 26.5 simulator app, installs
+it on an iPhone 17 Pro simulator, and uses native XCUITest against the packaged
+WKWebView accessibility tree. A clean install must leave the startup surface
+and expose the actionable connection screen within 30 seconds. The lane always
+retains its screenshot, Station/unified logs, process snapshot, Xcode result
+bundle, and machine-readable receipt. No Apple signing identity or developer
+account is used. `build-android.yml`'s successful completion also triggers
 `.github/workflows/android-test.yml` (`workflow_run`), which downloads its
 artifact by the name `station-android-debug` — keep both names in sync if
 either changes.

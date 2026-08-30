@@ -380,12 +380,31 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // pre-rendered node the ambient host already built (review round M4) —
   // Chat renders it as-is, the same way Home/Activity do, instead of
   // importing `DockOccupantPicker` into this eager module itself.
-  const { chrome, occupantPicker } =
+  // station#524 (review round 2, H2) + station#520 (review round 3, B1):
+  // `dockPane` AND `dockPaneAsOnlyContent` alongside `occupantPicker`, same
+  // reasoning — the ⋯ overflow sheet's occupant-switch fallback is
+  // reachable at EVERY dock state (not only when the header's own picker
+  // hides), so it needs the same route-aware choice `DockOccupantPicker`
+  // makes, which needs both RAW actions, not the pre-rendered picker node.
+  const {
+    chrome,
+    occupantPicker,
+    occupantSwitchDockPane,
+    occupantSwitchDockPaneAsOnlyContent,
+  } =
     props.placement === 'fullscreen'
-      ? { chrome: localShellChrome, occupantPicker: undefined }
+      ? {
+          chrome: localShellChrome,
+          occupantPicker: undefined,
+          occupantSwitchDockPane: null,
+          occupantSwitchDockPaneAsOnlyContent: null,
+        }
       : {
           chrome: props.shellChrome,
           occupantPicker: props.shellChrome.occupantPicker,
+          occupantSwitchDockPane: props.shellChrome.dockPane,
+          occupantSwitchDockPaneAsOnlyContent:
+            props.shellChrome.dockPaneAsOnlyContent,
         };
   const recoverAuth = useChatAuthRecovery();
   const requestAuth = onRequestAuth ?? recoverAuth;
@@ -2005,6 +2024,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // #3309: New chat is the bar's pinned far-right icon now, with
               // the same single-ready-agent shortcut the desktop New has.
               onNewChat={openNewChatDirect}
+              // station#524: the same pre-rendered occupant switcher the
+              // desktop-style header passes below (already `undefined` for
+              // the full-screen Chat placement, which has no ambient
+              // occupant to switch away from — see the `occupantPicker`
+              // derivation above).
+              occupantPicker={occupantPicker}
               overflow={{
                 onOpenConversation: () => setShowSessionPicker(true),
                 onToggleHistory: toggleHistory,
@@ -2035,6 +2060,14 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 onRestoreDock: () => applyDockSnap('half'),
                 isDockMaximized: isPaneMaximized,
                 dockControls: !isFullscreenPlacement,
+                onSwitchOccupant:
+                  occupantSwitchDockPane && occupantSwitchDockPaneAsOnlyContent
+                    ? {
+                        onChoose: occupantSwitchDockPane,
+                        onChooseAsOnlyContent:
+                          occupantSwitchDockPaneAsOnlyContent,
+                      }
+                    : null,
               }}
             />
           ) : (

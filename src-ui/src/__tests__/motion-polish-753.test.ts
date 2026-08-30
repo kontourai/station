@@ -223,7 +223,7 @@ describe('station#753 item 2: list entrance stagger', () => {
 });
 
 describe('station#753 item 3: dialog open transition', () => {
-  test('.responsive-surface-panel opens on scale + opacity, base duration, emphasized easing', () => {
+  test('.responsive-surface-panel opens without shrinking interactive hit boxes', () => {
     const bodies = rulesFor(indexCss, '.responsive-surface-panel');
     const animation = bodies
       .flatMap((body) => body.split(';'))
@@ -235,9 +235,11 @@ describe('station#753 item 3: dialog open transition', () => {
     const from = frames.match(/from\s*\{([^}]*)\}/)?.[1];
     const to = frames.match(/to\s*\{([^}]*)\}/)?.[1];
     expect(from).toMatch(/opacity:\s*0/);
-    expect(from).toMatch(/transform:\s*scale\(0\.98\)/);
+    expect(from).toMatch(/transform:\s*translateY\(4px\)/);
+    expect(from).not.toMatch(/scale\(/);
     expect(to).toMatch(/opacity:\s*1/);
-    expect(to).toMatch(/transform:\s*scale\(1\)/);
+    expect(to).toMatch(/transform:\s*translateY\(0\)/);
+    expect(to).not.toMatch(/scale\(/);
   });
 
   test('collapses under reduced motion via the global tokens.css reset', () => {

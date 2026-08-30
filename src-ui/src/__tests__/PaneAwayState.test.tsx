@@ -14,7 +14,7 @@
  */
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
 
 const selection = vi.hoisted(() => ({
   // The shape HomeView/ActivityView admit as "builtin selected": pane
@@ -60,6 +60,16 @@ vi.mock('../views/activity/ActivityWorkspacePane', () => ({
   ActivityWorkspacePane: () => <div data-testid="activity-surface" />,
 }));
 
+// station#520: real `useIsMobile()` is correctly "desktop" in jsdom's
+// default (unmocked matchMedia) environment — the posture-aware copy tests
+// below flip this to exercise the phone branch without depending on a real
+// `matchMedia` breakpoint match.
+const mobileFlag = vi.hoisted(() => ({ isMobile: false }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../hooks/useIsMobile')>();
+  return { ...actual, useIsMobile: () => mobileFlag.isMobile };
+});
+
 import { WORKSPACE_ACTIVITY_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-activity-pane';
 import { WORKSPACE_HOME_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-home-pane';
 import { workspacePaneHostSuppliableContexts } from '@kontourai/station-contracts/workspace-pane-host';
@@ -70,6 +80,10 @@ import {
   WorkspacePaneDockContext,
 } from '../workspace-panes/WorkspacePaneDockContext';
 
+beforeEach(() => {
+  mobileFlag.isMobile = false;
+});
+
 function publishedAction(
   occupantInstanceId: string,
   undockOccupant: () => void = () => {},
@@ -77,6 +91,7 @@ function publishedAction(
   return {
     suppliable: workspacePaneHostSuppliableContexts({ kind: 'ambient' }),
     dockPane: () => {},
+    dockPaneAsOnlyContent: () => {},
     occupantInstanceId,
     undockOccupant,
   };
@@ -156,4 +171,40 @@ test("Activity's away action asks the HOST to undock", () => {
   );
   fireEvent.click(screen.getByRole('button', { name: 'Bring it back here' }));
   expect(undock).toHaveBeenCalledTimes(1);
+});
+
+/* ------------------------------------------------------------------ *
+ * station#520 part 2: posture-aware away-state copy. "Docked at the edge
+ * of your workspace" is desktop-specific (a side/bottom panel); on mobile
+ * every dock is a bottom bar, so the away state must say that instead. The
+ * action text ("Bring it back here") stays identical on both postures —
+ * only the label/description name the dock's shape.
+ * ------------------------------------------------------------------ */
+
+test('desktop: away-state copy names the dock at the edge of the workspace', () => {
+  mobileFlag.isMobile = false;
+  renderHome(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
+  expect(screen.getByText('Home is in the dock')).not.toBeNull();
+  expect(
+    screen.getByText(
+      'This pane is currently docked at the edge of your workspace.',
+    ),
+  ).not.toBeNull();
+});
+
+test('mobile: away-state copy names the bottom bar, not "the edge of your workspace"', () => {
+  mobileFlag.isMobile = true;
+  renderHome(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
+  expect(screen.getByText('Home is in the bottom bar')).not.toBeNull();
+  expect(
+    screen.getByText('This pane is currently docked in the bottom bar.'),
+  ).not.toBeNull();
+  expect(
+    screen.queryByText(/edge of your workspace/),
+    'desktop-specific copy must not survive onto the phone posture',
+  ).toBeNull();
+  // The action stays identical on both postures.
+  expect(
+    screen.getByRole('button', { name: 'Bring it back here' }),
+  ).not.toBeNull();
 });

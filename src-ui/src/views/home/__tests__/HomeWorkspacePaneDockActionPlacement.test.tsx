@@ -54,6 +54,7 @@ function renderHomeWorkspacePane() {
       value={{
         suppliable: new Set(),
         dockPane: vi.fn(),
+        dockPaneAsOnlyContent: vi.fn(),
         occupantInstanceId: 'workspace-chat',
         undockOccupant: () => {},
       }}

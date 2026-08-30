@@ -297,7 +297,7 @@ export function buildOrchestrationSessionSummary(options: {
   const modelLaunchPlan = extractModelLaunchPlan(events);
   const reportedModel = extractReportedModel(events);
   const conversationIdentity = extractConversationIdentity(events);
-  const displayTitle = extractDisplayTitle(events);
+  const displayTitle = extractDisplayTitle(events) ?? delegation?.title;
   const controlMode = base.controlMode ?? 'station-owned';
   const {
     projectSlug: lifecycleProjectSlug,
@@ -707,6 +707,9 @@ function extractDelegationContext(
     if (!taskId) continue;
     return {
       taskId,
+      ...(delegationEnvironmentKind(metadata)
+        ? { environmentKind: delegationEnvironmentKind(metadata) }
+        : {}),
       ...(stringMeta(metadata, 'environmentId')
         ? { environmentId: stringMeta(metadata, 'environmentId') }
         : {}),
@@ -730,6 +733,9 @@ function extractDelegationContext(
         : {}),
       ...(stringMeta(metadata, 'parentTaskId')
         ? { parentTaskId: stringMeta(metadata, 'parentTaskId') }
+        : {}),
+      ...(stringMeta(metadata, 'delegationTitle')
+        ? { title: stringMeta(metadata, 'delegationTitle') }
         : {}),
       ...(delegationMode(metadata) ? { mode: delegationMode(metadata) } : {}),
     };
@@ -807,6 +813,15 @@ function delegationProjectSlugJoin(
   return value === 'local' ||
     value === 'directory-corroborated' ||
     value === 'unverified-cross-machine'
+    ? value
+    : undefined;
+}
+
+function delegationEnvironmentKind(
+  metadata: Record<string, unknown> | undefined,
+): OrchestrationDelegationContext['environmentKind'] {
+  const value = metadata?.environmentKind;
+  return value === 'current' || value === 'ssh' || value === 'peer'
     ? value
     : undefined;
 }

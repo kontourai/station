@@ -849,7 +849,10 @@ button:hover {
    through `ResponsiveDialogSurface` (NewChatModal, the ACP setup dialog, the
    model picker, confirm/prompt modals, …) — a single declaration at the
    shared seam instead of per-dialog CSS. Entrance/exit category: opacity AND
-   transform, `--motion-base`/`--ease-emphasized` per the grammar.
+   a small translation, `--motion-base`/`--ease-emphasized` per the grammar.
+   Do not scale this interactive container: a 0.98 panel scale turns every
+   nominal 44px mobile control into a physically undersized hit target while
+   the surface is already visible (#855).
    Close is deliberately NOT animated here: `ResponsiveDialogSurface` unmounts
    on close with no delay state machinery, and CSS cannot animate an element
    that is already gone. Adding an unmount-delay just to play a fast
@@ -864,11 +867,11 @@ button:hover {
 @keyframes responsive-surface-panel-enter {
   from {
     opacity: 0;
-    transform: scale(0.98);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0);
   }
 }
 
@@ -6070,9 +6073,33 @@ button.tool-call__line:hover {
      38px the "Chat Dock" label + gear / "Start a chat" / send / chevron
      controls are cramped, so give the bar comfortable room on small screens.
      The chat-dock snap math reads this same variable (collapsedHeight), so the
-     Collapsed snap/drag-release continues to land on the actual bar height. */
+     Collapsed snap/drag-release continues to land on the actual bar height.
+
+     station#524: this used to read `52px`, tuned before every ambient
+     occupant shared one header (archive#4460). Home/Activity's collapsed
+     bar is `ChatDockHeader`'s `.chat-dock__header` (not Chat's own
+     `.chat-dock__mobile-header`), and ITS real mobile box is:
+       - `.chat-dock__icon-btn`/`.chat-dock__maximize-btn`'s 44px touch
+         floor (chat.css's mobile block) — the tallest content in the row;
+       - `.chat-dock__header`'s own mobile `padding: var(--space-2)
+         var(--space-3)` (chat.css) — `--space-2` top AND bottom;
+       - its `border-bottom: 1px solid` (base rule above).
+     52px was 1px short of that sum, and `.chat-dock.is-collapsed` sets
+     `overflow: hidden` — so Home/Activity's collapsed bar clipped its own
+     bottom border/padding by exactly 1px. Chat's own bar
+     (`.chat-dock__mobile-header`, tighter `--space-1` padding) renders
+     shorter than either number and was never clipped; the few extra
+     px here are unused slack for it, not a regression.
+
+     A literal, not `calc(44px + 2 * var(--space-2) + 1px)`: this token is
+     read by JS (`useDockShellChrome.ts`'s `collapsedHeight`, via
+     `getComputedStyle(...).getPropertyValue()` + `parseInt`), and a custom
+     property's computed value is the unparsed token text — `calc()`/`var()`
+     inside it parse to `NaN` there and silently fall back to the desktop
+     default (`toolbarGeometry.ts` documents this exact trap for
+     `--app-toolbar-total-height` next door). 44 + 4 + 4 + 1 = 53. */
   :root {
-    --chat-dock-header-height: 52px;
+    --chat-dock-header-height: 53px;
   }
 
   .app--with-sidebar {
@@ -8826,14 +8853,10 @@ button.tool-call__line:hover {
    the fix — `ChatDockMobileConnection.tsx`'s own short-form vocabulary
    ("Pair", "Re-pair", "Waiting", vs the toolbar chip's full "Awaiting
    approval" / "Needs re-pairing") is the actual fix for this bar's tight
-   320px-viewport budget. That budget is MEASURED here, not yet
-   spec-pinned: `tests/mobile-chat-composer.spec.ts`'s "320px header
-   contains every pinned control" test fails BEFORE it reaches its own
-   containment assertions (a pre-existing, reproduced-on-`main` maximize
-   defect, unrelated to this fix — see the review's A/B), and even passing
-   it never renders a labelled/attention chip, so it cannot pin this
-   specific budget either way yet. A follow-up is filed to fix that spec
-   and add a labelled-chip case to it. This bound exists because the icon
+   320px-viewport budget. That budget is spec-pinned: the "320px header
+   contains every pinned control" case in tests/mobile-chat-composer.spec.ts
+   drives an awaiting-approval 'Waiting' chip and runs its containment and
+   eyebrow/title assertions with the label rendered (#547). This bound exists because the icon
    cluster this label sits in (`.chat-dock__mobile-header-icon`) is
    `flex-shrink: 0` — it never gives ground itself, so an unbounded label
    could only ever grow the row, not fit into it. Measured (real Chromium,
@@ -9041,6 +9064,40 @@ button.tool-call__line:hover {
   .chat-dock__mobile-header--with-drawer .chat-dock__mobile-agent-avatar {
     display: none;
   }
+}
+
+/* The picker's own footprint: same shrink-and-ellipsize treatment as the
+   project-switcher trigger beside it (`.chat-dock__mobile-project-trigger`
+   above), not a hard floor beyond the 44px touch target every mobile
+   trigger already carries — so a narrow phone gets a short, tappable
+   "Ch…" rather than either an overflowing full-width label or a control
+   that vanishes outright.
+
+   This rule applies only when React renders the slot. `mobile-chrome.ts`
+   subscribes to `(min-width: 481px)` and leaves the picker DOM-absent below
+   that boundary in BOTH mobile bars. That is the same 481px identity-extras
+   deferral the eyebrow/title width assertions pin (the loop at
+   tests/mobile-chat-composer.spec.ts ~:1863-1873 over the widths at :1842 -
+   it measured the eyebrow at 0px when the picker rendered at 431px): below
+   481px the bar cannot afford the picker alongside its legible agent/title identity,
+   so the ⋯ overflow sheet is the occupant-switch path. */
+.chat-dock__mobile-occupant-picker {
+  flex: 0 1 min(28vw, 108px);
+  min-width: 44px;
+  max-width: min(28vw, 108px);
+}
+
+.chat-dock__mobile-occupant-picker .dock-occupant-picker,
+.chat-dock__mobile-occupant-picker .dock-occupant-picker__trigger {
+  width: 100%;
+  min-width: 0;
+}
+
+.chat-dock__mobile-occupant-picker .dock-occupant-picker__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-dock__mobile-identity:hover,
@@ -9362,6 +9419,13 @@ button.tool-call__line:hover {
   .app__main--mobile-dock-fullscreen .workspace-tabs__header {
     padding-top: var(--safe-top);
   }
+
+  /* station#541: the `.page-frame__header` safe-area rule that used to live
+     here moved to `page-frame.css` (review round 2) — same selector, same
+     semantics, zero mobile-css-ratchet cost there (page-frame.css is a
+     PRIMITIVE_ALLOWLIST entry: it renders every page header, so it already
+     owns this header's one mobile treatment). See page-frame.css's own
+     `@media (max-width: 768px)`/`@media (max-width: 640px)` blocks. */
 
   .app__main--mobile-dock-fullscreen > .chat-dock .chat-dock__mobile-header {
     padding-top: calc(var(--space-1) + var(--safe-top, 0px));
