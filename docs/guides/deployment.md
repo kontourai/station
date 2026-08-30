@@ -143,13 +143,17 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
+        proxy_buffering off;
     }
 }
 ```
 
-WebSocket upgrade headers are required for voice (S2S), terminal sessions, and
-streaming. Configure your public TLS origin normally; this image does not set a
-generic trusted-proxy mode.
+WebSocket upgrade headers are required for voice (S2S) and terminal sessions.
+Station's server-sent event (SSE) responses send `X-Accel-Buffering: no` so
+nginx-family proxies deliver chat tokens and operational events immediately.
+Preserve that response header; `proxy_buffering off` is defense in depth for
+proxies whose policy ignores it. Configure your public TLS origin normally;
+this image does not set a generic trusted-proxy mode.
 
 ## Hosted tenant ingress (foundation only)
 
