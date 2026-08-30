@@ -19,8 +19,7 @@ export async function fetchKnowledgeDocs(
   projectSlug: string,
   namespace?: string,
 ): Promise<any[]> {
-  const apiBase = await _getApiBase();
-  return requestKnowledgeJson(knowledgeBase(apiBase, projectSlug, namespace), {
+  return requestKnowledgeJson(knowledgeBase(projectSlug, namespace), {
     errorPrefix: 'Failed to fetch knowledge docs',
   });
 }
@@ -31,9 +30,8 @@ export async function searchKnowledge(
   namespace?: string,
   topK?: number,
 ): Promise<any[]> {
-  const apiBase = await _getApiBase();
   return requestKnowledgeJson(
-    `${knowledgeBase(apiBase, projectSlug, namespace)}/search`,
+    `${knowledgeBase(projectSlug, namespace)}/search`,
     {
       method: 'POST',
       body: { query, topK },
@@ -49,9 +47,8 @@ export async function uploadKnowledge(
   namespace?: string,
   metadata?: Record<string, any>,
 ): Promise<any> {
-  const apiBase = await _getApiBase();
   return requestKnowledgeJson(
-    `${knowledgeBase(apiBase, projectSlug, namespace)}/upload`,
+    `${knowledgeBase(projectSlug, namespace)}/upload`,
     {
       method: 'POST',
       body: {
@@ -69,9 +66,8 @@ export async function deleteKnowledgeDoc(
   docId: string,
   namespace?: string,
 ): Promise<void> {
-  const apiBase = await _getApiBase();
   await requestKnowledgeJson(
-    `${knowledgeBase(apiBase, projectSlug, namespace)}/${encodeURIComponent(docId)}`,
+    `${knowledgeBase(projectSlug, namespace)}/${encodeURIComponent(docId)}`,
     {
       method: 'DELETE',
       errorPrefix: 'Knowledge delete failed',
@@ -85,9 +81,8 @@ export async function bulkDeleteKnowledgeDocs(
   ids: string[],
   namespace?: string,
 ): Promise<void> {
-  const apiBase = await _getApiBase();
   await requestKnowledgeJson(
-    `${knowledgeBase(apiBase, projectSlug, namespace)}/bulk-delete`,
+    `${knowledgeBase(projectSlug, namespace)}/bulk-delete`,
     {
       method: 'POST',
       body: { ids },
@@ -101,9 +96,8 @@ export async function fetchKnowledgeDocContent(
   docId: string,
   namespace?: string,
 ): Promise<string> {
-  const apiBase = await _getApiBase();
   const data = await requestKnowledgeJson<{ content: string }>(
-    `${knowledgeBase(apiBase, projectSlug, namespace)}/${encodeURIComponent(docId)}/content`,
+    `${knowledgeBase(projectSlug, namespace)}/${encodeURIComponent(docId)}/content`,
     { errorPrefix: 'Failed to fetch doc content' },
   );
   return data.content;
@@ -124,8 +118,7 @@ export async function scanKnowledgeDirectory(
     excludePatterns?: string[];
   },
 ): Promise<any> {
-  const apiBase = await _getApiBase();
-  return requestKnowledgeJson(`${knowledgeBase(apiBase, projectSlug)}/scan`, {
+  return requestKnowledgeJson(`${knowledgeBase(projectSlug)}/scan`, {
     method: 'POST',
     body: options ?? {},
     errorPrefix: 'Knowledge scan failed',
@@ -260,11 +253,9 @@ export async function fetchKnowledgeTree(
   projectSlug: string,
   namespace: string,
 ): Promise<any> {
-  const apiBase = await _getApiBase();
-  return requestKnowledgeJson(
-    `${knowledgeBase(apiBase, projectSlug, namespace)}/tree`,
-    { errorPrefix: 'Failed to fetch tree' },
-  );
+  return requestKnowledgeJson(`${knowledgeBase(projectSlug, namespace)}/tree`, {
+    errorPrefix: 'Failed to fetch tree',
+  });
 }
 
 export async function fetchKnowledgeFiltered(
@@ -272,9 +263,9 @@ export async function fetchKnowledgeFiltered(
   namespace: string,
   filters: Record<string, any>,
 ): Promise<any[]> {
-  const apiBase = await _getApiBase();
   const qs = buildKnowledgeFilterQuery(filters);
-  const url = `${knowledgeBase(apiBase, projectSlug, namespace)}${qs ? `?${qs}` : ''}`;
+  const url =
+    `${knowledgeBase(projectSlug, namespace)}${qs ? `?${qs}` : ''}` as const;
   return requestKnowledgeJson(url, {
     errorPrefix: 'Failed to fetch filtered docs',
   });
@@ -286,9 +277,8 @@ export async function updateKnowledgeDoc(
   updates: { content?: string; metadata?: Record<string, any> },
   namespace?: string,
 ): Promise<any> {
-  const apiBase = await _getApiBase();
   return requestKnowledgeJson(
-    `${knowledgeBase(apiBase, projectSlug, namespace)}/${encodeURIComponent(docId)}`,
+    `${knowledgeBase(projectSlug, namespace)}/${encodeURIComponent(docId)}`,
     {
       method: 'PUT',
       body: updates,
