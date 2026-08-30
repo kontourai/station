@@ -257,7 +257,7 @@ export function SecretBindingsSection() {
                 />
               </div>
             )}
-            <div className="editor-label-row__actions">
+            <div className="editor-field editor-field--row">
               <Button
                 type="submit"
                 variant="primary"
