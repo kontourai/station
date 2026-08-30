@@ -57,7 +57,8 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const [form, setForm] = useState<ProjectForm | null>(null);
   const [savedForm, setSavedForm] = useState<ProjectForm | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   // `SectionNav` forwards this ref to its own `<nav>` element (archive#4463
   // review — no wrapper `<div>` needed, so this flex child's
   // `flex-shrink: 0` (`.project-settings__section-nav` in the CSS) lands on
@@ -100,21 +101,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
       ?.scrollIntoView?.({ block: 'nearest', inline: 'start' });
   }, [activeSection, form]);
 
-  const saveMutation = useUpdateProjectMutation({
-    onSuccess: (saved) => {
-      const f = buildProjectForm(saved);
-      setSavedForm(f);
-      setError(null);
-    },
-    onError: (err: Error) => setError(err.message),
-  });
+  const saveMutation = useUpdateProjectMutation();
 
-  const deleteMutation = useDeleteProjectMutation({
-    onSuccess: () => {
-      navigate('/');
-    },
-    onError: (err: Error) => setError(err.message),
-  });
+  const deleteMutation = useDeleteProjectMutation();
 
   const isDirty =
     !isLoading && !!form && JSON.stringify(form) !== JSON.stringify(savedForm);
@@ -171,6 +160,30 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     setForm((f) => (f ? { ...f, [key]: value } : f));
   }
 
+  async function saveProject() {
+    setSaveError(null);
+    try {
+      const saved = await saveMutation.mutateAsync({
+        slug,
+        ...buildProjectSavePayload(form, workingDirectory),
+      });
+      const savedProjectForm = buildProjectForm(saved);
+      setSavedForm(savedProjectForm);
+    } catch (saveFailure) {
+      setSaveError(errorText(saveFailure));
+    }
+  }
+
+  async function deleteProject() {
+    setDeleteError(null);
+    try {
+      await deleteMutation.mutateAsync(slug);
+      navigate('/');
+    } catch (deleteFailure) {
+      setDeleteError(errorText(deleteFailure));
+    }
+  }
+
   return (
     <div className="page page--full">
       {/* Header */}
@@ -193,12 +206,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           type="button"
           className="editor-btn editor-btn--primary"
           disabled={saveMutation.isPending || !form.name}
-          onClick={() =>
-            saveMutation.mutate({
-              slug,
-              ...buildProjectSavePayload(form, workingDirectory),
-            })
-          }
+          onClick={() => void saveProject()}
         >
           {saveMutation.isPending ? 'Saving…' : 'Save'}
         </button>
@@ -219,11 +227,11 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
 
       {/* Body */}
       <div className="project-settings__body">
-        {error && (
+        {saveError && (
           <ErrorState
             variant="compact"
             title="Could not save project settings"
-            description={error}
+            description={saveError}
           />
         )}
 
@@ -417,7 +425,10 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           <button
             type="button"
             className="editor-btn editor-btn--danger"
-            onClick={() => setDeleteOpen(true)}
+            onClick={() => {
+              setDeleteError(null);
+              setDeleteOpen(true);
+            }}
           >
             Delete Project
           </button>
@@ -430,11 +441,13 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         message={`Delete "${form.name}"? This cannot be undone.`}
         confirmLabel="Delete"
         variant="danger"
-        onConfirm={() => {
+        pending={deleteMutation.isPending}
+        error={deleteError}
+        onConfirm={() => void deleteProject()}
+        onCancel={() => {
           setDeleteOpen(false);
-          deleteMutation.mutate(slug);
+          setDeleteError(null);
         }}
-        onCancel={() => setDeleteOpen(false)}
       />
 
       <DiscardModal />
