@@ -30,12 +30,22 @@ vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: showToastMock }),
 }));
 
-vi.mock('@kontourai/station-sdk', () => ({
-  useSkillsQuery: () => ({ data: [] }),
-  useProviderCommandsQuery: () => ({ data: [] }),
-  useRunSkill: () => ({ mutateAsync: vi.fn() }),
-  useSkillDetailReader: () => vi.fn(),
+const { interruptOrchestrationTurnMock } = vi.hoisted(() => ({
+  interruptOrchestrationTurnMock: vi.fn(),
 }));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@kontourai/station-sdk')>();
+  return {
+    ...actual,
+    useSkillsQuery: () => ({ data: [] }),
+    useProviderCommandsQuery: () => ({ data: [] }),
+    useRunSkill: () => ({ mutateAsync: vi.fn() }),
+    useSkillDetailReader: () => vi.fn(),
+    interruptOrchestrationTurn: (...args: unknown[]) =>
+      interruptOrchestrationTurnMock(...args),
+  };
+});
 
 // archive#1294: forwards into the REAL activeChatsStore singleton (imported
 // below) so the hook's own direct `activeChatsStore.getSnapshot[sessionId]`
@@ -72,17 +82,31 @@ const { sendMessageMock, cancelMessageMock } = vi.hoisted(() => ({
   sendMessageMock: vi.fn().mockResolvedValue(true),
   cancelMessageMock: vi.fn(),
 }));
-vi.mock('../hooks/useActiveChatSessions', () => ({
-  useSendMessage: (
-    _apiBase: string,
-    _onMigrate: unknown,
-    onError: (error: Error) => void,
-  ) => {
-    capturedOnError = onError;
-    return sendMessageMock;
-  },
-  useCancelMessage: () => cancelMessageMock,
-}));
+// `useCancelMessage` is the REAL hook (its argument is the activeChatsStore
+// KEY — the tab id — from which it resolves the receipted child session
+// itself; see useActiveChatSessionMessaging.ts). The wrapper records the
+// caller's argument so tests can pin what `useChatInput` passes, which is
+// exactly the contract the #887 review defect violated.
+vi.mock('../hooks/useActiveChatSessions', async () => {
+  const messaging = await import('../hooks/useActiveChatSessionMessaging');
+  return {
+    useSendMessage: (
+      _apiBase: string,
+      _onMigrate: unknown,
+      onError: (error: Error) => void,
+    ) => {
+      capturedOnError = onError;
+      return sendMessageMock;
+    },
+    useCancelMessage: (apiBase?: string) => {
+      const real = messaging.useCancelMessage(apiBase);
+      return (id: string) => {
+        cancelMessageMock(id);
+        return real(id);
+      };
+    },
+  };
+});
 
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
@@ -106,6 +130,7 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
     showToastMock.mockClear();
     sendMessageMock.mockClear();
     cancelMessageMock.mockClear();
+    interruptOrchestrationTurnMock.mockReset();
     capturedOnError = undefined;
     activeChatsStore.removeChat(SESSION_ID);
     activeChatsStore.initChat(SESSION_ID, {
@@ -143,6 +168,50 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
       'Restoring this conversation before Stop is available.',
       'info',
     );
+  });
+
+  // #887 review prescription — the discriminating drift case: the store is
+  // keyed by the TAB id while `currentSessionId` has advanced to a different
+  // continuation child. `useCancelMessage` keys its store snapshot by its
+  // argument and resolves the child itself, so `useChatInput` must pass the
+  // tab id. Passing `currentSessionId` (the pre-fix code) makes the snapshot
+  // lookup miss, Stop silently answers not-running, and the child turn is
+  // never interrupted.
+  test('Stop interrupts the continuation child when currentSessionId drifted from the tab id', async () => {
+    interruptOrchestrationTurnMock.mockResolvedValueOnce({
+      outcome: 'cooperative',
+      threadId: 'conversation-root:session:child-2',
+      turnId: 'turn-1',
+    });
+    activeChatsStore.updateChat(SESSION_ID, {
+      conversationId: 'conversation-root',
+      currentSessionId: 'conversation-root:session:child-2',
+      status: 'sending',
+    });
+    const hook = renderHook(
+      () =>
+        useChatInput({
+          apiBase: 'http://station.test',
+          sessionId: SESSION_ID,
+          agentSlug: 'dev-agent',
+          availableModels: [],
+        }),
+      { wrapper },
+    );
+
+    await act(() => hook.result.current.handleCancel());
+
+    // The child — not the root, not the tab id — is what gets stopped.
+    // Pre-fix this reads 0 calls: the hook's store lookup missed and Stop
+    // silently answered not-running.
+    expect(interruptOrchestrationTurnMock).toHaveBeenCalledTimes(1);
+    expect(interruptOrchestrationTurnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'conversation-root:session:child-2',
+      }),
+    );
+    // And the caller must hand the hook the store key, not the resolved child.
+    expect(cancelMessageMock).toHaveBeenCalledWith(SESSION_ID);
   });
 
   test('debounces draft writes by 500ms and restores the draft on remount', () => {
