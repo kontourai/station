@@ -199,8 +199,9 @@ function envelopeData(payload) {
 /**
  * The Claude Code engine connection as the product reports it. Journeys that
  * drive a real engine turn require `ready`; everything else must not silently
- * downgrade — absence of the connection row entirely is a FAILURE (the
- * engines inventory itself broke), only not-ready is a disclosure.
+ * downgrade. An absent row is legitimate on a host with no configured model
+ * connections, but inventory read failures or a host-detected Claude runtime
+ * missing from that inventory are failures rather than an absent CLI.
  */
 async function claudeEngineState(page) {
   const payload = await apiOk(page, 'GET', '/api/connections/agents');
@@ -215,10 +216,46 @@ async function claudeEngineState(page) {
       connection?.config?.engineId === 'claude-code' ||
       connection?.id === 'claude',
   );
-  assert(
-    claude,
-    'no Claude Code engine connection row exists at all — the runtime connection inventory is broken, which is a failure, not an absent CLI',
-  );
+  if (!claude) {
+    const failures =
+      payload && typeof payload === 'object' && Array.isArray(payload.failures)
+        ? payload.failures
+        : [];
+    assert(
+      failures.length === 0,
+      `no Claude Code engine connection row exists and the runtime connection inventory reported failures: ${failures
+        .map(
+          (failure) =>
+            `id=${failure?.connectionId ?? 'unknown'} name=${failure?.name ?? 'unknown'} reason=${failure?.reason ?? 'unknown'}`,
+        )
+        .join('; ')}`,
+    );
+
+    const catalogPayload = await apiOk(
+      page,
+      'GET',
+      '/api/connections/agents/catalog',
+    );
+    const catalog = envelopeData(catalogPayload);
+    assert(
+      Array.isArray(catalog),
+      `GET /api/connections/agents/catalog did not return a connection list: ${JSON.stringify(catalogPayload)?.slice(0, 300)}`,
+    );
+    const detectedClaude = catalog.find(
+      (connection) =>
+        (connection?.engineId === 'claude-code' ||
+          connection?.config?.engineId === 'claude-code' ||
+          connection?.id === 'claude') &&
+        connection?.setup?.detected === true,
+    );
+    assert(
+      !detectedClaude,
+      `no Claude Code engine connection row exists, but the runtime catalog reports ${detectedClaude?.id ?? 'claude-code'} with setup.detected=true — the runtime connection inventory is broken`,
+    );
+    throw new NotExercised(
+      `this host reported ${connections.length} runtime connection row${connections.length === 1 ? '' : 's'}, with no claude-code row among them`,
+    );
+  }
   const ready = claude.status === 'ready' || claude.setup?.state === 'ready';
   return { connection: claude, ready };
 }
