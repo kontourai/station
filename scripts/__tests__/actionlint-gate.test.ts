@@ -863,6 +863,7 @@ describe('persistent runner policy', () => {
   test('keeps every automatic PR workflow on the reviewed base-controlled topology', () => {
     const workflows = readWorkflowDocuments();
     const expected = [
+      '.github/workflows/build-ios.yml',
       '.github/workflows/ci.yml',
       '.github/workflows/desktop-clean-checkout.yml',
       '.github/workflows/desktop-rust.yml',
@@ -1517,6 +1518,21 @@ describe('persistent runner policy', () => {
         message: expect.stringContaining('unresolved'),
       }),
     ]);
+  });
+
+  test('recognizes the standard hosted macOS 26 image', () => {
+    expect(
+      persistentRunnerPolicyFindings([
+        {
+          file: '.github/workflows/ios.yml',
+          document: {
+            jobs: {
+              ios: { 'runs-on': 'macos-26', steps: [] },
+            },
+          },
+        },
+      ]),
+    ).toEqual([]);
   });
 
   test('requires physical-host capacity coordination on desktop-win jobs', () => {
