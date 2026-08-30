@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 /**
  * Coverage for the Connections IA (`src-ui/src/views/connections-hub/connection-sections.ts`
@@ -554,6 +555,7 @@ test.describe('Connections sections at 390x844', () => {
   test('every section renders its title and exactly one add action with no horizontal document scroll', async ({
     page,
   }) => {
+    const measuredActionHeights: Record<string, number> = {};
     for (const section of SECTIONS) {
       await page.goto(section.path);
       await expect(
@@ -572,10 +574,23 @@ test.describe('Connections sections at 390x844', () => {
           .getByRole('button', { name: section.addLabel, exact: true }),
       ).toBeVisible();
 
+      const actionBox = await actionButtons.first().boundingBox();
+      expect(actionBox).not.toBeNull();
+      measuredActionHeights[section.title] = actionBox?.height ?? 0;
+
       const noHorizontalScroll = await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
       );
       expect(noHorizontalScroll).toBe(true);
+    }
+    console.log('PAGE_ACTION_HEIGHTS', JSON.stringify(measuredActionHeights));
+    for (const [sectionTitle, height] of Object.entries(
+      measuredActionHeights,
+    )) {
+      expect(
+        height,
+        `${sectionTitle} page action must meet the mobile touch-target floor`,
+      ).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     }
   });
 
