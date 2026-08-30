@@ -68,7 +68,10 @@ beforeEach(() => {
   delete process.env.STATION_PORT;
 
   vi.resetModules();
-  vi.doMock('../commands/helpers.js', () => ({ PROJECT_HOME: tempHome }));
+  vi.doMock('../commands/helpers.js', () => ({
+    DEFAULT_SERVER_PORT: 3141,
+    PROJECT_HOME: tempHome,
+  }));
 
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
