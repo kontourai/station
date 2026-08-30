@@ -15,12 +15,14 @@ import {
   ErrorState,
   SkeletonList,
 } from '../components/state';
+import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useAttentionInbox } from '../hooks/useAttentionInbox';
 import {
   countPendingAttention,
   pendingAttentionItems,
 } from '../utils/attention';
+import { errorText } from '../utils/errorText';
 import '../views/page-layout.css';
 import './NotificationsPage.css';
 import { Button } from '../components/Button';
@@ -38,6 +40,7 @@ import {
 
 export function NotificationsPage() {
   const { navigate } = useNavigation();
+  const { apiBase } = useApiBase();
   const inbox = useAttentionInbox();
   const [showDismissConfirm, setShowDismissConfirm] = useState(false);
   const [filters, setFilters] = useState(() =>
@@ -106,7 +109,9 @@ export function NotificationsPage() {
   const dismissAllAttention = useMutation({
     mutationFn: () =>
       Promise.all(
-        attentionItems.map((item) => acknowledgeAttentionItem(item.id)),
+        attentionItems.map((item) =>
+          acknowledgeAttentionItem(item.id, apiBase),
+        ),
       ),
     onSuccess: async () => {
       // The confirm is answered; leaving it open re-rendered it against the
@@ -274,6 +279,11 @@ export function NotificationsPage() {
         }}
         onCancel={() => setShowDismissConfirm(false)}
         pending={dismissAllAttention.isPending}
+        error={
+          dismissAllAttention.error
+            ? errorText(dismissAllAttention.error)
+            : null
+        }
       />
     </>
   );

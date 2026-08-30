@@ -35,11 +35,9 @@ export function useAttentionQuery(
 }
 
 /**
- * station#1914: acknowledge a `session-failed` attention item — the one kind
- * with no stored notification a `DELETE /notifications/:id` could reach.
- * 404s (item already resolved, or never acknowledgeable) are swallowed here
- * the same way the read-only projection already treats a vanished item: the
- * caller's next `useAttentionQuery` refetch is the source of truth.
+ * Acknowledge the current version of an attention item without resolving its
+ * source. The server supports every projected kind, including pending device
+ * pairing requests whose source must remain pending after acknowledgement.
  */
 export async function acknowledgeAttentionItem(
   itemId: string,
@@ -50,7 +48,6 @@ export async function acknowledgeAttentionItem(
     `${resolvedApiBase}/api/attention/${encodeURIComponent(itemId)}/ack`,
     { method: 'POST' },
   );
-  if (response.status === 404) return;
   const result = (await response.json()) as {
     success: boolean;
     error?: string;

@@ -631,10 +631,49 @@ describe('NotificationsPage', () => {
     await waitFor(() =>
       expect(sdkMocks.acknowledgeAttentionItem).toHaveBeenCalledTimes(2),
     );
+    expect(sdkMocks.acknowledgeAttentionItem).toHaveBeenCalledWith(
+      'review_pending:thread-review',
+      'http://station.test',
+    );
     expect(clearActivity, 'activity count unchanged').not.toHaveBeenCalled();
     // The answered confirm closes. It used to stay open and re-render against
     // the emptied queue as "Dismiss 0 items needing attention?".
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  test('bulk dismissal includes a still-pending device pairing item', async () => {
+    const timestamp = new Date().toISOString();
+    attention = {
+      pendingCount: 1,
+      items: [
+        {
+          id: 'device-pairing:pair-req-1',
+          kind: 'device-pairing',
+          title: 'Phone is waiting for approval',
+          deviceName: 'Phone',
+          viewerCanDecide: true,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          openHref: '/connections',
+          source: { requestId: 'pair-req-1' },
+        },
+      ],
+    };
+    renderPage();
+
+    fireEvent.click(screen.getByText('Dismiss all attention items'));
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Dismiss all attention items',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
+        'device-pairing:pair-req-1',
+        'http://station.test',
+      ),
+    );
   });
 
   test('cancelling the attention dismissal leaves activity untouched', () => {
