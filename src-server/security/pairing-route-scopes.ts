@@ -408,13 +408,16 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // That is credential-management authority, not an ordinary ACP connection
   // mutation: no standard paired-device `orchestration:operate` credential
   // may redirect an engine or cause a stored secret to cross into it.
-  {
-    id: '/acp/connections/:id/providers:manage',
-    method: 'POST',
-    prefix: '/acp/connections/:id/providers',
-    scope: PAIRING_SCOPE_ACCESS_MANAGE,
-    origin: 'explicit',
-  },
+  ...(['set', 'disable'] as const).map(
+    (action): PairingScopeRouteRule => ({
+      id: `/acp/connections/:id/providers/${action}:manage`,
+      method: 'POST',
+      prefix: `/acp/connections/:id/providers/${action}`,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+    }),
+  ),
   // archive#1097 review round 2 (HIGH), owner decision "tighten now, loosen
   // later if wanted": GET /api/environments/ssh/sessions aggregates OTHER
   // connected stations' orchestration session titles/projectSlugs/agents/

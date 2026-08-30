@@ -18,6 +18,7 @@ import {
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { listProviders } from '../../providers/registries/registry.js';
 import type { RuntimeContext } from '../../runtime/types.js';
+import { ACPProviderRouteValidationError } from '../../services/acp/acp-process.js';
 import {
   type IntegrationSecretResolution,
   SecretBindingResolutionError,
@@ -393,6 +394,11 @@ export function createACPRoutes(ctx: RuntimeContext) {
       const body = getBody(c);
       let resolution: IntegrationSecretResolution | undefined;
       try {
+        ctx.acpBridge.assertProviderSupported(
+          id,
+          body.providerId,
+          body.apiType,
+        );
         if (Object.keys(body.secretHeaderRefs ?? {}).length > 0) {
           if (!ctx.acpProviderSecretResolver) {
             throw new Error('ACP provider secret resolution is unavailable.');
@@ -432,6 +438,9 @@ export function createACPRoutes(ctx: RuntimeContext) {
             },
             400,
           );
+        }
+        if (error instanceof ACPProviderRouteValidationError) {
+          return c.json({ success: false, error: error.message }, 409);
         }
         if (
           (error as Error | undefined)?.name ===

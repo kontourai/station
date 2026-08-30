@@ -104,8 +104,7 @@ export interface SecretBindingAdministration {
   }): Promise<SecretBindingView>;
   ungrant(input: {
     id: SecretBindingId;
-    integrationId: string;
-    envName: string;
+    grant: SecretBindingGrant;
     expectedRevision: number;
   }): Promise<SecretBindingView>;
   revoke(input: {
@@ -325,7 +324,17 @@ export class SecretBindingIntegrationService
         integrationId: input.integrationId,
         envName: input.envName,
       });
-      const binding = hasGrant ? await this.bindings.ungrant(input) : current;
+      const binding = hasGrant
+        ? await this.bindings.ungrant({
+            id: input.id,
+            expectedRevision: input.expectedRevision,
+            grant: {
+              kind: 'mcp-integration-env',
+              integrationId: input.integrationId,
+              envName: input.envName,
+            },
+          })
+        : current;
       const result = this.outcome(input, binding, 'complete');
       this.auditConsumer('unbind', result, 'success');
       return result;
@@ -663,45 +672,45 @@ export class FileSecretBindingAdministration
 
   async ungrant(input: {
     id: SecretBindingId;
-    integrationId: string;
-    envName: string;
+    grant: SecretBindingGrant;
     expectedRevision: number;
   }): Promise<SecretBindingView> {
     return this.#adminOperation(
       'unbind',
       {
         bindingId: input.id,
-        integrationId: input.integrationId,
-        envName: input.envName,
+        ...grantAuditIdentifiers(input.grant),
       },
       async () => {
         assertBindingId(input.id);
         assertRevision(input.expectedRevision);
-        assertIntegrationId(input.integrationId);
-        assertEnvName(input.envName);
+        assertGrant(input.grant);
         const ungranted = await this.#store.mutate((document) => {
           const current = requiredActiveBinding(
             document,
             input.id,
             input.expectedRevision,
           );
-          const grants = current.grants.filter(
-            (grant) =>
-              grantKey(grant) !==
-              grantKey({
-                kind: 'mcp-integration-env',
-                integrationId: input.integrationId,
-                envName: input.envName,
-              }),
-          );
-          if (grants.length === current.grants.length) {
-            throw new Error(
-              'The integration environment grant does not exist.',
-            );
-          }
-          const next = {
+          if (!secretBindingHasGrant(current, input.grant))
+            throw new Error('The secret binding grant does not exist.');
+          const next: SecretBinding = {
             ...current,
-            grants,
+            ...(input.grant.kind === 'mcp-integration-env'
+              ? {
+                  grants: current.grants.filter(
+                    (grant) => grantKey(grant) !== grantKey(input.grant),
+                  ),
+                }
+              : (() => {
+                  const retained = (
+                    current.acpProviderHeaderGrants ?? []
+                  ).filter(
+                    (grant) => grantKey(grant) !== grantKey(input.grant),
+                  );
+                  return retained.length > 0
+                    ? { acpProviderHeaderGrants: retained }
+                    : { acpProviderHeaderGrants: undefined };
+                })()),
             revision: current.revision + 1,
             updatedAt: this.#now().toISOString(),
           };
@@ -709,8 +718,7 @@ export class FileSecretBindingAdministration
         });
         this.#audit('unbind', {
           bindingId: ungranted.id,
-          integrationId: input.integrationId,
-          envName: input.envName,
+          ...grantAuditIdentifiers(input.grant),
           revision: ungranted.revision,
           backend: authBackend(ungranted.authRef),
           outcome: 'success',

@@ -133,6 +133,43 @@ export class ACPRequiredProviderDisableError extends Error {
   }
 }
 
+export class ACPProviderRouteValidationError extends Error {
+  constructor(
+    readonly code:
+      | 'observation_required'
+      | 'provider_not_found'
+      | 'protocol_unsupported',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ACPProviderRouteValidationError';
+  }
+}
+
+/** Validate writes against the exact provider catalogue the agent advertised. */
+export function assertACPProviderRouteSupported(
+  providers: ProviderInfo[] | null | undefined,
+  providerId: string,
+  apiType: string,
+): void {
+  if (!providers)
+    throw new ACPProviderRouteValidationError(
+      'observation_required',
+      'Provider routing must be observed before it can be changed.',
+    );
+  const provider = providers.find((entry) => entry.providerId === providerId);
+  if (!provider)
+    throw new ACPProviderRouteValidationError(
+      'provider_not_found',
+      `ACP provider '${providerId}' was not advertised by this agent.`,
+    );
+  if (!provider.supported.includes(apiType))
+    throw new ACPProviderRouteValidationError(
+      'protocol_unsupported',
+      `ACP provider '${providerId}' did not advertise protocol '${apiType}'.`,
+    );
+}
+
 /** Capability-gated unstable provider discovery; absence is an ordinary no-op. */
 export async function observeACPProviderRouting(
   connection: Pick<ClientSideConnection, 'unstable_listProviders'>,
@@ -430,6 +467,11 @@ export class ACPProcess extends EventEmitter {
       throw new Error('ACPProcess not started');
     if (this._initResult.agentCapabilities?.providers == null)
       throw new ACPProviderRoutingUnsupportedError();
+    assertACPProviderRouteSupported(
+      this._initResult.providerRouting,
+      params.providerId,
+      params.apiType,
+    );
     return this.connection.unstable_setProvider(params);
   }
 

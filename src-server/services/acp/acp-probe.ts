@@ -14,7 +14,11 @@ import {
   type AcpInboundExtensionHandler,
   createAcpInboundExtensionRequestHandler,
 } from './acp-inbound-extension-policy.js';
-import { ACPProcess, type InitializeResult } from './acp-process.js';
+import {
+  ACPProcess,
+  assertACPProviderRouteSupported,
+  type InitializeResult,
+} from './acp-process.js';
 import { prepareManagedAcpWorkspace } from './managed-acp-workspace.js';
 
 /**
@@ -87,6 +91,13 @@ export async function destroyProcessWithEscalation(
 
 /** Default cleanup deadline: comfortably above SIGTERM → 1s → SIGKILL → 1s. */
 const DESTROY_ESCALATION_UPPER_BOUND_MS = 5_000;
+
+class ACPProbeDeadlineError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ACPProbeDeadlineError';
+  }
+}
 
 /**
  * Which path asked for a probe. It selects the deadline budget, and it is a
@@ -935,7 +946,7 @@ export class ACPProbe {
       timer = setTimeout(
         () =>
           reject(
-            new Error(
+            new ACPProbeDeadlineError(
               // Both numbers, because the budget is shared: the phase failed
               // after `remainingMs`, and the reason it had only that much is
               // the `budgetMs` total the earlier phase drew from.
@@ -1005,6 +1016,13 @@ export class ACPProbe {
       this.providerMutationGeneration
     );
   }
+  assertProviderSupported(providerId: string, apiType: string): void {
+    assertACPProviderRouteSupported(
+      this.cachedProviderRouting,
+      providerId,
+      apiType,
+    );
+  }
 
   /** Run a capability-gated provider mutation on a fresh, bounded ACP connection. */
   async setProvider(input: SetProviderRequest): Promise<void> {
@@ -1030,6 +1048,7 @@ export class ACPProbe {
       logger: this.logger,
     });
     this.pendingCleanup.set(process, 0);
+    let mutationStarted = false;
     try {
       await this.runWithinProbeDeadline(
         process.start(),
@@ -1037,13 +1056,23 @@ export class ACPProbe {
         this.operationTimeoutMs,
         this.operationTimeoutMs,
       );
+      const mutationOperation = operation(process);
+      mutationStarted = true;
       await this.runWithinProbeDeadline(
-        operation(process),
+        mutationOperation,
         'provider mutation',
         this.operationTimeoutMs,
         this.operationTimeoutMs,
       );
       this.providerMutationGeneration += 1;
+    } catch (error) {
+      // A timed-out request keeps running after the race. The agent may have
+      // applied it even though Station has no response, so the outcome is
+      // indeterminate and every prior routing observation must be fenced.
+      if (mutationStarted && error instanceof ACPProbeDeadlineError) {
+        this.providerMutationGeneration += 1;
+      }
+      throw error;
     } finally {
       await this.attemptCleanup(process, 0);
     }

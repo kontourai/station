@@ -777,7 +777,8 @@ describe('pairing-route-scopes: table-driven lookups', () => {
       const path = `/acp/connections/:id/providers/${action}`;
       expect(matchPairingScopeRule('POST', path)).toMatchObject({
         origin: 'explicit',
-        prefix: '/acp/connections/:id/providers',
+        prefix: path,
+        exact: true,
         scope: 'access:manage',
       });
       expect(isLeafScopeDeclared('POST', path)).toBe(true);
@@ -787,6 +788,16 @@ describe('pairing-route-scopes: table-driven lookups', () => {
       });
     },
   );
+
+  test('does not let the ACP provider overrides classify a future sibling', () => {
+    const path = '/acp/connections/:id/providers/refresh';
+    expect(matchPairingScopeRule('POST', path)).toMatchObject({
+      origin: 'family',
+      prefix: '/acp',
+      scope: 'orchestration:operate',
+    });
+    expect(isLeafScopeDeclared('POST', path)).toBe(false);
+  });
 
   test('declares title regeneration as the local conversation mutation it is', () => {
     const path = '/agents/:slug/conversations/:conversationId/regenerate-title';

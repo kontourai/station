@@ -95,4 +95,63 @@ describe('ACP unstable provider routing (#944)', () => {
     );
     expect(unstable_disableProvider).not.toHaveBeenCalled();
   });
+
+  test('refuses an unadvertised protocol before providers/set transport', async () => {
+    const unstable_setProvider = vi.fn();
+    const process = new ACPProcess({
+      command: 'unused',
+      cwd: '/tmp',
+      createClient: () => ({}) as never,
+      logger: {},
+    });
+    Object.assign(process as unknown as Record<string, unknown>, {
+      connection: { unstable_setProvider },
+      _initResult: {
+        protocolVersion: 1,
+        agentCapabilities: { providers: {} },
+        providerRouting: [
+          { providerId: 'main', supported: ['openai'], required: false },
+        ],
+      },
+    });
+
+    await expect(
+      process.setProvider({
+        providerId: 'main',
+        apiType: 'opneai',
+        baseUrl: 'https://openrouter.ai/api/v1',
+      }),
+    ).rejects.toMatchObject({
+      code: 'protocol_unsupported',
+    });
+    expect(unstable_setProvider).not.toHaveBeenCalled();
+  });
+
+  test('forwards an observed unknown protocol identifier losslessly', async () => {
+    const unstable_setProvider = vi.fn().mockResolvedValue({});
+    const process = new ACPProcess({
+      command: 'unused',
+      cwd: '/tmp',
+      createClient: () => ({}) as never,
+      logger: {},
+    });
+    Object.assign(process as unknown as Record<string, unknown>, {
+      connection: { unstable_setProvider },
+      _initResult: {
+        protocolVersion: 1,
+        agentCapabilities: { providers: {} },
+        providerRouting: [
+          { providerId: 'main', supported: ['_ollama'], required: false },
+        ],
+      },
+    });
+    const request = {
+      providerId: 'main',
+      apiType: '_ollama',
+      baseUrl: 'https://ollama.example/v1',
+    };
+
+    await expect(process.setProvider(request)).resolves.toEqual({});
+    expect(unstable_setProvider).toHaveBeenCalledWith(request);
+  });
 });

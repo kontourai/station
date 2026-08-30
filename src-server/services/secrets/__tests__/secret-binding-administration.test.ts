@@ -604,9 +604,12 @@ describe('FileSecretBindingAdministration', () => {
     });
     const unbound = await service.ungrant({
       id: created.id,
-      integrationId: 'github',
-      envName: 'TOKEN',
       expectedRevision: replaced.revision,
+      grant: {
+        kind: 'mcp-integration-env',
+        integrationId: 'github',
+        envName: 'TOKEN',
+      },
     });
     const rebound = await service.grant({
       id: created.id,

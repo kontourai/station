@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
-import { SecretBindingResolutionError } from '../../../services/secrets/secret-binding-administration.js';
+import { ACPProviderRouteValidationError } from '../../../services/acp/acp-process.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   acpOps: { add: vi.fn() },
@@ -16,6 +16,7 @@ function context() {
   return {
     acpBridge: {
       getStatus: vi.fn().mockReturnValue({ connections: [] }),
+      assertProviderSupported: vi.fn(),
       setProvider: vi.fn().mockResolvedValue(undefined),
       disableProvider: vi.fn().mockResolvedValue(undefined),
     },
@@ -46,6 +47,11 @@ describe('ACP provider routes (#944)', () => {
     const body = await json(response);
 
     expect(response.status).toBe(200);
+    expect(ctx.acpBridge.assertProviderSupported).toHaveBeenCalledWith(
+      'opencode',
+      'main',
+      'openai',
+    );
     expect(
       ctx.acpProviderSecretResolver.resolveForAcpProvider,
     ).toHaveBeenCalledWith({
@@ -111,26 +117,31 @@ describe('ACP provider routes (#944)', () => {
     expect(ctx.acpBridge.setProvider).not.toHaveBeenCalled();
   });
 
-  test('preserves and sends an unknown ACP protocol identifier losslessly', async () => {
+  test('refuses an unadvertised protocol before materializing credentials', async () => {
     const ctx = context();
+    ctx.acpBridge.assertProviderSupported.mockImplementation(() => {
+      throw new ACPProviderRouteValidationError(
+        'protocol_unsupported',
+        "ACP provider 'main' did not advertise protocol 'opneai'.",
+      );
+    });
     const app = createACPRoutes(ctx as never);
     const response = await app.request('/connections/opencode/providers/set', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         providerId: 'main',
-        apiType: '_ollama',
-        baseUrl: 'https://ollama.example/v1',
+        apiType: 'opneai',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        secretHeaderRefs: { Authorization: 'openrouter-key' },
       }),
     });
 
-    expect(response.status).toBe(200);
-    expect(ctx.acpBridge.setProvider).toHaveBeenCalledWith('opencode', {
-      providerId: 'main',
-      apiType: '_ollama',
-      baseUrl: 'https://ollama.example/v1',
-      headers: undefined,
-    });
+    expect(response.status).toBe(409);
+    expect(
+      ctx.acpProviderSecretResolver.resolveForAcpProvider,
+    ).not.toHaveBeenCalled();
+    expect(ctx.acpBridge.setProvider).not.toHaveBeenCalled();
   });
 
   test('returns an ordinary capability refusal and settles materialization failure', async () => {
@@ -155,26 +166,5 @@ describe('ACP provider routes (#944)', () => {
       outcome: 'failure',
       reason: 'child_establishment_failed',
     });
-  });
-
-  test('returns an ordinary refusal for an ungranted secret without calling ACP', async () => {
-    const ctx = context();
-    ctx.acpProviderSecretResolver.resolveForAcpProvider.mockRejectedValue(
-      new SecretBindingResolutionError('grant_missing'),
-    );
-    const app = createACPRoutes(ctx as never);
-    const response = await app.request('/connections/kiro/providers/set', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        providerId: 'main',
-        apiType: 'openai',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        secretHeaderRefs: { Authorization: 'other-consumer-key' },
-      }),
-    });
-
-    expect(response.status).toBe(400);
-    expect(ctx.acpBridge.setProvider).not.toHaveBeenCalled();
   });
 });
