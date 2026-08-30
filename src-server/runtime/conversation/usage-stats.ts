@@ -21,9 +21,9 @@ export interface ConversationTokenBreakdown {
 }
 
 export interface ConversationStats {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
   contextTokens: number;
   turns: number;
   toolCalls: number;
@@ -57,18 +57,22 @@ export function createEmptyConversationStats(): ConversationStats {
   };
 }
 
-export function getUsageInputTokens(usage: UsageLike): number {
-  return usage.promptTokens ?? usage.inputTokens ?? 0;
+export function getUsageInputTokens(usage: UsageLike): number | undefined {
+  return usage.promptTokens ?? usage.inputTokens;
 }
 
-export function getUsageOutputTokens(usage: UsageLike): number {
-  return usage.completionTokens ?? usage.outputTokens ?? 0;
+export function getUsageOutputTokens(usage: UsageLike): number | undefined {
+  return usage.completionTokens ?? usage.outputTokens;
 }
 
-export function getUsageTotalTokens(usage: UsageLike): number {
+export function getUsageTotalTokens(usage: UsageLike): number | undefined {
+  const inputTokens = getUsageInputTokens(usage);
+  const outputTokens = getUsageOutputTokens(usage);
   return (
     usage.totalTokens ??
-    getUsageInputTokens(usage) + getUsageOutputTokens(usage)
+    (inputTokens !== undefined || outputTokens !== undefined
+      ? (inputTokens ?? 0) + (outputTokens ?? 0)
+      : undefined)
   );
 }
 
@@ -224,9 +228,18 @@ export function buildConversationStatsUpdate({
   ) {
     throw new Error('Conversation usage update was invalid');
   }
-  const stats = existingStats ?? createEmptyConversationStats();
-  const currentModelStats =
-    existingModelStats[modelId] ?? createEmptyConversationStats();
+  const stats = existingStats ?? {
+    ...createEmptyConversationStats(),
+    inputTokens: undefined,
+    outputTokens: undefined,
+    totalTokens: undefined,
+  };
+  const currentModelStats = existingModelStats[modelId] ?? {
+    ...createEmptyConversationStats(),
+    inputTokens: undefined,
+    outputTokens: undefined,
+    totalTokens: undefined,
+  };
   const inputTokens = getUsageInputTokens(usage);
   const outputTokens = getUsageOutputTokens(usage);
   const systemPromptTokens = fixedTokens?.systemPromptTokens ?? 0;
@@ -236,15 +249,26 @@ export function buildConversationStatsUpdate({
   const userMessageTokens =
     existingUserMessageTokens +
     estimateMessageTextTokens(latestUserMessageText);
-  const newInputTokens = stats.inputTokens + inputTokens;
-  const newOutputTokens = stats.outputTokens + outputTokens;
+  const newInputTokens =
+    inputTokens !== undefined
+      ? (stats.inputTokens ?? 0) + inputTokens
+      : stats.inputTokens;
+  const newOutputTokens =
+    outputTokens !== undefined
+      ? (stats.outputTokens ?? 0) + outputTokens
+      : stats.outputTokens;
   const contextTokens =
-    systemPromptTokens + mcpServerTokens + userMessageTokens + newOutputTokens;
+    systemPromptTokens +
+    mcpServerTokens +
+    userMessageTokens +
+    (newOutputTokens ?? 0);
 
   const updatedStats: ConversationStats = {
-    inputTokens: newInputTokens,
-    outputTokens: newOutputTokens,
-    totalTokens: newInputTokens + newOutputTokens,
+    ...(newInputTokens !== undefined ? { inputTokens: newInputTokens } : {}),
+    ...(newOutputTokens !== undefined ? { outputTokens: newOutputTokens } : {}),
+    ...(newInputTokens !== undefined || newOutputTokens !== undefined
+      ? { totalTokens: (newInputTokens ?? 0) + (newOutputTokens ?? 0) }
+      : {}),
     contextTokens,
     turns: stats.turns + 1,
     toolCalls: stats.toolCalls + toolCallCount,
@@ -256,24 +280,43 @@ export function buildConversationStatsUpdate({
       systemPromptTokens,
       mcpServerTokens,
       userMessageTokens,
-      assistantMessageTokens: newOutputTokens,
+      ...(newOutputTokens !== undefined
+        ? { assistantMessageTokens: newOutputTokens }
+        : {}),
     },
   };
 
   const updatedModelStats: ConversationStats = {
-    inputTokens: currentModelStats.inputTokens + inputTokens,
-    outputTokens: currentModelStats.outputTokens + outputTokens,
-    totalTokens:
-      currentModelStats.inputTokens +
-      inputTokens +
-      currentModelStats.outputTokens +
-      outputTokens,
+    ...(inputTokens !== undefined || currentModelStats.inputTokens !== undefined
+      ? {
+          inputTokens:
+            (currentModelStats.inputTokens ?? 0) + (inputTokens ?? 0),
+        }
+      : {}),
+    ...(outputTokens !== undefined ||
+    currentModelStats.outputTokens !== undefined
+      ? {
+          outputTokens:
+            (currentModelStats.outputTokens ?? 0) + (outputTokens ?? 0),
+        }
+      : {}),
+    ...(inputTokens !== undefined ||
+    outputTokens !== undefined ||
+    currentModelStats.totalTokens !== undefined
+      ? {
+          totalTokens:
+            (currentModelStats.inputTokens ?? 0) +
+            (inputTokens ?? 0) +
+            (currentModelStats.outputTokens ?? 0) +
+            (outputTokens ?? 0),
+        }
+      : {}),
     contextTokens:
       systemPromptTokens +
       mcpServerTokens +
       userMessageTokens +
-      currentModelStats.outputTokens +
-      outputTokens,
+      (currentModelStats.outputTokens ?? 0) +
+      (outputTokens ?? 0),
     turns: currentModelStats.turns + 1,
     toolCalls: currentModelStats.toolCalls + toolCallCount,
     estimatedCost:

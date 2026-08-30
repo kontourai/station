@@ -65,4 +65,52 @@ describe('tool-execution-usage', () => {
     expect(loggedUsage).not.toHaveProperty('totalTokens');
     expect(updateConversation).not.toHaveBeenCalled();
   });
+
+  test('message enrichment preserves absent token categories', async () => {
+    const addMessage = vi.fn().mockResolvedValue(undefined);
+    const memory = {
+      getConversation: vi.fn().mockResolvedValue({
+        resourceId: 'planner',
+        metadata: {},
+      }),
+      getMessages: vi
+        .fn()
+        .mockResolvedValue([{ role: 'user', content: 'hello' }]),
+      updateConversation: vi.fn().mockResolvedValue(undefined),
+    };
+    const adapter = {
+      getMessages: vi
+        .fn()
+        .mockResolvedValue([{ role: 'assistant', content: 'done' }]),
+      removeLastMessage: vi.fn().mockResolvedValue(undefined),
+      addMessage,
+    };
+
+    await recordToolExecutionUsage({
+      context: {
+        conversationId: 'conv-1',
+        userId: 'user-1',
+        context: new Map(),
+      },
+      output: { usage: { completionTokens: 7 } },
+      agent: { getMemory: () => memory },
+      appConfig: { defaultModel: 'model-a' } as any,
+      configLoader: {
+        loadAgent: vi.fn().mockResolvedValue({ model: 'model-a' }),
+      } as any,
+      modelCatalog: undefined,
+      agentFixedTokens: new Map(),
+      memoryAdapters: new Map([['planner', adapter as any]]),
+      logger: createLogger(),
+    });
+
+    expect(addMessage.mock.calls[0]?.[3]?.usage).toEqual({
+      outputTokens: 7,
+      totalTokens: 7,
+      estimatedCost: null,
+    });
+    expect(addMessage.mock.calls[0]?.[3]?.usage).not.toHaveProperty(
+      'inputTokens',
+    );
+  });
 });

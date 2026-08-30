@@ -259,9 +259,15 @@ export async function recordToolExecutionUsage(input: {
                 }
               : undefined,
             usage: {
-              inputTokens: getUsageInputTokens(usage),
-              outputTokens: getUsageOutputTokens(usage),
-              totalTokens: getUsageTotalTokens(usage),
+              ...(getUsageInputTokens(usage) !== undefined
+                ? { inputTokens: getUsageInputTokens(usage) }
+                : {}),
+              ...(getUsageOutputTokens(usage) !== undefined
+                ? { outputTokens: getUsageOutputTokens(usage) }
+                : {}),
+              ...(getUsageTotalTokens(usage) !== undefined
+                ? { totalTokens: getUsageTotalTokens(usage) }
+                : {}),
               estimatedCost: cost,
             },
           },

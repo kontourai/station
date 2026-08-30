@@ -318,6 +318,10 @@ describe('createAgentHooks', () => {
     });
     expect(persistedUsage).toEqual(enrichedUsage);
     expect(enrichedUsage).not.toHaveProperty('inputTokens');
+    const persistedStats =
+      adapter.updateConversation.mock.calls[0]?.[1]?.metadata?.stats;
+    expect(persistedStats).not.toHaveProperty('inputTokens');
+    expect(persistedStats).toMatchObject({ outputTokens: 7, totalTokens: 7 });
   });
 });
 
