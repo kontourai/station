@@ -27,6 +27,8 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-30T02:34:34Z | nightly-desktop | 0.1.2-nightly.2433 | `c03dfbc` | nightly test-gate success on c03dfbced16f0d9f9c46c7b51d2956d7e56ab8c7 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33286914122) |
+| 2026-08-30T02:26:57Z | nightly-android | 0.1.2-nightly.2433 | `c03dfbc` | nightly test-gate success on c03dfbced16f0d9f9c46c7b51d2956d7e56ab8c7 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33286914122) |
 | 2026-08-30T00:20:56Z | nightly-desktop | 0.1.2-nightly.2432 | `f2d8fa3` | nightly test-gate success on f2d8fa36f76c0e9bce1ac9c05956215802e4c865 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33281917893) |
 | 2026-08-30T00:13:48Z | nightly-android | 0.1.2-nightly.2432 | `f2d8fa3` | nightly test-gate success on f2d8fa36f76c0e9bce1ac9c05956215802e4c865 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33281917893) |
 | 2026-08-29T14:30:53Z | nightly-desktop | 0.1.2-nightly.2432 | `15401e2` | nightly test-gate success on 15401e2708722905149cbe54003bafc448d19848 (station#4539) | [run](https://github.com/kontourai/station/actions/runs/33256579723) |
@@ -41,6 +43,103 @@ This file decides nothing about how `station.kontourai.io` will read the ledger 
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-08-30T02:34:34Z · nightly-desktop · 0.1.2-nightly.2433
+
+- Ship SHA: `c03dfbced16f0d9f9c46c7b51d2956d7e56ab8c7`
+- Artifact: github-release:nightly-desktop (station-nightly-desktop-macos-aarch64.dmg, .app.tar.gz, latest.json)
+
+### Changelog
+
+Commits since `f2d8fa3` ([full sha](https://github.com/kontourai/station/commit/f2d8fa36f76c0e9bce1ac9c05956215802e4c865)):
+
+**Features**
+
+- [#864](https://github.com/kontourai/station/pull/864) feat(release): bind native promotion to one revision
+- [#849](https://github.com/kontourai/station/pull/849) feat(delegation): pin the operator-channel-only refusal detail in the promotion route test (#790, #765 D4)
+- [#849](https://github.com/kontourai/station/pull/849) feat(delegation): raise entry-JS ceiling 306350 -> 306352 for the peer Station option (#790, #765 D4)
+- [#849](https://github.com/kontourai/station/pull/849) feat(delegation): surface paired peer Stations in Computers and the Delegate dialog (#790, #765 D4)
+
+**Fixes**
+
+- [#876](https://github.com/kontourai/station/pull/876) fix(e2e): connections add-flow asserts the real contract; reconnect alerts scoped; 320px labelled-chip overlap fixed
+- [#873](https://github.com/kontourai/station/pull/873) fix(ios): prevent form focus zoom
+- [#870](https://github.com/kontourai/station/pull/870) fix(macos): refresh accessibility after startup reveal
+- [#867](https://github.com/kontourai/station/pull/867) fix(delegation): harden peer Activity reconciliation
+- [#864](https://github.com/kontourai/station/pull/864) fix(release): require channel receipts to converge
+- [#866](https://github.com/kontourai/station/pull/866) fix(release): verify DMG signer before notarization
+- [#866](https://github.com/kontourai/station/pull/866) fix(release): bound resumable DMG packaging
+- [#864](https://github.com/kontourai/station/pull/864) fix(release): keep store preflight policy-clean
+- [#867](https://github.com/kontourai/station/pull/867) fix(delegation): surface peer delegation outcomes in the delegator Activity
+- [#860](https://github.com/kontourai/station/pull/860) fix(ui): occupant picker joins the drag surface and defers below 481px
+- [#849](https://github.com/kontourai/station/pull/849) fix(lint): biome-ignore literal template-string assertions (fix-forward, upstream main red)
+- [#860](https://github.com/kontourai/station/pull/860) fix(ui): checkpoint fix round 2 — shared chooseAmbientOccupant dispatcher (incomplete)
+- [#853](https://github.com/kontourai/station/pull/853) fix(ios): unblock clean startup with 274 gzip bytes
+- [#860](https://github.com/kontourai/station/pull/860) fix(ui): review round 2 — CSS ratchet, dock-and-empty picker gap, chip safety
+- [#860](https://github.com/kontourai/station/pull/860) fix(ui): mobile dock-and-empty contract — refuse placeholder-only viewport
+- [#860](https://github.com/kontourai/station/pull/860) fix(ui): dock-shell mobile parity — occupant picker + collapsed-height fix
+- [#860](https://github.com/kontourai/station/pull/860) fix(ui): mobile chrome — safe-area under maximized dock, composer chip ellipsis
+
+**Other**
+
+- [#871](https://github.com/kontourai/station/pull/871) test(e2e): regenerate gallery baselines — seeded surfaces + accumulated upstream drift
+- [#870](https://github.com/kontourai/station/pull/870) test(macos): pin complete accessibility reveal order
+- [#871](https://github.com/kontourai/station/pull/871) test(e2e): seed connection + knowledge state instead of hiding the surfaces
+- [#868](https://github.com/kontourai/station/pull/868) test(e2e): screenshot fixtures release their routes (#573)
+- [#865](https://github.com/kontourai/station/pull/865) test(e2e): 320px header case pins the labelled connection-chip budget (#547)
+- [#866](https://github.com/kontourai/station/pull/866) test(release): close DMG-only parser gaps
+- [#860](https://github.com/kontourai/station/pull/860) test(ui): review hygiene — attributable picker-absence test, corrected spec citation
+- [#860](https://github.com/kontourai/station/pull/860) test(ui): direct chooseAmbientOccupant dispatcher coverage (fix round 2 completion)
+- [#853](https://github.com/kontourai/station/pull/853) test(ios): add hosted packaged-runtime smoke
+
+## 2026-08-30T02:26:57Z · nightly-android · 0.1.2-nightly.2433
+
+- Ship SHA: `c03dfbced16f0d9f9c46c7b51d2956d7e56ab8c7`
+- Artifact: play-internal-aab:io.kontourai.station.nightly@versionCode 243300
+- Artifact: workflow-artifact:station-nightly-243300 (7-day retention)
+
+### Changelog
+
+Commits since `f2d8fa3` ([full sha](https://github.com/kontourai/station/commit/f2d8fa36f76c0e9bce1ac9c05956215802e4c865)):
+
+**Features**
+
+- [#864](https://github.com/kontourai/station/pull/864) feat(release): bind native promotion to one revision
+- [#849](https://github.com/kontourai/station/pull/849) feat(delegation): pin the operator-channel-only refusal detail in the promotion route test (#790, #765 D4)
+- [#849](https://github.com/kontourai/station/pull/849) feat(delegation): raise entry-JS ceiling 306350 -> 306352 for the peer Station option (#790, #765 D4)
+- [#849](https://github.com/kontourai/station/pull/849) feat(delegation): surface paired peer Stations in Computers and the Delegate dialog (#790, #765 D4)
+
+**Fixes**
+
+- [#876](https://github.com/kontourai/station/pull/876) fix(e2e): connections add-flow asserts the real contract; reconnect alerts scoped; 320px labelled-chip overlap fixed
+- [#873](https://github.com/kontourai/station/pull/873) fix(ios): prevent form focus zoom
+- [#870](https://github.com/kontourai/station/pull/870) fix(macos): refresh accessibility after startup reveal
+- [#867](https://github.com/kontourai/station/pull/867) fix(delegation): harden peer Activity reconciliation
+- [#864](https://github.com/kontourai/station/pull/864) fix(release): require channel receipts to converge
+- [#866](https://github.com/kontourai/station/pull/866) fix(release): verify DMG signer before notarization
+- [#866](https://github.com/kontourai/station/pull/866) fix(release): bound resumable DMG packaging
+- [#864](https://github.com/kontourai/station/pull/864) fix(release): keep store preflight policy-clean
+- [#867](https://github.com/kontourai/station/pull/867) fix(delegation): surface peer delegation outcomes in the delegator Activity
+- [#860](https://github.com/kontourai/station/pull/860) fix(ui): occupant picker joins the drag surface and defers below 481px
+- [#849](https://github.com/kontourai/station/pull/849) fix(lint): biome-ignore literal template-string assertions (fix-forward, upstream main red)
+- [#860](https://github.com/kontourai/station/pull/860) fix(ui): checkpoint fix round 2 — shared chooseAmbientOccupant dispatcher (incomplete)
+- [#853](https://github.com/kontourai/station/pull/853) fix(ios): unblock clean startup with 274 gzip bytes
+- [#860](https://github.com/kontourai/station/pull/860) fix(ui): review round 2 — CSS ratchet, dock-and-empty picker gap, chip safety
+- [#860](https://github.com/kontourai/station/pull/860) fix(ui): mobile dock-and-empty contract — refuse placeholder-only viewport
+- [#860](https://github.com/kontourai/station/pull/860) fix(ui): dock-shell mobile parity — occupant picker + collapsed-height fix
+- [#860](https://github.com/kontourai/station/pull/860) fix(ui): mobile chrome — safe-area under maximized dock, composer chip ellipsis
+
+**Other**
+
+- [#871](https://github.com/kontourai/station/pull/871) test(e2e): regenerate gallery baselines — seeded surfaces + accumulated upstream drift
+- [#870](https://github.com/kontourai/station/pull/870) test(macos): pin complete accessibility reveal order
+- [#871](https://github.com/kontourai/station/pull/871) test(e2e): seed connection + knowledge state instead of hiding the surfaces
+- [#868](https://github.com/kontourai/station/pull/868) test(e2e): screenshot fixtures release their routes (#573)
+- [#865](https://github.com/kontourai/station/pull/865) test(e2e): 320px header case pins the labelled connection-chip budget (#547)
+- [#866](https://github.com/kontourai/station/pull/866) test(release): close DMG-only parser gaps
+- [#860](https://github.com/kontourai/station/pull/860) test(ui): review hygiene — attributable picker-absence test, corrected spec citation
+- [#860](https://github.com/kontourai/station/pull/860) test(ui): direct chooseAmbientOccupant dispatcher coverage (fix round 2 completion)
+- [#853](https://github.com/kontourai/station/pull/853) test(ios): add hosted packaged-runtime smoke
 
 ## 2026-08-30T00:20:56Z · nightly-desktop · 0.1.2-nightly.2432
 
