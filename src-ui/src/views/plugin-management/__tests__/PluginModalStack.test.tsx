@@ -9,17 +9,65 @@ vi.mock('@kontourai/station-sdk', () => ({
   useFileSystemBrowseQuery: (path?: string) => browseMock(path),
 }));
 
-import { FolderPickerModal } from '../FolderPickerModal';
+import { PluginModalStack } from '../PluginModalStack';
 
 /**
- * #1014 moved the folder browser to a shared component
- * (`components/modals/FolderBrowserModal`). These tests pin plugin
- * management's own behaviour and markup as unchanged by that move: the same
+ * #1014 moved plugin management's folder browser to a shared component
+ * (`components/modals/FolderBrowserModal`), rendered directly by
+ * `PluginModalStack` — the plugin-management-owned `FolderPickerModal.tsx`
+ * wrapper this file used to target was deleted (a pure classNames adapter
+ * with exactly one consumer; see `scripts/proof-repo-guardrails.mjs`). These
+ * tests pin plugin management's own behaviour and markup as unchanged by
+ * that move, exercised through the real seam it now lives behind: the same
  * `plugins__*` classnames the page's CSS already styles, the same title id,
  * and the same navigate/select/empty/error behaviour the un-tested original
  * had.
  */
-describe('FolderPickerModal (plugin management)', () => {
+
+function renderFolderPicker(
+  overrides: Partial<{
+    onSelectFolder: (value: string) => void;
+    onCloseFolderPicker: () => void;
+  }> = {},
+) {
+  return render(
+    <PluginModalStack
+      apiBase="http://localhost:3000"
+      showInstallModal={false}
+      showFolderPicker
+      previewData={null}
+      previewSkips={new Set()}
+      installPending={false}
+      previewPending={false}
+      installSource=""
+      installMessage={null}
+      message={null}
+      removeConfirm={null}
+      layoutAssignment={null}
+      projects={[]}
+      quickProjectName=""
+      selectedProjects={new Set()}
+      assigningLayout={false}
+      onChangeSource={vi.fn()}
+      onBrowse={vi.fn()}
+      onInstall={vi.fn()}
+      onCloseInstall={vi.fn()}
+      onSelectFolder={overrides.onSelectFolder ?? vi.fn()}
+      onCloseFolderPicker={overrides.onCloseFolderPicker ?? vi.fn()}
+      onClosePreview={vi.fn()}
+      onToggleSkip={vi.fn()}
+      onConfirmInstall={vi.fn()}
+      onCancelRemove={vi.fn()}
+      onConfirmRemove={vi.fn()}
+      onCloseLayoutAssignment={vi.fn()}
+      onToggleProject={vi.fn()}
+      onCreateProject={vi.fn()}
+      onAddToProjects={vi.fn()}
+    />,
+  );
+}
+
+describe('PluginModalStack folder picker (plugin management)', () => {
   beforeEach(() => {
     browseMock.mockReset();
   });
@@ -29,7 +77,7 @@ describe('FolderPickerModal (plugin management)', () => {
       data: { path: '/tmp', entries: [{ name: 'project', isDirectory: true }] },
     });
 
-    render(<FolderPickerModal onSelect={vi.fn()} onClose={vi.fn()} />);
+    renderFolderPicker();
 
     expect(document.querySelector('.plugins__modal-overlay')).toBeTruthy();
     expect(
@@ -62,18 +110,18 @@ describe('FolderPickerModal (plugin management)', () => {
         },
       };
     });
-    const onSelect = vi.fn();
-    const onClose = vi.fn();
+    const onSelectFolder = vi.fn();
+    const onCloseFolderPicker = vi.fn();
 
-    render(<FolderPickerModal onSelect={onSelect} onClose={onClose} />);
+    renderFolderPicker({ onSelectFolder, onCloseFolderPicker });
 
     fireEvent.click(screen.getByText('project'));
     expect(browseMock).toHaveBeenCalledWith('/tmp/project');
     expect(screen.getByText('No subdirectories')).toBeTruthy();
 
     fireEvent.click(screen.getByText('Select This Folder'));
-    expect(onSelect).toHaveBeenCalledWith('/tmp/project');
-    expect(onClose).toHaveBeenCalledOnce();
+    expect(onSelectFolder).toHaveBeenCalledWith('/tmp/project');
+    expect(onCloseFolderPicker).toHaveBeenCalledOnce();
   });
 
   test('surfaces a browse error the same way as before', () => {
@@ -83,7 +131,7 @@ describe('FolderPickerModal (plugin management)', () => {
       error: new Error('Permission denied'),
     });
 
-    render(<FolderPickerModal onSelect={vi.fn()} onClose={vi.fn()} />);
+    renderFolderPicker();
 
     const message = screen.getByText('Permission denied');
     expect(message.className).toBe(

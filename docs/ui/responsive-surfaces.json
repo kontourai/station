@@ -41,7 +41,7 @@
       "path": "src-ui/src/components/modals/FolderBrowserModal.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/components/modals/__tests__/FolderBrowserModal.test.tsx covers navigate/up/select/keyboard-roving-focus/empty/error and caller-supplied classnames; #1014 shared folder browser, adopted by plugin management's FolderPickerModal and PathAutocomplete's opt-in Browse button"
+      "evidence": "src-ui/src/components/modals/__tests__/FolderBrowserModal.test.tsx covers navigate/up/select/keyboard-roving-focus/empty/error and caller-supplied classnames; #1014 shared folder browser, rendered directly by plugin management's PluginModalStack (see views/plugin-management/__tests__/PluginModalStack.test.tsx) and adopted by PathAutocomplete's opt-in Browse button"
     },
     {
       "path": "src-ui/src/components/modals/ImportSkillsModal.tsx",
@@ -171,12 +171,6 @@
     },
     {
       "path": "src-ui/src/views/integrations/DeleteIntegrationModal.tsx",
-      "strategy": "covered",
-      "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
-    },
-    {
-      "path": "src-ui/src/views/plugin-management/FolderPickerModal.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
       "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
