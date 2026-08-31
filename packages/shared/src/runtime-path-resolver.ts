@@ -200,8 +200,20 @@ export function admitStationRuntimeHome(
   //
   // With an explicit `STATION_ROOT`, a home equal to it is the original
   // escape: the home swallows a root it does not own. Keep rejecting that.
+  // `sameRuntimePath(root, home)` alone is NOT enough to establish that the
+  // root was derived from this home. With no `STATION_ROOT` and no
+  // `STATION_HOME`, the root is the ambient `~/.station` default, so passing
+  // that directory as the home (`--home=$HOME/.station`, or a script that
+  // computes it) satisfied the equality and was admitted — the shared root
+  // accepted as a runtime home, which is the exact escape this guard exists
+  // to stop. The derivation only happened if `STATION_HOME` was actually set
+  // and names this same directory.
+  const explicitHome = env.STATION_HOME?.trim();
   const rootWasDerivedFromHome =
-    !env.STATION_ROOT?.trim() && sameRuntimePath(root, home);
+    !env.STATION_ROOT?.trim() &&
+    !!explicitHome &&
+    sameRuntimePath(root, home) &&
+    sameRuntimePath(canonicalPathThroughExistingAncestor(explicitHome), home);
   if (equalOrDescendant(root, home) && !rootWasDerivedFromHome) {
     throw new StationRuntimeHomeAdmissionError(
       home,
