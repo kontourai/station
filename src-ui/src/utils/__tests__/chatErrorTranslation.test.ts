@@ -325,117 +325,11 @@ describe('translateChatError', () => {
     expect(result.hint).not.toMatch(/Model connection settings/i);
   });
 
-  // archive#3089/archive#3120: the observed value must be the one
-  // `admitEngineStart`'s decision used, not a client-side re-derivation.
-  // This message shape is the exact literal `CriticalResourcePostureError`
-  // builds (`src-server/services/infra/resource-posture.ts`). archive#3120 changed
-  // the BODY from the raw engineering string to a human sentence — this
-  // test proves the sentence carries the server's own observed value (97),
-  // not an invented one, and that the raw string is not lost: it still
-  // reaches the user verbatim via `disclosureRaw` +
-  // `formatChatErrorDisplay`'s existing de-emphasized blockquote.
-  //
-  // thresholdPercent is 85 here because that is what the server actually
-  // sends — it is the DEGRADED threshold, while the refusal is decided
-  // against the CRITICAL one (95). The earlier fixture used 95, the single
-  // value at which the old "above its N% threshold" sentence read correctly,
-  // so it could not have caught the sentence blaming the wrong comparison
-  // (review of archive#3120). The assertion below is now that the sentence
-  // does NOT claim a threshold at all.
-  it('names a sustained-critical override as a one-start choice', () => {
-    const result = translateChatError({
-      code: 'resource_posture_override_required',
-      message: 'This Station remains busy (98% averaged CPU). Start anyway?',
-    });
-    expect(result.title).toMatch(/remains busy/i);
-    expect(result.hint).toMatch(/Start anyway/i);
-    expect(result.hint).toMatch(/one start/i);
-  });
-
-  it('classifies a critical-resource-posture refusal by code, as a human sentence carrying the exact observed value', () => {
-    const rawMessage =
-      'Engine start refused: resource posture=critical, observed busyPercent=97, thresholdPercent=85, cpuCount=8';
-    const result = translateChatError({
-      code: 'resource_posture_critical',
-      message: rawMessage,
-    });
-
-    expect(result.title).not.toBe('Error');
-    expect(result.title).toMatch(/capacity/i);
-    // A human sentence, not the raw engineering string, as the headline...
-    expect(result.body).not.toBe(rawMessage);
-    expect(result.body).not.toMatch(/busyPercent=/);
-    //.but still carrying the server's own numbers, not a re-derivation.
-    expect(result.body).toContain('97%');
-    // The refusal threshold is 95, the carried thresholdPercent is 85, and the
-    // sentence must attribute the refusal to neither: naming 85 as the reason
-    // would teach the reader that Station refuses above 85%, which it does not.
-    expect(result.body).not.toContain('85%');
-    expect(result.body).not.toMatch(/threshold/i);
-    expect(result.hint).toMatch(/retry/i);
-    // Distinct from the scheduler's own deferred/refused copy — an engine
-    // refusal and a deferred scheduled job must not collapse into one
-    // message.
-    expect(result.body).not.toMatch(/Scheduler job/);
-
-    // The raw string is not lost — it is retrievable verbatim for bug
-    // reports, just no longer the headline.
-    expect(result.disclosureRaw).toBe(true);
-    const rendered = formatChatErrorDisplay(result, rawMessage);
-    expect(rendered).toContain(rawMessage);
-  });
-
-  it('falls back to showing the raw message verbatim when it does not match the expected shape', () => {
-    const result = translateChatError({
-      code: 'resource_posture_critical',
-      message: 'some unexpected refusal shape with no percentages',
-    });
-
-    expect(result.title).toMatch(/capacity/i);
-    expect(result.body).toBe(
-      'some unexpected refusal shape with no percentages',
-    );
-  });
-
-  it('falls back to a neutral capacity message when no detail text is supplied', () => {
-    const result = translateChatError({
-      code: 'resource_posture_critical',
-      message: '',
-    });
-
-    expect(result.title).toMatch(/capacity/i);
-    expect(result.body).toBeTruthy();
-    expect(result.body).not.toBe('');
-  });
-
   it('falls back gracefully when message is empty', () => {
     const result = translateChatError({ message: '' });
 
     expect(result.body).toBeTruthy();
     expect(result.hint).toBeTruthy();
-  });
-
-  // archive#3120: every structured `code` check must run before every
-  // prose-pattern check — genuinely, not just by claim in a comment. Prove
-  // it by giving a structured code a message that ALSO matches a prose
-  // pattern checked later in the function (ABORTED_PATTERN, STALLED_PATTERN)
-  // and confirming the code wins. Today's real text can't collide (
-  // already confirmed that for archive#3120), but this guards the ORDERING itself
-  // against a future prose pattern addition, not just today's fixtures.
-  it('a structured code wins even when the message ALSO matches a later prose pattern', () => {
-    const collidingWithAborted = translateChatError({
-      code: 'resource_posture_critical',
-      message: 'Stream aborted by client (posture critical)',
-    });
-    expect(collidingWithAborted.title).toMatch(/capacity/i);
-    expect(collidingWithAborted.title).not.toMatch(/response stopped/i);
-
-    const collidingWithStalled = translateChatError({
-      code: 'resource_posture_critical',
-      message: 'stalled — no response for 45s (posture critical)',
-    });
-    expect(collidingWithStalled.title).toMatch(/capacity/i);
-    expect(collidingWithStalled.title).not.toMatch(/stopped responding/i);
   });
 
   // archive#1827

@@ -42,6 +42,12 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
 }));
 
+vi.mock('@kontourai/station-sdk/resource-posture', () => ({
+  useResourcePostureForApiBaseQuery: () => ({
+    data: { busyPercent: 99, cpuCount: 12, ageMs: 1_500 },
+  }),
+}));
+
 vi.mock('@kontourai/station-connect', () => ({
   useConnectionStatus: () => ({
     status: 'connected',
@@ -83,6 +89,14 @@ describe('Developer System tab (station#2642)', () => {
     expect(screen.getByText('connected', { exact: false })).toBeTruthy();
     expect(
       screen.getByText('No sustained failures in this session'),
+    ).toBeTruthy();
+    expect(screen.getByText('CPU diagnostics')).toBeTruthy();
+    expect(screen.getByText('99%')).toBeTruthy();
+    expect(screen.getByText('12')).toBeTruthy();
+    expect(
+      screen.getByText('Station never gates work on host CPU load.', {
+        exact: false,
+      }),
     ).toBeTruthy();
   });
 

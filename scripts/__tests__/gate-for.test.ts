@@ -47,9 +47,12 @@ describe('gate-for report', () => {
       'test:changed -- --base=origin/main --explain',
       'ci:fast',
       'full:regression',
+      'GitHub merge queue candidate',
+      'manual CI workflow_dispatch',
     ]) {
       expect(report).toContain(always);
     }
+    expect(report).not.toContain('final checkpoint only');
   });
 
   it('with no base sha, every decider fails open to RUNS by its own rule', () => {

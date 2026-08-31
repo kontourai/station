@@ -1,3 +1,4 @@
+import type { ACPProviderRoutingStatus } from './acp';
 import type { EngineConnectionId } from './agent-identity';
 import type { ProviderCapabilityInventory } from './catalog';
 import type {
@@ -510,6 +511,8 @@ export interface AgentConnectionView extends ConnectionConfig {
   /** Adapter-declared continuity; absent older/plugin rows mean no native capability. */
   continuity?: import('./provider.js').ProviderContinuityCapabilities;
   runtimeCatalog?: RuntimeCatalogStatus;
+  /** Live ACP provider-routing evidence; absent on non-ACP connections. */
+  providerRouting?: ACPProviderRoutingStatus;
   capabilityInventory?: ProviderCapabilityInventory;
   /** Non-secret credential-profile and recovery policy state, when configured. */
   credentialRecovery?: CredentialRecoveryGroupProjection;

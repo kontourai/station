@@ -6,10 +6,41 @@
 - Work only in a sibling worktree (`../station-worktrees/<lane>`), never the primary checkout or a nested worktree. Preserve intentional changes: never use `git stash`; after review begins, integrate upstream with `git merge origin/main`, not rebase.
 - Use an isolated Station home, instance name, and non-default ports. Ports 3141 and 3000 belong to the user.
 - Run `npm run dependencies:ci` to arm hooks. Before editing, use `npm run gate:for -- <paths...>`; it routes to focused evidence. Run selected tests with `npm run test:focused -- <file...>`, not ad-hoc `npx vitest`.
-- `npm run test:changed -- --base=origin/main --explain` selects a diagnostic lane; exit 3 is provisional/deferred, not completion. The only completion evidence command is `npm run full:regression`; join or reuse an in-flight same-digest request rather than rerunning green work. Submission freezes a worktree and is not completion evidence.
-- Builder `tests-evidence` requires the canonical completion receipt; focused test evidence remains diagnostic.
+- `npm run test:changed -- --base=origin/main --explain` selects a diagnostic lane; exit 3 is provisional/deferred, not completion. For ordinary pull requests, run focused evidence and `npm run ci:fast`; GitHub's merge queue verifies the synthesized latest-main candidate. Do not run `npm run full:regression` locally merely because `main` moved.
+- The reusable hosted full-regression workflow owns canonical completion receipts for Nightly and tagged preview/stable promotions. CI `workflow_dispatch` is the explicit diagnostic escape hatch. Builder `tests-evidence` uses that exact-SHA promotion receipt; focused test evidence remains diagnostic.
 - Diagnose the failure rather than rerun-to-green: a red lane is a signal to diagnose, not a request to rerun until green. For a redundant same-digest run, join or reuse the existing lease.
-- After focused proof, freeze the worktree before `npm run full:regression:submit`. Never use shell background or relaunch loops, and do not edit or remove a worktree with a live handoff.
+- Diagnose locally with the narrowest named lane. If an explicit full-regression investigation is authorized, join or reuse an in-flight same-digest request rather than launching redundant work.
+- If an explicit submission handoff is active, freeze the worktree. Never use shell background or relaunch loops, and do not edit or remove a worktree with a live handoff.
+
+## Landing a pull request
+
+`main` is governed by the **main requires green checks** ruleset, and a merge
+queue is part of it. What that means in practice:
+
+- **Arm auto-merge; do not merge by hand.** `gh pr merge <n> --repo kontourai/station --squash --auto`.
+  Auto-merge is opt-in PER PR — a PR whose checks are green but which nobody
+  armed simply sits forever. That, not a broken gate, is the usual reason a
+  ready PR has not landed.
+- **Match the configured merge method.** The ruleset currently allows
+  `squash` and `merge`, and the queue squashes — so `--squash` is what to
+  pass today. Check `allowed_merge_methods` on the ruleset before assuming;
+  a method the ruleset forbids is rejected at merge time, not at arm time.
+- **The queue serializes.** `max_entries_to_merge: 1` and `ALLGREEN` grouping
+  mean entries land one at a time and a red entry holds the ones behind it.
+  Several PRs waiting is the queue working, not the queue stuck. Its
+  check-response timeout is 120 minutes.
+- **Required checks**: `fast-checks`, `CodeQL JavaScript and TypeScript`,
+  `Dependency review`, `Windows PR portable floor`. Branches are NOT required
+  to be up to date (`strict: false`), so you do not have to rebase onto every
+  intervening commit — but two independently green PRs can still break `main`
+  in combination. `main-health.yml` files a P1 when that happens.
+- **Attribution matters.** The ruleset sets
+  `require_extra_approval_for_unattributed_changes`, so a commit whose author
+  GitHub cannot attribute needs an extra approval. Keep authorship real and
+  put delegate credit in a `Co-authored-by:` trailer.
+- **Do not arm another lane's in-flight PR.** Coordinate with the owning
+  session first (`ListAgents` / `SendMessage`); a merge is not yours to make
+  because the checks happen to be green.
 
 ## Issue references
 

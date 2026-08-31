@@ -1,7 +1,52 @@
 import type {
   ClientOrigin,
+  ClientOriginActor,
   ClientOriginSurface,
 } from '@kontourai/station-contracts/client-origin';
+import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
+
+export type ClientOriginActorDisplay =
+  | {
+      kind: 'device';
+      deviceId: string;
+      /** Current registry name; null means no matching record was observed. */
+      name: string | null;
+      label: string;
+    }
+  | {
+      kind: 'operator' | 'internal' | 'unknown';
+      /** Category labels are deliberately not presented as actor names. */
+      name: null;
+      label: string;
+    };
+
+/**
+ * Join an authenticated actor id to the current paired-device registry.
+ * Nothing is copied into session state: passing a refreshed list after a
+ * rename immediately changes the answer.
+ */
+export function resolveClientOriginActor(
+  actor: ClientOriginActor,
+  devices: readonly Pick<PairedDevice, 'id' | 'name'>[],
+): ClientOriginActorDisplay {
+  if (actor.kind === 'device') {
+    const name =
+      devices.find((device) => device.id === actor.deviceId)?.name ?? null;
+    return {
+      kind: 'device',
+      deviceId: actor.deviceId,
+      name,
+      label: name ?? `Unknown device (${actor.deviceId})`,
+    };
+  }
+  if (actor.kind === 'operator') {
+    return { kind: 'operator', name: null, label: 'Operator' };
+  }
+  if (actor.kind === 'internal') {
+    return { kind: 'internal', name: null, label: 'Station' };
+  }
+  return { kind: 'unknown', name: null, label: 'Unknown origin' };
+}
 
 export function clientOriginDetail(origin: ClientOrigin | undefined): string {
   if (!origin) return 'unknown';

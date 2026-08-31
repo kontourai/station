@@ -408,44 +408,6 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     );
   });
 
-  it('offers Start anyway with the exact one-shot token and turn binding', async () => {
-    const challenge = Object.assign(
-      new CodedOrchestrationError(
-        409,
-        'This Station remains busy.',
-        'resource_posture_override_required',
-      ),
-      {
-        override: {
-          token: 'override-token-1',
-          expiresAt: Date.now() + 30_000,
-        },
-      },
-    );
-    sendExecutionMessageMock
-      .mockRejectedValueOnce(challenge)
-      .mockResolvedValueOnce(successReceipt());
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-    await act(async () => {
-      await result.current(sessionId, 'codex', undefined, 'start under load');
-    });
-    const firstId = sendExecutionMessageMock.mock.calls[0][0].clientTurnId;
-    const action = activeChatsStore
-      .getSnapshot()
-      [sessionId]?.ephemeralMessages?.at(-1)?.action;
-    expect(action?.label).toBe('Start anyway');
-    expect(activeChatsStore.getSnapshot()[sessionId]?.status).toBe('idle');
-
-    await act(async () => {
-      await action?.handler();
-    });
-    expect(sendExecutionMessageMock.mock.calls[1][0]).toMatchObject({
-      clientTurnId: firstId,
-      resourceAdmissionOverrideToken: 'override-token-1',
-    });
-  });
-
   it('renders a workspace-resume hint instead of a Model-connection hint for an orchestration refusal', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new CodedOrchestrationError(
@@ -953,40 +915,6 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     ).toBeUndefined();
   });
 
-  it('routes durable queue replay as background and defers without possible-effect evidence', async () => {
-    sendExecutionMessageMock.mockRejectedValueOnce(
-      new CodedOrchestrationError(
-        409,
-        'Automatic work is paused while this Station is busy.',
-        'resource_posture_deferred',
-      ),
-    );
-    const claim = { indeterminate: vi.fn(async () => 'applied' as const) };
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
-
-    await expect(
-      result.current(
-        sessionId,
-        'codex',
-        undefined,
-        'send after recovery',
-        undefined,
-        undefined,
-        'queued-background-turn',
-        { skipInMemoryQueueOnBusy: true, dispatch: claim },
-      ),
-    ).resolves.toEqual({
-      kind: 'deferred',
-      reason: expect.any(String),
-    });
-
-    expect(sendExecutionMessageMock).toHaveBeenCalledWith(
-      expect.objectContaining({ automaticBackground: true }),
-    );
-    expect(claim.indeterminate).not.toHaveBeenCalled();
-    expect(activeChatsStore.getSnapshot()[sessionId]?.status).toBe('idle');
-  });
-
   it('queues a network-level failure without rolling back the optimistic turn', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(new TypeError('offline'));
     const { result } = renderHook(() => useSendMessage('http://api.test'));
@@ -1300,6 +1228,59 @@ describe('useCancelMessage', () => {
     });
   });
 
+  it('keeps a successful Stop out of the send-failure projection when abort releases the foreground request (#898)', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      status: 'idle',
+      abortController: undefined,
+    });
+    sendExecutionMessageMock.mockImplementationOnce(
+      ({ signal }: { signal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), {
+            once: true,
+          });
+        }),
+    );
+    const { result } = renderHook(() => ({
+      send: useSendMessage('http://api.test'),
+      cancel: useCancelMessage('http://api.test'),
+    }));
+
+    let send: Promise<unknown> | undefined;
+    await act(async () => {
+      send = result.current.send(
+        sessionId,
+        'codex',
+        'server-thread-1',
+        'please stop this turn',
+      );
+      await vi.waitFor(() =>
+        expect(sendExecutionMessageMock).toHaveBeenCalledOnce(),
+      );
+    });
+
+    let outcome: StopTurnOutcome | undefined;
+    await act(async () => {
+      outcome = await result.current.cancel(sessionId);
+      await send;
+    });
+
+    expect(outcome).toEqual({ kind: 'settled', result: cooperativeStop });
+    expect(activeChatsStore.getSnapshot()[sessionId]).toMatchObject({
+      status: 'idle',
+      stopPending: false,
+      abortController: undefined,
+    });
+    expect(activeChatsStore.getSnapshot()[sessionId]?.error).toBeUndefined();
+    expect(clearEphemeralMessagesMock).not.toHaveBeenCalled();
+    expect(addEphemeralMessageMock).not.toHaveBeenCalledWith(
+      sessionId,
+      expect.objectContaining({
+        content: expect.stringContaining('An unknown error occurred'),
+      }),
+    );
+  });
+
   it('interrupts the receipted continuation Session instead of the conversation root', async () => {
     activeChatsStore.updateChat(sessionId, {
       currentSessionId: 'server-thread-1:session:child-2',
@@ -1409,6 +1390,39 @@ describe('useCancelMessage', () => {
       status: 'idle',
       stopPending: false,
     });
+  });
+
+  it('does not dispatch a second interrupt after the first receipt settles but before its terminal event arrives (#921)', async () => {
+    interruptOrchestrationTurnMock
+      .mockResolvedValueOnce(cooperativeStop)
+      .mockResolvedValueOnce({
+        outcome: 'no-active-turn',
+        threadId: 'server-thread-1',
+      });
+    activeChatsStore.updateChat(sessionId, {
+      orchestrationTurnOpen: true,
+      error: undefined,
+    });
+    const { result } = renderHook(() => useCancelMessage('http://api.test'));
+
+    let first: StopTurnOutcome | undefined;
+    let second: StopTurnOutcome | undefined;
+    await act(async () => {
+      first = await result.current(sessionId);
+      // A real double-click can put the second click after the fast HTTP
+      // receipt but before turn.aborted reaches the browser event stream.
+      second = await result.current(sessionId);
+    });
+
+    expect(first).toEqual({ kind: 'settled', result: cooperativeStop });
+    expect(second).toEqual({ kind: 'not-running' });
+    expect(interruptOrchestrationTurnMock).toHaveBeenCalledTimes(1);
+    expect(activeChatsStore.getSnapshot()[sessionId]).toMatchObject({
+      status: 'idle',
+      orchestrationTurnOpen: false,
+      stopPending: false,
+    });
+    expect(activeChatsStore.getSnapshot()[sessionId]?.error).toBeUndefined();
   });
 
   // (live verification): the send path clears `abortController`

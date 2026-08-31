@@ -132,6 +132,14 @@ export type BannerItem = {
    * those actually mean "the user caused this."
    */
   userInitiated?: boolean;
+  /**
+   * Keeps this banner discoverable above a maximized dock. Use only for a
+   * condition that blocks safe operation or needs immediate operator action;
+   * ordinary notices deliberately remain below the dock so its header stays
+   * reachable. The connectionBlocking priority band implies this contract;
+   * lower-priority sources such as host pressure opt in explicitly.
+   */
+  criticalChrome?: boolean;
   /** Connection progress is informative; do not interrupt current work. */
   ariaLive?: 'polite' | 'assertive' | 'off';
   /** Internal: live vs exit-animating. Sources should not set this. */
@@ -179,7 +187,6 @@ export const BANNER_IDS = {
   bundledService: 'chrome:onboarding:bundled-service',
   deferredCapability: 'chrome:capability',
   pluginRegistry: 'chrome:plugins:registry',
-  resourcePosture: 'chrome:resource-posture',
   updateCheck: 'chrome:update:check',
   updateAvailable: 'chrome:update:available',
   desktopUpdateAvailable: 'chrome:update:desktop',
@@ -353,6 +360,7 @@ class BannerStore {
       prev.dismissAriaLabel === next.dismissAriaLabel &&
       prev.dragRegion === next.dragRegion &&
       prev.overlay === next.overlay &&
+      prev.criticalChrome === next.criticalChrome &&
       prev.ariaLive === next.ariaLive &&
       actionsEqual(prev.actions, next.actions)
     ) {
@@ -528,8 +536,8 @@ const USER_INITIATED_PRIORITY_CEILING = BANNER_PRIORITY.capabilityFailure;
  * action just caused it.
  *
  * A same-tier tiebreak is not enough on its own: every passive chrome source
- * in the app that lingers — deferred capability, the plugin registry gate,
- * resource posture — presents at `capabilityFailure`, and the mobile
+ * in the app that lingers — deferred capability and the plugin registry gate
+ * present at `capabilityFailure`, and the mobile
  * connection notice at `setup`, while a redirect explanation is merely
  * `info`. Under a tiebreak alone the redirect still sorts below all four and
  * stays behind the bounded stack's "+N more" cap, which is the defect. So a

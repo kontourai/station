@@ -9,10 +9,6 @@ import {
   RateCell,
   relTime,
 } from '../../components/scheduler';
-import {
-  type HostPressureKind,
-  hostPressureSubject,
-} from '../../utils/resourcePosture';
 import { SortHeader, TableFilter } from '../SortableTable';
 
 const IconPlay = () => (
@@ -86,7 +82,6 @@ const IconEdit = () => (
 export function ScheduleJobsTable({
   autoOpenRun,
   daemonOk,
-  hostPressure,
   expanded,
   filterText,
   getMissedCount,
@@ -106,8 +101,6 @@ export function ScheduleJobsTable({
 }: {
   autoOpenRun: string | null;
   daemonOk: boolean;
-  /** Present only while the host is deferring scheduled runs. */
-  hostPressure?: HostPressureKind;
   expanded: string | null;
   filterText: string;
   getMissedCount: (name: string) => number;
@@ -260,13 +253,7 @@ export function ScheduleJobsTable({
                                 : 'schedule__status-dot--off'
                           }`}
                         />
-                        {running
-                          ? 'running'
-                          : hostPressure && job.enabled
-                            ? `paused — ${hostPressureSubject(hostPressure)}`
-                            : job.enabled
-                              ? 'on'
-                              : 'off'}
+                        {running ? 'running' : job.enabled ? 'on' : 'off'}
                       </span>
                     </td>
                     <td className="schedule__td schedule__td--muted">

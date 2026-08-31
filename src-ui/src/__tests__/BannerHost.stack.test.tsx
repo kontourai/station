@@ -37,6 +37,90 @@ function presentThree() {
 }
 
 describe('BannerHost collapsed stack', () => {
+  test('elevates only critical-class chrome for a maximized-dock contract (#920)', () => {
+    act(() => {
+      bannerStore.present({
+        id: 'test:ordinary',
+        priority: BANNER_PRIORITY.info,
+        tone: 'info',
+        message: 'Ordinary notice',
+      });
+    });
+    const ordinary = render(<BannerHost />);
+    expect(screen.getByTestId('banner-host').className).not.toMatch(
+      /banner-host--critical-chrome/,
+    );
+    ordinary.unmount();
+
+    act(() => bannerStore.reset());
+    act(() => {
+      bannerStore.present({
+        id: 'test:host-pressure',
+        priority: BANNER_PRIORITY.capabilityFailure,
+        tone: 'warning',
+        message: 'Automatic work is paused',
+        criticalChrome: true,
+      });
+    });
+    const critical = render(<BannerHost />);
+    expect(screen.getByTestId('banner-host').className).toMatch(
+      /banner-host--critical-chrome/,
+    );
+    expect(
+      screen.getByText('Automatic work is paused').closest('[data-banner-id]')
+        ?.className,
+    ).toMatch(/banner-host__item--critical-chrome/);
+    critical.unmount();
+
+    act(() => bannerStore.reset());
+    act(() => {
+      bannerStore.present({
+        id: 'test:credential',
+        priority: BANNER_PRIORITY.connectionBlocking,
+        tone: 'blocked',
+        message: 'Credential required',
+      });
+    });
+    render(<BannerHost />);
+    expect(screen.getByTestId('banner-host').className).toMatch(
+      /banner-host--critical-chrome/,
+    );
+    expect(
+      screen.getByText('Credential required').closest('[data-banner-id]')
+        ?.className,
+    ).toMatch(/banner-host__item--critical-chrome/);
+  });
+
+  test('uses the cap as the critical indicator without elevating an ordinary front notice', () => {
+    act(() => {
+      bannerStore.present({
+        id: 'test:transient',
+        priority: BANNER_PRIORITY.connectionTransient,
+        tone: 'warning',
+        message: 'Reconnecting',
+      });
+      bannerStore.present({
+        id: 'test:host-pressure',
+        priority: BANNER_PRIORITY.capabilityFailure,
+        tone: 'error',
+        message: 'Automatic work is paused',
+        criticalChrome: true,
+      });
+    });
+    render(<BannerHost />);
+
+    const ordinary = screen
+      .getByText('Reconnecting')
+      .closest('[data-banner-id]');
+    expect(ordinary?.className).not.toMatch(
+      /banner-host__item--critical-chrome/,
+    );
+    expect(screen.queryByText('Automatic work is paused')).toBeNull();
+    expect(screen.getByTestId('banner-stack-cap').className).toMatch(
+      /banner-host__cap--critical-chrome/,
+    );
+  });
+
   test('renders only the front banner plus a severity-tinted cap', () => {
     presentThree();
     render(<BannerHost />);

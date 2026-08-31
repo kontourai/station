@@ -497,6 +497,7 @@ import type { ProviderService } from '../services/connections/provider-service.j
 import type { FeedbackService } from '../services/feedback/feedback-service.js';
 import type { KnowledgeService } from '../services/knowledge/knowledge-service.js';
 import type { EventBus } from '../services/orchestration/event-bus.js';
+import type { ACPProviderSecretResolver } from '../services/secrets/secret-binding-administration.js';
 import type { createAgentHooks } from './agents/agent-hooks.js';
 
 export type AgentConfigurationMutationOperation<T> = (
@@ -571,6 +572,7 @@ export interface RuntimeContext {
   modelCatalog?: BedrockModelCatalog;
   framework: IAgentFramework;
   acpBridge: ACPManager;
+  acpProviderSecretResolver?: ACPProviderSecretResolver;
   providerService: ProviderService;
   knowledgeService: KnowledgeService;
   feedbackService: FeedbackService;

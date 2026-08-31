@@ -188,10 +188,9 @@ const MUSE_E2E_SMOKE_LIVE_INSTANCE = /^e2e-smoke-live-[a-z0-9]+-[a-z0-9]+$/;
 /**
  * Whether this process is the disposable E2E runtime the override is for.
  *
- * Mirrors `createEnvironmentRuntimeResourcePostureProbe` in
- * `services/infra/resource-posture.ts`, which draws exactly this line for
- * exactly this reason: keep one journey deterministic WITHOUT weakening a
- * persistent home, so "the explicit E2E value alone has no effect".
+ * Uses the same temp-home plus instance-namespace authorization pattern as
+ * other isolated E2E seams: keep one journey deterministic without weakening
+ * a persistent home, so "the explicit E2E value alone has no effect".
  *
  * What the conjunction buys, precisely, and what it does not:
  *

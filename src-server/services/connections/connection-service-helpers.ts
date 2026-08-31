@@ -1,4 +1,8 @@
-import type { ACPStatusValue } from '@kontourai/station-contracts/acp';
+import type {
+  ACPProviderInfo,
+  ACPProviderRoutingStatus,
+  ACPStatusValue,
+} from '@kontourai/station-contracts/acp';
 import type { EngineRuntimeId } from '@kontourai/station-contracts/agent-identity';
 import type {
   GuidanceAssetReference,
@@ -63,6 +67,7 @@ export type ACPConnectionCapabilitiesStatus = {
     embeddedContext?: boolean;
   };
   sessionCapabilities?: { resume?: unknown };
+  providers?: boolean;
 };
 
 export type ACPConnectionStatus = {
@@ -87,6 +92,10 @@ export type ACPConnectionStatus = {
     currentValue?: string;
     options?: Array<string | { name?: string; value?: string }>;
   }>;
+  /** Present only after a capability-gated providers/list observation. */
+  providerRouting?: ACPProviderInfo[];
+  /** False means a provider mutation outdates the retained observation. */
+  providerRoutingCurrent?: boolean;
 };
 
 export const MODEL_CAPABILITY_SET = new Set<ConnectionCapability>([
@@ -833,5 +842,49 @@ export function acpRuntimeCatalogStatus(
     reason: null,
     models,
     builtInModels: [],
+  };
+}
+
+/** Project ACP provider evidence without collapsing absent and observed-negative facts. */
+export function acpProviderRoutingStatus(
+  liveStatus: ACPConnectionStatus | undefined,
+): ACPProviderRoutingStatus {
+  if (!liveStatus?.handshakeObservedAt) {
+    return {
+      source: 'none',
+      reason: 'No successful initialize handshake has been observed yet.',
+      providers: [],
+    };
+  }
+  if (liveStatus.capabilities?.providers !== true) {
+    return {
+      source: 'none',
+      reason:
+        "The engine's initialize handshake advertises no providers capability.",
+      providers: [],
+    };
+  }
+  if (liveStatus.providerRoutingCurrent === false) {
+    return {
+      source: 'stale',
+      fetchedAt: liveStatus.handshakeObservedAt,
+      reason:
+        'Provider routing changed, but no post-mutation observation has succeeded yet.',
+      providers: liveStatus.providerRouting ?? [],
+    };
+  }
+  if (!liveStatus.providerRouting) {
+    return {
+      source: 'none',
+      reason:
+        'Provider routing was advertised but has not been observed successfully.',
+      providers: [],
+    };
+  }
+  return {
+    source: 'live',
+    fetchedAt: liveStatus.handshakeObservedAt,
+    reason: null,
+    providers: liveStatus.providerRouting,
   };
 }

@@ -55,6 +55,11 @@ interface SendTransaction {
   attachmentStages?: ComposerAttachmentStageSnapshot[];
 }
 
+type UserCancelableAbortController = AbortController & {
+  /** Set only by the Stop path before it releases the foreground observer. */
+  _userInitiated?: boolean;
+};
+
 function prepareSendTransaction(options: {
   state: ChatUIState | undefined;
   submittedDraft: string;
@@ -160,7 +165,6 @@ export function useSendMessage(
       // stay durable, rather than also entering this legacy in-memory queue.
       options?: {
         skipInMemoryQueueOnBusy?: boolean;
-        resourceAdmissionOverrideToken?: string;
         /** State-bound capability supplied only by OutboundDispatchModule. */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
@@ -272,8 +276,6 @@ export function useSendMessage(
           attachmentStages: currentState?.attachmentStages,
           ambientContext,
           clientTurnId: resolvedTurnId,
-          resourceAdmissionOverrideToken:
-            options?.resourceAdmissionOverrideToken,
           automaticBackground: Boolean(options?.dispatch),
           signal: abortController.signal,
         });
@@ -315,6 +317,28 @@ export function useSendMessage(
             } satisfies OutboundDispatchTransportResult)
           : true;
       } catch (error) {
+        // Stop deliberately releases the browser's foreground observer after
+        // the server has settled the interrupt. Fetch rejects with the abort
+        // reason (a string in browsers), which used to fall through as an
+        // empty ChatHttpError and overwrite the honest turn.aborted outcome
+        // with `Error: An unknown error occurred` plus Retry.
+        if (
+          (abortController as UserCancelableAbortController)._userInitiated &&
+          abortController.signal.aborted
+        ) {
+          clearStreamingMessage(sessionId);
+          updateChat(sessionId, {
+            status: 'idle',
+            error: undefined,
+            abortController: undefined,
+          });
+          return options?.dispatch
+            ? ({
+                kind: 'not-invoked',
+                reason: 'Stopped by request',
+              } satisfies OutboundDispatchTransportResult)
+            : false;
+        }
         const err = error as Error &
           Partial<ChatHttpError> & {
             override?: { token: string; expiresAt: number };
@@ -440,9 +464,7 @@ export function useSendMessage(
           ? false
           : (translated as ChatErrorTranslation).terminalSession;
         const dispatchClaim = options?.dispatch;
-        const dispatchDeferred =
-          Boolean(dispatchClaim) && err.code === 'resource_posture_deferred';
-        if (dispatchClaim && !dispatchDeferred) {
+        if (dispatchClaim) {
           // Once the foreground call has begun, neither an abort, a network
           // error, nor an HTTP/receipt error proves the provider did nothing.
           // Latch durable evidence before any observer or return path can
@@ -454,12 +476,6 @@ export function useSendMessage(
           // non-retryable notice, so reload/navigation keeps the evidence.
           assignConversationId(sessionId, observedSessionId);
         }
-        const resourceOverrideToken =
-          err.code === 'resource_posture_override_required' &&
-          err.override &&
-          err.override.expiresAt > Date.now()
-            ? err.override.token
-            : undefined;
         updateChat(sessionId, {
           // `terminalSession` is a Station-side refusal: the conversation has
           // ended, so the send was declined before any engine saw it. Writing
@@ -470,13 +486,7 @@ export function useSendMessage(
           // non-error and let the persisted server lifecycle name it. The
           // refusal itself is carried by the ephemeral notice below, which
           // already suppresses Retry for exactly this case.
-          status:
-            foregroundIndeterminate ||
-            terminalSession ||
-            dispatchDeferred ||
-            err.code === 'resource_posture_override_required'
-              ? 'idle'
-              : 'error',
+          status: foregroundIndeterminate || terminalSession ? 'idle' : 'error',
           error: err.message,
           abortController: undefined,
           ...(foregroundIndeterminate
@@ -513,7 +523,7 @@ export function useSendMessage(
             terminalSession || foregroundIndeterminate || dispatchClaim
               ? undefined
               : {
-                  label: resourceOverrideToken ? 'Start anyway' : 'Retry',
+                  label: 'Retry',
                   handler: () =>
                     sendMessage(
                       sessionId,
@@ -523,12 +533,6 @@ export function useSendMessage(
                       attachments,
                       ambientContext,
                       resolvedTurnId,
-                      resourceOverrideToken
-                        ? {
-                            resourceAdmissionOverrideToken:
-                              resourceOverrideToken,
-                          }
-                        : undefined,
                     ),
                 },
         });
@@ -538,12 +542,6 @@ export function useSendMessage(
           onActiveSessionChange?.(sessionId);
         }
         clearStreamingMessage(sessionId);
-        if (dispatchDeferred) {
-          return {
-            kind: 'deferred',
-            reason: translated.title,
-          } satisfies OutboundDispatchTransportResult;
-        }
         if (foregroundIndeterminate || dispatchClaim) throw err;
         if (options?.dispatch) {
           return {
@@ -655,13 +653,11 @@ export function useCancelMessage(apiBase?: string) {
       if (state.stopPending) return { kind: 'not-running' };
       const abortController = state.abortController;
       if (abortController) {
-        (
-          abortController as AbortController & {
-            _userInitiated?: boolean;
-          }
-        )._userInitiated = true;
+        (abortController as UserCancelableAbortController)._userInitiated =
+          true;
       }
       updateChat(sessionId, { stopPending: true });
+      let settledResult: InterruptTurnResult | undefined;
       try {
         // The browser stream is only an observer of the engine turn. Ask the
         // orchestration owner to interrupt the exact server session before
@@ -679,6 +675,7 @@ export function useCancelMessage(apiBase?: string) {
             : {}),
           apiBase,
         });
+        settledResult = result;
         return { kind: 'settled', result };
       } catch (error) {
         const message =
@@ -700,10 +697,23 @@ export function useCancelMessage(apiBase?: string) {
         // to strand both, leaving a stream nobody was reading and a composer
         // that could never be used again.
         abortController?.abort('User cancelled');
+        // A fast interrupt receipt can settle between the two click events of
+        // a real double-click, while turn.aborted is still queued in the
+        // browser event stream. Closing the locally-known turn from that
+        // authoritative receipt prevents the second click from dispatching a
+        // new interrupt against the already-interrupted turn. The deferred
+        // pre-start outcome is the exception: Station has recorded intent but
+        // has not yet interrupted a provider turn.
+        const turnSettled =
+          settledResult !== undefined &&
+          settledResult.outcome !== 'pending-turn-start';
         updateChat(sessionId, {
           status: 'idle',
           abortController: undefined,
           stopPending: false,
+          ...(turnSettled
+            ? { orchestrationTurnOpen: false, error: undefined }
+            : {}),
         });
       }
     },

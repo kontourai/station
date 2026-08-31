@@ -9,10 +9,10 @@ name: Nightly
 # with production's. See scripts/lib/nightly-build-identity.mjs for why, and
 # station#2211 for the channel model.
 #
-# station#4539: the `test-gate` job below runs the nightly's tests on the
-# exact commit this workflow ships, and the `nightly` build/publish job
-# requires its 'success' result before any build step can start. That closes
-# the ships-with-zero-tests mechanism — nothing broader. The pr-smoke suite
+# The `test-gate` binds one immutable source and exercises the browser journey;
+# `full-regression` then runs the canonical completion gate on that same SHA.
+# Both Android and desktop require literal success from both jobs before any
+# build or publication step can start. The pr-smoke suite
 # exercises Station as a same-machine loopback browser caller (temp home,
 # dynamic loopback ports) — and its two chat specs mock the chat endpoints
 # outright, so no real turn is dispatched — exactly the context where
@@ -59,9 +59,9 @@ jobs:
     # (precondition for the typecheck aggregate), `node
     # scripts/typecheck-aggregate.mjs`, and `npm run test:e2e:pr-smoke` —
     # two of run-ci-fast.mjs's eight FAST_STATIC_COMMANDS plus lint:check,
-    # not "the fast static checks" as a class. It is a nightly gate, not
-    # full:regression, so it stays bounded to the same suites ci.yml's
-    # fast-checks and browser-smoke jobs already run.
+    # not "the fast static checks" as a class. The separate reusable
+    # full-regression job owns canonical completion; this job retains the
+    # exact-source binding and deterministic browser journey.
     #
     # The only `if:` is the pull_request exclusion the persistent-runner
     # policy requires; this workflow's triggers are schedule and
@@ -174,8 +174,16 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  nightly:
+  full-regression:
+    name: Nightly exact-SHA full regression
     needs: [test-gate]
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}
+    uses: ./.github/workflows/full-regression.yml
+    with:
+      source_sha: ${{ needs.test-gate.outputs.source_sha }}
+
+  nightly:
+    needs: [test-gate, full-regression]
     # Fail-loud and fail-closed (station#4539): `always()` forces this
     # condition to be evaluated even when the test gate failed, was
     # cancelled, or was skipped, and the explicit result check admits only
@@ -188,9 +196,15 @@ jobs:
     # scripts/actionlint-gate.mjs's skipsAutomaticPullRequest accepts only
     # the literal prefix ladder ending in `github.event_name !=
     # 'pull_request'`, so reordering the conjuncts reddens gate:workflows.
-    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 90
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+      source_sha: ${{ steps.decide.outputs.head_sha }}
+      marketing_version: ${{ steps.ios_identity.outputs.marketing_version }}
+      bundle_version: ${{ steps.identity.outputs.version_code }}
+      reservation_tag: ${{ steps.allocate.outputs.reservation_tag }}
     env:
       GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_PLAY_SERVICE_ACCOUNT: ${{ vars.GCP_PLAY_SERVICE_ACCOUNT }}
@@ -353,6 +367,14 @@ jobs:
           NIGHTLY_NOW: ${{ steps.allocate.outputs.date }}
           NIGHTLY_BUILD: ${{ steps.allocate.outputs.build }}
           NIGHTLY_CONFIG_PATH: ${{ runner.temp }}/tauri.nightly.conf.json
+
+      - name: Derive numeric App Store marketing version
+        if: steps.decide.outputs.build == 'true'
+        id: ios_identity
+        run: |
+          marketing_version=$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')
+          [[ "$marketing_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "marketing_version=$marketing_version" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.decide.outputs.build == 'true'
@@ -882,10 +904,35 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Nightly's date/index reservation is shared with iOS. This caller takes
+  # the exact identity emitted by the Android job rather than recomputing a
+  # new value after a later checkout or midnight boundary.
+  nightly-ios:
+    needs: [test-gate, full-regression, nightly]
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' && needs.nightly.result == 'success' && needs.nightly.outputs.build == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/testflight-delivery.yml
+    with:
+      channel: nightly
+      source_sha: ${{ needs.nightly.outputs.source_sha }}
+      source_ref: refs/tags/${{ needs.nightly.outputs.reservation_tag }}
+      marketing_version: ${{ needs.nightly.outputs.marketing_version }}
+      bundle_version: ${{ needs.nightly.outputs.bundle_version }}
+      release_label: nightly-${{ needs.nightly.outputs.bundle_version }}
+      mobile_endpoint: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}
+      update_feed_url: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
+      update_provider_origin: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
+      update_action_url: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
+      update_action_kind: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
+      update_action_origins: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
+
   # ── Desktop (station#575) ────────────────────────────────────────────────
-  # A sibling of `nightly` above, gated identically on the shared test-gate
-  # and never on that job's own success: Android and desktop ship
-  # independently. Runs on GitHub-hosted `macos-15`, the same image
+  # A sibling of `nightly` above, gated identically on the shared source,
+  # browser, and full-regression gates and never on Android's success: Android
+  # and desktop ship independently. Runs on GitHub-hosted `macos-15`, the same image
   # release.yml's desktop-macos job uses.
   #
   # This job ships the CONFIG half (build, sign, publish the manifest).
@@ -893,12 +940,12 @@ jobs:
   # registered only when the build's `plugins.updater` config has both a
   # pubkey and endpoints, which is exactly what this job's overlay writes —
   # so a nightly-channel app built from this job DOES read what it publishes
-  # here. Stable and beta stay config-only (pubkey, no endpoint) until
-  # `native-release-config.mjs`'s tagged-release overlay is also given an
-  # endpoint — see release.yml's desktop-macos job comment.
+  # here. Stable and beta use the same complete pubkey-plus-endpoint contract;
+  # `native-release-config.mjs` additionally binds their endpoint to the
+  # release tag's stable or beta rolling channel.
   nightly-desktop:
-    needs: [test-gate]
-    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' }}
+    needs: [test-gate, full-regression]
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' }}
     runs-on: macos-15
     environment: native-release
     # ~40 min build + Apple notary's long tail; 60 cancelled mid-notarize.

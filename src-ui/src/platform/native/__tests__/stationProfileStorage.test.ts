@@ -18,6 +18,33 @@ const hostRef = (id: string) => ({
 });
 const CLIENT_INSTANCE_ID = '11111111-1111-4111-8111-111111111111';
 
+function memoryStorage(initial: Record<string, string> = {}): StorageAdapter {
+  const values = new Map(Object.entries(initial));
+  return {
+    get: (key) => values.get(key) ?? null,
+    set: (key, value) => values.set(key, value),
+    remove: (key) => values.delete(key),
+  };
+}
+
+function legacyConnectionSelectionStorage(input: {
+  name: string;
+  url: string;
+  environmentId?: string;
+}): StorageAdapter {
+  const storage = memoryStorage();
+  const legacyStore = new ConnectionStore({ storage, locks: null });
+  const connection = legacyStore.add(input.name, input.url);
+  if (input.environmentId) {
+    legacyStore.reconcileHandshake(connection.id, {
+      environmentId: input.environmentId,
+      authentication: { scheme: 'bearer', protocolVersion: 1 },
+    });
+  }
+  legacyStore.setActive(connection.id);
+  return storage;
+}
+
 const PROFILE_STORE = {
   schemaVersion: 1,
   revision: 0,
@@ -48,7 +75,10 @@ const PROFILE_STORE = {
   ],
 } as const;
 
-function storageWithProfileStore(profileStore: unknown = PROFILE_STORE) {
+function storageWithProfileStore(
+  profileStore: unknown = PROFILE_STORE,
+  clientSelectionStorage: StorageAdapter = memoryStorage(),
+) {
   const calls: Array<[string, Record<string, unknown> | undefined]> = [];
   const bridge = {
     async invoke<T>(
@@ -73,13 +103,18 @@ function storageWithProfileStore(profileStore: unknown = PROFILE_STORE) {
   };
   return {
     calls,
-    storage: new NativeStationProfileStorage(bridge),
+    storage: new NativeStationProfileStorage(
+      bridge,
+      clientSelectionStorage,
+      true,
+    ),
   };
 }
 
 function storageWithKeyring(
   options: {
     initialStore?: StationProfileStore;
+    clientSelectionStorage?: StorageAdapter;
     failProfileWrite?: boolean;
     failOldReferenceDelete?: boolean;
     conflictOnceBeforeWrite?: (
@@ -184,7 +219,11 @@ function storageWithKeyring(
     replaceStore: (next: StationProfileStore) => {
       store = next;
     },
-    storage: new NativeStationProfileStorage(bridge),
+    storage: new NativeStationProfileStorage(
+      bridge,
+      options.clientSelectionStorage ?? memoryStorage(),
+      true,
+    ),
   };
 }
 
@@ -513,6 +552,289 @@ describe('NativeStationProfileStorage', () => {
     expect(calls).not.toContainEqual([
       'station_profile_authorize_active',
       { profileName: 'kontour' },
+    ]);
+  });
+
+  it('migrates an inherited legacy local pointer to the packaged channel owner without credential access', async () => {
+    const shared = structuredClone(
+      PROFILE_STORE,
+    ) as unknown as StationProfileStore;
+    shared.profiles[0] = {
+      ...shared.profiles[0],
+      name: 'stable-local',
+      localService: {
+        instanceId: 'desktop-sidecar-stable',
+        baseDir: '/home/station/instances/stable',
+        serverPort: 18141,
+        uiPort: 18000,
+      },
+    };
+    shared.defaultProfile = 'stable-local';
+    shared.profiles.push({
+      schemaVersion: 1,
+      name: 'beta-local',
+      endpoint: 'http://127.0.0.1:28141',
+      credentialRef: hostRef('beta-token'),
+      environmentId: 'environment-beta',
+      localService: {
+        instanceId: 'desktop-sidecar-beta',
+        baseDir: '/home/station/instances/beta',
+        serverPort: 28141,
+        uiPort: 28000,
+      },
+      setupSource: 'local',
+      configurationState: 'configured',
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    const selectionStorage = legacyConnectionSelectionStorage({
+      name: 'Stable legacy',
+      url: 'http://127.0.0.1:3141',
+      environmentId: 'environment-kontour',
+    });
+    const { calls, storage } = storageWithProfileStore(
+      shared,
+      selectionStorage,
+    );
+
+    await storage.hydrate();
+    expect(storage.selectProfileForProcess('beta-local')).toBe(
+      'station-profile:beta-local',
+    );
+    expect(
+      selectionStorage.get('station-connect-connections-active'),
+    ).toBeNull();
+    expect(
+      selectionStorage.get('station-native-profile-selection-v1'),
+    ).toBeNull();
+    expect(shared.defaultProfile).toBe('stable-local');
+    expect(calls.map(([command]) => command)).toEqual([
+      'station_profile_store_read',
+    ]);
+  });
+
+  it('does not promote a legacy shared remote default to explicit client intent', async () => {
+    const shared = structuredClone(
+      PROFILE_STORE,
+    ) as unknown as StationProfileStore;
+    shared.defaultProfile = 'station.kontourai.io';
+    const selectionStorage = legacyConnectionSelectionStorage({
+      name: 'Shared remote default',
+      url: 'https://station.kontourai.io',
+    });
+    const { calls, storage } = storageWithProfileStore(
+      shared,
+      selectionStorage,
+    );
+
+    await storage.hydrate();
+    expect(storage.selectProfileForProcess('kontour')).toBe(
+      'station-profile:kontour',
+    );
+    expect(
+      selectionStorage.get('station-native-profile-selection-v1'),
+    ).toBeNull();
+    expect(calls.map(([command]) => command)).toEqual([
+      'station_profile_store_read',
+    ]);
+  });
+
+  it('migrates a legacy non-default foreign selection without reading its pairing credential', async () => {
+    const selectionStorage = legacyConnectionSelectionStorage({
+      name: 'Chosen remote',
+      url: 'https://station.kontourai.io',
+    });
+    const { calls, storage } = storageWithProfileStore(
+      PROFILE_STORE,
+      selectionStorage,
+    );
+
+    await storage.hydrate();
+    expect(storage.selectProfileForProcess('kontour')).toBe(
+      'station-profile:station.kontourai.io',
+    );
+    expect(
+      JSON.parse(
+        selectionStorage.get('station-native-profile-selection-v1') ?? '{}',
+      ),
+    ).toEqual({
+      schemaVersion: 1,
+      connectionId: 'station-profile:station.kontourai.io',
+    });
+    expect(
+      selectionStorage.get('station-connect-connections-active'),
+    ).toBeNull();
+    expect(calls.map(([command]) => command)).toEqual([
+      'station_profile_store_read',
+    ]);
+  });
+
+  it('restores a versioned explicit foreign selection and clears it when the profile disappears', async () => {
+    const selectionStorage = memoryStorage({
+      'station-native-profile-selection-v1': JSON.stringify({
+        schemaVersion: 1,
+        connectionId: 'station-profile:station.kontourai.io',
+      }),
+    });
+    const { currentStore, replaceStore, storage } = storageWithKeyring({
+      clientSelectionStorage: selectionStorage,
+    });
+
+    await storage.hydrate();
+    expect(storage.selectProfileForProcess('kontour')).toBe(
+      'station-profile:station.kontourai.io',
+    );
+
+    const withoutRemote = structuredClone(currentStore());
+    withoutRemote.revision += 1;
+    withoutRemote.profiles = withoutRemote.profiles.filter(
+      (profile) => profile.name !== 'station.kontourai.io',
+    );
+    replaceStore(withoutRemote);
+    await storage.refresh();
+
+    expect(
+      selectionStorage.get('station-native-profile-selection-v1'),
+    ).toBeNull();
+    expect(storage.get('station-connect-connections-active')).toBe(
+      'station-profile:kontour',
+    );
+  });
+
+  it('rejects a persisted local marker so Beta still selects only its native owner', async () => {
+    const shared = structuredClone(
+      PROFILE_STORE,
+    ) as unknown as StationProfileStore;
+    shared.profiles[0] = {
+      ...shared.profiles[0],
+      name: 'stable-local',
+      localService: {
+        instanceId: 'desktop-sidecar-stable',
+        baseDir: '/home/station/instances/stable',
+        serverPort: 18141,
+        uiPort: 18000,
+      },
+    };
+    shared.defaultProfile = 'stable-local';
+    shared.profiles.push({
+      schemaVersion: 1,
+      name: 'beta-local',
+      endpoint: 'http://127.0.0.1:28141',
+      credentialRef: hostRef('beta-token'),
+      environmentId: 'environment-beta',
+      localService: {
+        instanceId: 'desktop-sidecar-beta',
+        baseDir: '/home/station/instances/beta',
+        serverPort: 28141,
+        uiPort: 28000,
+      },
+      setupSource: 'local',
+      configurationState: 'configured',
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    const selectionStorage = memoryStorage({
+      'station-native-profile-selection-v1': JSON.stringify({
+        schemaVersion: 1,
+        connectionId: 'station-profile:stable-local',
+      }),
+    });
+    const { calls, storage } = storageWithProfileStore(
+      shared,
+      selectionStorage,
+    );
+
+    await storage.hydrate();
+    expect(storage.selectProfileForProcess('beta-local')).toBe(
+      'station-profile:beta-local',
+    );
+    await storage.authorizeActiveConnection('station-profile:beta-local');
+
+    expect(
+      selectionStorage.get('station-native-profile-selection-v1'),
+    ).toBeNull();
+    expect(calls).toContainEqual([
+      'station_profile_authorize_active',
+      { profileName: 'beta-local' },
+    ]);
+    expect(calls).not.toContainEqual([
+      'station_profile_authorize_active',
+      { profileName: 'stable-local' },
+    ]);
+  });
+
+  it('clears a malformed marker without promoting otherwise valid legacy remote state', async () => {
+    const selectionStorage = legacyConnectionSelectionStorage({
+      name: 'Chosen remote',
+      url: 'https://station.kontourai.io',
+    });
+    selectionStorage.set(
+      'station-native-profile-selection-v1',
+      JSON.stringify({
+        schemaVersion: 1,
+        connectionId: 'station-profile:station.kontourai.io',
+        unexpected: true,
+      }),
+    );
+    const { calls, storage } = storageWithProfileStore(
+      PROFILE_STORE,
+      selectionStorage,
+    );
+
+    await storage.hydrate();
+    expect(storage.selectProfileForProcess('kontour')).toBe(
+      'station-profile:kontour',
+    );
+    expect(
+      selectionStorage.get('station-native-profile-selection-v1'),
+    ).toBeNull();
+    expect(calls.map(([command]) => command)).toEqual([
+      'station_profile_store_read',
+    ]);
+  });
+
+  it('keeps selection-provenance migration disabled for mobile repositories', async () => {
+    const selectionStorage = legacyConnectionSelectionStorage({
+      name: 'Chosen remote',
+      url: 'https://station.kontourai.io',
+    });
+    const legacyActive = selectionStorage.get(
+      'station-connect-connections-active',
+    );
+    const calls: string[] = [];
+    const storage = new NativeStationProfileStorage(
+      {
+        async invoke<T>(command: string): Promise<T> {
+          calls.push(command);
+          return (
+            command === 'station_profile_store_read'
+              ? PROFILE_STORE
+              : {
+                  bindingId: CLIENT_INSTANCE_ID,
+                  exactOrigin: 'https://station.kontourai.io',
+                }
+          ) as T;
+        },
+      },
+      selectionStorage,
+      false,
+    );
+
+    await storage.hydrate();
+    await storage.authorizeActiveConnection(
+      'station-profile:station.kontourai.io',
+      true,
+    );
+
+    expect(selectionStorage.get('station-connect-connections-active')).toBe(
+      legacyActive,
+    );
+    expect(
+      selectionStorage.get('station-native-profile-selection-v1'),
+    ).toBeNull();
+    expect(calls).toEqual([
+      'station_profile_store_read',
+      'station_profile_authorize_active',
     ]);
   });
 

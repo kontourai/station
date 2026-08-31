@@ -2907,7 +2907,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
   }
 
   /**
-   * A posture deferral happens before any Adapter authorization. Releasing the
+   * A concurrency deferral happens before any Adapter authorization. Releasing the
    * claim preserves the original occurrence for a later scheduler tick without
    * recording a false failure or spending its retry budget.
    */
@@ -2915,6 +2915,10 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     claim: ClaimRow,
     attempt: number,
   ): SchedulerDeferredOutcome {
+    // An advanced/reconciled claim already spent retry budget. Deleting it
+    // would let claimDue mint a fresh attempt 1 for the same occurrence.
+    // Callers must retain and later invoke that exact durable capability.
+    if (attempt > 1) return { kind: 'stale' };
     try {
       const result = this.transaction(() => {
         const changed = this.db

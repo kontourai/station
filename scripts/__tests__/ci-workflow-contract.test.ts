@@ -342,8 +342,9 @@ describe('CI verification workflow contracts', () => {
     expect(ci).toContain(
       `group: ci-fast-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}`,
     );
-    expect(ci).toContain(
-      `group: ci-full-regression-\${{ github.event_name }}-\${{ github.ref }}`,
+    expect(workflow('full-regression.yml')).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'group: hosted-full-regression-${{ inputs.source_sha }}',
     );
     expect(ci).toContain(
       `group: ci-browser-smoke-\${{ github.event_name }}-\${{ github.ref }}`,
@@ -574,8 +575,13 @@ describe('CI verification workflow contracts', () => {
     expect(fullRegression).not.toContain(
       "needs.classify.outputs.heavy == 'true'",
     );
-    expect(fullRegression).toContain('timeout-minutes: 90');
-    expect(fullRegression).toContain('runs-on: ubuntu-22.04');
+    expect(fullRegression).toContain(
+      'uses: ./.github/workflows/full-regression.yml',
+    );
+    expect(fullRegression).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'source_sha: ${{ github.sha }}',
+    );
     expect(fullRegression).not.toContain('self-hosted');
     expect(fullRegression).not.toContain('physical-host-capacity@');
     const desktopWinLeaseWeights = [
@@ -591,8 +597,7 @@ describe('CI verification workflow contracts', () => {
     expect(desktopWinLeaseWeights).toEqual([6, 6, 6, 5, 9, 9]);
     expect(Math.max(...desktopWinLeaseWeights)).toBeLessThanOrEqual(9);
     expect(workflow('secret-scan.yml')).not.toContain('capacity-lease-weight:');
-    expect(fullRegression).toContain('run: npm run full:regression');
-    expect(fullRegression).toContain('run: npm run test:connected-agents');
+    expect(fullRegression).not.toContain('run: npm run full:regression');
   });
 
   it('validates pull-request titles from exact base policy before either candidate checkout', () => {
@@ -720,10 +725,7 @@ describe('CI verification workflow contracts', () => {
     const inNodeModulesPathZero = /PLAYWRIGHT_BROWSERS_PATH=0/;
 
     const ci = workflow('ci.yml');
-    const fullRegression = ci.slice(
-      ci.indexOf('  full-regression:'),
-      ci.indexOf('  browser-smoke:'),
-    );
+    const fullRegression = workflow('full-regression.yml');
     const browserSmoke = ci.slice(ci.indexOf('  browser-smoke:'));
     const extended = workflow('ci-extended.yml');
     const coverage = extended.slice(
@@ -818,7 +820,7 @@ describe('CI verification workflow contracts', () => {
     expect(coverageRunBody).not.toMatch(inNodeModulesPathZero);
   });
 
-  it('checks out enough history for exact Veritas PR evidence', () => {
+  it('checks out enough history for exact candidate and completion identities', () => {
     const ci = workflow('ci.yml');
     const fastChecks = ci.slice(
       ci.indexOf('  fast-checks:'),
@@ -826,9 +828,12 @@ describe('CI verification workflow contracts', () => {
     );
 
     expect(fastChecks).toContain('fetch-depth: 0');
-    expect(fastChecks).toContain('--changed-from "$BASE_REF"');
-    expect(fastChecks).toContain('--changed-to "$HEAD_REF"');
-    expect(fastChecks).toContain('run: npm run test:connected-agents');
+    expect(fastChecks).toContain('STATION_CI_FAST_BASE');
+    expect(workflow('full-regression.yml')).toContain('fetch-depth: 0');
+    expect(workflow('full-regression.yml')).toContain(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'ref: ${{ inputs.source_sha }}',
+    );
     expect(ci).not.toContain('  connected-agents:');
   });
 
@@ -1308,7 +1313,6 @@ describe('artifact storage does not accumulate or gate verdicts', () => {
 
   it.each([
     ['ci.yml', 'ci-fast-verification'],
-    ['ci.yml', 'full-regression-verification'],
     ['ci-extended.yml', 'coverage-verification'],
     ['nightly-gallery.yml', 'nightly-gallery'],
   ])('%s: the %s diagnostic upload cannot fail its job', (file, artifact) => {

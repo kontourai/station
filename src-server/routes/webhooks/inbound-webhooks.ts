@@ -3,7 +3,6 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ExecutionTarget } from '@kontourai/station-contracts/execution-target';
 import { Hono } from 'hono';
 import { RuntimeAuthFailureLimiter } from '../../security/runtime-request-security.js';
-import { CriticalResourcePostureError } from '../../services/infra/resource-posture.js';
 import { InboundWebhookAuthorizationService } from '../../services/webhooks/inbound-webhook-authorization.js';
 import {
   type InboundWebhookAuditReason,
@@ -427,29 +426,7 @@ export function createInboundWebhookRoutes(options: {
         },
         202,
       );
-    } catch (error) {
-      if (
-        error instanceof CriticalResourcePostureError ||
-        (typeof error === 'object' &&
-          error !== null &&
-          ((error as { code?: unknown }).code === 'resource_posture_critical' ||
-            (error as { code?: unknown }).code === 'resource_posture_deferred'))
-      ) {
-        recordOutcome('policy_unavailable');
-        return c.json(
-          {
-            success: false,
-            code:
-              typeof error === 'object' &&
-              error !== null &&
-              (error as { code?: unknown }).code === 'resource_posture_deferred'
-                ? 'resource_posture_deferred'
-                : 'resource_posture_critical',
-            retryable: true,
-          },
-          503,
-        );
-      }
+    } catch (_error) {
       options.logger.warn('Inbound webhook turn start failed');
       return c.json(
         { success: false, code: 'turn_start_failed', retryable: true },

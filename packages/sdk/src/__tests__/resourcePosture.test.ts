@@ -22,7 +22,7 @@ function mockJsonResponse(payload: unknown, ok = true) {
 // is the exact response envelope `GET /api/system/resource-posture` returns
 // (see `src-server/routes/system/__tests__/resource-posture-routes.test.ts`,
 // which proves the route side of the same shape) and the exact VM the UI
-// component consumes (`src-ui/src/__tests__/ResourcePostureBannerSource.test.tsx`).
+// developer System tab consumes (`src-ui/src/__tests__/SystemTab.test.tsx`).
 describe('resourcePosture SDK domain', () => {
   beforeEach(() => {
     vi.clearAllMocks();
