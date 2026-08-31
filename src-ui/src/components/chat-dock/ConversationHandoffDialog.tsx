@@ -61,8 +61,6 @@ interface PendingHandoffIntent {
   connectionId?: string;
   modelId?: string;
   message: string;
-  resourceAdmissionOverrideToken?: string;
-  resourceAdmissionOverrideExpiresAt?: number;
 }
 
 function pendingStorageKey(apiBase: string, conversationId: string): string {
@@ -91,15 +89,6 @@ function readPendingIntent(
             : {}),
           ...(typeof parsed.modelId === 'string'
             ? { modelId: parsed.modelId }
-            : {}),
-          ...(typeof parsed.resourceAdmissionOverrideToken === 'string' &&
-          typeof parsed.resourceAdmissionOverrideExpiresAt === 'number'
-            ? {
-                resourceAdmissionOverrideToken:
-                  parsed.resourceAdmissionOverrideToken,
-                resourceAdmissionOverrideExpiresAt:
-                  parsed.resourceAdmissionOverrideExpiresAt,
-              }
             : {}),
         }
       : null;
@@ -173,41 +162,17 @@ export function ConversationHandoffDialog({
     restoredIntent?.message ?? initialMessage,
   );
   const [state, setState] = useState<
-    'idle' | 'pending' | 'override-required' | 'indeterminate' | 'error'
-  >(
-    restoredIntent?.resourceAdmissionOverrideToken &&
-      (restoredIntent.resourceAdmissionOverrideExpiresAt ?? 0) > Date.now()
-      ? 'override-required'
-      : restoredIntent
-        ? 'indeterminate'
-        : 'idle',
-  );
-  const [resourceOverride, setResourceOverride] = useState<
-    { token: string; expiresAt: number } | undefined
-  >(
-    restoredIntent?.resourceAdmissionOverrideToken &&
-      (restoredIntent.resourceAdmissionOverrideExpiresAt ?? 0) > Date.now()
-      ? {
-          token: restoredIntent.resourceAdmissionOverrideToken,
-          expiresAt: restoredIntent.resourceAdmissionOverrideExpiresAt!,
-        }
-      : undefined,
-  );
+    'idle' | 'pending' | 'indeterminate' | 'error'
+  >(restoredIntent ? 'indeterminate' : 'idle');
   const [feedback, setFeedback] = useState<string | undefined>(
-    restoredIntent?.resourceAdmissionOverrideToken &&
-      (restoredIntent.resourceAdmissionOverrideExpiresAt ?? 0) > Date.now()
-      ? 'This Station remains very busy. Choose Start anyway to use this one handoff start.'
-      : restoredIntent
-        ? 'A prior handoff has no final response yet. Check its exact marker before retrying.'
-        : undefined,
+    restoredIntent
+      ? 'A prior handoff has no final response yet. Check its exact marker before retrying.'
+      : undefined,
   );
   const idempotencyKey = useRef(
     restoredIntent?.idempotencyKey ?? crypto.randomUUID(),
   );
-  const mutationLocked =
-    state === 'pending' ||
-    state === 'override-required' ||
-    state === 'indeterminate';
+  const mutationLocked = state === 'pending' || state === 'indeterminate';
   const closeLocked = state === 'pending';
   const retryEligible = Boolean(
     target &&
@@ -251,12 +216,6 @@ export function ConversationHandoffDialog({
         ? { connectionId: target.execution.agentConnectionId }
         : {}),
       ...(modelId ? { modelId } : {}),
-      ...(resourceOverride && resourceOverride.expiresAt > Date.now()
-        ? {
-            resourceAdmissionOverrideToken: resourceOverride.token,
-            resourceAdmissionOverrideExpiresAt: resourceOverride.expiresAt,
-          }
-        : {}),
     };
     try {
       sessionStorage.setItem(
@@ -294,11 +253,6 @@ export function ConversationHandoffDialog({
               },
               message: message.trim(),
               clientTurnId,
-              ...(resourceOverride && resourceOverride.expiresAt > Date.now()
-                ? {
-                    resourceAdmissionOverrideToken: resourceOverride.token,
-                  }
-                : {}),
             },
           );
           clearPendingIntent(apiBase, conversationId);
@@ -318,47 +272,6 @@ export function ConversationHandoffDialog({
         );
       }
     } catch (error) {
-      const code =
-        typeof error === 'object' && error !== null
-          ? (error as { code?: unknown }).code
-          : undefined;
-      const override =
-        typeof error === 'object' && error !== null
-          ? (
-              error as {
-                override?: { token?: unknown; expiresAt?: unknown };
-              }
-            ).override
-          : undefined;
-      if (
-        code === 'resource_posture_override_required' &&
-        typeof override?.token === 'string' &&
-        typeof override.expiresAt === 'number'
-      ) {
-        const nextOverride = {
-          token: override.token,
-          expiresAt: override.expiresAt,
-        };
-        setResourceOverride(nextOverride);
-        setState('override-required');
-        setFeedback(
-          'This Station remains very busy. Choose Start anyway to use this one handoff start.',
-        );
-        try {
-          sessionStorage.setItem(
-            pendingStorageKey(apiBase, conversationId),
-            JSON.stringify({
-              ...intent,
-              resourceAdmissionOverrideToken: nextOverride.token,
-              resourceAdmissionOverrideExpiresAt: nextOverride.expiresAt,
-            }),
-          );
-        } catch {
-          // The retained idempotency intent already exists. An unavailable
-          // token persistence path remains safely observable via Check status.
-        }
-        return;
-      }
       const status =
         typeof error === 'object' && error !== null
           ? (error as { status?: unknown }).status
@@ -582,11 +495,9 @@ export function ConversationHandoffDialog({
             >
               {state === 'pending'
                 ? 'Continuing…'
-                : state === 'override-required'
-                  ? 'Start anyway'
-                  : state === 'indeterminate'
-                    ? 'Retry safely'
-                    : `Continue with ${targetName}`}
+                : state === 'indeterminate'
+                  ? 'Retry safely'
+                  : `Continue with ${targetName}`}
             </button>
           </div>
         </div>

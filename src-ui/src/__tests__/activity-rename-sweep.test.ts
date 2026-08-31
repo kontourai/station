@@ -7,6 +7,7 @@ import {
   resolveViewFromPath,
 } from '../app-shell/routing';
 import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
+import { resolveClientOriginActor } from '../utils/clientOrigin';
 
 /**
  * archive#3280: Activity owns the canonical `activity` identity and
@@ -108,4 +109,64 @@ describe('Activity rename sweep', () => {
       }
     },
   );
+});
+
+describe('Activity client-origin actor display (#951 step 2)', () => {
+  test('resolves a device id against the current name without retaining a stale copy', () => {
+    const actor = { kind: 'device' as const, deviceId: 'device-1' };
+
+    expect(
+      resolveClientOriginActor(actor, [
+        { id: 'device-1', name: 'Brian’s Pixel' },
+      ]),
+    ).toEqual({
+      kind: 'device',
+      deviceId: 'device-1',
+      name: 'Brian’s Pixel',
+      label: 'Brian’s Pixel',
+    });
+    expect(
+      resolveClientOriginActor(actor, [
+        { id: 'device-1', name: 'Travel phone' },
+      ]),
+    ).toEqual({
+      kind: 'device',
+      deviceId: 'device-1',
+      name: 'Travel phone',
+      label: 'Travel phone',
+    });
+  });
+
+  test('keeps an unmatched device visible with its honest opaque id', () => {
+    expect(
+      resolveClientOriginActor(
+        { kind: 'device', deviceId: 'missing-device' },
+        [],
+      ),
+    ).toEqual({
+      kind: 'device',
+      deviceId: 'missing-device',
+      name: null,
+      label: 'Unknown device (missing-device)',
+    });
+  });
+
+  test.each([
+    ['operator', 'Operator'],
+    ['internal', 'Station'],
+    ['unknown', 'Unknown origin'],
+  ] as const)('treats %s as the distinct %s category', (kind, label) => {
+    expect(resolveClientOriginActor({ kind }, [])).toEqual({
+      kind,
+      name: null,
+      label,
+    });
+  });
+
+  test('does not present unknown as a named actor', () => {
+    expect(resolveClientOriginActor({ kind: 'unknown' }, [])).toMatchObject({
+      kind: 'unknown',
+      name: null,
+    });
+  });
 });

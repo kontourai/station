@@ -579,6 +579,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // cascade-resolved row heights (the loading skeleton row vs. the real item
   // row it stands in for).
   'src-ui/src/__tests__/SplitPaneLayout.skeleton-geometry.test.tsx',
+  // Exercises the release-cohort CLI through real Node subprocesses so its
+  // externally persisted receipt boundary is observable end-to-end.
+  'scripts/__tests__/release-cohort.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

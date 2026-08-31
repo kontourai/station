@@ -1,5 +1,9 @@
 name: Stage Station release
 
+# Preview and stable tags share one preflight-bound source. The reusable
+# full-regression job must succeed on that exact SHA before any platform or
+# container producer is eligible to run.
+
 on:
   push:
     tags: ['v*']
@@ -19,6 +23,8 @@ jobs:
       tag: ${{ steps.source.outputs.tag }}
       version: ${{ steps.source.outputs.version }}
       channel: ${{ steps.source.outputs.channel }}
+      desktop_updater_tag: ${{ steps.source.outputs.desktop_updater_tag }}
+      desktop_updater_endpoint: ${{ steps.source.outputs.desktop_updater_endpoint }}
       beta_desktop_config: ${{ steps.source.outputs.beta_desktop_config }}
       android_package: ${{ steps.source.outputs.android_package }}
       android_product_name: ${{ steps.source.outputs.android_product_name }}
@@ -37,6 +43,7 @@ jobs:
         run: |
           [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-preview\.([1-9][0-9]*))?$ ]]
           release_version="${RELEASE_TAG#v}"
+          desktop_updater_tag=$(node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --print-desktop-updater-tag)
           if [[ "$RELEASE_TAG" == *-preview.* ]]; then
             release_channel=preview
             beta_desktop_config=src-desktop/tauri.beta.conf.json
@@ -65,6 +72,8 @@ jobs:
             echo "tag=$RELEASE_TAG"
             echo "version=$release_version"
             echo "channel=$release_channel"
+            echo "desktop_updater_tag=$desktop_updater_tag"
+            echo "desktop_updater_endpoint=https://github.com/${GITHUB_REPOSITORY}/releases/download/${desktop_updater_tag}/latest.json"
             echo "beta_desktop_config=$beta_desktop_config"
             echo "android_package=$android_package"
             echo "android_product_name=$android_product_name"
@@ -74,16 +83,20 @@ jobs:
             echo "created_at=$created_at"
           } >> "$GITHUB_OUTPUT"
 
-  # Every desktop job below (macOS/Windows/Linux) writes its tag-bound
-  # updater overlay via `native-release-config.mjs --updater-public-key-file`,
-  # which supplies the signing pubkey ONLY — no endpoint. The desktop
-  # updater runtime (#575) registers `tauri-plugin-updater` only when both a
-  # pubkey AND a non-empty endpoints list are present, so every stable and
-  # beta build shipped from this workflow carries the plugin unregistered:
-  # self-update is inert on those channels until this workflow's overlay
-  # also supplies an endpoint. Nightly already ships both (nightly.yml).
+  full-regression:
+    name: Tagged release exact-SHA full regression
+    needs: [preflight]
+    uses: ./.github/workflows/full-regression.yml
+    with:
+      source_sha: ${{ needs.preflight.outputs.sha }}
+
+  # Every desktop job below (macOS/Windows/Linux) receives the endpoint
+  # selected once by preflight. The protected publish workflow advances that
+  # rolling channel only after the tag-bound release and its signed updater
+  # artifacts are public.
   desktop-macos:
-    needs: preflight
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -141,7 +154,7 @@ jobs:
             test -n "${!name}" || { echo "Missing required protected secret: $name" >&2; exit 1; }
           done
           printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$RUNNER_TEMP/station-updater.pub"
-          node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub"
+          node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub" --updater-endpoint "${{ needs.preflight.outputs.desktop_updater_endpoint }}"
       - name: Import macOS Developer ID certificate
         env:
           APPLE_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 }}
@@ -204,7 +217,8 @@ jobs:
         with: { name: "${{ matrix.artifact }}", path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   desktop-windows:
-    needs: preflight
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: windows-latest
     environment: native-release
     permissions:
@@ -237,7 +251,7 @@ jobs:
             test -n "${!name}" || { echo "Missing required protected secret: $name" >&2; exit 1; }
           done
           printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$RUNNER_TEMP/station-updater.pub"
-          node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub"
+          node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub" --updater-endpoint "${{ needs.preflight.outputs.desktop_updater_endpoint }}"
       - name: Import Windows Authenticode certificate
         shell: pwsh
         env:
@@ -278,7 +292,8 @@ jobs:
         with: { name: station-desktop-windows-x86_64, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   desktop-linux:
-    needs: preflight
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-22.04
     environment: native-release
     permissions:
@@ -310,7 +325,7 @@ jobs:
           done
           printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$RUNNER_TEMP/station-updater.pub"
           node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.version.conf.json"
-          node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub"
+          node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub" --updater-endpoint "${{ needs.preflight.outputs.desktop_updater_endpoint }}"
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
         with:
           args: --target x86_64-unknown-linux-gnu --bundles deb,rpm ${{ needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config) }} --config ${{ runner.temp }}/tauri.version.conf.json
@@ -338,7 +353,8 @@ jobs:
         with: { name: station-desktop-linux-x86_64, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   portable:
-    needs: preflight
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -356,7 +372,8 @@ jobs:
         with: { name: station-portable, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
   android:
-    needs: preflight
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-latest
     environment: native-release
     permissions:
@@ -550,8 +567,8 @@ jobs:
           track: internal
           status: completed
   ios-simulator:
-    needs: preflight
-    if: needs.preflight.outputs.channel == 'stable'
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' && needs.preflight.outputs.channel == 'stable' }}
     runs-on: macos-15
     permissions:
       contents: read
@@ -592,8 +609,8 @@ jobs:
   ios-device:
     # Preview/Beta iOS is NOT_VERIFIED: Station has no separately signed Beta
     # iOS identity, so this stable-only lane must not imply channel parity.
-    needs: preflight
-    if: needs.preflight.outputs.channel == 'stable'
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' && needs.preflight.outputs.channel == 'stable' }}
     runs-on: macos-15
     environment: native-release
     permissions:
@@ -750,7 +767,8 @@ jobs:
           retention-days: 30
 
   container:
-    needs: preflight
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

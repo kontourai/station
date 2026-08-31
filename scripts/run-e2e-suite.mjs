@@ -1676,7 +1676,6 @@ export function suiteStationE2EEnv(suite) {
   if (suite === 'starter-clean-install') {
     return {
       STATION_E2E_FIRST_RUN: '1',
-      STATION_E2E_RESOURCE_POSTURE_HEALTHY: '1',
       STATION_TELEMETRY_ENABLED: 'false',
       STATION_TELEMETRY_ENDPOINT: '',
       STATION_USAGE_TELEMETRY_KEY: '',

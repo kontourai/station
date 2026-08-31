@@ -44,11 +44,11 @@ import {
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
-import { streamSSE } from 'hono/streaming';
 import { SSE_KEEPALIVE_INTERVAL_MS } from '../../constants.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { ClientConnectionLease } from '../../services/ssh/client-connection-presence.js';
 import { sseOps } from '../../telemetry/metrics.js';
+import { streamSSE } from '../sse-response.js';
 
 export interface EventRouteDeps {
   eventBus: EventBus;

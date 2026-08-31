@@ -44,7 +44,6 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { type Context, Hono } from 'hono';
-import { streamSSE } from 'hono/streaming';
 import { z } from 'zod/v3';
 import { SESSION_LIFECYCLE_STATES } from '../../../packages/contracts/src/session-lifecycle.js';
 import { CHAT_INPUT_MAX_CHARS } from '../../../src-shared/chat-input-limits.js';
@@ -106,6 +105,7 @@ import {
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
+import { streamSSE } from '../sse-response.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
@@ -220,26 +220,6 @@ function errorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
   const code = (error as { code?: unknown }).code;
   return typeof code === 'string' ? code : undefined;
-}
-
-function resourceAdmissionOverride(error: unknown):
-  | {
-      token: string;
-      expiresAt: number;
-    }
-  | undefined {
-  if (typeof error !== 'object' || error === null) return undefined;
-  const value = (error as { resourceAdmissionOverride?: unknown })
-    .resourceAdmissionOverride;
-  if (typeof value !== 'object' || value === null) return undefined;
-  const token = (value as { token?: unknown }).token;
-  const expiresAt = (value as { expiresAt?: unknown }).expiresAt;
-  return typeof token === 'string' &&
-    token.length > 0 &&
-    typeof expiresAt === 'number' &&
-    Number.isFinite(expiresAt)
-    ? { token, expiresAt }
-    : undefined;
 }
 
 function isForegroundIndeterminateShape(error: unknown): boolean {
@@ -448,7 +428,6 @@ export const foregroundMessageObjectSchema = z.object({
     .max(CHAT_ATTACHMENT_MAX_COUNT)
     .optional(),
   clientTurnId: z.string().min(1).max(200).optional(),
-  resourceAdmissionOverrideToken: z.string().min(1).max(128).optional(),
 });
 
 const agentDelegationContextSchema = z.object({
@@ -1202,15 +1181,13 @@ export function createOrchestrationRoutes(
       const unreachableWorkspace =
         error instanceof ProjectWorktreeDirectoryError &&
         error.reason === 'unreachable';
-      const override = resourceAdmissionOverride(error);
       return c.json(
         {
           success: false,
           error: errorMessage(error),
           ...(errorCode(error) ? { code: errorCode(error) } : {}),
-          ...(override ? { resourceAdmissionOverride: override } : {}),
         },
-        unreachableWorkspace ? 503 : override ? 409 : 400,
+        unreachableWorkspace ? 503 : 400,
       );
     }
   };
@@ -1297,13 +1274,11 @@ export function createOrchestrationRoutes(
             409,
           );
         }
-        const override = resourceAdmissionOverride(error);
         return c.json(
           {
             success: false,
             error: errorMessage(error),
             ...(errorCode(error) ? { code: errorCode(error) } : {}),
-            ...(override ? { resourceAdmissionOverride: override } : {}),
           },
           409,
         );
@@ -1497,15 +1472,13 @@ export function createOrchestrationRoutes(
             409,
           );
         }
-        const override = resourceAdmissionOverride(error);
         return c.json(
           {
             success: false,
             error: errorMessage(error),
             ...(errorCode(error) ? { code: errorCode(error) } : {}),
-            ...(override ? { resourceAdmissionOverride: override } : {}),
           },
-          override ? 409 : 400,
+          400,
         );
       }
     },
@@ -1527,12 +1500,10 @@ export function createOrchestrationRoutes(
       });
       return c.json({ success: true, data });
     } catch (error) {
-      const refusal = resourcePostureRefusal(error);
       return c.json(
         {
           success: false,
           error: errorMessage(error),
-          ...(refusal ? { code: refusal.code, retryable: true } : {}),
         },
         400,
       );
@@ -3214,17 +3185,4 @@ export function createOrchestrationRoutes(
   });
 
   return app;
-}
-
-function resourcePostureRefusal(
-  error: unknown,
-):
-  | { code: 'resource_posture_critical' | 'resource_posture_deferred' }
-  | undefined {
-  if (typeof error !== 'object' || error === null) return undefined;
-  const code = (error as { code?: unknown }).code;
-  return code === 'resource_posture_critical' ||
-    code === 'resource_posture_deferred'
-    ? { code }
-    : undefined;
 }

@@ -1,5 +1,66 @@
 [
   {
+    "timestampUtc": "2026-08-30T19:57:10Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.2-nightly.2433",
+    "sha": "f1073fa4cefe4f46a58409e7cfd493f2d6d29228",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/33330909248",
+    "artifacts": [
+      "github-release:nightly-desktop (station-nightly-desktop-macos-aarch64.dmg, .app.tar.gz, latest.json)"
+    ],
+    "gateResult": "nightly test-gate success on f1073fa4cefe4f46a58409e7cfd493f2d6d29228 (station#4539)",
+    "notes": null,
+    "changelog": {
+      "previousSha": "1c235104ce09cfbc88cf42b9a529407c7949944e",
+      "groups": {
+        "feat": [
+          "[#974](https://github.com/kontourai/station/pull/974) feat(ci): nightly src-ui sweep to catch untouched-consumer breakage"
+        ],
+        "fix": [
+          "[#976](https://github.com/kontourai/station/pull/976) fix(basis): keep compact inventory readable",
+          "[#974](https://github.com/kontourai/station/pull/974) fix(scheduler): use plain DOM assertions in AgentPicker test",
+          "[#974](https://github.com/kontourai/station/pull/974) fix(chat): stop-initiated fetch abort no longer renders as Failed",
+          "[#974](https://github.com/kontourai/station/pull/974) fix(chat): drop Claude Stop rethrow and preserve interrupt races (#898, #921)",
+          "[#974](https://github.com/kontourai/station/pull/974) fix(ui): surface critical chrome over a maximized dock",
+          "[#974](https://github.com/kontourai/station/pull/974) fix(ui): keep New Project starter content clear of actions",
+          "[#967](https://github.com/kontourai/station/pull/967) fix(usage): the drop reporter is a required dep, so omitting it cannot compile",
+          "[#974](https://github.com/kontourai/station/pull/974) fix(scheduler): retain bound agent identity",
+          "[#974](https://github.com/kontourai/station/pull/974) fix(composer): avoid reconciling active uploads"
+        ],
+        "ci": [
+          "[#966](https://github.com/kontourai/station/pull/966) ci: prepare required checks for merge queue"
+        ],
+        "docs": [
+          "[#966](https://github.com/kontourai/station/pull/966) docs: align merge queue check timeout"
+        ],
+        "other": [
+          "[#969](https://github.com/kontourai/station/pull/969) chore(ci): retire local stale-base refusal",
+          "[#974](https://github.com/kontourai/station/pull/974) chore(ui): set entry-bundle ceilings to the merged train's measured actuals",
+          "[#965](https://github.com/kontourai/station/pull/965) test(shared): budget plugin build containment checks",
+          "[#965](https://github.com/kontourai/station/pull/965) test(verification): budget product laws for Vitest 4.1.11",
+          "[#965](https://github.com/kontourai/station/pull/965) test(verification): budget expanded process-heavy corpus",
+          "[#965](https://github.com/kontourai/station/pull/965) test(connect): cover host-unavailable profile copy",
+          "[#965](https://github.com/kontourai/station/pull/965) test(plugins): include remote profile isolation input",
+          "[#965](https://github.com/kontourai/station/pull/965) test(installer): bound hostile-path lifecycle harness",
+          "[#965](https://github.com/kontourai/station/pull/965) test(verification): register deadline abort before fixture delay",
+          "[#965](https://github.com/kontourai/station/pull/965) test: repair process-heavy fixture contracts",
+          "[#965](https://github.com/kontourai/station/pull/965) test(ci): track gallery capacity jobs in workflow corpus",
+          "[#965](https://github.com/kontourai/station/pull/965) test(verification): budget full phases for allowed contention",
+          "[#965](https://github.com/kontourai/station/pull/965) test(ui): keep one peer credential mock after merge",
+          "[#965](https://github.com/kontourai/station/pull/965) test(orchestration): bound synthetic population harness time",
+          "[#965](https://github.com/kontourai/station/pull/965) test(ui): bound terminal marker lazy queries",
+          "[#965](https://github.com/kontourai/station/pull/965) test(ui): bound lazy transcript assertions under corpus load",
+          "[#965](https://github.com/kontourai/station/pull/965) test(orchestration): bound smoke classification without a one-second race",
+          "[#965](https://github.com/kontourai/station/pull/965) test: align process-heavy fixtures with runtime contracts",
+          "[#965](https://github.com/kontourai/station/pull/965) test(ui): make orchestration fixtures contract-valid",
+          "[#965](https://github.com/kontourai/station/pull/965) test: repair current-main full regression drift"
+        ]
+      },
+      "note": null,
+      "commitCount": 32
+    }
+  },
+  {
     "timestampUtc": "2026-08-30T19:53:22Z",
     "channel": "nightly-android",
     "version": "0.1.2-nightly.2433",

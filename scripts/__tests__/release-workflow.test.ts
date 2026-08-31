@@ -5,6 +5,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -140,13 +141,17 @@ type WorkflowStep = {
 };
 type WorkflowJob = {
   steps?: WorkflowStep[];
+  if?: string;
   needs?: string | string[];
   environment?: string;
   permissions?: Record<string, string>;
   env?: Record<string, unknown>;
+  outputs?: Record<string, unknown>;
 };
 type Workflow = {
   on?: unknown;
+  concurrency?: { group?: string; 'cancel-in-progress'?: boolean };
+  permissions?: Record<string, string>;
   jobs?: Record<string, WorkflowJob>;
 };
 
@@ -206,6 +211,231 @@ function githubExpression(expression: string): string {
 }
 
 describe('native release workflow topology', () => {
+  it('requires an updater endpoint beside every updater public key in every workflow invocation', () => {
+    const workflowDirectory = resolve(root, '.github/workflows');
+    let publicKeyInvocations = 0;
+    for (const filename of readdirSync(workflowDirectory).filter((name) =>
+      /\.ya?ml$/.test(name),
+    )) {
+      const lines = readFileSync(
+        resolve(workflowDirectory, filename),
+        'utf8',
+      ).split('\n');
+      for (let index = 0; index < lines.length; index += 1) {
+        if (!lines[index].includes('scripts/lib/native-release-config.mjs'))
+          continue;
+        let invocation = lines[index].trim();
+        while (invocation.endsWith('\\')) {
+          index += 1;
+          invocation += ` ${lines[index]?.trim() ?? ''}`;
+        }
+        if (!invocation.includes('--updater-public-key-file')) continue;
+        publicKeyInvocations += 1;
+        expect(invocation, filename).toContain('--updater-endpoint');
+      }
+    }
+    expect(publicKeyInvocations).toBeGreaterThan(0);
+  });
+
+  it('binds every desktop build to the preflight-selected rolling updater channel', () => {
+    const preflight = workflowJob(release, 'preflight');
+    const source = namedStep(
+      preflight,
+      'Bind tag, package version, and source commit',
+    );
+    const sharedMapping =
+      'node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --print-desktop-updater-tag';
+    expect(source.run).toContain(`desktop_updater_tag=$(${sharedMapping})`);
+    expect(source.run).toContain(
+      'desktop_updater_endpoint=https://github.com/$' +
+        '{GITHUB_REPOSITORY}/releases/download/$' +
+        '{desktop_updater_tag}/latest.json',
+    );
+
+    for (const jobName of [
+      'desktop-macos',
+      'desktop-windows',
+      'desktop-linux',
+    ]) {
+      const config = namedStep(
+        workflowJob(release, jobName),
+        'Fail closed and create tag-bound updater configuration',
+      );
+      expect(config.run).toContain('--updater-public-key-file');
+      expect(config.run).toContain(
+        `--updater-endpoint "${githubExpression('needs.preflight.outputs.desktop_updater_endpoint')}"`,
+      );
+    }
+
+    const publishResolve = namedStep(
+      workflowJob(publish, 'resolve'),
+      'Resolve tag to one immutable commit',
+    );
+    expect(publishResolve.run).toContain(
+      'desktop_updater_tag=$(node release-policy/scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --print-desktop-updater-tag)',
+    );
+  });
+
+  it('publishes only produced updater artifacts before the rolling manifest and verifies the remote result', () => {
+    const promotion = workflowJob(publish, 'publish');
+    const assembly = namedStep(
+      promotion,
+      'Assemble and validate the rolling desktop updater channel',
+    );
+    const publishStep = namedStep(
+      promotion,
+      'Publish and verify the rolling desktop updater channel',
+    );
+    expect(promotion.env?.DESKTOP_UPDATER_TAG).toBe(
+      githubExpression('needs.resolve.outputs.desktop_updater_tag'),
+    );
+    expectStepOrder(promotion, [
+      'Assemble and validate the rolling desktop updater channel',
+      'Publish release and compensate to draft until feed verifies',
+      'Publish and verify the rolling desktop updater channel',
+      'Record the stable release in the deploy ledger',
+    ]);
+
+    for (const platform of [
+      'darwin-aarch64',
+      'darwin-x86_64',
+      'windows-x86_64',
+      'linux-x86_64',
+    ])
+      expect(assembly.run).toContain(`--platform ${platform}`);
+    expect(assembly.run).not.toMatch(
+      /--platform (?:windows|linux)-(?:aarch64|arm64)/,
+    );
+    expect(assembly.run).toContain('.app.tar.gz.sig');
+    expect(assembly.run).toContain('.msi.zip.sig');
+    expect(assembly.run).toContain('.AppImage.tar.gz.sig');
+    expect(assembly.run).toContain('--asset-file');
+    expect(assembly.run).toContain('--assert-not-regressing');
+    expect(assembly.run).toMatch(
+      /if \[\[ "\$ALLOW_UPDATER_POINTER_REGRESSION" == true \]\]; then\s+pointer_guard\+=\(--allow-regression\)\s+fi/,
+    );
+    expect(assembly.run.match(/--allow-regression/g)).toHaveLength(1);
+    expect(assembly.run).toContain('mkdir -p updater-channel-assets');
+    expect(assembly.run).toContain(
+      'policy_script=release-policy/scripts/lib/tauri-updater-manifest.mjs',
+    );
+    expect(assembly.run).not.toContain(
+      'node scripts/lib/tauri-updater-manifest.mjs',
+    );
+    expect(assembly.run).toContain('--verify');
+    expect(publishStep.run).toContain('--verify');
+    expect(publishStep.run).not.toContain(
+      'node scripts/lib/tauri-updater-manifest.mjs',
+    );
+    expect(publishStep.run).toContain('cmp updater-channel-assets/latest.json');
+    expect(publishStep.run).toContain('compensate_pointer');
+    expect(publishStep.run).toContain('updater-channel-current/latest.json');
+    expect(publishStep.run).toContain('gh release delete-asset');
+    // The compensation window is the highest-risk sequence in the release
+    // path, so pin it as an ordered CHAIN of line numbers rather than a pair
+    // of `indexOf` offsets. `indexOf` returns -1 when a needle is absent and
+    // -1 is less than any real offset, so a two-term `toBeLessThan` passes
+    // when `trap - ERR` is DELETED — the exact bug it was written to catch —
+    // and also when it is hoisted above `--verify`, which is strictly worse
+    // (the pointer advances to an unverified manifest with no compensation).
+    // Requiring every step to be found makes an absent line fail closed.
+    const publishLines = publishStep.run.split('\n');
+    const lineIndex = (needle: string) => {
+      const index = publishLines.findIndex((line) => line.includes(needle));
+      expect(index, `missing from the publish step: ${needle}`).toBeGreaterThan(
+        -1,
+      );
+      return index;
+    };
+    const armed = lineIndex('trap compensate_pointer ERR');
+    const archives = lineIndex('"${updater_args[@]}"');
+    const flagged = lineIndex('pointer_mutation_started=true');
+    const pointerWrite = lineIndex('updater-channel-assets/latest.json');
+    const verified = lineIndex('--verify');
+    const disarmed = lineIndex('trap - ERR');
+    const notes = lineIndex('gh release edit');
+    // Arm before any upload; set the flag before the clobbering pointer write
+    // so a death mid-`--clobber` is still compensable; verify before
+    // disarming; and leave only the cosmetic notes edit outside the window.
+    expect(armed).toBeLessThan(archives);
+    expect(archives).toBeLessThan(flagged);
+    expect(flagged).toBeLessThan(pointerWrite);
+    expect(pointerWrite).toBeLessThan(verified);
+    expect(verified).toBeLessThan(disarmed);
+    expect(disarmed).toBeLessThan(notes);
+
+    const uploadLines = publishStep.run
+      .split('\n')
+      .filter(
+        (line) =>
+          line.includes('gh release upload') &&
+          !line.includes('updater-channel-current'),
+      );
+    expect(uploadLines).toHaveLength(2);
+    expect(uploadLines[0]).toContain('"$' + '{updater_args[@]}"');
+    expect(uploadLines[0]).not.toContain('latest.json');
+    expect(uploadLines[1]).toContain('updater-channel-assets/latest.json');
+  });
+
+  it('probes the rolling release before public mutation and serializes all channel writers', () => {
+    const parsed = workflow(publish);
+    const resolve = workflowJob(publish, 'resolve');
+    const promotion = workflowJob(publish, 'publish');
+    const source = namedStep(resolve, 'Resolve tag to one immutable commit');
+    expect(parsed.permissions).toEqual({ contents: 'read' });
+    expect(source.run).toContain('gh release view "$desktop_updater_tag"');
+    expect(source.run).not.toContain('2>/dev/null || true');
+    expect(source.env?.ALLOW_PUBLISHED_POINTER_REPAIR).toBe(
+      githubExpression('inputs.allow_published_pointer_repair'),
+    );
+    expect(source.run).toMatch(
+      /tag_release_state" == false && "\$ALLOW_PUBLISHED_POINTER_REPAIR" == true/,
+    );
+    expect(source.run).toContain('ALLOW_EMPTY_UPDATER_CHANNEL_BOOTSTRAP');
+    expect(source.run).toContain('has assets but no latest.json');
+    expect(source.run).toContain('pointer_repair_only=true');
+    expect(resolve.outputs?.pointer_repair_only).toBe(
+      githubExpression('steps.source.outputs.pointer_repair_only'),
+    );
+    const pointerRepairGuard = githubExpression(
+      "needs.resolve.outputs.pointer_repair_only != 'true'",
+    );
+    for (const stepName of [
+      'Authenticate to GHCR with the ephemeral workflow token',
+      'Promote only the recorded immutable GHCR digest',
+      'Publish release and compensate to draft until feed verifies',
+      'Mint the ledger push token',
+      'Record the stable release in the deploy ledger',
+    ])
+      expect(namedStep(promotion, stepName).if).toBe(pointerRepairGuard);
+    expect(
+      namedStep(
+        promotion,
+        'Publish and verify the rolling desktop updater channel',
+      ).if,
+    ).toBeUndefined();
+    expect(promotion.needs).toBe('resolve');
+    expect(parsed.concurrency).toEqual({
+      group: 'station-release-publish',
+      'cancel-in-progress': false,
+    });
+    for (const jobName of ['resolve', 'publish']) {
+      const checkout = namedStep(
+        workflowJob(publish, jobName),
+        'Check out default-branch release policy',
+      );
+      expect(checkout.with).toMatchObject({
+        ref: githubExpression('github.event.repository.default_branch'),
+        path: 'release-policy',
+      });
+    }
+    expectStepOrder(promotion, [
+      'Assemble and validate the rolling desktop updater channel',
+      'Promote only the recorded immutable GHCR digest',
+      'Publish release and compensate to draft until feed verifies',
+    ]);
+  });
+
   it('does not expose write or provider credentials to setup and install steps', () => {
     for (const [file, jobs] of [
       [release, ['assemble-draft']],
@@ -322,7 +552,7 @@ describe('native release workflow topology', () => {
     const container = workflowJob(release, 'container');
     const assemble = workflowJob(release, 'assemble-draft');
     const promotion = workflowJob(publish, 'publish');
-    expect(container.needs).toBe('preflight');
+    expect(container.needs).toEqual(['preflight', 'full-regression']);
     expect(container.permissions).toMatchObject({
       attestations: 'write',
       'id-token': 'write',
@@ -427,6 +657,7 @@ describe('native release workflow topology', () => {
     expectStepOrder(promotion, [
       'Download and revalidate every staged release asset',
       'Verify GitHub provenance for every downloaded asset',
+      'Assemble and validate the rolling desktop updater channel',
       'Promote only the recorded immutable GHCR digest',
     ]);
     const installIndex = promotion.steps?.findIndex(
@@ -607,11 +838,16 @@ describe('native release workflow topology', () => {
     const effectiveReleaseConfig = createNativeReleaseConfig({
       tag: 'v0.1.0',
       updaterPublicKey: 'test-public-key',
+      updaterEndpoint:
+        'https://github.com/kontourai/station/releases/download/stable-desktop/latest.json',
     });
     expect(effectiveReleaseConfig.bundle?.createUpdaterArtifacts).toBe(
       NATIVE_UPDATER_ARTIFACT_MODE,
     );
     expect(NATIVE_UPDATER_ARTIFACT_MODE).toBe('v1Compatible');
+    expect(effectiveReleaseConfig.plugins?.updater?.endpoints).toEqual([
+      'https://github.com/kontourai/station/releases/download/stable-desktop/latest.json',
+    ]);
     expect(macosArtifacts).toContain(
       'Tauri updater signer did not produce a signature',
     );
@@ -696,9 +932,7 @@ describe('native release workflow topology', () => {
     expect(release).toContain('station-container-release.json');
     expect(publish).toContain('test "$resolved" = "$digest"');
     expect(publish).toContain('"$image@$digest"');
-    expect(publish).toContain(
-      'group: station-release-publish-$' + '{{ needs.resolve.outputs.sha }}',
-    );
+    expect(publish).toContain('group: station-release-publish');
   });
 
   it('binds every native build to the authoritative package version', () => {
@@ -723,9 +957,7 @@ describe('native release workflow topology', () => {
     expect(release).toContain(
       `packageName: ${githubExpression('needs.preflight.outputs.android_package')}`,
     );
-    expect(release).toContain(
-      "if: needs.preflight.outputs.channel == 'stable'",
-    );
+    expect(release).toContain("needs.preflight.outputs.channel == 'stable'");
     expect(release).not.toContain(
       'ios build --export-method app-store-connect --channel-identity',
     );

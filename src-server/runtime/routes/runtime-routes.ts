@@ -512,7 +512,7 @@ export interface ConfigureRuntimeRoutesContext {
   taskGraphService: TaskGraphService;
   taskDispatcher: TaskDispatcher;
   orchestrationService: OrchestrationService;
-  /** The same controller used by orchestration, Scheduler, and status. */
+  /** Diagnostics sampler and orchestration's independent engine-start lease. */
   resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   /** Runtime-owned durable operation authority shared with fleet dispatch. */
   actionOperations: ActionOperationService;

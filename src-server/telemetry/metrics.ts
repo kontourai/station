@@ -1443,17 +1443,16 @@ export const schedulerJobDuration = meter.createHistogram(
     unit: 'ms',
   },
 );
+export const schedulerConcurrencyDeferrals = meter.createCounter(
+  'station.scheduler.concurrency.deferrals',
+  {
+    description:
+      'Automatic scheduler invocation-ceiling lifecycle outcomes by disposition',
+  },
+);
 export const schedulerHealthy = meter.createObservableGauge(
   'station.scheduler.healthy',
   { description: 'Scheduler heartbeat health (1=healthy, 0=unhealthy)' },
-);
-
-/** Runtime admissions by observed resource posture, never caller configuration. */
-export const resourcePostureDecisions = meter.createCounter(
-  'station.resource_posture.decisions',
-  {
-    description: 'Engine and scheduler admission decisions by observed posture',
-  },
 );
 
 // ── MCP lifecycle ──

@@ -12,6 +12,8 @@ import { createContext, useContext } from 'react';
  * request that nobody can answer.
  */
 export interface WorkspacePaneDockAction {
+  // Compatibility placement API retained while Workspace Panes migrate to
+  // shell-owned region commands. // #928 step 4
   /**
    * What the providing host can supply to an occupant. The HOST declares this
    * (it is the one that knows its scope); the action only intersects it with
@@ -113,6 +115,8 @@ export function isAmbientDockOccupant(
   action: WorkspacePaneDockAction | null,
   instance: WorkspacePaneInstance,
 ): boolean {
+  // Surface-side away predicate retained until route placements stop knowing
+  // about shell placement. // #928 step 5
   return action !== null && action.occupantInstanceId === instance.instanceId;
 }
 

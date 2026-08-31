@@ -366,7 +366,7 @@ describe('container source contract', () => {
   });
 
   test('binds release publication and smoke to immutable provenance and cleanup', () => {
-    expect(release).toContain('needs: preflight');
+    expect(release).toContain('needs: [preflight, full-regression]');
     expect(release).toContain(
       'needs: [preflight, desktop-macos, desktop-windows, desktop-linux, portable, android, ios-simulator, ios-device, container]',
     );
@@ -380,9 +380,7 @@ describe('container source contract', () => {
     );
     expect(release).toContain('group: station-release-$' + '{{ github.ref }}');
     expect(release).toContain('station-container-release.json');
-    expect(publishRelease).toContain(
-      'Resolve draft tag to one immutable commit',
-    );
+    expect(publishRelease).toContain('Resolve tag to one immutable commit');
     expect(publishRelease).toContain(
       'Promote only the recorded immutable GHCR digest',
     );

@@ -1,12 +1,9 @@
 import { writeFileSync } from 'node:fs';
+import type { SchedulerEvent } from '@kontourai/station-contracts/scheduler';
 import {
   schedulerJobDuration,
   schedulerJobRuns,
 } from '../../telemetry/metrics.js';
-import {
-  admitScheduledJob,
-  type RuntimeResourcePostureProbe,
-} from '../infra/resource-posture.js';
 import type { NotificationService } from '../notifications/notification-service.js';
 import type {
   ScheduledTurnAdapter,
@@ -33,7 +30,7 @@ export interface SchedulerExecutionDeps {
   receipt: SchedulerDispatchReceipt;
   turnAdapter: ScheduledTurnAdapter;
   notificationService: NotificationService | null;
-  broadcast: (event: Record<string, unknown>) => void;
+  broadcast: (event: SchedulerEvent) => void;
   /**
    * The ledger's durable announcement record, threaded through so a failure
    * announced here is stamped on the run it belongs to. Absent only where a
@@ -50,8 +47,6 @@ export interface SchedulerExecutionDeps {
     info(message: string, meta?: Record<string, unknown>): void;
     warn(message: string, meta?: Record<string, unknown>): void;
   };
-  /** Shared observed-posture gate, checked before receipt invocation starts. */
-  resourcePosture?: RuntimeResourcePostureProbe;
   /** Implementation-private deadline seam for deterministic timeout tests. */
   timeoutMs?: number;
   /** Scheduler shutdown aborts a pending retry/invocation without releasing ownership. */
@@ -117,7 +112,6 @@ function receiptFailureLabel(outcome: ReceiptFailureOutcome): string {
 export async function executeSchedulerJobAttempt({
   job,
   id,
-  manual,
   attempt,
   maxAttempts,
   startedAt,
@@ -127,76 +121,17 @@ export async function executeSchedulerJobAttempt({
   broadcast,
   announcementOutbox,
   logger,
-  resourcePosture,
   timeoutMs = JOB_TIMEOUT,
   signal,
 }: SchedulerExecutionDeps): Promise<SchedulerExecutionResult> {
   const outFile = receipt.outputPath();
-  // Shutdown wins before admission: a stopping scheduler must never sample
-  // host pressure (a probe can cost a 500ms observation window) or authorize
-  // a new invocation on an attempt that is already aborted.
+  // Shutdown wins before invocation authorization.
   if (signal?.aborted) {
     return {
       logId: id,
       outcome: 'not-invoked',
       success: false,
       error: 'Scheduler is stopping',
-      durationSecs: 0,
-    };
-  }
-  // `manual` is durable SchedulerLedger truth, not a request hint. Automatic
-  // occurrences defer under sustained pressure; an explicit Run now keeps
-  // its user intent and proceeds with a warning unless memory protection is
-  // critical.
-  const admission = await admitScheduledJob(resourcePosture, logger, {
-    manual,
-  });
-  if (admission.kind === 'admitted' && admission.warning) {
-    logger?.warn('Manual scheduled job admitted under host pressure', {
-      posture: admission.warning.kind,
-      busy_percent:
-        admission.warning.kind === 'unavailable'
-          ? undefined
-          : admission.warning.busyPercent,
-      smoothed_busy_percent:
-        admission.warning.kind === 'unavailable'
-          ? undefined
-          : admission.warning.smoothedBusyPercent,
-      window_length: admission.warning.windowLength ?? 0,
-    });
-  }
-  if (admission.kind === 'deferred') {
-    const released = receipt.releaseDeferred();
-    if (released.kind === 'applied') {
-      const posture = admission.posture;
-      const outcome = manual ? 'refused' : 'deferred';
-      const error = `Scheduler job ${outcome}: resource posture=${posture.kind}${'busyPercent' in posture ? `, observed busyPercent=${posture.busyPercent}` : ''}`;
-      observe(() =>
-        broadcast({
-          event: manual ? 'job.refused' : 'job.deferred',
-          job: job.name,
-          provider: 'built-in',
-          id,
-          reason: 'resource_posture',
-          posture: posture.kind,
-          ...('busyPercent' in posture
-            ? { busy_percent: posture.busyPercent }
-            : {}),
-        }),
-      );
-      return {
-        logId: id,
-        outcome,
-        success: false,
-        error,
-        durationSecs: 0,
-      };
-    }
-    return {
-      logId: id,
-      outcome: 'indeterminate',
-      success: false,
-      error: `Scheduler deferral receipt is ${receiptOutcomeWord(released)}`,
       durationSecs: 0,
     };
   }
@@ -488,7 +423,7 @@ export async function announceSchedulerJobFailure({
   id: string;
   /** Why it failed. Never empty — every caller derives a specific reason. */
   error: string;
-  broadcast: (event: Record<string, unknown>) => void;
+  broadcast: (event: SchedulerEvent) => void;
   notificationService: NotificationService | null;
   /**
    * The durable record of which runs have been announced. Optional so a test
