@@ -132,11 +132,13 @@ function expectFullDockControls(occupantName: string) {
     'the bottom-dock resize handle must be present regardless of occupant',
   ).not.toBeNull();
   expect(
-    screen.getByLabelText(/^(Maximize|Restore) chat dock$/),
+    screen.getByLabelText(
+      /^(Expand dock region to workspace|Restore dock region size)$/,
+    ),
     'a maximize/restore control must be present regardless of occupant',
   ).toBeTruthy();
   expect(
-    screen.getByLabelText(/^(Expand|Collapse) chat dock$/),
+    screen.getByLabelText(/^(Show|Hide) dock region$/),
     'a collapse/expand control must be present regardless of occupant',
   ).toBeTruthy();
   expect(
@@ -221,7 +223,7 @@ describe('maximize state survives an occupant switch (station#4460)', () => {
       expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
     });
 
-    fireEvent.click(screen.getByLabelText('Maximize chat dock'));
+    fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
     await waitFor(() => {
       expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull();
     });
@@ -244,7 +246,7 @@ describe('maximize state survives an occupant switch (station#4460)', () => {
       document.querySelector('.chat-dock.is-maximized'),
       'the dock must remain maximized across the occupant switch',
     ).not.toBeNull();
-    const restoreControl = screen.getByLabelText('Restore chat dock');
+    const restoreControl = screen.getByLabelText('Restore dock region size');
     fireEvent.click(restoreControl);
     await waitFor(() => {
       expect(document.querySelector('.chat-dock.is-maximized')).toBeNull();
@@ -268,7 +270,7 @@ describe('dock-slot geometry is stable across an occupant switch (station#4460)'
     // Commit a height that does not match the device-setting default (320)
     // — the exact scenario a settings-derived fallback would have gotten
     // wrong for a non-chat occupant pre-fix.
-    fireEvent.click(screen.getByLabelText('Maximize chat dock'));
+    fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
     await waitFor(() => {
       expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull();
     });

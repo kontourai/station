@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { HomeActionSection } from '../../components/home/HomeActionSection';
 import { HomeRecentWorkSection } from '../../components/home/HomeRecentWorkSection';
 import type { NavigationView } from '../../types';
@@ -19,16 +18,6 @@ export interface HomeSurfaceProps {
   /** Best safe project continuation, or null when there is nothing to resume. */
   continuation: HomeViewNavigation | null;
   onNavigate: (view: NavigationView) => void;
-  /**
-   * Home has no `PageFrame` (`page-frame-registry.ts` maps `home: null`), so
-   * there is no page-header action cell for `WorkspacePaneDockAction` to
-   * join the way Activity's does (`PageFrameActions`). This is Home's own
-   * top-of-content action slot instead: rendered beside the intro rather
-   * than stacked above it, so it no longer collides with the `Your work`
-   * eyebrow. Optional so a test rendering `HomeSurface`
-   * directly is not forced to supply one.
-   */
-  topAction?: ReactNode;
 }
 
 const ACTIVITY_HEADING_ID = 'home-activity-heading';
@@ -54,7 +43,6 @@ export function HomeSurface({
   model,
   continuation,
   onNavigate,
-  topAction,
 }: HomeSurfaceProps) {
   // Derived ONCE, here, and handed down. `HomeRecentWorkSection` used to
   // derive its own; a second `useHomeWorkLanes` instance carries its own
@@ -74,14 +62,11 @@ export function HomeSurface({
 
   return (
     <>
-      <div className="home-view__top-row">
-        <header className="home-view__intro">
-          <p className="home-view__eyebrow">Your work</p>
-          <h1>What do you want to work on?</h1>
-          <p>Start something focused or continue exactly where you left off.</p>
-        </header>
-        {topAction && <div className="home-view__top-actions">{topAction}</div>}
-      </div>
+      <header className="home-view__intro">
+        <p className="home-view__eyebrow">Your work</p>
+        <h1>What do you want to work on?</h1>
+        <p>Start something focused or continue exactly where you left off.</p>
+      </header>
       <HomeActionSection
         continuation={continuation}
         model={model}
