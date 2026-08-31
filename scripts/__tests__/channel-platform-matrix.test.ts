@@ -153,6 +153,13 @@ describe('cross-platform release channel matrix', () => {
       ).size,
     ).toBe(3);
     expect(digest(icon('development'))).not.toBe(digest(icon('stable')));
+    const iosIcons = ['stable', 'beta', 'nightly'].map((channel) =>
+      resolve(root, matrix[channel].iosIconSource),
+    );
+    expect(iosIcons.every((path) => readFileSync(path).length > 0)).toBe(true);
+    expect(new Set(iosIcons.map(digest)).size).toBe(3);
+    expect(matrix.beta.iosStatus).toContain('source-configured');
+    expect(matrix.nightly.iosStatus).toContain('provider-NOT_VERIFIED');
   });
 
   test('applies each channel identity to main and debug so source-set precedence cannot mask it', () => {
@@ -243,8 +250,10 @@ describe('cross-platform release channel matrix', () => {
 
   test('keeps iOS publication gated until each identifier has signing and store ownership', () => {
     expect(matrix.stable.iosStatus).toBe('release-enabled');
-    for (const channel of ['development', 'beta', 'nightly']) {
-      expect(matrix[channel].iosStatus).toMatch(/^gated:/);
-    }
+    expect(matrix.development.iosStatus).toMatch(/^gated:/);
+    for (const channel of ['beta', 'nightly'])
+      expect(matrix[channel].iosStatus).toMatch(
+        /^source-configured; provider-NOT_VERIFIED/,
+      );
   });
 });
