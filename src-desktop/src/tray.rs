@@ -1229,7 +1229,10 @@ const API_DOCS_CAPABILITY_MINT_PATH: &str =
 /// admit a value large enough to matter.
 const MAX_API_DOCS_CAPABILITY_LEN: usize = 128;
 
-/// Enough for the mint's small JSON object and nothing more.
+/// Enough for the mint's small JSON object. A body larger than this is
+/// REFUSED, not truncated: truncating leaves `{"token":"…"} ` followed by
+/// padding parsing cleanly, so a capped read alone would accept an oversized
+/// response while looking like it had rejected one.
 const MAX_API_DOCS_MINT_RESPONSE_BYTES: usize = 8 * 1024;
 
 fn station_api_docs_url(api_origin: &str) -> Result<String, String> {
@@ -1277,6 +1280,25 @@ fn api_docs_launch_url_with_capability(launch_url: &str, capability: &str) -> Re
 /// single-use UI bootstrap capability. Possession of that file is the proof;
 /// loopback alone is a transport position and never authority, which is why
 /// the launcher page cannot mint this for itself.
+/// Reads at most `max` bytes and REFUSES a body that would exceed it.
+///
+/// Reading `max` bytes and stopping is not the same thing. A truncated body
+/// can still be valid JSON -- `{"token":"…"}` followed by padding parses
+/// cleanly once the padding is cut off -- so a plain capped read accepts an
+/// oversized response while appearing to have bounded it. Reading one byte
+/// past the limit is what makes "too large" observable at all.
+fn read_bounded(reader: impl Read, max: usize) -> Result<String, String> {
+    let mut raw = String::new();
+    let read = reader
+        .take(max as u64 + 1)
+        .read_to_string(&mut raw)
+        .map_err(|_| "invalid API docs capability response".to_string())?;
+    if read > max {
+        return Err("Station returned an oversized API docs capability response".into());
+    }
+    Ok(raw)
+}
+
 fn mint_api_docs_capability(api_origin: &str, base_dir: &Path) -> Result<String, String> {
     let secret_path = base_dir.join("runtime").join("local-grant.secret");
     let secret = crate::service_state::read_owner_only_file(&secret_path, "local grant secret")
@@ -1308,13 +1330,10 @@ fn mint_api_docs_capability(api_origin: &str, base_dir: &Path) -> Result<String,
     // Bounded read: this speaks to whatever holds the port, which during a
     // service restart is not necessarily Station. An unbounded read of an
     // attacker-controlled or wedged listener is a memory-exhaustion path.
-    let mut raw = String::new();
-    response
-        .body_mut()
-        .as_reader()
-        .take(MAX_API_DOCS_MINT_RESPONSE_BYTES as u64)
-        .read_to_string(&mut raw)
-        .map_err(|_| "invalid API docs capability response".to_string())?;
+    let raw = read_bounded(
+        response.body_mut().as_reader(),
+        MAX_API_DOCS_MINT_RESPONSE_BYTES,
+    )?;
     if !(200..300).contains(&status) {
         return Err(format!("Station refused the API docs capability (HTTP {status})"));
     }
@@ -2531,6 +2550,38 @@ mod tests {
         assert!(
             api_docs_launch_url_with_capability(&launch, &"a".repeat(43)).is_ok(),
             "a real 43-character capability must still be accepted"
+        );
+    }
+
+    #[test]
+    fn refuses_an_oversized_mint_response_instead_of_truncating_it() {
+        // The case a capped read alone would have accepted: a valid token
+        // followed by enough padding to exceed the limit. Truncation leaves
+        // `{"token":"…"}` plus whitespace, which parses cleanly -- so the
+        // response would have been used while the code looked like it had
+        // bounded it.
+        let token = "a".repeat(43);
+        let body = format!("{{\"token\":\"{token}\"}}");
+        let padded = format!(
+            "{body}{}",
+            " ".repeat(MAX_API_DOCS_MINT_RESPONSE_BYTES + 1)
+        );
+        assert!(
+            read_bounded(padded.as_bytes(), MAX_API_DOCS_MINT_RESPONSE_BYTES).is_err(),
+            "an oversized body must be refused, not silently cut down to valid JSON"
+        );
+
+        // The ordinary response still round-trips, and exactly at the limit is
+        // still admissible -- the bound must not be off by one against a real
+        // reply.
+        assert_eq!(
+            read_bounded(body.as_bytes(), MAX_API_DOCS_MINT_RESPONSE_BYTES).unwrap(),
+            body
+        );
+        let exact = "b".repeat(MAX_API_DOCS_MINT_RESPONSE_BYTES);
+        assert_eq!(
+            read_bounded(exact.as_bytes(), MAX_API_DOCS_MINT_RESPONSE_BYTES).unwrap(),
+            exact
         );
     }
 
