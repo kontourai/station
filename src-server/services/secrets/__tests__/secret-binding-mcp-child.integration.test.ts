@@ -3,6 +3,29 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+
+vi.mock(
+  '@kontourai/station-shared/lifecycle-events',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@kontourai/station-shared/lifecycle-events')
+      >();
+    return {
+      ...actual,
+      acquireFileMutationLockAsync: (
+        path: string,
+        options: import('@kontourai/station-shared/lifecycle-events').FileMutationLockOptions = {},
+      ) =>
+        actual.acquireFileMutationLockAsync(path, {
+          ...options,
+          birthFingerprint:
+            options.birthFingerprint ?? ((pid) => `mcp-child-test:${pid}`),
+        }),
+    };
+  },
+);
+
 import { MCPService } from '../../plugins/mcp-service.js';
 import { FileSecretBindingAdministration } from '../secret-binding-administration.js';
 

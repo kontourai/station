@@ -180,6 +180,80 @@ describe('ConnectionListPanel', () => {
     expect(onSelect).toHaveBeenCalledWith(connection);
   });
 
+  it('keeps the active Station name visible and reserves row width for its identity', () => {
+    renderPanel();
+
+    const name = screen.getByText('Station One');
+    const row = name.closest('.station-connect-row');
+    expect(row?.className).toContain('station-connect-row--active');
+    expect(name.className).toContain('station-connect-row__name');
+    expect(screen.queryByText('Active')).toBeNull();
+    expect(row?.querySelector('.station-connect-row__url')?.textContent).toBe(
+      connection.url,
+    );
+  });
+
+  it('puts reachability, edit, and Forget behind a keyboard-operable overflow', () => {
+    const onCheck = vi.fn();
+    const onStartEdit = vi.fn();
+    const onRemove = vi.fn();
+    render(
+      <ConnectionListPanel
+        connections={[connection]}
+        activeConnectionId={connection.id}
+        editingId={null}
+        editName=""
+        editUrl=""
+        credentialEntry=""
+        getStatus={() => 'connected'}
+        onSelect={() => {}}
+        onCheck={onCheck}
+        onStartEdit={onStartEdit}
+        onRemove={onRemove}
+        onEditNameChange={() => {}}
+        onEditUrlChange={() => {}}
+        onCredentialEntryChange={() => {}}
+        onRemoveCredential={() => {}}
+        onConfirmEndpoint={() => {}}
+        onSaveEdit={() => {}}
+        onCancelEdit={() => {}}
+        onAddManual={() => {}}
+        onRequestAccess={() => {}}
+        onScanQr={() => {}}
+        onEnterPairingCode={() => {}}
+        onViewDevices={() => {}}
+        discoveryAvailable={false}
+        onDiscover={() => {}}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('menuitem', { name: 'Forget Station' }),
+    ).toBeNull();
+    const overflow = screen.getByRole('button', {
+      name: 'More actions for Station One',
+    });
+    expect(overflow.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(overflow);
+    expect(overflow.getAttribute('aria-expanded')).toBe('true');
+    const check = screen.getByRole('menuitem', { name: 'Check reachability' });
+    expect(document.activeElement).toBe(check);
+    fireEvent.keyDown(check, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(
+      screen.getByRole('menuitem', { name: 'Edit Station' }),
+    );
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    fireEvent.click(overflow);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Forget Station' }));
+    expect(onRemove).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirm forgetting Station One' }),
+    );
+    expect(onRemove).toHaveBeenCalledWith(connection.id);
+  });
+
   it('offers no selection control while the local server is down', () => {
     const onRestart = vi.fn();
     const onSelect = renderPanel(vi.fn(), {
@@ -586,7 +660,12 @@ describe('ConnectionListPanel', () => {
         />,
       );
 
-      const forgetButton = screen.getByRole('button', {
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'More actions for Station One',
+        }),
+      );
+      const forgetButton = screen.getByRole('menuitem', {
         name: 'Forget Station',
       });
       fireEvent.click(forgetButton);
@@ -599,7 +678,7 @@ describe('ConnectionListPanel', () => {
       ).toBeTruthy();
       // The plain Forget affordance is gone; Confirm/Cancel replace it.
       expect(
-        screen.queryByRole('button', { name: 'Forget Station' }),
+        screen.queryByRole('menuitem', { name: 'Forget Station' }),
       ).toBeNull();
 
       const confirmButton = screen.getByRole('button', {
@@ -641,7 +720,12 @@ describe('ConnectionListPanel', () => {
         />,
       );
 
-      fireEvent.click(screen.getByRole('button', { name: 'Forget Station' }));
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'More actions for Station One',
+        }),
+      );
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Forget Station' }));
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
       expect(onRemove).not.toHaveBeenCalled();
@@ -649,7 +733,9 @@ describe('ConnectionListPanel', () => {
         screen.queryByText('Removes it from this device only.'),
       ).toBeNull();
       expect(
-        screen.getByRole('button', { name: 'Forget Station' }),
+        screen.getByRole('button', {
+          name: 'More actions for Station One',
+        }),
       ).toBeTruthy();
     });
   });

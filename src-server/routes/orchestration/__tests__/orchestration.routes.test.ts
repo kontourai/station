@@ -684,56 +684,6 @@ describe('Orchestration Routes', () => {
     });
   });
 
-  test('POST /commands preserves a critical resource refusal code at the outer HTTP seam', async () => {
-    const receipt = {
-      commandId: 'critical-command',
-      threadId: 'critical-thread',
-      commandType: 'startSession' as const,
-      status: 'rejected' as const,
-      createdAt: '2026-08-16T00:00:00.000Z',
-    };
-    const app = createOrchestrationRoutes(
-      {
-        dispatchWithReceipt: vi
-          .fn()
-          .mockRejectedValue(
-            new OrchestrationCommandDispatchError(
-              'Engine start refused: resource posture=critical, observed busyPercent=99',
-              receipt,
-              undefined,
-              'persisted',
-              false,
-              'resource_posture_critical',
-            ),
-          ),
-      } as any,
-      {
-        getUserId: () => ROUTE_TEST_USER_ID,
-        eventBus: new EventBus(),
-        logger: { debug: vi.fn() },
-      },
-    );
-
-    const response = await app.request('/commands', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'steerTurn',
-        threadId: 'critical-thread',
-        turnId: 'turn-critical',
-        input: 'Retry later',
-      }),
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      success: false,
-      code: 'resource_posture_critical',
-      retryable: true,
-      receipt,
-    });
-  });
-
   test('GET /sessions/:threadId/messages maps the combined query outcome without a second replay', async () => {
     const read = vi.fn().mockResolvedValue({
       status: 'found' as const,
@@ -971,49 +921,6 @@ describe('Orchestration Routes', () => {
       receiptStatus: 'unavailable',
       session,
     });
-  });
-
-  test('POST /chat returns a bounded one-shot critical override capability', async () => {
-    const challenge = Object.assign(new Error('This Station remains busy.'), {
-      code: 'resource_posture_override_required',
-      resourceAdmissionOverride: {
-        token: 'override-token-1',
-        expiresAt: 123_456,
-      },
-    });
-    const executeForegroundMessage = vi.fn().mockRejectedValue(challenge);
-    const app = createOrchestrationRoutes({} as any, {
-      eventBus: new EventBus(),
-      logger: { debug: vi.fn() },
-      getUserId: () => 'bound-user',
-      executeForegroundMessage,
-    });
-
-    const res = await app.request('/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: 'Start under load',
-        target: { environment: { kind: 'current' }, agent: 'claude' },
-        resourceAdmissionOverrideToken: 'retry-token',
-      }),
-    });
-
-    expect(res.status).toBe(409);
-    await expect(res.json()).resolves.toEqual({
-      success: false,
-      error: 'This Station remains busy.',
-      code: 'resource_posture_override_required',
-      resourceAdmissionOverride: {
-        token: 'override-token-1',
-        expiresAt: 123_456,
-      },
-    });
-    expect(executeForegroundMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        resourceAdmissionOverrideToken: 'retry-token',
-      }),
-    );
   });
 
   test('fixed delegated/background chat routes derive only their restrictive server intent', async () => {
@@ -1985,40 +1892,6 @@ describe('Orchestration Routes', () => {
         model: { override: 'gpt-5.6-sol' },
       },
       userId: 'bound-user',
-    });
-  });
-
-  test('POST /delegations preserves a critical resource refusal code', async () => {
-    const refusal = Object.assign(
-      new Error(
-        'Engine start refused: resource posture=critical, observed busyPercent=99',
-      ),
-      { code: 'resource_posture_critical' },
-    );
-    const app = createOrchestrationRoutes({} as any, {
-      getUserId: () => ROUTE_TEST_USER_ID,
-      eventBus: new EventBus(),
-      logger: { debug: vi.fn() },
-      delegateTask: vi.fn().mockRejectedValue(refusal),
-    });
-
-    const response = await app.request('/delegations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        prompt: 'Do work',
-        target: {
-          environment: { kind: 'current' },
-          agent: 'claude',
-        },
-      }),
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      success: false,
-      code: 'resource_posture_critical',
-      retryable: true,
     });
   });
 

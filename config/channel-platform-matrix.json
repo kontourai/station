@@ -26,7 +26,7 @@
       "uiPort": 18000,
       "desktopIconSource": "src-desktop/icons",
       "androidIconSource": "src-desktop/icons/stable/android",
-      "iosIconSource": "src-desktop/gen/apple/Assets.xcassets/AppIcon.appiconset",
+      "iosIconSource": "src-desktop/icons/icon.png",
       "iosStatus": "release-enabled"
     },
     "beta": {
@@ -40,8 +40,8 @@
       "uiPort": 28000,
       "desktopIconSource": "src-desktop/icons/beta",
       "androidIconSource": "src-desktop/icons/beta/android",
-      "iosIconSource": null,
-      "iosStatus": "gated: separate App ID, provisioning profile, signing secret, and App Store Connect or TestFlight listing required"
+      "iosIconSource": "src-desktop/icons/beta/icon.png",
+      "iosStatus": "source-configured; provider-NOT_VERIFIED until the protected Beta App ID, profile, group, and TestFlight receipt exist"
     },
     "nightly": {
       "appName": "Station Nightly",
@@ -54,8 +54,8 @@
       "uiPort": 38000,
       "desktopIconSource": "src-desktop/icons/nightly",
       "androidIconSource": "src-desktop/icons/nightly/android",
-      "iosIconSource": null,
-      "iosStatus": "gated: separate App ID, provisioning profile, signing secret, and App Store Connect or TestFlight listing required"
+      "iosIconSource": "src-desktop/icons/nightly/icon.png",
+      "iosStatus": "source-configured; provider-NOT_VERIFIED until the protected Nightly App ID, profile, group, and TestFlight receipt exist"
     }
   }
 }

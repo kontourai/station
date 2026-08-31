@@ -15,7 +15,7 @@ a question *within* SSE, not SSE versus WebSockets.
 Meanwhile a substantial amount of machinery has become bound to the SSE choice:
 
 - A durable event log with a global monotonic sequence
-  (`src-server/services/.../event-store.ts`), whose own docblock describes it as
+  (`src-server/services/orchestration/event-store.ts`), whose own docblock describes it as
   "the resume cursor for the `/api/orchestration/events` SSE stream".
 - Every live frame carries that sequence as the SSE `id:` field
   (`src-server/routes/orchestration/orchestration.ts`), and a reconnecting

@@ -368,13 +368,12 @@ describe('Scheduler Routes', () => {
     });
   });
 
-  test('POST /jobs/:target/run reports a manual resource-posture refusal truthfully', async () => {
+  test('POST /jobs/:target/run reports a provider refusal truthfully', async () => {
     const { app, svc } = setup();
     svc.runJob.mockResolvedValueOnce({
       outcome: 'refused',
-      message:
-        "Job 'daily-report' refused: Scheduler job refused: resource posture=degraded, observed busyPercent=90",
-      runId: 'schedule:built-in:daily-report:run-1',
+      message: 'Provider policy refused this explicit run',
+      runId: 'provider:daily-report:refused-1',
     });
 
     const response = await app.request('/jobs/daily-report/run', {
@@ -382,17 +381,40 @@ describe('Scheduler Routes', () => {
     });
 
     expect(response.status).toBe(422);
-    await expect(json(response)).resolves.toMatchObject({
+    await expect(json(response)).resolves.toEqual({
       success: false,
       code: 'scheduler_run_refused',
       outcome: 'refused',
-      error:
-        "Job 'daily-report' refused: Scheduler job refused: resource posture=degraded, observed busyPercent=90",
+      error: 'Provider policy refused this explicit run',
       data: {
+        output: 'Provider policy refused this explicit run',
         receipt: {
           outcome: 'refused',
+          message: 'Scheduler job refused. Inspect the run for its reason.',
+          runId: 'provider:daily-report:refused-1',
         },
       },
+    });
+  });
+
+  test('POST /jobs/:target/run reports a provider deferral without inventing a run', async () => {
+    const { app, svc } = setup();
+    svc.runJob.mockResolvedValueOnce({
+      outcome: 'deferred',
+      message: 'Provider retained the occurrence for later delivery',
+    });
+
+    const response = await app.request('/jobs/daily-report/run', {
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(409);
+    await expect(json(response)).resolves.toEqual({
+      success: false,
+      code: 'scheduler_run_deferred',
+      outcome: 'deferred',
+      error: 'Provider retained the occurrence for later delivery',
+      data: { output: 'Provider retained the occurrence for later delivery' },
     });
   });
 

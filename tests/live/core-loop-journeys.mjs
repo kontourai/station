@@ -12,21 +12,11 @@
  *     forced on for durable conversations — PR #796). Asserts
  *     same-conversation continuity, no "No conversation found with session
  *     ID", and no stray conversations/sessions (#765 A2's fragmentation).
- *  2. capacity-gate — boots a second instance with the attested
- *     STATION_E2E_RESOURCE_POSTURE_CRITICAL override
- *     (src-server/services/infra/resource-posture.ts) and asserts the ONE
- *     forced observation is visible on the posture endpoint and refuses a
- *     real dispatch with the typed `resource_posture_critical` code; then
- *     asserts the chat SURFACE renders that refusal ("Host is at capacity"
- *     ephemeral + Retry) instead of an eternal "Working…" (#765 A3), using
- *     the exact wire shape the server emits (pinned by
- *     orchestration.routes.test.ts "preserves a critical resource refusal
- *     code at the outer HTTP seam").
- *  3. project-deep-link-reload — create a project, chat in it, reload the
+ *  2. project-deep-link-reload — create a project, chat in it, reload the
  *     exact `?chat=<id>&dock=open` deep link, and assert the browser lands
  *     back in the conversation with the transcript visible — not the
  *     Activity inspector (#765 A5).
- *  4. pairing-delegation-loop — a second temp-home Station requests device
+ *  3. pairing-delegation-loop — a second temp-home Station requests device
  *     access via the CLI (`station environment access request`), the
  *     pending request surfaces on the host (pairing-request notification /
  *     Needs-attention item — #765 D5), the host approves via the CLI, and
@@ -35,20 +25,14 @@
  * Journeys that need the Claude Code CLI report NOT-EXERCISED (loudly, in
  * the summary and the exit report) when the engine is not ready on this
  * host — hosted CI runners have no signed-in `claude`, so there the suite
- * proves journeys 2 (posture + surface) and 4 end-to-end and discloses the
+ * proves the pairing journey end-to-end and discloses the
  * rest. Set CORE_LOOP_REQUIRE_CLAUDE=1 to turn those disclosures into
  * failures on hosts where the engine is expected.
  *
  * Run with `npm run journeys:core-loop`. Nightly cadence, never per-PR —
  * see .github/workflows/fresh-home-walkthrough.yml (second job).
  *
- * Like the walkthrough this uses no storageState. It intercepts `/api/**`
- * in exactly ONE place: journey 2's surface assertion replays the server's
- * own pinned refusal wire shape into the composer's dispatch, because no
- * healthy instance can produce a real refusal for an engine that is not
- * ready (assertAdapterReady runs before admitEngineStart —
- * orchestration-service.ts) and the capacity instance refuses before any
- * transcript exists to render into.
+ * Like the walkthrough this uses no storageState.
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -71,10 +55,6 @@ const UI_PORT = Number(process.env.CORE_LOOP_UI_PORT ?? 5404);
 // A full port BLOCK away from the main instance: the launcher reserves
 // server..server+3 (terminal, voice, consent) plus the UI port, and refuses
 // a start whose block overlaps another live instance's.
-const CAPACITY_SERVER_PORT = Number(
-  process.env.CORE_LOOP_CAPACITY_SERVER_PORT ?? 3382,
-);
-const CAPACITY_UI_PORT = Number(process.env.CORE_LOOP_CAPACITY_UI_PORT ?? 5410);
 const OUTPUT_ROOT = resolve(
   ROOT,
   process.env.CORE_LOOP_OUTPUT_DIR ?? 'test-results/core-loop-journeys',
@@ -124,9 +104,19 @@ const JOURNEY_FILTER = (process.env.CORE_LOOP_JOURNEYS ?? '')
  * here that PASSES fails the run: the entry is stale and must be removed.
  */
 const EXPECTED_JOURNEY_FAILURES = new Map([
-  // (empty since kontourai/station#834 was fixed: the continuation
-  // eligibility gate now treats a stopped, unloaded current child as
-  // continuable through the successor reserve path.)
+  // 2-capacity-gate asserts the pre-#837 refusal contract (critical posture
+  // -> HTTP 409). Since #837, an interactive dispatch under critical posture
+  // is admitted and returns HTTP 200 (surfacing as an override requirement,
+  // not a flat refusal). kontourai/station#958 tracks retiring this journey
+  // alongside the owner's in-flight removal of capacity gating; do not fix
+  // the assertion here — remove this entry and the journey when #958 lands.
+  [
+    '2-capacity-gate',
+    {
+      issue: 'kontourai/station#958',
+      expectedMessageSubstring: 'returned HTTP 200, expected 409',
+    },
+  ],
 ]);
 
 async function runJourney(id, title, fn) {
@@ -199,8 +189,9 @@ function envelopeData(payload) {
 /**
  * The Claude Code engine connection as the product reports it. Journeys that
  * drive a real engine turn require `ready`; everything else must not silently
- * downgrade — absence of the connection row entirely is a FAILURE (the
- * engines inventory itself broke), only not-ready is a disclosure.
+ * downgrade. An absent row is legitimate on a host with no configured model
+ * connections, but inventory read failures or a host-detected Claude runtime
+ * missing from that inventory are failures rather than an absent CLI.
  */
 async function claudeEngineState(page) {
   const payload = await apiOk(page, 'GET', '/api/connections/agents');
@@ -215,10 +206,46 @@ async function claudeEngineState(page) {
       connection?.config?.engineId === 'claude-code' ||
       connection?.id === 'claude',
   );
-  assert(
-    claude,
-    'no Claude Code engine connection row exists at all — the runtime connection inventory is broken, which is a failure, not an absent CLI',
-  );
+  if (!claude) {
+    const failures =
+      payload && typeof payload === 'object' && Array.isArray(payload.failures)
+        ? payload.failures
+        : [];
+    assert(
+      failures.length === 0,
+      `no Claude Code engine connection row exists and the runtime connection inventory reported failures: ${failures
+        .map(
+          (failure) =>
+            `id=${failure?.connectionId ?? 'unknown'} name=${failure?.name ?? 'unknown'} reason=${failure?.reason ?? 'unknown'}`,
+        )
+        .join('; ')}`,
+    );
+
+    const catalogPayload = await apiOk(
+      page,
+      'GET',
+      '/api/connections/agents/catalog',
+    );
+    const catalog = envelopeData(catalogPayload);
+    assert(
+      Array.isArray(catalog),
+      `GET /api/connections/agents/catalog did not return a connection list: ${JSON.stringify(catalogPayload)?.slice(0, 300)}`,
+    );
+    const detectedClaude = catalog.find(
+      (connection) =>
+        (connection?.engineId === 'claude-code' ||
+          connection?.config?.engineId === 'claude-code' ||
+          connection?.id === 'claude') &&
+        connection?.setup?.detected === true,
+    );
+    assert(
+      !detectedClaude,
+      `no Claude Code engine connection row exists, but the runtime catalog reports ${detectedClaude?.id ?? 'claude-code'} with setup.detected=true — the runtime connection inventory is broken`,
+    );
+    throw new NotExercised(
+      `this host reported ${connections.length} runtime connection row${connections.length === 1 ? '' : 's'}, with no claude-code row among them`,
+    );
+  }
   const ready = claude.status === 'ready' || claude.setup?.state === 'ready';
   return { connection: claude, ready };
 }
@@ -275,20 +302,11 @@ async function resolveClaudeAgentSlug(page, state) {
 }
 
 /**
- * Two — and only two — declared-transient refusals are retried, bounded;
+ * Declared-transient refusals are retried, bounded;
  * every other failure surfaces immediately:
  *  - "Agent catalog is refreshing after a configuration change; retrying
  *    automatically." — a freshly-materialized engine agent until deferred
  *    activation reconciles (materialize-engine's `activationMode: 'defer'`);
- *  - `resource_posture_override_required` on a HEALTHY (non-forced) instance —
- *    the REAL host remains over the sustained critical threshold from sibling
- *    work. A scripted journey must not silently choose Start anyway, so it
- *    waits and retries without consuming the one-shot capability.
- *    The legacy critical-refusal code remains recognized for older peers, and
- *    tests/helpers/capacity-retry.ts encodes the same recovery; a journey
- *    about chat continuity must ride that recovery, not fail on the host's
- *    weather. (The capacity-gate journey sets retryCapacity:false and asserts
- *    the challenge itself on the forced instance, where it never clears.)
  *  - "This conversation is not writable under its current control state."
  *    right after a turn settles — the #749/#814 conversation-open model's
  *    revalidation window. The product's own composer defers its outbound
@@ -303,14 +321,8 @@ const CATALOG_REFRESHING_PATTERN = /Agent catalog is refreshing/;
 const CONTROL_STATE_REVALIDATING_PATTERN =
   /not writable under its current control state/;
 
-async function dispatchWithCatalogSettle(
-  page,
-  path,
-  body,
-  { retryCapacity = true } = {},
-) {
+async function dispatchWithCatalogSettle(page, path, body, _options = {}) {
   let last;
-  let capacityRetries = 0;
   let controlRetries = 0;
   await poll(
     `${path} to clear its transient-refusal window`,
@@ -321,19 +333,6 @@ async function dispatchWithCatalogSettle(
         last.status === 400 &&
         CATALOG_REFRESHING_PATTERN.test(last.payload?.error ?? '')
       ) {
-        return false;
-      }
-      if (
-        retryCapacity &&
-        ((last.status === 409 &&
-          last.payload?.code === 'resource_posture_override_required') ||
-          (last.status === 400 &&
-            last.payload?.code === 'resource_posture_critical'))
-      ) {
-        capacityRetries += 1;
-        console.log(
-          `  (host remains very busy — wait/retry ${capacityRetries} without consuming override: ${last.payload?.error})`,
-        );
         return false;
       }
       if (
@@ -685,343 +684,6 @@ async function journeyMultiTurnContinuity(page, note, shared) {
     sessionId: turn1.sessionId,
     agentSlug,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Journey 2: capacity-gate surfacing (#765 A3)
-// ---------------------------------------------------------------------------
-
-function capacityInstanceName() {
-  const token = () => Math.random().toString(36).slice(2, 8);
-  // Must match the attested namespace in resource-posture.ts
-  // (CORE_LOOP_CAPACITY_INSTANCE).
-  return `e2e-core-loop-capacity-${token()}-${token()}`;
-}
-
-async function journeyCapacityGate(browser, note, shared) {
-  const instance = capacityInstanceName();
-  note(
-    `booting capacity instance ${instance} with STATION_E2E_RESOURCE_POSTURE_CRITICAL=1`,
-  );
-  const capacity = await startTempHomeInstance({
-    root: ROOT,
-    instance,
-    serverPort: CAPACITY_SERVER_PORT,
-    uiPort: CAPACITY_UI_PORT,
-    logPath: join(OUTPUT_ROOT, 'capacity-instance.log'),
-    env: {
-      ...process.env,
-      STATION_E2E_RESOURCE_POSTURE_CRITICAL: '1',
-    },
-  });
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
-  });
-  try {
-    const page = await context.newPage();
-    await pairBrowser(page, {
-      root: ROOT,
-      instance,
-      serverPort: CAPACITY_SERVER_PORT,
-      uiOrigin: capacity.uiOrigin,
-    });
-
-    // The seam must be observably live, and observably THE SEAM: the same
-    // derivation admission uses, reporting the forced sample's source. A
-    // coincidentally-loaded host cannot fake this (its source differs), and
-    // a silently unauthorized override cannot pass it (kind won't be
-    // critical on a healthy runner).
-    // #837 hysteresis: critical entry is sustained (3 consecutive smoothed
-    // samples, one per 2s cache window), so poll the endpoint through the
-    // entry window instead of asserting the first read. The SOURCE check on
-    // every read still proves the seam took (a coincidentally-loaded host
-    // reports a different source even while degraded/critical).
-    let posture;
-    const postureDeadline = Date.now() + 30_000;
-    for (;;) {
-      posture = envelopeData(
-        await apiOk(page, 'GET', '/api/system/resource-posture'),
-      );
-      assert(
-        posture?.source === 'core-loop-capacity-e2e' &&
-          posture?.busyPercent === 97,
-        `forced posture not observed: ${JSON.stringify(posture)} — the STATION_E2E_RESOURCE_POSTURE_CRITICAL seam did not take`,
-      );
-      if (posture?.kind === 'critical') break;
-      assert(
-        Date.now() < postureDeadline,
-        `forced posture never reached critical within the sustained-entry window: ${JSON.stringify(posture)}`,
-      );
-      await new Promise((resolve) => setTimeout(resolve, 2_500));
-    }
-    note(
-      'posture endpoint reports the forced critical observation (source core-loop-capacity-e2e)',
-    );
-
-    // Real interactive admission needs an engine ready enough to pass
-    // assertAdapterReady (which runs BEFORE admitEngineStart).
-    const state = await claudeEngineState(page);
-    if (state.ready) {
-      const agentSlug = await resolveClaudeAgentSlug(page, state);
-      // retryCapacity OFF: on this instance the challenge IS the expectation
-      // (the forced posture never clears), so riding the recovery loop here
-      // would time out around the very evidence being asserted.
-      const { status, payload } = await dispatchWithCatalogSettle(
-        page,
-        '/api/orchestration/chat',
-        {
-          target: { environment: { kind: 'current' }, agent: agentSlug },
-          message: 'capacity probe — this dispatch must require confirmation',
-        },
-        { retryCapacity: false },
-      );
-      assert(
-        status === 409,
-        `interactive dispatch under critical posture returned HTTP ${status}, expected 409: ${JSON.stringify(payload)?.slice(0, 400)}`,
-      );
-      assert(
-        payload?.code === 'resource_posture_override_required',
-        `challenge carried code ${payload?.code ?? 'none'}, expected resource_posture_override_required: ${JSON.stringify(payload)?.slice(0, 400)}`,
-      );
-      assert(
-        typeof payload?.resourceAdmissionOverride?.token === 'string' &&
-          payload.resourceAdmissionOverride.token.length > 0 &&
-          Number.isFinite(payload.resourceAdmissionOverride.expiresAt),
-        `challenge did not carry a bounded override capability: ${JSON.stringify(payload)?.slice(0, 400)}`,
-      );
-      note(
-        'real interactive dispatch returned a typed one-shot resource_posture_override_required challenge',
-      );
-
-      const background = await dispatchWithCatalogSettle(
-        page,
-        '/api/orchestration/chat/background',
-        {
-          target: { environment: { kind: 'current' }, agent: agentSlug },
-          message: 'capacity probe — automatic work must defer',
-        },
-        { retryCapacity: false },
-      );
-      assert(
-        background.status === 400 &&
-          background.payload?.code === 'resource_posture_deferred',
-        `background dispatch did not defer before provider effect: HTTP ${background.status} ${JSON.stringify(background.payload)?.slice(0, 400)}`,
-      );
-      note('real background dispatch deferred with resource_posture_deferred');
-    } else {
-      note(
-        'real interactive/background dispatch admission NOT exercised on this host (Claude engine not ready; the posture gate sits behind assertAdapterReady) — covered by the posture assert above plus the surface assert below',
-      );
-      if (REQUIRE_CLAUDE) {
-        throw new Error(
-          'CORE_LOOP_REQUIRE_CLAUDE=1 but the Claude engine is not ready for the capacity-gate dispatch assertions',
-        );
-      }
-    }
-  } finally {
-    await context.close();
-    await capacity.stop();
-  }
-
-  // Surface half (#798): the challenge must reach the CONVERSATION UI as
-  // the "Host remains busy" ephemeral with a Start anyway action, and the
-  // retry must carry the exact one-shot token. Replayed via route interception on the MAIN
-  // healthy instance because a real refusal requires a ready engine (see
-  // module docblock); the injected body is byte-shaped after the route/SDK
-  // override contract tests.
-  // Its OWN one-turn conversation, never stopped: journey 1 deliberately
-  // ends its conversation in the stopped-then-continued state
-  // (kontourai/station#834's recovered population) — borrowing that
-  // conversation would entangle this surface assert with journey 1's
-  // post-stop lineage instead of a plain writable composer. Driven
-  // from a FRESHLY paired page: the run-long first page's device session
-  // has been observed aging into 401/429 refusals by this point (journey 4
-  // learned the same lesson).
-  const context2 = await shared.newMainContext();
-  try {
-    const apiPage = await context2.newPage();
-    await pairBrowser(apiPage, {
-      root: ROOT,
-      instance: INSTANCE,
-      serverPort: SERVER_PORT,
-      uiOrigin: UI_ORIGIN,
-    });
-    const mainState = await claudeEngineState(apiPage);
-    if (!mainState.ready) {
-      throw new NotExercised(
-        'chat-surface refusal assert needs one answered Claude turn to open in the dock, and the Claude engine is not ready on this host',
-      );
-    }
-    const surfaceAgent = await resolveClaudeAgentSlug(apiPage, mainState);
-    const surfaceTurn = await startConversation(
-      apiPage,
-      surfaceAgent,
-      'Reply with the single word ACK and nothing else.',
-    );
-    await awaitAssistantReplies(apiPage, surfaceTurn.sessionId, 1);
-    note(`surface conversation ${surfaceTurn.conversationId} answered`);
-    const conversationId = surfaceTurn.conversationId;
-    const sessionId = surfaceTurn.sessionId;
-    const agentSlug = surfaceAgent;
-    const page = await context2.newPage();
-    // Same restore basis as journey 3: the state a user with this chat open
-    // in the dock actually has (the product's own sessionStorage shape).
-    await page.addInitScript(
-      (chat) => {
-        sessionStorage.setItem(
-          'activeChats',
-          JSON.stringify([
-            {
-              sessionId: chat.sessionId,
-              conversationId: chat.conversationId,
-              agentSlug: chat.agentSlug,
-              title: 'Core loop chat',
-              executionMode: 'external',
-              provider: 'claude',
-              providerOptions: {},
-              orchestrationSessionStarted: true,
-              ephemeralMessages: [],
-              inputHistory: [],
-            },
-          ]),
-        );
-      },
-      { conversationId, sessionId, agentSlug },
-    );
-    // Same context as apiPage — the device-session cookie is already there;
-    // a second mint/exchange would only spend the auth limiter's budget.
-    // Intercept BOTH canonical execution spellings (start and continue) —
-    // the composer may dispatch either depending on the restored chat's
-    // binding — and record what it actually posted so a red run names the
-    // route instead of guessing.
-    const interceptedDispatches = [];
-    const overrideToken = 'core-loop-capacity-override';
-    let overrideRequest;
-    await page.route(
-      (url) => url.pathname.startsWith('/api/orchestration/chat'),
-      (route) => {
-        if (route.request().method() !== 'POST') return route.continue();
-        interceptedDispatches.push(new URL(route.request().url()).pathname);
-        const body = route.request().postDataJSON();
-        if (interceptedDispatches.length > 1) {
-          overrideRequest = body;
-          return route.fulfill({
-            status: 200,
-            contentType: 'application/json',
-            body: JSON.stringify({
-              success: true,
-              data: {
-                conversationId,
-                sessionId,
-                providerTurnId: 'core-loop-capacity-override-turn',
-                target: { kind: 'agent', id: agentSlug },
-                resolution: {
-                  environment: { kind: 'current' },
-                  agentId: agentSlug,
-                  provider: 'claude',
-                },
-              },
-            }),
-          });
-        }
-        return route.fulfill({
-          status: 409,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            success: false,
-            error:
-              'This Station remains very busy (97% averaged CPU). Start anyway?',
-            code: 'resource_posture_override_required',
-            retryable: true,
-            resourceAdmissionOverride: {
-              token: overrideToken,
-              expiresAt: Date.now() + 30_000,
-            },
-          }),
-        });
-      },
-    );
-    await page.goto(
-      `${UI_ORIGIN}/?chat=${encodeURIComponent(conversationId)}&dock=open`,
-      {
-        waitUntil: 'load',
-      },
-    );
-    const settleFailure = await settlePageReason(page, SETTLE_TIMEOUT_MS);
-    assert(!settleFailure, `chat deep link did not settle: ${settleFailure}`);
-    const composer = page.locator('textarea[placeholder^="Type a message"]');
-    await composer
-      .first()
-      .waitFor({ state: 'visible', timeout: SETTLE_TIMEOUT_MS })
-      .catch(async () => {
-        const shot = join(OUTPUT_ROOT, 'journey2-no-composer.png');
-        await page.screenshot({ path: shot }).catch(() => undefined);
-        throw new Error(
-          `capacity surface: no composer became visible on the chat deep link — screenshot at ${shot}`,
-        );
-      });
-    // fill() waits for editability — the #749/#814 conversation-open model
-    // keeps the restored composer disabled until the conversation
-    // revalidates, so give that window a full settle budget and name it on
-    // failure instead of a bare actionability timeout.
-    await composer
-      .first()
-      .fill('capacity surface probe', { timeout: 60_000 })
-      .catch(async () => {
-        const shot = join(OUTPUT_ROOT, 'journey2-composer-disabled.png');
-        await page.screenshot({ path: shot }).catch(() => undefined);
-        throw new Error(
-          `capacity surface: the composer never became editable (conversation still not writable after 60s?) — screenshot at ${shot}`,
-        );
-      });
-    await composer.first().press('Enter');
-
-    const capacityNotice = page
-      .locator('.ephemeral-message')
-      .filter({ hasText: 'Host remains busy' })
-      .last();
-    await capacityNotice
-      .waitFor({ state: 'visible', timeout: 30_000 })
-      .catch(async () => {
-        const shot = join(OUTPUT_ROOT, 'journey2-no-refusal.png');
-        await page.screenshot({ path: shot }).catch(() => undefined);
-        throw new Error(
-          `capacity surface: the "Host remains busy" challenge never rendered. Intercepted ${interceptedDispatches.length} dispatch(es): ${interceptedDispatches.join(', ') || 'NONE — the composer posted somewhere this interception does not cover'} — screenshot at ${shot}`,
-        );
-      });
-    const startAnyway = capacityNotice.getByRole('button', {
-      name: 'Start anyway',
-      exact: true,
-    });
-    assert(
-      (await startAnyway.count()) > 0,
-      'capacity challenge rendered without its Start anyway action',
-    );
-    // The challenge replaced the first attempt's streaming state: no
-    // "Working…" label may survive it (the eternal-spinner defect).
-    await poll(
-      'Working… indicator to clear after the challenge',
-      15_000,
-      async () => {
-        const working = await page
-          .locator('.streaming-activity__label', { hasText: /^Working/ })
-          .count();
-        return working === 0;
-      },
-    );
-    await startAnyway.click();
-    await poll(
-      'Start anyway retry to carry its exact token',
-      15_000,
-      async () =>
-        overrideRequest?.resourceAdmissionOverrideToken === overrideToken,
-    );
-    note(
-      'chat surface rendered "Host remains busy" with Start anyway, cleared the challenged attempt, and carried the exact token',
-    );
-  } finally {
-    await context2.close();
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1391,7 +1053,7 @@ async function journeyPairingLoop(note, shared) {
 
 mkdirSync(OUTPUT_ROOT, { recursive: true });
 console.log(
-  `core-loop journeys: instance=${INSTANCE} ports=${SERVER_PORT}/${UI_PORT} (capacity ${CAPACITY_SERVER_PORT}/${CAPACITY_UI_PORT})`,
+  `core-loop journeys: instance=${INSTANCE} ports=${SERVER_PORT}/${UI_PORT}`,
 );
 
 console.log('starting main instance (builds on first run)...');
@@ -1440,11 +1102,6 @@ try {
     (note) => journeyProjectDeepLinkReload(note, shared),
   );
   await runJourney(
-    '2-capacity-gate',
-    'capacity refusal reaches the chat surface (#765 A3)',
-    (note) => journeyCapacityGate(browser, note, shared),
-  );
-  await runJourney(
     '4-pairing-delegation-loop',
     'second Station pairs via offer/request/approve (#765 D4/D5)',
     (note) => journeyPairingLoop(note, shared),
@@ -1455,9 +1112,6 @@ try {
   if (sharedTeardown.projectDir) {
     rmSync(sharedTeardown.projectDir, { recursive: true, force: true });
   }
-  // The capacity instance stops inside journey 2; a crashed journey may
-  // leave it running — stop it best-effort by name pattern is impossible
-  // (random name), so its own finally owns that.
 }
 
 // ---------------------------------------------------------------------------

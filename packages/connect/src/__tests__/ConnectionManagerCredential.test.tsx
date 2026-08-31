@@ -51,6 +51,13 @@ function setup() {
   return { store, connection };
 }
 
+function openRowAction(stationName: string, action: string) {
+  fireEvent.click(
+    screen.getByRole('button', { name: `More actions for ${stationName}` }),
+  );
+  return screen.getByRole('menuitem', { name: action });
+}
+
 describe('Connection Manager credential recovery', () => {
   it('adding a Station continues straight into authorising it, and closes into the connected workspace once approved', async () => {
     // Folds #986's two-button flow into one: a successful add no longer
@@ -278,7 +285,7 @@ describe('Connection Manager credential recovery', () => {
     const { store, connection } = setup();
     expect(screen.getByText('Credential required')).toBeTruthy();
 
-    fireEvent.click(screen.getByTitle('Edit Station'));
+    fireEvent.click(openRowAction('Remote Station', 'Edit Station'));
     expect(screen.getByText('Remote access credential')).toBeTruthy();
     expect(screen.getByText(/Localhost does not require one/)).toBeTruthy();
     expect(
@@ -310,7 +317,7 @@ describe('Connection Manager credential recovery', () => {
       </ConnectionsProvider>,
     );
 
-    fireEvent.click(screen.getByTitle('Edit Station'));
+    fireEvent.click(openRowAction('Remote Station', 'Edit Station'));
 
     expect(screen.queryByLabelText('Station access credential')).toBeNull();
     expect(screen.queryByText('Remote access credential')).toBeNull();
@@ -321,7 +328,7 @@ describe('Connection Manager credential recovery', () => {
   it('offers replacement without loading the saved value into the DOM', () => {
     const { store, connection } = setup();
     act(() => store.setCredential(connection.id, 'saved-fixture-secret'));
-    fireEvent.click(screen.getByTitle('Edit Station'));
+    fireEvent.click(openRowAction('Remote Station', 'Edit Station'));
 
     const input = screen.getByLabelText('Station access credential');
     expect((input as HTMLInputElement).value).toBe('');
@@ -331,20 +338,20 @@ describe('Connection Manager credential recovery', () => {
     expect(screen.getByText('Remove credential')).toBeTruthy();
   });
 
-  it('keeps every row icon control on the shared touch-target class', () => {
+  it('keeps the row overflow and all menu actions on the touch-target contract', () => {
     // The 44px minimum lives on .station-connect-icon-btn in
     // ConnectionManagerModal.css; jsdom does not apply stylesheets, so assert
     // the class contract here and leave pixel checks to the Playwright audits.
     setup();
-    for (const title of [
-      'Check reachability',
-      'Edit Station',
-      'Forget Station',
-    ]) {
-      expect(screen.getByTitle(title).className).toContain(
-        'station-connect-icon-btn',
-      );
-    }
+    const overflow = screen.getByRole('button', {
+      name: 'More actions for Remote Station',
+    });
+    expect(overflow.className).toContain('station-connect-icon-btn');
+    fireEvent.click(overflow);
+    for (const name of ['Check reachability', 'Edit Station', 'Forget Station'])
+      expect(
+        screen.getByRole('menuitem', { name }).parentElement?.className,
+      ).toContain('station-connect-row__menu');
   });
 
   it('learns stable identity from an unauthenticated public handshake', async () => {
@@ -357,7 +364,7 @@ describe('Connection Manager credential recovery', () => {
     vi.stubGlobal('fetch', fetchMock);
     const { store, connection } = setup();
 
-    fireEvent.click(screen.getByTitle('Check reachability'));
+    fireEvent.click(openRowAction('Remote Station', 'Check reachability'));
 
     await waitFor(() =>
       expect(store.getAll()[0]).toMatchObject({
@@ -416,9 +423,8 @@ describe('Connection Manager credential recovery', () => {
       </ConnectionsProvider>,
     );
 
-    const buttons = screen.getAllByTitle('Check reachability');
-    fireEvent.click(buttons[0]);
-    fireEvent.click(buttons[1]);
+    fireEvent.click(openRowAction('Environment A', 'Check reachability'));
+    fireEvent.click(openRowAction('Environment B', 'Check reachability'));
 
     await waitFor(() => expect(checks).toHaveLength(2));
     expect(checks).toEqual([
@@ -474,7 +480,7 @@ describe('Connection Manager credential recovery', () => {
       </ConnectionsProvider>,
     );
 
-    fireEvent.click(screen.getByTitle('Check reachability'));
+    fireEvent.click(openRowAction('Trusted Station', 'Check reachability'));
     await screen.findByRole('button', { name: 'Verify and use endpoint' });
 
     expect(checkHealth).not.toHaveBeenCalled();

@@ -9,6 +9,18 @@ export interface McpIntegrationEnvGrant {
   envName: string;
 }
 
+/** Exact authority for spending one binding as one ACP provider header. */
+export interface ACPProviderHeaderGrant {
+  kind: 'acp-provider-header';
+  connectionId: string;
+  providerId: string;
+  headerName: string;
+}
+
+export type SecretBindingGrant =
+  | McpIntegrationEnvGrant
+  | ACPProviderHeaderGrant;
+
 /** Metadata only. A binding never persists a secret value. */
 export interface SecretBinding {
   id: SecretBindingId;
@@ -16,6 +28,8 @@ export interface SecretBinding {
   authRef: AuthRef;
   revision: number;
   grants: McpIntegrationEnvGrant[];
+  /** Exact ACP header authorities; absent on bindings created before #944. */
+  acpProviderHeaderGrants?: ACPProviderHeaderGrant[];
   createdAt: string;
   updatedAt: string;
   /** Terminal: revoked bindings cannot be reactivated or re-used. */
