@@ -1,6 +1,6 @@
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import type { TurnProgressObservation } from '@kontourai/station-contracts/orchestration';
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { resolveTurnStallWindowMs } from '@kontourai/station-contracts/turn-stall-window';
 import { orchestrationTurnStallDetections } from '../../telemetry/metrics.js';
@@ -10,12 +10,12 @@ export interface TurnProgressTrackerDeps {
   /**
    * `sessionAdapters.get(threadId)?.provider` — undefined means the thread
    * has no live adapter in this process, and a stall on it is not reportable.
-   * (`ProviderKind` is an open string type; an adapter registered with an
+   * (`EngineId` is an open string type; an adapter registered with an
    * empty-string provider would read as adapter-absent here. None exists,
    * and the pre-extraction adapter-existence check had the same blind spot
    * one step later at the telemetry attribute.)
    */
-  providerForThread: (threadId: string) => ProviderKind | undefined;
+  providerForThread: (threadId: string) => EngineId | undefined;
   loadAgentExecutionConfig?: (
     agentSlug: string,
   ) => Promise<AgentExecutionConfig | undefined>;
@@ -183,7 +183,7 @@ export class TurnProgressTracker {
   private publishSilence(input: {
     threadId: string;
     turnId: string;
-    provider: ProviderKind;
+    provider: EngineId;
     windowMs: number;
     silentSinceEventAt: string;
   }): void {

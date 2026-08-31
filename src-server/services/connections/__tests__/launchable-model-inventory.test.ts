@@ -360,7 +360,7 @@ describe('buildLaunchableModelInventory', () => {
           {
             id: engineConnectionId('codex'),
             kind: 'agent',
-            type: 'codex-runtime',
+            type: 'codex',
             name: 'Codex',
             enabled: true,
             capabilities: ['agent-runtime', 'tool-calls'],

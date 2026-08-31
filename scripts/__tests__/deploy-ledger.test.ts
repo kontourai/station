@@ -57,6 +57,15 @@ describe('deploy ledger entry validation', () => {
       }).ok,
     ).toBe(false);
   });
+  test('records unknown instead of inventing an artifact build time', () => {
+    expect(validateEntry(entry({ artifactBuiltAt: null })).ok).toBe(true);
+    expect(
+      renderLedgerMarkdown({
+        entries: [entry({ artifactBuiltAt: null })],
+        githubRepo: 'kontourai/station',
+      }),
+    ).toContain('Artifact built at: `unknown`');
+  });
   it('accepts a complete entry and nulls for unverifiable fields', () => {
     expect(validateEntry(entry())).toEqual({ ok: true, errors: [] });
     expect(validateEntry(entry({ workflowRunUrl: null, notes: null }))).toEqual(

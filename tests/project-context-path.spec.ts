@@ -74,7 +74,7 @@ async function mockShell(page: Page) {
               source: 'local',
               model: 'model-selected',
               execution: {
-                agentConnectionId: 'claude-runtime',
+                agentConnectionId: 'claude',
                 modelId: 'model-selected',
               },
             },
@@ -87,9 +87,9 @@ async function mockShell(page: Page) {
           success: true,
           data: [
             agentConnectionFixture({
-              id: 'claude-runtime',
+              id: 'claude',
               kind: 'agent',
-              type: 'claude-runtime',
+              type: 'claude',
               name: 'Claude Runtime',
               enabled: true,
               capabilities: ['agent-runtime'],

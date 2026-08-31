@@ -33,7 +33,7 @@ const CATALOG = [
 const CONNECTION = {
   id: 'claude',
   kind: 'agent' as const,
-  type: 'claude-runtime',
+  type: 'claude',
   name: 'Claude',
   enabled: true,
   capabilities: [],

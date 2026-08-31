@@ -1,4 +1,4 @@
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { interruptibleTurnIdForEvents } from './session-lifecycle-service.js';
 
@@ -10,7 +10,7 @@ export interface InternalStopSuppressionDeps {
   emitRedispatchFailed: (payload: {
     threadId: string;
     turnId: string;
-    provider: ProviderKind;
+    provider: EngineId;
   }) => void;
 }
 
@@ -182,7 +182,7 @@ export class InternalStopSuppression {
   reportRedispatchFailed(
     threadId: string,
     turnId: string | undefined,
-    provider: ProviderKind,
+    provider: EngineId,
   ): void {
     if (!turnId) return;
     this.rescind(turnId);

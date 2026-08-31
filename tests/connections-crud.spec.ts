@@ -122,7 +122,7 @@ async function seedConnectionsRoutes(page: Page) {
     ],
     runtimes: [
       {
-        id: 'codex-runtime',
+        id: 'codex',
         kind: 'agent',
         type: 'codex',
         name: 'Codex Runtime',
@@ -157,7 +157,7 @@ async function seedConnectionsRoutes(page: Page) {
         },
       },
       {
-        id: 'claude-runtime',
+        id: 'claude',
         kind: 'agent',
         type: 'claude',
         name: 'Claude Code',
@@ -1232,7 +1232,7 @@ test.describe('Connections CRUD', () => {
           success: true,
           data: [
             {
-              id: 'claude-runtime',
+              id: 'claude',
               kind: 'agent',
               type: 'claude',
               name: 'Claude Code',
@@ -1392,7 +1392,7 @@ test.describe('Connections CRUD', () => {
       page.getByRole('button', { name: 'Save', exact: true }),
     ).toBeVisible();
 
-    await page.goto('/connections/engines/codex-runtime');
+    await page.goto('/connections/engines/codex');
     await page.getByText('Advanced', { exact: true }).click();
     // By accessible name: inside the Advanced disclosure the old
     // `.editor-field .editor-input` also matches the read-only Type/Status/

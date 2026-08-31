@@ -62,7 +62,7 @@ function commandBackedConnection(overrides: Record<string, unknown> = {}): any {
 
 function claudeConnection(overrides: Record<string, unknown> = {}): any {
   return {
-    id: 'claude-runtime',
+    id: 'claude',
     kind: 'agent' as const,
     type: 'claude',
     name: 'Claude Code',
@@ -182,7 +182,7 @@ describe('station#1549: the observation-required picker state', () => {
 
     fireEvent.click(screen.getByText('Use this engine'));
     expect(mutate).toHaveBeenCalledWith(
-      { builtinAgentEngineConnectionId: 'claude-runtime' },
+      { builtinAgentEngineConnectionId: 'claude' },
       expect.anything(),
     );
   });

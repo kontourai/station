@@ -1,4 +1,4 @@
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
 import type { EventBus, ServerEvent } from '../orchestration/event-bus.js';
@@ -172,7 +172,7 @@ export function clearsRuntimeAuthHealth(
 
 interface CanonicalRuntimeEventBase {
   eventId: string;
-  provider: ProviderKind;
+  provider: EngineId;
   threadId: string;
   createdAt: string;
 }
@@ -324,7 +324,7 @@ function isCanonicalUtcTimestamp(value: unknown): value is string {
   );
 }
 
-function isCanonicalProviderId(value: unknown): value is ProviderKind {
+function isCanonicalProviderId(value: unknown): value is EngineId {
   return (
     isCanonicalBoundedText(value, MAX_PROVIDER_ID_LENGTH) &&
     !hasControlCharacter(value)
@@ -365,13 +365,13 @@ function canonicalRuntimeEventBaseFrom(
  */
 export class RuntimeAuthHealthMonitor {
   private readonly failures = new Map<
-    ProviderKind,
+    EngineId,
     RuntimeAuthenticationFailureEntry
   >();
   /** Persisted across an expired window; only proven recovery resets it. */
-  private readonly failureStreaks = new Map<ProviderKind, number>();
+  private readonly failureStreaks = new Map<EngineId, number>();
   private readonly expiryTimers = new Map<
-    ProviderKind,
+    EngineId,
     ReturnType<typeof setTimeout>
   >();
   private readonly unsubscribe: () => void;
@@ -402,7 +402,7 @@ export class RuntimeAuthHealthMonitor {
     this.unsubscribe = eventBus.subscribe((event) => this.onServerEvent(event));
   }
 
-  getFailure(provider: ProviderKind): RuntimeAuthenticationFailure | null {
+  getFailure(provider: EngineId): RuntimeAuthenticationFailure | null {
     const entry = this.failures.get(provider);
     if (!entry) return null;
     if (this.readMonotonicNow() >= entry.freshUntilMonotonicMs) {
@@ -523,7 +523,7 @@ export class RuntimeAuthHealthMonitor {
   }
 
   private scheduleExpiry(
-    provider: ProviderKind,
+    provider: EngineId,
     entry: RuntimeAuthenticationFailureEntry,
     observedMonotonicMs = this.readMonotonicNow(),
   ): void {
@@ -551,7 +551,7 @@ export class RuntimeAuthHealthMonitor {
   }
 
   private expire(
-    provider: ProviderKind,
+    provider: EngineId,
     entry: RuntimeAuthenticationFailureEntry,
     notify: boolean,
   ): void {
@@ -568,7 +568,7 @@ export class RuntimeAuthHealthMonitor {
   }
 
   private clear(
-    provider: ProviderKind,
+    provider: EngineId,
     options: { notify: boolean; resetStreak: boolean },
   ): void {
     const timer = this.expiryTimers.get(provider);

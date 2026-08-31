@@ -9,6 +9,7 @@ import {
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { STATION_HOME_SCHEMA_VERSION } from '@kontourai/station-shared/station-home-schema';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const cleanupDirs: string[] = [];
@@ -24,7 +25,7 @@ function createRegistryHome(): {
   mkdirSync(join(home, 'config'), { recursive: true });
   writeFileSync(
     join(home, '.station-home-schema.json'),
-    JSON.stringify({ version: 1 }),
+    JSON.stringify({ version: STATION_HOME_SCHEMA_VERSION }),
   );
   return {
     root,
@@ -524,7 +525,7 @@ describe('install-registry helpers', () => {
     mkdirSync(projectHome, { recursive: true });
     writeFileSync(
       join(projectHome, '.station-home-schema.json'),
-      JSON.stringify({ version: 1 }),
+      JSON.stringify({ version: STATION_HOME_SCHEMA_VERSION }),
     );
     mkdirSync(registryDir, { recursive: true });
     mkdirSync(pluginDir, { recursive: true });
@@ -571,7 +572,7 @@ describe('install-registry helpers', () => {
     mkdirSync(projectHome, { recursive: true });
     writeFileSync(
       join(projectHome, '.station-home-schema.json'),
-      JSON.stringify({ version: 1 }),
+      JSON.stringify({ version: STATION_HOME_SCHEMA_VERSION }),
     );
     mkdirSync(registryDir, { recursive: true });
     mkdirSync(installedPluginDir, { recursive: true });
@@ -638,7 +639,7 @@ describe('install-registry helpers', () => {
     mkdirSync(projectHome, { recursive: true });
     writeFileSync(
       join(projectHome, '.station-home-schema.json'),
-      JSON.stringify({ version: 1 }),
+      JSON.stringify({ version: STATION_HOME_SCHEMA_VERSION }),
     );
     mkdirSync(registryDir, { recursive: true });
 
@@ -674,7 +675,7 @@ describe('install-registry helpers', () => {
     mkdirSync(projectHome, { recursive: true });
     writeFileSync(
       join(projectHome, '.station-home-schema.json'),
-      JSON.stringify({ version: 1 }),
+      JSON.stringify({ version: STATION_HOME_SCHEMA_VERSION }),
     );
     mkdirSync(registryDir, { recursive: true });
 
@@ -710,7 +711,7 @@ describe('install-registry helpers', () => {
     mkdirSync(projectHome, { recursive: true });
     writeFileSync(
       join(projectHome, '.station-home-schema.json'),
-      JSON.stringify({ version: 1 }),
+      JSON.stringify({ version: STATION_HOME_SCHEMA_VERSION }),
     );
     mkdirSync(registryDir, { recursive: true });
 
@@ -791,7 +792,7 @@ describe('install-registry helpers', () => {
     mkdirSync(projectHome, { recursive: true });
     writeFileSync(
       join(projectHome, '.station-home-schema.json'),
-      JSON.stringify({ version: 1 }),
+      JSON.stringify({ version: STATION_HOME_SCHEMA_VERSION }),
     );
     mkdirSync(registryDir, { recursive: true });
 
@@ -829,7 +830,7 @@ describe('install-registry helpers', () => {
     mkdirSync(join(projectHome, 'config'), { recursive: true });
     writeFileSync(
       join(projectHome, '.station-home-schema.json'),
-      JSON.stringify({ version: 1 }),
+      JSON.stringify({ version: STATION_HOME_SCHEMA_VERSION }),
     );
     writeFileSync(
       join(projectHome, 'config', 'registry-installs.json'),

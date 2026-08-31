@@ -16,7 +16,7 @@ import { ToolProgressIndicator } from './ToolProgressIndicator';
 import { splitToolCallRuns } from './tool-call-runs';
 import { UIBlockRenderer } from './UIBlockRenderer';
 
-type Props = {
+export type StreamingMessageProps = {
   sessionId: string;
   agentIcon: React.ReactNode;
   agentIconStyle: React.CSSProperties;
@@ -66,7 +66,7 @@ export function deriveActivityLabel(
 /**
  * Renders a streaming assistant message with loading indicator.
  */
-function StreamingMessageComponent({
+export function StreamingMessageView({
   sessionId,
   agentIcon,
   agentIconStyle,
@@ -78,9 +78,16 @@ function StreamingMessageComponent({
   attributionAgent,
   owner,
   onContentChange,
-}: Props) {
-  const { streamingText, hasContent, contentParts, contentRevision } =
-    useStreamingContent(sessionId);
+  streamingText,
+  hasContent,
+  contentParts,
+  contentRevision,
+}: StreamingMessageProps & {
+  streamingText: string;
+  hasContent: boolean;
+  contentParts: ChatContentPart[];
+  contentRevision: number;
+}) {
   useStreamingHaptics(sessionId, streamingText.length);
   const progressSummary = deriveToolProgressSummary(contentParts);
   const hasReasoningPart = contentParts.some(
@@ -198,6 +205,11 @@ function StreamingMessageComponent({
       </div>
     </div>
   );
+}
+
+function StreamingMessageComponent(props: StreamingMessageProps) {
+  const state = useStreamingContent(props.sessionId);
+  return <StreamingMessageView {...props} {...state} />;
 }
 
 export const StreamingMessage = memo(StreamingMessageComponent);

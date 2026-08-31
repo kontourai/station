@@ -2,7 +2,6 @@ import { engineConnectionId } from '@kontourai/station-contracts/agent-identity'
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 import { describe, expect, test } from 'vitest';
 import {
-  agentConnectionIdToProviderKind,
   agentConnectionLabel,
   buildProviderOptions,
   canAgentStartChat,
@@ -36,7 +35,7 @@ describe('execution utils', () => {
   });
 
   /**
-   * archive#3739: /connections/engines printed `muse-runtime` as an engine
+   * archive#3739: /connections/engines printed `muse` as an engine
    * name, and the built-in vector store as `lancedb`. Every type Station's own
    * adapter registry and connection factories ship has to have a name
    * somebody chose; anything left over falls through to the slug, and that is
@@ -51,11 +50,10 @@ describe('execution utils', () => {
       'google',
       'lancedb',
       'bedrock-runtime',
-      'claude-runtime',
-      'codex-runtime',
-      'muse-runtime',
+      'claude',
+      'codex',
+      'muse',
       'ollama-runtime',
-      'station-agent-runtime',
       'acp',
     ]) {
       expect(connectionTypeLabel(type)).not.toBe(type);
@@ -69,14 +67,14 @@ describe('execution utils', () => {
     expect(
       connectionDisplayLabel({
         name: 'Muse Code',
-        type: 'muse-runtime',
+        type: 'muse',
         config: {},
       } as never),
     ).toBe('Muse Code');
     expect(
       connectionDisplayLabel({
         name: 'My box',
-        type: 'muse-runtime',
+        type: 'muse',
         config: { providerLabel: 'Muse Code' },
       } as never),
     ).toBe('Muse Code');
@@ -92,18 +90,6 @@ describe('execution utils', () => {
     expect(runtimeCatalogSourceSentence('cached')).toBe('Cached model catalog');
     expect(runtimeCatalogSourceSentence('built-in')).toBe(
       'Built-in model catalog',
-    );
-  });
-
-  test('maps runtime connections to providers', () => {
-    expect(agentConnectionIdToProviderKind('claude')).toBe('claude');
-    expect(agentConnectionIdToProviderKind('codex')).toBe('codex');
-    expect(agentConnectionIdToProviderKind('bedrock')).toBe('bedrock');
-    expect(agentConnectionIdToProviderKind('custom-runtime')).toBe(
-      'custom-runtime',
-    );
-    expect(agentConnectionIdToProviderKind('unknown-runtime')).toBe(
-      'unknown-runtime',
     );
   });
 
@@ -205,7 +191,7 @@ describe('execution utils', () => {
     const runtimeConnection: AgentConnectionView = {
       id: engineConnectionId('claude'),
       kind: 'agent',
-      type: 'claude-runtime',
+      type: 'claude',
       name: 'Claude Runtime',
       enabled: true,
       capabilities: ['agent-runtime'],
@@ -260,7 +246,7 @@ describe('execution utils', () => {
     const runtimeConnection: AgentConnectionView = {
       id: engineConnectionId('claude'),
       kind: 'agent',
-      type: 'claude-runtime',
+      type: 'claude',
       name: 'Claude Runtime',
       enabled: true,
       capabilities: ['agent-runtime'],
@@ -299,7 +285,7 @@ describe('execution utils', () => {
         runtimeConnection: {
           id: 'claude',
           kind: 'agent',
-          type: 'claude-runtime',
+          type: 'claude',
           name: 'Claude Runtime',
           enabled: true,
           capabilities: ['agent-runtime'],
@@ -320,7 +306,7 @@ describe('execution utils', () => {
       runtimeConnection: {
         id: 'claude',
         kind: 'agent',
-        type: 'claude-runtime',
+        type: 'claude',
         name: 'Claude Runtime',
         enabled: true,
         capabilities: ['agent-runtime'],
@@ -411,7 +397,7 @@ describe('execution utils', () => {
       {
         id: 'claude',
         kind: 'agent',
-        type: 'claude-runtime',
+        type: 'claude',
         name: 'Claude Runtime',
         enabled: true,
         capabilities: ['agent-runtime'],
@@ -471,7 +457,7 @@ describe('execution utils', () => {
         {
           id: 'codex',
           kind: 'agent',
-          type: 'codex-runtime',
+          type: 'codex',
           enabled: true,
           status: 'ready',
           capabilities: ['agent-runtime'],
@@ -584,7 +570,7 @@ describe('execution utils', () => {
       {
         id: 'codex',
         kind: 'agent',
-        type: 'codex-runtime',
+        type: 'codex',
         name: 'Codex Runtime',
         enabled: true,
         capabilities: ['agent-runtime'],
@@ -628,7 +614,7 @@ describe('execution utils', () => {
       {
         id: 'codex',
         kind: 'agent',
-        type: 'codex-runtime',
+        type: 'codex',
         name: 'Codex Runtime',
         enabled: true,
         capabilities: ['agent-runtime'],
@@ -669,7 +655,7 @@ describe('execution utils', () => {
       {
         id: 'codex',
         kind: 'agent',
-        type: 'codex-runtime',
+        type: 'codex',
         name: 'Codex Runtime',
         enabled: true,
         capabilities: ['agent-runtime'],
@@ -963,7 +949,7 @@ describe('execution utils', () => {
         runtimeConnection: {
           id: 'codex',
           kind: 'agent',
-          type: 'codex-runtime',
+          type: 'codex',
           name: 'Codex Runtime',
           enabled: true,
           capabilities: ['agent-runtime'],
@@ -1035,7 +1021,7 @@ describe('execution utils', () => {
         runtimeConnection: {
           id: 'claude',
           kind: 'agent',
-          type: 'claude-runtime',
+          type: 'claude',
           name: 'Claude Runtime',
           enabled: true,
           capabilities: ['agent-runtime'],
@@ -1172,7 +1158,7 @@ describe('execution utils', () => {
       {
         id: 'claude',
         kind: 'agent',
-        type: 'claude-runtime',
+        type: 'claude',
         name: 'Claude Runtime',
         enabled: true,
         capabilities: ['agent-runtime'],

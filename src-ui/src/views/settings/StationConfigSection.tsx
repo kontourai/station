@@ -8,7 +8,7 @@
  * `distributionProfile`, `builtinAgentEngineConnectionId`. An explicit,
  * enumerated key list (not "every remaining registry key") so the section
  * exactly matches the slice's scoped ask — several other unregistered-UI
- * fields (`gitRemote`, `runtime`, the provider-id defaults,
+ * fields (`gitRemote`, the provider-id defaults,
  * `agentConnections`) stay a disclosed gap rather than guessed placements
  * (see the delivery report's judgment-calls section).
  */
@@ -17,7 +17,7 @@ import type {
   SettingDefinition,
   SettingProvenanceEntry,
 } from '@kontourai/station-contracts/settings-registry';
-import { APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
+import { USER_FACING_APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import type { AppConfig } from '../../types';
 import { renderSettingRow } from './registry-row';
 import { SettingsSection } from './SettingsSection';
@@ -39,7 +39,10 @@ const STATION_CONFIG_KEYS: readonly (keyof AppConfig)[] = [
 
 const REGISTRY_BY_KEY: ReadonlyMap<keyof AppConfig, SettingDefinition> =
   new Map(
-    APP_SETTINGS_REGISTRY.map((definition) => [definition.key, definition]),
+    USER_FACING_APP_SETTINGS_REGISTRY.map((definition) => [
+      definition.key,
+      definition,
+    ]),
   );
 
 export function StationConfigSection({

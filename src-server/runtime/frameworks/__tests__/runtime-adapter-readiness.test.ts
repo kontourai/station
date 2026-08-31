@@ -1,4 +1,4 @@
-import { engineRuntimeId } from '@kontourai/station-contracts/agent-identity';
+import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { describe, expect, test } from 'vitest';
 import {
   connectionStatusFromRuntimeReadiness,
@@ -17,7 +17,7 @@ describe('runtime adapter readiness', () => {
   test('marks enabled adapters with required prerequisites as configured', () => {
     const readiness = resolveRuntimeAdapterReadiness({
       adapter,
-      runtimeId: engineRuntimeId('codex-runtime'),
+      engineId: engineId('codex'),
       enabled: true,
       prerequisites: [
         {
@@ -39,7 +39,7 @@ describe('runtime adapter readiness', () => {
     expect(
       resolveRuntimeAdapterReadiness({
         adapter,
-        runtimeId: engineRuntimeId('codex-runtime'),
+        engineId: engineId('codex'),
         enabled: false,
         prerequisites: [],
       }).state,
@@ -48,7 +48,7 @@ describe('runtime adapter readiness', () => {
     expect(
       resolveRuntimeAdapterReadiness({
         adapter,
-        runtimeId: engineRuntimeId('codex-runtime'),
+        engineId: engineId('codex'),
         enabled: true,
         prerequisites: [
           {
@@ -68,7 +68,7 @@ describe('runtime adapter readiness', () => {
           ...adapter,
           metadata: { ...adapter.metadata, capabilities: ['llm'] },
         },
-        runtimeId: engineRuntimeId('model-runtime'),
+        engineId: engineId('model-runtime'),
         enabled: true,
         prerequisites: [],
       }).state,

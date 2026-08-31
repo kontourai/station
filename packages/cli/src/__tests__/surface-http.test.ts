@@ -3,10 +3,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  parseEngineConnectionId,
-  parseEngineRuntimeId,
-} from '@kontourai/station-contracts/agent-identity';
+import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
   afterEach,
   beforeEach,
@@ -700,10 +697,7 @@ describe('CLI surface commands over HTTP', () => {
         const fieldErrors: Record<string, string[]> = {};
         if (typeof body?.id !== 'string') {
           fieldErrors.id = ['Required'];
-        } else if (
-          parseEngineConnectionId(body.id) === undefined ||
-          parseEngineRuntimeId(body.id) === undefined
-        ) {
+        } else if (parseEngineConnectionId(body.id) === undefined) {
           fieldErrors.id = [
             'must be a clean engine identity using lowercase letters, digits, and hyphens',
           ];
@@ -1411,63 +1405,53 @@ describe('CLI surface commands over HTTP', () => {
   test('manages credential recovery profiles through safe, explicit requests', async () => {
     const { runCli } = await import('../cli.js');
 
-    await runCli([
-      'connections',
-      'recovery',
-      'codex-runtime',
-      `--api-base=${apiBase}`,
-    ]);
+    await runCli(['connections', 'recovery', 'codex', `--api-base=${apiBase}`]);
     const recoveryOutput = String(_consoleLog.mock.calls.at(-1)?.[0]);
     expect(recoveryOutput).not.toContain('Primary account');
     expect(recoveryOutput).not.toContain('must-not-print');
 
-    await runCli([
-      'connections',
-      'profiles',
-      'codex-runtime',
-      `--api-base=${apiBase}`,
-    ]);
+    await runCli(['connections', 'profiles', 'codex', `--api-base=${apiBase}`]);
     const profileListOutput = String(_consoleLog.mock.calls.at(-1)?.[0]);
     expect(profileListOutput).toContain('Primary account');
     await runCli([
       'connections',
       'profile-upsert',
-      'codex-runtime',
+      'codex',
       '--data={"ref":"recovery","label":"Recovery account"}',
       `--api-base=${apiBase}`,
     ]);
     await runCli([
       'connections',
       'profile-delete',
-      'codex-runtime',
+      'codex',
       'recovery/unsafe',
       `--api-base=${apiBase}`,
     ]);
     await runCli([
       'connections',
       'profile-enroll',
-      'codex-runtime',
+      'codex',
       'recovery',
       `--api-base=${apiBase}`,
     ]);
     await runCli([
       'connections',
       'profile-unenroll',
-      'codex-runtime',
+      'codex',
       'recovery',
       `--api-base=${apiBase}`,
     ]);
     await runCli([
       'connections',
       'recovery-policy',
-      'codex-runtime',
+      'codex',
       '--automatic=true',
       `--api-base=${apiBase}`,
     ]);
     await runCli([
       'connections',
       'profile-import',
-      'codex-runtime',
+      'codex',
       'recovery',
       '--include-credentials',
       `--api-base=${apiBase}`,
@@ -1480,7 +1464,7 @@ describe('CLI surface commands over HTTP', () => {
     await runCli([
       'connections',
       'profile-apply',
-      'codex-runtime',
+      'codex',
       'recovery',
       '--confirm',
       '--timeout-ms=45000',
@@ -1490,44 +1474,44 @@ describe('CLI surface commands over HTTP', () => {
     expect(state.credentialRecoveryCalls).toEqual([
       {
         method: 'GET',
-        path: '/api/connections/agent/codex-runtime/credential-recovery',
+        path: '/api/connections/agent/codex/credential-recovery',
       },
       {
         method: 'GET',
-        path: '/api/connections/agent/codex-runtime/credential-recovery',
+        path: '/api/connections/agent/codex/credential-recovery',
       },
       {
         method: 'POST',
-        path: '/api/connections/agent/codex-runtime/credential-recovery/profiles',
+        path: '/api/connections/agent/codex/credential-recovery/profiles',
         body: { ref: 'recovery', label: 'Recovery account' },
       },
       {
         method: 'DELETE',
-        path: '/api/connections/agent/codex-runtime/credential-recovery/profiles/recovery%2Funsafe',
+        path: '/api/connections/agent/codex/credential-recovery/profiles/recovery%2Funsafe',
       },
       {
         method: 'PUT',
-        path: '/api/connections/agent/codex-runtime/credential-recovery/profiles/recovery/enrollment',
+        path: '/api/connections/agent/codex/credential-recovery/profiles/recovery/enrollment',
         body: { enrolled: true },
       },
       {
         method: 'PUT',
-        path: '/api/connections/agent/codex-runtime/credential-recovery/profiles/recovery/enrollment',
+        path: '/api/connections/agent/codex/credential-recovery/profiles/recovery/enrollment',
         body: { enrolled: false },
       },
       {
         method: 'PUT',
-        path: '/api/connections/agent/codex-runtime/credential-recovery/policy',
+        path: '/api/connections/agent/codex/credential-recovery/policy',
         body: { automatic: true },
       },
       {
         method: 'POST',
-        path: '/api/connections/agent/codex-runtime/credential-recovery/profiles/recovery/import',
+        path: '/api/connections/agent/codex/credential-recovery/profiles/recovery/import',
         body: { includeCredentials: true },
       },
       {
         method: 'POST',
-        path: '/api/connections/agent/codex-runtime/credential-recovery/profiles/recovery/apply',
+        path: '/api/connections/agent/codex/credential-recovery/profiles/recovery/apply',
         body: { confirmed: true, timeoutMs: 45000 },
       },
     ]);
@@ -1546,7 +1530,7 @@ describe('CLI surface commands over HTTP', () => {
       runCli([
         'connections',
         'profile-apply',
-        'codex-runtime',
+        'codex',
         'recovery',
         `--api-base=${apiBase}`,
       ]),
@@ -1561,7 +1545,7 @@ describe('CLI surface commands over HTTP', () => {
       runCli([
         'connections',
         'profile-apply',
-        'codex-runtime',
+        'codex',
         'recovery',
         '--confirm',
         '--timeout-ms=4999',
@@ -1579,7 +1563,7 @@ describe('CLI surface commands over HTTP', () => {
       runCli([
         'connections',
         'profile-apply',
-        'codex-runtime',
+        'codex',
         'recovery',
         '--confirm',
         `--api-base=${apiBase}`,

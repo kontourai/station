@@ -1,0 +1,875 @@
+name: Nightly native cohort
+
+# The caller supplies an already-gated immutable source. This workflow is the
+# only native publisher: it stages both platforms, admits identical bytes, then
+# promotes Android before macOS and lets the protected verifier grant finality.
+on:
+  workflow_call:
+    inputs:
+      source_sha: { required: true, type: string }
+      rebuild_index: { required: false, type: string }
+    outputs:
+      build:
+        description: Whether this exact source allocated a native cohort.
+        value: ${{ jobs.plan-cohort.outputs.build }}
+      source_sha:
+        description: Exact source shared by every native delivery leg.
+        value: ${{ jobs.plan-cohort.outputs.source_sha }}
+      marketing_version:
+        description: Numeric App Store marketing version from package identity.
+        value: ${{ jobs.plan-cohort.outputs.marketing_version }}
+      bundle_version:
+        description: Monotonic native bundle/version code reserved for the cohort.
+        value: ${{ jobs.plan-cohort.outputs.bundle_version }}
+      reservation_tag:
+        description: Immutable authority tag binding the reserved native version.
+        value: ${{ jobs.plan-cohort.outputs.reservation_tag }}
+
+permissions:
+  contents: read
+
+jobs:
+  plan-cohort:
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+      source_sha: ${{ steps.source.outputs.sha }}
+      marketing_version: ${{ steps.ios_identity.outputs.marketing_version }}
+      bundle_version: ${{ steps.allocate.outputs.version_code }}
+      reservation_tag: ${{ steps.allocate.outputs.reservation_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: source
+        name: Re-bind the caller's exact source
+        run: |
+          source_sha=$(git rev-parse HEAD)
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          test "$source_sha" = "${{ inputs.source_sha }}"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$source_sha" origin/main
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - name: Validate requested rebuild index
+        env:
+          NIGHTLY_REBUILD_INDEX: ${{ inputs.rebuild_index }}
+        run: node --input-type=module -e 'import { parseNightlyRebuildIndex } from "./scripts/lib/nightly-build-identity.mjs"; parseNightlyRebuildIndex(process.env.NIGHTLY_REBUILD_INDEX);'
+      - name: Fail closed when durable native recovery is pending
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          lock_ref='refs/tags/nightly-recovery-lock'
+          response=$(mktemp)
+          status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/nightly-recovery-lock")
+          case "$status" in
+            404) rm -f "$response" ;;
+            200)
+              tag_sha=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.ref!==process.argv[2]||value.object?.type!=="tag"||!/^[0-9a-f]{40}$/.test(value.object?.sha??"")) process.exit(1); process.stdout.write(value.object.sha)' "$response" "$lock_ref")
+              tag_object=$(mktemp)
+              tag_status=$(curl --silent --show-error --output "$tag_object" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/tags/$tag_sha")
+              test "$tag_status" = 200
+              locked_source=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.object?.type!=="commit"||!/^[0-9a-f]{40}$/.test(value.object?.sha??"")) process.exit(1); process.stdout.write(value.object.sha)' "$tag_object")
+              node scripts/release-cohort-workflow.mjs assert-recovery-tag-object "$tag_object" "$locked_source"
+              rm -f "$response" "$tag_object"
+              echo "Native cohort recovery lock $lock_ref is valid and authoritative for $locked_source (current source is $SOURCE_SHA). Owner reconciliation must inspect the durable recovery receipt, reconcile provider and durable completion state, then explicitly remove the lock before another cohort can allocate." >&2
+              exit 1
+              ;;
+            *) cat "$response" >&2; rm -f "$response"; echo "Unable to determine durable native recovery lock state (HTTP $status)." >&2; exit 1 ;;
+          esac
+      - name: Fail closed when a prior promotion fence is pending
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          fence_ref='refs/tags/nightly-promotion-fence'
+          response=$(mktemp)
+          status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/nightly-promotion-fence")
+          case "$status" in
+            404) rm -f "$response" ;;
+            200)
+              tag_sha=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.ref!==process.argv[2]||value.object?.type!=="tag"||!/^[0-9a-f]{40}$/.test(value.object?.sha??"")) process.exit(1); process.stdout.write(value.object.sha)' "$response" "$fence_ref")
+              tag_object=$(mktemp)
+              tag_status=$(curl --silent --show-error --output "$tag_object" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/tags/$tag_sha")
+              test "$tag_status" = 200
+              node scripts/release-cohort-workflow.mjs assert-promotion-fence-tag-object "$tag_object"
+              rm -f "$response" "$tag_object"
+              echo "Native cohort promotion fence $fence_ref is valid and authoritative. An earlier cohort may still have provider effects; owner reconciliation must finish it or explicitly remove the fence before another cohort can allocate." >&2
+              exit 1
+              ;;
+            *) cat "$response" >&2; rm -f "$response"; echo "Unable to determine native promotion fence state (HTTP $status)." >&2; exit 1 ;;
+          esac
+      - id: decide
+        name: Decide one cohort rather than independent native ships
+        run: |
+          head_sha=$(git rev-parse HEAD)
+          android_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly^{commit}' || true)
+          desktop_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly-desktop^{commit}' || true)
+          normalized_android_sha=$(node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$android_sha")
+          normalized_desktop_sha=$(node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$desktop_sha")
+          if [ "$normalized_android_sha" = "$android_sha" ] && [ "$normalized_desktop_sha" = "$desktop_sha" ] && [ -z "${{ inputs.rebuild_index }}" ]; then
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+            echo 'No native cohort is needed for this source.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.decide.outputs.build == 'true'
+        with: { node-version-file: .nvmrc }
+      - id: allocate
+        name: Reserve the Android version before either stage starts
+        if: steps.decide.outputs.build == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NIGHTLY_REQUESTED_BUILD: ${{ inputs.rebuild_index }}
+        run: |
+          set -euo pipefail
+          NIGHTLY_NOW="$(date -u +%Y-%m-%dT00:00:00Z)"
+          export NIGHTLY_NOW
+          reservation_remote="https://github.com/${{ github.repository }}"
+          reservation_created=false
+          for attempt in $(seq 1 100); do
+            echo "Nightly reservation attempt $attempt"
+            NIGHTLY_RESERVED_TAGS="$(git ls-remote --refs "$reservation_remote" 'refs/tags/nightly-version-code/*')"
+            export NIGHTLY_RESERVED_TAGS
+            allocation_output=$(mktemp)
+            allocation=$(GITHUB_OUTPUT="$allocation_output" node scripts/allocate-nightly-version-code.mjs)
+            printf '%s\n' "$allocation"
+            tag=$(printf '%s\n' "$allocation" | awk -F= '$1 == "reservation_tag" { print $2 }')
+            build=$(printf '%s\n' "$allocation" | awk -F= '$1 == "build" { print $2 }')
+            code=$(printf '%s\n' "$allocation" | awk -F= '$1 == "version_code" { print $2 }')
+            test -n "$tag" && test -n "$build" && test -n "$code"
+            reservation_ref="refs/tags/$tag"
+            body=$(node --input-type=module -e 'process.stdout.write(JSON.stringify({ref: process.argv[1], sha: process.argv[2]}))' "$reservation_ref" "${{ steps.source.outputs.sha }}")
+            response=$(mktemp)
+            status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --request POST --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/${{ github.repository }}/git/refs" --data "$body")
+            if ! classification=$(node scripts/classify-nightly-reservation-response.mjs "$status" "$response" "$reservation_ref" "${{ steps.source.outputs.sha }}"); then
+              rm -f "$allocation_output" "$response"; exit 1
+            fi
+            if [ "$classification" = created ]; then
+              { echo "date=$NIGHTLY_NOW"; echo "build=$build"; echo "version_code=$code"; echo "reservation_tag=$tag"; } >> "$GITHUB_OUTPUT"
+              rm -f "$allocation_output" "$response"; reservation_created=true; break
+            fi
+            if [ "$classification" = reference-already-exists ]; then
+              rm -f "$allocation_output" "$response"; continue
+            fi
+            rm -f "$allocation_output" "$response"; exit 1
+          done
+          test "$reservation_created" = true || { echo '::error::Nightly version-code reservation did not converge after 100 attempts.'; exit 1; }
+      - id: ios_identity
+        name: Derive the shared App Store marketing version
+        if: steps.decide.outputs.build == 'true'
+        run: |
+          marketing_version=$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')
+          [[ "$marketing_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "marketing_version=$marketing_version" >> "$GITHUB_OUTPUT"
+      - name: Produce the content-bound cohort plan
+        if: steps.decide.outputs.build == 'true'
+        run: |
+          node scripts/release-cohort-workflow.mjs plan-input plan-input.json "${{ steps.source.outputs.sha }}" "$GITHUB_RUN_ID" "${{ steps.allocate.outputs.date }}" "${{ steps.allocate.outputs.build }}"
+          node scripts/release-cohort.mjs plan plan-input.json > cohort-plan.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.decide.outputs.build == 'true'
+        with:
+          name: nightly-cohort-plan-${{ github.run_id }}
+          path: cohort-plan.json
+          if-no-files-found: error
+          retention-days: 14
+
+  stage-android:
+    needs: plan-cohort
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
+    runs-on: ubuntu-22.04
+    environment: native-release
+    timeout-minutes: 100
+    permissions: { contents: read, id-token: write, attestations: write }
+    env:
+      GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_PLAY_SERVICE_ACCOUNT: ${{ vars.GCP_PLAY_SERVICE_ACCOUNT }}
+      ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS }}
+      ANDROID_UPLOAD_CERT_SHA256: ${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}
+      ANDROID_BUILD_TOOLS_VERSION: '36.0.0'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan-cohort.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightly-cohort-plan-${{ github.run_id }}
+          path: cohort
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc }
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android }
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with: { distribution: temurin, java-version: 17 }
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+      - run: sdkmanager "ndk;27.0.12077973" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+      - name: Fail closed before Android signing
+        run: |
+          for name in GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER GCP_PLAY_SERVICE_ACCOUNT ANDROID_UPLOAD_KEY_ALIAS ANDROID_UPLOAD_CERT_SHA256; do test -n "${!name}" || { echo "missing $name" >&2; exit 1; }; done
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        id: google_auth
+        with:
+          workload_identity_provider: ${{ env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_PLAY_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+      - uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3
+        id: android_signing
+        with:
+          secrets: |-
+            keystore_base64:kontourai-station-release/station-android-upload-keystore-base64
+            keystore_password:kontourai-station-release/station-android-upload-keystore-password
+      - name: Build and verify the signed Android staging bytes
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ steps.android_signing.outputs.keystore_base64 }}
+          TAURI_ANDROID_KEYSTORE_PASSWORD: ${{ steps.android_signing.outputs.keystore_password }}
+          TAURI_ANDROID_KEY_ALIAS: ${{ env.ANDROID_UPLOAD_KEY_ALIAS }}
+          TAURI_ANDROID_KEY_PASSWORD: ${{ steps.android_signing.outputs.keystore_password }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64" && test -n "$TAURI_ANDROID_KEYSTORE_PASSWORD"
+          npm run dependencies:ci && npm run build:sdk && npm run build:connect
+          code=$(node -e 'console.log(require("./cohort/cohort-plan.json").versionIdentities.android.versionCode)')
+          day=$((code / 100)); build=$((code % 100))
+          date=$(node -e 'console.log(new Date(Date.UTC(2020,0,1)+Number(process.argv[1])*86400000).toISOString())' "$day")
+          node scripts/lib/nightly-build-identity.mjs --package-json package.json --tauri-config src-desktop/tauri.conf.json --date "$date" --build "$build" --output "$RUNNER_TEMP/tauri.nightly.conf.json"
+          node scripts/reset-android-generated-project.mjs
+          (cd src-desktop && npx tauri android init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.nightly.conf.json")
+          node scripts/apply-android-release-signing.mjs
+          node scripts/apply-android-channel-icons.mjs nightly
+          node scripts/apply-android-native-bootstrap.mjs
+          node scripts/write-android-build-manifest.mjs
+          keystore="$RUNNER_TEMP/station-nightly.keystore"; printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          export TAURI_ANDROID_KEYSTORE_PATH="$keystore" NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
+          version=$(node -e 'console.log(require("./cohort/cohort-plan.json").versionIdentities.android.versionName)')
+          (cd src-desktop && STATION_BUILD_VERSION="$version" STATION_CLIENT_BUILD_REUSE=1 RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384' npx tauri android build --aab --apk --config "$RUNNER_TEMP/tauri.nightly.conf.json")
+          mkdir -p cohort-android
+          cp src-desktop/gen/android/app/build/outputs/bundle/universalRelease/*.aab cohort-android/station-nightly-universal.aab
+          apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)
+          test -n "$apk"
+          cp "$apk" cohort-android/station-nightly-universal.apk
+          # Play receives this AAB, not the staged source tree. Extract its
+          # base/assets record and require literal byte equality before either
+          # provider upload or ledger claim can name this build.
+          node scripts/read-android-build-provenance.mjs cohort-android/station-nightly-universal.aab --expected src-desktop/station-client-build.json --output cohort-android/station-client-build.json
+          # The retained sibling APK is a separate packaging surface.
+          node scripts/read-android-build-provenance.mjs cohort-android/station-nightly-universal.apk --expected src-desktop/station-client-build.json
+          aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/aapt"; apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/apksigner"
+          "$aapt" dump badging "$apk" | grep -F "package: name='io.kontourai.station.nightly'"
+          node scripts/verify-android-aab-signature.mjs cohort-android/station-nightly-universal.aab "$ANDROID_UPLOAD_CERT_SHA256"
+          node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"
+          node scripts/check-android-16kb-alignment.mjs "$apk"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            cohort-android/station-nightly-universal.aab
+            cohort-android/station-nightly-universal.apk
+            cohort-android/station-client-build.json
+      - name: Bind the exact staged Android inventory into a receipt
+        run: |
+          node scripts/release-cohort-workflow.mjs stage-input android-stage-input.json cohort/cohort-plan.json android station-nightly-universal.aab=cohort-android/station-nightly-universal.aab
+          node scripts/release-cohort.mjs stage-receipt cohort/cohort-plan.json android-stage-input.json > android-stage-receipt.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: nightly-cohort-android-${{ github.run_id }}
+          path: |
+            cohort-android/station-nightly-universal.aab
+            cohort-android/station-nightly-universal.apk
+            cohort-android/station-client-build.json
+            android-stage-receipt.json
+          if-no-files-found: error
+          retention-days: 14
+
+  stage-macos:
+    needs: plan-cohort
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
+    runs-on: macos-15
+    environment: native-release
+    timeout-minutes: 120
+    permissions: { contents: read, id-token: write, attestations: write }
+    steps:
+      - id: macos_cohort_deadline
+        name: Reserve one fixed macOS cleanup deadline
+        run: |
+          cleanup_reserve_seconds=$((15 * 60))
+          echo "epoch=$(( $(date -u +%s) + (120 * 60) - cleanup_reserve_seconds ))" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan-cohort.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightly-cohort-plan-${{ github.run_id }}
+          path: cohort
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: npm }
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with: { targets: aarch64-apple-darwin }
+      - name: Fail closed and build/sign/notarize macOS staging artifacts
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_SIGNING_IDENTITY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          for name in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD TAURI_SIGNING_PUBLIC_KEY APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD APPLE_DEVELOPER_ID_SIGNING_IDENTITY APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY; do test -n "${!name}" || { echo "Missing required protected secret: $name" >&2; exit 1; }; done
+          npm run dependencies:ci && npm run build:sdk && npm run build:connect
+          printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$RUNNER_TEMP/station-updater.pub"
+          bundle_version=$(node -e 'console.log(require("./cohort/cohort-plan.json").versionIdentities.desktop.bundleVersion)')
+          date=$(node -e 'const v=require("./cohort/cohort-plan.json").versionIdentities.desktop.bundleVersion; console.log(new Date(Date.UTC(2020,0,1)+Math.floor(Number(v)/100)*86400000).toISOString())')
+          build=$((bundle_version % 100))
+          node scripts/lib/nightly-build-identity.mjs --desktop --package-json package.json --tauri-config src-desktop/tauri.conf.json --date "$date" --build "$build" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub" --updater-endpoint "https://github.com/${{ github.repository }}/releases/download/nightly-desktop/latest.json" --output "$RUNNER_TEMP/tauri.nightly-desktop.conf.json"
+          test "$(node -e 'console.log(require(process.argv[1]).bundle.macOS.bundleVersion)' "$RUNNER_TEMP/tauri.nightly-desktop.conf.json")" = "$bundle_version"
+          certificate="$RUNNER_TEMP/station-developer-id.p12"; keychain="$RUNNER_TEMP/station-developer-id.keychain-db"; state="$RUNNER_TEMP/station-developer-id-search-state.json"
+          printf '%s' "$APPLE_DEVELOPER_ID_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          node ops/release/macos-signing-readiness.mjs prepare --certificate "$certificate" --keychain "$keychain" --state "$state" --deadline-epoch "${{ steps.macos_cohort_deadline.outputs.epoch }}"
+          version=$(node -e 'console.log(require("./cohort/cohort-plan.json").versionIdentities.desktop.version)')
+          (cd src-desktop && STATION_BUILD_VERSION="$version" npx tauri build --no-sign --target aarch64-apple-darwin --config tauri.nightly.conf.json --config "$RUNNER_TEMP/tauri.nightly-desktop.conf.json")
+          node ops/release/macos-signing-readiness.mjs unlock --keychain "$keychain" --deadline-epoch "${{ steps.macos_cohort_deadline.outputs.epoch }}"
+          node ops/release/macos-signing-readiness.mjs probe --keychain "$keychain" --probe "$RUNNER_TEMP/station-developer-id-probe"
+          app=$(find src-desktop/target/aarch64-apple-darwin/release/bundle/macos -maxdepth 1 -type d -name '*.app' -print -quit); test -n "$app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" = "$bundle_version"
+          notary_key="$RUNNER_TEMP/station-notary-api-key.p8"; printf '%s' "$APPLE_API_PRIVATE_KEY" > "$notary_key"; chmod 600 "$notary_key"
+          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir cohort-macos --release-tag nightly-desktop --architecture aarch64 --bundle-id io.kontourai.station.nightly --deadline-epoch "${{ steps.macos_cohort_deadline.outputs.epoch }}"
+          archive=cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz
+          manifest_path=$(tar -tzf "$archive" | grep '/Contents/Resources/dist-server/station-build.json$')
+          test "$(printf '%s\n' "$manifest_path" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          tar -xOf "$archive" "$manifest_path" > cohort-macos/station-client-build.json
+          cmp src-desktop/station-client-build.json cohort-macos/station-client-build.json
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$version"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist")" = 'Station Nightly'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = 'io.kontourai.station.nightly'
+          node scripts/lib/tauri-updater-manifest.mjs --version "$version" --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --platform darwin-aarch64 --signature-file cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig --url "https://github.com/${{ github.repository }}/releases/download/nightly-desktop/station-nightly-desktop-macos-aarch64.app.tar.gz" --release-tag nightly-desktop --notes "Staged cohort ${{ needs.plan-cohort.outputs.source_sha }}" --output cohort-macos/latest.json
+      - name: Cleanup macOS Developer ID keychain
+        if: always()
+        run: |
+          set +e
+          node ops/release/macos-signing-readiness.mjs cleanup --keychain "$RUNNER_TEMP/station-developer-id.keychain-db" --state "$RUNNER_TEMP/station-developer-id-search-state.json"
+          helper_status=$?
+          rm -f "$RUNNER_TEMP/station-developer-id.p12" "$RUNNER_TEMP/station-developer-id-probe" "$RUNNER_TEMP/station-notary-api-key.p8"
+          rm_status=$?
+          test "$helper_status" -eq 0 && test "$rm_status" -eq 0
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            cohort-macos/latest.json
+            cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz
+            cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig
+            cohort-macos/station-nightly-desktop-macos-aarch64.dmg
+            cohort-macos/station-client-build.json
+      - name: Bind the exact staged macOS inventory into a receipt
+        run: |
+          node scripts/release-cohort-workflow.mjs stage-input macos-stage-input.json cohort/cohort-plan.json macos latest.json=cohort-macos/latest.json station-nightly-desktop-macos-aarch64.app.tar.gz=cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig station-nightly-desktop-macos-aarch64.dmg=cohort-macos/station-nightly-desktop-macos-aarch64.dmg
+          node scripts/release-cohort.mjs stage-receipt cohort/cohort-plan.json macos-stage-input.json > macos-stage-receipt.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-cohort-macos-${{ github.run_id }}
+          path: |
+            cohort-macos/
+            macos-stage-receipt.json
+          if-no-files-found: error
+          retention-days: 14
+
+  admit-cohort:
+    needs: [plan-cohort, stage-android, stage-macos]
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' && needs.stage-android.result == 'success' && needs.stage-macos.result == 'success' }}
+    runs-on: ubuntu-22.04
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan-cohort.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc }
+      - run: npm run dependencies:ci
+      - name: Admit only byte-for-byte staged assets
+        run: |
+          node scripts/release-cohort-workflow.mjs artifact-input artifacts.json android=station-nightly-universal.aab=cohort/cohort-android/station-nightly-universal.aab macos=latest.json=cohort/cohort-macos/latest.json macos=station-nightly-desktop-macos-aarch64.app.tar.gz=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz macos=station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig macos=station-nightly-desktop-macos-aarch64.dmg=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg
+          node scripts/release-cohort.mjs admit cohort/cohort-plan.json artifacts.json cohort/android-stage-receipt.json cohort/macos-stage-receipt.json > cohort-admission.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-cohort-admission-${{ github.run_id }}
+          path: |
+            cohort-admission.json
+            artifacts.json
+          if-no-files-found: error
+          retention-days: 14
+
+  create-promotion-fence:
+    needs: [plan-cohort, admit-cohort]
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.admit-cohort.result == 'success' }}
+    runs-on: ubuntu-22.04
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan-cohort.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc }
+      - name: Construct, create, and exactly read back the promotion fence
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          fence_ref='refs/tags/nightly-promotion-fence'
+          node scripts/release-cohort-workflow.mjs promotion-fence promotion-fence.json cohort/cohort-plan.json cohort/cohort-admission.json
+          message=$(node scripts/release-cohort-workflow.mjs canonical-promotion-fence-message promotion-fence.json)
+          source_sha=$(node -e 'console.log(require("./promotion-fence.json").sourceSha)')
+          body=$(node --input-type=module -e 'process.stdout.write(JSON.stringify({tag:"nightly-promotion-fence",message:process.argv[1],object:process.argv[2],type:"commit",tagger:{name:"station-native-cohort-fence",email:"station-native-cohort-fence@users.noreply.github.com",date:process.argv[3]}}))' "$message" "$source_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+          response=$(mktemp)
+          status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --request POST --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/tags" --data "$body")
+          test "$status" = 201 || { cat "$response" >&2; exit 1; }
+          tag_sha=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.tag!=="nightly-promotion-fence"||value.object?.type!=="commit"||value.object?.sha!==process.argv[2]||typeof value.sha!=="string"||!/^[0-9a-f]{40}$/.test(value.sha)) process.exit(1); process.stdout.write(value.sha)' "$response" "$source_sha")
+          node scripts/release-cohort-workflow.mjs assert-promotion-fence-tag-object "$response" cohort/cohort-plan.json cohort/cohort-admission.json
+          body=$(node --input-type=module -e 'process.stdout.write(JSON.stringify({ref:process.argv[1],sha:process.argv[2]}))' "$fence_ref" "$tag_sha")
+          status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --request POST --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/refs" --data "$body")
+          test "$status" = 201 || { cat "$response" >&2; exit 1; }
+          node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.ref!==process.argv[2]||value.object?.type!=="tag"||value.object?.sha!==process.argv[3]) process.exit(1)' "$response" "$fence_ref" "$tag_sha"
+          readback=$(mktemp)
+          status=$(curl --silent --show-error --output "$readback" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/nightly-promotion-fence")
+          test "$status" = 200
+          tag_sha=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.ref!==process.argv[2]||value.object?.type!=="tag"||typeof value.object?.sha!=="string") process.exit(1); process.stdout.write(value.object.sha)' "$readback" "$fence_ref")
+          tag_object=$(mktemp)
+          status=$(curl --silent --show-error --output "$tag_object" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/tags/$tag_sha")
+          test "$status" = 200
+          node scripts/release-cohort-workflow.mjs assert-promotion-fence-tag-object "$tag_object" cohort/cohort-plan.json cohort/cohort-admission.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: nightly-cohort-promotion-fence-${{ github.run_id }}
+          path: promotion-fence.json
+          if-no-files-found: error
+          retention-days: 30
+
+  promote-android:
+    needs: [plan-cohort, admit-cohort, create-promotion-fence]
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.admit-cohort.result == 'success' }}
+    runs-on: ubuntu-22.04
+    environment: native-release
+    permissions: { contents: read, id-token: write }
+    env:
+      GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_PLAY_SERVICE_ACCOUNT: ${{ vars.GCP_PLAY_SERVICE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan-cohort.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc }
+      - run: npm run dependencies:ci
+      - name: Fail closed before Play promotion
+        run: test -n "$GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER" && test -n "$GCP_PLAY_SERVICE_ACCOUNT"
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        id: google_auth
+        with:
+          workload_identity_provider: ${{ env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_PLAY_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+      - name: Download the pinned Play upload action
+        id: play_upload_action
+        env:
+          PLAY_UPLOAD_ACTION_SHA: e738b9dd8f2476ea806d921b64aacd24f34515a5
+          PLAY_UPLOAD_ACTION_DIGEST: 15b27f8937f30f20d81bb585c4ad7ec7032e84491be51ac4dda330767a287f6b
+        run: |
+          action_path="$RUNNER_TEMP/upload-google-play-$PLAY_UPLOAD_ACTION_SHA.js"
+          curl --fail --silent --show-error --location --max-filesize 2000000 "https://raw.githubusercontent.com/r0adkll/upload-google-play/$PLAY_UPLOAD_ACTION_SHA/lib/index.js" --output "$action_path"
+          printf '%s  %s\n' "$PLAY_UPLOAD_ACTION_DIGEST" "$action_path" | sha256sum --check --strict
+          echo "path=$action_path" >> "$GITHUB_OUTPUT"
+      - name: Re-verify the live promotion fence immediately before Play
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ref='refs/tags/nightly-promotion-fence'
+          readback=$(mktemp)
+          status=$(curl --silent --show-error --output "$readback" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/nightly-promotion-fence")
+          test "$status" = 200
+          tag_sha=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.ref!==process.argv[2]||value.object?.type!=="tag"||!/^[0-9a-f]{40}$/.test(value.object?.sha??"")) process.exit(1); process.stdout.write(value.object.sha)' "$readback" "$ref")
+          tag_object=$(mktemp)
+          status=$(curl --silent --show-error --output "$tag_object" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/tags/$tag_sha")
+          test "$status" = 200
+          node scripts/release-cohort-workflow.mjs assert-promotion-fence-tag-object "$tag_object" cohort/cohort-plan.json cohort/cohort-admission.json
+
+
+      - name: Upload the admitted AAB with its exact release name
+        id: play_upload
+        env:
+          INPUT_SERVICEACCOUNTJSON: ${{ steps.google_auth.outputs.credentials_file_path }}
+          INPUT_PACKAGENAME: io.kontourai.station.nightly
+          INPUT_RELEASEFILES: cohort/cohort-android/station-nightly-universal.aab
+          INPUT_TRACKS: internal
+          INPUT_STATUS: completed
+          PLAY_UPLOAD_ACTION_PATH: ${{ steps.play_upload_action.outputs.path }}
+        run: |
+          INPUT_RELEASENAME="$(node -e 'console.log(require("./cohort/cohort-plan.json").versionIdentities.android.versionName)')"
+          export INPUT_RELEASENAME
+          node scripts/play-upload-retry.mjs
+      - name: Record only a reported-success Android provider state
+        id: android_provider_state
+        run: |
+          node scripts/release-cohort.mjs begin-promotion cohort/cohort-admission.json > promotion-state.json
+          node scripts/query-google-play-release.mjs query-json "$(node -e 'process.stdout.write(JSON.stringify(require("./cohort/cohort-plan.json").versionIdentities.android))')" > play-observation.json
+          node scripts/release-cohort-workflow.mjs provider-claim android-claim.json cohort/cohort-plan.json android play-observation.json
+          node scripts/release-cohort.mjs promotion-receipt promotion-state.json android-claim.json > promotion-android-state.json
+      - name: Record unknown Android provider state for recovery
+        if: ${{ always() && steps.android_provider_state.outcome != 'success' }}
+        run: |
+          node scripts/release-cohort.mjs begin-promotion cohort/cohort-admission.json > promotion-state.json
+          node scripts/release-cohort-workflow.mjs unknown-claim android-unknown-claim.json cohort/cohort-plan.json android "run:$GITHUB_RUN_ID:play-upload-or-query"
+          node scripts/release-cohort.mjs promotion-receipt promotion-state.json android-unknown-claim.json > promotion-android-state.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: nightly-cohort-android-state-${{ github.run_id }}
+          path: |
+            promotion-android-state.json
+            play-observation.json
+          if-no-files-found: error
+          retention-days: 14
+
+  promote-macos:
+    needs: [plan-cohort, promote-android]
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.promote-android.result == 'success' }}
+    runs-on: macos-15
+    environment: native-release
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan-cohort.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
+      - name: Re-verify the live promotion fence immediately before macOS publication
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ref='refs/tags/nightly-promotion-fence'
+          readback=$(mktemp)
+          status=$(curl --silent --show-error --output "$readback" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/nightly-promotion-fence")
+          test "$status" = 200
+          tag_sha=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.ref!==process.argv[2]||value.object?.type!=="tag"||!/^[0-9a-f]{40}$/.test(value.object?.sha??"")) process.exit(1); process.stdout.write(value.object.sha)' "$readback" "$ref")
+          tag_object=$(mktemp)
+          status=$(curl --silent --show-error --output "$tag_object" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/tags/$tag_sha")
+          test "$status" = 200
+          node scripts/release-cohort-workflow.mjs assert-promotion-fence-tag-object "$tag_object" cohort/cohort-plan.json cohort/cohort-admission.json
+      - name: Promote all four admitted macOS assets and bind the rolling tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag=$(node -e 'console.log(require("./cohort/cohort-plan.json").versionIdentities.desktop.releaseTag)')
+          version=$(node -e 'console.log(require("./cohort/cohort-plan.json").versionIdentities.desktop.version)')
+          release_preflight=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease)
+          node --input-type=module -e 'const value=JSON.parse(process.argv[1]); if(value.isDraft!==false||value.isPrerelease!==true) process.exit(1)' "$release_preflight"
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber cohort/cohort-macos/latest.json
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes "Rolling Nightly desktop $version at ${{ needs.plan-cohort.outputs.source_sha }}"
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="${{ needs.plan-cohort.outputs.source_sha }}" -F force=true >/dev/null
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha)" = "${{ needs.plan-cohort.outputs.source_sha }}"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --method GET > github-release-observation.json
+      - name: Record only a reported-success macOS provider state
+        run: |
+          node scripts/release-cohort-workflow.mjs provider-claim macos-claim.json cohort/cohort-plan.json macos github-release-observation.json
+          node scripts/release-cohort.mjs promotion-receipt cohort/promotion-android-state.json macos-claim.json > promotion-complete-state.json
+          node scripts/release-cohort.mjs finalize promotion-complete-state.json > verification-candidate.json
+      - name: Retain macOS partial-promotion recovery state
+        if: always()
+        env:
+          SOURCE_SHA: ${{ needs.plan-cohort.outputs.source_sha }}
+        run: |
+          if [ ! -f promotion-complete-state.json ]; then
+            node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync("promotion-macos-recovery.json",JSON.stringify({kind:"station.release-cohort-recovery/v1",state:"partial_recovery_required",sourceSha:process.env.SOURCE_SHA,recoveryAction:"Android was reported successful; do not rerun macOS promotion until the rolling release/tag state is reconciled."},null,2)+"\n")'
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: nightly-cohort-verification-${{ github.run_id }}
+          path: |
+            promotion-complete-state.json
+            verification-candidate.json
+            github-release-observation.json
+            promotion-macos-recovery.json
+          if-no-files-found: error
+          retention-days: 14
+
+  deliver-ios:
+    needs: [plan-cohort, promote-macos]
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.promote-macos.result == 'success' }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/testflight-delivery.yml
+    with:
+      channel: nightly
+      source_sha: ${{ needs.plan-cohort.outputs.source_sha }}
+      source_ref: refs/tags/${{ needs.plan-cohort.outputs.reservation_tag }}
+      marketing_version: ${{ needs.plan-cohort.outputs.marketing_version }}
+      bundle_version: ${{ needs.plan-cohort.outputs.bundle_version }}
+      release_label: nightly-${{ needs.plan-cohort.outputs.bundle_version }}
+      mobile_endpoint: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}
+      update_feed_url: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
+      update_provider_origin: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
+      update_action_url: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
+      update_action_kind: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
+      update_action_origins: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
+    secrets: inherit
+
+  protected-finalize:
+    needs: [plan-cohort, promote-macos, deliver-ios]
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.promote-macos.result == 'success' && needs.deliver-ios.result == 'success' }}
+    runs-on: macos-15
+    environment: native-release
+    permissions: { contents: read, id-token: write, attestations: write }
+    env:
+      GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_PLAY_SERVICE_ACCOUNT: ${{ vars.GCP_PLAY_SERVICE_ACCOUNT }}
+      STATION_APKANALYZER_PATH: $ANDROID_HOME/cmdline-tools/16.0/bin/apkanalyzer
+      STATION_APKANALYZER_VERSION: '16.0'
+      STATION_UPDATER_PUBLIC_KEY_FILE: $RUNNER_TEMP/station-updater.pub
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan-cohort.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc }
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with: { distribution: temurin, java-version: 17 }
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+      - run: npm run dependencies:ci && sdkmanager "cmdline-tools;16.0"
+      - name: Fail closed and authenticate the protected verifier
+        env:
+          TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
+        run: test -n "$GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER" && test -n "$GCP_PLAY_SERVICE_ACCOUNT" && test -n "$TAURI_SIGNING_PUBLIC_KEY" && printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$STATION_UPDATER_PUBLIC_KEY_FILE"
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_PLAY_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+      - name: Verify and finalize only the complete admitted cohort
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node scripts/release-cohort-workflow.mjs artifact-input final-artifacts.json android=station-nightly-universal.aab=cohort/cohort-android/station-nightly-universal.aab macos=latest.json=cohort/cohort-macos/latest.json macos=station-nightly-desktop-macos-aarch64.app.tar.gz=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz macos=station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig macos=station-nightly-desktop-macos-aarch64.dmg=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg
+          node scripts/verify-release-cohort.mjs verify-finalize cohort/verification-candidate.json final-artifacts.json > final-cohort-receipt.json
+          node scripts/release-cohort-workflow.mjs assert-final final-cohort-receipt.json "${{ needs.plan-cohort.outputs.source_sha }}"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with: { subject-path: final-cohort-receipt.json }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-cohort-final-${{ github.run_id }}
+          path: final-cohort-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Retain finalization diagnostics on a verifier failure
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-cohort-finalization-diagnostics-${{ github.run_id }}
+          path: |
+            cohort/verification-candidate.json
+            final-artifacts.json
+            final-cohort-receipt.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  record-native-completion:
+    needs: [plan-cohort, protected-finalize]
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.protected-finalize.result == 'success' }}
+    runs-on: ubuntu-22.04
+    permissions: { contents: write, attestations: read }
+    outputs:
+      final_attestation: ${{ steps.final_attestation.outcome }}
+      app_token: ${{ steps.ledger_token.outcome }}
+      ledger: ${{ steps.durable_ledger.outcome }}
+      tag: ${{ steps.nightly_marker.outcome }}
+      promotion_fence: ${{ steps.clear_promotion_fence.outcome }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan-cohort.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightly-cohort-final-${{ github.run_id }}
+          path: cohort
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightly-cohort-plan-${{ github.run_id }}
+          path: cohort
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightly-cohort-admission-${{ github.run_id }}
+          path: cohort
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightly-cohort-android-${{ github.run_id }}
+          path: cohort
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightly-cohort-macos-${{ github.run_id }}
+          path: cohort
+      - id: final_attestation
+        name: Verify finalized receipt provenance before minting the ledger token
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh attestation verify cohort/final-cohort-receipt.json --repo "$GITHUB_REPOSITORY" --source-ref refs/heads/main --source-digest "${{ needs.plan-cohort.outputs.source_sha }}" --cert-identity "https://github.com/${{ github.repository }}/.github/workflows/nightly-native-cohort.yml@refs/heads/main" --cert-oidc-issuer https://token.actions.githubusercontent.com --deny-self-hosted-runners
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: ledger_token
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+      - id: durable_ledger
+        name: Record durable completion only after the verified final receipt
+        env:
+          GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          test -n "$GITHUB_TOKEN"
+          node scripts/release-cohort-workflow.mjs assert-final cohort/final-cohort-receipt.json "${{ needs.plan-cohort.outputs.source_sha }}"
+          androidVersion=$(node -e 'console.log(require("./cohort/final-cohort-receipt.json").versionIdentities.android.versionName)')
+          desktopVersion=$(node -e 'console.log(require("./cohort/final-cohort-receipt.json").versionIdentities.desktop.version)')
+          node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record finalized nightly-android $androidVersion" --summary-line "- finalized cohort Android $androidVersion" -- node scripts/deploy-ledger.mjs --channel nightly-android --version "$androidVersion" --sha "${{ needs.plan-cohort.outputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'native cohort final receipt complete' --github-repo "$GITHUB_REPOSITORY" --artifact-manifest cohort/cohort-android/station-client-build.json --artifact 'play-internal-aab:cohort-finalized'
+          node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record finalized nightly-desktop $desktopVersion" --summary-line "- finalized cohort macOS $desktopVersion" -- node scripts/deploy-ledger.mjs --channel nightly-desktop --version "$desktopVersion" --sha "${{ needs.plan-cohort.outputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'native cohort final receipt complete' --github-repo "$GITHUB_REPOSITORY" --artifact-manifest cohort/cohort-macos/station-client-build.json --artifact 'github-release:nightly-desktop (cohort-finalized)'
+      - id: nightly_marker
+        name: Advance final Android marker with exact REST readback
+        env:
+          GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
+          SOURCE_SHA: ${{ needs.plan-cohort.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          ref='refs/tags/nightly'
+          response=$(mktemp)
+          body=$(node --input-type=module -e 'process.stdout.write(JSON.stringify({sha:process.argv[1],force:true}))' "$SOURCE_SHA")
+          status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --request PATCH --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/refs/tags/nightly" --data "$body")
+          create_needed=false
+          if [ "$status" = 404 ]; then
+            node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.message!=="Not Found") process.exit(1)' "$response"
+            create_needed=true
+          elif [ "$status" = 422 ]; then
+            node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.message!=="Reference does not exist") process.exit(1)' "$response"
+            create_needed=true
+          elif [ "$status" != 200 ]; then
+            cat "$response" >&2
+            exit 1
+          fi
+          if [ "$create_needed" = true ]; then
+            body=$(node --input-type=module -e 'process.stdout.write(JSON.stringify({ref:process.argv[1],sha:process.argv[2]}))' "$ref" "$SOURCE_SHA")
+            status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --request POST --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/refs" --data "$body")
+            test "$status" = 201
+          fi
+          node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.ref!==process.argv[2]||value.object?.type!=="commit"||value.object?.sha!==process.argv[3]) process.exit(1)' "$response" "$ref" "$SOURCE_SHA"
+          readback=$(mktemp)
+          status=$(curl --silent --show-error --output "$readback" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/nightly")
+          test "$status" = 200
+          node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.ref!==process.argv[2]||value.object?.type!=="commit"||value.object?.sha!==process.argv[3]) process.exit(1)' "$readback" "$ref" "$SOURCE_SHA"
+      - id: clear_promotion_fence
+        name: Remove the exact promotion fence only after all durable completion
+        env:
+          GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
+        run: |
+          set -euo pipefail
+          ref='refs/tags/nightly-promotion-fence'
+          readback=$(mktemp)
+          status=$(curl --silent --show-error --output "$readback" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/nightly-promotion-fence")
+          test "$status" = 200
+          tag_sha=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.ref!==process.argv[2]||value.object?.type!=="tag"||!/^[0-9a-f]{40}$/.test(value.object?.sha??"")) process.exit(1); process.stdout.write(value.object.sha)' "$readback" "$ref")
+          tag_object=$(mktemp)
+          status=$(curl --silent --show-error --output "$tag_object" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/tags/$tag_sha")
+          test "$status" = 200
+          node scripts/release-cohort-workflow.mjs assert-promotion-fence-tag-object "$tag_object" cohort/cohort-plan.json cohort/cohort-admission.json
+          response=$(mktemp)
+          status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --request DELETE --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/refs/tags/nightly-promotion-fence")
+          test "$status" = 204
+          status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/nightly-promotion-fence")
+          test "$status" = 404
+
+  recover-native-cohort:
+    needs: [plan-cohort, create-promotion-fence, promote-android, promote-macos, deliver-ios, protected-finalize, record-native-completion]
+    if: ${{ always() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' && (needs.promote-android.result != 'success' || needs.promote-macos.result != 'success' || needs.deliver-ios.result != 'success' || needs.protected-finalize.result != 'success' || needs.record-native-completion.result != 'success') }}
+    runs-on: ubuntu-22.04
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
+      - name: Construct content-bound durable recovery receipt
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          JOB_RESULTS: >-
+            {"plan-cohort":"${{ needs.plan-cohort.result }}","promotion-fence":"${{ needs.create-promotion-fence.result }}","promote-android":"${{ needs.promote-android.result }}","promote-macos":"${{ needs.promote-macos.result }}","deliver-ios":"${{ needs.deliver-ios.result }}","protected-finalize":"${{ needs.protected-finalize.result }}","record-native-completion":"${{ needs.record-native-completion.result }}","final-attestation":"${{ needs.record-native-completion.outputs.final_attestation }}","app-token":"${{ needs.record-native-completion.outputs.app_token }}","ledger":"${{ needs.record-native-completion.outputs.ledger }}","tag":"${{ needs.record-native-completion.outputs.tag }}","promotion-fence-clear":"${{ needs.record-native-completion.outputs.promotion_fence }}"}
+        run: |
+          printf '%s\n' "$JOB_RESULTS" > recovery-job-results.json
+          node scripts/release-cohort-workflow.mjs recovery-receipt native-cohort-recovery.json "$SOURCE_SHA" "$GITHUB_RUN_ID" cohort/cohort-plan.json recovery-job-results.json cohort/cohort-admission.json cohort/verification-candidate.json cohort/play-observation.json cohort/github-release-observation.json
+      - name: Create and read back durable recovery lock
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          lock_ref='refs/tags/nightly-recovery-lock'
+          response=$(mktemp)
+          message=$(node scripts/release-cohort-workflow.mjs canonical-recovery-message native-cohort-recovery.json)
+          body=$(node --input-type=module -e 'process.stdout.write(JSON.stringify({tag:"nightly-recovery-lock",message:process.argv[1],object:process.argv[2],type:"commit",tagger:{name:"station-native-cohort-recovery",email:"station-native-cohort-recovery@users.noreply.github.com",date:process.argv[3]}}))' "$message" "$SOURCE_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+          status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --request POST --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/tags" --data "$body")
+          test "$status" = 201 || { cat "$response" >&2; echo "Native recovery tag object could not be created; owner reconciliation must retain any existing lock." >&2; exit 1; }
+          tag_sha=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.tag!=="nightly-recovery-lock"||value.object?.type!=="commit"||value.object?.sha!==process.argv[2]||typeof value.sha!=="string"||!/^[0-9a-f]{40}$/.test(value.sha)) process.exit(1); process.stdout.write(value.sha)' "$response" "$SOURCE_SHA")
+          node scripts/release-cohort-workflow.mjs assert-recovery-tag-object "$response" "$SOURCE_SHA"
+          body=$(node --input-type=module -e 'process.stdout.write(JSON.stringify({ref:process.argv[1],sha:process.argv[2]}))' "$lock_ref" "$tag_sha")
+          status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --request POST --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/refs" --data "$body")
+          test "$status" = 201 || { cat "$response" >&2; echo "Native recovery lock already exists or could not be created; owner reconciliation must retain the existing lock." >&2; exit 1; }
+          node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.ref!==process.argv[2]||value.object?.type!=="tag"||value.object?.sha!==process.argv[3]) process.exit(1)' "$response" "$lock_ref" "$tag_sha"
+          readback=$(mktemp)
+          status=$(curl --silent --show-error --output "$readback" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/nightly-recovery-lock")
+          test "$status" = 200
+          tag_sha=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.ref!==process.argv[2]||value.object?.type!=="tag"||typeof value.object?.sha!=="string") process.exit(1); process.stdout.write(value.object.sha)' "$readback" "$lock_ref")
+          tag_object=$(mktemp)
+          status=$(curl --silent --show-error --output "$tag_object" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/tags/$tag_sha")
+          test "$status" = 200
+          node scripts/release-cohort-workflow.mjs assert-recovery-tag-object "$tag_object" "$SOURCE_SHA"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: nightly-cohort-recovery-${{ github.run_id }}
+          path: native-cohort-recovery.json
+          if-no-files-found: error
+          retention-days: 30

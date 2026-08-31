@@ -65,7 +65,7 @@ function stubStationBackend(): void {
     if (url.pathname === '/.well-known/station/v1') {
       return json(200, { environmentId: 'env-current' });
     }
-    if (url.pathname === '/api/connections/codex-runtime') {
+    if (url.pathname === '/api/connections/codex') {
       // No `error` field on purpose: readConnection() must fall back to its
       // own distinctive unavailableMessage, not a body-supplied string.
       return json(404, { success: false });

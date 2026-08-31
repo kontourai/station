@@ -40,7 +40,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 function claudeConnection(overrides: Record<string, unknown> = {}): any {
   return {
-    id: 'claude-runtime',
+    id: 'claude',
     kind: 'agent' as const,
     type: 'claude',
     name: 'Claude Code',
@@ -56,7 +56,7 @@ function claudeConnection(overrides: Record<string, unknown> = {}): any {
 
 function codexConnection(overrides: Record<string, unknown> = {}): any {
   return {
-    id: 'codex-runtime',
+    id: 'codex',
     kind: 'agent' as const,
     type: 'codex',
     name: 'Codex',
@@ -138,12 +138,12 @@ describe('readyEngineOptions — station#1194 (matrix-driven, no per-engine bran
 
     expect(options).toEqual([
       expect.objectContaining({
-        connectionId: 'claude-runtime',
+        connectionId: 'claude',
         name: 'Claude Code',
         capability: 'full',
       }),
       expect.objectContaining({
-        connectionId: 'codex-runtime',
+        connectionId: 'codex',
         name: 'Codex',
         capability: 'full',
       }),
@@ -155,7 +155,7 @@ describe('readyEngineOptions — station#1194 (matrix-driven, no per-engine bran
     ]);
   });
 
-  test('keeps Codex eligible when its live native projection uses codex-runtime as its adapter type', () => {
+  test('keeps Codex eligible when its live native projection uses codex as its adapter type', () => {
     // This is the exact shape published by native adapter discovery: the
     // public matrix identity belongs in config.engineId, not the private
     // runtime selector. Codex's archive#1195 declared delivery therefore needs no
@@ -166,7 +166,7 @@ describe('readyEngineOptions — station#1194 (matrix-driven, no per-engine bran
         connections: [
           codexConnection({
             id: 'codex',
-            type: 'codex-runtime',
+            type: 'codex',
             config: { engineId: 'codex' },
           }),
         ],
@@ -288,7 +288,7 @@ describe('EnginePicker component', () => {
     fireEvent.click(screen.getByText('Use this engine'));
 
     expect(mutate).toHaveBeenCalledWith(
-      { builtinAgentEngineConnectionId: 'codex-runtime' },
+      { builtinAgentEngineConnectionId: 'codex' },
       expect.objectContaining({ onSuccess: expect.any(Function) }),
     );
   });
@@ -312,7 +312,7 @@ describe('EnginePicker component', () => {
 
     fireEvent.click(screen.getByText('Use this engine'));
 
-    expect(onSelect).toHaveBeenCalledWith('codex-runtime');
+    expect(onSelect).toHaveBeenCalledWith('codex');
     expect(onChosen).toHaveBeenCalled();
     expect(mutate).not.toHaveBeenCalled();
   });

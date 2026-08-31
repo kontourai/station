@@ -80,9 +80,54 @@ function facts(input = {}) {
       canonicalJson(['android', 'desktop'])
   )
     fail('versionIdentities must exactly provide android and desktop');
+  const androidIdentity = input.versionIdentities.android;
+  const desktopIdentity = input.versionIdentities.desktop;
+  if (
+    !plain(androidIdentity) ||
+    canonicalJson(Object.keys(androidIdentity).sort()) !==
+      canonicalJson(['packageName', 'versionCode', 'versionName'])
+  ) {
+    fail('versionIdentities.android schema is invalid');
+  }
+  if (
+    !/^io\.kontourai\.station(?:\.[a-z0-9-]+)*$/.test(
+      androidIdentity.packageName ?? '',
+    ) ||
+    !Number.isSafeInteger(androidIdentity.versionCode) ||
+    androidIdentity.versionCode < 1 ||
+    !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(
+      androidIdentity.versionName ?? '',
+    )
+  ) {
+    fail('versionIdentities.android is invalid');
+  }
+  if (
+    !plain(desktopIdentity) ||
+    canonicalJson(Object.keys(desktopIdentity).sort()) !==
+      canonicalJson(['bundleVersion', 'releaseTag', 'version'])
+  ) {
+    fail('versionIdentities.desktop schema is invalid');
+  }
+  if (
+    !/^\d+$/.test(desktopIdentity.bundleVersion ?? '') ||
+    !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(
+      desktopIdentity.version ?? '',
+    ) ||
+    !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(desktopIdentity.releaseTag ?? '')
+  ) {
+    fail('versionIdentities.desktop is invalid');
+  }
   const versionIdentities = {
-    android: text(input.versionIdentities.android, 'versionIdentities.android'),
-    desktop: text(input.versionIdentities.desktop, 'versionIdentities.desktop'),
+    android: {
+      packageName: androidIdentity.packageName,
+      versionCode: androidIdentity.versionCode,
+      versionName: androidIdentity.versionName,
+    },
+    desktop: {
+      bundleVersion: desktopIdentity.bundleVersion,
+      releaseTag: desktopIdentity.releaseTag,
+      version: desktopIdentity.version,
+    },
   };
   if (
     !plain(input.availabilityPolicy) ||
@@ -503,22 +548,63 @@ export function finalizeCohort(input) {
       recoveryAction: absent.recoveryAction,
     });
   }
-  if (s.promotionReceipts.length === 2) {
-    const base = {
-      kind: 'station.release-cohort-verification-candidate/v1',
-      state: 'ready_for_verification',
-      admission: s.admission,
-      admissionContentDigest: s.admissionContentDigest,
-      cohortId: s.admission.plan.cohortId,
-      sourceSha: s.admission.plan.sourceSha,
-      workflowRunId: s.admission.plan.workflowRunId,
-      versionIdentities: s.admission.plan.versionIdentities,
-      stageClaims: s.admission.stageReceipts,
-      providerClaims: s.promotionReceipts,
-    };
-    return { ...base, candidateContentDigest: hash(base) };
-  }
+  if (s.promotionReceipts.length === 2)
+    return verificationCandidateFor(s.admission, s.promotionReceipts);
   return stateFor(s);
+}
+function verificationCandidateFor(a, providerClaims) {
+  const claims = receipts(a, providerClaims);
+  if (
+    claims.length !== a.plan.requiredPlatforms.length ||
+    claims.some((claim) => claim.outcome !== 'reported_success')
+  ) {
+    fail(
+      'verification candidate requires successful claims for every platform',
+    );
+  }
+  const base = {
+    kind: 'station.release-cohort-verification-candidate/v1',
+    state: 'ready_for_verification',
+    admission: a,
+    admissionContentDigest: a.admissionContentDigest,
+    cohortId: a.plan.cohortId,
+    sourceSha: a.plan.sourceSha,
+    workflowRunId: a.plan.workflowRunId,
+    versionIdentities: a.plan.versionIdentities,
+    stageClaims: a.stageReceipts,
+    providerClaims: claims,
+  };
+  return { ...base, candidateContentDigest: hash(base) };
+}
+/**
+ * Parses the structural candidate without granting it release authority.
+ * The protected verifier independently observes every external claim before
+ * it may emit a final receipt.
+ */
+export function parseVerificationCandidate(value) {
+  if (
+    value?.kind !== 'station.release-cohort-verification-candidate/v1' ||
+    value?.state !== 'ready_for_verification'
+  ) {
+    fail('verification candidate must be ready_for_verification');
+  }
+  const a = admission(value.admission);
+  if (
+    value.admissionContentDigest !== a.admissionContentDigest ||
+    value.cohortId !== a.plan.cohortId ||
+    value.sourceSha !== a.plan.sourceSha ||
+    value.workflowRunId !== a.plan.workflowRunId ||
+    canonicalJson(value.versionIdentities) !==
+      canonicalJson(a.plan.versionIdentities) ||
+    canonicalJson(value.stageClaims) !== canonicalJson(a.stageReceipts)
+  ) {
+    fail('verification candidate does not bind its admitted cohort');
+  }
+  return exact(
+    value,
+    verificationCandidateFor(a, value.providerClaims),
+    'verification candidate',
+  );
 }
 const json = (path) => JSON.parse(readFileSync(resolve(path), 'utf8'));
 const stageInput = (value) => ({

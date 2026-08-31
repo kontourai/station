@@ -8,7 +8,7 @@
  * read-only to Station; this module only ever creates/writes inside a
  * profile directory Station itself owns.
  *
- * Wave 1 wired this for Claude Code only (`claude-runtime`). Wave 2 wires
+ * Wave 1 wired this for Claude Code only (`claude`). Wave 2 wires
  * `codexAppHomeEnv` into `codex-adapter.ts`/`codex-adapter-transport.ts`,
  * so both engines now layer their app-home profile onto the spawned
  * session's process env only (never the server process's own env).

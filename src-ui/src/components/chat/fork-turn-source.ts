@@ -1,4 +1,4 @@
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type { ChatMessage } from '../../types';
 
@@ -6,7 +6,7 @@ export interface ForkTurnSource {
   turnId: string;
   agentSlug: string;
   sessionId?: string;
-  provider?: ProviderKind;
+  provider?: EngineId;
   model?: string;
 }
 

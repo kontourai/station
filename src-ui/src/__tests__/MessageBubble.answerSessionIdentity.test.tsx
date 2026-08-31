@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import type { ChatMessage } from '../types';
 
@@ -86,12 +86,13 @@ describe('MessageBubble answer Session identity', () => {
         'conversation-1',
       ),
     );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More answer actions' }),
+    );
     expect((await screen.findByTestId('answer-origin')).textContent).toBe(
       'original-session/turn-1',
     );
-    expect((await screen.findByTestId('basis-origin')).textContent).toBe(
-      'original-session/turn-1',
-    );
+    expect(screen.queryByTestId('basis-origin')).toBeNull();
   });
 
   test('does not guess the active replacement Session for an untagged historical row', () => {

@@ -33,10 +33,10 @@ describe('lastChosenModel', () => {
 
     expect(getLastChosenModelMap()).toEqual({});
 
-    trackLastChosenModel('claude-runtimedefault', 'claude-sonnet-4-6');
+    trackLastChosenModel('claudedefault', 'claude-sonnet-4-6');
 
     expect(getLastChosenModelMap()).toEqual({
-      'claude-runtimedefault': 'claude-sonnet-4-6',
+      claudedefault: 'claude-sonnet-4-6',
     });
   });
 
@@ -45,13 +45,13 @@ describe('lastChosenModel', () => {
       '../hooks/lastChosenModel'
     );
 
-    trackLastChosenModel('claude-runtimedefault', 'claude-sonnet-4-6');
-    trackLastChosenModel('codex-runtimedefault', 'gpt-5-codex');
-    trackLastChosenModel('claude-runtimedefault', 'claude-opus-4-6');
+    trackLastChosenModel('claudedefault', 'claude-sonnet-4-6');
+    trackLastChosenModel('codexdefault', 'gpt-5-codex');
+    trackLastChosenModel('claudedefault', 'claude-opus-4-6');
 
     expect(getLastChosenModelMap()).toEqual({
-      'claude-runtimedefault': 'claude-opus-4-6',
-      'codex-runtimedefault': 'gpt-5-codex',
+      claudedefault: 'claude-opus-4-6',
+      codexdefault: 'gpt-5-codex',
     });
   });
 
@@ -61,7 +61,7 @@ describe('lastChosenModel', () => {
     );
 
     trackLastChosenModel('', 'claude-sonnet-4-6');
-    trackLastChosenModel('claude-runtimedefault', '');
+    trackLastChosenModel('claudedefault', '');
 
     expect(getLastChosenModelMap()).toEqual({});
   });
@@ -85,14 +85,14 @@ describe('lastChosenModel', () => {
     localStorage.setItem(
       'station.newChat.lastModelByBinding',
       JSON.stringify({
-        'claude-runtimedefault': 'claude-sonnet-4-6',
+        claudedefault: 'claude-sonnet-4-6',
         'bad-entry': 42,
         'empty-entry': '',
       }),
     );
 
     expect(getLastChosenModelMap()).toEqual({
-      'claude-runtimedefault': 'claude-sonnet-4-6',
+      claudedefault: 'claude-sonnet-4-6',
     });
   });
 });

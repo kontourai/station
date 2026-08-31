@@ -203,6 +203,10 @@ interface ChatDockBodyProps {
     handleCommandClose: () => void;
     handleHistoryUp: () => void;
     handleHistoryDown: () => void;
+    handleRestorePortableDraft: (
+      text: string,
+      attachments: FileAttachment[],
+    ) => void;
     updateFromInput: (value: string) => void;
     closeAll: () => void;
   };
@@ -1218,6 +1222,7 @@ export function ChatDockBody({
         onCommandClose={chatInput.handleCommandClose}
         onHistoryUp={chatInput.handleHistoryUp}
         onHistoryDown={chatInput.handleHistoryDown}
+        onRestorePortableDraft={chatInput.handleRestorePortableDraft}
         updateFromInput={chatInput.updateFromInput}
         closeAll={chatInput.closeAll}
         voiceState={stt.state}

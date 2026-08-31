@@ -2,19 +2,13 @@
 
 declare const agentIdBrand: unique symbol;
 declare const engineConnectionIdBrand: unique symbol;
-declare const engineIdBrand: unique symbol;
-declare const engineRuntimeIdBrand: unique symbol;
 
 export type AgentId = string & { readonly [agentIdBrand]: 'AgentId' };
 export type EngineConnectionId = string & {
   readonly [engineConnectionIdBrand]: 'EngineConnectionId';
 };
-/** Capability-matrix identity for the engine implementation itself. */
-export type EngineId = string & { readonly [engineIdBrand]: 'EngineId' };
-/** Adapter-private selector used to address one engine runtime implementation. */
-export type EngineRuntimeId = string & {
-  readonly [engineRuntimeIdBrand]: 'EngineRuntimeId';
-};
+/** Canonical identity for an engine implementation. */
+export type EngineId = string;
 
 export type AgentIdentity =
   | { kind: 'agent'; id: AgentId }
@@ -77,11 +71,6 @@ export function engineId(value: string): EngineId {
   return value as EngineId;
 }
 
-export function engineRuntimeId(value: string): EngineRuntimeId {
-  assertCleanIdentity(value);
-  return value as EngineRuntimeId;
-}
-
 export function parseEngineId(value: unknown): EngineId | undefined {
   if (typeof value !== 'string') return undefined;
   try {
@@ -97,17 +86,6 @@ export function parseEngineConnectionId(
   if (typeof value !== 'string') return undefined;
   try {
     return engineConnectionId(value);
-  } catch {
-    return undefined;
-  }
-}
-
-export function parseEngineRuntimeId(
-  value: unknown,
-): EngineRuntimeId | undefined {
-  if (typeof value !== 'string') return undefined;
-  try {
-    return engineRuntimeId(value);
   } catch {
     return undefined;
   }

@@ -415,7 +415,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
 describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding', () => {
   const ENGINE_CAPABILITY_MATRICES = {
     claude: {
-      engineId: 'claude-code',
+      engineId: 'claude',
       systemPrompt: { state: 'session', channel: 'flag' },
       toolServers: { state: 'session', channel: 'subprocess' },
       skills: { state: 'session', channel: 'workspace-overlay' },
@@ -480,7 +480,7 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
   test('rebinds engineId: bound to a "full" engine (Claude Code) — no Station-engine instance is built, but the binding is honestly recorded', async () => {
     const scenario = bindingScenario({
       builtinEngineBinding: {
-        connectionId: 'claude-runtime',
+        connectionId: 'claude',
         matrix: ENGINE_CAPABILITY_MATRICES.claude,
       },
     });
@@ -500,7 +500,7 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
     expect(scenario.agentMetadataMap.get('default')).toEqual(
       expect.objectContaining({
         slug: 'default',
-        execution: { agentConnectionId: 'claude-runtime' },
+        execution: { agentConnectionId: 'claude' },
       }),
     );
   });
@@ -508,7 +508,7 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
   test('rebinds engineId: bound to a "chat-only" engine (Codex) — same skip, binding still honestly recorded', async () => {
     const scenario = bindingScenario({
       builtinEngineBinding: {
-        connectionId: 'codex-runtime',
+        connectionId: 'codex',
         matrix: ENGINE_CAPABILITY_MATRICES.codex,
       },
     });
@@ -518,7 +518,7 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
     expect(agents).toEqual({});
     expect(scenario.agentMetadataMap.get('default')).toEqual(
       expect.objectContaining({
-        execution: { agentConnectionId: 'codex-runtime' },
+        execution: { agentConnectionId: 'codex' },
       }),
     );
   });
@@ -526,7 +526,7 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
   test('idempotent: re-running bootstrap with the SAME binding produces the same result — never clobbers back to Station', async () => {
     const scenario = bindingScenario({
       builtinEngineBinding: {
-        connectionId: 'claude-runtime',
+        connectionId: 'claude',
         matrix: ENGINE_CAPABILITY_MATRICES.claude,
       },
     });
@@ -537,7 +537,7 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
     const secondMetadata = scenario.agentMetadataMap.get('default');
 
     expect(secondMetadata.execution).toEqual({
-      agentConnectionId: 'claude-runtime',
+      agentConnectionId: 'claude',
     });
     expect(secondMetadata.execution).toEqual(firstMetadata.execution);
     expect(scenario.createModel).not.toHaveBeenCalled();
@@ -553,7 +553,7 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
     const saveIntegration = vi.fn(async () => {});
     const scenario = bindingScenario({
       builtinEngineBinding: {
-        connectionId: 'codex-runtime',
+        connectionId: 'codex',
         matrix: ENGINE_CAPABILITY_MATRICES.codex,
       },
       configLoader: {
