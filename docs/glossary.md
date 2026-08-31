@@ -48,6 +48,10 @@ not a type the agent belongs to:
   (**OpenCode**, **Kiro**, …), or **Station's engine** (VoltAgent/Strands driving a
   Model connection). Station's engine keeps its name — it is one engine among peers,
   not a privileged type.
+- **Agent framework is not a product concept** — VoltAgent or Strands is an
+  implementation detail underneath Station's engine. It is persisted for
+  development and boot configuration, but is not a user-facing setting; any
+  meaningful behavioral difference belongs in the engine capability matrix.
 - **ACP is not an engine** — it's a transport detail of *how* Station reaches some
   engines (native SDK vs. launched-as-a-command over ACP). Users never see "ACP"; they see the
   engine's name.
