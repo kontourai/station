@@ -154,9 +154,7 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       provenance: envelope,
     });
 
-    const footer = document.querySelector('.turn-footer');
     const actions = document.querySelector('.turn-footer__actions');
-    expect(getComputedStyle(footer!).flexWrap).toBe('nowrap');
     expect(getComputedStyle(actions!).flexWrap).toBe('nowrap');
     expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
     expect(
@@ -202,6 +200,17 @@ describe('MessageBubble turn provenance (station#1410)', () => {
 
     expect(
       screen.queryByRole('button', { name: /Share this answer/ }),
+    ).toBeNull();
+  });
+
+  it('does not render an empty overflow menu for provenance without an eligible answer', () => {
+    renderRow({
+      role: 'assistant',
+      content: 'Still working.',
+      provenance: envelope,
+    });
+    expect(
+      screen.queryByRole('button', { name: 'More answer actions' }),
     ).toBeNull();
   });
 

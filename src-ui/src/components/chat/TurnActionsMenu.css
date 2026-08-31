@@ -32,23 +32,3 @@
   color: var(--text-tertiary);
   font-size: var(--text-xs);
 }
-
-@media (hover: hover) {
-  .turn-footer__actions {
-    opacity: 0;
-    height: 0;
-    overflow: hidden;
-    pointer-events: none;
-  }
-
-  .turn-footer__actions .message__rating {
-    min-height: 0;
-  }
-
-  .message:is(:hover, :focus-within) .turn-footer__actions {
-    opacity: 1;
-    height: auto;
-    overflow: visible;
-    pointer-events: auto;
-  }
-}

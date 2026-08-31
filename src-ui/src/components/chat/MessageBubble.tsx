@@ -288,7 +288,7 @@ function MessageBubbleComponent({
         }}
         className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}`}
       >
-        {msg.traceId && !hasTurnFooter && (
+        {developerToolsEnabled && msg.traceId && !hasTurnFooter && (
           <a
             href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
             target="_blank"
@@ -549,15 +549,14 @@ function MessageBubbleComponent({
                   Copy
                 </button>
               )}
-              {(msg.provenance !== undefined ||
-                (msg.turnId &&
-                  answerSessionId &&
-                  msg.answerEligible === true) ||
+              {((msg.turnId &&
+                answerSessionId &&
+                msg.answerEligible === true &&
+                (!isLastMessage || !activeSession.isThinking)) ||
                 (turnForkSource && onForkFromTurn)) && (
                 <LazyBoundary
                   load={loadTurnActionsMenu}
                   componentProps={{
-                    provenance: msg.provenance,
                     taskTarget:
                       msg.turnId &&
                       answerSessionId &&

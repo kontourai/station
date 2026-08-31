@@ -10,7 +10,6 @@ const loadConnectedAttachAnswerToTaskButton = () =>
   }));
 
 export interface TurnActionsMenuProps {
-  provenance?: unknown;
   taskTarget?: { sessionId: string; turnId: string; projectId?: string };
   forkSource?: ForkTurnSource | null;
   onForkFromTurn?: (source: ForkTurnSource) => void;

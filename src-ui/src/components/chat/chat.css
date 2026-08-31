@@ -1257,7 +1257,7 @@
   /* The footer is a column now, so the narrow-screen decision that these
      controls sit at the reading edge is expressed on the cross axis. It was
      `justify-content: flex-start` while the footer was a row. */
-  .turn-footer__actions {
+  .turn-footer .turn-footer__actions {
     align-self: flex-start;
   }
 
@@ -1730,6 +1730,26 @@
 .turn-footer__actions .message__rating {
   opacity: 0.6;
   min-height: 44px;
+}
+
+@media (hover: hover) {
+  .turn-footer__actions {
+    opacity: 0;
+    height: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .turn-footer__actions .message__rating {
+    min-height: 0;
+  }
+
+  .message:is(:hover, :focus-within) .turn-footer__actions {
+    opacity: 1;
+    height: auto;
+    overflow: visible;
+    pointer-events: auto;
+  }
 }
 
 /* The footer's controls are nested inside their own components, so the

@@ -16,10 +16,6 @@ const messageBubble = readFileSync(
   join(uiRoot, 'components', 'chat', 'MessageBubble.tsx'),
   'utf8',
 );
-const turnActionsCss = readFileSync(
-  join(uiRoot, 'components', 'chat', 'TurnActionsMenu.css'),
-  'utf8',
-);
 const taskPicker = readFileSync(
   join(uiRoot, 'components', 'chat', 'TaskPicker.css'),
   'utf8',
@@ -106,7 +102,7 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
   });
 
   test('hover-only footer collapse preserves keyboard access and touch targets', () => {
-    const hover = atRule(turnActionsCss, '@media (hover: hover)');
+    const hover = atRule(chatCss, '@media (hover: hover)');
     const resting = rule(hover, '.turn-footer__actions');
     const restored = rule(
       hover,
@@ -123,7 +119,9 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     expect(restored).toContain('pointer-events: auto');
     expect(hoverRating).toContain('min-height: 0');
     expect(touchRating).toContain('min-height: 44px');
-    expect(messageBubble).toMatch(/developerToolsEnabled\s*&&\s*msg\.traceId/);
+    expect(
+      messageBubble.match(/developerToolsEnabled\s*&&\s*msg\.traceId/g),
+    ).toHaveLength(2);
   });
 
   // The footer switched from a row to a column, which made the narrow-screen
@@ -139,8 +137,8 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
       narrow,
       'no 480px block declares .turn-footer__actions',
     ).toHaveLength(1);
-    expect(rule(narrow[0], '.turn-footer__actions')).toContain(
-      'align-self: flex-start',
+    expect(narrow[0]).toMatch(
+      /\.turn-footer \.turn-footer__actions\s*\{[^}]*align-self:\s*flex-start;/s,
     );
     // Anchored at column 0: `rule()` matches by first occurrence, and the
     // nested 480px copy above now precedes the base rule in the file.
