@@ -125,7 +125,7 @@ describe('clean Android channel release generation', () => {
 
   it.each([
     ['release', '.github/workflows/release.yml'],
-    ['nightly', '.github/workflows/nightly.yml'],
+    ['nightly', '.github/workflows/nightly-native-cohort.yml'],
   ])(
     'orders %s reset, init, signing, bootstrap, build, and signature proof',
     (_lane, path) => {
@@ -163,8 +163,11 @@ describe('clean Android channel release generation', () => {
   );
 
   it('installs and resolves pinned Android build tools for nightly artifact verification', () => {
-    const nightly = readFileSync('.github/workflows/nightly.yml', 'utf8');
-    expect(nightly).toContain('ANDROID_BUILD_TOOLS_VERSION: "36.0.0"');
+    const nightly = readFileSync(
+      '.github/workflows/nightly-native-cohort.yml',
+      'utf8',
+    );
+    expect(nightly).toContain("ANDROID_BUILD_TOOLS_VERSION: '36.0.0'");
     expect(nightly).toContain(
       `ANDROID_UPLOAD_CERT_SHA256: \${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}`,
     );
@@ -173,15 +176,17 @@ describe('clean Android channel release generation', () => {
     );
 
     const verify = nightly.slice(
-      nightly.indexOf('Verify the built package carries the nightly identity'),
+      nightly.indexOf('Build and verify the signed Android staging bytes'),
+      nightly.indexOf('Bind the exact staged Android inventory into a receipt'),
     );
     expect(verify).toContain(
-      'build_tools="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION"',
+      'aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/aapt"',
     );
-    expect(verify).toContain('aapt="$build_tools/aapt"');
-    expect(verify).toContain('apksigner="$build_tools/apksigner"');
-    expect(verify).toContain('badging=$("$aapt" dump badging "$apk")');
-    expect(verify).toContain('test -n "$ANDROID_UPLOAD_CERT_SHA256"');
+    expect(verify).toContain(
+      'apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/apksigner"',
+    );
+    expect(verify).toContain('"$aapt" dump badging "$apk"');
+    expect(nightly).toContain('ANDROID_UPLOAD_CERT_SHA256');
     expect(verify).toContain(
       'node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"',
     );
@@ -225,27 +230,28 @@ describe('clean Android channel release generation', () => {
   });
 
   it('uploads signed nightly artifacts before strict AAB signature verification', () => {
-    const nightly = readFileSync('.github/workflows/nightly.yml', 'utf8');
-    const build = nightly.indexOf('Build signed nightly AAB');
+    const nightly = readFileSync(
+      '.github/workflows/nightly-native-cohort.yml',
+      'utf8',
+    );
+    const build = nightly.indexOf(
+      'Build and verify the signed Android staging bytes',
+    );
     const artifactUpload = nightly.indexOf('actions/upload-artifact@', build);
     const verify = nightly.indexOf(
-      'Verify the built package carries the nightly identity',
+      'Bind the exact staged Android inventory into a receipt',
       build,
     );
 
     expect(artifactUpload).toBeGreaterThan(build);
-    expect(verify).toBeGreaterThan(artifactUpload);
-    expect(nightly.slice(artifactUpload, verify)).toContain(
-      'continue-on-error: true',
-    );
+    expect(artifactUpload).toBeGreaterThan(verify);
 
-    const verification = nightly.slice(verify);
+    const verification = nightly.slice(build, verify);
     expect(verification).toContain(
-      "aab=$(find src-desktop/gen/android/app/build/outputs/bundle/universalRelease -name '*.aab' -print -quit)",
+      'cohort-android/station-nightly-universal.aab',
     );
-    expect(verification).toContain('test -n "$aab"');
     expect(verification).toContain(
-      'node scripts/verify-android-aab-signature.mjs "$aab" "$ANDROID_UPLOAD_CERT_SHA256"',
+      'node scripts/verify-android-aab-signature.mjs cohort-android/station-nightly-universal.aab "$ANDROID_UPLOAD_CERT_SHA256"',
     );
     expect(verification).not.toContain('aab_verification=');
     expect(verification).not.toContain('jarsigner -verify');

@@ -54,6 +54,12 @@ describe('cross-platform release invariant matrix', () => {
       status: 'VERIFIED',
       sha: ledger.find((entry: any) => entry.channel === 'nightly-desktop').sha,
     });
+    for (const cell of [nightlyAndroid, nightlyDesktop]) {
+      expect(cell).toMatchObject({
+        requiredForPromotion: true,
+        availabilityPolicy: expect.stringContaining('atomic-native-cohort'),
+      });
+    }
     expect(stableIos?.currentEvidence).toMatchObject({
       status: 'NOT_VERIFIED',
       owner: '#844',
@@ -84,7 +90,7 @@ describe('cross-platform release invariant matrix', () => {
       ledger: companionLedger,
     }).channelEvidence.find((entry) => entry.channel === 'nightly');
     expect(converged).toMatchObject({
-      status: 'VERIFIED',
+      status: 'AVAILABLE_CONFIGURED_SUBSET',
       sourceSha: sharedSha,
       configuredPlatforms: ['macos', 'android'],
       verifiedPlatforms: ['macos', 'android'],

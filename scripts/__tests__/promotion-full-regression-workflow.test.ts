@@ -17,6 +17,7 @@ type WorkflowJob = {
   if?: string;
   needs?: string | string[];
   uses?: string;
+  secrets?: string;
   with?: Record<string, unknown>;
   steps?: WorkflowStep[];
 };
@@ -147,7 +148,7 @@ describe('promotion full-regression workflow', () => {
     );
   });
 
-  test('gates both Nightly producers on the same exact source', () => {
+  test('gates the reusable native cohort and independent CLI on the same exact source', () => {
     const nightly = workflow('nightly.yml');
     const sourceGate = nightly.jobs?.['test-gate'] ?? {};
     const full = nightly.jobs?.['full-regression'] ?? {};
@@ -161,18 +162,28 @@ describe('promotion full-regression workflow', () => {
         (step) => step.name === 'Bind every Nightly leg to one main revision',
       ),
     ).toBe(true);
-    for (const id of ['nightly', 'nightly-desktop']) {
+    for (const id of ['native-cohort', 'nightly-cli']) {
       const producer = nightly.jobs?.[id] ?? {};
       expect(producer.needs).toEqual(['test-gate', 'full-regression']);
       expect(producer.if).toContain(
         "needs['full-regression'].result == 'success'",
       );
-      const checkout = producer.steps?.find((step) =>
-        step.uses?.startsWith('actions/checkout@'),
-      );
-      expect(checkout?.with?.ref).toBe(
-        githubExpression('needs.test-gate.outputs.source_sha'),
-      );
+      if (id === 'native-cohort') {
+        expect(producer.uses).toBe(
+          './.github/workflows/nightly-native-cohort.yml',
+        );
+        expect(producer.with?.source_sha).toBe(
+          githubExpression('needs.test-gate.outputs.source_sha'),
+        );
+        expect(producer.secrets).toBe('inherit');
+      } else {
+        const checkout = producer.steps?.find((step) =>
+          step.uses?.startsWith('actions/checkout@'),
+        );
+        expect(checkout?.with?.ref).toBe(
+          githubExpression('needs.test-gate.outputs.source_sha'),
+        );
+      }
     }
     expect(source('nightly.yml')).not.toContain('run: npm run full:regression');
   });

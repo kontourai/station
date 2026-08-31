@@ -91,26 +91,55 @@ one pre-ledger published code is a permanent floor in
 cannot regress it.
 Desktop, Android, and iOS builds consume the same overlay; the platform jobs
 inspect package metadata where the host tooling exposes it before uploading.
+Nightly build zero retains the compatible `base-nightly.<day>` version. A
+same-day rebuild uses `base-nightly.<day>.<build>` (where `build` is 1–99), so
+the Android and macOS artifacts carry the identical, strictly higher updater
+SemVer as well as the shared `day * 100 + build` numeric code.
 
 ## Manually dispatching Nightly
 
-Normal operation is the scheduled Nightly build, which builds the latest
-`main` once and no-ops when the rolling `nightly` tag already names that commit.
-To request that normal behavior manually, leave the optional field empty:
+## Native Nightly cohort
+
+`nightly.yml` keeps the source gate and canonical full-regression receipt, then
+calls `nightly-native-cohort.yml` only on `refs/heads/main` when the gated SHA
+is the workflow event SHA. The reusable workflow stages a signed Android AAB
+and the four notarized macOS updater assets without publishing, admits their
+downloaded bytes against provenance-bearing stage receipts, promotes Android
+first, then the existing rolling macOS prerelease, and performs a protected
+provider/attestation verification before either rolling Android marker or
+deploy-ledger entry advances. Immediately after admission, an annotated,
+content-bound `refs/tags/nightly-promotion-fence` is created from the exact
+plan and admission; it remains through both provider promotions and is removed
+only as the final successful durable-completion step after final attestation,
+both ledger entries, and exact Android-marker readback. Planning validates and
+blocks on any earlier valid promotion fence, and Android revalidates the live
+fence immediately before Play. A missing credential, ambiguous provider result,
+verifier failure, or post-finalization durable-recording failure creates the
+authoritative annotated `refs/tags/nightly-recovery-lock`; its tag message is
+the canonical, content-bound recovery receipt. The uploaded receipt is a
+convenience copy, not the authority. Planning dereferences and validates the
+tag before allocating an Android version, so it fails closed until an owner
+reconciles the provider/final-attestation/app-token/ledger/tag facts and
+explicitly removes the lock; automation never clears it. Recovery records the
+promotion-fence ref/outcome but never deletes the fence, so a failed recovery
+lock write still leaves the original pre-effect fence blocking the next plan.
+The independently published CLI remains outside this cohort. The Nightly Android and macOS matrix cells have
+`requiredForPromotion: true` and an atomic cohort availability policy; this is
+only an available configured subset, and fleet/CLI completion remains
+`NOT_VERIFIED`.
+
+Normal operation is the scheduled Nightly build, which builds the current
+workflow event SHA once and no-ops when the rolling `nightly` tag already names
+that commit. To request that normal behavior manually, leave the optional field
+empty:
 
 ```sh
 gh workflow run nightly.yml --repo kontourai/station --ref main
 ```
 
-To fan Android and desktop out from an already selected commit even if `main`
-moves while the run queues, pass that exact lowercase 40-character commit. The
-shared test gate proves it is still an ancestor of `origin/main`, then exports
-one SHA that both producing jobs consume:
-
-```sh
-gh workflow run nightly.yml --repo kontourai/station --ref main \
-  -f source_sha=<40-character-main-commit>
-```
+`source_sha` is retained only for callers that echo the current workflow event
+SHA. Nightly rejects an older revision explicitly, rather than letting native
+or CLI publication silently fan out from an obsolete checkout.
 
 `rebuild_index` is only for an exceptional same-day rebuild of a commit that
 was already built. It is an integer from `0` through `99`, never a boolean;

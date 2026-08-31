@@ -48,7 +48,7 @@ const certificate = {
   certificateIssuer: 'CN=Fulcio',
   issuer: 'https://token.actions.githubusercontent.com',
   subjectAlternativeName:
-    'https://github.com/kontourai/station/.github/workflows/nightly.yml@refs/heads/main',
+    'https://github.com/kontourai/station/.github/workflows/nightly-native-cohort.yml@refs/heads/main',
   runInvocationURI:
     'https://github.com/kontourai/station/actions/runs/112061/attempts/1',
 };
@@ -83,7 +83,7 @@ describe('protected release cohort verifier parsers', () => {
       '--source-digest',
       sourceSha,
       '--cert-identity',
-      'https://github.com/kontourai/station/.github/workflows/nightly.yml@refs/heads/main',
+      'https://github.com/kontourai/station/.github/workflows/nightly-native-cohort.yml@refs/heads/main',
       '--cert-oidc-issuer',
       'https://token.actions.githubusercontent.com',
       '--deny-self-hosted-runners',
@@ -148,6 +148,20 @@ describe('protected release cohort verifier parsers', () => {
         desktop: { ...identity.desktop, bundleVersion: '242801' },
       }),
     ).toThrow('one nightly-build identity');
+    expect(
+      assertNightlyVersionRelationship({
+        android: {
+          ...identity.android,
+          versionCode: 242807,
+          versionName: '0.1.3-nightly.2428.7',
+        },
+        desktop: {
+          ...identity.desktop,
+          bundleVersion: '242807',
+          version: '0.1.3-nightly.2428.7',
+        },
+      }),
+    ).toMatchObject({ day: 2428, build: 7 });
     expect(
       parseAndroidManifestIdentity(
         '<manifest package="io.kontourai.station.nightly" android:versionCode="242800" android:versionName="0.1.3-nightly.2428"/>',
