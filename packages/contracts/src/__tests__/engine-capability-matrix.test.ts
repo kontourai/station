@@ -79,6 +79,14 @@ describe('engine capability matrix', () => {
       });
     });
 
+    test('keys every capability matrix by its canonical EngineId', () => {
+      for (const [engineId, matrix] of Object.entries(
+        ENGINE_CAPABILITY_MATRICES,
+      )) {
+        expect(matrix.engineId).toBe(engineId);
+      }
+    });
+
     test('cross-check: no shipped matrix entry claims both a native systemPrompt AND the first-turn fallback — the fallback is a genuine fallback, never a second channel', () => {
       for (const [provider, matrix] of Object.entries(
         ENGINE_CAPABILITY_MATRICES,
@@ -120,13 +128,13 @@ describe('engine capability matrix', () => {
       resolveEngineCapabilityMatrix('kiro-connection', { type: 'acp' }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.acp);
     expect(
-      resolveEngineCapabilityMatrix('codex-runtime', {
+      resolveEngineCapabilityMatrix('codex', {
         type: 'codex',
         config: { executionClass: 'connected' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
     expect(
-      resolveEngineCapabilityMatrix('claude-runtime', {
+      resolveEngineCapabilityMatrix('claude', {
         type: 'claude',
         config: { executionClass: 'connected' },
       }),
@@ -141,49 +149,43 @@ describe('engine capability matrix', () => {
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.station);
     expect(
-      resolveEngineCapabilityMatrix('codex-runtime', {
+      resolveEngineCapabilityMatrix('codex', {
         type: 'codex',
         engineId: 'codex',
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
-    // Native adapter projections intentionally use their private runtime
-    // selector as `type` (`codex-runtime`) while publishing the public
-    // engine identity separately. The picker receives that exact live shape;
-    // a declared Codex delivery mechanism must not disappear at this
-    // projection boundary.
+    // Native adapter projections use the same canonical EngineId throughout.
     expect(
       resolveEngineCapabilityMatrix('codex', {
-        type: 'codex-runtime',
+        type: 'codex',
         config: { engineId: 'codex' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
-    // An unknown adapter cannot inherit Codex's declared delivery merely by
-    // reporting its public id.
+    // A known canonical EngineId is authoritative; connection type is not a
+    // second engine identity to reconcile.
     expect(
       resolveEngineCapabilityMatrix('untrusted', {
         type: 'untrusted-runtime',
         config: { engineId: 'codex' },
       }),
-    ).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
-    // A canonical identity is authoritative. A contradictory provider type
-    // must fail closed rather than borrow either engine's delivery claim.
+    ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
     expect(
       resolveEngineCapabilityMatrix('contradictory-codex', {
         type: 'codex',
-        config: { engineId: 'claude-code' },
+        config: { engineId: 'claude' },
       }),
-    ).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
+    ).toBe(ENGINE_CAPABILITY_MATRICES.claude);
     expect(
       resolveEngineCapabilityMatrix('contradictory-claude', {
         type: 'claude',
         config: { engineId: 'codex' },
       }),
-    ).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
+    ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
     // config-nested engineId (AgentConnectionView/ConnectionConfig shape).
     expect(
-      resolveEngineCapabilityMatrix('claude-runtime', {
+      resolveEngineCapabilityMatrix('claude', {
         type: 'claude',
-        config: { engineId: 'claude-code' },
+        config: { engineId: 'claude' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.claude);
     expect(
@@ -207,7 +209,7 @@ describe('engine capability matrix', () => {
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.station);
     expect(
-      resolveEngineCapabilityMatrix('codex-runtime', {
+      resolveEngineCapabilityMatrix('codex', {
         type: 'codex',
         config: { executionClass: 'connected' },
       }),
@@ -795,32 +797,19 @@ describe('station#1194: resolveBuiltinAgentEngineBinding (rebind + default-selec
 });
 
 describe('built-in engines resolve to their own matrix (#2301)', () => {
-  // The exact shape `listRuntimeConnectionsForAdapters` projects: `type` is the
-  // RUNTIME id, `config.engineId` is the ENGINE id. The resolver's own comment
-  // calls engineId "the canonical engine identity", but it resolved by `type`,
-  // which is never a matrix key — so every built-in external engine silently
-  // fell back to the all-unsupported unknown matrix and derived its agent
-  // editor tabs from that.
-  const projected = (runtimeId: string, engineId: string) => ({
-    type: runtimeId,
+  const projected = (engineId: string) => ({
+    type: engineId,
     config: { engineId, executionClass: 'connected' },
   });
 
-  // The engine id each adapter actually publishes — claude's is `claude-code`,
-  // not `claude`. Using the matrix KEY here instead would assert a shape no
-  // projection ever emits.
-  test.each([
-    ['claude-runtime', 'claude-code', 'claude'],
-    ['codex-runtime', 'codex', 'codex'],
-    ['muse-runtime', 'muse', 'muse'],
-  ])(
+  test.each(['claude', 'codex', 'muse'])(
     '%s resolves to its own matrix, not the unknown fallback',
-    (rt, engineId, key) => {
+    (engineId) => {
       const result = resolveEngineCapabilityMatrix(
         engineId,
-        projected(rt, engineId),
+        projected(engineId),
       );
-      expect(result).toBe(ENGINE_CAPABILITY_MATRICES[key]);
+      expect(result).toBe(ENGINE_CAPABILITY_MATRICES[engineId]);
       expect(result).not.toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
     },
   );

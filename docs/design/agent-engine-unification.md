@@ -100,7 +100,7 @@ this one type, not a new schema. What's missing or wrong:
 - **Capability fields are honored only by Station's engine.** For external engines,
   `prompt`/`tools`/`skills` are dead weight today; the shipped passthroughs hang off
   *connections* instead (`ACPConnectionConfig.provideToolServers`,
-  claude-runtime `config.provideSkills`) — one setting for every agent on that engine.
+  claude `config.provideSkills`) — one setting for every agent on that engine.
 - **The adapter seam can't see the agent.** `ProviderSessionStartInput`
   (`packages/contracts/src/provider.ts`) has no system prompt, no tool servers, no
   skills, no agent identity beyond `metadata.agentSlug`; bedrock/ollama smuggle a
@@ -203,7 +203,7 @@ type CapabilityDelivery =
 type DeliveryChannel = 'wire' | 'app-home' | 'workspace-overlay' | 'flag';
 
 interface EngineCapabilityMatrix {
-  engineId: string;               // 'station' | 'claude-code' | 'codex' | ACP engine id
+  engineId: string;               // 'station' | 'claude' | 'codex' | ACP engine id
   systemPrompt: CapabilityDelivery;
   toolServers: CapabilityDelivery;
   skills: CapabilityDelivery;
@@ -397,7 +397,7 @@ via three channels, and only these:
    (`<STATION_HOME>/app-homes/<engineId>/…` via `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, XDG
    overrides) layered for the session's process only (#896). **Wave 1 (shipped):** the
    Claude spawn boundary is closed — `ClaudeAdapter`'s `query()` call now layers
-   `CLAUDE_CONFIG_DIR` onto a full `process.env` spread whenever the `claude-runtime`
+   `CLAUDE_CONFIG_DIR` onto a full `process.env` spread whenever the `claude`
    connection's `config.useAppHome` opt-in is on (absent/false is the default, off);
    the SDK's `Options.env` REPLACES the subprocess environment wholesale rather than
    merging, so the spread is load-bearing and `env` is left entirely unset when the
@@ -405,7 +405,7 @@ via three channels, and only these:
    spawn boundary is now closed too — `codex-adapter-transport.ts`'s `codexSpawnEnv()`
    layers `CODEX_HOME` onto a full `process.env` spread, and `CodexAdapter.
    startReservedSession` resolves it via the same `getAppHomeEnv`/degrade-to-`undefined`
-   contract as Claude, gated on the `codex-runtime` connection's `config.useAppHome`.
+   contract as Claude, gated on the `codex` connection's `config.useAppHome`.
    Codex model discovery (`listModelCatalog`) deliberately keeps the byte-identical
    global env — the profile is scoped to the session's own process only. ACP/opencode's
    spawn path (`acp-process.ts`'s `ACPProcess.start`) remains full-inherit — XDG overrides
@@ -461,13 +461,13 @@ application data with `STATION_HOME_RESET_REQUIRED`, naming the supported
 
 ### 7.1 Typed names and real defaults
 
-`AgentId`, `EngineConnectionId`, `EngineId`, and `EngineRuntimeId` are distinct
-branded types over the same validated clean identifier grammar. Their text can
-intentionally match without becoming interchangeable: `EngineId` selects a
-capability matrix, `EngineRuntimeId` is an Adapter-private selector, and
-`EngineConnectionId` is the public navigable Agent Apps identity. Plugins construct
-the latter two Adapter metadata values with `engineId(...)` and
-`engineRuntimeId(...)`; the untyped plugin loader validates the same grammar before
+`AgentId` and `EngineConnectionId` remain distinct branded identities.
+`EngineId` is the single canonical string for an engine implementation and selects
+its capability matrix; native Adapter provider, connection type, and matrix key use
+that same value. `EngineConnectionId` separately identifies a configured, navigable
+engine connection, which matters for engines such as ACP that can have multiple
+instances. Plugins construct metadata engine identities with `engineId(...)`; the
+untyped plugin loader validates the same grammar before
 registration. The engine connection `codex` owns the default Agent `codex`. Generic identity envelopes use
 `{ kind: 'agent' | 'engine-connection', id }`; an external custom Agent persists an
 `engineConnectionId`, while a Station-engine Agent omits it.

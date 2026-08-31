@@ -1,8 +1,8 @@
+import { FolderBrowserModal } from '../../components/modals/FolderBrowserModal';
 import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
-import { FolderPickerModal } from './FolderPickerModal';
 import { InstallPluginModal } from './InstallPluginModal';
 import { InstallPreviewModal } from './InstallPreviewModal';
 import { LayoutAssignmentModal } from './LayoutAssignmentModal';
@@ -99,9 +99,26 @@ export function PluginModalStack({
       )}
 
       {showFolderPicker && (
-        <FolderPickerModal
+        <FolderBrowserModal
           onSelect={onSelectFolder}
           onClose={onCloseFolderPicker}
+          titleId="folder-picker-title"
+          closeLabel="Close folder picker"
+          classNames={{
+            overlay: 'plugins__modal-overlay',
+            panel: 'plugins__modal plugins__folder-modal',
+            header: 'plugins__modal-header',
+            title: 'plugins__modal-title',
+            body: 'plugins__modal-body',
+            message: 'plugins__modal-message',
+            messageError: 'plugins__message--error',
+            pathRow: 'plugins__folder-path',
+            selectButton: 'plugins__folder-select-btn',
+            list: 'plugins__folder-list',
+            entry: 'plugins__folder-entry',
+            icon: 'plugins__folder-icon',
+            name: 'plugins__folder-name',
+          }}
         />
       )}
 

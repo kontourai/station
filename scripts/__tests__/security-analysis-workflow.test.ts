@@ -1,5 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
+import {
+  CODEQL_ANALYZE_ACTION,
+  CODEQL_INIT_ACTION,
+  DEPENDENCY_REVIEW_ACTION,
+} from '../actionlint-gate.mjs';
 
 const workflow = readFileSync(
   '.github/workflows/security-analysis.yml',
@@ -30,9 +35,7 @@ describe('security analysis workflow', () => {
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       "if: ${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}",
     );
-    expect(workflow).toContain(
-      'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294',
-    );
+    expect(workflow).toContain(DEPENDENCY_REVIEW_ACTION);
     expect(workflow).toContain('vulnerability-check: true');
     expect(workflow).toContain('fail-on-severity: high');
     expect(workflow).toContain('license-check: false');
@@ -80,12 +83,8 @@ describe('security analysis workflow', () => {
   });
 
   test('pins CodeQL v4, uses JavaScript and TypeScript source analysis, and never ingests results', () => {
-    expect(workflow).toContain(
-      'github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28',
-    );
-    expect(workflow).toContain(
-      'github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28',
-    );
+    expect(workflow).toContain(CODEQL_INIT_ACTION);
+    expect(workflow).toContain(CODEQL_ANALYZE_ACTION);
     expect(workflow).toContain('languages: javascript-typescript');
     expect(workflow).toContain('build-mode: none');
     expect(workflow).toContain('queries: security-extended');

@@ -8,6 +8,22 @@ on:
     inputs:
       source_sha: { required: true, type: string }
       rebuild_index: { required: false, type: string }
+    outputs:
+      build:
+        description: Whether this exact source allocated a native cohort.
+        value: ${{ jobs.plan-cohort.outputs.build }}
+      source_sha:
+        description: Exact source shared by every native delivery leg.
+        value: ${{ jobs.plan-cohort.outputs.source_sha }}
+      marketing_version:
+        description: Numeric App Store marketing version from package identity.
+        value: ${{ jobs.plan-cohort.outputs.marketing_version }}
+      bundle_version:
+        description: Monotonic native bundle/version code reserved for the cohort.
+        value: ${{ jobs.plan-cohort.outputs.bundle_version }}
+      reservation_tag:
+        description: Immutable authority tag binding the reserved native version.
+        value: ${{ jobs.plan-cohort.outputs.reservation_tag }}
 
 permissions:
   contents: read
@@ -22,6 +38,9 @@ jobs:
     outputs:
       build: ${{ steps.decide.outputs.build }}
       source_sha: ${{ steps.source.outputs.sha }}
+      marketing_version: ${{ steps.ios_identity.outputs.marketing_version }}
+      bundle_version: ${{ steps.allocate.outputs.version_code }}
+      reservation_tag: ${{ steps.allocate.outputs.reservation_tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -135,7 +154,7 @@ jobs:
               rm -f "$allocation_output" "$response"; exit 1
             fi
             if [ "$classification" = created ]; then
-              { echo "date=$NIGHTLY_NOW"; echo "build=$build"; echo "version_code=$code"; } >> "$GITHUB_OUTPUT"
+              { echo "date=$NIGHTLY_NOW"; echo "build=$build"; echo "version_code=$code"; echo "reservation_tag=$tag"; } >> "$GITHUB_OUTPUT"
               rm -f "$allocation_output" "$response"; reservation_created=true; break
             fi
             if [ "$classification" = reference-already-exists ]; then
@@ -144,6 +163,13 @@ jobs:
             rm -f "$allocation_output" "$response"; exit 1
           done
           test "$reservation_created" = true || { echo '::error::Nightly version-code reservation did not converge after 100 attempts.'; exit 1; }
+      - id: ios_identity
+        name: Derive the shared App Store marketing version
+        if: steps.decide.outputs.build == 'true'
+        run: |
+          marketing_version=$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')
+          [[ "$marketing_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "marketing_version=$marketing_version" >> "$GITHUB_OUTPUT"
       - name: Produce the content-bound cohort plan
         if: steps.decide.outputs.build == 'true'
         run: |
@@ -176,7 +202,7 @@ jobs:
           ref: ${{ needs.plan-cohort.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: nightly-cohort-plan-${{ github.run_id }}
           path: cohort
@@ -267,7 +293,7 @@ jobs:
           ref: ${{ needs.plan-cohort.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: nightly-cohort-plan-${{ github.run_id }}
           path: cohort
@@ -350,7 +376,7 @@ jobs:
         with:
           ref: ${{ needs.plan-cohort.outputs.source_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc }
@@ -378,7 +404,7 @@ jobs:
         with:
           ref: ${{ needs.plan-cohort.outputs.source_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc }
@@ -431,7 +457,7 @@ jobs:
         with:
           ref: ${{ needs.plan-cohort.outputs.source_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc }
@@ -518,7 +544,7 @@ jobs:
           ref: ${{ needs.plan-cohort.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - name: Re-verify the live promotion fence immediately before macOS publication
         env:
@@ -574,9 +600,32 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  protected-finalize:
+  deliver-ios:
     needs: [plan-cohort, promote-macos]
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.promote-macos.result == 'success' }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/testflight-delivery.yml
+    with:
+      channel: nightly
+      source_sha: ${{ needs.plan-cohort.outputs.source_sha }}
+      source_ref: refs/tags/${{ needs.plan-cohort.outputs.reservation_tag }}
+      marketing_version: ${{ needs.plan-cohort.outputs.marketing_version }}
+      bundle_version: ${{ needs.plan-cohort.outputs.bundle_version }}
+      release_label: nightly-${{ needs.plan-cohort.outputs.bundle_version }}
+      mobile_endpoint: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}
+      update_feed_url: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
+      update_provider_origin: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
+      update_action_url: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
+      update_action_kind: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
+      update_action_origins: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
+    secrets: inherit
+
+  protected-finalize:
+    needs: [plan-cohort, promote-macos, deliver-ios]
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.promote-macos.result == 'success' && needs.deliver-ios.result == 'success' }}
     runs-on: macos-15
     environment: native-release
     permissions: { contents: read, id-token: write, attestations: write }
@@ -591,7 +640,7 @@ jobs:
         with:
           ref: ${{ needs.plan-cohort.outputs.source_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc }
@@ -652,15 +701,15 @@ jobs:
         with:
           ref: ${{ needs.plan-cohort.outputs.source_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: nightly-cohort-final-${{ github.run_id }}
           path: cohort
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: nightly-cohort-plan-${{ github.run_id }}
           path: cohort
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: nightly-cohort-admission-${{ github.run_id }}
           path: cohort
@@ -742,8 +791,8 @@ jobs:
           test "$status" = 404
 
   recover-native-cohort:
-    needs: [plan-cohort, create-promotion-fence, promote-android, promote-macos, protected-finalize, record-native-completion]
-    if: ${{ always() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' && (needs.promote-android.result != 'success' || needs.promote-macos.result != 'success' || needs.protected-finalize.result != 'success' || needs.record-native-completion.result != 'success') }}
+    needs: [plan-cohort, create-promotion-fence, promote-android, promote-macos, deliver-ios, protected-finalize, record-native-completion]
+    if: ${{ always() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' && (needs.promote-android.result != 'success' || needs.promote-macos.result != 'success' || needs.deliver-ios.result != 'success' || needs.protected-finalize.result != 'success' || needs.record-native-completion.result != 'success') }}
     runs-on: ubuntu-22.04
     permissions: { contents: write }
     steps:
@@ -751,14 +800,14 @@ jobs:
         with:
           ref: ${{ inputs.source_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         continue-on-error: true
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - name: Construct content-bound durable recovery receipt
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
           JOB_RESULTS: >-
-            {"plan-cohort":"${{ needs.plan-cohort.result }}","promotion-fence":"${{ needs.create-promotion-fence.result }}","promote-android":"${{ needs.promote-android.result }}","promote-macos":"${{ needs.promote-macos.result }}","protected-finalize":"${{ needs.protected-finalize.result }}","record-native-completion":"${{ needs.record-native-completion.result }}","final-attestation":"${{ needs.record-native-completion.outputs.final_attestation }}","app-token":"${{ needs.record-native-completion.outputs.app_token }}","ledger":"${{ needs.record-native-completion.outputs.ledger }}","tag":"${{ needs.record-native-completion.outputs.tag }}","promotion-fence-clear":"${{ needs.record-native-completion.outputs.promotion_fence }}"}
+            {"plan-cohort":"${{ needs.plan-cohort.result }}","promotion-fence":"${{ needs.create-promotion-fence.result }}","promote-android":"${{ needs.promote-android.result }}","promote-macos":"${{ needs.promote-macos.result }}","deliver-ios":"${{ needs.deliver-ios.result }}","protected-finalize":"${{ needs.protected-finalize.result }}","record-native-completion":"${{ needs.record-native-completion.result }}","final-attestation":"${{ needs.record-native-completion.outputs.final_attestation }}","app-token":"${{ needs.record-native-completion.outputs.app_token }}","ledger":"${{ needs.record-native-completion.outputs.ledger }}","tag":"${{ needs.record-native-completion.outputs.tag }}","promotion-fence-clear":"${{ needs.record-native-completion.outputs.promotion_fence }}"}
         run: |
           printf '%s\n' "$JOB_RESULTS" > recovery-job-results.json
           node scripts/release-cohort-workflow.mjs recovery-receipt native-cohort-recovery.json "$SOURCE_SHA" "$GITHUB_RUN_ID" cohort/cohort-plan.json recovery-job-results.json cohort/cohort-admission.json cohort/verification-candidate.json cohort/play-observation.json cohort/github-release-observation.json

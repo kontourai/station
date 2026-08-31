@@ -265,12 +265,12 @@ describe('default-agent slash commands', () => {
         slug: 'claude',
         name: 'Claude Runtime',
         toolsConfig: {},
-        execution: { agentConnectionId: 'claude-runtime' },
+        execution: { agentConnectionId: 'claude' },
       },
       chatState: {
         agentSlug: 'claude',
         executionMode: 'external',
-        agentConnectionId: 'claude-runtime',
+        agentConnectionId: 'claude',
       },
       bindingStatus: {
         catalogSource: 'none',
@@ -313,12 +313,12 @@ describe('default-agent slash commands', () => {
         slug: 'claude',
         name: 'Claude Runtime',
         toolsConfig: {},
-        execution: { agentConnectionId: 'claude-runtime' },
+        execution: { agentConnectionId: 'claude' },
       },
       chatState: {
         agentSlug: 'claude',
         executionMode: 'external',
-        agentConnectionId: 'claude-runtime',
+        agentConnectionId: 'claude',
       },
       bindingStatus: {
         catalogSource: 'built-in',

@@ -49,8 +49,19 @@ const nativeCohort = readFileSync(
   resolve(root, '.github/workflows/nightly-native-cohort.yml'),
   'utf8',
 );
+const testFlightDelivery = readFileSync(
+  resolve(root, '.github/workflows/testflight-delivery.yml'),
+  'utf8',
+);
 
 describe('mobile release hardening contract', () => {
+  it('permits a provider retry only after the immutable source authority verifies', () => {
+    expect(testFlightDelivery).toContain('verify-ios-testflight-authority.mjs');
+    expect(testFlightDelivery).toContain('--authority-ref "$AUTHORITY_REF"');
+    expect(testFlightDelivery).not.toContain(
+      'Existing provider build has no durable source/IPA binding',
+    );
+  });
   it('binds emitted native and web versions to the tag authority', () => {
     expect(release).toContain('node scripts/product-version.mjs --check');
     expect(release).toContain('android_version_code=');
@@ -65,7 +76,8 @@ describe('mobile release hardening contract', () => {
       `MACOS_BUNDLE_VERSION: ${githubExpression('needs.preflight.outputs.macos_bundle_version')}`,
     );
     expect(release).toContain(')" = "$MACOS_BUNDLE_VERSION"');
-    expect(release).toContain('Preview/Beta iOS is NOT_VERIFIED');
+    expect(testFlightDelivery).toContain("inputs.channel == 'stable'");
+    expect(release).toContain('ios_marketing_version=');
   });
 
   it('fails closed on update configuration and audits packaged capabilities', () => {
@@ -77,22 +89,25 @@ describe('mobile release hardening contract', () => {
     // regression, and one that still exits 1 when absent re-blocks the store
     // track it was unblocked for.
     expect(release.match(/Resolve native update feed contract/g)).toHaveLength(
-      2,
+      1,
     );
     // Count, do not merely find: there are two mobile jobs, so a `toContain`
     // stays green after one of them stops validating.
     expect(
       release.match(/native-update-feed\.mjs validate-config/g),
-    ).toHaveLength(2);
-    expect(release.match(/configured=false/g)).toHaveLength(2);
-    expect(release).not.toMatch(
-      /Missing required protected update value: \$name" >&2; exit 1/,
+    ).toHaveLength(1);
+    expect(release.match(/configured=false/g)).toHaveLength(1);
+    expect(testFlightDelivery).toContain(
+      'native-update-feed.mjs validate-config',
+    );
+    expect(testFlightDelivery).toContain(
+      'Missing required protected channel value',
     );
     expect(release).toContain('vars.NATIVE_APP_UPDATE_FEED_URL');
     expect(release).toContain('VITE_NATIVE_APP_VERSION');
     expect(release).toContain('Audit packaged Android capabilities');
     expect(release).toContain('station-aab-manifest.xml');
-    expect(release).toContain('check-mobile-package.mjs ios --root');
+    expect(testFlightDelivery).toContain('check-mobile-package.mjs ios --root');
     expect(publish).toContain(
       'Publish release and compensate to draft until feed verifies',
     );
@@ -372,7 +387,8 @@ describe('native release workflow topology', () => {
       return index;
     };
     const armed = lineIndex('trap compensate_pointer ERR');
-    const archives = lineIndex('"$' + '{updater_args[@]}"');
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell-array expansion asserted in the workflow source.
+    const archives = lineIndex('"${updater_args[@]}"');
     const flagged = lineIndex('pointer_mutation_started=true');
     const pointerWrite = lineIndex('updater-channel-assets/latest.json');
     const verified = lineIndex('--verify');
@@ -891,16 +907,16 @@ describe('native release workflow topology', () => {
     expect(release).toContain('ios-simulator:');
     expect(release).toContain('--no-sign');
     expect(release).toContain('ios-device:');
-    expect(release).toContain('APPLE_PROVISIONING_PROFILE_BASE64');
-    expect(release).toContain(
+    expect(testFlightDelivery).toContain('APPLE_PROVISIONING_PROFILE_BASE64');
+    expect(testFlightDelivery).toContain(
       'npx tauri ios build --export-method app-store-connect',
     );
     expect(release).not.toContain('--export-method release-testing');
-    expect(release).toContain(
-      'node scripts/check-ios-store-profile.mjs --profile "$profile" --label APPLE_PROVISIONING_PROFILE_BASE64',
+    expect(testFlightDelivery).toContain(
+      'node scripts/check-ios-store-profile.mjs --station "$profile" --label APPLE_PROVISIONING_PROFILE_BASE64',
     );
-    expect(release).toContain(
-      'node scripts/check-ios-store-profile.mjs --profile "$app/embedded.mobileprovision" --label \'exported IPA embedded.mobileprovision\'',
+    expect(testFlightDelivery).toContain(
+      'node scripts/check-ios-store-profile.mjs --station "$app/embedded.mobileprovision" --label \'exported IPA embedded.mobileprovision\'',
     );
     expect(release).toContain('APPLE_DEVELOPER_ID_CERTIFICATE_BASE64');
     expect(release).toContain('Get-AuthenticodeSignature');
@@ -918,7 +934,7 @@ describe('native release workflow topology', () => {
       Record<string, unknown>
     >;
     expect(stableMacos.macOS.hardenedRuntime).toBe(true);
-    expect(release).toContain('embedded.mobileprovision');
+    expect(testFlightDelivery).toContain('embedded.mobileprovision');
     expect(macosArtifacts).toContain("'DMG staple validation'");
     expect(release).toContain('apksigner verify');
     expect(release).toContain('station-ios-simulator-verification');
@@ -1071,7 +1087,11 @@ describe('native release workflow topology', () => {
 
   it('attests each producing lane and verifies all draft assets before publish', () => {
     expect(
-      (release.match(/subject-path: release-assets\/\*/g) ?? []).length,
+      (
+        (release + testFlightDelivery).match(
+          /subject-path: release-assets\/\*/g,
+        ) ?? []
+      ).length,
     ).toBeGreaterThanOrEqual(7);
     expect(release).toContain(
       'Attest the inventory and checksum protocol roots',

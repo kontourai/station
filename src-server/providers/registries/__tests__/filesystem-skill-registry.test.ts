@@ -41,13 +41,7 @@ describe('FilesystemSkillRegistryProvider', () => {
   });
 
   test('lists skills from an app-home profile skills root', async () => {
-    const skillDir = join(
-      scratch,
-      'app-homes',
-      'codex-runtime',
-      'skills',
-      'pizza',
-    );
+    const skillDir = join(scratch, 'app-homes', 'codex', 'skills', 'pizza');
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(
       join(skillDir, 'SKILL.md'),

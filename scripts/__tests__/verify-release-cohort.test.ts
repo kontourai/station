@@ -119,6 +119,9 @@ describe('protected release cohort verifier parsers', () => {
     for (const mutate of [
       (value: any) =>
         (value[0].verificationResult.signature.certificate.issuer = 'other'),
+      (value: any) =>
+        (value[0].verificationResult.signature.certificate.subjectAlternativeName =
+          'https://github.com/kontourai/station/.github/workflows/nightly.yml@refs/heads/main'),
       (value: any) => (value[0].verificationResult.verifiedTimestamps = []),
       (value: any) =>
         (value[0].verificationResult.statement.subject[0].digest.sha256 =
@@ -162,6 +165,24 @@ describe('protected release cohort verifier parsers', () => {
         },
       }),
     ).toMatchObject({ day: 2428, build: 7 });
+    for (const [versionName, versionCode] of [
+      ['0.1.3-nightly.2428.0', 242800],
+      ['0.1.3-nightly.02428.7', 242807],
+      ['0.1.3-nightly.2428.07', 242807],
+      ['0.1.3-nightly.2428.100', 242900],
+      ['0.1.3-nightly.2428.7', 242808],
+    ] as const) {
+      expect(() =>
+        assertNightlyVersionRelationship({
+          android: { ...identity.android, versionCode, versionName },
+          desktop: {
+            ...identity.desktop,
+            bundleVersion: String(versionCode),
+            version: versionName,
+          },
+        }),
+      ).toThrow('one nightly-build identity');
+    }
     expect(
       parseAndroidManifestIdentity(
         '<manifest package="io.kontourai.station.nightly" android:versionCode="242800" android:versionName="0.1.3-nightly.2428"/>',

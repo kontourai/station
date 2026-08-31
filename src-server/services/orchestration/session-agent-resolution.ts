@@ -37,7 +37,7 @@ import type {
   CapabilityDeliveryCapability,
   CapabilityUndelivered,
   CapabilityUndeliveredReason,
-  ProviderKind,
+  EngineId,
   ProviderSessionStartInput,
   ResolvedAgentDefinition,
   ResolvedAgentSkill,
@@ -180,7 +180,7 @@ export function builtinStationAgentSpec(slug: string): AgentSpec | null {
  */
 
 function recordUndelivered(
-  provider: ProviderKind,
+  provider: EngineId,
   entries: CapabilityUndelivered[],
 ): void {
   for (const entry of entries) {

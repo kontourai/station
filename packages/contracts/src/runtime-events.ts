@@ -1,7 +1,7 @@
 import type { PersistedChatAttachment } from './chat-attachment.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { PrincipalRef } from './principal.js';
-import { PROVIDER_CODEX, type ProviderKind } from './provider.js';
+import { type EngineId, PROVIDER_CODEX } from './provider.js';
 import type {
   SessionLifecycleState,
   SessionTransitionReason,
@@ -240,7 +240,7 @@ export type RuntimeSeverity = 'error' | 'warning';
 
 export interface CanonicalRuntimeEventBase {
   eventId: string;
-  provider: ProviderKind;
+  provider: EngineId;
   threadId: string;
   createdAt: string;
   turnId?: string;
@@ -557,7 +557,7 @@ export interface RuntimeErrorEvent extends CanonicalRuntimeEventBase {
  */
 export function isDeferredRetriableTurnError(
   event: Pick<CanonicalRuntimeEvent, 'method'> & {
-    provider?: ProviderKind;
+    provider?: EngineId;
     retriable?: boolean;
   },
 ): boolean {

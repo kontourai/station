@@ -12,6 +12,7 @@ import type { ChatContentPart } from '../../contexts/active-chats-state';
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
 import { useToolApproval } from '../../hooks/useToolApproval';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 import type { ChatMessage, ChatSession } from '../../types';
 import { isTurnStreamLive } from '../../utils/execution';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
@@ -30,6 +31,7 @@ import { MessageBubble } from './MessageBubble';
 import { ReasoningSection } from './ReasoningSection';
 import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { SessionSummaryCard } from './SessionSummaryCard';
+import { SmoothStreamingMessage } from './SmoothStreamingMessage';
 import { StreamingMessage } from './StreamingMessage';
 import { ToolCallDisplay } from './ToolCallDisplay';
 import { TranscriptVirtualizer } from './TranscriptVirtualizer';
@@ -105,7 +107,6 @@ function backgroundTasksLabel(
 const RESIZE_REANCHOR_THRESHOLD_PX = 4;
 const VIRTUALIZE_AFTER_MESSAGE_COUNT = 40;
 const EMPTY_MESSAGES: ChatMessage[] = [];
-
 function ChatMessageListComponent({
   activeSession,
   fontSize,
@@ -125,6 +126,14 @@ function ChatMessageListComponent({
   const handleCopy = useCopyToClipboardToast();
   const handleToolApproval = useToolApproval(apiBase);
   const sendMessage = useSendMessage(apiBase);
+  // The store is already live at the shell; reading its scalar snapshot here
+  // avoids adding a second subscription/allocation to every streaming row.
+  // A mid-stream toggle is observed on the next existing 80 ms stream flush.
+  const smoothReveal =
+    deviceSettingsStore.get('featureSettings').smoothReveal ?? false;
+  const ActiveStreamingMessage = smoothReveal
+    ? SmoothStreamingMessage
+    : StreamingMessage;
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const visibleAnchorRef = useRef<ChatScrollAnchor | null>(null);
@@ -554,7 +563,7 @@ function ChatMessageListComponent({
                 className="chat-message-anchor"
                 data-chat-message-key={`${activeSession.id}:streaming`}
               >
-                <StreamingMessage
+                <ActiveStreamingMessage
                   sessionId={activeSession.id}
                   agentIcon={agentIcon}
                   agentIconStyle={EMPTY_STYLE}

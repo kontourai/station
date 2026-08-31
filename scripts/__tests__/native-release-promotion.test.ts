@@ -46,6 +46,7 @@ describe('one-revision native promotion contract', () => {
     });
     const gate = nightly.jobs?.['test-gate'];
     const caller = nightly.jobs?.['native-cohort'];
+    const iosCaller = cohort.jobs?.['deliver-ios'];
     const fleetCaller = nightly.jobs?.['fleet-staging'];
     expect(gate?.outputs?.source_sha).toBe(
       '$' + '{{ steps.source.outputs.sha }}',
@@ -63,6 +64,39 @@ describe('one-revision native promotion contract', () => {
       '$' + '{{ needs.test-gate.outputs.source_sha }}',
     );
     expect((caller as any)?.secrets).toBe('inherit');
+    expect(cohort.on?.workflow_call?.outputs).toMatchObject({
+      build: { value: '$' + '{{ jobs.plan-cohort.outputs.build }}' },
+      source_sha: {
+        value: '$' + '{{ jobs.plan-cohort.outputs.source_sha }}',
+      },
+      marketing_version: {
+        value: '$' + '{{ jobs.plan-cohort.outputs.marketing_version }}',
+      },
+      bundle_version: {
+        value: '$' + '{{ jobs.plan-cohort.outputs.bundle_version }}',
+      },
+      reservation_tag: {
+        value: '$' + '{{ jobs.plan-cohort.outputs.reservation_tag }}',
+      },
+    });
+    expect(cohort.jobs?.['plan-cohort']?.outputs).toMatchObject({
+      marketing_version:
+        '$' + '{{ steps.ios_identity.outputs.marketing_version }}',
+      bundle_version: '$' + '{{ steps.allocate.outputs.version_code }}',
+      reservation_tag: '$' + '{{ steps.allocate.outputs.reservation_tag }}',
+    });
+    expect((iosCaller as any)?.uses).toBe(
+      './.github/workflows/testflight-delivery.yml',
+    );
+    expect((iosCaller as any)?.with).toMatchObject({
+      channel: 'nightly',
+      source_sha: '$' + '{{ needs.plan-cohort.outputs.source_sha }}',
+      source_ref:
+        'refs/tags/$' + '{{ needs.plan-cohort.outputs.reservation_tag }}',
+      marketing_version:
+        '$' + '{{ needs.plan-cohort.outputs.marketing_version }}',
+      bundle_version: '$' + '{{ needs.plan-cohort.outputs.bundle_version }}',
+    });
     expect(fleetCaller?.needs).toEqual(['test-gate', 'full-regression']);
     expect((fleetCaller as any)?.uses).toBe(
       './.github/workflows/nightly-fleet-staging.yml',
@@ -84,6 +118,7 @@ describe('one-revision native promotion contract', () => {
       'create-promotion-fence',
       'promote-android',
       'promote-macos',
+      'deliver-ios',
       'protected-finalize',
       'record-native-completion',
       'recover-native-cohort',
@@ -91,6 +126,15 @@ describe('one-revision native promotion contract', () => {
     expect(cohort.jobs?.['promote-macos']?.needs).toEqual([
       'plan-cohort',
       'promote-android',
+    ]);
+    expect(cohort.jobs?.['deliver-ios']?.needs).toEqual([
+      'plan-cohort',
+      'promote-macos',
+    ]);
+    expect(cohort.jobs?.['protected-finalize']?.needs).toEqual([
+      'plan-cohort',
+      'promote-macos',
+      'deliver-ios',
     ]);
     expect(cohort.jobs?.['record-native-completion']?.needs).toEqual([
       'plan-cohort',
@@ -101,11 +145,22 @@ describe('one-revision native promotion contract', () => {
       'create-promotion-fence',
       'promote-android',
       'promote-macos',
+      'deliver-ios',
       'protected-finalize',
       'record-native-completion',
     ]);
     expect(cohort.jobs?.['recover-native-cohort']?.if).toContain(
+      "needs.deliver-ios.result != 'success'",
+    );
+    expect(cohort.jobs?.['recover-native-cohort']?.if).toContain(
       "needs.record-native-completion.result != 'success'",
+    );
+    const recoveryReceipt = namedStep(
+      cohort.jobs?.['recover-native-cohort'] ?? {},
+      'Construct content-bound durable recovery receipt',
+    );
+    expect((recoveryReceipt as any).env?.JOB_RESULTS).toContain(
+      '"deliver-ios":"$' + '{{ needs.deliver-ios.result }}"',
     );
   });
 
@@ -255,36 +310,56 @@ describe('one-revision native promotion contract', () => {
 
   test('makes stable TestFlight publication and provider receipt fail closed', () => {
     const release = workflow('release.yml');
-    const ios = release.jobs?.['ios-device'] ?? {};
-    const importMaterial = namedStep(
-      ios,
-      'Import protected Apple signing and store material',
-    );
+    const caller = release.jobs?.['ios-device'] ?? {};
+    const delivery = workflow('testflight-delivery.yml');
+    const ios = delivery.jobs?.deliver ?? {};
+    expect(
+      namedStep(ios, 'Import protected signing material bound to this channel'),
+    ).toBeDefined();
     for (const required of [
       'APPLE_API_KEY_ID',
       'APPLE_API_ISSUER_ID',
       'APPLE_API_PRIVATE_KEY',
     ]) {
-      expect(importMaterial.run).toContain(required);
+      expect(
+        readFileSync(
+          resolve(root, '.github/workflows/testflight-delivery.yml'),
+          'utf8',
+        ),
+      ).toContain(required);
     }
-    const upload = namedStep(ios, 'Upload to TestFlight');
-    expect(upload.id).toBe('testflight_upload');
+    const upload = namedStep(
+      ios,
+      'Upload a previously unobserved IPA to TestFlight',
+    );
     expect(upload.with?.['wait-for-processing']).toBe('true');
-    expect((upload as any).if).toBeUndefined();
+    expect((upload as any).if).toContain(
+      "steps.reconcile.outputs.upload == 'true'",
+    );
     expect(
       ios.steps?.some((step) => step.name === 'Note skipped TestFlight upload'),
     ).toBe(false);
 
-    const preflight = namedStep(ios, 'Verify App Store Connect app authority');
+    const preflight = namedStep(
+      ios,
+      'Verify App Store Connect app authority before signing',
+    );
     const receipt = namedStep(
       ios,
-      'Record the processed TestFlight build receipt',
+      'Record processed provider receipt and attach the channel group',
     );
-    const retain = namedStep(ios, 'Retain TestFlight provider receipts');
+    const retain = ios.steps?.find((step) =>
+      step.uses?.includes('upload-artifact'),
+    );
     expect(preflight.run).toContain('app-preflight');
     expect(receipt.run).toContain('build-receipt');
-    expect(receipt.run).toContain('needs.preflight.outputs.sha');
-    expect(retain.with?.name).toBe('station-ios-testflight-receipts');
+    expect(receipt.run).toContain('inputs.source_sha');
+    expect(retain?.with?.name).toContain(
+      'station-$' + '{{ inputs.channel }}-ios-testflight',
+    );
+    expect((caller as any).uses).toBe(
+      './.github/workflows/testflight-delivery.yml',
+    );
   });
 
   test('keeps portable fleet staging independent, fixed-plan, and provenance-verified', () => {

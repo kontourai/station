@@ -983,9 +983,9 @@ Returns the merged Connections surface used by the UI, including both model/prov
       "lastCheckedAt": null
     },
     {
-      "id": "codex-runtime",
+      "id": "codex",
       "kind": "runtime",
-      "type": "codex-runtime",
+      "type": "codex",
       "name": "Codex Runtime",
       "enabled": true,
       "capabilities": ["agent-runtime", "resume"],
@@ -1039,9 +1039,9 @@ Current connected-runtime rows expose runtime-scoped model metadata on the read-
   "success": true,
   "data": [
     {
-      "id": "codex-runtime",
+      "id": "codex",
       "kind": "runtime",
-      "type": "codex-runtime",
+      "type": "codex",
       "name": "Codex Runtime",
       "enabled": true,
       "description": "Codex app-server runtime over the local Codex CLI.",

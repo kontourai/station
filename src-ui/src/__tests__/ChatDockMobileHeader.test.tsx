@@ -133,12 +133,14 @@ function renderHeader(
       onChoose: (descriptor: unknown, instance: unknown) => void;
       onChooseAsOnlyContent: (descriptor: unknown, instance: unknown) => void;
     } | null;
+    showConnection?: boolean;
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
   renderWithIsolatedConnections(
     <ChatDockMobileHeader
       showDrawerToggle={false}
+      showConnection={overrides.showConnection ?? true}
       sessionTitle="New chat"
       projectScope={
         overrides.projectScope === null
@@ -497,6 +499,33 @@ describe('ChatDockMobileHeader connection indicator', () => {
     } finally {
       window.removeEventListener('station:open-connections-modal', listener);
     }
+  });
+});
+
+/**
+ * station#1048 — the mobile dock's connection control used to render
+ * unconditionally, so it and the app toolbar's own `app-toolbar-connection`
+ * coexisted (both visible, both in the a11y tree) whenever the dock was
+ * merely on screen — collapsed or half-open, the DEFAULT mobile state, not
+ * only full-screen — which produced two controls whose accessible name
+ * started "Manage Stations". `showConnection` (computed by `ChatDock.tsx`
+ * from the same `isMobileDockFullscreen` check that already gated
+ * `showDrawerToggle`) closes that: the control mounts only when the toolbar
+ * is genuinely gone, and unmounts everywhere else.
+ */
+describe('ChatDockMobileHeader connection control gating', () => {
+  test('does not mount while the app toolbar is still on screen (default collapsed dock)', () => {
+    renderHeader({ showConnection: false });
+
+    expect(screen.queryByTestId('chat-dock-mobile-connection')).toBeNull();
+  });
+
+  test('mounts once the app toolbar is genuinely hidden (dock open and maximized)', () => {
+    renderHeader({ showConnection: true });
+
+    expect(
+      screen.getByTestId('chat-dock-mobile-connection').tagName.toLowerCase(),
+    ).toBe('button');
   });
 });
 

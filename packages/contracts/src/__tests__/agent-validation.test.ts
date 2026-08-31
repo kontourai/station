@@ -22,11 +22,7 @@ describe('requiresAgentPromptForRuntime — frozen pre-slice-6 classification (s
     ['bedrock-runtime', true, 'known managed runtime id'],
     ['ollama-runtime', true, 'known managed runtime id'],
     ['acp', false, 'acp'],
-    [
-      'claude-runtime',
-      false,
-      'unbound connected id (no live connection lookup)',
-    ],
+    ['claude', false, 'unbound connected id (no live connection lookup)'],
     ['anything-else', false, 'unknown/unbound id'],
   ] as const)(
     'id=%s -> requiresAgentPromptForRuntime === %s (%s)',
