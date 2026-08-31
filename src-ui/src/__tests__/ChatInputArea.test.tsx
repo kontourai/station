@@ -256,12 +256,12 @@ describe('ChatInputArea', () => {
     const agent = screen.getByRole('button', {
       name: 'Agent: Codex reviewer. Change Agent',
     });
-    expect(agent.textContent).toContain('Agent');
+    expect(agent.textContent).not.toContain('Agent');
     expect(agent.textContent).toContain('Codex reviewer');
     expect(agentHandoffTriggerRef.current).toBe(agent);
     expect(
       screen.getByRole('button', { name: /^Model:/ }).textContent,
-    ).toContain('Model');
+    ).not.toContain('Model');
 
     fireEvent.click(agent);
     expect(onOpenAgentHandoff).toHaveBeenCalledOnce();
