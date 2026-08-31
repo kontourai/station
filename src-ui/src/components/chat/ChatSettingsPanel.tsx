@@ -3,6 +3,10 @@ import {
   useShowSessionSummaryMutation,
 } from '@kontourai/station-sdk';
 import { useId } from 'react';
+import {
+  useDeviceSettings,
+  useDeviceSettingsActions,
+} from '../../contexts/DeviceSettingsContext';
 import type { DockMode } from '../../types';
 import { DockPlacementChoices } from '../chat-dock/DockPlacementControl';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
@@ -81,6 +85,9 @@ export function ChatSettingsPanel({
   const reasoningId = useId();
   const toolsId = useId();
   const autoHideId = useId();
+  const smoothRevealId = useId();
+  const { featureSettings } = useDeviceSettings();
+  const { setDeviceSetting } = useDeviceSettingsActions();
   const dismissSummary = useDismissSessionSummaryMutation();
   const showSummary = useShowSessionSummaryMutation();
   if (!isOpen) return null;
@@ -177,6 +184,34 @@ export function ChatSettingsPanel({
           </span>
         </div>
       </fieldset>
+
+      <div className="chat-settings-modal__section">
+        <label
+          className="chat-settings-modal__checkbox"
+          htmlFor={smoothRevealId}
+        >
+          <Toggle
+            id={smoothRevealId}
+            checked={featureSettings.smoothReveal ?? false}
+            onChange={(checked) =>
+              setDeviceSetting('featureSettings', {
+                ...featureSettings,
+                smoothReveal: checked,
+              })
+            }
+            size="sm"
+            describedBy="chat-settings-smooth-reveal-hint"
+          />
+          <span>Smooth answer reveal</span>
+        </label>
+        <p
+          id="chat-settings-smooth-reveal-hint"
+          className="chat-settings-modal__hint"
+        >
+          Reveal incoming answer text steadily instead of showing network bursts
+          all at once
+        </p>
+      </div>
 
       <div className="chat-settings-modal__section">
         <label className="chat-settings-modal__checkbox" htmlFor={reasoningId}>

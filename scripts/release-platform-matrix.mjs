@@ -126,6 +126,18 @@ export function validateReleasePlatformMatrix({
       }
 
       const evidence = cell.evidence;
+      if (channel === 'nightly' && ['android', 'macos'].includes(platform)) {
+        if (cell.requiredForPromotion !== true)
+          errors.push(`${label}.requiredForPromotion must be true`);
+        if (
+          typeof cell.availabilityPolicy !== 'string' ||
+          !cell.availabilityPolicy.includes('atomic-native-cohort') ||
+          !cell.availabilityPolicy.includes('NOT_VERIFIED')
+        )
+          errors.push(
+            `${label}.availabilityPolicy must retain cohort and fleet boundary`,
+          );
+      }
       if (evidence?.kind === 'deploy-ledger') {
         const entry = ledger.find(
           (candidate) => candidate.channel === evidence.selector,
@@ -213,15 +225,24 @@ export function projectReleasePlatformMatrix({ matrix, ledger }) {
       configured.length > 0 &&
       verified.length === configured.length &&
       shas.length === 1;
+    const gated = cells.filter(
+      (cell) => cell.channel === channel && cell.state === 'gated',
+    );
     return {
       channel,
-      status: complete ? 'VERIFIED' : 'NOT_VERIFIED',
+      status: complete
+        ? gated.length > 0
+          ? 'AVAILABLE_CONFIGURED_SUBSET'
+          : 'VERIFIED'
+        : 'NOT_VERIFIED',
       sourceSha: complete ? shas[0] : null,
       configuredPlatforms: configured.map((cell) => cell.platform),
       verifiedPlatforms: verified.map((cell) => cell.platform),
       observedShas: shas,
       reason: complete
-        ? null
+        ? gated.length > 0
+          ? `Provider-backed receipts cover the configured subset only; ${gated.map((cell) => cell.platform).join(', ')} remain NOT_VERIFIED.`
+          : null
         : shas.length > 1
           ? `Configured ${channel} receipts disagree on source SHA.`
           : `${verified.length}/${configured.length} configured ${channel} cells have provider-backed receipts.`,

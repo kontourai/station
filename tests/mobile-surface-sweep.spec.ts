@@ -136,7 +136,14 @@ test.describe('Mobile surface sweep at 390x844', () => {
   });
 
   test('the swept route list is exactly what the surface registry declares', () => {
-    expect(declaredRoutes()).toEqual([...ROUTES]);
+    // Membership, not order: the guarantee this test exists for (see the
+    // header comment) is that every DECLARED route gets swept, which is a
+    // set-equality question. `declaredRoutes()` sorts alphabetically while
+    // `ROUTES` is ordered to match the nav for readability, so the two lists
+    // legitimately disagree on position while agreeing on membership —
+    // compare sorted copies so the sweep's own iteration order can't fail a
+    // check it was never testing.
+    expect([...declaredRoutes()].sort()).toEqual([...ROUTES].sort());
   });
 
   test('every registered route fits the phone', async ({ page }) => {

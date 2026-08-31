@@ -640,6 +640,11 @@ describe('Station Control canonical Environment + Agent execution', () => {
     const service = localService();
     const authority = hostedAuthority('alpha');
     const { delegateTask } = await import('../station-control-delegation.js');
+    const clientOrigin = {
+      version: 1 as const,
+      actor: { kind: 'operator' as const },
+      reported: { version: 1 as const, surface: 'web' as const, build: '1041' },
+    };
 
     const result = await delegateTask(
       {
@@ -647,6 +652,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
         target: currentTarget(),
         sessionId: 'task:11111111-1111-4111-8111-111111111111',
         readAuthority: authority,
+        clientOrigin,
       },
       service as never,
     );
@@ -684,10 +690,45 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(service.sessionCommands.execute.mock.calls[0][1]).toEqual({
       userId: 'shared-user',
       tenantExecutionContext: { tenantId: 'alpha', source: 'request' },
+      clientOrigin,
     });
     expect(service.dispatchWithReceipt.mock.calls[0][1]).toEqual({
       userId: 'shared-user',
       tenantExecutionContext: { tenantId: 'alpha', source: 'request' },
+      clientOrigin,
+    });
+    const { buildOrchestrationSessionSummary } = await import(
+      '../../services/orchestration/orchestration-session-state.js'
+    );
+    const summary = buildOrchestrationSessionSummary({
+      persisted: {
+        provider: 'station-agent',
+        threadId: 'task:11111111-1111-4111-8111-111111111111',
+        status: 'ready',
+        createdAt: '2026-08-30T00:00:00.000Z',
+        updatedAt: '2026-08-30T00:00:01.000Z',
+      },
+      answerability: {
+        threadAttachment: 'detached',
+        providerRegistered: true,
+        observedBy: 'test',
+        observedAt: '2026-08-30T00:00:02.000Z',
+      },
+      events: [
+        {
+          eventId: 'delegated-turn-started',
+          provider: 'station-agent',
+          threadId: 'task:11111111-1111-4111-8111-111111111111',
+          turnId: 'provider-turn-local',
+          createdAt: '2026-08-30T00:00:01.000Z',
+          method: 'turn.started',
+          clientOrigin,
+        } as never,
+      ],
+    });
+    expect(summary.turnOrigin).toEqual({
+      latest: clientOrigin,
+      hasOtherOrigins: false,
     });
     expect(
       fetchMock.mock.calls.some(([url]) =>

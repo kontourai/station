@@ -26,6 +26,7 @@ import {
   collectRawNpmLifecycleBypasses,
   REPOSITORY_LIFECYCLE_SOURCES,
 } from '../dependency-lifecycle-workflow-gate.mjs';
+import { installGitIntegration } from '../install-git-hooks.mjs';
 import {
   allowlistDigest,
   assertPtyHandshakeOutcome,
@@ -52,6 +53,73 @@ const policy = JSON.parse(
 );
 const nodes = readLifecycleLocks(root);
 const shellLauncherTest = process.platform === 'win32' ? it.skip : it;
+
+describe('git integration installer', () => {
+  it('writes and reads back hooks and every merge-driver setting', () => {
+    const config = new Map<string, string>();
+    const calls: string[][] = [];
+    const runGit = (args: string[]) => {
+      calls.push(args);
+      if (args[0] === 'rev-parse') return '/repo';
+      if (args[1] === '--local' && args[2] === '--get')
+        return config.get(args[3]) ?? '';
+      if (args[0] === 'config' && args[1] === '--local') {
+        config.set(args[2], args[3]);
+        return '';
+      }
+      throw new Error(`unexpected git call: ${args.join(' ')}`);
+    };
+
+    installGitIntegration({
+      root: '/repo',
+      runGit,
+      pathExists: () => true,
+    });
+
+    expect(config).toEqual(
+      new Map([
+        ['core.hooksPath', '.githooks'],
+        [
+          'merge.station-ui-bundle-budget.name',
+          'Station UI bundle budget re-measurement',
+        ],
+        [
+          'merge.station-ui-bundle-budget.driver',
+          'node scripts/merge-ui-bundle-budget.mjs %O %A %B %L %P',
+        ],
+      ]),
+    );
+    expect(calls).toContainEqual([
+      'config',
+      '--local',
+      '--get',
+      'merge.station-ui-bundle-budget.driver',
+    ]);
+  });
+
+  it('fails when a merge-driver write does not read back exactly', () => {
+    const config = new Map<string, string>();
+    const runGit = (args: string[]) => {
+      if (args[0] === 'rev-parse') return '/repo';
+      if (args[1] === '--local' && args[2] === '--get') {
+        if (args[3] === 'merge.station-ui-bundle-budget.driver') return '';
+        return config.get(args[3]) ?? '';
+      }
+      config.set(args[2], args[3]);
+      return '';
+    };
+
+    expect(() =>
+      installGitIntegration({
+        root: '/repo',
+        runGit,
+        pathExists: () => true,
+      }),
+    ).toThrow(
+      'merge.station-ui-bundle-budget.driver did not read back as configured',
+    );
+  });
+});
 
 function workspaceDependencyFixture({
   dependencies,

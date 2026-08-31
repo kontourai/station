@@ -277,29 +277,52 @@ describe('native platform boundary', () => {
   });
 
   test('subscribes to only the three closed tray destinations and unlistens exactly once', async () => {
+    // #963 moved tray navigation from direct payload delivery to a native
+    // replay the renderer must take and acknowledge, so the payload no longer
+    // carries the destination. The closed set is now enforced against the
+    // REPLAY, which is what this case pins: a fourth destination outside the
+    // set is refused rather than delivered.
+    const replays: unknown[] = [
+      { id: 1, destination: 'connections' },
+      { id: 2, destination: 'pairedDevices' },
+      { id: 3, destination: 'coreUpdates' },
+      { id: 4, destination: '/settings' },
+    ];
     let eventName = '';
-    let handler: ((event: { payload: unknown }) => void) | undefined;
+    let wake: TauriEventHandler<unknown> | undefined;
     const unlisten = vi.fn();
+    const received: string[] = [];
+    const errors: string[] = [];
     const adapter = new TauriNativePlatformAdapter({
-      invoke: async <T>() => validCapabilityReport() as T,
+      invoke: async <T>(command: string) =>
+        (command === 'ack_pending_tray_navigation'
+          ? true
+          : (replays.shift() ?? null)) as T,
       listen: async <_T>(
         event: Parameters<TauriEventBridge['listen']>[0],
         next: TauriEventHandler<_T>,
       ) => {
         eventName = event;
-        handler = next as unknown as TauriEventHandler<unknown>;
+        wake = next as unknown as TauriEventHandler<unknown>;
         return unlisten;
       },
     });
-    const received: string[] = [];
-    const subscription = adapter.subscribeToTrayNavigation((event) =>
-      received.push(event.destination),
+    const subscription = adapter.subscribeToTrayNavigation(
+      (event) => received.push(event.destination),
+      (error) => errors.push(error.code),
     );
-    await Promise.resolve();
-    handler?.({ payload: 'connections' });
-    handler?.({ payload: 'pairedDevices' });
-    handler?.({ payload: 'coreUpdates' });
-    handler?.({ payload: '/settings' });
+
+    // Subscription drains first; each later click wakes the same drain path.
+    await vi.waitFor(() => expect(received).toEqual(['connections']));
+    for (const expected of ['pairedDevices', 'coreUpdates']) {
+      wake?.({ payload: null });
+      await vi.waitFor(() => expect(received).toContain(expected));
+    }
+    wake?.({ payload: null });
+    await vi.waitFor(() =>
+      expect(errors).toEqual(['listener-registration-failed']),
+    );
+
     subscription.dispose();
     subscription.dispose();
     expect(eventName).toBe('station://tray-navigation');
