@@ -24,6 +24,25 @@ vi.mock('../components/chat/message-bubble/MessageRating', () => ({
 vi.mock('../components/icons/UserIcon', () => ({
   UserIcon: () => null,
 }));
+// The trace link is gated on this setting. Mocked so the gate can be exercised
+// in BOTH directions here, where the real MessageBubble renders — a source-text
+// assertion of the same thing lives in a test no module edge can reach (#1141).
+const developerTools = { enabled: false };
+vi.mock('../contexts/DeviceSettingsContext', async () => {
+  const actual = await vi.importActual<
+    typeof import('../contexts/DeviceSettingsContext')
+  >('../contexts/DeviceSettingsContext');
+  const { deviceSettingsStore } = await vi.importActual<
+    typeof import('../lib/device-settings-store')
+  >('../lib/device-settings-store');
+  return {
+    ...actual,
+    useDeviceSettings: () => ({
+      ...deviceSettingsStore.getSnapshot(),
+      developerToolsEnabled: developerTools.enabled,
+    }),
+  };
+});
 vi.mock('../components/chat/ConnectedAnswerBasisAffordance', () => ({
   ConnectedAnswerBasisAffordance: () => <button type="button">Basis</button>,
 }));
@@ -201,6 +220,28 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     expect(
       screen.queryByRole('button', { name: /Share this answer/ }),
     ).toBeNull();
+  });
+
+  it('hides the trace link unless developer tools are on, and shows it when they are', async () => {
+    developerTools.enabled = false;
+    const off = renderRow({
+      role: 'assistant',
+      content: 'Traced.',
+      provenance: envelope,
+      traceId: 'trace-abcdef12',
+    } as ChatMessage);
+    expect(off.container.querySelector('.message__trace')).toBeNull();
+    off.unmount();
+
+    developerTools.enabled = true;
+    const on = renderRow({
+      role: 'assistant',
+      content: 'Traced.',
+      provenance: envelope,
+      traceId: 'trace-abcdef12',
+    } as ChatMessage);
+    expect(on.container.querySelector('.message__trace')).not.toBeNull();
+    developerTools.enabled = false;
   });
 
   it('does not render an empty overflow menu for provenance without an eligible answer', async () => {

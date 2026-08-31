@@ -1,6 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+// Edge-only imports. The assertions below read these files as TEXT, which
+// creates no module edge — so `vitest related` could never reach this test
+// from the files it guards, and it only ever ran in full regression (#1141).
+// Vitest stubs stylesheets, so these cost nothing but put the test in the
+// graph.
+import '../components/chat/chat.css';
+import '../components/chat/ConversationHandoff.css';
+import '../components/chat/TaskPicker.css';
+import '../index.css';
 
 const uiRoot = join(__dirname, '..');
 const indexCss = readFileSync(join(uiRoot, 'index.css'), 'utf8');
