@@ -15,7 +15,7 @@ function fixtureNode() {
 }
 
 describe('npmInvocation (#1093)', () => {
-  it('runs npm through the current node binary rather than a bare `npm`', () => {
+  it('runs npm through the current node binary on Windows rather than a bare `npm`', () => {
     // The regression: `spawnSync('npm', ...)` throws ENOENT on Windows,
     // because npm is `npm.cmd` and CreateProcess cannot execute it. That took
     // the whole pre-push hook down, so no Windows contributor could push.
@@ -24,18 +24,38 @@ describe('npmInvocation (#1093)', () => {
       const invocation = npmInvocation(['run', '--silent', 'build:ui'], {
         env: {},
         node,
+        platform: 'win32',
       });
       expect(invocation).toEqual({
         command: node,
         args: [npmCli, 'run', '--silent', 'build:ui'],
       });
-      // The two shapes that reintroduce the bug: a bare `npm` the platform
-      // must resolve, or a `.cmd`/`.bat` shim that needs a shell to run.
+      // The two shapes that reintroduce the bug: a bare `npm` Windows cannot
+      // execute, or a `.cmd`/`.bat` shim that needs a shell to run.
       expect(invocation.command).not.toBe('npm');
       expect(invocation.command).not.toMatch(/\.(cmd|bat)$/i);
       expect(invocation.args.some((arg) => /\.(cmd|bat)$/i.test(arg))).toBe(
         false,
       );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves the POSIX invocation exactly as it was', () => {
+    // POSIX resolves `npm` from PATH correctly, and callers depend on that
+    // exact spawn -- prepush-ui-bundle.test.ts stubs `npm` on PATH to prove
+    // the bundle gate delegates to `npm run build:ui`. Rewriting a working
+    // invocation on every platform would break that contract for no gain.
+    const { root, node } = fixtureNode();
+    try {
+      expect(
+        npmInvocation(['run', '--silent', 'build:ui'], {
+          env: {},
+          node,
+          platform: 'linux',
+        }),
+      ).toEqual({ command: 'npm', args: ['run', '--silent', 'build:ui'] });
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -53,6 +73,7 @@ describe('npmInvocation (#1093)', () => {
         npmInvocation(['--version'], {
           env: { npm_execpath: execpathCli },
           node,
+          platform: 'win32',
         }),
       ).toEqual({ command: node, args: [execpathCli, '--version'] });
     } finally {
@@ -64,7 +85,7 @@ describe('npmInvocation (#1093)', () => {
   it('passes an empty argument list through unchanged', () => {
     const { root, node, npmCli } = fixtureNode();
     try {
-      expect(npmInvocation([], { env: {}, node })).toEqual({
+      expect(npmInvocation([], { env: {}, node, platform: 'win32' })).toEqual({
         command: node,
         args: [npmCli],
       });

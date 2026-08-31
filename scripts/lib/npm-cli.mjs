@@ -47,11 +47,25 @@ export function resolveNpmCli(env = process.env, node = process.execPath) {
  * Spawn-ready `{ command, args }` for an npm invocation. Pass the result
  * straight to `spawnSync`/`execFileSync` -- never with `shell: true`.
  *
+ * Only Windows takes the indirection. POSIX resolves `npm` from PATH
+ * correctly and has always done so here, so it keeps spawning `npm`
+ * verbatim: rewriting a working invocation on every platform would be a
+ * behaviour change nobody asked for, and callers can legitimately depend on
+ * the exact spawn -- `prepush-ui-bundle.test.ts` stubs `npm` on PATH to
+ * assert this script delegates to `npm run build:ui` rather than calling
+ * vite a second time. This mirrors `npmBuildInvocation`, which already
+ * branches the same way.
+ *
  * @param {readonly string[]} npmArgs arguments after `npm`, e.g. ['run', 'build']
  */
 export function npmInvocation(
   npmArgs,
-  { env = process.env, node = process.execPath } = {},
+  {
+    env = process.env,
+    node = process.execPath,
+    platform = process.platform,
+  } = {},
 ) {
+  if (platform !== 'win32') return { command: 'npm', args: [...npmArgs] };
   return { command: node, args: [resolveNpmCli(env, node), ...npmArgs] };
 }
