@@ -1,7 +1,12 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import {
   deployUpdateFeed,
+  resolveNativeUpdateAuthority,
   validateUpdateConfig,
+  writeNativeUpdateAuthorityReceipt,
 } from '../native-update-feed.mjs';
 
 const valid = {
@@ -32,8 +37,86 @@ const action = (url = valid.NATIVE_APP_UPDATE_ACTION_URL) => ({
 });
 
 describe('native update release contract', () => {
+  test('keeps TestFlight/App Store authoritative without a custom feed', () =>
+    expect(
+      resolveNativeUpdateAuthority({
+        VITE_NATIVE_APP_UPDATE_CHANNEL: 'nightly',
+        VITE_NATIVE_APP_VERSION: '1.2.3-nightly.7',
+      }),
+    ).toEqual({
+      updateAuthority: 'TestFlight/App Store',
+      customFeed: null,
+      channel: 'nightly',
+      version: '1.2.3-nightly.7',
+    }));
+
+  test('records an absent custom feed without changing the store authority', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-update-authority-'));
+    const output = join(directory, 'authority.json');
+    try {
+      writeNativeUpdateAuthorityReceipt(output, {
+        VITE_NATIVE_APP_UPDATE_CHANNEL: 'beta',
+        VITE_NATIVE_APP_VERSION: '1.2.3-preview.1',
+      });
+      expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual({
+        schemaVersion: 1,
+        kind: 'native-update-authority',
+        updateAuthority: 'TestFlight/App Store',
+        customFeed: null,
+        channel: 'beta',
+        version: '1.2.3-preview.1',
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test('records configured custom-feed metadata separately from store authority', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-update-authority-'));
+    const output = join(directory, 'authority.json');
+    try {
+      writeNativeUpdateAuthorityReceipt(output, valid);
+      expect(JSON.parse(readFileSync(output, 'utf8'))).toMatchObject({
+        kind: 'native-update-authority',
+        updateAuthority: 'TestFlight/App Store',
+        channel: 'stable',
+        version: '1.2.3',
+        customFeed: {
+          endpoint: valid.VITE_NATIVE_APP_UPDATE_FEED_URL,
+          providerOrigin: valid.VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN,
+          actionUrl: valid.NATIVE_APP_UPDATE_ACTION_URL,
+          actionKind: valid.NATIVE_APP_UPDATE_ACTION_KIND,
+          actionOrigins: ['https://downloads.example.test'],
+        },
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    'VITE_NATIVE_APP_UPDATE_FEED_URL',
+    'VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN',
+    'NATIVE_APP_UPDATE_ACTION_URL',
+    'NATIVE_APP_UPDATE_ACTION_KIND',
+    'NATIVE_APP_UPDATE_ACTION_ORIGINS',
+  ])('fails closed when custom feed configuration omits %s', (missing) => {
+    const partial: Record<string, string> = { ...valid };
+    delete partial[missing];
+    expect(() => resolveNativeUpdateAuthority(partial)).toThrow(
+      /configuration is partial/,
+    );
+  });
+
   test('accepts a protected same-origin channel feed', () =>
-    expect(() => validateUpdateConfig(valid)).not.toThrow());
+    expect(validateUpdateConfig(valid)).toMatchObject({
+      updateAuthority: 'TestFlight/App Store',
+      customFeed: {
+        endpoint: valid.VITE_NATIVE_APP_UPDATE_FEED_URL,
+        providerOrigin: valid.VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN,
+        actionUrl: valid.NATIVE_APP_UPDATE_ACTION_URL,
+      },
+    }));
   test('rejects a redirect/cross-origin feed', () =>
     expect(() =>
       validateUpdateConfig({

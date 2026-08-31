@@ -98,7 +98,10 @@ describe('mobile release hardening contract', () => {
     ).toHaveLength(1);
     expect(release.match(/configured=false/g)).toHaveLength(1);
     expect(testFlightDelivery).toContain(
-      'native-update-feed.mjs validate-config',
+      'native-update-feed.mjs write-authority-receipt',
+    );
+    expect(testFlightDelivery).toContain(
+      'TestFlight/App Store owns delivered iOS updates',
     );
     expect(testFlightDelivery).toContain(
       'Missing required protected channel value',

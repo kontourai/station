@@ -64,6 +64,8 @@ describe('one-revision native promotion contract', () => {
   test('makes stable TestFlight publication and provider receipt fail closed', () => {
     const release = workflow('release.yml');
     const caller = release.jobs?.['ios-device'] ?? {};
+    const nightly = workflow('nightly.yml');
+    const nightlyCaller = nightly.jobs?.['nightly-ios'] ?? {};
     const delivery = workflow('testflight-delivery.yml');
     const ios = delivery.jobs?.deliver ?? {};
     expect(
@@ -113,5 +115,33 @@ describe('one-revision native promotion contract', () => {
     expect((caller as any).uses).toBe(
       './.github/workflows/testflight-delivery.yml',
     );
+    expect((nightlyCaller as any).uses).toBe(
+      './.github/workflows/testflight-delivery.yml',
+    );
+    for (const input of [
+      'update_feed_url',
+      'update_provider_origin',
+      'update_action_url',
+      'update_action_kind',
+      'update_action_origins',
+    ]) {
+      expect(delivery.on?.workflow_call?.inputs?.[input]?.required).toBe(false);
+      expect((caller as any).with?.[input]).toBeDefined();
+      expect((nightlyCaller as any).with?.[input]).toBeDefined();
+    }
+  });
+
+  test('keeps TestFlight authoritative when no custom feed is configured', () => {
+    const delivery = workflow('testflight-delivery.yml');
+    const ios = delivery.jobs?.deliver ?? {};
+    const required = namedStep(
+      ios,
+      'Fail closed on channel-owned secrets and exact iOS identity',
+    );
+    const authority = namedStep(ios, 'Resolve optional custom iOS update feed');
+    expect(required.run).not.toContain('VITE_NATIVE_APP_UPDATE_FEED_URL');
+    expect(required.run).not.toContain('NATIVE_APP_UPDATE_ACTION_URL');
+    expect(authority.run).toContain('write-authority-receipt');
+    expect(authority.run).toContain('testflight-update-authority.json');
   });
 });

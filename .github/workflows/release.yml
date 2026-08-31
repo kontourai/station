@@ -403,7 +403,9 @@ jobs:
       ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS }}
       VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
       VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
-      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ vars.NATIVE_APP_UPDATE_CHANNEL }}
+      # The channel is part of the signed app identity, not provider-managed
+      # feed configuration. Keep it valid even when no optional feed exists.
+      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || 'stable' }}
       VITE_NATIVE_APP_VERSION: ${{ needs.preflight.outputs.version }}
       NATIVE_APP_UPDATE_ACTION_URL: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
       NATIVE_APP_UPDATE_ACTION_KIND: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
@@ -433,15 +435,14 @@ jobs:
           # eleven steps before reaching it. Nothing downstream lies about it —
           # an unconfigured client renders no update state at all (#2217), so
           # there is no user-visible claim left for this gate to protect.
-          missing=""
-          for name in VITE_NATIVE_APP_UPDATE_FEED_URL VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION NATIVE_APP_UPDATE_ACTION_URL NATIVE_APP_UPDATE_ACTION_KIND NATIVE_APP_UPDATE_ACTION_ORIGINS; do
-            test -n "${!name}" || missing="$missing $name"
-          done
-          if [ -z "$missing" ]; then
-            node scripts/native-update-feed.mjs validate-config
+          # The shared resolver distinguishes an absent feed from a partial
+          # one. It validates identity in both cases and exits before the
+          # build on any malformed or incomplete configured feed.
+          node scripts/native-update-feed.mjs validate-config
+          if [ -n "$VITE_NATIVE_APP_UPDATE_FEED_URL" ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::Native update feed not configured (missing:$missing); skipping feed publish. Store-track upload is the update path for this build."
+            echo "::notice::Native update feed not configured; skipping feed publish. Store-track upload is the update path for this build."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           fi
       - run: npm run dependencies:ci && npm run build:native-client

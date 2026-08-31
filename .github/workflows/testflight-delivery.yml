@@ -28,19 +28,19 @@ on:
         required: true
         type: string
       update_feed_url:
-        required: true
+        required: false
         type: string
       update_provider_origin:
-        required: true
+        required: false
         type: string
       update_action_url:
-        required: true
+        required: false
         type: string
       update_action_kind:
-        required: true
+        required: false
         type: string
       update_action_origins:
-        required: true
+        required: false
         type: string
 
 permissions:
@@ -100,13 +100,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-apple-ios }
       - run: brew install xcodegen libimobiledevice cocoapods
-      - name: Fail closed on channel-owned secrets and endpoint
+      - name: Fail closed on channel-owned secrets and exact iOS identity
         run: |
-          for name in APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD APPLE_DEVELOPMENT_TEAM APPLE_SIGNING_IDENTITY APPLE_PROVISIONING_PROFILE_BASE64 TESTFLIGHT_INTERNAL_GROUP_ID STATION_MOBILE_DEFAULT_ENDPOINT VITE_NATIVE_APP_UPDATE_FEED_URL VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION NATIVE_APP_UPDATE_ACTION_URL NATIVE_APP_UPDATE_ACTION_KIND NATIVE_APP_UPDATE_ACTION_ORIGINS; do
+          for name in APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD APPLE_DEVELOPMENT_TEAM APPLE_SIGNING_IDENTITY APPLE_PROVISIONING_PROFILE_BASE64 TESTFLIGHT_INTERNAL_GROUP_ID STATION_MOBILE_DEFAULT_ENDPOINT VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION; do
             test -n "${!name}" || { echo "Missing required protected channel value: $name" >&2; exit 1; }
           done
           [[ "$TESTFLIGHT_INTERNAL_GROUP_ID" =~ ^[A-Za-z0-9-]+$ ]]
-          node scripts/native-update-feed.mjs validate-config
+      - name: Resolve optional custom iOS update feed
+        run: |
+          mkdir -p provider-receipts
+          # TestFlight/App Store owns delivered iOS updates. A custom feed is
+          # optional informational metadata, but if any of its values exist the
+          # whole origin/action contract must validate before signing.
+          node scripts/native-update-feed.mjs write-authority-receipt provider-receipts/testflight-update-authority.json
       - run: npm run dependencies:ci && npm run build:native-client
       - name: Generate the exact channel identity overlay
         run: |

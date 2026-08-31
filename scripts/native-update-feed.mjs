@@ -1,6 +1,15 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import semver from 'semver';
 
+const CUSTOM_FEED_FIELDS = [
+  'VITE_NATIVE_APP_UPDATE_FEED_URL',
+  'VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN',
+  'NATIVE_APP_UPDATE_ACTION_URL',
+  'NATIVE_APP_UPDATE_ACTION_KIND',
+  'NATIVE_APP_UPDATE_ACTION_ORIGINS',
+];
+const STORE_UPDATE_AUTHORITY = 'TestFlight/App Store';
+
 function required(name) {
   const value = process.env[name];
   if (!value)
@@ -8,12 +17,50 @@ function required(name) {
   return value;
 }
 
-export function validateUpdateConfig(env = process.env) {
-  const feed = new URL(env.VITE_NATIVE_APP_UPDATE_FEED_URL ?? '');
-  const provider = new URL(env.VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN ?? '');
+function present(env, name) {
+  const value = env[name];
+  return typeof value === 'string' && value.length > 0;
+}
+
+function requiredCustomFeedValues(env) {
+  const provided = CUSTOM_FEED_FIELDS.filter((name) => present(env, name));
+  if (provided.length === 0) return null;
+  const missing = CUSTOM_FEED_FIELDS.filter((name) => !present(env, name));
+  if (missing.length > 0) {
+    throw new Error(
+      `Native update feed configuration is partial; missing: ${missing.join(', ')}`,
+    );
+  }
+  return Object.fromEntries(
+    CUSTOM_FEED_FIELDS.map((name) => [name, env[name]]),
+  );
+}
+
+export function resolveNativeUpdateAuthority(env = process.env) {
+  if (!/^[a-z0-9-]+$/.test(env.VITE_NATIVE_APP_UPDATE_CHANNEL ?? ''))
+    throw new Error('Invalid native update channel');
+  if (semver.valid(env.VITE_NATIVE_APP_VERSION ?? '') === null)
+    throw new Error('Invalid immutable native app version');
+
+  const custom = requiredCustomFeedValues(env);
+  if (!custom) {
+    return {
+      updateAuthority: STORE_UPDATE_AUTHORITY,
+      customFeed: null,
+      channel: env.VITE_NATIVE_APP_UPDATE_CHANNEL,
+      version: env.VITE_NATIVE_APP_VERSION,
+    };
+  }
+
+  const feed = new URL(custom.VITE_NATIVE_APP_UPDATE_FEED_URL);
+  const provider = new URL(custom.VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN);
   if (
     feed.protocol !== 'https:' ||
     provider.protocol !== 'https:' ||
+    feed.username ||
+    feed.password ||
+    provider.username ||
+    provider.password ||
     provider.origin !== provider.href.replace(/\/$/, '') ||
     feed.origin !== provider.origin
   ) {
@@ -21,30 +68,66 @@ export function validateUpdateConfig(env = process.env) {
       'Native update feed must be HTTPS and pinned to the provider origin',
     );
   }
-  if (!/^[a-z0-9-]+$/.test(env.VITE_NATIVE_APP_UPDATE_CHANNEL ?? ''))
-    throw new Error('Invalid native update channel');
-  if (semver.valid(env.VITE_NATIVE_APP_VERSION ?? '') === null)
-    throw new Error('Invalid immutable native app version');
-  const action = new URL(env.NATIVE_APP_UPDATE_ACTION_URL ?? '');
-  if (action.protocol !== 'https:')
+  const action = new URL(custom.NATIVE_APP_UPDATE_ACTION_URL);
+  if (action.protocol !== 'https:' || action.username || action.password)
     throw new Error('Native update action must be HTTPS');
   if (
-    !['artifact', 'store-page'].includes(
-      env.NATIVE_APP_UPDATE_ACTION_KIND ?? '',
-    )
+    !['artifact', 'store-page'].includes(custom.NATIVE_APP_UPDATE_ACTION_KIND)
   )
     throw new Error('Native update action kind must be artifact or store-page');
-  const actionOrigins = (env.NATIVE_APP_UPDATE_ACTION_ORIGINS ?? '')
-    .split(',')
-    .filter(Boolean);
+  const actionOrigins =
+    custom.NATIVE_APP_UPDATE_ACTION_ORIGINS.split(',').filter(Boolean);
   if (
     actionOrigins.length === 0 ||
-    actionOrigins.some((value) => new URL(value.trim()).protocol !== 'https:')
+    actionOrigins.some((value) => {
+      const origin = new URL(value.trim());
+      return (
+        origin.protocol !== 'https:' ||
+        origin.username ||
+        origin.password ||
+        origin.origin !== origin.href.replace(/\/$/, '')
+      );
+    })
   ) {
     throw new Error(
       'Native update action origins must be an explicit HTTPS allowlist',
     );
   }
+
+  return {
+    updateAuthority: STORE_UPDATE_AUTHORITY,
+    customFeed: {
+      endpoint: feed.href,
+      providerOrigin: provider.origin,
+      actionUrl: action.href,
+      actionKind: custom.NATIVE_APP_UPDATE_ACTION_KIND,
+      actionOrigins: actionOrigins.map((value) => new URL(value.trim()).origin),
+    },
+    channel: env.VITE_NATIVE_APP_UPDATE_CHANNEL,
+    version: env.VITE_NATIVE_APP_VERSION,
+  };
+}
+
+export function validateUpdateConfig(env = process.env) {
+  return resolveNativeUpdateAuthority(env);
+}
+
+export function writeNativeUpdateAuthorityReceipt(output, env = process.env) {
+  const authority = resolveNativeUpdateAuthority(env);
+  writeFileSync(
+    output,
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        kind: 'native-update-authority',
+        ...authority,
+      },
+      null,
+      2,
+    )}\n`,
+    { mode: 0o600 },
+  );
+  return authority;
 }
 
 export async function deployUpdateFeed({
@@ -320,8 +403,17 @@ export async function deployUpdateFeed({
 
 function main() {
   const command = process.argv[2];
-  validateUpdateConfig();
-  if (command === 'validate-config') return;
+  if (command === 'validate-config') {
+    resolveNativeUpdateAuthority();
+    return;
+  }
+  if (command === 'write-authority-receipt') {
+    const output = process.argv[3];
+    if (!output) throw new Error('write-authority-receipt requires output');
+    writeNativeUpdateAuthorityReceipt(output);
+    return;
+  }
+  resolveNativeUpdateAuthority();
   if (command === 'publish') {
     const output = process.argv[3];
     const releaseUrl = required('NATIVE_APP_UPDATE_ACTION_URL');
