@@ -3165,18 +3165,13 @@ button:hover {
   white-space: nowrap;
 }
 
-/* Turns rather than flips (archive#3309): the same token-timed rotation the
-   collapse chevron beside it already used, so two adjacent controls that both
-   answer "which way is the dock about to go" behave the same way. */
-.chat-dock__maximize-glyph {
-  display: inline-flex;
-  font-size: 0.95em;
-  line-height: 1;
-  transition: transform var(--motion-base) var(--ease-standard);
-}
-
-.chat-dock__maximize-glyph.is-flipped {
-  transform: rotate(180deg);
+.chat-dock__extent-svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .chat-dock__maximize-btn:hover {
