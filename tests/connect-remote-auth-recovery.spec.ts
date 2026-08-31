@@ -553,9 +553,7 @@ for (const fixture of [
       .poll(() => remoteStatusAuthorizations.some((value) => value === null))
       .toBe(true);
 
-    await (
-      await openConnectionActionsMenu(connectionsCard, 'Phone Station')
-    )
+    await (await openConnectionActionsMenu(connectionsCard, 'Phone Station'))
       .getByRole('menuitem', { name: 'Edit Station', exact: true })
       .click();
     const credentialInput = connectionsCard.getByLabel(
@@ -641,18 +639,14 @@ for (const fixture of [
       ),
     ).toEqual([]);
 
-    await (
-      await openConnectionActionsMenu(connectionsCard, 'Phone Station')
-    )
+    await (await openConnectionActionsMenu(connectionsCard, 'Phone Station'))
       .getByRole('menuitem', { name: 'Edit Station', exact: true })
       .click();
     await connectionsCard.getByPlaceholder(/192\.168/).fill(SECOND_ENDPOINT);
     await connectionsCard
       .getByRole('button', { name: 'Save', exact: true })
       .click();
-    await (
-      await openConnectionActionsMenu(connectionsCard, 'Phone Station')
-    )
+    await (await openConnectionActionsMenu(connectionsCard, 'Phone Station'))
       .getByRole('menuitem', { name: 'Check reachability', exact: true })
       .click();
     await connectionsCard
