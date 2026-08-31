@@ -1,3 +1,5 @@
+// Diagnostic probe (station#983 A/B): comment-only touch so `test:changed`
+// selects the same suites #983 selected. Throwaway branch.
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { listWorkspacePackageManifests } from '../workspace-dependency-provenance.mjs';

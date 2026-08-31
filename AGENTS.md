@@ -68,3 +68,5 @@ Read [docs/glossary.md](docs/glossary.md), the affected canonical guide, and [do
 This repo uses Veritas for AI governance. Read `.veritas/GOVERNANCE.md` before making changes.
 After changes, run `veritas readiness` and address any FAIL lines before finishing.
 <!-- veritas:governance-block:end -->
+
+<!-- diagnostic-probe-983: throwaway A/B branch; delete -->

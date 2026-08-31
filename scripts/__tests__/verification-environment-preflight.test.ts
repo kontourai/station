@@ -1,3 +1,4 @@
+// Diagnostic probe (station#983 A/B): comment-only touch. Throwaway branch.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
