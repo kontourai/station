@@ -35,7 +35,7 @@ export function externalEngineOptions(
  * DESIGN.md §3.2 — the engine question, asked first, as peer engine rows.
  *
  * `engineKind` is a PROP, not a derivation, for one case the derivation
- * cannot express: during creation "Wrap an installed agent CLI" is chosen
+ * cannot express: during creation an external engine row is chosen
  * BEFORE any CLI is, and an absent `agentConnectionId` reads as Station
  * everywhere else in the codebase (`docs/design/agent-engine-unification.md`
  * §7.1) — so a derived answer would silently bounce the user back to the
