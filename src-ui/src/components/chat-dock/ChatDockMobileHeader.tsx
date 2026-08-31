@@ -127,6 +127,18 @@ interface ChatDockMobileHeaderProps {
    * e2e strict-mode failure and an ambiguous target for anyone driving by name.
    */
   showDrawerToggle: boolean;
+  /**
+   * Render the connection control. False while the app toolbar is still on
+   * screen — it owns the connection indicator then, and two buttons whose
+   * accessible name starts "Manage Stations" is both an e2e strict-mode
+   * failure and an ambiguous target for anyone driving by name (station#1048:
+   * this used to be unconditional, so the toolbar's `app-toolbar-connection`
+   * and this header's `chat-dock-mobile-connection` both matched
+   * `getByRole('button', { name: /^Manage Stations/ })` whenever the dock was
+   * merely on screen — collapsed or half-open, not only full-screen — which
+   * is the DEFAULT mobile state, not an edge case).
+   */
+  showConnection: boolean;
   sessionTitle: string;
   /**
    * station#3309: who is answering, carried on the phone too. The name is
@@ -270,6 +282,7 @@ function NewChatGlyph() {
  */
 export function ChatDockMobileHeader({
   showDrawerToggle,
+  showConnection,
   sessionTitle,
   agentIdentity,
   branchLabel,
@@ -515,10 +528,14 @@ export function ChatDockMobileHeader({
 
       {/* station#3297 — first in the right cluster, so system state sits in
           one stable place rather than moving as the conditional chat controls
-          come and go. Always rendered: an indicator that only appears when
-          something is wrong makes its absence the signal, and absence is not
-          evidence that anything was checked. */}
-      <ChatDockMobileConnection />
+          come and go. Rendered only while the app toolbar is hidden
+          (station#1048, same condition as `showDrawerToggle` above) —
+          otherwise it and the toolbar's own connection chip are two controls
+          whose accessible name starts "Manage Stations". Within that state
+          it stays unconditional on connection HEALTH: an indicator that only
+          appears when something is wrong makes its absence the signal, and
+          absence is not evidence that anything was checked. */}
+      {showConnection && <ChatDockMobileConnection />}
 
       <button
         ref={activityTriggerRef}

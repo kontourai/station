@@ -172,8 +172,21 @@ export function canonicalStationHome(homeDir: string): string {
   try {
     canonicalParent = realpathSync(parent);
     parentStats = lstatSync(canonicalParent);
-  } catch {
-    reset(requested);
+  } catch (error) {
+    // A home whose PARENT does not exist yet is fresh, not incompatible: no
+    // home can be sitting there to carry a schema at all. Every default home
+    // is `<STATION_ROOT>/instances/<channel>/<id>`, so on a machine that has
+    // never run Station the `instances/<channel>` chain is simply absent --
+    // reporting that as an incompatible schema sent operators to
+    // `station home reset`, which resolves through this same function and so
+    // failed identically, leaving a first install with no way forward.
+    // `admitStationRuntimeHome` has already canonicalised `requested` through
+    // its nearest EXISTING ancestor, and `writeSchemaMarker` creates the
+    // missing chain with a recursive mkdir. Only ENOENT is a fresh home; any
+    // other failure (EACCES, ELOOP, a dangling or non-directory component)
+    // still fails closed, which is the property this catch exists to protect.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') reset(requested);
+    return requested;
   }
   if (!parentStats.isDirectory() || parentStats.isSymbolicLink())
     reset(requested);
@@ -587,6 +600,13 @@ export function ensureStationHomeSchemaSync(
   const migrations = hooks.migrations ?? STATION_HOME_SCHEMA_MIGRATIONS;
   validateStationHomeMigrationRegistry(migrations);
   const parentDir = dirname(homeDir);
+  // The sibling lock lives in the parent, and the parent identity is pinned
+  // below, so both need the parent to exist. On a first install it does not:
+  // `<STATION_ROOT>/instances/<channel>` has never been created. Materialize
+  // that chain here rather than letting `identity()` raise a bare ENOENT --
+  // `canonicalStationHome` has already admitted this location, and
+  // `writeSchemaMarker` creates the home itself the same way (#1090).
+  mkdirSync(parentDir, { recursive: true, mode: 0o700 });
   const parentIdentity = identity(parentDir);
   const lockPath = join(
     parentDir,
