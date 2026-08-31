@@ -213,9 +213,9 @@ describe('desktop build manifest', () => {
       env: {},
     });
     expect(baked?.builtAt).toBe('2026-08-30T12:00:00.000Z');
-    expect(
-      JSON.parse(readFileSync(resource as string, 'utf8')).builtAt,
-    ).toBe('2026-08-30T12:00:00.000Z');
+    expect(JSON.parse(readFileSync(resource as string, 'utf8')).builtAt).toBe(
+      '2026-08-30T12:00:00.000Z',
+    );
   });
 
   test('refuses to write when the server bundle it should describe is absent', () => {
@@ -240,7 +240,9 @@ describe('desktop build manifest', () => {
       new URL('../build-desktop-resources.mjs', import.meta.url),
       'utf8',
     );
-    expect(resourceScript).toContain('scripts/write-desktop-build-manifest.mjs');
+    expect(resourceScript).toContain(
+      'scripts/write-desktop-build-manifest.mjs',
+    );
     expect(resourceScript.indexOf("['run', 'build']")).toBeLessThan(
       resourceScript.indexOf('write-desktop-build-manifest'),
     );
