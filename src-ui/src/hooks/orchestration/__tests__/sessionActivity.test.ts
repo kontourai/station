@@ -120,18 +120,14 @@ describe('handleTurnCompletedEvent — terminal event ends execution activity (#
       },
     } as any);
 
-    handleTurnCompletedEvent(
-      'http://localhost:0',
-      {
-        eventId: 'evt-1005',
-        provider: 'claude',
-        threadId,
-        createdAt: '2026-07-27T00:00:00.000Z',
-        method: 'turn.completed',
-        outputText: 'pong',
-      } as any,
-      activeChatsStore,
-    );
+    handleTurnCompletedEvent('http://localhost:0', {
+      eventId: 'evt-1005',
+      provider: 'claude',
+      threadId,
+      createdAt: '2026-07-27T00:00:00.000Z',
+      method: 'turn.completed',
+      outputText: 'pong',
+    } as any);
 
     const chat = activeChatsStore.getSnapshot()[threadId];
     expect(chat?.streamingMessage).toBeUndefined();
@@ -432,20 +428,16 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
       } as any,
       activeChatsStore,
     );
-    handleRequestOpenedEvent(
-      'http://localhost:0',
-      {
-        eventId: 'evt-2',
-        provider: 'claude',
-        threadId,
-        createdAt: at,
-        method: 'request.opened',
-        requestId: 'req-1',
-        requestType: 'approval',
-        title: 'Approve tool',
-      } as any,
-      activeChatsStore,
-    );
+    handleRequestOpenedEvent('http://localhost:0', {
+      eventId: 'evt-2',
+      provider: 'claude',
+      threadId,
+      createdAt: at,
+      method: 'request.opened',
+      requestId: 'req-1',
+      requestType: 'approval',
+      title: 'Approve tool',
+    } as any);
     handleSessionStateChangedEvent(
       {
         eventId: 'evt-3',
@@ -461,18 +453,15 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
     );
     // Mid-approval the shell is parked; the turn is still open.
     expect(activeChatsStore.getSnapshot()[threadId]?.status).toBe('idle');
-    handleRequestResolvedEvent(
-      {
-        eventId: 'evt-4',
-        provider: 'claude',
-        threadId,
-        createdAt: at,
-        method: 'request.resolved',
-        requestId: 'req-1',
-        resolution: 'approved',
-      } as any,
-      activeChatsStore,
-    );
+    handleRequestResolvedEvent({
+      eventId: 'evt-4',
+      provider: 'claude',
+      threadId,
+      createdAt: at,
+      method: 'request.resolved',
+      requestId: 'req-1',
+      resolution: 'approved',
+    } as any);
     handleSessionStateChangedEvent(
       {
         eventId: 'evt-5',
