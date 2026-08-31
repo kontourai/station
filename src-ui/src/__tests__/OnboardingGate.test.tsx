@@ -16,7 +16,7 @@ import {
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { BannerHost } from '../components/notifications/BannerHost';
-import { bannerStore } from '../contexts/banner-store';
+import { BANNER_IDS, bannerStore } from '../contexts/banner-store';
 import type { BundledServerStatus } from '../platform/native';
 
 let currentStatus: SystemStatus | null = null;
@@ -1489,6 +1489,48 @@ describe('OnboardingGate', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Connect to a Station' }),
     );
+    expect(screen.getByText('Connection manager: list')).toBeTruthy();
+  });
+
+  test('keeps the mobile connection action stable across shell rerenders', async () => {
+    platformProfile = {
+      isTauri: true,
+      target: 'ios',
+      isMobile: true,
+      isDesktop: false,
+      supervisesBundledServer: false,
+    };
+    currentStatus = null;
+
+    const view = render(
+      <OnboardingGate>
+        <div>App</div>
+        <BannerHost />
+      </OnboardingGate>,
+    );
+    const connect = await screen.findByRole('button', {
+      name: 'Connect to a Station',
+    });
+    const presentSpy = vi.spyOn(bannerStore, 'present');
+    const dismissSpy = vi.spyOn(bannerStore, 'dismiss');
+    presentSpy.mockClear();
+    dismissSpy.mockClear();
+
+    view.rerender(
+      <OnboardingGate>
+        <div>App rerendered</div>
+        <BannerHost />
+      </OnboardingGate>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Connect to a Station' })).toBe(
+      connect,
+    );
+    expect(dismissSpy).not.toHaveBeenCalledWith(BANNER_IDS.deviceConnection);
+    expect(presentSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ id: BANNER_IDS.deviceConnection }),
+    );
+    fireEvent.click(connect);
     expect(screen.getByText('Connection manager: list')).toBeTruthy();
   });
 
