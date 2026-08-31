@@ -5,7 +5,7 @@ import {
 } from '@kontourai/station-contracts/tool';
 import type { STTState as VoiceState } from '@kontourai/station-sdk';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
-import React, { useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { setShortcutContext } from '../../contexts/KeyboardShortcutsContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
@@ -46,6 +46,20 @@ const SessionModelPicker = React.lazy(() =>
     default: module.SessionModelPicker,
   })),
 );
+
+const PortableDraftsMenu = React.lazy(() =>
+  import('./PortableDraftsMenu').then((module) => ({
+    default: module.PortableDraftsMenu,
+  })),
+);
+
+export function isPortableDraftShortcut(event: {
+  key: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+}): boolean {
+  return event.key === 's' && (event.metaKey || event.ctrlKey);
+}
 
 interface ChatInputAreaProps {
   // Session info
@@ -137,6 +151,10 @@ interface ChatInputAreaProps {
   onCommandClose: () => void;
   onHistoryUp: () => void;
   onHistoryDown: () => void;
+  onRestorePortableDraft?: (
+    text: string,
+    attachments: FileAttachment[],
+  ) => void;
   updateFromInput: (value: string) => void;
   closeAll: () => void;
   // Voice mode (optional — omit to hide the mic button)
@@ -223,6 +241,7 @@ export function ChatInputArea({
   onCommandClose,
   onHistoryUp,
   onHistoryDown,
+  onRestorePortableDraft,
   updateFromInput,
   closeAll,
   voiceState,
@@ -240,6 +259,7 @@ export function ChatInputArea({
   workspaceRefused = false,
   onStartNewChat,
 }: ChatInputAreaProps) {
+  const [portableDraftsOpen, setPortableDraftsOpen] = useState(false);
   const isComposing = useRef(false);
   // Anchors the model picker popover to its trigger on desktop (archive#999).
   const modelButtonRef = useRef<HTMLButtonElement>(null);
@@ -539,6 +559,12 @@ export function ChatInputArea({
             onKeyDown={async (e) => {
               if (e.defaultPrevented) return;
 
+              if (isPortableDraftShortcut(e)) {
+                e.preventDefault();
+                setPortableDraftsOpen(true);
+                return;
+              }
+
               if (
                 e.key === 'Escape' &&
                 (commandQuery !== null || modelQuery !== null)
@@ -588,6 +614,17 @@ export function ChatInputArea({
               minHeight: 0,
             }}
           />
+          <React.Suspense fallback={null}>
+            <PortableDraftsMenu
+              input={input}
+              attachments={attachments}
+              open={portableDraftsOpen}
+              onOpenChange={setPortableDraftsOpen}
+              onRestore={(draft) => {
+                onRestorePortableDraft?.(draft.text, draft.attachments);
+              }}
+            />
+          </React.Suspense>
           {input && (
             <button
               type="button"
