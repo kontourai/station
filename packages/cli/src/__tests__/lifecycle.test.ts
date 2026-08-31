@@ -6095,7 +6095,9 @@ describe('lifecycle build + restart ergonomics', () => {
 
     const marker = join(TEST_ALT_HOME, STATION_HOME_SCHEMA_FILE);
     expect(existsSync(marker)).toBe(true);
-    expect(JSON.parse(readFileSync(marker, 'utf8'))).toEqual({ version: 1 });
+    expect(JSON.parse(readFileSync(marker, 'utf8'))).toEqual({
+      version: STATION_HOME_SCHEMA_VERSION,
+    });
   });
 
   it('creates a multi-level missing home path before gating it (#1570)', async () => {
