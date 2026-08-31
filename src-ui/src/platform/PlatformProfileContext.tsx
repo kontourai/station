@@ -189,7 +189,7 @@ const profileReady: Promise<PlatformProfile> = resolvePlatformProfile().then(
       const [{ nativeStationProfileStorage }] = await Promise.all([
         import('./native/stationProfileStorage'),
       ]);
-      profileRepository = nativeStationProfileStorage();
+      profileRepository = nativeStationProfileStorage(profile.isDesktop);
       await profileRepository.hydrate();
       if (profile.isDesktop) {
         const [{ bootstrapBundledLocalProfile }, { invokeTauri }] =

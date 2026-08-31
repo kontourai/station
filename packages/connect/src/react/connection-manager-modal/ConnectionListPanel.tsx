@@ -1,4 +1,11 @@
-import { type Ref, useState } from 'react';
+import {
+  type KeyboardEvent,
+  type Ref,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react';
 import { connectionFailureCopy } from '../../core/environmentProfiles';
 import type { SavedConnection } from '../../core/types';
 import { ConnectionStatusDot } from '../ConnectionStatusDot';
@@ -107,6 +114,57 @@ function ConnectionRow({
   // honest home for a fact that was previously true of every row, all the
   // time, whether or not anyone was about to tap Forget.
   const [forgetArmed, setForgetArmed] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const actionsMenuId = useId();
+  const actionsTriggerRef = useRef<HTMLButtonElement>(null);
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!actionsOpen) return;
+    actionsMenuRef.current
+      ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
+      ?.focus();
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (
+        actionsMenuRef.current?.contains(target) ||
+        actionsTriggerRef.current?.contains(target)
+      )
+        return;
+      setActionsOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    return () =>
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+  }, [actionsOpen]);
+
+  const closeActions = (restoreFocus = false) => {
+    setActionsOpen(false);
+    if (restoreFocus)
+      requestAnimationFrame(() => actionsTriggerRef.current?.focus());
+  };
+
+  const onActionsMenuKeyDown = (event: KeyboardEvent) => {
+    const items = Array.from(
+      actionsMenuRef.current?.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitem"]:not(:disabled)',
+      ) ?? [],
+    );
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeActions(true);
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const offset = event.key === 'ArrowDown' ? 1 : -1;
+      items[(current + offset + items.length) % items.length]?.focus();
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      items[event.key === 'Home' ? 0 : items.length - 1]?.focus();
+    }
+  };
 
   // The desktop-supervised local server is always listed so its state is
   // visible even when it is not running. A not-running local server has no
@@ -147,9 +205,6 @@ function ConnectionRow({
           <div className="station-connect-row__name">
             {connection.name || connection.url}
           </div>
-          {connection.id === activeConnectionId && (
-            <span className="station-connect-chip">Active</span>
-          )}
         </div>
         {isLocalServerDown ? (
           <div role="status" className="station-connect-row__state">
@@ -299,98 +354,67 @@ function ConnectionRow({
               </button>
             )}
             <button
+              ref={actionsTriggerRef}
               type="button"
               onClick={(event) => {
                 event.stopPropagation();
-                onCheck(connection);
+                setActionsOpen((open) => !open);
               }}
-              title="Check reachability"
-              aria-label="Check reachability"
+              title="More Station actions"
+              aria-label={`More actions for ${connectionDisplayLabel(connection)}`}
+              aria-expanded={actionsOpen}
+              aria-controls={actionsOpen ? actionsMenuId : undefined}
+              aria-haspopup="menu"
               className="station-connect-icon-btn"
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-                <path d="M21 3v6h-6" />
-              </svg>
+              <span aria-hidden="true">…</span>
             </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onStartEdit(connection);
-              }}
-              disabled={isSharedStationProfile}
-              title={
-                isSharedStationProfile
-                  ? 'Edit this Station with station stations'
-                  : 'Edit Station'
-              }
-              aria-label={
-                isSharedStationProfile
-                  ? 'Shared Station editing is available in the CLI'
-                  : 'Edit Station'
-              }
-              className="station-connect-icon-btn"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+            {actionsOpen && (
+              <div
+                id={actionsMenuId}
+                ref={actionsMenuRef}
+                role="menu"
+                aria-label={`Actions for ${connectionDisplayLabel(connection)}`}
+                className="station-connect-row__menu"
+                onKeyDown={onActionsMenuKeyDown}
               >
-                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setForgetArmed(true);
-              }}
-              disabled={isSharedStationProfile}
-              title={
-                isSharedStationProfile
-                  ? 'Forget this Station with station stations'
-                  : 'Forget Station'
-              }
-              aria-label={
-                isSharedStationProfile
-                  ? 'Shared Station forgetting is available in the CLI'
-                  : 'Forget Station'
-              }
-              className="station-connect-icon-btn station-connect-icon-btn--danger"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M3 6h18" />
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              </svg>
-            </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    closeActions();
+                    onCheck(connection);
+                  }}
+                >
+                  Check reachability
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={isSharedStationProfile}
+                  onClick={() => {
+                    closeActions();
+                    onStartEdit(connection);
+                  }}
+                >
+                  {isSharedStationProfile ? 'Edit in the CLI' : 'Edit Station'}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={isSharedStationProfile}
+                  className="station-connect-row__menu-danger"
+                  onClick={() => {
+                    closeActions();
+                    setForgetArmed(true);
+                  }}
+                >
+                  {isSharedStationProfile
+                    ? 'Forget in the CLI'
+                    : 'Forget Station'}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>

@@ -1715,7 +1715,6 @@ describe('suiteStationE2EEnv', () => {
   test('gives the Starter clean-install journey a fresh first-run environment with telemetry disabled', () => {
     expect(suiteStationE2EEnv('starter-clean-install')).toEqual({
       STATION_E2E_FIRST_RUN: '1',
-      STATION_E2E_RESOURCE_POSTURE_HEALTHY: '1',
       STATION_TELEMETRY_ENABLED: 'false',
       STATION_TELEMETRY_ENDPOINT: '',
       STATION_USAGE_TELEMETRY_KEY: '',

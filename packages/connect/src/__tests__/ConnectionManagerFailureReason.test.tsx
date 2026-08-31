@@ -45,6 +45,13 @@ function renderWith(checkHealth: () => Promise<ConnectionHealthCheckResult>) {
   return { store, connection };
 }
 
+function checkReachability() {
+  fireEvent.click(
+    screen.getByRole('button', { name: 'More actions for Remote Station' }),
+  );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Check reachability' }));
+}
+
 /**
  * The reason a failed check reports is what the user is told to go and fix, so
  * it is worth pinning at the component rather than only on the probe helper.
@@ -61,7 +68,7 @@ describe('Connection Manager — failure reason recorded from the check result',
       reason: 'authentication-failed',
     }));
 
-    fireEvent.click(screen.getByLabelText('Check reachability'));
+    checkReachability();
 
     await waitFor(() => {
       const saved = store.getAll().find((item) => item.id === connection.id);
@@ -72,7 +79,7 @@ describe('Connection Manager — failure reason recorded from the check result',
   it('still records "unreachable" when the check can only say false', async () => {
     const { store, connection } = renderWith(async () => false);
 
-    fireEvent.click(screen.getByLabelText('Check reachability'));
+    checkReachability();
 
     await waitFor(() => {
       const saved = store.getAll().find((item) => item.id === connection.id);
@@ -86,7 +93,7 @@ describe('Connection Manager — failure reason recorded from the check result',
       reason: 'identity-mismatch',
     }));
 
-    fireEvent.click(screen.getByLabelText('Check reachability'));
+    checkReachability();
 
     await waitFor(() => {
       const saved = store.getAll().find((item) => item.id === connection.id);
@@ -98,7 +105,7 @@ describe('Connection Manager — failure reason recorded from the check result',
   it('treats a bare true as success and clears the error', async () => {
     const { store, connection } = renderWith(async () => true);
 
-    fireEvent.click(screen.getByLabelText('Check reachability'));
+    checkReachability();
 
     await waitFor(() => {
       const saved = store.getAll().find((item) => item.id === connection.id);

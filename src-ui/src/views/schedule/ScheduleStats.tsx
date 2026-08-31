@@ -1,14 +1,9 @@
 import { relTime } from '../../components/scheduler';
-import {
-  type HostPressureKind,
-  hostPressureSubject,
-} from '../../utils/resourcePosture';
 import { getScheduleStatusLabel, getScheduleStatusTone } from './utils';
 
 export function ScheduleStats({
   daemonOk,
   jobsCount,
-  hostPressure,
   lastTickAt,
   schedulerHealthy,
   statusError,
@@ -17,20 +12,22 @@ export function ScheduleStats({
 }: {
   daemonOk: boolean;
   jobsCount: number;
-  /** Present only while the host is deferring scheduled runs. */
-  hostPressure?: HostPressureKind;
   lastTickAt?: string;
   schedulerHealthy: boolean;
   statusError: boolean;
   successRate: number;
   totalRuns: number;
 }) {
-  const tone = hostPressure
-    ? 'warning'
-    : getScheduleStatusTone({ statusError, daemonOk, schedulerHealthy });
-  const statusLabel = hostPressure
-    ? `Paused — ${hostPressureSubject(hostPressure)}`
-    : getScheduleStatusLabel({ statusError, daemonOk, schedulerHealthy });
+  const tone = getScheduleStatusTone({
+    statusError,
+    daemonOk,
+    schedulerHealthy,
+  });
+  const statusLabel = getScheduleStatusLabel({
+    statusError,
+    daemonOk,
+    schedulerHealthy,
+  });
 
   return (
     <div
