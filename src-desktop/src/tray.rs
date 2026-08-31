@@ -1224,6 +1224,14 @@ const API_DOCS_LAUNCH_PATH: &str = "/.well-known/station/v1/pairing/api-docs";
 const API_DOCS_CAPABILITY_MINT_PATH: &str =
     "/.well-known/station/v1/pairing/mint-ui-bootstrap";
 
+/// A base64url encoding of 32 bytes is 43 characters. The margin allows the
+/// server to widen the value without a lockstep desktop release; it does not
+/// admit a value large enough to matter.
+const MAX_API_DOCS_CAPABILITY_LEN: usize = 128;
+
+/// Enough for the mint's small JSON object and nothing more.
+const MAX_API_DOCS_MINT_RESPONSE_BYTES: usize = 8 * 1024;
+
 fn station_api_docs_url(api_origin: &str) -> Result<String, String> {
     let origin = crate::exact_origin(api_origin)?;
     if api_origin != origin {
@@ -1251,9 +1259,15 @@ fn station_api_docs_url(api_origin: &str) -> Result<String, String> {
 /// transmitted to the server, so the capability stays out of request logs and
 /// out of the query string, where Station refuses credentials outright.
 fn api_docs_launch_url_with_capability(launch_url: &str, capability: &str) -> Result<String, String> {
-    if capability.is_empty() || !capability.bytes().all(|byte| {
-        byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'
-    }) {
+    // The capability is a 32-byte base64url value. Bounding the length as well
+    // as the alphabet keeps a wedged or hostile listener from handing the tray
+    // an arbitrarily long string to carry into a URL.
+    if capability.is_empty()
+        || capability.len() > MAX_API_DOCS_CAPABILITY_LEN
+        || !capability
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    {
         return Err("Station returned a malformed API docs capability".into());
     }
     Ok(format!("{launch_url}#station-ui-bootstrap={capability}"))
@@ -1291,9 +1305,15 @@ fn mint_api_docs_capability(api_origin: &str, base_dir: &Path) -> Result<String,
         )
         .map_err(|_| "could not reach Station to mint an API docs capability".to_string())?;
     let status = response.status().as_u16();
-    let raw = response
+    // Bounded read: this speaks to whatever holds the port, which during a
+    // service restart is not necessarily Station. An unbounded read of an
+    // attacker-controlled or wedged listener is a memory-exhaustion path.
+    let mut raw = String::new();
+    response
         .body_mut()
-        .read_to_string()
+        .as_reader()
+        .take(MAX_API_DOCS_MINT_RESPONSE_BYTES as u64)
+        .read_to_string(&mut raw)
         .map_err(|_| "invalid API docs capability response".to_string())?;
     if !(200..300).contains(&status) {
         return Err(format!("Station refused the API docs capability (HTTP {status})"));
@@ -2503,6 +2523,15 @@ mod tests {
                 "expected {hostile:?} to be refused"
             );
         }
+        // A wedged or hostile listener holding the port must not be able to
+        // hand the tray an unbounded string to carry into a URL. The real
+        // value is 43 characters.
+        let oversized = "a".repeat(MAX_API_DOCS_CAPABILITY_LEN + 1);
+        assert!(api_docs_launch_url_with_capability(&launch, &oversized).is_err());
+        assert!(
+            api_docs_launch_url_with_capability(&launch, &"a".repeat(43)).is_ok(),
+            "a real 43-character capability must still be accepted"
+        );
     }
 
     #[test]
