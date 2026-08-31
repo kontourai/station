@@ -20,6 +20,8 @@ import {
   E2E_POLICY_MARKERS,
   executableVerificationPolicyErrors,
   FAILURE_DIAGNOSIS_MARKERS,
+  FULL_REGRESSION_ORDINARY_SHARD_COUNT,
+  FULL_REGRESSION_ORDINARY_SHARDS,
   FULL_REGRESSION_ORDINARY_TIMEOUT_MS,
   FULL_REGRESSION_TEST_WEIGHT,
   LANE_REUSE_MARKERS,
@@ -273,7 +275,7 @@ describe('verification policy gate', () => {
     );
   });
 
-  test('pins admission headroom for ci:fast beside the full test phase', () => {
+  test('pins admission headroom for ci:fast beside every ordinary shard', () => {
     expect(CI_FAST_RESERVED_WEIGHT).toBe(20);
     expect(CI_FAST_TIMEOUT_MS).toBe(12 * 60_000);
     expect(FULL_REGRESSION_TEST_WEIGHT).toBe(80);
@@ -282,7 +284,7 @@ describe('verification policy gate', () => {
         ? {
             ...lane,
             phases: lane.phases.map((phase) =>
-              phase.id === 'test-full-ordinary'
+              phase.id === 'test-full-ordinary-2-of-4'
                 ? { ...phase, weight: 81 }
                 : phase,
             ),
@@ -290,7 +292,7 @@ describe('verification policy gate', () => {
         : lane,
     );
     expect(verificationPolicyErrors({ lanes: crowded })).toContain(
-      'full-regression test-full-ordinary phase must use exactly 80 coordinator weight',
+      'full-regression test-full-ordinary-2-of-4 must use exactly 80 coordinator weight',
     );
   });
 
@@ -303,22 +305,96 @@ describe('verification policy gate', () => {
     );
   });
 
-  test('rejects an ordinary completion deadline below the hosted forty-five-minute floor', () => {
-    expect(FULL_REGRESSION_ORDINARY_TIMEOUT_MS).toBe(45 * 60_000);
+  test('rejects an ordinary shard deadline that drifts from the twenty-minute fence', () => {
+    expect(FULL_REGRESSION_ORDINARY_TIMEOUT_MS).toBe(20 * 60_000);
     const stale = LANES.map((lane) =>
       lane.id === 'full-regression'
         ? {
             ...lane,
             phases: lane.phases?.map((phase) =>
-              phase.id === 'test-full-ordinary'
-                ? { ...phase, timeoutMs: 30 * 60_000 }
+              phase.id === 'test-full-ordinary-3-of-4'
+                ? { ...phase, timeoutMs: 45 * 60_000 }
                 : phase,
             ),
           }
         : lane,
     );
     expect(verificationPolicyErrors({ lanes: stale })).toContain(
-      'full-regression test-full-ordinary phase must use the exact 45-minute execution deadline',
+      'full-regression test-full-ordinary-3-of-4 must use the exact 20-minute execution deadline',
+    );
+  });
+
+  test('rejects missing, duplicate, misrouted, or monolithic ordinary shards', () => {
+    expect(FULL_REGRESSION_ORDINARY_SHARD_COUNT).toBe(4);
+    expect(FULL_REGRESSION_ORDINARY_SHARDS.map(({ id }) => id)).toEqual([
+      'test-full-ordinary-1-of-4',
+      'test-full-ordinary-2-of-4',
+      'test-full-ordinary-3-of-4',
+      'test-full-ordinary-4-of-4',
+    ]);
+    const completion = LANES.find((lane) => lane.id === 'full-regression')!;
+    const withoutFourth = LANES.map((lane) =>
+      lane === completion
+        ? {
+            ...lane,
+            phases: lane.phases.filter(
+              (phase) => phase.id !== 'test-full-ordinary-4-of-4',
+            ),
+          }
+        : lane,
+    );
+    expect(verificationPolicyErrors({ lanes: withoutFourth })).toContain(
+      'full-regression must declare test-full-ordinary-4-of-4 exactly once',
+    );
+    const duplicateFirst = LANES.map((lane) =>
+      lane === completion
+        ? {
+            ...lane,
+            phases: [
+              ...lane.phases,
+              lane.phases.find(
+                (phase) => phase.id === 'test-full-ordinary-1-of-4',
+              )!,
+            ],
+          }
+        : lane,
+    );
+    expect(verificationPolicyErrors({ lanes: duplicateFirst })).toContain(
+      'full-regression must declare test-full-ordinary-1-of-4 exactly once',
+    );
+    const misrouted = structuredClone(packageJson);
+    misrouted.scripts['test:full:ordinary:2:raw'] =
+      'node scripts/run-vitest-corpus.mjs --group=ordinary --shard=1/4';
+    expect(verificationPolicyErrors({ manifest: misrouted })).toContain(
+      'package script test:full:ordinary:2:raw must use exact Vitest shard 2/4',
+    );
+    const monolithicManifest = structuredClone(packageJson);
+    monolithicManifest.scripts['test:full:ordinary:raw'] =
+      'node scripts/run-vitest-corpus.mjs --group=ordinary';
+    expect(
+      verificationPolicyErrors({ manifest: monolithicManifest }),
+    ).toContain(
+      'package scripts must not retain the stale monolithic ordinary runner',
+    );
+    const monolithicLane = LANES.map((lane) =>
+      lane === completion
+        ? {
+            ...lane,
+            phases: [
+              ...lane.phases,
+              {
+                id: 'test-full-ordinary',
+                command: 'npm run test:full:ordinary:raw',
+                privateScript: 'test:full:ordinary:raw',
+                timeoutMs: 45 * 60_000,
+                weight: 80,
+              },
+            ],
+          }
+        : lane,
+    );
+    expect(verificationPolicyErrors({ lanes: monolithicLane })).toContain(
+      'full-regression must not retain the stale monolithic ordinary phase',
     );
   });
 
@@ -460,8 +536,8 @@ describe('verification policy gate', () => {
         ? {
             ...doc,
             text: doc.text.replace(
-              '`test-full-ordinary` — 80-unit',
-              '`test-full-ordinary` — 100-unit',
+              '`test-full-ordinary-2-of-4` — 80-unit',
+              '`test-full-ordinary-2-of-4` — 100-unit',
             ),
           }
         : doc,
@@ -475,8 +551,8 @@ describe('verification policy gate', () => {
         ? {
             ...doc,
             text: doc.text.replace(
-              '`test-full-ordinary` — 80-unit host reservation; 45-minute execution deadline.',
-              '`test-full-ordinary` — 80-unit host reservation; 30-minute execution deadline.',
+              '`test-full-ordinary-3-of-4` — 80-unit host reservation; 20-minute execution deadline.',
+              '`test-full-ordinary-3-of-4` — 80-unit host reservation; 45-minute execution deadline.',
             ),
           }
         : doc,
