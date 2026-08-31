@@ -218,9 +218,7 @@ async function dockHomeViaMobileOverflow(page: Page) {
   const overflowTrigger = page.getByRole('button', { name: 'Chat actions' });
   await expect(overflowTrigger).toBeVisible({ timeout: 15_000 });
   await overflowTrigger.click();
-  await page
-    .getByRole('menuitem', { name: 'Switch to Home' })
-    .click();
+  await page.getByRole('menuitem', { name: 'Switch to Home' }).click();
   await expect(dockOccupantTrigger(page, 'Home')).toBeVisible();
 }
 
