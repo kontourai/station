@@ -305,9 +305,7 @@ fn station_root_from_env(
 /// The `STATION_ROOT` a spawned Station runtime must carry for `station_home`,
 /// or `None` when it must be left UNSET.
 ///
-/// Mirrors `spawnedStationRoot` in
-/// `packages/shared/src/runtime-path-resolver.ts`, and exists for the same
-/// reason: the runtime's admission guard allows `root == home` only when
+/// The runtime's admission guard allows `root == home` only when
 /// `STATION_ROOT` is unset, because provenance is not observable from an
 /// environment and absence is the only available proof that the root was
 /// DERIVED from the home rather than being a foreign root the home would
@@ -315,20 +313,44 @@ fn station_root_from_env(
 /// value out makes the sidecar refuse to boot -- the crash this function
 /// exists to prevent (#1108).
 ///
+/// The same decision is made for the CLI and the service installer by
+/// `spawnedStationRoot` in `packages/shared/src/runtime-path-resolver.ts`,
+/// landing in #1102. This is a sibling implementation of that rule, not a
+/// binding to it: a desktop binary cannot import the TypeScript, so the two
+/// are kept in step by review rather than by the compiler.
+///
 /// An operator-set `STATION_ROOT` is passed through unchanged, including when
 /// it equals the home: that is the original escape, and it stays rejected.
+///
+/// Comparison is on ABSOLUTIZED paths. `station_root_from_env` makes its
+/// result absolute and `station_home_from_env` returns `STATION_HOME`
+/// verbatim, so a relative `STATION_HOME` produces two spellings of one
+/// directory that compare unequal -- which would emit the very variable this
+/// exists to withhold.
 pub fn spawned_station_root(
     station_root: &Path,
     station_home: &Path,
     explicit_station_root: Option<std::ffi::OsString>,
 ) -> Option<PathBuf> {
+    // `.trim()`, matching the TypeScript's `env.STATION_ROOT?.trim()`: an
+    // all-whitespace value is not an operator setting a root.
     if explicit_station_root
-        .filter(|value| !value.is_empty())
+        .filter(|value| !value.to_string_lossy().trim().is_empty())
         .is_some()
     {
         return Some(station_root.to_path_buf());
     }
-    if station_root == station_home {
+    // Fails CLOSED on an unresolvable cwd: comparing two `None`s would read as
+    // "the same directory" and withhold a root that may be genuinely
+    // different, silently handing the child one derived from its own home.
+    let same = match (
+        lexical_absolute(station_root),
+        lexical_absolute(station_home),
+    ) {
+        (Ok(root), Ok(home)) => root == home,
+        _ => station_root == station_home,
+    };
+    if same {
         return None;
     }
     Some(station_root.to_path_buf())
@@ -1097,6 +1119,51 @@ fn trusted_station_control_path(path: &Path, kind: TrustKind) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_relative_station_home_still_reads_as_self_rooted() {
+        // The case lexical equality missed: `station_root_from_env` makes its
+        // result ABSOLUTE while `station_home_from_env` returns STATION_HOME
+        // verbatim, so one directory arrives as two spellings. Comparing them
+        // raw emits the very variable this function exists to withhold, and
+        // the sidecar goes back to crashing at boot.
+        let cwd = env::current_dir().expect("a current directory");
+        let relative = Path::new("station-data");
+        let absolute = cwd.join(relative);
+        assert_ne!(absolute.as_path(), relative, "precondition: spellings differ");
+        assert_eq!(
+            spawned_station_root(&absolute, relative, None),
+            None,
+            "a relative home naming the same directory as the derived root is self-rooted"
+        );
+    }
+
+    #[test]
+    fn a_genuinely_different_root_is_still_passed_through() {
+        let root = PathBuf::from("/data/station");
+        let home = PathBuf::from("/data/station/instances/stable");
+        assert_eq!(
+            spawned_station_root(&root, &home, None),
+            Some(root.clone()),
+            "a channel home must still carry its own root"
+        );
+    }
+
+    #[test]
+    fn whitespace_is_not_an_operator_setting_a_root() {
+        // Matches the TypeScript's `env.STATION_ROOT?.trim()`. Treating "   "
+        // as explicit would pass a self-rooted value through and crash the
+        // sidecar for a value nobody meaningfully set.
+        let same = PathBuf::from("/data/station");
+        assert_eq!(
+            spawned_station_root(&same, &same, Some(std::ffi::OsString::from("   "))),
+            None
+        );
+        assert_eq!(
+            spawned_station_root(&same, &same, Some(std::ffi::OsString::from("/data/station"))),
+            Some(same)
+        );
+    }
+
     use super::*;
     use std::collections::HashSet;
     use std::fs;
