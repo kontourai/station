@@ -26,6 +26,19 @@ async function removeSetupLauncher(page: Page) {
   });
 }
 
+/**
+ * Per-connection actions (Edit/Check/Forget) live behind a "More actions"
+ * overflow menu, not as standalone title-attributed buttons
+ * (`ConnectionListPanel.tsx` station#4512 review M6). Open it and return the
+ * menu scoped to this connection so its menuitems can be clicked.
+ */
+async function openConnectionActionsMenu(scope: Locator, name: string) {
+  await scope
+    .getByRole('button', { name: `More actions for ${name}`, exact: true })
+    .click();
+  return scope.getByRole('menu', { name: `Actions for ${name}` });
+}
+
 async function openConnections(page: Page, phone: boolean) {
   void phone;
   const dialog = page.getByRole('dialog');
@@ -540,9 +553,10 @@ for (const fixture of [
       .poll(() => remoteStatusAuthorizations.some((value) => value === null))
       .toBe(true);
 
-    await connectionsCard
-      .locator('button[title="Edit Station"]')
-      .last()
+    await (
+      await openConnectionActionsMenu(connectionsCard, 'Phone Station')
+    )
+      .getByRole('menuitem', { name: 'Edit Station', exact: true })
       .click();
     const credentialInput = connectionsCard.getByLabel(
       'Station access credential',
@@ -585,9 +599,10 @@ for (const fixture of [
       .toBe(true);
     await expect
       .poll(async () => {
-        await connectionsCard
-          .locator('button[title="Check reachability"]')
-          .last()
+        await (
+          await openConnectionActionsMenu(connectionsCard, 'Phone Station')
+        )
+          .getByRole('menuitem', { name: 'Check reachability', exact: true })
           .click();
         return remoteStatusAuthorizations.includes(`Bearer ${CREDENTIAL}`);
       })
@@ -626,17 +641,19 @@ for (const fixture of [
       ),
     ).toEqual([]);
 
-    await connectionsCard
-      .locator('button[title="Edit Station"]')
-      .last()
+    await (
+      await openConnectionActionsMenu(connectionsCard, 'Phone Station')
+    )
+      .getByRole('menuitem', { name: 'Edit Station', exact: true })
       .click();
     await connectionsCard.getByPlaceholder(/192\.168/).fill(SECOND_ENDPOINT);
     await connectionsCard
       .getByRole('button', { name: 'Save', exact: true })
       .click();
-    await connectionsCard
-      .locator('button[title="Check reachability"]')
-      .last()
+    await (
+      await openConnectionActionsMenu(connectionsCard, 'Phone Station')
+    )
+      .getByRole('menuitem', { name: 'Check reachability', exact: true })
       .click();
     await connectionsCard
       .getByRole('button', { name: 'Verify and use endpoint' })
@@ -706,14 +723,27 @@ for (const fixture of [
     expect(serializedProfiles).not.toContain(CREDENTIAL);
 
     if (fixture.name === 'phone') {
-      const controls = page.locator(
-        'button[title="Check reachability"], button[title="Edit Station"], button[title="Forget Station"]',
-      );
-      for (let index = 0; index < (await controls.count()); index += 1) {
-        const box = await controls.nth(index).boundingBox();
+      // The per-row "More actions" trigger is the direct tap target; Edit /
+      // Check reachability / Forget now live as menuitems inside the menu it
+      // opens (ConnectionListPanel.tsx station#4512 review M6), so both the
+      // trigger and the opened menu's items must clear the minimum.
+      const triggers = page.locator('[aria-label^="More actions for "]');
+      for (let index = 0; index < (await triggers.count()); index += 1) {
+        const box = await triggers.nth(index).boundingBox();
         expect(box?.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
         expect(box?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
       }
+      const actionsMenu = await openConnectionActionsMenu(
+        connectionsCard,
+        'Phone Station',
+      );
+      const menuItems = actionsMenu.getByRole('menuitem');
+      for (let index = 0; index < (await menuItems.count()); index += 1) {
+        const box = await menuItems.nth(index).boundingBox();
+        expect(box?.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+        expect(box?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+      }
+      await page.keyboard.press('Escape');
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - window.innerWidth,
       );
