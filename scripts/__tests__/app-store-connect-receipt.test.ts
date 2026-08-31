@@ -4,6 +4,7 @@ import {
   appStoreConnectRequest,
   assertCanonicalArtifactBuiltAt,
   createAppStoreConnectJwt,
+  receiptArtifactProvenance,
   selectAppResource,
   selectBuildResources,
   selectInternalGroup,
@@ -21,6 +22,17 @@ describe('App Store Connect receipt authority', () => {
     expect(() =>
       assertCanonicalArtifactBuiltAt('2026-02-31T12:00:00.000Z'),
     ).toThrow(/artifact-built-at/);
+  });
+  test('attributes an artifact timestamp to the provider only after this run uploaded it', () => {
+    const builtAt = '2026-08-30T12:00:00.000Z';
+    expect(receiptArtifactProvenance('uploaded', builtAt)).toEqual({
+      candidateArtifactBuiltAt: builtAt,
+      providerArtifactBuiltAt: builtAt,
+    });
+    expect(receiptArtifactProvenance('reconciled', builtAt)).toEqual({
+      candidateArtifactBuiltAt: builtAt,
+      providerArtifactBuiltAt: null,
+    });
   });
   test('creates a bounded ES256 App Store Connect token', () => {
     const token = createAppStoreConnectJwt({

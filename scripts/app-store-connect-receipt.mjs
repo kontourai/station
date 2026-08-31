@@ -272,21 +272,46 @@ async function buildReceipt(argv, env) {
     expirationDate: build.attributes.expirationDate ?? null,
     minOsVersion: build.attributes.minOsVersion ?? null,
     sourceSha,
-    artifactBuiltAt: artifactManifest.builtAt,
     // An existing VALID build was uploaded by another run. Its provider bytes
     // are not downloadable through this API, so never label a newly rebuilt
     // local IPA as its digest or source provenance.
     ...(deliveryMode === 'uploaded'
-      ? { ipaSha256, providerSourceSha: sourceSha }
+      ? {
+          ipaSha256,
+          providerSourceSha: sourceSha,
+          ...receiptArtifactProvenance(deliveryMode, artifactManifest.builtAt),
+        }
       : {
           candidateIpaSha256: ipaSha256,
           providerIpaSha256: null,
           providerSourceSha: 'NOT_VERIFIED',
+          ...receiptArtifactProvenance(deliveryMode, artifactManifest.builtAt),
         }),
     deliveryMode,
     workflowRunUrl,
     observedAt: new Date().toISOString(),
   });
+}
+
+/** Never attribute a rebuilt candidate's time to an existing provider build. */
+export function receiptArtifactProvenance(
+  deliveryMode,
+  candidateArtifactBuiltAt,
+) {
+  assertCanonicalArtifactBuiltAt(candidateArtifactBuiltAt);
+  if (deliveryMode === 'uploaded') {
+    return {
+      candidateArtifactBuiltAt,
+      providerArtifactBuiltAt: candidateArtifactBuiltAt,
+    };
+  }
+  if (deliveryMode === 'reconciled') {
+    return {
+      candidateArtifactBuiltAt,
+      providerArtifactBuiltAt: null,
+    };
+  }
+  throw new Error('delivery mode must be uploaded or reconciled');
 }
 
 export function readArtifactManifest(path) {
