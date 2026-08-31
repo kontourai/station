@@ -143,7 +143,7 @@ describe('iOS App Store signing config', () => {
     ).toThrow();
     expect(readFileSync(templateOutput, 'utf8')).toContain('Quoted');
   });
-  test('rejects non-Stable bundle IDs before profile inspection or writes', () => {
+  test('rejects unreviewed bundle IDs before profile inspection or writes', () => {
     const calls: string[] = [];
     expect(() =>
       writeIosStoreSigningConfig(
@@ -151,7 +151,7 @@ describe('iOS App Store signing config', () => {
           profile: '/profile',
           identity: 'Apple Distribution: Example (ABCDE12345)',
           team: 'ABCDE12345',
-          bundleId: 'io.kontourai.station.beta',
+          bundleId: 'io.kontourai.station.unreviewed',
           template: '/template',
           templateOutput: '/output.yml',
           overlayOutput: '/overlay.json',
@@ -175,7 +175,7 @@ describe('iOS App Store signing config', () => {
           },
         },
       ),
-    ).toThrow(/Stable bundle ID/);
+    ).toThrow(/reviewed Station bundle IDs/);
     expect(calls).toEqual([]);
   });
   test('canonicalizes relative input and output paths before reading or writing', () => {

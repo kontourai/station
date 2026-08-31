@@ -40,6 +40,7 @@ export function NewProjectDirectoryField({
             onChange={onDirectoryChange}
             placeholder="/path/to/project"
             className="editor-input path-autocomplete__input new-project-modal__working-dir-input"
+            browsable
             aria-invalid={error ? true : undefined}
             aria-describedby={
               described ? 'new-project-directory-error' : undefined

@@ -7,6 +7,24 @@
   min-width: 0;
 }
 
+.sessions-axis-tabs {
+  margin: 0.55rem 0.65rem 0;
+}
+
+.sessions-axis-description {
+  margin: 0.3rem 0.75rem 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.session-origin-history {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--text-secondary);
+  font-size: 0.65rem;
+}
+
 .live-collaborators {
   display: grid;
   gap: 0.55rem;
