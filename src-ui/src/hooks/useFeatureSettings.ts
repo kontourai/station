@@ -17,9 +17,14 @@ import {
 } from '../contexts/DeviceSettingsContext';
 
 export type { FeatureSettings };
-export type BooleanFeatureSetting = {
-  [K in keyof FeatureSettings]: FeatureSettings[K] extends boolean ? K : never;
-}[keyof FeatureSettings];
+export type BooleanFeatureSetting = Exclude<
+  {
+    [K in keyof FeatureSettings]: FeatureSettings[K] extends boolean
+      ? K
+      : never;
+  }[keyof FeatureSettings],
+  undefined
+>;
 
 export function useFeatureSettings() {
   const { featureSettings: storedSettings } = useDeviceSettings();
