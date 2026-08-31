@@ -188,6 +188,15 @@ export function readNativeClientBuildManifest(projectRoot) {
  * Stages one immutable source-derived manifest before UI/Rust packaging. The
  * native host, desktop resource, Android asset, and iOS resource all consume
  * this exact byte sequence; they must never independently sample a clock.
+ *
+ * @param {string} projectRoot
+ * @param {{
+ *   refresh?: boolean,
+ *   git?: (args: string[], cwd: string) => string,
+ *   builtAt?: string,
+ *   env?: Record<string, string | undefined>,
+ * }} [options]
+ * @returns {string | null}
  */
 export function writeNativeClientBuildManifest(
   projectRoot,
