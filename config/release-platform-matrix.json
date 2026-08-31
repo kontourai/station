@@ -136,7 +136,16 @@
         "evidence": {
           "kind": "not-verified",
           "owner": "#844",
-          "reason": "Nightly does not yet produce portable/container artifacts."
+          "reason": "The portable-only staging receipt is evidence, not a release ring."
+        },
+        "stagedFleet": {
+          "stageState": "NOT_STAGED",
+          "publicationState": "NOT_PUBLISHED",
+          "installState": "NOT_VERIFIED",
+          "updateState": "NOT_VERIFIED",
+          "platformSigningState": "NOT_VERIFIED",
+          "updaterSigningState": "UNSUPPORTED",
+          "reason": "A hosted portable staging receipt is required before this static matrix can claim staged evidence; publication and user outcomes remain unverified."
         }
       },
       "macos": {
