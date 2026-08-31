@@ -558,14 +558,17 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
       ],
     });
 
-    handleTurnStartedEvent({
-      eventId: 'evt-1',
-      provider: 'station-agent',
-      threadId,
-      createdAt: at,
-      method: 'turn.started',
-      turnId: 'turn-1',
-    } as any);
+    handleTurnStartedEvent(
+      {
+        eventId: 'evt-1',
+        provider: 'station-agent',
+        threadId,
+        createdAt: at,
+        method: 'turn.started',
+        turnId: 'turn-1',
+      } as any,
+      activeChatsStore,
+    );
     handleRuntimeErrorEvent({
       eventId: 'evt-2',
       provider: 'station-agent',
@@ -596,14 +599,17 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
 
   test('compacts consecutive identical runtime errors in the live fold without crossing a new turn', () => {
     const at = '2026-07-30T00:00:00.000Z';
-    handleTurnStartedEvent({
-      eventId: 'evt-compact-1',
-      provider: 'claude',
-      threadId,
-      createdAt: at,
-      method: 'turn.started',
-      turnId: 'turn-compact-1',
-    } as any);
+    handleTurnStartedEvent(
+      {
+        eventId: 'evt-compact-1',
+        provider: 'claude',
+        threadId,
+        createdAt: at,
+        method: 'turn.started',
+        turnId: 'turn-compact-1',
+      } as any,
+      activeChatsStore,
+    );
     handleRuntimeErrorEvent({
       eventId: 'evt-compact-2',
       provider: 'claude',
@@ -631,14 +637,17 @@ describe('handleSessionExitedEvent / handleSessionStateChangedEvent — clearing
       '[SYSTEM_EVENT] [CHAT_ERROR] engine crashed (repeated 2×)',
     );
 
-    handleTurnStartedEvent({
-      eventId: 'evt-compact-4',
-      provider: 'claude',
-      threadId,
-      createdAt: at,
-      method: 'turn.started',
-      turnId: 'turn-compact-2',
-    } as any);
+    handleTurnStartedEvent(
+      {
+        eventId: 'evt-compact-4',
+        provider: 'claude',
+        threadId,
+        createdAt: at,
+        method: 'turn.started',
+        turnId: 'turn-compact-2',
+      } as any,
+      activeChatsStore,
+    );
     handleRuntimeErrorEvent({
       eventId: 'evt-compact-5',
       provider: 'claude',
