@@ -8,7 +8,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '../types';
@@ -203,12 +203,18 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     ).toBeNull();
   });
 
-  it('does not render an empty overflow menu for provenance without an eligible answer', () => {
+  it('does not render an empty overflow menu for provenance without an eligible answer', async () => {
+    // The trigger arrives through LazyBoundary, so a synchronous query finds
+    // nothing whether or not the gate admits it. Import the chunk first and
+    // flush, so absence here means the gate refused rather than the import
+    // not having landed yet.
+    await import('../components/chat/TurnActionsMenu');
     renderRow({
       role: 'assistant',
       content: 'Still working.',
       provenance: envelope,
     });
+    await act(async () => {});
     expect(
       screen.queryByRole('button', { name: 'More answer actions' }),
     ).toBeNull();
