@@ -1,11 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  agentId,
-  engineId,
-  engineRuntimeId,
-} from '@kontourai/station-contracts/agent-identity';
+import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
@@ -224,7 +220,7 @@ class ContinuationFakeAdapter implements ProviderAdapterShape {
       displayName: `${provider} Runtime`,
       description: `${provider} adapter for tests`,
       capabilities: ['agent-runtime'],
-      runtimeId: engineRuntimeId(`${provider}-runtime`),
+      engineId: engineId(provider),
       builtin: true,
       executionClass: 'connected',
       // archive#980 shape (mirrors the orchestration-service test fake): the

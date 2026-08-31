@@ -27,7 +27,7 @@ function connection(
   return {
     id: engineConnectionId('codex'),
     kind: 'agent',
-    type: 'codex-runtime',
+    type: 'codex',
     name: 'Codex',
     enabled: true,
     capabilities: ['agent-runtime'],
@@ -177,7 +177,7 @@ describe('connection readiness evidence', () => {
   test('promotes only fresh successful smoke and downgrades stale proof', () => {
     const receipt = {
       evidenceVersion: 2 as const,
-      connectionId: 'codex-runtime',
+      connectionId: 'codex',
       configurationFingerprint: 'fingerprint',
       status: 'passed' as const,
       testedAt: '2026-07-13T20:00:00.000Z',
@@ -315,7 +315,7 @@ describe('connection readiness evidence', () => {
       connection(),
       {
         evidenceVersion: 2,
-        connectionId: 'codex-runtime',
+        connectionId: 'codex',
         configurationFingerprint: 'fingerprint',
         status: 'failed',
         testedAt: '2026-07-13T20:00:00.000Z',
@@ -367,7 +367,7 @@ describe('file connection smoke evidence store', () => {
   function receipt(overrides: Record<string, unknown> = {}) {
     return {
       evidenceVersion: 2 as const,
-      connectionId: 'claude-runtime',
+      connectionId: 'claude',
       configurationFingerprint: 'a'.repeat(64),
       status: 'passed' as const,
       testedAt: '2026-07-13T20:00:00.000Z',
@@ -404,9 +404,9 @@ describe('file connection smoke evidence store', () => {
 
     await new FileConnectionSmokeEvidenceStore(dir).record(storedReceipt);
 
-    expect(
-      new FileConnectionSmokeEvidenceStore(dir).get('claude-runtime'),
-    ).toEqual(storedReceipt);
+    expect(new FileConnectionSmokeEvidenceStore(dir).get('claude')).toEqual(
+      storedReceipt,
+    );
   });
 
   test('treats ENOENT as the only empty state and writes a durable receipt', async () => {
@@ -414,15 +414,15 @@ describe('file connection smoke evidence store', () => {
     dirs.push(dir);
     const store = new FileConnectionSmokeEvidenceStore(dir);
 
-    expect(store.get('claude-runtime')).toBeNull();
+    expect(store.get('claude')).toBeNull();
     await store.record(receipt());
     await store.record(receipt({ durationMs: 901 }));
 
     expect(existsSync(storePath(dir))).toBe(true);
     expect(existsSync(`${storePath(dir)}.previous`)).toBe(true);
-    expect(
-      new FileConnectionSmokeEvidenceStore(dir).get('claude-runtime'),
-    ).toEqual(receipt({ durationMs: 901 }));
+    expect(new FileConnectionSmokeEvidenceStore(dir).get('claude')).toEqual(
+      receipt({ durationMs: 901 }),
+    );
   });
 
   test('rejects corrupt or ill-shaped persisted evidence without changing its bytes', async () => {
@@ -434,7 +434,7 @@ describe('file connection smoke evidence store', () => {
     writeFileSync(storePath(dir), invalid);
     const store = new FileConnectionSmokeEvidenceStore(dir);
 
-    expect(() => store.get('claude-runtime')).toThrow(
+    expect(() => store.get('claude')).toThrow(
       ConnectionSmokeEvidenceStoreValidationError,
     );
     await expect(store.record(receipt())).rejects.toThrow(
@@ -513,7 +513,7 @@ describe('file connection smoke evidence store', () => {
       writeFileSync(storePath(dir), persisted);
       const store = new FileConnectionSmokeEvidenceStore(dir);
 
-      expect(() => store.get('claude-runtime')).toThrow(
+      expect(() => store.get('claude')).toThrow(
         ConnectionSmokeEvidenceStoreValidationError,
       );
       await expect(store.record(receipt())).rejects.toThrow(
@@ -532,7 +532,7 @@ describe('file connection smoke evidence store', () => {
     writeFileSync(storePath(dir), persisted);
 
     expect(() =>
-      new FileConnectionSmokeEvidenceStore(dir).get('claude-runtime'),
+      new FileConnectionSmokeEvidenceStore(dir).get('claude'),
     ).toThrow(ConnectionSmokeEvidenceStoreValidationError);
     expect(readFileSync(storePath(dir), 'utf8')).toBe(persisted);
   });
@@ -542,12 +542,12 @@ describe('file connection smoke evidence store', () => {
     dirs.push(dir);
     const persisted = JSON.stringify({
       evidenceVersion: 2,
-      results: { 'claude-runtime': receipt() },
+      results: { claude: receipt() },
     });
     writeFileSync(storePath(dir), persisted);
     const store = new FileConnectionSmokeEvidenceStore(dir);
 
-    expect(() => store.get('claude-runtime')).toThrow(
+    expect(() => store.get('claude')).toThrow(
       ConnectionSmokeEvidenceStoreValidationError,
     );
     await expect(store.record(receipt())).rejects.toThrow(
@@ -603,7 +603,7 @@ describe('file connection smoke evidence store', () => {
         if (lockCalls === 1)
           await second.record(
             receipt({
-              connectionId: 'codex-runtime',
+              connectionId: 'codex',
               configurationFingerprint: 'b'.repeat(64),
               provider: 'codex',
             }),
@@ -616,10 +616,10 @@ describe('file connection smoke evidence store', () => {
 
     const reopened = new FileConnectionSmokeEvidenceStore(dir);
     expect(lockCalls).toBe(1);
-    expect(reopened.get('claude-runtime')).toEqual(receipt());
-    expect(reopened.get('codex-runtime')).toEqual(
+    expect(reopened.get('claude')).toEqual(receipt());
+    expect(reopened.get('codex')).toEqual(
       receipt({
-        connectionId: 'codex-runtime',
+        connectionId: 'codex',
         configurationFingerprint: 'b'.repeat(64),
         provider: 'codex',
       }),
@@ -638,9 +638,9 @@ describe('file connection smoke evidence store', () => {
 
     await new FileConnectionSmokeEvidenceStore(dir).record(failed);
 
-    expect(
-      new FileConnectionSmokeEvidenceStore(dir).get('claude-runtime'),
-    ).toEqual(failed);
+    expect(new FileConnectionSmokeEvidenceStore(dir).get('claude')).toEqual(
+      failed,
+    );
   });
 
   test('replaces exactly the same connection key after a concurrent record', async () => {
@@ -660,9 +660,9 @@ describe('file connection smoke evidence store', () => {
 
     await first.record(receipt({ durationMs: 2 }));
 
-    expect(
-      new FileConnectionSmokeEvidenceStore(dir).get('claude-runtime'),
-    ).toEqual(receipt({ durationMs: 2 }));
+    expect(new FileConnectionSmokeEvidenceStore(dir).get('claude')).toEqual(
+      receipt({ durationMs: 2 }),
+    );
   });
 
   test('fails before publication when the mutation lock or durable write fails', async () => {

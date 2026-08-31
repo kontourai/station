@@ -226,7 +226,7 @@ async function mockChatShell(
             agentConnectionFixture({
               id: 'claude',
               kind: 'agent',
-              type: 'claude-runtime',
+              type: 'claude',
               name: 'Claude',
               enabled: true,
               capabilities: ['agent-runtime', 'image-input', 'file-input'],
@@ -2866,7 +2866,7 @@ for (const theme of ['dark', 'light'] as const) {
  * reachable on an engine that declares session model selection.
  *
  * The shared loop opens on the default `claude` fixture connection, whose
- * `type: 'claude-runtime'` carries no `engineId`, so
+ * `type: 'claude'` carries no `engineId`, so
  * `resolveEngineCapabilityMatrix` (`packages/contracts/src/engine-capability-matrix.ts:986-991`)
  * misses `ENGINE_CAPABILITY_MATRICES` (the keyed entry is `claude`) and falls to
  * `UNKNOWN_EXTERNAL_ENGINE_MATRIX`, whose `modelSelection` is `unsupported` —

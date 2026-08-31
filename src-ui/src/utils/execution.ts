@@ -1,5 +1,5 @@
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import {
   type AgentConnectionView,
   type ConnectionConfig,
@@ -13,7 +13,7 @@ import { modelDisplayLabel } from './modelCapabilities';
 /**
  * What kind of thing a connection is, in a name somebody chose.
  *
- * Every `type` Station itself ships is listed. `muse-runtime` was not, so an
+ * Every `type` Station itself ships is listed. `muse` was not, so an
  * engine Station ships rendered as its raw slug on /connections/engines
  * (archive#3739); `lancedb` was not, so the built-in vector store rendered as
  * an implementation name that ADR-0009 already retired. A slug is a name
@@ -41,16 +41,14 @@ export function connectionTypeLabel(type: string): string {
       return 'Built-in vector store';
     case 'bedrock-runtime':
       return 'Amazon Bedrock';
-    case 'claude-runtime':
+    case 'claude':
       return 'Claude Code';
-    case 'codex-runtime':
+    case 'codex':
       return 'Codex';
-    case 'muse-runtime':
+    case 'muse':
       return 'Muse Code';
     case 'ollama-runtime':
       return 'Ollama';
-    case 'station-agent-runtime':
-      return 'Station';
     case 'acp':
       return 'Custom engine';
     default:
@@ -84,7 +82,7 @@ export function resolveModelProviderLabel({
   executionMode?: ExecutionMode;
   providerConnectionName?: string;
   runtimeConnectionName?: string;
-  provider?: ProviderKind;
+  provider?: EngineId;
   agentName?: string;
 }): string | undefined {
   const persistedProviderLabel = provider
@@ -216,9 +214,7 @@ type AgentWithExecution = {
   /**
    * The backing connection's adapter type (archive#954), e.g. 'acp' —
    * `resolveAgentExecution` uses it to route a promoted ACP default through
-   * the `acp` provider, since `agentConnectionIdToProviderKind` can only
-   * infer a provider from the `<id>-runtime` id convention native
-   * runtimes use, not an arbitrary ACP connection id.
+   * the `acp` provider rather than treating the connection id as an engine id.
    */
   engineConnectionType?: string;
 };
@@ -226,9 +222,9 @@ type AgentWithExecution = {
 type ChatBindingState = {
   executionMode?: ExecutionMode;
   agentConnectionId?: string | null;
-  provider?: ProviderKind | null;
+  provider?: EngineId | null;
   providerId?: string | null;
-  orchestrationProvider?: ProviderKind | null;
+  orchestrationProvider?: EngineId | null;
   model?: string | null;
 };
 
@@ -255,7 +251,7 @@ export type ChatExecutionMetadata = {
   executionMode: ExecutionMode;
   executionScope?: 'project' | 'global';
   agentConnectionId?: string;
-  provider?: ProviderKind;
+  provider?: EngineId;
   providerId?: string;
   defaultProviderId?: string;
   model?: string;
@@ -552,7 +548,7 @@ export function resolveBindingStatus({
   const activeProvider =
     chatState?.orchestrationProvider ??
     chatState?.provider ??
-    agentConnectionIdToProviderKind(agentConnectionId);
+    (agentConnectionId || undefined);
   const engineId = connectionEngineId(runtimeConnection);
   const agentModels = asModelOptions(agent?.modelOptions);
   const runtimeModels = runtimeCatalogVisibleModels(runtimeConnection);
@@ -631,10 +627,10 @@ export function resolveEffectiveCapabilityState({
 }
 
 type SessionExecutionSummary = {
-  provider?: ProviderKind | null;
+  provider?: EngineId | null;
   model?: string | null;
   status?: string | null;
-  orchestrationProvider?: ProviderKind | null;
+  orchestrationProvider?: EngineId | null;
   orchestrationModel?: string | null;
   orchestrationStatus?: string | null;
 };
@@ -642,19 +638,6 @@ type SessionExecutionSummary = {
 type SessionExecutionActivity = SessionExecutionSummary & {
   status?: string | null;
 };
-
-export function agentConnectionIdToProviderKind(
-  agentConnectionId?: string | null,
-): ProviderKind | undefined {
-  if (!agentConnectionId || agentConnectionId === 'acp') {
-    return undefined;
-  }
-  if (agentConnectionId === 'claude') return 'claude';
-  if (agentConnectionId === 'codex') return 'codex';
-  if (agentConnectionId === 'bedrock') return 'bedrock';
-  if (agentConnectionId === 'ollama') return 'ollama';
-  return agentConnectionId;
-}
 
 export function isManagedRuntimeConnectionId(
   agentConnectionId?: string | null,
@@ -839,7 +822,7 @@ export function resolveAgentExecution(
     provider:
       agent.engineConnectionType === 'acp'
         ? 'acp'
-        : agentConnectionIdToProviderKind(agentConnectionId),
+        : agentConnectionId || undefined,
     model: agent.execution?.modelId || agent.model || undefined,
     modelSource:
       agent.execution?.modelId || agent.model ? 'agent default' : 'unknown',
@@ -1021,7 +1004,7 @@ export function preferredChatRuntime(
 export function resolveSessionExecutionSummary(
   session?: SessionExecutionSummary | null,
 ): {
-  provider?: ProviderKind;
+  provider?: EngineId;
   model?: string;
   status?: string;
 } {

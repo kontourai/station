@@ -122,7 +122,7 @@ describe('createRuntimeServiceBundle', () => {
 
   test('resolves a default agent public identity to its registered runtime connection for readiness', async () => {
     const getConnection = vi.fn(async (id: string) =>
-      id === 'claude-runtime' ? { status: 'ready' } : null,
+      id === 'claude' ? { status: 'ready' } : null,
     );
     const stationHomeDir = await import('node:fs/promises').then(
       ({ mkdtemp }) => mkdtemp('/tmp/station-runtime-bootstrap-'),
@@ -134,11 +134,7 @@ describe('createRuntimeServiceBundle', () => {
       loadAppConfig: vi.fn(async () => ({})),
       updateAppConfig: vi.fn(async () => ({})),
     };
-    await registerEngineConnection(
-      configLoader as any,
-      'claude',
-      'claude-runtime',
-    );
+    await registerEngineConnection(configLoader as any, 'claude');
     const context = {
       projectHomeDir: stationHomeDir,
       port: 4123,
@@ -199,7 +195,7 @@ describe('createRuntimeServiceBundle', () => {
         expect.objectContaining({ slug: 'claude', available: true }),
       ]),
     );
-    expect(getConnection).toHaveBeenCalledWith('claude-runtime');
+    expect(getConnection).toHaveBeenCalledWith('claude');
   });
 
   // K2 (archive#200 Wave 2): `knowledgeStoreProvider` is an ADDITIVE field on the bundle —

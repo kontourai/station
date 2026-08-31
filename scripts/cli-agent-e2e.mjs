@@ -26,7 +26,7 @@
  * model is present. Run via `npm run verify:cli-e2e`.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -117,13 +117,16 @@ async function main() {
   API = `http://127.0.0.1:${PORT}`;
   log(`server port: ${PORT}`);
 
-  const home = mkdtempSync(join(tmpdir(), 'station-cli-e2e-'));
+  const root = mkdtempSync(join(tmpdir(), 'station-cli-e2e-'));
+  const home = join(root, 'instances', 'cli-agent-e2e');
+  mkdirSync(home, { recursive: true });
   const server = spawn('node', ['dist-server/command-station.js'], {
     cwd: ROOT,
     env: {
       ...process.env,
       // STATION_HOME isolates the data dir; a wrong/missing var silently falls
       // back to the real ~/.station.
+      STATION_ROOT: root,
       STATION_HOME: home,
       PORT: String(PORT),
       MCP_UI_FRAME_PORT: '0',
@@ -230,7 +233,7 @@ async function main() {
   } finally {
     server.kill('SIGKILL');
     try {
-      rmSync(home, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
     } catch {}
   }
 

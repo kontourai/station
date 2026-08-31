@@ -233,7 +233,7 @@ export function AgentConnectionView({
           name: connection.name,
           // The third segment used to be `connectionTypeLabel(type)`, which
           // either repeated the row's own name ("Claude Code · Claude Code")
-          // or printed a slug for a type the map had missed ("muse-runtime").
+          // or printed a slug for a type the map had missed ("muse").
           // The row is already named; the subtitle says what is true of it.
           subtitle: `${connectionStatusLabel(connection.status)} · ${runtimeCatalogSourceSentence(connection.runtimeCatalog?.source ?? 'none')}`,
           icon: (
@@ -546,7 +546,7 @@ export function AgentConnectionView({
                   </div>
                 )}
 
-                {form.type === 'claude-runtime' && (
+                {form.type === 'claude' && (
                   <ClaudeSkillsMaterializationField
                     selectedSkillIds={
                       Array.isArray(form.config.provideSkills)
@@ -559,12 +559,11 @@ export function AgentConnectionView({
                   />
                 )}
 
-                {(form.type === 'claude-runtime' ||
-                  form.type === 'codex-runtime') && (
+                {(form.type === 'claude' || form.type === 'codex') && (
                   <AppHomeProfileField
                     connectionId={form.id}
                     engineLabel={
-                      form.type === 'claude-runtime' ? 'Claude Code' : 'Codex'
+                      form.type === 'claude' ? 'Claude Code' : 'Codex'
                     }
                     useAppHome={form.config.useAppHome === true}
                     onToggle={(value) => setConfigField('useAppHome', value)}
@@ -939,7 +938,7 @@ function EngineAddCatalog({
 /**
  * Skills materialization opt-in (docs/design/connections-onboarding.md §5):
  * an accessible multiselect of installed Station skills, scoped to the
- * claude-runtime connection only. Off by default — nothing is selected
+ * claude connection only. Off by default — nothing is selected
  * until the user checks a box, and the resulting id list is only persisted
  * when the surrounding form's "Save Changes" button is pressed (mirrors how
  * Default Model above is edited, unlike the ACP tool-servers modal's
@@ -985,7 +984,7 @@ function ClaudeSkillsMaterializationField({
             {skills.map((skill) => (
               <Checkbox
                 key={skill.name}
-                id={`claude-runtime-skill-${skill.name}`}
+                id={`claude-skill-${skill.name}`}
                 checked={selectedSkillIds.includes(skill.name)}
                 onChange={(checked) => toggleSkill(skill.name, checked)}
               >
@@ -1004,8 +1003,8 @@ function ClaudeSkillsMaterializationField({
  * App-home profile opt-in (#896,
  * docs/design/agent-engine-unification.md §6.1's overlay model): a
  * Station-managed config home for the connection's sessions, off by
- * default. Parameterized over `engineLabel` (#896  — claude-runtime
- * and codex-runtime both render this field). Import is a separate,
+ * default. Parameterized over `engineLabel` (#896  — claude
+ * and codex both render this field). Import is a separate,
  * explicit user action — never triggered by the toggle or a form save —
  * and always renders its copied/skipped report, never silent.
  */

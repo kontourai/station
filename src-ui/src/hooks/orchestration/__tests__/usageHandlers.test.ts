@@ -29,7 +29,7 @@ describe('handleTokenUsageUpdatedEvent', () => {
     ({ handleTokenUsageUpdatedEvent } = await import('../usageHandlers'));
 
     activeChatsStore.initChat(threadId, {
-      agentSlug: 'claude-runtime',
+      agentSlug: 'claude',
       agentName: 'Claude Code',
       title: 'Claude Chat',
     });

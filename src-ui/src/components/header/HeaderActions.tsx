@@ -250,9 +250,14 @@ export function HeaderActions({
         // toolbar; ChatDockMobileConnection is that surface's indicator.)
         className={`app-toolbar__icon-btn app-toolbar__conn app-toolbar__conn--${connState}`}
         // ChatDockMobileConnection names itself from the same
-        // `connectionIndicatorLabel`, so on a phone with the dock header up
-        // there are two controls whose accessible name starts "Manage
-        // Stations". This is how a test names THIS one, mirroring that
+        // `connectionIndicatorLabel`. Before station#1048 it rendered
+        // unconditionally, so on a phone with the dock merely on screen —
+        // collapsed or half-open, the DEFAULT mobile state, not only
+        // full-screen — there were two controls whose accessible name
+        // started "Manage Stations". It is now gated behind the same
+        // toolbar-hidden check this comment's first line describes
+        // (`ChatDockMobileHeader`'s `showConnection`), so the two never
+        // coexist. This is how a test names THIS one, mirroring that
         // component's own `chat-dock-mobile-connection`.
         data-testid="app-toolbar-connection"
         onClick={() => {

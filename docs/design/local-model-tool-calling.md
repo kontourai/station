@@ -19,7 +19,7 @@ Both browser dogfood runs went down the **connected** path (to make the agent se
 - `useActiveChatSessionMessaging.ts:29` routes **only `__runtime:` agents** to the orchestration/adapter path; provider-managed agents go through the managed `/chat` path (line ~109).
 - The managed `/chat` path passes MCP tools to the model — **proven** against Ollama (`qwen3-vl:4b` emitted a valid `render_component` form call; the tool executed and returned the uiBlock).
 
-So the managed runtime is the designed "tools + any model" path. The connected runtimes (`claude-runtime`, `codex-runtime`, `ollama-runtime`) exist to drive **native** CLIs/runtimes; adding a tool-dispatch loop to `OllamaAdapter` would duplicate the managed runtime's loop for a worse-aligned design.
+So the managed runtime is the designed "tools + any model" path. The connected runtimes (`claude`, `codex`, `ollama-runtime`) exist to drive **native** CLIs/runtimes; adding a tool-dispatch loop to `OllamaAdapter` would duplicate the managed runtime's loop for a worse-aligned design.
 
 ## The blocker: UI selectability of a managed-Ollama agent
 

@@ -9,7 +9,7 @@ const source = readFileSync(workflowPath, 'utf8');
 const document = load(source) as Record<string, any>;
 
 const FLOW_AGENTS_REVIEW =
-  'kontourai/flow-agents/.github/actions/codex-pr-review@554affe86b97c2ebc14bd25a8986eb91f816d13b';
+  'kontourai/flow-agents/.github/actions/codex-pr-review@7f8b66336b73452a2932fc3d9295b5af05bfed0c';
 const CHECKOUT = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
 const UPLOAD_ARTIFACT =
   'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';

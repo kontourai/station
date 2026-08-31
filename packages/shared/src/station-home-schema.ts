@@ -23,8 +23,16 @@ import { fsyncDirectorySync } from './fs-windows-compat.js';
 import { acquireFileMutationLock } from './lifecycle-events.js';
 import { admitStationRuntimeHome } from './runtime-path-resolver.js';
 
-export const STATION_HOME_SCHEMA_VERSION = 1;
+export const STATION_HOME_SCHEMA_VERSION = 2;
 export const STATION_HOME_SCHEMA_FILE = '.station-home-schema.json';
+
+/**
+ * Schema v2 is the clean identity break for #938. A v1 marker can coexist
+ * with independently persisted synthetic engine ids in app config, Agent
+ * records, or the Agent registry, so it cannot safely enter the migration
+ * path or be treated as current merely because one of those files is absent.
+ */
+const MINIMUM_MIGRATABLE_STATION_HOME_SCHEMA_VERSION = 2;
 
 /**
  * install.sh claims a portable install's data root before any Station process
@@ -164,8 +172,21 @@ export function canonicalStationHome(homeDir: string): string {
   try {
     canonicalParent = realpathSync(parent);
     parentStats = lstatSync(canonicalParent);
-  } catch {
-    reset(requested);
+  } catch (error) {
+    // A home whose PARENT does not exist yet is fresh, not incompatible: no
+    // home can be sitting there to carry a schema at all. Every default home
+    // is `<STATION_ROOT>/instances/<channel>/<id>`, so on a machine that has
+    // never run Station the `instances/<channel>` chain is simply absent --
+    // reporting that as an incompatible schema sent operators to
+    // `station home reset`, which resolves through this same function and so
+    // failed identically, leaving a first install with no way forward.
+    // `admitStationRuntimeHome` has already canonicalised `requested` through
+    // its nearest EXISTING ancestor, and `writeSchemaMarker` creates the
+    // missing chain with a recursive mkdir. Only ENOENT is a fresh home; any
+    // other failure (EACCES, ELOOP, a dangling or non-directory component)
+    // still fails closed, which is the property this catch exists to protect.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') reset(requested);
+    return requested;
   }
   if (!parentStats.isDirectory() || parentStats.isSymbolicLink())
     reset(requested);
@@ -489,9 +510,11 @@ export function stationHomeSchemaNeedsReset(requestedHomeDir: string): boolean {
     const homeDir = canonicalStationHome(requestedHomeDir);
     const markerPath = join(homeDir, STATION_HOME_SCHEMA_FILE);
     if (existsSync(markerPath)) {
-      // A parseable version is now routed by the authoritative gate to a
-      // migration or an explicit refusal, never to automatic reset.
-      return markerVersion(homeDir, markerPath, {}) === null;
+      const version = markerVersion(homeDir, markerPath, {});
+      return (
+        version === null ||
+        version < MINIMUM_MIGRATABLE_STATION_HOME_SCHEMA_VERSION
+      );
     }
     return !isBootstrapScaffolding(homeDir);
   } catch (error) {
@@ -577,6 +600,13 @@ export function ensureStationHomeSchemaSync(
   const migrations = hooks.migrations ?? STATION_HOME_SCHEMA_MIGRATIONS;
   validateStationHomeMigrationRegistry(migrations);
   const parentDir = dirname(homeDir);
+  // The sibling lock lives in the parent, and the parent identity is pinned
+  // below, so both need the parent to exist. On a first install it does not:
+  // `<STATION_ROOT>/instances/<channel>` has never been created. Materialize
+  // that chain here rather than letting `identity()` raise a bare ENOENT --
+  // `canonicalStationHome` has already admitted this location, and
+  // `writeSchemaMarker` creates the home itself the same way (#1090).
+  mkdirSync(parentDir, { recursive: true, mode: 0o700 });
   const parentIdentity = identity(parentDir);
   const lockPath = join(
     parentDir,
@@ -592,6 +622,8 @@ export function ensureStationHomeSchemaSync(
       const version = markerVersion(homeDir, markerPath, hooks);
       if (version === STATION_HOME_SCHEMA_VERSION) return;
       if (version === null) reset(homeDir);
+      if (version < MINIMUM_MIGRATABLE_STATION_HOME_SCHEMA_VERSION)
+        reset(homeDir);
       if (version > STATION_HOME_SCHEMA_VERSION)
         throw new StationHomeSchemaDowngradeError(
           version,

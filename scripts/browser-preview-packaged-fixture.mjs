@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -128,7 +128,9 @@ async function main() {
     return;
   }
   const packaged = await assertPackagedStationApp(parsed.app);
-  const home = await createFixtureHome();
+  const root = await createFixtureHome();
+  const home = join(root, 'instances', 'browser-preview');
+  await mkdir(home, { recursive: true });
   const loopback = await startLoopbackFixture(home);
   const servicePort = await reservePort();
   const apiBase = `http://127.0.0.1:${servicePort}`;
@@ -152,6 +154,7 @@ async function main() {
     cwd: join(packaged.app, 'Contents', 'Resources'),
     env: {
       ...process.env,
+      STATION_ROOT: root,
       STATION_HOME: home,
       STATION_DESKTOP_PORT: String(servicePort),
       STATION_LOG_LEVEL: 'info',
@@ -186,7 +189,7 @@ async function main() {
     const stopped = await stopPackagedApp(child);
     await loopback.close();
     await desktopEvidence.close();
-    if (!parsed.keep && stopped) await removeFixtureHome(home);
+    if (!parsed.keep && stopped) await removeFixtureHome(root);
     throw error;
   }
   process.stdout.write(
@@ -202,7 +205,7 @@ async function main() {
     const stopped = await stopPackagedApp(child);
     await loopback.close().catch(() => {});
     await desktopEvidence.close().catch(() => {});
-    if (!parsed.keep && stopped) await removeFixtureHome(home);
+    if (!parsed.keep && stopped) await removeFixtureHome(root);
     process.stdout.write(
       `Fixture stopped (${signal}). ${parsed.keep || !stopped ? `Evidence retained at ${home}` : 'Owned temporary resources removed.'}\n`,
     );

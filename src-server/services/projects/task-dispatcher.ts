@@ -6,7 +6,7 @@ import type {
   TaskRecord,
 } from '@kontourai/station-contracts';
 import type {
-  ProviderKind,
+  EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
 
@@ -66,7 +66,7 @@ export interface TaskDispatcher {
 export interface TaskDispatchReservation {
   readonly task: TaskRecord;
   readonly sessionId: string;
-  readonly provider: ProviderKind;
+  readonly provider: EngineId;
   readonly sourceSurface: string;
   readonly modelId: string | undefined;
 }

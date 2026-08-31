@@ -5,8 +5,8 @@ import type {
   OrchestrationCommandReceipt,
 } from '@kontourai/station-contracts/orchestration';
 import type {
+  EngineId,
   ModelLaunchPlan,
-  ProviderKind,
   ProviderSession,
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
@@ -94,7 +94,7 @@ export interface AttachedSessionAdoptionDeps {
   /** The service-owned ledger instance (plan §8: it stays on the service). */
   adoptionLedger?: AdoptionLedger;
   adapterRegistry: {
-    get(provider: ProviderKind): ProviderAdapterShape | undefined;
+    get(provider: EngineId): ProviderAdapterShape | undefined;
   };
   flowRunService?: {
     discardRun(projectRoot: string, flowRunId: string): Promise<void>;
@@ -117,7 +117,7 @@ export interface AttachedSessionAdoptionDeps {
   ) => void;
   evictCollidingAttachedAliases: () => void;
   persistReceipt: (receipt: OrchestrationCommandReceipt) => void;
-  requireAdapter: (provider: ProviderKind) => ProviderAdapterShape;
+  requireAdapter: (provider: EngineId) => ProviderAdapterShape;
   assertAdapterCurrent: (adapter: ProviderAdapterShape) => void;
   assertAdapterReady: (adapter: ProviderAdapterShape) => Promise<void>;
   withAcceptedModelLaunchPlan: (
@@ -508,7 +508,7 @@ export class AttachedSessionAdoption {
     };
   }
 
-  private requireAdoptionAdapter(provider: ProviderKind): ProviderAdapterShape {
+  private requireAdoptionAdapter(provider: EngineId): ProviderAdapterShape {
     const adapter = this.deps.requireAdapter(provider);
     if (!adapter.adoptSession || !adapter.discardSession) {
       throw new Error(

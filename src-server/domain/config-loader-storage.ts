@@ -2,10 +2,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ACPConfig } from '@kontourai/station-contracts/acp';
-import {
-  engineConnectionId,
-  engineRuntimeId,
-} from '@kontourai/station-contracts/agent-identity';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type {
   SkillCommand,
   SkillOrigin,
@@ -500,7 +497,6 @@ function assertACPConfig(value: unknown): asserts value is ACPConfig {
       throw new Error('ACP configuration contains an invalid connection.');
     }
     engineConnectionId(connection.id);
-    engineRuntimeId(connection.id);
     if (ids.has(connection.id)) {
       throw new Error('ACP configuration has duplicate connection identities.');
     }

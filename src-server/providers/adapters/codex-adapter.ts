@@ -3,7 +3,6 @@ import { createInterface } from 'node:readline';
 import {
   engineConnectionId,
   engineId,
-  engineRuntimeId,
 } from '@kontourai/station-contracts/agent-identity';
 import type {
   ConnectionQuotaResult,
@@ -92,7 +91,7 @@ interface CodexAdapterOptions {
   now?: () => Date;
   /**
    * App-home profile env (archive#896 wave 2, agent-engine-unification.md §6.1's
-   * overlay model, channel 2) — `undefined` when the codex-runtime
+   * overlay model, channel 2) — `undefined` when the codex
    * connection has not opted in (`config.useAppHome`) or on any resolution
    * failure; the caller degrades to `undefined` rather than throwing.
    * Applied at `startSession` only — model discovery deliberately keeps
@@ -454,7 +453,6 @@ export class CodexAdapter implements ProviderAdapterShape {
       'image-input',
     ],
     continuity: { resume: 'same-session', fork: 'none', rewind: 'none' },
-    runtimeId: engineRuntimeId('codex-runtime'),
     connectionId: engineConnectionId('codex'),
     builtin: true,
     engineId: engineId('codex'),
@@ -1200,7 +1198,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         approvalMode: mapCodexKnobsToApprovalMode(approvalKnobs),
         codexThreadId: codexThread.id,
         // archive#896 wave 2: whether this session's app-server spawn env was
-        // layered with the codex-runtime app-home profile, or left at the
+        // layered with the codex app-home profile, or left at the
         // global CODEX_HOME (opted out or a degraded lookup).
         appHome,
         [MODEL_SELECTION_RECEIPT_METADATA_KEY]: modelSelectionReceipt(
