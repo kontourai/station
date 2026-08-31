@@ -270,7 +270,7 @@ describe('SessionConversationItem', () => {
     expect(screen.queryByText('ACP')).toBeNull();
   });
 
-  it('round-3: a persisted claude-runtime-bound agent conversation shows a "Claude Code" chip alongside its Global badge', () => {
+  it('round-3: a persisted claude-bound agent conversation shows a "Claude Code" chip alongside its Global badge', () => {
     renderItem(true, {
       agentType: 'global',
       agentEngine: { name: 'Claude Code' },

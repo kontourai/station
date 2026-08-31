@@ -1,9 +1,6 @@
 import type { EventEmitter } from 'node:events';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
-import type {
-  EngineConnectionId,
-  EngineRuntimeId,
-} from '@kontourai/station-contracts/agent-identity';
+import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { FileTerminalHistoryStore } from '../../adapters/file-terminal-history-store.js';
@@ -158,17 +155,8 @@ export function createRuntimeServiceBundle(
             }),
       };
     }
-    // Default agents expose their stable public EngineConnectionId (for
-    // example `claude`), while ConnectionService owns the adapter selector
-    // (`claude-runtime`). Resolve that registry binding only at this runtime
-    // boundary; public agent identity must never inherit an adapter detail.
-    const registry = await loadOrCreateAgentRegistry(context.configLoader);
-    const runtimeConnectionId =
-      registry.engineConnections.find(
-        (connection) => connection.id === engineConnectionId,
-      )?.runtimeConnectionId ?? engineConnectionId;
     const connection =
-      await connectionService?.getConnection(runtimeConnectionId);
+      await connectionService?.getConnection(engineConnectionId);
     return {
       available: connection?.status === 'ready',
       ...(connection?.status === 'ready'
@@ -434,15 +422,8 @@ export function createRuntimeServiceBundle(
           context.configLoader.mutateAppConfig(mutate),
         {
           load: () => loadOrCreateAgentRegistry(context.configLoader),
-          register: (
-            id: EngineConnectionId,
-            runtimeConnectionId: EngineRuntimeId,
-          ) =>
-            registerEngineConnection(
-              context.configLoader,
-              id,
-              runtimeConnectionId,
-            ),
+          register: (id: EngineConnectionId) =>
+            registerEngineConnection(context.configLoader, id),
           unregister: (id: EngineConnectionId) =>
             unregisterEngineConnection(context.configLoader, id),
         },
@@ -472,15 +453,8 @@ export function createRuntimeServiceBundle(
         (mutate) => context.configLoader.mutateAppConfig(mutate),
         {
           load: () => loadOrCreateAgentRegistry(context.configLoader),
-          register: (
-            id: EngineConnectionId,
-            runtimeConnectionId: EngineRuntimeId,
-          ) =>
-            registerEngineConnection(
-              context.configLoader,
-              id,
-              runtimeConnectionId,
-            ),
+          register: (id: EngineConnectionId) =>
+            registerEngineConnection(context.configLoader, id),
           unregister: (id: EngineConnectionId) =>
             unregisterEngineConnection(context.configLoader, id),
         },

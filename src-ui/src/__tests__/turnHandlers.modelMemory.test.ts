@@ -19,7 +19,7 @@ describe('accepted sticky model memory', () => {
       agentSlug: 'claude',
       agentName: 'Claude Code',
       title: 'Model memory',
-      agentConnectionId: 'claude-runtime',
+      agentConnectionId: 'claude',
       provider: 'claude',
       requestedModel: 'claude-sonnet',
       requestedModelSource: 'session override',
@@ -39,17 +39,15 @@ describe('accepted sticky model memory', () => {
 
     await vi.waitFor(() =>
       expect(getLastChosenModelMap()).toEqual({
-        [buildLastChosenModelBindingKeyFromIdentity(
-          'claude',
-          'claude-runtime',
-        )]: 'claude-sonnet',
+        [buildLastChosenModelBindingKeyFromIdentity('claude', 'claude')]:
+          'claude-sonnet',
       }),
     );
     expect(
       newChatLastChosenModel(
         {
           slug: 'claude',
-          execution: { agentConnectionId: 'claude-runtime' },
+          execution: { agentConnectionId: 'claude' },
         } as never,
         getLastChosenModelMap(),
       ),

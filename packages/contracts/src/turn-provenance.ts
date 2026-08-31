@@ -1,5 +1,5 @@
 import type { ConversationContextBoundaryProvenance } from './conversation-context-boundary.js';
-import type { ProviderKind } from './provider.js';
+import type { EngineId } from './provider.js';
 import type { CanonicalRuntimeEvent } from './runtime-events.js';
 import {
   parseTurnProvenanceContextInjection,
@@ -179,7 +179,7 @@ export type TurnProvenanceRefSlot<TRef> =
  * identifier, not a display label and not a connection name.
  */
 export interface TurnProvenanceEngine {
-  provider: ProviderKind;
+  provider: EngineId;
 }
 
 /** One distinct tool the turn invoked, with its observed outcomes. */

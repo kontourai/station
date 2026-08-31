@@ -91,7 +91,7 @@ class MainActivity : TauriActivity() {
   it.each([
     '.github/workflows/build-android.yml',
     '.github/workflows/release.yml',
-    '.github/workflows/nightly.yml',
+    '.github/workflows/nightly-native-cohort.yml',
     'ops/nightly/install-android.zsh',
   ])(
     'applies the bootstrap after init and before build in %s',

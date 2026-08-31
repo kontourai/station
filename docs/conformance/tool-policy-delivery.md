@@ -16,6 +16,6 @@ closed with no pre-tool delivery.
 The matrix is authoritative for UI and conformance consumers. Its declared
 adapter modules are also the source for the tripwire, so a declared adapter
 module cannot silently gain a managed pre-tool seam while its matrix remains
-stale. This does not claim that every possible `ProviderKind` string is a
+stale. This does not claim that every possible `EngineId` string is a
 registered adapter; unknown engines remain fail-closed through the separate
 unknown-engine matrix.

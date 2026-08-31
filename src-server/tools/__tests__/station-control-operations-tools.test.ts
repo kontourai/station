@@ -147,6 +147,26 @@ describe('station-control operations tools (characterization)', () => {
     );
   });
 
+  test('documents and forwards the canonical Claude engine filter published by the adapter', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, data: [] }));
+    const [
+      { MONITORING_ENGINE_FILTER_VALUES },
+      { engineIdForAdapter },
+      { ClaudeAdapter },
+    ] = await Promise.all([
+      import('../station-control-operations-tools.js'),
+      import('../../providers/adapter-identity.js'),
+      import('../../providers/adapters/claude-adapter.js'),
+    ]);
+    const publishedEngineId = engineIdForAdapter(new ClaudeAdapter());
+    const tools = await registerTools();
+
+    expect(publishedEngineId).toBe('claude');
+    expect(MONITORING_ENGINE_FILTER_VALUES).toContain(publishedEngineId);
+    await tools.read_monitoring_events({ engine: publishedEngineId });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('engine=claude');
+  });
+
   test('routes every independent-review operation through the shared strict client', async () => {
     fetchMock
       .mockResolvedValueOnce(

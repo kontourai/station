@@ -936,7 +936,7 @@ describe('OnboardingGate', () => {
 
     test('does NOT re-show the picker once builtinAgentEngineConnectionId is already set — even with no local dismiss recorded', () => {
       currentStatus = readyStatus();
-      configData = { builtinAgentEngineConnectionId: 'codex-runtime' };
+      configData = { builtinAgentEngineConnectionId: 'codex' };
 
       render(
         <OnboardingGate>

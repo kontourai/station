@@ -522,7 +522,7 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
   test('does not rebind an externally managed chat from picker metadata', () => {
     activeChatsStore.updateChat(SESSION_ID, {
       executionMode: 'external',
-      providerId: 'codex-runtime',
+      providerId: 'codex',
       provider: 'codex',
       model: 'gpt-5.6',
     });
@@ -547,7 +547,7 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
     });
 
     expect(activeChatsStore.getSnapshot()[SESSION_ID]).toMatchObject({
-      providerId: 'codex-runtime',
+      providerId: 'codex',
       provider: 'codex',
       model: 'gpt-5.6',
       requestedModel: 'other-model',

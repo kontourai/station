@@ -38,7 +38,7 @@ import {
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
 import type {
-  ProviderKind,
+  EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
 import { looksLikeWorkflowTaskSlugRef } from '@kontourai/station-contracts/workflow';
@@ -3670,7 +3670,7 @@ export class TaskGraphService {
 
   private seedSession(
     sessionId: string,
-    provider: ProviderKind,
+    provider: EngineId,
     model?: string,
     orchestrationService = this.orchestrationService,
   ): ProviderSession {

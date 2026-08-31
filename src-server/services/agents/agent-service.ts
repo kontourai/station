@@ -7,6 +7,7 @@ import type {
   AgentSpec,
 } from '@kontourai/station-contracts/agent';
 import {
+  type EngineConnectionId,
   engineConnectionId,
   isStationAgentIdentity,
 } from '@kontourai/station-contracts/agent-identity';
@@ -241,7 +242,7 @@ export class AgentService {
     /** Registry identities are the source of truth for engine-owned defaults. */
     private readonly getAgentRegistry?: () => Promise<AgentRegistry>,
     private readonly getRuntimeReadiness?: (
-      runtimeConnectionId: string,
+      connectionId: EngineConnectionId,
     ) => Promise<{ available: boolean; reason?: string }>,
   ) {}
 
@@ -325,9 +326,10 @@ export class AgentService {
                     ?.displayName
                 : acpNames.get(String(agent.engineConnectionId))) ?? agent.id,
             execution: {
-              // Agent bindings are public EngineConnectionIds. The registry's
-              // runtimeConnectionId remains an internal adapter selector and
-              // is resolved only inside ConnectionService.
+              // Agent bindings are public EngineConnectionIds — the only
+              // engine identity the registry stores (#938 retired the
+              // separate adapter-private runtime selector, so there is no
+              // second id for ConnectionService to resolve).
               agentConnectionId: agent.engineConnectionId,
             },
           },

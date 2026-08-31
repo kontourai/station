@@ -54,7 +54,7 @@ describe('AgentIcon deterministic identicon fallback (station#1424)', () => {
 
   test('a recognized brand (Claude) never uses the identicon swatch — the real mark still wins', () => {
     const { container } = render(
-      <AgentIcon agent={{ name: 'Claude Code', slug: 'claude-runtime' }} />,
+      <AgentIcon agent={{ name: 'Claude Code', slug: 'claude' }} />,
     );
     expect(container.querySelector('.brand-icon--identicon')).toBeNull();
     expect(container.querySelector('.brand-icon--claude')).toBeTruthy();

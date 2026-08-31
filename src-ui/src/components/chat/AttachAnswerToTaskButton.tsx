@@ -31,6 +31,7 @@ export interface AttachAnswerToTaskButtonProps {
   projectId?: string;
   adapter: AttachAnswerToTaskAdapter;
   onOpen?: () => void;
+  menuItem?: boolean;
 }
 
 export interface AttachUserInputToTaskAdapter extends TaskPickerAdapter {
@@ -53,6 +54,7 @@ export function AttachAnswerToTaskButton({
   projectId,
   adapter,
   onOpen,
+  menuItem,
 }: AttachAnswerToTaskButtonProps) {
   return (
     <TaskPicker
@@ -64,6 +66,7 @@ export function AttachAnswerToTaskButton({
       projectId={projectId}
       adapter={adapter}
       onOpen={onOpen}
+      triggerRole={menuItem ? 'menuitem' : undefined}
       attach={(taskId, target) =>
         adapter.attach({
           taskId,
@@ -89,7 +92,11 @@ export function ConnectedAttachAnswerToTaskButton({
   sessionId,
   turnId,
   projectId,
-}: Pick<AttachAnswerToTaskButtonProps, 'sessionId' | 'turnId' | 'projectId'>) {
+  menuItem,
+}: Pick<
+  AttachAnswerToTaskButtonProps,
+  'sessionId' | 'turnId' | 'projectId' | 'menuItem'
+>) {
   const { tasksQuery, enableQuery } = useTaskPickerAdapter(projectId);
   const attachMutation = useCreateTaskReferenceMutation();
   const adapter = useMemo<AttachAnswerToTaskAdapter>(
@@ -115,6 +122,7 @@ export function ConnectedAttachAnswerToTaskButton({
       sessionId={sessionId}
       turnId={turnId}
       projectId={projectId}
+      menuItem={menuItem}
       adapter={adapter}
       onOpen={enableQuery}
     />

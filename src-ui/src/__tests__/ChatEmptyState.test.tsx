@@ -219,7 +219,7 @@ describe('ChatEmptyState', () => {
         name: 'Codex',
         engineId: 'codex',
         engineDisplayName: 'Codex',
-        execution: { agentConnectionId: 'codex-runtime' },
+        execution: { agentConnectionId: 'codex' },
       },
     ];
 
@@ -245,7 +245,7 @@ describe('ChatEmptyState', () => {
           name: 'Claude Code Chat',
           engineId: 'claude-code',
           engineDisplayName: 'Claude Code',
-          execution: { agentConnectionId: 'claude-runtime-custom' },
+          execution: { agentConnectionId: 'claude-custom' },
         },
       ];
 

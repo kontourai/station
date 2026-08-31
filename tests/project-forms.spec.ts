@@ -486,7 +486,11 @@ test.describe('Project forms', () => {
       expect(geometry!.scrollTop).toBe(
         geometry!.scrollHeight - geometry!.clientHeight,
       );
-      expect(geometry!.cardBottom).toBeLessThanOrEqual(geometry!.scrollBottom);
+      // Fractional rect bottoms can differ after scrollTop reaches the exact
+      // scrollHeight - clientHeight limit; allow at most one CSS pixel.
+      expect(geometry!.cardBottom).toBeLessThanOrEqual(
+        geometry!.scrollBottom + 1,
+      );
       expect(geometry!.scrollBottom).toBeLessThanOrEqual(geometry!.footerTop);
       expect(geometry!.cardBottom).toBeLessThanOrEqual(geometry!.footerTop);
       expect(geometry!.footerBottom).toBeLessThanOrEqual(geometry!.panelBottom);

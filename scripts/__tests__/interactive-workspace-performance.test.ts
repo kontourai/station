@@ -13,6 +13,11 @@ import { join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  CHECKOUT_ACTION,
+  REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA,
+  SETUP_NODE_ACTION,
+} from '../actionlint-gate.mjs';
+import {
   createNotVerifiedReport,
   evaluateInteractiveWorkspacePerformance,
   executeInteractiveWorkspaceBenchmark,
@@ -49,14 +54,9 @@ const configPath = resolve(
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const roots: string[] = [];
 
-const CHECKOUT_ACTION =
-  'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
-const SETUP_NODE_ACTION =
-  'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020';
 const RUNNER_PREFLIGHT_ACTION =
   'kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef';
-const PHYSICAL_HOST_CAPACITY_ACTION =
-  'kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373';
+const PHYSICAL_HOST_CAPACITY_ACTION = `kontourai/.github/actions/physical-host-capacity@${REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA}`;
 
 type WorkflowStep = {
   name?: string;

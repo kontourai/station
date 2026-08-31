@@ -208,7 +208,7 @@ const CASES: StoreSeamCase[] = [
     mutate: (root) =>
       new FileConnectionSmokeEvidenceStore(root).record({
         evidenceVersion: 2,
-        connectionId: 'codex-runtime',
+        connectionId: 'codex',
         configurationFingerprint: FINGERPRINT,
         status: 'passed',
         testedAt: '2026-08-14T20:00:00.000Z',

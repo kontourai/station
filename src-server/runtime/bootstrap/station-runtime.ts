@@ -10,9 +10,7 @@ import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   type EngineConnectionId,
   type EngineId,
-  type EngineRuntimeId,
   engineConnectionId,
-  engineRuntimeId,
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
@@ -189,9 +187,9 @@ import { isAutoApprovedExternalTool } from '../tools/tool-executor.js';
  */
 function credentialRecoveryRuntimeConnectionId(
   provider: string,
-): 'claude-runtime' | 'codex-runtime' | undefined {
-  if (provider === 'claude') return 'claude-runtime';
-  if (provider === 'codex') return 'codex-runtime';
+): 'claude' | 'codex' | undefined {
+  if (provider === 'claude') return 'claude';
+  if (provider === 'codex') return 'codex';
   return undefined;
 }
 
@@ -269,7 +267,6 @@ interface AgentConfigurationGeneration {
   activationEpoch?: number;
 }
 
-import { connectionIdForPersistedSelection } from '../../providers/adapter-identity.js';
 import { disposeAllPluginPublicServerModules } from '../../routes/plugins/plugin-public-server.js';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
@@ -527,7 +524,7 @@ export class StationRuntime {
     getProvideSkills: async () => {
       const appConfig = await this.configLoader.loadAppConfig();
       const provideSkills =
-        appConfig.agentConnections?.['claude-runtime']?.config?.provideSkills;
+        appConfig.agentConnections?.claude?.config?.provideSkills;
       return Array.isArray(provideSkills)
         ? provideSkills.filter((id): id is string => typeof id === 'string')
         : undefined;
@@ -553,7 +550,7 @@ export class StationRuntime {
       try {
         const appConfig = await this.configLoader.loadAppConfig();
         const configuredRef = normalizeCredentialProfileRegistry(
-          appConfig.agentConnections?.['claude-runtime']?.credentialRecovery,
+          appConfig.agentConnections?.claude?.credentialRecovery,
         ).activeProfileRef;
         const profileRef =
           credentialProfileRef ??
@@ -561,16 +558,15 @@ export class StationRuntime {
         selectedProfileRef = profileRef;
         if (profileRef) {
           const { dir } = await ensureCredentialProfileAppHome(
-            'claude-code',
+            'claude',
             profileRef,
           );
           return claudeAppHomeEnv(dir);
         }
         const useAppHome =
-          appConfig.agentConnections?.['claude-runtime']?.config?.useAppHome ===
-          true;
+          appConfig.agentConnections?.claude?.config?.useAppHome === true;
         if (!useAppHome) return undefined;
-        const { dir } = await ensureAppHomeProfile('claude-runtime');
+        const { dir } = await ensureAppHomeProfile('claude');
         return claudeAppHomeEnv(dir);
       } catch (error) {
         if (selectedProfileRef) {
@@ -579,7 +575,7 @@ export class StationRuntime {
           );
         }
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-          `App home profile: failed to resolve the claude-runtime app-home env; continuing with the global Claude Code config: ${error instanceof Error ? error.message : String(error)}`,
+          `App home profile: failed to resolve the claude app-home env; continuing with the global Claude Code config: ${error instanceof Error ? error.message : String(error)}`,
         );
         return undefined;
       }
@@ -616,7 +612,7 @@ export class StationRuntime {
       try {
         const appConfig = await this.configLoader.loadAppConfig();
         const configuredRef = normalizeCredentialProfileRegistry(
-          appConfig.agentConnections?.['codex-runtime']?.credentialRecovery,
+          appConfig.agentConnections?.codex?.credentialRecovery,
         ).activeProfileRef;
         const profileRef =
           credentialProfileRef ??
@@ -630,10 +626,9 @@ export class StationRuntime {
           return codexAppHomeEnv(dir);
         }
         const useAppHome =
-          appConfig.agentConnections?.['codex-runtime']?.config?.useAppHome ===
-          true;
+          appConfig.agentConnections?.codex?.config?.useAppHome === true;
         if (!useAppHome) return undefined;
-        const { dir } = await ensureAppHomeProfile('codex-runtime');
+        const { dir } = await ensureAppHomeProfile('codex');
         return codexAppHomeEnv(dir);
       } catch (error) {
         if (selectedProfileRef) {
@@ -642,7 +637,7 @@ export class StationRuntime {
           );
         }
         (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
-          `App home profile: failed to resolve the codex-runtime app-home env; continuing with the global Codex config: ${error instanceof Error ? error.message : String(error)}`,
+          `App home profile: failed to resolve the codex app-home env; continuing with the global Codex config: ${error instanceof Error ? error.message : String(error)}`,
         );
         return undefined;
       }
@@ -1260,7 +1255,6 @@ export class StationRuntime {
       engineId?: EngineId;
       capabilities: string[];
       controlPlaneObservation?: ControlPlaneObservation;
-      runtimeId: EngineRuntimeId;
     }>
   > {
     return (await this.connectionService.listRuntimeConnections()).map(
@@ -1276,7 +1270,6 @@ export class StationRuntime {
         // reads — so the bootstrap binding and the picker derive the same
         // capability from the same evidence.
         controlPlaneObservation: connection.controlPlaneObservation,
-        runtimeId: engineRuntimeId(connection.type),
       }),
     );
   }
@@ -1315,45 +1308,12 @@ export class StationRuntime {
         this.providerService.listProviderConnections(),
       ) !== null;
 
-    const explicitConnectionId = connectionIdForPersistedSelection(
-      appConfig.builtinAgentEngineConnectionId as string | null | undefined,
-      connections,
-    );
+    const explicitConnectionId = appConfig.builtinAgentEngineConnectionId;
     return resolveBuiltinAgentEngineBinding({
       explicitConnectionId,
       stationChatReady,
       readyExternalEngines,
     });
-  }
-
-  /**
-   * Migrates the pre-brand runtime selector before agent construction takes
-   * its launchability-revision snapshot. The mutation is an exact CAS on the
-   * observed legacy value so an operator's concurrent selection always wins.
-   */
-  private async migrateBuiltinEngineConnectionSelection(): Promise<AppConfig> {
-    const observed = await this.configLoader.loadAppConfig();
-    const candidates =
-      await this.connectionService.listEngineConnectionMigrationCandidates();
-    const migrated = connectionIdForPersistedSelection(
-      observed.builtinAgentEngineConnectionId as string | null | undefined,
-      candidates.map((candidate) => ({
-        id: candidate.engineConnectionId,
-        runtimeId: candidate.runtimeId,
-      })),
-    );
-    if (
-      migrated === undefined ||
-      migrated === observed.builtinAgentEngineConnectionId
-    ) {
-      return observed;
-    }
-    const observedSelection = observed.builtinAgentEngineConnectionId;
-    return this.configLoader.mutateAppConfig((current) =>
-      current.builtinAgentEngineConnectionId === observedSelection
-        ? { builtinAgentEngineConnectionId: migrated }
-        : {},
-    );
   }
 
   /**
@@ -2568,7 +2528,7 @@ export class StationRuntime {
    */
   async reloadDefaultAgent(): Promise<void> {
     await this.mutateAgentConfiguration(async () => {
-      const appConfig = await this.migrateBuiltinEngineConnectionSelection();
+      const appConfig = await this.configLoader.loadAppConfig();
       const configurationBefore = this.captureAgentConfigurationRevisions();
       this.loadedProviderLaunchabilityRevision = null;
       this.loadedAppConfigLaunchabilityRevision = null;
@@ -2791,8 +2751,6 @@ export class StationRuntime {
           acpBridge: this.acpBridge,
           resolveBuiltinEngineBinding: (appConfig) =>
             this.resolveBuiltinEngineBinding(appConfig),
-          migrateBuiltinEngineConnectionSelection: () =>
-            this.migrateBuiltinEngineConnectionSelection(),
           orchestrationEventStore: this.orchestrationEventStore,
           credentialProfileRecoveryAdapter:
             this.connectionService.createCredentialProfileRecoveryAdapter(
