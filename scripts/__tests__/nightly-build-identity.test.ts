@@ -37,9 +37,6 @@ import {
  */
 
 const DAY = 86_400_000;
-const CHECKED_IN_VERSION = JSON.parse(
-  readFileSync(resolve(import.meta.dirname, '../../package.json'), 'utf8'),
-).version as string;
 
 describe('nightly version codes are monotonic and bounded', () => {
   it('increases with every day', () => {
@@ -399,7 +396,7 @@ describe('the tauri config overlay', () => {
     });
     expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(config);
     expect(readdirSync(directory)).toEqual(['tauri.nightly.version.json']);
-    expect(config.version).toBe(`${CHECKED_IN_VERSION}-nightly.2412.3`);
+    expect(config.version).toBe('0.1.2-nightly.2412.3');
     expect(config.bundle.android.versionCode).toBe(241_203);
     expect(config.bundle.macOS.bundleVersion).toBe('241203');
   });
@@ -522,7 +519,7 @@ describe('the desktop tauri config overlay (station#575)', () => {
     expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(config);
     expect(readFileSync(githubOutput, 'utf8')).toBe(
       [
-        `version=${CHECKED_IN_VERSION}-nightly.2412.3`,
+        'version=0.1.2-nightly.2412.3',
         'identifier=io.kontourai.station.nightly',
         'product_name=Station Nightly',
         'bundle_version=241203',
@@ -533,7 +530,7 @@ describe('the desktop tauri config overlay (station#575)', () => {
       'github-output',
       'tauri.nightly-desktop.conf.json',
     ]);
-    expect(config.version).toBe(`${CHECKED_IN_VERSION}-nightly.2412.3`);
+    expect(config.version).toBe('0.1.2-nightly.2412.3');
     expect(config.identifier).toBe('io.kontourai.station.nightly');
     expect(config.bundle.macOS.bundleVersion).toBe('241203');
   });
