@@ -9,8 +9,10 @@ type WorkflowStep = {
   name?: string;
   run?: string;
   uses?: string;
+  env?: Record<string, string>;
   with?: Record<string, unknown>;
   if?: string;
+  'continue-on-error'?: boolean;
 };
 
 type WorkflowJob = {
@@ -69,9 +71,21 @@ describe('promotion full-regression workflow', () => {
     expect(
       namedStep(gate, 'Prove checkout matches the requested source').run,
     ).toContain('git rev-parse HEAD');
-    expect(
-      gate.steps?.some((step) => step.run === 'npm run dependencies:ci'),
-    ).toBe(true);
+    const gateSteps = gate.steps ?? [];
+    const actionlint = namedStep(gate, 'Install pinned actionlint');
+    const ciFast = workflow('ci.yml').jobs?.['fast-checks'] ?? {};
+    expect(actionlint).toEqual(namedStep(ciFast, 'Install pinned actionlint'));
+    expect(actionlint).not.toHaveProperty('continue-on-error');
+    const actionlintIndex = gateSteps.indexOf(actionlint);
+    const dependenciesIndex = gateSteps.findIndex(
+      (step) => step.run === 'npm run dependencies:ci',
+    );
+    const completionIndex = gateSteps.findIndex(
+      (step) => step.name === 'Run canonical completion gate',
+    );
+    expect(actionlintIndex).toBeGreaterThan(-1);
+    expect(dependenciesIndex).toBeGreaterThan(actionlintIndex);
+    expect(completionIndex).toBeGreaterThan(dependenciesIndex);
     expect(
       namedStep(gate, 'Install Chromium for full-corpus browser assertions')
         .run,
