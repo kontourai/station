@@ -159,11 +159,15 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     expect(getComputedStyle(footer!).flexWrap).toBe('nowrap');
     expect(getComputedStyle(actions!).flexWrap).toBe('nowrap');
     expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Share this answer/ })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /Share this answer/ }),
+    ).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Provenance' }));
     expect(
-      await screen.findByRole('button', { name: 'Share this answer (turn turn-7)' }),
+      await screen.findByRole('button', {
+        name: 'Share this answer (turn turn-7)',
+      }),
     ).toBeTruthy();
 
     const overflow = await screen.findByRole('button', {

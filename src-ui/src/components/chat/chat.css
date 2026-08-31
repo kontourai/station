@@ -1254,10 +1254,6 @@
 }
 
 @media (max-width: 480px) {
-  .turn-footer__actions {
-    justify-content: flex-start;
-  }
-
   /* station#3151's `.chat-input__approval-chip-policy { display: none }`
      rule that used to live here moved (review round 2, M2/L5) to the wider
      mobile block below — 480px is a subset of that block's condition, so a
@@ -1705,7 +1701,7 @@
 .turn-footer__actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  align-self: flex-end;
   flex: 0 0 auto;
   flex-wrap: nowrap;
   gap: 4px 6px;

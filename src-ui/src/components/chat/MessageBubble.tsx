@@ -21,7 +21,6 @@ import {
   resolveTurnEngine,
   resolveTurnModelIdentity,
 } from './message-bubble/utils';
-import { ShareAnswerButton } from './ShareAnswerButton';
 import { TurnProvenanceCard } from './TurnProvenanceCard';
 import './chat.css';
 
@@ -41,6 +40,10 @@ const loadConnectedAnswerBasisAffordance = () =>
   }));
 
 const loadTurnActionsMenu = () => import('./TurnActionsMenu');
+const loadShareAnswerButton = () =>
+  import('./ShareAnswerButton').then((module) => ({
+    default: module.ShareAnswerButton,
+  }));
 
 interface Session {
   id: string;
@@ -496,7 +499,13 @@ function MessageBubbleComponent({
                     modelIdentity.claims.length > 0,
                 }}
                 accountableHuman={accountableHuman}
-                shareContent={<ShareAnswerButton provenance={msg.provenance} />}
+                shareContent={
+                  <LazyBoundary
+                    load={loadShareAnswerButton}
+                    componentProps={{ provenance: msg.provenance }}
+                    pending={null}
+                  />
+                }
                 basisContent={
                   msg.turnId &&
                   answerSessionId &&
