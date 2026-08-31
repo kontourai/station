@@ -582,6 +582,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Exercises the release-cohort CLI through real Node subprocesses so its
   // externally persisted receipt boundary is observable end-to-end.
   'scripts/__tests__/release-cohort.test.ts',
+  // Injects a fixed command adapter at the protected provider boundary and
+  // asserts exact child-process argv/options without using a real credential.
+  'scripts/__tests__/verify-release-cohort.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

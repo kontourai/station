@@ -317,6 +317,7 @@
     "debug": "^4.4.3",
     "dompurify": "^3.4.13",
     "dotenv": "^17.4.2",
+    "google-auth-library": "^10.9.1",
     "hono": "^4.12.34",
     "idb-keyval": "^6.3.0",
     "js-yaml": "^5.2.2",
