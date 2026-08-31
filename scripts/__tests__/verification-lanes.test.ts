@@ -107,7 +107,7 @@ describe('canonical completion lane literal', () => {
     expect(
       FULL_REGRESSION_PHASES.find((phase) => phase.id === 'test-full-ordinary')
         ?.timeoutMs,
-    ).toBe(30 * 60_000);
+    ).toBe(45 * 60_000);
     expect(
       FULL_REGRESSION_PHASES.find(
         (phase) => phase.id === 'test-full-process-heavy',
@@ -120,6 +120,7 @@ describe('canonical completion lane literal', () => {
         0,
       ),
     );
+    expect(FULL_REGRESSION_TIMEOUT_MS).toBe(128 * 60_000);
     expect(resolveLane('full-regression').timeoutMs).toBe(
       FULL_REGRESSION_TIMEOUT_MS,
     );
