@@ -47,6 +47,29 @@ function atRule(css: string, prefix: string): string {
   throw new Error(`unterminated ${prefix}`);
 }
 
+function atRules(css: string, prefix: string): string[] {
+  const bodies: string[] = [];
+  let from = 0;
+  for (;;) {
+    const start = css.indexOf(prefix, from);
+    if (start < 0) return bodies;
+    const open = css.indexOf('{', start);
+    let depth = 0;
+    for (let index = open; index < css.length; index += 1) {
+      if (css[index] === '{') depth += 1;
+      if (css[index] === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          bodies.push(css.slice(open + 1, index));
+          from = index + 1;
+          break;
+        }
+      }
+    }
+    if (from <= start) return bodies;
+  }
+}
+
 describe('chat message responsive layout contract (station#4241/#4244)', () => {
   test('wide and narrow docks share one bounded, wrapping user/assistant content surface', () => {
     const messages = rule(indexCss, '.chat-messages');
@@ -101,5 +124,28 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     expect(hoverRating).toContain('min-height: 0');
     expect(touchRating).toContain('min-height: 44px');
     expect(messageBubble).toMatch(/developerToolsEnabled\s*&&\s*msg\.traceId/);
+  });
+
+  // The footer switched from a row to a column, which made the narrow-screen
+  // `justify-content: flex-start` inert. Untested, it was deleted as dead CSS
+  // and phones silently inherited the desktop `align-self: flex-end`.
+  test('narrow screens keep the footer actions at the reading edge', () => {
+    // chat.css has more than one 480px block, so select the one that carries
+    // the rule rather than the first one that matches the query text.
+    const narrow = atRules(chatCss, '@media (max-width: 480px)').filter(
+      (body) => body.includes('.turn-footer__actions {'),
+    );
+    expect(
+      narrow,
+      'no 480px block declares .turn-footer__actions',
+    ).toHaveLength(1);
+    expect(rule(narrow[0], '.turn-footer__actions')).toContain(
+      'align-self: flex-start',
+    );
+    // Anchored at column 0: `rule()` matches by first occurrence, and the
+    // nested 480px copy above now precedes the base rule in the file.
+    expect(chatCss).toMatch(
+      /\n\.turn-footer__actions \{[^}]*align-self: flex-end;/s,
+    );
   });
 });

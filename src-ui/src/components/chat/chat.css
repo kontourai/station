@@ -1254,6 +1254,13 @@
 }
 
 @media (max-width: 480px) {
+  /* The footer is a column now, so the narrow-screen decision that these
+     controls sit at the reading edge is expressed on the cross axis. It was
+     `justify-content: flex-start` while the footer was a row. */
+  .turn-footer__actions {
+    align-self: flex-start;
+  }
+
   /* station#3151's `.chat-input__approval-chip-policy { display: none }`
      rule that used to live here moved (review round 2, M2/L5) to the wider
      mobile block below — 480px is a subset of that block's condition, so a
