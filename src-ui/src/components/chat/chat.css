@@ -1691,15 +1691,14 @@
    reading column. */
 .turn-footer {
   display: flex;
-  flex-wrap: nowrap;
+  flex-direction: column;
   align-items: flex-start;
-  gap: 6px 12px;
+  gap: 6px;
   margin-top: 6px;
   min-width: 0;
 }
 
 .turn-footer .turn-provenance {
-  flex: 1 1 12rem;
   min-width: 0;
 }
 
@@ -1707,7 +1706,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex: 1 1 14rem;
+  flex: 0 0 auto;
   flex-wrap: nowrap;
   gap: 4px 6px;
   min-width: 0;

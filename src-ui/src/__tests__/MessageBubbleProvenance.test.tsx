@@ -145,7 +145,7 @@ describe('MessageBubble turn provenance (station#1410)', () => {
   // archive#1423: the share affordance must be reachable from the same real
   // row as the card — a mint button that only renders in its own unit test
   // is a feature nobody can use.
-  it('keeps one inline action row and moves secondary actions into a keyboard menu', async () => {
+  it('keeps one inline action row and puts sharing in the provenance disclosure', async () => {
     renderRow({
       role: 'assistant',
       content: 'Here is the answer.',
@@ -159,9 +159,12 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     expect(getComputedStyle(footer!).flexWrap).toBe('nowrap');
     expect(getComputedStyle(actions!).flexWrap).toBe('nowrap');
     expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Share this answer/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Provenance' }));
     expect(
-      screen.queryByRole('button', { name: /Share this answer/ }),
-    ).toBeNull();
+      await screen.findByRole('button', { name: 'Share this answer (turn turn-7)' }),
+    ).toBeTruthy();
 
     const overflow = await screen.findByRole('button', {
       name: 'More answer actions',
@@ -169,9 +172,6 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     expect(overflow.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(overflow);
     expect(overflow.getAttribute('aria-expanded')).toBe('true');
-    expect(
-      screen.getByRole('menuitem', { name: 'Share this answer (turn turn-7)' }),
-    ).toBeTruthy();
     expect(
       // The attach affordance mounts beside a lazy message chunk; under full-
       // corpus worker load its dynamic import can exceed findByRole's 1s

@@ -1,5 +1,6 @@
 import { memo, useCallback } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import type { ChatMessage } from '../../types';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
@@ -20,6 +21,7 @@ import {
   resolveTurnEngine,
   resolveTurnModelIdentity,
 } from './message-bubble/utils';
+import { ShareAnswerButton } from './ShareAnswerButton';
 import { TurnProvenanceCard } from './TurnProvenanceCard';
 import './chat.css';
 
@@ -113,6 +115,7 @@ function MessageBubbleComponent({
   owner,
   accountableHuman,
 }: MessageBubbleProps) {
+  const { developerToolsEnabled } = useDeviceSettings();
   const textContent = typeof msg.content === 'string' ? msg.content : '';
 
   // Hoisted above the flowPart early-return (hooks can't be called
@@ -493,6 +496,7 @@ function MessageBubbleComponent({
                     modelIdentity.claims.length > 0,
                 }}
                 accountableHuman={accountableHuman}
+                shareContent={<ShareAnswerButton provenance={msg.provenance} />}
                 basisContent={
                   msg.turnId &&
                   answerSessionId &&
@@ -514,7 +518,7 @@ function MessageBubbleComponent({
               />
             )}
             <div className="turn-footer__actions">
-              {msg.traceId && (
+              {developerToolsEnabled && msg.traceId && (
                 <a
                   href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
                   target="_blank"
