@@ -755,11 +755,6 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
       await seedDailyDriverShell(page, {
         agents: SHELL_AGENTS,
         conversations: SHELL_CONVERSATIONS,
-        // The conversation-history picker opens this thread with no prior
-        // dispatch through `/api/orchestration/chat` — its 10k turns are
-        // seeded straight through the `event-window` route below, so the
-        // shared shell needs telling it already has a durable session.
-        preResolvedConversationIds: [threadId],
       });
       await page.route(
         // `useActiveChatTranscript` reads history through the CONVERSATION-
