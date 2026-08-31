@@ -67,7 +67,7 @@ async function dockHomeFromRoot(page: Page) {
   // so it pays the cold load cost other tests in this file amortize away.
   // Measured directly on this host: ~1.1s under light load, 20s+ under the
   // heavy sibling-session contention this environment sees routinely.
-  await expect(dockAction).toBeVisible({ timeout: 20_000 });
+  await expect(dockAction).toBeVisible({ timeout: 10_000 });
   await dockAction.click();
   await expect(dockOccupantTrigger(page, 'Home')).toBeVisible();
 }
