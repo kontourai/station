@@ -132,6 +132,7 @@ describe('one-revision native promotion contract', () => {
   });
 
   test('keeps TestFlight authoritative when no custom feed is configured', () => {
+    const release = workflow('release.yml');
     const delivery = workflow('testflight-delivery.yml');
     const ios = delivery.jobs?.deliver ?? {};
     const required = namedStep(
@@ -143,5 +144,27 @@ describe('one-revision native promotion contract', () => {
     expect(required.run).not.toContain('NATIVE_APP_UPDATE_ACTION_URL');
     expect(authority.run).toContain('write-authority-receipt');
     expect(authority.run).toContain('testflight-update-authority.json');
+    expect(authority.run).toContain('--platform ios');
+
+    const iosDependencies = ios.steps?.findIndex(
+      (step) => step.run === 'npm run dependencies:ci',
+    );
+    const iosAuthority = ios.steps?.findIndex(
+      (step) => step.name === 'Resolve optional custom iOS update feed',
+    );
+    expect(iosDependencies).toBeGreaterThanOrEqual(0);
+    expect(iosAuthority).toBeGreaterThan(iosDependencies ?? -1);
+
+    const android = release.jobs?.android ?? {};
+    const androidDependencies = android.steps?.findIndex(
+      (step) =>
+        step.name ===
+        'Install dependencies before resolving the native update feed',
+    );
+    const androidAuthority = android.steps?.findIndex(
+      (step) => step.name === 'Resolve native update feed contract',
+    );
+    expect(androidDependencies).toBeGreaterThanOrEqual(0);
+    expect(androidAuthority).toBeGreaterThan(androidDependencies ?? -1);
   });
 });

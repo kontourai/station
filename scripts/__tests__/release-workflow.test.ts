@@ -53,6 +53,10 @@ const testFlightDelivery = readFileSync(
   resolve(root, '.github/workflows/testflight-delivery.yml'),
   'utf8',
 );
+const mobileReleaseGuide = readFileSync(
+  resolve(root, 'docs/guides/mobile-release.md'),
+  'utf8',
+);
 
 describe('mobile release hardening contract', () => {
   it('permits a provider retry only after the immutable source authority verifies', () => {
@@ -117,6 +121,21 @@ describe('mobile release hardening contract', () => {
     expect(publish).toContain('NATIVE_APP_UPDATE_PUBLISH_TOKEN');
     expect(mobileFeedTransaction).toContain('native-update-feed.mjs deploy');
     expect(publish).toContain('scripts/publish-mobile-feed-transaction.sh');
+    const publishStep = namedStep(
+      workflowJob(publish, 'publish'),
+      'Publish release and compensate to draft until feed verifies',
+    );
+    expect(publishStep.run).toContain('feed_args=()');
+    expect(publishStep.run).not.toContain(
+      'Missing native update provider credential',
+    );
+    expect(mobileFeedTransaction.indexOf('validate-config')).toBeLessThan(
+      mobileFeedTransaction.indexOf('gh release edit'),
+    );
+    expect(mobileFeedTransaction).toContain('if [[ "$custom_feed" != true ]]');
+    expect(mobileReleaseGuide).toContain(
+      'station-<channel>-ios-testflight-<bundle-version>',
+    );
   });
 });
 

@@ -19,6 +19,13 @@ const valid = {
   NATIVE_APP_UPDATE_ACTION_KIND: 'artifact',
   NATIVE_APP_UPDATE_ACTION_ORIGINS: 'https://downloads.example.test',
 };
+const validIos = {
+  ...valid,
+  NATIVE_APP_UPDATE_ACTION_URL:
+    'https://apps.apple.com/us/app/station-by-kontour-ai/id6805330833',
+  NATIVE_APP_UPDATE_ACTION_KIND: 'store-page',
+  NATIVE_APP_UPDATE_ACTION_ORIGINS: 'https://apps.apple.com',
+};
 const bytes = `${JSON.stringify({ channel: 'stable', version: '1.2.3', releaseUrl: valid.NATIVE_APP_UPDATE_ACTION_URL })}\n`;
 const args = {
   endpoint: valid.VITE_NATIVE_APP_UPDATE_FEED_URL,
@@ -54,10 +61,14 @@ describe('native update release contract', () => {
     const directory = mkdtempSync(join(tmpdir(), 'station-update-authority-'));
     const output = join(directory, 'authority.json');
     try {
-      writeNativeUpdateAuthorityReceipt(output, {
-        VITE_NATIVE_APP_UPDATE_CHANNEL: 'beta',
-        VITE_NATIVE_APP_VERSION: '1.2.3-preview.1',
-      });
+      writeNativeUpdateAuthorityReceipt(
+        output,
+        {
+          VITE_NATIVE_APP_UPDATE_CHANNEL: 'beta',
+          VITE_NATIVE_APP_VERSION: '1.2.3-preview.1',
+        },
+        { platform: 'ios' },
+      );
       expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual({
         schemaVersion: 1,
         kind: 'native-update-authority',
@@ -65,6 +76,7 @@ describe('native update release contract', () => {
         customFeed: null,
         channel: 'beta',
         version: '1.2.3-preview.1',
+        platform: 'ios',
       });
     } finally {
       rmSync(directory, { recursive: true, force: true });
@@ -117,6 +129,29 @@ describe('native update release contract', () => {
         actionUrl: valid.NATIVE_APP_UPDATE_ACTION_URL,
       },
     }));
+  test('rejects an Android artifact action for an iOS build', () =>
+    expect(() =>
+      resolveNativeUpdateAuthority(valid, { platform: 'ios' }),
+    ).toThrow(/App Store store-page/));
+  test('accepts an exact App Store store-page action for an iOS build', () =>
+    expect(
+      resolveNativeUpdateAuthority(validIos, { platform: 'ios' }),
+    ).toMatchObject({
+      updateAuthority: 'TestFlight/App Store',
+      platform: 'ios',
+      customFeed: {
+        actionUrl: validIos.NATIVE_APP_UPDATE_ACTION_URL,
+        actionKind: 'store-page',
+        actionOrigins: ['https://apps.apple.com'],
+      },
+    }));
+  test('rejects a non-App-Store page even when iOS action kind is store-page', () =>
+    expect(() =>
+      resolveNativeUpdateAuthority(
+        { ...validIos, NATIVE_APP_UPDATE_ACTION_URL: 'https://example.test' },
+        { platform: 'ios' },
+      ),
+    ).toThrow(/App Store store-page/));
   test('rejects a redirect/cross-origin feed', () =>
     expect(() =>
       validateUpdateConfig({

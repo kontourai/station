@@ -43,7 +43,9 @@ records `TestFlight/App Store` as the update authority and `customFeed: null`.
 If any one is configured, every one is required and the complete HTTPS,
 provider-origin, immutable channel/version, action-kind, and action-origin
 allowlist contract fails closed before signing. Do not substitute placeholders
-or a desktop/Android artifact action for an iOS store build.
+or a desktop/Android artifact action for an iOS store build. An iOS custom
+action must be a `store-page` URL on `https://apps.apple.com`, and that origin
+must appear in the explicit action allowlist.
 
 When present, the feed is provider-hosted JSON with `version` and `releaseUrl`
 fields; both the feed response and HTTPS release URL are pinned to the
@@ -351,9 +353,10 @@ push (`git tag -s vX.Y.Z -m '...' && git push origin vX.Y.Z`), then:
    track" ran; its own logs report the Play Console edit ID and uploaded
    version code. A missing OIDC or signing prerequisite is a red release.
 3. For `ios-device`, confirm "Upload to TestFlight" and "Record the processed
-   TestFlight build receipt" both ran. Download
-   `station-ios-testflight-receipts` and require the receipt's source SHA,
-   bundle version, processing state, IPA digest, and
+   TestFlight build receipt" both ran. Download the workflow artifact named
+   `station-<channel>-ios-testflight-<bundle-version>` (for example,
+   `station-nightly-ios-testflight-10542`) and require the receipt's source
+   SHA, bundle version, processing state, IPA digest, and
    `testflight-update-authority.json` to match the release. With no custom
    feed, that authority receipt must state `TestFlight/App Store` and
    `customFeed: null`.

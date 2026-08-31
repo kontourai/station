@@ -36,7 +36,16 @@ function requiredCustomFeedValues(env) {
   );
 }
 
-export function resolveNativeUpdateAuthority(env = process.env) {
+/**
+ * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} env
+ * @param {{ platform?: string | null }} options
+ */
+export function resolveNativeUpdateAuthority(
+  env = process.env,
+  { platform = null } = {},
+) {
+  if (platform !== null && !['android', 'ios'].includes(platform))
+    throw new Error('Native update platform must be android or ios');
   if (!/^[a-z0-9-]+$/.test(env.VITE_NATIVE_APP_UPDATE_CHANNEL ?? ''))
     throw new Error('Invalid native update channel');
   if (semver.valid(env.VITE_NATIVE_APP_VERSION ?? '') === null)
@@ -44,12 +53,13 @@ export function resolveNativeUpdateAuthority(env = process.env) {
 
   const custom = requiredCustomFeedValues(env);
   if (!custom) {
-    return {
+    const authority = {
       updateAuthority: STORE_UPDATE_AUTHORITY,
       customFeed: null,
       channel: env.VITE_NATIVE_APP_UPDATE_CHANNEL,
       version: env.VITE_NATIVE_APP_VERSION,
     };
+    return platform === null ? authority : { ...authority, platform };
   }
 
   const feed = new URL(custom.VITE_NATIVE_APP_UPDATE_FEED_URL);
@@ -75,6 +85,15 @@ export function resolveNativeUpdateAuthority(env = process.env) {
     !['artifact', 'store-page'].includes(custom.NATIVE_APP_UPDATE_ACTION_KIND)
   )
     throw new Error('Native update action kind must be artifact or store-page');
+  if (
+    platform === 'ios' &&
+    (custom.NATIVE_APP_UPDATE_ACTION_KIND !== 'store-page' ||
+      action.origin !== 'https://apps.apple.com')
+  ) {
+    throw new Error(
+      'iOS custom update action must be an App Store store-page URL',
+    );
+  }
   const actionOrigins =
     custom.NATIVE_APP_UPDATE_ACTION_ORIGINS.split(',').filter(Boolean);
   if (
@@ -93,27 +112,40 @@ export function resolveNativeUpdateAuthority(env = process.env) {
       'Native update action origins must be an explicit HTTPS allowlist',
     );
   }
+  const normalizedActionOrigins = actionOrigins.map(
+    (value) => new URL(value.trim()).origin,
+  );
+  if (platform === 'ios' && !normalizedActionOrigins.includes(action.origin)) {
+    throw new Error(
+      'iOS App Store action origin must be present in the HTTPS allowlist',
+    );
+  }
 
-  return {
+  const authority = {
     updateAuthority: STORE_UPDATE_AUTHORITY,
     customFeed: {
       endpoint: feed.href,
       providerOrigin: provider.origin,
       actionUrl: action.href,
       actionKind: custom.NATIVE_APP_UPDATE_ACTION_KIND,
-      actionOrigins: actionOrigins.map((value) => new URL(value.trim()).origin),
+      actionOrigins: normalizedActionOrigins,
     },
     channel: env.VITE_NATIVE_APP_UPDATE_CHANNEL,
     version: env.VITE_NATIVE_APP_VERSION,
   };
+  return platform === null ? authority : { ...authority, platform };
 }
 
-export function validateUpdateConfig(env = process.env) {
-  return resolveNativeUpdateAuthority(env);
+export function validateUpdateConfig(env = process.env, options = {}) {
+  return resolveNativeUpdateAuthority(env, options);
 }
 
-export function writeNativeUpdateAuthorityReceipt(output, env = process.env) {
-  const authority = resolveNativeUpdateAuthority(env);
+export function writeNativeUpdateAuthorityReceipt(
+  output,
+  env = process.env,
+  options = {},
+) {
+  const authority = resolveNativeUpdateAuthority(env, options);
   writeFileSync(
     output,
     `${JSON.stringify(
@@ -403,17 +435,20 @@ export async function deployUpdateFeed({
 
 function main() {
   const command = process.argv[2];
+  const platformAt = process.argv.indexOf('--platform');
+  const platform = platformAt >= 0 ? process.argv[platformAt + 1] : null;
+  const options = platform === null ? {} : { platform };
   if (command === 'validate-config') {
-    resolveNativeUpdateAuthority();
+    resolveNativeUpdateAuthority(process.env, options);
     return;
   }
   if (command === 'write-authority-receipt') {
     const output = process.argv[3];
     if (!output) throw new Error('write-authority-receipt requires output');
-    writeNativeUpdateAuthorityReceipt(output);
+    writeNativeUpdateAuthorityReceipt(output, process.env, options);
     return;
   }
-  resolveNativeUpdateAuthority();
+  resolveNativeUpdateAuthority(process.env, options);
   if (command === 'publish') {
     const output = process.argv[3];
     const releaseUrl = required('NATIVE_APP_UPDATE_ACTION_URL');

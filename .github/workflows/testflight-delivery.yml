@@ -97,6 +97,7 @@ jobs:
           echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
+      - run: npm run dependencies:ci
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-apple-ios }
       - run: brew install xcodegen libimobiledevice cocoapods
@@ -112,8 +113,8 @@ jobs:
           # TestFlight/App Store owns delivered iOS updates. A custom feed is
           # optional informational metadata, but if any of its values exist the
           # whole origin/action contract must validate before signing.
-          node scripts/native-update-feed.mjs write-authority-receipt provider-receipts/testflight-update-authority.json
-      - run: npm run dependencies:ci && npm run build:native-client
+          node scripts/native-update-feed.mjs write-authority-receipt provider-receipts/testflight-update-authority.json --platform ios
+      - run: npm run build:native-client
       - name: Generate the exact channel identity overlay
         run: |
           mkdir -p provider-receipts
