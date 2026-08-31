@@ -548,7 +548,7 @@ export function mapStationAgentStreamEvent(options: {
 export class StationAgentAdapter implements ProviderAdapterShape {
   readonly provider = PROVIDER;
   readonly metadata = {
-    displayName: 'Station agents',
+    displayName: 'Station',
     description:
       'Station-owned agents with their configured model, skills, tools, and memory.',
     // archive#1885: `image-input` is declared because the relay below

@@ -128,6 +128,21 @@ The independently published CLI remains outside this cohort. The Nightly Android
 only an available configured subset, and fleet/CLI completion remains
 `NOT_VERIFIED`.
 
+## Nightly fleet staging
+
+`nightly-fleet-staging.yml` is an independent reusable, portable-only evidence
+lane. It is not a native-promotion dependency. Its Actions artifacts are
+staging receipts, not a GitHub release, updater feed, Play upload, TestFlight
+build, container registry image, or Linux package-repository publication.
+
+The final `nightly-fleet-staged-inventory-*` artifact content-binds every
+portable variant to the source SHA, workflow run, static-plan digest, build
+check/SBOM evidence, artifact bytes, and GitHub attestation verification. It
+does not stage container, Windows, Linux, or iOS variants: those remain gated
+and `NOT_VERIFIED`. No staged portable artifact proves availability, an
+install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
+and `NOT_UPDATED` in the admitted inventory.
+
 Normal operation is the scheduled Nightly build, which builds the current
 workflow event SHA once and no-ops when the rolling `nightly` tag already names
 that commit. To request that normal behavior manually, leave the optional field

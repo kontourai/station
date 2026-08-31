@@ -900,11 +900,6 @@ export const UNKNOWN_EXTERNAL_ENGINE_MATRIX: EngineCapabilityMatrix = {
   builtInToolControl: { state: 'none' },
 };
 
-const KNOWN_MANAGED_RUNTIME_IDS = new Set([
-  'bedrock-runtime',
-  'ollama-runtime',
-]);
-
 /**
  * Derives `session-agent-resolution.ts`'s per-provider delivery-channel map
  * from this module's matrices — the single-source guarantee: editor truth
@@ -939,7 +934,7 @@ export function sessionDeliveryChannels(
  *                                                     its type is its exact
  *                                                     provider/native selector;
  *                                                     otherwise UNKNOWN_EXTERNAL_ENGINE_MATRIX
- *   known managed id / executionClass 'managed'   -> station (deprecated
+ *   executionClass 'managed'                      -> station (deprecated
  *                                                     read-compat)
  *   executionClass 'connected' or any other id     -> that connection's type
  *                                                     (a matrix entry, else
@@ -980,10 +975,7 @@ export function resolveEngineCapabilityMatrix(
     // from a different engine.
     return UNKNOWN_EXTERNAL_ENGINE_MATRIX;
   }
-  if (
-    (agentConnectionId && KNOWN_MANAGED_RUNTIME_IDS.has(agentConnectionId)) ||
-    connection?.config?.executionClass === 'managed'
-  ) {
+  if (connection?.config?.executionClass === 'managed') {
     return ENGINE_CAPABILITY_MATRICES.station;
   }
   if (connection?.config?.executionClass === 'connected' || agentConnectionId) {

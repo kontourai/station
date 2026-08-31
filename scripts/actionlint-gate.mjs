@@ -1430,7 +1430,7 @@ function candidatePullRequestWorkflowFindings(file, document) {
  */
 function fullRegressionActionlintFindings(file, document) {
   if (file !== FULL_REGRESSION_WORKFLOW) return [];
-  const job = (document?.jobs ?? {})[FULL_REGRESSION_JOB_ID];
+  const job = document?.jobs?.[FULL_REGRESSION_JOB_ID];
   if (!job) return [];
   if (hasPinnedActionlintProvision(job, FULL_REGRESSION_COMPLETION_STEP))
     return [];
