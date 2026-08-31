@@ -20,6 +20,7 @@ import {
   E2E_POLICY_MARKERS,
   executableVerificationPolicyErrors,
   FAILURE_DIAGNOSIS_MARKERS,
+  FULL_REGRESSION_ORDINARY_TIMEOUT_MS,
   FULL_REGRESSION_TEST_WEIGHT,
   LANE_REUSE_MARKERS,
   LANE_TABLE_DOC,
@@ -302,6 +303,25 @@ describe('verification policy gate', () => {
     );
   });
 
+  test('rejects an ordinary completion deadline below the hosted thirty-minute floor', () => {
+    expect(FULL_REGRESSION_ORDINARY_TIMEOUT_MS).toBe(30 * 60_000);
+    const stale = LANES.map((lane) =>
+      lane.id === 'full-regression'
+        ? {
+            ...lane,
+            phases: lane.phases?.map((phase) =>
+              phase.id === 'test-full-ordinary'
+                ? { ...phase, timeoutMs: 18 * 60_000 }
+                : phase,
+            ),
+          }
+        : lane,
+    );
+    expect(verificationPolicyErrors({ lanes: stale })).toContain(
+      'full-regression test-full-ordinary phase must use the exact 30-minute execution deadline',
+    );
+  });
+
   test('pins the twelve-minute deadline in every contributor-facing ci:fast guide', () => {
     const stale = CI_FAST_DEADLINE_GUIDANCE.map((entry) => ({
       ...entry,
@@ -447,6 +467,21 @@ describe('verification policy gate', () => {
         : doc,
     );
     expect(verificationPolicyErrors({ docs: staleWeight })).toContain(
+      'docs/guides/testing.md verification-scheduling section drifted from the canonical text in scripts/verification-policy-gate.mjs',
+    );
+
+    const staleTimeout = docs.map((doc) =>
+      doc.file === 'docs/guides/testing.md'
+        ? {
+            ...doc,
+            text: doc.text.replace(
+              '`test-full-ordinary` — 80-unit host reservation; 30-minute execution deadline.',
+              '`test-full-ordinary` — 80-unit host reservation; 18-minute execution deadline.',
+            ),
+          }
+        : doc,
+    );
+    expect(verificationPolicyErrors({ docs: staleTimeout })).toContain(
       'docs/guides/testing.md verification-scheduling section drifted from the canonical text in scripts/verification-policy-gate.mjs',
     );
 
