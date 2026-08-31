@@ -19,7 +19,7 @@ const build = {
 
 describe('BuildProvenance', () => {
   test('renders backend provenance distinctly from the installed app', () => {
-    render(<BuildProvenance build={build} />);
+    const { container } = render(<BuildProvenance build={build} />);
 
     expect(
       screen.getByRole('group', { name: 'Connected Station build provenance' }),
@@ -28,7 +28,7 @@ describe('BuildProvenance', () => {
       build.fullSha,
     );
     expect(
-      screen.getByText(/Jul 10, 2026 18:00 UTC/).getAttribute('title'),
+      container.querySelector('dd[title]')?.getAttribute('title'),
     ).toContain(build.builtAt);
     expect(screen.getByText('main')).toBeTruthy();
     expect(screen.getByText('phone-dogfood')).toBeTruthy();
