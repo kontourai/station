@@ -60,9 +60,9 @@ async function mockTaskFirstHome(
       taskId: 'task:task-first-home',
       environmentId: 'environment-current',
       environmentName: 'Current environment',
-      connectionId: 'codex-runtime',
+      connectionId: 'codex',
       targetKind: 'agent-app',
-      targetId: 'codex-runtime',
+      targetId: 'codex',
       projectSlug: 'station',
       mode: 'isolated-child',
     },
@@ -149,7 +149,7 @@ async function mockTaskFirstHome(
             configured: [],
             detected: {},
           },
-          capabilities: { chat: { ready: true, source: 'codex-runtime' } },
+          capabilities: { chat: { ready: true, source: 'codex' } },
         }),
       });
       return;
@@ -223,7 +223,7 @@ async function mockTaskFirstHome(
           project: { slug: 'station' },
           targets: [
             {
-              id: 'codex-runtime',
+              id: 'codex',
               kind: 'agent-app',
               name: 'Codex',
               ready: true,
@@ -298,7 +298,7 @@ async function mockTaskFirstHome(
             slug: 'codex-agent',
             name: 'Codex',
             model: 'gpt-5.3-codex',
-            execution: { agentConnectionId: 'codex-runtime' },
+            execution: { agentConnectionId: 'codex' },
           },
         ]),
       );
@@ -308,9 +308,9 @@ async function mockTaskFirstHome(
       await route.fulfill(
         json([
           agentConnectionFixture({
-            id: 'codex-runtime',
+            id: 'codex',
             kind: 'agent',
-            type: 'codex-runtime',
+            type: 'codex',
             name: 'Codex Runtime',
             enabled: true,
             capabilities: ['agent-runtime', 'file-input'],

@@ -302,6 +302,35 @@ test.describe('Connection Manager Modal', () => {
     expect(after.width).toBeCloseTo(before.width, 1);
   });
 
+  test('resolves exactly one "Manage Stations" control at 390px, collapsed and maximized (#1048)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // Default mobile state: the ambient chat dock is present but collapsed,
+    // NOT full-screen (`chat-dock is-collapsed`, not
+    // `app__main--mobile-dock-fullscreen`) — this is the state every phone
+    // user lands in on a fresh load, not an edge case. Before #1048 the app
+    // toolbar's `app-toolbar-connection` and the dock header's
+    // `chat-dock-mobile-connection` both rendered here and both matched.
+    await expect(
+      page.getByRole('button', { name: /^Manage Stations/ }),
+    ).toHaveCount(1);
+
+    // Maximized mobile dock: the app toolbar is genuinely hidden
+    // (`app__main--mobile-dock-fullscreen`), and the dock header's own
+    // connection control must still be the one surviving control — that is
+    // the entire reason it exists (station#3297).
+    await page.goto('/?dock=open&maximize=true');
+    await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
+    const survivor = page.getByRole('button', { name: /^Manage Stations/ });
+    await expect(survivor).toHaveCount(1);
+    await expect(survivor).toHaveAttribute(
+      'data-testid',
+      'chat-dock-mobile-connection',
+    );
+  });
+
   test('can switch between connections', async ({ page }) => {
     // Add a second connection via the UI
     await page.getByRole('button', { name: /^Manage Stations/ }).click();

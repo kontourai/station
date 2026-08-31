@@ -376,13 +376,16 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
 
-`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, and **typecheck** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. Its 20-unit reservation overlaps the 80-unit `test-full-ordinary` phase so feedback can admit while completion work runs.
+`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, and **typecheck** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
 
 `full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:
 - `repo-governance` — 20-unit host reservation; 5-minute execution deadline.
 - `sdk-builds` — 50-unit host reservation; 10-minute execution deadline.
 - `verify-static` — 60-unit host reservation; 15-minute execution deadline.
-- `test-full-ordinary` — 80-unit host reservation; 18-minute execution deadline.
+- `test-full-ordinary-1-of-4` — 80-unit host reservation; 20-minute execution deadline.
+- `test-full-ordinary-2-of-4` — 80-unit host reservation; 20-minute execution deadline.
+- `test-full-ordinary-3-of-4` — 80-unit host reservation; 20-minute execution deadline.
+- `test-full-ordinary-4-of-4` — 80-unit host reservation; 20-minute execution deadline.
 - `test-full-process-heavy` — 60-unit host reservation; 30-minute execution deadline.
 - `test-full-process-exclusive` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-shared-output` — 60-unit host reservation; 4-minute execution deadline.

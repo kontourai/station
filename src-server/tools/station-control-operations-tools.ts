@@ -1,4 +1,5 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import { environmentId as toEnvironmentId } from '@kontourai/station-contracts/execution-target';
 import {
   parseIndependentReviewRequest,
@@ -57,6 +58,12 @@ import {
 } from './station-control-delegation.js';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
 
+export const MONITORING_ENGINE_FILTER_VALUES = [
+  'station',
+  'claude',
+  'codex',
+] as const;
+
 import {
   api,
   controlRequestOptions,
@@ -65,6 +72,12 @@ import {
   resolveControlApiBase,
   toToolEnvelope as toOperationsEnvelope,
 } from './station-control-shared.js';
+
+const STATION_CONTROL_MCP_ORIGIN: ClientOrigin = {
+  version: 1,
+  actor: { kind: 'internal' },
+  reported: { version: 1, surface: 'mcp', build: null },
+};
 
 /**
  * Scheduler operator tools and `list_projects`/`get_project`/
@@ -573,7 +586,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         .string()
         .optional()
         .describe(
-          "Engine that ran it: 'station', 'claude-code', 'codex'. Absent on events written before engine attribution shipped, so this filter excludes them rather than guessing.",
+          `Engine that ran it: ${MONITORING_ENGINE_FILTER_VALUES.map((id) => `'${id}'`).join(', ')}. Absent on events written before engine attribution shipped, so this filter excludes them rather than guessing.`,
         ),
       conversation: z.string().optional().describe('Exact conversation id'),
       tools: z
@@ -733,6 +746,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         ...(conversationId ? { conversationId } : {}),
         ...(_delegation ? { delegation: _delegation } : {}),
         ...(_userId ? { userId: _userId } : {}),
+        clientOrigin: STATION_CONTROL_MCP_ORIGIN,
       });
       // archive#3567 fix round FIX 1: `navigateTo`'s own result — `{success:
       // true}` or `{success: false, error}` — was previously discarded, so a
@@ -946,6 +960,7 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
         ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
         delegation: _delegation,
         userId: _userId,
+        clientOrigin: STATION_CONTROL_MCP_ORIGIN,
       });
       // archive#3567 fix round FIX 1: see the matching comment on
       // `send_message` above — report `navigateTo`'s real outcome instead of
@@ -1015,7 +1030,11 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
     },
     async ({ _userId, ...input }) =>
       jsonToolResult(
-        await continueDelegatedTask({ ...input, userId: _userId }),
+        await continueDelegatedTask({
+          ...input,
+          userId: _userId,
+          clientOrigin: STATION_CONTROL_MCP_ORIGIN,
+        }),
       ),
   );
 
@@ -1035,7 +1054,11 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
     },
     async ({ _userId, ...input }) =>
       jsonToolResult(
-        await respondToDelegatedTaskRequest({ ...input, userId: _userId }),
+        await respondToDelegatedTaskRequest({
+          ...input,
+          userId: _userId,
+          clientOrigin: STATION_CONTROL_MCP_ORIGIN,
+        }),
       ),
   );
 
@@ -1054,7 +1077,11 @@ export function registerOperationsTools(server: StationControlToolRegistry) {
     },
     async ({ _userId, ...input }) =>
       jsonToolResult(
-        await interruptDelegatedTask({ ...input, userId: _userId }),
+        await interruptDelegatedTask({
+          ...input,
+          userId: _userId,
+          clientOrigin: STATION_CONTROL_MCP_ORIGIN,
+        }),
       ),
   );
 

@@ -82,10 +82,10 @@ describe('credential recovery SDK workspace-connections domain', () => {
   });
 
   it('keeps credential recovery cache keys scoped to one agent connection', () => {
-    expect(credentialRecoveryQueryKey('codex-runtime')).toEqual([
+    expect(credentialRecoveryQueryKey('codex')).toEqual([
       'connections',
       'agent',
-      'codex-runtime',
+      'codex',
       'credential-recovery',
     ]);
   });
@@ -119,12 +119,12 @@ describe('credential recovery SDK workspace-connections domain', () => {
       enrolled: boolean;
     }>();
     await enrollment.mutationFn({
-      id: 'codex-runtime',
+      id: 'codex',
       ref: 'profile-a',
       enrolled: true,
     });
     expect(fetch).toHaveBeenLastCalledWith(
-      'http://example.test/api/connections/agent/codex-runtime/credential-recovery/profiles/profile-a/enrollment',
+      'http://example.test/api/connections/agent/codex/credential-recovery/profiles/profile-a/enrollment',
       expect.objectContaining({
         method: 'PUT',
         body: JSON.stringify({ enrolled: true }),
@@ -137,9 +137,9 @@ describe('credential recovery SDK workspace-connections domain', () => {
       id: string;
       automatic: boolean;
     }>();
-    await policy.mutationFn({ id: 'codex-runtime', automatic: false });
+    await policy.mutationFn({ id: 'codex', automatic: false });
     expect(fetch).toHaveBeenLastCalledWith(
-      'http://example.test/api/connections/agent/codex-runtime/credential-recovery/policy',
+      'http://example.test/api/connections/agent/codex/credential-recovery/policy',
       expect.objectContaining({
         method: 'PUT',
         body: JSON.stringify({ automatic: false }),
@@ -161,12 +161,12 @@ describe('credential recovery SDK workspace-connections domain', () => {
       includeCredentials?: boolean;
     }>();
     const result = await mutation.mutationFn({
-      id: 'codex-runtime',
+      id: 'codex',
       ref: 'profile-a',
     });
 
     expect(fetch).toHaveBeenCalledWith(
-      'http://example.test/api/connections/agent/codex-runtime/credential-recovery/profiles/profile-a/import',
+      'http://example.test/api/connections/agent/codex/credential-recovery/profiles/profile-a/import',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ includeCredentials: false }),
@@ -189,7 +189,7 @@ describe('credential recovery SDK workspace-connections domain', () => {
       timeoutMs?: number;
     }>();
     const variables = {
-      id: 'codex-runtime',
+      id: 'codex',
       ref: 'profile-a',
       confirmed: true as const,
       timeoutMs: 20_000,
@@ -198,7 +198,7 @@ describe('credential recovery SDK workspace-connections domain', () => {
     mutation.onSuccess(data, variables);
 
     expect(fetch).toHaveBeenCalledWith(
-      'http://example.test/api/connections/agent/codex-runtime/credential-recovery/profiles/profile-a/apply',
+      'http://example.test/api/connections/agent/codex/credential-recovery/profiles/profile-a/apply',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ confirmed: true, timeoutMs: 20_000 }),
@@ -211,10 +211,10 @@ describe('credential recovery SDK workspace-connections domain', () => {
       queryKey: ['connections', 'runtimes'],
     });
     expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(3, {
-      queryKey: ['connections', 'codex-runtime'],
+      queryKey: ['connections', 'codex'],
     });
     expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(4, {
-      queryKey: credentialRecoveryQueryKey('codex-runtime'),
+      queryKey: credentialRecoveryQueryKey('codex'),
     });
   });
 });

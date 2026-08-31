@@ -74,7 +74,7 @@ describe('agent-editor utils', () => {
         config: { engineId: 'station' },
       },
       {
-        id: 'codex-runtime',
+        id: 'codex',
         kind: 'agent',
         type: 'codex',
         name: 'Codex Runtime',
@@ -87,18 +87,13 @@ describe('agent-editor utils', () => {
     const managedConnection = agentConnections.find(
       (c: any) => c.id === 'managed-runtime',
     );
-    const codexConnection = agentConnections.find(
-      (c: any) => c.id === 'codex-runtime',
-    );
+    const codexConnection = agentConnections.find((c: any) => c.id === 'codex');
 
     const stationMatrix = resolveEngineCapabilityMatrix(
       'managed-runtime',
       managedConnection,
     );
-    const codexMatrix = resolveEngineCapabilityMatrix(
-      'codex-runtime',
-      codexConnection,
-    );
+    const codexMatrix = resolveEngineCapabilityMatrix('codex', codexConnection);
     const acpMatrix = resolveEngineCapabilityMatrix('acp');
 
     expect(stationMatrix.systemPrompt.state).toBe('native');
@@ -124,7 +119,7 @@ describe('agent-editor utils', () => {
       ...buildForm(),
       prompt: '',
       execution: {
-        agentConnectionId: 'codex-runtime',
+        agentConnectionId: 'codex',
         modelConnectionId: '',
         runtimeOptions: {},
       },

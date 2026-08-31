@@ -1,5 +1,5 @@
 import type { OrchestrationDelegationContext } from '@kontourai/station-contracts/orchestration';
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 
 /**
@@ -15,7 +15,7 @@ export type OrchestrationEvent = CanonicalRuntimeEvent extends infer Event
 
 export type OrchestrationSnapshotPayload = {
   sessions: Array<{
-    provider: ProviderKind;
+    provider: EngineId;
     threadId: string;
     status: string;
     /**

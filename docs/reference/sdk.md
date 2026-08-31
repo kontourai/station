@@ -211,7 +211,7 @@ This is the query used by runtime/model UI surfaces such as `ConnectionsHub`, `R
 ```tsx
 const { data: runtimeConnections = [] } = useRuntimeConnectionsQuery();
 
-const codexRuntime = runtimeConnections.find((c) => c.id === 'codex-runtime');
+const codexRuntime = runtimeConnections.find((c) => c.id === 'codex');
 const visibleModels =
   codexRuntime?.runtimeCatalog?.models.length
     ? codexRuntime.runtimeCatalog.models

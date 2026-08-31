@@ -1,15 +1,12 @@
 import crypto from 'node:crypto';
-import {
-  engineId,
-  engineRuntimeId,
-} from '@kontourai/station-contracts/agent-identity';
+import { engineId } from '@kontourai/station-contracts/agent-identity';
 import {
   acceptModelLaunchPlan,
+  type EngineId,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   type ModelLaunchPlan,
   modelSelectionReceipt,
-  type ProviderKind,
 } from '@kontourai/station-contracts/provider';
 import type {
   CanonicalRuntimeEvent,
@@ -58,7 +55,7 @@ interface BedrockSession extends ProviderSession {
 }
 
 export class BedrockAdapter implements ProviderAdapterShape {
-  readonly provider: ProviderKind = 'bedrock';
+  readonly provider: EngineId = 'bedrock';
   readonly metadata = {
     displayName: 'Amazon Bedrock',
     description:
@@ -70,7 +67,6 @@ export class BedrockAdapter implements ProviderAdapterShape {
       'interrupt',
     ],
     continuity: { resume: 'same-session', fork: 'replay-seed', rewind: 'none' },
-    runtimeId: engineRuntimeId('bedrock-runtime'),
     builtin: true,
     engineId: engineId('station'),
     abortSettlement: 'await',
@@ -81,7 +77,6 @@ export class BedrockAdapter implements ProviderAdapterShape {
       overrideAtStart: true,
       overrideAtResume: true,
       overridePerTurn: true,
-      modelConnectionId: 'bedrock-runtime',
     },
   } as const;
 

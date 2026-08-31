@@ -5412,17 +5412,28 @@ for (const requiredHelper of [
   'InstallPluginModal',
   'LayoutAssignmentModal',
   'overlayClassName="plugins__confirm-overlay"',
+  // #1014: plugin management's folder picker is no longer its own component
+  // (FolderPickerModal.tsx was deleted, a pure classNames adapter with one
+  // consumer) — PluginModalStack renders the shared FolderBrowserModal
+  // directly. This name must stay so plugin management cannot silently lose
+  // its folder picker to a future edit.
+  'FolderBrowserModal',
 ]) {
   if (!pluginModalStack.includes(requiredHelper)) {
     errors.push(`PluginModalStack.tsx must include ${requiredHelper}.`);
   }
 }
 
-const folderPickerModal = readRequiredSource(
-  '../src-ui/src/views/plugin-management/FolderPickerModal.tsx',
+// #1014: FolderPickerModal.tsx (plugin management's own folder-browser
+// wrapper) was deleted — PluginModalStack now renders the shared
+// FolderBrowserModal directly, which is what actually issues the browse
+// query. The guarantee below moves with the code rather than disappearing
+// with the file it used to name.
+const folderBrowserModal = readRequiredSource(
+  '../src-ui/src/components/modals/FolderBrowserModal.tsx',
 );
-if (!folderPickerModal.includes('useFileSystemBrowseQuery')) {
-  errors.push('FolderPickerModal must use useFileSystemBrowseQuery.');
+if (!folderBrowserModal.includes('useFileSystemBrowseQuery')) {
+  errors.push('FolderBrowserModal must use useFileSystemBrowseQuery.');
 }
 
 const installPluginModal = readRequiredSource(

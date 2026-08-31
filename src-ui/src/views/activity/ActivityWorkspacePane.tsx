@@ -1,8 +1,6 @@
 import { isCanonicalWorkspaceActivityPaneInstance } from '@kontourai/station-contracts/workspace-activity-pane';
-import { PageFrameActions } from '../../components/page-frame';
 import type { BuiltinWorkspacePaneProps } from '../../workspace-panes/builtinWorkspacePaneRegistry';
 import { WorkspacePaneBindingUnavailable } from '../../workspace-panes/WorkspacePaneBindingUnavailable';
-import { WorkspacePaneDockAction } from '../../workspace-panes/WorkspacePaneDockAction';
 import { SessionsView } from '../SessionsView';
 import { useActivityWorkspacePaneBinding } from './ActivityWorkspacePaneBinding';
 
@@ -24,18 +22,10 @@ import { useActivityWorkspacePaneBinding } from './ActivityWorkspacePaneBinding'
  * supported host produces — the same programming-error stance as Home's
  * renderer: this context's only producers are Activity's placements.
  *
- * The dock action goes through `PageFrameActions`: on the framed `/activity`
- * route it joins the page header's right-aligned actions instead of sitting
- * as a stray control above the split pane; in an unframed host it renders in
- * place. Placements where the affordance would be dishonest or ambiguous
- * (the dock itself; the Developer archive embed) null the dock context, and
- * the action then renders nothing — the same suppression the dock's Home
- * occupant uses.
+ * Placement belongs to shell chrome. This renderer contributes only Activity
+ * content, regardless of whether a route or region host mounts it.
  */
-export function ActivityWorkspacePane({
-  descriptor,
-  instance,
-}: BuiltinWorkspacePaneProps) {
+export function ActivityWorkspacePane({ instance }: BuiltinWorkspacePaneProps) {
   const binding = useActivityWorkspacePaneBinding();
   if (!isCanonicalWorkspaceActivityPaneInstance(instance))
     return (
@@ -45,15 +35,10 @@ export function ActivityWorkspacePane({
     );
   if (!binding) return null;
   return (
-    <>
-      <PageFrameActions>
-        <WorkspacePaneDockAction descriptor={descriptor} instance={instance} />
-      </PageFrameActions>
-      <SessionsView
-        apiBase={binding.apiBase}
-        sessionId={binding.sessionId}
-        focusHint={binding.focusHint}
-      />
-    </>
+    <SessionsView
+      apiBase={binding.apiBase}
+      sessionId={binding.sessionId}
+      focusHint={binding.focusHint}
+    />
   );
 }

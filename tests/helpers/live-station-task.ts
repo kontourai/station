@@ -26,6 +26,10 @@ export interface LiveStation {
   uiPort: number;
 }
 
+export function stationRootForLiveHome(home: string): string {
+  return dirname(dirname(home));
+}
+
 export async function allocateLiveStation(
   homePrefix: string,
   instancePrefix: string,
@@ -34,13 +38,16 @@ export async function allocateLiveStation(
   // listeners at +1/+2/+3. Keep the UI outside all four identities.
   const serverPort = await findFreePortBlock(4);
   const uiPort = await findFreePortOutside(serverPort, 4);
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), homePrefix)));
+  const home = join(root, 'instances', 'e2e');
+  mkdirSync(home, { recursive: true });
   return {
     api: `http://127.0.0.1:${serverPort}`,
     // On Windows tmpdir() can be an 8.3 path (for example
     // C:\\WINDOWS\\SERVIC~1\\...). The server resolves its watchers through
     // the long path, so pass the same canonical identity to every child.
     // Mixing the two causes libuv's Windows fs-event assertion during boot.
-    home: realpathSync.native(mkdtempSync(join(tmpdir(), homePrefix))),
+    home,
     instance: `${instancePrefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     serverPort,
     ui: `http://127.0.0.1:${uiPort}`,
@@ -115,6 +122,7 @@ export async function startStation(
     env: {
       ...process.env,
       PATH: `${NODE_BIN}:${process.env.PATH ?? ''}`,
+      STATION_ROOT: stationRootForLiveHome(live.home),
       STATION_HOME: live.home,
       STATION_E2E_SYSTEM_STATUS_READY: '1',
       ...(options.performanceReference
@@ -228,6 +236,7 @@ export async function stopStation(live: LiveStation): Promise<void> {
     env: {
       ...process.env,
       PATH: `${NODE_BIN}:${process.env.PATH ?? ''}`,
+      STATION_ROOT: stationRootForLiveHome(live.home),
       STATION_HOME: live.home,
     },
   });

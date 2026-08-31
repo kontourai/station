@@ -1,9 +1,6 @@
 import crypto from 'node:crypto';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
-import {
-  engineId,
-  engineRuntimeId,
-} from '@kontourai/station-contracts/agent-identity';
+import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import { stripReservedOrchestrationMetadata } from '@kontourai/station-contracts/provider';
 import {
@@ -551,7 +548,7 @@ export function mapStationAgentStreamEvent(options: {
 export class StationAgentAdapter implements ProviderAdapterShape {
   readonly provider = PROVIDER;
   readonly metadata = {
-    displayName: 'Station agents',
+    displayName: 'Station',
     description:
       'Station-owned agents with their configured model, skills, tools, and memory.',
     // archive#1885: `image-input` is declared because the relay below
@@ -575,7 +572,6 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       'resume',
     ],
     continuity: { resume: 'same-session', fork: 'replay-seed', rewind: 'none' },
-    runtimeId: engineRuntimeId(PROVIDER),
     builtin: true,
     engineId: engineId('station'),
     modelLaunch: {

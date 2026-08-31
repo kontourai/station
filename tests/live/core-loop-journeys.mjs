@@ -807,9 +807,10 @@ async function journeyProjectDeepLinkReload(note, shared) {
 // ---------------------------------------------------------------------------
 
 function runCli(args, { home, timeoutMs = 60_000 }) {
+  const stationRoot = resolve(home, '..', '..');
   const result = spawnSync('./station', args, {
     cwd: ROOT,
-    env: { ...process.env, STATION_HOME: home },
+    env: { ...process.env, STATION_ROOT: stationRoot, STATION_HOME: home },
     encoding: 'utf8',
     timeout: timeoutMs,
     windowsHide: true,
@@ -822,7 +823,9 @@ function runCli(args, { home, timeoutMs = 60_000 }) {
 
 async function journeyPairingLoop(note, shared) {
   const apiBase = `http://127.0.0.1:${SERVER_PORT}`;
-  const requesterHome = mkdtempSync(join(tmpdir(), 'core-loop-station-b-'));
+  const requesterRoot = mkdtempSync(join(tmpdir(), 'core-loop-station-b-'));
+  const requesterHome = join(requesterRoot, 'instances', 'requester');
+  mkdirSync(requesterHome, { recursive: true });
   note(`second temp-home Station at ${requesterHome}`);
 
   // A freshly paired observer for this journey's host-side reads: the
@@ -854,7 +857,11 @@ async function journeyPairingLoop(note, shared) {
     ],
     {
       cwd: ROOT,
-      env: { ...process.env, STATION_HOME: requesterHome },
+      env: {
+        ...process.env,
+        STATION_ROOT: requesterRoot,
+        STATION_HOME: requesterHome,
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     },
@@ -1042,7 +1049,7 @@ async function journeyPairingLoop(note, shared) {
     }
   } finally {
     if (requester.exitCode === null) requester.kill('SIGTERM');
-    rmSync(requesterHome, { recursive: true, force: true });
+    rmSync(requesterRoot, { recursive: true, force: true });
     await observerContext.close();
   }
 }
@@ -1057,12 +1064,17 @@ console.log(
 );
 
 console.log('starting main instance (builds on first run)...');
+const hostRoot = mkdtempSync(join(tmpdir(), 'core-loop-host-'));
+const hostHome = join(hostRoot, 'instances', 'host');
+mkdirSync(hostHome, { recursive: true });
 const main = await startTempHomeInstance({
   root: ROOT,
   instance: INSTANCE,
   serverPort: SERVER_PORT,
   uiPort: UI_PORT,
   logPath: join(OUTPUT_ROOT, 'station.log'),
+  home: hostHome,
+  env: { ...process.env, STATION_ROOT: hostRoot, STATION_HOME: hostHome },
 });
 
 let browser;
@@ -1109,6 +1121,7 @@ try {
 } finally {
   await browser?.close();
   await main.stop();
+  rmSync(hostRoot, { recursive: true, force: true });
   if (sharedTeardown.projectDir) {
     rmSync(sharedTeardown.projectDir, { recursive: true, force: true });
   }

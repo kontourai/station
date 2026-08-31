@@ -107,12 +107,9 @@ describe('station#3309 chat dock motion', () => {
     }
   });
 
-  test('the glyphs that answer "which way is the dock going" both turn', () => {
-    // Adjacent controls behaving differently is the polish complaint itself:
-    // the desktop collapse chevron always rotated, its two siblings snapped.
+  test('the visibility chevrons turn while region extent uses a distinct icon', () => {
     for (const selector of [
       '.chat-dock__chevron-svg',
-      '.chat-dock__maximize-glyph',
       '.chat-dock__mobile-dock-toggle-glyph',
     ]) {
       const bodies = rulesFor(indexCss, selector);
@@ -128,5 +125,7 @@ describe('station#3309 chat dock motion', () => {
         `expected a token-timed transform transition on "${selector}"`,
       ).toBe(true);
     }
+    expect(indexCss).toContain('.chat-dock__extent-svg');
+    expect(indexCss).not.toContain('.chat-dock__maximize-glyph');
   });
 });

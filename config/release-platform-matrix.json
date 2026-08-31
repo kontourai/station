@@ -136,16 +136,27 @@
         "evidence": {
           "kind": "not-verified",
           "owner": "#844",
-          "reason": "Nightly does not yet produce portable/container artifacts."
+          "reason": "The portable-only staging receipt is evidence, not a release ring."
+        },
+        "stagedFleet": {
+          "stageState": "NOT_STAGED",
+          "publicationState": "NOT_PUBLISHED",
+          "installState": "NOT_VERIFIED",
+          "updateState": "NOT_VERIFIED",
+          "platformSigningState": "NOT_VERIFIED",
+          "updaterSigningState": "UNSUPPORTED",
+          "reason": "A hosted portable staging receipt is required before this static matrix can claim staged evidence; publication and user outcomes remain unverified."
         }
       },
       "macos": {
         "state": "configured",
-        "buildJob": "nightly.yml#nightly-desktop",
-        "testLane": "nightly.yml#test-gate plus notarized artifact checks",
+        "buildJob": "nightly-native-cohort.yml#stage-macos",
+        "testLane": "nightly.yml#test-gate plus cohort admission and notarized artifact checks",
         "publicationTarget": "rolling GitHub prerelease nightly-desktop",
         "updateAuthority": "signed Tauri Nightly updater feed",
         "rollbackSource": "previous rolling prerelease asset retained by release history",
+        "requiredForPromotion": true,
+        "availabilityPolicy": "atomic-native-cohort; fleet completion remains NOT_VERIFIED",
         "evidence": { "kind": "deploy-ledger", "selector": "nightly-desktop" }
       },
       "windows": {
@@ -176,24 +187,29 @@
       },
       "android": {
         "state": "configured",
-        "buildJob": "nightly.yml#nightly",
-        "testLane": "nightly.yml#test-gate plus signed AAB identity checks",
+        "buildJob": "nightly-native-cohort.yml#stage-android",
+        "testLane": "nightly.yml#test-gate plus cohort admission and signed AAB identity checks",
         "publicationTarget": "Google Play Internal io.kontourai.station.nightly",
         "updateAuthority": "Google Play Internal testing track",
         "rollbackSource": "previous immutable Play version code",
+        "requiredForPromotion": true,
+        "availabilityPolicy": "atomic-native-cohort; fleet completion remains NOT_VERIFIED",
         "evidence": { "kind": "deploy-ledger", "selector": "nightly-android" }
       },
       "ios": {
-        "state": "gated",
-        "buildJob": null,
-        "testLane": "packaged iOS Simulator XCUITest",
-        "publicationTarget": "TestFlight Nightly listing not configured",
-        "updateAuthority": "TestFlight after separate Nightly App ID exists",
+        "state": "configured",
+        "buildJob": "nightly-native-cohort.yml#deliver-ios",
+        "iconSource": "src-desktop/icons/nightly/icon.png",
+        "testLane": "nightly exact-SHA gate plus signed IPA/profile/package checks",
+        "publicationTarget": "TestFlight for io.kontourai.station.nightly",
+        "updateAuthority": "TestFlight internal group",
         "rollbackSource": "previous processed TestFlight Nightly build",
+        "requiredForPromotion": true,
+        "availabilityPolicy": "native cohort recovery remains locked until exact-version TestFlight reconciliation succeeds; fleet completion remains NOT_VERIFIED",
         "evidence": {
           "kind": "not-verified",
-          "owner": "#844",
-          "reason": "Separate Nightly App ID, profile, icon, and TestFlight listing are absent."
+          "owner": "#1016",
+          "reason": "Provider prerequisites and a processed channel receipt are required before the first upload."
         }
       }
     },
@@ -264,16 +280,17 @@
         }
       },
       "ios": {
-        "state": "gated",
-        "buildJob": null,
-        "testLane": "simulator verification remains stable-only in release.yml",
-        "publicationTarget": "TestFlight Beta listing not configured",
-        "updateAuthority": "TestFlight after separate Beta App ID exists",
+        "state": "configured",
+        "buildJob": "release.yml#ios-device",
+        "iconSource": "src-desktop/icons/beta/icon.png",
+        "testLane": "tag full regression plus signed IPA/profile/package checks",
+        "publicationTarget": "TestFlight for io.kontourai.station.beta",
+        "updateAuthority": "TestFlight internal group",
         "rollbackSource": "previous processed TestFlight Beta build",
         "evidence": {
           "kind": "not-verified",
-          "owner": "#844",
-          "reason": "Separate Beta App ID, profile, icon, and TestFlight listing are absent."
+          "owner": "#1016",
+          "reason": "Provider prerequisites and a processed channel receipt are required before the first upload."
         }
       }
     },
@@ -346,6 +363,7 @@
       "ios": {
         "state": "configured",
         "buildJob": "release.yml#ios-simulator and release.yml#ios-device",
+        "iconSource": "src-desktop/icons/icon.png",
         "testLane": "packaged simulator XCUITest plus IPA profile/signature/package checks",
         "publicationTarget": "TestFlight for io.kontourai.station before App Store promotion",
         "updateAuthority": "TestFlight and App Store Connect",

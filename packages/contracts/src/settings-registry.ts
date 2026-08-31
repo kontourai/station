@@ -42,6 +42,13 @@ export interface SettingDefinition<
   label: string;
   description: string;
   /**
+   * False when this persisted field is an implementation detail rather than
+   * a setting a person can meaningfully choose. UI registry consumers must
+   * enumerate `USER_FACING_APP_SETTINGS_REGISTRY`, and row renderers also
+   * fail closed on this marker.
+   */
+  userFacing?: false;
+  /**
    * Optional input placeholder for the registry-driven row renderer
    * (station#settings-revamp slice 3, `views/settings/registry-row.tsx`) —
    * used instead of a fabricated default when a field has real "absent"
@@ -336,12 +343,14 @@ export const APP_SETTINGS_REGISTRY = [
     key: 'runtime',
     scope: 'station',
     descriptor: { kind: 'enum', values: ['voltagent', 'strands'] },
-    // "Agent runtime" retired (station#1543): "runtime" is not a user-facing
-    // word (docs/glossary.md, "Runtime — retired"). This key selects the agent
-    // FRAMEWORK that Station's own engine is built on, which is the precise
-    // term the old description was already reaching for.
-    label: 'Agent framework',
-    description: "Agent framework Station's own engine runs on.",
+    // Persisted for development boot selection, but the framework underneath
+    // Station's engine is not a product choice or capability. Keep maintainer
+    // copy because internal config/provenance diagnostics may name the field;
+    // renderers fail closed on `userFacing: false` below.
+    label: 'Station engine framework (internal)',
+    description:
+      "Implementation framework used by Station's engine; not a user-facing product setting.",
+    userFacing: false,
     // Confirmed against runtime-initialize.ts / system-status-routes.ts:
     // `appConfig.runtime || 'voltagent'`.
     defaultValue: 'voltagent',
@@ -458,6 +467,11 @@ export const APP_SETTINGS_REGISTRY = [
     // `pending` — see `AppConfig.firstRun`.
   }),
 ] as const satisfies readonly SettingDefinition[];
+
+/** Persisted settings that are eligible for registry-driven UI rendering. */
+export const USER_FACING_APP_SETTINGS_REGISTRY = APP_SETTINGS_REGISTRY.filter(
+  (definition) => definition.userFacing !== false,
+);
 
 /**
  * Registered keys for which `null` is a stored value rather than a clear —

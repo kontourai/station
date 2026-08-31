@@ -546,10 +546,8 @@ export function externalToolPolicyAdapters(): Array<{
 }
 
 /**
- * Keyed by `ProviderKind` (a plain `string`, matching both the resolver's
- * `connection.type` and this module's own lookups) — NOT by `engineId`,
- * which carries §4.1's canonical display id (e.g. 'claude-code' for the
- * 'claude' provider). 'station' is editor-only: sessions never carry it as
+ * Keyed by the same canonical `EngineId` carried by each entry. 'station' is
+ * editor-only: sessions never carry it as
  * a provider (Station's own engine has no session-delivery concept — it IS
  * the execution, not a delivered-to target).
  */
@@ -594,7 +592,7 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     builtInToolControl: { state: 'station-owned' },
   },
   claude: {
-    engineId: toEngineId('claude-code'),
+    engineId: toEngineId('claude'),
     displayName: 'Claude Code',
     // systemPrompt deliverable via a per-session flag.
     systemPrompt: { state: 'session', channel: 'flag' },
@@ -895,30 +893,6 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
 };
 
 /**
- * Native adapter projections carry two identities on purpose: their private
- * adapter selector (`codex-runtime`) is the connection `type`, while their
- * public engine identity (`codex`) is carried in `engineId`. The latter can
- * name a matrix only when the former is that matrix's own provider key or its
- * native runtime selector. Requiring both prevents an arbitrary unknown
- * connection that merely claims a known engine id from inheriting its
- * delivery capability.
- */
-function matrixForNativeEngineProjection(
-  type: string | undefined,
-  engineId: EngineId,
-): EngineCapabilityMatrix | undefined {
-  for (const [providerKind, matrix] of Object.entries(
-    ENGINE_CAPABILITY_MATRICES,
-  )) {
-    if (matrix.engineId !== engineId) continue;
-    if (type === providerKind || type === `${providerKind}-runtime`) {
-      return matrix;
-    }
-  }
-  return undefined;
-}
-
-/**
  * The conservative matrix for an external engine connection whose type has
  * no dedicated entry in `ENGINE_CAPABILITY_MATRICES` — every authored
  * capability surface is `unsupported` (never guessed editable), including
@@ -944,11 +918,6 @@ export const UNKNOWN_EXTERNAL_ENGINE_MATRIX: EngineCapabilityMatrix = {
   builtInTools: { state: 'unenumerated' },
   builtInToolControl: { state: 'none' },
 };
-
-const KNOWN_MANAGED_RUNTIME_IDS = new Set([
-  'bedrock-runtime',
-  'ollama-runtime',
-]);
 
 /**
  * Derives `session-agent-resolution.ts`'s per-provider delivery-channel map
@@ -984,7 +953,7 @@ export function sessionDeliveryChannels(
  *                                                     its type is its exact
  *                                                     provider/native selector;
  *                                                     otherwise UNKNOWN_EXTERNAL_ENGINE_MATRIX
- *   known managed id / executionClass 'managed'   -> station (deprecated
+ *   executionClass 'managed'                      -> station (deprecated
  *                                                     read-compat)
  *   executionClass 'connected' or any other id     -> that connection's type
  *                                                     (a matrix entry, else
@@ -1017,11 +986,7 @@ export function resolveEngineCapabilityMatrix(
     if (explicitEngineId === 'station') {
       return ENGINE_CAPABILITY_MATRICES.station;
     }
-    const type = connection?.type;
-    const nativeMatrix = matrixForNativeEngineProjection(
-      type,
-      explicitEngineId,
-    );
+    const nativeMatrix = ENGINE_CAPABILITY_MATRICES[explicitEngineId];
     if (nativeMatrix) return nativeMatrix;
     // A canonical engine id is authoritative. Do not fall through to a
     // provider-type matrix when the two disagree: that would let a malformed
@@ -1029,10 +994,7 @@ export function resolveEngineCapabilityMatrix(
     // from a different engine.
     return UNKNOWN_EXTERNAL_ENGINE_MATRIX;
   }
-  if (
-    (agentConnectionId && KNOWN_MANAGED_RUNTIME_IDS.has(agentConnectionId)) ||
-    connection?.config?.executionClass === 'managed'
-  ) {
+  if (connection?.config?.executionClass === 'managed') {
     return ENGINE_CAPABILITY_MATRICES.station;
   }
   if (connection?.config?.executionClass === 'connected' || agentConnectionId) {

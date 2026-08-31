@@ -15,7 +15,7 @@ import type {
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ScheduleNotificationOpts } from '@kontourai/station-contracts/notification';
 import type { PluginPreview } from '@kontourai/station-contracts/plugin';
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import type {
   AddJobOpts,
@@ -238,7 +238,7 @@ export interface ITemplateProvider {
 
 export interface IProviderAdapterRegistry {
   register(adapter: ProviderAdapterShape): void;
-  get(provider: ProviderKind): ProviderAdapterShape | undefined;
+  get(provider: EngineId): ProviderAdapterShape | undefined;
   list(): ProviderAdapterShape[];
   onChange?(listener: () => void): () => void;
 }

@@ -40,7 +40,7 @@ const DEFAULT_AGENT_CONNECTIONS: unknown[] = [
   {
     id: 'codex',
     kind: 'agent',
-    type: 'codex-runtime',
+    type: 'codex',
     name: 'Codex',
     enabled: true,
     status: 'ready',
@@ -51,15 +51,15 @@ const DEFAULT_AGENT_CONNECTIONS: unknown[] = [
     setup: { state: 'ready', detected: true, configured: false },
   },
   {
-    id: 'bedrock-runtime',
+    id: 'station',
     kind: 'agent',
-    type: 'bedrock-runtime',
+    type: 'station-agent',
     name: 'Station engine',
     enabled: true,
     status: 'ready',
     capabilities: ['agent-runtime'],
     prerequisites: [],
-    config: { executionClass: 'managed' },
+    config: { engineId: 'station' },
     setup: { state: 'ready', detected: true, configured: false },
   },
 ];
@@ -67,7 +67,7 @@ const DEFAULT_AGENT_CATALOG: unknown[] = [
   {
     id: 'claude',
     kind: 'agent',
-    type: 'claude-runtime',
+    type: 'claude',
     name: 'Claude Code',
     enabled: true,
     status: 'missing_prerequisites',
@@ -259,7 +259,7 @@ describe('AgentConnectionView', () => {
       {
         id: 'muse',
         kind: 'agent',
-        type: 'muse-runtime',
+        type: 'muse',
         name: 'Muse',
         enabled: true,
         status: 'ready',
@@ -275,7 +275,7 @@ describe('AgentConnectionView', () => {
       {
         id: 'muse',
         kind: 'agent',
-        type: 'muse-runtime',
+        type: 'muse',
         name: 'Muse',
         enabled: true,
         status: 'ready',
@@ -310,7 +310,7 @@ describe('AgentConnectionView', () => {
       {
         id: 'claude',
         kind: 'agent',
-        type: 'claude-runtime',
+        type: 'claude',
         name: 'Claude Code',
         enabled: true,
         status: 'ready',
@@ -396,12 +396,12 @@ describe('AgentConnectionView', () => {
   // The section frame owns this section's single add action and reaches the
   // catalogue by route (`/connections/engines/new`), not by an in-view button
   // so the route is what these two drive now.
-  test('keeps available apps in Add and hides the managed Station engine', () => {
+  test('keeps available apps in Add and shows the Station engine returned by the API', () => {
     const { rerender } = render(<AgentConnectionView onNavigate={vi.fn()} />);
 
     expect(screen.getByText('Codex')).toBeTruthy();
     expect(screen.queryByText('Claude Code')).toBeNull();
-    expect(screen.queryByText('Station engine')).toBeNull();
+    expect(screen.getByText('Station engine')).toBeTruthy();
 
     rerender(
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
@@ -414,7 +414,7 @@ describe('AgentConnectionView', () => {
     // `setup.state: 'available', detected: true` reads "Found, not
     // connected" everywhere else on Connections.
     expect(screen.getByText('Found, not connected')).toBeTruthy();
-    expect(screen.queryByText('Station engine')).toBeNull();
+    expect(screen.getByText('Station engine')).toBeTruthy();
 
     // #592 slice 2 review M3: bare "Add" is ambiguous with more than one row
     // in the catalogue — the accessible name carries the engine's own name.
@@ -619,7 +619,7 @@ describe('AgentConnectionView', () => {
       connectionQueryData = {
         id: 'claude',
         kind: 'agent',
-        type: 'claude-runtime',
+        type: 'claude',
         name: 'Claude Code',
         enabled: true,
         status,
@@ -644,11 +644,11 @@ describe('AgentConnectionView', () => {
     },
   );
 
-  test('claude-runtime shows an accessible skills-materialization multiselect, off by default, that saves the selected ids', () => {
+  test('claude shows an accessible skills-materialization multiselect, off by default, that saves the selected ids', () => {
     connectionQueryData = {
       id: 'claude',
       kind: 'agent',
-      type: 'claude-runtime',
+      type: 'claude',
       name: 'Claude Code',
       enabled: true,
       status: 'ready',
@@ -686,11 +686,11 @@ describe('AgentConnectionView', () => {
     });
   });
 
-  test('claude-runtime shows the app-home opt-in, off by default, that saves the toggle', () => {
+  test('claude shows the app-home opt-in, off by default, that saves the toggle', () => {
     connectionQueryData = {
       id: 'claude',
       kind: 'agent',
-      type: 'claude-runtime',
+      type: 'claude',
       name: 'Claude Code',
       enabled: true,
       status: 'ready',
@@ -739,12 +739,12 @@ describe('AgentConnectionView', () => {
     });
   });
 
-  // archive#896: codex-runtime joins the app-home opt-in.
-  test('codex-runtime shows the app-home opt-in, off by default, that saves the toggle', () => {
+  // archive#896: codex joins the app-home opt-in.
+  test('codex shows the app-home opt-in, off by default, that saves the toggle', () => {
     connectionQueryData = {
       id: 'codex',
       kind: 'agent',
-      type: 'codex-runtime',
+      type: 'codex',
       name: 'Codex',
       enabled: true,
       status: 'ready',
@@ -797,7 +797,7 @@ describe('AgentConnectionView', () => {
     connectionQueryData = {
       id: 'claude',
       kind: 'agent',
-      type: 'claude-runtime',
+      type: 'claude',
       name: 'Claude Code',
       enabled: true,
       status: 'ready',
@@ -852,7 +852,7 @@ describe('AgentConnectionView', () => {
     connectionQueryData = {
       id: 'claude',
       kind: 'agent',
-      type: 'claude-runtime',
+      type: 'claude',
       name: 'Claude Code',
       enabled: true,
       status: 'ready',
@@ -947,7 +947,7 @@ describe('AgentConnectionView', () => {
     connectionQueryData = {
       id: 'codex',
       kind: 'agent',
-      type: 'codex-runtime',
+      type: 'codex',
       name: 'Codex',
       enabled: true,
       status: 'ready',
@@ -982,7 +982,7 @@ describe('AgentConnectionView', () => {
     connectionQueryData = {
       id: 'codex',
       kind: 'agent',
-      type: 'codex-runtime',
+      type: 'codex',
       name: 'Codex',
       enabled: true,
       status: 'ready',
@@ -1010,7 +1010,7 @@ describe('AgentConnectionView', () => {
     connectionQueryData = {
       id: 'codex',
       kind: 'agent',
-      type: 'codex-runtime',
+      type: 'codex',
       name: 'Codex',
       enabled: true,
       status: 'ready',
@@ -1049,7 +1049,7 @@ describe('AgentConnectionView', () => {
     connectionQueryData = {
       id: 'codex',
       kind: 'agent',
-      type: 'codex-runtime',
+      type: 'codex',
       name: 'Codex',
       enabled: true,
       status: 'ready',
@@ -1087,7 +1087,7 @@ describe('AgentConnectionView', () => {
     connectionQueryData = {
       id: 'codex',
       kind: 'agent',
-      type: 'codex-runtime',
+      type: 'codex',
       name: 'Codex',
       enabled: true,
       status: 'ready',
@@ -1130,7 +1130,7 @@ describe('AgentConnectionView', () => {
     connectionQueryData = {
       id: 'claude',
       kind: 'agent',
-      type: 'claude-runtime',
+      type: 'claude',
       name: 'Claude Code',
       enabled: true,
       status: 'ready',
@@ -1165,7 +1165,7 @@ describe('AgentConnectionView', () => {
     connectionQueryData = {
       id: 'claude',
       kind: 'agent',
-      type: 'claude-runtime',
+      type: 'claude',
       name: 'Claude Code',
       enabled: true,
       status: 'ready',
@@ -1194,7 +1194,7 @@ describe('AgentConnectionView', () => {
     connectionQueryData = {
       id: 'claude',
       kind: 'agent',
-      type: 'claude-runtime',
+      type: 'claude',
       name: 'Claude Code',
       enabled: true,
       status: 'ready',
@@ -1267,7 +1267,7 @@ describe('AgentConnectionView', () => {
       connectionQueryData = {
         id: 'claude',
         kind: 'agent',
-        type: 'claude-runtime',
+        type: 'claude',
         name: 'Claude Code',
         enabled: true,
         status: 'ready',

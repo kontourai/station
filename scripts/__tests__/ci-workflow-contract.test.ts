@@ -283,7 +283,7 @@ describe('CI verification workflow contracts', () => {
         'github.event.workflow_run.head_repository.full_name == github.repository',
       );
       expect(job).toContain(
-        'actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd',
+        'actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3',
       );
       expect(job).toContain('github.event.workflow_run.html_url');
       expect(job).toContain('github.event.workflow_run.head_sha');
@@ -1339,9 +1339,24 @@ describe('every Tauri invocation is rooted at the app directory', () => {
   const DISCOVERY_EXPOSED = [
     'build-android.yml',
     'build-ios.yml',
-    'nightly.yml',
+    'nightly-native-cohort.yml',
     'release.yml',
   ];
+
+  function tauriInvocationErrors(step: string) {
+    const hasWorkingDirectory = step.includes('working-directory: src-desktop');
+    return step
+      .split('\n')
+      .filter((line) => line.includes('npx tauri'))
+      .flatMap((line) => {
+        const errors: string[] = [];
+        if (!hasWorkingDirectory && !line.includes('(cd src-desktop &&'))
+          errors.push('unrooted Tauri invocation');
+        if (!line.includes('--config'))
+          errors.push('Tauri invocation without explicit config');
+        return errors;
+      });
+  }
 
   it.each(DISCOVERY_EXPOSED)(
     '%s runs tauri from src-desktop, not the repo root',
@@ -1355,14 +1370,18 @@ describe('every Tauri invocation is rooted at the app directory', () => {
         .filter((step) => step.includes('npx tauri'));
       expect(steps.length).toBeGreaterThan(0);
       for (const step of steps) {
-        expect(
-          step,
-          `tauri step without an app-directory cwd in ${file}`,
-        ).toContain('working-directory: src-desktop');
-        expect(step).toContain('--config');
+        expect(tauriInvocationErrors(step), file).toEqual([]);
       }
     },
   );
+
+  it('rejects an unrooted Tauri invocation even when another invariant is present', () => {
+    expect(
+      tauriInvocationErrors(
+        'run: npx tauri build --config "$RUNNER_TEMP/tauri.json"',
+      ),
+    ).toContain('unrooted Tauri invocation');
+  });
 
   it('keeps the spike configs recognisable as the hazard they are', () => {
     // These are legitimate cargo spikes whose build.rs needs a config, so they

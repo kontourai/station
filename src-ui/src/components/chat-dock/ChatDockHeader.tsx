@@ -4,7 +4,6 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import type { DockMode } from '../../types';
 import { isSessionExecutionActive } from '../../utils/execution';
-import { ArrowDownGlyph, ArrowLeftGlyph, ArrowUpGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { DockPlacementControl } from './DockPlacementControl';
 import type { DockSnap } from './dockSnap';
@@ -18,6 +17,24 @@ const loadChatDockWorkspaceActions = () =>
   import('./ChatDockWorkspaceControls').then((module) => ({
     default: module.ChatDockWorkspaceActions,
   }));
+
+function RegionExtentGlyph({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="chat-dock__extent-svg"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      {expanded ? (
+        <path d="M9 3v6H3m12-6v6h6M9 21v-6H3m12 6v-6h6" />
+      ) : (
+        <path d="M3 9h6V3m12 6h-6V3M3 15h6v6m12-6h-6v6" />
+      )}
+    </svg>
+  );
+}
 
 interface Session {
   id: string;
@@ -125,14 +142,11 @@ export function ChatDockHeader({
   onDockPlacementChange,
   occupantPicker,
 }: ChatDockHeaderProps) {
-  const { isDockOpen, isDockMaximized, dockMode } = useNavigation();
+  const { isDockOpen, isDockMaximized } = useNavigation();
   const toggleDockShortcut = useShortcutDisplay('dock.toggle');
   const maximizeShortcut = useShortcutDisplay('dock.maximize');
-  // Legacy placement glyph semantics remain until left/right become live
-  // regions; changing this to effective placement can move chrome on a phone.
-  // #928 step 3
-  const side = dockMode === 'bottom' ? null : dockMode;
-
+  const side =
+    effectiveDockSlotPlacement === 'bottom' ? null : effectiveDockSlotPlacement;
   const activeSessions = (chatControls?.sessions ?? []).filter((s) =>
     isSessionExecutionActive(s),
   );
@@ -345,32 +359,23 @@ export function ChatDockHeader({
               title={
                 isDockMaximized
                   ? withShortcutHint(
-                      'Restore',
+                      'Restore dock region size',
                       'dock.maximize',
                       () => maximizeShortcut,
                     )
                   : withShortcutHint(
-                      'Maximize',
+                      'Expand dock region to workspace',
                       'dock.maximize',
                       () => maximizeShortcut,
                     )
               }
               aria-label={
-                isDockMaximized ? 'Restore chat dock' : 'Maximize chat dock'
+                isDockMaximized
+                  ? 'Restore dock region size'
+                  : 'Expand dock region to workspace'
               }
             >
-              <span
-                className={`chat-dock__maximize-glyph${side && isDockMaximized === (side === 'right') ? ' is-flipped' : ''}`}
-                aria-hidden="true"
-              >
-                {side ? (
-                  <ArrowLeftGlyph />
-                ) : isDockMaximized ? (
-                  <ArrowDownGlyph />
-                ) : (
-                  <ArrowUpGlyph />
-                )}
-              </span>
+              <RegionExtentGlyph expanded={isDockMaximized} />
               <span className="chat-dock__subtitle">{maximizeShortcut}</span>
             </button>
             <button
@@ -387,13 +392,11 @@ export function ChatDockHeader({
                 );
               }}
               title={withShortcutHint(
-                !isDockOpen ? 'Expand' : 'Collapse',
+                !isDockOpen ? 'Show dock region' : 'Hide dock region',
                 'dock.toggle',
                 () => toggleDockShortcut,
               )}
-              aria-label={
-                !isDockOpen ? 'Expand chat dock' : 'Collapse chat dock'
-              }
+              aria-label={!isDockOpen ? 'Show dock region' : 'Hide dock region'}
             >
               <svg
                 aria-hidden="true"

@@ -63,7 +63,7 @@ function setup(overrides: Record<string, unknown> = {}) {
     getRuntimeConnections: vi.fn().mockResolvedValue([
       {
         id: 'codex',
-        type: 'codex-runtime',
+        type: 'codex',
         name: 'Codex',
         status: 'disconnected',
         enabled: true,
@@ -622,7 +622,7 @@ describe('registry-backed enriched Agent routes', () => {
       getRuntimeConnections: vi.fn().mockResolvedValue([
         {
           id: 'codex',
-          type: 'codex-runtime',
+          type: 'codex',
           name: 'Codex',
           status: 'ready',
           enabled: true,
@@ -658,8 +658,15 @@ describe('registry-backed enriched Agent routes', () => {
 
   test('gets defaults only by their exact public id', async () => {
     const { app } = setup();
-    const exact = await app.request('/codex');
-    const internal = await app.request('/codex-runtime');
+    const exactPublicPath = '/codex';
+    // This retired pre-unification alias is intentionally negative. Keep the
+    // explicit inequality guard so a bulk identity replacement cannot silently
+    // turn both requests into the same public route again.
+    const retiredInternalPath = '/codex-runtime';
+    expect(retiredInternalPath).not.toBe(exactPublicPath);
+
+    const exact = await app.request(exactPublicPath);
+    const internal = await app.request(retiredInternalPath);
     expect(exact.status).toBe(200);
     expect((await json(exact)).data.slug).toBe('codex');
     expect(internal.status).toBe(404);
@@ -780,7 +787,7 @@ describe('registry-backed enriched Agent routes', () => {
       getRuntimeConnections: vi.fn().mockResolvedValue([
         {
           id: 'codex',
-          type: 'codex-runtime',
+          type: 'codex',
           name: 'Codex',
           status: 'missing_prerequisites',
           enabled: true,
@@ -930,7 +937,7 @@ describe('registry-backed enriched Agent routes', () => {
             {
               id: 'codex',
               name: 'Codex CLI',
-              type: 'codex-runtime',
+              type: 'codex',
               enabled: testCase.enabled,
               status: testCase.status,
               capabilities: ['agent-runtime'],
@@ -953,7 +960,7 @@ describe('registry-backed enriched Agent routes', () => {
   test('the runtime-connection projection carries the adapter provider, not just the runtime type', () => {
     const summary = runtimeConnectionSummary({
       id: 'claude' as never,
-      type: 'claude-runtime',
+      type: 'claude',
       name: 'Claude Code',
       enabled: true,
       status: 'ready',
@@ -963,7 +970,7 @@ describe('registry-backed enriched Agent routes', () => {
 
     // `type` is a runtime selector and is NOT the provider — reading it as
     // one is the mistake this pins.
-    expect(summary.type).toBe('claude-runtime');
+    expect(summary.type).toBe('claude');
     expect(summary.provider).toBe('claude');
   });
 
@@ -1054,7 +1061,7 @@ describe('the built-in engine selection is the RUNTIME projection (#3662 review 
       getRuntimeConnections: vi.fn().mockResolvedValue([
         {
           id: 'codex',
-          type: 'codex-runtime',
+          type: 'codex',
           provider: 'codex',
           name: 'Codex',
           status: 'ready',

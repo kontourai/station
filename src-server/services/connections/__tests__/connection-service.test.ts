@@ -1,7 +1,7 @@
 import {
   agentId,
   engineConnectionId,
-  engineRuntimeId,
+  engineId,
 } from '@kontourai/station-contracts/agent-identity';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentRegistry } from '../../../domain/agent-registry.js';
@@ -781,94 +781,6 @@ describe('ConnectionService — model connection check evidence (RT-06)', () => 
 });
 
 describe('ConnectionService', () => {
-  test('uses canonical runtime mapping but emits an explicit engine public identity without a registry', async () => {
-    const service = createConnectionServiceForTest(
-      {
-        listProviderConnections: vi.fn(() => []),
-        saveProviderConnection: vi.fn(),
-        deleteProviderConnection: vi.fn(),
-        checkHealth: vi.fn(),
-      } as any,
-      () =>
-        [
-          {
-            provider: 'codex',
-            metadata: {
-              displayName: 'Codex',
-              description: 'runtime',
-              capabilities: ['agent-runtime'],
-              engineId: 'codex-engine',
-            },
-            getPrerequisites: async () => [],
-          },
-        ] as any,
-      async () => [],
-      () => ({ connections: [] }),
-      async () => ({}) as any,
-      vi.fn(async (updates: any) => updates),
-    );
-    await expect(service.listRuntimeConnectionCatalog()).resolves.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: engineConnectionId('codex-engine'),
-          config: expect.objectContaining({
-            runtimeConnectionId: 'codex-runtime',
-          }),
-        }),
-      ]),
-    );
-    await expect(
-      service.listEngineConnectionMigrationCandidates(),
-    ).resolves.toEqual([
-      {
-        engineConnectionId: engineConnectionId('codex-engine'),
-        runtimeId: engineRuntimeId('codex-runtime'),
-      },
-    ]);
-  });
-
-  test('lists migration identity from Adapter metadata without invoking discovery', async () => {
-    const never = vi.fn(() => new Promise<never>(() => {}));
-    const service = createConnectionServiceForTest(
-      {
-        listProviderConnections: vi.fn(() => []),
-        saveProviderConnection: vi.fn(),
-        deleteProviderConnection: vi.fn(),
-        checkHealth: vi.fn(),
-      } as any,
-      () =>
-        [
-          {
-            provider: 'custom',
-            metadata: {
-              displayName: 'Custom Runtime',
-              description: 'Plugin-provided runtime adapter',
-              capabilities: ['agent-runtime'],
-              runtimeId: engineRuntimeId('custom-runtime'),
-              connectionId: engineConnectionId('custom'),
-            },
-            getPrerequisites: never,
-            listModels: never,
-            getCommands: never,
-          },
-        ] as any,
-      async () => [],
-      () => ({ connections: [] }),
-      async () => ({}) as any,
-      vi.fn(async (updates: any) => updates),
-    );
-
-    await expect(
-      service.listEngineConnectionMigrationCandidates(),
-    ).resolves.toEqual([
-      {
-        runtimeId: engineRuntimeId('custom-runtime'),
-        engineConnectionId: engineConnectionId('custom'),
-      },
-    ]);
-    expect(never).not.toHaveBeenCalled();
-  });
-
   test('binds a public registry connection id to its runtime adapter for quota reads', async () => {
     const readQuotaSnapshot = vi.fn(async (_input: unknown) => ({
       kind: 'snapshot' as const,
@@ -884,12 +796,11 @@ describe('ConnectionService', () => {
     const invalidateQuotaSnapshot = vi.fn();
     let quotaReadEnabled = true;
     const registry: AgentRegistry = {
-      version: 1,
+      version: 2,
       revision: 0,
       engineConnections: [
         {
           id: engineConnectionId('codex'),
-          runtimeConnectionId: engineRuntimeId('codex-runtime'),
         },
       ],
       defaultAgents: [{ id: agentId('station'), kind: 'station' }],
@@ -909,8 +820,6 @@ describe('ConnectionService', () => {
               displayName: 'Codex',
               description: 'runtime',
               capabilities: ['agent-runtime'] as const,
-              runtimeId:
-                registry.engineConnections[0]?.runtimeConnectionId ?? 'codex',
               builtin: true,
               engineId: 'codex',
             },
@@ -924,7 +833,7 @@ describe('ConnectionService', () => {
       async () =>
         ({
           agentConnections: {
-            'codex-runtime': {
+            codex: {
               credentialRecovery: {
                 profiles: [{ ref: 'profile-a' }],
                 activeProfileRef: 'profile-a',
@@ -955,7 +864,7 @@ describe('ConnectionService', () => {
       connectionId: 'codex',
       credentialProfileRef: 'profile-a',
     });
-    await expect(service.readQuotaSnapshot('codex-runtime')).resolves.toEqual({
+    await expect(service.readQuotaSnapshot('codex')).resolves.toEqual({
       kind: 'snapshot',
       snapshot: expect.objectContaining({ connectionId: 'codex' }),
     });
@@ -970,15 +879,15 @@ describe('ConnectionService', () => {
     });
     expect(readQuotaSnapshot).toHaveBeenLastCalledWith({
       connectionId: 'codex',
+      credentialProfileRef: 'profile-a',
     });
     registry.engineConnections = [
       {
         id: engineConnectionId('codex'),
-        runtimeConnectionId: engineRuntimeId('codex-runtime'),
       },
     ];
     quotaReadEnabled = false;
-    await expect(service.readQuotaSnapshot('codex-runtime')).resolves.toEqual({
+    await expect(service.readQuotaSnapshot('codex')).resolves.toEqual({
       kind: 'unavailable',
       reason: 'unsupported-provider',
     });
@@ -987,7 +896,7 @@ describe('ConnectionService', () => {
     expect(invalidateQuotaSnapshot).toHaveBeenCalledWith({
       connectionId: 'codex',
     });
-    await (service as any).invalidateQuotaSnapshot('codex-runtime');
+    await (service as any).invalidateQuotaSnapshot('codex');
     expect(invalidateQuotaSnapshot).toHaveBeenLastCalledWith({
       connectionId: 'codex',
     });
@@ -1088,7 +997,7 @@ describe('ConnectionService', () => {
               displayName: 'Codex',
               description: 'Codex',
               capabilities: ['agent-runtime'],
-              runtimeId: 'codex-runtime',
+              runtimeId: 'codex',
               executionClass: 'connected',
             },
             getPrerequisites: vi.fn().mockResolvedValue([]),
@@ -1125,7 +1034,7 @@ describe('ConnectionService', () => {
               displayName: 'Claude Code',
               description: 'Claude',
               capabilities: ['agent-runtime'],
-              runtimeId: 'claude-runtime',
+              runtimeId: 'claude',
               executionClass: 'connected',
             },
             getPrerequisites,
@@ -1155,6 +1064,72 @@ describe('ConnectionService', () => {
     }
   });
 
+  test('derives the public Station engine readiness from model connections', async () => {
+    const stationAdapter = {
+      provider: 'station-agent',
+      metadata: {
+        displayName: 'Station',
+        description: 'Station engine',
+        capabilities: ['agent-runtime'],
+        engineId: 'station',
+      },
+      getPrerequisites: vi.fn().mockResolvedValue([]),
+    } as any;
+    const service = createConnectionServiceForTest(
+      {
+        listProviderConnections: vi.fn(() => []),
+        saveProviderConnection: vi.fn(),
+        deleteProviderConnection: vi.fn(),
+        checkHealth: vi.fn(),
+      } as any,
+      () => [stationAdapter],
+      async () => [],
+      () => ({ connections: [] }),
+      async () => ({}) as any,
+      vi.fn(),
+    );
+    const list = (models: any[]) =>
+      (
+        service as unknown as {
+          listRuntimeConnectionsForModels(
+            models: any[],
+            options: Record<string, unknown>,
+          ): Promise<any[]>;
+        }
+      ).listRuntimeConnectionsForModels(models, {
+        adapters: [stationAdapter],
+        acpConnections: [],
+        appConfig: {},
+        disableHostDiscovery: true,
+      });
+
+    await expect(list([])).resolves.toMatchObject([
+      {
+        id: 'station',
+        status: 'missing_prerequisites',
+        prerequisites: [{ id: 'station-model-connection', status: 'missing' }],
+      },
+    ]);
+    await expect(
+      list([
+        {
+          id: 'ollama-local',
+          enabled: true,
+          capabilities: ['llm'],
+          status: 'ready',
+        },
+      ]),
+    ).resolves.toMatchObject([
+      {
+        id: 'station',
+        status: 'ready',
+        prerequisites: [
+          { id: 'station-model-connection', status: 'installed' },
+        ],
+      },
+    ]);
+  });
+
   test('does not publish Agent fallback selectors after live discovery fails', async () => {
     const adapter = {
       provider: 'codex',
@@ -1162,7 +1137,7 @@ describe('ConnectionService', () => {
         displayName: 'Codex',
         description: 'Codex',
         capabilities: ['agent-runtime'],
-        runtimeId: 'codex-runtime',
+        runtimeId: 'codex',
         executionClass: 'connected',
       },
       getPrerequisites: vi.fn().mockResolvedValue([
@@ -1194,7 +1169,7 @@ describe('ConnectionService', () => {
     expect(inventory.models).toEqual([]);
     expect(inventory.diagnostics).toContainEqual(
       expect.objectContaining({
-        connectionId: 'codex-runtime',
+        connectionId: 'codex',
         code: 'not-ready',
       }),
     );
@@ -1251,7 +1226,7 @@ describe('ConnectionService', () => {
               displayName: 'Codex',
               description: 'Codex',
               capabilities: ['agent-runtime'],
-              runtimeId: 'codex-runtime',
+              runtimeId: 'codex',
               executionClass: 'connected',
             },
             listModels: vi.fn().mockRejectedValue(new Error('offline')),
@@ -1262,7 +1237,7 @@ describe('ConnectionService', () => {
       async () =>
         ({
           agentConnections: {
-            'codex-runtime': {
+            codex: {
               config: {
                 cachedModelOptions: [
                   {
@@ -1284,7 +1259,7 @@ describe('ConnectionService', () => {
     expect(inventory.models).toEqual([]);
     expect(inventory.diagnostics).toContainEqual(
       expect.objectContaining({
-        connectionId: 'codex-runtime',
+        connectionId: 'codex',
         code: 'catalog-unavailable',
       }),
     );
@@ -1340,7 +1315,7 @@ describe('ConnectionService', () => {
               displayName: 'Codex',
               description: 'Codex',
               capabilities: ['agent-runtime'],
-              runtimeId: 'codex-runtime',
+              runtimeId: 'codex',
               executionClass: 'connected',
             },
             listModelCatalog: vi.fn().mockResolvedValue({
@@ -1358,7 +1333,7 @@ describe('ConnectionService', () => {
     const inventory = await service.listLaunchableModelInventory();
 
     expect(inventory.diagnostics).toContainEqual({
-      connectionId: 'codex-runtime',
+      connectionId: 'codex',
       code: 'discovery-limited',
       message:
         'The runtime model catalog was truncated by its bounded entry limit.',
@@ -1395,7 +1370,7 @@ describe('ConnectionService', () => {
           'approvals',
           'reasoning-events',
         ] as const,
-        runtimeId: 'claude-runtime',
+        runtimeId: 'claude',
         builtin: true,
       },
       getPrerequisites: vi.fn().mockResolvedValue([
@@ -1422,7 +1397,7 @@ describe('ConnectionService', () => {
           'resume',
           'external-process',
         ] as const,
-        runtimeId: 'codex-runtime',
+        runtimeId: 'codex',
         builtin: true,
       },
       getPrerequisites: vi.fn().mockResolvedValue([
@@ -1449,16 +1424,10 @@ describe('ConnectionService', () => {
 
     const connections = await service.listConnections();
     expect(connections.map((connection) => connection.id)).toEqual(
-      expect.arrayContaining([
-        'bedrock-model',
-        'claude-runtime',
-        'codex-runtime',
-        'kiro',
-      ]),
+      expect.arrayContaining(['bedrock-model', 'claude', 'codex', 'kiro']),
     );
     expect(
-      connections.find((connection) => connection.id === 'codex-runtime')
-        ?.status,
+      connections.find((connection) => connection.id === 'codex')?.status,
     ).toBe('missing_prerequisites');
     expect(
       connections.find((connection) => connection.id === 'kiro'),
@@ -1489,7 +1458,7 @@ describe('ConnectionService', () => {
               displayName: 'Codex Runtime',
               description: 'Codex app-server runtime.',
               capabilities: ['agent-runtime'],
-              runtimeId: 'codex-runtime',
+              runtimeId: 'codex',
               builtin: true,
               executionClass: 'connected',
             },
@@ -1510,7 +1479,7 @@ describe('ConnectionService', () => {
 
     const [connection] = await service.listRuntimeConnections();
     expect(connection).toMatchObject({
-      id: 'codex-runtime',
+      id: 'codex',
       status: 'missing_prerequisites',
       lastCheckedAt: '2026-07-13T12:00:00.000Z',
       config: {
@@ -1985,7 +1954,7 @@ describe('ConnectionService', () => {
         displayName: 'Codex Runtime',
         description: 'Codex app-server runtime.',
         capabilities: ['agent-runtime'],
-        runtimeId: 'codex-runtime',
+        runtimeId: 'codex',
         executionClass: 'connected',
       },
       getPrerequisites: vi.fn().mockResolvedValue([
@@ -2019,7 +1988,7 @@ describe('ConnectionService', () => {
     expect(inventory.models).toEqual([]);
     expect(inventory.diagnostics).toContainEqual(
       expect.objectContaining({
-        connectionId: 'codex-runtime',
+        connectionId: 'codex',
         code: 'not-ready',
       }),
     );
@@ -2267,7 +2236,7 @@ describe('ConnectionService', () => {
   test('builds a generation from the exact captured app config snapshot', async () => {
     const getAppConfig = vi.fn(async () => ({
       agentConnections: {
-        'codex-runtime': { enabled: true },
+        codex: { enabled: true },
       },
     }));
     const appConfigSource = {
@@ -2275,7 +2244,7 @@ describe('ConnectionService', () => {
         revision: 0,
         config: {
           agentConnections: {
-            'codex-runtime': { enabled: false },
+            codex: { enabled: false },
           },
         },
       })),
@@ -2297,7 +2266,7 @@ describe('ConnectionService', () => {
               displayName: 'Codex',
               description: 'Codex',
               capabilities: ['agent-runtime'],
-              runtimeId: 'codex-runtime',
+              runtimeId: 'codex',
               executionClass: 'connected',
             },
             listModels: vi
@@ -2761,16 +2730,15 @@ describe('ConnectionService', () => {
       return appConfig;
     });
     const registry: AgentRegistry = {
-      version: 1 as const,
+      version: 2 as const,
       revision: 0,
       engineConnections: [],
       defaultAgents: [{ id: agentId('station'), kind: 'station' }],
     };
-    const register = vi.fn(async (id: string, runtimeConnectionId: string) => {
+    const register = vi.fn(async (id: string) => {
       const connectionId = engineConnectionId(id);
       registry.engineConnections.push({
         id: connectionId,
-        runtimeConnectionId: engineRuntimeId(runtimeConnectionId),
       });
       registry.defaultAgents.push({
         id: agentId(id),
@@ -2807,9 +2775,8 @@ describe('ConnectionService', () => {
                 'approvals',
                 'reasoning-events',
               ] as const,
-              runtimeId: 'claude-runtime',
               connectionId: 'claude',
-              engineId: 'claude-code',
+              engineId: 'claude',
               builtin: true,
             },
             getPrerequisites: vi.fn().mockResolvedValue([]),
@@ -2829,7 +2796,7 @@ describe('ConnectionService', () => {
     const saved = await service.saveConnection({
       id: 'claude',
       kind: 'agent',
-      type: 'claude-runtime',
+      type: 'claude',
       name: 'Claude Code Runtime',
       enabled: false,
       description:
@@ -2850,10 +2817,10 @@ describe('ConnectionService', () => {
 
     expect(updateAppConfig).toHaveBeenCalledWith({
       agentConnections: {
-        'claude-runtime': {
+        claude: {
           name: 'Claude Code Runtime',
           enabled: false,
-          // `provideSkills`/`useAppHome` are claude-runtime-specific
+          // `provideSkills`/`useAppHome` are claude-specific
           // (docs/design/connections-onboarding.md §5/§1.1) — always
           // present, off by default, sanitized alongside `defaultModel`.
           config: {
@@ -2870,7 +2837,7 @@ describe('ConnectionService', () => {
     expect(saved.config).toMatchObject({
       defaultModel: 'claude-3-7-sonnet',
     });
-    expect(register).toHaveBeenCalledWith('claude', 'claude-runtime');
+    expect(register).toHaveBeenCalledWith('claude');
     expect(registry.defaultAgents).toContainEqual(
       expect.objectContaining({
         id: 'claude',
@@ -2879,7 +2846,7 @@ describe('ConnectionService', () => {
     );
     await expect(service.listEngineConnectionStates()).resolves.toEqual([
       {
-        runtimeId: 'claude-runtime',
+        engineId: 'claude',
         engineConnectionId: 'claude',
         enabled: false,
       },
@@ -2905,7 +2872,7 @@ describe('ConnectionService', () => {
         displayName: 'Codex Runtime',
         description: 'Codex runtime',
         capabilities: ['agent-runtime'] as const,
-        runtimeId: 'codex-runtime',
+        runtimeId: 'codex',
         builtin: true,
         executionClass: 'connected' as const,
         modelLaunch: {
@@ -2944,18 +2911,18 @@ describe('ConnectionService', () => {
       smoke: { status: 'not-tested' },
     });
     await expect(
-      service.smokeConnection('codex-runtime', { confirmed: false }),
+      service.smokeConnection('codex', { confirmed: false }),
     ).rejects.toThrow('Explicit confirmation');
     expect(runner).not.toHaveBeenCalled();
 
-    const evidence = await service.smokeConnection('codex-runtime', {
+    const evidence = await service.smokeConnection('codex', {
       confirmed: true,
       timeoutMs: 20_000,
     });
 
     expect(runner).toHaveBeenCalledWith(
       expect.objectContaining({
-        connectionId: 'codex-runtime',
+        connectionId: 'codex',
         provider: 'codex',
         modelId: 'gpt-5.4',
         timeoutMs: 20_000,
@@ -2970,7 +2937,7 @@ describe('ConnectionService', () => {
     ).toMatchObject({ level: 'smoke-passed', smoke: { status: 'passed' } });
 
     runner.mockRejectedValueOnce(new Error('secret token=do-not-store'));
-    const failed = await service.smokeConnection('codex-runtime', {
+    const failed = await service.smokeConnection('codex', {
       confirmed: true,
     });
     expect(failed).toMatchObject({
@@ -2988,12 +2955,12 @@ describe('ConnectionService', () => {
   test.each([
     {
       provider: 'claude' as const,
-      runtimeId: 'claude-runtime',
+      runtimeId: 'claude',
       displayName: 'Claude Runtime',
     },
     {
       provider: 'codex' as const,
-      runtimeId: 'codex-runtime',
+      runtimeId: 'codex',
       displayName: 'Codex Runtime',
     },
   ])(
@@ -3054,7 +3021,8 @@ describe('ConnectionService', () => {
         displayName: 'Station Runtime',
         description: 'Station-managed runtime',
         capabilities: ['agent-runtime'] as const,
-        runtimeId: 'bedrock-runtime',
+        connectionId: engineConnectionId('bedrock-runtime'),
+        engineId: engineId('station'),
         builtin: true,
         modelLaunch: {
           defaultAtStart: 'station-resolved' as const,
@@ -3127,7 +3095,7 @@ describe('ConnectionService', () => {
     const runner = vi.fn();
     service.setSmokeRunner(runner);
 
-    const evidence = await service.smokeConnection('claude-runtime', {
+    const evidence = await service.smokeConnection('claude', {
       confirmed: true,
     });
 
@@ -3245,7 +3213,7 @@ describe('ConnectionService', () => {
         displayName: 'Codex Runtime',
         description: 'Codex runtime',
         capabilities: ['agent-runtime'] as const,
-        runtimeId: 'codex-runtime',
+        runtimeId: 'codex',
         builtin: true,
         executionClass: 'connected' as const,
         modelLaunch: {
@@ -3282,7 +3250,7 @@ describe('ConnectionService', () => {
     const runner = vi.fn();
     service.setSmokeRunner(runner);
 
-    const evidence = await service.smokeConnection('codex-runtime', {
+    const evidence = await service.smokeConnection('codex', {
       confirmed: true,
     });
 
@@ -3374,7 +3342,7 @@ describe('ConnectionService', () => {
     let appConfig: any = {
       defaultModel: 'model-a',
       agentConnections: {
-        'codex-runtime': {
+        codex: {
           credentialRecovery: {
             profiles: [
               { ref: 'profile-a', label: 'Primary account' },
@@ -3415,7 +3383,7 @@ describe('ConnectionService', () => {
               displayName: 'Codex',
               description: 'Codex',
               capabilities: ['agent-runtime'],
-              runtimeId: 'codex-runtime',
+              runtimeId: 'codex',
               recovery: { sameSession: true, application },
             },
           },
@@ -3430,7 +3398,7 @@ describe('ConnectionService', () => {
       mutateAppConfig,
     );
     vi.spyOn(service, 'getConnection').mockResolvedValue({
-      id: 'codex-runtime',
+      id: 'codex',
       kind: 'agent',
       type: 'codex',
       enabled: true,
@@ -3443,14 +3411,13 @@ describe('ConnectionService', () => {
       mutateAppConfig,
       getAppConfig: () => appConfig,
       supersedePending: () => {
-        const recovery =
-          appConfig.agentConnections['codex-runtime'].credentialRecovery;
+        const recovery = appConfig.agentConnections.codex.credentialRecovery;
         appConfig = {
           ...appConfig,
           agentConnections: {
             ...appConfig.agentConnections,
-            'codex-runtime': {
-              ...appConfig.agentConnections['codex-runtime'],
+            codex: {
+              ...appConfig.agentConnections.codex,
               credentialRecovery: {
                 ...recovery,
                 pendingApplication: {
@@ -3465,14 +3432,13 @@ describe('ConnectionService', () => {
         };
       },
       adoptSuperseding: () => {
-        const recovery =
-          appConfig.agentConnections['codex-runtime'].credentialRecovery;
+        const recovery = appConfig.agentConnections.codex.credentialRecovery;
         appConfig = {
           ...appConfig,
           agentConnections: {
             ...appConfig.agentConnections,
-            'codex-runtime': {
-              ...appConfig.agentConnections['codex-runtime'],
+            codex: {
+              ...appConfig.agentConnections.codex,
               credentialRecovery: {
                 ...recovery,
                 activeProfileRef: 'profile-c',
@@ -3492,7 +3458,7 @@ describe('ConnectionService', () => {
       createCredentialProfileApplyFixture(smokeRunner);
 
     await expect(
-      service.applyCredentialProfile('codex-runtime', 'canary-profile-ref', {
+      service.applyCredentialProfile('codex', 'canary-profile-ref', {
         confirmed: false,
       }),
     ).rejects.toThrow('Explicit confirmation is required');
@@ -3506,14 +3472,14 @@ describe('ConnectionService', () => {
     const metricAdd = vi.spyOn(credentialProfileApplication, 'add');
     try {
       await expect(
-        service.stageAutomaticCredentialProfileApplication('codex-runtime', {
+        service.stageAutomaticCredentialProfileApplication('codex', {
           kind: 'capacity',
           scope: 'account',
           timing: {},
         }),
       ).resolves.toBeUndefined();
       await expect(
-        service.stageAutomaticCredentialProfileApplication('codex-runtime', {
+        service.stageAutomaticCredentialProfileApplication('codex', {
           kind: 'capacity',
           scope: 'provider',
           timing: {},
@@ -3557,10 +3523,10 @@ describe('ConnectionService', () => {
     const { service } = createCredentialProfileApplyFixture(
       vi.fn<ConnectionSmokeRunner>(),
     );
-    await service.setCredentialRecoveryAutomaticPolicy('codex-runtime', true);
+    await service.setCredentialRecoveryAutomaticPolicy('codex', true);
 
     const adapter = service.createCredentialProfileRecoveryAdapter(
-      (provider) => (provider === 'codex' ? 'codex-runtime' : undefined),
+      (provider) => (provider === 'codex' ? 'codex' : undefined),
     );
     const staged = await adapter.stage({
       provider: 'codex',
@@ -3581,8 +3547,7 @@ describe('ConnectionService', () => {
     const { service, getAppConfig } = createCredentialProfileApplyFixture(
       vi.fn<ConnectionSmokeRunner>(),
     );
-    const recovery =
-      getAppConfig().agentConnections['codex-runtime'].credentialRecovery;
+    const recovery = getAppConfig().agentConnections.codex.credentialRecovery;
     recovery.pendingApplication = {
       previousProfileRef: 'profile-a',
       candidateProfileRef: 'canary-profile-ref',
@@ -3592,13 +3557,13 @@ describe('ConnectionService', () => {
     await service.migrateLegacyCredentialApplicationsAtStartup();
 
     expect(
-      getAppConfig().agentConnections['codex-runtime'].credentialRecovery,
+      getAppConfig().agentConnections.codex.credentialRecovery,
     ).not.toHaveProperty('pendingApplication');
-    await expect(
-      service.getCredentialRecovery('codex-runtime'),
-    ).resolves.toMatchObject({
-      application: { outcome: 'staged' },
-    });
+    await expect(service.getCredentialRecovery('codex')).resolves.toMatchObject(
+      {
+        application: { outcome: 'staged' },
+      },
+    );
   });
 
   test('startup retains legacy evidence when the real private ledger cannot admit every row', async () => {
@@ -3623,22 +3588,21 @@ describe('ConnectionService', () => {
         'restart_resume',
         protocol,
       );
-      getAppConfig().agentConnections[
-        'codex-runtime'
-      ].credentialRecovery.pendingApplication = {
-        previousProfileRef: 'profile-a',
-        candidateProfileRef: 'canary-profile-ref',
-        attemptId: 'legacy-capacity-conflict',
-      };
+      getAppConfig().agentConnections.codex.credentialRecovery.pendingApplication =
+        {
+          previousProfileRef: 'profile-a',
+          candidateProfileRef: 'canary-profile-ref',
+          attemptId: 'legacy-capacity-conflict',
+        };
 
       await expect(
         service.migrateLegacyCredentialApplicationsAtStartup(),
       ).rejects.toThrow(
-        "Credential recovery migration for 'codex-runtime' is incomplete.",
+        "Credential recovery migration for 'codex' is incomplete.",
       );
 
       expect(
-        getAppConfig().agentConnections['codex-runtime'].credentialRecovery,
+        getAppConfig().agentConnections.codex.credentialRecovery,
       ).toHaveProperty('pendingApplication');
     } finally {
       store.close();
@@ -3653,7 +3617,7 @@ describe('ConnectionService', () => {
     );
 
     await expect(
-      service.setCredentialRecoveryAutomaticPolicy('codex-runtime', true),
+      service.setCredentialRecoveryAutomaticPolicy('codex', true),
     ).rejects.toThrow('Automatic credential recovery is unsupported');
     expect(mutateAppConfig).not.toHaveBeenCalled();
   });
@@ -3664,11 +3628,11 @@ describe('ConnectionService', () => {
         vi.fn<ConnectionSmokeRunner>(),
         'hot_apply',
       );
-    await service.setCredentialRecoveryAutomaticPolicy('codex-runtime', true);
+    await service.setCredentialRecoveryAutomaticPolicy('codex', true);
     mutateAppConfig.mockClear();
 
     await expect(
-      service.stageAutomaticCredentialProfileApplication('codex-runtime', {
+      service.stageAutomaticCredentialProfileApplication('codex', {
         kind: 'capacity',
         scope: 'account',
         timing: {},
@@ -3677,7 +3641,7 @@ describe('ConnectionService', () => {
 
     expect(mutateAppConfig).not.toHaveBeenCalled();
     expect(
-      getAppConfig().agentConnections['codex-runtime'].credentialRecovery,
+      getAppConfig().agentConnections.codex.credentialRecovery,
     ).not.toHaveProperty('pendingApplication');
   });
 
@@ -3690,7 +3654,7 @@ describe('ConnectionService', () => {
     const metricAdd = vi.spyOn(credentialProfileApplication, 'add');
     try {
       const applied = await service.applyCredentialProfile(
-        'codex-runtime',
+        'codex',
         'canary-profile-ref',
         { confirmed: true, timeoutMs: 20_000 },
       );
@@ -3702,7 +3666,7 @@ describe('ConnectionService', () => {
       });
       expect(smokeRunner).toHaveBeenCalledWith(
         expect.objectContaining({
-          connectionId: 'codex-runtime',
+          connectionId: 'codex',
           provider: 'codex',
           modelId: 'gpt-5-codex',
           credentialProfileRef: 'canary-profile-ref',
@@ -3757,7 +3721,7 @@ describe('ConnectionService', () => {
     ]) {
       const { service } = createCredentialProfileApplyFixture(smokeRunner);
       const applied = await service.applyCredentialProfile(
-        'codex-runtime',
+        'codex',
         'canary-profile-ref',
         { confirmed: true },
       );
@@ -3782,25 +3746,21 @@ describe('ConnectionService', () => {
     });
 
     await expect(
-      fixture.service.applyCredentialProfile(
-        'codex-runtime',
-        'canary-profile-ref',
-        { confirmed: true },
-      ),
+      fixture.service.applyCredentialProfile('codex', 'canary-profile-ref', {
+        confirmed: true,
+      }),
     ).resolves.toMatchObject({
       activeProfileRef: 'canary-profile-ref',
       outcome: 'adopted',
     });
-    expect(
-      fixture.getAppConfig().agentConnections['codex-runtime'],
-    ).toMatchObject({
+    expect(fixture.getAppConfig().agentConnections.codex).toMatchObject({
       credentialRecovery: {
         activeProfileRef: 'canary-profile-ref',
       },
     });
     expect(
-      fixture.getAppConfig().agentConnections['codex-runtime']
-        .credentialRecovery.pendingApplication,
+      fixture.getAppConfig().agentConnections.codex.credentialRecovery
+        .pendingApplication,
     ).toBeUndefined();
   });
 
@@ -3816,18 +3776,15 @@ describe('ConnectionService', () => {
     });
 
     await expect(
-      fixture.service.applyCredentialProfile(
-        'codex-runtime',
-        'canary-profile-ref',
-        { confirmed: true },
-      ),
+      fixture.service.applyCredentialProfile('codex', 'canary-profile-ref', {
+        confirmed: true,
+      }),
     ).resolves.toMatchObject({
       activeProfileRef: 'canary-profile-ref',
       outcome: 'adopted',
     });
     expect(
-      fixture.getAppConfig().agentConnections['codex-runtime']
-        .credentialRecovery,
+      fixture.getAppConfig().agentConnections.codex.credentialRecovery,
     ).toMatchObject({
       activeProfileRef: 'canary-profile-ref',
     });
@@ -3837,7 +3794,7 @@ describe('ConnectionService', () => {
     let appConfig: any = {
       defaultModel: 'model-a',
       agentConnections: {
-        'codex-runtime': {
+        codex: {
           credentialRecovery: {
             profiles: [
               { ref: 'profile-a', label: 'Account A' },
@@ -3871,7 +3828,7 @@ describe('ConnectionService', () => {
               displayName: 'Codex',
               description: 'Codex',
               capabilities: ['agent-runtime'],
-              runtimeId: 'codex-runtime',
+              runtimeId: 'codex',
               recovery: { sameSession: true, application: 'restart_resume' },
             },
           },
@@ -3886,10 +3843,10 @@ describe('ConnectionService', () => {
       mutateAppConfig,
     );
 
-    const staged = await service.stageCredentialProfileApplication(
-      'codex-runtime',
-      { candidateProfileRef: 'profile-b', attemptId: 'attempt-1' },
-    );
+    const staged = await service.stageCredentialProfileApplication('codex', {
+      candidateProfileRef: 'profile-b',
+      attemptId: 'attempt-1',
+    });
     expect(staged).toEqual({
       capability: 'restart_resume',
       activeProfileRef: 'profile-a',
@@ -3907,7 +3864,7 @@ describe('ConnectionService', () => {
     }));
 
     const stale = await service.commitCredentialProfileApplication(
-      'codex-runtime',
+      'codex',
       'attempt-stale',
     );
     expect(stale).toMatchObject({
@@ -3916,7 +3873,7 @@ describe('ConnectionService', () => {
       outcome: 'staged',
     });
     const committed = await service.commitCredentialProfileApplication(
-      'codex-runtime',
+      'codex',
       'attempt-1',
     );
     expect(committed).toEqual({
@@ -3933,15 +3890,12 @@ describe('ConnectionService', () => {
       durationMs: 1,
     }));
     const fixture = createCredentialProfileApplyFixture(smokeRunner);
-    await fixture.service.stageCredentialProfileApplication('codex-runtime', {
+    await fixture.service.stageCredentialProfileApplication('codex', {
       candidateProfileRef: 'canary-profile-ref',
       attemptId: 'delete-fence',
     });
     await expect(
-      fixture.service.deleteCredentialProfile(
-        'codex-runtime',
-        'canary-profile-ref',
-      ),
+      fixture.service.deleteCredentialProfile('codex', 'canary-profile-ref'),
     ).rejects.toThrow('referenced by an unresolved application');
   });
 
@@ -3968,7 +3922,7 @@ describe('ConnectionService', () => {
     });
 
     await expect(
-      fixture.service.stageCredentialProfileApplication('codex-runtime', {
+      fixture.service.stageCredentialProfileApplication('codex', {
         attemptId: 'deleted-candidate',
         candidateProfileRef: 'canary-profile-ref',
       }),
@@ -3991,17 +3945,14 @@ describe('ConnectionService', () => {
       .spyOn(fixture.service, 'getCredentialRecovery')
       .mockImplementationOnce(() => recovery);
 
-    const staging = fixture.service.stageCredentialProfileApplication(
-      'codex-runtime',
-      {
-        attemptId: 'serialized-stage',
-        candidateProfileRef: 'canary-profile-ref',
-      },
-    );
+    const staging = fixture.service.stageCredentialProfileApplication('codex', {
+      attemptId: 'serialized-stage',
+      candidateProfileRef: 'canary-profile-ref',
+    });
     await Promise.resolve();
     let deleteSettled = false;
     const deleting = fixture.service
-      .deleteCredentialProfile('codex-runtime', 'profile-c')
+      .deleteCredentialProfile('codex', 'profile-c')
       .finally(() => {
         deleteSettled = true;
       });

@@ -37,6 +37,7 @@ import {
 import { ConfigLoader } from '../config-loader.js';
 import {
   ensureStationHomeSchema,
+  STATION_HOME_SCHEMA_VERSION,
   StationHomeResetRequiredError,
 } from '../home-schema-gate.js';
 
@@ -80,17 +81,12 @@ describe('agent registry', () => {
     const home = createHome();
     const loader = new ConfigLoader({ projectHomeDir: home });
 
-    expect(
-      await adoptNativeEngineConnection(loader, 'claude', 'claude-runtime'),
-    ).toBe('adopted');
-    expect(
-      await adoptNativeEngineConnection(loader, 'claude', 'claude-runtime'),
-    ).toBe('exists');
+    expect(await adoptNativeEngineConnection(loader, 'claude')).toBe('adopted');
+    expect(await adoptNativeEngineConnection(loader, 'claude')).toBe('exists');
 
     const registry = await loadOrCreateAgentRegistry(loader);
     expect(registry.engineConnections).toContainEqual({
       id: 'claude',
-      runtimeConnectionId: 'claude-runtime',
       source: { kind: 'native' },
     });
     expect(registry.defaultAgents).toContainEqual({
@@ -104,15 +100,13 @@ describe('agent registry', () => {
     const home = createHome();
     const loader = new ConfigLoader({ projectHomeDir: home });
 
-    await adoptNativeEngineConnection(loader, 'codex', 'codex-runtime');
+    await adoptNativeEngineConnection(loader, 'codex');
     await unregisterEngineConnection(loader, 'codex');
 
     const registry = await loadOrCreateAgentRegistry(loader);
     expect(registry.declinedEngineConnections).toEqual(['codex']);
     // A deliberate user deletion outranks detection, forever.
-    expect(
-      await adoptNativeEngineConnection(loader, 'codex', 'codex-runtime'),
-    ).toBe('declined');
+    expect(await adoptNativeEngineConnection(loader, 'codex')).toBe('declined');
     expect((await loadOrCreateAgentRegistry(loader)).engineConnections).toEqual(
       [],
     );
@@ -122,15 +116,13 @@ describe('agent registry', () => {
     const home = createHome();
     const loader = new ConfigLoader({ projectHomeDir: home });
 
-    await adoptNativeEngineConnection(loader, 'codex', 'codex-runtime');
+    await adoptNativeEngineConnection(loader, 'codex');
     await unregisterEngineConnection(loader, 'codex');
 
     // The review's probe: calling the registration CAS directly with the
     // adoption posture (as adopt does internally, AFTER any stale pre-read)
     // must refuse — the decline check lives inside the CAS snapshot now.
-    expect(
-      await adoptNativeEngineConnection(loader, 'codex', 'codex-runtime'),
-    ).toBe('declined');
+    expect(await adoptNativeEngineConnection(loader, 'codex')).toBe('declined');
     const registry = await loadOrCreateAgentRegistry(loader);
     expect(registry.engineConnections).toEqual([]);
     expect(registry.declinedEngineConnections).toEqual(['codex']);
@@ -140,11 +132,11 @@ describe('agent registry', () => {
     const home = createHome();
     const loader = new ConfigLoader({ projectHomeDir: home });
 
-    await adoptNativeEngineConnection(loader, 'codex', 'codex-runtime');
+    await adoptNativeEngineConnection(loader, 'codex');
     await unregisterEngineConnection(loader, 'codex');
     // The user asking for the engine back (Providers-UI save path) wins and
     // erases the decline — no contradictory declined+exists state.
-    await registerEngineConnection(loader, 'codex', 'codex-runtime');
+    await registerEngineConnection(loader, 'codex');
 
     const registry = await loadOrCreateAgentRegistry(loader);
     expect(registry.engineConnections.map((c) => c.id)).toEqual(['codex']);
@@ -178,7 +170,7 @@ describe('agent registry', () => {
     const home = createHome();
     const loader = new ConfigLoader({ projectHomeDir: home });
 
-    await registerEngineConnection(loader, 'kiro', 'kiro', {
+    await registerEngineConnection(loader, 'kiro', {
       kind: 'user-acp',
     });
     await unregisterEngineConnection(loader, 'kiro');
@@ -195,9 +187,9 @@ describe('agent registry', () => {
     await loadOrCreateAgentRegistry(loader);
     await loader.createAgent({ name: 'claude', prompt: 'mine' });
 
-    expect(
-      await adoptNativeEngineConnection(loader, 'claude', 'claude-runtime'),
-    ).toBe('agent-collision');
+    expect(await adoptNativeEngineConnection(loader, 'claude')).toBe(
+      'agent-collision',
+    );
     expect((await loadOrCreateAgentRegistry(loader)).engineConnections).toEqual(
       [],
     );
@@ -219,13 +211,13 @@ describe('agent registry', () => {
   it('rejects provenance takeover without changing the existing owner', async () => {
     const home = createHome();
     const loader = new ConfigLoader({ projectHomeDir: home });
-    await registerEngineConnection(loader, 'plugin-agent', 'plugin-agent', {
+    await registerEngineConnection(loader, 'plugin-agent', {
       kind: 'plugin-acp',
       plugin: 'one',
     });
 
     await expect(
-      registerEngineConnection(loader, 'plugin-agent', 'plugin-agent', {
+      registerEngineConnection(loader, 'plugin-agent', {
         kind: 'user-acp',
       }),
     ).rejects.toMatchObject({ code: 'ENGINE_CONNECTION_BINDING_COLLISION' });
@@ -233,7 +225,6 @@ describe('agent registry', () => {
       (await loadOrCreateAgentRegistry(loader)).engineConnections,
     ).toContainEqual({
       id: 'plugin-agent',
-      runtimeConnectionId: 'plugin-agent',
       source: { kind: 'plugin-acp', plugin: 'one' },
     });
   });
@@ -303,7 +294,7 @@ describe('agent registry', () => {
     const loader = new ConfigLoader({ projectHomeDir: home });
 
     await expect(
-      registerEngineConnection(loader, 'default', 'default', {
+      registerEngineConnection(loader, 'default', {
         kind: 'native',
       }),
     ).rejects.toMatchObject({ code: 'AGENT_ID_RESERVED' });
@@ -325,7 +316,7 @@ describe('agent registry', () => {
     writeFileSync(
       externalRegistry,
       JSON.stringify({
-        version: 1,
+        version: 2,
         revision: 0,
         engineConnections: [],
         defaultAgents: [{ id: 'station', kind: 'station' }],
@@ -344,16 +335,10 @@ describe('agent registry', () => {
     const home = createHome();
     const loader = new ConfigLoader({ projectHomeDir: home });
 
-    const registered = await registerEngineConnection(
-      loader,
-      'claude',
-      'claude-runtime',
-    );
+    const registered = await registerEngineConnection(loader, 'claude');
     expect(registered).toMatchObject({
       revision: 1,
-      engineConnections: [
-        { id: 'claude', runtimeConnectionId: 'claude-runtime' },
-      ],
+      engineConnections: [{ id: 'claude', source: { kind: 'native' } }],
       defaultAgents: expect.arrayContaining([
         {
           id: 'claude',
@@ -374,7 +359,7 @@ describe('agent registry', () => {
 
     const results = await Promise.allSettled([
       loader.createAgent({ name: 'Codex', prompt: 'custom' }),
-      registerEngineConnection(loader, 'codex', 'codex-runtime'),
+      registerEngineConnection(loader, 'codex'),
     ]);
 
     expect(
@@ -399,14 +384,36 @@ describe('agent registry', () => {
     );
 
     expect(registry).toEqual({
-      version: 1,
+      version: 2,
       revision: 0,
       engineConnections: [],
       defaultAgents: [{ id: 'station', kind: 'station' }],
     });
     expect(
       readFileSync(join(home, '.station-home-schema.json'), 'utf8'),
-    ).toContain('"version": 1');
+    ).toContain(`"version": ${STATION_HOME_SCHEMA_VERSION}`);
+  });
+
+  it('rejects the previous duplicate-identity registry instead of migrating it', async () => {
+    const home = createHome();
+    const loader = new ConfigLoader({ projectHomeDir: home });
+    await loadOrCreateAgentRegistry(loader);
+    writeFileSync(
+      join(home, 'config', 'agent-registry.json'),
+      JSON.stringify({
+        version: 1,
+        revision: 0,
+        engineConnections: [
+          { id: 'claude', runtimeConnectionId: 'claude-runtime' },
+        ],
+        defaultAgents: [{ id: 'station', kind: 'station' }],
+      }),
+      'utf8',
+    );
+
+    await expect(loadOrCreateAgentRegistry(loader)).rejects.toMatchObject({
+      code: 'STATION_HOME_RESET_REQUIRED',
+    });
   });
 
   it('allows empty config scaffolding but rejects a markerless populated home without reading or changing it', async () => {
@@ -569,7 +576,7 @@ describe('agent registry', () => {
     await Promise.all([runSchemaGateInChild(home), runSchemaGateInChild(home)]);
     expect(
       readFileSync(join(home, '.station-home-schema.json'), 'utf8'),
-    ).toContain('"version": 1');
+    ).toContain(`"version": ${STATION_HOME_SCHEMA_VERSION}`);
   });
 
   it('accepts a canonicalized symlinked parent while rejecting a symlinked home root', async () => {
@@ -586,7 +593,7 @@ describe('agent registry', () => {
         join(realParent, 'station-home', '.station-home-schema.json'),
         'utf8',
       ),
-    ).toContain('"version": 1');
+    ).toContain(`"version": ${STATION_HOME_SCHEMA_VERSION}`);
 
     const symlinkedHome = createHome();
     const symlinkTarget = createHome();
@@ -740,7 +747,7 @@ describe('agent registry', () => {
     writeFileSync(
       external,
       JSON.stringify({
-        version: 1,
+        version: 2,
         revision: 99,
         engineConnections: [],
         defaultAgents: [{ id: 'station', kind: 'station' }],

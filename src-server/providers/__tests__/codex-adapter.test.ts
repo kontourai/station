@@ -285,12 +285,12 @@ describe('CodexAdapter', () => {
           planType: 'pro',
         },
       },
-      'codex-runtime',
+      'codex',
       '2026-08-09T19:00:00.000Z',
     );
 
     expect(snapshot).toMatchObject({
-      connectionId: 'codex-runtime',
+      connectionId: 'codex',
       baselineAt: '2026-08-09T19:00:00.000Z',
       plan: { value: { type: 'pro' } },
       windows: [
@@ -309,7 +309,7 @@ describe('CodexAdapter', () => {
   test('returns provider-error when the quota transport fails', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({ processFactory: () => processHandle! });
-    const read = adapter.readQuotaSnapshot({ connectionId: 'codex-runtime' });
+    const read = adapter.readQuotaSnapshot({ connectionId: 'codex' });
     await flushIo();
     processHandle.emit('error', new Error('transport broken'));
     await expect(read).resolves.toMatchObject({
@@ -325,7 +325,7 @@ describe('CodexAdapter', () => {
       quotaTimeoutMs: 1,
     });
     await expect(
-      adapter.readQuotaSnapshot({ connectionId: 'codex-runtime' }),
+      adapter.readQuotaSnapshot({ connectionId: 'codex' }),
     ).resolves.toMatchObject({
       kind: 'unavailable',
       reason: 'timeout',
@@ -341,14 +341,14 @@ describe('CodexAdapter', () => {
             credits: { hasCredits: 'yes', unlimited: false },
           },
         },
-        'codex-runtime',
+        'codex',
         '2026-08-09T19:00:00.000Z',
       ),
     ).toThrow('malformed credits');
     expect(() =>
       projectCodexQuotaUpdate(
         { rateLimits: { primary: { usedPercent: 100.5 } } },
-        'codex-runtime',
+        'codex',
         '2026-08-09T19:00:00.000Z',
       ),
     ).toThrow('malformed primary');
@@ -360,11 +360,7 @@ describe('CodexAdapter', () => {
       { rateLimits: { secondary: 42 } },
     ]) {
       expect(() =>
-        projectCodexQuotaSnapshot(
-          payload,
-          'codex-runtime',
-          '2026-08-09T19:00:00.000Z',
-        ),
+        projectCodexQuotaSnapshot(payload, 'codex', '2026-08-09T19:00:00.000Z'),
       ).toThrow(/malformed (rate-limit envelope|primary|secondary)/);
     }
   });
@@ -3661,7 +3657,7 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory,
         getAppHomeEnv: async () => ({
-          CODEX_HOME: '/station/app-homes/codex-runtime',
+          CODEX_HOME: '/station/app-homes/codex',
         }),
       } as any);
 
@@ -3690,7 +3686,7 @@ describe('CodexAdapter', () => {
       // toolServers config args (undefined here — this session authors no
       // toolServers, so the spawn argv stays byte-identical to before).
       expect(processFactory).toHaveBeenCalledWith(
-        { CODEX_HOME: '/station/app-homes/codex-runtime' },
+        { CODEX_HOME: '/station/app-homes/codex' },
         undefined,
       );
       await adapter.stopAll();
@@ -3762,7 +3758,7 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory: () => processHandle!,
         getAppHomeEnv: async () => ({
-          CODEX_HOME: '/station/app-homes/codex-runtime',
+          CODEX_HOME: '/station/app-homes/codex',
         }),
       } as any);
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -3887,7 +3883,7 @@ describe('CodexAdapter', () => {
       const adapter = new CodexAdapter({
         processFactory,
         getAppHomeEnv: async () => ({
-          CODEX_HOME: '/station/app-homes/codex-runtime',
+          CODEX_HOME: '/station/app-homes/codex',
         }),
       } as any);
 
@@ -3910,7 +3906,7 @@ describe('CodexAdapter', () => {
 
       expect(processFactory).toHaveBeenCalledWith();
       expect(processFactory).not.toHaveBeenCalledWith({
-        CODEX_HOME: '/station/app-homes/codex-runtime',
+        CODEX_HOME: '/station/app-homes/codex',
       });
     });
   });
