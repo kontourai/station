@@ -47,8 +47,6 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - run: npm run dependencies:ci
-
       # `full:regression` runs `gate:workflows`, and `actionlint-gate.mjs` is
       # fail-closed: with no `actionlint` on PATH it exits 2 rather than
       # reporting an unvalidated surface as a pass. Provisioning it here is
@@ -66,6 +64,8 @@ jobs:
           echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status
           tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"
           echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
+
+      - run: npm run dependencies:ci
 
       - name: Install Chromium for full-corpus browser assertions
         timeout-minutes: 20
