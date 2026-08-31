@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { gt } from 'semver';
@@ -37,9 +37,6 @@ import {
  */
 
 const DAY = 86_400_000;
-const CHECKED_IN_VERSION = JSON.parse(
-  readFileSync(resolve(import.meta.dirname, '../../package.json'), 'utf8'),
-).version as string;
 
 describe('nightly version codes are monotonic and bounded', () => {
   it('increases with every day', () => {
@@ -388,7 +385,7 @@ describe('the tauri config overlay', () => {
     const directory = mkdtempSync(join(tmpdir(), 'station-nightly-identity-'));
     const output = join(directory, 'tauri.nightly.version.json');
     const config = writeNightlyConfig({
-      packageJsonPath: resolve(import.meta.dirname, '../../package.json'),
+      packageJsonPath: frozenPackageJson(),
       tauriConfigPath: resolve(
         import.meta.dirname,
         '../../src-desktop/tauri.conf.json',
@@ -399,11 +396,32 @@ describe('the tauri config overlay', () => {
     });
     expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(config);
     expect(readdirSync(directory)).toEqual(['tauri.nightly.version.json']);
-    expect(config.version).toBe(`${CHECKED_IN_VERSION}-nightly.2412.3`);
+    expect(config.version).toBe('0.1.2-nightly.2412.3');
     expect(config.bundle.android.versionCode).toBe(241_203);
     expect(config.bundle.macOS.bundleVersion).toBe('241203');
   });
 });
+
+/**
+ * The version these tests assert is frozen on purpose, so a release bump
+ * cannot red them. Reading the repository's own `package.json` did exactly
+ * that: the literals below say `0.1.2`, the package moved to `0.1.3` and
+ * beyond, and the suite went red on clean `main` — invisibly, because
+ * `.github/workflows/**` is what selects this file, so it only detonated on
+ * workflow-touching pull requests and looked like their fault. The behaviour
+ * under test is the nightly version/bundle ENCODING, not which release the
+ * repo happens to be on.
+ */
+function frozenPackageJson(): string {
+  // Its own directory: the callers assert the exact contents of the output
+  // directory, so the fixture must not land there.
+  const path = join(
+    mkdtempSync(join(tmpdir(), 'station-nightly-package-')),
+    'package.json',
+  );
+  writeFileSync(path, JSON.stringify({ version: '0.1.2' }));
+  return path;
+}
 
 describe('the desktop tauri config overlay (station#575)', () => {
   it('carries the same reserved numeric build identity as Android, plus the updater plugin', () => {
@@ -485,7 +503,7 @@ describe('the desktop tauri config overlay (station#575)', () => {
     const output = join(directory, 'tauri.nightly-desktop.conf.json');
     const githubOutput = join(directory, 'github-output');
     const config = writeNightlyDesktopConfig({
-      packageJsonPath: resolve(import.meta.dirname, '../../package.json'),
+      packageJsonPath: frozenPackageJson(),
       tauriConfigPath: resolve(
         import.meta.dirname,
         '../../src-desktop/tauri.conf.json',
@@ -501,7 +519,7 @@ describe('the desktop tauri config overlay (station#575)', () => {
     expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(config);
     expect(readFileSync(githubOutput, 'utf8')).toBe(
       [
-        `version=${CHECKED_IN_VERSION}-nightly.2412.3`,
+        'version=0.1.2-nightly.2412.3',
         'identifier=io.kontourai.station.nightly',
         'product_name=Station Nightly',
         'bundle_version=241203',
@@ -512,7 +530,7 @@ describe('the desktop tauri config overlay (station#575)', () => {
       'github-output',
       'tauri.nightly-desktop.conf.json',
     ]);
-    expect(config.version).toBe(`${CHECKED_IN_VERSION}-nightly.2412.3`);
+    expect(config.version).toBe('0.1.2-nightly.2412.3');
     expect(config.identifier).toBe('io.kontourai.station.nightly');
     expect(config.bundle.macOS.bundleVersion).toBe('241203');
   });
