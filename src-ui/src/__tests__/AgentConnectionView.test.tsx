@@ -51,15 +51,15 @@ const DEFAULT_AGENT_CONNECTIONS: unknown[] = [
     setup: { state: 'ready', detected: true, configured: false },
   },
   {
-    id: 'bedrock-runtime',
+    id: 'station',
     kind: 'agent',
-    type: 'bedrock-runtime',
+    type: 'station-agent',
     name: 'Station engine',
     enabled: true,
     status: 'ready',
     capabilities: ['agent-runtime'],
     prerequisites: [],
-    config: { executionClass: 'managed' },
+    config: { engineId: 'station' },
     setup: { state: 'ready', detected: true, configured: false },
   },
 ];
@@ -396,12 +396,12 @@ describe('AgentConnectionView', () => {
   // The section frame owns this section's single add action and reaches the
   // catalogue by route (`/connections/engines/new`), not by an in-view button
   // so the route is what these two drive now.
-  test('keeps available apps in Add and hides the managed Station engine', () => {
+  test('keeps available apps in Add and shows the Station engine returned by the API', () => {
     const { rerender } = render(<AgentConnectionView onNavigate={vi.fn()} />);
 
     expect(screen.getByText('Codex')).toBeTruthy();
     expect(screen.queryByText('Claude Code')).toBeNull();
-    expect(screen.queryByText('Station engine')).toBeNull();
+    expect(screen.getByText('Station engine')).toBeTruthy();
 
     rerender(
       <AgentConnectionView selectedRuntimeId="new" onNavigate={vi.fn()} />,
@@ -414,7 +414,7 @@ describe('AgentConnectionView', () => {
     // `setup.state: 'available', detected: true` reads "Found, not
     // connected" everywhere else on Connections.
     expect(screen.getByText('Found, not connected')).toBeTruthy();
-    expect(screen.queryByText('Station engine')).toBeNull();
+    expect(screen.getByText('Station engine')).toBeTruthy();
 
     // #592 slice 2 review M3: bare "Add" is ambiguous with more than one row
     // in the catalogue — the accessible name carries the engine's own name.
