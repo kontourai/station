@@ -119,6 +119,8 @@ export function buildVitestCommand(
       );
     return [
       ...command,
+      '--reporter=default',
+      `--reporter=${resolve(root, 'scripts/vitest-inflight-reporter.mjs')}`,
       ...ordinaryExcludes.map((pattern) => `--exclude=${pattern}`),
       `--shard=${group.shard}`,
       ...(group.noFileParallelism ? ['--no-file-parallelism'] : []),
