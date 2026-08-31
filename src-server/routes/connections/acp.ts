@@ -103,6 +103,21 @@ function findRegistryEntry(
   );
 }
 
+const ACP_PROVIDER_ROUTE_PUBLIC_ERRORS = Object.freeze({
+  observation_required:
+    'Provider routing must be observed before it can be changed.',
+  provider_not_found:
+    'The requested ACP provider was not advertised by this agent.',
+  protocol_unsupported:
+    'The requested protocol was not advertised for this ACP provider.',
+});
+
+function acpProviderRoutePublicError(
+  error: ACPProviderRouteValidationError,
+): string {
+  return ACP_PROVIDER_ROUTE_PUBLIC_ERRORS[error.code];
+}
+
 function normalizeACPConnection(value: Record<string, any>) {
   return {
     id: value.id,
@@ -440,7 +455,10 @@ export function createACPRoutes(ctx: RuntimeContext) {
           );
         }
         if (error instanceof ACPProviderRouteValidationError) {
-          return c.json({ success: false, error: error.message }, 409);
+          return c.json(
+            { success: false, error: acpProviderRoutePublicError(error) },
+            409,
+          );
         }
         if (
           (error as Error | undefined)?.name ===
@@ -475,7 +493,11 @@ export function createACPRoutes(ctx: RuntimeContext) {
           'ACPRequiredProviderDisableError'
         ) {
           return c.json(
-            { success: false, error: (error as Error).message },
+            {
+              success: false,
+              error:
+                'The requested ACP provider is required and cannot be disabled.',
+            },
             409,
           );
         }

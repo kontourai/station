@@ -1,6 +1,9 @@
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
-import { ACPProviderRouteValidationError } from '../../../services/acp/acp-process.js';
+import {
+  ACPProviderRouteValidationError,
+  ACPRequiredProviderDisableError,
+} from '../../../services/acp/acp-process.js';
 import { SecretBindingResolutionError } from '../../../services/secrets/secret-binding-administration.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -143,6 +146,58 @@ describe('ACP provider routes (#944)', () => {
       ctx.acpProviderSecretResolver.resolveForAcpProvider,
     ).not.toHaveBeenCalled();
     expect(ctx.acpBridge.setProvider).not.toHaveBeenCalled();
+  });
+
+  test('maps provider-route validation to a stable public error without raw detail', async () => {
+    const ctx = context();
+    ctx.acpBridge.assertProviderSupported.mockImplementation(() => {
+      throw new ACPProviderRouteValidationError(
+        'protocol_unsupported',
+        'sensitive-provider-id canary-secret-token',
+      );
+    });
+    const app = createACPRoutes(ctx as never);
+    const response = await app.request('/connections/opencode/providers/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        providerId: 'main',
+        apiType: 'openai',
+        baseUrl: 'https://openrouter.ai/api/v1',
+      }),
+    });
+    const text = await response.text();
+
+    expect(response.status).toBe(409);
+    expect(JSON.parse(text)).toEqual({
+      success: false,
+      error: 'The requested protocol was not advertised for this ACP provider.',
+    });
+    expect(text).not.toContain('canary-secret-token');
+  });
+
+  test('maps required-provider disable refusal without raw provider detail', async () => {
+    const ctx = context();
+    ctx.acpBridge.disableProvider.mockRejectedValue(
+      new ACPRequiredProviderDisableError('sensitive-provider-canary'),
+    );
+    const app = createACPRoutes(ctx as never);
+    const response = await app.request(
+      '/connections/opencode/providers/disable',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerId: 'sensitive-provider-canary' }),
+      },
+    );
+    const text = await response.text();
+
+    expect(response.status).toBe(409);
+    expect(JSON.parse(text)).toEqual({
+      success: false,
+      error: 'The requested ACP provider is required and cannot be disabled.',
+    });
+    expect(text).not.toContain('sensitive-provider-canary');
   });
 
   test('returns an ordinary capability refusal and settles materialization failure', async () => {
