@@ -1,0 +1,115 @@
+name: Codex Sol PR review
+
+# Secret Scan is the existing no-secret pull-request ingress. Listening to its
+# completed run keeps this workflow definition on the protected default branch;
+# a candidate cannot rewrite the credentialed review job that evaluates it.
+on:
+  workflow_run:
+    workflows: [Secret Scan]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-pr-review-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.id }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Advisory review
+    if: >-
+      ${{ github.event.workflow_run.event == 'pull_request' &&
+          github.event.workflow_run.head_repository.full_name == github.repository &&
+          github.event.workflow_run.pull_requests[0].number }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out the exact same-repository PR head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.event.workflow_run.head_repository.full_name }}
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Review the exact head with Codex Sol
+        id: review
+        uses: kontourai/flow-agents/.github/actions/codex-pr-review@554affe86b97c2ebc14bd25a8986eb91f816d13b
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          pull-request: ${{ github.event.workflow_run.pull_requests[0].number }}
+          base-sha: ${{ github.event.workflow_run.pull_requests[0].base.sha }}
+          head-sha: ${{ github.event.workflow_run.head_sha }}
+          model: gpt-5.6-sol
+          effort: xhigh
+
+      # The validated result is useful without Builder: it binds the review to
+      # the exact head and records pass, comment, fail, or NOT_VERIFIED.
+      - name: Retain the validated exact-head result
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codex-pr-review-${{ steps.review.outputs['head-sha'] }}
+          path: ${{ steps.review.outputs['result-file'] }}
+          if-no-files-found: error
+          retention-days: 30
+
+  record-fork-gap:
+    name: Record fork review gap
+    if: >-
+      ${{ github.event.workflow_run.event == 'pull_request' &&
+          github.event.workflow_run.head_repository.full_name != github.repository &&
+          github.event.workflow_run.pull_requests[0].number }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out trusted base history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.event.workflow_run.pull_requests[0].base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Attach the exact untrusted fork head as read-only review data
+        shell: bash
+        env:
+          CANDIDATE_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          CANDIDATE_HEAD: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [[ ! "$CANDIDATE_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] ||
+             [[ ! "$CANDIDATE_HEAD" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid fork review target identity." >&2
+            exit 1
+          fi
+          git remote add candidate "https://github.com/${CANDIDATE_REPOSITORY}.git"
+          git fetch --no-tags candidate "$CANDIDATE_HEAD"
+          git checkout --detach "$CANDIDATE_HEAD"
+
+      - name: Record the withheld fork reviewer as NOT_VERIFIED
+        id: review
+        uses: kontourai/flow-agents/.github/actions/codex-pr-review@554affe86b97c2ebc14bd25a8986eb91f816d13b
+        with:
+          openai-api-key: ""
+          github-token: ""
+          repository: ${{ github.repository }}
+          pull-request: ${{ github.event.workflow_run.pull_requests[0].number }}
+          base-sha: ${{ github.event.workflow_run.pull_requests[0].base.sha }}
+          head-sha: ${{ github.event.workflow_run.head_sha }}
+          model: gpt-5.6-sol
+          effort: xhigh
+
+      - name: Retain the exact-head NOT_VERIFIED result
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codex-pr-review-${{ steps.review.outputs['head-sha'] }}
+          path: ${{ steps.review.outputs['result-file'] }}
+          if-no-files-found: error
+          retention-days: 30
