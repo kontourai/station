@@ -17,6 +17,27 @@ const { secretBindingOperations } = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../telemetry/metrics.js', () => ({ secretBindingOperations }));
+vi.mock(
+  '@kontourai/station-shared/lifecycle-events',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@kontourai/station-shared/lifecycle-events')
+      >();
+    return {
+      ...actual,
+      acquireFileMutationLockAsync: (
+        path: string,
+        options: import('@kontourai/station-shared/lifecycle-events').FileMutationLockOptions = {},
+      ) =>
+        actual.acquireFileMutationLockAsync(path, {
+          ...options,
+          birthFingerprint:
+            options.birthFingerprint ?? ((pid) => `secret-test:${pid}`),
+        }),
+    };
+  },
+);
 
 import {
   FileSecretBindingAdministration,
@@ -43,6 +64,68 @@ afterEach(async () => {
   await Promise.all(
     homes.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
+});
+
+describe('ACP provider secret resolution (#944)', () => {
+  test('refuses a binding granted to a different ACP consumer before materialization', async () => {
+    const root = await home();
+    const audit = vi.fn();
+    const reads = vi.fn(() => 'Bearer canary-secret');
+    const service = new FileSecretBindingAdministration(root, {
+      secretRunner: { ...runner, readKeychain: reads },
+      logger: { info: audit },
+    });
+    await service.create({
+      id: 'openrouter-key',
+      name: 'OpenRouter key',
+      authRef: {
+        keychain: { service: 'station-test', account: 'openrouter' },
+      },
+    });
+    await service.grant({
+      id: 'openrouter-key',
+      expectedRevision: 1,
+      grant: {
+        kind: 'acp-provider-header',
+        connectionId: 'different-engine',
+        providerId: 'main',
+        headerName: 'Authorization',
+      },
+    });
+
+    await expect(
+      service.resolveForAcpProvider({
+        connectionId: 'opencode',
+        providerId: 'main',
+        secretHeaderRefs: { Authorization: 'openrouter-key' },
+      }),
+    ).rejects.toMatchObject({ reason: 'grant_missing' });
+    expect(reads).not.toHaveBeenCalled();
+
+    await service.grant({
+      id: 'openrouter-key',
+      expectedRevision: 2,
+      grant: {
+        kind: 'acp-provider-header',
+        connectionId: 'opencode',
+        providerId: 'main',
+        headerName: 'Authorization',
+      },
+    });
+
+    const resolution = await service.resolveForAcpProvider({
+      connectionId: 'opencode',
+      providerId: 'main',
+      secretHeaderRefs: { Authorization: 'openrouter-key' },
+    });
+    expect(resolution.environment).toEqual({
+      Authorization: 'Bearer canary-secret',
+    });
+    expect(reads).toHaveBeenCalledOnce();
+    expect(JSON.stringify(await service.list())).not.toContain('canary-secret');
+    resolution.settlement.settle({ outcome: 'success' });
+    expect(JSON.stringify(audit.mock.calls)).not.toContain('canary-secret');
+  });
 });
 
 describe('SecretBindingIntegrationService', () => {
@@ -521,9 +604,12 @@ describe('FileSecretBindingAdministration', () => {
     });
     const unbound = await service.ungrant({
       id: created.id,
-      integrationId: 'github',
-      envName: 'TOKEN',
       expectedRevision: replaced.revision,
+      grant: {
+        kind: 'mcp-integration-env',
+        integrationId: 'github',
+        envName: 'TOKEN',
+      },
     });
     const rebound = await service.grant({
       id: created.id,

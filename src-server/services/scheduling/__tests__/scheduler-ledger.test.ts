@@ -678,6 +678,31 @@ describe('SchedulerLedger', () => {
     ledger.close();
   });
 
+  test('never deletes an advanced claim through the deferral capability', () => {
+    const ledger = createSchedulerLedger({ directory: tempDir });
+    ledger.create({
+      name: 'advanced-deferral-fence',
+      prompt: 'run',
+      retryCount: 1,
+      enabled: true,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    const first = ledger.claimManual('advanced-deferral-fence', Date.now());
+    if (first.kind !== 'claimed') throw new Error('expected first claim');
+    expect(first.receipt.beginInvocation()).toEqual({ kind: 'applied' });
+    const advanced = first.receipt.recordNotInvoked({
+      completedAt: new Date().toISOString(),
+      error: 'retry safely',
+    });
+    if (advanced.kind !== 'claimed') throw new Error('expected retry claim');
+    expect(advanced.receipt.attempt).toBe(2);
+    expect(advanced.receipt.releaseDeferred()).toEqual({ kind: 'stale' });
+    expect(ledger.claimManual('advanced-deferral-fence', Date.now())).toEqual({
+      kind: 'busy',
+    });
+    ledger.close();
+  });
+
   test('long outages select the newest due occurrence without a synthetic catch-up cap', () => {
     const ledger = createSchedulerLedger({ directory: tempDir });
     const start = Date.parse('2026-01-01T00:00:00.000Z');

@@ -3346,6 +3346,7 @@ export class StationRuntime {
       modelCatalog: this.modelCatalog,
       framework: this.framework,
       acpBridge: this.acpBridge,
+      acpProviderSecretResolver: this.secretBindingAdministration,
       providerService: this.providerService,
       knowledgeService: this.knowledgeService,
       feedbackService: this.feedbackService,

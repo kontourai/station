@@ -4,6 +4,7 @@ import {
   engineIdForAdapter,
 } from '../../../providers/adapter-identity.js';
 import {
+  acpProviderRoutingStatus,
   acpRuntimeCatalogStatus,
   hasRequiredMissing,
   mergeRuntimeConfig,
@@ -149,5 +150,43 @@ describe('acpRuntimeCatalogStatus (#3054)', () => {
     expect(status.source).toBe('none');
     expect(status.reason).toContain('No successful initialize handshake');
     expect(status.models).toEqual([]);
+  });
+});
+
+describe('acpProviderRoutingStatus (#944)', () => {
+  test('distinguishes no observation from an observed missing capability', () => {
+    expect(acpProviderRoutingStatus(undefined)).toMatchObject({
+      source: 'none',
+      reason: expect.stringContaining('No successful initialize handshake'),
+    });
+
+    expect(
+      acpProviderRoutingStatus({
+        id: 'opencode',
+        handshakeObservedAt: '2026-08-30T12:00:00.000Z',
+        capabilities: { providers: false },
+      }),
+    ).toEqual({
+      source: 'none',
+      reason:
+        "The engine's initialize handshake advertises no providers capability.",
+      providers: [],
+    });
+  });
+
+  test('preserves an observed empty provider list as live evidence', () => {
+    expect(
+      acpProviderRoutingStatus({
+        id: 'opencode',
+        handshakeObservedAt: '2026-08-30T12:00:00.000Z',
+        capabilities: { providers: true },
+        providerRouting: [],
+      }),
+    ).toEqual({
+      source: 'live',
+      fetchedAt: '2026-08-30T12:00:00.000Z',
+      reason: null,
+      providers: [],
+    });
   });
 });

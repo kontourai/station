@@ -2391,7 +2391,7 @@ test('build gallery — capture key screens', async ({ page }) => {
   await page.route('**/api/connections', fulfillGalleryConnectionsFixture);
 
   // archive#4464: freeze the host's live CPU/resource-posture reading.
-  // `ResourcePostureBannerSource` polls `GET /api/system/resource-posture`
+  // The developer System tab polls `GET /api/system/resource-posture`
   // every 15s and renders a real, chrome-wide "host is busy/at capacity"
   // banner (App.tsx's lazy boundary — present on every route) whenever THIS
   // machine is genuinely under load, which two Playwright+Station runs back

@@ -189,28 +189,6 @@ export function describeInternalStreamFailure(text: string): string | null {
  */
 const TERMINAL_SESSION_PATTERN = /no conversation found with session id/i;
 
-/**
- * archive#3120: extracts the observed busy percentage FROM the server's own
- * `resource_posture_critical` refusal message (`Engine start refused:
- * resource posture=critical, observed busyPercent=<N>, thresholdPercent=<M>,
- *.`) so `translateChatError` can name it, without ever sampling load
- * itself — the number comes from the exact string the refusal decision
- * carried, never re-derived from a separate source.
- *
- * `thresholdPercent` is captured but deliberately NOT rendered as the reason
- * for the refusal. It is the DEGRADED threshold (85), while the refusal is
- * decided against the CRITICAL one (95) —
- * `resource-posture.ts:121` tests `busyPercent >= CRITICAL_BUSY_PERCENT`,
- * and `:124` fills `thresholdPercent` from the degraded constant. Writing
- * "above its 85% threshold, so the engine could not start" would attribute
- * the refusal to a comparison that did not cause it, and would teach a user
- * that Station refuses engines above 85% when in fact it starts them fine at
- * 90%. Carrying a number faithfully and then giving it a meaning its producer
- * never gave it is the same defect as inventing it (review of archive#3120).
- */
-const RESOURCE_POSTURE_DETAIL_PATTERN =
-  /observed busyPercent=(\d+(?:\.\d+)?).*?thresholdPercent=(\d+(?:\.\d+)?)/;
-
 const CONTINUATION_WORKSPACE_CODES = new Set([
   'continuation_workspace_project_context_missing',
   'continuation_workspace_corrupt_worktree_binding',
@@ -242,10 +220,6 @@ const CONTINUATION_WORKSPACE_CODES = new Set([
  *       (`TERMINAL_SESSION_PATTERN`) as a last resort — still evaluated at
  *       this same point, not lower in the function.
  *   0. Native `transport_*` codes (the FFI contract — see the `switch`).
- *   0a. `code === 'resource_posture_critical'` (archive#3089) -> the host
- *       was over its resource threshold when the engine tried to start;
- *       `admitEngineStart` already refused it before any transport was
- *       attempted.
  *   1. Client-abort-shaped message (prose) -> the response was stopped, not
  *      failed.
  *   2. Stall-watchdog-shaped message (prose) -> the connection went silent
@@ -394,54 +368,11 @@ export function translateChatError(
       };
   }
 
-  // archive#3089/archive#3120: a structured, backend-authoritative refusal from
-  // `admitEngineStart` (`CriticalResourcePostureError`,
-  // `resource-posture.ts`) — the host was too busy to start a new engine.
-  // `text` is that error's own message
-  // (`Engine start refused: resource posture=critical, observed
-  // busyPercent=<N>, thresholdPercent=<M>,...`). archive#3120: showing that raw
-  // engineering string AS the body read as debug output under a
-  // human title, so the body is now a sentence built from numbers pulled
-  // out of THIS SAME string via `RESOURCE_POSTURE_DETAIL_PATTERN` — never a
-  // client-side re-sample of load — with the untouched raw string preserved
-  // via `disclosureRaw` (the existing archive#1827 mechanism: a de-emphasized
-  // blockquote below the headline, "for bug reports, not as the headline").
-  // If the string doesn't match the expected shape, fall back to showing it
-  // verbatim rather than inventing a number. Deliberately a distinct code
-  // from every `transport_*` case above and from the scheduler's own
-  // 'Scheduler job deferred'/'Scheduler job refused' copy
-  // (`builtin-scheduler-execution.ts`) — an engine-start refusal and a
-  // deferred scheduled job are different facts and must not collapse into
-  // one message.
-  if (code === 'resource_posture_override_required') {
-    return {
-      title: 'Host remains busy',
-      body:
-        text ||
-        "This Station's averaged CPU load remains high. Automatic work is paused.",
-      hint: 'Choose Start anyway to use this one start, or wait for load to recover.',
-    };
-  }
-
   if (code === 'resource_engine_start_capacity') {
     return {
       title: 'Another engine is starting',
       body: text || 'Another engine start still owns the start slot.',
       hint: 'Retry after that start settles.',
-    };
-  }
-
-  if (code === 'resource_posture_critical') {
-    const detail = RESOURCE_POSTURE_DETAIL_PATTERN.exec(text);
-    const body = detail
-      ? `This Station's host is at ${detail[1]}% load, so the engine could not start.`
-      : text ||
-        "This Station's host is over its resource threshold, so the engine could not start.";
-    return {
-      title: 'Host is at capacity',
-      body,
-      hint: 'Wait for load to drop, then retry.',
-      disclosureRaw: true,
     };
   }
 

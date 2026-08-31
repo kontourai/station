@@ -267,6 +267,11 @@ export {
   useTerminalProcessQuery,
 } from './query-domains/chatRuntime';
 export {
+  fetchPairedDevices,
+  pairedDeviceQueries,
+  usePairedDevicesQuery,
+} from './query-domains/devicePairingRequests';
+export {
   allDiffCommentsQueryKey,
   createDiffComment,
   type DiffComment,

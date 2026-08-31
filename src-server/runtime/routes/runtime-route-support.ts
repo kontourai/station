@@ -284,9 +284,6 @@ export function configureRuntimeSupportServices(
     builtin: {
       notificationService,
       turnAdapter: createScheduledTurnAdapter(context.activeAgents),
-      resourcePosture:
-        context.resourcePosture ??
-        createEnvironmentRuntimeResourcePostureProbe(),
       integrationSecretResolver:
         context.secretBindingAdministration as unknown as import('../../services/secrets/secret-binding-administration.js').IntegrationSecretResolver,
       onActionableMonitor: async (input) => {

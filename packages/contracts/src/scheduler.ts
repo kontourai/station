@@ -5,6 +5,43 @@ export type SchedulerCapability =
   | 'working-dir'
   | 'command';
 
+/**
+ * The built-in scheduler's self-imposed automatic-execution ceiling. Published
+ * here instead of buried in the runtime so consumers can explain deterministic
+ * deferral and retry waiting. Explicit manual runs are exempt so an operator
+ * can always act, but they are counted while active: automatic retries do not
+ * add more work until total active invocations fall below the ceiling. The
+ * limit never changes in response to host measurements.
+ */
+export const SCHEDULER_EXECUTION_LIMITS = {
+  /**
+   * Automatic jobs one Station process admits concurrently when no exempt
+   * manual work is active. Four permits a modest burst of independent jobs;
+   * changing it is an explicit contract change.
+   */
+  maxConcurrentJobs: 4,
+  /** Stable reason recorded when an occurrence defers or waits for a slot. */
+  concurrencyDeferralReason: 'scheduler_concurrency_limit',
+} as const;
+
+/** Every lifecycle outcome emitted by the scheduler concurrency-limit metric. */
+export const SCHEDULER_CONCURRENCY_DISPOSITIONS = [
+  'waiting',
+  'admitted',
+  'stopped',
+  'released',
+  'indeterminate',
+] as const;
+
+export type SchedulerConcurrencyDisposition =
+  (typeof SCHEDULER_CONCURRENCY_DISPOSITIONS)[number];
+
+/** Definite wire-level outcomes of a scheduler concurrency deferral event. */
+export type SchedulerDeferralDisposition = Extract<
+  SchedulerConcurrencyDisposition,
+  'waiting' | 'released'
+>;
+
 /** Provider-neutral schedule accepted by every operator surface. */
 export type SchedulerSchedule =
   | Readonly<{ kind: 'cron'; expr: string; timezone?: string }>
@@ -236,14 +273,21 @@ export type SchedulerMutationResponse = Readonly<{ output: string }>;
 
 /**
  * The truthful terminal result of an authenticated manual scheduler request.
- * `indeterminate` means a provider effect may have started and callers must
- * observe the associated run rather than issue an automatic retry.
+ * `deferred` is a provider-only result meaning no provider effect started; it
+ * does not promise that the provider retained the occurrence. The built-in
+ * scheduler never defers an explicit manual run. `refused` is likewise
+ * provider-only. `indeterminate` means a provider effect may have started and
+ * callers must observe the associated run rather than issue an automatic
+ * retry.
  */
 export type SchedulerManualRunReceipt = Readonly<{
-  outcome: 'completed' | 'failed' | 'indeterminate' | 'refused';
+  outcome: 'completed' | 'deferred' | 'failed' | 'indeterminate' | 'refused';
   message: string;
-  /** Canonical `RunSummary.runId` for observation; never a claim capability. */
-  runId: string;
+  /**
+   * Canonical `RunSummary.runId` for observation; never a claim capability.
+   * Absent when no run row was written, including a provider deferral.
+   */
+  runId?: string;
 }>;
 
 /**
@@ -262,6 +306,7 @@ export interface SchedulerEvent {
     | 'job.completed'
     | 'job.failed'
     | 'job.retrying'
+    | 'job.deferred'
     | 'job.missed'
     | 'monitor.observed'
     | 'monitor.actionable'
@@ -279,6 +324,9 @@ export interface SchedulerEvent {
   attempt?: number;
   maxAttempts?: number;
   missedCount?: number;
+  reason?: typeof SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason;
+  /** Waiting retries remain live; released occurrences are terminal. */
+  disposition?: SchedulerDeferralDisposition;
   /** Bounded monitor outcome; no source body or secret material. */
   monitorOutcome?: import('./external-monitor').ExternalMonitorOutcome;
   monitorState?: import('./external-monitor').ExternalMonitorState;

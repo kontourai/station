@@ -6,7 +6,17 @@ updates:
       interval: weekly
     open-pull-requests-limit: 10
     groups:
+      # Grouped bumps must stay reviewable and landable. A group that mixes
+      # majors with patches makes a routine patch wait on a compiler
+      # migration: #11 and #953 both bundled TypeScript 5 -> 7, Vite 7 -> 8
+      # and plugin-react 5 -> 6 with two vitest patches, so the whole group
+      # sat red while vitest 4.1.11 (which was fine) could not land until it
+      # was split out by hand (#950). Majors are excluded here so each
+      # arrives as its own PR and can get the canary it needs (#918).
       frontend-tooling:
+        update-types:
+          - "minor"
+          - "patch"
         patterns:
           - "@vitejs/*"
           - "vite"

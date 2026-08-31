@@ -2,7 +2,6 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   continueDelegatedTask,
-  DelegationApiError,
   delegateTask,
   discoverDelegationOptions,
   interruptDelegatedTask,
@@ -177,34 +176,6 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
       currentSessionId: legacyListItem.taskId,
       resumable: true,
     });
-  });
-
-  test('delegateTask preserves a retryable resource-posture refusal code', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn<typeof fetch>().mockResolvedValue(
-        jsonResponse(400, {
-          success: false,
-          error: 'Engine start refused: resource posture=critical',
-          code: 'resource_posture_critical',
-          retryable: true,
-        }),
-      ),
-    );
-
-    await expect(
-      delegateTask('http://station.test', {
-        prompt: 'Ship it',
-        target: {
-          environment: { kind: 'current' },
-          agent: agentId('station'),
-        },
-      }),
-    ).rejects.toMatchObject({
-      name: 'DelegationApiError',
-      code: 'resource_posture_critical',
-      retryable: true,
-    } satisfies Partial<DelegationApiError>);
   });
 
   test('delegateTask forwards model options and workspace only inside the canonical target', async () => {

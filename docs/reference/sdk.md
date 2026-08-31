@@ -178,6 +178,13 @@ Returns the current API base URL.
 
 ### Connection Hooks
 
+#### `usePairedDevicesQuery(apiBase?: string): PairedDevice[]`
+
+Reads the current inbound paired-device identity registry from
+`GET /api/pairing/devices`. Device names are current read-time values; do not
+copy them into session or event records. An authorization or response failure
+is a query error, not an empty device list.
+
 #### `useConnectionsQuery(): ConnectionConfig[]`
 
 Returns the merged Connections list used by the Connections hub. The result includes both model and runtime rows from `GET /api/connections`.

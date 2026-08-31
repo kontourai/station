@@ -48,6 +48,38 @@ export interface ACPConfig {
   connections: ACPConnectionConfig[];
 }
 
+/** ACP protocol identifier, preserved losslessly for unstable/future values. */
+export type ACPLlmProtocol = string;
+
+/** Non-secret provider routing state observed from `providers/list`. */
+export interface ACPProviderInfo {
+  providerId: string;
+  supported: ACPLlmProtocol[];
+  required: boolean;
+  current?: { apiType: ACPLlmProtocol; baseUrl: string } | null;
+}
+
+/**
+ * Declared-vs-observed provider evidence, parallel to RuntimeCatalogStatus.
+ * `source: 'none'` plus its reason distinguishes no observation from an
+ * observed initialize handshake that advertised no provider capability.
+ */
+export interface ACPProviderRoutingStatus {
+  source: 'live' | 'stale' | 'none';
+  fetchedAt?: string | null;
+  reason?: string | null;
+  providers: ACPProviderInfo[];
+}
+
+/** Write-only API shape; binding ids are metadata, never secret values. */
+export interface ACPSetProviderRequest {
+  providerId: string;
+  apiType: ACPLlmProtocol;
+  baseUrl: string;
+  /** Every header value crosses Station's secret boundary; literal values are not accepted. */
+  secretHeaderRefs?: Record<string, string>;
+}
+
 export const ACPStatus = {
   AVAILABLE: 'available',
   UNAVAILABLE: 'unavailable',

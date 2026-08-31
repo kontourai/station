@@ -1,11 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
+  assertUpdaterManifestNotRegressing,
   createUpdaterManifest,
+  createUpdaterManifestForPlatforms,
   readUpdaterSignatureFile,
+  verifyUpdaterManifestAssets,
 } from '../lib/tauri-updater-manifest.mjs';
 
 const VALID = Object.freeze({
@@ -87,7 +90,7 @@ describe('the Tauri updater manifest (station#575)', () => {
         ...VALID,
         url: 'https://github.com/kontourai/station/releases/download/nightly-npm/station-nightly-desktop-macos-aarch64.app.tar.gz',
       }),
-    ).toThrow(/url must be a release-asset download URL under releaseTag/);
+    ).toThrow(/url must be exactly one Station release asset under releaseTag/);
     // A url for the right tag but missing the exact "/download/<tag>/"
     // shape (e.g. a tag name that is a prefix of another) must also fail.
     expect(() =>
@@ -96,12 +99,166 @@ describe('the Tauri updater manifest (station#575)', () => {
         releaseTag: 'nightly-desktop',
         url: 'https://github.com/kontourai/station/releases/download/nightly-desktop-preview/station-nightly-desktop-macos-aarch64.app.tar.gz',
       }),
-    ).toThrow(/url must be a release-asset download URL under releaseTag/);
+    ).toThrow(/url must be exactly one Station release asset under releaseTag/);
+  });
+
+  test.each([
+    'https://github.com/kontourai/station/releases/download/nightly-npm/station-nightly-desktop-macos-aarch64.app.tar.gz?x=/download/nightly-desktop/',
+    'https://github.com/kontourai/station/releases/download/nightly-npm/station-nightly-desktop-macos-aarch64.app.tar.gz#/download/nightly-desktop/',
+    'https://github.com/kontourai/station/releases/download/nightly-desktop/../nightly-npm/station-nightly-desktop-macos-aarch64.app.tar.gz',
+    'https://attacker.tld/kontourai/station/releases/download/nightly-desktop/station-nightly-desktop-macos-aarch64.app.tar.gz',
+    'https://github.com/kontourai/station/releases/download/nightly-desktop/subdir/station-nightly-desktop-macos-aarch64.app.tar.gz',
+  ])('rejects non-identical release asset URL %s', (url) => {
+    expect(() => createUpdaterManifest({ ...VALID, url })).toThrow(
+      /url must be exactly one Station release asset under releaseTag/,
+    );
   });
 
   test('never merges a previous platforms map: one call names exactly one platform', () => {
     const manifest = createUpdaterManifest(VALID);
     expect(Object.keys(manifest.platforms)).toEqual(['darwin-aarch64']);
+  });
+
+  test('assembles every platform produced by one release without stale entries', () => {
+    const manifest = createUpdaterManifestForPlatforms({
+      version: '0.1.3',
+      pubDate: VALID.pubDate,
+      releaseTag: 'stable-desktop',
+      platforms: [
+        {
+          platform: 'darwin-aarch64',
+          signature: 'mac-signature',
+          url: 'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-macos-aarch64.app.tar.gz',
+        },
+        {
+          platform: 'windows-x86_64',
+          signature: 'windows-signature',
+          url: 'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-windows-x86_64.msi.zip',
+        },
+      ],
+    });
+    expect(Object.keys(manifest.platforms)).toEqual([
+      'darwin-aarch64',
+      'windows-x86_64',
+    ]);
+  });
+
+  test('refuses duplicate platform entries', () => {
+    expect(() =>
+      createUpdaterManifestForPlatforms({
+        version: VALID.version,
+        pubDate: VALID.pubDate,
+        releaseTag: VALID.releaseTag,
+        platforms: [VALID, VALID],
+      }),
+    ).toThrow(/duplicated/);
+  });
+
+  test('verifies that every manifest URL has a non-empty local asset', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-updater-assets-'));
+    const asset = join(
+      directory,
+      'station-nightly-desktop-macos-aarch64.app.tar.gz',
+    );
+    const manifest = join(directory, 'latest.json');
+    writeFileSync(asset, 'archive');
+    writeFileSync(`${asset}.sig`, VALID.signature);
+    writeFileSync(manifest, JSON.stringify(createUpdaterManifest(VALID)));
+
+    expect(() =>
+      verifyUpdaterManifestAssets({
+        manifestPath: manifest,
+        assetsDir: directory,
+        releaseTag: VALID.releaseTag,
+      }),
+    ).not.toThrow();
+    rmSync(asset);
+    expect(() =>
+      verifyUpdaterManifestAssets({
+        manifestPath: manifest,
+        assetsDir: directory,
+        releaseTag: VALID.releaseTag,
+      }),
+    ).toThrow(/could not read --asset-file/);
+  });
+
+  test('verifies the manifest signature against the matching published signature file', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-updater-signature-'));
+    const assetName = 'station-v0.1.3-macos-aarch64.app.tar.gz';
+    const asset = join(directory, assetName);
+    const manifest = join(directory, 'latest.json');
+    writeFileSync(asset, 'archive');
+    writeFileSync(`${asset}.sig`, 'published-signature');
+    writeFileSync(
+      manifest,
+      JSON.stringify(
+        createUpdaterManifest({
+          ...VALID,
+          version: '0.1.3',
+          releaseTag: 'stable-desktop',
+          signature: 'crossed-signature',
+          url: `https://github.com/kontourai/station/releases/download/stable-desktop/${assetName}`,
+        }),
+      ),
+    );
+
+    expect(() =>
+      verifyUpdaterManifestAssets({
+        manifestPath: manifest,
+        assetsDir: directory,
+        releaseTag: 'stable-desktop',
+      }),
+    ).toThrow(/manifest signature.*does not match/);
+  });
+
+  test('refuses a manifest platform paired with a different architecture asset', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-updater-arch-'));
+    const assetName = 'station-v0.1.3-macos-x86_64.app.tar.gz';
+    const manifest = join(directory, 'latest.json');
+    writeFileSync(join(directory, assetName), 'archive');
+    writeFileSync(
+      manifest,
+      JSON.stringify({
+        version: '0.1.3',
+        notes: '',
+        pub_date: VALID.pubDate,
+        platforms: {
+          'darwin-aarch64': {
+            signature: 'signature',
+            url: `https://github.com/kontourai/station/releases/download/stable-desktop/${assetName}`,
+          },
+        },
+      }),
+    );
+
+    expect(() =>
+      verifyUpdaterManifestAssets({
+        manifestPath: manifest,
+        assetsDir: directory,
+        releaseTag: 'stable-desktop',
+      }),
+    ).toThrow(/does not encode platform.*aarch64/);
+  });
+
+  test('refuses to regress a rolling release pointer without break-glass', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-updater-order-'));
+    const candidatePath = join(directory, 'candidate.json');
+    const currentPath = join(directory, 'current.json');
+    writeFileSync(candidatePath, JSON.stringify({ version: '0.1.3' }));
+    writeFileSync(currentPath, JSON.stringify({ version: '0.1.4' }));
+
+    expect(() =>
+      assertUpdaterManifestNotRegressing({ candidatePath, currentPath }),
+    ).toThrow(
+      /candidate version 0\.1\.3 is older than current version 0\.1\.4/,
+    );
+    expect(
+      assertUpdaterManifestNotRegressing({
+        candidatePath,
+        currentPath,
+        allowRegression: true,
+      }),
+    ).toMatchObject({ regresses: true });
   });
 
   test('readUpdaterSignatureFile converts a missing file into the teaching-message form, not a raw ENOENT (station#575 L4)', () => {
@@ -115,7 +272,10 @@ describe('the Tauri updater manifest (station#575)', () => {
 
   test('the CLI writes the same manifest a direct call would produce', () => {
     const directory = mkdtempSync(join(tmpdir(), 'station-updater-manifest-'));
-    const signatureFile = join(directory, 'signature.sig');
+    const signatureFile = join(
+      directory,
+      'station-nightly-desktop-macos-aarch64.app.tar.gz.sig',
+    );
     const output = join(directory, 'latest.json');
     writeFileSync(signatureFile, `${VALID.signature}\n`);
 
@@ -146,6 +306,81 @@ describe('the Tauri updater manifest (station#575)', () => {
     );
   });
 
+  test('the CLI binds every repeated signature file to its platform asset', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-updater-multi-'));
+    const output = join(directory, 'latest.json');
+    const firstAsset = join(
+      directory,
+      'station-v0.1.3-macos-aarch64.app.tar.gz',
+    );
+    const secondAsset = join(
+      directory,
+      'station-v0.1.3-windows-x86_64.msi.zip',
+    );
+    const firstSignature = `${firstAsset}.sig`;
+    const secondSignature = `${secondAsset}.sig`;
+    for (const asset of [firstAsset, secondAsset])
+      writeFileSync(asset, 'archive');
+    writeFileSync(firstSignature, 'mac-signature');
+    writeFileSync(secondSignature, 'windows-signature');
+
+    const argumentsForManifest = [
+      'scripts/lib/tauri-updater-manifest.mjs',
+      '--version',
+      '0.1.3',
+      '--pub-date',
+      VALID.pubDate,
+      '--platform',
+      'darwin-aarch64',
+      '--asset-file',
+      firstAsset,
+      '--signature-file',
+      firstSignature,
+      '--url',
+      'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-macos-aarch64.app.tar.gz',
+      '--platform',
+      'windows-x86_64',
+      '--asset-file',
+      secondAsset,
+      '--signature-file',
+      secondSignature,
+      '--url',
+      'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-windows-x86_64.msi.zip',
+      '--release-tag',
+      'stable-desktop',
+      '--output',
+      output,
+    ];
+    execFileSync(process.execPath, argumentsForManifest, {
+      cwd: join(import.meta.dirname, '../..'),
+    });
+
+    expect(
+      Object.keys(JSON.parse(readFileSync(output, 'utf8')).platforms),
+    ).toEqual(['darwin-aarch64', 'windows-x86_64']);
+
+    const crossedSignatures = [...argumentsForManifest];
+    const firstSignatureIndex = crossedSignatures.indexOf(firstSignature);
+    const secondSignatureIndex = crossedSignatures.indexOf(secondSignature);
+    crossedSignatures[firstSignatureIndex] = secondSignature;
+    crossedSignatures[secondSignatureIndex] = firstSignature;
+    expect(() =>
+      execFileSync(process.execPath, crossedSignatures, {
+        cwd: join(import.meta.dirname, '../..'),
+        stdio: 'pipe',
+      }),
+    ).toThrow(/does not encode platform/);
+
+    const crossedAssets = [...argumentsForManifest];
+    crossedAssets[crossedAssets.indexOf(firstAsset)] = secondAsset;
+    expect(() =>
+      execFileSync(process.execPath, crossedAssets, {
+        cwd: join(import.meta.dirname, '../..'),
+        stdio: 'pipe',
+      }),
+    ).toThrow(/--asset-file.*does not match updater asset/);
+  });
+
   test('the CLI refuses a flag value that is itself another flag (station#575 L3)', () => {
     // `--signature-file --url ...` would otherwise silently swallow --url
     // as --signature-file's "value", shifting every argument after it by
@@ -167,5 +402,97 @@ describe('the Tauri updater manifest (station#575)', () => {
         { cwd: join(import.meta.dirname, '../..'), stdio: 'pipe' },
       ),
     ).toThrow();
+  });
+
+  test('the CLI refuses fewer signature files than platform entries', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-updater-arity-'));
+    const signatureFile = join(directory, 'signature.sig');
+    writeFileSync(signatureFile, 'signature');
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          'scripts/lib/tauri-updater-manifest.mjs',
+          '--version',
+          '0.1.3',
+          '--pub-date',
+          VALID.pubDate,
+          '--platform',
+          'darwin-aarch64',
+          '--signature-file',
+          signatureFile,
+          '--url',
+          'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-macos-aarch64.app.tar.gz',
+          '--platform',
+          'windows-x86_64',
+          '--url',
+          'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-windows-x86_64.msi.zip',
+          '--release-tag',
+          'stable-desktop',
+          '--output',
+          join(directory, 'latest.json'),
+        ],
+        { cwd: join(import.meta.dirname, '../..'), stdio: 'pipe' },
+      ),
+    ).toThrow(/Each --platform requires one --signature-file/);
+  });
+
+  test('the CLI refuses an explicitly empty updater asset path', () => {
+    const directory = mkdtempSync(
+      join(tmpdir(), 'station-updater-empty-asset-'),
+    );
+    const signatureFile = join(directory, 'signature.sig');
+    writeFileSync(signatureFile, 'signature');
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          'scripts/lib/tauri-updater-manifest.mjs',
+          '--version',
+          '0.1.3',
+          '--pub-date',
+          VALID.pubDate,
+          '--platform',
+          'darwin-aarch64',
+          '--asset-file',
+          '',
+          '--signature-file',
+          signatureFile,
+          '--url',
+          'https://github.com/kontourai/station/releases/download/stable-desktop/station-v0.1.3-macos-aarch64.app.tar.gz',
+          '--release-tag',
+          'stable-desktop',
+          '--output',
+          join(directory, 'latest.json'),
+        ],
+        { cwd: join(import.meta.dirname, '../..'), stdio: 'pipe' },
+      ),
+    ).toThrow(/could not read --asset-file "" \(ENOENT\)/);
+  });
+
+  test.each([
+    ['unknown flag', ['--unknown'], /unknown argument/],
+    ['duplicate scalar', ['--verify', '--verify'], /may be supplied only once/],
+    ['boolean with value', ['--verify', 'manifest.json'], /unknown argument/],
+    [
+      'orphan break glass',
+      ['--allow-regression'],
+      /requires --assert-not-regressing/,
+    ],
+    [
+      'a valid flag from another mode',
+      ['--verify', '--manifest', 'latest.json', '--notes', 'ignored'],
+      /not valid in this command mode/,
+    ],
+  ])('the CLI refuses %s', (_label, args, message) => {
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        ['scripts/lib/tauri-updater-manifest.mjs', ...args],
+        { cwd: join(import.meta.dirname, '../..'), stdio: 'pipe' },
+      ),
+    ).toThrow(message);
   });
 });

@@ -69,7 +69,6 @@ export interface ForegroundMessageInput {
   ambientContext?: string;
   clientTurnId?: string;
   /** Opaque, expiring capability returned by a critical admission challenge. */
-  resourceAdmissionOverrideToken?: string;
   /** Server-owned fixed-route identity for durable automatic queue replay. */
   automaticBackground?: true;
   delegation?: AgentDelegationContext;
@@ -264,7 +263,6 @@ export interface ExecutionTargetExecutionDependencies
     access: EnvironmentAccess,
     input: ProviderSessionStartInput,
     context?: {
-      resourceAdmissionOverrideToken?: string;
       resourceAdmissionIntent?: 'queued_background';
     },
   ) => Promise<{ commandId: string; sessionId: string } | undefined>;
@@ -661,12 +659,6 @@ export async function executeForegroundMessage(
         },
       };
       const startContext = {
-        ...(input.resourceAdmissionOverrideToken
-          ? {
-              resourceAdmissionOverrideToken:
-                input.resourceAdmissionOverrideToken,
-            }
-          : {}),
         ...(input.automaticBackground
           ? { resourceAdmissionIntent: 'queued_background' as const }
           : {}),

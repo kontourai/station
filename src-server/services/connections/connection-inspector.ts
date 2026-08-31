@@ -28,6 +28,7 @@ import {
 } from '../../utils/bounded-async.js';
 import {
   type ACPConnectionStatus,
+  acpProviderRoutingStatus,
   acpRuntimeCatalogStatus,
   buildACPCapabilityInventory,
   buildRuntimeCapabilityInventory,
@@ -272,6 +273,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         // catalog — project it so the composer's wire-channel gate sees the
         // observed evidence it requires instead of an absent field.
         runtimeCatalog: acpRuntimeCatalogStatus(liveStatus),
+        providerRouting: acpProviderRoutingStatus(liveStatus),
         prerequisites,
         status,
         lastCheckedAt: null,
