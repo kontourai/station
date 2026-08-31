@@ -3717,7 +3717,16 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   const serverEnv: Record<string, string> = {
     ...(process.env as Record<string, string>),
     PORT: String(serverPort),
-    STATION_ROOT: resolveStationRoot(),
+    // Derive the root from the home this spawn actually chose. A bare
+    // `resolveStationRoot()` reads only ambient env, and `--home`, `--base`
+    // and `--temp-home` never write to `process.env` — so it returned
+    // `~/.station` while STATION_HOME below named an isolated directory,
+    // handing the child an explicit root it does not own. An explicit
+    // STATION_ROOT still wins inside resolveStationRoot.
+    STATION_ROOT: resolveStationRoot({
+      ...process.env,
+      STATION_HOME: projectHome,
+    }),
     STATION_HOME: projectHome,
     // Resolved from the CLI flag/default decision, never inherited. Runtime
     // test seams may trust `--temp-home` only through this spawn-owned fact.
