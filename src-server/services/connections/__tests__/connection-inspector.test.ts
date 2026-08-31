@@ -528,7 +528,21 @@ describe('ConnectionInspector Interface', () => {
             id: 'first',
             status: 'available',
             handshakeObservedAt: '2026-08-13T00:00:00.000Z',
-            capabilities: { mcpCapabilities: { http: true } },
+            capabilities: {
+              mcpCapabilities: { http: true },
+              providers: true,
+            },
+            providerRouting: [
+              {
+                providerId: 'main',
+                supported: ['openai', '_ollama'],
+                required: false,
+                current: {
+                  apiType: '_ollama',
+                  baseUrl: 'https://openrouter.ai/api/v1',
+                },
+              },
+            ],
           },
           { id: 'second', status: 'available' },
           {
@@ -558,6 +572,29 @@ describe('ConnectionInspector Interface', () => {
     expect(
       rows.find((row: any) => row.id === 'third').controlPlaneObservation,
     ).toEqual({ mcpHttp: false, observedAt: '2026-08-13T00:00:00.000Z' });
+    expect(rows.find((row: any) => row.id === 'first').providerRouting).toEqual(
+      {
+        source: 'live',
+        fetchedAt: '2026-08-13T00:00:00.000Z',
+        reason: null,
+        providers: [
+          expect.objectContaining({
+            providerId: 'main',
+            supported: ['openai', '_ollama'],
+            current: {
+              apiType: '_ollama',
+              baseUrl: 'https://openrouter.ai/api/v1',
+            },
+          }),
+        ],
+      },
+    );
+    expect(
+      rows.find((row: any) => row.id === 'second').providerRouting.reason,
+    ).toContain('No successful initialize handshake');
+    expect(
+      rows.find((row: any) => row.id === 'third').providerRouting.reason,
+    ).toContain('advertises no providers');
   });
 
   test('bounds a never-settling required Adapter cleanup and remains total', async () => {

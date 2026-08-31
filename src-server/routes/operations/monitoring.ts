@@ -14,7 +14,6 @@ interface MonitoringAgent {
 }
 
 import { Hono } from 'hono';
-import { streamSSE } from 'hono/streaming';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { redactMonitoringContent } from '../../monitoring/redaction.js';
 import type { MonitoringEvent } from '../../monitoring/schema.js';
@@ -36,6 +35,7 @@ import {
 } from '../../monitoring/monitoring-session-identity.js';
 import { readFleetRoutingReceipts } from '../../runtime/conversation/fleet-routing-receipt-log.js';
 import { readFleetServeReceipts } from '../../services/inference/fleet-serve-receipt-log.js';
+import { streamSSE } from '../sse-response.js';
 
 /** Hard cap on a historical event query, so a read stays a read. */
 const MAX_EVENT_QUERY_LIMIT = 5000;

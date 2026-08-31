@@ -167,7 +167,8 @@ describe('native recovery documentation', () => {
     const hostilePlugin = read('tests/plugin-host-security.spec.ts');
     const playwright = read('playwright.config.ts');
 
-    expect(tray).toContain('crate::request_main_window_activation(app);');
+    expect(tray).toContain('crate::request_main_window_activation(app)');
+    expect(tray).toContain('queue_tray_navigation(app, destination_kind);');
     expect(hostilePlugin).toContain('window.parent.__TAURI__');
     expect(hostilePlugin).toContain('__TAURI_INTERNALS__.invoke');
     expect(hostilePlugin).toContain(

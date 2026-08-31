@@ -21,11 +21,10 @@ describe('ScheduleStats', () => {
     ).toBe('—');
   });
 
-  test('a critical host is paused at capacity, matching the banner badge', () => {
+  test('host load does not replace scheduler health', () => {
     render(
       <ScheduleStats
         daemonOk
-        hostPressure="critical"
         jobsCount={1}
         schedulerHealthy
         statusError={false}
@@ -34,27 +33,7 @@ describe('ScheduleStats', () => {
       />,
     );
 
-    expect(screen.getByText('Paused — host very busy')).toBeTruthy();
-    expect(screen.queryByText('● Healthy')).toBeNull();
-  });
-
-  test('a degraded host is paused BUSY, not at capacity', () => {
-    // The banner says "Busy" at this posture. Saying "at capacity" here would
-    // be a label nothing derived — the exact defect this card exists to avoid.
-    render(
-      <ScheduleStats
-        daemonOk
-        hostPressure="degraded"
-        jobsCount={1}
-        schedulerHealthy
-        statusError={false}
-        successRate={100}
-        totalRuns={1}
-      />,
-    );
-
-    expect(screen.getByText('Paused — host busy')).toBeTruthy();
-    expect(screen.queryByText('Paused — host very busy')).toBeNull();
-    expect(screen.queryByText('● Healthy')).toBeNull();
+    expect(screen.getByText('● Healthy')).toBeTruthy();
+    expect(screen.queryByText(/Paused — host/u)).toBeNull();
   });
 });

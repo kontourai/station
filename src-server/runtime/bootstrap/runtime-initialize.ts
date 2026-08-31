@@ -514,10 +514,8 @@ export async function initializeRuntime(
   // asset loading it never depended on.
   const adoptionLedger = orchestrationEventStore.createAdoptionLedger();
   // The same probe owns foreground engine admission, scheduler admission, and
-  // the system-status projection. In the runner-authorized clean-install
-  // journey it must therefore use the constrained environment seam too;
-  // otherwise the route/status reads say healthy while this real dispatch
-  // still samples unrelated host load.
+  // the system-status projection. The observation is diagnostics-only;
+  // orchestration retains this controller solely for its engine-start lease.
   const resourcePosture = createEnvironmentRuntimeResourcePostureProbe();
   // Private owner point-read seam for native declared PR outputs. It is
   // intentionally distinct from the public Pull Requests route, whose
