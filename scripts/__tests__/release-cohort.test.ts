@@ -19,7 +19,7 @@ const sourceSha = 'a'.repeat(40);
 const attestation = (records: any[]) => ({
   authority: 'github-artifact-attestation',
   repository: 'kontourai/station',
-  workflowRef: `.github/workflows/nightly.yml@${sourceSha}`,
+  workflowRef: `.github/workflows/nightly-native-cohort.yml@${sourceSha}`,
   runId: '112061',
   subjectDigest: `sha256:${createHash('sha256').update(canonicalJson(records)).digest('hex')}`,
   verificationReference: 'github:attestation:immutable:1',
@@ -35,7 +35,18 @@ const input = (overrides: any = {}) => ({
   channel: 'nightly',
   sourceSha,
   workflowRunId: '112061',
-  versionIdentities: { android: '1.0.0', desktop: '1.0.0' },
+  versionIdentities: {
+    android: {
+      packageName: 'io.kontourai.station.nightly',
+      versionCode: 242801,
+      versionName: '1.0.0-nightly.1',
+    },
+    desktop: {
+      bundleVersion: '242801',
+      releaseTag: 'nightly-desktop',
+      version: '1.0.0-nightly.1',
+    },
+  },
   availabilityPolicy: {
     releaseMode: 'atomic',
     requiredReceipt: 'provider-backed',
@@ -113,6 +124,32 @@ describe('release cohort content-bound state machine', () => {
       createCohortPlan(input({ versionIdentities: { android: '1' } })),
     ).toThrow(CohortValidationError);
     expect(() =>
+      createCohortPlan(
+        input({
+          versionIdentities: {
+            ...input().versionIdentities,
+            android: {
+              ...input().versionIdentities.android,
+              versionCode: '242801',
+            },
+          },
+        }),
+      ),
+    ).toThrow('versionIdentities.android is invalid');
+    expect(() =>
+      createCohortPlan(
+        input({
+          versionIdentities: {
+            ...input().versionIdentities,
+            desktop: {
+              ...input().versionIdentities.desktop,
+              releaseTag: 'not/a-tag',
+            },
+          },
+        }),
+      ),
+    ).toThrow('versionIdentities.desktop is invalid');
+    expect(() =>
       createStageReceipt(
         { ...p, promotionOrder: ['macos', 'android'] },
         {
@@ -158,7 +195,7 @@ describe('release cohort content-bound state machine', () => {
       (v: any) => (v.repository = 'other/repo'),
       (v: any) => (v.runId = '99'),
       (v: any) =>
-        (v.workflowRef = `.github/workflows/nightly.yml@${'b'.repeat(40)}`),
+        (v.workflowRef = `.github/workflows/nightly-native-cohort.yml@${'b'.repeat(40)}`),
       (v: any) => (v.subjectDigest = `sha256:${'0'.repeat(64)}`),
       (v: any) => (v.verificationReference = ''),
     ]) {
@@ -381,4 +418,172 @@ test('CLI runs the plan-to-finalize path and rejects invalid invocation', () => 
   );
   expect(invalid.status).toBe(1);
   expect(invalid.stderr).toContain('usage:');
+});
+
+test('recovery receipt is content-bound and makes confirmed provider finality distinct from partial durability', () => {
+  const root = mkdtempSync(join(tmpdir(), 'station-cohort-recovery-'));
+  roots.push(root);
+  const plan = createCohortPlan(input());
+  const planPath = join(root, 'plan.json');
+  const resultsPath = join(root, 'results.json');
+  const receiptPath = join(root, 'recovery.json');
+  writeFileSync(planPath, JSON.stringify(plan));
+  writeFileSync(
+    resultsPath,
+    JSON.stringify({
+      'plan-cohort': 'success',
+      'promote-android': 'success',
+      'promote-macos': 'success',
+      'protected-finalize': 'success',
+      'record-native-completion': 'failure',
+      'final-attestation': 'success',
+      'app-token': 'success',
+      ledger: 'failure',
+      tag: 'skipped',
+    }),
+  );
+  const absent = join(root, 'absent.json');
+  const result = spawnSync(
+    process.execPath,
+    [
+      join(process.cwd(), 'scripts/release-cohort-workflow.mjs'),
+      'recovery-receipt',
+      receiptPath,
+      sourceSha,
+      '112061',
+      planPath,
+      resultsPath,
+      absent,
+      absent,
+      absent,
+      absent,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(result.status, result.stderr).toBe(0);
+  const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
+  expect(receipt).toMatchObject({
+    cohortId: plan.cohortId,
+    sourceSha,
+    completion: {
+      providerFinality: 'confirmed',
+      durableCompletion: 'partial',
+      finalAttestation: 'success',
+      appToken: 'success',
+      ledger: 'failure',
+      tag: 'skipped',
+    },
+  });
+  const message = spawnSync(
+    process.execPath,
+    [
+      join(process.cwd(), 'scripts/release-cohort-workflow.mjs'),
+      'canonical-recovery-message',
+      receiptPath,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(message.status, message.stderr).toBe(0);
+  const tagPath = join(root, 'tag.json');
+  writeFileSync(
+    tagPath,
+    JSON.stringify({
+      tag: 'nightly-recovery-lock',
+      type: 'commit',
+      object: { type: 'commit', sha: sourceSha },
+      message: message.stdout,
+    }),
+  );
+  const tag = spawnSync(
+    process.execPath,
+    [
+      join(process.cwd(), 'scripts/release-cohort-workflow.mjs'),
+      'assert-recovery-tag-object',
+      tagPath,
+      sourceSha,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(tag.status, tag.stderr).toBe(0);
+  receipt.completion.ledger = 'success';
+  writeFileSync(
+    tagPath,
+    JSON.stringify({
+      ...JSON.parse(readFileSync(tagPath, 'utf8')),
+      message: JSON.stringify(receipt),
+    }),
+  );
+  const malformed = spawnSync(
+    process.execPath,
+    [
+      join(process.cwd(), 'scripts/release-cohort-workflow.mjs'),
+      'assert-recovery-tag-object',
+      tagPath,
+      sourceSha,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(malformed.status).toBe(1);
+});
+
+test('promotion fence is canonical, content-bound, and validates its annotated tag object', () => {
+  const root = mkdtempSync(join(tmpdir(), 'station-cohort-fence-'));
+  roots.push(root);
+  const { plan, admission } = fixture();
+  const planPath = join(root, 'plan.json');
+  const admissionPath = join(root, 'admission.json');
+  const fencePath = join(root, 'fence.json');
+  writeFileSync(planPath, JSON.stringify(plan));
+  writeFileSync(admissionPath, JSON.stringify(admission));
+  const command = join(process.cwd(), 'scripts/release-cohort-workflow.mjs');
+  const fence = spawnSync(
+    process.execPath,
+    [command, 'promotion-fence', fencePath, planPath, admissionPath],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(fence.status, fence.stderr).toBe(0);
+  const message = spawnSync(
+    process.execPath,
+    [command, 'canonical-promotion-fence-message', fencePath],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(message.status, message.stderr).toBe(0);
+  const tagPath = join(root, 'tag.json');
+  writeFileSync(
+    tagPath,
+    JSON.stringify({
+      tag: 'nightly-promotion-fence',
+      object: { type: 'commit', sha: sourceSha },
+      message: message.stdout,
+    }),
+  );
+  const valid = spawnSync(
+    process.execPath,
+    [
+      command,
+      'assert-promotion-fence-tag-object',
+      tagPath,
+      planPath,
+      admissionPath,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(valid.status, valid.stderr).toBe(0);
+  const staleAdmission = {
+    ...admission,
+    admissionContentDigest: '0'.repeat(64),
+  };
+  writeFileSync(admissionPath, JSON.stringify(staleAdmission));
+  const mismatched = spawnSync(
+    process.execPath,
+    [
+      command,
+      'assert-promotion-fence-tag-object',
+      tagPath,
+      planPath,
+      admissionPath,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  expect(mismatched.status).toBe(1);
 });

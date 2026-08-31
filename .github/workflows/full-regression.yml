@@ -21,7 +21,7 @@ jobs:
       group: hosted-full-regression-${{ inputs.source_sha }}
       cancel-in-progress: false
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - name: Validate immutable source identity
         env:
@@ -51,8 +51,8 @@ jobs:
       # fail-closed: with no `actionlint` on PATH it exits 2 rather than
       # reporting an unvalidated surface as a pass. Provisioning it here is
       # what lets that gate actually validate, instead of failing the lane.
-      # Kept byte-identical to ci.yml's step, which `actionlint-gate.mjs`
-      # pins via PINNED_ACTIONLINT_PROVISION_RUN.
+      # `actionlint-gate.mjs` pins this copy through
+      # `fullRegressionActionlintFindings`, so it cannot drift from ci.yml's.
       - name: Install pinned actionlint
         env:
           ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
