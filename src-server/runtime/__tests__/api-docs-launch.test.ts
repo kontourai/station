@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { HttpBindings } from '@hono/node-server';
 import {
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
+  PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
 } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
@@ -123,5 +125,30 @@ describe('API docs launcher (#934)', () => {
       loopback(),
     );
     expect(response.status).toBe(400);
+  });
+});
+
+describe('the tray mirrors these paths as Rust literals', () => {
+  // The desktop cannot import a TypeScript constant, so `src-desktop/src/tray.rs`
+  // repeats both paths. A silent drift would send the tray to a 404 and leave
+  // the menu item looking broken for a reason nothing points at, so bind them.
+  const tray = readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      '..',
+      '..',
+      '..',
+      'src-desktop',
+      'src',
+      'tray.rs',
+    ),
+    'utf8',
+  );
+
+  test.each([
+    ['launcher', PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH],
+    ['capability mint', PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH],
+  ])('%s path matches the server contract', (_label, path) => {
+    expect(tray).toContain(`"${path}"`);
   });
 });

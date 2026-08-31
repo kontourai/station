@@ -10,6 +10,7 @@ use serde::Deserialize;
 use std::fmt::Display;
 use std::io::Read;
 use std::net::IpAddr;
+use std::path::Path;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -1108,16 +1109,49 @@ fn open_station_ui(app: &AppHandle) {
 
 fn open_station_api_docs(app: &AppHandle) {
     let context = tray_context(app);
-    let Some(url) = context.snapshot.api_docs_url.as_deref() else {
+    let Some(launch_url) = context.snapshot.api_docs_url.clone() else {
         log::warn!(
             "Station tray could not open API docs for {:?}: no validated local API origin is available",
             context.snapshot.kind
         );
         return;
     };
-    if let Err(error) = app.opener().open_url(url, None::<&str>) {
-        log::error!("Station tray could not open API docs: {error}");
-    }
+    let Some(api_origin) = context.snapshot.api_origin.clone() else {
+        log::warn!("Station tray could not open API docs: no validated local API origin");
+        return;
+    };
+    // The service manifest names the home of the Station actually serving
+    // these docs; a desktop-owned sidecar serves this process's own home.
+    let base_dir = context
+        .service
+        .as_ref()
+        .map(|service| service.base_dir.clone())
+        .unwrap_or_else(|| station_home(app));
+
+    // Minting is a blocking loopback request. The menu event handler runs on
+    // the UI thread, where a stalled request would freeze the whole tray.
+    let app = app.clone();
+    thread::spawn(move || {
+        let url = match mint_api_docs_capability(&api_origin, &base_dir) {
+            Ok(capability) => match api_docs_launch_url_with_capability(&launch_url, &capability) {
+                Ok(url) => url,
+                Err(error) => {
+                    log::error!("Station tray could not open API docs: {error}");
+                    launch_url
+                }
+            },
+            Err(error) => {
+                // Open the launcher regardless: it states plainly that sign-in
+                // did not complete, which is more use than a menu item that
+                // appears to do nothing at all.
+                log::error!("Station tray could not mint an API docs capability: {error}");
+                launch_url
+            }
+        };
+        if let Err(error) = app.opener().open_url(&url, None::<&str>) {
+            log::error!("Station tray could not open API docs: {error}");
+        }
+    });
 }
 
 fn open_manifest_ui<E>(
@@ -1179,6 +1213,17 @@ fn station_api_origin(manifest: &ServiceManifest) -> Result<String, String> {
     Ok(url.origin().ascii_serialization())
 }
 
+/// Station's own launcher page for the framework-served API docs. Mirrors
+/// `PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH` in
+/// `packages/contracts/src/environment-security.ts`; the server owns the
+/// contract and a mismatch surfaces as a 404 from the launcher, not a silent
+/// downgrade to an unauthenticated docs page.
+const API_DOCS_LAUNCH_PATH: &str = "/.well-known/station/v1/pairing/api-docs";
+
+/// Mirrors `PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH`.
+const API_DOCS_CAPABILITY_MINT_PATH: &str =
+    "/.well-known/station/v1/pairing/mint-ui-bootstrap";
+
 fn station_api_docs_url(api_origin: &str) -> Result<String, String> {
     let origin = crate::exact_origin(api_origin)?;
     if api_origin != origin {
@@ -1196,7 +1241,70 @@ fn station_api_docs_url(api_origin: &str) -> Result<String, String> {
     if !is_local {
         return Err("API docs require a local Station origin".into());
     }
-    Ok(format!("{origin}/ui"))
+    Ok(format!("{origin}{API_DOCS_LAUNCH_PATH}"))
+}
+
+/// The system browser holds no Station credential and cannot set an
+/// `Authorization` header on a top-level navigation, so opening the docs
+/// directly answers 401. The tray opens Station's own launcher page instead,
+/// handing it a single-use capability in the URL FRAGMENT: a fragment is never
+/// transmitted to the server, so the capability stays out of request logs and
+/// out of the query string, where Station refuses credentials outright.
+fn api_docs_launch_url_with_capability(launch_url: &str, capability: &str) -> Result<String, String> {
+    if capability.is_empty() || !capability.bytes().all(|byte| {
+        byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'
+    }) {
+        return Err("Station returned a malformed API docs capability".into());
+    }
+    Ok(format!("{launch_url}#station-ui-bootstrap={capability}"))
+}
+
+/// Exchanges the owner-only per-boot local-grant secret for the current
+/// single-use UI bootstrap capability. Possession of that file is the proof;
+/// loopback alone is a transport position and never authority, which is why
+/// the launcher page cannot mint this for itself.
+fn mint_api_docs_capability(api_origin: &str, base_dir: &Path) -> Result<String, String> {
+    let secret_path = base_dir.join("runtime").join("local-grant.secret");
+    let secret = crate::service_state::read_owner_only_file(&secret_path, "local grant secret")
+        .map_err(|error| format!("read Station local grant secret: {error}"))?
+        .trim()
+        .to_string();
+    if secret.is_empty() {
+        return Err("Station local grant secret is empty".into());
+    }
+    let endpoint = url::Url::parse(api_origin)
+        .map_err(|_| "invalid Station API origin".to_string())?
+        .join(API_DOCS_CAPABILITY_MINT_PATH)
+        .map_err(|_| "invalid Station API origin".to_string())?;
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .max_redirects(0)
+        .timeout_global(Some(Duration::from_secs(10)))
+        .http_status_as_error(false)
+        .build()
+        .into();
+    let mut response = agent
+        .post(endpoint.as_str())
+        .header("Content-Type", "application/json")
+        .send(
+            serde_json::to_string(&serde_json::json!({ "secret": secret }))
+                .map_err(|_| "invalid API docs capability request".to_string())?,
+        )
+        .map_err(|_| "could not reach Station to mint an API docs capability".to_string())?;
+    let status = response.status().as_u16();
+    let raw = response
+        .body_mut()
+        .read_to_string()
+        .map_err(|_| "invalid API docs capability response".to_string())?;
+    if !(200..300).contains(&status) {
+        return Err(format!("Station refused the API docs capability (HTTP {status})"));
+    }
+    let parsed: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|_| "invalid API docs capability response".to_string())?;
+    parsed
+        .get("token")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| "Station returned no API docs capability".to_string())
 }
 
 /// Reveal the native tray menu from a renderer-owned affordance. Tauri's
@@ -2353,12 +2461,48 @@ mod tests {
             station_ui_url(&manifest("localhost")).unwrap(),
             "http://localhost:3000"
         );
+        // Station's own launcher, not the framework's docs page: the browser
+        // has no credential and /ui answers 401 without one.
         assert_eq!(
             station_api_docs_url("http://127.0.0.1:3141").unwrap(),
-            "http://127.0.0.1:3141/ui"
+            "http://127.0.0.1:3141/.well-known/station/v1/pairing/api-docs"
         );
         assert!(station_api_docs_url("https://example.com").is_err());
         assert!(station_api_docs_url("http://127.0.0.1:3141/other").is_err());
+    }
+
+    #[test]
+    fn carries_the_docs_capability_in_the_fragment_and_never_the_query() {
+        let launch = station_api_docs_url("http://127.0.0.1:3141").unwrap();
+        let url = api_docs_launch_url_with_capability(&launch, "abc-DEF_123").unwrap();
+        assert_eq!(
+            url,
+            "http://127.0.0.1:3141/.well-known/station/v1/pairing/api-docs#station-ui-bootstrap=abc-DEF_123"
+        );
+        // A fragment is never sent to the server. A query string would be, and
+        // Station refuses query-parameter credentials outright -- which also
+        // records a rate-limiter failure against the user's own browser.
+        assert!(!url.contains('?'));
+        let (before_fragment, _) = url.split_once('#').unwrap();
+        assert!(!before_fragment.contains("abc-DEF_123"));
+    }
+
+    #[test]
+    fn refuses_a_capability_that_could_alter_the_url() {
+        let launch = station_api_docs_url("http://127.0.0.1:3141").unwrap();
+        for hostile in [
+            "",
+            "tok en",
+            "tok#en",
+            "tok?en",
+            "tok&next=https://evil.test",
+            "../../evil",
+        ] {
+            assert!(
+                api_docs_launch_url_with_capability(&launch, hostile).is_err(),
+                "expected {hostile:?} to be refused"
+            );
+        }
     }
 
     #[test]
