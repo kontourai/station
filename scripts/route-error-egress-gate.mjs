@@ -18,6 +18,14 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   'src-server/routes/agents/unattended-grants-routes.ts :: route POST / :: error.message :: 1',
   'src-server/routes/agents/unattended-grants-routes.ts :: route POST /revoke :: error.message :: 1',
   'src-server/routes/chat/conversations.ts :: function conversationRouteFailure :: error.message :: 1',
+  // #1000 (ACP provider routing). Both surface a TYPED Station domain error
+  // whose message is authored here, not an upstream or system string:
+  // ACPProviderRouteValidationError carries one of three fixed sentences
+  // (observation_required / provider_not_found / protocol_unsupported) and
+  // ACPRequiredProviderDisableError one more. The only interpolated value is
+  // the caller's own providerId, echoed back to an authenticated caller.
+  'src-server/routes/connections/acp.ts :: route POST /connections/:id/providers/set :: error.message :: 1',
+  'src-server/routes/connections/acp.ts :: route POST /connections/:id/providers/disable :: (error as Error).message :: 1',
   'src-server/routes/knowledge/knowledge-index-routes.ts :: route POST /index/rebuild :: e.message :: 1',
   'src-server/routes/knowledge/knowledge-index-routes.ts :: route POST /migrate :: e.message :: 1',
   'src-server/routes/plugins/plugin-config-routes.ts :: route GET /:name/settings :: error.message :: 1',
