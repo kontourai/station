@@ -39,7 +39,7 @@ vi.mock('../hooks/useIsMobile', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useAgentConnectionsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: [] }),
   useModelConnectionsQuery: () => ({ data: [] }),
   useProjectsQuery: () => ({ data: [] }),
   useCredentialRecoveryQuery: () => ({

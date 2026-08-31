@@ -76,7 +76,7 @@ const refetchAgentTools = vi.fn();
 const useAgentToolsQuery = vi.fn();
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useAgentConnectionsQuery: () => ({ data: CONNECTIONS }),
+  useEngineConnectionsQuery: () => ({ data: CONNECTIONS }),
   useModelConnectionsQuery: () => ({ data: MODEL_CONNECTIONS }),
   useAgentQuery: () => ({
     data: state.detail,

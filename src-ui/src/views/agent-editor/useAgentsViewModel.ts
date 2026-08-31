@@ -3,9 +3,9 @@ import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engi
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   isAgentToolsActivatingError,
-  useAgentConnectionsQuery,
   useAgentQuery,
   useAgentToolsQuery,
+  useEngineConnectionsQuery,
   useIntegrationsQuery,
   useMaterializeEngineAgentMutation,
   useModelConnectionsQuery,
@@ -147,7 +147,7 @@ export function useAgentsViewModel({
     null,
   );
   const [search, setSearch] = useState('');
-  const { data: agentConnections = [] } = useAgentConnectionsQuery() as {
+  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data?: ConnectionConfig[];
   };
   const { data: modelConnections = [] } = useModelConnectionsQuery() as {

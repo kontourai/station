@@ -43,7 +43,7 @@ vi.mock('../api', () => ({
 
 import { useApiQuery } from '../query-core';
 import {
-  useAgentConnectionsQuery,
+  useEngineConnectionsQuery,
   useModelConnectionsQuery,
   useModelPickerCatalogQuery,
 } from '../query-domains/workspaceConnections';
@@ -486,7 +486,7 @@ describe('station#3748 — an inventory read that failed is not an empty invento
     });
 
     await expect(
-      queryFnOf(useAgentConnectionsQuery)({
+      queryFnOf(useEngineConnectionsQuery)({
         signal: new AbortController().signal,
       }),
     ).rejects.toThrow(

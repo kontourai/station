@@ -5,7 +5,7 @@ import {
   conversationQueries,
   interruptOrchestrationTurn,
   isProvablyNotSent,
-  useAgentConnectionsQuery,
+  useEngineConnectionsQuery,
   useInvalidateQuery,
 } from '@kontourai/station-sdk';
 import { useCallback } from 'react';
@@ -138,7 +138,7 @@ export function useSendMessage(
   // Only consulted at the mid-turn send gate below to decide steering vs.
   // enqueue (archive#613). No built-in adapter declares 'steering' today, so this
   // list never actually flips the branch in production.
-  const { data: agentConnections = [] } = useAgentConnectionsQuery() as {
+  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data: ConnectionConfig[];
   };
   const invalidate = useInvalidateQuery();

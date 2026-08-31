@@ -398,7 +398,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     // to a generated id the server has never heard of — that navigation is
     // what destroyed the draft.
     for (const call of onNavigate.mock.calls) {
-      expect(call[0]).toEqual({ type: 'connections-provider-edit', id: 'new' });
+      expect(call[0]).toEqual({ type: 'connections-model-edit', id: 'new' });
     }
     expect(saveMutate).not.toHaveBeenCalled();
     expect(testMutate).not.toHaveBeenCalled();
@@ -425,7 +425,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       saveMutationOptions.onSuccess?.({ id: created.connection.id }, undefined);
     });
     expect(onNavigate).toHaveBeenCalledWith({
-      type: 'connections-provider-edit',
+      type: 'connections-model-edit',
       id: created.connection.id,
     });
   });
@@ -473,13 +473,13 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       screen.getByRole('dialog', { name: 'Unsaved Changes' }),
     ).toBeTruthy();
     expect(onNavigate).not.toHaveBeenCalledWith({
-      type: 'connections-provider-edit',
+      type: 'connections-model-edit',
       id: 'second',
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(onNavigate).toHaveBeenCalledWith({
-      type: 'connections-provider-edit',
+      type: 'connections-model-edit',
       id: 'second',
     });
   });
