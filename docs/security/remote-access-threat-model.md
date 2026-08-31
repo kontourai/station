@@ -143,7 +143,7 @@ Fresh nonces prevent replay, and a copied environment id cannot authorize an
 endpoint change. Remote endpoint candidates require HTTPS; HTTP is limited to
 strict loopback names and addresses.
 
-## Mutation budget (station#514)
+## Mutation budget (archive#514)
 
 The runtime security middleware applies a shared body-size ceiling and a
 per-principal mutation-rate budget to every authenticated mutation

@@ -97,19 +97,20 @@ addition to `--force`; the shared root is not a runtime cleanup target.
 | `@kontourai/station-sdk` | `packages/sdk/` | Published (npm, Apache-2.0) | Plugin SDK hooks, components, query domains, and client helpers |
 | `@kontourai/station-shared` | `packages/shared/` | Published (npm, Apache-2.0) | Shared runtime helpers and compatibility re-exports |
 | `@kontourai/station-connect` | `packages/connect/` | Private (`private: true`) | Standalone bidirectional pairing library |
-| `@kontourai/station-cli` | `packages/cli/` | Private (`private: true`) | CLI implementation behind `./station` |
+| `@kontourai/station-cli` | `packages/cli/` | Published (npm, Apache-2.0) | Client CLI package; checkout-only host commands remain behind `./station` |
 
-The three published packages ship raw TypeScript source, so consumers need a
-bundler or a TS-aware loader; each README documents that constraint. The two
-private packages are marked `private: true` in their `package.json` and are
-never pushed to the registry — `./station` is only usable from a checkout.
+The contracts, SDK, and shared packages ship raw TypeScript source, so their
+consumers need a bundler or a TS-aware loader; each README documents that
+constraint. The CLI ships a bundled executable. Connect remains private and is
+marked `private: true` in its `package.json`. The repo-root `./station` launcher
+remains the checkout entry point for host and contributor commands.
 
 New cross-package types should live in the owning `@kontourai/station-contracts/*` module. Keep compatibility re-exports in `shared` only when needed for older callers.
 
 Root `npm run dependencies:ci` also provisions development examples that depend on Station
 workspace packages. Those examples are declared in the root `workspaces` list
-so npm links host-provided peers locally — which is required for the private
-packages, which cannot be resolved from the registry at all, and keeps the
+so npm links host-provided peers locally — which is required for private
+workspace packages that cannot be resolved from the registry, and keeps the
 published ones pinned to the in-repo source rather than the last release. Add a
 new example there when its tests are part of the root verification corpus and
 it owns dependencies that the root install must provide. Root-managed examples

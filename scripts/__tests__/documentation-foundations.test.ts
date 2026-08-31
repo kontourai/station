@@ -75,6 +75,30 @@ describe('documentation foundations', () => {
     expect(reference).not.toContain('scripts/');
   });
 
+  it('keeps the plugin manifest field reference complete against the contract', () => {
+    const contract = read('packages/contracts/src/plugin.ts');
+    const manifest = contract.match(
+      /export interface PluginManifest \{([\s\S]*?)\n\}\n\nexport interface PluginOverrideConfig/,
+    )?.[1];
+    expect(manifest).toBeTruthy();
+    const contractFields = [
+      ...(manifest ?? '').matchAll(/^ {2}([A-Za-z][A-Za-z0-9]*)\??:/gm),
+    ].map((match) => match[1]);
+
+    const guide = read('docs/guides/plugins.md');
+    const fieldTable = guide.match(
+      /### Field Reference([\s\S]*?)#### Reserved plugin names/,
+    )?.[1];
+    expect(fieldTable).toBeTruthy();
+    const documentedFields = new Set(
+      [...(fieldTable ?? '').matchAll(/^\| `([^`]+)` \|/gm)].map(
+        (match) => match[1].split('.')[0],
+      ),
+    );
+
+    expect([...documentedFields].sort()).toEqual(contractFields.sort());
+  });
+
   it('defers shared UI explorer, manifest, tokens, themes, and accessibility to Kontour UI', () => {
     for (const file of [
       'docs/guides/theming.md',
@@ -177,7 +201,7 @@ describe('documentation foundations', () => {
     expect(tray).toContain('never guesses from `service/default.json`');
   });
 
-  it('documents the published client package with channel-tagged npx and a local fallback', () => {
+  it('documents the published client package with registry-verified npx and a local fallback', () => {
     const packageDocument = JSON.parse(read('packages/cli/package.json')) as {
       name: string;
       private?: boolean;
@@ -194,7 +218,13 @@ describe('documentation foundations', () => {
     expect(packageDocument.private).not.toBe(true);
     expect(packageDocument.publishConfig?.access).toBe('public');
     expect(packageReadme).toContain('npx @kontourai/station-cli@latest');
-    expect(packageReadme).toContain('npx @kontourai/station-cli@nightly');
+    expect(packageReadme).toContain(
+      'npm view @kontourai/station-cli version dist-tags',
+    );
+    expect(packageReadme).toContain(
+      'Use a channel tag only after `npm view` reports it',
+    );
+    expect(packageReadme).not.toContain('npx @kontourai/station-cli@nightly');
     expect(packageReadme).toContain('./station <command> [args]');
     expect(packageReadme).toContain(
       "selected channel's runtime-resolver loopback origin",

@@ -13,6 +13,26 @@ row that matches the job you are doing.
 | Maintainers and agents | [../AGENTS.md](../AGENTS.md), [strategy/README.md](strategy/README.md), [glossary.md](glossary.md) | Repository only |
 | API and CLI consumers | [reference/api.md](reference/api.md), [reference/cli.md](reference/cli.md), [reference/contracts.md](reference/contracts.md) | Repository only |
 
+## Choose a path
+
+### Product and marketing
+
+Start with the [project README](../README.md), then use [Getting started](user/getting-started.md)
+and [Station concepts](user/concepts.md) to understand the product, its
+local-first data boundary, and its work vocabulary. These pages describe
+outcomes and user-visible behavior without depending on a particular external
+engine.
+
+### Developer and operator
+
+Use the [development guide](guides/development.md), [plugin authoring guide](guides/build-your-first-plugin.md),
+[SDK reference](reference/sdk.md), [API reference](reference/api.md), and [CLI
+reference](reference/cli.md) for implementation, extension, and integration
+work. These documents may name a specific protocol or supported integration
+when that detail is required to configure or test the interface.
+The [example catalog](../examples/README.md) groups runnable fixtures by
+contract and states which live-provider paths remain unverified.
+
 ## Authority
 
 - [glossary.md](glossary.md) owns canonical Station vocabulary.

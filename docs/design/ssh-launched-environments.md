@@ -4,7 +4,7 @@
 
 ## The gap
 
-Station can pair with a running Station (QR, tailnet offer, LAN URL) but cannot stand one up. "Run this project on media-host" requires someone to have installed and started Station there first. The reference client's flow (studied in the private ops workspace) proves the UX: add an SSH target, the app probes, starts or reuses a remote server, port-forwards, and saves an ordinary environment.
+Station can pair with a running Station (QR, tailnet offer, LAN URL) but cannot stand one up. "Run this project on media-host" requires someone to have installed and started Station there first. A surveyed reference flow demonstrates the UX: add an SSH target, the app probes, starts or reuses a remote server, port-forwards, and saves an ordinary environment.
 
 ## The trust question first, because it is the differentiator
 
@@ -16,7 +16,10 @@ A launched environment is code WE started on a machine, which is a stronger clai
 
 ## Mechanics
 
-v1 launches a pinned source checkout. The previously proposed published-CLI path is deferred: once the CLI is published, v2 may use an exact pinned `npx @kontourai/station-cli@<version>` invocation, but the current private package and command surface cannot provide that mechanism.
+v1 launches a pinned source checkout. The published CLI is intentionally a
+client and does not ship the host lifecycle needed to start a remote Station,
+so an exact pinned `npx @kontourai/station-cli@<version>` invocation cannot
+replace the checkout path.
 
 1. The Tauri host runs non-interactive OpenSSH with argument arrays and validated targets. `ssh <target> true` must succeed or the flow stops with SSH's error verbatim. It then requires remote `git --version` and a `node --version` satisfying this checkout's build-time `package.json#engines.node`; v1 does not install either prerequisite.
 2. The expected revision is the connected desktop Station's own full `buildSha` from `GET /api/system/instance`. Absence stops the flow; a mutable ref is never substituted. The remote clones this repository into `~/.station/ssh-launch/checkout`, or fetches when that Git checkout exists, then runs `git checkout --detach <sha>`. `git rev-parse HEAD` must byte-match the expected SHA before installation or execution proceeds. Clone and fetch use the remote user's existing Git authentication and return Git's failure output verbatim.
@@ -27,7 +30,9 @@ v1 launches a pinned source checkout. The previously proposed published-CLI path
 
 ## Non-goals (v1)
 
-Windows remotes; password/keyboard-interactive auth; remote Git or Node installation; remote upgrades; multiple simultaneous forwards to one host; publishing the CLI (the exact-pinned `npx` mechanism is v2 after publication).
+Windows remotes; password/keyboard-interactive auth; remote Git or Node
+installation; remote upgrades; multiple simultaneous forwards to one host; or
+expanding the published client CLI into a host distribution.
 
 ## Acceptance sketch
 
