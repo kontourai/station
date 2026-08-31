@@ -231,6 +231,13 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'appearance',
     configKeys: ['defaultChatFontSize', 'chatFontSize'],
   },
+  {
+    id: 'smooth-answer-reveal',
+    title: 'Smooth answer reveal',
+    section: 'appearance',
+    keywords: ['chat streaming steady cadence'],
+    configKeys: ['featureSettings'],
+  },
   { id: 'theme', title: 'Theme', section: 'appearance', configKeys: ['theme'] },
   {
     id: 'sidebar-sections',

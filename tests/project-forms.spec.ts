@@ -355,6 +355,68 @@ test.describe('Project forms', () => {
     });
   }
 
+  /**
+   * #1014: the folder browser is now reachable from New Project's Working
+   * Directory field via a Browse button wired into `PathAutocomplete`
+   * itself. This pins the mobile-keyboard case the shared component must
+   * not regress: opening the browser must not unmount the form (the #998
+   * class — a remount-plus-return-focus race left a stale 200ms blur timer
+   * that could dismiss the suggestion dropdown after the fact), so picking a
+   * folder must land the value in the field AND leave the suggestion
+   * dropdown working afterward.
+   */
+  test('new project Browse button picks a folder and leaves suggestions working at 390x844 (#998 class)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await installVisualViewportFixture(page);
+    await page.goto('/projects/new');
+
+    await expect(
+      page.getByRole('heading', { name: 'New Project' }),
+    ).toBeVisible();
+
+    const directory = page.getByPlaceholder('/path/to/project');
+    const browseButton = page.getByRole('button', {
+      name: 'Browse for a folder',
+    });
+    const browseBox = await browseButton.boundingBox();
+    expect(browseBox?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+    expect(browseBox?.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+
+    await browseButton.click();
+    const browser = page.getByRole('dialog', { name: 'Select Folder' });
+    await expect(browser).toBeVisible();
+
+    // The dialog must fit inside the reduced mobile viewport, not just the
+    // nominal one.
+    const browserBox = await browser.boundingBox();
+    expect(browserBox?.x).toBeGreaterThanOrEqual(0);
+    expect((browserBox?.x ?? 0) + (browserBox?.width ?? 0)).toBeLessThanOrEqual(
+      390,
+    );
+
+    const entry = browser.getByRole('button', { name: 'demo' });
+    await expect(entry).toBeVisible();
+    expect((await entry.boundingBox())?.height).toBeGreaterThanOrEqual(
+      MIN_TOUCH_TARGET_PX,
+    );
+
+    await browser.getByRole('button', { name: 'Select This Folder' }).click();
+    await expect(browser).toHaveCount(0);
+    await expect(directory).toHaveValue('/tmp/');
+
+    // The #998 class: the form must not have unmounted (and re-mounted) to
+    // show the browser, so the suggestion dropdown must still work — a
+    // stale blur timer from the remount-plus-return-focus race is what
+    // dismissed it historically.
+    await directory.fill('/tmp/d');
+    const option = page.locator('.path-autocomplete__option', {
+      hasText: 'demo',
+    });
+    await expect(option).toBeVisible();
+  });
+
   for (const viewport of [
     { width: 390, height: 844 },
     { width: 360, height: 800 },
@@ -424,7 +486,11 @@ test.describe('Project forms', () => {
       expect(geometry!.scrollTop).toBe(
         geometry!.scrollHeight - geometry!.clientHeight,
       );
-      expect(geometry!.cardBottom).toBeLessThanOrEqual(geometry!.scrollBottom);
+      // Fractional rect bottoms can differ after scrollTop reaches the exact
+      // scrollHeight - clientHeight limit; allow at most one CSS pixel.
+      expect(geometry!.cardBottom).toBeLessThanOrEqual(
+        geometry!.scrollBottom + 1,
+      );
       expect(geometry!.scrollBottom).toBeLessThanOrEqual(geometry!.footerTop);
       expect(geometry!.cardBottom).toBeLessThanOrEqual(geometry!.footerTop);
       expect(geometry!.footerBottom).toBeLessThanOrEqual(geometry!.panelBottom);
