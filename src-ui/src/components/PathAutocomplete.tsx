@@ -2,6 +2,7 @@ import { useFileSystemBrowseQuery } from '@kontourai/station-sdk';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isComposingKeyEvent } from '../lib/isComposingKeyEvent';
 import { FolderGlyph } from './icons/Glyph';
+import { FolderBrowserModal } from './modals/FolderBrowserModal';
 import './PathAutocomplete.css';
 
 const MAX_SUGGESTIONS = 8;
@@ -60,6 +61,7 @@ export function PathAutocomplete({
   id,
   autoFocus = true,
   suggestionsInitiallyOpen = true,
+  browsable = false,
   'aria-invalid': ariaInvalid,
   'aria-describedby': ariaDescribedBy,
 }: {
@@ -74,6 +76,12 @@ export function PathAutocomplete({
   id?: string;
   autoFocus?: boolean;
   suggestionsInitiallyOpen?: boolean;
+  /**
+   * Opt-in Browse affordance (#1014): renders a button beside the input that
+   * opens the shared `FolderBrowserModal`. Off by default so existing
+   * callers are unaffected until they adopt it.
+   */
+  browsable?: boolean;
   /** Set when the host has a field-level error to bind to this input. */
   'aria-invalid'?: boolean | undefined;
   'aria-describedby'?: string | undefined;
@@ -81,12 +89,22 @@ export function PathAutocomplete({
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const [userDismissed, setUserDismissed] = useState(false);
   const [active, setActive] = useState(suggestionsInitiallyOpen);
+  const [showBrowser, setShowBrowser] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const pickingRef = useRef(false);
   const outsidePointerRef = useRef(false);
   const pickingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guards the input's own 200ms blur-dismiss timer while the folder browser
+  // is open. Without this, a blur timer scheduled the instant Browse steals
+  // focus can fire well after the dialog closes and the input regains focus
+  // — dismissing suggestions the user just reopened by refocusing/typing.
+  // That race is exactly the #998 class this component's mount identity is
+  // designed to avoid (the modal renders as a sibling here; the input never
+  // unmounts), so this guard is belt-and-braces against the same failure
+  // mode reappearing through a different trigger.
+  const browsingRef = useRef(false);
 
   useEffect(() => {
     if (autoFocus) inputRef.current?.focus();
@@ -183,6 +201,18 @@ export function PathAutocomplete({
     setActive(false);
   }, []);
 
+  // A blur can be armed for reasons that have nothing to do with the user
+  // choosing to leave the field (e.g. a remount elsewhere in the tree
+  // stealing then returning focus). If the input is re-engaged before the
+  // 200ms blur timer fires, that timer is stale and must not dismiss a
+  // dropdown the user never asked to close.
+  const cancelBlurTimer = useCallback(() => {
+    if (blurTimerRef.current) {
+      clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     if (!show) return;
     const isInside = (target: EventTarget | null) =>
@@ -251,6 +281,35 @@ export function PathAutocomplete({
     }, 300);
   };
 
+  const openBrowser = () => {
+    // Cancel any dismiss timer the ensuing blur (Browse stealing focus) is
+    // about to schedule or has already scheduled — mousedown moves focus,
+    // and therefore fires the input's blur handler, before this click
+    // handler runs.
+    cancelBlurTimer();
+    browsingRef.current = true;
+    // Hide the suggestion dropdown while the folder browser dialog is open
+    // — the two would otherwise render on top of each other.
+    dismiss();
+    setShowBrowser(true);
+  };
+
+  const handleBrowserSelect = (path: string) => {
+    onChange(`${path}/`);
+    setUserDismissed(false);
+    setActive(true);
+  };
+
+  const handleBrowserClose = () => {
+    browsingRef.current = false;
+    setShowBrowser(false);
+    // Return focus to the input synchronously, ahead of the dialog's own
+    // unmount and return-focus restore, so a later stale timer or a
+    // trigger-button restore cannot leave the suggestion dropdown out of
+    // sync with what is actually focused (the #998 class).
+    inputRef.current?.focus();
+  };
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     // Escape is also meaningful while the browse request is still in flight.
     // Mark the current value dismissed before suggestions exist so a late
@@ -309,36 +368,60 @@ export function PathAutocomplete({
 
   return (
     <div className="path-autocomplete" ref={rootRef}>
-      <input
-        id={id}
-        ref={inputRef}
-        className={className ?? 'editor-input path-autocomplete__input'}
-        type="text"
-        value={value}
-        onChange={(e) => {
-          onChange(e.target.value);
-          setUserDismissed(false);
-          setActive(true);
-        }}
-        onKeyDown={onKeyDown}
-        onBlur={() => {
-          if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
-          blurTimerRef.current = setTimeout(() => {
-            if (!pickingRef.current) {
-              dismiss();
-              onBlur?.();
-            }
-          }, 200);
-        }}
-        onFocus={() => {
-          setUserDismissed(false);
-          setActive(true);
-        }}
-        placeholder={placeholder}
-        disabled={disabled}
-        aria-invalid={ariaInvalid}
-        aria-describedby={ariaDescribedBy}
-      />
+      <div className="path-autocomplete__row">
+        <input
+          id={id}
+          ref={inputRef}
+          className={className ?? 'editor-input path-autocomplete__input'}
+          type="text"
+          value={value}
+          onChange={(e) => {
+            cancelBlurTimer();
+            onChange(e.target.value);
+            setUserDismissed(false);
+            setActive(true);
+          }}
+          onKeyDown={onKeyDown}
+          onBlur={() => {
+            if (browsingRef.current) return;
+            if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+            blurTimerRef.current = setTimeout(() => {
+              if (!pickingRef.current) {
+                dismiss();
+                onBlur?.();
+              }
+            }, 200);
+          }}
+          onFocus={() => {
+            cancelBlurTimer();
+            setUserDismissed(false);
+            setActive(true);
+          }}
+          placeholder={placeholder}
+          disabled={disabled}
+          aria-invalid={ariaInvalid}
+          aria-describedby={ariaDescribedBy}
+        />
+        {browsable && (
+          <button
+            type="button"
+            className="path-autocomplete__browse-btn"
+            onClick={openBrowser}
+            disabled={disabled}
+            title="Browse for a folder"
+            aria-label="Browse for a folder"
+          >
+            <FolderGlyph />
+          </button>
+        )}
+      </div>
+      {browsable && showBrowser && (
+        <FolderBrowserModal
+          initialPath={resolveBrowsePath(value) ?? ''}
+          onSelect={handleBrowserSelect}
+          onClose={handleBrowserClose}
+        />
+      )}
       {show && (
         <div className="path-autocomplete__dropdown">
           {suggestions.map((suggestion, i) => (

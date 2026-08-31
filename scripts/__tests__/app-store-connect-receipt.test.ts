@@ -4,6 +4,8 @@ import {
   appStoreConnectRequest,
   createAppStoreConnectJwt,
   selectAppResource,
+  selectBuildResources,
+  selectInternalGroup,
   selectProcessedBuildResource,
 } from '../app-store-connect-receipt.mjs';
 
@@ -113,5 +115,70 @@ describe('App Store Connect receipt authority', () => {
         '10399',
       ),
     ).toThrow(/found 2/);
+  });
+
+  test('reconciliation allows absent or one build and refuses ambiguity', () => {
+    expect(selectBuildResources({ data: [] }, '10399')).toEqual([]);
+    expect(
+      selectBuildResources(
+        {
+          data: [
+            { type: 'builds', id: 'one', attributes: { version: '10399' } },
+          ],
+        },
+        '10399',
+      ),
+    ).toHaveLength(1);
+    expect(() =>
+      selectBuildResources(
+        {
+          data: [
+            { type: 'builds', attributes: { version: '10399' } },
+            { type: 'builds', attributes: { version: '10399' } },
+          ],
+        },
+        '10399',
+      ),
+    ).toThrow(/at most one/);
+  });
+
+  test('accepts only the exact internal group', () => {
+    const payload = {
+      data: [
+        {
+          type: 'betaGroups',
+          id: 'group-id',
+          attributes: { name: 'Station Beta Internal', isInternalGroup: true },
+        },
+      ],
+    };
+    expect(
+      selectInternalGroup(payload, {
+        appId: 'app-id',
+        groupId: 'group-id',
+        groupName: 'Station Beta Internal',
+      }).id,
+    ).toBe('group-id');
+    expect(() =>
+      selectInternalGroup(
+        {
+          data: [
+            {
+              type: 'betaGroups',
+              id: 'group-id',
+              attributes: {
+                name: 'Station Beta Internal',
+                isInternalGroup: false,
+              },
+            },
+          ],
+        },
+        {
+          appId: 'app-id',
+          groupId: 'group-id',
+          groupName: 'Station Beta Internal',
+        },
+      ),
+    ).toThrow(/exact internal group/);
   });
 });

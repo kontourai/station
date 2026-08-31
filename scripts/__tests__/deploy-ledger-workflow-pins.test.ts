@@ -24,6 +24,10 @@ import { describe, expect, it } from 'vitest';
 
 const root = resolve(import.meta.dirname, '../..');
 const nightly = readFileSync(
+  resolve(root, '.github/workflows/nightly-native-cohort.yml'),
+  'utf8',
+);
+const nightlyCaller = readFileSync(
   resolve(root, '.github/workflows/nightly.yml'),
   'utf8',
 );
@@ -45,11 +49,11 @@ const parseScript = readFileSync(
 );
 
 const NIGHTLY_ANDROID_LEDGER_STEP =
-  'Record the nightly Android ship in the deploy ledger';
+  'Record durable completion only after the verified final receipt';
 const NIGHTLY_NPM_LEDGER_STEP =
-  'Record the nightly CLI npm ship in the deploy ledger';
+  'Record the independent CLI ship in the deploy ledger';
 const NIGHTLY_DESKTOP_LEDGER_STEP =
-  'Record the nightly desktop ship in the deploy ledger';
+  'Record durable completion only after the verified final receipt';
 const STABLE_LEDGER_STEP = 'Record the stable release in the deploy ledger';
 const NPM_LEDGER_STEP = 'Record published npm packages in the deploy ledger';
 const LEDGER_SCRIPT = 'node scripts/deploy-ledger.mjs';
@@ -79,90 +83,76 @@ function stepBlock(workflow: string, stepName: string): string {
 }
 
 describe('the nightly workflow records what it ships', () => {
-  it('normalizes ledger-only commits before Android and desktop compare their rolling tags', () => {
-    const androidDecision = stepBlock(
+  it('normalizes ledger-only commits before deciding whether an atomic cohort is needed', () => {
+    const decision = stepBlock(
       nightly,
-      'Decide whether there is anything to build',
+      'Decide one cohort rather than independent native ships',
     );
-    const desktopStart = nightly.indexOf('\n  nightly-desktop:');
-    const desktopDecision = stepBlock(
-      nightly.slice(desktopStart),
-      'Decide whether there is a new desktop nightly to build',
+    expect(decision).toContain(
+      'normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$android_sha"',
     );
-    for (const decision of [androidDecision, desktopDecision]) {
-      expect(decision).toContain(
-        'node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$last_sha"',
-      );
-      expect(decision).toContain('normalized_head_sha=$normalized_head_sha');
-      expect(decision).toContain('[ "$normalized_head_sha" = "$last_sha" ]');
-    }
+    expect(decision).toContain(
+      'normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$desktop_sha"',
+    );
   });
 
-  it('records the Android ship only after publication and the rolling tag', () => {
+  it('records the Android ship only after provider finality and before the final marker', () => {
     const playUpload = nightly.indexOf(
-      'name: Upload to Play internal testing track',
+      'name: Upload the admitted AAB with its exact release name',
     );
-    const rollingTag = nightly.indexOf('name: Advance the rolling nightly tag');
     const androidLedger = nightly.indexOf(
       `name: ${NIGHTLY_ANDROID_LEDGER_STEP}`,
     );
     expect(playUpload).toBeGreaterThanOrEqual(0);
-    expect(rollingTag).toBeGreaterThan(playUpload);
-    expect(androidLedger).toBeGreaterThan(rollingTag);
+    expect(androidLedger).toBeGreaterThan(playUpload);
     const step = stepBlock(nightly, NIGHTLY_ANDROID_LEDGER_STEP);
     expect(step).toContain(COMMIT_SCRIPT);
     expect(step).toContain(LEDGER_SCRIPT);
     expect(step).toContain('--channel nightly-android');
     // The decided ship SHA — the same one the gate verdicted and the build
     // shipped — never a re-derivation.
+    expect(step).toContain('needs.plan-cohort.outputs.source_sha');
     expect(step).toContain(
-      'DEPLOY_LEDGER_SHA: $' + '{{ steps.decide.outputs.head_sha }}',
+      '--sha "$' + '{{ needs.plan-cohort.outputs.source_sha }}"',
     );
-    expect(step).toContain('--sha "$DEPLOY_LEDGER_SHA"');
-    expect(step).not.toMatch(/git rev-parse/);
     // LOW-2: the version is the identity step's derived version, not
     // github.ref or a re-derived one.
-    expect(step).toContain(
-      'DEPLOY_LEDGER_VERSION: $' + '{{ steps.identity.outputs.version }}',
-    );
+    expect(step).toContain('androidVersion=');
     // Mirrors the publish condition: no signing material, no ship, no row.
-    expect(step).toContain(
-      "steps.android_signing.outputs.keystore_base64 != ''",
-    );
+    expect(step).toContain('assert-final cohort/final-cohort-receipt.json');
     // The push credential is the release app's token — the require-green
     // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
     expect(step).toContain('steps.ledger_token.outputs.token');
     // The commit subject is what the changelog exclusion rule keys on.
     expect(step).toMatch(/docs\(ledger\):/);
+    expect(
+      nightly.indexOf(
+        'name: Advance final Android marker with exact REST readback',
+      ),
+    ).toBeGreaterThan(androidLedger);
   });
 
-  it('records the npm ship after the publish and after the Android record', () => {
-    const npmPublish = nightly.indexOf(
-      'name: Publish @kontourai/station-cli to the nightly dist-tag',
+  it('records the independent CLI ship after its own publish, without pretending it orders the native cohort', () => {
+    const npmPublish = nightlyCaller.indexOf(
+      'name: Publish @kontourai/station-cli to npm nightly',
     );
-    const androidLedger = nightly.indexOf(
-      `name: ${NIGHTLY_ANDROID_LEDGER_STEP}`,
-    );
-    const npmLedger = nightly.indexOf(`name: ${NIGHTLY_NPM_LEDGER_STEP}`);
+    const npmLedger = nightlyCaller.indexOf(`name: ${NIGHTLY_NPM_LEDGER_STEP}`);
     expect(npmPublish).toBeGreaterThanOrEqual(0);
     expect(npmLedger).toBeGreaterThan(npmPublish);
-    expect(npmLedger).toBeGreaterThan(androidLedger);
-    const step = stepBlock(nightly, NIGHTLY_NPM_LEDGER_STEP);
+    const step = stepBlock(nightlyCaller, NIGHTLY_NPM_LEDGER_STEP);
     expect(step).toContain(COMMIT_SCRIPT);
     expect(step).toContain(LEDGER_SCRIPT);
     expect(step).toContain('--channel nightly-npm');
     expect(step).toContain(
-      'DEPLOY_LEDGER_SHA: $' + '{{ steps.decide.outputs.head_sha }}',
+      '--sha "$' + '{{ needs.test-gate.outputs.source_sha }}"',
     );
     // LOW-2: the nightly CLI's OWN identity step, not the Android's.
-    expect(step).toContain(
-      'DEPLOY_LEDGER_VERSION: $' + '{{ steps.cli_identity.outputs.version }}',
-    );
+    expect(step).toContain('$' + '{{ steps.identity.outputs.version }}');
     expect(step).not.toMatch(/git rev-parse/);
     // Records only what actually published, and cannot be suppressed by an
     // unrelated later-step failure.
     expect(step).toContain(
-      "always() && steps.decide.outputs.build == 'true' && steps.cli_npm_publish.outcome == 'success'",
+      "always() && steps.cli_npm_publish.outcome == 'success'",
     );
     // The push credential is the release app's token — the require-green
     // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
@@ -173,53 +163,43 @@ describe('the nightly workflow records what it ships', () => {
   it('lets a ledger failure redden the job without blocking any ship', () => {
     // The recorders themselves carry no continue-on-error; only the
     // belt-and-braces artifact upload does (infrastructure, station#2218).
-    for (const stepName of [
-      NIGHTLY_ANDROID_LEDGER_STEP,
-      NIGHTLY_NPM_LEDGER_STEP,
-    ]) {
-      expect(stepBlock(nightly, stepName)).not.toContain('continue-on-error');
-    }
-    const retain = stepBlock(nightly, LEDGER_RETAIN_STEP);
-    expect(retain).toContain('continue-on-error: true');
-    expect(retain).toContain('deploy-ledger-nightly-');
-    expect(retain).toContain('always()');
+    expect(stepBlock(nightly, NIGHTLY_ANDROID_LEDGER_STEP)).not.toContain(
+      'continue-on-error',
+    );
+    expect(stepBlock(nightlyCaller, NIGHTLY_NPM_LEDGER_STEP)).not.toContain(
+      'continue-on-error',
+    );
+    // Native recording is a final job after both provider receipts, so a
+    // recorder failure cannot suppress either provider effect.
+    expect(nightly).toContain('needs: [plan-cohort, protected-finalize]');
+    expect(nightly).toContain("needs.protected-finalize.result == 'success'");
   });
 });
 
 describe('the desktop nightly workflow records what it ships (station#575)', () => {
-  // Bounded to the next top-level job key, not EOF (station#575 fix round
-  // L8): a future job appended after this one must not leak into these
-  // indexOf-based assertions.
-  const desktopJobStart = nightly.indexOf('\n  nightly-desktop:');
-  const desktopNextJob = nightly
-    .slice(desktopJobStart + 1)
-    .match(/\n {2}[A-Za-z0-9_-]+:\s*\n/);
-  const desktopJobEnd = desktopNextJob
-    ? desktopJobStart + 1 + (desktopNextJob.index ?? 0)
-    : nightly.length;
-  const desktopJob = nightly.slice(desktopJobStart, desktopJobEnd);
-
-  it('records the desktop ship only after the rolling prerelease publish', () => {
-    const publish = desktopJob.indexOf(
-      'name: Publish the rolling desktop nightly prerelease',
+  it('records desktop only after the macOS provider receipt and protected final receipt', () => {
+    const publish = nightly.indexOf(
+      'name: Promote all four admitted macOS assets and bind the rolling tag',
     );
-    const ledger = desktopJob.indexOf(`name: ${NIGHTLY_DESKTOP_LEDGER_STEP}`);
+    const providerReceipt = nightly.indexOf(
+      'name: Record only a reported-success macOS provider state',
+    );
+    const ledger = nightly.indexOf(`name: ${NIGHTLY_DESKTOP_LEDGER_STEP}`);
     expect(publish).toBeGreaterThanOrEqual(0);
-    expect(ledger).toBeGreaterThan(publish);
-    const step = stepBlock(desktopJob, NIGHTLY_DESKTOP_LEDGER_STEP);
+    expect(providerReceipt).toBeGreaterThan(publish);
+    expect(ledger).toBeGreaterThan(providerReceipt);
+    const step = stepBlock(nightly, NIGHTLY_DESKTOP_LEDGER_STEP);
     expect(step).toContain(COMMIT_SCRIPT);
     expect(step).toContain(LEDGER_SCRIPT);
     expect(step).toContain('--channel nightly-desktop');
     // The same decided ship SHA the gate verdicted and the build shipped —
     // this job's OWN decide step, never a re-derivation.
+    expect(step).toContain('needs.plan-cohort.outputs.source_sha');
     expect(step).toContain(
-      'DEPLOY_LEDGER_SHA: $' + '{{ steps.decide.outputs.head_sha }}',
+      '--sha "$' + '{{ needs.plan-cohort.outputs.source_sha }}"',
     );
-    expect(step).toContain('--sha "$DEPLOY_LEDGER_SHA"');
     expect(step).not.toMatch(/git rev-parse/);
-    expect(step).toContain(
-      'DEPLOY_LEDGER_VERSION: $' + '{{ steps.identity.outputs.version }}',
-    );
+    expect(step).toContain('desktopVersion=');
     expect(step).toMatch(/docs\(ledger\):/);
     // The push credential is the release app's token — the require-green
     // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
@@ -227,13 +207,15 @@ describe('the desktop nightly workflow records what it ships (station#575)', () 
   });
 
   it('lets a ledger failure redden the job without blocking any ship', () => {
-    expect(stepBlock(desktopJob, NIGHTLY_DESKTOP_LEDGER_STEP)).not.toContain(
+    expect(stepBlock(nightly, NIGHTLY_DESKTOP_LEDGER_STEP)).not.toContain(
       'continue-on-error',
     );
-    const retain = stepBlock(desktopJob, LEDGER_RETAIN_STEP);
-    expect(retain).toContain('continue-on-error: true');
-    expect(retain).toContain('deploy-ledger-nightly-desktop-');
-    expect(retain).toContain('always()');
+    expect(nightly).toContain(
+      'name: nightly-cohort-final-$' + '{{ github.run_id }}',
+    );
+    expect(nightly).toContain(
+      'name: Verify finalized receipt provenance before minting the ledger token',
+    );
   });
 
   it('uses the DEPLOY_LEDGER_CHANNELS vocabulary, not a literal string only the workflow knows', () => {
