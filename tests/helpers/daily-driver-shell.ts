@@ -375,8 +375,9 @@ export async function seedDailyDriverShell(
         ),
       );
     }
-    const conversationOpenMatch =
-      /^\/api\/conversations\/([^/]+)\/open$/.exec(path);
+    const conversationOpenMatch = /^\/api\/conversations\/([^/]+)\/open$/.exec(
+      path,
+    );
     if (conversationOpenMatch) {
       // A restored/resumed chat mounts `ConversationOpenRevalidator`
       // (`conversationOpenPending` from `hydrateActiveChats`), and the
@@ -415,8 +416,8 @@ export async function seedDailyDriverShell(
             transcript: {
               available: true,
               owner: 'runtime',
-              messageCount: historyByConversation.get(conversationId)
-                ?.length ?? 0,
+              messageCount:
+                historyByConversation.get(conversationId)?.length ?? 0,
             },
             canContinue: !terminalSessions.has(currentSessionId),
             answerability: { answerable: true },
