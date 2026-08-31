@@ -63,35 +63,55 @@ describe('one-revision native promotion contract', () => {
 
   test('makes stable TestFlight publication and provider receipt fail closed', () => {
     const release = workflow('release.yml');
-    const ios = release.jobs?.['ios-device'] ?? {};
-    const importMaterial = namedStep(
-      ios,
-      'Import protected Apple signing and store material',
-    );
+    const caller = release.jobs?.['ios-device'] ?? {};
+    const delivery = workflow('testflight-delivery.yml');
+    const ios = delivery.jobs?.deliver ?? {};
+    expect(
+      namedStep(ios, 'Import protected signing material bound to this channel'),
+    ).toBeDefined();
     for (const required of [
       'APPLE_API_KEY_ID',
       'APPLE_API_ISSUER_ID',
       'APPLE_API_PRIVATE_KEY',
     ]) {
-      expect(importMaterial.run).toContain(required);
+      expect(
+        readFileSync(
+          resolve(root, '.github/workflows/testflight-delivery.yml'),
+          'utf8',
+        ),
+      ).toContain(required);
     }
-    const upload = namedStep(ios, 'Upload to TestFlight');
-    expect(upload.id).toBe('testflight_upload');
+    const upload = namedStep(
+      ios,
+      'Upload a previously unobserved IPA to TestFlight',
+    );
     expect(upload.with?.['wait-for-processing']).toBe('true');
-    expect((upload as any).if).toBeUndefined();
+    expect((upload as any).if).toContain(
+      "steps.reconcile.outputs.upload == 'true'",
+    );
     expect(
       ios.steps?.some((step) => step.name === 'Note skipped TestFlight upload'),
     ).toBe(false);
 
-    const preflight = namedStep(ios, 'Verify App Store Connect app authority');
+    const preflight = namedStep(
+      ios,
+      'Verify App Store Connect app authority before signing',
+    );
     const receipt = namedStep(
       ios,
-      'Record the processed TestFlight build receipt',
+      'Record processed provider receipt and attach the channel group',
     );
-    const retain = namedStep(ios, 'Retain TestFlight provider receipts');
+    const retain = ios.steps?.find((step) =>
+      step.uses?.includes('upload-artifact'),
+    );
     expect(preflight.run).toContain('app-preflight');
     expect(receipt.run).toContain('build-receipt');
-    expect(receipt.run).toContain('needs.preflight.outputs.sha');
-    expect(retain.with?.name).toBe('station-ios-testflight-receipts');
+    expect(receipt.run).toContain('inputs.source_sha');
+    expect(retain?.with?.name).toContain(
+      'station-$' + '{{ inputs.channel }}-ios-testflight',
+    );
+    expect((caller as any).uses).toBe(
+      './.github/workflows/testflight-delivery.yml',
+    );
   });
 });

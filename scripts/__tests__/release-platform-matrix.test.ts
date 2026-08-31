@@ -83,10 +83,13 @@ describe('cross-platform release invariant matrix', () => {
       matrix,
       ledger: companionLedger,
     }).channelEvidence.find((entry) => entry.channel === 'nightly');
+    // The iOS channel is automated but has no provider receipt until Apple
+    // accepts the first build. Two sibling receipts alone cannot make a
+    // three-platform Nightly claim green.
     expect(converged).toMatchObject({
-      status: 'VERIFIED',
-      sourceSha: sharedSha,
-      configuredPlatforms: ['macos', 'android'],
+      status: 'NOT_VERIFIED',
+      sourceSha: null,
+      configuredPlatforms: ['macos', 'android', 'ios'],
       verifiedPlatforms: ['macos', 'android'],
     });
 

@@ -199,6 +199,12 @@ jobs:
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 90
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+      source_sha: ${{ steps.decide.outputs.head_sha }}
+      marketing_version: ${{ steps.ios_identity.outputs.marketing_version }}
+      bundle_version: ${{ steps.identity.outputs.version_code }}
+      reservation_tag: ${{ steps.allocate.outputs.reservation_tag }}
     env:
       GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_PLAY_SERVICE_ACCOUNT: ${{ vars.GCP_PLAY_SERVICE_ACCOUNT }}
@@ -361,6 +367,14 @@ jobs:
           NIGHTLY_NOW: ${{ steps.allocate.outputs.date }}
           NIGHTLY_BUILD: ${{ steps.allocate.outputs.build }}
           NIGHTLY_CONFIG_PATH: ${{ runner.temp }}/tauri.nightly.conf.json
+
+      - name: Derive numeric App Store marketing version
+        if: steps.decide.outputs.build == 'true'
+        id: ios_identity
+        run: |
+          marketing_version=$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')
+          [[ "$marketing_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "marketing_version=$marketing_version" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: steps.decide.outputs.build == 'true'
@@ -897,6 +911,31 @@ jobs:
             docs/reference/deploy-ledger.md
           if-no-files-found: error
           retention-days: 14
+
+  # Nightly's date/index reservation is shared with iOS. This caller takes
+  # the exact identity emitted by the Android job rather than recomputing a
+  # new value after a later checkout or midnight boundary.
+  nightly-ios:
+    needs: [test-gate, full-regression, nightly]
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' && needs.nightly.result == 'success' && needs.nightly.outputs.build == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/testflight-delivery.yml
+    with:
+      channel: nightly
+      source_sha: ${{ needs.nightly.outputs.source_sha }}
+      source_ref: refs/tags/${{ needs.nightly.outputs.reservation_tag }}
+      marketing_version: ${{ needs.nightly.outputs.marketing_version }}
+      bundle_version: ${{ needs.nightly.outputs.bundle_version }}
+      release_label: nightly-${{ needs.nightly.outputs.bundle_version }}
+      mobile_endpoint: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}
+      update_feed_url: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
+      update_provider_origin: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
+      update_action_url: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
+      update_action_kind: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
+      update_action_origins: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
 
   # ── Desktop (station#575) ────────────────────────────────────────────────
   # A sibling of `nightly` above, gated identically on the shared source,

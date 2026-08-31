@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load } from 'js-yaml';
@@ -88,6 +88,19 @@ export function validateReleasePlatformMatrix({
       if (cell.state === 'configured' && !cell.buildJob) {
         errors.push(`${label} is configured but has no buildJob`);
       }
+      if (
+        platform === 'ios' &&
+        ['nightly', 'preview', 'stable'].includes(channel) &&
+        cell.state === 'configured'
+      ) {
+        if (
+          typeof cell.iconSource !== 'string' ||
+          !cell.iconSource.startsWith('src-desktop/icons/') ||
+          !existsSync(resolve(root, cell.iconSource))
+        ) {
+          errors.push(`${label}.iconSource must name a checked-in iOS icon`);
+        }
+      }
       for (const reference of buildJobReferences(cell.buildJob)) {
         if (!reference.workflow || !reference.job || reference.extra) {
           errors.push(`${label}.buildJob is malformed: ${cell.buildJob}`);
@@ -135,6 +148,11 @@ export function validateReleasePlatformMatrix({
       }
     }
   }
+  const iosIcons = ['nightly', 'preview', 'stable'].map(
+    (channel) => matrix?.cells?.[channel]?.ios?.iconSource,
+  );
+  if (new Set(iosIcons).size !== iosIcons.length)
+    errors.push('configured iOS channel iconSource values must be distinct');
   return errors;
 }
 

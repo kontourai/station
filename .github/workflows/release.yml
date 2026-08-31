@@ -30,6 +30,7 @@ jobs:
       android_product_name: ${{ steps.source.outputs.android_product_name }}
       android_version_code: ${{ steps.source.outputs.android_version_code }}
       ios_bundle_version: ${{ steps.source.outputs.ios_bundle_version }}
+      ios_marketing_version: ${{ steps.source.outputs.ios_marketing_version }}
       macos_bundle_version: ${{ steps.source.outputs.macos_bundle_version }}
       created_at: ${{ steps.source.outputs.created_at }}
     steps:
@@ -63,6 +64,7 @@ jobs:
           ')
           android_version_code=$(STORE_IDENTITY="$store_identity" node -p 'JSON.parse(process.env.STORE_IDENTITY).versionCode')
           ios_bundle_version=$(STORE_IDENTITY="$store_identity" node -p 'JSON.parse(process.env.STORE_IDENTITY).bundleVersion')
+          ios_marketing_version="${release_version%-preview.*}"
           macos_bundle_version=$(STORE_IDENTITY="$store_identity" node -p 'JSON.parse(process.env.STORE_IDENTITY).bundleVersion')
           release_sha=$(git rev-list -n 1 "$RELEASE_TAG")
           test "$release_sha" = "$(git rev-parse HEAD)"
@@ -79,6 +81,7 @@ jobs:
             echo "android_product_name=$android_product_name"
             echo "android_version_code=$android_version_code"
             echo "ios_bundle_version=$ios_bundle_version"
+            echo "ios_marketing_version=$ios_marketing_version"
             echo "macos_bundle_version=$macos_bundle_version"
             echo "created_at=$created_at"
           } >> "$GITHUB_OUTPUT"
@@ -510,7 +513,7 @@ jobs:
           if [ -n "$BETA_DESKTOP_CONFIG" ]; then
             beta_config=(--config "$GITHUB_WORKSPACE/$BETA_DESKTOP_CONFIG")
           fi
-          STATION_CLIENT_BUILD_REUSE=1 RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --apk --aab "${beta_config[@]}" --config "$RUNNER_TEMP/tauri.release.conf.json"
+          RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --apk --aab "${beta_config[@]}" --config "$RUNNER_TEMP/tauri.release.conf.json"
       # Observational only: runs even when the build failed so the hosted log
       # reveals post-build/failure headroom. It never affects job outcome.
       - name: Report disk headroom after Android build
@@ -591,9 +594,8 @@ jobs:
       - run: node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --output "$RUNNER_TEMP/tauri.release.conf.json"
       - working-directory: src-desktop
         run: npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.release.conf.json"
-      - run: node scripts/write-ios-build-manifest.mjs
       - working-directory: src-desktop
-        run: rm -rf gen/apple/build && STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --target aarch64-sim --no-sign --ci --config "$RUNNER_TEMP/tauri.release.conf.json"
+        run: rm -rf gen/apple/build && npx tauri ios build --target aarch64-sim --no-sign --ci --config "$RUNNER_TEMP/tauri.release.conf.json"
       - name: Verify and package simulator artifact
         run: |
           simulator_app=$(find src-desktop/gen/apple -type d -name '*.app' -print -quit)
@@ -607,167 +609,28 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with: { name: station-ios-simulator-verification, path: release-assets, if-no-files-found: error, retention-days: 14 }
 
+
   ios-device:
-    # Preview/Beta iOS is NOT_VERIFIED: Station has no separately signed Beta
-    # iOS identity, so this stable-only lane must not imply channel parity.
     needs: [preflight, full-regression]
-    if: ${{ needs['full-regression'].result == 'success' && needs.preflight.outputs.channel == 'stable' }}
-    runs-on: macos-15
-    environment: native-release
+    if: ${{ needs['full-regression'].result == 'success' }}
     permissions:
       contents: read
       id-token: write
       attestations: write
-    env:
-      RELEASE_TAG: ${{ needs.preflight.outputs.tag }}
-      RELEASE_VERSION: ${{ needs.preflight.outputs.version }}
-      IOS_BUNDLE_VERSION: ${{ needs.preflight.outputs.ios_bundle_version }}
-      STATION_BUILD_VERSION: ${{ needs.preflight.outputs.version }}
-      # A stable iOS tag declares TestFlight as its delivery authority. These
-      # credentials are therefore required and checked before signing work.
-      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-      APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
-      VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
-      VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
-      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ vars.NATIVE_APP_UPDATE_CHANNEL }}
-      VITE_NATIVE_APP_VERSION: ${{ needs.preflight.outputs.version }}
-      STATION_MOBILE_DEFAULT_ENDPOINT: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_STABLE }}
-      NATIVE_APP_UPDATE_ACTION_URL: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
-      NATIVE_APP_UPDATE_ACTION_KIND: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
-      NATIVE_APP_UPDATE_ACTION_ORIGINS: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { ref: "${{ needs.preflight.outputs.sha }}" }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with: { node-version-file: .nvmrc, cache: npm }
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with: { targets: aarch64-apple-ios }
-      - run: brew install xcodegen libimobiledevice cocoapods
-      - name: Resolve native update feed contract
-        id: update_feed
-        run: |
-          # Store tracks are the update mechanism for shipped builds: Play
-          # internal/TestFlight upload later in this job, and both auto-update
-          # (#2211). A custom feed is therefore optional, and this step is
-          # optional in exactly the way store publication already is.
-          #
-          # Configured: the full contract is still enforced fail-closed, byte
-          # for byte, exactly as before.
-          # Absent: the build continues to the store upload instead of dying
-          # eleven steps before reaching it. Nothing downstream lies about it —
-          # an unconfigured client renders no update state at all (#2217), so
-          # there is no user-visible claim left for this gate to protect.
-          missing=""
-          for name in VITE_NATIVE_APP_UPDATE_FEED_URL VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION NATIVE_APP_UPDATE_ACTION_URL NATIVE_APP_UPDATE_ACTION_KIND NATIVE_APP_UPDATE_ACTION_ORIGINS; do
-            test -n "${!name}" || missing="$missing $name"
-          done
-          if [ -z "$missing" ]; then
-            node scripts/native-update-feed.mjs validate-config
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::Native update feed not configured (missing:$missing); skipping feed publish. Store-track upload is the update path for this build."
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-          fi
-      - run: npm run dependencies:ci && npm run build:native-client
-      - name: Verify App Store Connect app authority
-        id: app_store
-        run: |
-          mkdir -p provider-receipts
-          node scripts/app-store-connect-receipt.mjs app-preflight \
-            --bundle-id io.kontourai.station \
-            --output provider-receipts/app-store-connect-app-preflight.json \
-            --github-output "$GITHUB_OUTPUT"
-      - run: node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --output "$RUNNER_TEMP/tauri.release.conf.json"
-      - name: Import protected Apple signing and store material
-        env:
-          APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
-          APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
-          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_IOS_SIGNING_IDENTITY }}
-          APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
-        run: |
-          for name in APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD APPLE_DEVELOPMENT_TEAM APPLE_SIGNING_IDENTITY APPLE_PROVISIONING_PROFILE_BASE64 APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY; do
-            test -n "${!name}" || { echo "Missing required protected secret: $name" >&2; exit 1; }
-          done
-          certificate="$RUNNER_TEMP/station.p12"
-          profile="$RUNNER_TEMP/station.mobileprovision"
-          keychain="$RUNNER_TEMP/station.keychain-db"
-          printf '%s' "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
-          printf '%s' "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile"
-          node scripts/check-ios-store-profile.mjs --profile "$profile" --label APPLE_PROVISIONING_PROFILE_BASE64
-          node scripts/ios-store-signing-config.mjs --profile "$profile" --identity "$APPLE_SIGNING_IDENTITY" --team "$APPLE_DEVELOPMENT_TEAM" --bundle-id io.kontourai.station --template src-desktop/gen/apple/project.yml --template-output "$RUNNER_TEMP/station-ios-distribution-project.yml" --overlay-output "$RUNNER_TEMP/station-ios-distribution-overlay.json"
-          security create-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
-          security unlock-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
-          security import "$certificate" -k "$keychain" -P "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
-          security list-keychains -d user -s "$keychain"
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/station.mobileprovision"
-      - name: Build signed iOS package
-        working-directory: src-desktop
-        env:
-          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_IOS_SIGNING_IDENTITY }}
-        run: |
-          IOS_MOBILE_PROVISION="$(base64 < "$RUNNER_TEMP/station.mobileprovision" | tr -d '\n')"
-          export IOS_MOBILE_PROVISION
-          node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig(process.env.STATION_MOBILE_DEFAULT_ENDPOINT), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
-          npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.release.conf.json" --config "$RUNNER_TEMP/station-ios-distribution-overlay.json"
-          node ../scripts/write-ios-build-manifest.mjs
-          rm -rf gen/apple/build
-          STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --export-method app-store-connect --ci --config "$RUNNER_TEMP/tauri.release.conf.json" --config "$RUNNER_TEMP/station-ios-distribution-overlay.json" -- --config "$RUNNER_TEMP/station-ios-mobile-env.toml"
-      - name: Verify iOS version, profile, and signature
-        run: |
-          ipa=$(find src-desktop/gen/apple/build -type f -name '*.ipa' -print)
-          test "$(printf '%s\n' "$ipa" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
-          verification_dir="$RUNNER_TEMP/station-ios-signature"
-          unzip -q "$ipa" -d "$verification_dir"
-          app=$(find "$verification_dir/Payload" -maxdepth 1 -type d -name '*.app' -print)
-          test "$(printf '%s\n' "$app" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")" = "$RELEASE_VERSION"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")" = "$IOS_BUNDLE_VERSION"
-          test -s "$app/embedded.mobileprovision"
-          node scripts/check-ios-store-profile.mjs --profile "$app/embedded.mobileprovision" --label 'exported IPA embedded.mobileprovision'
-          codesign --verify --deep --strict --verbose=2 "$app"
-          node scripts/check-mobile-package.mjs ios --root "$verification_dir/Payload"
-          mkdir release-assets
-          cp "$ipa" "release-assets/station-${RELEASE_TAG}-ios-device.ipa"
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with: { subject-path: release-assets/* }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with: { name: station-ios-device, path: release-assets, if-no-files-found: error, retention-days: 14 }
-      - name: Upload to TestFlight
-        id: testflight_upload
-        uses: apple-actions/upload-testflight-build@5e75ff58276689011512ba87a381d93dc67dbcf8 # v5.3.0
-        with:
-          app-path: release-assets/station-${{ env.RELEASE_TAG }}-ios-device.ipa
-          app-type: ios
-          issuer-id: ${{ env.APPLE_API_ISSUER_ID }}
-          api-key-id: ${{ env.APPLE_API_KEY_ID }}
-          api-private-key: ${{ env.APPLE_API_PRIVATE_KEY }}
-          wait-for-processing: 'true'
-      - name: Record the processed TestFlight build receipt
-        env:
-          APP_STORE_APP_ID: ${{ steps.app_store.outputs.app_id }}
-          WORKFLOW_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          node scripts/app-store-connect-receipt.mjs build-receipt \
-            --app-id "$APP_STORE_APP_ID" \
-            --bundle-id io.kontourai.station \
-            --bundle-version "$IOS_BUNDLE_VERSION" \
-            --source-sha "${{ needs.preflight.outputs.sha }}" \
-            --artifact-manifest "src-desktop/station-client-build.json" \
-            --ipa "release-assets/station-${RELEASE_TAG}-ios-device.ipa" \
-            --workflow-run-url "$WORKFLOW_RUN_URL" \
-            --output provider-receipts/testflight-build-receipt.json
-      - name: Retain TestFlight provider receipts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: station-ios-testflight-receipts
-          path: provider-receipts
-          if-no-files-found: error
-          retention-days: 30
+    uses: ./.github/workflows/testflight-delivery.yml
+    with:
+      channel: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || 'stable' }}
+      source_sha: ${{ needs.preflight.outputs.sha }}
+      source_ref: refs/tags/${{ needs.preflight.outputs.tag }}
+      marketing_version: ${{ needs.preflight.outputs.ios_marketing_version }}
+      bundle_version: ${{ needs.preflight.outputs.ios_bundle_version }}
+      release_label: ${{ needs.preflight.outputs.tag }}
+      mobile_endpoint: ${{ needs.preflight.outputs.channel == 'preview' && vars.STATION_MOBILE_DEFAULT_ENDPOINT_BETA || vars.STATION_MOBILE_DEFAULT_ENDPOINT_STABLE }}
+      update_feed_url: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
+      update_provider_origin: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
+      update_action_url: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
+      update_action_kind: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
+      update_action_origins: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
 
   container:
     needs: [preflight, full-regression]
@@ -886,7 +749,7 @@ jobs:
         needs.portable.result == 'success' &&
         needs.android.result == 'success' &&
         needs.container.result == 'success' &&
-        ((needs.preflight.outputs.channel == 'preview' && needs.ios-simulator.result == 'skipped' && needs.ios-device.result == 'skipped') ||
+        ((needs.preflight.outputs.channel == 'preview' && needs.ios-simulator.result == 'skipped' && needs.ios-device.result == 'success') ||
          (needs.preflight.outputs.channel == 'stable' && needs.ios-simulator.result == 'success' && needs.ios-device.result == 'success'))
       }}
     runs-on: ubuntu-latest

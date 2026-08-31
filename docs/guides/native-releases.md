@@ -314,11 +314,14 @@ unsigned APK, IPA, desktop bundle, or updater is never uploaded as a
 distributable release asset. Tagged Android releases require the configured
 keyless Play path and fail closed if signing retrieval or upload fails; the
 daily Nightly workflow may still skip publication while its setup is absent.
-Stable App Store upload is required and fail-closed. The iOS job waits for
-processing, queries the exact App Store Connect build number, and retains a
-provider receipt binding Apple's app/build IDs to the source SHA and IPA digest
-(see [mobile-release.md](./mobile-release.md)). Physical tester availability
-remains a separate provider/device observation.
+Stable, Beta, and Nightly App Store upload is required and fail-closed once a
+channel is configured. The shared iOS delivery workflow uses three distinct
+bundle IDs and protected environments; it binds each upload to the caller's
+already frozen SHA and numeric `CFBundleVersion`, reconciles a pre-existing
+build before upload, waits for VALID processing, attaches the owned internal
+group, and retains a provider receipt binding Apple's app/build IDs to the
+source SHA and IPA digest. Physical tester availability remains a separate
+provider/device observation.
 
 ## Stage, inspect, publish, and roll back
 
