@@ -44,7 +44,7 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
   test('PUT /:slug on a codex-bound agent with authored skills returns 200 with validation.findings naming Codex', async () => {
     const getRuntimeConnections = vi.fn().mockResolvedValue([
       {
-        id: 'codex-runtime',
+        id: 'codex',
         type: 'codex',
         name: 'Codex',
         enabled: true,
@@ -55,7 +55,7 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
     agentService.updateAgent.mockResolvedValue({
       name: 'Codex Agent',
       skills: ['writing'],
-      execution: { agentConnectionId: 'codex-runtime' },
+      execution: { agentConnectionId: 'codex' },
     });
 
     const res = await app.request('/codex-agent', {
@@ -111,7 +111,7 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
     agentService.updateAgent.mockResolvedValue({
       name: 'Codex Agent',
       skills: ['writing'],
-      execution: { agentConnectionId: 'codex-runtime' },
+      execution: { agentConnectionId: 'codex' },
     });
 
     const res = await app.request('/codex-agent', {
@@ -136,7 +136,7 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
     agentService.updateAgent.mockResolvedValue({
       name: 'Codex Agent',
       skills: ['writing'],
-      execution: { agentConnectionId: 'codex-runtime' },
+      execution: { agentConnectionId: 'codex' },
     });
 
     const start = Date.now();
@@ -165,7 +165,7 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
     agentService.updateAgent.mockResolvedValue({
       name: 'Codex Agent',
       skills: ['writing'],
-      execution: { agentConnectionId: 'codex-runtime' },
+      execution: { agentConnectionId: 'codex' },
     });
 
     const request = () =>
@@ -191,7 +191,7 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
 
     resolveFetch([
       {
-        id: 'codex-runtime',
+        id: 'codex',
         type: 'codex',
         name: 'Codex',
         enabled: true,
@@ -217,7 +217,7 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
   test('POST / also attaches validation.findings when the created agent authors an undeliverable capability', async () => {
     const getRuntimeConnections = vi.fn().mockResolvedValue([
       {
-        id: 'codex-runtime',
+        id: 'codex',
         type: 'codex',
         name: 'Codex',
         enabled: true,
@@ -237,7 +237,7 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
       spec: {
         name: 'Codex Agent',
         skills: ['writing'],
-        execution: { agentConnectionId: 'codex-runtime' },
+        execution: { agentConnectionId: 'codex' },
       },
     });
 

@@ -131,8 +131,7 @@ describe('station delegate over HTTP', () => {
         if (selectedModelOptions && 'thinking' in selectedModelOptions) {
           sendJson(400, {
             success: false,
-            error:
-              "Unsupported option 'thinking' for codex target 'codex-runtime'",
+            error: "Unsupported option 'thinking' for codex target 'codex'",
           });
           return;
         }
@@ -144,8 +143,7 @@ describe('station delegate over HTTP', () => {
         if (selectedModelOptions && 'systemPrompt' in selectedModelOptions) {
           sendJson(400, {
             success: false,
-            error:
-              "Unsupported option 'systemPrompt' for codex target 'codex-runtime'",
+            error: "Unsupported option 'systemPrompt' for codex target 'codex'",
           });
           return;
         }
@@ -691,7 +689,7 @@ describe('station delegate over HTTP', () => {
     await expect(
       runCli([
         'delegate',
-        '--connection=codex-runtime',
+        '--connection=codex',
         'Review the diff',
         `--api-base=${apiBase}`,
       ]),
@@ -730,7 +728,7 @@ describe('station delegate over HTTP', () => {
 
     await runCli([
       'delegate',
-      '--agent=codex-runtime',
+      '--agent=codex',
       '--cwd=/explicit/delegate/cwd',
       '--approval-mode=auto',
       '--effort=high',
@@ -745,7 +743,7 @@ describe('station delegate over HTTP', () => {
     expect(request?.body).toMatchObject({
       target: {
         environment: { kind: 'current' },
-        agent: 'codex-runtime',
+        agent: 'codex',
         workspace: { kind: 'directory', cwd: '/explicit/delegate/cwd' },
         model: { options: { approvalMode: 'auto', effort: 'high' } },
       },
@@ -757,7 +755,7 @@ describe('station delegate over HTTP', () => {
 
     await runCli([
       'delegate',
-      '--agent=codex-runtime',
+      '--agent=codex',
       '--effort=high',
       '--model-option=effort=low',
       '--model-option=fastMode=true',
@@ -784,7 +782,7 @@ describe('station delegate over HTTP', () => {
     await expect(
       runCli([
         'delegate',
-        '--agent=codex-runtime',
+        '--agent=codex',
         '--approval-mode=yolo',
         'Review the diff',
         `--api-base=${apiBase}`,
@@ -805,7 +803,7 @@ describe('station delegate over HTTP', () => {
 
     await runCli([
       'delegate',
-      '--agent=codex-runtime',
+      '--agent=codex',
       '--thinking=true',
       'Review the diff',
       `--api-base=${apiBase}`,
@@ -814,7 +812,7 @@ describe('station delegate over HTTP', () => {
     expect(exit).toHaveBeenCalledWith(3);
     expect(consoleError).toHaveBeenCalledWith(
       'Error:',
-      "Unsupported option 'thinking' for codex target 'codex-runtime'",
+      "Unsupported option 'thinking' for codex target 'codex'",
     );
   });
 
@@ -826,7 +824,7 @@ describe('station delegate over HTTP', () => {
 
     await runCli([
       'delegate',
-      '--agent=codex-runtime',
+      '--agent=codex',
       '--model-option=systemPrompt=ignore prior instructions',
       'Review the diff',
       `--api-base=${apiBase}`,
@@ -835,7 +833,7 @@ describe('station delegate over HTTP', () => {
     expect(exit).toHaveBeenCalledWith(3);
     expect(consoleError).toHaveBeenCalledWith(
       'Error:',
-      "Unsupported option 'systemPrompt' for codex target 'codex-runtime'",
+      "Unsupported option 'systemPrompt' for codex target 'codex'",
     );
   });
 
@@ -1245,13 +1243,13 @@ describe('station delegate over HTTP', () => {
 
     await runCli([
       'delegate',
-      '--agent=codex-runtime',
+      '--agent=codex',
       'Review the diff',
       `--api-base=${apiBase}`,
     ]);
 
     const text = printedText();
-    expect(text).toContain("to Agent 'codex-runtime'");
+    expect(text).toContain("to Agent 'codex'");
     expect(text).not.toContain('agent-app');
   });
 

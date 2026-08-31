@@ -96,7 +96,7 @@ describe('AgentEditorForm', () => {
   test('codex-bound agent with authored skills shows the Skills tab in a read-only validation state naming the engine', () => {
     agentConnections = [
       {
-        id: 'codex-runtime',
+        id: 'codex',
         kind: 'agent',
         type: 'codex',
         name: 'Codex',
@@ -108,7 +108,7 @@ describe('AgentEditorForm', () => {
     ];
     const form = createForm({
       execution: {
-        agentConnectionId: 'codex-runtime',
+        agentConnectionId: 'codex',
         modelConnectionId: '',
         runtimeOptions: {},
       },
@@ -126,7 +126,7 @@ describe('AgentEditorForm', () => {
   test('codex-bound agent with nothing authored hides Prompt/Skills/Commands tabs, but shows Tools (station#1195: toolServers is now deliverable)', () => {
     agentConnections = [
       {
-        id: 'codex-runtime',
+        id: 'codex',
         kind: 'agent',
         type: 'codex',
         name: 'Codex',
@@ -138,7 +138,7 @@ describe('AgentEditorForm', () => {
     ];
     const form = createForm({
       execution: {
-        agentConnectionId: 'codex-runtime',
+        agentConnectionId: 'codex',
         modelConnectionId: '',
         runtimeOptions: {},
       },
@@ -167,7 +167,7 @@ describe('AgentEditorForm', () => {
   test('codex-bound agent exposes authored undeliverable commands read-only with catalog guidance', () => {
     agentConnections = [
       {
-        id: 'codex-runtime',
+        id: 'codex',
         kind: 'agent',
         type: 'codex',
         name: 'Codex',
@@ -179,7 +179,7 @@ describe('AgentEditorForm', () => {
     ];
     const form = createForm({
       execution: {
-        agentConnectionId: 'codex-runtime',
+        agentConnectionId: 'codex',
         modelConnectionId: '',
         runtimeOptions: {},
       },
@@ -241,7 +241,7 @@ describe('AgentEditorForm', () => {
   test('Basic renders denials for an external engine separately from the Agent-configured ones', () => {
     agentConnections = [
       {
-        id: 'codex-runtime',
+        id: 'codex',
         kind: 'agent',
         type: 'codex',
         name: 'Codex',
@@ -257,7 +257,7 @@ describe('AgentEditorForm', () => {
           form: createForm({
             delegation: { blockedTools: ['filesystem_delete_*'] },
             execution: {
-              agentConnectionId: 'codex-runtime',
+              agentConnectionId: 'codex',
               modelConnectionId: '',
               runtimeOptions: {},
             },
@@ -286,7 +286,7 @@ describe('AgentEditorForm', () => {
   test('claude-bound agent keeps Skills editable and shows the engine-default hint when the connection provides skills', () => {
     agentConnections = [
       {
-        id: 'claude-runtime',
+        id: 'claude',
         kind: 'agent',
         type: 'claude',
         name: 'Claude',
@@ -298,7 +298,7 @@ describe('AgentEditorForm', () => {
     ];
     const form = createForm({
       execution: {
-        agentConnectionId: 'claude-runtime',
+        agentConnectionId: 'claude',
         modelConnectionId: '',
         runtimeOptions: {},
       },
@@ -323,7 +323,7 @@ describe('AgentEditorForm', () => {
   test('a CLI-engine agent’s page never mentions a model connection', () => {
     agentConnections = [
       {
-        id: 'claude-runtime',
+        id: 'claude',
         kind: 'agent',
         type: 'claude',
         name: 'Claude Code',
@@ -338,7 +338,7 @@ describe('AgentEditorForm', () => {
         {...baseProps({
           form: createForm({
             execution: {
-              agentConnectionId: 'claude-runtime',
+              agentConnectionId: 'claude',
               modelConnectionId: '',
               runtimeOptions: {},
             },

@@ -88,7 +88,7 @@ const externalAgent = {
   slug: 'claude',
   name: 'Claude Code',
   execution: {
-    agentConnectionId: 'claude-runtime',
+    agentConnectionId: 'claude',
     runtimeOptions: { executionMode: EXECUTION_MODE.EXTERNAL },
   },
 } as unknown as AgentData;

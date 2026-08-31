@@ -38,10 +38,10 @@ export const WORK_ITEM_PROVIDER_KINDS = [
   'flow-agents-github',
 ] as const;
 
-export type WorkItemProviderKind = (typeof WORK_ITEM_PROVIDER_KINDS)[number];
+export type WorkItemEngineId = (typeof WORK_ITEM_PROVIDER_KINDS)[number];
 
 export interface WorkItemProviderIdentity {
-  kind: WorkItemProviderKind;
+  kind: WorkItemEngineId;
   /** Stable id for this concrete provider instance (e.g. `local`, or
    * `flow-agents-github:owner/repo` once a GitHub-backed repo is resolved). */
   id: string;

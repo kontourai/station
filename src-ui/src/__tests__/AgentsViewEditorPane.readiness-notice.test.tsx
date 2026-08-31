@@ -221,7 +221,7 @@ describe('AgentsViewEditorPane — readiness notice (station#4521 items 1/2)', (
     const agent: AgentData = {
       ...stationAgentNeedingModelConnection(),
       execution: {
-        agentConnectionId: 'claude-runtime',
+        agentConnectionId: 'claude',
         modelConnectionId: '',
         runtimeOptions: {},
       },

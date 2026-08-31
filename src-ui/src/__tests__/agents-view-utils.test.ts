@@ -213,7 +213,7 @@ describe('agents view utils', () => {
           name: 'Connected Agent',
           prompt: '',
           execution: {
-            agentConnectionId: 'codex-runtime',
+            agentConnectionId: 'codex',
             modelConnectionId: '',
             runtimeOptions: {},
           },
@@ -311,7 +311,7 @@ describe('agents view utils', () => {
         name: 'Connected Agent',
         prompt: '',
         execution: {
-          agentConnectionId: 'codex-runtime',
+          agentConnectionId: 'codex',
           modelConnectionId: '',
           runtimeOptions: {},
         },
@@ -321,7 +321,7 @@ describe('agents view utils', () => {
       name: 'Connected Agent',
       prompt: '',
       execution: {
-        agentConnectionId: 'codex-runtime',
+        agentConnectionId: 'codex',
         modelId: undefined,
       },
       project: null,

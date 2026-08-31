@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { STATION_HOME_SCHEMA_VERSION } from '@kontourai/station-shared/station-home-schema';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const cleanupDirs: string[] = [];
@@ -24,7 +25,7 @@ describe('registry manifest fixture CLI proof', () => {
     mkdirSync(projectHome, { recursive: true });
     writeFileSync(
       join(projectHome, '.station-home-schema.json'),
-      JSON.stringify({ version: 1 }),
+      JSON.stringify({ version: STATION_HOME_SCHEMA_VERSION }),
     );
 
     const manifestPath = resolve('examples/registry/manifest.json');

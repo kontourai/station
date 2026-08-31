@@ -1,4 +1,4 @@
-import type { ProviderKind } from './provider.js';
+import type { EngineId } from './provider.js';
 
 /** A provider value together with the instant that value was observed. */
 export interface ObservedQuotaValue<T> {
@@ -33,7 +33,7 @@ export interface ConnectionQuotaWindow {
  */
 export interface ConnectionQuotaSnapshot {
   connectionId: string;
-  provider: ProviderKind;
+  provider: EngineId;
   observedAt: string;
   baselineAt?: string;
   source: 'provider-reported';
@@ -64,7 +64,7 @@ export interface ConnectionQuotaSnapshot {
  */
 export interface ConnectionQuotaSnapshotUpdate {
   connectionId: string;
-  provider: ProviderKind;
+  provider: EngineId;
   source: 'provider-reported';
   accountScope: 'profile' | 'global';
   plan?: ObservedQuotaValue<{ type: string }> | null;

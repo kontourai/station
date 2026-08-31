@@ -19,9 +19,9 @@ function createMockConnectionService() {
       lastCheckedAt: null,
     },
     {
-      id: 'claude-runtime',
+      id: 'claude',
       kind: 'agent' as const,
-      type: 'claude-runtime',
+      type: 'claude',
       name: 'Claude Runtime',
       enabled: true,
       description: 'Claude Agent SDK',
@@ -88,7 +88,7 @@ describe('Connection Routes', () => {
     const publicCodexConnection = {
       id: 'codex',
       kind: 'agent' as const,
-      type: 'codex-runtime',
+      type: 'codex',
       name: 'Codex',
       enabled: true,
       description: 'Codex Agent App',
@@ -141,7 +141,7 @@ describe('Connection Routes', () => {
 
     expect(configured.data).toEqual([]);
     expect(catalog.data).toEqual([
-      expect.objectContaining({ id: 'claude-runtime', kind: 'agent' }),
+      expect.objectContaining({ id: 'claude', kind: 'agent' }),
     ]);
     expect(service.listRuntimeConnectionCatalog).toHaveBeenCalledOnce();
   });
@@ -350,19 +350,19 @@ describe('Connection Routes', () => {
       }),
     });
     const remove = await app.request('/bedrock-model', { method: 'DELETE' });
-    const updateAgent = await app.request('/claude-runtime', {
+    const updateAgent = await app.request('/claude', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         kind: 'agent',
-        type: 'claude-runtime',
+        type: 'claude',
         name: 'Claude Code',
         enabled: true,
         config: {},
         capabilities: ['agent-runtime'],
       }),
     });
-    const removeAgent = await app.request('/claude-runtime', {
+    const removeAgent = await app.request('/claude', {
       method: 'DELETE',
     });
 
@@ -388,7 +388,7 @@ describe('Connection Routes', () => {
     service.readQuotaSnapshot.mockResolvedValueOnce({
       kind: 'snapshot',
       snapshot: {
-        connectionId: 'claude-runtime',
+        connectionId: 'claude',
         provider: 'codex',
         observedAt: '2026-08-09T19:00:00.000Z',
         source: 'provider-reported',
@@ -396,7 +396,7 @@ describe('Connection Routes', () => {
       },
     });
     const response = await createConnectionRoutes(service as any).request(
-      '/claude-runtime/quota',
+      '/claude/quota',
     );
     expect(response.status).toBe(200);
     expect(await json(response)).toMatchObject({ kind: 'snapshot' });
@@ -405,7 +405,7 @@ describe('Connection Routes', () => {
   test('GET /:id/quota returns typed unsupported-provider unavailability', async () => {
     const service = createMockConnectionService();
     const response = await createConnectionRoutes(service as any).request(
-      '/claude-runtime/quota',
+      '/claude/quota',
     );
     expect(response.status).toBe(200);
     expect(await json(response)).toEqual({
@@ -418,14 +418,14 @@ describe('Connection Routes', () => {
     const service = createMockConnectionService();
     const app = createConnectionRoutes(service as any);
 
-    const response = await app.request('/claude-runtime/smoke', {
+    const response = await app.request('/claude/smoke', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ confirmed: true, timeoutMs: 30_000 }),
     });
 
     expect(response.status).toBe(200);
-    expect(service.smokeConnection).toHaveBeenCalledWith('claude-runtime', {
+    expect(service.smokeConnection).toHaveBeenCalledWith('claude', {
       confirmed: true,
       timeoutMs: 30_000,
     });
