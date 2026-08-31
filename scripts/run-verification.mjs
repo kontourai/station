@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// Diagnostic probe (station#983 A/B): touches this file so `test:changed`
+// selects verification-coordinator.test.ts on Linux CI. Delete this branch.
 
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
