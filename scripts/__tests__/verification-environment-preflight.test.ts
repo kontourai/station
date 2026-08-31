@@ -669,10 +669,11 @@ describe('assertInstalledDependenciesMatchLockfile (station#4109)', () => {
   });
 
   it('reports the realpath target when handed a symlinked root, on every platform', () => {
-    // The sibling test above rides tmpdir's incidental /var -> /private/var
-    // symlink, which exists on macOS and NOT on the Linux lane that gates CI.
-    // This one creates the symlink itself, so the canonicalization is pinned
-    // wherever the suite runs.
+    // `names the inspected tree` (below) rides tmpdir's incidental
+    // /var -> /private/var symlink, which exists on macOS and NOT on the Linux
+    // lane that gates CI — there its assertion degrades to expect(x).toBe(x).
+    // This test creates its own symlink, so it is the one that pins
+    // canonicalization wherever the suite runs.
     const temp = tempRoot('station-env-preflight-');
     try {
       const target = join(temp.root, 'target');
@@ -699,10 +700,13 @@ describe('assertInstalledDependenciesMatchLockfile (station#4109)', () => {
   });
 
   it('names the inspected tree, because the remedy runs there and not in the caller', () => {
-    // The gate inspects roots the caller is not standing in — the prepared
-    // transfer baseline sibling, or a frozen worktree. An unqualified "run
-    // npm run dependencies:ci" sends the operator to repair their own tree,
-    // which changes nothing and reproduces the identical error.
+    // `orchestration-transfer-gate.mjs` inspects a root the caller is not
+    // standing in — the prepared baseline sibling, whose node_modules a fresh
+    // baseline does not have. An unqualified "run npm run dependencies:ci"
+    // sends the operator to repair their own tree, which changes nothing and
+    // reproduces the identical error. (The coordinator and submission callers
+    // pass their own git toplevel; for them the root disambiguates which lane
+    // worktree was read.)
     const temp = tempRoot('station-env-preflight-');
     try {
       writeCleanWorktree(temp.root);
@@ -716,11 +720,12 @@ describe('assertInstalledDependenciesMatchLockfile (station#4109)', () => {
       const error = caught as InstanceType<
         typeof VerificationEnvironmentStaleError
       >;
-      // Assert through a SYMLINK we create, not through tmpdir's incidental
-      // symlinking: on macOS `/var` -> `/private/var` gives this power for
-      // free, but on the Linux lane that gates CI `realpathSync(temp.root)`
-      // === `temp.root`, so the assertion would degrade to `expect(x).toBe(x)`
-      // and pass with the canonicalization reverted.
+      // NOTE: this assertion only discriminates where tmpdir is itself
+      // symlinked (macOS). On the Linux lane realpathSync(temp.root) ===
+      // temp.root, so it reads expect(x).toBe(x) and would pass with the
+      // canonicalization reverted. `reports the realpath target when handed a
+      // symlinked root` (above) is the one that pins it on every platform —
+      // do not delete that as a duplicate of this.
       const inspected = realpathSync(temp.root);
       expect(error.repositoryRoot).toBe(inspected);
       expect(error.message).toContain(

@@ -316,9 +316,11 @@ export class VerificationEnvironmentStaleError extends Error {
  * nothing while the identical error repeats, naming packages that are correctly
  * installed where you are.
  *
- * The coordinator and submission callers pass their OWN git toplevel (there is
- * no `--cwd` on `run-verification.mjs`), so for them the root disambiguates
- * which open lane worktree was read rather than pointing somewhere foreign.
+ * Reached through `run-verification.mjs`, the coordinator and submission paths
+ * pass their OWN git toplevel (that CLI has no `--cwd`), so there the root
+ * disambiguates which open lane worktree was read rather than pointing
+ * somewhere foreign. Other entry points may pass a foreign cwd — the
+ * stress harness does — which is why the message names the root either way.
  */
 function remedyFor(repositoryRoot) {
   return `run \`npm run dependencies:ci\` in ${repositoryRoot}`;
@@ -359,8 +361,9 @@ function lockfileUnreadableError(repositoryRoot) {
  * worker path this error is caught and persisted into the handoff record via
  * `errorText`, which scrubs absolute paths. `repositoryRoot` is a plain own
  * property and is never spread into that record, so the unredacted root
- * reaches only the CLI's stderr — do not start serializing this error object
- * wholesale without revisiting that.
+ * reaches only stderr — this CLI's, and `orchestration-transfer-gate.mjs`'s,
+ * which prints `error.message` raw through its own handler. Do not start
+ * serializing this error object wholesale without revisiting that.
  */
 export function assertInstalledDependenciesMatchLockfile({ repositoryRoot }) {
   // Report the tree the check actually read, not the caller's argument:
