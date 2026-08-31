@@ -9,9 +9,9 @@ import {
   type SecretRunner,
 } from '@kontourai/station-contracts/datum-secret-reference';
 import {
-  type McpIntegrationEnvGrant,
   type SecretBinding,
   type SecretBindingDocument,
+  type SecretBindingGrant,
   type SecretBindingId,
   type SecretBindingView,
 } from '@kontourai/station-contracts/secret-binding';
@@ -71,6 +71,18 @@ export class SecretBindingResolutionError extends Error {
   }
 }
 
+/** The single authorization predicate for every secret-binding consumer. */
+export function secretBindingHasGrant(
+  binding: Pick<SecretBinding, 'grants' | 'acpProviderHeaderGrants'>,
+  expected: SecretBindingGrant,
+): boolean {
+  const grants =
+    expected.kind === 'mcp-integration-env'
+      ? binding.grants
+      : (binding.acpProviderHeaderGrants ?? []);
+  return grants.some((grant) => grantKey(grant) === grantKey(expected));
+}
+
 export interface SecretBindingAdministration {
   list(): Promise<SecretBindingView[]>;
   get(id: SecretBindingId): Promise<SecretBindingView | null>;
@@ -87,13 +99,12 @@ export interface SecretBindingAdministration {
   }): Promise<SecretBindingView>;
   grant(input: {
     id: SecretBindingId;
-    grant: McpIntegrationEnvGrant;
+    grant: SecretBindingGrant;
     expectedRevision: number;
   }): Promise<SecretBindingView>;
   ungrant(input: {
     id: SecretBindingId;
-    integrationId: string;
-    envName: string;
+    grant: SecretBindingGrant;
     expectedRevision: number;
   }): Promise<SecretBindingView>;
   revoke(input: {
@@ -205,11 +216,11 @@ export class SecretBindingIntegrationService
     );
     // Grant FIRST: a config reference never becomes live unless the binding
     // authority has recorded permission for exactly this consumer/env pair.
-    const alreadyGranted = current.grants.some(
-      (grant) =>
-        grant.integrationId === input.integrationId &&
-        grant.envName === input.envName,
-    );
+    const alreadyGranted = secretBindingHasGrant(current, {
+      kind: 'mcp-integration-env',
+      integrationId: input.integrationId,
+      envName: input.envName,
+    });
     const binding = alreadyGranted
       ? current
       : await this.bindings.grant({
@@ -308,12 +319,22 @@ export class SecretBindingIntegrationService
         this.auditConsumer('unbind', result, 'revoked_binding_preserved');
         return result;
       }
-      const hasGrant = current.grants.some(
-        (grant) =>
-          grant.integrationId === input.integrationId &&
-          grant.envName === input.envName,
-      );
-      const binding = hasGrant ? await this.bindings.ungrant(input) : current;
+      const hasGrant = secretBindingHasGrant(current, {
+        kind: 'mcp-integration-env',
+        integrationId: input.integrationId,
+        envName: input.envName,
+      });
+      const binding = hasGrant
+        ? await this.bindings.ungrant({
+            id: input.id,
+            expectedRevision: input.expectedRevision,
+            grant: {
+              kind: 'mcp-integration-env',
+              integrationId: input.integrationId,
+              envName: input.envName,
+            },
+          })
+        : current;
       const result = this.outcome(input, binding, 'complete');
       this.auditConsumer('unbind', result, 'success');
       return result;
@@ -437,6 +458,15 @@ export interface IntegrationSecretResolver {
   }): Promise<IntegrationSecretResolution>;
 }
 
+/** Narrow, write-only materialization seam for one ACP provider mutation. */
+export interface ACPProviderSecretResolver {
+  resolveForAcpProvider(input: {
+    connectionId: string;
+    providerId: string;
+    secretHeaderRefs: Record<string, SecretBindingId>;
+  }): Promise<IntegrationSecretResolution>;
+}
+
 /**
  * The only material-bearing result exposed to a fresh-child establishment.
  * Its settlement capability deliberately closes over a metadata snapshot;
@@ -468,7 +498,10 @@ export interface SecretBindingServiceOptions {
  * validates every persisted AuthRef through Datum before returning it.
  */
 export class FileSecretBindingAdministration
-  implements SecretBindingAdministration, IntegrationSecretResolver
+  implements
+    SecretBindingAdministration,
+    IntegrationSecretResolver,
+    ACPProviderSecretResolver
 {
   readonly #store: SecretBindingFileStore;
   readonly #now: () => Date;
@@ -577,15 +610,14 @@ export class FileSecretBindingAdministration
 
   async grant(input: {
     id: SecretBindingId;
-    grant: McpIntegrationEnvGrant;
+    grant: SecretBindingGrant;
     expectedRevision: number;
   }): Promise<SecretBindingView> {
     return this.#adminOperation(
       'bind',
       {
         bindingId: input.id,
-        integrationId: input.grant.integrationId,
-        envName: input.grant.envName,
+        ...grantAuditIdentifiers(input.grant),
       },
       async () => {
         assertBindingId(input.id);
@@ -597,19 +629,30 @@ export class FileSecretBindingAdministration
             input.id,
             input.expectedRevision,
           );
-          const alreadyGranted = current.grants.some(
-            (grant) =>
-              grant.integrationId === input.grant.integrationId &&
-              grant.envName === input.grant.envName,
-          );
+          const alreadyGranted = secretBindingHasGrant(current, input.grant);
           if (alreadyGranted)
             throw new Error('The integration environment is already granted.');
-          if (current.grants.length >= MAX_GRANTS_PER_BINDING) {
+          if (
+            current.grants.length +
+              (current.acpProviderHeaderGrants?.length ?? 0) >=
+            MAX_GRANTS_PER_BINDING
+          ) {
             throw new Error('The secret binding grant limit has been reached.');
           }
-          const next = {
+          const next: SecretBinding = {
             ...current,
-            grants: [...current.grants, { ...input.grant }].sort(compareGrant),
+            ...(input.grant.kind === 'mcp-integration-env'
+              ? {
+                  grants: [...current.grants, { ...input.grant }].sort(
+                    compareGrant,
+                  ),
+                }
+              : {
+                  acpProviderHeaderGrants: [
+                    ...(current.acpProviderHeaderGrants ?? []),
+                    { ...input.grant },
+                  ].sort(compareGrant),
+                }),
             revision: current.revision + 1,
             updatedAt: this.#now().toISOString(),
           };
@@ -617,8 +660,7 @@ export class FileSecretBindingAdministration
         });
         this.#audit('bind', {
           bindingId: granted.id,
-          integrationId: input.grant.integrationId,
-          envName: input.grant.envName,
+          ...grantAuditIdentifiers(input.grant),
           revision: granted.revision,
           backend: authBackend(granted.authRef),
           outcome: 'success',
@@ -630,41 +672,45 @@ export class FileSecretBindingAdministration
 
   async ungrant(input: {
     id: SecretBindingId;
-    integrationId: string;
-    envName: string;
+    grant: SecretBindingGrant;
     expectedRevision: number;
   }): Promise<SecretBindingView> {
     return this.#adminOperation(
       'unbind',
       {
         bindingId: input.id,
-        integrationId: input.integrationId,
-        envName: input.envName,
+        ...grantAuditIdentifiers(input.grant),
       },
       async () => {
         assertBindingId(input.id);
         assertRevision(input.expectedRevision);
-        assertIntegrationId(input.integrationId);
-        assertEnvName(input.envName);
+        assertGrant(input.grant);
         const ungranted = await this.#store.mutate((document) => {
           const current = requiredActiveBinding(
             document,
             input.id,
             input.expectedRevision,
           );
-          const grants = current.grants.filter(
-            (grant) =>
-              grant.integrationId !== input.integrationId ||
-              grant.envName !== input.envName,
-          );
-          if (grants.length === current.grants.length) {
-            throw new Error(
-              'The integration environment grant does not exist.',
-            );
-          }
-          const next = {
+          if (!secretBindingHasGrant(current, input.grant))
+            throw new Error('The secret binding grant does not exist.');
+          const next: SecretBinding = {
             ...current,
-            grants,
+            ...(input.grant.kind === 'mcp-integration-env'
+              ? {
+                  grants: current.grants.filter(
+                    (grant) => grantKey(grant) !== grantKey(input.grant),
+                  ),
+                }
+              : (() => {
+                  const retained = (
+                    current.acpProviderHeaderGrants ?? []
+                  ).filter(
+                    (grant) => grantKey(grant) !== grantKey(input.grant),
+                  );
+                  return retained.length > 0
+                    ? { acpProviderHeaderGrants: retained }
+                    : { acpProviderHeaderGrants: undefined };
+                })()),
             revision: current.revision + 1,
             updatedAt: this.#now().toISOString(),
           };
@@ -672,8 +718,7 @@ export class FileSecretBindingAdministration
         });
         this.#audit('unbind', {
           bindingId: ungranted.id,
-          integrationId: input.integrationId,
-          envName: input.envName,
+          ...grantAuditIdentifiers(input.grant),
           revision: ungranted.revision,
           backend: authBackend(ungranted.authRef),
           outcome: 'success',
@@ -747,11 +792,11 @@ export class FileSecretBindingAdministration
         if (binding.revokedAt)
           throw new SecretBindingResolutionError('binding_revoked');
         if (
-          !binding.grants.some(
-            (grant) =>
-              grant.integrationId === input.integrationId &&
-              grant.envName === envName,
-          )
+          !secretBindingHasGrant(binding, {
+            kind: 'mcp-integration-env',
+            integrationId: input.integrationId,
+            envName,
+          })
         ) {
           throw new SecretBindingResolutionError('grant_missing');
         }
@@ -820,6 +865,126 @@ export class FileSecretBindingAdministration
           : 'secret_unavailable';
       this.#audit('auth-refusal', {
         integrationId: input.integrationId,
+        outcome: 'refused',
+        reason,
+      });
+      throw error instanceof SecretBindingResolutionError
+        ? error
+        : new SecretBindingResolutionError(reason);
+    }
+  }
+
+  async resolveForAcpProvider(input: {
+    connectionId: string;
+    providerId: string;
+    secretHeaderRefs: Record<string, SecretBindingId>;
+  }): Promise<IntegrationSecretResolution> {
+    const consumerId = `acp-provider-${input.connectionId}`;
+    try {
+      assertProviderIdentifier(input.connectionId, 'ACP connection id');
+      assertProviderIdentifier(input.providerId, 'ACP provider id');
+      const entries = Object.entries(input.secretHeaderRefs);
+      if (entries.length > MAX_GRANTS_PER_BINDING)
+        throw new SecretBindingResolutionError('invalid_binding');
+      const document = this.#store.read();
+      const values = new Map<string, string>();
+      const headers: Record<string, string> = Object.create(null);
+      const consumers: Array<{
+        bindingId: string;
+        integrationId: string;
+        envName: string;
+        revision: number;
+        backend: string;
+      }> = [];
+      for (const [headerName, id] of entries) {
+        try {
+          assertHeaderName(headerName);
+          assertBindingId(id);
+        } catch {
+          throw new SecretBindingResolutionError('invalid_binding');
+        }
+        const binding = document.bindings[id];
+        if (!binding) throw new SecretBindingResolutionError('binding_missing');
+        if (binding.revokedAt)
+          throw new SecretBindingResolutionError('binding_revoked');
+        if (
+          !secretBindingHasGrant(binding, {
+            kind: 'acp-provider-header',
+            connectionId: input.connectionId,
+            providerId: input.providerId,
+            headerName,
+          })
+        ) {
+          throw new SecretBindingResolutionError('grant_missing');
+        }
+        let value = values.get(id);
+        if (value === undefined) {
+          try {
+            value = materializeAuthRef(binding.authRef, {
+              env: this.#environment,
+              secretRunner: this.#runner,
+            });
+          } catch (error) {
+            if (error instanceof DatumError) {
+              throw new SecretBindingResolutionError(
+                error.code === 'SECRET_BACKEND_UNAVAILABLE'
+                  ? 'backend_unavailable'
+                  : 'secret_unavailable',
+              );
+            }
+            throw new SecretBindingResolutionError('secret_unavailable');
+          }
+          values.set(id, value);
+          this.#audit('materialize', {
+            bindingId: id,
+            integrationId: consumerId,
+            envName: headerName,
+            revision: binding.revision,
+            backend: authBackend(binding.authRef),
+            outcome: 'success',
+          });
+        }
+        headers[headerName] = value;
+        consumers.push({
+          bindingId: id,
+          integrationId: consumerId,
+          envName: headerName,
+          revision: binding.revision,
+          backend: authBackend(binding.authRef),
+        });
+      }
+      this.#audit('resolve', {
+        integrationId: consumerId,
+        providerId: input.providerId,
+        consumers: new Set(Object.values(input.secretHeaderRefs)).size,
+        outcome: 'success',
+      });
+      let settled = false;
+      return {
+        environment: headers,
+        settlement: {
+          settle: ({ outcome, reason }) => {
+            if (settled) return;
+            settled = true;
+            for (const consumer of consumers) {
+              this.#audit('establish', {
+                ...consumer,
+                providerId: input.providerId,
+                outcome,
+                ...(outcome === 'failure' && reason ? { reason } : {}),
+              });
+            }
+          },
+        },
+      };
+    } catch (error) {
+      const reason =
+        error instanceof SecretBindingResolutionError
+          ? error.reason
+          : 'secret_unavailable';
+      this.#audit('auth-refusal', {
+        integrationId: consumerId,
+        providerId: input.providerId,
         outcome: 'refused',
         reason,
       });
@@ -998,6 +1163,7 @@ function validateDocument(value: unknown): SecretBindingDocument {
       'authRef',
       'revision',
       'grants',
+      'acpProviderHeaderGrants',
       'createdAt',
       'updatedAt',
       'revokedAt',
@@ -1010,7 +1176,9 @@ function validateDocument(value: unknown): SecretBindingDocument {
       binding.revision! < 1 ||
       typeof binding.createdAt !== 'string' ||
       typeof binding.updatedAt !== 'string' ||
-      !Array.isArray(binding.grants)
+      !Array.isArray(binding.grants) ||
+      (binding.acpProviderHeaderGrants !== undefined &&
+        !Array.isArray(binding.acpProviderHeaderGrants))
     )
       throw new Error();
     assertTimestamp(binding.createdAt);
@@ -1021,17 +1189,20 @@ function validateDocument(value: unknown): SecretBindingDocument {
     }
     const grants = binding.grants.map((grant) => {
       assertExactGrant(grant);
-      return {
-        kind: 'mcp-integration-env' as const,
-        integrationId: grant.integrationId,
-        envName: grant.envName,
-      };
+      if (grant.kind !== 'mcp-integration-env') throw new Error();
+      return { ...grant };
     });
+    const acpProviderHeaderGrants = (binding.acpProviderHeaderGrants ?? []).map(
+      (grant) => {
+        assertExactGrant(grant);
+        if (grant.kind !== 'acp-provider-header') throw new Error();
+        return { ...grant };
+      },
+    );
     if (
-      grants.length > MAX_GRANTS_PER_BINDING ||
-      new Set(
-        grants.map((grant) => `${grant.integrationId}\u0000${grant.envName}`),
-      ).size !== grants.length
+      grants.length + acpProviderHeaderGrants.length > MAX_GRANTS_PER_BINDING ||
+      new Set([...grants, ...acpProviderHeaderGrants].map(grantKey)).size !==
+        grants.length + acpProviderHeaderGrants.length
     )
       throw new Error();
     bindings[id] = {
@@ -1040,6 +1211,11 @@ function validateDocument(value: unknown): SecretBindingDocument {
       authRef: parseAuthRef(binding.authRef),
       revision: binding.revision!,
       grants: grants.sort(compareGrant),
+      ...(acpProviderHeaderGrants.length > 0
+        ? {
+            acpProviderHeaderGrants: acpProviderHeaderGrants.sort(compareGrant),
+          }
+        : {}),
       createdAt: binding.createdAt,
       updatedAt: binding.updatedAt,
       ...(binding.revokedAt ? { revokedAt: binding.revokedAt } : {}),
@@ -1138,19 +1314,48 @@ function assertEnvName(value: string): void {
   if (typeof value !== 'string' || !ENV_NAME.test(value))
     throw new Error('Invalid integration environment name.');
 }
-function assertGrant(grant: McpIntegrationEnvGrant): void {
-  if (grant?.kind !== 'mcp-integration-env')
-    throw new Error('Invalid secret binding grant.');
-  assertIntegrationId(grant.integrationId);
-  assertEnvName(grant.envName);
+function assertProviderIdentifier(value: string, label: string): void {
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > 128 ||
+    value.trim() !== value ||
+    [...value].some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 0x1f || code === 0x7f;
+    })
+  )
+    throw new Error(`Invalid ${label}.`);
 }
-function assertExactGrant(
-  grant: unknown,
-): asserts grant is McpIntegrationEnvGrant {
+function assertHeaderName(value: string): void {
+  if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$/.test(value))
+    throw new Error('Invalid ACP provider header name.');
+}
+function assertGrant(grant: SecretBindingGrant): void {
+  if (grant?.kind === 'mcp-integration-env') {
+    assertIntegrationId(grant.integrationId);
+    assertEnvName(grant.envName);
+    return;
+  }
+  if (grant?.kind === 'acp-provider-header') {
+    assertProviderIdentifier(grant.connectionId, 'ACP connection id');
+    assertProviderIdentifier(grant.providerId, 'ACP provider id');
+    assertHeaderName(grant.headerName);
+    return;
+  }
+  throw new Error('Invalid secret binding grant.');
+}
+function assertExactGrant(grant: unknown): asserts grant is SecretBindingGrant {
   if (!grant || typeof grant !== 'object' || Array.isArray(grant))
     throw new Error('Invalid secret binding grant.');
-  assertOnlyKeys(grant, ['kind', 'integrationId', 'envName']);
-  assertGrant(grant as McpIntegrationEnvGrant);
+  if ((grant as { kind?: unknown }).kind === 'mcp-integration-env') {
+    assertOnlyKeys(grant, ['kind', 'integrationId', 'envName']);
+  } else if ((grant as { kind?: unknown }).kind === 'acp-provider-header') {
+    assertOnlyKeys(grant, ['kind', 'connectionId', 'providerId', 'headerName']);
+  } else {
+    throw new Error('Invalid secret binding grant.');
+  }
+  assertGrant(grant as SecretBindingGrant);
 }
 function assertRevision(value: number): void {
   if (!Number.isSafeInteger(value) || value < 1)
@@ -1160,12 +1365,22 @@ function assertTimestamp(value: string): void {
   if (!Number.isFinite(Date.parse(value)))
     throw new Error('Invalid secret binding timestamp.');
 }
-function compareGrant(
-  a: McpIntegrationEnvGrant,
-  b: McpIntegrationEnvGrant,
-): number {
-  return (
-    a.integrationId.localeCompare(b.integrationId) ||
-    a.envName.localeCompare(b.envName)
-  );
+function grantKey(grant: SecretBindingGrant): string {
+  return grant.kind === 'mcp-integration-env'
+    ? `${grant.kind}\u0000${grant.integrationId}\u0000${grant.envName}`
+    : `${grant.kind}\u0000${grant.connectionId}\u0000${grant.providerId}\u0000${grant.headerName.toLowerCase()}`;
+}
+function grantAuditIdentifiers(
+  grant: SecretBindingGrant,
+): Record<string, string> {
+  return grant.kind === 'mcp-integration-env'
+    ? { integrationId: grant.integrationId, envName: grant.envName }
+    : {
+        connectionId: grant.connectionId,
+        providerId: grant.providerId,
+        headerName: grant.headerName,
+      };
+}
+function compareGrant(a: SecretBindingGrant, b: SecretBindingGrant): number {
+  return grantKey(a).localeCompare(grantKey(b));
 }

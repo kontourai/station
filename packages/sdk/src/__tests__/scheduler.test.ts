@@ -31,6 +31,7 @@ import {
   runJobWithReceipt,
   SchedulerRunFailedError,
   SchedulerRunIndeterminateError,
+  SchedulerRunRefusedError,
   updateJob,
 } from '../client/scheduler';
 import {
@@ -262,6 +263,42 @@ describe('scheduler query domain', () => {
       receipt: {
         outcome: 'failed',
         runId: 'schedule:built-in:daily-report:failed-1',
+      },
+    });
+  });
+
+  it('preserves a provider refusal as a retryable typed error', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({
+        success: false,
+        code: 'scheduler_run_refused',
+        outcome: 'refused',
+        error: 'Provider policy refused this explicit run',
+        data: {
+          output: 'Provider policy refused this explicit run',
+          receipt: {
+            outcome: 'refused',
+            message: 'Scheduler job refused. Inspect the run for its reason.',
+            runId: 'provider:daily-report:refused-1',
+          },
+        },
+      }),
+    } as Response);
+
+    const error = await runJob('http://example.test', 'daily-report').catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(SchedulerRunRefusedError);
+    expect(error).toMatchObject({
+      code: 'scheduler_run_refused',
+      outcome: 'refused',
+      retryable: true,
+      receipt: {
+        outcome: 'refused',
+        runId: 'provider:daily-report:refused-1',
       },
     });
   });

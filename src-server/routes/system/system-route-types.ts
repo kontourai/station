@@ -109,9 +109,8 @@ export interface SystemStatusDeps {
   publicOrigins?: string[];
   skillService?: SkillService;
   /**
-   * archive#3089: the same probe the admission checks use
-   * (`admitEngineStart`/`admitScheduledJob`), read here rather than
-   * recomputed. Optional so older/partial route composition degrades to a
+   * Product-owned CPU diagnostics probe. Optional so older/partial route
+   * composition degrades to a
    * 503 on the read route instead of a fabricated healthy reading.
    */
   resourcePosture?: RuntimeResourcePostureProbe;

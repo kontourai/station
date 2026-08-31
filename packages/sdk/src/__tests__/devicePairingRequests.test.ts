@@ -12,6 +12,8 @@ import {
   confirmDevicePairingRequest,
   DevicePairingRequestActionError,
   denyDevicePairingRequest,
+  fetchPairedDevices,
+  pairedDeviceQueries,
 } from '../query-domains/devicePairingRequests';
 
 /**
@@ -93,6 +95,69 @@ describe('device pairing request actions (#765 D5)', () => {
     expect(authenticatedFetchMock).toHaveBeenCalledWith(
       'http://station.test/api/pairing/requests/req%2F..%2Fx/confirm',
       { method: 'POST' },
+    );
+  });
+});
+
+describe('paired-device identity query (#951 step 2)', () => {
+  beforeEach(() => {
+    authenticatedFetchMock.mockReset();
+  });
+
+  it('reads the current device records from the canonical pairing route', async () => {
+    const devices = [
+      {
+        id: 'device-1',
+        name: 'Brian’s Pixel',
+        scope: 'chat:read',
+        kind: 'device',
+        createdAt: 1,
+        activityTracking: 'tracked-since-issued',
+        lastSeenFrom: null,
+        usageCount: 0,
+        lastActiveDay: null,
+        revokedAt: null,
+        revocation: { state: 'not-revoked' },
+      },
+    ];
+    authenticatedFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ devices }),
+    } as Response);
+
+    await expect(fetchPairedDevices('https://station.test')).resolves.toBe(
+      devices,
+    );
+    expect(authenticatedFetchMock).toHaveBeenCalledWith(
+      'https://station.test/api/pairing/devices',
+    );
+  });
+
+  it('keeps Station identities in separate caches', () => {
+    expect(pairedDeviceQueries.list('https://a.test').queryKey).not.toEqual(
+      pairedDeviceQueries.list('https://b.test').queryKey,
+    );
+  });
+
+  it('refuses a successful response that has no device inventory', async () => {
+    authenticatedFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    } as Response);
+
+    await expect(fetchPairedDevices('https://station.test')).rejects.toThrow(
+      'Paired devices response is missing its device list',
+    );
+  });
+
+  it('surfaces an HTTP refusal instead of treating it as an empty registry', async () => {
+    authenticatedFetchMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+    } as Response);
+
+    await expect(fetchPairedDevices('https://station.test')).rejects.toThrow(
+      'Paired devices request failed (HTTP 403)',
     );
   });
 });

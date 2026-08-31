@@ -44,9 +44,9 @@ down with replacement, or remove as vacuous.
 - The Starter clean-install bucket boots a runner-owned, freshly created home
   with provider discovery and inherited product/OTLP telemetry disabled. It
   proves the Starter journey without reading a developer's Station state or
-  sending to an endpoint configured in the parent shell. Its explicit healthy
-  resource observation isolates this product path from unrelated host load;
-  resource-posture fault tests remain the authority for honest deferral.
+  sending to an endpoint configured in the parent shell. Scheduler admission
+  is covered at the service and ledger seams; host resource observations are
+  diagnostic only and do not control product work.
 - The app now has a promoted product Playwright gate covering primary nav,
   connections, registry, plugins, schedule run history, and orchestration/chat
   flows.

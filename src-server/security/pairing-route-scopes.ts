@@ -403,6 +403,21 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
+  // #944: provider routing mutates an external engine's LLM destination and
+  // may spend Station-held credentials in the protocol-required headers.
+  // That is credential-management authority, not an ordinary ACP connection
+  // mutation: no standard paired-device `orchestration:operate` credential
+  // may redirect an engine or cause a stored secret to cross into it.
+  ...(['set', 'disable'] as const).map(
+    (action): PairingScopeRouteRule => ({
+      id: `/acp/connections/:id/providers/${action}:manage`,
+      method: 'POST',
+      prefix: `/acp/connections/:id/providers/${action}`,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+    }),
+  ),
   // archive#1097 review round 2 (HIGH), owner decision "tighten now, loosen
   // later if wanted": GET /api/environments/ssh/sessions aggregates OTHER
   // connected stations' orchestration session titles/projectSlugs/agents/
@@ -2343,9 +2358,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/system/instance' },
     { method: 'POST', path: '/api/system/push-subscribe' },
     { method: 'POST', path: '/api/system/push-unsubscribe' },
-    // archive#3089: a read of this Station's own currently observed CPU
-    // posture (kind + busy percent, the same fields `admitEngineStart`/
-    // `admitScheduledJob` evaluate). No other Environment's or Station's
+    // A diagnostic read of this Station's currently observed CPU utilization.
+    // No other Environment's or Station's
     // data, no mutation — no more sensitive than the surrounding `/api/system`
     // reads it inherits the family tier from.
     { method: 'GET', path: '/api/system/resource-posture' },
