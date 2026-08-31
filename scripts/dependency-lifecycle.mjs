@@ -7,7 +7,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   confinedPackageTarget,
@@ -21,6 +21,7 @@ import {
   readLifecycleLocks,
   verifyArtifact,
 } from './lib/dependency-lifecycle-policy.mjs';
+import { resolveNpmCli } from './lib/npm-cli.mjs';
 import { assertWorkspaceDependencySatisfaction } from './lib/workspace-dependency-satisfaction.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -53,22 +54,11 @@ function checkedFile(path, description) {
   return path;
 }
 
-export function resolveNpmCli(env = process.env, node = process.execPath) {
-  const fromNpm = env.npm_execpath;
-  if (fromNpm) {
-    if (!isAbsolute(fromNpm) || !/npm-cli\.js$/.test(fromNpm))
-      throw new Error('npm_execpath must name an absolute npm-cli.js file');
-    return checkedFile(fromNpm, 'npm CLI');
-  }
-  // Node distributions ship npm beside their node binary. Windows keeps it in
-  // `node_modules` next to node.exe; Unix distributions conventionally use
-  // the sibling `lib/node_modules`. Both are explicit JS entries, never .cmd.
-  const candidates = [
-    resolve(dirname(node), 'node_modules/npm/bin/npm-cli.js'),
-    resolve(dirname(node), '../lib/node_modules/npm/bin/npm-cli.js'),
-  ];
-  return checkedFile(candidates.find(existsSync), 'npm CLI');
-}
+// Re-exported so this module's existing importers and tests keep their entry
+// point while the implementation lives in one shared place (#1093). It was
+// the only correct npm resolution in the repo; four other call sites spawned
+// a bare `npm` and broke on Windows.
+export { resolveNpmCli };
 
 function command(command, args, options = {}) {
   return execFileSync(command, args, {

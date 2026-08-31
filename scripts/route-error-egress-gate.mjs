@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import ts from 'typescript';
+import { toPosixPath } from './lib/posix-path.mjs';
 
 /**
  * Route-catch `errorMessage()` is the shared sanitized boundary. Direct
@@ -46,7 +47,16 @@ function listSourceFiles(rootDir, directory) {
   const files = [];
   for (const entry of readdirSync(absoluteDirectory, { withFileTypes: true })) {
     if (['dist', 'node_modules', '__tests__'].includes(entry.name)) continue;
-    const relativePath = join(directory, entry.name);
+    // POSIX separators deliberately: this path becomes part of the identity
+    // matched against REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS above, which is a
+    // committed allowlist written with forward slashes. `join` uses the
+    // platform separator, so on Windows every reviewed entry missed twice --
+    // once as "Unreviewed" for the backslash form the scan produced, once as
+    // "Stale reviewed" for the forward-slash form nothing matched -- and both
+    // proof lanes that consume this gate failed on a clean checkout (#1093).
+    // A committed allowlist keyed by path is only sound if the key means the
+    // same string on every platform.
+    const relativePath = toPosixPath(join(directory, entry.name));
     if (entry.isDirectory()) {
       files.push(...listSourceFiles(rootDir, relativePath));
     } else if (

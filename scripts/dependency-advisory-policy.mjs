@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { npmInvocation } from './lib/npm-cli.mjs';
 
 const BLOCKING_SEVERITIES = new Set(['critical', 'high']);
 const RESIDUAL_SEVERITIES = new Set(['moderate', 'low']);
@@ -605,7 +606,8 @@ function runAudit(scope, cwd, productionOnly = false) {
   const args = ['audit', '--json'];
   if (productionOnly) args.push('--omit=dev');
   if (scope !== 'root') args.push('--workspaces=false');
-  const result = spawnSync('npm', args, {
+  const npm = npmInvocation(args);
+  const result = spawnSync(npm.command, npm.args, {
     cwd,
     encoding: 'utf8',
     maxBuffer: 50 * 1024 * 1024,

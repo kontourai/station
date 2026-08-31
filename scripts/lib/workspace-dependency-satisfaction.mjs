@@ -11,6 +11,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import { toPosixPath } from './posix-path.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -169,7 +170,10 @@ export function findWorkspaceDependencyProblems({
   const findings = [];
   for (const manifestPath of manifests) {
     const manifest = readJson(manifestPath);
-    const workspace = relative(checkout, dirname(manifestPath)) || 'root';
+    // Repo-relative identity: appears verbatim in findings that tests and
+    // operators compare, so it must not carry a platform separator (#1093).
+    const workspace =
+      toPosixPath(relative(checkout, dirname(manifestPath))) || 'root';
     for (const dependency of declaredDependencies(manifest)) {
       const installedPath = nearestInstalledManifest({
         root: checkout,
@@ -200,7 +204,7 @@ export function findWorkspaceDependencyProblems({
         typeof installed.version !== 'string'
       ) {
         findings.push(
-          `${workspace} → ${dependency.name}: invalid installed manifest at ${relative(checkout, installedPath)}`,
+          `${workspace} → ${dependency.name}: invalid installed manifest at ${toPosixPath(relative(checkout, installedPath))}`,
         );
         continue;
       }
@@ -211,7 +215,7 @@ export function findWorkspaceDependencyProblems({
         })
       )
         findings.push(
-          `${workspace} → ${dependency.name}: installed ${installed.version} at ${relative(checkout, installedPath)} does not satisfy declared ${dependency.spec}`,
+          `${workspace} → ${dependency.name}: installed ${installed.version} at ${toPosixPath(relative(checkout, installedPath))} does not satisfy declared ${dependency.spec}`,
         );
       if (
         specification.kind === 'npm-alias' &&
@@ -222,7 +226,7 @@ export function findWorkspaceDependencyProblems({
         })
       )
         findings.push(
-          `${workspace} → ${dependency.name}: installed ${installed.version} at ${relative(checkout, installedPath)} does not satisfy aliased ${specification.targetName}@${specification.targetSpec}`,
+          `${workspace} → ${dependency.name}: installed ${installed.version} at ${toPosixPath(relative(checkout, installedPath))} does not satisfy aliased ${specification.targetName}@${specification.targetSpec}`,
         );
     }
   }
