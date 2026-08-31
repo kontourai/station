@@ -241,18 +241,58 @@ pub fn resolve_station_home() -> PathBuf {
 /// Shared client metadata is root-scoped. Runtime selection must never move
 /// profiles, keyring references, or the selected default between channels.
 pub fn resolve_station_root() -> PathBuf {
-    let configured = env::var_os("STATION_ROOT").filter(|path| !path.is_empty());
-    let user_home = if cfg!(windows) {
-        env::var_os("USERPROFILE").or_else(|| env::var_os("HOME"))
+    station_root_from_env(
+        env::var_os("STATION_ROOT"),
+        env::var_os("STATION_HOME"),
+        env::var_os("HOME"),
+        env::var_os("USERPROFILE"),
+        cfg!(windows),
+    )
+}
+
+fn station_root_from_env(
+    station_root: Option<std::ffi::OsString>,
+    station_home: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+    user_profile: Option<std::ffi::OsString>,
+    is_windows: bool,
+) -> PathBuf {
+    let configured = station_root.filter(|path| !path.is_empty());
+    let user_home = if is_windows {
+        user_profile.or(home)
     } else {
-        env::var_os("HOME")
+        home
     };
-    let root = configured.map(PathBuf::from).unwrap_or_else(|| {
-        user_home
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".station")
-    });
+    let root = configured
+        .map(PathBuf::from)
+        .or_else(|| {
+            station_home
+                .filter(|path| !path.is_empty())
+                .map(PathBuf::from)
+                .map(|home| {
+                    let parent = home.parent();
+                    if parent.and_then(Path::file_name) == Some(std::ffi::OsStr::new("instances")) {
+                        return parent.and_then(Path::parent).unwrap_or(&home).to_path_buf();
+                    }
+                    if parent.and_then(Path::file_name) == Some(std::ffi::OsStr::new("dev"))
+                        && parent.and_then(Path::parent).and_then(Path::file_name)
+                            == Some(std::ffi::OsStr::new("instances"))
+                    {
+                        return parent
+                            .and_then(Path::parent)
+                            .and_then(Path::parent)
+                            .unwrap_or(&home)
+                            .to_path_buf();
+                    }
+                    home
+                })
+        })
+        .unwrap_or_else(|| {
+            user_home
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".station")
+        });
     if root.is_absolute() {
         root
     } else {
@@ -1660,6 +1700,50 @@ mod tests {
             PathBuf::from("C:\\Users\\tester\\.station")
                 .join("instances")
                 .join("beta")
+        );
+    }
+
+    #[test]
+    fn derives_station_root_from_a_lone_explicit_home() {
+        assert_eq!(
+            station_root_from_env(
+                None,
+                Some("/tmp/isolated-home".into()),
+                Some("/Users/tester".into()),
+                Some("C:\\Users\\tester".into()),
+                false,
+            ),
+            PathBuf::from("/tmp/isolated-home")
+        );
+        assert_eq!(
+            station_root_from_env(
+                None,
+                Some("/tmp/isolated-root/instances/e2e".into()),
+                Some("/Users/tester".into()),
+                None,
+                false,
+            ),
+            PathBuf::from("/tmp/isolated-root")
+        );
+        assert_eq!(
+            station_root_from_env(
+                None,
+                Some("/tmp/isolated-root/instances/dev/e2e".into()),
+                Some("/Users/tester".into()),
+                None,
+                false,
+            ),
+            PathBuf::from("/tmp/isolated-root")
+        );
+        assert_eq!(
+            station_root_from_env(
+                Some("/tmp/operator-root".into()),
+                Some("/tmp/isolated-home".into()),
+                Some("/Users/tester".into()),
+                None,
+                false,
+            ),
+            PathBuf::from("/tmp/operator-root")
         );
     }
 
