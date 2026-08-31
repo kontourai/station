@@ -778,6 +778,59 @@ test.describe('Task-first Home (#332, mocked)', () => {
         ),
       });
     });
+    // mockTaskFirstHome's `**/api/**` catch-all answers any path it doesn't
+    // know with `json([])` — a 200, not a 404 — so this endpoint never falls
+    // into the capability client's 404/legacy-handshake branch and instead
+    // parses as an unrecognized shape ({state: 'unknown'}), which the queue
+    // treats as a hard failure and refuses to stage the attachment at all.
+    // Answer the real capability/prepare/upload seam explicitly (station#890;
+    // shape proven by mobile-chat-composer.spec.ts's staged-attachment test)
+    // so the attachment actually reaches 'complete' and Send has something to
+    // dispatch. Unlike this file's own `json()` helper, these three routes
+    // are NOT wrapped in a `{success,data}` envelope — the real server
+    // (`createAttachmentStagingRoutes`) answers them raw, and the client
+    // (`packages/sdk/src/client/attachment-staging.ts`) reads the body
+    // directly with no envelope-unwrapping.
+    const rawJson = (data: unknown) => ({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(data),
+    });
+    const stageId = 'stage_task-first-home-launcher-context';
+    let prepared: Record<string, unknown> | undefined;
+    await page.route(
+      /\/api\/orchestration\/attachment-staging(?:\/.*)?$/u,
+      async (route) => {
+        const request = route.request();
+        const path = new URL(request.url()).pathname;
+        if (path.endsWith('/capability'))
+          return route.fulfill(
+            rawJson({ state: 'supported', version: 1, maxConcurrentUploads: 3 }),
+          );
+        if (path.endsWith('/prepare')) {
+          prepared = request.postDataJSON() as Record<string, unknown>;
+          return route.fulfill(
+            rawJson({
+              ...prepared,
+              stageId,
+              uploadGrant: 'a'.repeat(43),
+              expiresAt: '2030-01-01T00:00:00.000Z',
+            }),
+          );
+        }
+        if (path.endsWith(`/${stageId}`) && request.method() === 'PUT')
+          return route.fulfill(
+            rawJson({
+              ...prepared,
+              stageId,
+              source: 'current-composer',
+              digest: `sha256-${'a'.repeat(64)}`,
+              expiresAt: '2030-01-01T00:00:00.000Z',
+            }),
+          );
+        return route.abort();
+      },
+    );
     await page.goto('/');
     await startProjectTask(page);
 
@@ -848,24 +901,37 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await launcher.getByRole('button', { name: 'Confirm and send' }).click();
     await expect(launcher).toHaveCount(0);
     await expect.poll(() => sentIntents.length).toBe(1);
+    // The composer's capability negotiation reports `supported` (the shape a
+    // real Station server always advertises — station#890), so completed
+    // staging dispatches an opaque `attachmentRefs` entry, never a raw
+    // `attachments[].dataUrl` (that shape is `legacy-inline` only, for a peer
+    // that predates this endpoint entirely).
     const sentPayload = JSON.parse(sentIntents[0]) as {
-      attachments: Array<{
+      attachmentRefs: Array<{
+        stageId: string;
+        clientAttachmentId: string;
+        source: string;
         kind: string;
         name: string;
         mimeType: string;
         size: number;
-        dataUrl: string;
+        digest: string;
+        expiresAt: string;
       }>;
     };
-    const sentFile = sentPayload.attachments.find(
+    const sentFile = sentPayload.attachmentRefs.find(
       (attachment) => attachment.kind === 'file',
     );
     expect(sentFile).toEqual({
+      stageId: 'stage_task-first-home-launcher-context',
+      clientAttachmentId: expect.any(String),
+      source: 'current-composer',
       kind: 'file',
       name: 'launcher-context.md',
       mimeType: 'text/markdown',
       size: 18,
-      dataUrl: 'data:text/markdown;base64,IyBMYXVuY2hlciBjb250ZXh0',
+      digest: `sha256-${'a'.repeat(64)}`,
+      expiresAt: '2030-01-01T00:00:00.000Z',
     });
   });
 
