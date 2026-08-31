@@ -469,8 +469,9 @@ export const APP_SETTINGS_REGISTRY = [
 ] as const satisfies readonly SettingDefinition[];
 
 /** Persisted settings that are eligible for registry-driven UI rendering. */
-export const USER_FACING_APP_SETTINGS_REGISTRY =
-  APP_SETTINGS_REGISTRY.filter((definition) => definition.userFacing !== false);
+export const USER_FACING_APP_SETTINGS_REGISTRY = APP_SETTINGS_REGISTRY.filter(
+  (definition) => definition.userFacing !== false,
+);
 
 /**
  * Registered keys for which `null` is a stored value rather than a clear —

@@ -17,9 +17,7 @@ import type {
   SettingDefinition,
   SettingProvenanceEntry,
 } from '@kontourai/station-contracts/settings-registry';
-import {
-  USER_FACING_APP_SETTINGS_REGISTRY,
-} from '@kontourai/station-contracts/settings-registry';
+import { USER_FACING_APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import type { AppConfig } from '../../types';
 import { renderSettingRow } from './registry-row';
 import { SettingsSection } from './SettingsSection';
