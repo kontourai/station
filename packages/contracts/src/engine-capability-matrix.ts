@@ -953,11 +953,6 @@ export function sessionDeliveryChannels(
  *                                                     its type is its exact
  *                                                     provider/native selector;
  *                                                     otherwise UNKNOWN_EXTERNAL_ENGINE_MATRIX
- *   executionClass 'managed'                      -> station (deprecated
- *                                                     read-compat)
- *   executionClass 'connected' or any other id     -> that connection's type
- *                                                     (a matrix entry, else
- *                                                     UNKNOWN_EXTERNAL_ENGINE_MATRIX)
  *   otherwise (no id, no connection)               -> station
  */
 export function resolveEngineCapabilityMatrix(
@@ -965,7 +960,7 @@ export function resolveEngineCapabilityMatrix(
   connection?: {
     type?: string;
     engineId?: EngineId | string;
-    config?: { engineId?: unknown; executionClass?: unknown };
+    config?: { engineId?: unknown };
   } | null,
 ): EngineCapabilityMatrix {
   if (agentConnectionId === 'acp' || connection?.type === 'acp') {
@@ -973,7 +968,7 @@ export function resolveEngineCapabilityMatrix(
   }
   // Phase B: engineId (top-level, e.g. server RuntimeConnectionSummary; or
   // config-nested, e.g. AgentConnectionView/ConnectionConfig) is the
-  // canonical engine identity and wins over the deprecated executionClass
+  // canonical engine identity is authoritative
   // read-compat fields below when present.
   const rawExplicitEngineId =
     connection?.engineId ??
@@ -994,10 +989,7 @@ export function resolveEngineCapabilityMatrix(
     // from a different engine.
     return UNKNOWN_EXTERNAL_ENGINE_MATRIX;
   }
-  if (connection?.config?.executionClass === 'managed') {
-    return ENGINE_CAPABILITY_MATRICES.station;
-  }
-  if (connection?.config?.executionClass === 'connected' || agentConnectionId) {
+  if (agentConnectionId) {
     const type = connection?.type;
     if (type && ENGINE_CAPABILITY_MATRICES[type]) {
       return ENGINE_CAPABILITY_MATRICES[type];

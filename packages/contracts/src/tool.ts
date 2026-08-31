@@ -167,8 +167,6 @@ export interface Prerequisite {
   };
 }
 
-export type ConnectionKind = 'model' | 'agent';
-
 /** How a chat/agent is executed: by an external engine, or by Station's engine. */
 export type ExecutionMode = 'external' | 'station';
 export const EXECUTION_MODE = {
@@ -181,14 +179,6 @@ export const EXECUTION_MODE = {
  * (`'runtime'` -> `'external'`, `'provider-managed'` -> `'station'`). Never
  * used to rewrite the value on disk — read-time normalization only.
  */
-export function normalizeExecutionMode(
-  value: unknown,
-): ExecutionMode | undefined {
-  if (value === 'external' || value === 'station') return value;
-  if (value === 'runtime') return 'external';
-  if (value === 'provider-managed') return 'station';
-  return undefined;
-}
 
 export type ConnectionCapability =
   | 'llm'
@@ -474,7 +464,7 @@ export interface ConnectionReadinessEvidence {
 
 export interface ConnectionConfig {
   id: string;
-  kind: ConnectionKind;
+  kind: import('./connection.js').ConnectionKind;
   type: string;
   name: string;
   enabled: boolean;

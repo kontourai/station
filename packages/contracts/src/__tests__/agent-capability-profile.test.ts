@@ -151,7 +151,7 @@ describe('built-in engines derive their real editor tabs (#2301)', () => {
     deriveAgentEditorTabs(
       resolveEngineCapabilityMatrix(engineId, {
         type: runtimeId,
-        config: { engineId, executionClass: 'connected' },
+        config: { engineId },
       }),
       authored,
     ).map((tab) => tab.key);

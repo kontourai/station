@@ -49,6 +49,7 @@
     "./conversation-context-boundary": "./src/conversation-context-boundary.ts",
     "./conversation-intent-summary": "./src/conversation-intent-summary.ts",
     "./config": "./src/config.ts",
+    "./connection": "./src/connection.ts",
     "./contribution": "./src/contribution.ts",
     "./distribution": "./src/distribution.ts",
     "./discord": "./src/discord.ts",

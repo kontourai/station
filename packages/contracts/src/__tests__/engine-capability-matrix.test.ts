@@ -109,7 +109,7 @@ describe('engine capability matrix', () => {
     });
   });
 
-  test('resolveEngineCapabilityMatrix branch order (executionClass, acp, unknown-external)', () => {
+  test('resolveEngineCapabilityMatrix branch order (engineId, acp, unknown-external)', () => {
     expect(resolveEngineCapabilityMatrix()).toBe(
       ENGINE_CAPABILITY_MATRICES.station,
     );
@@ -118,7 +118,7 @@ describe('engine capability matrix', () => {
     );
     expect(
       resolveEngineCapabilityMatrix('strands-runtime', {
-        config: { executionClass: 'managed' },
+        config: { engineId: 'station' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.station);
     expect(resolveEngineCapabilityMatrix('acp')).toBe(
@@ -130,13 +130,13 @@ describe('engine capability matrix', () => {
     expect(
       resolveEngineCapabilityMatrix('codex', {
         type: 'codex',
-        config: { executionClass: 'connected' },
+        config: { engineId: 'codex' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
     expect(
       resolveEngineCapabilityMatrix('claude', {
         type: 'claude',
-        config: { executionClass: 'connected' },
+        config: { engineId: 'claude' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.claude);
   });
@@ -201,25 +201,24 @@ describe('engine capability matrix', () => {
         engineId: 'station',
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.acp);
-    // Legacy executionClass (no engineId at all) still resolves exactly as
-    // before — read-compat, not a behavior change.
+    // A missing engine identity is no longer upgraded from legacy metadata.
     expect(
       resolveEngineCapabilityMatrix('strands-runtime', {
-        config: { executionClass: 'managed' },
+        config: {},
       }),
-    ).toBe(ENGINE_CAPABILITY_MATRICES.station);
+    ).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
     expect(
       resolveEngineCapabilityMatrix('codex', {
         type: 'codex',
-        config: { executionClass: 'connected' },
+        config: { engineId: 'codex' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
   });
 
-  test('an acp connection carrying a stale executionClass "managed" still resolves acp (acp is checked first)', () => {
+  test('an acp connection resolves acp regardless of other config (acp is checked first)', () => {
     const staleConnection = {
       type: 'acp',
-      config: { executionClass: 'managed' },
+      config: {},
     };
     expect(
       resolveEngineCapabilityMatrix('kiro-connection', staleConnection),
@@ -229,7 +228,7 @@ describe('engine capability matrix', () => {
   test('an unknown external engine resolves to the all-unsupported conservative matrix, never silently editable surfaces', () => {
     const result = resolveEngineCapabilityMatrix('opencode-connection', {
       type: 'opencode',
-      config: { executionClass: 'connected' },
+      config: {},
     });
     expect(result).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
     expect(result.systemPrompt).toEqual({ state: 'unsupported' });
@@ -799,7 +798,7 @@ describe('station#1194: resolveBuiltinAgentEngineBinding (rebind + default-selec
 describe('built-in engines resolve to their own matrix (#2301)', () => {
   const projected = (engineId: string) => ({
     type: engineId,
-    config: { engineId, executionClass: 'connected' },
+    config: { engineId },
   });
 
   test.each(['claude', 'codex', 'muse'])(
@@ -817,7 +816,7 @@ describe('built-in engines resolve to their own matrix (#2301)', () => {
   test('a genuinely unknown engineId still falls back, rather than inventing a matrix', () => {
     const result = resolveEngineCapabilityMatrix('mystery', {
       type: 'mystery-runtime',
-      config: { engineId: 'mystery', executionClass: 'connected' },
+      config: { engineId: 'mystery' },
     });
     expect(result).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
   });

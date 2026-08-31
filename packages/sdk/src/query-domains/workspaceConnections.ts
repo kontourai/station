@@ -320,9 +320,6 @@ export function useModelPickerCatalogQuery(
         ...(typeof connection.config.engineId === 'string'
           ? { engineId: connection.config.engineId }
           : {}),
-        ...(typeof connection.config.executionClass === 'string'
-          ? { executionClass: connection.config.executionClass }
-          : {}),
         ...(typeof connection.config.defaultModel === 'string'
           ? { defaultModel: connection.config.defaultModel }
           : {}),
