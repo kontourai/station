@@ -363,6 +363,7 @@ describe('native release workflow topology', () => {
       return index;
     };
     const armed = lineIndex('trap compensate_pointer ERR');
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal shell-array expansion asserted in the workflow source.
     const archives = lineIndex('"${updater_args[@]}"');
     const flagged = lineIndex('pointer_mutation_started=true');
     const pointerWrite = lineIndex('updater-channel-assets/latest.json');
