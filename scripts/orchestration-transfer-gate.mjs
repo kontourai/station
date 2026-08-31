@@ -160,13 +160,17 @@ export function runTransferCapture({
   targetRoot,
   output,
   baseSha,
+  capture: captureOverride = undefined,
   spawn = spawnSync,
 }) {
   const tsx = resolve(candidateRoot, 'node_modules/tsx/dist/cli.mjs');
   if (!existsSync(tsx)) fail(`candidate capture tool unavailable: ${tsx}`);
-  const capture = resolve(
+  const capture =
+    captureOverride ??
+    resolve(candidateRoot, 'scripts/orchestration-transfer-capture.ts');
+  const captureTsconfig = resolve(
     candidateRoot,
-    'scripts/orchestration-transfer-capture.ts',
+    'scripts/orchestration-transfer-capture.tsconfig.json',
   );
   const result = spawn(
     process.execPath,
@@ -174,7 +178,7 @@ export function runTransferCapture({
     {
       cwd: candidateRoot,
       encoding: 'utf8',
-      env: transferGitEnvironment(),
+      env: transferGitEnvironment({ TSX_TSCONFIG_PATH: captureTsconfig }),
       timeout: TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS,
       windowsHide: true,
     },
@@ -185,7 +189,17 @@ export function runTransferCapture({
     fail(
       `capture liveness timeout after ${TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS}ms for ${targetRoot}`,
     );
-  if (result.status !== 0) fail(`capture failed for ${targetRoot}`);
+  if (result.status !== 0) {
+    const resolutionFailure =
+      /does not provide an export named|ERR_MODULE_NOT_FOUND|Cannot find (?:module|package)/.test(
+        result.stderr ?? '',
+      );
+    fail(
+      resolutionFailure
+        ? `capture dependency resolution failed for ${targetRoot}; inspect the module error above (preparing the baseline again will not repair resolution)`
+        : `capture failed for ${targetRoot}`,
+    );
+  }
   if (!existsSync(output)) fail(`capture produced no report: ${output}`);
   try {
     return JSON.parse(readFileSync(output, 'utf8'));

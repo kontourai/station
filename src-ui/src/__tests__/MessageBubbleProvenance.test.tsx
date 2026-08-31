@@ -24,6 +24,9 @@ vi.mock('../components/chat/message-bubble/MessageRating', () => ({
 vi.mock('../components/icons/UserIcon', () => ({
   UserIcon: () => null,
 }));
+vi.mock('../components/chat/ConnectedAnswerBasisAffordance', () => ({
+  ConnectedAnswerBasisAffordance: () => <button type="button">Basis</button>,
+}));
 
 const { MessageBubble } = await import('../components/chat/MessageBubble');
 
@@ -142,7 +145,7 @@ describe('MessageBubble turn provenance (station#1410)', () => {
   // archive#1423: the share affordance must be reachable from the same real
   // row as the card — a mint button that only renders in its own unit test
   // is a feature nobody can use.
-  it('offers the share affordance beside the card, bound to the same turn', async () => {
+  it('keeps one inline action row and moves secondary actions into a keyboard menu', async () => {
     renderRow({
       role: 'assistant',
       content: 'Here is the answer.',
@@ -151,8 +154,23 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       provenance: envelope,
     });
 
+    const footer = document.querySelector('.turn-footer');
+    const actions = document.querySelector('.turn-footer__actions');
+    expect(getComputedStyle(footer!).flexWrap).toBe('nowrap');
+    expect(getComputedStyle(actions!).flexWrap).toBe('nowrap');
+    expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'Share this answer (turn turn-7)' }),
+      screen.queryByRole('button', { name: /Share this answer/ }),
+    ).toBeNull();
+
+    const overflow = await screen.findByRole('button', {
+      name: 'More answer actions',
+    });
+    expect(overflow.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(overflow);
+    expect(overflow.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      screen.getByRole('menuitem', { name: 'Share this answer (turn turn-7)' }),
     ).toBeTruthy();
     expect(
       // The attach affordance mounts beside a lazy message chunk; under full-
@@ -161,11 +179,14 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       // (the archive#1045 load-composition class). The longer bound changes
       // nothing about test power: an absent affordance still fails here.
       await screen.findByRole(
-        'button',
+        'menuitem',
         { name: 'Add this answer to a Task (turn turn-7)' },
         { timeout: 10_000 },
       ),
     ).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    expect(overflow.getAttribute('aria-expanded')).toBe('false');
+    expect(document.querySelector('.turn-footer [disabled]')).toBeNull();
   });
 
   it('offers no share affordance on a row with no readable envelope', () => {
@@ -188,8 +209,11 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       answerEligible: true,
     });
 
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More answer actions' }),
+    );
     expect(
-      await screen.findByRole('button', {
+      await screen.findByRole('menuitem', {
         name: 'Add this answer to a Task (turn turn-without-provenance)',
       }),
     ).toBeTruthy();
@@ -252,6 +276,31 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Provenance' }));
     expect(screen.getByText('Accountable human')).toBeTruthy();
     expect(screen.getByText('Operator Person')).toBeTruthy();
+  });
+
+  it('keeps Basis inside Provenance and never renders it as a sibling action', async () => {
+    renderRow({
+      role: 'assistant',
+      content: 'Here is the answer.',
+      turnId: 'turn-7',
+      answerEligible: true,
+      provenance: envelope,
+    });
+
+    expect(screen.queryByRole('button', { name: /^Basis/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Provenance' }));
+    expect(
+      await screen.findByRole(
+        'button',
+        { name: /^Basis/ },
+        { timeout: 10_000 },
+      ),
+    ).toBeTruthy();
+    expect(
+      document
+        .querySelector('.turn-provenance__detail')
+        ?.contains(screen.getByRole('button', { name: /^Basis/ })),
+    ).toBe(true);
   });
 
   it('renders no provenance card on a user row', () => {

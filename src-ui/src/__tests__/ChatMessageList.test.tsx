@@ -46,6 +46,12 @@ vi.mock('../components/chat/StreamingMessage', () => ({
   StreamingMessage: () => <div data-testid="streaming-message">Streaming</div>,
 }));
 
+vi.mock('../components/chat/SmoothStreamingMessage', () => ({
+  SmoothStreamingMessage: () => (
+    <div data-testid="smooth-streaming-message">Smooth streaming</div>
+  ),
+}));
+
 vi.mock('../components/chat/SessionSummaryCard', () => ({
   SessionSummaryCard: () => null,
 }));
@@ -55,6 +61,7 @@ vi.mock('../components/icons/UserIcon', () => ({
 }));
 
 import { ChatMessageList } from '../components/chat/ChatMessageList';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 
 describe('ChatMessageList', () => {
   function resizeSession() {
@@ -368,6 +375,41 @@ describe('ChatMessageList', () => {
 
     expect(screen.getByTestId('streaming-message')).toBeTruthy();
     expect(screen.queryByText('Start a conversation')).toBeNull();
+  });
+
+  test('the device setting selects the smooth streaming consumer', () => {
+    deviceSettingsStore.set('featureSettings', {
+      ...deviceSettingsStore.get('featureSettings'),
+      smoothReveal: true,
+    });
+    const rendered = render(
+      <ChatMessageList
+        activeSession={{
+          id: 'session-smooth',
+          agentSlug: agentId('dev-agent'),
+          agentName: 'Dev Agent',
+          title: 'Smooth chat',
+          messages: [],
+          input: '',
+          attachments: [],
+          queuedMessages: [],
+          inputHistory: [],
+          hasUnread: false,
+          status: 'sending',
+          createdAt: 1,
+          updatedAt: 1,
+          source: 'manual',
+        }}
+        fontSize={14}
+        showReasoning
+        showToolDetails
+      />,
+    );
+
+    expect(screen.getByTestId('smooth-streaming-message')).toBeTruthy();
+    expect(screen.queryByTestId('streaming-message')).toBeNull();
+    rendered.unmount();
+    deviceSettingsStore.reset('featureSettings');
   });
 
   test('keeps existing message nodes mounted when derived messages are cloned', () => {
