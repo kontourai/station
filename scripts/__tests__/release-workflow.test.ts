@@ -604,7 +604,7 @@ describe('native release workflow topology', () => {
         'Scan immutable linux/amd64 image digest with pinned Syft',
       ),
     ).toMatchObject({
-      uses: 'anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610',
+      uses: 'anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26',
       with: {
         format: 'cyclonedx-json',
         image:
@@ -622,7 +622,7 @@ describe('native release workflow topology', () => {
         'Scan immutable linux/arm64 image digest with pinned Syft',
       ),
     ).toMatchObject({
-      uses: 'anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610',
+      uses: 'anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26',
       with: {
         image:
           'ghcr.io/$' +
