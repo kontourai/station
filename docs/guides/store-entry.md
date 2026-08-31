@@ -10,14 +10,23 @@ and [mobile-release.md](./mobile-release.md). Listing copy lives in
 
 ## Repository and workflow contract
 
-- Bundle ID `io.kontourai.station`
+- iOS channel bundle IDs: `io.kontourai.station`,
+  `io.kontourai.station.beta`, and `io.kontourai.station.nightly`. They are
+  three installable apps, not TestFlight tracks of one app.
+- App Store Connect listing names are **Station by Kontour AI**, **Station Beta
+  by Kontour AI**, and **Station Nightly by Kontour AI**. Installed app names
+  remain Station, Station Beta, and Station Nightly; seller is Kontour AI LLC.
 - Privacy policy URL: https://kontourai.io/privacy/station/
 - Support URL source: https://kontourai.io/support/ — verify the live response
   before submitting a listing
 - Play Data Safety answers: [play-data-safety.md](../reference/play-data-safety.md)
-- Workflows target GitHub Environments `native-release` and
-  `native-release-publish`. Query their current secret/protection configuration;
-  this guide does not claim live environment state.
+- iOS delivery uses protected GitHub Environments `native-release` (Stable),
+  `ios-beta`, and `ios-nightly`. Each environment owns its matching
+  provisioning profile and the non-secret `TESTFLIGHT_INTERNAL_GROUP_ID`.
+  The distribution certificate and App Store Connect API key may be shared,
+  but every channel preflights its own App Store Connect app and group before
+  signing. Query their current protection configuration; this guide does not
+  claim live environment state.
 - Tag overlay derives Android `versionCode` and iOS `CFBundleVersion` from the
   tag. Do not hand-edit `1` / `1.0` fallbacks in Gradle for a store upload.
 
@@ -30,9 +39,10 @@ accepted preview commit can be promoted to Stable without a source edit.
 
 ## 1. Apple (one-time)
 
-1. Register bundle ID `io.kontourai.station`.
-2. Create the app record in App Store Connect. The API cannot create apps.
-3. Create an **App Store distribution** provisioning profile. Ad-hoc and
+1. Register each of the three channel bundle IDs above.
+2. Create one matching app record and one explicit internal TestFlight group
+   per channel. The API cannot create apps or tester groups.
+3. Create an **App Store distribution** provisioning profile per bundle ID. Ad-hoc and
    development profiles fail the release job.
 4. Export the iOS Distribution certificate (`.p12`) and its password.
 5. Generate an App Store Connect Team API key (App Manager). Download the
@@ -66,22 +76,28 @@ account Secret Accessor on only those two secrets. Set the secret-free GitHub
 repository variable `ANDROID_UPLOAD_KEY_ALIAS=station`. Do not put Android
 signing material in GitHub secrets.
 
-## 3. Deposit Apple secrets on `native-release`
+## 3. Deposit Apple secrets in their matching environments
 
 Use environment secrets, not repository secrets.
 
 ```sh
 # iOS signing (required for a signed App Store IPA)
-gh secret set APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 --repo kontourai/station --env native-release
-gh secret set APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD --repo kontourai/station --env native-release
-gh secret set APPLE_DEVELOPMENT_TEAM --repo kontourai/station --env native-release
-gh secret set APPLE_IOS_SIGNING_IDENTITY --repo kontourai/station --env native-release
-gh secret set APPLE_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env native-release
+for env in native-release ios-beta ios-nightly; do
+  gh secret set APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 --repo kontourai/station --env "$env"
+  gh secret set APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD --repo kontourai/station --env "$env"
+  gh secret set APPLE_DEVELOPMENT_TEAM --repo kontourai/station --env "$env"
+  gh secret set APPLE_IOS_SIGNING_IDENTITY --repo kontourai/station --env "$env"
+  gh secret set APPLE_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env "$env"
+done
 
-# TestFlight upload (optional; skip leaves the IPA on the GitHub release)
-gh secret set APPLE_API_KEY_ID --repo kontourai/station --env native-release
-gh secret set APPLE_API_ISSUER_ID --repo kontourai/station --env native-release
-gh secret set APPLE_API_PRIVATE_KEY --repo kontourai/station --env native-release
+# TestFlight upload (required for each configured channel; absent credentials
+# fail the channel before signing or upload)
+for env in native-release ios-beta ios-nightly; do
+  gh secret set APPLE_API_KEY_ID --repo kontourai/station --env "$env"
+  gh secret set APPLE_API_ISSUER_ID --repo kontourai/station --env "$env"
+  gh secret set APPLE_API_PRIVATE_KEY --repo kontourai/station --env "$env"
+  gh variable set TESTFLIGHT_INTERNAL_GROUP_ID --repo kontourai/station --env "$env"
+done
 ```
 
 Desktop Developer ID, Authenticode, and Tauri updater keys are a separate
@@ -98,10 +114,27 @@ tag that gets past Android signing):
 2. Add testers.
 3. Later tags use the keyless GitHub OIDC service account.
 
-TestFlight can take the first IPA from the pipeline once the App Store Connect
-app record, distribution profile, and API key exist. Add yourself under
-TestFlight → Internal Testing. External groups trigger Beta App Review and
-need #1772.
+Stable tags call the Stable delivery lane; preview tags call the Beta lane;
+the scheduled Nightly uses the same reserved day/index build number as its
+Android build. Every lane first reconciles the exact App Store build number:
+an absent build uploads once, PROCESSING is polled, VALID is receipted without
+a duplicate upload, and any other or ambiguous state fails closed. Receipts
+retain the source SHA, IPA digest, provider app/build IDs, processing state,
+and workflow URL. Tester email lists remain in Apple custody, never this
+public repository.
+
+For an owner-side, no-upload readiness check, decode the channel profile only
+through the repository command (it verifies the channel's fixed bundle/listing
+authority and group ID before any App Store request):
+
+```sh
+node scripts/ios-testflight-readiness.mjs --channel beta \
+  --station /owner-only/Station-Beta.mobileprovision \
+  --team TEAM_ID --group-id APP_STORE_CONNECT_GROUP_ID
+```
+
+Run it once per `stable`, `beta`, and `nightly`; it never contains tester
+emails or credentials in source or output.
 
 ## 5. Tag only after secrets exist
 

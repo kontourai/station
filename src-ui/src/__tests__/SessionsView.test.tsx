@@ -43,6 +43,7 @@ const adoptionIntent = vi.hoisted(() =>
   Object.freeze({ idempotencyKey: 'adopt-session-test-intent' }),
 );
 let sessions: Array<Record<string, unknown>> = [];
+let pairedDevices: Array<Record<string, unknown>> = [];
 let sessionsQueryError: Error | null = null;
 let feedEvents: Array<Record<string, unknown>> = [];
 const loadOlder = vi.fn().mockResolvedValue(undefined);
@@ -125,6 +126,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: sessionsQueryError,
     refetch: refetchSessions,
   }),
+  usePairedDevicesQuery: () => ({ data: pairedDevices }),
   usePullRequestContextQuery: () => ({ data: { available: false } }),
   usePullRequestsQuery: () => ({ data: undefined }),
   useWorkflowTasksQuery: (projectSlug: string | null | undefined) => ({
@@ -333,6 +335,7 @@ describe('SessionsView', () => {
     feedEvents = [];
     workflowTasksByProject = {};
     sessionsQueryError = null;
+    pairedDevices = [];
     sessions = [
       {
         provider: 'claude',
@@ -617,7 +620,7 @@ describe('SessionsView', () => {
       Array.from(list.querySelectorAll('.split-pane__section-header')).map(
         (heading) => heading.textContent,
       ),
-    ).toEqual(['Needs you · 1']);
+    ).toEqual(['Delegated/background work · 2']);
     expect(screen.queryByText(/^Active now ·/)).toBeNull();
     expect(
       Array.from(list.querySelectorAll('button'))
@@ -644,7 +647,7 @@ describe('SessionsView', () => {
       Array.from(list.querySelectorAll('.split-pane__section-header')).map(
         (heading) => heading.textContent,
       ),
-    ).toEqual(['Needs you · 1']);
+    ).toEqual(['Delegated/background work · 2']);
     expect(
       screen.getByRole('button', { name: 'Run · 1 delegated session' }),
     ).toBeTruthy();
@@ -3278,7 +3281,11 @@ describe('SessionsView', () => {
       const headings = sectionHeadings(container).filter((heading) =>
         heading.startsWith('Active now'),
       );
-      expect(headings).toEqual(['Active now · 3']);
+      expect(headings).toEqual([]);
+      expect(sectionHeadings(container)).toEqual([
+        'Delegated/background work · 2',
+        'Operator sessions · 1',
+      ]);
     });
 
     test('names a row by the session’s own displayTitle, never its thread id', () => {
@@ -3427,7 +3434,7 @@ describe('SessionsView', () => {
       const { container } = renderView();
 
       // Every fixture is `completed` and hours old: one lane, one heading.
-      expect(sectionHeadings(container)).toEqual(['Earlier · 4']);
+      expect(sectionHeadings(container)).toEqual(['Operator sessions · 4']);
       expect(listRows(container)).toHaveLength(4);
       expect(rowNames(container)).toEqual([
         'Beta two',
@@ -3477,12 +3484,7 @@ describe('SessionsView', () => {
 
       const { container } = renderView();
 
-      // "Active now" has no members here and therefore emits nothing at all.
-      expect(sectionHeadings(container)).toEqual([
-        'Needs you · 2',
-        'Recently finished · 1',
-        'Earlier · 1',
-      ]);
+      expect(sectionHeadings(container)).toEqual(['Operator sessions · 4']);
       expect(rowNames(container)).toEqual([
         'Waiting on a decision',
         'Also waiting on you',
@@ -3504,18 +3506,6 @@ describe('SessionsView', () => {
      * recomputes the map it checks agrees by construction.
      */
     test('no rendered row contradicts the section heading above it', () => {
-      const LANE_VOCABULARY: Record<string, string[]> = {
-        'Needs you': [
-          'Needs attention',
-          'Waiting on you',
-          'Review pending',
-          'Blocked',
-        ],
-        'Active now': ['Running', 'Ready', 'Queued', "Can't answer here"],
-        'Recently finished': ['Completed', 'Stopped', 'Failed'],
-        Earlier: ['Completed', 'Stopped', 'Failed'],
-      };
-
       sessions = [
         // A1 shape 1 (archive#1069): attached, never ran a turn.
         attachedSession({
@@ -3604,17 +3594,8 @@ describe('SessionsView', () => {
       // over a short or single-lane render would pass while checking nothing.
       expect(rendered).toHaveLength(6);
       expect(new Set(rendered.map((entry) => entry.heading))).toEqual(
-        new Set(['Needs you', 'Active now', 'Recently finished', 'Earlier']),
+        new Set(['Operator sessions']),
       );
-
-      for (const entry of rendered) {
-        const permitted = LANE_VOCABULARY[entry.heading];
-        expect(permitted, `unknown heading "${entry.heading}"`).toBeTruthy();
-        expect(
-          permitted.some((word) => entry.row.includes(word)),
-          `a row under "${entry.heading}" reads "${entry.row}"`,
-        ).toBe(true);
-      }
 
       // The four A1 shapes, by the word each used to print.
       const rowText = (name: string) =>
@@ -3652,7 +3633,7 @@ describe('SessionsView', () => {
       const { container } = renderView();
 
       const needsYou = sectionHeadings(container)[0];
-      expect(needsYou).toBe('Needs you · 2');
+      expect(needsYou).toBe('Delegated/background work · 2');
       expect(rowNames(container)).toEqual([
         'First worker question',
         'Second worker question',
@@ -3708,7 +3689,7 @@ describe('SessionsView', () => {
       fireEvent.click(alphaPill);
 
       expect(rowNames(container)).toEqual(['Alpha work']);
-      expect(sectionHeadings(container)).toEqual(['Earlier · 1']);
+      expect(sectionHeadings(container)).toEqual(['Operator sessions · 1']);
       const clear = screen.getByRole('button', {
         name: 'Clear the alpha project filter',
       });
@@ -4236,5 +4217,120 @@ describe('Activity presentation (sessions moved under Home)', () => {
       screen.getByText('Agent sessions appear here as they run on this host.'),
     ).toBeTruthy();
     expect(container.textContent).not.toMatch(/\bSessions\b/);
+  });
+
+  test('shows delegated work in its own default group without opening a session', () => {
+    sessions = [
+      activitySession({
+        displayTitle: 'Review in the background',
+        delegation: { taskId: 'task:background-review' },
+      }),
+      activitySession({
+        threadId: 'operator-session',
+        displayTitle: 'Operator conversation',
+      }),
+    ];
+
+    const { container } = renderView();
+
+    expect(
+      Array.from(container.querySelectorAll('.split-pane__section-header')).map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(['Delegated/background work · 1', 'Operator sessions · 1']);
+    expect(screen.queryByTestId('session-detail')).toBeNull();
+  });
+
+  test('groups by the current paired-device name, relabels on rename, and keeps an empty device', () => {
+    pairedDevices = [
+      { id: 'phone-1', name: 'Brian’s Pixel' },
+      { id: 'tablet-1', name: 'Travel tablet' },
+    ];
+    sessions = [
+      activitySession({
+        displayTitle: 'Phone-started review',
+        turnOrigin: {
+          latest: {
+            version: 1,
+            actor: { kind: 'device', deviceId: 'phone-1' },
+            reported: { version: 1, surface: 'mobile', build: null },
+          },
+          hasOtherOrigins: false,
+        },
+      }),
+    ];
+    const rendered = renderView();
+    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
+
+    expect(screen.getByText('Brian’s Pixel')).toBeTruthy();
+    expect(screen.getByText('Travel tablet')).toBeTruthy();
+    expect(
+      screen
+        .getByText('Travel tablet')
+        .classList.contains('split-pane__section-header--empty'),
+    ).toBe(true);
+
+    pairedDevices = [
+      { id: 'phone-1', name: 'Renamed phone' },
+      { id: 'tablet-1', name: 'Travel tablet' },
+    ];
+    rendered.rerenderSession();
+    expect(screen.getByText('Renamed phone')).toBeTruthy();
+    expect(screen.queryByText('Brian’s Pixel')).toBeNull();
+  });
+
+  test('renders the paired-device inventory when no sessions exist', () => {
+    pairedDevices = [{ id: 'phone-1', name: 'Idle phone' }];
+    sessions = [];
+    renderView();
+    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
+
+    expect(screen.getByText('Idle phone')).toBeTruthy();
+    expect(screen.queryByText('Nothing has run yet')).toBeNull();
+  });
+
+  test('keeps an unrecorded origin out of device groups and discloses mixed origins on the row', () => {
+    pairedDevices = [{ id: 'phone-1', name: 'Brian’s Pixel' }];
+    sessions = [
+      activitySession({ displayTitle: 'No provenance session' }),
+      activitySession({
+        threadId: 'mixed-origin-session',
+        displayTitle: 'Mixed-origin review',
+        turnOrigin: {
+          latest: {
+            version: 1,
+            actor: { kind: 'operator' },
+            reported: { version: 1, surface: 'web', build: null },
+          },
+          hasOtherOrigins: true,
+        },
+      }),
+    ];
+    const { container } = renderView();
+    fireEvent.click(screen.getByRole('tab', { name: 'By origin' }));
+
+    expect(screen.getByText('Origin not recorded')).toBeTruthy();
+    const deviceHeading = screen.getByText('Brian’s Pixel');
+    expect(
+      deviceHeading.classList.contains('split-pane__section-header--empty'),
+    ).toBe(true);
+    expect(container.textContent).toContain('No provenance session');
+    expect(screen.getByText('Also driven from another origin')).toBeTruthy();
+  });
+
+  test('switches axes from the keyboard and preserves the selected session', () => {
+    sessions = [activitySession({ displayTitle: 'Selected review' })];
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /Selected review/ }));
+    const taskTab = screen.getByRole('tab', { name: 'By task' });
+    taskTab.focus();
+    fireEvent.keyDown(taskTab, { key: 'ArrowRight' });
+
+    expect(
+      screen
+        .getByRole('tab', { name: 'By origin' })
+        .getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(screen.getByTestId('session-detail')).toBeTruthy();
   });
 });

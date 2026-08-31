@@ -27,14 +27,13 @@ import { sendExecutionMessage } from '../useOrchestration';
  * Refusal codes the server itself declares retryable but returns as 400:
  * the chat route's catch-all (orchestration.ts) collapses EVERY
  * non-indeterminate dispatch error into a 400 whose body carries the error's
- * `code` — including load shedding (`resource_posture_critical`, clears when
- * load drops, which is exactly when messages queue) and adoption
- * continuation (`adoption_continuation_in_progress`, "retry shortly"). So
+ * `code` — including adoption continuation
+ * (`adoption_continuation_in_progress`, "retry shortly"). So
  * this discriminator must consult the parsed body code, not just the class
  * and status.
  */
 const RETRYABLE_REJECTION_CODES: ReadonlySet<string> = new Set([
-  'resource_posture_critical',
+  'resource_engine_start_capacity',
   'adoption_continuation_in_progress',
   // A direct conversation can be lazily bound when its queued follow-up is
   // retried. Dropping the message here discarded the only user-owned copy

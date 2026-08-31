@@ -71,11 +71,6 @@ export function localIosReleasePreflight({
   } catch (error) {
     blockers.push(`Release tag/source validation failed: ${error.message}`);
   }
-  if (channel !== 'stable') {
-    blockers.push(
-      `iOS ${channel} is not release-enabled: it needs its own Apple App ID, provisioning profile, signing identity, and App Store Connect/TestFlight setup.`,
-    );
-  }
   const nodeMajor = Number(process.versions.node.split('.')[0]);
   if (nodeMajor !== 24)
     blockers.push(`Node 24 is required; found ${process.version}.`);

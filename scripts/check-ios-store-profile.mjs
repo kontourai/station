@@ -286,22 +286,43 @@ export function decodeProvisioningProfile(profilePath, run = execFileSync) {
   }
 }
 
-export function verifyAppStoreProvisioningProfile(profilePath, label) {
-  return assertAppStoreDistributionProfile(
+export function verifyAppStoreProvisioningProfile(
+  profilePath,
+  label,
+  expected = {},
+) {
+  return inspectAppStoreDistributionProfile(
     decodeProvisioningProfile(profilePath),
-    label,
+    { label, ...expected },
   );
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {
-  const profileIndex = process.argv.indexOf('--profile');
+  const profileIndex = process.argv.indexOf('--station');
   const labelIndex = process.argv.indexOf('--label');
+  const teamIndex = process.argv.indexOf('--expected-team');
+  const bundleIndex = process.argv.indexOf('--expected-bundle-id');
   const profilePath = process.argv[profileIndex + 1];
   if (profileIndex < 0 || !profilePath)
-    throw new Error('Expected --profile <path>');
+    throw new Error('Expected --station <path>');
   const label = labelIndex >= 0 ? process.argv[labelIndex + 1] : profilePath;
   if (!label) throw new Error('Expected a value after --label');
+  const expectedTeam = teamIndex < 0 ? undefined : process.argv[teamIndex + 1];
+  const expectedBundleIdentifier =
+    bundleIndex < 0 ? undefined : process.argv[bundleIndex + 1];
+  if (
+    (teamIndex >= 0 && !expectedTeam) ||
+    (bundleIndex >= 0 && !expectedBundleIdentifier)
+  )
+    throw new Error(
+      'Expected values after --expected-team and --expected-bundle-id',
+    );
   console.log(
-    JSON.stringify(verifyAppStoreProvisioningProfile(profilePath, label)),
+    JSON.stringify(
+      verifyAppStoreProvisioningProfile(profilePath, label, {
+        expectedTeam,
+        expectedBundleIdentifier,
+      }),
+    ),
   );
 }

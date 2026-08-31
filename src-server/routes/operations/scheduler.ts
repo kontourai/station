@@ -33,12 +33,13 @@ function publicManualRunMessage(
 ) {
   return outcome === 'completed'
     ? 'Scheduler job completed.'
-    : outcome === 'failed'
-      ? 'Scheduler job failed. Inspect the associated run for details.'
-      : outcome === 'refused'
-        ? (detail ??
-          'Scheduler job refused due to resource posture. Retry later.')
-        : 'Scheduler job may have started. Inspect the associated run before acting again.';
+    : outcome === 'deferred'
+      ? (detail ?? 'Scheduler job deferred behind the execution limit.')
+      : outcome === 'failed'
+        ? 'Scheduler job failed. Inspect the associated run for details.'
+        : outcome === 'refused'
+          ? (detail ?? 'Scheduler job refused. Inspect the run for its reason.')
+          : 'Scheduler job may have started. Inspect the associated run before acting again.';
 }
 
 function publicManualRunReceipt(
@@ -273,15 +274,25 @@ export function createSchedulerRoutes(
               code: 'scheduler_run_indeterminate',
               outcome: 'indeterminate',
             }
-          : {
-              success: false,
-              data,
-              error: output,
-              ...(result.outcome === 'refused'
-                ? { code: 'scheduler_run_refused', outcome: 'refused' }
-                : {}),
-            },
-        result.outcome === 'indeterminate' ? 409 : 422,
+          : result.outcome === 'deferred'
+            ? {
+                success: false,
+                data,
+                error: output,
+                code: 'scheduler_run_deferred',
+                outcome: 'deferred',
+              }
+            : {
+                success: false,
+                data,
+                error: output,
+                ...(result.outcome === 'refused'
+                  ? { code: 'scheduler_run_refused', outcome: 'refused' }
+                  : {}),
+              },
+        result.outcome === 'indeterminate' || result.outcome === 'deferred'
+          ? 409
+          : 422,
       );
     } catch (error: unknown) {
       logger.error('Failed to run job', { error });

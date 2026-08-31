@@ -4,6 +4,7 @@ import {
   useBootHistoryQuery,
   useSystemInstanceQuery,
 } from '@kontourai/station-sdk/developer-runtime';
+import { useResourcePostureForApiBaseQuery } from '@kontourai/station-sdk/resource-posture';
 import {
   Empty,
   ErrorState,
@@ -22,6 +23,7 @@ export default function SystemTab({ apiBase }: { apiBase: string }) {
   const { data: instance, isLoading } = useSystemInstanceQuery(apiBase);
   const { data: status } = useSystemStatusForApiBaseQuery(apiBase);
   const bootHistory = useBootHistoryQuery(apiBase);
+  const resourcePosture = useResourcePostureForApiBaseQuery(apiBase);
   const connection = useConnectionStatus({
     checkHealth: checkServerHealth,
     probeEndpoint: probeServerConnection,
@@ -90,6 +92,37 @@ export default function SystemTab({ apiBase }: { apiBase: string }) {
               variant="compact"
             />
           )}
+        </section>
+        <section
+          className="system-tab__card"
+          aria-labelledby="cpu-diagnostics-title"
+        >
+          <h2 id="cpu-diagnostics-title">CPU diagnostics</h2>
+          <dl className="system-tab__facts">
+            <div>
+              <dt>Observed busy</dt>
+              <dd>
+                {resourcePosture.data?.busyPercent === undefined
+                  ? 'Unavailable'
+                  : `${resourcePosture.data.busyPercent}%`}
+              </dd>
+            </div>
+            <div>
+              <dt>Logical CPUs</dt>
+              <dd>{resourcePosture.data?.cpuCount ?? '—'}</dd>
+            </div>
+            <div>
+              <dt>Sample age</dt>
+              <dd>
+                {typeof resourcePosture.data?.ageMs === 'number'
+                  ? `${Math.round(resourcePosture.data.ageMs / 1000)}s`
+                  : '—'}
+              </dd>
+            </div>
+          </dl>
+          <p className="system-tab__muted">
+            Display only. Station never gates work on host CPU load.
+          </p>
         </section>
       </div>
       <section

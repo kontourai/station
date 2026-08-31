@@ -276,29 +276,6 @@ describe('inbound webhooks', () => {
     expect(deps.startSession).not.toHaveBeenCalled();
   });
 
-  test('returns the typed critical resource posture code as a retryable refusal', async () => {
-    const homeDir = home();
-    writeEnabled(homeDir);
-    const route = createInboundWebhookRoutes({
-      homeDir,
-      authorization: new InboundWebhookAuthorizationService(homeDir, () => now),
-      logger: { warn: vi.fn() },
-      startTurn: async () => {
-        throw Object.assign(new Error('Engine start refused'), {
-          code: 'resource_posture_critical',
-        });
-      },
-    });
-
-    const response = await request(route, body());
-
-    expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({
-      code: 'resource_posture_critical',
-      retryable: true,
-    });
-  });
-
   test('refuses a stale signed request before it can start', async () => {
     const homeDir = home();
     writeEnabled(homeDir);

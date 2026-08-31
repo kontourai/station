@@ -1,3 +1,4 @@
+import type { SecretBindingGrant } from '@kontourai/station-contracts/secret-binding';
 import { Hono } from 'hono';
 import type {
   SecretBindingAdministration,
@@ -74,10 +75,10 @@ export function createSecretBindingRoutes(
     ),
   );
   app.post('/:id/bind', async (c) =>
-    respondConsumer(c, consumers, 'bind', c.req.param('id')),
+    respondBindingMutation(c, service, consumers, 'bind', c.req.param('id')),
   );
   app.post('/:id/unbind', async (c) =>
-    respondConsumer(c, consumers, 'unbind', c.req.param('id')),
+    respondBindingMutation(c, service, consumers, 'unbind', c.req.param('id')),
   );
   const migrateStoredEnv = async (c: any, integrationId: string) => {
     if (!migration)
@@ -108,11 +109,45 @@ export function createSecretBindingRoutes(
   return app;
 }
 
+async function respondBindingMutation(
+  c: any,
+  service: SecretBindingAdministration,
+  consumers: SecretBindingIntegrationAdministration | undefined,
+  operation: 'bind' | 'unbind',
+  id: string,
+) {
+  let input: Record<string, unknown>;
+  try {
+    input = await body(c);
+  } catch (error) {
+    return respond(c, async () => {
+      throw error;
+    });
+  }
+  if (input.kind !== 'acp-provider-header') {
+    return respondConsumer(c, consumers, operation, id, input);
+  }
+  const grant: SecretBindingGrant = {
+    kind: 'acp-provider-header',
+    connectionId: input.connectionId as string,
+    providerId: input.providerId as string,
+    headerName: input.headerName as string,
+  };
+  return respond(c, () =>
+    service[operation === 'bind' ? 'grant' : 'ungrant']({
+      id,
+      grant,
+      expectedRevision: input.expectedRevision as number,
+    }),
+  );
+}
+
 async function respondConsumer(
   c: any,
   consumers: SecretBindingIntegrationAdministration | undefined,
   operation: 'bind' | 'unbind',
   id: string,
+  parsedInput?: Record<string, unknown>,
 ) {
   if (!consumers)
     return c.json(
@@ -122,7 +157,7 @@ async function respondConsumer(
   return respond(
     c,
     async () => {
-      const input = await body(c);
+      const input = parsedInput ?? (await body(c));
       return consumers[operation]({
         id,
         integrationId: input.integrationId as string,

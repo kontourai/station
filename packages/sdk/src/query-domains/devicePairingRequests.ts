@@ -1,5 +1,58 @@
+import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
 import { authenticatedFetch } from '../client/http';
-import { resolveApiBase, useApiMutation } from '../query-core';
+import {
+  type QueryConfig,
+  resolveApiBase,
+  useApiMutation,
+  useApiQuery,
+} from '../query-core';
+
+interface PairedDevicesResponse {
+  devices?: PairedDevice[];
+}
+
+/** Read the current inbound paired-device registry from its canonical route. */
+export async function fetchPairedDevices(
+  apiBase?: string,
+): Promise<PairedDevice[]> {
+  const resolvedApiBase = await resolveApiBase(apiBase);
+  const response = await authenticatedFetch(
+    `${resolvedApiBase}/api/pairing/devices`,
+  );
+  if (!response.ok) {
+    throw new Error(`Paired devices request failed (HTTP ${response.status})`);
+  }
+  const body = (await response.json()) as PairedDevicesResponse;
+  if (!Array.isArray(body.devices)) {
+    throw new Error('Paired devices response is missing its device list');
+  }
+  return body.devices;
+}
+
+export const pairedDeviceQueries = {
+  list: (apiBase?: string) => ({
+    queryKey: ['paired-devices', apiBase ?? 'default'],
+    queryFn: () => fetchPairedDevices(apiBase),
+  }),
+};
+
+/**
+ * Current paired-device identity inventory. Polling matches the existing
+ * management surface so a name changed outside this observer does not remain
+ * a durable display claim.
+ */
+export function usePairedDevicesQuery(
+  apiBase?: string,
+  config?: QueryConfig<PairedDevice[]>,
+) {
+  const query = pairedDeviceQueries.list(apiBase);
+  return useApiQuery(query.queryKey, query.queryFn, {
+    staleTime: 15_000,
+    refetchInterval: 15_000,
+    retry: false,
+    ...config,
+  });
+}
 
 /**
  * A refused/failed pairing-request decision (#765 D5). Carries the HTTP
