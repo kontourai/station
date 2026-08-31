@@ -371,7 +371,7 @@ describe('the tauri config overlay', () => {
     });
     expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(config);
     expect(readdirSync(directory)).toEqual(['tauri.nightly.version.json']);
-    expect(config.version).toBe('0.1.2-nightly.2412');
+    expect(config.version).toBe('0.1.5-nightly.2412');
     expect(config.bundle.android.versionCode).toBe(241_203);
     expect(config.bundle.macOS.bundleVersion).toBe('241203');
   });
@@ -470,7 +470,7 @@ describe('the desktop tauri config overlay (station#575)', () => {
     expect(JSON.parse(readFileSync(output, 'utf8'))).toEqual(config);
     expect(readFileSync(githubOutput, 'utf8')).toBe(
       [
-        'version=0.1.2-nightly.2412',
+        'version=0.1.5-nightly.2412',
         'identifier=io.kontourai.station.nightly',
         'product_name=Station Nightly',
         'bundle_version=241200',
@@ -481,7 +481,7 @@ describe('the desktop tauri config overlay (station#575)', () => {
       'github-output',
       'tauri.nightly-desktop.conf.json',
     ]);
-    expect(config.version).toBe('0.1.2-nightly.2412');
+    expect(config.version).toBe('0.1.5-nightly.2412');
     expect(config.identifier).toBe('io.kontourai.station.nightly');
     expect(config.bundle.macOS.bundleVersion).toBe('241200');
   });
@@ -657,7 +657,11 @@ describe('the nightly workflow keeps its promises', () => {
     expect(validation).toBeLessThan(decide);
     const validationStep = nightlyJob.slice(validation, decide);
     expect(workflow).toContain('rebuild_index:');
-    expect(workflow).not.toMatch(/^\s{6}build:/m);
+    const dispatchInputs = workflow.slice(
+      0,
+      workflow.indexOf('\npermissions:'),
+    );
+    expect(dispatchInputs).not.toMatch(/^\s{6}build:/m);
     expect(workflow).not.toContain('inputs.build');
     expect(validationStep).toContain(
       'NIGHTLY_REBUILD_INDEX: $' + '{{ inputs.rebuild_index }}',

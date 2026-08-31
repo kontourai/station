@@ -240,12 +240,16 @@ async function buildReceipt(argv, env) {
   const ipa = requiredOption(argv, '--ipa');
   const workflowRunUrl = requiredOption(argv, '--workflow-run-url');
   const output = requiredOption(argv, '--output');
+  const artifactManifestPath = requiredOption(argv, '--artifact-manifest');
   const deliveryMode = requiredOption(argv, '--delivery-mode');
   if (!['uploaded', 'reconciled'].includes(deliveryMode))
     throw new Error('--delivery-mode must be uploaded or reconciled');
   if (!SHA_PATTERN.test(sourceSha)) {
     throw new Error('--source-sha must be exactly 40 lowercase hex characters');
   }
+  const artifactManifest = readArtifactManifest(artifactManifestPath);
+  if (artifactManifest.sha !== sourceSha)
+    throw new Error('--artifact-manifest sha must equal --source-sha');
   const build = await queryBuild({ appId, bundleVersion }, env);
   if (build?.attributes?.processingState !== 'VALID') {
     throw new Error(
@@ -268,6 +272,7 @@ async function buildReceipt(argv, env) {
     expirationDate: build.attributes.expirationDate ?? null,
     minOsVersion: build.attributes.minOsVersion ?? null,
     sourceSha,
+    artifactBuiltAt: artifactManifest.builtAt,
     // An existing VALID build was uploaded by another run. Its provider bytes
     // are not downloadable through this API, so never label a newly rebuilt
     // local IPA as its digest or source provenance.
@@ -282,6 +287,48 @@ async function buildReceipt(argv, env) {
     workflowRunUrl,
     observedAt: new Date().toISOString(),
   });
+}
+
+export function readArtifactManifest(path) {
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    throw new Error('--artifact-manifest must be a readable JSON file');
+  }
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    Array.isArray(parsed) ||
+    typeof parsed.sha !== 'string' ||
+    !SHA_PATTERN.test(parsed.sha) ||
+    !validArtifactBuiltAt(parsed.builtAt)
+  )
+    throw new Error(
+      '--artifact-manifest must contain canonical sha and builtAt',
+    );
+  return { sha: parsed.sha, builtAt: parsed.builtAt };
+}
+
+function validArtifactBuiltAt(value) {
+  if (
+    typeof value !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)
+  )
+    return false;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return false;
+  const canonical = value.includes('.') ? value : value.replace(/Z$/, '.000Z');
+  return new Date(parsed).toISOString() === canonical;
+}
+
+/** Publicly testable validation for immutable artifact timestamps. */
+export function assertCanonicalArtifactBuiltAt(value) {
+  if (!validArtifactBuiltAt(value)) {
+    throw new Error(
+      '--artifact-built-at must be a canonical ISO 8601 UTC timestamp',
+    );
+  }
 }
 
 async function reconcileBuild(argv, env) {

@@ -141,6 +141,8 @@ jobs:
           expected_name=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).appStoreName);' '${{ inputs.channel }}')
           node scripts/app-store-connect-receipt.mjs app-preflight --bundle-id "$bundle_id" --expected-name "$expected_name" --output provider-receipts/app-store-connect-app-preflight.json --github-output "$GITHUB_OUTPUT"
           echo "bundle_id=$bundle_id" >> "$GITHUB_OUTPUT"
+      - name: Stage immutable iOS client provenance resource
+        run: node scripts/write-ios-build-manifest.mjs
       - name: Import protected signing material bound to this channel
         run: |
           certificate="$RUNNER_TEMP/station-ios.p12"
@@ -165,7 +167,7 @@ jobs:
           export IOS_MOBILE_PROVISION
           node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig(process.env.STATION_MOBILE_DEFAULT_ENDPOINT), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
           rm -rf gen/apple/build
-          npx tauri ios build --export-method app-store-connect --ci --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json" -- --config "$RUNNER_TEMP/station-ios-mobile-env.toml"
+          STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --export-method app-store-connect --ci --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json" -- --config "$RUNNER_TEMP/station-ios-mobile-env.toml"
       - name: Verify IPA identity, profile and package contents
         id: package
         run: |
@@ -178,6 +180,9 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = '${{ steps.app_store.outputs.bundle_id }}'
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")" = '${{ inputs.marketing_version }}'
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")" = '${{ inputs.bundle_version }}'
+          packaged_manifest=$(find "$app" -type f -name station-build.json -print)
+          test "$(printf '%s\n' "$packaged_manifest" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          cmp "src-desktop/station-client-build.json" "$packaged_manifest"
           test -s "$app/Assets.car"
           generated_icon="src-desktop/gen/apple/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png"
           test -s "$generated_icon"
@@ -232,12 +237,12 @@ jobs:
           WORKFLOW_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ '${{ steps.reconcile.outputs.upload }}' = true ]; then delivery_mode=uploaded; else delivery_mode=reconciled; fi
-          node scripts/app-store-connect-receipt.mjs build-receipt --app-id '${{ steps.app_store.outputs.app_id }}' --bundle-id '${{ steps.app_store.outputs.bundle_id }}' --bundle-version '${{ inputs.bundle_version }}' --source-sha '${{ inputs.source_sha }}' --ipa '${{ steps.package.outputs.ipa }}' --workflow-run-url "$WORKFLOW_RUN_URL" --delivery-mode "$delivery_mode" --output provider-receipts/testflight-build-receipt.json
+          node scripts/app-store-connect-receipt.mjs build-receipt --app-id '${{ steps.app_store.outputs.app_id }}' --bundle-id '${{ steps.app_store.outputs.bundle_id }}' --bundle-version '${{ inputs.bundle_version }}' --source-sha '${{ inputs.source_sha }}' --artifact-manifest src-desktop/station-client-build.json --ipa '${{ steps.package.outputs.ipa }}' --workflow-run-url "$WORKFLOW_RUN_URL" --delivery-mode "$delivery_mode" --output provider-receipts/testflight-build-receipt.json
           build_id=$(node -p 'JSON.parse(require("node:fs").readFileSync("provider-receipts/testflight-build-receipt.json", "utf8")).buildId')
           source_date=$(node -e 'process.stdout.write(new Date(process.argv[1]).toISOString())' "$(git show -s --format=%cI HEAD)")
-          workflow_date=$(node -e 'process.stdout.write(new Date().toISOString())')
+          artifact_built_at=$(node -p 'JSON.parse(require("node:fs").readFileSync("src-desktop/station-client-build.json", "utf8")).builtAt')
           short_sha=$(git rev-parse --short=12 HEAD)
-          whats_new="Built ${workflow_date:0:10} UTC · ${short_sha} · source ${source_date:0:10} UTC"
+          whats_new="Built ${artifact_built_at:0:10} UTC · ${short_sha} · source ${source_date:0:10} UTC"
           node scripts/app-store-connect-receipt.mjs upsert-what-to-test --build-id "$build_id" --whats-new "$whats_new" --locale en-US --output provider-receipts/testflight-what-to-test.json
           node scripts/app-store-connect-receipt.mjs attach-internal-group --app-id '${{ steps.app_store.outputs.app_id }}' --build-id "$build_id" --group-id "$TESTFLIGHT_INTERNAL_GROUP_ID" --group-name '${{ inputs.channel == 'stable' && 'Station Stable Internal' || inputs.channel == 'beta' && 'Station Beta Internal' || 'Station Nightly Internal' }}' --output provider-receipts/testflight-internal-group-assignment.json
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
