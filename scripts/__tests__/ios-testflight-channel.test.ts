@@ -28,10 +28,8 @@ describe('iOS TestFlight channel config', () => {
       `whats_new="Built \${artifact_built_at:0:10} UTC`,
     );
     expect(workflow).toContain('if [ "$delivery_mode" = uploaded ]');
-    expect(workflow).toContain(
-      `Provider uploaded \${provider_uploaded_at:0:10} UTC`,
-    );
-    expect(workflow).toContain('Provider artifact provenance unavailable');
+    expect(workflow).toContain('provider-artifact-provenance-unverified');
+    expect(workflow).toContain('status:"skipped"');
     expect(workflow).not.toContain('workflow_date=$(node -e');
   });
   test.each(['stable', 'beta', 'nightly'] as const)(
