@@ -83,10 +83,13 @@ describe('cross-platform release invariant matrix', () => {
       matrix,
       ledger: companionLedger,
     }).channelEvidence.find((entry) => entry.channel === 'nightly');
+    // The iOS channel is automated but has no provider receipt until Apple
+    // accepts the first build. Two sibling receipts alone cannot make a
+    // three-platform Nightly claim green.
     expect(converged).toMatchObject({
-      status: 'VERIFIED',
-      sourceSha: sharedSha,
-      configuredPlatforms: ['macos', 'android'],
+      status: 'NOT_VERIFIED',
+      sourceSha: null,
+      configuredPlatforms: ['macos', 'android', 'ios'],
       verifiedPlatforms: ['macos', 'android'],
     });
 
@@ -100,6 +103,21 @@ describe('cross-platform release invariant matrix', () => {
       sourceSha: null,
       reason: 'Configured nightly receipts disagree on source SHA.',
     });
+  });
+
+  test('limits the Linux in-app updater authority to AppImage packages', () => {
+    const matrix = readReleasePlatformMatrix();
+    for (const channel of ['preview', 'stable']) {
+      expect(matrix.cells[channel].linux.updateAuthority).toContain(
+        'AppImage only',
+      );
+      expect(matrix.cells[channel].linux.updateAuthority).toContain(
+        'deb/rpm have no in-app updater',
+      );
+      expect(matrix.cells[channel].macos.updateAuthority).not.toContain(
+        'AppImage',
+      );
+    }
   });
 
   test('fails when a platform disappears or configured job is unowned', () => {

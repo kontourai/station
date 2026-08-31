@@ -1,5 +1,10 @@
 import { resolve } from 'node:path';
-import { type Client, RequestError } from '@agentclientprotocol/sdk';
+import {
+  type Client,
+  type ProviderInfo,
+  RequestError,
+  type SetProviderRequest,
+} from '@agentclientprotocol/sdk';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { acpProbeCleanupRetention } from '../../telemetry/metrics.js';
@@ -9,7 +14,11 @@ import {
   type AcpInboundExtensionHandler,
   createAcpInboundExtensionRequestHandler,
 } from './acp-inbound-extension-policy.js';
-import { ACPProcess, type InitializeResult } from './acp-process.js';
+import {
+  ACPProcess,
+  assertACPProviderRouteSupported,
+  type InitializeResult,
+} from './acp-process.js';
 import { prepareManagedAcpWorkspace } from './managed-acp-workspace.js';
 
 /**
@@ -82,6 +91,13 @@ export async function destroyProcessWithEscalation(
 
 /** Default cleanup deadline: comfortably above SIGTERM → 1s → SIGKILL → 1s. */
 const DESTROY_ESCALATION_UPPER_BOUND_MS = 5_000;
+
+class ACPProbeDeadlineError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ACPProbeDeadlineError';
+  }
+}
 
 /**
  * Which path asked for a probe. It selects the deadline budget, and it is a
@@ -434,6 +450,8 @@ export class ACPProbe {
    * replacing it — `getCapabilities()` stays as-is for existing callers.
    */
   cachedAgentCapabilities: InitializeResult['agentCapabilities'] | null = null;
+  /** `null` means providers/list was not observed; an empty array is observed negative data. */
+  cachedProviderRouting: ProviderInfo[] | null = null;
   /**
    * archive#1549: the instant of the last SUCCESSFUL `initialize` handshake,
    * NOT `lastProbeAt`. The two differ exactly where it matters: a failed
@@ -501,6 +519,9 @@ export class ACPProbe {
    */
   private cleanupRetryFlight: Promise<void> | null = null;
   private probeFlight: Promise<boolean> | null = null;
+  /** Monotonic epoch separating pre- and post-provider-mutation observations. */
+  private providerMutationGeneration = 0;
+  private providerRoutingObservationGeneration = 0;
   private disposed = false;
   /**
    * archive#3404: aborted when `dispose()` is called, so an in-flight
@@ -653,6 +674,10 @@ export class ACPProbe {
   }
 
   private async runProbe(initiator: ACPProbeInitiator): Promise<boolean> {
+    // Captured before any await. A provider mutation completing while this
+    // probe is in flight makes this generation stale by construction, so its
+    // eventual result can never be projected as post-mutation live evidence.
+    const providerObservationGeneration = this.providerMutationGeneration;
     // archive#3404: "first contact" is `lastHandshakeObservedAt === 0` — no
     // `initialize` has ever SUCCEEDED — not `lastProbeAt === 0`. Both fields
     // are monotonic (see the field's own note: the reset that used to make
@@ -794,6 +819,8 @@ export class ACPProbe {
       this.cachedCapabilities =
         initResult.agentCapabilities?.promptCapabilities ?? null;
       this.cachedAgentCapabilities = initResult.agentCapabilities ?? null;
+      this.cachedProviderRouting = initResult.providerRouting ?? null;
+      this.providerRoutingObservationGeneration = providerObservationGeneration;
       this.lastHandshakeObservedAt = Date.now();
       this.lastSuccess = true;
       this.lastError = null;
@@ -829,6 +856,7 @@ export class ACPProbe {
         this.cachedConfigOptions = [];
         this.cachedCapabilities = null;
         this.cachedAgentCapabilities = null;
+        this.cachedProviderRouting = null;
       }
       this.lastSuccess = false;
     } finally {
@@ -918,7 +946,7 @@ export class ACPProbe {
       timer = setTimeout(
         () =>
           reject(
-            new Error(
+            new ACPProbeDeadlineError(
               // Both numbers, because the budget is shared: the phase failed
               // after `remainingMs`, and the reason it had only that much is
               // the `budgetMs` total the earlier phase drew from.
@@ -978,6 +1006,100 @@ export class ACPProbe {
   /** archive#895 wave B: the full initialize agentCapabilities handshake — evidence only. */
   getAgentCapabilities(): InitializeResult['agentCapabilities'] | null {
     return this.cachedAgentCapabilities;
+  }
+  getProviderRouting(): ProviderInfo[] | null {
+    return this.cachedProviderRouting;
+  }
+  getProviderRoutingCurrent(): boolean {
+    return (
+      this.providerRoutingObservationGeneration ===
+      this.providerMutationGeneration
+    );
+  }
+  assertProviderSupported(providerId: string, apiType: string): void {
+    // A stale or absent cache can never refuse a write: the mutation process
+    // performs a fresh providers/list and is the final transport authority.
+    // Current observations still reject early, before secret materialization.
+    if (!this.getProviderRoutingCurrent() || !this.cachedProviderRouting)
+      return;
+    assertACPProviderRouteSupported(
+      this.cachedProviderRouting,
+      providerId,
+      apiType,
+    );
+  }
+
+  /** Run a capability-gated provider mutation on a fresh, bounded ACP connection. */
+  async setProvider(input: SetProviderRequest): Promise<void> {
+    await this.mutateProvider((process) => process.setProvider(input));
+  }
+
+  /** Run a capability-gated provider disable on a fresh, bounded ACP connection. */
+  async disableProvider(providerId: string): Promise<void> {
+    await this.mutateProvider((process) => process.disableProvider(providerId));
+  }
+
+  private async mutateProvider(
+    operation: (process: ACPProcess) => Promise<unknown>,
+  ): Promise<void> {
+    if (this.disposed) throw new Error('ACP probe is disposed.');
+    const cwd = await this.probeCwd();
+    const process = this.processFactory({
+      command: this.config.command,
+      args: this.config.args,
+      cwd,
+      createClient: () => createProbeClient(this.inboundExtensionPolicy),
+      clientCapabilities: {},
+      logger: this.logger,
+    });
+    this.pendingCleanup.set(process, 0);
+    let mutationStarted = false;
+    try {
+      await this.runWithinProbeDeadline(
+        process.start(),
+        'initialize',
+        this.operationTimeoutMs,
+        this.operationTimeoutMs,
+      );
+      const mutationOperation = operation(process);
+      mutationStarted = true;
+      await this.runWithinProbeDeadline(
+        mutationOperation,
+        'provider mutation',
+        this.operationTimeoutMs,
+        this.operationTimeoutMs,
+      );
+      this.providerMutationGeneration += 1;
+    } catch (error) {
+      // A timed-out request keeps running after the race. The agent may have
+      // applied it even though Station has no response, so the outcome is
+      // indeterminate and every prior routing observation must be fenced.
+      if (mutationStarted && error instanceof ACPProbeDeadlineError) {
+        this.providerMutationGeneration += 1;
+      }
+      throw error;
+    } finally {
+      await this.attemptCleanup(process, 0);
+    }
+    // The external mutation has committed at this point. Refreshing the
+    // declared-vs-observed projection is useful, but it is a second operation
+    // and must not turn a successful set/disable into a reported failure (or
+    // settle a materialized credential as failed). The ordinary probe path
+    // records its own failure/status evidence; this warning names the partial
+    // observation without lying about the mutation outcome.
+    try {
+      const refreshed = await this.probe('request');
+      if (!refreshed) {
+        this.logger.warn('ACP provider mutation succeeded; refresh failed', {
+          id: this.config.id,
+        });
+      }
+    } catch (error) {
+      this.logger.warn('ACP provider mutation succeeded; refresh rejected', {
+        err: error,
+        id: this.config.id,
+      });
+    }
   }
   /**
    * archive#1549: when the last SUCCESSFUL handshake was observed (epoch ms),

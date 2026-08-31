@@ -314,11 +314,14 @@ unsigned APK, IPA, desktop bundle, or updater is never uploaded as a
 distributable release asset. Tagged Android releases require the configured
 keyless Play path and fail closed if signing retrieval or upload fails; the
 daily Nightly workflow may still skip publication while its setup is absent.
-Stable App Store upload is required and fail-closed. The iOS job waits for
-processing, queries the exact App Store Connect build number, and retains a
-provider receipt binding Apple's app/build IDs to the source SHA and IPA digest
-(see [mobile-release.md](./mobile-release.md)). Physical tester availability
-remains a separate provider/device observation.
+Stable, Beta, and Nightly App Store upload is required and fail-closed once a
+channel is configured. The shared iOS delivery workflow uses three distinct
+bundle IDs and protected environments; it binds each upload to the caller's
+already frozen SHA and numeric `CFBundleVersion`, reconciles a pre-existing
+build before upload, waits for VALID processing, attaches the owned internal
+group, and retains a provider receipt binding Apple's app/build IDs to the
+source SHA and IPA digest. Physical tester availability remains a separate
+provider/device observation.
 
 ## Stage, inspect, publish, and roll back
 
@@ -335,20 +338,87 @@ producing job. The inventory and checksum manifest are separately attested
 protocol roots because they cannot hash each other; the inventory covers every
 other uploaded sidecar and payload.
 
-Publish resolves the tag again, requires the release to still be a draft,
+Publish resolves the tag again and normally requires the release to still be a draft,
 downloads every `station-*` asset, verifies every asset's GitHub provenance and
 the inventory/checksums, and compares the live `sha-<source-sha>` image to the
 digest recorded in `station-container-release.json`. It promotes only
 `image@recorded-digest` to the recorded version/channel aliases, then changes
-the draft visibility. Publish concurrency is source-SHA scoped, so two tags for
-one commit cannot race alias mutation. A failed draft is fixed with a new tag;
-never replace a release asset under the same tag.
+the draft visibility. One repository-wide publish lock serializes Stable and
+Preview releases because both mutate rolling container aliases and desktop
+updater releases. Before any public mutation, the read-only resolve job also
+requires the selected `stable-desktop` or `beta-desktop` release to exist and
+be public. Bootstrap each rolling release once with signed-in owner credentials,
+for example:
 
-To roll back a public release, remove it from installer resolution by changing
-it back to a draft, revoke the affected external-store listing, and publish a
-higher replacement version. Container aliases are convenience pointers, not
-rollback evidence: recover by retagging the exact prior `image@sha256:...`
-recorded in its public release descriptor, and verify the alias resolves to
-that digest. Never rebuild a rollback image or infer its digest from a mutable
-alias. The immutable GHCR `sha-<source-sha>` staging tag is retained for
-forensic review and must never be overwritten.
+```sh
+gh release create stable-desktop --title stable-desktop --notes "Rolling desktop updater channel."
+```
+
+Repeat for `beta-desktop`. A workflow `GITHUB_TOKEN` must not create this
+workflow-crossing ref. Leave the new release public and empty, then explicitly enable
+`allow_empty_updater_channel_bootstrap` for its first publish only. A missing
+`latest.json` on a non-empty rolling release is treated as damage and fails
+closed. A failed draft is fixed with a new tag; never replace an immutable tag
+release asset under the same tag.
+
+Stable and Preview desktop builds embed the endpoint for their rolling release.
+The default branch's policy checkout runs the updater manifest assembly and
+remote channel verification scripts before and after rolling asset changes.
+The target tag's release-artifact validation still verifies the updater archive
+signatures against the release-bound public key before publication. Publish
+uploads the signed updater archives to the rolling release before replacing
+`latest.json`, then redownloads and verifies the complete result. The pointer
+guard refuses to replace a newer manifest with an older version, so a delayed
+draft cannot silently regress the channel. A failed remote verification restores
+the prior `latest.json` (or removes the first bootstrap pointer).
+
+Rolling release assets require owner-managed retention because every publish
+adds eight versioned archives and signatures. Before a publish, record the
+version named by the current `latest.json`. After the publish and remote
+verification succeed, retain `latest.json`, all eight assets for its current
+version, and all eight assets for that recorded previous version; delete only
+assets from older versions with `gh release delete-asset`. Never prune the
+previous version before the next publish: pointer compensation can restore its
+manifest, which must continue to resolve to those archives. Apply this procedure
+independently to `stable-desktop` and `beta-desktop`, and verify every asset URL
+in the retained current and previous manifests before completing the sweep.
+The locally installed GitHub CLI 2.97.0 help documents the `assets` JSON field
+but does not document whether `gh release view --json assets` imposes a result
+cap, so that availability concern remains unconfirmed; a missing `latest.json`
+still fails closed before the publish job is scheduled.
+
+The normal recovery for a bad desktop release is a higher fixed version. If an
+owner must stop offering the bad version before that replacement is ready, use
+the protected `allow_published_pointer_repair` and
+`allow_updater_pointer_regression` dispatch inputs only after
+reviewing the candidate tag, the current rolling `latest.json`, and the target
+channel. This break-glass permits the older pointer and is recorded in the
+workflow dispatch. With both flags set, an already-published older tag is
+accepted as a pointer-repair source: the workflow revalidates its signed assets,
+updates only the rolling desktop archives and `latest.json`, and skips the
+container aliases, mobile feed, and deploy-ledger publication. Tauri will not
+downgrade clients that already installed the newer version; those clients still
+require a higher fixed release. After the repair, verify the rolling release's
+archives and `latest.json`, then leave the guard enabled only for that single
+dispatch.
+
+To withdraw a bad public desktop build, first repair its rolling channel:
+dispatch this workflow with the last known-good published tag and
+both `allow_published_pointer_repair` and `allow_updater_pointer_regression`
+enabled, then verify that
+`stable-desktop` or `beta-desktop` serves that version's matching archives,
+signatures, and `latest.json`. The tag selects the channel: a Stable tag repairs
+`stable-desktop`, while a Preview tag repairs `beta-desktop`. Using the wrong
+channel's tag can successfully repair the wrong rolling release, so confirm the
+computed target before approving the dispatch. Changing only the bad tag release
+back to a draft does not repair the independent rolling release and must never be
+treated as desktop rollback. After the rolling pointer is repaired, remove the bad tag
+from installer resolution by changing it back to a draft, revoke any affected
+external-store listing, and publish a higher replacement version. Already
+updated Tauri clients cannot downgrade and still require that higher fixed
+release. Container aliases are convenience pointers, not rollback evidence:
+recover by retagging the exact prior `image@sha256:...` recorded in its public
+release descriptor, and verify the alias resolves to that digest. Never rebuild
+a rollback image or infer its digest from a mutable alias. The immutable GHCR
+`sha-<source-sha>` staging tag is retained for forensic review and must never be
+overwritten.
