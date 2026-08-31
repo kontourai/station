@@ -22,6 +22,7 @@ type WorkflowJob = {
   secrets?: string;
   with?: Record<string, unknown>;
   steps?: WorkflowStep[];
+  'timeout-minutes'?: number;
 };
 
 type Workflow = {
@@ -58,6 +59,8 @@ describe('promotion full-regression workflow', () => {
 
     const gate = reusable.jobs?.['full-regression'] ?? {};
     expect(gate.uses).toBeUndefined();
+    expect(gate['timeout-minutes']).toBe(150);
+    expect(source('full-regression.yml')).not.toContain('timeout-minutes: 120');
     const validate = namedStep(gate, 'Validate immutable source identity');
     expect(validate.run).toContain('^[0-9a-f]{40}$');
     const checkout = gate.steps?.find((step) =>

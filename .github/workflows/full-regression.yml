@@ -21,7 +21,7 @@ jobs:
       group: hosted-full-regression-${{ inputs.source_sha }}
       cancel-in-progress: false
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - name: Validate immutable source identity
         env:

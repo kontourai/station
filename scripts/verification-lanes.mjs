@@ -87,12 +87,13 @@ export const FULL_REGRESSION_PHASES = Object.freeze([
     // Keep one fifth of host coordinator capacity available for the bounded
     // per-push lane while the completion corpus is running.
     weight: 80,
-    // The v0.1.8 hosted promotion (#1081) reached this phase's former
-    // eighteen-minute fence with zero assertion failures and clean owned-child
-    // cleanup on a four-core runner. Thirty minutes preserves an execution
-    // fence while allowing the 80-unit corpus to finish under the explicitly
-    // supported overlap with one 20-unit ci:fast reservation (#881).
-    timeoutMs: 30 * 60_000,
+    // The v0.1.8 and v0.1.9 hosted promotions (#1081, #1084) reached this
+    // phase's former eighteen- and thirty-minute fences with zero assertion
+    // failures and clean owned-child cleanup on four-core runners. Forty-five
+    // minutes preserves an execution fence while allowing the 80-unit corpus
+    // to finish under the explicitly supported overlap with one 20-unit
+    // ci:fast reservation (#881). Deterministic sharding is tracked in #1083.
+    timeoutMs: 45 * 60_000,
   }),
   Object.freeze({
     id: 'test-full-process-heavy',
