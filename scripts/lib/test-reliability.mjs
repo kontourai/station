@@ -29,6 +29,7 @@ import {
 } from 'node:path';
 import { normalizeGitOrigin } from '@kontourai/station-contracts/git-remote-identity';
 import { assertSupportedNode } from '../node-runtime-contract.mjs';
+// probe(#1095): diagnostic no-op to select the same test:changed corpus. Revert.
 import {
   PRODUCT_LAW_OBSERVATION_TIMEOUT_ENV,
   productLawObservationTimeoutMs,
