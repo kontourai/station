@@ -363,7 +363,11 @@ describe('native release workflow topology', () => {
       return index;
     };
     const armed = lineIndex('trap compensate_pointer ERR');
-    const archives = lineIndex('"${updater_args[@]}"');
+    // `updater_args[@]` rather than the full `"${updater_args[@]}"`: it matches
+    // only the upload line (the array is declared and appended above), and it
+    // avoids biome's noTemplateCurlyInString, which reads a ${...} inside a
+    // single-quoted string as a mistyped template literal.
+    const archives = lineIndex('updater_args[@]');
     const flagged = lineIndex('pointer_mutation_started=true');
     const pointerWrite = lineIndex('updater-channel-assets/latest.json');
     const verified = lineIndex('--verify');
