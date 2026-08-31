@@ -81,6 +81,15 @@ test.describe('core journey accessibility gate', () => {
   test('first-run setup has no unaccepted serious or critical violations', async ({
     page,
   }) => {
+    // #1046: same measurement artifact the surface loop below documents —
+    // the setup launcher renders over `/`'s own `.route-transition`-wrapped
+    // HomeView, whose `route-enter` entrance starts at `opacity: 0`. Landing
+    // an axe scan mid-entrance intermittently flagged real, passing token
+    // pairs (`.home-view__eyebrow`'s --text-muted-on-bg-primary is 5.16:1
+    // steady-state; the same run measured 3.97:1 mid-fade). Pinning reduced
+    // motion here removes the artifact the same way it does for the
+    // surface-loop tests; it weakens no assertion and allowlists nothing.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.addInitScript(() => {
       localStorage.removeItem('station:onboarding-setup-dismissed');
     });
@@ -197,6 +206,16 @@ test.describe('core journey accessibility gate', () => {
   test('New Project traps focus, closes with Escape, and restores its trigger', async ({
     page,
   }) => {
+    // #1046: the same `.route-transition`/entrance-opacity measurement
+    // artifact the surface loop above documents also applies to
+    // `ResponsiveDialogSurface`'s own `responsive-surface-panel-enter`
+    // (opacity 0 -> 1 over `--motion-base`) — an axe scan landing right as
+    // `dialog` becomes visible can catch it mid-fade and report a passing
+    // token pair as failing (measured once: `#new-project-directory`'s
+    // label/input pair, which passes steady-state). Reduced motion collapses
+    // that animation to 0.01ms (tokens.css), removing the artifact without
+    // touching focus-trap behavior, which is purely keyboard-driven below.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await mockCoreApp(page);
     await page.goto(`/projects/${project.slug}`);
     const trigger = page.getByRole('button', { name: 'New Project' });
@@ -288,6 +307,13 @@ test.describe('core journey accessibility gate', () => {
     // which is why `aria-modal="true"` sat on a dialog whose second Tab landed
     // in the app chrome behind it and whose close stranded focus on <body>.
     // Settings' "Reset to Defaults" is a plain, hermetic instance of it.
+    // #1046: pin reduced motion for the same reason as the New Project
+    // dialog test above — it collapses `ResponsiveDialogSurface`'s entrance
+    // fade so the axe scan below can't land mid-animation. This is
+    // independent of (and precedes) the theme/transition handling further
+    // down, which targets the danger button's `color`/`background-color`
+    // transition, not this dialog-open animation.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await mockCoreApp(page);
     await page.goto('/settings');
     await expect(page.locator('.app-toolbar')).toBeVisible();
