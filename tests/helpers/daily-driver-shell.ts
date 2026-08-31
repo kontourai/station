@@ -375,6 +375,56 @@ export async function seedDailyDriverShell(
         ),
       );
     }
+    const conversationOpenMatch =
+      /^\/api\/conversations\/([^/]+)\/open$/.exec(path);
+    if (conversationOpenMatch) {
+      // A restored/resumed chat mounts `ConversationOpenRevalidator`
+      // (`conversationOpenPending` from `hydrateActiveChats`), and the
+      // conversation-history picker's row-select goes through
+      // `openConversationForDock` — both authoritatively re-resolve a
+      // conversation through this exact seam before trusting it as writable.
+      // Leaving it unmocked doesn't skip that check; it fails it, which
+      // reads as a real "could not prove a writable continuation" recovery
+      // state instead of the transcript the test expects.
+      const conversationId = decodeURIComponent(conversationOpenMatch[1]!);
+      const conversation = conversations.find(
+        (entry) => entry.id === conversationId,
+      );
+      if (!conversation)
+        return route.fulfill(
+          json({ success: false, error: 'Conversation not found' }, 404),
+        );
+      // A conversation the dispatch table never saw yet (for example a
+      // fixture seeded straight through its own `event-window` route, as the
+      // 10k-transcript scenarios do) is still its OWN first session — the
+      // same invariant the dispatch handler above uses when assigning a
+      // fresh conversationId as `sessionId` for the very first turn.
+      const currentSessionId =
+        sessionIdsByConversation.get(conversationId)?.at(-1) ?? conversationId;
+      return route.fulfill(
+        json({
+          success: true,
+          data: {
+            status: 'resolved',
+            conversation: {
+              id: conversation.id,
+              title: conversation.title,
+              agentSlug: conversation.agentSlug,
+            },
+            currentSessionId,
+            transcript: {
+              available: true,
+              owner: 'runtime',
+              messageCount: historyByConversation.get(conversationId)
+                ?.length ?? 0,
+            },
+            canContinue: !terminalSessions.has(currentSessionId),
+            answerability: { answerable: true },
+            recoveryActions: [],
+          },
+        }),
+      );
+    }
     if (/^\/api\/conversations\/[^/]+$/.test(path)) {
       const id = decodeURIComponent(path.split('/').at(-1) ?? '');
       const conversation = conversations.find((entry) => entry.id === id);

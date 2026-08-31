@@ -204,6 +204,14 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     ).toBeVisible({ timeout: 5_000 });
     await expectSettled(page);
     await expectCardReportsModel(page, 'dd-switch-turn-1', MODEL_ALPHA);
+    // The shared shell's dispatch table (`daily-driver-shell.ts`) mirrors the
+    // real product's one-Session-per-turn continuation contract: it 409s
+    // ("Current Session is not terminal") a second dispatch on the same
+    // conversation until the prior turn's Session is marked terminal, exactly
+    // the transition `conversation-agreement` and `performance-stress` drive
+    // explicitly after every turn. Switching models in place still dispatches
+    // the next turn as a continuation, so it needs the same step.
+    await shell.markCurrentSessionTerminal(SWITCH_CONVERSATION);
 
     // Switch the model IN PLACE through the composer's model picker.
     await selectComposerModel(page, /Claude Haiku Mid Switch/);
@@ -231,8 +239,15 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       'turn 2 must dispatch the switched model override',
     ).toBe(MODEL_BRAVO);
     const secondModel = secondRequest.target?.model?.override ?? '';
+    // Continuation assigns a NEW child Session id (the shell's dispatch
+    // table never reuses the predecessor's), so turn 2's events must be
+    // stamped with that id — not the terminal turn-1 Session — or they
+    // target a Session the currently-open tab no longer points at.
+    const secondSessionId = shell.sessionIds(SWITCH_CONVERSATION).at(-1);
+    if (!secondSessionId)
+      throw new Error('model-switch dispatch returned no child Session');
     await completeDispatchedTurn(page, {
-      threadId: SWITCH_CONVERSATION,
+      threadId: secondSessionId,
       turnId: 'dd-switch-turn-2',
       provider: 'claude',
       userText: 'Second turn after the switch.',
