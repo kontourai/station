@@ -43,7 +43,7 @@ digests and binds them to the exact stable or preview tag.
 `@cyclonedx/cyclonedx-npm` is pinned to `6.0.1`; `src-desktop/Cargo.toml`
 records the matching `cargo-cyclonedx` tool pin `0.5.9`. The container producer
 also pins `anchore/sbom-action` at
-`e22c389904149dbc22b58101806040fa8d37a610` and Syft `1.51.0`: after push it
+`3ad7283483fc7af8ff2b4ea19663c2d5ca935e26` and Syft `1.51.0`: after push it
 scans `ghcr.io/kontourai/station@sha256:...` (never a mutable tag) as
 CycloneDX JSON. Its nonempty package inventory is bound to the recorded image
 digest, source SHA, and two-platform descriptor, transferred as a runner
