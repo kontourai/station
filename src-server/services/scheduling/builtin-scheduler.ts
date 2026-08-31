@@ -3,7 +3,12 @@ import {
   type Schedule,
   validateSchedule,
 } from '@kontourai/ephemeris';
-import type { SchedulerManualRunReceipt } from '@kontourai/station-contracts/scheduler';
+import {
+  SCHEDULER_EXECUTION_LIMITS,
+  type SchedulerConcurrencyDisposition,
+  type SchedulerEvent,
+  type SchedulerManualRunReceipt,
+} from '@kontourai/station-contracts/scheduler';
 import { SCHEDULED_CHECK_STARTER_DEFINITION_VERSION } from '@kontourai/station-contracts/starter-work';
 import type {
   AddJobOpts,
@@ -14,10 +19,12 @@ import type {
   SchedulerProviderStatus,
 } from '../../providers/provider-contracts.js';
 import type { ISchedulerProvider } from '../../providers/provider-interfaces.js';
-import { schedulerHealthy } from '../../telemetry/metrics.js';
+import {
+  schedulerConcurrencyDeferrals,
+  schedulerHealthy,
+} from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import { schedulerJobCorrelationBindings } from '../../utils/logger-correlation.js';
-import type { RuntimeResourcePostureProbe } from '../infra/resource-posture.js';
 import { SSEBroadcaster } from '../infra/sse-broadcaster.js';
 import type { NotificationService } from '../notifications/notification-service.js';
 import { createScheduleRunId } from '../orchestration/run-projection.js';
@@ -177,7 +184,6 @@ export interface BuiltinSchedulerOptions {
   ledger?: SchedulerLedger;
   turnAdapter: ScheduledTurnAdapter;
   notificationService?: NotificationService | null;
-  resourcePosture?: RuntimeResourcePostureProbe;
   integrationSecretResolver?: IntegrationSecretResolver;
   onActionableMonitor?: (input: {
     jobName: string;
@@ -278,6 +284,13 @@ export class BuiltinScheduler implements ISchedulerProvider {
   private timer: ReturnType<typeof setInterval> | null = null;
   private watchdog: ReturnType<typeof setInterval> | null = null;
   private runningJobs = new Map<string, Promise<void>>();
+  /** Invocation permits, intentionally narrower than whole retry lifecycles. */
+  private activeInvocations = new Set<string>();
+  private invocationCapacityWaiters = new Set<{
+    invocationId: string;
+    resolve: (release: (() => void) | undefined) => void;
+    abort: () => void;
+  }>();
   private sse = new SSEBroadcaster();
   private readonly notificationService: NotificationService | null;
   private readonly ledger: SchedulerLedger;
@@ -469,6 +482,78 @@ export class BuiltinScheduler implements ISchedulerProvider {
       this.runningJobs.delete(runId);
       resolve!();
     };
+  }
+
+  private trackInvocation(invocationId: string): () => void {
+    this.activeInvocations.add(invocationId);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.activeInvocations.delete(invocationId);
+      this.drainInvocationCapacityWaiters();
+    };
+  }
+
+  /**
+   * FIFO handoff is synchronous: a released slot is inserted into
+   * `activeInvocations` before its waiter Promise resolves. Another waiter can
+   * therefore never observe or claim the same slot. Shutdown removes queued
+   * waiters without claiming; a waiter already handed a release capability is
+   * covered by `executeJob`'s `finally`, even if shutdown wins the next turn.
+   */
+  private drainInvocationCapacityWaiters(): void {
+    while (
+      !this.stopping &&
+      this.activeInvocations.size < SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs
+    ) {
+      const waiter = this.invocationCapacityWaiters.values().next().value;
+      if (!waiter) return;
+      this.invocationCapacityWaiters.delete(waiter);
+      this.stopController.signal.removeEventListener('abort', waiter.abort);
+      waiter.resolve(this.trackInvocation(waiter.invocationId));
+    }
+  }
+
+  /**
+   * Retried/recovered receipts retain durable ownership while waiting. They
+   * must not be deleted and reclaimed as attempt 1, so they wait for a permit
+   * in memory and wake on either a release or scheduler shutdown. There is no
+   * wall-clock bound: timing out would abandon the one durable retry claim and
+   * weaken a proved-not-invoked result to indeterminate. Process shutdown is
+   * the explicit abort bound.
+   */
+  private async waitForInvocationCapacity(
+    invocationId: string,
+  ): Promise<(() => void) | undefined> {
+    if (this.stopping) return undefined;
+    if (
+      this.invocationCapacityWaiters.size === 0 &&
+      this.activeInvocations.size < SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs
+    ) {
+      return this.trackInvocation(invocationId);
+    }
+    return new Promise<(() => void) | undefined>((resolve) => {
+      const waiter: {
+        invocationId: string;
+        resolve: (release: (() => void) | undefined) => void;
+        abort: () => void;
+      } = {
+        invocationId,
+        resolve,
+        abort: () => {
+          this.invocationCapacityWaiters.delete(waiter);
+          resolve(undefined);
+        },
+      };
+      this.invocationCapacityWaiters.add(waiter);
+      this.stopController.signal.addEventListener('abort', waiter.abort, {
+        once: true,
+      });
+      // This closes the check/enqueue race and also serves capacity that was
+      // already free while an earlier FIFO waiter was being installed.
+      this.drainInvocationCapacityWaiters();
+    });
   }
 
   /** Replays terminal Task bells left owed by a crash or a refused queue. */
@@ -718,6 +803,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
     const { job } = initialReceipt;
     const done = this.trackJob(initialReceipt.id);
     let receipt = initialReceipt;
+    let releaseInvocation: (() => void) | undefined;
     // archive#1897 logging slice 3: bound ONCE per execution attempt, so
     // this run's own start/success/failure log lines all carry the SAME
     // `jobName`/`jobRunId` a `read_logs?q=<id>` query can key off — there
@@ -737,6 +823,123 @@ export class BuiltinScheduler implements ISchedulerProvider {
         const attempt = receipt.attempt;
         const maxAttempts = receipt.maxAttempts;
         const id = `${receipt.id}-${attempt}`;
+        if (
+          !receipt.manual &&
+          this.activeInvocations.size >=
+            SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs
+        ) {
+          if (attempt > 1) {
+            const reason = SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason;
+            const waitingSince = Date.now();
+            this.observe(() =>
+              this.options.logger?.warn(
+                'Scheduler retry waiting for invocation capacity',
+                {
+                  job: job.name,
+                  id,
+                  attempt,
+                  maxAttempts,
+                  reason,
+                  maxConcurrentJobs:
+                    SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
+                },
+              ),
+            );
+            this.recordConcurrencyDeferral('waiting');
+            this.observe(() =>
+              this.broadcast({
+                event: 'job.deferred',
+                job: job.name,
+                provider: this.id,
+                id,
+                reason,
+                disposition: 'waiting',
+              }),
+            );
+            releaseInvocation = await this.waitForInvocationCapacity(id);
+            const admitted = Boolean(releaseInvocation) && !this.stopping;
+            this.recordConcurrencyDeferral(admitted ? 'admitted' : 'stopped');
+            this.observe(() =>
+              this.options.logger?.info(
+                'Scheduler retry invocation capacity wait ended',
+                {
+                  job: job.name,
+                  id,
+                  attempt,
+                  maxAttempts,
+                  reason,
+                  disposition: admitted ? 'admitted' : 'stopped',
+                  waitMs: Date.now() - waitingSince,
+                },
+              ),
+            );
+            if (!admitted) {
+              releaseInvocation?.();
+              releaseInvocation = undefined;
+              return {
+                logId: id,
+                outcome: 'indeterminate' as const,
+                success: false,
+                error: 'Scheduler stopped before the next retry invocation',
+                durationSecs: 0,
+              };
+            }
+          } else {
+            const released = receipt.releaseDeferred();
+            const reason = SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason;
+            if (released.kind === 'applied') {
+              this.observe(() =>
+                this.options.logger?.warn(
+                  'Scheduler occurrence deferred by concurrency limit',
+                  {
+                    job: job.name,
+                    reason,
+                    maxConcurrentJobs:
+                      SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs,
+                  },
+                ),
+              );
+              this.recordConcurrencyDeferral('released');
+              this.observe(() =>
+                this.broadcast({
+                  event: 'job.deferred',
+                  job: job.name,
+                  provider: this.id,
+                  id,
+                  reason,
+                  disposition: 'released',
+                }),
+              );
+              return {
+                logId: `${receipt.id}-${receipt.attempt}`,
+                outcome: 'deferred' as const,
+                success: false,
+                error: `Scheduler job deferred: ${reason} (${SCHEDULER_EXECUTION_LIMITS.maxConcurrentJobs} concurrent jobs)`,
+                durationSecs: 0,
+              };
+            }
+            this.observe(() =>
+              this.options.logger?.warn(
+                'Scheduler concurrency deferral receipt was indeterminate',
+                {
+                  job: job.name,
+                  id,
+                  reason,
+                  receiptKind: released.kind,
+                },
+              ),
+            );
+            this.recordConcurrencyDeferral('indeterminate');
+            return {
+              logId: id,
+              outcome: 'indeterminate' as const,
+              success: false,
+              error: `Scheduler concurrency deferral receipt is ${released.kind}`,
+              durationSecs: 0,
+            };
+          }
+        }
+        releaseInvocation ??= this.trackInvocation(id);
         let jobLogger: Logger | undefined;
         try {
           jobLogger = this.options.logger?.child(
@@ -779,9 +982,13 @@ export class BuiltinScheduler implements ISchedulerProvider {
             broadcast: (event) => this.broadcast(event),
             announcementOutbox: this.announcementOutbox,
             logger: jobLogger,
-            resourcePosture: this.options.resourcePosture,
             signal: this.stopController.signal,
           }));
+        // The provider/monitor attempt has settled. Durable retry handling,
+        // notifications, and configured backoff remain part of this job
+        // lifecycle, but none is an active invocation and none holds a slot.
+        releaseInvocation();
+        releaseInvocation = undefined;
         if (result.pendingNotInvoked) {
           const pending = result.pendingNotInvoked;
           const recovered = await this.retryNotInvokedTransition(pending);
@@ -830,6 +1037,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
         receipt = result.retryReceipt;
       }
     } finally {
+      releaseInvocation?.();
       done();
     }
   }
@@ -1288,8 +1496,19 @@ export class BuiltinScheduler implements ISchedulerProvider {
     return undefined;
   }
 
-  private broadcast(event: Record<string, unknown>) {
-    this.sse.broadcast(event);
+  private recordConcurrencyDeferral(
+    disposition: SchedulerConcurrencyDisposition,
+  ): void {
+    this.observe(() =>
+      schedulerConcurrencyDeferrals.add(1, {
+        reason: SCHEDULER_EXECUTION_LIMITS.concurrencyDeferralReason,
+        disposition,
+      }),
+    );
+  }
+
+  private broadcast(event: SchedulerEvent) {
+    this.sse.broadcast({ ...event });
   }
 
   private checkHealth() {
@@ -1751,17 +1970,19 @@ export class BuiltinScheduler implements ISchedulerProvider {
     }
     return {
       outcome:
-        result.outcome === 'refused'
-          ? starter
-            ? 'failed'
-            : 'refused'
-          : result.outcome === 'failed' ||
-              result.outcome === 'not-invoked' ||
-              (starter && result.outcome === 'deferred')
-            ? 'failed'
-            : 'indeterminate',
+        starter && result.outcome === 'deferred'
+          ? 'failed'
+          : result.outcome === 'deferred'
+            ? 'deferred'
+            : result.outcome === 'refused'
+              ? starter
+                ? 'failed'
+                : 'refused'
+              : result.outcome === 'failed' || result.outcome === 'not-invoked'
+                ? 'failed'
+                : 'indeterminate',
       message: `Job '${target}' ${result.outcome}: ${result.error ?? 'scheduler receipt unavailable'}`,
-      runId,
+      ...(result.outcome === 'deferred' ? {} : { runId }),
     };
   }
 

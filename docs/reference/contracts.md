@@ -44,6 +44,34 @@ import type { SessionMetadata } from '@kontourai/station-contracts/runtime';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 ```
 
+## Scheduler deferral events
+
+The authenticated `/scheduler/events` stream exposes `job.deferred` as a
+public scheduler wire event. Consumers should branch on these fields:
+
+| Field | Meaning |
+|---|---|
+| `event` | Always `job.deferred`. |
+| `job` | Scheduler job name. |
+| `provider` | Scheduler provider ID. |
+| `id` | Attempt observation ID when available. |
+| `reason` | `scheduler_concurrency_limit`. |
+| `disposition` | `waiting` while a durable retry remains live, or `released` when a first automatic occurrence is terminal without invocation. |
+
+Older events may omit `disposition`; consumers must treat an omitted or unknown
+value as terminal rather than keeping a job running indefinitely. `admitted`,
+`stopped`, and `indeterminate` are metric lifecycle dispositions, not
+`job.deferred` wire values. See [Monitoring](../guides/monitoring.md) for the
+complete metric vocabulary and parked-depth formula.
+
+**Removed in this release.** Station previously emitted `job.deferred` — and
+`job.refused` for a manual run — with `reason: 'resource_posture'` plus
+`posture` and `busy_percent`, when host CPU load gated scheduled work. Host
+load no longer gates any work, so those events are gone: a consumer branching
+on `reason === 'resource_posture'`, or subscribing to `job.refused`, will stop
+receiving them. `scheduler_concurrency_limit` is the only deferral reason the
+built-in scheduler now emits.
+
 ## Compatibility
 
 `@kontourai/station-shared` still re-exports many of these types so older code can compile during convergence. That is a compatibility layer, not the canonical ownership model. New code should import the owning `@kontourai/station-contracts/*` module directly.

@@ -102,6 +102,21 @@ describe('cross-platform release invariant matrix', () => {
     });
   });
 
+  test('limits the Linux in-app updater authority to AppImage packages', () => {
+    const matrix = readReleasePlatformMatrix();
+    for (const channel of ['preview', 'stable']) {
+      expect(matrix.cells[channel].linux.updateAuthority).toContain(
+        'AppImage only',
+      );
+      expect(matrix.cells[channel].linux.updateAuthority).toContain(
+        'deb/rpm have no in-app updater',
+      );
+      expect(matrix.cells[channel].macos.updateAuthority).not.toContain(
+        'AppImage',
+      );
+    }
+  });
+
   test('fails when a platform disappears or configured job is unowned', () => {
     const missing = structuredClone(readReleasePlatformMatrix());
     delete missing.cells.stable.ios;

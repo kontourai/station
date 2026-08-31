@@ -187,7 +187,6 @@ export const BANNER_IDS = {
   bundledService: 'chrome:onboarding:bundled-service',
   deferredCapability: 'chrome:capability',
   pluginRegistry: 'chrome:plugins:registry',
-  resourcePosture: 'chrome:resource-posture',
   updateCheck: 'chrome:update:check',
   updateAvailable: 'chrome:update:available',
   desktopUpdateAvailable: 'chrome:update:desktop',
@@ -537,8 +536,8 @@ const USER_INITIATED_PRIORITY_CEILING = BANNER_PRIORITY.capabilityFailure;
  * action just caused it.
  *
  * A same-tier tiebreak is not enough on its own: every passive chrome source
- * in the app that lingers — deferred capability, the plugin registry gate,
- * resource posture — presents at `capabilityFailure`, and the mobile
+ * in the app that lingers — deferred capability and the plugin registry gate
+ * present at `capabilityFailure`, and the mobile
  * connection notice at `setup`, while a redirect explanation is merely
  * `info`. Under a tiebreak alone the redirect still sorts below all four and
  * stays behind the bounded stack's "+N more" cap, which is the defect. So a
