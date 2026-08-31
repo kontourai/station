@@ -806,6 +806,22 @@ export function useChatInput({
     navigateHistoryDown(sessionId);
   }, [sessionId, navigateHistoryDown]);
 
+  const handleRestorePortableDraft = useCallback(
+    (text: string, restoredAttachments: FileAttachment[]) => {
+      if (!sessionId) return;
+      const cleanValue = sanitizeChatInput(text);
+      updateChat(sessionId, {
+        input: cleanValue,
+        attachments: restoredAttachments,
+        attachmentStages: [],
+      });
+      pendingDraftRef.current = { sessionId, text: cleanValue };
+      flushDraft();
+      textareaRef.current?.focus();
+    },
+    [sessionId, updateChat, flushDraft],
+  );
+
   // Memoized: this object is passed whole as the `chatInput` prop to the
   // memoized ChatDockContentArea — returning a fresh literal every render
   // would defeat that memo on every unrelated re-render (e.g. the resize
@@ -852,6 +868,7 @@ export function useChatInput({
       handleCommandClose: closeCommand,
       handleHistoryUp,
       handleHistoryDown,
+      handleRestorePortableDraft,
       updateFromInput,
       closeAll,
     }),
@@ -890,6 +907,7 @@ export function useChatInput({
       closeCommand,
       handleHistoryUp,
       handleHistoryDown,
+      handleRestorePortableDraft,
       updateFromInput,
       closeAll,
     ],
