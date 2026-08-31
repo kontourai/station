@@ -186,13 +186,13 @@ describe('CredentialApplicationFactory', () => {
     const store = fixture();
     const first = store.createCredentialApplicationFactory().start({
       recoveryFingerprint: 'recovery-a',
-      connectionId: 'codex-runtime',
+      connectionId: 'codex',
       candidateProfileRef: 'candidate',
       now: '2026-08-13T00:00:00.000Z',
     });
     const second = store.createCredentialApplicationFactory().start({
       recoveryFingerprint: 'recovery-a',
-      connectionId: 'codex-runtime',
+      connectionId: 'codex',
       candidateProfileRef: 'other',
       now: '2026-08-13T00:00:00.000Z',
     });
@@ -227,13 +227,13 @@ describe('CredentialApplicationFactory', () => {
     const secondStore = new EventStore(path);
     const first = firstStore.createCredentialApplicationFactory().start({
       recoveryFingerprint: 'recovery-first',
-      connectionId: 'codex-runtime',
+      connectionId: 'codex',
       candidateProfileRef: 'candidate-a',
       now: '2026-08-13T00:00:00.000Z',
     });
     const second = secondStore.createCredentialApplicationFactory().start({
       recoveryFingerprint: 'recovery-second',
-      connectionId: 'codex-runtime',
+      connectionId: 'codex',
       candidateProfileRef: 'candidate-b',
       now: '2026-08-13T00:00:01.000Z',
     });
@@ -281,7 +281,7 @@ describe('CredentialApplicationFactory', () => {
     const secondStore = new EventStore(path);
     const first = firstStore.createCredentialApplicationFactory().start({
       recoveryFingerprint: 'migration-first',
-      connectionId: 'codex-runtime',
+      connectionId: 'codex',
       candidateProfileRef: 'candidate-a',
       now: '2026-08-13T00:00:00.000Z',
     });
@@ -296,7 +296,7 @@ describe('CredentialApplicationFactory', () => {
     expect(
       secondStore.createCredentialApplicationFactory().start({
         recoveryFingerprint: 'migration-second',
-        connectionId: 'codex-runtime',
+        connectionId: 'codex',
         candidateProfileRef: 'candidate-b',
         now: '2026-08-13T00:00:03.000Z',
       }),
@@ -386,9 +386,9 @@ describe('CredentialApplicationFactory', () => {
         attempt_id, recovery_fingerprint, connection_id,
         candidate_profile_ref, state, created_at, updated_at
       ) VALUES
-        ('attempt-a', 'recovery-a', 'codex-runtime', 'candidate-a',
+        ('attempt-a', 'recovery-a', 'codex', 'candidate-a',
          'commit-pending', '2026-08-13T00:00:00.000Z', '2026-08-13T00:00:00.000Z'),
-        ('attempt-b', 'recovery-b', 'codex-runtime', 'candidate-b',
+        ('attempt-b', 'recovery-b', 'codex', 'candidate-b',
          'commit-pending', '2026-08-13T00:00:01.000Z', '2026-08-13T00:00:01.000Z');
     `);
     legacy.close();
@@ -425,7 +425,7 @@ describe('CredentialApplicationFactory', () => {
     });
     const first = firstStore
       .createCredentialApplicationFactory()
-      .mutate('codex-runtime', async () => {
+      .mutate('codex', async () => {
         await held;
         return 'first';
       });
@@ -433,14 +433,14 @@ describe('CredentialApplicationFactory', () => {
     await expect(
       secondStore
         .createCredentialApplicationFactory()
-        .mutate('codex-runtime', async () => 'second'),
+        .mutate('codex', async () => 'second'),
     ).resolves.toEqual({ kind: 'unavailable' });
     release();
     await expect(first).resolves.toEqual({ kind: 'applied', value: 'first' });
     await expect(
       secondStore
         .createCredentialApplicationFactory()
-        .mutate('codex-runtime', async () => 'second'),
+        .mutate('codex', async () => 'second'),
     ).resolves.toEqual({ kind: 'applied', value: 'second' });
     firstStore.close();
     secondStore.close();
@@ -472,7 +472,7 @@ describe('CredentialApplicationFactory', () => {
          });
          if (result.kind !== 'applied') process.exitCode = 2;`,
         path,
-        'codex-runtime',
+        'codex',
       ],
       { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
     );
@@ -482,7 +482,7 @@ describe('CredentialApplicationFactory', () => {
     await expect(
       live
         .createCredentialApplicationFactory()
-        .mutate('codex-runtime', async () => 'must-not-run'),
+        .mutate('codex', async () => 'must-not-run'),
     ).resolves.toEqual({ kind: 'unavailable' });
     live.close();
 
@@ -492,13 +492,13 @@ describe('CredentialApplicationFactory', () => {
     await expect(
       reclaimed
         .createCredentialApplicationFactory()
-        .mutate('codex-runtime', async () => 'reclaimed'),
+        .mutate('codex', async () => 'reclaimed'),
     ).resolves.toEqual({ kind: 'applied', value: 'reclaimed' });
     // The stale child row was removed by the sole successor. A second caller
     // cannot reclaim a live successor based on the killed child's identity.
     const successor = reclaimed
       .createCredentialApplicationFactory()
-      .mutate('codex-runtime', async () => 'second');
+      .mutate('codex', async () => 'second');
     await expect(successor).resolves.toEqual({
       kind: 'applied',
       value: 'second',
@@ -522,7 +522,7 @@ describe('CredentialApplicationFactory', () => {
     });
     const old = oldStore
       .createCredentialApplicationFactory()
-      .mutate('codex-runtime', async () => {
+      .mutate('codex', async () => {
         await oldHeld;
         return 'old';
       });
@@ -535,7 +535,7 @@ describe('CredentialApplicationFactory', () => {
     await expect(
       unavailable
         .createCredentialApplicationFactory()
-        .mutate('codex-runtime', async () => 'must-not-run'),
+        .mutate('codex', async () => 'must-not-run'),
     ).resolves.toEqual({ kind: 'unavailable' });
     unavailable.close();
 
@@ -552,7 +552,7 @@ describe('CredentialApplicationFactory', () => {
     });
     const successor = successorStore
       .createCredentialApplicationFactory()
-      .mutate('codex-runtime', async () => {
+      .mutate('codex', async () => {
         await successorHeld;
         return 'successor';
       });
@@ -570,7 +570,7 @@ describe('CredentialApplicationFactory', () => {
     await expect(
       contender
         .createCredentialApplicationFactory()
-        .mutate('codex-runtime', async () => 'must-not-run'),
+        .mutate('codex', async () => 'must-not-run'),
     ).resolves.toEqual({ kind: 'unavailable' });
     contender.close();
     releaseSuccessor();
@@ -587,7 +587,7 @@ describe('CredentialApplicationFactory', () => {
     const protocol = store.createCredentialApplicationFactory();
     const first = protocol.start({
       recoveryFingerprint: 'recovery-pending',
-      connectionId: 'codex-runtime',
+      connectionId: 'codex',
       candidateProfileRef: 'candidate-a',
       now: '2026-08-13T00:00:00.000Z',
     });
@@ -606,7 +606,7 @@ describe('CredentialApplicationFactory', () => {
     expect(
       protocol.start({
         recoveryFingerprint: 'recovery-competing',
-        connectionId: 'codex-runtime',
+        connectionId: 'codex',
         candidateProfileRef: 'candidate-b',
         now: '2026-08-13T00:00:04.000Z',
       }),

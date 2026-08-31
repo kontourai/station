@@ -575,6 +575,8 @@ interface DelegateTaskRequest {
   target: ExecutionTarget;
   parentTaskId?: string;
   userId: string;
+  principal?: PrincipalRef;
+  clientOrigin?: ClientOrigin;
 }
 
 interface ForegroundMessageRequest {
@@ -643,6 +645,8 @@ type DelegatedTaskReferenceRequest = z.infer<
 > & {
   taskId: string;
   userId: string;
+  principal?: PrincipalRef;
+  clientOrigin?: ClientOrigin;
 };
 
 type DelegatedTaskEventsRequest = z.infer<
@@ -657,6 +661,8 @@ type ContinueDelegatedTaskRequest = z.infer<
 > & {
   taskId: string;
   userId: string;
+  principal?: PrincipalRef;
+  clientOrigin?: ClientOrigin;
 };
 
 type RespondToDelegatedTaskRequest = z.infer<
@@ -664,6 +670,8 @@ type RespondToDelegatedTaskRequest = z.infer<
 > & {
   taskId: string;
   userId: string;
+  principal?: PrincipalRef;
+  clientOrigin?: ClientOrigin;
 };
 
 type InterruptDelegatedTaskRequest = z.infer<
@@ -671,6 +679,8 @@ type InterruptDelegatedTaskRequest = z.infer<
 > & {
   taskId: string;
   userId: string;
+  principal?: PrincipalRef;
+  clientOrigin?: ClientOrigin;
 };
 
 /**
@@ -1493,10 +1503,13 @@ export function createOrchestrationRoutes(
     }
     try {
       const body = getBody(c);
+      const { principal, userId } = resolveActorPrincipal(deps, c);
       const data = await deps.delegateTask({
         ...body,
         target: normalizeExecutionTarget(body.target),
-        userId: resolveActorPrincipal(deps, c).userId,
+        userId,
+        principal,
+        clientOrigin: resolveClientOriginForRequest(c.req.raw),
       });
       return c.json({ success: true, data });
     } catch (error) {
@@ -1632,10 +1645,13 @@ export function createOrchestrationRoutes(
         );
       }
       try {
+        const { principal, userId } = resolveActorPrincipal(deps, c);
         const data = await deps.continueDelegatedTask({
           ...getBody(c),
           taskId: param(c, 'taskId'),
-          userId: resolveActorPrincipal(deps, c).userId,
+          userId,
+          principal,
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
         return c.json({ success: true, data });
       } catch (error) {
@@ -1655,10 +1671,13 @@ export function createOrchestrationRoutes(
         );
       }
       try {
+        const { principal, userId } = resolveActorPrincipal(deps, c);
         const data = await deps.respondToDelegatedTaskRequest({
           ...getBody(c),
           taskId: param(c, 'taskId'),
-          userId: resolveActorPrincipal(deps, c).userId,
+          userId,
+          principal,
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
         return c.json({ success: true, data });
       } catch (error) {
@@ -1678,10 +1697,13 @@ export function createOrchestrationRoutes(
         );
       }
       try {
+        const { principal, userId } = resolveActorPrincipal(deps, c);
         const data = await deps.interruptDelegatedTask({
           ...getBody(c),
           taskId: param(c, 'taskId'),
-          userId: resolveActorPrincipal(deps, c).userId,
+          userId,
+          principal,
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
         return c.json({ success: true, data });
       } catch (error) {

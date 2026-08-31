@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { engineRuntimeId } from '@kontourai/station-contracts/agent-identity';
+import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfigLoader } from '../../domain/config-loader.js';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
@@ -531,7 +531,7 @@ describe('Provider System', () => {
           displayName: 'Custom Runtime',
           description: 'Plugin runtime',
           capabilities: ['agent-runtime'],
-          runtimeId: engineRuntimeId('custom-runtime'),
+          engineId: engineId('custom-runtime'),
           builtin: true,
         },
         startSession: async () => {

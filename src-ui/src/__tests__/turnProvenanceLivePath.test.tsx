@@ -15,7 +15,7 @@
  * remount between the turn completing and the assertion.
  */
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -206,8 +206,11 @@ describe('turn provenance on the live orchestration path (station#1410)', () => 
     const message = committedAssistantMessage();
     expect(message?.answerEligible).toBe(true);
     const view = renderCommittedRow();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More answer actions' }),
+    );
     expect(
-      await screen.findByRole('button', {
+      await screen.findByRole('menuitem', {
         name: 'Add this answer to a Task (turn turn-live-1)',
       }),
     ).toBeTruthy();

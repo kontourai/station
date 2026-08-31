@@ -43,7 +43,7 @@ import type {
   OrchestrationCommandDispatchResult,
   OrchestrationCommandInput,
   OrchestrationCommandReceipt,
-  OrchestrationProviderKind,
+  OrchestrationEngineId,
   OrchestrationProviderSummary,
   OrchestrationSessionDetail,
   OrchestrationSessionSummary,
@@ -68,7 +68,7 @@ export type {
   OrchestrationCommandDispatchResult,
   OrchestrationCommandInput,
   OrchestrationCommandReceipt,
-  OrchestrationProviderKind,
+  OrchestrationEngineId,
   OrchestrationProviderSummary,
   OrchestrationSessionDetail,
   OrchestrationSessionSummary,
@@ -646,7 +646,7 @@ export interface ProviderCommandDescriptor {
 }
 
 export async function fetchProviderCommands(
-  provider: OrchestrationProviderKind,
+  provider: OrchestrationEngineId,
   apiBase?: string,
 ): Promise<ProviderCommandDescriptor[]> {
   const resolvedApiBase = await resolveApiBase(apiBase);
@@ -994,7 +994,7 @@ export function useOrchestrationCommandReceiptQuery(
 }
 
 export function useProviderCommandsQuery(
-  provider: OrchestrationProviderKind | null | undefined,
+  provider: OrchestrationEngineId | null | undefined,
   config?: QueryConfig<ProviderCommandDescriptor[]>,
 ) {
   return useApiQuery(

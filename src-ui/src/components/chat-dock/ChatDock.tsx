@@ -1861,6 +1861,27 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     ensureOrchestrationEventStream(apiBase);
   }, [apiBase]);
 
+  // station#1048: whether the app toolbar is genuinely gone (not merely
+  // collapsed/half-open) — the one state `ChatDockMobileHeader`'s drawer
+  // toggle AND connection control both need to know before rendering,
+  // computed once so the two can never disagree about it the way they used
+  // to (the drawer toggle already guarded on this; the connection control
+  // did not, so it rendered next to the toolbar's own — same accessible
+  // name prefix — every time the dock was merely on screen, which is the
+  // DEFAULT mobile state, not an edge case).
+  const isMobileToolbarHidden = isMobileDockFullscreen({
+    isMobile,
+    isDockOpen: isPaneOpen,
+    isDockMaximized: isPaneMaximized,
+    // A fullscreen-placed chat pane IS the dock-owned view (a Chat
+    // workspace layout hides the toolbar via its own App.tsx disjunct, so
+    // this header must carry both controls). Otherwise the route decides,
+    // through the same parser App.tsx's displayCurrentView rides.
+    isDockOwnedView:
+      isFullscreenPlacement ||
+      isDockOwnedViewType(resolveViewFromPath(pathname).type),
+  });
+
   return (
     <>
       <SkillShortcutRegistrar
@@ -1933,20 +1954,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             <ChatDockMobileHeader
               // Only when the app toolbar is hidden — otherwise its drawer
               // toggle and this one are two controls with one accessible name.
-              showDrawerToggle={isMobileDockFullscreen({
-                isMobile,
-                isDockOpen: isPaneOpen,
-                isDockMaximized: isPaneMaximized,
-                // A fullscreen-placed chat pane IS the dock-owned view (a
-                // Chat workspace layout hides the toolbar via its own
-                // App.tsx disjunct, so this header must carry the drawer
-                // toggle — sol review of #2636, finding 1). Otherwise the
-                // route decides, through the same parser App.tsx's
-                // displayCurrentView rides.
-                isDockOwnedView:
-                  isFullscreenPlacement ||
-                  isDockOwnedViewType(resolveViewFromPath(pathname).type),
-              })}
+              showDrawerToggle={isMobileToolbarHidden}
+              // station#1048: same condition, same reasoning — otherwise
+              // this header's connection control and the toolbar's own
+              // (`app-toolbar-connection`) are two controls whose accessible
+              // name starts "Manage Stations".
+              showConnection={isMobileToolbarHidden}
               sessionTitle={activeSession?.title || 'Chat'}
               // station#3309: same identity the desktop header leads with,
               // from the same session-committed slug — artwork only when the

@@ -43,7 +43,7 @@ export async function initializeRuntimeAgents(
 
   for (const metadata of agentMetadataList) {
     // Cleanly SKIP external-engine-bound records (archive#954 cold-boot
-    // fix) — a promoted default (`claude-code`, `codex`, `acp-<id>`) or any
+    // fix) — a promoted default (`claude`, `codex`, `acp-<id>`) or any
     // user-created External agent has no Station-engine model to build;
     // attempting it anyway unconditionally threw
     // `ManagedModelUnavailableError` deep inside `createModel` and logged

@@ -966,7 +966,13 @@ export async function runServiceCommand(
     lifecycle = {
       ...lifecycle,
       allowedOrigins: effectiveAllowedOrigins,
-      stationRoot: resolveStationRoot(),
+      // Same derivation as the CLI spawn path: `--base` selects baseDir but
+      // never reaches process.env, so a bare call would pin the shared
+      // ~/.station root against an isolated home.
+      stationRoot: resolveStationRoot({
+        ...process.env,
+        STATION_HOME: lifecycle.baseDir,
+      }),
     };
     // ONE-OWNER PRE-CHECK (station#3047): refuse before any backend mutation
     // when the registry id is held by a LIVE process this install does not

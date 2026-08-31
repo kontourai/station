@@ -8,7 +8,7 @@ import type {
 
 const BASE = {
   eventId: 'evt-1',
-  provider: 'acp' as const, // use whatever ProviderKind literal is valid — confirm against packages/contracts/src/provider.ts; 'acp' expected to already be a member given ADR-0008's `acp` provider adapter
+  provider: 'acp' as const, // use whatever EngineId literal is valid — confirm against packages/contracts/src/provider.ts; 'acp' expected to already be a member given ADR-0008's `acp` provider adapter
   threadId: 'thread-1',
   createdAt: '2026-07-03T00:00:00.000Z',
 };

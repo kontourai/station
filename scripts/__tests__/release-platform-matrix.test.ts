@@ -54,6 +54,12 @@ describe('cross-platform release invariant matrix', () => {
       status: 'VERIFIED',
       sha: ledger.find((entry: any) => entry.channel === 'nightly-desktop').sha,
     });
+    for (const cell of [nightlyAndroid, nightlyDesktop]) {
+      expect(cell).toMatchObject({
+        requiredForPromotion: true,
+        availabilityPolicy: expect.stringContaining('atomic-native-cohort'),
+      });
+    }
     expect(stableIos?.currentEvidence).toMatchObject({
       status: 'NOT_VERIFIED',
       owner: '#844',
@@ -83,10 +89,13 @@ describe('cross-platform release invariant matrix', () => {
       matrix,
       ledger: companionLedger,
     }).channelEvidence.find((entry) => entry.channel === 'nightly');
+    // The iOS channel is automated but has no provider receipt until Apple
+    // accepts the first build. Two sibling receipts alone cannot make a
+    // three-platform Nightly claim green.
     expect(converged).toMatchObject({
-      status: 'VERIFIED',
-      sourceSha: sharedSha,
-      configuredPlatforms: ['macos', 'android'],
+      status: 'NOT_VERIFIED',
+      sourceSha: null,
+      configuredPlatforms: ['macos', 'android', 'ios'],
       verifiedPlatforms: ['macos', 'android'],
     });
 

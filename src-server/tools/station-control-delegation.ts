@@ -4,6 +4,7 @@ import {
   type AgentId,
   agentId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
   EnvironmentRef,
   ExecutionModelRequest,
@@ -22,8 +23,8 @@ import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
   type CapabilityDeliveryCapability,
   type CapabilityUndeliveredReason,
+  type EngineId,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
-  type ProviderKind,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
@@ -156,6 +157,10 @@ export interface DelegateTaskInput {
   userId?: string;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
+  /** Resolved at the authenticated request seam; never accepted as tool input. */
+  clientOrigin?: ClientOrigin;
+  /** Resolved alongside clientOrigin when an authenticated actor exists. */
+  principal?: PrincipalRef;
 }
 
 type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
@@ -308,6 +313,10 @@ export interface DelegatedTaskReferenceInput {
   readTimeoutMs?: number;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
+  /** Resolved at the authenticated request seam; never accepted as tool input. */
+  clientOrigin?: ClientOrigin;
+  /** Resolved alongside clientOrigin when an authenticated actor exists. */
+  principal?: PrincipalRef;
 }
 
 export interface DelegatedTaskEventsInput extends DelegatedTaskReferenceInput {
@@ -668,7 +677,7 @@ function readAuthorityForInput(input: {
  */
 function dispatchContextForAuthority(
   authority: SessionReadAuthority,
-  clientOrigin?: import('@kontourai/station-contracts/client-origin').ClientOrigin,
+  clientOrigin?: ClientOrigin,
   // archive#4075 stage 2: additive alongside `clientOrigin` — the caller's
   // resolved principal, threaded through to `OrchestrationService.dispatch`
   // so the ONE `sendTurn` production implementation below stamps it onto
@@ -681,7 +690,7 @@ function dispatchContextForAuthority(
 ): {
   userId: string;
   tenantExecutionContext?: SessionReadAuthority['tenantExecutionContext'];
-  clientOrigin?: import('@kontourai/station-contracts/client-origin').ClientOrigin;
+  clientOrigin?: ClientOrigin;
   principal?: PrincipalRef;
 } {
   return {
@@ -2894,7 +2903,11 @@ export async function respondToDelegatedTaskRequest(
         requestId: input.requestId,
         decision: input.decision,
       },
-      dispatchContextForAuthority(readAuthority),
+      dispatchContextForAuthority(
+        readAuthority,
+        input.clientOrigin,
+        input.principal,
+      ),
     );
   } else {
     await respondToRequest(
@@ -2963,7 +2976,11 @@ export async function interruptDelegatedTask(
         threadId: snapshot.currentSessionId,
         ...(input.turnId ? { turnId: input.turnId } : {}),
       },
-      dispatchContextForAuthority(readAuthority),
+      dispatchContextForAuthority(
+        readAuthority,
+        input.clientOrigin,
+        input.principal,
+      ),
     );
   } else {
     await interruptTurn(
@@ -3178,7 +3195,11 @@ export async function delegateTask(
           },
         },
       },
-      dispatchContextForAuthority(readAuthority),
+      dispatchContextForAuthority(
+        readAuthority,
+        input.clientOrigin,
+        input.principal,
+      ),
       {
         conversationIdentity: {
           conversationId: sessionId,
@@ -3214,7 +3235,11 @@ export async function delegateTask(
           : {}),
       },
     },
-    dispatchContextForAuthority(readAuthority),
+    dispatchContextForAuthority(
+      readAuthority,
+      input.clientOrigin,
+      input.principal,
+    ),
   );
   delegatedTasks.add(1, {
     target: bindingTarget.kind,
@@ -3417,7 +3442,7 @@ export async function executeExecutionTargetMessage(
     resolveConversationSession: async (
       _access: EnvironmentAccess,
       conversationId: string,
-      requested: { provider: ProviderKind; connectionId?: string },
+      requested: { provider: EngineId; connectionId?: string },
     ) => {
       // The runtime service always owns this seam. Keep explicitly scoped
       // lightweight compatibility doubles (and an older remote Station
@@ -3529,7 +3554,11 @@ export async function executeExecutionTargetMessage(
       }
       const started = await orchestrationService.startSessionInternal(
         { type: 'start-session', input: startInput },
-        dispatchContextForAuthority(readAuthority),
+        dispatchContextForAuthority(
+          readAuthority,
+          input.clientOrigin,
+          input.principal,
+        ),
         {
           ...(ephemeral ? { ephemeralSessionVisibility: true } : {}),
           resourceAdmissionIntent:

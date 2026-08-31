@@ -1885,7 +1885,13 @@ describe('Orchestration Routes', () => {
       data: { taskId: 'task:1', resumable: true },
     });
     expect(delegateTask).toHaveBeenCalledWith({
+      clientOrigin: {
+        version: 1,
+        actor: { kind: 'unknown' },
+        reported: { version: 1, surface: 'unknown', build: null },
+      },
       prompt: 'Review the mobile shell',
+      principal: undefined,
       target: {
         environment: { kind: 'saved', id: 'env-remote' },
         agent: 'codex',
@@ -1925,7 +1931,13 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(200);
     expect(delegateTask).toHaveBeenCalledWith({
+      clientOrigin: {
+        version: 1,
+        actor: { kind: 'unknown' },
+        reported: { version: 1, surface: 'unknown', build: null },
+      },
       prompt: 'Review the mobile shell',
+      principal: undefined,
       target: {
         environment: { kind: 'current' },
         agent: 'codex',
@@ -1961,8 +1973,14 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(200);
     expect(continueDelegatedTask).toHaveBeenCalledWith({
+      clientOrigin: {
+        version: 1,
+        actor: { kind: 'unknown' },
+        reported: { version: 1, surface: 'unknown', build: null },
+      },
       message: 'Keep going',
       modelOptions: { thinking: true },
+      principal: undefined,
       taskId: 'task:2',
       userId: 'bound-user',
     });
@@ -1982,7 +2000,7 @@ describe('Orchestration Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prompt: 'Do work',
-        connection: 'codex-runtime',
+        connection: 'codex',
       }),
     });
 
@@ -2253,8 +2271,14 @@ describe('Orchestration Routes', () => {
       data: { taskId: 'task:1', status: 'dispatched' },
     });
     expect(continueDelegatedTask).toHaveBeenCalledWith({
+      clientOrigin: {
+        version: 1,
+        actor: { kind: 'unknown' },
+        reported: { version: 1, surface: 'unknown', build: null },
+      },
       message: 'Keep going',
       model: 'gpt-5.6-sol',
+      principal: undefined,
       taskId: 'task:1',
       userId: 'bound-user',
     });
@@ -2328,8 +2352,14 @@ describe('Orchestration Routes', () => {
       data: { requestId: 'req-1', decision: 'accept' },
     });
     expect(respondToDelegatedTaskRequest).toHaveBeenCalledWith({
+      clientOrigin: {
+        version: 1,
+        actor: { kind: 'unknown' },
+        reported: { version: 1, surface: 'unknown', build: null },
+      },
       requestId: 'req-1',
       decision: 'accept',
+      principal: undefined,
       taskId: 'task:1',
       userId: 'bound-user',
     });
@@ -2416,6 +2446,12 @@ describe('Orchestration Routes', () => {
       data: { interruptRequested: true },
     });
     expect(interruptDelegatedTask).toHaveBeenCalledWith({
+      clientOrigin: {
+        version: 1,
+        actor: { kind: 'unknown' },
+        reported: { version: 1, surface: 'unknown', build: null },
+      },
+      principal: undefined,
       turnId: 'turn-1',
       taskId: 'task:1',
       userId: 'bound-user',

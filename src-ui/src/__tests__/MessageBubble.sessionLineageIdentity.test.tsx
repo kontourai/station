@@ -45,7 +45,7 @@ function row(agentSlug: string | undefined, content: string) {
 }
 
 describe('MessageBubble session-lineage identity (station#4240)', () => {
-  test('offers a keyboard-operable fork only for a completed assistant turn', () => {
+  test('offers a keyboard-operable fork only for a completed assistant turn', async () => {
     const onForkFromTurn = vi.fn();
     const message = {
       ...row('claude', 'Completed answer'),
@@ -66,8 +66,10 @@ describe('MessageBubble session-lineage identity (station#4240)', () => {
       />,
     );
 
-    const action = screen.getByRole('button', { name: 'Fork from here' });
-    expect(action.className).toContain('message__fork-btn');
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More answer actions' }),
+    );
+    const action = screen.getByRole('menuitem', { name: /Fork from here/ });
     fireEvent.click(action);
     expect(onForkFromTurn).toHaveBeenCalledWith({
       turnId: 'turn-complete',
@@ -78,7 +80,7 @@ describe('MessageBubble session-lineage identity (station#4240)', () => {
     });
   });
 
-  test('fork carries the historical row identity across a later handoff/model switch', () => {
+  test('fork carries the historical row identity across a later handoff/model switch', async () => {
     const onForkFromTurn = vi.fn();
     const message = {
       ...row('codex', 'Historical Codex answer'),
@@ -142,7 +144,10 @@ describe('MessageBubble session-lineage identity (station#4240)', () => {
         onForkFromTurn={onForkFromTurn}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Fork from here' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More answer actions' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: /Fork from here/ }));
     expect(onForkFromTurn).toHaveBeenCalledWith({
       turnId: 'turn-historical',
       agentSlug: 'codex',

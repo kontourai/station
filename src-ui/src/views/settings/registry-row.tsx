@@ -52,6 +52,8 @@ export function renderSettingRow({
   provenance,
   onChange,
 }: RegistryRowComponentProps): ReactNode {
+  if (definition.userFacing === false) return null;
+
   const key = definition.key as string;
   const catalogEntry = settingsCatalogEntryForConfigKey(key);
   const row = catalogEntry ? settingsRow(catalogEntry.id) : undefined;

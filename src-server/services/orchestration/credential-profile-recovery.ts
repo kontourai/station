@@ -1,4 +1,4 @@
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import type {
   ProviderAdapterShape,
   ProviderSendTurnInput,
@@ -24,7 +24,7 @@ export interface CredentialProfileRecoveryDeps {
   dispatchSendTurn: (
     replay: RecoveryDispatchReplay,
   ) => ReturnType<OrchestrationService['dispatch']>;
-  providerAcceptsResponse: (provider: ProviderKind) => boolean;
+  providerAcceptsResponse: (provider: EngineId) => boolean;
   /**
    * Recovery-compensation interrupt. Adapter resolution and both
    * adapter-currency asserts stay on the service, where the registry and
@@ -52,7 +52,7 @@ export interface CredentialProfileRecoveryDeps {
   reportRedispatchFailed: (
     threadId: string,
     turnId: string | undefined,
-    provider: ProviderKind,
+    provider: EngineId,
   ) => void;
   onTurnDispatched: (input: {
     provider: string;
@@ -69,8 +69,8 @@ export interface CredentialProfileRecoveryDeps {
    */
   markThreadQuarantined: (threadId: string) => void;
   sessionAdapterFor: (threadId: string) => ProviderAdapterShape | undefined;
-  loadedProviderFor: (threadId: string) => ProviderKind | undefined;
-  providerForThread: (threadId: string) => ProviderKind | undefined;
+  loadedProviderFor: (threadId: string) => EngineId | undefined;
+  providerForThread: (threadId: string) => EngineId | undefined;
   /**
    * The slice-2 teardown seam. The divergent-flag declaration
    * ({ policyThreads, flowBoundThreads }) is written literally at the ctor

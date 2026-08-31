@@ -10,10 +10,10 @@ import type {
   TerminalProcessDetail,
   TerminalProcessSummary,
 } from '@kontourai/station-contracts/orchestration';
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 
-export type OrchestrationProviderKind = ProviderKind;
+export type OrchestrationEngineId = EngineId;
 export type {
   ConversationListItem,
   OrchestrationSessionDetail,
@@ -94,7 +94,7 @@ export interface ChatAttachmentInput {
 }
 
 export interface OrchestrationProviderSummary {
-  provider: OrchestrationProviderKind;
+  provider: OrchestrationEngineId;
   activeSessions: number;
   prerequisites: Array<{
     id?: string;

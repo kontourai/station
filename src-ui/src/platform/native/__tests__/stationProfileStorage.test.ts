@@ -763,6 +763,189 @@ describe('NativeStationProfileStorage', () => {
     ]);
   });
 
+  it('collapses a random legacy loopback selection to its packaged Beta owner', async () => {
+    const shared = structuredClone(
+      PROFILE_STORE,
+    ) as unknown as StationProfileStore;
+    shared.profiles.push(
+      {
+        schemaVersion: 1,
+        name: 'beta-local',
+        endpoint: 'http://127.0.0.1:28141',
+        credentialRef: hostRef('beta-token'),
+        environmentId: 'environment-beta',
+        localService: {
+          instanceId: 'desktop-sidecar-beta',
+          baseDir: '/home/station/instances/beta',
+          serverPort: 28141,
+          uiPort: 28000,
+        },
+        setupSource: 'local',
+        configurationState: 'configured',
+        createdAt: 1,
+        updatedAt: 2,
+      },
+      // This is the physical migration shape: an old renderer-generated id
+      // has no localService marker, but points at the exact packaged sidecar.
+      {
+        schemaVersion: 1,
+        name: 'local-2',
+        endpoint: 'http://127.0.0.1:28141',
+        setupSource: 'paired',
+        configurationState: 'requires-auth',
+        createdAt: 1,
+        updatedAt: 2,
+      },
+    );
+    const selectionStorage = memoryStorage({
+      'station-native-profile-selection-v1': JSON.stringify({
+        schemaVersion: 1,
+        connectionId: 'station-profile:local-2',
+      }),
+    });
+    const { calls, storage } = storageWithProfileStore(
+      shared,
+      selectionStorage,
+    );
+
+    await storage.hydrate();
+    expect(storage.selectProfileForProcess('beta-local')).toBe(
+      'station-profile:beta-local',
+    );
+    const connections = new ConnectionStore({ storage, locks: null });
+    expect(connections.getActive()).toMatchObject({
+      id: 'station-profile:beta-local',
+      url: 'http://127.0.0.1:28141',
+      credentialState: 'saved',
+      ownerId: 'desktop-sidecar-beta',
+    });
+    expect(
+      selectionStorage.get('station-native-profile-selection-v1'),
+    ).toBeNull();
+    expect(calls.map(([command]) => command)).toEqual([
+      'station_profile_store_read',
+    ]);
+  });
+
+  it('removes a deleted legacy marker and ConnectionStore record before selecting the native owner', async () => {
+    const shared = structuredClone(
+      PROFILE_STORE,
+    ) as unknown as StationProfileStore;
+    shared.profiles.push({
+      schemaVersion: 1,
+      name: 'beta-local',
+      endpoint: 'http://127.0.0.1:28141',
+      credentialRef: hostRef('beta-token'),
+      environmentId: 'environment-beta',
+      localService: {
+        instanceId: 'desktop-sidecar-beta',
+        baseDir: '/home/station/instances/beta',
+        serverPort: 28141,
+        uiPort: 28000,
+      },
+      setupSource: 'local',
+      configurationState: 'configured',
+      createdAt: 1,
+      updatedAt: 2,
+    });
+    const selectionStorage = legacyConnectionSelectionStorage({
+      name: 'Old local two',
+      url: 'http://127.0.0.1:28141',
+    });
+    selectionStorage.set(
+      'station-native-profile-selection-v1',
+      JSON.stringify({
+        schemaVersion: 1,
+        connectionId: 'station-profile:local-2',
+      }),
+    );
+    const { calls, storage } = storageWithProfileStore(
+      shared,
+      selectionStorage,
+    );
+
+    await storage.hydrate();
+    expect(storage.selectProfileForProcess('beta-local')).toBe(
+      'station-profile:beta-local',
+    );
+    const connections = new ConnectionStore({ storage, locks: null });
+    expect(connections.getActive()).toMatchObject({
+      id: 'station-profile:beta-local',
+      url: 'http://127.0.0.1:28141',
+      credentialState: 'saved',
+      ownerId: 'desktop-sidecar-beta',
+    });
+    expect(connections.getAll()).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'station-profile:local-2' }),
+      ]),
+    );
+    expect(
+      selectionStorage.get('station-native-profile-selection-v1'),
+    ).toBeNull();
+    expect(
+      selectionStorage.get('station-connect-connections-active'),
+    ).toBeNull();
+    expect(selectionStorage.get('station-connect-connections')).toBeNull();
+    expect(calls.map(([command]) => command)).toEqual([
+      'station_profile_store_read',
+    ]);
+  });
+
+  it('preserves an explicit different-endpoint loopback selection over Beta', async () => {
+    const shared = structuredClone(
+      PROFILE_STORE,
+    ) as unknown as StationProfileStore;
+    shared.profiles.push(
+      {
+        schemaVersion: 1,
+        name: 'beta-local',
+        endpoint: 'http://127.0.0.1:28141',
+        credentialRef: hostRef('beta-token'),
+        environmentId: 'environment-beta',
+        localService: {
+          instanceId: 'desktop-sidecar-beta',
+          baseDir: '/home/station/instances/beta',
+          serverPort: 28141,
+          uiPort: 28000,
+        },
+        setupSource: 'local',
+        configurationState: 'configured',
+        createdAt: 1,
+        updatedAt: 2,
+      },
+      {
+        schemaVersion: 1,
+        name: 'foreign-forward',
+        endpoint: 'http://127.0.0.1:39141',
+        setupSource: 'paired',
+        configurationState: 'requires-auth',
+        createdAt: 1,
+        updatedAt: 2,
+      },
+    );
+    const selectionStorage = memoryStorage({
+      'station-native-profile-selection-v1': JSON.stringify({
+        schemaVersion: 1,
+        connectionId: 'station-profile:foreign-forward',
+      }),
+    });
+    const { storage } = storageWithProfileStore(shared, selectionStorage);
+
+    await storage.hydrate();
+    expect(storage.selectProfileForProcess('beta-local')).toBe(
+      'station-profile:foreign-forward',
+    );
+    expect(
+      JSON.parse(
+        selectionStorage.get('station-native-profile-selection-v1') ?? '{}',
+      ),
+    ).toEqual({
+      schemaVersion: 1,
+      connectionId: 'station-profile:foreign-forward',
+    });
+  });
+
   it('clears a malformed marker without promoting otherwise valid legacy remote state', async () => {
     const selectionStorage = legacyConnectionSelectionStorage({
       name: 'Chosen remote',

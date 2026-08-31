@@ -288,6 +288,15 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     });
   }, [showToast]);
 
+  // Keep banner actions stable while connection probes update the shell. A
+  // fresh callback on every retry makes MobileConnectionBanner tear down and
+  // re-present its store item, replacing the actionable button underneath an
+  // in-flight mobile tap.
+  const openConnectionList = useCallback(() => {
+    setConnectionModalMode('list');
+    setShowModal(true);
+  }, []);
+
   const openPairingPayload = useCallback((payload: string) => {
     showModalRef.current = true;
     pairingPayloadRef.current = payload;
@@ -746,10 +755,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           componentProps={{
             status: bundledStatus,
             onRestart: handleRestartBundledServer,
-            onOpenConnections: () => {
-              setConnectionModalMode('list');
-              setShowModal(true);
-            },
+            onOpenConnections: openConnectionList,
           }}
         />
       )}
@@ -758,10 +764,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           load={loadMobileConnectionBanner}
           pending={null}
           componentProps={{
-            onOpen: () => {
-              setConnectionModalMode('list');
-              setShowModal(true);
-            },
+            onOpen: openConnectionList,
           }}
         />
       )}

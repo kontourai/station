@@ -4,7 +4,7 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import type {
   ApprovalMode,
-  ProviderKind,
+  EngineId,
 } from '@kontourai/station-contracts/provider';
 import type { FlowRunFreshness } from '@kontourai/station-contracts/runtime-events';
 import { type ExecutionMode } from '@kontourai/station-contracts/tool';
@@ -315,7 +315,7 @@ export type ChatUIState = {
   agentConnectionId?: string;
   providerId?: string;
   defaultProviderId?: string;
-  provider?: ProviderKind;
+  provider?: EngineId;
   providerOptions?: Record<string, unknown>;
   /**
    * The approval posture the adapter last confirmed as actually applied
@@ -328,7 +328,7 @@ export type ChatUIState = {
    */
   lastAppliedApprovalMode?: ApprovalMode;
   orchestrationSessionStarted?: boolean;
-  orchestrationProvider?: ProviderKind;
+  orchestrationProvider?: EngineId;
   orchestrationModel?: string;
   orchestrationStatus?: string;
   /**
@@ -446,7 +446,7 @@ export type ActiveChatMetadata = {
   agentConnectionId?: string;
   providerId?: string;
   defaultProviderId?: string;
-  provider?: ProviderKind;
+  provider?: EngineId;
   model?: string;
   modelSource?: EffectiveModelSource;
   requestedModel?: string | null;
@@ -494,10 +494,10 @@ export type PersistedActiveChat = {
   agentConnectionId?: string;
   providerId?: string;
   defaultProviderId?: string;
-  provider?: ProviderKind;
+  provider?: EngineId;
   providerOptions?: Record<string, unknown>;
   orchestrationSessionStarted?: boolean;
-  orchestrationProvider?: ProviderKind;
+  orchestrationProvider?: EngineId;
   orchestrationModel?: string;
   orchestrationStatus?: string;
   orchestrationTurnOpen?: boolean;

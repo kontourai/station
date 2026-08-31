@@ -120,6 +120,15 @@ describe('navigate result forwarding (station#3567 fix round FIX 1)', () => {
       };
 
       expect(navigateTo).toHaveBeenCalledWith('/agents/my-agent');
+      expect(executeExecutionTargetMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientOrigin: {
+            version: 1,
+            actor: { kind: 'internal' },
+            reported: { version: 1, surface: 'mcp', build: null },
+          },
+        }),
+      );
       expect(body.sessionId).toBe('sess-1');
       expect(body.navigation).toEqual({
         success: false,
@@ -197,6 +206,15 @@ describe('navigate result forwarding (station#3567 fix round FIX 1)', () => {
       };
 
       expect(navigateTo).toHaveBeenCalledWith('/agents/my-agent');
+      expect(delegateTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clientOrigin: {
+            version: 1,
+            actor: { kind: 'internal' },
+            reported: { version: 1, surface: 'mcp', build: null },
+          },
+        }),
+      );
       expect(body.taskId).toBe('task-1');
       expect(body.navigation).toEqual({
         success: false,

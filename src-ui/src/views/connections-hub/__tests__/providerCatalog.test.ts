@@ -48,7 +48,7 @@ describe('provider catalog presentation', () => {
         resolveProviderPresentation({
           id: 'provider',
           kind: 'agent',
-          type: 'codex-runtime',
+          type: 'codex',
           name: 'Codex Work',
           href: '/connections/engines/provider',
           ...partial,
@@ -90,7 +90,7 @@ describe('provider catalog presentation', () => {
       {
         id: 'codex-work',
         kind: 'agent',
-        type: 'codex-runtime',
+        type: 'codex',
         name: 'Work',
         enabled: true,
         status: 'ready',
@@ -110,7 +110,7 @@ describe('provider catalog presentation', () => {
       {
         id: 'codex-personal',
         kind: 'agent',
-        type: 'codex-runtime',
+        type: 'codex',
         name: 'Personal',
         enabled: true,
         status: 'degraded',

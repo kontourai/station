@@ -142,6 +142,7 @@ export async function startTempHomeInstance({
   uiPort,
   logPath,
   env,
+  home,
   startTimeoutMs = 20 * 60_000,
 }) {
   const started = await runStation(
@@ -149,7 +150,7 @@ export async function startTempHomeInstance({
     [
       'start',
       `--instance=${instance}`,
-      '--temp-home',
+      ...(home ? [`--base=${home}`] : ['--temp-home']),
       '--clean',
       '--force',
       `--port=${serverPort}`,
@@ -170,13 +171,14 @@ export async function startTempHomeInstance({
   });
   return {
     uiOrigin: `http://localhost:${uiPort}`,
-    home: instanceHome(root, instance),
+    home: home ?? instanceHome(root, instance),
     async stop() {
       const stopped = await runStation(
         root,
         ['stop', `--instance=${instance}`],
         {
           timeoutMs: 60_000,
+          env,
         },
       ).catch((error) => ({ code: -1, output: String(error) }));
       if (stopped.code !== 0) {
