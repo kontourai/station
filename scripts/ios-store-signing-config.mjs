@@ -15,9 +15,16 @@ const REQUIRED = [
   'template-output',
   'overlay-output',
 ];
-const STABLE_BUNDLE_ID = 'io.kontourai.station';
+const SUPPORTED_IOS_BUNDLE_IDS = new Set([
+  'io.kontourai.station',
+  'io.kontourai.station.beta',
+  'io.kontourai.station.nightly',
+]);
 
 export function parseOptions(args) {
+  args = args.map((argument) =>
+    argument === '--station' ? '--profile' : argument,
+  );
   const values = {};
   for (let index = 0; index < args.length; index += 2) {
     const key = args[index]?.slice(2);
@@ -39,7 +46,12 @@ export function parseOptions(args) {
   return values;
 }
 
-export function storeSigningTemplate({ template, profile, identity }) {
+export function storeSigningTemplate({
+  template,
+  profile,
+  identity,
+  bundleId = 'io.kontourai.station',
+}) {
   if (!identity || /[\r\n]/.test(identity))
     throw new Error(
       'Apple signing identity must be non-empty single-line text.',
@@ -51,8 +63,12 @@ export function storeSigningTemplate({ template, profile, identity }) {
     throw new Error(
       'Apple signing identity does not bind to the provisioning-profile team.',
     );
-  const marker = '      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station\n';
-  if (!template.includes(marker))
+  if (!SUPPORTED_IOS_BUNDLE_IDS.has(bundleId))
+    throw new Error(
+      'iOS App Store signing only supports reviewed Station bundle IDs.',
+    );
+  const marker = `      PRODUCT_BUNDLE_IDENTIFIER: ${bundleId}\n`;
+  if (template.split(marker).length !== 2)
     throw new Error(
       'iOS project template has no supported app signing marker.',
     );
@@ -71,9 +87,9 @@ export function writeIosStoreSigningConfig(
     write = writeFileSync,
   } = {},
 ) {
-  if (options.bundleId !== STABLE_BUNDLE_ID)
+  if (!SUPPORTED_IOS_BUNDLE_IDS.has(options.bundleId))
     throw new Error(
-      'iOS App Store signing only supports the Stable bundle ID.',
+      'iOS App Store signing only supports reviewed Station bundle IDs.',
     );
   const paths = [
     options.profile,
@@ -96,6 +112,7 @@ export function writeIosStoreSigningConfig(
       template: read(templatePath, 'utf8'),
       profile,
       identity: options.identity,
+      bundleId: options.bundleId,
     }),
     { mode: 0o600, flag: 'wx' },
   );

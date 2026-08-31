@@ -184,16 +184,17 @@
         "evidence": { "kind": "deploy-ledger", "selector": "nightly-android" }
       },
       "ios": {
-        "state": "gated",
-        "buildJob": null,
-        "testLane": "packaged iOS Simulator XCUITest",
-        "publicationTarget": "TestFlight Nightly listing not configured",
-        "updateAuthority": "TestFlight after separate Nightly App ID exists",
+        "state": "configured",
+        "buildJob": "nightly.yml#nightly-ios",
+        "iconSource": "src-desktop/icons/nightly/icon.png",
+        "testLane": "nightly exact-SHA gate plus signed IPA/profile/package checks",
+        "publicationTarget": "TestFlight for io.kontourai.station.nightly",
+        "updateAuthority": "TestFlight internal group",
         "rollbackSource": "previous processed TestFlight Nightly build",
         "evidence": {
           "kind": "not-verified",
-          "owner": "#844",
-          "reason": "Separate Nightly App ID, profile, icon, and TestFlight listing are absent."
+          "owner": "#1016",
+          "reason": "Provider prerequisites and a processed channel receipt are required before the first upload."
         }
       }
     },
@@ -264,16 +265,17 @@
         }
       },
       "ios": {
-        "state": "gated",
-        "buildJob": null,
-        "testLane": "simulator verification remains stable-only in release.yml",
-        "publicationTarget": "TestFlight Beta listing not configured",
-        "updateAuthority": "TestFlight after separate Beta App ID exists",
+        "state": "configured",
+        "buildJob": "release.yml#ios-device",
+        "iconSource": "src-desktop/icons/beta/icon.png",
+        "testLane": "tag full regression plus signed IPA/profile/package checks",
+        "publicationTarget": "TestFlight for io.kontourai.station.beta",
+        "updateAuthority": "TestFlight internal group",
         "rollbackSource": "previous processed TestFlight Beta build",
         "evidence": {
           "kind": "not-verified",
-          "owner": "#844",
-          "reason": "Separate Beta App ID, profile, icon, and TestFlight listing are absent."
+          "owner": "#1016",
+          "reason": "Provider prerequisites and a processed channel receipt are required before the first upload."
         }
       }
     },
@@ -346,6 +348,7 @@
       "ios": {
         "state": "configured",
         "buildJob": "release.yml#ios-simulator and release.yml#ios-device",
+        "iconSource": "src-desktop/icons/icon.png",
         "testLane": "packaged simulator XCUITest plus IPA profile/signature/package checks",
         "publicationTarget": "TestFlight for io.kontourai.station before App Store promotion",
         "updateAuthority": "TestFlight and App Store Connect",
