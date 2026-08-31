@@ -68,6 +68,17 @@ export interface DailyDriverShellOptions {
    * scenarios use the shared lineage-aware window.
    */
   conversationLineageWindow?: boolean;
+  /**
+   * ConversationIds that already have a durable session even though no turn
+   * was ever dispatched through `/api/orchestration/chat` — the 10k-turn
+   * transcript fixtures, seeded straight through their own `event-window`
+   * route. Without this, `/api/conversations/:id/open` (hit by the
+   * conversation-history picker for any row that isn't already a live tab,
+   * and by `ConversationOpenRevalidator` for a persisted one) has no way to
+   * distinguish that fixture from a conversation nothing was ever dispatched
+   * to, for which the real server has no session record at all.
+   */
+  preResolvedConversationIds?: readonly string[];
 }
 
 export interface DailyDriverShell {
@@ -120,6 +131,9 @@ export async function seedDailyDriverShell(
   const sessionIdsByConversation = new Map<string, string[]>();
   const terminalSessions = new Set<string>();
   const { agents, conversations } = options;
+  const preResolvedConversationIds = new Set(
+    options.preResolvedConversationIds ?? [],
+  );
 
   const agentRecords = agents.map((path) => ({
     slug: path.agentSlug,
@@ -394,13 +408,41 @@ export async function seedDailyDriverShell(
         return route.fulfill(
           json({ success: false, error: 'Conversation not found' }, 404),
         );
-      // A conversation the dispatch table never saw yet (for example a
-      // fixture seeded straight through its own `event-window` route, as the
-      // 10k-transcript scenarios do) is still its OWN first session — the
-      // same invariant the dispatch handler above uses when assigning a
-      // fresh conversationId as `sessionId` for the very first turn.
-      const currentSessionId =
-        sessionIdsByConversation.get(conversationId)?.at(-1) ?? conversationId;
+      const dispatchedSessionId = sessionIdsByConversation
+        .get(conversationId)
+        ?.at(-1);
+      // A conversation nothing has dispatched to yet has no session record
+      // on the real server either (the server's own resolver only reaches
+      // `resolved` after `readCurrent` finds one) — resolving it anyway
+      // fabricates a session the rest of the mock's state (notably
+      // `/sessions/read-model`) does not carry, which is exactly what left
+      // `claimsServerSession` stuck true against an `absent` read with no
+      // ordinary turn ever invalidating it. `preResolvedConversationIds`
+      // is the one deliberate exception: a fixture seeded straight through
+      // its own `event-window` route already has a durable session by
+      // construction, the same way the 10k-transcript fixtures do.
+      if (!dispatchedSessionId && !preResolvedConversationIds.has(conversationId))
+        return route.fulfill(
+          json({
+            success: true,
+            data: {
+              status: 'missing-session',
+              conversation: {
+                id: conversation.id,
+                title: conversation.title,
+                agentSlug: conversation.agentSlug,
+              },
+              transcript: { available: false, owner: 'runtime' },
+              canContinue: false,
+              answerability: { answerable: true },
+              recoveryActions: ['retry', 'start-new'],
+            },
+          }),
+        );
+      // The same invariant the dispatch handler above uses when assigning a
+      // fresh conversationId as `sessionId` for a conversation's very first
+      // turn — a `preResolvedConversationIds` fixture is its own session.
+      const currentSessionId = dispatchedSessionId ?? conversationId;
       return route.fulfill(
         json({
           success: true,

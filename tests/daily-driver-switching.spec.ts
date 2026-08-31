@@ -153,6 +153,19 @@ async function selectComposerModel(page: Page, optionName: RegExp) {
   await expect(picker).toBeHidden({ timeout: 5_000 });
 }
 
+/**
+ * `TurnActionsMenu.tsx` renders "Fork from here…" as a `menuitem` behind the
+ * per-turn "More answer actions" overflow trigger — there is no directly
+ * clickable button by this name (`MessageBubble.sessionLineageIdentity.
+ * test.tsx:179` asserts exactly that negative). Open the overflow first.
+ */
+async function forkFromHere(page: Page) {
+  await page
+    .getByRole('button', { name: 'More answer actions' })
+    .click();
+  await page.getByRole('menuitem', { name: 'Fork from here' }).click();
+}
+
 test.describe('daily-driver mid-conversation switching (station#3307)', () => {
   test('in-place model switch: the switched turn dispatches and reports the new model in one conversation', async ({
     page,
@@ -350,7 +363,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     });
     await expectSettled(page);
 
-    await page.getByRole('button', { name: 'Fork from here' }).click();
+    await forkFromHere(page);
     const dialog = page.getByRole('dialog', { name: 'Fork from here' });
     await expect(dialog).toContainText('New independent conversation');
     await expect(dialog).toContainText('Engine cursor');
@@ -465,7 +478,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       reply: 'Cross-engine answer.',
     });
     await expectSettled(page);
-    await page.getByRole('button', { name: 'Fork from here' }).click();
+    await forkFromHere(page);
     const dialog = page.getByRole('dialog', { name: 'Fork from here' });
     await dialog.locator('button[data-agent-slug="codex"]').click();
     await expect
