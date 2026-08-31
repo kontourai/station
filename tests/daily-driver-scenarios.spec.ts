@@ -395,7 +395,15 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
         },
       ];
       await page.route(
-        `**/api/orchestration/sessions/${settleThread}/event-window**`,
+        // `useActiveChatTranscript` reads a resumed chat's history through
+        // the CONVERSATION-scoped window (`useSessionEventWindow` is
+        // deliberately "conversation-shaped" per its own doc comment) — the
+        // session-scoped route this used to mock is never queried once the
+        // conversation route resolves (station-worktrees/audit-dd found it
+        // reads `sessionIds=[settleThread]` and answers 200 with no events,
+        // so the legacy session-route fallback in `readConversationWindow`
+        // never triggers either).
+        `**/api/orchestration/conversations/${settleThread}/event-window**`,
         (route) =>
           route.fulfill({
             status: 200,
@@ -404,6 +412,10 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
               success: true,
               data: {
                 protocolVersion: 1,
+                conversationId: settleThread,
+                currentSessionId: settleThread,
+                handoffs: [],
+                contextBoundaries: [],
                 session: {
                   threadId: settleThread,
                   provider: path.provider,
@@ -479,7 +491,10 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
         },
       ];
       await page.route(
-        `**/api/orchestration/sessions/${failureThread}/event-window**`,
+        // See the settle-thread route above: the transcript reads a resumed
+        // or cold-opened chat's history through the CONVERSATION-scoped
+        // window, never the session-scoped one.
+        `**/api/orchestration/conversations/${failureThread}/event-window**`,
         (route) =>
           route.fulfill({
             status: 200,
@@ -488,6 +503,10 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
               success: true,
               data: {
                 protocolVersion: 1,
+                conversationId: failureThread,
+                currentSessionId: failureThread,
+                handoffs: [],
+                contextBoundaries: [],
                 session: {
                   threadId: failureThread,
                   provider: path.provider,
@@ -738,11 +757,17 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
         conversations: SHELL_CONVERSATIONS,
       });
       await page.route(
-        `**/api/orchestration/sessions/${threadId}/event-window**`,
+        // `useActiveChatTranscript` reads history through the CONVERSATION-
+        // scoped window exclusively; the shared shell's own conversation
+        // route (`installMockOrchestrationConversationEventWindow`) already
+        // answers 200 with no events for a known conversationId, so a
+        // session-scoped route here would never be reached.
+        `**/api/orchestration/conversations/${threadId}/event-window**`,
         createLongSessionEventWindowHandler({
           threadId,
           provider: path.provider,
           availableTurns: () => turns,
+          conversationId: threadId,
         }),
       );
       // Every sample restores the 10k conversation INTO A RUNNING APP, from a
