@@ -1432,6 +1432,56 @@ function readHostedProbeAuthority(
 }
 
 /**
+ * Liveness for a record this process could not interpret, derived ONLY from
+ * raw pids and ports. Nothing here may route through `normalizeHomePath`:
+ * the whole point is to judge a record whose recorded home the current
+ * admission guard rejects, which is exactly the record that cannot be
+ * normalized. Liveness never needed the home in the first place --
+ * `isInstanceRunning` reads pids and ports too -- so admitting the home
+ * before establishing death was gratuitous ordering.
+ *
+ * Fails CLOSED: anything that leaves death unproven returns `false`, so an
+ * ambiguous or concurrently-rewritten record is never reclaimed.
+ */
+function unreadableStateRecordIsDead(path: string): boolean {
+  try {
+    const parsed = JSON.parse(
+      readFileSync(path, 'utf-8'),
+    ) as Partial<InstanceStateRecord>;
+    const serverPort = parsed.serverPort ?? DEFAULT_SERVER_PORT;
+    return !(
+      isProcessAlive(parsed.serverPid ?? null) ||
+      isProcessAlive(parsed.uiPid ?? null) ||
+      findListeningPidsForPorts([
+        serverPort,
+        serverPort + 1,
+        serverPort + 2,
+        parsed.consentPort ?? serverPort + 3,
+        parsed.uiPort ?? DEFAULT_UI_PORT,
+      ]).length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reclaims a provably dead record that `readInstanceStateFile` refused. Takes
+ * the same mutation lock as `removeStateRecord` and re-proves death under it,
+ * so a record that comes back to life between the first check and the removal
+ * is left alone.
+ */
+function discardUnreadableStateRecord(path: string): void {
+  const release = acquireFileMutationLock(`${path}.mutation`);
+  try {
+    if (!unreadableStateRecordIsDead(path)) return;
+    rmSync(path, { force: true });
+  } finally {
+    release();
+  }
+}
+
+/**
  * Lists live instances, reclaiming the state records of dead ones.
  *
  * `reclaimStale: false` makes this a pure read (station#2745). Reclaiming a
@@ -1454,7 +1504,39 @@ function listRunningInstances(
     for (const entry of readdirSync(INSTANCE_STATE_DIR)) {
       if (!entry.endsWith('.json')) continue;
       const path = join(INSTANCE_STATE_DIR, entry);
-      const record = readInstanceStateFile(path);
+      let record: InstanceStateRecord;
+      try {
+        record = readInstanceStateFile(path);
+      } catch (error) {
+        // A record written by an older release can pin a path that a guard
+        // has since tightened -- `baseDir` set to the shared root is the
+        // known case. Reading it threw BEFORE the liveness check below, so
+        // the reclaim that exists to clear exactly this record could never
+        // run, and one dead file wedged `start`, `stop`, `status`, and
+        // `service run` at once with no self-recovery. Prove death from the
+        // raw pids and ports instead, then reclaim it. A live or unprovable
+        // owner still surfaces the error rather than being deleted or
+        // silently skipped.
+        //
+        // Scoped deliberately to the home-admission rejection. Every other
+        // way this read fails -- permissive or symlinked state, a
+        // non-canonical hosted probe authority, unparseable JSON -- is a
+        // fail-closed refusal about the record's own integrity, and
+        // reclaiming those would convert a deliberate refusal into a silent
+        // delete.
+        const admissionRejected =
+          (error as NodeJS.ErrnoException | undefined)?.code ===
+          'STATION_RUNTIME_HOME_REJECTED';
+        if (
+          admissionRejected &&
+          reclaimStale &&
+          unreadableStateRecordIsDead(path)
+        ) {
+          discardUnreadableStateRecord(path);
+          continue;
+        }
+        throw error;
+      }
       if (!isInstanceRunning(record)) {
         if (reclaimStale) removeStateRecord(record);
         continue;
