@@ -805,7 +805,11 @@ test.describe('Task-first Home (#332, mocked)', () => {
         const path = new URL(request.url()).pathname;
         if (path.endsWith('/capability'))
           return route.fulfill(
-            rawJson({ state: 'supported', version: 1, maxConcurrentUploads: 3 }),
+            rawJson({
+              state: 'supported',
+              version: 1,
+              maxConcurrentUploads: 3,
+            }),
           );
         if (path.endsWith('/prepare')) {
           prepared = request.postDataJSON() as Record<string, unknown>;
