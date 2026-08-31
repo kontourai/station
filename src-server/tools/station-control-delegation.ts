@@ -23,8 +23,8 @@ import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
   type CapabilityDeliveryCapability,
   type CapabilityUndeliveredReason,
+  type EngineId,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
-  type ProviderKind,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SESSION_VISIBILITY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
@@ -3442,7 +3442,7 @@ export async function executeExecutionTargetMessage(
     resolveConversationSession: async (
       _access: EnvironmentAccess,
       conversationId: string,
-      requested: { provider: ProviderKind; connectionId?: string },
+      requested: { provider: EngineId; connectionId?: string },
     ) => {
       // The runtime service always owns this seam. Keep explicitly scoped
       // lightweight compatibility doubles (and an older remote Station

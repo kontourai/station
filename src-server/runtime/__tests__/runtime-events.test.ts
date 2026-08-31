@@ -1,17 +1,17 @@
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test } from 'vitest';
 
 describe('CanonicalRuntimeEvent', () => {
   const base = {
     eventId: 'evt_123',
-    provider: 'claude' as ProviderKind,
+    provider: 'claude' as EngineId,
     threadId: 'thread_123',
     createdAt: '2026-03-28T12:00:00.000Z',
   };
 
   test('supports the shared provider kinds', () => {
-    const providers: ProviderKind[] = ['bedrock', 'claude', 'codex'];
+    const providers: EngineId[] = ['bedrock', 'claude', 'codex'];
     expect(providers).toEqual(['bedrock', 'claude', 'codex']);
   });
 

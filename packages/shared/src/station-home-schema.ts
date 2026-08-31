@@ -23,8 +23,16 @@ import { fsyncDirectorySync } from './fs-windows-compat.js';
 import { acquireFileMutationLock } from './lifecycle-events.js';
 import { admitStationRuntimeHome } from './runtime-path-resolver.js';
 
-export const STATION_HOME_SCHEMA_VERSION = 1;
+export const STATION_HOME_SCHEMA_VERSION = 2;
 export const STATION_HOME_SCHEMA_FILE = '.station-home-schema.json';
+
+/**
+ * Schema v2 is the clean identity break for #938. A v1 marker can coexist
+ * with independently persisted synthetic engine ids in app config, Agent
+ * records, or the Agent registry, so it cannot safely enter the migration
+ * path or be treated as current merely because one of those files is absent.
+ */
+const MINIMUM_MIGRATABLE_STATION_HOME_SCHEMA_VERSION = 2;
 
 /**
  * install.sh claims a portable install's data root before any Station process
@@ -489,9 +497,11 @@ export function stationHomeSchemaNeedsReset(requestedHomeDir: string): boolean {
     const homeDir = canonicalStationHome(requestedHomeDir);
     const markerPath = join(homeDir, STATION_HOME_SCHEMA_FILE);
     if (existsSync(markerPath)) {
-      // A parseable version is now routed by the authoritative gate to a
-      // migration or an explicit refusal, never to automatic reset.
-      return markerVersion(homeDir, markerPath, {}) === null;
+      const version = markerVersion(homeDir, markerPath, {});
+      return (
+        version === null ||
+        version < MINIMUM_MIGRATABLE_STATION_HOME_SCHEMA_VERSION
+      );
     }
     return !isBootstrapScaffolding(homeDir);
   } catch (error) {
@@ -592,6 +602,8 @@ export function ensureStationHomeSchemaSync(
       const version = markerVersion(homeDir, markerPath, hooks);
       if (version === STATION_HOME_SCHEMA_VERSION) return;
       if (version === null) reset(homeDir);
+      if (version < MINIMUM_MIGRATABLE_STATION_HOME_SCHEMA_VERSION)
+        reset(homeDir);
       if (version > STATION_HOME_SCHEMA_VERSION)
         throw new StationHomeSchemaDowngradeError(
           version,

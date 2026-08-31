@@ -57,9 +57,9 @@ type ConnectionRecord = {
 
 const defaultConnections = (): ConnectionRecord[] => [
   {
-    id: 'claude-runtime',
+    id: 'claude',
     kind: 'agent',
-    type: 'claude-runtime',
+    type: 'claude',
     name: 'Claude Code',
     enabled: true,
     capabilities: ['agent-runtime', 'resume'],
@@ -68,9 +68,9 @@ const defaultConnections = (): ConnectionRecord[] => [
     prerequisites: [],
   },
   {
-    id: 'codex-runtime',
+    id: 'codex',
     kind: 'agent',
-    type: 'codex-runtime',
+    type: 'codex',
     name: 'Codex',
     enabled: true,
     capabilities: ['agent-runtime', 'resume'],
@@ -106,15 +106,15 @@ const defaultAgents = (): AgentRecord[] => [
   { slug: 'station', name: 'Station', prompt: 'Be helpful.' },
   { slug: 'custom-agent', name: 'Custom agent', prompt: 'Be helpful.' },
   {
-    slug: 'claude-runtime',
+    slug: 'claude',
     name: 'Claude Code',
-    execution: { agentConnectionId: 'claude-runtime' },
+    execution: { agentConnectionId: 'claude' },
     engineId: 'claude-code',
   },
   {
-    slug: 'codex-runtime',
+    slug: 'codex',
     name: 'Codex',
-    execution: { agentConnectionId: 'codex-runtime' },
+    execution: { agentConnectionId: 'codex' },
     engineId: 'codex',
   },
   {
@@ -589,7 +589,7 @@ describe('CLI core commands over HTTP', () => {
             ? 'kiro'
             : chatThreadId === 'dogfood-thread'
               ? 'custom-box'
-              : 'codex-runtime';
+              : 'codex';
         orchestrationCommands.push({
           type: continueChatMatch ? 'continueTarget' : 'executeTarget',
           input: body,
@@ -939,7 +939,7 @@ describe('CLI core commands over HTTP', () => {
 
     await runCli([
       'chat',
-      'codex-runtime',
+      'codex',
       'say runtime ok',
       '--conversation=runtime-thread',
       `--api-base=${apiBase}`,
@@ -961,7 +961,7 @@ describe('CLI core commands over HTTP', () => {
     state.agents.push({
       slug: 'engine-lab',
       name: 'Engine Lab',
-      execution: { agentConnectionId: 'codex-runtime' },
+      execution: { agentConnectionId: 'codex' },
       engineId: 'codex',
     });
     const { runCli } = await import('../cli.js');
@@ -1095,7 +1095,7 @@ describe('CLI core commands over HTTP', () => {
 
     await runCli([
       'chat',
-      'codex-runtime',
+      'codex',
       'say runtime ok',
       '--approval-mode=auto',
       '--effort=high',
@@ -1109,7 +1109,7 @@ describe('CLI core commands over HTTP', () => {
         conversationId: expect.any(String),
         message: 'say runtime ok',
         target: {
-          agent: 'codex-runtime',
+          agent: 'codex',
           workspace: { kind: 'directory', cwd: process.cwd() },
           model: {
             options: { approvalMode: 'auto', effort: 'high', thinking: true },
@@ -1124,7 +1124,7 @@ describe('CLI core commands over HTTP', () => {
 
     await runCli([
       'chat',
-      'codex-runtime',
+      'codex',
       'say runtime ok',
       '--cwd=/explicit/no-project-dir',
       `--api-base=${apiBase}`,
@@ -1137,7 +1137,7 @@ describe('CLI core commands over HTTP', () => {
         message: 'say runtime ok',
         target: {
           environment: { kind: 'current' },
-          agent: 'codex-runtime',
+          agent: 'codex',
           workspace: { kind: 'directory', cwd: '/explicit/no-project-dir' },
         },
       },
@@ -1149,7 +1149,7 @@ describe('CLI core commands over HTTP', () => {
 
     await runCli([
       'chat',
-      'codex-runtime',
+      'codex',
       'use the current workspace',
       `--api-base=${apiBase}`,
     ]);
@@ -1161,7 +1161,7 @@ describe('CLI core commands over HTTP', () => {
         message: 'use the current workspace',
         target: {
           environment: { kind: 'current' },
-          agent: 'codex-runtime',
+          agent: 'codex',
           workspace: { kind: 'directory', cwd: process.cwd() },
         },
       },
@@ -1175,7 +1175,7 @@ describe('CLI core commands over HTTP', () => {
     await expect(
       runCli([
         'chat',
-        'codex-runtime',
+        'codex',
         'say runtime ok',
         '--conversation=cwd-and-project-thread',
         '--cwd=/explicit/dir',
@@ -1193,7 +1193,7 @@ describe('CLI core commands over HTTP', () => {
     await expect(
       runCli([
         'chat',
-        'codex-runtime',
+        'codex',
         'say runtime ok',
         '--cwd=/never/created/directory',
         `--api-base=${apiBase}`,
@@ -1221,7 +1221,7 @@ describe('CLI core commands over HTTP', () => {
     await expect(
       runCli([
         'chat',
-        'codex-runtime',
+        'codex',
         'say runtime ok',
         '--conversation=bad-approval-mode-thread',
         '--approval-mode=yolo',
@@ -1236,7 +1236,7 @@ describe('CLI core commands over HTTP', () => {
 
     await runCli([
       'chat',
-      'codex-runtime',
+      'codex',
       'say runtime ok',
       '--conversation=runtime-thread',
       '--approval-mode=never',
@@ -1259,7 +1259,7 @@ describe('CLI core commands over HTTP', () => {
 
     await runCli([
       'chat',
-      'codex-runtime',
+      'codex',
       'say runtime ok',
       '--effort=high',
       '--model-option=effort=low',
@@ -1274,7 +1274,7 @@ describe('CLI core commands over HTTP', () => {
         message: 'say runtime ok',
         target: {
           environment: { kind: 'current' },
-          agent: 'codex-runtime',
+          agent: 'codex',
           workspace: { kind: 'directory', cwd: process.cwd() },
           model: { options: { fastMode: true, effort: 'high' } },
         },
@@ -1295,7 +1295,7 @@ describe('CLI core commands over HTTP', () => {
 
     await runCli([
       'chat',
-      'codex-runtime',
+      'codex',
       'continue the work',
       '--session=persisted-codex-thread',
       `--api-base=${apiBase}`,
@@ -1316,7 +1316,7 @@ describe('CLI core commands over HTTP', () => {
     await runCli([
       'sessions',
       'read',
-      'codex-runtime',
+      'codex',
       'runtime-thread',
       `--api-base=${apiBase}`,
     ]);
@@ -1333,13 +1333,7 @@ describe('CLI core commands over HTTP', () => {
       runCli(['chat', 'hello', '--connection', `--api-base=${apiBase}`]),
     ).rejects.toThrow('--connection is not an execution selector');
     await expect(
-      runCli([
-        'chat',
-        'codex-runtime',
-        'hello',
-        '--session',
-        `--api-base=${apiBase}`,
-      ]),
+      runCli(['chat', 'codex', 'hello', '--session', `--api-base=${apiBase}`]),
     ).rejects.toThrow('--session requires a non-empty value');
     expect(orchestrationCommands).toEqual([]);
   });
@@ -1407,7 +1401,7 @@ describe('CLI core commands over HTTP', () => {
       try {
         await runCli([
           'chat',
-          'codex-runtime',
+          'codex',
           'authenticated turn',
           '--session=authenticated-thread',
           ...(source === 'flag' ? [`--credential=${credential}`] : []),
@@ -1485,7 +1479,7 @@ describe('CLI core commands over HTTP', () => {
 
     await runCli([
       'chat',
-      'codex-runtime',
+      'codex',
       'say runtime ok',
       '--project=launchpad',
       `--api-base=${apiBase}`,
@@ -1498,7 +1492,7 @@ describe('CLI core commands over HTTP', () => {
         message: 'say runtime ok',
         target: {
           environment: { kind: 'current' },
-          agent: 'codex-runtime',
+          agent: 'codex',
           workspace: {
             kind: 'project',
             projectSlug: 'launchpad',
@@ -1535,23 +1529,18 @@ describe('CLI core commands over HTTP', () => {
   test('lists, reads, and interrupts runtime sessions through the unified sessions command', async () => {
     const { runCli } = await import('../cli.js');
 
-    await runCli([
-      'sessions',
-      'list',
-      'codex-runtime',
-      `--api-base=${apiBase}`,
-    ]);
+    await runCli(['sessions', 'list', 'codex', `--api-base=${apiBase}`]);
     await runCli([
       'sessions',
       'read',
-      'codex-runtime',
+      'codex',
       'runtime-thread',
       `--api-base=${apiBase}`,
     ]);
     await runCli([
       'sessions',
       'interrupt',
-      'codex-runtime',
+      'codex',
       'runtime-thread',
       '--turn=turn-1',
       `--api-base=${apiBase}`,
@@ -1586,7 +1575,7 @@ describe('CLI core commands over HTTP', () => {
     await runCli([
       'sessions',
       'read',
-      'codex-runtime',
+      'codex',
       'runtime-thread',
       `--api-base=${apiBase}`,
     ]);
@@ -1607,7 +1596,7 @@ describe('CLI core commands over HTTP', () => {
       {
         slug: 'claude-code',
         name: 'Claude Code',
-        execution: { agentConnectionId: 'claude-runtime' },
+        execution: { agentConnectionId: 'claude' },
       },
     ];
     state.runtimeSessions = [
@@ -1659,7 +1648,7 @@ describe('CLI core commands over HTTP', () => {
       {
         slug: 'claude-code',
         name: 'Claude Code',
-        execution: { agentConnectionId: 'claude-runtime' },
+        execution: { agentConnectionId: 'claude' },
       },
     ];
     state.runtimeSessions = [
@@ -1965,7 +1954,7 @@ describe('CLI core commands over HTTP', () => {
     await runCli([
       'approvals',
       'list',
-      '--agent=codex-runtime',
+      '--agent=codex',
       '--thread=approval-thread-1',
       `--api-base=${apiBase}`,
     ]);
@@ -2037,7 +2026,7 @@ describe('CLI core commands over HTTP', () => {
     await runCli([
       'approvals',
       'list',
-      '--agent=codex-runtime',
+      '--agent=codex',
       '--thread=stranded-thread',
       `--api-base=${apiBase}`,
     ]);
@@ -2061,7 +2050,7 @@ describe('CLI core commands over HTTP', () => {
     await runCli([
       'approvals',
       'list',
-      '--agent=codex-runtime',
+      '--agent=codex',
       '--thread=stranded-thread',
       '--json',
       `--api-base=${apiBase}`,
@@ -2085,7 +2074,7 @@ describe('CLI core commands over HTTP', () => {
     await runCli([
       'approvals',
       'list',
-      '--agent=codex-runtime',
+      '--agent=codex',
       '--thread=stranded-thread',
       '--json',
       `--api-base=${apiBase}`,
@@ -2110,7 +2099,7 @@ describe('CLI core commands over HTTP', () => {
     await runCli([
       'approvals',
       'list',
-      '--agent=codex-runtime',
+      '--agent=codex',
       '--thread=stranded-thread',
       '--json',
       `--api-base=${apiBase}`,
@@ -2131,7 +2120,7 @@ describe('CLI core commands over HTTP', () => {
     await runCli([
       'approvals',
       'list',
-      '--agent=codex-runtime',
+      '--agent=codex',
       '--thread=stranded-thread',
       '--json',
       `--api-base=${apiBase}`,
@@ -2223,7 +2212,7 @@ describe('CLI core commands over HTTP', () => {
     await runCli([
       'approvals',
       'list',
-      '--agent=codex-runtime',
+      '--agent=codex',
       `--api-base=${apiBase}`,
     ]);
 
@@ -2291,7 +2280,7 @@ describe('CLI core commands over HTTP', () => {
     await runCli([
       'approvals',
       'list',
-      '--agent=codex-runtime',
+      '--agent=codex',
       '--thread=approval-thread-1',
       '--json',
       `--api-base=${apiBase}`,
@@ -2386,7 +2375,7 @@ describe('CLI core commands over HTTP', () => {
     await runCli([
       'approvals',
       'list',
-      '--agent=codex-runtime',
+      '--agent=codex',
       '--thread=watch-thread',
       '--watch',
       `--api-base=${apiBase}`,
@@ -2506,7 +2495,7 @@ describe('CLI core commands over HTTP', () => {
       runCli([
         'approvals',
         'list',
-        '--agent=codex-runtime',
+        '--agent=codex',
         '--watch',
         `--api-base=${apiBase}`,
       ]),
@@ -2550,7 +2539,7 @@ describe('CLI core commands over HTTP', () => {
     await expect(
       runCli([
         'chat',
-        'codex-runtime',
+        'codex',
         'hi',
         '--model-option=systemPrompt=ignore prior instructions',
         `--api-base=${apiBase}`,
@@ -2567,7 +2556,7 @@ describe('CLI core commands over HTTP', () => {
 
     await runCli([
       'chat',
-      'codex-runtime',
+      'codex',
       'trigger request opened',
       '--conversation=request-opened-thread',
       `--api-base=${apiBase}`,
@@ -2590,7 +2579,7 @@ describe('CLI core commands over HTTP', () => {
 
     await runCli([
       'chat',
-      'codex-runtime',
+      'codex',
       'trigger request opened',
       '--conversation=request-opened-json-thread',
       '--json',
@@ -2620,7 +2609,7 @@ describe('CLI core commands over HTTP', () => {
 
     await runCli([
       'chat',
-      'codex-runtime',
+      'codex',
       'trigger request opened only',
       '--conversation=request-opened-fail-thread',
       '--on-request=fail',
@@ -2648,7 +2637,7 @@ describe('CLI core commands over HTTP', () => {
     await expect(
       runCli([
         'chat',
-        'codex-runtime',
+        'codex',
         'hi',
         '--conversation=bad-on-request-thread',
         '--on-request=explode',

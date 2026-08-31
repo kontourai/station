@@ -128,7 +128,7 @@ with two explicit, structurally identical exceptions, both off by default and ne
 > agent app still owns behavior, permissioning, and which passthrough tools it actually
 > calls — Station is not executing inside its loop.
 >
-> **Skills passthrough (exception 2):** a `claude-runtime` connection can explicitly opt
+> **Skills passthrough (exception 2):** a `claude` connection can explicitly opt
 > in to a list of Station skill ids (`AgentConnectionSettings.config.provideSkills`, off
 > by default — never silent). Station materializes the opted-in skills into
 > `<cwd>/.claude/skills/<skill-id>/` so Claude Code's native skill loader discovers them

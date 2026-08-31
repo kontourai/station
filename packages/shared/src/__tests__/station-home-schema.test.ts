@@ -314,6 +314,61 @@ describe('home schema migrations (station#1935)', () => {
     ).toHaveLength(0);
   });
 
+  it('rejects a v1 app config with synthetic engine connection keys even when the registry is absent', () => {
+    const home = homeAtVersion(1);
+    const appConfigPath = join(home, 'config', 'app.json');
+    writeFileSync(
+      appConfigPath,
+      JSON.stringify({ agentConnections: { 'claude-runtime': {} } }),
+    );
+
+    expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+    expect(() =>
+      ensureStationHomeSchemaSync(home, { acquireMutationLock: testLock }),
+    ).toThrow('STATION_HOME_RESET_REQUIRED');
+    expect(JSON.parse(readFileSync(appConfigPath, 'utf8'))).toEqual({
+      agentConnections: { 'claude-runtime': {} },
+    });
+  });
+
+  it('rejects a v1 app config with a synthetic built-in engine connection id even when the registry is absent', () => {
+    const home = homeAtVersion(1);
+    const appConfigPath = join(home, 'config', 'app.json');
+    writeFileSync(
+      appConfigPath,
+      JSON.stringify({ builtinAgentEngineConnectionId: 'codex-runtime' }),
+    );
+
+    expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+    expect(() =>
+      ensureStationHomeSchemaSync(home, { acquireMutationLock: testLock }),
+    ).toThrow('STATION_HOME_RESET_REQUIRED');
+    expect(JSON.parse(readFileSync(appConfigPath, 'utf8'))).toEqual({
+      builtinAgentEngineConnectionId: 'codex-runtime',
+    });
+  });
+
+  it('rejects a v1 Agent record with a synthetic engine connection id even when the registry is absent', () => {
+    const home = homeAtVersion(1);
+    const agentPath = join(home, 'agents', 'legacy', 'agent.json');
+    mkdirSync(dirname(agentPath), { recursive: true });
+    writeFileSync(
+      agentPath,
+      JSON.stringify({
+        name: 'Legacy',
+        execution: { agentConnectionId: 'claude-runtime' },
+      }),
+    );
+
+    expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+    expect(() =>
+      ensureStationHomeSchemaSync(home, { acquireMutationLock: testLock }),
+    ).toThrow('STATION_HOME_RESET_REQUIRED');
+    expect(JSON.parse(readFileSync(agentPath, 'utf8'))).toMatchObject({
+      execution: { agentConnectionId: 'claude-runtime' },
+    });
+  });
+
   it('refuses a future-version home instead of migrating or resetting it', () => {
     const home = homeAtVersion(STATION_HOME_SCHEMA_VERSION + 1);
     const dataPath = join(home, 'config', 'preserved.txt');

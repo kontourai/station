@@ -72,7 +72,7 @@ describe('station-agent-smoke', () => {
           SCRIPT,
           '--confirm-billable-one-turn',
           `--origin=http://127.0.0.1:${address.port}`,
-          '--connection=codex-runtime',
+          '--connection=codex',
           '--timeout-ms=5000',
         ],
         { env: { ...process.env, STATION_CREDENTIAL: credential } },
@@ -84,7 +84,7 @@ describe('station-agent-smoke', () => {
         turnLimitPerConnection: 1,
         receipts: [
           {
-            connectionId: 'codex-runtime',
+            connectionId: 'codex',
             success: true,
             level: 'smoke-passed',
             smokeStatus: 'passed',
@@ -99,7 +99,7 @@ describe('station-agent-smoke', () => {
       });
       expect(requests[1]).toMatchObject({
         method: 'POST',
-        url: '/api/connections/codex-runtime/smoke',
+        url: '/api/connections/codex/smoke',
         authorization: `Bearer ${credential}`,
       });
       expect(JSON.parse(requests[1].body)).toEqual({

@@ -48,7 +48,7 @@ describe('agentEngineDescriptor', () => {
           name: 'My Claude Agent',
           engineId: engineId('claude-code'),
           engineDisplayName: 'Claude Code',
-          execution: { agentConnectionId: 'claude-runtime' },
+          execution: { agentConnectionId: 'claude' },
         }),
       ).toEqual({ name: 'Claude Code' });
     });
@@ -60,7 +60,7 @@ describe('agentEngineDescriptor', () => {
           name: 'My Codex Agent',
           engineId: engineId('codex'),
           engineDisplayName: 'Codex',
-          execution: { agentConnectionId: 'codex-runtime' },
+          execution: { agentConnectionId: 'codex' },
         }),
       ).toEqual({ name: 'Codex' });
     });

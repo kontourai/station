@@ -1,6 +1,6 @@
 import type {
   EngineConnectionId,
-  EngineRuntimeId,
+  EngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import type { DeploymentCapabilities } from '../../capabilities/deployment-capabilities.js';
@@ -73,19 +73,11 @@ export interface SystemStatusDeps {
    */
   listEngineConnectionStates?: () => Promise<
     Array<{
-      runtimeId: EngineRuntimeId;
+      engineId: EngineId;
       engineConnectionId: EngineConnectionId;
       enabled: boolean;
     }>
   >;
-  /**
-   * Resolves an adapter-private runtime selector to the public engine
-   * connection identity from the authoritative agent registry. An absent
-   * binding intentionally produces no deep-link target.
-   */
-  resolveEngineConnectionId?: (
-    runtimeConnectionId: EngineRuntimeId,
-  ) => Promise<EngineConnectionId | undefined>;
   eventBus?: {
     emit: (event: ServerEventName, data?: Record<string, unknown>) => void;
   };

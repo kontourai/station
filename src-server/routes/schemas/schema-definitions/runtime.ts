@@ -1,7 +1,4 @@
-import {
-  parseEngineConnectionId,
-  parseEngineRuntimeId,
-} from '@kontourai/station-contracts/agent-identity';
+import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { validateChatInputFileParts } from '@kontourai/station-contracts/chat-attachment';
 import {
   isSafeToolServerCredentialKey,
@@ -20,15 +17,10 @@ import { chatInputLimitRefusals } from '../../../telemetry/metrics.js';
 export const acpConnectionSchema = z.object({
   id: z
     .string()
-    .refine(
-      (value) =>
-        parseEngineConnectionId(value) !== undefined &&
-        parseEngineRuntimeId(value) !== undefined,
-      {
-        message:
-          'must be a clean engine identity using lowercase letters, digits, and hyphens',
-      },
-    ),
+    .refine((value) => parseEngineConnectionId(value) !== undefined, {
+      message:
+        'must be a clean engine identity using lowercase letters, digits, and hyphens',
+    }),
   command: z.string().min(1),
   name: z.string().optional(),
   args: z.array(z.string()).optional(),

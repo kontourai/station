@@ -2,7 +2,6 @@ import { describe, expect, test } from 'vitest';
 import {
   connectionIdForAdapter,
   engineIdForAdapter,
-  runtimeIdForProvider,
 } from '../../../providers/adapter-identity.js';
 import {
   acpProviderRoutingStatus,
@@ -33,28 +32,27 @@ describe('connection service pure helpers', () => {
     expect(
       engineIdForAdapter({
         provider: 'codex',
-        metadata: { runtimeId: 'codex-runtime' },
+        metadata: { engineId: 'codex' },
       } as any),
-    ).toBe('codex-runtime');
+    ).toBe('codex');
   });
 
-  test('preserves runtime naming and safe claude/codex configuration sanitization', () => {
-    expect(runtimeIdForProvider('codex')).toBe('codex-runtime');
+  test('preserves safe claude/codex configuration sanitization', () => {
     expect(
-      sanitizeRuntimeConfig('claude-runtime', {
+      sanitizeRuntimeConfig('claude', {
         provideSkills: ['safe', '..', 'safe'],
         useAppHome: true,
       }),
     ).toEqual({ provideSkills: ['safe'], useAppHome: true });
     expect(
-      sanitizeRuntimeConfig('codex-runtime', {
+      sanitizeRuntimeConfig('codex', {
         provideSkills: ['ignored'],
         useAppHome: 'true',
       }),
     ).toEqual({ useAppHome: false });
     expect(
       mergeRuntimeConfig(
-        'codex-runtime',
+        'codex',
         { defaultModel: 'base' } as any,
         { config: { defaultModel: 'override' } } as any,
       ),
@@ -67,15 +65,14 @@ describe('connection service pure helpers', () => {
         provider: 'claude',
         metadata: {
           connectionId: 'claude',
-          engineId: 'claude-code',
-          runtimeId: 'claude-runtime',
+          engineId: 'claude',
         },
       } as any),
     ).toBe('claude');
     expect(
       connectionIdForAdapter({
         provider: 'muse',
-        metadata: { engineId: 'plugin-engine', runtimeId: 'plugin-runtime' },
+        metadata: { engineId: 'plugin-engine' },
       } as any),
     ).toBe('plugin-engine');
   });

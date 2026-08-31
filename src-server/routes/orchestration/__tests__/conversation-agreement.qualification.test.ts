@@ -259,7 +259,7 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
         getConnection: async () => ({
           id: engineConnectionId('claude'),
           name: 'Claude Code',
-          type: 'claude-runtime',
+          type: 'claude',
           kind: 'agent',
           enabled: true,
           status: 'ready',
@@ -616,7 +616,7 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
           getConnection: async () => ({
             id: engineConnectionId('claude'),
             name: 'Custom engine',
-            type: 'claude-runtime',
+            type: 'claude',
             kind: 'agent',
             enabled: true,
             status: 'ready',

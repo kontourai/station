@@ -120,7 +120,7 @@ async function seedRoutes(page: Page, initial: Environment[] = []) {
               lastCheckedAt: null,
             },
             {
-              id: 'codex-runtime',
+              id: 'codex',
               kind: 'agent',
               type: 'codex',
               name: 'Codex Runtime',
