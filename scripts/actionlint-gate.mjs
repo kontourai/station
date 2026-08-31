@@ -334,6 +334,9 @@ fi
 node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-policy.mjs" --input="$CODEQL_NORMALIZED_SARIF" --baseline="$BASE_POLICY_DIRECTORY/scripts/codeql-error-baseline.json" --stale-baseline="$STALE_BASELINE_MODE"`;
 const FORK_CHECKOUT_REPOSITORY = `\${{ github.event.pull_request.head.repo.full_name }}`;
 const FORK_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}`;
+const FULL_REGRESSION_WORKFLOW = '.github/workflows/full-regression.yml';
+const FULL_REGRESSION_JOB_ID = 'full-regression';
+const FULL_REGRESSION_COMPLETION_STEP = 'Run canonical completion gate';
 const ACTIONLINT_ARCHIVE = 'actionlint_1.7.12_linux_amd64.tar.gz';
 const ACTIONLINT_SHA256 =
   '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8';
@@ -859,6 +862,7 @@ export function persistentRunnerPolicyFindings(workflows) {
     }
     findings.push(...candidatePullRequestWorkflowFindings(file, document));
     findings.push(...primaryCiRouterFindings(file, document));
+    findings.push(...fullRegressionActionlintFindings(file, document));
     findings.push(...baseControlledPrWorkflowFindings(file, document));
     findings.push(...mergeQueueWorkflowFindings(file, document));
   }
@@ -1412,6 +1416,30 @@ function candidatePullRequestWorkflowFindings(file, document) {
       jobId: 'workflow',
       message:
         'candidate-controlled pull_request workflows are prohibited; use the reviewed pull_request_target topology',
+    },
+  ];
+}
+
+/**
+ * `full:regression` runs `gate:workflows`, so the reusable completion workflow
+ * must provision actionlint or the gate exits 2 on the binary being absent and
+ * the lane fails before it validates anything. That is what failed the v0.1.6
+ * tag. Pinning the copy here is what keeps this file's provisioning identical
+ * to ci.yml's: without it the two drift on the next actionlint bump, and the
+ * only thing tying them together is a comment.
+ */
+function fullRegressionActionlintFindings(file, document) {
+  if (file !== FULL_REGRESSION_WORKFLOW) return [];
+  const job = (document?.jobs ?? {})[FULL_REGRESSION_JOB_ID];
+  if (!job) return [];
+  if (hasPinnedActionlintProvision(job, FULL_REGRESSION_COMPLETION_STEP))
+    return [];
+  return [
+    {
+      file,
+      jobId: FULL_REGRESSION_JOB_ID,
+      message:
+        'the completion lane must provision pinned and checksummed actionlint before the completion gate, or gate:workflows cannot validate',
     },
   ];
 }
