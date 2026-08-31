@@ -40,10 +40,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-ARCHIVE_NAME=station-portable.tar.gz
-ARCHIVE_PATH="$OUTPUT_DIR/$ARCHIVE_NAME"
-CHECKSUM_PATH="$ARCHIVE_PATH.sha256"
-
 SHA=${SHA:-$(git -C "$ROOT" rev-parse HEAD)}
 if [[ -z "$REF" ]]; then
   REF=$(git -C "$ROOT" describe --tags --exact-match "$SHA" 2>/dev/null || git -C "$ROOT" rev-parse --abbrev-ref "$SHA")
@@ -59,12 +55,25 @@ if [[ "$REF" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
 elif [[ "$REF" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-preview\.([1-9][0-9]*)$ ]]; then
   CHANNEL=preview
   PRERELEASE=true
+elif [[ "$REF" =~ ^nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}-[1-9][0-9]*$ ]]; then
+  # Fleet staging has an exact-SHA build identity but is deliberately not a
+  # release ring.  In particular it must not create Stable/Preview manifests.
+  CHANNEL=nightly-staging
+  PRERELEASE=true
 else
-  echo "error: release ref must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-preview.N (without leading zeroes)" >&2
+  echo "error: release ref must be a Stable/Preview tag or nightly-YYYY-MM-DD-N staging identity" >&2
   exit 1
 fi
-RING_MANIFEST_NAME="station-release-ring-${CHANNEL}.json"
-RING_MANIFEST_PATH="$OUTPUT_DIR/$RING_MANIFEST_NAME"
+if [[ "$CHANNEL" = nightly-staging ]]; then
+  ARCHIVE_NAME=station-nightly-portable.tar.gz
+  MANIFEST_NAME=station-nightly-portable-manifest.json
+else
+  ARCHIVE_NAME=station-portable.tar.gz
+  MANIFEST_NAME="station-release-ring-${CHANNEL}.json"
+fi
+ARCHIVE_PATH="$OUTPUT_DIR/$ARCHIVE_NAME"
+CHECKSUM_PATH="$ARCHIVE_PATH.sha256"
+RING_MANIFEST_PATH="$OUTPUT_DIR/$MANIFEST_NAME"
 
 if [[ -z "$CREATED_AT" ]]; then
   COMMIT_EPOCH=$(git -C "$ROOT" show -s --format=%ct "$SHA")
@@ -93,9 +102,8 @@ mkdir -p "$TEMP_DIR/station"
 node -e '
   const fs = require("node:fs");
   const [path, sha, ref, createdAt, releaseChannel, prerelease] = process.argv.slice(1);
-  // install.sh verifies schemaVersion 2 with the stable/stable, beta/preview
-  // channel pairing; the runtime channel is derived from the release channel.
-  const channel = releaseChannel === "preview" ? "beta" : "stable";
+  // A staging bundle is verification-only and never an installable release.
+  const channel = releaseChannel === "preview" ? "beta" : releaseChannel === "nightly-staging" ? "nightly-staging" : "stable";
   fs.writeFileSync(path, `${JSON.stringify({ schemaVersion: 2, sha, ref, createdAt, channel, releaseChannel, prerelease: prerelease === "true" }, null, 2)}\n`);
 ' "$TEMP_DIR/station/.station-release.json" "$SHA" "$REF" "$CREATED_AT" "$CHANNEL" "$PRERELEASE"
 MANIFEST_TOUCH_TIME=$(node -e '
@@ -150,10 +158,10 @@ node -e '
     ref,
     sha,
     createdAt,
-    archive: { name: "station-portable.tar.gz", sha256: archiveDigest },
-    checksum: { name: "station-portable.tar.gz.sha256", sha256: checksumDigest },
+    archive: { name: process.argv[9], sha256: archiveDigest },
+    checksum: { name: `${process.argv[9]}.sha256`, sha256: checksumDigest },
   };
   fs.writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
-' "$RING_MANIFEST_PATH" "$CHANNEL" "$PRERELEASE" "$REF" "$SHA" "$CREATED_AT" "$ARCHIVE_DIGEST" "$CHECKSUM_DIGEST"
+' "$RING_MANIFEST_PATH" "$CHANNEL" "$PRERELEASE" "$REF" "$SHA" "$CREATED_AT" "$ARCHIVE_DIGEST" "$CHECKSUM_DIGEST" "$ARCHIVE_NAME"
 
 printf 'Created %s\nCreated %s\nCreated %s\n' "$ARCHIVE_PATH" "$CHECKSUM_PATH" "$RING_MANIFEST_PATH"
