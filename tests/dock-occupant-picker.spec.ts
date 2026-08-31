@@ -57,16 +57,19 @@ function dockOccupantTrigger(page: Page, name: string) {
     .getByRole('button', { name: `Docked pane: ${name}` });
 }
 
+/**
+ * Desktop-only: `WorkspacePaneDockAction`'s "Dock this pane" button
+ * (`.home-view__top-actions`) is hidden by `HomeView.css` at
+ * `max-width: 1024px` by design ("the ambient dock already owns the mobile
+ * pane picker/maximize contract" there) — every caller of this helper runs
+ * at a viewport wider than that. The phone-width test docks Home through
+ * the mobile overflow sheet instead; see `dockHomeViaMobileOverflow`.
+ */
 async function dockHomeFromRoot(page: Page) {
   await page.goto('/');
   const dockAction = page
     .locator('#station-main')
     .getByRole('button', { name: 'Dock this pane' });
-  // 20s, not 10s: the ambient dock host is a lazy chunk (station#4460), and
-  // this helper is often the first navigation in an isolated mobile context,
-  // so it pays the cold load cost other tests in this file amortize away.
-  // Measured directly on this host: ~1.1s under light load, 20s+ under the
-  // heavy sibling-session contention this environment sees routinely.
   await expect(dockAction).toBeVisible({ timeout: 10_000 });
   await dockAction.click();
   await expect(dockOccupantTrigger(page, 'Home')).toBeVisible();
@@ -197,6 +200,30 @@ test.describe('Dock occupant picker', () => {
   });
 });
 
+/**
+ * Docks Home at phone width through the surface that actually offers it
+ * there. `HomeView.css` hides `.home-view__top-actions` (the
+ * `WorkspacePaneDockAction` "Dock this pane" button `dockHomeFromRoot`
+ * drives) at `max-width: 1024px` BY DESIGN — its own comment: "Docking is
+ * desktop composition. At phone/tablet widths the ambient dock already owns
+ * the mobile pane picker/maximize contract, so this second in-content
+ * control is both redundant and visually stranded." At phone width the
+ * mobile Chat header's "⋯" (`Chat actions`) overflow sheet is that contract
+ * (`ChatDockMobileOverflowSheet`, station#520/#524) — "Switch to Home" is
+ * one of its `otherAmbientOccupants()` entries, reading the SAME
+ * `chooseAmbientOccupant` derivation the header picker uses.
+ */
+async function dockHomeViaMobileOverflow(page: Page) {
+  await page.goto('/');
+  const overflowTrigger = page.getByRole('button', { name: 'Chat actions' });
+  await expect(overflowTrigger).toBeVisible({ timeout: 15_000 });
+  await overflowTrigger.click();
+  await page
+    .getByRole('menuitem', { name: 'Switch to Home' })
+    .click();
+  await expect(dockOccupantTrigger(page, 'Home')).toBeVisible();
+}
+
 test.describe('Dock occupant picker at 390x844', () => {
   test.use({
     viewport: { width: 390, height: 844 },
@@ -208,7 +235,7 @@ test.describe('Dock occupant picker at 390x844', () => {
     page,
   }) => {
     await pinFirstRunSkipped(page);
-    await dockHomeFromRoot(page);
+    await dockHomeViaMobileOverflow(page);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
