@@ -1549,6 +1549,24 @@ test.describe('Task-first Home (#332, mocked)', () => {
       await expect(
         page.getByRole('button', { name: 'Close task context' }),
       ).toBeFocused();
+      // `.active-work-frame__sheet` opts into the shared
+      // `responsive-surface-panel-enter` entrance keyframe (index.css) —
+      // opacity 0->1 and `translateY(4px)->translateY(0)` over
+      // `--motion-base` (200ms, not reduced here). `translateY` shifts the
+      // rendered box without touching layout, so a rect read mid-animation
+      // reports up to 4px more than the sheet's settled position — measured
+      // live: bottom landed ~2.5-3.6px past the visual-viewport edge this
+      // assertion checks, purely from catching the animation in flight, and
+      // exactly 0px past it once settled (3/3 clean runs). Wait on the real
+      // `Animation.finished` promises rather than a fixed sleep, so this
+      // holds regardless of `--motion-base`'s value and never trips the E2E
+      // audit's fixed-sleep pattern (see the identical wait in
+      // banner-stack-bound.spec.ts).
+      await dialog.evaluate((element) =>
+        Promise.all(element.getAnimations().map((a) => a.finished)).catch(
+          () => undefined,
+        ),
+      );
       const geometry = await dialog.evaluate((element) => {
         const rect = element.getBoundingClientRect();
         const controls = Array.from(element.querySelectorAll('button')).map(
