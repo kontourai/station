@@ -13,7 +13,7 @@ import {
 } from './release-cohort.mjs';
 
 const REPOSITORY = 'kontourai/station';
-const NIGHTLY_WORKFLOW = `${REPOSITORY}/.github/workflows/nightly.yml`;
+const NIGHTLY_WORKFLOW = `${REPOSITORY}/.github/workflows/nightly-native-cohort.yml`;
 const NIGHTLY_SOURCE_REF = 'refs/heads/main';
 const NIGHTLY_CERT_IDENTITY = `https://github.com/${NIGHTLY_WORKFLOW}@${NIGHTLY_SOURCE_REF}`;
 const OIDC_ISSUER = 'https://token.actions.githubusercontent.com';
@@ -212,17 +212,25 @@ function requiredArtifactPaths(candidate, input) {
 
 export function assertNightlyVersionRelationship(identities) {
   const version = identities?.android?.versionName;
-  const match = /-nightly\.([0-9]+)$/.exec(version ?? '');
+  const match =
+    /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-nightly\.(0|[1-9][0-9]*)(?:\.([1-9][0-9]*))?$/.exec(
+      version ?? '',
+    );
   const day = match ? Number(match[1]) : Number.NaN;
+  const build = match?.[2] === undefined ? 0 : Number(match[2]);
   const androidCode = identities?.android?.versionCode;
   const desktopCode = Number(identities?.desktop?.bundleVersion);
   if (
     !Number.isSafeInteger(day) ||
+    !Number.isSafeInteger(build) ||
+    build < 0 ||
+    build >= NIGHTLY_BUILDS_PER_DAY ||
     identities?.desktop?.version !== version ||
     !Number.isSafeInteger(androidCode) ||
     !Number.isSafeInteger(desktopCode) ||
-    desktopCode !== day * NIGHTLY_BUILDS_PER_DAY ||
-    Math.floor(androidCode / NIGHTLY_BUILDS_PER_DAY) !== day
+    desktopCode !== androidCode ||
+    Math.floor(androidCode / NIGHTLY_BUILDS_PER_DAY) !== day ||
+    androidCode % NIGHTLY_BUILDS_PER_DAY !== build
   ) {
     fail(
       'Nightly Android/macOS version identities do not share one nightly-build identity',
@@ -230,6 +238,7 @@ export function assertNightlyVersionRelationship(identities) {
   }
   return {
     day,
+    build,
     androidVersionCode: androidCode,
     desktopBundleVersion: desktopCode,
   };

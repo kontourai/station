@@ -1,140 +1,53 @@
 name: Nightly
 
-# One build per day, not one per push. "Nightly" is a claim about cadence, so
-# it is derived from a date; a day with no new commit produces no build, since
-# a new version number over identical content is a version number that lies.
-#
-# Ships to the Play internal testing track under its OWN applicationId
-# (io.kontourai.station.nightly), so its version-code line never entangles
-# with production's. See scripts/lib/nightly-build-identity.mjs for why, and
-# station#2211 for the channel model.
-#
-# The `test-gate` binds one immutable source and exercises the browser journey;
-# `full-regression` then runs the canonical completion gate on that same SHA.
-# Both Android and desktop require literal success from both jobs before any
-# build or publication step can start. The pr-smoke suite
-# exercises Station as a same-machine loopback browser caller (temp home,
-# dynamic loopback ports) — and its two chat specs mock the chat endpoints
-# outright, so no real turn is dispatched — exactly the context where
-# station#4518's paired-device principal break was invisible, and none of
-# its four specs touch device sessions or pairing. Paired-device journey coverage is
-# separate, open work (station#4537 item 1).
-#
-# The `test-gate` and `nightly` (Android) jobs run on GitHub-hosted
-# ubuntu-22.04 now that the repository is public. `nightly-desktop` stays
-# on macos-15 (see that job's own header). desktop-win is reserved for the
-# native Windows hardware-reference lane.
+# Cadence and test authority stay here. Native publishing is intentionally a
+# separate reusable cohort; the CLI remains an independent npm publication.
 on:
   schedule:
-    # 09:00 UTC — early morning in the maintainer's timezone, so a day's work
-    # starts against a build of the previous day's merges.
     - cron: '0 9 * * *'
   workflow_dispatch:
     inputs:
-      source_sha:
-        description: 'Optional exact 40-character commit from main to build across every Nightly leg. Leave empty to bind the workflow event SHA.'
-        required: false
-      rebuild_index:
-        description: 'Optional same-day rebuild index (0-99), not a boolean. Leave empty to build the latest main once; an explicit index must be unused and above existing same-day reservations.'
-        required: false
+      source_sha: { description: Optional current workflow event SHA; older revisions are rejected, required: false }
+      rebuild_index: { description: Optional native rebuild index, required: false }
 
-permissions:
-  contents: write
-  id-token: write
-
-concurrency:
-  group: nightly
-  cancel-in-progress: false
+permissions: { contents: write, id-token: write, attestations: write }
+concurrency: { group: nightly, cancel-in-progress: false }
 
 jobs:
   test-gate:
-    name: Nightly test gate (station#4539)
-    # Before station#4539 this workflow built and published with zero test
-    # steps, so a nightly could ship with core journeys broken and nothing
-    # red in the nightly lane. This gate closes that ships-with-zero-tests
-    # mechanism and claims nothing more: the pr-smoke suite is the same
-    # same-machine loopback caller described in the header comment, so
-    # paired-device journeys stay uncovered (station#4537 item 1, open).
-    # What actually runs: `npm run lint:check`, `npm run build:connect`
-    # (precondition for the typecheck aggregate), `node
-    # scripts/typecheck-aggregate.mjs`, and `npm run test:e2e:pr-smoke` —
-    # two of run-ci-fast.mjs's eight FAST_STATIC_COMMANDS plus lint:check,
-    # not "the fast static checks" as a class. The separate reusable
-    # full-regression job owns canonical completion; this job retains the
-    # exact-source binding and deterministic browser journey.
-    #
-    # The only `if:` is the pull_request exclusion the persistent-runner
-    # policy requires; this workflow's triggers are schedule and
-    # workflow_dispatch, neither of which is a pull_request, so on every
-    # actual nightly run this job runs and cannot be skipped into a
-    # green-looking result. It also still runs on days the build job's
-    # `decide` step finds nothing to build.
     if: github.event_name != 'pull_request'
-    permissions:
-      contents: read
     runs-on: ubuntu-22.04
     timeout-minutes: 45
+    permissions: { contents: read }
     outputs:
       source_sha: ${{ steps.source.outputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # A manual promotion may deliberately pin an earlier commit that is
-          # still on main. Every build job consumes the validated output below,
-          # never its own independently resolved "latest" revision.
-          ref: ${{ inputs.source_sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-
       - id: source
         name: Bind every Nightly leg to one main revision
         env:
           REQUESTED_SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           source_sha=$(git rev-parse HEAD)
-          if [ -n "$REQUESTED_SOURCE_SHA" ]; then
-            [[ "$REQUESTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
-              echo "::error::source_sha must be exactly 40 lowercase hexadecimal characters."
-              exit 1
-            }
-            test "$source_sha" = "$REQUESTED_SOURCE_SHA" || {
-              echo "::error::checkout resolved $source_sha instead of requested $REQUESTED_SOURCE_SHA."
-              exit 1
-            }
-            git fetch --no-tags origin main
-            git merge-base --is-ancestor "$source_sha" origin/main || {
-              echo "::error::requested source_sha is not an ancestor of origin/main."
-              exit 1
-            }
+          if [ -n "$REQUESTED_SOURCE_SHA" ] && [ "$REQUESTED_SOURCE_SHA" != "$GITHUB_SHA" ]; then
+            echo 'source_sha may only name the current Nightly workflow event SHA; older revisions are rejected for every native and CLI leg.' >&2
+            exit 1
           fi
+          test "$source_sha" = "$GITHUB_SHA"
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
-          echo "Nightly source revision: $source_sha" >> "$GITHUB_STEP_SUMMARY"
-
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc }
-
       - run: npm run dependencies:ci
-
       - name: Lint
         run: npm run lint:check
-
-      # build:connect is a precondition for the typecheck aggregate, not a
-      # build for its own sake: typecheck:ui resolves @kontourai/station-connect
-      # through packages/connect/dist, which is gitignored and absent from a
-      # fresh checkout (station#4273). The aggregate is invoked directly
-      # rather than via `npm run typecheck`, which chains dist:freshness
-      # ahead of it and would fail on the equally unbuilt packages/cli/dist
-      # before any lane ran — the same reasoning scripts/run-ci-fast.mjs
-      # records for the identical invocation in ci:fast.
       - run: npm run build:connect
       - name: Typecheck
         run: node scripts/typecheck-aggregate.mjs
-
       - name: Install Chromium
-        # Hosted runners are ephemeral, so this installs Chromium every job.
-        # Bounded and retried per station#3517. run-e2e-suite.mjs fails loud
-        # when Chromium is missing (assertPlaywrightBrowsersInstalled), so a
-        # broken install reddens this gate rather than silently skipping.
         timeout-minutes: 20
         run: |
           echo "PLAYWRIGHT_BROWSERS_PATH=$HOME/.cache/ms-playwright" >> "$GITHUB_ENV"
@@ -146,25 +59,16 @@ jobs:
             echo "::warning::Playwright install attempt $attempt timed out or failed; retrying"
             sleep 15
           done
-          echo "::error::Playwright install failed after 3 attempts"
+          echo '::error::Playwright install failed after 3 attempts'
           exit 1
-
       - name: Run deterministic browser smoke
-        # The same pr-smoke suite ci.yml's browser-smoke job runs: the four
-        # core-journey specs named by PR_BROWSER_SMOKE_CONTRACT in
-        # tests/e2e-manifest.mjs, booted by scripts/run-e2e-suite.mjs against
-        # a temp-home Station on dynamic loopback ports.
         timeout-minutes: 10
         env:
           PW_REPORTER: line,html
         run: npm run test:e2e:pr-smoke
-
       - name: Upload test-gate diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        # Diagnostics: a storage/quota failure here is an infrastructure
-        # condition, not a verdict on the code. It must not redden a gate
-        # whose checks passed (station#2218).
         continue-on-error: true
         with:
           name: nightly-test-gate-${{ github.run_id }}
@@ -182,1098 +86,107 @@ jobs:
     with:
       source_sha: ${{ needs.test-gate.outputs.source_sha }}
 
-  nightly:
+  native-cohort:
     needs: [test-gate, full-regression]
-    # Fail-loud and fail-closed (station#4539): `always()` forces this
-    # condition to be evaluated even when the test gate failed, was
-    # cancelled, or was skipped, and the explicit result check admits only
-    # a gate that actually ran and passed — so no gate result other than
-    # 'success' can publish a nightly. GitHub's default needs-skip already
-    # withholds this job on failure; writing the contract out keeps a future
-    # careless `if: always()` or a dropped needs edge from reintroducing the
-    # silent-skip hole where a nightly publishes with the gate never run.
-    # The conjunct ORDER below is load-bearing, not stylistic:
-    # scripts/actionlint-gate.mjs's skipsAutomaticPullRequest accepts only
-    # the literal prefix ladder ending in `github.event_name !=
-    # 'pull_request'`, so reordering the conjuncts reddens gate:workflows.
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' && needs['test-gate'].outputs.source_sha == github.sha }}
+    uses: ./.github/workflows/nightly-native-cohort.yml
+    with:
+      source_sha: ${{ needs.test-gate.outputs.source_sha }}
+      rebuild_index: ${{ inputs.rebuild_index }}
+    secrets: inherit
+
+  nightly-cli:
+    needs: [test-gate, full-regression]
     if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' }}
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
-    outputs:
-      build: ${{ steps.decide.outputs.build }}
-      source_sha: ${{ steps.decide.outputs.head_sha }}
-      marketing_version: ${{ steps.ios_identity.outputs.marketing_version }}
-      bundle_version: ${{ steps.identity.outputs.version_code }}
-      reservation_tag: ${{ steps.allocate.outputs.reservation_tag }}
-    env:
-      GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
-      GCP_PLAY_SERVICE_ACCOUNT: ${{ vars.GCP_PLAY_SERVICE_ACCOUNT }}
-      ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS }}
-      ANDROID_UPLOAD_CERT_SHA256: ${{ vars.ANDROID_UPLOAD_CERT_SHA256 }}
-      # Pin the verification tools to the build-tools revision installed below;
-      # setup-android exposes sdkmanager, not the build-tools binaries on PATH.
-      ANDROID_BUILD_TOOLS_VERSION: "36.0.0"
-      # Optional trusted build default; no deployment-specific host is tracked.
-      STATION_MOBILE_DEFAULT_ENDPOINT: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}
+    permissions: { contents: write, id-token: write }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Written out rather than left to checkout's implicit default: the
-          # gate job checks out the same immutable event SHA, so the SHA the
-          # tests verdict applies to stays identical to the SHA this job
-          # builds and ships even if that default ever changes.
           ref: ${{ needs.test-gate.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Validate requested Nightly rebuild index
-        env:
-          NIGHTLY_REBUILD_INDEX: ${{ inputs.rebuild_index }}
-        shell: bash
-        run: |
-          node --input-type=module -e '
-            import { parseNightlyRebuildIndex } from "./scripts/lib/nightly-build-identity.mjs";
-            parseNightlyRebuildIndex(process.env.NIGHTLY_REBUILD_INDEX);
-          '
-
-      - name: Decide whether there is anything to build
-        id: decide
-        env:
-          NIGHTLY_REBUILD_INDEX: ${{ inputs.rebuild_index }}
-        run: |
-          # The rolling `nightly` tag records the commit the last nightly was
-          # cut from. If main has not moved, publishing again would mint a new
-          # version code for identical bytes. An explicit manual index is the
-          # narrow exception: allocation will still reject any reused/lower
-          # code before this job can build it.
-          head_sha=$(git rev-parse HEAD)
-          last_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly^{commit}' || true)
-          normalized_head_sha=$(node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$last_sha")
-          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
-          echo "normalized_head_sha=$normalized_head_sha" >> "$GITHUB_OUTPUT"
-          if [ "$normalized_head_sha" = "$last_sha" ] && [ -z "$NIGHTLY_REBUILD_INDEX" ]; then
-            echo "::notice::main has no source change since the last nightly ($last_sha); nothing to build."
-            echo "build=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "build=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Reserve a monotonic nightly version code
-        if: steps.decide.outputs.build == 'true'
-        id: allocate
-        env:
-          NIGHTLY_REQUESTED_BUILD: ${{ inputs.rebuild_index }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Reservations happen before the build. A failed job can still leave
-          # an installable artifact, so retrying its code would not be safe.
-          # Checkout deliberately leaves no credential behind. Supply the
-          # step token to the authenticated read through its ephemeral
-          # environment; never put it in the remote URL or repository config.
-          nightly_git() {
-            GIT_CONFIG_COUNT=1 \
-            GIT_CONFIG_KEY_0='http.https://github.com/.extraheader' \
-            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')" \
-              git "$@"
-          }
-          reservation_remote="https://github.com/${{ github.repository }}"
-          NIGHTLY_NOW="$(date -u +%Y-%m-%dT00:00:00Z)"
-          export NIGHTLY_NOW
-          # Consumed by the allocation subprocess.
-          # shellcheck disable=SC2034
-          export NIGHTLY_RESERVED_TAGS
-          head_sha="${{ steps.decide.outputs.head_sha }}"
-          reservation_created=false
-          for attempt in $(seq 1 100); do
-            # Re-read immediately before every allocation. The concurrency
-            # group serializes normal runs, while this closes the remaining
-            # collision window against a manually created reservation tag.
-            NIGHTLY_RESERVED_TAGS=$(nightly_git ls-remote --refs "$reservation_remote" 'refs/tags/nightly-version-code/*')
-            allocation_output=$(mktemp)
-            allocation=$(GITHUB_OUTPUT="$allocation_output" node scripts/allocate-nightly-version-code.mjs)
-            printf '%s\n' "$allocation"
-            tag=$(printf '%s\n' "$allocation" | awk -F= '$1 == "reservation_tag" { print $2 }')
-            version_code=$(printf '%s\n' "$allocation" | awk -F= '$1 == "version_code" { print $2 }')
-            test -n "$tag"
-            test -n "$version_code"
-            reservation_ref="refs/tags/$tag"
-            request_body=$(node --input-type=module -e '
-              process.stdout.write(JSON.stringify({
-                ref: process.argv[1],
-                sha: process.argv[2],
-              }));
-            ' "$reservation_ref" "$head_sha")
-            reservation_response=$(mktemp)
-            status=$(curl --silent --show-error \
-              --output "$reservation_response" \
-              --max-filesize 65536 \
-              --write-out '%{http_code}' \
-              --request POST \
-              --header 'Accept: application/vnd.github+json' \
-              --header "Authorization: Bearer $GITHUB_TOKEN" \
-              --header 'X-GitHub-Api-Version: 2022-11-28' \
-              --url "$GITHUB_API_URL/repos/${{ github.repository }}/git/refs" \
-              --data "$request_body")
-            if ! classification=$(node scripts/classify-nightly-reservation-response.mjs \
-              "$status" "$reservation_response" "$reservation_ref" "$head_sha"); then
-              rm -f "$allocation_output" "$reservation_response"
-              echo '::error::Nightly version-code reservation response could not be validated.'
-              exit 1
-            fi
-            if [ "$classification" = 'created' ]; then
-              cat "$allocation_output" >> "$GITHUB_OUTPUT"
-              rm -f "$allocation_output" "$reservation_response"
-              reservation_created=true
-              break
-            fi
-            if [ "$classification" = 'reference-already-exists' ]; then
-              collision_ref=$(nightly_git ls-remote --refs "$reservation_remote" "$reservation_ref")
-              if ! printf '%s\n' "$collision_ref" | awk -v expected="$reservation_ref" '
-                NF == 2 && $2 == expected { matches += 1 }
-                END { exit matches == 1 ? 0 : 1 }
-              '; then
-                rm -f "$allocation_output" "$reservation_response"
-                echo '::error::GitHub reported an existing Nightly reservation, but the exact ref was not observable.'
-                exit 1
-              fi
-              rm -f "$allocation_output" "$reservation_response"
-              echo "::notice::Nightly reservation tag collision for $tag on attempt $attempt; allocating again."
-              continue
-            fi
-            rm -f "$allocation_output" "$reservation_response"
-            echo "::error::Nightly version-code reservation API returned HTTP $status."
-            exit 1
-          done
-          if [ "$reservation_created" != true ]; then
-            echo '::error::Nightly version-code reservation did not converge after 100 attempts.'
-            exit 1
-          fi
-          unset -f nightly_git
-
-      - name: Derive nightly build identity
-        if: steps.decide.outputs.build == 'true'
-        id: identity
-        run: |
-          # Allocation has already reserved a code, so the config and web
-          # build consume one exact identity even across midnight.
-          node scripts/lib/nightly-build-identity.mjs \
-            --package-json package.json \
-            --tauri-config src-desktop/tauri.conf.json \
-            --date "$NIGHTLY_NOW" \
-            --build "$NIGHTLY_BUILD" \
-            --output "$NIGHTLY_CONFIG_PATH" \
-            --github-output "$GITHUB_OUTPUT"
-        env:
-          NIGHTLY_NOW: ${{ steps.allocate.outputs.date }}
-          NIGHTLY_BUILD: ${{ steps.allocate.outputs.build }}
-          NIGHTLY_CONFIG_PATH: ${{ runner.temp }}/tauri.nightly.conf.json
-
-      - name: Derive numeric App Store marketing version
-        if: steps.decide.outputs.build == 'true'
-        id: ios_identity
-        run: |
-          marketing_version=$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')
-          [[ "$marketing_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          echo "marketing_version=$marketing_version" >> "$GITHUB_OUTPUT"
-
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: steps.decide.outputs.build == 'true'
         with: { node-version-file: .nvmrc }
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        if: steps.decide.outputs.build == 'true'
-        with: { targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android }
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
-        if: steps.decide.outputs.build == 'true'
-        with: { distribution: temurin, java-version: 17 }
-      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
-        if: steps.decide.outputs.build == 'true'
-      - run: sdkmanager "ndk;27.0.12077973" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
-        if: steps.decide.outputs.build == 'true'
-
-      - run: npm run dependencies:ci && npm run build:sdk && npm run build:connect && STATION_BUILD_VERSION="${{ steps.identity.outputs.version }}" npm run build:desktop:resources
-        if: steps.decide.outputs.build == 'true'
-
-      # @kontourai/station-cli nightly publish (station#4536). Independent of
-      # the Android pipeline above and below: it shares only `dependencies:ci`
-      # and `id-token: write`, already present for the whole job. A missing
-      # npm trusted publisher for this package must never fail this job's
-      # primary purpose (the Android nightly build) — it fails closed on the
-      # one thing it gates (no unauthenticated or token-based CLI publish,
-      # ever) with a loud `::notice::` naming the manual registry steps,
-      # mirroring this file's own established shape for an optional
-      # integration that is not configured yet (the Play upload steps below,
-      # which skip-with-notice on a missing GCP variable rather than failing
-      # the job). A genuine environment break — no id-token permission, a
-      # stray NPM_TOKEN, an npm version below the trusted-publishing floor —
-      # still fails loud, because those are workflow bugs, not registry-side
-      # setup lag.
-      # Reuses the day-number-derived `-nightly.<n>` scheme
-      # `nightlyVersion()` already applies to the Android version name, over
-      # the CLI package's OWN version (0.6.0), not the root package.json's.
-      # `steps.allocate.outputs.date` is the same UTC day boundary the
-      # Android identity above was derived from, so both artifacts built by
-      # this run carry the same day number. Note: unlike the Android version
-      # CODE, which is monotonic per `build` index, this version STRING is
-      # not — an explicit same-day manual rebuild (`inputs.rebuild_index`)
-      # would collide with an already-published npm version and fail the
-      # publish step below loudly, which is the correct fail-closed answer
-      # (never a silent republish), not a defect to work around here.
-      #
-      # Computed BEFORE the build, not after: the CLI bundle bakes its own
-      # `package.json` version and `STATION_CLI_BUILD_CHANNEL` in at build
-      # time (`packages/cli/build-metadata.mjs`, read by
-      # `esbuild.config.mjs`) into `globalThis.__STATION_CLI_BUNDLE__`, which
-      # is what `station --version` reports. Building first and versioning
-      # after (the original order here) baked in the wrong npm version and
-      # the default `development` channel on every artifact this step
-      # published — exactly the "which Station am I running" ambiguity this
-      # whole issue exists to remove. `station --version` on the published
-      # nightly bundle must say `<version>-nightly.<n> / nightly`.
-      - name: Compute CLI nightly npm version
-        if: steps.decide.outputs.build == 'true'
-        id: cli_identity
+      - id: cli_source_decide
+        name: Skip CLI publication when nightly already names this source
         env:
-          NIGHTLY_NOW: ${{ steps.allocate.outputs.date }}
+          SOURCE_SHA: ${{ needs.test-gate.outputs.source_sha }}
         run: |
-          set -euo pipefail
-          version=$(node --input-type=module -e '
-            import { readFileSync } from "node:fs";
-            import { nightlyVersion } from "./scripts/lib/nightly-build-identity.mjs";
-            const cliVersion = JSON.parse(readFileSync("packages/cli/package.json", "utf8")).version;
-            process.stdout.write(nightlyVersion(cliVersion, new Date(process.env.NIGHTLY_NOW)));
-          ')
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Computed CLI nightly version: $version"
-
-      # `npm version` first (bakes the nightly version into
-      # packages/cli/package.json), THEN build (bakes package.json's version
-      # PLUS STATION_CLI_BUILD_CHANNEL=nightly into the bundle via
-      # build-metadata.mjs's `deriveCliBundleMetadata`) — the channel
-      # vocabulary ('stable' | 'beta' | 'nightly' | 'dev') is
-      # `packages/shared/src/runtime-path-resolver.ts`'s
-      # `StationRuntimeChannel`, reused rather than invented. `--no-git-tag-version`:
-      # this is a throwaway CI checkout's package.json, never committed.
-      - name: Version and build CLI for nightly publish
-        if: steps.decide.outputs.build == 'true'
+          published_sha=$(npm view @kontourai/station-cli@nightly gitHead --json 2>/dev/null || true)
+          if [ "$published_sha" = "\"$SOURCE_SHA\"" ] || [ "$published_sha" = "$SOURCE_SHA" ]; then
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::npm nightly dist-tag already names this exact source.'
+          else
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+          fi
+      - id: identity
+        name: Build exact-SHA CLI nightly identity
+        if: steps.cli_source_decide.outputs.build == 'true'
         env:
           STATION_CLI_BUILD_CHANNEL: nightly
-          # npm version dirties package.json + the root lockfile before the
-          # build, so the bundle's own git-status probe would stamp a
-          # constant "<sha>-dirty" — masking genuinely dirty builds. Pin the
-          # already-decided ship SHA instead (build-metadata.mjs validates
-          # it as 40-hex).
-          STATION_CLI_SOURCE_SHA: ${{ steps.decide.outputs.head_sha }}
+          STATION_CLI_SOURCE_SHA: ${{ needs.test-gate.outputs.source_sha }}
         run: |
-          set -euo pipefail
-          (cd packages/cli && npm version "${{ steps.cli_identity.outputs.version }}" --no-git-tag-version --allow-same-version)
+          npm run dependencies:ci
+          version=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; import {nightlyVersion} from "./scripts/lib/nightly-build-identity.mjs"; process.stdout.write(nightlyVersion(JSON.parse(readFileSync("packages/cli/package.json")).version,new Date()))')
+          (cd packages/cli && npm version "$version" --no-git-tag-version --allow-same-version)
           npm run build:cli
-
-      # Mirrors publish-packages.yml's "Assert npm trusted publishing is
-      # configured and authenticating" step (see that file for the full
-      # rationale behind each sub-check, including check 0's ref guard),
-      # scoped to one package, with one deliberate difference: publishing
-      # from the wrong ref OR a MISSING trusted publisher for
-      # @kontourai/station-cli both skip this run's CLI publish via an
-      # output rather than failing the whole job — the latter because it is
-      # the expected steady state until a human completes the one-time
-      # bootstrap documented in publish-packages.yml (npmjs.com has no
-      # settings page for a name that has never been published), the former
-      # because a hard `exit 1` here would also abort every Android step
-      # below it in this same job, and the Android nightly build is this
-      # job's primary purpose — never collateral damage from an unrelated
-      # npm-publish policy check. Soft-skipping still fully satisfies "never
-      # publish/move the public nightly dist-tag from the wrong ref": the
-      # publish step below is gated on this step's output either way.
-      - name: Check npm trusted publishing for @kontourai/station-cli
-        if: steps.decide.outputs.build == 'true'
-        id: cli_npm_preflight
-        env:
-          NPM_REGISTRY: https://registry.npmjs.org
-          CLI_PACKAGE: '@kontourai/station-cli'
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - id: cli_npm_preflight
+        name: Check npm trusted publishing for @kontourai/station-cli
+        if: steps.cli_source_decide.outputs.build == 'true'
         run: |
           set -euo pipefail
-          fail() { echo "::error::$1"; exit 1; }
-          skip() {
-            printf 'message=%s\n' "$1" >> "$GITHUB_OUTPUT"
-            echo "trusted_publisher=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::$1"
-            echo "$1" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
-            exit 0
-          }
-
-          # 0. Same guard as publish-packages.yml check 0, same reasoning:
-          #    npm's trusted-publisher configuration has no ref field, so
-          #    this job is what stops a dispatch from a non-main branch from
-          #    publishing under the public `nightly` dist-tag. Unlike
-          #    publish-packages.yml, a wrong ref here SKIPS (not fails) —
-          #    see the step-level comment above for why.
-          if [ "${GITHUB_REF:-}" != "refs/heads/main" ]; then
-            skip "Refusing to publish @kontourai/station-cli from ${GITHUB_REF:-<unset>}: nightly npm publishing is only permitted from refs/heads/main."
-          fi
-
-          probe_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/cli-npm-auth-preflight.XXXXXX")"
-          trap 'rm -rf "$probe_dir"' EXIT
-
-          # Genuine environment breaks fail loud; see the step-level comment
-          # above for why these are not treated the same as "no trusted
-          # publisher yet".
-          required=11.5.1
-          actual="$(npm --version)"
-          if [ "$(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -n1)" != "$required" ]; then
-            fail "npm $actual is below the $required trusted-publishing floor."
-          fi
-          [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || fail "ACTIONS_ID_TOKEN_REQUEST_URL is unset: this job has no id-token permission."
-          [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ] || fail "ACTIONS_ID_TOKEN_REQUEST_TOKEN is unset: this job has no id-token permission."
-          [ -z "${NPM_TOKEN:-}" ] || fail "NPM_TOKEN is set; this workflow authenticates by OIDC only. Remove it or change this auth model deliberately."
+          skip() { echo 'trusted_publisher=false' >> "$GITHUB_OUTPUT"; echo "::notice::$1"; exit 0; }
+          [ "$GITHUB_REF" = refs/heads/main ] || skip "Refusing nightly npm publication outside refs/heads/main."
+          required=11.5.1; actual=$(npm --version)
+          [ "$(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -n1)" = "$required" ] || { echo "npm $actual is below trusted-publishing floor $required" >&2; exit 1; }
+          test -n "$ACTIONS_ID_TOKEN_REQUEST_URL" && test -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+          test -z "${NPM_TOKEN:-}"
           node scripts/check-publish-npmrc-credentials.mjs
-
-          NPM_REGISTRY="${NPM_REGISTRY%/}"
-          audience="npm:$(printf '%s' "$NPM_REGISTRY" | sed -e 's|^https\{0,1\}://||' -e 's|/.*$||')"
-          status="$(curl -sS --max-time 30 --retry 3 --retry-connrefused \
-            -o "$probe_dir/id-token.json" -w '%{http_code}' \
-            -H 'Accept: application/json' \
-            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${audience}")"
-          if [ "$status" != "200" ]; then
-            fail "OIDC id-token request returned HTTP $status: this runner cannot mint an id-token for $audience."
-          fi
-          node -e '
-            const fs = require("node:fs");
-            let value;
-            try {
-              value = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).value;
-            } catch {
-              console.log("::error::OIDC id-token response was not valid JSON.");
-              process.exit(1);
-            }
-            if (typeof value !== "string" || value.split(".").length !== 3) {
-              console.log("::error::OIDC endpoint returned no usable JWT in .value.");
-              process.exit(1);
-            }
-            fs.writeFileSync(process.argv[2], value);
-          ' "$probe_dir/id-token.json" "$probe_dir/id-token.jwt"
-          echo "::add-mask::$(cat "$probe_dir/id-token.jwt")"
-
-          # This exchange is the ONLY check that can tell "no trusted
-          # publisher configured" apart from a genuine environment break —
-          # and, unlike every check above, that specific outcome is expected
-          # here (see the file-level comment), so it does not call fail().
-          escaped="$(printf '%s' "$CLI_PACKAGE" | sed 's|/|%2f|')"
-          status="$(curl -sS --max-time 30 --retry 3 --retry-connrefused \
-            -o "$probe_dir/exchange.json" -w '%{http_code}' \
-            -X POST \
-            -H 'Accept: application/json' \
-            -H "Authorization: Bearer $(cat "$probe_dir/id-token.jwt")" \
-            "$NPM_REGISTRY/-/npm/v1/oidc/token/exchange/package/$escaped")"
-          detail="$(node -e '
-            const fs = require("node:fs");
-            try {
-              const body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-              process.stdout.write(typeof body.message === "string" ? body.message.replace(/\s+/g, " ") : "");
-            } catch { process.stdout.write(""); }
-          ' "$probe_dir/exchange.json")"
-          token_ok="false"
-          case "$status" in
-            2[0-9][0-9])
-              token_ok="$(node -e '
-                const fs = require("node:fs");
-                let token;
-                try { token = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).token; } catch { token = undefined; }
-                process.stdout.write(typeof token === "string" && token.length > 0 ? "true" : "false");
-              ' "$probe_dir/exchange.json")"
-              ;;
-          esac
-          if [ "$token_ok" = "true" ]; then
-            echo "trusted_publisher=true" >> "$GITHUB_OUTPUT"
-            echo "Trusted publisher confirmed for $CLI_PACKAGE"
+          token_response=$(mktemp)
+          status=$(curl -sS --max-time 30 -o "$token_response" -w '%{http_code}' -H 'Accept: application/json' -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org")
+          [ "$status" = 200 ] || { echo "OIDC id-token request returned HTTP $status" >&2; exit 1; }
+          jwt=$(node -e 'const x=require("node:fs").readFileSync(process.argv[1]);process.stdout.write(JSON.parse(x).value||"")' "$token_response")
+          test -n "$jwt"
+          exchange=$(mktemp)
+          status=$(curl -sS --max-time 30 -o "$exchange" -w '%{http_code}' -X POST -H 'Accept: application/json' -H "Authorization: Bearer $jwt" 'https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/@kontourai%2fstation-cli')
+          if [ "$status" != 200 ]; then skip "No confirmed npm trusted publisher for @kontourai/station-cli (HTTP $status)."; fi
+          node -e 'const x=JSON.parse(require("node:fs").readFileSync(process.argv[1]));if(typeof x.token!=="string"||!x.token)process.exit(1)' "$exchange"
+          echo 'trusted_publisher=true' >> "$GITHUB_OUTPUT"
+      - id: npm_idempotency
+        name: Refuse a conflicting CLI version and skip an exact rerun
+        if: steps.cli_source_decide.outputs.build == 'true'
+        env:
+          CLI_VERSION: ${{ steps.identity.outputs.version }}
+          SOURCE_SHA: ${{ needs.test-gate.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          git_head=$(npm view "@kontourai/station-cli@$CLI_VERSION" gitHead --json 2>/dev/null || true)
+          if [ -z "$git_head" ] || [ "$git_head" = 'null' ]; then
+            echo 'publish=true' >> "$GITHUB_OUTPUT"
+          elif [ "$git_head" = "\"$SOURCE_SHA\"" ] || [ "$git_head" = "$SOURCE_SHA" ]; then
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+            echo "::notice::CLI $CLI_VERSION is already published from this exact source."
           else
-            skip "No confirmed npm trusted publisher for $CLI_PACKAGE (HTTP $status${detail:+, npm said: $detail}). Skipping the nightly publish for this package this run. See publish-packages.yml for the one-time bootstrap steps (station#4536)."
+            echo "::error::CLI version $CLI_VERSION is already published from a different source: $git_head" >&2
+            exit 1
           fi
-
-      # `npm version` already ran in the "Version and build" step above, so
-      # this only publishes the exact bundle that was just built from it —
-      # no second version write here, which would otherwise let the bundle's
-      # baked-in identity and the published npm version disagree.
-      - name: Publish @kontourai/station-cli to the nightly dist-tag
-        id: cli_npm_publish
-        if: steps.decide.outputs.build == 'true' && steps.cli_npm_preflight.outputs.trusted_publisher == 'true'
+      - id: cli_npm_publish
+        name: Publish @kontourai/station-cli to npm nightly
+        if: steps.cli_source_decide.outputs.build == 'true' && steps.npm_idempotency.outputs.publish == 'true' && steps.cli_npm_preflight.outputs.trusted_publisher == 'true'
         working-directory: packages/cli
         run: npm publish --tag nightly --access public
-
-      - name: Initialize Tauri Android project
-        if: steps.decide.outputs.build == 'true'
-        working-directory: src-desktop
-        run: |
-          node ../scripts/reset-android-generated-project.mjs
-          npx tauri android init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.nightly.conf.json"
-
-      - name: Apply release signing to the generated nightly project
-        if: steps.decide.outputs.build == 'true'
-        run: node scripts/apply-android-release-signing.mjs
-
-      # Apply to both main and debug source sets. Android gives debug resources
-      # precedence, so updating main alone can silently show the Dev icon.
-      - name: Apply nightly launcher icons
-        if: steps.decide.outputs.build == 'true'
-        run: node scripts/apply-android-channel-icons.mjs nightly
-
-      - name: Apply native credential bootstrap to the nightly namespace
-        if: steps.decide.outputs.build == 'true'
-        run: node scripts/apply-android-native-bootstrap.mjs
-
-      - name: Reclaim disk for four Android Rust targets
-        if: steps.decide.outputs.build == 'true'
-        run: bash scripts/reclaim-android-runner-disk.sh
-
-      - name: Authenticate to Google Cloud with GitHub OIDC
-        id: google_auth
-        if: steps.decide.outputs.build == 'true' && env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER != '' && env.GCP_PLAY_SERVICE_ACCOUNT != ''
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          workload_identity_provider: ${{ env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ env.GCP_PLAY_SERVICE_ACCOUNT }}
-          create_credentials_file: true
-
-      - name: Fetch Android upload signing material
-        id: android_signing
-        if: steps.decide.outputs.build == 'true' && env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER != '' && env.GCP_PLAY_SERVICE_ACCOUNT != ''
-        uses: google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262 # v3
-        with:
-          secrets: |-
-            keystore_base64:kontourai-station-release/station-android-upload-keystore-base64
-            keystore_password:kontourai-station-release/station-android-upload-keystore-password
-
-      - name: Download pinned Play upload action
-        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
-        id: play_upload_action
-        env:
-          PLAY_UPLOAD_ACTION_SHA: e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
-          PLAY_UPLOAD_ACTION_DIGEST: 15b27f8937f30f20d81bb585c4ad7ec7032e84491be51ac4dda330767a287f6b
-        run: |
-          action_path="$RUNNER_TEMP/upload-google-play-$PLAY_UPLOAD_ACTION_SHA.js"
-          curl --fail --silent --show-error --location --max-filesize 2000000 \
-            "https://raw.githubusercontent.com/r0adkll/upload-google-play/$PLAY_UPLOAD_ACTION_SHA/lib/index.js" \
-            --output "$action_path"
-          printf '%s  %s\n' "$PLAY_UPLOAD_ACTION_DIGEST" "$action_path" | sha256sum --check --strict
-          echo "path=$action_path" >> "$GITHUB_OUTPUT"
-
-      - name: Build signed nightly AAB
-        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != '' && steps.android_signing.outputs.keystore_password != '' && env.ANDROID_UPLOAD_KEY_ALIAS != ''
-        working-directory: src-desktop
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ steps.android_signing.outputs.keystore_base64 }}
-          TAURI_ANDROID_KEYSTORE_PASSWORD: ${{ steps.android_signing.outputs.keystore_password }}
-          TAURI_ANDROID_KEY_ALIAS: ${{ env.ANDROID_UPLOAD_KEY_ALIAS }}
-          TAURI_ANDROID_KEY_PASSWORD: ${{ steps.android_signing.outputs.keystore_password }}
-          NDK_HOME: "${{ env.ANDROID_HOME }}/ndk/27.0.12077973"
-          # Tauri runs tauri.conf.json's beforeBuildCommand again here. Keep
-          # that UI build bound to the exact identity used by the native config.
-          STATION_BUILD_VERSION: ${{ steps.identity.outputs.version }}
-        run: |
-          keystore="$RUNNER_TEMP/station-nightly.keystore"
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
-          export TAURI_ANDROID_KEYSTORE_PATH="$keystore"
-          RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" \
-            npx tauri android build --aab --apk --config "$RUNNER_TEMP/tauri.nightly.conf.json"
-
-      # Attempt archival before package verification and the Play API call so
-      # the receipt reports retention separately from publication.
-      - name: Archive signed nightly artifacts
-        id: nightly_artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != '' && steps.android_signing.outputs.keystore_password != '' && env.ANDROID_UPLOAD_KEY_ALIAS != ''
-        continue-on-error: true
-        with:
-          name: station-nightly-${{ steps.identity.outputs.version_code }}
-          path: |
-            src-desktop/gen/android/app/build/outputs/apk/universal/release/*.apk
-            src-desktop/gen/android/app/build/outputs/bundle/universalRelease/*.aab
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Record signed artifact archive outcome
-        if: ${{ always() && steps.decide.outputs.build == 'true' }}
-        env:
-          NIGHTLY_ARTIFACT_ARCHIVE_OUTCOME: ${{ steps.nightly_artifact.outcome }}
-          NIGHTLY_ARTIFACT_ID: ${{ steps.nightly_artifact.outputs.artifact-id }}
-        run: |
-          node --input-type=module -e '
-            import { classifyNightlyArtifactArchive } from "./scripts/lib/nightly-build-identity.mjs";
-            const result = classifyNightlyArtifactArchive({
-              outcome: process.env.NIGHTLY_ARTIFACT_ARCHIVE_OUTCOME,
-              artifactId: process.env.NIGHTLY_ARTIFACT_ID,
-            });
-            console.log("::" + result.annotation + "::" + result.message);
-          '
-
-      - name: Verify the built package carries the nightly identity
-        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
-        run: |
-          # A config overlay that silently failed to apply would otherwise
-          # publish a production-identified build to the nightly track.
-          apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)
-          build_tools="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION"
-          aapt="$build_tools/aapt"
-          apksigner="$build_tools/apksigner"
-          test -x "$aapt"
-          test -x "$apksigner"
-          test -n "$ANDROID_UPLOAD_CERT_SHA256"
-          badging=$("$aapt" dump badging "$apk")
-          echo "$badging" | grep -F "package: name='${{ steps.identity.outputs.identifier }}'"
-          echo "$badging" | grep -F "application-label:'${{ steps.identity.outputs.product_name }}'"
-          echo "$badging" | grep -F "versionCode='${{ steps.identity.outputs.version_code }}'"
-          echo "$badging" | grep -F "versionName='${{ steps.identity.outputs.version }}'"
-          node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"
-          aab=$(find src-desktop/gen/android/app/build/outputs/bundle/universalRelease -name '*.aab' -print -quit)
-          test -n "$aab"
-          node scripts/verify-android-aab-signature.mjs "$aab" "$ANDROID_UPLOAD_CERT_SHA256"
-          node scripts/check-android-16kb-alignment.mjs "$apk"
-
-      - name: Upload to Play internal testing track
-        id: play_upload
-        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
-        env:
-          PLAY_UPLOAD_ACTION_PATH: ${{ steps.play_upload_action.outputs.path }}
-          INPUT_SERVICEACCOUNTJSON: ${{ steps.google_auth.outputs.credentials_file_path }}
-          INPUT_PACKAGENAME: ${{ steps.identity.outputs.identifier }}
-          INPUT_RELEASEFILES: src-desktop/gen/android/app/build/outputs/bundle/universalRelease/*.aab
-          INPUT_TRACKS: internal
-          INPUT_STATUS: completed
-        run: node scripts/play-upload-retry.mjs
-
-      - name: Note skipped publication
-        if: steps.decide.outputs.build == 'true' && (env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER == '' || env.GCP_PLAY_SERVICE_ACCOUNT == '' || env.ANDROID_UPLOAD_KEY_ALIAS == '')
-        run: |
-          echo "::notice::Nightly was not published: Google Play OIDC variables and ANDROID_UPLOAD_KEY_ALIAS must be configured. A workflow artifact is available only if its archive outcome above reports success."
-
-      - name: Advance the rolling nightly tag
-        # Only after a successful publish path: the tag is what suppresses
-        # tomorrow's build, so moving it on a failed run would skip a day.
-        #
-        # REST ref update, not `git push`: GITHUB_TOKEN cannot hold the
-        # `workflows` scope, so a push moving this tag across a range that
-        # touches .github/workflows/* is refused; the refs API is not
-        # subject to that check. https://docs.github.com/en/rest/git/refs
-        if: steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != ''
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_SHA: ${{ steps.decide.outputs.head_sha }}
-          TAG_REF: refs/tags/nightly
-        run: |
-          set -euo pipefail
-          advance_ref() {
-            curl -sS -o "$RUNNER_TEMP/tag-advance-response.json" -w '%{http_code}' \
-              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              "$@"
-          }
-          ref_missing() {
-            [ "$1" = "404" ] || { [ "$1" = "422" ] \
-              && grep -q 'Reference does not exist' "$RUNNER_TEMP/tag-advance-response.json"; }
-          }
-          status=$(advance_ref -X PATCH \
-            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/${TAG_REF}" \
-            -d "{\"sha\":\"${TAG_SHA}\",\"force\":true}")
-          if ref_missing "$status"; then
-            status=$(advance_ref -X POST \
-              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/refs" \
-              -d "{\"ref\":\"${TAG_REF}\",\"sha\":\"${TAG_SHA}\"}")
-          fi
-          case "$status" in
-            200|201)
-              node -e '
-                const { readFileSync } = require("node:fs");
-                const [file, ref, sha] = process.argv.slice(1);
-                const body = JSON.parse(readFileSync(file, "utf8"));
-                if (body.ref !== ref || body.object?.sha !== sha) {
-                  console.error("ref update response mismatch:", JSON.stringify(body));
-                  process.exit(1);
-                }
-              ' "$RUNNER_TEMP/tag-advance-response.json" "$TAG_REF" "$TAG_SHA"
-              echo "${TAG_REF} now at ${TAG_SHA}"
-              ;;
-            *)
-              echo "::error::Tag advance failed with HTTP ${status}; tomorrow's nightly will rebuild this SHA."
-              cat "$RUNNER_TEMP/tag-advance-response.json"
-              exit 1
-              ;;
-          esac
-
-      # ── Deploy ledger (station#4572) ─────────────────────────────────────
-      # Publish-first-then-ledger, by construction: both steps below run only
-      # after the publishes above them succeeded, so a ledger failure can
-      # never block a ship. If a ledger step fails the JOB goes red — an
-      # unrecorded ship must be visible — accepting the tradeoff that the
-      # nightly is already live with a red recording step; the next
-      # successful nightly's changelog slice covers the gap. The always() +
-      # publish-outcome gates on each record step mean even an Android-step
-      # failure records the npm ship that already happened in THIS run.
-      # The entry sha is steps.decide.outputs.head_sha: the SAME decided SHA
-      # the gate verdicted and the build shipped. A ledger on a different SHA
-      # than the one that shipped is a lie, which is what station#4572
-      # exists to end. Each record step commits its entry back to main via
-      # scripts/lib/deploy-ledger-commit.mjs (bounded re-derive-and-retry
-      # against concurrent ledger writers — every channel prepends to the
-      # same JSON array, so two ships racing is the normal case, not the
-      # exception; the script's header states why re-deriving on retry is
-      # safe). Two steps means two commits; both subjects are docs(ledger):
-      # and excluded from every changelog slice.
-      # Ledger commits push directly to main, which the require-green ruleset
-      # blocks for GITHUB_TOKEN; the release app is a ruleset bypass actor.
-      - name: Mint the ledger push token
-        id: ledger_token
-        if: ${{ always() && steps.decide.outputs.build == 'true' && (steps.play_upload.outcome == 'success' || steps.cli_npm_publish.outcome == 'success') }}
+      - id: ledger_token
+        if: ${{ always() && steps.cli_npm_publish.outcome == 'success' }}
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write
-
-      - name: Record the nightly Android ship in the deploy ledger
-        # always() so no later-step failure suppresses the record of a
-        # publish that happened; the outcome gate keeps a failed or skipped
-        # publish from recording.
-        if: ${{ always() && steps.decide.outputs.build == 'true' && steps.android_signing.outputs.keystore_base64 != '' && steps.play_upload.outcome == 'success' }}
+      - name: Record the independent CLI ship in the deploy ledger
+        if: ${{ always() && steps.cli_npm_publish.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
-          DEPLOY_LEDGER_SHA: ${{ steps.decide.outputs.head_sha }}
-          DEPLOY_LEDGER_VERSION: ${{ steps.identity.outputs.version }}
-          DEPLOY_LEDGER_VERSION_CODE: ${{ steps.identity.outputs.version_code }}
-          DEPLOY_LEDGER_IDENTIFIER: ${{ steps.identity.outputs.identifier }}
-          DEPLOY_LEDGER_ARTIFACT_OUTCOME: ${{ steps.nightly_artifact.outcome }}
         run: |
-          set -euo pipefail
-          [ -n "$GITHUB_TOKEN" ] || { echo "::error::ledger token mint failed; the record cannot push"; exit 1; }
-          record=(node scripts/deploy-ledger.mjs
-            --channel nightly-android
-            --version "$DEPLOY_LEDGER_VERSION"
-            --sha "$DEPLOY_LEDGER_SHA"
-            --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-            --gate-result "nightly test-gate success on $DEPLOY_LEDGER_SHA (station#4539)"
-            --github-repo "$GITHUB_REPOSITORY"
-            --artifact "play-internal-aab:$DEPLOY_LEDGER_IDENTIFIER@versionCode $DEPLOY_LEDGER_VERSION_CODE")
-          if [ "$DEPLOY_LEDGER_ARTIFACT_OUTCOME" = 'success' ]; then
-            record+=(--artifact "workflow-artifact:station-nightly-$DEPLOY_LEDGER_VERSION_CODE (7-day retention)")
-          fi
-          node scripts/lib/deploy-ledger-commit.mjs \
-            --commit-subject "docs(ledger): record nightly-android $DEPLOY_LEDGER_VERSION from run $GITHUB_RUN_ID" \
-            --summary-line "- recorded: \`nightly-android $DEPLOY_LEDGER_VERSION\` at \`$DEPLOY_LEDGER_SHA\`" \
-            -- "${record[@]}"
-
-      - name: Record the nightly CLI npm ship in the deploy ledger
-        # The npm publish step ran early in this job; the RECORD runs last so
-        # its failure can never abort the Android build still ahead of it.
-        # always() + outcome gate, as on the Android record above.
-        if: ${{ always() && steps.decide.outputs.build == 'true' && steps.cli_npm_publish.outcome == 'success' }}
-        env:
-          GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
-          DEPLOY_LEDGER_SHA: ${{ steps.decide.outputs.head_sha }}
-          DEPLOY_LEDGER_VERSION: ${{ steps.cli_identity.outputs.version }}
-        run: |
-          set -euo pipefail
-          [ -n "$GITHUB_TOKEN" ] || { echo "::error::ledger token mint failed; the record cannot push"; exit 1; }
-          node scripts/lib/deploy-ledger-commit.mjs \
-            --commit-subject "docs(ledger): record nightly-npm $DEPLOY_LEDGER_VERSION from run $GITHUB_RUN_ID" \
-            --summary-line "- recorded: \`nightly-npm $DEPLOY_LEDGER_VERSION\` at \`$DEPLOY_LEDGER_SHA\`" \
-            -- node scripts/deploy-ledger.mjs \
-              --channel nightly-npm \
-              --version "$DEPLOY_LEDGER_VERSION" \
-              --sha "$DEPLOY_LEDGER_SHA" \
-              --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-              --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-              --gate-result "nightly test-gate success on $DEPLOY_LEDGER_SHA (station#4539)" \
-              --github-repo "$GITHUB_REPOSITORY" \
-              --artifact "npm:@kontourai/station-cli@$DEPLOY_LEDGER_VERSION (dist-tag nightly)"
-
-      # Durable belt-and-braces copy of the ledger for this ship. Storage or
-      # quota failure here is an infrastructure condition, not a verdict on
-      # the record (station#2218) — hence continue-on-error. The commit
-      # inside the record steps above is the durable record of authority;
-      # this artifact exists so a push that never succeeded (or the very
-      # first live runs) stays debuggable.
-      - name: Retain this run's deploy ledger files
-        if: ${{ always() && steps.decide.outputs.build == 'true' && (steps.android_signing.outputs.keystore_base64 != '' || steps.cli_npm_preflight.outputs.trusted_publisher == 'true') }}
-        continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: deploy-ledger-nightly-${{ github.run_id }}
-          path: |
-            docs/reference/deploy-ledger.json
-            docs/reference/deploy-ledger.md
-          if-no-files-found: error
-          retention-days: 14
-
-  # Nightly's date/index reservation is shared with iOS. This caller takes
-  # the exact identity emitted by the Android job rather than recomputing a
-  # new value after a later checkout or midnight boundary.
-  nightly-ios:
-    needs: [test-gate, full-regression, nightly]
-    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' && needs.nightly.result == 'success' && needs.nightly.outputs.build == 'true' }}
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/testflight-delivery.yml
-    with:
-      channel: nightly
-      source_sha: ${{ needs.nightly.outputs.source_sha }}
-      source_ref: refs/tags/${{ needs.nightly.outputs.reservation_tag }}
-      marketing_version: ${{ needs.nightly.outputs.marketing_version }}
-      bundle_version: ${{ needs.nightly.outputs.bundle_version }}
-      release_label: nightly-${{ needs.nightly.outputs.bundle_version }}
-      mobile_endpoint: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}
-      update_feed_url: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
-      update_provider_origin: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
-      update_action_url: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
-      update_action_kind: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
-      update_action_origins: ${{ vars.NATIVE_APP_UPDATE_ACTION_ORIGINS }}
-
-  # ── Desktop (station#575) ────────────────────────────────────────────────
-  # A sibling of `nightly` above, gated identically on the shared source,
-  # browser, and full-regression gates and never on Android's success: Android
-  # and desktop ship independently. Runs on GitHub-hosted `macos-15`, the same image
-  # release.yml's desktop-macos job uses.
-  #
-  # This job ships the CONFIG half (build, sign, publish the manifest).
-  # `src-desktop` carries the runtime half (#575): `tauri-plugin-updater` is
-  # registered only when the build's `plugins.updater` config has both a
-  # pubkey and endpoints, which is exactly what this job's overlay writes —
-  # so a nightly-channel app built from this job DOES read what it publishes
-  # here. Stable and beta use the same complete pubkey-plus-endpoint contract;
-  # `native-release-config.mjs` additionally binds their endpoint to the
-  # release tag's stable or beta rolling channel.
-  nightly-desktop:
-    needs: [test-gate, full-regression]
-    if: ${{ always() && !cancelled() && github.event_name != 'pull_request' && needs['test-gate'].result == 'success' && needs['full-regression'].result == 'success' }}
-    runs-on: macos-15
-    environment: native-release
-    # ~40 min build + Apple notary's long tail; 60 cancelled mid-notarize.
-    timeout-minutes: 120
-    permissions:
-      contents: write
-    steps:
-      - name: Reserve nightly macOS release cleanup window
-        id: nightly_macos_release_deadline
-        shell: bash
-        run: |
-          # Reserve cleanup time before checkout and toolchain setup consume
-          # the 120-minute hosted-job budget.
-          epoch="$(( $(date -u +%s) + 105 * 60 ))"
-          printf 'epoch=%s\n' "$epoch" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.test-gate.outputs.source_sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Decide whether there is a new desktop nightly to build
-        # Mirrors the Android decide step, against this leg's own rolling
-        # tag: only a HEAD that differs from the last shipped SHA builds.
-        # Real hazard this does NOT close (no manual rebuild input, unlike
-        # Android, and no build-index in the version string): two runs
-        # triggered the same day at DIFFERENT SHAs both decide build=true
-        # and both derive the SAME version string (day-numbered only), so
-        # the second run's --clobber upload silently replaces the first
-        # binary under an identical version — any client already offered
-        # (or that applied) the first is never offered the second, and the
-        # deploy ledger records both SHAs as separate rows under one
-        # version with no signal that only one is actually live. Left as an
-        # deliberate decision tracked in #624 (build-index suffix, or
-        # same-day refusal); not invented here.
-        id: decide
-        run: |
-          head_sha=$(git rev-parse HEAD)
-          last_sha=$(git rev-parse --verify --quiet 'refs/tags/nightly-desktop^{commit}' || true)
-          normalized_head_sha=$(node scripts/normalize-deploy-ledger-head.mjs --head-sha "$head_sha" --stop-sha "$last_sha")
-          {
-            echo "head_sha=$head_sha"
-            echo "normalized_head_sha=$normalized_head_sha"
-            echo "date=$(date -u +%Y-%m-%dT00:00:00Z)"
-          } >> "$GITHUB_OUTPUT"
-          if [ "$normalized_head_sha" = "$last_sha" ]; then
-            echo "::notice::main has no source change since the last desktop nightly ($last_sha); nothing to build."
-            echo "build=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "build=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: steps.decide.outputs.build == 'true'
-        with: { node-version-file: .nvmrc, cache: npm }
-      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        if: steps.decide.outputs.build == 'true'
-        with: { targets: aarch64-apple-darwin }
-      - run: npm run dependencies:ci && npm run build:sdk && npm run build:connect
-        if: steps.decide.outputs.build == 'true'
-
-      # Fails loud before touching any signing material: an absent secret is
-      # a workflow/environment bug, never a silent skip, because this leg's
-      # whole purpose is a signed artifact.
-      - name: Fail closed and create the desktop nightly updater configuration
-        if: steps.decide.outputs.build == 'true'
-        id: identity
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
-          APPLE_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 }}
-          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
-          APPLE_DEVELOPER_ID_SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_SIGNING_IDENTITY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
-          NIGHTLY_NOW: ${{ steps.decide.outputs.date }}
-        run: |
-          for name in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD TAURI_SIGNING_PUBLIC_KEY APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD APPLE_DEVELOPER_ID_SIGNING_IDENTITY APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY; do
-            test -n "${!name}" || { echo "Missing required protected secret: $name" >&2; exit 1; }
-          done
-          printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$RUNNER_TEMP/station-updater.pub"
-          node scripts/lib/nightly-build-identity.mjs --desktop \
-            --package-json package.json \
-            --tauri-config src-desktop/tauri.conf.json \
-            --date "$NIGHTLY_NOW" \
-            --updater-public-key-file "$RUNNER_TEMP/station-updater.pub" \
-            --updater-endpoint "https://github.com/${{ github.repository }}/releases/download/nightly-desktop/latest.json" \
-            --output "$RUNNER_TEMP/tauri.nightly-desktop.conf.json" \
-            --github-output "$GITHUB_OUTPUT"
-
-      - name: Import macOS Developer ID certificate
-        if: steps.decide.outputs.build == 'true'
-        env:
-          APPLE_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 }}
-          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
-          APPLE_DEVELOPER_ID_SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_SIGNING_IDENTITY }}
-        run: |
-          certificate="$RUNNER_TEMP/station-developer-id.p12"
-          keychain="$RUNNER_TEMP/station-developer-id.keychain-db"
-          state="$RUNNER_TEMP/station-developer-id-search-state.json"
-          printf '%s' "$APPLE_DEVELOPER_ID_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
-          node ops/release/macos-signing-readiness.mjs prepare --certificate "$certificate" --keychain "$keychain" --state "$state" --deadline-epoch "${{ steps.nightly_macos_release_deadline.outputs.epoch }}"
-
-      # tauri.macos.conf.json auto-merges for this target (resources,
-      # beforeBuildCommand); tauri.nightly.conf.json is passed explicitly for
-      # Info.nightly.plist and the Nightly icon set — the macOS fields the
-      # Android leg's own overlay does not need.
-      - name: Build an unsigned macOS nightly staging candidate
-        if: steps.decide.outputs.build == 'true'
-        working-directory: src-desktop
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          STATION_BUILD_VERSION: ${{ steps.identity.outputs.version }}
-        run: npx tauri build --no-sign --target aarch64-apple-darwin --config tauri.nightly.conf.json --config "$RUNNER_TEMP/tauri.nightly-desktop.conf.json"
-
-      - name: Seal, notarize, and derive canonical macOS nightly artifacts
-        if: steps.decide.outputs.build == 'true'
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_DEVELOPER_ID_SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_SIGNING_IDENTITY }}
-          APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
-        run: |
-          node ops/release/macos-signing-readiness.mjs unlock --keychain "$RUNNER_TEMP/station-developer-id.keychain-db" --deadline-epoch "${{ steps.nightly_macos_release_deadline.outputs.epoch }}"
-          node ops/release/macos-signing-readiness.mjs probe --keychain "$RUNNER_TEMP/station-developer-id.keychain-db" --probe "$RUNNER_TEMP/station-developer-id-probe"
-          umask 077
-          notary_key="$RUNNER_TEMP/station-notary-api-key.p8"
-          trap 'rm -f "$notary_key"' EXIT
-          app_candidates=()
-          while IFS= read -r -d '' app_candidate; do
-            app_candidates+=("$app_candidate")
-          done < <(find "src-desktop/target/aarch64-apple-darwin/release/bundle/macos" -maxdepth 1 -type d -name '*.app' -print0)
-          test "${#app_candidates[@]}" -eq 1
-          app="${app_candidates[0]}"
-          printf '%s' "$APPLE_API_PRIVATE_KEY" > "$notary_key"
-          chmod 600 "$notary_key"
-          expected_bundle_version="${{ steps.identity.outputs.bundle_version }}"
-          actual_bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")"
-          if [[ ! "$expected_bundle_version" =~ ^[0-9]+$ ]] || [[ ! "$actual_bundle_version" =~ ^[0-9]+$ ]]; then
-            echo "::error::Nightly macOS CFBundleVersion must be numeric before notarization" >&2
-            exit 1
-          fi
-          if [[ "$actual_bundle_version" != "$expected_bundle_version" ]]; then
-            echo "::error::Nightly macOS CFBundleVersion does not match the generated desktop identity" >&2
-            exit 1
-          fi
-          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir release-assets --release-tag nightly-desktop --architecture aarch64 --bundle-id io.kontourai.station.nightly --deadline-epoch "${{ steps.nightly_macos_release_deadline.outputs.epoch }}"
-          # A config overlay that silently failed to apply would otherwise
-          # publish a production-identified build to the nightly channel —
-          # the same check the Android leg's badging grep proves, here
-          # against the notarized .app's own Info.plist.
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "${{ steps.identity.outputs.version }}"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist")" = "${{ steps.identity.outputs.product_name }}"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "io.kontourai.station.nightly"
-      - name: Cleanup macOS Developer ID keychain
-        if: always()
-        run: |
-          set +e
-          node ops/release/macos-signing-readiness.mjs cleanup --keychain "$RUNNER_TEMP/station-developer-id.keychain-db" --state "$RUNNER_TEMP/station-developer-id-search-state.json"
-          helper_status=$?
-          rm -f "$RUNNER_TEMP/station-developer-id.p12" "$RUNNER_TEMP/station-developer-id-probe"
-          rm_status=$?
-          test "$helper_status" -eq 0 && test "$rm_status" -eq 0
-
-      - name: Assemble the signed updater manifest
-        if: steps.decide.outputs.build == 'true'
-        run: |
-          node scripts/lib/tauri-updater-manifest.mjs \
-            --version "${{ steps.identity.outputs.version }}" \
-            --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --platform darwin-aarch64 \
-            --signature-file release-assets/station-nightly-desktop-macos-aarch64.app.tar.gz.sig \
-            --url "https://github.com/${{ github.repository }}/releases/download/nightly-desktop/station-nightly-desktop-macos-aarch64.app.tar.gz" \
-            --release-tag nightly-desktop \
-            --notes "Station Nightly desktop build ${{ steps.identity.outputs.version }} (${{ steps.decide.outputs.head_sha }})" \
-            --output release-assets/latest.json
-
-      # Rolling GitHub prerelease: one persistent tag/release, republished on
-      # every ship. `gh release upload --clobber` deletes an existing
-      # same-named asset before re-uploading it, so a job dying between that
-      # delete and its re-upload leaves exactly that one asset 404 until the
-      # next successful nightly repairs it — a failed download for anyone
-      # mid-fetch, never a corrupted install: the updater runtime (#575)
-      # fetches and verifies the manifest signature before it will apply
-      # anything, so a 404 or a still-replacing asset fails the check rather
-      # than installing something unsigned. latest.json is its OWN
-      # invocation, after the binaries' upload invocation completes —
-      # never merged into one command, which
-      # would let `gh` upload it concurrently with the binaries it
-      # describes. That bounds the other direction: a client reading an
-      # already-cached manifest is never pointed at an asset this run has
-      # started replacing but not finished. A DRAFT release fails loud below
-      # rather than uploading into it: every download URL under a draft 404s
-      # for anyone but the repo, so a draft nightly-desktop would silently
-      # break every installed app's update check.
-      - name: Publish the rolling desktop nightly prerelease
-        id: desktop_publish
-        if: steps.decide.outputs.build == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          if gh release view nightly-desktop --repo "${{ github.repository }}" --json isDraft --jq .isDraft 2>/dev/null | grep -qx true; then
-            echo "::error::nightly-desktop is a draft release; refusing to upload into it (every download URL under a draft 404s for installed apps)." >&2
-            exit 1
-          fi
-          if ! gh release view nightly-desktop --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            # The rolling release's tag is structural only; the deploy ledger
-            # carries the last shipped SHA. Do not let GITHUB_TOKEN create it
-            # from this candidate: GitHub rejects a ref that crosses workflow
-            # changes without an unavailable workflows:write token (station#737).
-            # An owner must bootstrap this one release/tag with their signed-in
-            # credentials before enabling the job; once present this workflow
-            # only replaces authenticated assets under that fixed release.
-            echo "::error::nightly-desktop does not exist; bootstrap the rolling prerelease/tag with an owner credential before rerunning. Refusing GITHUB_TOKEN release creation because a workflow-changing target is blocked." >&2
-            exit 1
-          fi
-          gh release upload nightly-desktop --repo "${{ github.repository }}" --clobber \
-            release-assets/station-nightly-desktop-macos-aarch64.dmg \
-            release-assets/station-nightly-desktop-macos-aarch64.app.tar.gz \
-            release-assets/station-nightly-desktop-macos-aarch64.app.tar.gz.sig
-          gh release upload nightly-desktop --repo "${{ github.repository }}" --clobber release-assets/latest.json
-          gh release edit nightly-desktop --repo "${{ github.repository }}" \
-            --notes "Rolling nightly desktop build. Latest: ${{ steps.identity.outputs.version }} at ${{ steps.decide.outputs.head_sha }}, published $(date -u +%Y-%m-%dT%H:%M:%SZ)."
-
-      - name: Advance the rolling desktop nightly tag
-        # AFTER the publish step, mirroring the Android job's own ordering:
-        # this tag is what suppresses tomorrow's build, and desktop has no
-        # manual rebuild input, so moving it before a publish that then
-        # fails would assert a ship that never happened and could only be
-        # recovered by hand-deleting the tag.
-        #
-        # REST ref update, not `git push` — same constraint as the Android
-        # leg's tag advance above.
-        if: steps.decide.outputs.build == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_SHA: ${{ steps.decide.outputs.head_sha }}
-          TAG_REF: refs/tags/nightly-desktop
-        run: |
-          set -euo pipefail
-          advance_ref() {
-            curl -sS -o "$RUNNER_TEMP/tag-advance-response.json" -w '%{http_code}' \
-              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              "$@"
-          }
-          ref_missing() {
-            [ "$1" = "404" ] || { [ "$1" = "422" ] \
-              && grep -q 'Reference does not exist' "$RUNNER_TEMP/tag-advance-response.json"; }
-          }
-          status=$(advance_ref -X PATCH \
-            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/${TAG_REF}" \
-            -d "{\"sha\":\"${TAG_SHA}\",\"force\":true}")
-          if ref_missing "$status"; then
-            status=$(advance_ref -X POST \
-              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/refs" \
-              -d "{\"ref\":\"${TAG_REF}\",\"sha\":\"${TAG_SHA}\"}")
-          fi
-          case "$status" in
-            200|201)
-              node -e '
-                const { readFileSync } = require("node:fs");
-                const [file, ref, sha] = process.argv.slice(1);
-                const body = JSON.parse(readFileSync(file, "utf8"));
-                if (body.ref !== ref || body.object?.sha !== sha) {
-                  console.error("ref update response mismatch:", JSON.stringify(body));
-                  process.exit(1);
-                }
-              ' "$RUNNER_TEMP/tag-advance-response.json" "$TAG_REF" "$TAG_SHA"
-              echo "${TAG_REF} now at ${TAG_SHA}"
-              ;;
-            *)
-              echo "::error::Tag advance failed with HTTP ${status}; tomorrow's desktop nightly will rebuild this SHA."
-              cat "$RUNNER_TEMP/tag-advance-response.json"
-              exit 1
-              ;;
-          esac
-
-      # Publish-first-then-ledger (station#4572): runs only after the publish
-      # step above succeeded; its own failure reddens the job without
-      # un-shipping anything.
-      - name: Mint the ledger push token
-        id: ledger_token
-        if: ${{ always() && steps.decide.outputs.build == 'true' && steps.desktop_publish.outcome == 'success' }}
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          permission-contents: write
-
-      - name: Record the nightly desktop ship in the deploy ledger
-        # always() + outcome gate, as on the Android job's ledger records.
-        if: ${{ always() && steps.decide.outputs.build == 'true' && steps.desktop_publish.outcome == 'success' }}
-        env:
-          GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
-          DEPLOY_LEDGER_SHA: ${{ steps.decide.outputs.head_sha }}
-          DEPLOY_LEDGER_VERSION: ${{ steps.identity.outputs.version }}
-        run: |
-          set -euo pipefail
-          [ -n "$GITHUB_TOKEN" ] || { echo "::error::ledger token mint failed; the record cannot push"; exit 1; }
-          node scripts/lib/deploy-ledger-commit.mjs \
-            --commit-subject "docs(ledger): record nightly-desktop $DEPLOY_LEDGER_VERSION from run $GITHUB_RUN_ID" \
-            --summary-line "- recorded: \`nightly-desktop $DEPLOY_LEDGER_VERSION\` at \`$DEPLOY_LEDGER_SHA\`" \
-            -- node scripts/deploy-ledger.mjs \
-              --channel nightly-desktop \
-              --version "$DEPLOY_LEDGER_VERSION" \
-              --sha "$DEPLOY_LEDGER_SHA" \
-              --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-              --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-              --gate-result "nightly test-gate success on $DEPLOY_LEDGER_SHA (station#4539)" \
-              --github-repo "$GITHUB_REPOSITORY" \
-              --artifact "github-release:nightly-desktop (station-nightly-desktop-macos-aarch64.dmg, .app.tar.gz, latest.json)"
-
-      - name: Retain this run's deploy ledger files
-        if: ${{ always() && steps.decide.outputs.build == 'true' }}
-        continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: deploy-ledger-nightly-desktop-${{ github.run_id }}
-          path: |
-            docs/reference/deploy-ledger.json
-            docs/reference/deploy-ledger.md
-          if-no-files-found: error
-          retention-days: 14
+          node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record nightly-npm ${{ steps.identity.outputs.version }} from run $GITHUB_RUN_ID" --summary-line "- recorded: nightly-npm ${{ steps.identity.outputs.version }}" -- node scripts/deploy-ledger.mjs --channel nightly-npm --version "${{ steps.identity.outputs.version }}" --sha "${{ needs.test-gate.outputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'Nightly exact gates success' --github-repo "$GITHUB_REPOSITORY" --artifact "npm:@kontourai/station-cli@${{ steps.identity.outputs.version }} (dist-tag nightly)"

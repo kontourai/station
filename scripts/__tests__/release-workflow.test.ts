@@ -45,8 +45,8 @@ const android = readFileSync(
   resolve(root, '.github/workflows/build-android.yml'),
   'utf8',
 );
-const nightly = readFileSync(
-  resolve(root, '.github/workflows/nightly.yml'),
+const nativeCohort = readFileSync(
+  resolve(root, '.github/workflows/nightly-native-cohort.yml'),
   'utf8',
 );
 const testFlightDelivery = readFileSync(
@@ -118,30 +118,54 @@ describe('mobile release hardening contract', () => {
 });
 
 describe('nightly native product-version propagation', () => {
-  it('passes the derived Nightly version to every Tauri build, including the signed AAB/APK build', () => {
-    const nightlyJob = workflowJob(nightly, 'nightly');
-    const tauriBuildSteps = (nightlyJob.steps ?? []).filter(
+  it('passes the content-bound cohort version to each staged Tauri build', () => {
+    const androidJob = workflowJob(nativeCohort, 'stage-android');
+    const macosJob = workflowJob(nativeCohort, 'stage-macos');
+    const tauriBuildSteps = [
+      ...(androidJob.steps ?? []),
+      ...(macosJob.steps ?? []),
+    ].filter(
       (step) => !!step.run && /npx tauri(?: android)? build\b/.test(step.run),
     );
-
-    // Tauri executes tauri.conf.json's beforeBuildCommand for each of these
-    // invocations, so each must expose the build identity to the UI build.
-    expect(tauriBuildSteps).toHaveLength(1);
-    for (const step of tauriBuildSteps) {
-      expect(step.env?.STATION_BUILD_VERSION).toBe(
-        githubExpression('steps.identity.outputs.version'),
-      );
-    }
-
-    const signedBuild = namedStep(nightlyJob, 'Build signed nightly AAB');
-    expect(signedBuild).toBe(tauriBuildSteps[0]);
-    expect(signedBuild.run).toContain('npx tauri android build --aab --apk');
-    expect(signedBuild.if).toContain(
-      'steps.android_signing.outputs.keystore_base64',
+    expect(tauriBuildSteps).toHaveLength(2);
+    expect(tauriBuildSteps[0].run).toContain('cohort-plan.json');
+    expect(tauriBuildSteps[0].run).toContain('tauri android build --aab --apk');
+    expect(tauriBuildSteps[1].run).toContain('cohort-plan.json');
+    expect(tauriBuildSteps[1].run).toContain('tauri build --no-sign');
+    expect(nativeCohort).toContain(
+      'attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
     );
-    expect(signedBuild.if).toContain(
-      'steps.android_signing.outputs.keystore_password',
+  });
+
+  it('reserves one macOS deadline before setup and carries the cohort bundle version through notarization', () => {
+    const macosJob = workflowJob(nativeCohort, 'stage-macos');
+    const deadline = namedStep(
+      macosJob,
+      'Reserve one fixed macOS cleanup deadline',
     );
+    expect(deadline.id).toBe('macos_cohort_deadline');
+    expect(deadline.run).toContain('(120 * 60) - cleanup_reserve_seconds');
+    const setup = stepIndex(
+      macosJob,
+      'Fail closed and build/sign/notarize macOS staging artifacts',
+    );
+    expect(
+      stepIndex(macosJob, 'Reserve one fixed macOS cleanup deadline'),
+    ).toBeLessThan(setup);
+    const staging = namedStep(
+      macosJob,
+      'Fail closed and build/sign/notarize macOS staging artifacts',
+    );
+    const deadlineExpression =
+      '$' + '{{ steps.macos_cohort_deadline.outputs.epoch }}';
+    expect(
+      staging.run.match(
+        new RegExp(deadlineExpression.replace(/[${}]/g, '\\$&'), 'g'),
+      ),
+    ).toHaveLength(3);
+    expect(staging.run).toContain('--build "$build"');
+    expect(staging.run).toContain('Print :CFBundleVersion');
+    expect(staging.run).toContain(')" = "$bundle_version"');
   });
 });
 
