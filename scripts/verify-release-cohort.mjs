@@ -212,7 +212,10 @@ function requiredArtifactPaths(candidate, input) {
 
 export function assertNightlyVersionRelationship(identities) {
   const version = identities?.android?.versionName;
-  const match = /-nightly\.([0-9]+)(?:\.([0-9]+))?$/.exec(version ?? '');
+  const match =
+    /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-nightly\.(0|[1-9][0-9]*)(?:\.([1-9][0-9]*))?$/.exec(
+      version ?? '',
+    );
   const day = match ? Number(match[1]) : Number.NaN;
   const build = match?.[2] === undefined ? 0 : Number(match[2]);
   const androidCode = identities?.android?.versionCode;
