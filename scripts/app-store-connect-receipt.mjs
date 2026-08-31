@@ -188,11 +188,14 @@ async function buildReceipt(argv, env) {
   const ipa = requiredOption(argv, '--ipa');
   const workflowRunUrl = requiredOption(argv, '--workflow-run-url');
   const output = requiredOption(argv, '--output');
-  const artifactBuiltAt = requiredOption(argv, '--artifact-built-at');
+  const artifactManifestPath = requiredOption(argv, '--artifact-manifest');
   if (!SHA_PATTERN.test(sourceSha)) {
     throw new Error('--source-sha must be exactly 40 lowercase hex characters');
   }
-  assertCanonicalArtifactBuiltAt(artifactBuiltAt);
+  const artifactManifest = readArtifactManifest(artifactManifestPath);
+  if (artifactManifest.sha !== sourceSha) {
+    throw new Error('--artifact-manifest sha must equal --source-sha');
+  }
   const query = new URLSearchParams({
     'filter[app]': appId,
     'filter[version]': bundleVersion,
@@ -221,7 +224,7 @@ async function buildReceipt(argv, env) {
     sourceSha,
     // Artifact provenance is deliberately distinct from App Store Connect's
     // uploadedDate and this observer's observedAt.
-    artifactBuiltAt,
+    artifactBuiltAt: artifactManifest.builtAt,
     ipaSha256,
     workflowRunUrl,
     observedAt: new Date().toISOString(),
@@ -242,6 +245,23 @@ export function assertCanonicalArtifactBuiltAt(value) {
     throw new Error(
       '--artifact-built-at must be a canonical ISO 8601 UTC timestamp',
     );
+}
+
+export function readArtifactManifest(path) {
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    throw new Error('--artifact-manifest must be a readable JSON file');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('--artifact-manifest must be a build manifest object');
+  }
+  if (typeof parsed.sha !== 'string' || !SHA_PATTERN.test(parsed.sha)) {
+    throw new Error('--artifact-manifest must contain a 40-hex sha');
+  }
+  assertCanonicalArtifactBuiltAt(parsed.builtAt);
+  return { sha: parsed.sha, builtAt: parsed.builtAt };
 }
 
 export async function main(argv = process.argv.slice(2), env = process.env) {

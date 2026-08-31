@@ -40,6 +40,7 @@ const MONTHS = [
 ] as const;
 
 export function formatBuildAge(ageSeconds: number): string {
+  if (!Number.isFinite(ageSeconds)) return 'unavailable';
   const seconds = Math.max(0, Math.floor(ageSeconds));
   if (seconds < 60) return 'just now';
   const minutes = Math.floor(seconds / 60);

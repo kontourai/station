@@ -841,7 +841,7 @@ jobs:
             --channel nightly-android
             --version "$DEPLOY_LEDGER_VERSION"
             --sha "$DEPLOY_LEDGER_SHA"
-            --artifact-built-at "$(node -e 'const fs=require("fs");process.stdout.write(JSON.parse(fs.readFileSync("src-desktop/station-client-build.json","utf8")).builtAt)')"
+            --artifact-manifest "src-desktop/station-client-build.json"
             --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             --gate-result "nightly test-gate success on $DEPLOY_LEDGER_SHA (station#4539)"

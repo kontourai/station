@@ -110,6 +110,9 @@ jobs:
           simulator_app=$(find src-desktop/gen/apple -type d -name '*.app' -print -quit)
           test -n "$simulator_app"
           simulator_app=$(cd "$simulator_app" && pwd -P)
+          packaged_manifest=$(find "$simulator_app" -type f -name station-build.json -print)
+          test "$(printf '%s\n' "$packaged_manifest" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          cmp "src-desktop/station-client-build.json" "$packaged_manifest"
           echo "app=$simulator_app" >> "$GITHUB_OUTPUT"
           mkdir release-assets
           tar -C "$(dirname "$simulator_app")" -czf "release-assets/station-ios-simulator-debug.app.tar.gz" "$(basename "$simulator_app")"

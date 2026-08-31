@@ -197,6 +197,27 @@ describe('desktop build manifest', () => {
     expect(readNativeClientBuildManifest(root)).toBeNull();
   });
 
+  test('desktop packaging makes client, bundled-server, and resource stamps agree', () => {
+    const root = makeRoot();
+    makeGitCheckout(root);
+    writeNativeClientBuildManifest(root, {
+      builtAt: '2026-08-30T12:00:00.000Z',
+      env: {},
+    });
+    const baked = deriveServerBuildIdentity(root, {
+      builtAt: '2026-08-30T12:01:00.000Z',
+      env: { STATION_CLIENT_BUILD_REUSE: '1' },
+    });
+    const resource = writeDesktopBuildManifest(root, {
+      builtAt: '2026-08-30T12:02:00.000Z',
+      env: {},
+    });
+    expect(baked?.builtAt).toBe('2026-08-30T12:00:00.000Z');
+    expect(
+      JSON.parse(readFileSync(resource as string, 'utf8')).builtAt,
+    ).toBe('2026-08-30T12:00:00.000Z');
+  });
+
   test('refuses to write when the server bundle it should describe is absent', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-desktop-manifest-'));
     roots.push(root);
@@ -214,10 +235,19 @@ describe('desktop build manifest', () => {
     ) as { scripts: Record<string, string> };
     const step = pkg.scripts['build:desktop:resources'];
 
-    expect(step).toContain('node scripts/write-desktop-build-manifest.mjs');
-    expect(step.indexOf('npm run build')).toBeLessThan(
-      step.indexOf('write-desktop-build-manifest'),
+    expect(step).toBe('node scripts/build-desktop-resources.mjs');
+    const resourceScript = readFileSync(
+      new URL('../build-desktop-resources.mjs', import.meta.url),
+      'utf8',
     );
+    expect(resourceScript).toContain('scripts/write-desktop-build-manifest.mjs');
+    expect(resourceScript.indexOf("['run', 'build']")).toBeLessThan(
+      resourceScript.indexOf('write-desktop-build-manifest'),
+    );
+    // Windows uses this same beforeBuildCommand; environment inheritance must
+    // be a Node child-process option, never a POSIX inline assignment.
+    expect(resourceScript).toContain("STATION_CLIENT_BUILD_REUSE: '1'");
+    expect(resourceScript).not.toContain('STATION_CLIENT_BUILD_REUSE=1 npm');
 
     for (const platform of ['macos', 'linux', 'windows']) {
       const config = JSON.parse(

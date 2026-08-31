@@ -142,7 +142,7 @@
     "performance:workspace:reference": "node scripts/interactive-workspace-performance.mjs --mode=reference",
     "build:native-client": "node scripts/write-native-client-build-manifest.mjs && npm run build:connect && npm run build:sdk && npm run build:ui",
     "stage:native-client-build-provenance": "node scripts/write-native-client-build-manifest.mjs --refresh",
-    "build:desktop:resources": "node scripts/write-native-client-build-manifest.mjs --refresh && node scripts/channel-ports.mjs --sync-desktop && npm run build && node scripts/write-desktop-build-manifest.mjs && node scripts/stage-desktop-server-runtime.mjs",
+    "build:desktop:resources": "node scripts/build-desktop-resources.mjs",
     "channel-ports:check": "node scripts/channel-ports.mjs --check",
     "product-version:check": "node scripts/product-version.mjs --check",
     "product-version:sync": "node scripts/product-version.mjs --sync",

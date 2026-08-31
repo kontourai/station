@@ -64,6 +64,26 @@ function validArtifactBuiltAt(value) {
   return new Date(parsed).toISOString() === canonical;
 }
 
+function readArtifactManifest(path) {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    throw new Error('artifact manifest must be readable JSON');
+  }
+  if (
+    !manifest ||
+    typeof manifest !== 'object' ||
+    Array.isArray(manifest) ||
+    typeof manifest.sha !== 'string' ||
+    !SHA_PATTERN.test(manifest.sha) ||
+    !validArtifactBuiltAt(manifest.builtAt)
+  ) {
+    throw new Error('artifact manifest must contain canonical sha and builtAt');
+  }
+  return { sha: manifest.sha, builtAt: manifest.builtAt };
+}
+
 /**
  * Versions the ledger accepts: alphanumeric plus `.`, `+`, `~`, `-` — the
  * charset of every real channel version (semver, npm prerelease tags, the
@@ -373,7 +393,7 @@ function usage() {
     '         --channel <nightly-android|nightly-npm|nightly-desktop|stable-desktop|stable-npm> \\',
     '         --version <version> --sha <40-hex> --gate-result <sentence> \\',
     '         --github-repo owner/name [--timestamp <ISO-UTC>] [--workflow-run-url <https-url>] [--package <npm-name>]',
-    '         [--artifact-built-at <ISO-UTC>] [--artifact <descriptor>]... [--note <caveat>]... \\',
+    '         [--artifact-manifest <path>] [--artifact <descriptor>]... [--note <caveat>]... \\',
     '         [--repo-root <path>] [--ledger-json <path>] [--ledger-md <path>]',
     '',
     '--timestamp defaults to the current UTC moment (the workflow passes its own).',
@@ -461,6 +481,19 @@ export function main(argv) {
   const timestampUtc =
     flags.get('--timestamp') ??
     new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  let artifactBuiltAt;
+  if (flags.get('--artifact-manifest') !== undefined) {
+    try {
+      const manifest = readArtifactManifest(flags.get('--artifact-manifest'));
+      if (manifest.sha !== sha) {
+        throw new Error('artifact manifest sha must equal --sha');
+      }
+      artifactBuiltAt = manifest.builtAt;
+    } catch (error) {
+      console.error(`::error::${error.message}`);
+      return 1;
+    }
+  }
   const entry = {
     timestampUtc,
     channel,
@@ -469,9 +502,7 @@ export function main(argv) {
       ? { package: flags.get('--package') }
       : {}),
     sha,
-    ...(flags.get('--artifact-built-at') !== undefined
-      ? { artifactBuiltAt: flags.get('--artifact-built-at') }
-      : {}),
+    ...(artifactBuiltAt !== undefined ? { artifactBuiltAt } : {}),
     workflowRunUrl: flags.get('--workflow-run-url') ?? null,
     artifacts: repeated.get('--artifact') ?? [],
     gateResult: flags.get('--gate-result'),

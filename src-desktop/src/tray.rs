@@ -7,7 +7,7 @@ use crate::service_state::{
 };
 use crate::{BundledServerStatus, DesktopOwnerSnapshot, ServerOwnership};
 use serde::Deserialize;
-use std::fs::read_to_string;
+use std::fs::{read_to_string, symlink_metadata};
 use std::fmt::Display;
 use std::io::Read;
 use std::net::IpAddr;
@@ -839,6 +839,10 @@ fn local_client_build_label(app: &AppHandle) -> Option<String> {
 }
 
 fn read_local_client_build_manifest(path: &Path) -> Option<LocalClientBuildManifest> {
+    let metadata = symlink_metadata(path).ok()?;
+    if !metadata.file_type().is_file() || metadata.len() > 16 * 1024 {
+        return None;
+    }
     let raw = read_to_string(path).ok()?;
     serde_json::from_str(&raw).ok()
 }

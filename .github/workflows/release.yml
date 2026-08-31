@@ -757,7 +757,7 @@ jobs:
             --bundle-id io.kontourai.station \
             --bundle-version "$IOS_BUNDLE_VERSION" \
             --source-sha "${{ needs.preflight.outputs.sha }}" \
-            --artifact-built-at "$(node -e 'const fs=require("fs");process.stdout.write(JSON.parse(fs.readFileSync("src-desktop/station-client-build.json","utf8")).builtAt)')" \
+            --artifact-manifest "src-desktop/station-client-build.json" \
             --ipa "release-assets/station-${RELEASE_TAG}-ios-device.ipa" \
             --workflow-run-url "$WORKFLOW_RUN_URL" \
             --output provider-receipts/testflight-build-receipt.json

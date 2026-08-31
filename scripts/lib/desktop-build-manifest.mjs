@@ -145,6 +145,12 @@ function validBuildManifest(value) {
     !FULL_GIT_SHA.test(value.sha) ||
     typeof value.branch !== 'string' ||
     value.branch.trim().length === 0 ||
+    value.branch !== value.branch.trim() ||
+    value.branch.length > 256 ||
+    [...value.branch].some(
+      (character) =>
+        character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f,
+    ) ||
     typeof value.builtAt !== 'string' ||
     !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value.builtAt) ||
     !Number.isFinite(Date.parse(value.builtAt))
@@ -233,11 +239,17 @@ export function deriveServerBuildIdentity(
 ) {
   const identity = {};
 
-  const desktopManifest = deriveBuildManifest(projectRoot, {
-    git,
-    builtAt,
-    env,
-  });
+  // Desktop resource packaging freezes the client stamp first, then asks the
+  // server bundler to reuse it. A standalone server build deliberately does
+  // not opt in: an ignored client stamp from an earlier native build must not
+  // make a fresh server claim yesterday's artifact time.
+  let desktopManifest =
+    env.STATION_CLIENT_BUILD_REUSE === '1'
+      ? readNativeClientBuildManifest(projectRoot)
+      : null;
+  if (!desktopManifest) {
+    desktopManifest = deriveBuildManifest(projectRoot, { git, builtAt, env });
+  }
   if (desktopManifest) {
     identity.sha = desktopManifest.sha;
     identity.builtAt = desktopManifest.builtAt;

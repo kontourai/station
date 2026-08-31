@@ -48,6 +48,8 @@ describe('artifact build timestamp presentation', () => {
     [3_600, '1 hour ago'],
     [86_400, '1 day ago'],
     [1_209_600, '2 weeks ago'],
+    [Number.NaN, 'unavailable'],
+    [Number.POSITIVE_INFINITY, 'unavailable'],
   ])('formats %i seconds as %s', (seconds, expected) => {
     expect(formatBuildAge(seconds)).toBe(expected);
   });
