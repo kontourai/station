@@ -47,6 +47,12 @@ jobs:
         with:
           node-version-file: .nvmrc
 
+      # `full:regression` runs `gate:workflows`, and `actionlint-gate.mjs` is
+      # fail-closed: with no `actionlint` on PATH it exits 2 rather than
+      # reporting an unvalidated surface as a pass. Provisioning it here is
+      # what lets that gate actually validate, instead of failing the lane.
+      # `actionlint-gate.mjs` pins this copy through
+      # `fullRegressionActionlintFindings`, so it cannot drift from ci.yml's.
       - name: Install pinned actionlint
         env:
           ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz

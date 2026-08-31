@@ -20,6 +20,7 @@ import {
   APP_SETTINGS_REGISTRY,
   acceptsSettingValue,
   INTERNAL_APP_CONFIG_FIELDS,
+  USER_FACING_APP_SETTINGS_REGISTRY,
 } from '../settings-registry.js';
 
 /**
@@ -54,6 +55,18 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
     for (const internalKey of INTERNAL_APP_CONFIG_FIELDS) {
       expect(registryKeys.has(internalKey as string)).toBe(false);
     }
+  });
+
+  test('the persisted engine framework is explicitly excluded from user-facing settings', () => {
+    const runtime = APP_SETTINGS_REGISTRY.find(
+      (definition) => definition.key === 'runtime',
+    );
+    expect(runtime?.userFacing).toBe(false);
+    expect(
+      USER_FACING_APP_SETTINGS_REGISTRY.some(
+        (definition) => definition.key === 'runtime',
+      ),
+    ).toBe(false);
   });
 
   test('every registered key exists in schemas/app.schema.json', () => {

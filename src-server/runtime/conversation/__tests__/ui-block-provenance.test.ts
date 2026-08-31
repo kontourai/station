@@ -1,4 +1,4 @@
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import type {
   CanonicalRuntimeEvent,
   ToolCompletedEvent,
@@ -102,7 +102,7 @@ describe('computeUIBlockProvenanceDigest', () => {
 describe('sanitizeUIBlockEventProvenance', () => {
   const base = {
     eventId: 'evt_1',
-    provider: 'claude' as ProviderKind,
+    provider: 'claude' as EngineId,
     threadId: 'thread_1',
     createdAt: '2026-03-28T12:00:00.000Z',
     turnId: 'turn_1',
@@ -119,7 +119,7 @@ describe('sanitizeUIBlockEventProvenance', () => {
   test('passes through a non-tool.completed event untouched (same reference)', () => {
     const event = {
       eventId: 'evt_2',
-      provider: 'claude' as ProviderKind,
+      provider: 'claude' as EngineId,
       threadId: 'thread_1',
       createdAt: '2026-03-28T12:00:00.000Z',
       method: 'turn.completed' as const,
@@ -357,7 +357,7 @@ describe('sanitizeUIBlockEventProvenance', () => {
 describe('safeSanitizeUIBlockEventProvenance — B4 failure policy', () => {
   const base = {
     eventId: 'evt_poison',
-    provider: 'claude' as ProviderKind,
+    provider: 'claude' as EngineId,
     threadId: 'thread_1',
     createdAt: '2026-03-28T12:00:00.000Z',
     turnId: 'turn_1',

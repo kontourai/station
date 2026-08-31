@@ -232,7 +232,7 @@ test.describe('Orchestration Chat Flow', () => {
           providers: {
             configured: [
               {
-                id: 'codex-runtime',
+                id: 'codex',
                 type: 'codex',
                 enabled: true,
                 capabilities: ['llm'],
@@ -243,7 +243,7 @@ test.describe('Orchestration Chat Flow', () => {
           capabilities: {
             chat: {
               ready: true,
-              source: 'codex-runtime',
+              source: 'codex',
             },
           },
         }),

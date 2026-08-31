@@ -1,7 +1,7 @@
 import {
   type ConnectionConfig,
   type ConnectionRecoveryProjection,
-  type ProviderKind,
+  type EngineId,
 } from '@kontourai/station-contracts';
 import {
   type AgentId,
@@ -121,7 +121,7 @@ export type RuntimeSessionTarget = {
   kind: 'runtime';
   agentSlug: AgentId;
   connectionId: EngineConnectionId;
-  provider: ProviderKind;
+  provider: EngineId;
   metadata?: Record<string, unknown>;
 };
 
@@ -179,7 +179,7 @@ async function resolveRuntimeSessionTargetForConnection(
       `Connection '${connectionId}' has no runtime provider configured.`,
     );
   }
-  const provider: ProviderKind = isAcp ? 'acp' : (configuredProvider as string);
+  const provider: EngineId = isAcp ? 'acp' : (configuredProvider as string);
 
   return {
     kind: 'runtime',
@@ -709,7 +709,7 @@ function runtimeSessionMatchesTarget(
 async function resolveProviderForConnectionId(
   apiBase: string,
   connectionId: EngineConnectionId,
-): Promise<ProviderKind | null> {
+): Promise<EngineId | null> {
   const response = await authenticatedFetch(
     `${apiBase}/api/connections/${encodeURIComponent(connectionId)}`,
   );
@@ -747,7 +747,7 @@ async function resolveProviderForConnectionId(
 export async function resolveApprovalsAgentProvider(
   apiBase: string,
   agentSlug: AgentId,
-): Promise<ProviderKind | null> {
+): Promise<EngineId | null> {
   // 404 → unsupported-slug (the caller's configuration diagnosis); any other
   // failure is operational and must propagate as its own actionable error
   // (same status split as `readRuntimeSessionOrNull` above).

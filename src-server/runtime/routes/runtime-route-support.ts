@@ -1,5 +1,4 @@
 import { ACPStatus } from '@kontourai/station-contracts/acp';
-import type { EngineRuntimeId } from '@kontourai/station-contracts/agent-identity';
 import { getNotificationProviders } from '../../providers/registries/registry.js';
 import { runtimeAgentKey } from '../../routes/agents/runtime-agent-identity.js';
 import { getCachedUser } from '../../routes/system/auth.js';
@@ -173,8 +172,6 @@ export function createRuntimeSystemRouteDeps(
     // disagree (station#1194).
     listEngineConnectionStates: () =>
       context.connectionService.listEngineConnectionStates(),
-    resolveEngineConnectionId: (runtimeConnectionId: EngineRuntimeId) =>
-      context.connectionService.resolveEngineConnectionId(runtimeConnectionId),
     eventBus: context.eventBus,
     appConfig: context.appConfig,
     port: context.port,

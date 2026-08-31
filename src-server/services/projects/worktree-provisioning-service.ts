@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import type {
   WorkspaceIsolationConfig,
   WorktreeCleanupPolicy,
@@ -23,7 +23,7 @@ export type WorktreeTerminalState = 'completed' | 'failed' | 'cancelled';
 export interface WorktreeProvisionRequest {
   repoPath: string;
   threadId: string;
-  providerKind: ProviderKind;
+  providerKind: EngineId;
   isolation?: WorkspaceIsolationConfig;
 }
 

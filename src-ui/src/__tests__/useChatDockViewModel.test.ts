@@ -223,7 +223,7 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
   test('does not promote image-only runtime support to document support', () => {
     queryState.agentConnections = [
       {
-        id: 'codex-runtime',
+        id: 'codex',
         name: 'Codex',
         capabilities: ['agent-runtime', 'image-input'],
         config: { executionClass: 'external' },
@@ -232,7 +232,7 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
     const imageOnlySessions = [
       {
         ...sessions[0],
-        agentConnectionId: 'codex-runtime',
+        agentConnectionId: 'codex',
       },
     ] as typeof sessions;
     const { result } = renderHook(
@@ -303,7 +303,7 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
   test('an engine that declares no image path refuses the paste with its own reason', () => {
     queryState.agentConnections = [
       {
-        id: 'muse-runtime',
+        id: 'muse',
         name: 'Muse Code',
         capabilities: ['agent-runtime'],
         config: { engineId: 'muse', executionClass: 'external' },
@@ -311,7 +311,7 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
       },
     ];
     const museSessions = [
-      { ...sessions[0], agentConnectionId: 'muse-runtime' },
+      { ...sessions[0], agentConnectionId: 'muse' },
     ] as typeof sessions;
     const { result } = renderHook(
       (props: Props) => useChatDockViewModel(props),

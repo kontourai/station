@@ -49,7 +49,6 @@ function contextWithConfig(initial: { defaultLLMProvider?: string }) {
     connectionService: {
       checkGatedModelConnectionIds: () => new Map(),
       listEngineConnectionStates: async () => [],
-      resolveEngineConnectionId: async () => undefined,
     },
     acpBridge: { getStatus: () => ({ connections: [] }) },
     configLoader: { getProjectHomeDir: () => '/tmp/station-test-home' },

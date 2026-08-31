@@ -173,8 +173,8 @@ describe('appHomesRootDir / appHomeProfileDir', () => {
   });
 
   test('appHomeProfileDir joins the engine id onto the app-homes root', () => {
-    expect(appHomeProfileDir('claude-runtime', homeDir)).toBe(
-      join(homeDir, 'app-homes', 'claude-runtime'),
+    expect(appHomeProfileDir('claude', homeDir)).toBe(
+      join(homeDir, 'app-homes', 'claude'),
     );
   });
 
@@ -197,28 +197,28 @@ describe('claudeAppHomeEnv / codexAppHomeEnv', () => {
 
 describe('ensureAppHomeProfile', () => {
   test('creates the profile dir with a marker', async () => {
-    const result = await ensureAppHomeProfile('claude-runtime', { homeDir });
+    const result = await ensureAppHomeProfile('claude', { homeDir });
     expect(result.created).toBe(true);
-    expect(result.dir).toBe(join(homeDir, 'app-homes', 'claude-runtime'));
+    expect(result.dir).toBe(join(homeDir, 'app-homes', 'claude'));
     expect(existsSync(result.dir)).toBe(true);
     const marker = JSON.parse(
       readFileSync(join(result.dir, 'profile.json'), 'utf-8'),
     );
     expect(marker).toMatchObject({
       version: 1,
-      engineId: 'claude-runtime',
+      engineId: 'claude',
       seededFrom: 'empty',
     });
     expect(typeof marker.createdAt).toBe('string');
   });
 
   test('is idempotent', async () => {
-    const first = await ensureAppHomeProfile('claude-runtime', { homeDir });
+    const first = await ensureAppHomeProfile('claude', { homeDir });
     expect(first.created).toBe(true);
     const markerPath = join(first.dir, 'profile.json');
     const before = readFileSync(markerPath, 'utf-8');
 
-    const second = await ensureAppHomeProfile('claude-runtime', { homeDir });
+    const second = await ensureAppHomeProfile('claude', { homeDir });
     expect(second.created).toBe(false);
     expect(second.dir).toBe(first.dir);
     expect(readFileSync(markerPath, 'utf-8')).toBe(before);
@@ -235,15 +235,15 @@ describe('ensureAppHomeProfile', () => {
     // HIGH (security review): a pre-existing marker must be identity-
     // checked (lstat, never follows), not treated as a benign race winner
     // just because SOMETHING already exists at that path.
-    const dir = join(homeDir, 'app-homes', 'claude-runtime');
+    const dir = join(homeDir, 'app-homes', 'claude');
     mkdirSync(dir, { recursive: true });
     const sentinelTarget = join(scratch, 'sentinel.json');
     writeFileSync(sentinelTarget, 'do not touch');
     await symlink(sentinelTarget, join(dir, 'profile.json'));
 
-    await expect(
-      ensureAppHomeProfile('claude-runtime', { homeDir }),
-    ).rejects.toThrow(/not a regular file/);
+    await expect(ensureAppHomeProfile('claude', { homeDir })).rejects.toThrow(
+      /not a regular file/,
+    );
 
     // Refused BEFORE any write — the symlink target is completely
     // untouched, and the symlink itself was never replaced either.
@@ -258,7 +258,7 @@ describe('ensureAppHomeProfile', () => {
     // `O_CREAT|O_EXCL` write then reports `'exists'` — simulating
     // something racing into place in that exact gap. The re-check after
     // EEXIST must refuse a non-regular winner exactly the same way.
-    const dir = join(homeDir, 'app-homes', 'claude-runtime');
+    const dir = join(homeDir, 'app-homes', 'claude');
     const markerPath = join(dir, 'profile.json');
     const base = realFsPortForTest();
     let lstatCallCount = 0;
@@ -293,7 +293,7 @@ describe('ensureAppHomeProfile', () => {
     };
 
     await expect(
-      ensureAppHomeProfile('claude-runtime', { homeDir, fs }),
+      ensureAppHomeProfile('claude', { homeDir, fs }),
     ).rejects.toThrow(/not a regular file/);
     expect(lstatCallCount).toBe(2);
   });
@@ -301,15 +301,15 @@ describe('ensureAppHomeProfile', () => {
 
 describe('readAppHomeProfileStatus', () => {
   test('reports exists: false when no profile has been created', async () => {
-    const status = await readAppHomeProfileStatus('claude-runtime', {
+    const status = await readAppHomeProfileStatus('claude', {
       homeDir,
     });
     expect(status.exists).toBe(false);
   });
 
   test('reports the marker contents once a profile exists', async () => {
-    await ensureAppHomeProfile('claude-runtime', { homeDir });
-    const status = await readAppHomeProfileStatus('claude-runtime', {
+    await ensureAppHomeProfile('claude', { homeDir });
+    const status = await readAppHomeProfileStatus('claude', {
       homeDir,
     });
     expect(status.exists).toBe(true);
@@ -324,13 +324,13 @@ describe('readAppHomeProfileStatus', () => {
     // symlinked marker is refused/reported as absent, never read through
     // — proven here by a symlink pointing at a sentinel file whose content
     // must never leak into the reported status.
-    const { dir } = await ensureAppHomeProfile('claude-runtime', { homeDir });
+    const { dir } = await ensureAppHomeProfile('claude', { homeDir });
     const sentinelTarget = join(scratch, 'status-sentinel.json');
     writeFileSync(
       sentinelTarget,
       JSON.stringify({
         version: 1,
-        engineId: 'claude-runtime',
+        engineId: 'claude',
         createdAt: '2020-01-01T00:00:00.000Z',
         seededFrom: 'global-import',
         importedAt: '2020-01-01T00:00:00.000Z',
@@ -339,7 +339,7 @@ describe('readAppHomeProfileStatus', () => {
     rmSync(join(dir, 'profile.json'));
     await symlink(sentinelTarget, join(dir, 'profile.json'));
 
-    const status = await readAppHomeProfileStatus('claude-runtime', {
+    const status = await readAppHomeProfileStatus('claude', {
       homeDir,
     });
 
@@ -350,11 +350,11 @@ describe('readAppHomeProfileStatus', () => {
   });
 
   test('status reading refuses a directory at the marker path', async () => {
-    const { dir } = await ensureAppHomeProfile('claude-runtime', { homeDir });
+    const { dir } = await ensureAppHomeProfile('claude', { homeDir });
     rmSync(join(dir, 'profile.json'));
     mkdirSync(join(dir, 'profile.json'));
 
-    const status = await readAppHomeProfileStatus('claude-runtime', {
+    const status = await readAppHomeProfileStatus('claude', {
       homeDir,
     });
 
@@ -369,7 +369,7 @@ describe('readAppHomeProfileStatus', () => {
     // `O_NOFOLLOW` (Windows), a final-component swap between the
     // dispatch `lstat` and the open is still refused via the descriptor
     // identity cross-check, not silently read through.
-    const { dir } = await ensureAppHomeProfile('claude-runtime', { homeDir });
+    const { dir } = await ensureAppHomeProfile('claude', { homeDir });
     const markerPath = join(dir, 'profile.json');
     const base = realFsPortForTest();
     const fs = realFsPortForTest({
@@ -384,7 +384,7 @@ describe('readAppHomeProfileStatus', () => {
       },
     });
 
-    const status = await readAppHomeProfileStatus('claude-runtime', {
+    const status = await readAppHomeProfileStatus('claude', {
       homeDir,
       fs,
     });
@@ -414,7 +414,7 @@ describe('importClaudeGlobalSnapshot', () => {
       'commands/deploy.md': '# deploy',
       'random-file.txt': 'not allowlisted',
     });
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
 
@@ -446,7 +446,7 @@ describe('importClaudeGlobalSnapshot', () => {
       'statsig/cache.json': '{}',
       'shell-snapshots/snap.sh': '#!/bin/sh',
     });
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
 
@@ -471,7 +471,7 @@ describe('importClaudeGlobalSnapshot', () => {
     const globalDir = writeGlobalDir({
       '.credentials.json': '{"claudeAiOauth":{"accessToken":"secret"}}',
     });
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
 
@@ -509,7 +509,7 @@ describe('importClaudeGlobalSnapshot', () => {
       join(globalDir, 'skills', 'pizza', 'evil-link'),
     );
 
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     const result = await importClaudeGlobalSnapshot({
@@ -534,7 +534,7 @@ describe('importClaudeGlobalSnapshot', () => {
       'settings.json': '{}',
       'skills/pizza/SKILL.md': '# pizza',
     });
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
 
@@ -570,7 +570,7 @@ describe('importClaudeGlobalSnapshot', () => {
     const globalDir = writeGlobalDir({
       'skills/pizza/SKILL.md': '# pizza v1',
     });
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     await importClaudeGlobalSnapshot({ globalDir, profileDir, homeDir });
@@ -607,7 +607,7 @@ describe('importClaudeGlobalSnapshot', () => {
     // in the gap between the dispatch `lstat` and the read is refused, not
     // silently followed.
     const globalDir = writeGlobalDir({ 'settings.json': '{}' });
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     const sourcePath = join(globalDir, 'settings.json');
@@ -640,7 +640,7 @@ describe('importClaudeGlobalSnapshot', () => {
     const globalDir = writeGlobalDir({
       'skills/pizza/SKILL.md': '# pizza',
     });
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     const nestedSourcePath = join(globalDir, 'skills', 'pizza', 'SKILL.md');
@@ -672,7 +672,7 @@ describe('importClaudeGlobalSnapshot', () => {
     // read would sail through. The cap is now enforced from the OPENED
     // descriptor's own `fstat`, not the earlier `lstat`.
     const globalDir = writeGlobalDir({ 'settings.json': '{}' }); // tiny per lstat
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     const sourcePath = join(globalDir, 'settings.json');
@@ -713,7 +713,7 @@ describe('importClaudeGlobalSnapshot', () => {
     // outcome, and the caller (the route) is contractually required to
     // never advance provenance on it.
     const missingGlobalDir = join(scratch, 'does-not-exist-at-all');
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
 
@@ -735,7 +735,7 @@ describe('importClaudeGlobalSnapshot', () => {
 
   test('an existing but empty global config dir completes with zero copies', async () => {
     const globalDir = writeGlobalDir({});
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
 
@@ -760,7 +760,7 @@ describe('importClaudeGlobalSnapshot', () => {
     // identity through, and that `openForRead` refusing on a mismatch
     // (simulated here) is honored as a refusal end to end, not read.
     const globalDir = writeGlobalDir({ 'settings.json': '{}' });
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     const sourcePath = join(globalDir, 'settings.json');
@@ -805,7 +805,7 @@ describe('importClaudeGlobalSnapshot', () => {
     });
     try {
       const globalDir = writeGlobalDir({ 'settings.json': '{"theme":"dark"}' });
-      const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+      const { dir: profileDir } = await ensureAppHomeProfile('claude', {
         homeDir,
       });
 
@@ -838,7 +838,7 @@ describe('importClaudeGlobalSnapshot', () => {
       'CLAUDE.md': '# notes',
       'settings.json': '{}',
     });
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     const base = realFsPortForTest();
@@ -871,7 +871,7 @@ describe('importClaudeGlobalSnapshot', () => {
       'skills/pizza/SKILL.md': '# pizza',
       'skills/pizza/notes.md': '# notes',
     });
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     const base = realFsPortForTest();
@@ -901,7 +901,7 @@ describe('importClaudeGlobalSnapshot', () => {
     // was invisible — there was nothing there. This seeds a REAL prior
     // import first, then forces the SECOND import's copy phase to throw,
     // and proves the first import's content survives byte-identical.
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     const seedGlobalDir = writeGlobalDir({
@@ -973,7 +973,7 @@ describe('importClaudeGlobalSnapshot', () => {
   });
 
   test('a mid-commit rename failure restores the already-swapped entries from backups', async () => {
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     const seedGlobalDir = writeGlobalDir({
@@ -1047,7 +1047,7 @@ describe('importClaudeGlobalSnapshot', () => {
   });
 
   test('success leaves no stage or backup residue', async () => {
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     const globalDir = writeGlobalDir({
@@ -1076,7 +1076,7 @@ describe('importClaudeGlobalSnapshot', () => {
     // predictable `Date.now()+Math.random()` name handed to a
     // non-exclusive `mkdirRecursive` (which would silently ADOPT
     // whatever an attacker pre-planted at that guessable path).
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     const globalDir = writeGlobalDir({ 'settings.json': '{}' });
@@ -1108,7 +1108,7 @@ describe('importClaudeGlobalSnapshot', () => {
     // non-empty directory — the rollback must `rmRecursive` a newly
     // committed non-empty directory BEFORE renaming its backup back into
     // place, or the restore itself fails.
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     const seedGlobalDir = writeGlobalDir({
@@ -1185,7 +1185,7 @@ describe('importClaudeGlobalSnapshot', () => {
     // backup must NOT be deleted — it is the only remaining copy of the
     // user's pre-import content — and its path must be named in the
     // failure result, not just logged and lost.
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     const seedGlobalDir = writeGlobalDir({ 'settings.json': '{"v":1}' });
@@ -1266,7 +1266,7 @@ describe('importCodexGlobalSnapshot', () => {
       'history.jsonl': '{}',
       'log/codex.log': 'log line',
     });
-    const { dir: profileDir } = await ensureAppHomeProfile('codex-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('codex', {
       homeDir,
     });
 
@@ -1295,7 +1295,7 @@ describe('importCodexGlobalSnapshot', () => {
     const globalDir = writeGlobalDir({
       'auth.json': '{"tokens":{"access_token":"secret"}}',
     });
-    const { dir: profileDir } = await ensureAppHomeProfile('codex-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('codex', {
       homeDir,
     });
 
@@ -1332,7 +1332,7 @@ describe('importCodexGlobalSnapshot', () => {
       join(globalDir, 'AGENTS.md'),
       Buffer.alloc(APP_HOME_IMPORT_MAX_FILE_BYTES + 1, 'a'),
     );
-    const { dir: profileDir } = await ensureAppHomeProfile('codex-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('codex', {
       homeDir,
     });
 
@@ -1356,10 +1356,10 @@ describe('importCodexGlobalSnapshot', () => {
 
 describe('markAppHomeProfileImported', () => {
   test('records seededFrom global-import and importedAt, preserving createdAt', async () => {
-    const { dir } = await ensureAppHomeProfile('claude-runtime', { homeDir });
+    const { dir } = await ensureAppHomeProfile('claude', { homeDir });
     const before = JSON.parse(readFileSync(join(dir, 'profile.json'), 'utf-8'));
 
-    const result = await markAppHomeProfileImported('claude-runtime', dir, {
+    const result = await markAppHomeProfileImported('claude', dir, {
       now: () => '2026-07-26T00:00:00.000Z',
     });
 
@@ -1367,7 +1367,7 @@ describe('markAppHomeProfileImported', () => {
     const after = JSON.parse(readFileSync(join(dir, 'profile.json'), 'utf-8'));
     expect(after).toEqual({
       version: 1,
-      engineId: 'claude-runtime',
+      engineId: 'claude',
       createdAt: before.createdAt,
       seededFrom: 'global-import',
       importedAt: '2026-07-26T00:00:00.000Z',
@@ -1379,13 +1379,13 @@ describe('markAppHomeProfileImported', () => {
     // marker path follows a symlink there like any normal open, letting a
     // planted symlink turn "record this import" into an arbitrary-file
     // overwrite. Refused outright now, nothing written anywhere.
-    const { dir } = await ensureAppHomeProfile('claude-runtime', { homeDir });
+    const { dir } = await ensureAppHomeProfile('claude', { homeDir });
     const sentinelTarget = join(scratch, 'sentinel-marker-target.json');
     writeFileSync(sentinelTarget, 'do not touch');
     rmSync(join(dir, 'profile.json'));
     await symlink(sentinelTarget, join(dir, 'profile.json'));
 
-    const result = await markAppHomeProfileImported('claude-runtime', dir);
+    const result = await markAppHomeProfileImported('claude', dir);
 
     expect(result).toEqual({ ok: false, reason: 'marker-not-regular-file' });
     expect(readFileSync(sentinelTarget, 'utf-8')).toBe('do not touch');
@@ -1397,11 +1397,11 @@ describe('markAppHomeProfileImported', () => {
   });
 
   test('a directory sitting at the marker path also blocks import provenance updates', async () => {
-    const { dir } = await ensureAppHomeProfile('claude-runtime', { homeDir });
+    const { dir } = await ensureAppHomeProfile('claude', { homeDir });
     rmSync(join(dir, 'profile.json'));
     mkdirSync(join(dir, 'profile.json'));
 
-    const result = await markAppHomeProfileImported('claude-runtime', dir);
+    const result = await markAppHomeProfileImported('claude', dir);
 
     expect(result).toEqual({ ok: false, reason: 'marker-not-regular-file' });
     expect(existsSync(join(dir, 'profile.json'))).toBe(true);
@@ -1409,9 +1409,9 @@ describe('markAppHomeProfileImported', () => {
   });
 
   test('commits via a temp file + atomic rename — no leftover temp files after a clean update', async () => {
-    const { dir } = await ensureAppHomeProfile('claude-runtime', { homeDir });
+    const { dir } = await ensureAppHomeProfile('claude', { homeDir });
 
-    const result = await markAppHomeProfileImported('claude-runtime', dir);
+    const result = await markAppHomeProfileImported('claude', dir);
 
     expect(result).toEqual({ ok: true });
     const entries = readdirSync(dir);
@@ -1447,21 +1447,21 @@ describe('symlink dodge on the profile dir itself', () => {
 // clear (no daemons/watchers/timers).
 describe('readAppHomeProfileUsage', () => {
   test('reports null when the profile does not exist', async () => {
-    const usage = await readAppHomeProfileUsage('claude-runtime', {
+    const usage = await readAppHomeProfileUsage('claude', {
       homeDir,
     });
     expect(usage).toBeNull();
   });
 
   test('reports bounded usage across nested files', async () => {
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     mkdirSync(join(profileDir, 'skills', 'pizza'), { recursive: true });
     writeFileSync(join(profileDir, 'settings.json'), '{"theme":"dark"}'); // 16 bytes
     writeFileSync(join(profileDir, 'skills', 'pizza', 'SKILL.md'), '# pizza'); // 7 bytes
 
-    const usage = await readAppHomeProfileUsage('claude-runtime', {
+    const usage = await readAppHomeProfileUsage('claude', {
       homeDir,
     });
 
@@ -1473,7 +1473,7 @@ describe('readAppHomeProfileUsage', () => {
   });
 
   test('never follows symlinks: a symlinked entry counts once at size 0 and is not recursed into', async () => {
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     const outsideDir = join(scratch, 'usage-outside');
@@ -1481,7 +1481,7 @@ describe('readAppHomeProfileUsage', () => {
     writeFileSync(join(outsideDir, 'big.txt'), 'x'.repeat(1000));
     await symlink(outsideDir, join(profileDir, 'linked'), 'dir');
 
-    const usage = await readAppHomeProfileUsage('claude-runtime', {
+    const usage = await readAppHomeProfileUsage('claude', {
       homeDir,
     });
 
@@ -1512,7 +1512,7 @@ describe('readAppHomeProfileUsage', () => {
     );
     const fs: AppHomeFsPort = {
       lstat: async (path) => {
-        if (path === profileDirFor('claude-runtime')) {
+        if (path === profileDirFor('claude')) {
           return {
             isSymbolicLink: false,
             isFile: false,
@@ -1539,7 +1539,7 @@ describe('readAppHomeProfileUsage', () => {
         throw new Error('not used in this test');
       },
       readdir: async (path) =>
-        path === profileDirFor('claude-runtime') ? syntheticEntries : [],
+        path === profileDirFor('claude') ? syntheticEntries : [],
       readFile: async () => {
         throw new Error('not used in this test');
       },
@@ -1563,7 +1563,7 @@ describe('readAppHomeProfileUsage', () => {
       return appHomeProfileDir(engineId, homeDir);
     }
 
-    const usage = await readAppHomeProfileUsage('claude-runtime', {
+    const usage = await readAppHomeProfileUsage('claude', {
       homeDir,
       fs,
     });
@@ -1579,14 +1579,11 @@ describe('clearAppHomeProfile', () => {
     const elsewhere = join(scratch, 'usage-clear-elsewhere');
     mkdirSync(elsewhere, { recursive: true });
     writeFileSync(join(elsewhere, 'sentinel.txt'), 'must never be removed');
-    const symlinkedProfileDir = join(
-      appHomesRootDir(homeDir),
-      'claude-runtime',
-    );
+    const symlinkedProfileDir = join(appHomesRootDir(homeDir), 'claude');
     mkdirSync(appHomesRootDir(homeDir), { recursive: true });
     await symlink(elsewhere, symlinkedProfileDir, 'dir');
 
-    const result = await clearAppHomeProfile('claude-runtime', { homeDir });
+    const result = await clearAppHomeProfile('claude', { homeDir });
 
     expect(result).toEqual({
       ok: false,
@@ -1603,7 +1600,7 @@ describe('clearAppHomeProfile', () => {
   // deleting whatever it actually points at.
   test('a symlinked app-homes root cannot redirect the clear', async () => {
     const outsideRoot = join(scratch, 'usage-clear-root-elsewhere');
-    const outsideProfileDir = join(outsideRoot, 'claude-runtime');
+    const outsideProfileDir = join(outsideRoot, 'claude');
     mkdirSync(outsideProfileDir, { recursive: true });
     writeFileSync(
       join(outsideProfileDir, 'sentinel.txt'),
@@ -1612,7 +1609,7 @@ describe('clearAppHomeProfile', () => {
     // The ROOT (`app-homes`), not just the profile dir, is symlinked.
     await symlink(outsideRoot, appHomesRootDir(homeDir), 'dir');
 
-    const result = await clearAppHomeProfile('claude-runtime', { homeDir });
+    const result = await clearAppHomeProfile('claude', { homeDir });
 
     expect(result).toEqual({
       ok: false,
@@ -1622,16 +1619,15 @@ describe('clearAppHomeProfile', () => {
   });
 
   test('removes only the contained profile dir', async () => {
-    const { dir: profileDir } = await ensureAppHomeProfile('claude-runtime', {
+    const { dir: profileDir } = await ensureAppHomeProfile('claude', {
       homeDir,
     });
     writeFileSync(join(profileDir, 'settings.json'), '{}');
-    const { dir: codexProfileDir } = await ensureAppHomeProfile(
-      'codex-runtime',
-      { homeDir },
-    );
+    const { dir: codexProfileDir } = await ensureAppHomeProfile('codex', {
+      homeDir,
+    });
 
-    const result = await clearAppHomeProfile('claude-runtime', { homeDir });
+    const result = await clearAppHomeProfile('claude', { homeDir });
 
     expect(result).toEqual({ ok: true, cleared: true });
     expect(existsSync(profileDir)).toBe(false);
@@ -1640,7 +1636,7 @@ describe('clearAppHomeProfile', () => {
   });
 
   test('reports cleared: false when nothing existed', async () => {
-    const result = await clearAppHomeProfile('claude-runtime', { homeDir });
+    const result = await clearAppHomeProfile('claude', { homeDir });
     expect(result).toEqual({ ok: true, cleared: false });
   });
 });

@@ -1,5 +1,5 @@
 import type { AgentMetadata } from '@kontourai/station-contracts/agent';
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import type {
   IndependentReviewReceipt,
   IndependentReviewRequest,
@@ -17,7 +17,7 @@ export interface RepoMapReviewSelectionOptions {
     | { projectSlug: string; workspace: string; globalAgentSlugs: string[] }
     | undefined;
   listAgents(): Promise<AgentMetadata[]>;
-  supportsReadOnlyReview(provider: ProviderKind): boolean;
+  supportsReadOnlyReview(provider: EngineId): boolean;
   isCodexReviewerAvailable(agent: AgentMetadata): boolean;
   policyRevision?: string;
 }

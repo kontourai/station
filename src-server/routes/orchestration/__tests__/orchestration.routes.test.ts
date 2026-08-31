@@ -2000,7 +2000,7 @@ describe('Orchestration Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         prompt: 'Do work',
-        connection: 'codex-runtime',
+        connection: 'codex',
       }),
     });
 

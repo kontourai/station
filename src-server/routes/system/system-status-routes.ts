@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
-import {
-  type EngineConnectionId,
-  type EngineRuntimeId,
+import type {
+  EngineConnectionId,
+  EngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import {
   ENGINE_CAPABILITY_MATRICES,
@@ -12,8 +12,8 @@ import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
 import { Hono } from 'hono';
 import { resolveDeploymentCapabilities } from '../../capabilities/deployment-capabilities.js';
 import {
+  connectionIdForAdapter,
   engineIdForAdapter,
-  runtimeIdForAdapter,
 } from '../../providers/adapter-identity.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { checkBedrockCredentials } from '../../providers/llm/bedrock.js';
@@ -279,18 +279,33 @@ async function discoverDeveloperServices(): Promise<DeveloperServiceStatus[]> {
  *   call succeeds-> the connection's own `enabled`, defaulting to true only
  *                   for an id the live list does not mention at all.
  */
-async function resolveRuntimeEnabledPredicate(
-  deps: SystemStatusDeps,
-): Promise<(runtimeId: EngineRuntimeId) => boolean> {
-  if (typeof deps.listEngineConnectionStates !== 'function') return () => true;
+async function resolveRuntimeConnectionState(deps: SystemStatusDeps): Promise<{
+  isEnabled: (engineId: EngineId) => boolean;
+  connectionIdFor: (engineId: EngineId) => EngineConnectionId | undefined;
+}> {
+  if (typeof deps.listEngineConnectionStates !== 'function') {
+    return {
+      isEnabled: () => true,
+      connectionIdFor: () => undefined,
+    };
+  }
   try {
     const connections = await deps.listEngineConnectionStates();
     const disabled = new Set(
-      connections.filter((c) => !c.enabled).map((c) => c.runtimeId),
+      connections.filter((c) => !c.enabled).map((c) => c.engineId),
     );
-    return (runtimeId) => !disabled.has(runtimeId);
+    const connectionIds = new Map(
+      connections.map((connection) => [
+        connection.engineId,
+        connection.engineConnectionId,
+      ]),
+    );
+    return {
+      isEnabled: (engineId) => !disabled.has(engineId),
+      connectionIdFor: (engineId) => connectionIds.get(engineId),
+    };
   } catch {
-    return () => false;
+    return { isEnabled: () => false, connectionIdFor: () => undefined };
   }
 }
 
@@ -313,10 +328,10 @@ async function resolveRuntimeEnabledPredicate(
 export async function resolveExternalEngineReadiness(
   adapters: ProviderAdapterShape[] = getProviderAdapters(),
   signal?: AbortSignal,
-  isRuntimeEnabled: (runtimeId: EngineRuntimeId) => boolean = () => true,
+  isRuntimeEnabled: (engineId: EngineId) => boolean = () => true,
   resolveEngineConnectionId: (
-    runtimeConnectionId: EngineRuntimeId,
-  ) => Promise<EngineConnectionId | undefined> = async () => undefined,
+    adapter: ProviderAdapterShape,
+  ) => EngineConnectionId | undefined = connectionIdForAdapter,
 ): Promise<ExternalEngineReadiness> {
   const candidates = adapters.filter(
     (adapter) =>
@@ -330,20 +345,10 @@ export async function resolveExternalEngineReadiness(
       async (adapter): Promise<ExternalEngineReadinessProjection> => {
         const engineId = engineIdForAdapter(adapter);
         const name = adapter.metadata.displayName;
-        const runtimeId = runtimeIdForAdapter(adapter);
-        // The registry maps the adapter-private runtime selector to the public
-        // EngineConnectionId consumed by the Agent Apps detail route. Do not
-        // infer a target from the provider: plugins may replace a built-in
-        // provider while owning a distinct public identity. An unbound adapter
-        // deliberately emits no target so the UI falls back to the hub.
-        let publicEngineConnectionId: EngineConnectionId | undefined;
-        try {
-          publicEngineConnectionId = await resolveEngineConnectionId(runtimeId);
-        } catch {
-          // Registry lookup is navigation enrichment only. An unavailable
-          // projection must withhold the CTA rather than fail status discovery
-          // or invent a plausible connection ID.
-        }
+        const publicEngineConnectionId = resolveEngineConnectionId(adapter);
+        const navigationIdentity = publicEngineConnectionId
+          ? { engineConnectionId: publicEngineConnectionId }
+          : {};
         // Fail-closed (archive#1193 review finding 1): `getPrerequisites` is
         // OPTIONAL on `ProviderAdapterShape`. Treating an adapter that doesn't
         // implement it as `prerequisites: []` would let
@@ -356,18 +361,15 @@ export async function resolveExternalEngineReadiness(
           return {
             engineId,
             name,
-            engineConnectionId: publicEngineConnectionId,
+            ...navigationIdentity,
             detected: false,
             ready: false,
             source: null,
             reason: 'cannot_verify',
           };
         }
-        // Must match `runtimeIdForAdapter` in adapter-identity, which
-        // is the key `runtimeSettingsFor` (and therefore the real enabled flag)
-        // is stored under. Its fallback is `${provider}-runtime`, NOT the bare
-        // provider — using the bare provider here looked right and silently
-        // missed the setting for any adapter without an explicit runtimeId.
+        // Must match `engineIdForAdapter`, which is the key used for the
+        // engine's enabled setting.
         try {
           const prerequisites =
             (await raceWithSignal(
@@ -376,7 +378,7 @@ export async function resolveExternalEngineReadiness(
             )) ?? [];
           const adapterReadiness = resolveRuntimeAdapterReadiness({
             adapter,
-            runtimeId,
+            engineId,
             enabled: true,
             prerequisites,
           });
@@ -389,11 +391,11 @@ export async function resolveExternalEngineReadiness(
           // the agent-manufacture path withholds it. We still probe first so
           // `detected` remains an observation, not an assertion about an
           // executable that might not exist.
-          if (!isRuntimeEnabled(runtimeId)) {
+          if (!isRuntimeEnabled(engineId)) {
             return {
               engineId,
               name,
-              engineConnectionId: publicEngineConnectionId,
+              ...navigationIdentity,
               detected,
               ready: false,
               source: null,
@@ -404,7 +406,7 @@ export async function resolveExternalEngineReadiness(
             return {
               engineId,
               name,
-              engineConnectionId: publicEngineConnectionId,
+              ...navigationIdentity,
               detected,
               ready: true,
               source: `${adapter.provider}-cli`,
@@ -431,7 +433,7 @@ export async function resolveExternalEngineReadiness(
           return {
             engineId,
             name,
-            engineConnectionId: publicEngineConnectionId,
+            ...navigationIdentity,
             detected,
             ready: false,
             source: null,
@@ -447,7 +449,7 @@ export async function resolveExternalEngineReadiness(
           return {
             engineId,
             name,
-            engineConnectionId: publicEngineConnectionId,
+            ...navigationIdentity,
             detected: false,
             ready: false,
             source: null,
@@ -743,10 +745,13 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
     };
 
     refreshPromise = (async () => {
-      const isRuntimeEnabled = await raceWithSignal(
-        resolveRuntimeEnabledPredicate(deps),
+      const runtimeConnectionState = await raceWithSignal(
+        resolveRuntimeConnectionState(deps),
         controller.signal,
-      ).catch(() => () => false);
+      ).catch(() => ({
+        isEnabled: () => false,
+        connectionIdFor: () => undefined,
+      }));
       const [
         credentialsFound,
         kiroCliInstalled,
@@ -767,8 +772,13 @@ function createStatusDiscoveryCache(deps: SystemStatusDeps) {
         resolveExternalEngineReadiness(
           undefined,
           controller.signal,
-          isRuntimeEnabled,
-          deps.resolveEngineConnectionId,
+          runtimeConnectionState.isEnabled,
+          (adapter) =>
+            typeof deps.listEngineConnectionStates === 'function'
+              ? runtimeConnectionState.connectionIdFor(
+                  engineIdForAdapter(adapter),
+                )
+              : connectionIdForAdapter(adapter),
         ),
         getAllPrerequisites({ signal: controller.signal }),
         discoverDeveloperServices(),
