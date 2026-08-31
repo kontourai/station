@@ -302,6 +302,38 @@ fn station_root_from_env(
     }
 }
 
+/// The `STATION_ROOT` a spawned Station runtime must carry for `station_home`,
+/// or `None` when it must be left UNSET.
+///
+/// Mirrors `spawnedStationRoot` in
+/// `packages/shared/src/runtime-path-resolver.ts`, and exists for the same
+/// reason: the runtime's admission guard allows `root == home` only when
+/// `STATION_ROOT` is unset, because provenance is not observable from an
+/// environment and absence is the only available proof that the root was
+/// DERIVED from the home rather than being a foreign root the home would
+/// swallow. A raw external `STATION_HOME` self-roots, so spelling the derived
+/// value out makes the sidecar refuse to boot -- the crash this function
+/// exists to prevent (#1108).
+///
+/// An operator-set `STATION_ROOT` is passed through unchanged, including when
+/// it equals the home: that is the original escape, and it stays rejected.
+pub fn spawned_station_root(
+    station_root: &Path,
+    station_home: &Path,
+    explicit_station_root: Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
+    if explicit_station_root
+        .filter(|value| !value.is_empty())
+        .is_some()
+    {
+        return Some(station_root.to_path_buf());
+    }
+    if station_root == station_home {
+        return None;
+    }
+    Some(station_root.to_path_buf())
+}
+
 pub fn resolve_station_home_for_channel(channel: Option<&std::ffi::OsStr>) -> PathBuf {
     station_home_from_env(
         env::var_os("STATION_HOME"),
