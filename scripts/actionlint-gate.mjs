@@ -297,15 +297,21 @@ const SECURITY_ANALYSIS_TIMEOUT_MINUTES = 30;
 const SECURITY_ANALYSIS_CONCURRENCY_GROUP =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
   'security-analysis-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}';
-const CHECKOUT_ACTION =
+/**
+ * Exported for the same reason as `REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA`
+ * above: each of these was restated in a workflow contract test, so the gate
+ * and the suite asserting the gate's pin could disagree while both stayed
+ * green. Import these rather than writing a SHA down again.
+ */
+export const CHECKOUT_ACTION =
   'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
-const SETUP_NODE_ACTION =
+export const SETUP_NODE_ACTION =
   'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020';
-const CODEQL_INIT_ACTION =
-  'github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28';
-const CODEQL_ANALYZE_ACTION =
-  'github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28';
-const DEPENDENCY_REVIEW_ACTION =
+export const CODEQL_INIT_ACTION =
+  'github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938';
+export const CODEQL_ANALYZE_ACTION =
+  'github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938';
+export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
 const DEPENDENCY_REVIEW_CANDIDATE_GUARD = `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`;
 const DEPENDENCY_REVIEW_PR_GUARD = `\${{ github.event_name == 'pull_request_target' }}`;
