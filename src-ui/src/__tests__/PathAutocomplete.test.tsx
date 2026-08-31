@@ -582,5 +582,4 @@ describe('PathAutocomplete', () => {
       vi.useRealTimers();
     }
   });
-
 });
