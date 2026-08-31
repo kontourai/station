@@ -9580,6 +9580,11 @@ If a stable instance is running, this launch will focus its window and exit.",
                 // values to the bridge rather than letting its Node process
                 // select a root/home from inherited environment or cwd.
                 let station_root = service_state::resolve_station_root();
+                log::info!(
+                    "resolved Station startup paths: root='{}' home='{}'",
+                    station_root.display(),
+                    station_home.display()
+                );
                 if let Err(error) = ensure_station_profile_store_genesis(&app.handle(), &station_root)
                 {
                     exit_desktop_home_preparation_failure(

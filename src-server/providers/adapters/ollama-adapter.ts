@@ -1,15 +1,12 @@
 import crypto from 'node:crypto';
-import {
-  engineId,
-  engineRuntimeId,
-} from '@kontourai/station-contracts/agent-identity';
+import { engineId } from '@kontourai/station-contracts/agent-identity';
 import {
   acceptModelLaunchPlan,
+  type EngineId,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   type ModelLaunchPlan,
   modelSelectionReceipt,
-  type ProviderKind,
 } from '@kontourai/station-contracts/provider';
 import type {
   CanonicalRuntimeEvent,
@@ -67,7 +64,7 @@ interface OllamaSession extends ProviderSession {
 }
 
 export class OllamaAdapter implements ProviderAdapterShape {
-  readonly provider: ProviderKind = 'ollama';
+  readonly provider: EngineId = 'ollama';
   readonly metadata: ProviderAdapterShape['metadata'];
 
   private sessions = new Map<string, OllamaSession>();
@@ -89,7 +86,6 @@ export class OllamaAdapter implements ProviderAdapterShape {
         fork: 'replay-seed',
         rewind: 'none',
       },
-      runtimeId: engineRuntimeId('ollama-runtime'),
       builtin: true,
       engineId: engineId('station'),
       abortSettlement: 'await',

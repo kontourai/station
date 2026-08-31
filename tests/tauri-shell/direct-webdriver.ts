@@ -8,6 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
+import { STATION_HOME_SCHEMA_VERSION } from '@kontourai/station-shared/station-home-schema';
 import {
   findFreePortBlock,
   findFreePortOutside,
@@ -176,7 +177,7 @@ export async function startTauriShellFixture(): Promise<TauriShellFixture> {
   mkdirSync(stationHome, { recursive: true, mode: 0o700 });
   writeFileSync(
     join(stationHome, '.station-home-schema.json'),
-    `${JSON.stringify({ version: 1 }, null, 2)}\n`,
+    `${JSON.stringify({ version: STATION_HOME_SCHEMA_VERSION }, null, 2)}\n`,
     { mode: 0o600 },
   );
   const profileDirectory = join(stationRoot, 'config');

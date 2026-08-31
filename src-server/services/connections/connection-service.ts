@@ -2,9 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
   type EngineConnectionId,
-  type EngineRuntimeId,
   engineConnectionId,
-  engineRuntimeId,
+  engineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
@@ -25,7 +24,7 @@ import type {
   LaunchableModelInventory,
 } from '@kontourai/station-contracts/model-inventory';
 import { isLlmModelConnection } from '@kontourai/station-contracts/model-inventory';
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import {
   type AgentConnectionView,
   CONNECTION_UNREACHABLE_GRACE_MS,
@@ -41,13 +40,10 @@ import {
   type ProviderConnectionConfig,
 } from '@kontourai/station-contracts/tool';
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
-import {
-  type AgentRegistry,
-  registryIdentityForRuntimeConnection,
-} from '../../domain/agent-registry.js';
+import { type AgentRegistry } from '../../domain/agent-registry.js';
 import {
   connectionIdForAdapter,
-  runtimeIdForAdapter,
+  engineIdForAdapter,
 } from '../../providers/adapter-identity.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import type { LegacyCredentialProfileRegistryState } from '../../providers/app-home/credential-profile-registry.js';
@@ -249,22 +245,22 @@ function connectionSmokeFingerprint(connection: ConnectionConfig): string {
 function externalEngineRegistryBinding(
   connection: ConnectionConfig,
   adapters: readonly ProviderAdapterShape[],
-): { id: EngineConnectionId; runtimeConnectionId: EngineRuntimeId } | null {
+): { id: EngineConnectionId; settingsId: string } | null {
   if (connection.kind !== 'agent') return null;
   if (connection.config?.engineId === 'station') return null;
   if (connection.config?.engineId === 'acp') {
     return {
       id: engineConnectionId(connection.id),
-      runtimeConnectionId: engineRuntimeId(connection.id),
+      settingsId: connection.id,
     };
   }
   const adapter = adapters.find(
-    (candidate) => runtimeIdForAdapter(candidate) === connection.type,
+    (candidate) => engineIdForAdapter(candidate) === connection.type,
   );
   return adapter
     ? {
         id: connectionIdForAdapter(adapter),
-        runtimeConnectionId: runtimeIdForAdapter(adapter),
+        settingsId: engineIdForAdapter(adapter),
       }
     : null;
 }
@@ -361,7 +357,7 @@ async function withinInventoryDeadline<T>(
 
 export interface ConnectionSmokeRunInput {
   connectionId: string;
-  provider: ProviderKind;
+  provider: EngineId;
   modelId?: string;
   cwd: string;
   metadata?: Record<string, unknown>;
@@ -389,7 +385,7 @@ export type ConnectionSmokeRunner = (
 function applyRuntimeAuthenticationFailure<
   T extends RuntimeConnectionProjection,
 >(runtime: T, failure: RuntimeAuthenticationFailure): T {
-  const provider = runtime.config.provider as ProviderKind | undefined;
+  const provider = runtime.config.provider as EngineId | undefined;
   const providerLabel =
     typeof runtime.config.providerLabel === 'string'
       ? runtime.config.providerLabel
@@ -667,10 +663,7 @@ export class ConnectionService {
      */
     private readonly agentRegistry?: {
       load: () => Promise<AgentRegistry>;
-      register: (
-        id: EngineConnectionId,
-        runtimeConnectionId: EngineRuntimeId,
-      ) => Promise<AgentRegistry>;
+      register: (id: EngineConnectionId) => Promise<AgentRegistry>;
       unregister: (id: EngineConnectionId) => Promise<AgentRegistry>;
     },
   ) {
@@ -1164,26 +1157,26 @@ export class ConnectionService {
   }
 
   /**
-   * Exact identity join used by readiness and other control-plane callers.
-   * Public connection IDs are never compared with Adapter-private selectors.
+   * Canonical engine identity and navigable connection identity used by
+   * readiness and other control-plane callers.
    */
   async listEngineConnectionStates(): Promise<
     Array<{
-      runtimeId: EngineRuntimeId;
+      engineId: EngineId;
       engineConnectionId: EngineConnectionId;
       enabled: boolean;
     }>
   > {
     const connections = await this.listRuntimeConnections();
     return connections.map((connection) => {
-      const rawRuntimeId = connection.config.runtimeConnectionId;
-      if (typeof rawRuntimeId !== 'string') {
+      const rawEngineId = connection.config.engineId;
+      if (typeof rawEngineId !== 'string') {
         throw new Error(
-          `Runtime connection '${connection.id}' is missing its private runtime identity.`,
+          `Runtime connection '${connection.id}' is missing its engine identity.`,
         );
       }
       return {
-        runtimeId: engineRuntimeId(rawRuntimeId),
+        engineId: engineId(rawEngineId),
         engineConnectionId: engineConnectionId(connection.id),
         enabled: connection.enabled,
       };
@@ -1191,42 +1184,9 @@ export class ConnectionService {
   }
 
   /**
-   * Identity-only inventory for upgrading pre-brand persisted selectors.
-   * Unlike configured runtime inventory, this intentionally includes
-   * plugin/native Adapters before registry adoption; it grants no readiness
-   * or execution authority and exposes only the canonical identity join.
-   */
-  async listEngineConnectionMigrationCandidates(): Promise<
-    Array<{
-      runtimeId: EngineRuntimeId;
-      engineConnectionId: EngineConnectionId;
-    }>
-  > {
-    return this.getProviderAdapters().map((adapter) => ({
-      runtimeId: runtimeIdForAdapter(adapter),
-      engineConnectionId: connectionIdForAdapter(adapter),
-    }));
-  }
-
-  /**
-   * Projects an adapter-private runtime selector into the public identity
-   * owned by the agent registry. Callers that need a navigable connection id
-   * must use this mapping rather than infer one from a provider name.
-   */
-  async resolveEngineConnectionId(
-    runtimeConnectionId: EngineRuntimeId,
-  ): Promise<EngineConnectionId | undefined> {
-    const registry = await this.agentRegistry?.load();
-    return registry
-      ? (registryIdentityForRuntimeConnection(registry, runtimeConnectionId) ??
-          undefined)
-      : undefined;
-  }
-
-  /**
    * Onboarding catalog. Unlike the configured listing, this includes
    * unregistered adapters, but still projects their clean public
-   * EngineConnectionId rather than leaking the adapter runtime selector.
+   * EngineConnectionId paired with each Adapter's canonical EngineId.
    */
   async listRuntimeConnectionCatalog(): Promise<AgentConnectionView[]> {
     return this.listRuntimeConnectionsForModels(this.listModelConnections(), {
@@ -1265,18 +1225,22 @@ export class ConnectionService {
       appConfig: () => appConfig,
       acpConnections: () => acpConnections,
       acpStatus: () => this.getACPStatus(),
-      publicConnection: (runtimeId) => {
-        const publicId = registry
-          ? registryIdentityForRuntimeConnection(registry, runtimeId)
-          : (() => {
-              const adapter = adapters.find(
-                (candidate) => runtimeIdForAdapter(candidate) === runtimeId,
-              );
-              return engineConnectionId(
-                adapter ? connectionIdForAdapter(adapter) : runtimeId,
-              );
-            })();
-        return publicId ? { id: publicId, runtimeId } : undefined;
+      publicConnection: (engineIdentity) => {
+        const adapter = adapters.find(
+          (candidate) => engineIdForAdapter(candidate) === engineIdentity,
+        );
+        const publicId = engineConnectionId(
+          adapter ? connectionIdForAdapter(adapter) : engineIdentity,
+        );
+        if (
+          registry &&
+          !registry.engineConnections.some(
+            (connection) => connection.id === publicId,
+          )
+        ) {
+          return undefined;
+        }
+        return { id: publicId, engineId: engineIdentity };
       },
       onInspectionFailure: options.abortOnFailure,
       now: () => Date.now(),
@@ -1374,8 +1338,8 @@ export class ConnectionService {
       left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
     );
     const allAdapters = [...this.getProviderAdapters()].sort((left, right) => {
-      const leftId = runtimeIdForAdapter(left);
-      const rightId = runtimeIdForAdapter(right);
+      const leftId = engineIdForAdapter(left);
+      const rightId = engineIdForAdapter(right);
       return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
     });
     const modelConnectionsInput = allModelConnections.slice(
@@ -1708,27 +1672,24 @@ export class ConnectionService {
         current,
         this.getProviderAdapters(),
       );
-      const runtimeConnectionId = binding?.runtimeConnectionId ?? current.id;
+      const settingsId = binding?.settingsId ?? current.id;
 
       await this.mutateRuntimeConnections((agentConnections) => ({
         ...agentConnections,
-        [runtimeConnectionId]: {
-          ...(agentConnections[runtimeConnectionId] ?? {}),
+        [settingsId]: {
+          ...(agentConnections[settingsId] ?? {}),
           name: connection.name,
           enabled: connection.enabled,
-          config: sanitizeRuntimeConfig(runtimeConnectionId, connection.config),
+          config: sanitizeRuntimeConfig(settingsId, connection.config),
         },
       }));
       if (binding) {
-        await this.agentRegistry?.register(
-          binding.id,
-          binding.runtimeConnectionId,
-        );
+        await this.agentRegistry?.register(binding.id);
       }
       this.invalidateUnobservedMutation();
       configOps.add(1, {
         op: 'update_runtime_connection',
-        id: runtimeConnectionId,
+        id: settingsId,
       });
     }
 
@@ -1831,21 +1792,14 @@ export class ConnectionService {
     const registryConnection = registry?.engineConnections.find(
       (candidate) => String(candidate.id) === id,
     );
-    const runtimeConnectionId = engineRuntimeId(
-      String(registryConnection?.runtimeConnectionId ?? id),
-    );
+    const settingsId = String(registryConnection?.id ?? id);
     await this.mutateRuntimeConnections((agentConnections) => {
       const nextRuntimeConnections = { ...agentConnections };
-      delete nextRuntimeConnections[runtimeConnectionId];
+      delete nextRuntimeConnections[settingsId];
       return nextRuntimeConnections;
     });
     if (this.agentRegistry) {
-      const identity =
-        registryConnection?.id ??
-        registryIdentityForRuntimeConnection(
-          registry ?? (await this.agentRegistry.load()),
-          runtimeConnectionId,
-        );
+      const identity = registryConnection?.id;
       if (identity) await this.agentRegistry.unregister(identity);
     }
     this.invalidateUnobservedMutation();
@@ -1873,7 +1827,7 @@ export class ConnectionService {
     connectionId: string,
   ): ProviderAdapterShape | undefined {
     return this.getProviderAdapters().find((adapter) => {
-      const runtimeId = runtimeIdForAdapter(adapter);
+      const runtimeId = engineIdForAdapter(adapter);
       return (
         runtimeId === connectionId ||
         connectionIdForAdapter(adapter) === connectionId
@@ -1881,9 +1835,9 @@ export class ConnectionService {
     });
   }
 
-  private credentialRecoveryRuntimeId(connectionId: string): string {
+  private credentialRecoverySettingsId(connectionId: string): string {
     const adapter = this.credentialRecoveryAdapter(connectionId);
-    return adapter ? runtimeIdForAdapter(adapter) : connectionId;
+    return adapter ? engineIdForAdapter(adapter) : connectionId;
   }
 
   private credentialRecoveryCapability(connectionId: string) {
@@ -1940,10 +1894,10 @@ export class ConnectionService {
       throw new Error(`Agent connection '${connectionId}' not found`);
     }
     const capability = this.credentialRecoveryCapability(connectionId);
-    const runtimeConnectionId = this.credentialRecoveryRuntimeId(connectionId);
+    const settingsId = this.credentialRecoverySettingsId(connectionId);
     let projected: CredentialRecoveryGroupProjection | undefined;
     await this.mutateRuntimeConnections((agentConnections) => {
-      const current = agentConnections[runtimeConnectionId] ?? {};
+      const current = agentConnections[settingsId] ?? {};
       const normalizedCurrent = normalizeCredentialProfileRegistry(
         current.credentialRecovery,
       );
@@ -1967,7 +1921,7 @@ export class ConnectionService {
       if (mutated === normalizedCurrent) return agentConnections;
       return {
         ...agentConnections,
-        [runtimeConnectionId]: { ...current, credentialRecovery },
+        [settingsId]: { ...current, credentialRecovery },
       };
     });
     // A profile transition can change which Codex account the next pull sees.
@@ -1982,7 +1936,7 @@ export class ConnectionService {
     const appConfig = await this.getAppConfig();
     return normalizeCredentialProfileRegistry(
       appConfig.agentConnections?.[
-        this.credentialRecoveryRuntimeId(connectionId)
+        this.credentialRecoverySettingsId(connectionId)
       ]?.credentialRecovery,
     );
   }
@@ -2124,9 +2078,9 @@ export class ConnectionService {
     }
     await this.importLegacyCredentialApplications(connectionId);
     const appConfig = await this.getAppConfig();
-    const runtimeConnectionId = this.credentialRecoveryRuntimeId(connectionId);
+    const settingsId = this.credentialRecoverySettingsId(connectionId);
     const projected = projectCredentialProfileRegistry(
-      appConfig.agentConnections?.[runtimeConnectionId]?.credentialRecovery,
+      appConfig.agentConnections?.[settingsId]?.credentialRecovery,
       this.credentialRecoveryCapability(connectionId),
     );
     return {
@@ -2324,7 +2278,7 @@ export class ConnectionService {
     options: { timeoutMs?: number },
   ): Promise<void> {
     const connection = await this.getConnection(attempt.connectionId);
-    const provider = connection?.config.provider as ProviderKind | undefined;
+    const provider = connection?.config.provider as EngineId | undefined;
     if (
       connection?.kind !== 'agent' ||
       !connection.enabled ||
@@ -3089,22 +3043,18 @@ export class ConnectionService {
     // Public IDs are the persisted contract, while runtime IDs are accepted at
     // this boundary because callers can legitimately hold an adapter identity.
     const registryConnection = registry?.engineConnections.find(
-      (candidate) =>
-        String(candidate.id) === id ||
-        String(candidate.runtimeConnectionId ?? candidate.id) === id,
+      (candidate) => String(candidate.id) === id,
     );
     const publicConnectionId = String(registryConnection?.id ?? id);
-    const runtimeConnectionId = String(
-      registryConnection?.runtimeConnectionId ?? registryConnection?.id ?? id,
-    );
+    const engineIdentity = String(registryConnection?.id ?? id);
     const connection = await this.getConnection(publicConnectionId);
     if (!connection) throw new Error(`Connection '${id}' not found`);
     const adapter = this.getProviderAdapters().find(
-      (candidate) => runtimeIdForAdapter(candidate) === runtimeConnectionId,
+      (candidate) => engineIdForAdapter(candidate) === engineIdentity,
     );
     const appConfig = await this.getAppConfig();
     const credentialProfileRef = normalizeCredentialProfileRegistry(
-      appConfig.agentConnections?.[runtimeConnectionId]?.credentialRecovery,
+      appConfig.agentConnections?.[engineIdentity]?.credentialRecovery,
     ).activeProfileRef;
     return adapter?.readQuotaSnapshot
       ? adapter.readQuotaSnapshot({
@@ -3117,16 +3067,12 @@ export class ConnectionService {
   private async invalidateQuotaSnapshot(id: string): Promise<void> {
     const registry = await this.agentRegistry?.load();
     const registryConnection = registry?.engineConnections.find(
-      (candidate) =>
-        String(candidate.id) === id ||
-        String(candidate.runtimeConnectionId ?? candidate.id) === id,
+      (candidate) => String(candidate.id) === id,
     );
     const publicConnectionId = String(registryConnection?.id ?? id);
-    const runtimeId = String(
-      registryConnection?.runtimeConnectionId ?? registryConnection?.id ?? id,
-    );
+    const engineIdentity = String(registryConnection?.id ?? id);
     for (const adapter of this.getProviderAdapters()) {
-      if (runtimeIdForAdapter(adapter) === runtimeId) {
+      if (engineIdForAdapter(adapter) === engineIdentity) {
         adapter.invalidateQuotaSnapshot?.({ connectionId: publicConnectionId });
       }
     }
@@ -3150,7 +3096,7 @@ export class ConnectionService {
       connection.type === 'acp'
         ? 'acp'
         : typeof connection.config.provider === 'string'
-          ? (connection.config.provider as ProviderKind)
+          ? (connection.config.provider as EngineId)
           : null;
     let result: ConnectionSmokeRunResult;
     if (!connection.enabled) {
@@ -3184,7 +3130,7 @@ export class ConnectionService {
       const runtimeModels = (connection as AgentConnectionView).runtimeCatalog
         ?.models;
       const adapter = this.getProviderAdapters().find(
-        (candidate) => runtimeIdForAdapter(candidate) === connection.type,
+        (candidate) => engineIdForAdapter(candidate) === connection.type,
       );
       const allowsOmittedModel =
         connection.type === 'acp' ||
@@ -3337,18 +3283,17 @@ export class ConnectionService {
     if (acpConnection) {
       return valueFingerprint({ type: 'acp', connection: acpConnection });
     }
-    const runtimeConnectionId =
-      typeof connection.config?.runtimeConnectionId === 'string'
-        ? connection.config.runtimeConnectionId
-        : connection.id;
+    const rawEngineIdentity = connection.config?.engineId;
+    const engineIdentity =
+      typeof rawEngineIdentity === 'string' ? rawEngineIdentity : connection.id;
     const adapter = adapters.find(
-      (candidate) => runtimeIdForAdapter(candidate) === runtimeConnectionId,
+      (candidate) => engineIdForAdapter(candidate) === engineIdentity,
     );
     return valueFingerprint({
       type: 'adapter',
       provider: adapter?.provider ?? connection.type,
-      runtimeId: adapter ? runtimeIdForAdapter(adapter) : runtimeConnectionId,
-      settings: appConfig.agentConnections?.[runtimeConnectionId] ?? null,
+      engineId: adapter ? engineIdForAdapter(adapter) : engineIdentity,
+      settings: appConfig.agentConnections?.[engineIdentity] ?? null,
     });
   }
 

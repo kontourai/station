@@ -96,6 +96,7 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
 ]);
 export const CI_FAST_RESERVED_WEIGHT = 20;
 export const FULL_REGRESSION_TEST_WEIGHT = 80;
+export const FULL_REGRESSION_ORDINARY_TIMEOUT_MS = 45 * 60_000;
 export const FULL_REGRESSION_TEST_PHASE_IDS = Object.freeze([
   'test-full-ordinary',
   'test-full-process-heavy',
@@ -439,6 +440,10 @@ export function verificationPolicyErrors({
   if (ordinaryFullTest?.weight !== FULL_REGRESSION_TEST_WEIGHT)
     errors.push(
       `full-regression test-full-ordinary phase must use exactly ${FULL_REGRESSION_TEST_WEIGHT} coordinator weight`,
+    );
+  if (ordinaryFullTest?.timeoutMs !== FULL_REGRESSION_ORDINARY_TIMEOUT_MS)
+    errors.push(
+      `full-regression test-full-ordinary phase must use the exact ${FULL_REGRESSION_ORDINARY_TIMEOUT_MS / 60_000}-minute execution deadline`,
     );
   if (
     !Number.isInteger(ciFast?.weight) ||

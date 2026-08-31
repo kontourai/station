@@ -6,7 +6,7 @@ import {
 } from '../connection-quota.js';
 
 const baseline: ConnectionQuotaSnapshot = {
-  connectionId: 'codex-runtime',
+  connectionId: 'codex',
   provider: 'codex',
   source: 'provider-reported',
   accountScope: 'profile',
@@ -27,7 +27,7 @@ function update(
   overrides: Partial<ConnectionQuotaSnapshotUpdate> = {},
 ): ConnectionQuotaSnapshotUpdate {
   return {
-    connectionId: 'codex-runtime',
+    connectionId: 'codex',
     provider: 'codex',
     source: 'provider-reported',
     accountScope: 'profile',

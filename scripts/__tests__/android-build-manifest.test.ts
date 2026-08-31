@@ -19,7 +19,9 @@ import {
   writeNativeClientBuildManifest,
 } from '../lib/desktop-build-manifest.mjs';
 import {
+  AAB_BUILD_MANIFEST_ENTRY,
   APK_BUILD_MANIFEST_ENTRY,
+  extractAndroidBuildManifest,
   parseAndroidBuildProvenance,
 } from '../read-android-build-provenance.mjs';
 
@@ -157,10 +159,21 @@ describe('android build manifest', () => {
     // If either side is edited alone the stamp becomes unfindable while both
     // halves still pass their own tests.
     expect(APK_BUILD_MANIFEST_ENTRY).toBe(`assets/${BUILD_MANIFEST_FILENAME}`);
+    expect(AAB_BUILD_MANIFEST_ENTRY).toBe(`base/${APK_BUILD_MANIFEST_ENTRY}`);
     // And the writer must still be aiming at the source set Gradle packages
     // into `assets/` — checked against the pinned path, not against itself.
     expect(ANDROID_ASSETS_DIR).toBe(ANDROID_ASSET_SOURCE_SET);
     expect(ANDROID_PROJECT_DIR).toBe(ANDROID_GENERATED_PROJECT);
+  });
+
+  test('refuses a Play archive without an extractable manifest', () => {
+    const root = makeRoot();
+    const expected = join(root, 'expected.json');
+    const archive = join(root, 'nightly.aab');
+    writeFileSync(expected, '{"sha":"x"}\n');
+    expect(() =>
+      extractAndroidBuildManifest(archive, { expectedPath: expected }),
+    ).toThrow(/Android archive carries no build provenance/);
   });
 
   test('no checkout and no release manifest degrades instead of failing the build', () => {

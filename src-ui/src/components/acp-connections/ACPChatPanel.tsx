@@ -314,6 +314,7 @@ export function ACPChatPanel({
         onCommandClose={chatInput.handleCommandClose}
         onHistoryUp={chatInput.handleHistoryUp}
         onHistoryDown={chatInput.handleHistoryDown}
+        onRestorePortableDraft={chatInput.handleRestorePortableDraft}
         updateFromInput={chatInput.updateFromInput}
         closeAll={chatInput.closeAll}
       />

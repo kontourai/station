@@ -4,17 +4,13 @@ import {
   assertCleanIdentity,
   type EngineConnectionId,
   type EngineId,
-  type EngineRuntimeId,
   engineConnectionId,
   engineId,
-  engineRuntimeId,
   parseEngineId,
-  parseEngineRuntimeId,
 } from '../agent-identity.js';
 import type { EnrichedAgentProjection } from '../enriched-agent.js';
 
 function needsEngineId(_value: EngineId): void {}
-function needsRuntimeId(_value: EngineRuntimeId): void {}
 function needsConnectionId(_value: EngineConnectionId): void {}
 
 describe('clean agent identities', () => {
@@ -22,29 +18,23 @@ describe('clean agent identities', () => {
     expect(agentId('codex')).toBe('codex');
     expect(engineConnectionId('codex')).toBe('codex');
     expect(engineId('codex')).toBe('codex');
-    expect(engineRuntimeId('codex-runtime')).toBe('codex-runtime');
   });
 
-  it('prevents the three engine namespaces from crossing Interfaces', () => {
+  it('keeps connection instances branded while engines use canonical strings', () => {
     const engine = engineId('codex');
-    const runtime = engineRuntimeId('codex-runtime');
     const connection = engineConnectionId('codex-connection');
     needsEngineId(engine);
-    needsRuntimeId(runtime);
     needsConnectionId(connection);
-    // @ts-expect-error Adapter-private runtime IDs are not engine IDs.
-    needsEngineId(runtime);
-    // @ts-expect-error Public connection IDs are not runtime selectors.
-    needsRuntimeId(connection);
     // @ts-expect-error Capability engine IDs are not navigable connections.
     needsConnectionId(engine);
+    needsEngineId(connection);
   });
 
   it('keeps enriched Agent capability identity non-navigable', () => {
     const agent: EnrichedAgentProjection = {
       slug: agentId('reviewer'),
       name: 'Reviewer',
-      engineId: engineId('claude-code'),
+      engineId: engineId('claude'),
       execution: { agentConnectionId: engineConnectionId('claude') },
     };
     needsEngineId(agent.engineId!);
@@ -57,9 +47,8 @@ describe('clean agent identities', () => {
 
   it('validates untyped plugin identity values at the boundary', () => {
     expect(parseEngineId('custom-engine')).toBe('custom-engine');
-    expect(parseEngineRuntimeId('custom-runtime')).toBe('custom-runtime');
     expect(parseEngineId('__engine:custom')).toBeUndefined();
-    expect(parseEngineRuntimeId('custom_runtime')).toBeUndefined();
+    expect(parseEngineId('custom_engine')).toBeUndefined();
   });
 
   it('rejects synthetic and malformed identities', () => {

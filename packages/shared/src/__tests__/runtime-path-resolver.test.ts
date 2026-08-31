@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   admitStationRuntimeHome,
   resolveRuntimeHome,
@@ -28,11 +28,30 @@ function fixtureRoot(): string {
 }
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0))
     rmSync(root, { recursive: true, force: true });
 });
 
 describe('Station root runtime path resolver', () => {
+  test('derives the root from a lone explicit STATION_HOME', () => {
+    expect(
+      resolveStationRoot({
+        STATION_HOME: '/tmp/isolated-home',
+      } as NodeJS.ProcessEnv),
+    ).toBe('/tmp/isolated-home');
+    expect(
+      resolveStationRoot({
+        STATION_HOME: '/tmp/isolated-root/instances/e2e',
+      } as NodeJS.ProcessEnv),
+    ).toBe('/tmp/isolated-root');
+    expect(
+      resolveStationRoot({
+        STATION_HOME: '/tmp/isolated-root/instances/dev/e2e',
+      } as NodeJS.ProcessEnv),
+    ).toBe('/tmp/isolated-root');
+  });
+
   test('keeps shared profiles at the root while channel runtimes are isolated', () => {
     const env = { STATION_ROOT: '/tmp/station-root' } as NodeJS.ProcessEnv;
     expect(resolveStationRoot(env)).toBe('/tmp/station-root');
@@ -97,6 +116,30 @@ describe('Station root runtime path resolver', () => {
     } as NodeJS.ProcessEnv;
     expect(resolveRuntimeHome(env)).toBe(
       '/tmp/station-root/instances/dev/dev-source-checkout-a1b2c3d4',
+    );
+  });
+
+  test('rejects the ambient default root as a home when nothing was overridden', () => {
+    // Regression: the self-rooted carve-out keyed only on `root === home` with
+    // `STATION_ROOT` unset. With `STATION_HOME` ALSO unset the root is the
+    // ambient `~/.station` default, so naming that directory as the home —
+    // `station start --home=$HOME/.station`, or a script computing it —
+    // satisfied the equality and was admitted. That hands a runtime instance
+    // the shared root holding config/cache/installs: the exact escape this
+    // guard exists to stop. The carve-out is legitimate only when the root was
+    // genuinely derived from an explicit `STATION_HOME`.
+    const fakeHomedir = fixtureRoot();
+    const ambientRoot = join(fakeHomedir, '.station');
+    mkdirSync(ambientRoot, { recursive: true });
+    // `resolveStationRoot` falls back to `os.homedir()`, which reads the real
+    // `HOME`, so the env argument alone cannot reach this branch — stub it,
+    // and keep the developer's own `~/.station` out of the assertion.
+    vi.stubEnv('HOME', fakeHomedir);
+    const env = {} as NodeJS.ProcessEnv;
+    // Precondition: with nothing overridden this IS the ambient default root.
+    expect(resolveStationRoot(env)).toBe(ambientRoot);
+    expect(() => admitStationRuntimeHome(ambientRoot, env)).toThrow(
+      /shared Station root/,
     );
   });
 

@@ -9,7 +9,7 @@ import type {
   OrchestrationSessionDetail,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { isSessionReadAuthority } from '@kontourai/station-contracts/tenancy';
@@ -100,7 +100,7 @@ export interface ConversationLineageDeps {
    * authoritative.
    */
   resumeCursorSupport?: (requested: {
-    provider: ProviderKind;
+    provider: EngineId;
     connectionId?: string;
   }) => boolean | undefined;
   readSessionMessages: (
@@ -146,7 +146,7 @@ export class ConversationLineage {
   async resolveConversationContinuation(
     conversationId: string,
     authority: SessionReadScope,
-    requested: { provider: ProviderKind; connectionId?: string },
+    requested: { provider: EngineId; connectionId?: string },
   ): Promise<{
     sessionId: string;
     startRequired: boolean;
@@ -933,7 +933,7 @@ const CONTINUATION_TRANSCRIPT_SEED_MAX_CHARS = 6_000;
 
 function continuationLaunchContext(
   detail: Pick<OrchestrationSessionDetail, 'session' | 'events'>,
-  requested: { provider: ProviderKind; connectionId?: string },
+  requested: { provider: EngineId; connectionId?: string },
   messages: readonly ConversationMessage[],
   resumeSupported?: boolean,
 ): { resumeCursor?: unknown; transcriptSeed?: string } {

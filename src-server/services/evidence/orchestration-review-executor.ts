@@ -4,7 +4,7 @@ import type {
   OrchestrationCommandDispatchResult,
 } from '@kontourai/station-contracts/orchestration';
 import type {
-  ProviderKind,
+  EngineId,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
@@ -38,8 +38,8 @@ interface ReviewOrchestrationContext {
 
 export interface OrchestrationReviewExecutorOptions {
   orchestration: ReviewOrchestrationPort;
-  supportsReadOnlyReview(provider: ProviderKind): boolean;
-  provider?: ProviderKind;
+  supportsReadOnlyReview(provider: EngineId): boolean;
+  provider?: EngineId;
   pollMs?: number;
   stopTimeoutMs?: number;
 }
@@ -52,8 +52,8 @@ export interface OrchestrationReviewExecutorOptions {
 export class OrchestrationReviewExecutor implements ReadOnlyReviewExecutor {
   readonly workspaceAccess = 'read-only' as const;
   readonly #orchestration: ReviewOrchestrationPort;
-  readonly #supportsReadOnlyReview: (provider: ProviderKind) => boolean;
-  readonly #provider: ProviderKind;
+  readonly #supportsReadOnlyReview: (provider: EngineId) => boolean;
+  readonly #provider: EngineId;
   readonly #pollMs: number;
   readonly #stopTimeoutMs: number;
 

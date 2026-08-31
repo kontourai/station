@@ -33,7 +33,7 @@ const MANAGED_CONNECTION = {
 const CODEX_CONNECTION = {
   id: 'codex',
   kind: 'agent',
-  type: 'codex-runtime',
+  type: 'codex',
   name: 'Codex',
   enabled: true,
   status: 'ready',
@@ -162,9 +162,9 @@ describe('the engine picker: radio pair, with Station spelled as its own choice 
  */
 describe('the CLI list carries the retired engine picker’s outstanding properties (#3721)', () => {
   const UNREADY_CLAUDE = {
-    id: 'claude-runtime',
+    id: 'claude',
     kind: 'agent',
-    type: 'claude-runtime',
+    type: 'claude',
     name: 'Claude Runtime',
     enabled: true,
     status: 'missing_prerequisites',
@@ -239,7 +239,7 @@ describe('the CLI list carries the retired engine picker’s outstanding propert
           available: [],
           autoApprove: [],
         },
-        execution: { agentConnectionId: 'claude-runtime' },
+        execution: { agentConnectionId: 'claude' },
       } as never),
     };
     const writes: ReturnType<typeof formFromAgent>[] = [];

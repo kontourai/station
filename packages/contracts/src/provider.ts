@@ -1,4 +1,8 @@
 import { AGENT_ICON_TOKEN_MAX_LENGTH } from './agent.js';
+import type { EngineId } from './agent-identity.js';
+
+export type { EngineId } from './agent-identity.js';
+
 import type { ChatAttachmentInput } from './chat-attachment.js';
 import type { TenantExecutionContext } from './tenancy.js';
 import type {
@@ -9,8 +13,6 @@ import type {
 export const PROVIDER_BEDROCK = 'bedrock';
 export const PROVIDER_CLAUDE = 'claude';
 export const PROVIDER_CODEX = 'codex';
-
-export type ProviderKind = string;
 
 /**
  * Declared engine continuity, kept separate from Conversation policy. Station
@@ -344,7 +346,7 @@ export function resolveModelLaunchPlan(
 
 /** A bounded, content-free metric attribute projection for launch outcomes. */
 export function modelLaunchTelemetryAttributes(
-  provider: ProviderKind,
+  provider: EngineId,
   lifecycle: ModelLifecyclePoint,
   requestedOverride: boolean,
   plan: ModelLaunchPlan,
@@ -524,7 +526,7 @@ export const MODEL_OPTION_UNRESTRICTED_PROVIDERS: readonly string[] = [
 ];
 
 export function unsupportedModelOptionKeys(
-  provider: ProviderKind,
+  provider: EngineId,
   modelOptions?: Record<string, unknown>,
 ): string[] {
   if (!modelOptions) return [];
@@ -546,7 +548,7 @@ export function unsupportedModelOptionKeys(
  * path (archive#978 AC4).
  */
 export function unsupportedModelOptionError(
-  provider: ProviderKind,
+  provider: EngineId,
   key: string,
   targetLabel: string,
 ): string {
@@ -773,7 +775,7 @@ export interface SessionCapabilityDeliveryMetadata {
 
 export interface ProviderSessionStartInput {
   threadId: string;
-  provider: ProviderKind;
+  provider: EngineId;
   cwd?: string;
   /**
    * archive#1174: true when `cwd` was NOT resolved from an explicit
@@ -897,7 +899,7 @@ export interface ProviderSendTurnInput {
 }
 
 export interface ProviderSession {
-  provider: ProviderKind;
+  provider: EngineId;
   threadId: string;
   /**
    * archive#1827: `'dead'` is distinct from `'error'` and MUST stay that

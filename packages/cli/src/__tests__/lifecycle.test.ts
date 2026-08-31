@@ -278,6 +278,12 @@ async function loadLifecycleModule(
     fsOverrides?: Partial<FsModule>;
     httpRequestMock?: Mock;
     netConnectMock?: Mock;
+    // The default `normalizeHomePath` mock below is `resolve()`, which never
+    // throws. That is convenient for most tests and it also makes every
+    // admission-rejection path invisible to this suite -- the same blind spot
+    // #1077 describes. Tests that need the real fail-closed behaviour supply
+    // it here (#1091).
+    normalizeHomePathMock?: (path: string) => string;
     platformOverrides?: Partial<PlatformModule>;
   } = {},
 ): Promise<{
@@ -333,7 +339,8 @@ async function loadLifecycleModule(
     getInstanceStatePath,
     isGitUrl: () => false,
     lookupDepInRegistries: () => null,
-    normalizeHomePath: (path: string) => resolve(path),
+    normalizeHomePath:
+      options.normalizeHomePathMock ?? ((path: string) => resolve(path)),
     normalizeInstanceName,
     parseGitSource: () => ({ branch: 'main', url: '' }),
     readManifest: vi.fn(),
@@ -633,6 +640,89 @@ afterEach(async () => {
   vi.doUnmock('node:http');
   vi.doUnmock('node:net');
   rmSync(TEST_ROOT, { force: true, recursive: true });
+});
+
+describe('a state record whose recorded home a guard now rejects (#1091)', () => {
+  const SHARED_ROOT = join(TEST_ROOT, 'shared-station-root');
+
+  // Mirrors the real `normalizeHomePath`, which routes through
+  // `admitStationRuntimeHome` and refuses the shared Station root. The
+  // suite's default mock is `resolve()`, which cannot fail -- so without
+  // this the poison record parses cleanly and the bug is invisible.
+  function rejectSharedRoot(path: string): string {
+    const resolved = resolve(path);
+    if (resolved === resolve(SHARED_ROOT)) {
+      throw Object.assign(
+        new Error(
+          `Station runtime home '${resolved}' is not admissible: it is the shared Station root or an ancestor of that root`,
+        ),
+        { code: 'STATION_RUNTIME_HOME_REJECTED' },
+      );
+    }
+    return resolved;
+  }
+
+  function writePoisonRecord(pids: {
+    serverPid: number;
+    uiPid: number;
+  }): string {
+    ensureDir(TEST_INSTANCE_STATE_DIR);
+    chmodSync(TEST_INSTANCE_STATE_DIR, 0o700);
+    const statePath = join(TEST_INSTANCE_STATE_DIR, 'default.json');
+    writeFileSync(
+      statePath,
+      JSON.stringify({
+        instanceId: 'default',
+        serverPid: pids.serverPid,
+        uiPid: pids.uiPid,
+        // Ports nothing is listening on, so liveness rests on the pids.
+        serverPort: 64_700,
+        uiPort: 64_710,
+        // Written when the shared root was still a legal home.
+        baseDir: SHARED_ROOT,
+        homeSource: 'default',
+        host: '127.0.0.1',
+        startedAt: new Date(0).toISOString(),
+        cwd: TEST_CWD,
+      }),
+      { mode: 0o600 },
+    );
+    chmodSync(statePath, 0o600);
+    return statePath;
+  }
+
+  it('reclaims the dead record instead of wedging every lifecycle command', async () => {
+    // Regression: reading this record threw before the liveness check, so
+    // the reclaim that exists to clear exactly this file could never run.
+    // One dead record took out start, stop, status and service run at once,
+    // with no layer that degraded gracefully.
+    const statePath = writePoisonRecord({
+      serverPid: 0x7ffffffe,
+      uiPid: 0x7fffffff,
+    });
+    const { lifecycle } = await loadLifecycleModule({
+      normalizeHomePathMock: rejectSharedRoot,
+    });
+
+    expect(lifecycle.isRunning()).toBe(false);
+    expect(existsSync(statePath)).toBe(false);
+  });
+
+  it('never deletes a record whose owner is still alive, and still surfaces the error', async () => {
+    // The counterpart property from #635: reconcile only provably dead
+    // ownership. A live owner must not be reclaimed just because this
+    // release can no longer admit the home it recorded.
+    const statePath = writePoisonRecord({
+      serverPid: process.pid,
+      uiPid: process.pid,
+    });
+    const { lifecycle } = await loadLifecycleModule({
+      normalizeHomePathMock: rejectSharedRoot,
+    });
+
+    expect(() => lifecycle.isRunning()).toThrow(/not admissible/);
+    expect(existsSync(statePath)).toBe(true);
+  });
 });
 
 describe('lifecycle instance state', () => {

@@ -8,3 +8,9 @@
 # The installer rejects symlinks by design, so exclude this tracked alias from
 # release archives rather than weakening extraction safety.
 CLAUDE.md export-ignore
+
+# Re-measure this exact-to-actual ceiling after both sides of a merge are in the
+# tree. Clones without the locally registered driver get an ordinary conflict;
+# resolve that by running `npm run build:ui` and writing the measured JS/CSS
+# gzip byte counts into scripts/ui-bundle-budget.json.
+scripts/ui-bundle-budget.json merge=station-ui-bundle-budget

@@ -548,6 +548,10 @@ jobs:
               echo "not on the npm registry (tag-only or private publish) — no ledger row: $name@$version"
               continue
             fi
+            registry_sha=$(npm view "$name@$version" gitHead --json 2>/dev/null || true)
+            registry_sha=$(REGISTRY_SHA="$registry_sha" node -e 'try { const value=JSON.parse(process.env.REGISTRY_SHA); process.stdout.write(typeof value === "string" && /^[0-9a-f]{40}$/.test(value) ? value : "null"); } catch { process.stdout.write("null"); }')
+            mkdir -p provider-receipts
+            NAME="$name" VERSION="$version" REGISTRY_SHA="$registry_sha" node --input-type=module -e 'import {writeFileSync} from "node:fs"; const registryGitHead=process.env.REGISTRY_SHA === "null" ? null : process.env.REGISTRY_SHA; const receipt="provider-receipts/"+process.env.NAME.replaceAll("/","_")+"-"+process.env.VERSION+".json"; writeFileSync(receipt,JSON.stringify({schemaVersion:1,kind:"station.npm-publish-receipt",package:process.env.NAME,version:process.env.VERSION,sourceSha:registryGitHead,registryGitHead,artifactBuiltAt:null,artifactBuiltAtReason:"npm package has no native artifact manifest",sourceBinding:registryGitHead ? "npm registry gitHead" : "unknown",},null,2)+"\n")'
             node scripts/lib/deploy-ledger-commit.mjs \
               --commit-subject "docs(ledger): record stable-npm $name@$version from run $GITHUB_RUN_ID" \
               --summary-line "- recorded: \`stable-npm $name@$version\` at \`$GITHUB_SHA\`" \
@@ -557,10 +561,11 @@ jobs:
                 --sha "$GITHUB_SHA" \
                 --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                 --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-                --gate-result "npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main ($GITHUB_SHA)" \
+                --gate-result "npm trusted-publisher OIDC preflight success; registry gitHead ${registry_sha}; changeset publish from refs/heads/main ($GITHUB_SHA)" \
                 --github-repo "$GITHUB_REPOSITORY" \
                 --package "$name" \
-                --artifact "npm:$name@$version (dist-tag latest)"
+                --artifact "npm:$name@$version (dist-tag latest; artifactBuiltAt unknown; registry gitHead ${registry_sha})" \
+                --note 'artifactBuiltAt is null: npm package has no native artifact manifest'
           done <<< "$specs"
 
       # Durable belt-and-braces copy (station#2218: storage failure is not a
@@ -576,6 +581,7 @@ jobs:
           path: |
             docs/reference/deploy-ledger.json
             docs/reference/deploy-ledger.md
+            provider-receipts/
           if-no-files-found: error
           retention-days: 14
 

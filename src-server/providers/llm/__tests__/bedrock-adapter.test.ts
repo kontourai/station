@@ -375,7 +375,6 @@ describe('BedrockAdapter', () => {
 
     expect(adapter.metadata).toMatchObject({
       displayName: 'Amazon Bedrock',
-      runtimeId: 'bedrock-runtime',
     });
 
     await expect(adapter.getPrerequisites?.()).resolves.toEqual([

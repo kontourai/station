@@ -552,7 +552,7 @@ describe('new-chat-modal-utils', () => {
           engineDefault: true,
           engineId: 'claude',
           engineDisplayName: 'Claude Runtime',
-          execution: { agentConnectionId: 'claude-runtime' },
+          execution: { agentConnectionId: 'claude' },
         } as any,
         {
           slug: 'codex',
@@ -562,7 +562,7 @@ describe('new-chat-modal-utils', () => {
           engineDefault: true,
           engineId: 'codex',
           engineDisplayName: 'Codex Runtime',
-          execution: { agentConnectionId: 'codex-runtime' },
+          execution: { agentConnectionId: 'codex' },
         } as any,
         {
           slug: 'station',
@@ -577,9 +577,9 @@ describe('new-chat-modal-utils', () => {
       projects: [],
       agentConnections: [
         {
-          id: 'claude-runtime',
+          id: 'claude',
           kind: 'agent',
-          type: 'claude-runtime',
+          type: 'claude',
           name: 'Claude Runtime',
           description: 'connection-backed claude runtime row',
           enabled: true,
@@ -590,9 +590,9 @@ describe('new-chat-modal-utils', () => {
           prerequisites: [],
         } as any,
         {
-          id: 'codex-runtime',
+          id: 'codex',
           kind: 'agent',
-          type: 'codex-runtime',
+          type: 'codex',
           name: 'Codex Runtime',
           description: 'connection-backed codex runtime row',
           enabled: true,
@@ -693,9 +693,9 @@ describe('new-chat-modal-utils', () => {
           prerequisites: [],
         } as any,
         {
-          id: 'codex-runtime',
+          id: 'codex',
           kind: 'agent',
-          type: 'codex-runtime',
+          type: 'codex',
           name: 'Codex Runtime',
           enabled: true,
           capabilities: ['agent-runtime'],
@@ -1090,9 +1090,9 @@ describe('new-chat-modal-utils', () => {
           prerequisites: [],
         } as any,
         {
-          id: 'codex-runtime',
+          id: 'codex',
           kind: 'agent',
-          type: 'codex-runtime',
+          type: 'codex',
           name: 'Codex Runtime',
           enabled: true,
           capabilities: ['agent-runtime'],
@@ -1126,7 +1126,7 @@ describe('new-chat-modal-utils', () => {
           slug: 'codex',
           name: 'Codex Runtime',
           source: 'local',
-          execution: { agentConnectionId: 'codex-runtime' },
+          execution: { agentConnectionId: 'codex' },
         } as any,
         {
           slug: 'station',
@@ -1138,9 +1138,9 @@ describe('new-chat-modal-utils', () => {
       projects: [],
       agentConnections: [
         {
-          id: 'codex-runtime',
+          id: 'codex',
           kind: 'agent',
-          type: 'codex-runtime',
+          type: 'codex',
           name: 'Codex Runtime',
           enabled: true,
           capabilities: ['agent-runtime'],
@@ -1150,9 +1150,9 @@ describe('new-chat-modal-utils', () => {
           prerequisites: [],
         } as any,
         {
-          id: 'claude-runtime',
+          id: 'claude',
           kind: 'agent',
-          type: 'claude-runtime',
+          type: 'claude',
           name: 'Claude Runtime',
           enabled: true,
           capabilities: ['agent-runtime'],
@@ -1186,9 +1186,9 @@ describe('new-chat-modal-utils', () => {
       projects: [],
       agentConnections: [
         {
-          id: 'codex-runtime',
+          id: 'codex',
           kind: 'agent',
-          type: 'codex-runtime',
+          type: 'codex',
           name: 'Codex Runtime',
           enabled: true,
           capabilities: ['agent-runtime'],
@@ -1222,7 +1222,7 @@ describe('new-chat-modal-utils', () => {
   describe('registry-owned default Agents', () => {
     function connectedConnection(overrides: Record<string, any> = {}) {
       return {
-        id: 'claude-runtime',
+        id: 'claude',
         kind: 'agent',
         type: 'claude',
         name: 'Claude Code',
@@ -1241,7 +1241,7 @@ describe('new-chat-modal-utils', () => {
         slug: 'claude-code',
         name: 'Claude Code',
         source: 'local',
-        execution: { agentConnectionId: 'claude-runtime' },
+        execution: { agentConnectionId: 'claude' },
         engineDefault: true,
         engineId: 'claude',
         engineDisplayName: 'Claude Code',
@@ -1344,7 +1344,7 @@ describe('new-chat-modal-utils', () => {
           defaultClaudeCode({
             slug: 'codex',
             name: 'Codex',
-            execution: { agentConnectionId: 'codex-runtime' },
+            execution: { agentConnectionId: 'codex' },
             engineId: 'codex',
             engineDisplayName: 'Codex',
           }),
@@ -1354,7 +1354,7 @@ describe('new-chat-modal-utils', () => {
         ],
         agentConnections: [
           connectedConnection({
-            id: 'codex-runtime',
+            id: 'codex',
             type: 'codex',
             name: 'Codex',
           }),
@@ -1449,7 +1449,7 @@ describe('new-chat-modal-utils', () => {
     const codexConnection = {
       id: 'codex',
       kind: 'agent',
-      type: 'codex-runtime',
+      type: 'codex',
       name: 'Codex',
       enabled: true,
       capabilities: ['agent-runtime'],

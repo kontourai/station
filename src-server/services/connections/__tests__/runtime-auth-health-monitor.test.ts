@@ -823,7 +823,7 @@ describe('runtime auth health monitor', () => {
     ['plugin_runtime', '2026-07-13T12:00:00.1Z'],
     ['9provider', '2026-07-13T12:00:00.123456789Z'],
   ])(
-    'accepts open ProviderKind %s and canonical timestamp %s',
+    'accepts open EngineId %s and canonical timestamp %s',
     (provider, createdAt) => {
       const bus = new EventBus();
       const monitor = new RuntimeAuthHealthMonitor(bus);

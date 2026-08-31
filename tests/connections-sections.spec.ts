@@ -453,14 +453,14 @@ test.describe('Connections IA', () => {
 
 /**
  * Engine connections as a real Station serves them: one whose `type` the UI has
- * a name for (`claude-runtime` -> "Claude Code") and one whose `type` it does
- * not (`muse-runtime`). Both ship in Station today.
+ * a name for (`claude` -> "Claude Code") and one whose `type` it does
+ * not (`muse`). Both ship in Station today.
  */
 const ENGINES: readonly EngineConnection[] = [
   {
     id: 'claude',
     kind: 'agent',
-    type: 'claude-runtime',
+    type: 'claude',
     name: 'Claude Code',
     enabled: true,
     capabilities: ['agent-runtime'],
@@ -472,7 +472,7 @@ const ENGINES: readonly EngineConnection[] = [
   {
     id: 'muse',
     kind: 'agent',
-    type: 'muse-runtime',
+    type: 'muse',
     name: 'Muse Code',
     enabled: true,
     capabilities: ['agent-runtime'],
@@ -704,7 +704,7 @@ test.describe('Connections sections at 390x844', () => {
 /**
  * archive#3739: the Engines list read
  *
- *     Muse Code   Ready · None catalog · muse-runtime
+ *     Muse Code   Ready · None catalog · muse
  *
  * The third segment either repeated the row's own name or, for an engine
  * Station itself ships, printed the raw `type` slug that
@@ -725,7 +725,7 @@ test.describe('Engines vocabulary', () => {
             {
               id: 'muse',
               kind: 'agent',
-              type: 'muse-runtime',
+              type: 'muse',
               name: 'Muse Code',
               enabled: true,
               status: 'ready',
@@ -737,7 +737,7 @@ test.describe('Engines vocabulary', () => {
             {
               id: 'claude',
               kind: 'agent',
-              type: 'claude-runtime',
+              type: 'claude',
               name: 'Claude Code',
               enabled: true,
               status: 'ready',
@@ -759,7 +759,7 @@ test.describe('Engines vocabulary', () => {
     const listing = await list.innerText();
     expect(listing).toContain('No model catalog');
     expect(listing).toContain('Live model catalog');
-    expect(listing).not.toContain('muse-runtime');
+    expect(listing).not.toContain('muse');
     expect(listing).not.toContain('None catalog');
     // The row is already named; the subtitle must not repeat it.
     expect(listing.match(/Claude Code/g)?.length).toBe(1);

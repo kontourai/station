@@ -30,7 +30,7 @@ export function agentConnectionFixture(
   return {
     id: engineConnectionId(id),
     kind: 'agent',
-    type: 'claude-runtime',
+    type: 'claude',
     name: id,
     enabled: true,
     capabilities: ['agent-runtime'],

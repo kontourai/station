@@ -171,6 +171,7 @@ export function validateEntry(entry) {
   }
   if (
     entry.artifactBuiltAt !== undefined &&
+    entry.artifactBuiltAt !== null &&
     !validArtifactBuiltAt(entry.artifactBuiltAt)
   ) {
     errors.push(
@@ -341,7 +342,7 @@ export function renderLedgerMarkdown({ entries, githubRepo }) {
     '### JSON schema (one array element per ship)',
     '',
     '- `timestampUtc` — ISO 8601 UTC. When the recording workflow step ran (immediately after the publish it records); never in the future.',
-    '- `artifactBuiltAt` — optional canonical ISO 8601 UTC from the immutable packaged artifact manifest. It is never a provider upload, device install, or ledger-recording timestamp.',
+    '- `artifactBuiltAt` — canonical ISO 8601 UTC from the immutable packaged artifact manifest, or `null` when a provider/package artifact cannot prove one. It is never a provider upload, device install, or ledger-recording timestamp.',
     `- \`channel\` — one of \`${DEPLOY_LEDGER_CHANNELS.join('`, `')}\`.`,
     '- `version` — the channel-specific version identity users see (`station --version`, Play console, npm); alphanumeric plus `. + ~ -` only.',
     '- `sha` — the exact commit shipped, 40 lowercase hex, taken from the workflow\u2019s own decided ship SHA (never re-derived). A ship is identified by `channel` + `sha` + `version`; a re-record of the same identity is refused regardless of artifact list.',
@@ -376,7 +377,11 @@ export function renderLedgerMarkdown({ entries, githubRepo }) {
         ? [
             `- Artifact built at: \`${entry.artifactBuiltAt}\` (not provider upload/record time)`,
           ]
-        : []),
+        : entry.artifactBuiltAt === null
+          ? [
+              '- Artifact built at: `unknown` (no immutable artifact manifest binding)',
+            ]
+          : []),
       ...entry.artifacts.map((artifact) => `- Artifact: ${artifact}`),
     );
     if (entry.notes && entry.notes.length > 0) {
@@ -481,7 +486,7 @@ export function main(argv) {
   const timestampUtc =
     flags.get('--timestamp') ??
     new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-  let artifactBuiltAt;
+  let artifactBuiltAt = null;
   if (flags.get('--artifact-manifest') !== undefined) {
     try {
       const manifest = readArtifactManifest(flags.get('--artifact-manifest'));
@@ -502,7 +507,7 @@ export function main(argv) {
       ? { package: flags.get('--package') }
       : {}),
     sha,
-    ...(artifactBuiltAt !== undefined ? { artifactBuiltAt } : {}),
+    artifactBuiltAt,
     workflowRunUrl: flags.get('--workflow-run-url') ?? null,
     artifacts: repeated.get('--artifact') ?? [],
     gateResult: flags.get('--gate-result'),

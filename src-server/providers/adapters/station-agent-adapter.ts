@@ -1,9 +1,6 @@
 import crypto from 'node:crypto';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
-import {
-  engineId,
-  engineRuntimeId,
-} from '@kontourai/station-contracts/agent-identity';
+import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import { stripReservedOrchestrationMetadata } from '@kontourai/station-contracts/provider';
 import {
@@ -575,7 +572,6 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       'resume',
     ],
     continuity: { resume: 'same-session', fork: 'replay-seed', rewind: 'none' },
-    runtimeId: engineRuntimeId(PROVIDER),
     builtin: true,
     engineId: engineId('station'),
     modelLaunch: {

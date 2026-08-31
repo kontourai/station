@@ -2,10 +2,7 @@ import crypto from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import {
-  engineId,
-  engineRuntimeId,
-} from '@kontourai/station-contracts/agent-identity';
+import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
@@ -396,7 +393,6 @@ export class MuseAdapter implements ProviderAdapterShape {
     // a pre-existing muse session.
     capabilities: ['agent-runtime', 'session-lifecycle', 'external-process'],
     continuity: { resume: 'none', fork: 'none', rewind: 'none' },
-    runtimeId: engineRuntimeId('muse-runtime'),
     builtin: true,
     engineId: engineId('muse'),
     // No `abortSettlement`: it is consulted only where a discovery call has

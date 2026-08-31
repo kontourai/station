@@ -640,7 +640,7 @@ ctor, feed closures back):
 ```ts
 class TurnProgressTracker {
   constructor(deps: {
-    providerForThread: (threadId: string) => ProviderKind | undefined;
+    providerForThread: (threadId: string) => EngineId | undefined;
     resolveWindowMsForAgent: (agentSlug?: string) => Promise<number>;
     publishProjectionChange: (threadId: string) => void;
     logger: { warn(msg, meta?): void };
