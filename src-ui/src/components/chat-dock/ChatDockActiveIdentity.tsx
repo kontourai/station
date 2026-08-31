@@ -137,9 +137,16 @@ export function ChatDockActiveIdentity({
         <>
           <button
             type="button"
-            className={`chat-dock__active-identity-copy${
+            className={`chat-dock__icon-btn chat-dock__active-identity-copy${
               copyState === 'failed' ? ' copy-affordance--failed' : ''
             }`}
+            style={{
+              minWidth: 44,
+              minHeight: 44,
+              flex: '0 0 auto',
+              color: 'var(--text-tertiary)',
+              fontSize: 'var(--text-xs)',
+            }}
             aria-label="Copy thread ID"
             title={
               copyState === 'failed'

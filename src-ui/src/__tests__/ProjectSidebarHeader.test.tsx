@@ -96,6 +96,9 @@ describe('ProjectSidebarHeader', () => {
     expect(
       container.querySelector('.sidebar__channel-badge')?.textContent,
     ).toBe('Nightly');
+    expect(
+      container.querySelector('.sidebar__brand-name')?.children[1]?.className,
+    ).toBe('sidebar__channel-badge');
   });
 
   test('places the collapse button after the brand-name lockup on desktop (header lockup order)', () => {

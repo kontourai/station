@@ -159,6 +159,15 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     expect(screen.getByLabelText('Chat settings')).toBeTruthy();
   });
 
+  test('groups the dock shortcut directly with Chat settings', () => {
+    const { container } = renderHeader();
+    const settings = screen.getByLabelText('Chat settings');
+    const shortcut = container.querySelector('.chat-dock__toggle-shortcut');
+
+    expect(shortcut?.getAttribute('data-chrome-group')).toBe('chat-settings');
+    expect(settings.nextElementSibling).toBe(shortcut);
+  });
+
   test('mirrors the collapse direction for a left-side dock', () => {
     dockMode = 'left';
     isDockOpen = true;

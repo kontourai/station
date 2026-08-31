@@ -1473,10 +1473,6 @@ button:hover {
   background: var(--bg-tertiary);
 }
 
-.dock-occupant-picker__caret {
-  color: var(--text-tertiary);
-}
-
 /* A SIDE dock is the one placement where upward is wrong: its header sits at
    the top of a full-height column, so above the header is out of the window.
    Downward opens over the occupant's own body instead. */
