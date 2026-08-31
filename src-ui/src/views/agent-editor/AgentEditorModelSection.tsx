@@ -26,14 +26,12 @@ function normalizeGuardrails(
 }
 
 /**
- * DESIGN.md §3.3 — Model. Renders ONLY for "Use a model connection", which is
- * why nothing in it can contradict a CLI agent's engine (Y2): the whole
- * section, including the "needs a model connection" prerequisite, is inside
- * the one branch that is about Station's engine.
+ * DESIGN.md §3.3 — Station's controls inside the editor's one Model section.
  *
- * Its controls are the PROVIDER's, not copies of them (P3/X6):
+ * Its controls reuse the connection form's field implementations (P3/X6):
  * `DefaultModelField` and `ProviderRegionField` are the components the
- * Connections provider form renders, imported rather than reimplemented.
+ * they are imported rather than reimplemented. Their implementation names do
+ * not add a Provider noun to the editor's user-facing copy.
  *
  * The three remaining controls are Station-engine run limits with no provider
  * form to belong to, so §3.3's rule applies — plainly named, proof recorded:
