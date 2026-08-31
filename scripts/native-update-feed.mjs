@@ -36,13 +36,27 @@ function requiredCustomFeedValues(env) {
   );
 }
 
+function isExactIosStorePageAction(action, actionKind, iosAppId) {
+  if (typeof iosAppId !== 'string' || !/^[1-9]\d*$/.test(iosAppId)) {
+    throw new Error(
+      'iOS custom update action requires the resolved numeric App Store Connect app ID',
+    );
+  }
+  const pathSegments = action.pathname.split('/').filter(Boolean);
+  return (
+    actionKind === 'store-page' &&
+    action.origin === 'https://apps.apple.com' &&
+    pathSegments.at(-1) === `id${iosAppId}`
+  );
+}
+
 /**
  * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} env
- * @param {{ platform?: string | null }} options
+ * @param {{ platform?: string | null, iosAppId?: string | null }} options
  */
 export function resolveNativeUpdateAuthority(
   env = process.env,
-  { platform = null } = {},
+  { platform = null, iosAppId = null } = {},
 ) {
   if (platform !== null && !['android', 'ios'].includes(platform))
     throw new Error('Native update platform must be android or ios');
@@ -87,11 +101,14 @@ export function resolveNativeUpdateAuthority(
     throw new Error('Native update action kind must be artifact or store-page');
   if (
     platform === 'ios' &&
-    (custom.NATIVE_APP_UPDATE_ACTION_KIND !== 'store-page' ||
-      action.origin !== 'https://apps.apple.com')
+    !isExactIosStorePageAction(
+      action,
+      custom.NATIVE_APP_UPDATE_ACTION_KIND,
+      iosAppId,
+    )
   ) {
     throw new Error(
-      'iOS custom update action must be an App Store store-page URL',
+      'iOS custom update action must be the exact App Store store-page URL for the resolved app ID',
     );
   }
   const actionOrigins =
@@ -437,7 +454,12 @@ function main() {
   const command = process.argv[2];
   const platformAt = process.argv.indexOf('--platform');
   const platform = platformAt >= 0 ? process.argv[platformAt + 1] : null;
-  const options = platform === null ? {} : { platform };
+  const iosAppIdAt = process.argv.indexOf('--ios-app-id');
+  const iosAppId = iosAppIdAt >= 0 ? process.argv[iosAppIdAt + 1] : null;
+  const options = {
+    ...(platform === null ? {} : { platform }),
+    ...(iosAppId === null ? {} : { iosAppId }),
+  };
   if (command === 'validate-config') {
     resolveNativeUpdateAuthority(process.env, options);
     return;

@@ -131,27 +131,71 @@ describe('native update release contract', () => {
     }));
   test('rejects an Android artifact action for an iOS build', () =>
     expect(() =>
-      resolveNativeUpdateAuthority(valid, { platform: 'ios' }),
+      resolveNativeUpdateAuthority(valid, {
+        platform: 'ios',
+        iosAppId: '6805330833',
+      }),
     ).toThrow(/App Store store-page/));
-  test('accepts an exact App Store store-page action for an iOS build', () =>
-    expect(
+  test.each([
+    ['stable', '6805330833'],
+    ['beta', '6805330834'],
+    ['nightly', '6805330835'],
+  ])(
+    'binds a custom iOS store page to the exact resolved %s app ID',
+    (channel, iosAppId) =>
+      expect(
+        resolveNativeUpdateAuthority(
+          {
+            ...validIos,
+            VITE_NATIVE_APP_UPDATE_CHANNEL: channel,
+            NATIVE_APP_UPDATE_ACTION_URL: `https://apps.apple.com/us/app/station/id${iosAppId}`,
+          },
+          { platform: 'ios', iosAppId },
+        ),
+      ).toMatchObject({
+        updateAuthority: 'TestFlight/App Store',
+        platform: 'ios',
+        customFeed: {
+          actionKind: 'store-page',
+          actionOrigins: ['https://apps.apple.com'],
+        },
+      }),
+  );
+  test('rejects a missing resolved iOS app ID when a custom feed is configured', () =>
+    expect(() =>
       resolveNativeUpdateAuthority(validIos, { platform: 'ios' }),
-    ).toMatchObject({
-      updateAuthority: 'TestFlight/App Store',
-      platform: 'ios',
-      customFeed: {
-        actionUrl: validIos.NATIVE_APP_UPDATE_ACTION_URL,
-        actionKind: 'store-page',
-        actionOrigins: ['https://apps.apple.com'],
-      },
-    }));
-  test('rejects a non-App-Store page even when iOS action kind is store-page', () =>
+    ).toThrow(/resolved numeric App Store Connect app ID/));
+  test('rejects an App Store root or placeholder page for an iOS build', () => {
+    for (const actionUrl of [
+      'https://apps.apple.com',
+      'https://apps.apple.com/us/app/station/id0000000000',
+    ]) {
+      expect(() =>
+        resolveNativeUpdateAuthority(
+          { ...validIos, NATIVE_APP_UPDATE_ACTION_URL: actionUrl },
+          { platform: 'ios', iosAppId: '6805330833' },
+        ),
+      ).toThrow(/exact App Store store-page URL/);
+    }
+  });
+  test('rejects a wrong App Store app page for an iOS build', () =>
     expect(() =>
       resolveNativeUpdateAuthority(
-        { ...validIos, NATIVE_APP_UPDATE_ACTION_URL: 'https://example.test' },
-        { platform: 'ios' },
+        {
+          ...validIos,
+          NATIVE_APP_UPDATE_ACTION_URL:
+            'https://apps.apple.com/us/app/other/id6805330834',
+        },
+        { platform: 'ios', iosAppId: '6805330833' },
       ),
-    ).toThrow(/App Store store-page/));
+    ).toThrow(/exact App Store store-page URL/));
+  test('leaves Android validation independent of the iOS app ID', () =>
+    expect(
+      resolveNativeUpdateAuthority(valid, { platform: 'android' }),
+    ).toMatchObject({
+      platform: 'android',
+      customFeed: { actionKind: 'artifact' },
+    }));
   test('rejects a redirect/cross-origin feed', () =>
     expect(() =>
       validateUpdateConfig({

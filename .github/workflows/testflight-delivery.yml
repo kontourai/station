@@ -107,13 +107,6 @@ jobs:
             test -n "${!name}" || { echo "Missing required protected channel value: $name" >&2; exit 1; }
           done
           [[ "$TESTFLIGHT_INTERNAL_GROUP_ID" =~ ^[A-Za-z0-9-]+$ ]]
-      - name: Resolve optional custom iOS update feed
-        run: |
-          mkdir -p provider-receipts
-          # TestFlight/App Store owns delivered iOS updates. A custom feed is
-          # optional informational metadata, but if any of its values exist the
-          # whole origin/action contract must validate before signing.
-          node scripts/native-update-feed.mjs write-authority-receipt provider-receipts/testflight-update-authority.json --platform ios
       - run: npm run build:native-client
       - name: Generate the exact channel identity overlay
         run: |
@@ -148,6 +141,14 @@ jobs:
           expected_name=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).appStoreName);' '${{ inputs.channel }}')
           node scripts/app-store-connect-receipt.mjs app-preflight --bundle-id "$bundle_id" --expected-name "$expected_name" --output provider-receipts/app-store-connect-app-preflight.json --github-output "$GITHUB_OUTPUT"
           echo "bundle_id=$bundle_id" >> "$GITHUB_OUTPUT"
+      - name: Resolve optional custom iOS update feed
+        run: |
+          mkdir -p provider-receipts
+          # TestFlight/App Store owns delivered iOS updates. A custom feed is
+          # optional informational metadata, but if any of its values exist the
+          # whole origin/action contract must validate against the exact App
+          # Store Connect app resolved for this channel before signing.
+          node scripts/native-update-feed.mjs write-authority-receipt provider-receipts/testflight-update-authority.json --platform ios --ios-app-id '${{ steps.app_store.outputs.app_id }}'
       - name: Import protected signing material bound to this channel
         run: |
           certificate="$RUNNER_TEMP/station-ios.p12"

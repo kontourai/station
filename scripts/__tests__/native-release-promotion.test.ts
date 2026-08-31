@@ -296,8 +296,8 @@ describe('one-revision native promotion contract', () => {
   test('makes stable TestFlight publication and provider receipt fail closed', () => {
     const release = workflow('release.yml');
     const caller = release.jobs?.['ios-device'] ?? {};
-    const nightly = workflow('nightly.yml');
-    const nightlyCaller = nightly.jobs?.['nightly-ios'] ?? {};
+    const nightlyCohort = workflow('nightly-native-cohort.yml');
+    const nightlyCaller = nightlyCohort.jobs?.['deliver-ios'] ?? {};
     const delivery = workflow('testflight-delivery.yml');
     const ios = delivery.jobs?.deliver ?? {};
     expect(
@@ -377,6 +377,8 @@ describe('one-revision native promotion contract', () => {
     expect(authority.run).toContain('write-authority-receipt');
     expect(authority.run).toContain('testflight-update-authority.json');
     expect(authority.run).toContain('--platform ios');
+    expect(authority.run).toContain('--ios-app-id');
+    expect(authority.run).toContain('steps.app_store.outputs.app_id');
 
     const iosDependencies = ios.steps?.findIndex(
       (step) => step.run === 'npm run dependencies:ci',
@@ -386,6 +388,11 @@ describe('one-revision native promotion contract', () => {
     );
     expect(iosDependencies).toBeGreaterThanOrEqual(0);
     expect(iosAuthority).toBeGreaterThan(iosDependencies ?? -1);
+    const iosAppPreflight = ios.steps?.findIndex(
+      (step) =>
+        step.name === 'Verify App Store Connect app authority before signing',
+    );
+    expect(iosAuthority).toBeGreaterThan(iosAppPreflight ?? -1);
 
     const android = release.jobs?.android ?? {};
     const androidDependencies = android.steps?.findIndex(
