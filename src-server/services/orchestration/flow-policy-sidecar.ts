@@ -3,7 +3,7 @@
 import type { FlowEvidenceEntry } from '@kontourai/flow';
 import { isRetiredFlowDefinition } from '@kontourai/station-contracts';
 import type { OrchestrationSessionDetail } from '@kontourai/station-contracts/orchestration';
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import type {
   CanonicalRuntimeEvent,
   FlowGateVerdictEvent,
@@ -121,7 +121,7 @@ export interface FlowPolicySidecarDeps {
     authority: SessionReadScope,
   ) => Promise<OrchestrationSessionDetail | null>;
   /** C7 stays on the service (`listAgentRuns` shares its helper). */
-  runtimeKindFor: (provider: ProviderKind) => string;
+  runtimeKindFor: (provider: EngineId) => string;
   /** The module-level helper C7 also uses — a dep, never a copy. */
   engineExecutionForAdapter: (adapter: ProviderAdapterShape) => string;
   /**
@@ -216,7 +216,7 @@ export class FlowPolicySidecar {
    */
   async prepareCompletion(input: {
     threadId: string;
-    provider: ProviderKind;
+    provider: EngineId;
     events: CanonicalRuntimeEvent[];
     fromState: SessionLifecycleState;
   }): Promise<{ apply(events: CanonicalRuntimeEvent[]): void }> {
@@ -371,7 +371,7 @@ export class FlowPolicySidecar {
   async bindExplicitFlowRunToSession(
     input: {
       threadId: string;
-      provider: ProviderKind;
+      provider: EngineId;
       cwd?: string;
       metadata?: Record<string, unknown>;
     },
@@ -434,7 +434,7 @@ export class FlowPolicySidecar {
    */
   private async enforceFlowCompletionGate(options: {
     threadId: string;
-    provider: ProviderKind;
+    provider: EngineId;
     events: CanonicalRuntimeEvent[];
     fromState: SessionLifecycleState;
   }): Promise<FlowGateVerdictEvent | undefined> {
@@ -493,7 +493,7 @@ export class FlowPolicySidecar {
   bindWorkflowSidecarToSession(
     input: {
       threadId: string;
-      provider: ProviderKind;
+      provider: EngineId;
       cwd?: string;
       metadata?: Record<string, unknown>;
     },
@@ -532,7 +532,7 @@ export class FlowPolicySidecar {
    */
   private applyWorkflowSidecarTransition(options: {
     threadId: string;
-    provider: ProviderKind;
+    provider: EngineId;
     events: CanonicalRuntimeEvent[];
     patch: Parameters<WorkflowSidecarService['transition']>[2];
     trigger: 'gate-verdict' | 'completion';
@@ -623,7 +623,7 @@ export class FlowPolicySidecar {
   bindPolicyHooksToSession(
     input: {
       threadId: string;
-      provider: ProviderKind;
+      provider: EngineId;
       cwd?: string;
     },
     logger: FlowPolicyLogger = this.deps.logger,
@@ -661,7 +661,7 @@ export class FlowPolicySidecar {
    */
   private async enforcePolicyStopGate(options: {
     threadId: string;
-    provider: ProviderKind;
+    provider: EngineId;
     events: CanonicalRuntimeEvent[];
     fromState: SessionLifecycleState;
   }): Promise<void> {

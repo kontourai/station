@@ -4,7 +4,7 @@ import {
   type InterruptTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import type {
-  ProviderKind,
+  EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -551,7 +551,7 @@ export class CooperativeStop {
    * provider but deliberately no adapter.
    */
   private persistResumableStoppedSession(
-    provider: ProviderKind,
+    provider: EngineId,
     threadId: string,
   ): void {
     const current = this.deps.loadedOrPersistedSession(threadId);

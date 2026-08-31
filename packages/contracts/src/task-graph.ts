@@ -1,5 +1,5 @@
 import type { ClientOrigin } from './client-origin.js';
-import type { ProviderKind, ProviderSession } from './provider.js';
+import type { EngineId, ProviderSession } from './provider.js';
 
 /**
  * Station's task status vocabulary (roadmap #581, part of epic #580).
@@ -570,7 +570,7 @@ export interface TaskStatusUpdateInput {
 }
 
 export interface TaskDispatchRuntimeConfig {
-  provider?: ProviderKind;
+  provider?: EngineId;
   modelId?: string;
   modelOptions?: Record<string, unknown>;
   cwd?: string;
@@ -579,7 +579,7 @@ export interface TaskDispatchRuntimeConfig {
 export interface TaskDispatchInput {
   agentId?: string;
   skillName?: string;
-  provider?: ProviderKind;
+  provider?: EngineId;
   runtimeConfig?: TaskDispatchRuntimeConfig;
   relatedFiles?: string[];
   sourceSurface?: string;
@@ -656,7 +656,7 @@ export interface TaskDispatchRecord {
   id: string;
   taskId: string;
   sessionId: string;
-  provider: ProviderKind;
+  provider: EngineId;
   outcome: 'started' | 'seeded';
   createdAt: string;
   sourceSurface: string;

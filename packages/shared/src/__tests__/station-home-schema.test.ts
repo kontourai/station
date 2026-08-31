@@ -199,6 +199,75 @@ describe('portable installer data-root claim', () => {
   });
 });
 
+describe('a home whose ancestors do not exist yet (#1090)', () => {
+  // Every other home in this suite is a direct child of a live `mkdtemp`
+  // directory, so its PARENT always exists. That made the real first-run
+  // shape structurally unreachable here: the default home is
+  // `<STATION_ROOT>/instances/<channel>/<id>`, and on a machine that has
+  // never run Station the `instances/<channel>` chain is absent.
+  function makeDeepHome(): { root: string; home: string } {
+    const root = mkdtempSync(join(tmpdir(), 'station-home-fresh-machine-'));
+    roots.push(root);
+    return { root, home: join(root, 'instances', 'dev', 'station-abc123') };
+  }
+
+  it('scaffolds a home two levels below a missing ancestor instead of demanding a reset', () => {
+    const { home } = makeDeepHome();
+    expect(existsSync(dirname(home))).toBe(false);
+
+    // Regression: this threw STATION_HOME_RESET_REQUIRED naming a home that
+    // did not exist. The reset it prescribed resolved through this same
+    // function, so it failed identically and a first install had no way
+    // forward at all.
+    expect(() => ensureStationHomeSchemaSync(home)).not.toThrow();
+
+    expect(existsSync(home)).toBe(true);
+    expect(
+      JSON.parse(readFileSync(join(home, STATION_HOME_SCHEMA_FILE), 'utf8')),
+    ).toEqual({ version: STATION_HOME_SCHEMA_VERSION });
+  });
+
+  it('does not report a reset for a home whose ancestors are absent', () => {
+    const { home } = makeDeepHome();
+    // Nothing is there, so there is no schema to be incompatible with.
+    expect(stationHomeSchemaNeedsReset(home)).toBe(false);
+  });
+
+  it('is idempotent: the second call sees the marker it just wrote', () => {
+    const { home } = makeDeepHome();
+    ensureStationHomeSchemaSync(home);
+    expect(() => ensureStationHomeSchemaSync(home)).not.toThrow();
+  });
+
+  it('still fails closed when the parent cannot be inspected for a reason other than absence', () => {
+    // Only ENOENT means "fresh". An ancestor that exists but cannot be read
+    // is exactly the case the original bare catch was protecting, and it
+    // must keep resetting rather than bootstrapping over unknown state.
+    const { home } = makeDeepHome();
+    mkdirSync(dirname(home), { recursive: true });
+    const realRealpathSync = fs.realpathSync;
+    const denied = Object.assign(new Error('EACCES'), { code: 'EACCES' });
+    (fs as { realpathSync: typeof fs.realpathSync }).realpathSync = ((
+      target: Parameters<typeof fs.realpathSync>[0],
+    ) => {
+      if (resolve(String(target)) === resolve(dirname(home))) throw denied;
+      return realRealpathSync(target as never);
+    }) as typeof fs.realpathSync;
+    syncBuiltinESMExports();
+    try {
+      // Either guard may claim it first -- `admitStationRuntimeHome` reports
+      // an uninspectable ancestor before the schema gate sees it. What must
+      // hold is that an unreadable ancestor never reads as a fresh home.
+      expect(() => ensureStationHomeSchemaSync(home)).toThrow(/EACCES/);
+      expect(existsSync(join(home, STATION_HOME_SCHEMA_FILE))).toBe(false);
+    } finally {
+      (fs as { realpathSync: typeof fs.realpathSync }).realpathSync =
+        realRealpathSync;
+      syncBuiltinESMExports();
+    }
+  });
+});
+
 describe('runtime-home admission', () => {
   it('rejects the shared root before schema bootstrap can create its marker', () => {
     const sharedRoot = mkdtempSync(join(tmpdir(), 'station-shared-root-'));
@@ -312,6 +381,61 @@ describe('home schema migrations (station#1935)', () => {
       STATION_HOME_SCHEMA_MIGRATIONS,
       'station#2469 must close before adding a home-schema migration: prove home quiescence (including WAL databases) and bound staging-copy disk usage first.',
     ).toHaveLength(0);
+  });
+
+  it('rejects a v1 app config with synthetic engine connection keys even when the registry is absent', () => {
+    const home = homeAtVersion(1);
+    const appConfigPath = join(home, 'config', 'app.json');
+    writeFileSync(
+      appConfigPath,
+      JSON.stringify({ agentConnections: { 'claude-runtime': {} } }),
+    );
+
+    expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+    expect(() =>
+      ensureStationHomeSchemaSync(home, { acquireMutationLock: testLock }),
+    ).toThrow('STATION_HOME_RESET_REQUIRED');
+    expect(JSON.parse(readFileSync(appConfigPath, 'utf8'))).toEqual({
+      agentConnections: { 'claude-runtime': {} },
+    });
+  });
+
+  it('rejects a v1 app config with a synthetic built-in engine connection id even when the registry is absent', () => {
+    const home = homeAtVersion(1);
+    const appConfigPath = join(home, 'config', 'app.json');
+    writeFileSync(
+      appConfigPath,
+      JSON.stringify({ builtinAgentEngineConnectionId: 'codex-runtime' }),
+    );
+
+    expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+    expect(() =>
+      ensureStationHomeSchemaSync(home, { acquireMutationLock: testLock }),
+    ).toThrow('STATION_HOME_RESET_REQUIRED');
+    expect(JSON.parse(readFileSync(appConfigPath, 'utf8'))).toEqual({
+      builtinAgentEngineConnectionId: 'codex-runtime',
+    });
+  });
+
+  it('rejects a v1 Agent record with a synthetic engine connection id even when the registry is absent', () => {
+    const home = homeAtVersion(1);
+    const agentPath = join(home, 'agents', 'legacy', 'agent.json');
+    mkdirSync(dirname(agentPath), { recursive: true });
+    writeFileSync(
+      agentPath,
+      JSON.stringify({
+        name: 'Legacy',
+        execution: { agentConnectionId: 'claude-runtime' },
+      }),
+    );
+
+    expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+    expect(() =>
+      ensureStationHomeSchemaSync(home, { acquireMutationLock: testLock }),
+    ).toThrow('STATION_HOME_RESET_REQUIRED');
+    expect(JSON.parse(readFileSync(agentPath, 'utf8'))).toMatchObject({
+      execution: { agentConnectionId: 'claude-runtime' },
+    });
   });
 
   it('refuses a future-version home instead of migrating or resetting it', () => {

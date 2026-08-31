@@ -297,15 +297,21 @@ const SECURITY_ANALYSIS_TIMEOUT_MINUTES = 30;
 const SECURITY_ANALYSIS_CONCURRENCY_GROUP =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
   'security-analysis-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}';
-const CHECKOUT_ACTION =
+/**
+ * Exported for the same reason as `REVIEWED_PHYSICAL_HOST_CAPACITY_ACTION_SHA`
+ * above: each of these was restated in a workflow contract test, so the gate
+ * and the suite asserting the gate's pin could disagree while both stayed
+ * green. Import these rather than writing a SHA down again.
+ */
+export const CHECKOUT_ACTION =
   'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1';
-const SETUP_NODE_ACTION =
+export const SETUP_NODE_ACTION =
   'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020';
-const CODEQL_INIT_ACTION =
-  'github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28';
-const CODEQL_ANALYZE_ACTION =
-  'github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28';
-const DEPENDENCY_REVIEW_ACTION =
+export const CODEQL_INIT_ACTION =
+  'github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938';
+export const CODEQL_ANALYZE_ACTION =
+  'github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938';
+export const DEPENDENCY_REVIEW_ACTION =
   'actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294';
 const DEPENDENCY_REVIEW_CANDIDATE_GUARD = `\${{ github.event_name == 'pull_request_target' || github.event_name == 'merge_group' }}`;
 const DEPENDENCY_REVIEW_PR_GUARD = `\${{ github.event_name == 'pull_request_target' }}`;
@@ -328,6 +334,9 @@ fi
 node "$BASE_POLICY_DIRECTORY/scripts/codeql-sarif-policy.mjs" --input="$CODEQL_NORMALIZED_SARIF" --baseline="$BASE_POLICY_DIRECTORY/scripts/codeql-error-baseline.json" --stale-baseline="$STALE_BASELINE_MODE"`;
 const FORK_CHECKOUT_REPOSITORY = `\${{ github.event.pull_request.head.repo.full_name }}`;
 const FORK_CHECKOUT_REF = `\${{ github.event.pull_request.head.sha }}`;
+const FULL_REGRESSION_WORKFLOW = '.github/workflows/full-regression.yml';
+const FULL_REGRESSION_JOB_ID = 'full-regression';
+const FULL_REGRESSION_COMPLETION_STEP = 'Run canonical completion gate';
 const ACTIONLINT_ARCHIVE = 'actionlint_1.7.12_linux_amd64.tar.gz';
 const ACTIONLINT_SHA256 =
   '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8';
@@ -853,6 +862,7 @@ export function persistentRunnerPolicyFindings(workflows) {
     }
     findings.push(...candidatePullRequestWorkflowFindings(file, document));
     findings.push(...primaryCiRouterFindings(file, document));
+    findings.push(...fullRegressionActionlintFindings(file, document));
     findings.push(...baseControlledPrWorkflowFindings(file, document));
     findings.push(...mergeQueueWorkflowFindings(file, document));
   }
@@ -1406,6 +1416,30 @@ function candidatePullRequestWorkflowFindings(file, document) {
       jobId: 'workflow',
       message:
         'candidate-controlled pull_request workflows are prohibited; use the reviewed pull_request_target topology',
+    },
+  ];
+}
+
+/**
+ * `full:regression` runs `gate:workflows`, so the reusable completion workflow
+ * must provision actionlint or the gate exits 2 on the binary being absent and
+ * the lane fails before it validates anything. That is what failed the v0.1.6
+ * tag. Pinning the copy here is what keeps this file's provisioning identical
+ * to ci.yml's: without it the two drift on the next actionlint bump, and the
+ * only thing tying them together is a comment.
+ */
+function fullRegressionActionlintFindings(file, document) {
+  if (file !== FULL_REGRESSION_WORKFLOW) return [];
+  const job = (document?.jobs ?? {})[FULL_REGRESSION_JOB_ID];
+  if (!job) return [];
+  if (hasPinnedActionlintProvision(job, FULL_REGRESSION_COMPLETION_STEP))
+    return [];
+  return [
+    {
+      file,
+      jobId: FULL_REGRESSION_JOB_ID,
+      message:
+        'the completion lane must provision pinned and checksummed actionlint before the completion gate, or gate:workflows cannot validate',
     },
   ];
 }

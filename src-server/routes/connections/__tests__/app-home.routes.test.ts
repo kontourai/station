@@ -336,7 +336,7 @@ describe('App home profile routes (#896)', () => {
     expect(postRes.status).toBe(404);
   });
 
-  // archive#896 wave 2: codex-runtime joins the app-home engine table.
+  // archive#896 wave 2: codex joins the app-home engine table.
   test('reports codex profile status with the profile-scoped auth state', async () => {
     const app = createAppHomeRoutes();
 

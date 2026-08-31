@@ -959,7 +959,7 @@ export function useEnrolmentQuery(
 
 /**
  * App-home profile status (#896, `docs/design/agent-engine-unification.md`
- * §6.1's overlay model). Supports `claude-runtime` and `codex-runtime`
+ * §6.1's overlay model). Supports `claude` and `codex`
  * (#896 wave 2) — any other connection id 404s.
  */
 export function useAppHomeProfileQuery(

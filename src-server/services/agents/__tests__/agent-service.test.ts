@@ -45,7 +45,7 @@ const mockLogger = {
 };
 
 function registryWithEngineDefault(
-  id = 'claude-runtime',
+  id = 'claude',
   /**
    * Real detected engines carry `source: { kind: 'native' }` — that is what
    * makes `registryDefaults()` resolve the capability matrix's display name
@@ -104,9 +104,9 @@ describe('AgentService', () => {
         name: 'Station',
       },
       {
-        slug: 'claude-runtime',
-        name: 'claude-runtime',
-        execution: { agentConnectionId: 'claude-runtime' },
+        slug: 'claude',
+        name: 'claude',
+        execution: { agentConnectionId: 'claude' },
       },
     ]);
   });
@@ -186,7 +186,7 @@ describe('AgentService', () => {
       {
         slug: 'claude-code-agent',
         name: 'Claude Code Agent',
-        execution: { agentConnectionId: 'claude-runtime' },
+        execution: { agentConnectionId: 'claude' },
       },
     ]);
     const svc = new AgentService(
@@ -200,9 +200,7 @@ describe('AgentService', () => {
     );
     const agents = await svc.listAgents();
     expect(
-      agents.filter(
-        (agent) => agent.execution?.agentConnectionId === 'claude-runtime',
-      ),
+      agents.filter((agent) => agent.execution?.agentConnectionId === 'claude'),
     ).toEqual([expect.objectContaining({ slug: 'claude-code-agent' })]);
   });
 
@@ -597,7 +595,7 @@ describe('AgentService', () => {
     );
 
     await expect(
-      svc.updateAgent('claude-runtime', { name: 'Changed' }),
+      svc.updateAgent('claude', { name: 'Changed' }),
     ).resolves.toEqual({ name: 'Changed' });
     await expect(svc.deleteAgent('station')).resolves.toEqual({
       success: true,
@@ -652,7 +650,7 @@ describe('AgentService', () => {
       expect.arrayContaining([
         expect.objectContaining({ slug: 'station', available: true }),
         expect.objectContaining({
-          slug: 'claude-runtime',
+          slug: 'claude',
           available: false,
           unavailableReason: 'Command is unavailable.',
         }),

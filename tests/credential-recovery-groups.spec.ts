@@ -45,9 +45,9 @@ async function seedCredentialRecoveryRoutes(
   };
   let applyCount = 0;
   const runtime = {
-    id: 'claude-runtime',
+    id: 'claude',
     kind: 'agent',
-    type: 'claude-runtime',
+    type: 'claude',
     name: 'Claude Code',
     enabled: true,
     status: 'ready',
@@ -81,7 +81,7 @@ async function seedCredentialRecoveryRoutes(
     const { pathname: path } = url;
     const method = route.request().method();
     const credentialRecoveryPrefix =
-      '/api/connections/agent/claude-runtime/credential-recovery';
+      '/api/connections/agent/claude/credential-recovery';
 
     if (path === '/api/auth/status') {
       await route.fulfill(json({ authenticated: true, user: null }));
@@ -129,11 +129,11 @@ async function seedCredentialRecoveryRoutes(
       await route.fulfill(json({ success: true, data: [runtime] }));
       return;
     }
-    if (path === '/api/connections/claude-runtime') {
+    if (path === '/api/connections/claude') {
       await route.fulfill(json({ success: true, data: runtime }));
       return;
     }
-    if (path === '/api/connections/agent/claude-runtime/app-home') {
+    if (path === '/api/connections/agent/claude/app-home') {
       await route.fulfill(
         json({
           success: true,
@@ -168,7 +168,7 @@ async function seedCredentialRecoveryRoutes(
       return;
     }
     const enrollment = path.match(
-      /^\/api\/connections\/agent\/claude-runtime\/credential-recovery\/profiles\/([^/]+)\/enrollment$/,
+      /^\/api\/connections\/agent\/claude\/credential-recovery\/profiles\/([^/]+)\/enrollment$/,
     );
     if (enrollment && method === 'PUT') {
       const ref = decodeURIComponent(enrollment[1]);
@@ -186,7 +186,7 @@ async function seedCredentialRecoveryRoutes(
       return;
     }
     const profileAction = path.match(
-      /^\/api\/connections\/agent\/claude-runtime\/credential-recovery\/profiles\/([^/]+)\/(import|apply)$/,
+      /^\/api\/connections\/agent\/claude\/credential-recovery\/profiles\/([^/]+)\/(import|apply)$/,
     );
     if (profileAction && method === 'POST') {
       const [, encodedRef, action] = profileAction;
@@ -274,7 +274,7 @@ for (const viewport of [
   }) => {
     await page.setViewportSize(viewport);
     const fixture = await seedCredentialRecoveryRoutes(page);
-    await page.goto('/connections/engines/claude-runtime');
+    await page.goto('/connections/engines/claude');
 
     // archive#1359 moved implementation-level engine controls behind the detail
     // view's Advanced disclosure. Credential profiles remain available there;
@@ -388,7 +388,7 @@ test('unsupported credential profile capability fails closed', async ({
   page,
 }) => {
   await seedCredentialRecoveryRoutes(page, { capability: 'unsupported' });
-  await page.goto('/connections/engines/claude-runtime');
+  await page.goto('/connections/engines/claude');
 
   const advanced = page.locator('details.provider-detail__advanced');
   await expect(advanced).toBeVisible();

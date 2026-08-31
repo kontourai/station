@@ -8,6 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { STATION_HOME_SCHEMA_VERSION } from '@kontourai/station-shared/station-home-schema';
 import {
   afterEach,
   beforeEach,
@@ -55,7 +56,7 @@ let consoleError: MockInstance;
 function markCurrentHome(): void {
   writeFileSync(
     join(tempHome, '.station-home-schema.json'),
-    JSON.stringify({ version: 1 }),
+    JSON.stringify({ version: STATION_HOME_SCHEMA_VERSION }),
   );
 }
 
@@ -277,7 +278,7 @@ describe('configSet', () => {
       mkdirSync(join(tempHome, 'config'), { recursive: true });
       writeFileSync(
         join(tempHome, 'config', 'app.json'),
-        JSON.stringify({ builtinAgentEngineConnectionId: 'codex-runtime' }),
+        JSON.stringify({ builtinAgentEngineConnectionId: 'codex' }),
       );
       const { configSet } = await import('../commands/config.js');
       await configSet('builtinAgentEngineConnectionId', 'null', OFFLINE);
@@ -293,16 +294,12 @@ describe('configSet', () => {
 
     test('setting a nullable key to a connection id stores the string', async () => {
       const { configSet } = await import('../commands/config.js');
-      await configSet(
-        'builtinAgentEngineConnectionId',
-        'codex-runtime',
-        OFFLINE,
-      );
+      await configSet('builtinAgentEngineConnectionId', 'codex', OFFLINE);
 
       const written = JSON.parse(
         readFileSync(join(tempHome, 'config', 'app.json'), 'utf-8'),
       );
-      expect(written.builtinAgentEngineConnectionId).toBe('codex-runtime');
+      expect(written.builtinAgentEngineConnectionId).toBe('codex');
     });
 
     test('setting a NON-nullable key to null still deletes it (round-trip contrast)', async () => {

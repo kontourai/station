@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load } from 'js-yaml';
@@ -88,6 +88,19 @@ export function validateReleasePlatformMatrix({
       if (cell.state === 'configured' && !cell.buildJob) {
         errors.push(`${label} is configured but has no buildJob`);
       }
+      if (
+        platform === 'ios' &&
+        ['nightly', 'preview', 'stable'].includes(channel) &&
+        cell.state === 'configured'
+      ) {
+        if (
+          typeof cell.iconSource !== 'string' ||
+          !cell.iconSource.startsWith('src-desktop/icons/') ||
+          !existsSync(resolve(root, cell.iconSource))
+        ) {
+          errors.push(`${label}.iconSource must name a checked-in iOS icon`);
+        }
+      }
       for (const reference of buildJobReferences(cell.buildJob)) {
         if (!reference.workflow || !reference.job || reference.extra) {
           errors.push(`${label}.buildJob is malformed: ${cell.buildJob}`);
@@ -113,6 +126,18 @@ export function validateReleasePlatformMatrix({
       }
 
       const evidence = cell.evidence;
+      if (channel === 'nightly' && ['android', 'macos'].includes(platform)) {
+        if (cell.requiredForPromotion !== true)
+          errors.push(`${label}.requiredForPromotion must be true`);
+        if (
+          typeof cell.availabilityPolicy !== 'string' ||
+          !cell.availabilityPolicy.includes('atomic-native-cohort') ||
+          !cell.availabilityPolicy.includes('NOT_VERIFIED')
+        )
+          errors.push(
+            `${label}.availabilityPolicy must retain cohort and fleet boundary`,
+          );
+      }
       if (evidence?.kind === 'deploy-ledger') {
         const entry = ledger.find(
           (candidate) => candidate.channel === evidence.selector,
@@ -135,6 +160,11 @@ export function validateReleasePlatformMatrix({
       }
     }
   }
+  const iosIcons = ['nightly', 'preview', 'stable'].map(
+    (channel) => matrix?.cells?.[channel]?.ios?.iconSource,
+  );
+  if (new Set(iosIcons).size !== iosIcons.length)
+    errors.push('configured iOS channel iconSource values must be distinct');
   return errors;
 }
 
@@ -195,15 +225,24 @@ export function projectReleasePlatformMatrix({ matrix, ledger }) {
       configured.length > 0 &&
       verified.length === configured.length &&
       shas.length === 1;
+    const gated = cells.filter(
+      (cell) => cell.channel === channel && cell.state === 'gated',
+    );
     return {
       channel,
-      status: complete ? 'VERIFIED' : 'NOT_VERIFIED',
+      status: complete
+        ? gated.length > 0
+          ? 'AVAILABLE_CONFIGURED_SUBSET'
+          : 'VERIFIED'
+        : 'NOT_VERIFIED',
       sourceSha: complete ? shas[0] : null,
       configuredPlatforms: configured.map((cell) => cell.platform),
       verifiedPlatforms: verified.map((cell) => cell.platform),
       observedShas: shas,
       reason: complete
-        ? null
+        ? gated.length > 0
+          ? `Provider-backed receipts cover the configured subset only; ${gated.map((cell) => cell.platform).join(', ')} remain NOT_VERIFIED.`
+          : null
         : shas.length > 1
           ? `Configured ${channel} receipts disagree on source SHA.`
           : `${verified.length}/${configured.length} configured ${channel} cells have provider-backed receipts.`,

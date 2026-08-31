@@ -23,8 +23,8 @@ function defaultSkillRoots() {
   return [
     join(home, '.codex', 'skills'),
     join(home, '.claude', '.agents', 'skills'),
-    join(appHomeProfileDir('codex-runtime'), 'skills'),
-    join(appHomeProfileDir('claude-runtime'), 'skills'),
+    join(appHomeProfileDir('codex'), 'skills'),
+    join(appHomeProfileDir('claude'), 'skills'),
   ];
 }
 

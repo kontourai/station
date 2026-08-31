@@ -5,18 +5,38 @@
  * surface reached through the pane path, which is what puts a real
  * "Dock this pane" in the page header. Docking replaces the ambient Chat
  * occupant with the same pane occurrence, the choice survives a reload
- * through the persisted ambient document, and the dock-slot header's
- * occupant picker (M5) returns the slot to Chat — Chat as one entry of the
- * derived menu, not a fixed return action.
+ * through the persisted ambient document, and the dock header's occupant
+ * picker (M5) returns the slot to Chat — Chat as one entry of the derived
+ * menu, not a fixed return action.
+ *
+ * The shell that hosts every occupant is one persistent element
+ * (`#chat-dock` / `.chat-dock`, `aria-label="Dock"` — station#4460
+ * consolidated the old per-occupant `.dock-slot`/`.dock-slot__header`
+ * markup into this single shared shell; `.dock-slot` no longer renders
+ * anywhere). The occupant is identified by the header's occupant-picker
+ * trigger, whose accessible name is `Docked pane: <Occupant>`, so every
+ * assertion that used to key on a per-occupant `.dock-slot[aria-label]`
+ * here keys on that trigger's accessible name instead.
  *
  * Every assertion here names an affordance that must EXIST — an absent dock
- * action, dock slot, or restored occupant fails the spec by name, so the
+ * action, dock shell, or restored occupant fails the spec by name, so the
  * route silently ceasing to produce the pane occurrence cannot pass.
  *
  * Read-only against the isolated temp-home instance apart from the
  * browser-local ambient dock document (this context's localStorage).
  */
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
+
+/**
+ * The occupant-picker trigger names the current occupant by descriptor name
+ * (`Docked pane: <name>`), scoped to the one persistent dock shell — the
+ * shipped equivalent of the old `.dock-slot[aria-label="<name> dock"]`.
+ */
+function dockOccupantTrigger(page: Page, name: string) {
+  return page
+    .locator('#chat-dock')
+    .getByRole('button', { name: `Docked pane: ${name}` });
+}
 
 const AMBIENT_DOCK_STORAGE_KEY =
   'station:workspace-pane-host:v2:ambient:chat-dock';
@@ -56,7 +76,7 @@ test.describe('Activity pane standalone placement', () => {
       .locator('#station-main')
       .getByRole('button', { name: 'Dock this pane' })
       .click();
-    const activityDock = page.locator('.dock-slot[aria-label="Activity dock"]');
+    const activityDock = dockOccupantTrigger(page, 'Activity');
     await expect(activityDock).toBeVisible();
     await expect
       .poll(() =>
@@ -70,16 +90,16 @@ test.describe('Activity pane standalone placement', () => {
     await expect(activityDock).toBeVisible({ timeout: 10_000 });
     // M5: the fixed header "return to Chat" action is gone — the occupant
     // picker replaces the occupant, Chat as one entry of the derived list.
-    await activityDock
-      .locator('.dock-slot__header')
-      .getByRole('button', { name: 'Docked pane: Activity' })
-      .click();
+    await activityDock.click();
     await page
       .getByRole('menu', { name: 'Docked pane' })
       .getByRole('menuitemradio', { name: 'Chat' })
       .click();
     await expect(page.locator('.chat-dock')).toBeVisible();
-    await expect(page.locator('.dock-slot')).toHaveCount(0);
+    await expect(
+      dockOccupantTrigger(page, 'Chat'),
+      'choosing Chat from the menu must return the ambient slot to Chat',
+    ).toBeVisible();
     expect(
       await page.evaluate(
         () => document.querySelector('.chat-dock')?.parentElement?.className,
@@ -113,7 +133,7 @@ test.describe('Activity pane at 390x844', () => {
       .locator('#station-main')
       .getByRole('button', { name: 'Dock this pane' })
       .click();
-    const activityDock = page.locator('.dock-slot[aria-label="Activity dock"]');
+    const activityDock = dockOccupantTrigger(page, 'Activity');
     await expect(activityDock).toBeVisible();
     expect(
       await page.evaluate(
@@ -122,15 +142,12 @@ test.describe('Activity pane at 390x844', () => {
       'a docked Activity pane must not push the phone document sideways',
     ).toBe(true);
     // M5: the header affordance is the occupant picker now.
-    const trigger = activityDock
-      .locator('.dock-slot__header')
-      .getByRole('button', { name: 'Docked pane: Activity' });
-    const bounds = await trigger.boundingBox();
+    const bounds = await activityDock.boundingBox();
     expect(
       bounds?.height,
       'the occupant picker trigger must be a 44px tap target',
     ).toBeGreaterThanOrEqual(44);
-    await trigger.click();
+    await activityDock.click();
     await page
       .getByRole('menu', { name: 'Docked pane' })
       .getByRole('menuitemradio', { name: 'Chat' })

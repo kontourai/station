@@ -284,7 +284,7 @@ export class InterruptedTurnRecovery {
         if (!eventStore.hasEventId(bannerEventId)) {
           const published = this.deps.publishEvent({
             eventId: bannerEventId,
-            // `ProviderKind` is a plain string alias, not a closed union —
+            // `EngineId` is a plain string alias, not a closed union —
             // 'unknown' is an honest fallback for the (should not happen)
             // case where no `session.started` survives for a thread that
             // still has an unresolved turn boundary.

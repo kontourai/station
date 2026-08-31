@@ -267,7 +267,7 @@ import { updaterPluginConfig } from './native-release-config.mjs';
  * SemVer-valid marketing version. The prerelease segment carries the same day
  * number as the version code, so a build's two identities cannot drift.
  */
-export function nightlyVersion(packageVersion, date) {
+export function nightlyVersion(packageVersion, date, build = 0) {
   try {
     assertProductVersion(packageVersion);
   } catch {
@@ -275,7 +275,14 @@ export function nightlyVersion(packageVersion, date) {
       `nightly base version must be MAJOR.MINOR.PATCH, received ${String(packageVersion)}`,
     );
   }
-  return `${packageVersion}-nightly.${nightlyDayNumber(date)}`;
+  // Validate the index through the same authority that allocates numeric
+  // versions. The first nightly keeps its long-standing day-only SemVer,
+  // while a same-day rebuild must sort strictly after it for the updater.
+  nightlyVersionCode(date, build);
+  const day = nightlyDayNumber(date);
+  return build === 0
+    ? `${packageVersion}-nightly.${day}`
+    : `${packageVersion}-nightly.${day}.${build}`;
 }
 
 /** A distinct application, not a variant of the production one. */
@@ -304,7 +311,7 @@ export function createNightlyConfig({
   const versionCode = nightlyVersionCode(date, build);
   return {
     productName: NIGHTLY_PRODUCT_NAME,
-    version: nightlyVersion(packageVersion, date),
+    version: nightlyVersion(packageVersion, date, build),
     identifier: nightlyIdentifier(productionIdentifier),
     bundle: {
       android: { versionCode },
@@ -327,7 +334,8 @@ export function createNightlyConfig({
  * orders releases by the SemVer `version` string, not a numeric build
  * index, so this needs no monotonic allocation. macOS still requires a
  * numeric CFBundleVersion, so the desktop config derives the deterministic
- * day code through the same `nightlyVersionCode()` authority with build 0.
+ * code through the same `nightlyVersionCode()` authority and the cohort's
+ * reserved build index.
  *
  * The parameter object is declared rather than left to inference, for the
  * same TS2345 reason documented on `allocateNightlyVersionCode` above: an
@@ -338,6 +346,7 @@ export function createNightlyConfig({
  *   packageVersion: string,
  *   productionIdentifier: string,
  *   date: Date,
+ *   build?: number,
  *   updaterPublicKey: string,
  *   updaterEndpoint?: string,
  * }} input
@@ -346,6 +355,7 @@ export function createNightlyDesktopConfig({
   packageVersion,
   productionIdentifier,
   date,
+  build = 0,
   updaterPublicKey,
   updaterEndpoint,
 }) {
@@ -355,11 +365,11 @@ export function createNightlyDesktopConfig({
   );
   return {
     productName: NIGHTLY_PRODUCT_NAME,
-    version: nightlyVersion(packageVersion, date),
+    version: nightlyVersion(packageVersion, date, build),
     identifier: nightlyIdentifier(productionIdentifier),
     bundle: {
       createUpdaterArtifacts,
-      macOS: { bundleVersion: String(nightlyVersionCode(date, 0)) },
+      macOS: { bundleVersion: String(nightlyVersionCode(date, build)) },
     },
     plugins,
   };
@@ -383,6 +393,7 @@ function option(name, args) {
  *   packageJsonPath: string,
  *   tauriConfigPath: string,
  *   date: string,
+ *   build?: number,
  *   updaterPublicKey: string,
  *   updaterEndpoint?: string,
  *   outputPath: string,
@@ -393,6 +404,7 @@ export function writeNightlyDesktopConfig({
   packageJsonPath,
   tauriConfigPath,
   date,
+  build = 0,
   updaterPublicKey,
   updaterEndpoint,
   outputPath,
@@ -408,6 +420,7 @@ export function writeNightlyDesktopConfig({
     packageVersion,
     productionIdentifier,
     date: new Date(date),
+    build,
     updaterPublicKey,
     updaterEndpoint,
   });
@@ -494,6 +507,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       date,
       updaterPublicKey: readFileSync(updaterPublicKeyFile, 'utf8'),
       updaterEndpoint: option('updater-endpoint', args),
+      build: Number(option('build', args) ?? 0),
       outputPath,
       githubOutput: option('github-output', args),
     });

@@ -264,8 +264,9 @@ describe('settings catalog completeness', () => {
     expectExactCatalog(rendered, expected);
     // 37 at the merge base; +2 from archive#3313 (feature-previews,
     // enable-developer-tools) and +1 from the chat-dock lane's
-    // sidebar-sections. Counted from the merged catalog, not added up.
-    expect(SETTINGS_CATALOG).toHaveLength(40);
+    // sidebar-sections, and +1 from station#585 smooth answer reveal. Counted
+    // from the merged catalog, not added up.
+    expect(SETTINGS_CATALOG).toHaveLength(41);
   });
 
   test('the rendered mobile Settings view and catalog enumerate the same exact ids', async () => {
