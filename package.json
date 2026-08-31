@@ -245,7 +245,7 @@
     "typecheck:examples": "tsc --noEmit -p examples/minimal-layout/tsconfig.json && tsc --noEmit -p examples/shared-providers/tsconfig.json && tsc --noEmit -p examples/knowledge-library/tsconfig.json && tsc --noEmit -p examples/meeting-notes/tsconfig.json"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "^1.3.0",
+    "@agentclientprotocol/sdk": "^1.4.0",
     "@ai-sdk/amazon-bedrock": "^4.0.141",
     "@ai-sdk/anthropic": "^3.0.102",
     "@ai-sdk/google": "^3.0.101",
