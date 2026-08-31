@@ -2,11 +2,22 @@
  * E2E: the dock occupant picker and the routes' away state
  * (archive#4090 design decision, epic archive#4142 M5).
  *
- * Dock side: the dock-slot header's fixed "return to Chat" action is gone.
- * The header names the CURRENT occupant and opens a menu of every pane the
+ * Dock side: the dock header's fixed "return to Chat" action is gone. The
+ * header names the CURRENT occupant and opens a menu of every pane the
  * ambient slot admits — the derivation, currently {Chat, Home, Activity} —
  * with the current occupant checked. Choosing replaces the occupant through
  * the existing ambient document path; Chat is one of the list, not special.
+ *
+ * The shell that hosts every occupant is one persistent element
+ * (`#chat-dock` / `.chat-dock`, `aria-label="Dock"` — station#4460
+ * consolidated the old per-occupant `.dock-slot`/`.dock-slot__header`
+ * markup into this single shared shell; `.dock-slot` no longer renders
+ * anywhere, see `useDockShellChrome`/`DockShell.tsx` and
+ * `dock-bottom-clearance.test.ts`). The occupant is identified by the
+ * header's occupant-picker trigger, whose accessible name is
+ * `Docked pane: <Occupant>` — never a raw id (archive#3971) — so every
+ * assertion that used to key on a per-occupant `.dock-slot[aria-label]`
+ * here keys on that trigger's accessible name instead.
  *
  * Route side: while a route's pane occupies the dock, the route renders an
  * AWAY STATE instead of a second live copy of the pane, derived from the
@@ -35,16 +46,30 @@ async function pinFirstRunSkipped(page: Page) {
   );
 }
 
+/**
+ * The occupant-picker trigger names the current occupant by descriptor name
+ * (`Docked pane: <name>`), scoped to the one persistent dock shell — the
+ * shipped equivalent of the old `.dock-slot[aria-label="<name> dock"]`.
+ */
+function dockOccupantTrigger(page: Page, name: string) {
+  return page
+    .locator('#chat-dock')
+    .getByRole('button', { name: `Docked pane: ${name}` });
+}
+
 async function dockHomeFromRoot(page: Page) {
   await page.goto('/');
   const dockAction = page
     .locator('#station-main')
     .getByRole('button', { name: 'Dock this pane' });
-  await expect(dockAction).toBeVisible({ timeout: 10_000 });
+  // 20s, not 10s: the ambient dock host is a lazy chunk (station#4460), and
+  // this helper is often the first navigation in an isolated mobile context,
+  // so it pays the cold load cost other tests in this file amortize away.
+  // Measured directly on this host: ~1.1s under light load, 20s+ under the
+  // heavy sibling-session contention this environment sees routinely.
+  await expect(dockAction).toBeVisible({ timeout: 20_000 });
   await dockAction.click();
-  await expect(
-    page.locator('.dock-slot[aria-label="Home dock"]'),
-  ).toBeVisible();
+  await expect(dockOccupantTrigger(page, 'Home')).toBeVisible();
 }
 
 test.describe('Dock occupant picker', () => {
@@ -69,12 +94,12 @@ test.describe('Dock occupant picker', () => {
     ).toHaveCount(0);
 
     // Dock side: the header names the occupant; no fixed Chat return action.
-    const header = page.locator('.dock-slot__header');
+    const header = page.locator('.chat-dock__header');
     await expect(
       header.getByRole('button', { name: 'Dock this pane' }),
       'the fixed return-to-Chat header action is deleted (M5)',
     ).toHaveCount(0);
-    await header.getByRole('button', { name: 'Docked pane: Home' }).click();
+    await dockOccupantTrigger(page, 'Home').click();
     const menu = page.getByRole('menu', { name: 'Docked pane' });
     await expect(menu).toBeVisible();
     // The derivation, by NAME (never a raw id), current occupant checked.
@@ -95,18 +120,13 @@ test.describe('Dock occupant picker', () => {
     const main = page.locator('#station-main');
     await expect(main.getByText('Home is in the dock')).toBeVisible();
 
-    await page
-      .locator('.dock-slot__header')
-      .getByRole('button', { name: 'Docked pane: Home' })
-      .click();
+    await dockOccupantTrigger(page, 'Home').click();
     await page
       .getByRole('menu', { name: 'Docked pane' })
       .getByRole('menuitemradio', { name: 'Activity' })
       .click();
 
-    await expect(
-      page.locator('.dock-slot[aria-label="Activity dock"]'),
-    ).toBeVisible();
+    await expect(dockOccupantTrigger(page, 'Activity')).toBeVisible();
     // The case most likely to be wrong (M5 acceptance 1): Home is no longer
     // docked, so `/` must CLEAR its away state and render Home again.
     await expect(main.getByText('Home is in the dock')).toHaveCount(0);
@@ -124,7 +144,10 @@ test.describe('Dock occupant picker', () => {
     await main.getByRole('button', { name: 'Bring it back here' }).click();
 
     await expect(page.locator('.chat-dock')).toBeVisible();
-    await expect(page.locator('.dock-slot')).toHaveCount(0);
+    await expect(
+      dockOccupantTrigger(page, 'Chat'),
+      'undocking Home must return the ambient slot to Chat',
+    ).toBeVisible();
     await expect(main.getByText('Home is in the dock')).toHaveCount(0);
     await expect(
       main.getByRole('button', { name: 'Dock this pane' }),
@@ -138,10 +161,7 @@ test.describe('Dock occupant picker', () => {
     // calls an off-screen menu with a non-empty box "visible" — so measure.
     await page.setViewportSize({ width: 1440, height: 900 });
     await dockHomeFromRoot(page);
-    await page
-      .locator('.dock-slot__header')
-      .getByRole('button', { name: 'Docked pane: Home' })
-      .click();
+    await dockOccupantTrigger(page, 'Home').click();
     const menu = page.getByRole('menu', { name: 'Docked pane' });
     await expect(menu).toBeVisible();
     const box = await menu.boundingBox();
@@ -165,9 +185,7 @@ test.describe('Dock occupant picker', () => {
       .getByRole('button', { name: 'Dock this pane' });
     await expect(dockAction).toBeVisible({ timeout: 10_000 });
     await dockAction.click();
-    await expect(
-      page.locator('.dock-slot[aria-label="Activity dock"]'),
-    ).toBeVisible();
+    await expect(dockOccupantTrigger(page, 'Activity')).toBeVisible();
     const main = page.locator('#station-main');
     await expect(main.getByText('Activity is in the dock')).toBeVisible();
     await main.getByRole('button', { name: 'Bring it back here' }).click();
@@ -198,9 +216,7 @@ test.describe('Dock occupant picker at 390x844', () => {
       'a docked pane with the picker must not push the phone document sideways',
     ).toBe(true);
 
-    const trigger = page
-      .locator('.dock-slot__header')
-      .getByRole('button', { name: 'Docked pane: Home' });
+    const trigger = dockOccupantTrigger(page, 'Home');
     const triggerBox = await trigger.boundingBox();
     expect(
       triggerBox?.height,
