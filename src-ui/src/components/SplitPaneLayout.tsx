@@ -110,6 +110,12 @@ interface SplitPaneLayoutProps {
   firstRunAnchor?: string;
   // Left panel
   items: SplitPaneItem[];
+  /**
+   * Section labels that must remain visible even when they contain no items.
+   * This is inventory chrome, not a placeholder item: empty sections never
+   * become selectable rows.
+   */
+  emptySections?: readonly string[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onDeselect?: () => void;
@@ -253,6 +259,7 @@ export function SplitPaneLayout({
   paneId,
   firstRunAnchor,
   items,
+  emptySections = [],
   selectedId,
   onSelect,
   onDeselect,
@@ -978,6 +985,15 @@ export function SplitPaneLayout({
                 ) : undefined
               }
             />
+          ) : items.length === 0 && emptySections.length > 0 ? (
+            emptySections.map((section) => (
+              <div
+                key={`empty-section:${section}`}
+                className="split-pane__section-header split-pane__section-header--empty"
+              >
+                {section}
+              </div>
+            ))
           ) : items.length === 0 ? (
             // a typed query over an ALREADY-empty
             // collection is not what emptied it — `collectionEmpty` says so
@@ -1007,92 +1023,106 @@ export function SplitPaneLayout({
               />
             )
           ) : (
-            items.map((item, i) => {
-              const group = item.group;
-              const previousGroupId = items[i - 1]?.group?.id;
-              const groupStarts = group && group.id !== previousGroupId;
-              const groupExpanded = group
-                ? !collapsedGroups.has(group.id)
-                : true;
-              const row = (
-                <button
-                  ref={(node) => {
-                    if (node) itemButtonRefs.current.set(item.id, node);
-                    else itemButtonRefs.current.delete(item.id);
-                  }}
-                  type="button"
-                  className={`split-pane__item${selectedId === item.id ? ' split-pane__item--selected' : ''}`}
-                  onClick={() => selectItem(item.id)}
-                >
-                  {item.icon && (
-                    <div className="split-pane__item-icon">{item.icon}</div>
-                  )}
-                  <div className="split-pane__item-text">
-                    <div className="split-pane__item-name">
-                      {item.name}
-                      {item.badge}
-                    </div>
-                    {item.subtitle && (
-                      <div className="split-pane__item-subtitle">
-                        {item.subtitle}
-                      </div>
+            <>
+              {items.map((item, i) => {
+                const group = item.group;
+                const previousGroupId = items[i - 1]?.group?.id;
+                const groupStarts = group && group.id !== previousGroupId;
+                const groupExpanded = group
+                  ? !collapsedGroups.has(group.id)
+                  : true;
+                const row = (
+                  <button
+                    ref={(node) => {
+                      if (node) itemButtonRefs.current.set(item.id, node);
+                      else itemButtonRefs.current.delete(item.id);
+                    }}
+                    type="button"
+                    className={`split-pane__item${selectedId === item.id ? ' split-pane__item--selected' : ''}`}
+                    onClick={() => selectItem(item.id)}
+                  >
+                    {item.icon && (
+                      <div className="split-pane__item-icon">{item.icon}</div>
                     )}
-                  </div>
-                </button>
-              );
-              const rowContent = item.trailing ? (
-                <div className="split-pane__item-row">
-                  {row}
-                  <div className="split-pane__item-trailing">
-                    {item.trailing}
-                  </div>
-                </div>
-              ) : (
-                row
-              );
-              return (
-                <React.Fragment key={item.id}>
-                  {item.section !== undefined &&
-                    item.section !== items[i - 1]?.section && (
-                      <div className="split-pane__section-header">
-                        {item.section}
+                    <div className="split-pane__item-text">
+                      <div className="split-pane__item-name">
+                        {item.name}
+                        {item.badge}
                       </div>
-                    )}
-                  {groupStarts && group && (
-                    <div className="split-pane__group-header">
-                      <button
-                        type="button"
-                        className="split-pane__group-toggle"
-                        aria-expanded={groupExpanded}
-                        onClick={() =>
-                          setCollapsedGroups((current) => {
-                            const next = new Set(current);
-                            if (next.has(group.id)) next.delete(group.id);
-                            else next.add(group.id);
-                            return next;
-                          })
-                        }
-                      >
-                        <span aria-hidden="true">
-                          {groupExpanded ? '⌄' : '›'}
-                        </span>
-                        {group.label}
-                      </button>
-                      {group.renderSummary?.((memberId) =>
-                        focusGroupMember(group.id, memberId),
+                      {item.subtitle && (
+                        <div className="split-pane__item-subtitle">
+                          {item.subtitle}
+                        </div>
                       )}
                     </div>
-                  )}
-                  {group
-                    ? groupExpanded && (
-                        <div className="split-pane__group-member">
-                          {rowContent}
+                  </button>
+                );
+                const rowContent = item.trailing ? (
+                  <div className="split-pane__item-row">
+                    {row}
+                    <div className="split-pane__item-trailing">
+                      {item.trailing}
+                    </div>
+                  </div>
+                ) : (
+                  row
+                );
+                return (
+                  <React.Fragment key={item.id}>
+                    {item.section !== undefined &&
+                      item.section !== items[i - 1]?.section && (
+                        <div className="split-pane__section-header">
+                          {item.section}
                         </div>
-                      )
-                    : rowContent}
-                </React.Fragment>
-              );
-            })
+                      )}
+                    {groupStarts && group && (
+                      <div className="split-pane__group-header">
+                        <button
+                          type="button"
+                          className="split-pane__group-toggle"
+                          aria-expanded={groupExpanded}
+                          onClick={() =>
+                            setCollapsedGroups((current) => {
+                              const next = new Set(current);
+                              if (next.has(group.id)) next.delete(group.id);
+                              else next.add(group.id);
+                              return next;
+                            })
+                          }
+                        >
+                          <span aria-hidden="true">
+                            {groupExpanded ? '⌄' : '›'}
+                          </span>
+                          {group.label}
+                        </button>
+                        {group.renderSummary?.((memberId) =>
+                          focusGroupMember(group.id, memberId),
+                        )}
+                      </div>
+                    )}
+                    {group
+                      ? groupExpanded && (
+                          <div className="split-pane__group-member">
+                            {rowContent}
+                          </div>
+                        )
+                      : rowContent}
+                  </React.Fragment>
+                );
+              })}
+              {emptySections
+                .filter(
+                  (section) => !items.some((item) => item.section === section),
+                )
+                .map((section) => (
+                  <div
+                    key={`empty-section:${section}`}
+                    className="split-pane__section-header split-pane__section-header--empty"
+                  >
+                    {section}
+                  </div>
+                ))}
+            </>
           )}
         </div>
 
