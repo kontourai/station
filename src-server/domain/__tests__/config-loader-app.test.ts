@@ -39,6 +39,7 @@ import {
   saveAppConfigFile,
   saveAppConfigFileWithMutationAuthority,
   updateAppConfigFile,
+  withAppConfigMutationAuthority,
 } from '../config-loader-app.js';
 
 const createTempDir = () => mkdtempSync(join(tmpdir(), 'station-app-config-'));
@@ -218,6 +219,25 @@ describe('config-loader-app', () => {
       ),
     ).rejects.toThrow(
       'app configuration mutation authority is no longer active',
+    );
+  });
+
+  it('refuses an app-config mutation authority retained after its lock callback', async () => {
+    const config = await loadAppConfigFile(tempDir);
+    let lateSave: Promise<void> | undefined;
+
+    await withAppConfigMutationAuthority(tempDir, async (authority) => {
+      lateSave = saveAppConfigFileWithMutationAuthority(tempDir, authority, {
+        ...config,
+        defaultModel: 'retained-authority-model',
+      });
+    });
+
+    await expect(lateSave).rejects.toThrow(
+      'app configuration mutation authority is no longer active',
+    );
+    expect((await loadAppConfigFile(tempDir)).defaultModel).toBe(
+      config.defaultModel,
     );
   });
 

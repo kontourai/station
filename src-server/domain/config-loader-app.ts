@@ -218,6 +218,10 @@ async function saveAppConfigFileInternal(
       renameSync(temporaryPath, path);
     };
     if (authority) {
+      // The callback may have returned without awaiting this write. Recheck at
+      // the commit seam so a retained capability cannot publish after its lock
+      // has been released.
+      assertActiveAppConfigMutationAuthority(authority);
       commit();
       return;
     }
