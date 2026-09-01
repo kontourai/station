@@ -258,6 +258,13 @@ export function createAgentRoutes(
     const connection = agentConnectionId
       ? connections.find((entry) => entry.id === agentConnectionId)
       : undefined;
+    // A matched runtime connection without its canonical engine identity is
+    // not a usable capability subject. Its display name is user-facing
+    // metadata, never authority to borrow a vendor matrix from; report the
+    // optional validation as unknown instead of inventing that authority.
+    if (connection && !connection.engineId) {
+      return { kind: 'degraded' };
+    }
     const matrix = resolveEngineCapabilityMatrix(agentConnectionId, connection);
     const authored: AuthoredCapabilityFlags = {
       prompt: !!spec.prompt?.trim(),
