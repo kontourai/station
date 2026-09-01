@@ -13,10 +13,10 @@ vi.mock('../../hooks/useIsMobile', () => ({
 
 describe('CodingChatPane dock placement', () => {
   afterEach(() => {
+    deviceSettingsStore.reset('dockSlotPlacement');
     window.localStorage.clear();
     window.history.replaceState({}, '', '/');
     navigationStore.navigate('/', { dockSlotPlacement: null });
-    deviceSettingsStore.reset('dockSlotPlacement');
   });
 
   test('a device-settings change still takes effect after visiting Coding', () => {

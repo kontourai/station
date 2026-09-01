@@ -1,9 +1,10 @@
 /**
  * E2E: Dock Mode Preference
  *
- * Verifies that layout-declared dock mode preferences apply silently
- * (no URL param) and that explicit user overrides (⌘⇧M, settings panel)
- * write to both URL and sessionStorage.
+ * Placement resolves URL param, then device setting, then the registry
+ * default (#1265: nothing moves the dock on the user's behalf). Explicit
+ * user actions (⌘⇧M, settings panel) write both the URL and the device
+ * setting.
  */
 import { expect, type Page, test } from '@playwright/test';
 import {
@@ -482,10 +483,16 @@ test.describe('Dock Mode Preference', () => {
   test('explicit URL dockSlotPlacement is respected over the device setting', async ({
     page,
   }) => {
+    // The device setting says right; the URL must win over it.
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'station-device-settings-v1',
+        JSON.stringify({ version: 2, values: { dockSlotPlacement: 'right' } }),
+      );
+    });
     await page.goto('/projects/dev/layouts/code?dockSlotPlacement=bottom');
     await page.waitForTimeout(3000);
 
-    // Dock should be in bottom (inline) mode from the URL, regardless of device setting.
     const chatDock = page.locator('.chat-dock');
     await expect(chatDock).toHaveClass(/chat-dock--bottom(?!-)/);
 
@@ -497,8 +504,8 @@ test.describe('Dock Mode Preference', () => {
   // station#settings-revamp slice 4 (docs/design/settings-architecture.md
   // §3 S4 "Chat/session", §6 slice 4): the remembered dock-slot placement
   // fallback so it survives a reload of a non-layout route with no URL
-  // param and no layout preference in play.
-  test('a persisted dock-slot placement is used as the fallback on a route with no URL param and no layout preference', async ({
+  // param.
+  test('a persisted dock-slot placement is used as the fallback on a route with no URL param', async ({
     page,
   }) => {
     await page.addInitScript(() => {
@@ -765,13 +772,18 @@ test.describe('Dock Mode — Mobile', () => {
   test('dock height controls stay vertical on mobile even in right dock mode', async ({
     page,
   }) => {
-    // Navigate to coding layout which prefers right dock
+    // The device setting says right; mobile has no right region, so the
+    // placement resolves to the bottom renderer.
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'station-device-settings-v1',
+        JSON.stringify({ version: 2, values: { dockSlotPlacement: 'right' } }),
+      );
+    });
     await page.goto('/projects/dev/layouts/code');
     await page.waitForTimeout(3000);
     await dismissSetupLauncher(page);
 
-    // The same coding layout's right preference is asserted on desktop above.
-    // Mobile intentionally resolves that preference to the bottom renderer.
     const chatDock = page.locator('.chat-dock');
     await expect(chatDock).toHaveClass(/chat-dock--bottom/);
     await expect(chatDock).not.toHaveClass(/chat-dock--right/);
