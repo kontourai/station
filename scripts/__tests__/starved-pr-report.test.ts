@@ -1,11 +1,11 @@
 import { spawnSync } from 'node:child_process';
 import { describe, expect, test } from 'vitest';
 import {
-  HOLD_MARKER,
-  REPORT_MARKER,
   alreadyReported,
+  HOLD_MARKER,
   isHeld,
   isStarved,
+  REPORT_MARKER,
   reportBody,
   selectStarved,
 } from '../starved-pr-report.mjs';
@@ -32,9 +32,9 @@ describe('starved pull request detection', () => {
   // The whole reason this cannot be done with autoMergeRequest alone: a queued
   // PR reads null there too, and is moving, not stuck.
   test('a queued pull request is not starved even though it reads unarmed', () => {
-    expect(isStarved(pr({ isInMergeQueue: true, autoMergeRequest: null }))).toBe(
-      false,
-    );
+    expect(
+      isStarved(pr({ isInMergeQueue: true, autoMergeRequest: null })),
+    ).toBe(false);
   });
 
   test('an armed pull request is not starved', () => {
@@ -82,9 +82,9 @@ describe('starved pull request detection', () => {
     const starved = pr({ number: 10 });
     const queued = pr({ number: 11, isInMergeQueue: true });
     const held = pr({ number: 12, labels: { nodes: [{ name: 'blocked' }] } });
-    expect(selectStarved([starved, queued, held]).map((p) => p.number)).toEqual([
-      10,
-    ]);
+    expect(selectStarved([starved, queued, held]).map((p) => p.number)).toEqual(
+      [10],
+    );
   });
 
   test('the comment carries its own marker so the next run can see it', () => {

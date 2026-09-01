@@ -143,8 +143,7 @@ export function main(argv = process.argv.slice(2)) {
     '-F',
     `name=${name}`,
   ]);
-  const nodes =
-    JSON.parse(raw)?.data?.repository?.pullRequests?.nodes ?? [];
+  const nodes = JSON.parse(raw)?.data?.repository?.pullRequests?.nodes ?? [];
   const starved = selectStarved(nodes);
 
   if (starved.length === 0) {
