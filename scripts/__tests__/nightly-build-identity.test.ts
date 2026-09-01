@@ -846,7 +846,6 @@ describe('the nightly workflow keeps its promises', () => {
     expect(apkReadback).toBeGreaterThan(aabReadback);
     expect(stage).toContain('base/assets record');
   });
-
   it('freezes the source-owned manifest before Android asset staging and reuses it during Tauri packaging', () => {
     const start = workflow.indexOf('\n  stage-android:');
     const end = workflow.indexOf('\n  stage-macos:', start);
