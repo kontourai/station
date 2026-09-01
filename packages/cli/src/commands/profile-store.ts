@@ -1225,6 +1225,8 @@ export function registerPairedProfile(
     /** A pairing caller may re-point a named Station only after explicit consent. */
     allowEndpointReplacement?: boolean;
     setupSource?: StationProfileSetupSource;
+    /** Local self-provision's supersession identity; see `UpsertProfileInput`. */
+    clientInstanceId?: string;
     now?: number;
   },
   home: string = resolveStationHome(),
@@ -1282,6 +1284,9 @@ export function registerPairedProfile(
       endpoint: normalizedEndpoint,
       credentialRef: input.credentialRef,
       environmentId: input.environmentId,
+      ...(input.clientInstanceId
+        ? { clientInstanceId: input.clientInstanceId }
+        : {}),
       setupSource: input.setupSource ?? 'paired',
       configurationState: 'configured',
       verifiedBinding: true,

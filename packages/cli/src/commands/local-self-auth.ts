@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { hostname } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import type { StationProfile } from '@kontourai/station-contracts';
 import { PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH } from '@kontourai/station-contracts/environment-security';
 import {
@@ -12,7 +12,7 @@ import {
 import {
   findProfile,
   isCredentialRefReferenced,
-  upsertProfile,
+  registerPairedProfile,
 } from './profile-store.js';
 
 /**
@@ -39,10 +39,25 @@ import {
  * endpoint is not an IP-literal loopback origin is NEVER self-authorized —
  * a forwarded or LAN endpoint would let network position stand in for
  * filesystem possession, which is exactly what the server route refuses.
+ *
+ * One deliberate divergence from the desktop remains: before its exchange,
+ * the desktop also verifies that the RUNNING desktop-owned service's live
+ * status (pid, port, instance id) matches the selected profile
+ * (`station_local_self_provision`'s `local_profile_not_owned` check). The CLI
+ * owns no runtime and cannot consult one, so it has no equivalent check; what
+ * binds the profile's home to the answering server here is the server's own
+ * timing-safe comparison of the presented secret — a different home's server
+ * refuses the exchange outright.
  */
 
 export type LocalSelfAuthOutcome =
-  | { status: 'authorized'; profile: StationProfile; credential: string }
+  | {
+      status: 'authorized';
+      profile: StationProfile;
+      credential: string;
+      /** Disclosed, non-fatal aftermath (e.g. unconfirmed ref retirement). */
+      warning?: string;
+    }
   /** The profile is not the kind this mechanism applies to; not an error. */
   | { status: 'ineligible'; reason: string }
   | { status: 'failed'; reason: string };
@@ -128,20 +143,30 @@ export async function selfAuthorizeLocalProfile(
       reason: `self-authorization requires an IP-literal loopback endpoint (this Station targets ${profile.endpoint})`,
     };
   }
-  const secretPath = localGrantSecretPath(profile.localService.baseDir);
+  // Secret-read discipline mirrors the desktop's `read_local_grant_secret`
+  // (`src-desktop/src/lib.rs`): absolute base directory only, trimmed value,
+  // length bounded to what `writeLocalGrantSecretFile` can actually produce.
+  const baseDir = profile.localService.baseDir;
+  if (baseDir.trim().length === 0 || !isAbsolute(baseDir)) {
+    return {
+      status: 'failed',
+      reason: `this saved Station's local service names an invalid base directory (${JSON.stringify(baseDir)})`,
+    };
+  }
+  const secretPath = localGrantSecretPath(baseDir);
   let secret: string;
   try {
-    secret = readFileSync(secretPath, 'utf8');
+    secret = readFileSync(secretPath, 'utf8').trim();
   } catch {
     return {
       status: 'failed',
       reason: `the service's local-grant secret is not readable (${secretPath}); is the service running?`,
     };
   }
-  if (secret.length === 0) {
+  if (secret.length < 20 || secret.length > 100) {
     return {
       status: 'failed',
-      reason: `the service's local-grant secret is empty (${secretPath})`,
+      reason: `the service's local-grant secret has an unexpected length (${secretPath})`,
     };
   }
 
@@ -212,13 +237,16 @@ export async function selfAuthorizeLocalProfile(
     };
   }
 
-  // The exchange succeeded against the profile we were handed; refuse to
-  // attach its credential to a binding that changed underneath us.
+  // Snapshot the exact named binding BEFORE the keyring write (which can
+  // block on an OS keyring prompt for minutes). This is only the fast-path
+  // check; the binding is enforced again AT COMMIT TIME below, the way
+  // pairing enforces it, so a concurrent `station stations edit` inside the
+  // keyring window can never be silently reverted by this commit.
   const current = findProfile(profile.name);
   if (!current || current.endpoint !== profile.endpoint) {
     return {
       status: 'failed',
-      reason: `saved Station "${profile.name}" changed while authorizing; its newer binding was preserved`,
+      reason: `saved Station "${profile.name}" changed while authorizing; self-authorization was abandoned and nothing was written`,
     };
   }
 
@@ -233,33 +261,35 @@ export async function selfAuthorizeLocalProfile(
       reason: `could not store the credential in the OS credential store: ${(error as Error).message}`,
     };
   }
-  let updated: StationProfile;
+  let registration: ReturnType<typeof registerPairedProfile>;
   try {
-    updated = upsertProfile({
+    // `registerPairedProfile` re-reads the store and refuses the commit when
+    // the named binding no longer byte-matches `expectedProfile` — the same
+    // stale-approval guard `pairSavedStation` relies on.
+    registration = registerPairedProfile(current.endpoint, {
       name: current.name,
-      endpoint: current.endpoint,
-      credentialRef,
       environmentId: exchange.environmentId,
+      credentialRef,
       clientInstanceId,
+      expectedProfile: current,
       setupSource: current.setupSource,
-      configurationState: 'configured',
-      force: true,
-    }).profile;
+    });
   } catch (error) {
     try {
       credentialStore.delete(credentialRef);
     } catch (rollbackError) {
       return {
         status: 'failed',
-        reason: `saved Station metadata write failed (${(error as Error).message}); credential rollback also failed (${(rollbackError as Error).message})`,
+        reason: `saved Station metadata commit was refused (${(error as Error).message}); credential rollback also failed (${(rollbackError as Error).message})`,
       };
     }
     return {
       status: 'failed',
-      reason: `saved Station metadata write failed; the credential was rolled back: ${(error as Error).message}`,
+      reason: `saved Station metadata commit was refused and the exchanged credential was rolled back: ${(error as Error).message}`,
     };
   }
   const previousRef = current.credentialRef;
+  let warning: string | undefined;
   try {
     if (
       previousRef &&
@@ -271,12 +301,15 @@ export async function selfAuthorizeLocalProfile(
   } catch {
     // The metadata commit is durable and the new keyring ref is live; a
     // failed retirement only retains the old opaque ref, exactly as pairing
-    // treats this case.
+    // treats this case — and it is disclosed with pairing's exact wording.
+    warning =
+      'The new Station binding is active, but retirement of the replaced credential could not be confirmed.';
   }
   return {
     status: 'authorized',
-    profile: updated,
+    profile: registration.profile,
     credential: exchange.credential,
+    ...(warning ? { warning } : {}),
   };
 }
 
@@ -289,6 +322,12 @@ export async function selfAuthorizeLocalProfile(
  * auth to the first request, so a successful heal authorizes that very
  * request. One attempt per process — a refused exchange leaves the request
  * unauthenticated, which fails exactly as it did before this existed.
+ *
+ * Beyond candidacy, healing requires `setupSource === 'local'` — the binding
+ * must be one `station setup local` itself created. This is the CLI's closest
+ * available analogue of the desktop's runtime-ownership check (see the module
+ * doc for the divergence): a hand-authored or imported profile that merely
+ * points at a loopback port never triggers a background exchange.
  */
 export function createLocalSelfHealCredentialResolver(
   stationName: string,
@@ -299,6 +338,7 @@ export function createLocalSelfHealCredentialResolver(
   | undefined {
   const profile = findProfile(stationName);
   if (!profile || new URL(profile.endpoint).origin !== origin) return undefined;
+  if (profile.setupSource !== 'local') return undefined;
   if (!isLocalSelfAuthCandidate(profile)) return undefined;
   if (!existsSync(localGrantSecretPath(profile.localService.baseDir))) {
     return undefined;
@@ -308,10 +348,11 @@ export function createLocalSelfHealCredentialResolver(
     | undefined;
   return () => {
     attempt ??= selfAuthorizeLocalProfile(profile, dependencies).then(
-      (outcome) =>
-        outcome.status === 'authorized'
-          ? { credential: outcome.credential, origin }
-          : undefined,
+      (outcome) => {
+        if (outcome.status !== 'authorized') return undefined;
+        if (outcome.warning) console.error(outcome.warning);
+        return { credential: outcome.credential, origin };
+      },
       () => undefined,
     );
     return attempt;

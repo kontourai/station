@@ -394,6 +394,132 @@ describe('selfAuthorizeLocalProfile', () => {
     });
   });
 
+  it('refuses the commit and rolls back when the binding changes during the keyring write', async () => {
+    const stub = await startStubStation();
+    try {
+      writeSecretBytes(serviceHome, stub.secret);
+      const store = memoryCredentialStore();
+      const profile = localProfile(stub.origin);
+      // The keyring write is where a real OS prompt can block for minutes.
+      // Deterministically land the user's concurrent
+      // `station stations edit kontour https://edited.example` inside that
+      // exact window.
+      const promptingStore = {
+        ...store,
+        set: (ref: { id: string }, credential: string) => {
+          store.set(ref as never, credential);
+          upsertProfile({
+            name: 'kontour',
+            endpoint: 'https://edited.example',
+            force: true,
+          });
+        },
+      };
+
+      const outcome = await selfAuthorizeLocalProfile(profile, {
+        credentialStore: promptingStore as never,
+      });
+
+      expect(outcome).toMatchObject({
+        status: 'failed',
+        reason: expect.stringContaining('credential was rolled back'),
+      });
+      // No stranded keyring entry.
+      expect(store.values.size).toBe(0);
+      // The user's edit won, byte for byte untouched by the refused commit.
+      const edited = findProfile('kontour');
+      expect(edited?.endpoint).toBe('https://edited.example');
+      expect(edited?.credentialRef).toBeUndefined();
+      expect(edited?.configurationState).toBe('unconfigured');
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it('reads the secret with the desktop parity checks: trims a trailing newline', async () => {
+    const stub = await startStubStation();
+    try {
+      // A hand-inspected or editor-saved secret file may gain a newline; the
+      // desktop trims before exchanging, and so does the CLI.
+      writeSecretBytes(serviceHome, `${stub.secret}\n`);
+      const outcome = await selfAuthorizeLocalProfile(
+        localProfile(stub.origin),
+        {
+          credentialStore: memoryCredentialStore(),
+        },
+      );
+      expect(outcome.status).toBe('authorized');
+      expect(stub.localGrantRequests[0]).toMatchObject({ secret: stub.secret });
+    } finally {
+      await stub.close();
+    }
+  });
+
+  it('refuses a secret of implausible length without contacting the Station', async () => {
+    writeSecretBytes(serviceHome, 'short');
+    const fetchSpy = vi.fn();
+    const outcome = await selfAuthorizeLocalProfile(
+      localProfile('http://127.0.0.1:43199'),
+      { fetchImpl: fetchSpy as unknown as typeof fetch },
+    );
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      reason: expect.stringContaining('unexpected length'),
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('refuses a non-absolute local service base directory without reading anything', async () => {
+    const fetchSpy = vi.fn();
+    const outcome = await selfAuthorizeLocalProfile(
+      localProfile('http://127.0.0.1:43199', {
+        localService: {
+          instanceId: 'stable',
+          baseDir: 'relative/station-home',
+          serverPort: 43199,
+          uiPort: 43198,
+        },
+      }),
+      { fetchImpl: fetchSpy as unknown as typeof fetch },
+    );
+    expect(outcome).toMatchObject({
+      status: 'failed',
+      reason: expect.stringContaining('invalid base directory'),
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('discloses an unconfirmed retirement of the displaced credential ref', async () => {
+    const stub = await startStubStation();
+    try {
+      writeSecretBytes(serviceHome, stub.secret);
+      const store = memoryCredentialStore();
+      const profile = localProfile(stub.origin, {
+        credentialRef: { kind: 'station-bearer', id: 'stale-ref' },
+      });
+      store.values.set('stale-ref', 'stale-credential');
+      const stubbornStore = {
+        ...store,
+        delete: (ref: { id: string }) => {
+          if (ref.id === 'stale-ref') throw new Error('keyring busy');
+          store.delete(ref as never);
+        },
+      };
+
+      const outcome = await selfAuthorizeLocalProfile(profile, {
+        credentialStore: stubbornStore as never,
+      });
+
+      expect(outcome).toMatchObject({
+        status: 'authorized',
+        warning:
+          'The new Station binding is active, but retirement of the replaced credential could not be confirmed.',
+      });
+    } finally {
+      await stub.close();
+    }
+  });
+
   it('rolls the keyring entry back when the metadata commit fails', async () => {
     const stub = await startStubStation();
     try {
@@ -488,6 +614,25 @@ describe('createLocalSelfHealCredentialResolver', () => {
     const parsed = parseCoreArgs([]);
     const resolved = resolveApiBaseDetailed(parsed);
     expect(configureApiCredential(parsed, resolved.apiBase)).toBe(false);
+  });
+
+  it('installs no resolver for a binding setup local did not create', () => {
+    writeRealLocalGrantSecret(serviceHome);
+    localProfile('http://127.0.0.1:43199', { setupSource: 'manual' });
+    expect(
+      createLocalSelfHealCredentialResolver(
+        'kontour',
+        'http://127.0.0.1:43199',
+      ),
+    ).toBeUndefined();
+    // Restoring the setup-local provenance re-arms healing.
+    localProfile('http://127.0.0.1:43199');
+    expect(
+      createLocalSelfHealCredentialResolver(
+        'kontour',
+        'http://127.0.0.1:43199',
+      ),
+    ).toBeDefined();
   });
 
   it('installs no resolver when the secret file does not exist', () => {

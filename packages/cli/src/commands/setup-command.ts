@@ -234,6 +234,7 @@ export async function runSetupCommand(
       stdout(
         `${installed}. CLI authorized; credential stored in the OS credential store.`,
       );
+      if (authorization.warning) stdout(authorization.warning);
     } else if (isLocalSelfAuthCandidate(profile)) {
       stdout(
         `${installed}, but the CLI is not yet authorized (${authorization.reason}). It retries automatically on the next station command, or pair explicitly: station stations pair ${profile.name}`,

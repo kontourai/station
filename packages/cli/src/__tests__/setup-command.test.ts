@@ -398,6 +398,30 @@ describe('station setup', () => {
     );
   });
 
+  it('relays the retirement disclosure when self-authorization succeeds with a warning', async () => {
+    const deps = {
+      ...dependencies(),
+      selfAuthorizeLocal: vi.fn(
+        async (profile): Promise<LocalSelfAuthOutcome> => ({
+          status: 'authorized',
+          profile,
+          credential: 'issued',
+          warning:
+            'The new Station binding is active, but retirement of the replaced credential could not be confirmed.',
+        }),
+      ),
+    };
+
+    await runSetupCommand(['local', '--port=43141'], deps);
+
+    expect(deps.stdout).toHaveBeenCalledWith(
+      expect.stringContaining('CLI authorized'),
+    );
+    expect(deps.stdout).toHaveBeenCalledWith(
+      'The new Station binding is active, but retirement of the replaced credential could not be confirmed.',
+    );
+  });
+
   it('names pairing as the remedy for a non-loopback local endpoint', async () => {
     const deps = dependencies();
     await runSetupCommand(
