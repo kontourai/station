@@ -109,12 +109,12 @@ describe('engine capability matrix', () => {
     });
   });
 
-  test('resolveEngineCapabilityMatrix branch order (managed ids, executionClass, acp, unknown-external)', () => {
+  test('resolveEngineCapabilityMatrix branch order (executionClass, acp, unknown-external)', () => {
     expect(resolveEngineCapabilityMatrix()).toBe(
       ENGINE_CAPABILITY_MATRICES.station,
     );
     expect(resolveEngineCapabilityMatrix('bedrock-runtime')).toBe(
-      ENGINE_CAPABILITY_MATRICES.station,
+      UNKNOWN_EXTERNAL_ENGINE_MATRIX,
     );
     expect(
       resolveEngineCapabilityMatrix('strands-runtime', {

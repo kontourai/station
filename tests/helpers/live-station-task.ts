@@ -26,6 +26,10 @@ export interface LiveStation {
   uiPort: number;
 }
 
+export function stationRootForLiveHome(home: string): string {
+  return dirname(dirname(home));
+}
+
 export async function allocateLiveStation(
   homePrefix: string,
   instancePrefix: string,
@@ -118,7 +122,7 @@ export async function startStation(
     env: {
       ...process.env,
       PATH: `${NODE_BIN}:${process.env.PATH ?? ''}`,
-      STATION_ROOT: dirname(dirname(live.home)),
+      STATION_ROOT: stationRootForLiveHome(live.home),
       STATION_HOME: live.home,
       STATION_E2E_SYSTEM_STATUS_READY: '1',
       ...(options.performanceReference
@@ -232,7 +236,7 @@ export async function stopStation(live: LiveStation): Promise<void> {
     env: {
       ...process.env,
       PATH: `${NODE_BIN}:${process.env.PATH ?? ''}`,
-      STATION_ROOT: dirname(dirname(live.home)),
+      STATION_ROOT: stationRootForLiveHome(live.home),
       STATION_HOME: live.home,
     },
   });

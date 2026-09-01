@@ -283,7 +283,7 @@ describe('CI verification workflow contracts', () => {
         'github.event.workflow_run.head_repository.full_name == github.repository',
       );
       expect(job).toContain(
-        'actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd',
+        'actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3',
       );
       expect(job).toContain('github.event.workflow_run.html_url');
       expect(job).toContain('github.event.workflow_run.head_sha');

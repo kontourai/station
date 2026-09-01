@@ -275,7 +275,7 @@ export function permissionPostureLabel(posture: PermissionPosture): string {
  * Bedrock and Ollama are Model connections it executes through, and the
  * `station-agent` adapter relays to Station's own `/chat`. Naming them
  * "Station" matches `agentEngineDescriptor`'s existing verdict for the same
- * execution (`KNOWN_MANAGED_RUNTIME_IDS` -> `{ name: 'Station' }`), so the
+ * execution (an engineId-carrying Station connection -> `{ name: 'Station' }`), so the
  * picker and a turn's chip cannot disagree about one engine.
  *
  * `null` is reserved for ids this build genuinely does not know — a

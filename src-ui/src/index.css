@@ -2026,11 +2026,22 @@ button:hover {
   font-weight: 500;
 }
 /* #765 F8: plain copy ("Home folder"), not machine framing — normal type in
-   the UI face, muted, never italic monospace. */
+   the UI face, muted, never italic monospace.
+   #1046: this is real content (station#4525/1.4.3 — "Placeholders are
+   content, not inactive chrome" applies here too), not decorative chrome, so
+   it has to clear 4.5:1 like the working-directory text beside it. --text-muted
+   (--k-text-faint) measures 4.37:1 on dark's --bg-tertiary (#16202d) and
+   4.33:1 on light's — the actual surface this label composites over inside
+   the dock header, where `.chat-dock__header-context .chat-dock__project-context`
+   sets `background: none` and the header's own --bg-tertiary shows through.
+   --text-secondary — the same "neutral status-text tone" the base
+   `.chat-dock__project-dir` rule already uses — measures 11.38:1 dark /
+   9.68:1 light on that surface. Still visually muted relative to the accent
+   leaf/badge; just not the fainter token. */
 .chat-dock__project-dir--fallback {
   font-family: var(--font-sans);
   font-style: normal;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .chat-dock__project-dir--link {
   cursor: pointer;
@@ -3169,18 +3180,13 @@ button:hover {
   white-space: nowrap;
 }
 
-/* Turns rather than flips (archive#3309): the same token-timed rotation the
-   collapse chevron beside it already used, so two adjacent controls that both
-   answer "which way is the dock about to go" behave the same way. */
-.chat-dock__maximize-glyph {
-  display: inline-flex;
-  font-size: 0.95em;
-  line-height: 1;
-  transition: transform var(--motion-base) var(--ease-standard);
-}
-
-.chat-dock__maximize-glyph.is-flipped {
-  transform: rotate(180deg);
+.chat-dock__extent-svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .chat-dock__maximize-btn:hover {

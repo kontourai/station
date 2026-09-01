@@ -39,16 +39,12 @@ export function connectionTypeLabel(type: string): string {
       return 'Google';
     case 'lancedb':
       return 'Built-in vector store';
-    case 'bedrock-runtime':
-      return 'Amazon Bedrock';
     case 'claude':
       return 'Claude Code';
     case 'codex':
       return 'Codex';
     case 'muse':
       return 'Muse Code';
-    case 'ollama-runtime':
-      return 'Ollama';
     case 'acp':
       return 'Custom engine';
     default:

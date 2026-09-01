@@ -14,6 +14,14 @@ permissions: { contents: write, id-token: write, attestations: write }
 concurrency: { group: nightly, cancel-in-progress: false }
 
 jobs:
+  fleet-staging:
+    needs: [test-gate, full-regression]
+    if: ${{ github.ref == 'refs/heads/main' && needs.test-gate.outputs.source_sha == github.sha && needs.full-regression.result == 'success' }}
+    permissions: { contents: read, attestations: write, id-token: write }
+    uses: ./.github/workflows/nightly-fleet-staging.yml
+    with:
+      source_sha: ${{ needs.test-gate.outputs.source_sha }}
+
   test-gate:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-22.04

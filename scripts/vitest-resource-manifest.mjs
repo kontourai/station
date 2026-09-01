@@ -272,6 +272,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // These tests start real children through the owned-process helper rather
   // than importing node:child_process directly.
   'scripts/__tests__/owned-process.test.ts',
+  // Executes the Node UTC conversion used by the reusable fleet workflow;
+  // retain the process boundary so a host-local offset cannot be mistaken for
+  // the canonical portable-release timestamp contract.
+  'scripts/__tests__/native-release-promotion.test.ts',
   'scripts/__tests__/package-portable-release.test.ts',
   // station#1686: runs the shadow-record reader as a real child process so
   // its REFUSAL path (`--gate` on a home that has never observed anything)

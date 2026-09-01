@@ -487,18 +487,32 @@ describe('EventStore', () => {
         promptTokens: 1,
       } as any);
     };
-    add('usage-alpha', 'alpha', 'reader');
-    add('usage-beta', 'beta', 'reader');
-    const rows = store.listUsageCoverageEvents({
-      ownerUserId: 'reader',
-      tenantId: 'alpha',
-      from: '2026-08-01',
-      to: '2026-08-30',
-    });
-    expect(rows).toHaveLength(3);
-    expect(new Set(rows.map((event) => event.threadId))).toEqual(
-      new Set(['usage-alpha']),
-    );
+    // Coverage is deliberately bounded by the immutable host observation
+    // (`observed_at`), not the provider-supplied event timestamp. Freeze that
+    // host clock so this fixture names the persisted date it queries.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-08-20T00:00:00.000Z'));
+      add('usage-alpha', 'alpha', 'reader');
+      add('usage-beta', 'beta', 'reader');
+      add('usage-alpha-foreign-owner', 'alpha', 'other-reader');
+
+      vi.setSystemTime(new Date('2026-08-31T00:00:00.000Z'));
+      add('usage-alpha-outside-window', 'alpha', 'reader');
+
+      const rows = store.listUsageCoverageEvents({
+        ownerUserId: 'reader',
+        tenantId: 'alpha',
+        from: '2026-08-01',
+        to: '2026-08-30',
+      });
+      expect(rows).toHaveLength(3);
+      expect(new Set(rows.map((event) => event.threadId))).toEqual(
+        new Set(['usage-alpha']),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   /**

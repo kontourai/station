@@ -50,6 +50,17 @@ import {
 } from '../lib/wsl-host-class.mjs';
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
+const ORDINARY_FULL_PHASE_IDS = Object.freeze([
+  'test-full-ordinary-1-of-8',
+  'test-full-ordinary-2-of-8',
+  'test-full-ordinary-3-of-8',
+  'test-full-ordinary-4-of-8',
+  'test-full-ordinary-5-of-8',
+  'test-full-ordinary-6-of-8',
+  'test-full-ordinary-7-of-8',
+  'test-full-ordinary-8-of-8',
+]);
+
 /**
  * station#4177 INTERIM quarantine — WSL2 fleet-runner host class ONLY.
  *
@@ -1310,7 +1321,7 @@ describe('verification coordinator', () => {
       expect(first.disposition).toBe('executed');
       expect(projected.disposition).toBe('reused');
       expect(localReuse.disposition).toBe('reused');
-      expect(phaseCalls).toBe(9);
+      expect(phaseCalls).toBe(16);
       expect(projected.receipt.request.worktree).toBe(secondWorktree);
       expect(localReuse.receipt.request.worktree).toBe(secondWorktree);
       expect(localReuse.receipt.artifacts).toEqual(projected.receipt.artifacts);
@@ -1350,7 +1361,7 @@ describe('verification coordinator', () => {
         '0:repo-governance',
         '0:sdk-builds',
         '0:verify-static',
-        '0:test-full-ordinary',
+        ...ORDINARY_FULL_PHASE_IDS.map((id) => `0:${id}`),
         '0:test-full-process-heavy',
         '0:test-full-process-exclusive',
         '0:test-full-shared-output',
@@ -1761,7 +1772,8 @@ describe('verification coordinator', () => {
       await waitFor(() =>
         verificationStatus({ root: temp.root }).jobs.some(
           (job) =>
-            job.phase?.id === 'test-full-ordinary' && job.state === 'queued',
+            job.phase?.id === ORDINARY_FULL_PHASE_IDS[0] &&
+            job.state === 'queued',
         ),
       );
       expect(phases).toEqual([
@@ -1777,7 +1789,7 @@ describe('verification coordinator', () => {
         'repo-governance',
         'sdk-builds',
         'verify-static',
-        'test-full-ordinary',
+        ...ORDINARY_FULL_PHASE_IDS,
         'test-full-process-heavy',
         'test-full-process-exclusive',
         'test-full-shared-output',
@@ -1787,7 +1799,7 @@ describe('verification coordinator', () => {
       const phaseArtifacts = ciResult.receipt.artifacts.filter((artifact) =>
         artifact.path.includes('/attachment-'),
       );
-      expect(phaseArtifacts).toHaveLength(9);
+      expect(phaseArtifacts).toHaveLength(16);
       const records = phaseArtifacts.map((artifact) =>
         JSON.parse(readFileSync(join(worktree, artifact.path), 'utf8')),
       );
@@ -2146,7 +2158,7 @@ setInterval(() => {
         if (
           !job?.live ||
           job.state !== 'running' ||
-          job.phase?.id !== 'test-full-ordinary'
+          job.phase?.id !== ORDINARY_FULL_PHASE_IDS[0]
         )
           return false;
         firstPgid = job.child?.pgid;
@@ -2359,7 +2371,7 @@ setInterval(() => {
         'repo-governance',
         'sdk-builds',
         'verify-static',
-        'test-full-ordinary',
+        ...ORDINARY_FULL_PHASE_IDS,
         'test-full-process-heavy',
         'test-full-process-exclusive',
         'test-full-shared-output',
@@ -2416,7 +2428,7 @@ setInterval(() => {
           '1:repo-governance',
           '1:sdk-builds',
           '1:verify-static',
-          '1:test-full-ordinary',
+          ...ORDINARY_FULL_PHASE_IDS.map((id) => `1:${id}`),
           '1:test-full-process-heavy',
           '1:test-full-process-exclusive',
           '1:test-full-shared-output',
@@ -2468,7 +2480,7 @@ setInterval(() => {
         '1:repo-governance',
         '1:sdk-builds',
         '1:verify-static',
-        '1:test-full-ordinary',
+        ...ORDINARY_FULL_PHASE_IDS.map((id) => `1:${id}`),
         '1:test-full-process-heavy',
         '1:test-full-process-exclusive',
         '1:test-full-shared-output',
@@ -2500,7 +2512,7 @@ setInterval(() => {
     try {
       const first = await coordinateVerification(options);
       expect(first.receipt.terminal.passed).toBe(true);
-      expect(executedPhases).toHaveLength(9);
+      expect(executedPhases).toHaveLength(16);
 
       const path = join(
         worktree,
@@ -2624,7 +2636,7 @@ setInterval(() => {
           signal: AbortSignal;
         }) => {
           phases.push(phase.id);
-          if (phase.id !== 'test-full-ordinary') return { status: 0 };
+          if (phase.id !== ORDINARY_FULL_PHASE_IDS[0]) return { status: 0 };
           // Advance after the phase deadline was captured, then wait for the
           // coordinator's timeout signal as an owned hung-child stand-in.
           clock += phase.timeoutMs;
@@ -2646,7 +2658,7 @@ setInterval(() => {
         'repo-governance',
         'sdk-builds',
         'verify-static',
-        'test-full-ordinary',
+        ORDINARY_FULL_PHASE_IDS[0],
       ]);
       expect(timedOut.receipt.terminal).toMatchObject({
         status: 'timed_out',
@@ -3022,7 +3034,8 @@ setInterval(() => {
       await waitFor(() =>
         verificationStatus({ root: temp.root }).jobs.some(
           (job) =>
-            job.phase?.id === 'test-full-ordinary' && job.state === 'queued',
+            job.phase?.id === ORDINARY_FULL_PHASE_IDS[0] &&
+            job.state === 'queued',
         ),
       );
       const e2e = coordinateVerification({
@@ -5784,7 +5797,7 @@ describe('verification coordinator host-pressure admission', () => {
           deadlineAt: 10_000,
           heartbeatAt: 500,
           phase: {
-            id: 'test-full-ordinary',
+            id: ORDINARY_FULL_PHASE_IDS[0],
             index: 3,
             total: 9,
             queueStartedAt: 200,
@@ -5799,7 +5812,7 @@ describe('verification coordinator host-pressure admission', () => {
         elapsedMs: 1_100,
         deadlineAt: 10_000,
         phase: {
-          id: 'test-full-ordinary',
+          id: ORDINARY_FULL_PHASE_IDS[0],
           queueElapsedMs: 1_000,
           queueDeadlineAt: 10_000,
           executionElapsedMs: 800,

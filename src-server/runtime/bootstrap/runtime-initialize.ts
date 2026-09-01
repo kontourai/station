@@ -454,14 +454,7 @@ export async function initializeRuntime(
     eventBus,
   });
   registerProviderAdapters(
-    [
-      bedrockAdapter,
-      claudeAdapter,
-      codexAdapter,
-      museAdapter,
-      ollamaAdapter,
-      acpAdapter,
-    ],
+    [claudeAdapter, codexAdapter, museAdapter, acpAdapter, stationAgentAdapter],
     { builtin: true, source: 'station-core' },
   );
   registerACPConnectionRegistryProvider(
@@ -522,13 +515,13 @@ export async function initializeRuntime(
       ],
     });
   const orchestrationService = new OrchestrationService({
-    // Station agents need the canonical orchestration contract, but this
-    // bridge is not an engine connection and must not enter the global
-    // provider registry (which projects adapters into New Chat inventory).
-    adapterRegistry: withPrivateOrchestrationAdapter(
-      publicAdapterRegistry,
-      stationAgentAdapter,
-    ),
+    // Bedrock and Ollama are Station-engine model-provider implementations,
+    // not public engine connections. Keep them available for dispatch without
+    // publishing them through the registry that feeds New Chat inventory.
+    adapterRegistry: withPrivateOrchestrationAdapter(publicAdapterRegistry, [
+      bedrockAdapter,
+      ollamaAdapter,
+    ]),
     eventBus,
     eventStore: orchestrationEventStore,
     pricingSnapshotCapture: {
