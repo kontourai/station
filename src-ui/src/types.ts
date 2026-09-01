@@ -442,7 +442,7 @@ export type DeveloperTab =
 export type DockMode = 'left' | 'bottom' | 'right';
 
 /**
- * Parse a persisted dock-mode value (URL param, sessionStorage override).
+ * Parse a persisted dock-mode value (URL param or device setting).
  * The desktop overlay bottom mode was retired (archive#1043): `bottom` now means
  * the inline grid placement, and the transitional `bottom-inline` name
  * normalizes to it.
