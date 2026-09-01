@@ -8,6 +8,10 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import {
+  admitStationRuntimeHome,
+  spawnedStationRoot,
+} from '@kontourai/station-shared/runtime-path-resolver';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { inspectServiceSchedulingPolicy } from '../commands/service-scheduling.js';
 import {
@@ -28,6 +32,24 @@ beforeEach(() => {
 afterEach(() => {
   process.env.HOME = originalHome;
 });
+
+/**
+ * Reads the unit back the way systemd hands it to the process, so the
+ * assertion is about what the service actually boots with rather than about
+ * the string we generated.
+ */
+function unitEnvironment(unit: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const line of unit.split('\n')) {
+    const match = /^Environment=(?:"(.*)"|(.*))$/.exec(line.trim());
+    if (!match) continue;
+    const assignment = match[1] ?? match[2] ?? '';
+    const equals = assignment.indexOf('=');
+    if (equals > 0)
+      env[assignment.slice(0, equals)] = assignment.slice(equals + 1);
+  }
+  return env;
+}
 
 const lifecycle = (baseDir: string) => ({
   baseDir,
@@ -783,5 +805,35 @@ describe('systemd service backend', () => {
       'stop',
       'station-agent.service',
     ]);
+  });
+});
+
+describe('installed service boots with the home it was installed for', () => {
+  test('a self-rooted --base does not install a root equal to its own home', () => {
+    // Regression (#962): the installer stored the DERIVED root and the unit
+    // spelled it out, so a raw `--base` produced STATION_ROOT === STATION_HOME
+    // in the unit. Admission reads an explicit root equal to the home as a home
+    // swallowing a root it does not own, so the installed service refused to
+    // boot. The runtime derives the same root from STATION_HOME alone.
+    const baseDir = mkdtempSync(join(tmpdir(), 'station-selfrooted-base-'));
+    const stationRoot = spawnedStationRoot(baseDir, {} as NodeJS.ProcessEnv);
+    expect(stationRoot).toBeUndefined();
+
+    const unit = renderSystemdUnit({
+      instanceId: 'agent',
+      lifecycle: { ...lifecycle(baseDir), stationRoot },
+      nodePath: '/usr/bin/node',
+      repoPath: baseDir,
+      servicePath: '/usr/bin',
+    });
+
+    const env = unitEnvironment(unit);
+    expect(env.STATION_ROOT ?? '').toBe('');
+    expect(() =>
+      admitStationRuntimeHome(baseDir, {
+        ...env,
+        STATION_HOME: baseDir,
+      } as NodeJS.ProcessEnv),
+    ).not.toThrow();
   });
 });

@@ -9,8 +9,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
@@ -18,6 +17,7 @@ import {
   DEFAULT_SERVER_PORT,
   DEFAULT_UI_PORT,
 } from '@kontourai/station-shared/ports';
+import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { type Context, Hono } from 'hono';
 import { systemOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
@@ -550,10 +550,12 @@ export function createSystemUpdateRoutes(
     c: Context,
     eligibility: Extract<SelfUpdateEligibility, { eligible: true }>,
   ) => {
-    const stationRoot = resolve(
-      process.env.STATION_ROOT?.trim() ||
-        join(process.env.HOME ?? homedir(), '.station'),
-    );
+    // Canonical derivation, not a second hand-rolled copy: the spawner leaves
+    // STATION_ROOT unset for a self-rooted home (`--home`, `--base`,
+    // `--temp-home`), where re-deriving the `~/.station` default would point
+    // this lock -- and the installer this hands it to -- at the shared root
+    // that home deliberately does not use.
+    const stationRoot = resolveStationRoot();
     const lockDir = join(stationRoot, 'cache', 'nightly', 'install.lock');
     if (existsSync(lockDir)) {
       return c.json(
