@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
   classifyXcuiTestFailure,
+  findPreTestLaunchLine,
   parseIosSmokeOptions,
   runAttemptsWithLaunchRetry,
   selectIosSimulator,
@@ -195,18 +196,68 @@ const failedTail = [
 ].join('\n');
 
 describe('iOS simulator runtime smoke retry policy', () => {
+  // The real pre-test launch line, derived independently of the script so
+  // the derivation test has something to disagree with.
+  const realLaunchLine = swiftSmoke
+    .slice(0, swiftSmoke.indexOf('        app.launch()'))
+    .split('\n').length;
+  const classify = (log: string, launchLine: number | null = 10) =>
+    classifyXcuiTestFailure(log, { launchLine });
+
+  test('binds the retryable signature to the one pre-test app.launch() line', () => {
+    expect(findPreTestLaunchLine(swiftSmoke)).toBe(realLaunchLine);
+    expect(realLaunchLine).toBe(10);
+    // Fixtures below are recorded against line 10, the real launch line.
+    expect(launchTimeoutLine).toContain(`${swiftPath}:10: error:`);
+
+    // No launch line, or more than one, fails closed to "never retry".
+    expect(findPreTestLaunchLine('final class T {}')).toBeNull();
+    expect(
+      findPreTestLaunchLine(`${swiftSmoke}\n        app.launch()\n`),
+    ).toBeNull();
+    expect(findPreTestLaunchLine('        app.launch() // later')).toBeNull();
+  });
+
   test('retries only the exact pre-test launch timeout', () => {
+    expect(classify(`${launchTimeoutLine}\n${failedTail}`)).toEqual({
+      signature: 'app-launch-timeout',
+      retryable: true,
+    });
+    // xcodebuild can print the same recorded failure more than once (stdout
+    // and a trailing summary); repetition of the one signature is still it.
+    expect(
+      classify(`${launchTimeoutLine}\n${failedTail}\n${launchTimeoutLine}`),
+    ).toEqual({ signature: 'app-launch-timeout', retryable: true });
+  });
+
+  test('does not retry the launch-timeout text recorded at any other line', () => {
+    const laterLaunch = launchTimeoutLine.replace(
+      `${swiftPath}:10:`,
+      `${swiftPath}:38:`,
+    );
+    expect(laterLaunch).not.toBe(launchTimeoutLine);
+    expect(classify(`${laterLaunch}\n${failedTail}`)).toEqual({
+      signature: 'test-failure',
+      retryable: false,
+    });
+    expect(classify(`${launchTimeoutLine}\n${failedTail}`, 11)).toEqual({
+      signature: 'test-failure',
+      retryable: false,
+    });
+    // Without a bound launch line nothing is retryable.
+    expect(classify(`${launchTimeoutLine}\n${failedTail}`, null)).toEqual({
+      signature: 'test-failure',
+      retryable: false,
+    });
     expect(
       classifyXcuiTestFailure(`${launchTimeoutLine}\n${failedTail}`),
-    ).toEqual({ signature: 'app-launch-timeout', retryable: true });
+    ).toEqual({ signature: 'test-failure', retryable: false });
   });
 
   test('keeps every recorded test-body failure terminal', () => {
     for (const line of [startupAssertionLine, managerAssertionLine]) {
       expect(
-        classifyXcuiTestFailure(
-          `${line}\n    Application, pid: 1\n${failedTail}`,
-        ),
+        classify(`${line}\n    Application, pid: 1\n${failedTail}`),
       ).toEqual({
         signature: 'test-failure',
         retryable: false,
@@ -215,9 +266,7 @@ describe('iOS simulator runtime smoke retry policy', () => {
     // A launch timeout alongside any other recorded failure is not the
     // pre-test signature: the body ran, so the run is a real failure.
     expect(
-      classifyXcuiTestFailure(
-        `${launchTimeoutLine}\n${startupAssertionLine}\n${failedTail}`,
-      ),
+      classify(`${launchTimeoutLine}\n${startupAssertionLine}\n${failedTail}`),
     ).toEqual({ signature: 'test-failure', retryable: false });
   });
 
@@ -226,22 +275,29 @@ describe('iOS simulator runtime smoke retry policy', () => {
       'io.kontourai.station',
       'com.example.other',
     );
-    expect(classifyXcuiTestFailure(`${otherBundle}\n${failedTail}`)).toEqual({
+    expect(classify(`${otherBundle}\n${failedTail}`)).toEqual({
       signature: 'test-failure',
       retryable: false,
     });
+    // A bundle id is a literal, not a pattern.
+    expect(
+      classifyXcuiTestFailure(`${launchTimeoutLine}\n${failedTail}`, {
+        bundleId: 'io.kontourai.stat.on',
+        launchLine: 10,
+      }),
+    ).toEqual({ signature: 'test-failure', retryable: false });
   });
 
   test('does not retry an attempt that recorded no test failure', () => {
     expect(
-      classifyXcuiTestFailure(
+      classify(
         'error: Unable to find a destination matching the provided destination specifier\n** TEST FAILED **',
       ),
     ).toEqual({ signature: 'no-recorded-test-failure', retryable: false });
     // The timeout text outside a recorded `.swift:N: error:` line (for
     // example quoted in a diagnostics dump) is not a recorded failure.
     expect(
-      classifyXcuiTestFailure(
+      classify(
         'Failed to launch io.kontourai.station: Timed out attempting to launch app.',
       ),
     ).toEqual({ signature: 'no-recorded-test-failure', retryable: false });
@@ -250,6 +306,7 @@ describe('iOS simulator runtime smoke retry policy', () => {
   test('runs a second attempt only after a retryable first attempt', async () => {
     const seen: number[] = [];
     const retried = await runAttemptsWithLaunchRetry({
+      classify,
       attempt: async (index: number) => {
         seen.push(index);
         return index === 1
@@ -284,6 +341,7 @@ describe('iOS simulator runtime smoke retry policy', () => {
 
     seen.length = 0;
     const terminal = await runAttemptsWithLaunchRetry({
+      classify,
       attempt: async (index: number) => {
         seen.push(index);
         return { status: 65, log: `${startupAssertionLine}\n${failedTail}` };
@@ -299,6 +357,7 @@ describe('iOS simulator runtime smoke retry policy', () => {
   test('stops after the second attempt even when it times out again', async () => {
     const seen: number[] = [];
     const outcome = await runAttemptsWithLaunchRetry({
+      classify,
       attempt: async (index: number) => {
         seen.push(index);
         return { status: 65, log: `${launchTimeoutLine}\n${failedTail}` };
@@ -314,9 +373,25 @@ describe('iOS simulator runtime smoke retry policy', () => {
     ).toBe(true);
   });
 
+  test('maxAttempts 1 never retries even a retryable failure', async () => {
+    const seen: number[] = [];
+    const outcome = await runAttemptsWithLaunchRetry({
+      classify,
+      maxAttempts: 1,
+      attempt: async (index: number) => {
+        seen.push(index);
+        return { status: 65, log: `${launchTimeoutLine}\n${failedTail}` };
+      },
+    });
+    expect(seen).toEqual([1]);
+    expect(outcome.passed).toBe(false);
+    expect(outcome.attempts[0].retryable).toBe(true);
+  });
+
   test('a passing first attempt never runs a second', async () => {
     const seen: number[] = [];
     const outcome = await runAttemptsWithLaunchRetry({
+      classify,
       attempt: async (index: number) => {
         seen.push(index);
         return { status: 0, log: 'Test Suite passed' };

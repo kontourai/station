@@ -107,6 +107,24 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+const SMOKE_TEST_FILE = 'StationRuntimeSmokeTests.swift';
+
+// The one source line of the XCUITest where the app is launched before the
+// test body runs. XCTest records its launch timeout against that line, so
+// the retry policy binds to it instead of to the message text alone: the
+// same text recorded anywhere else (a later launch, a future edit) is not
+// the pre-test signature. Null — no launch line or more than one — fails
+// closed to "never retry" rather than guessing.
+export function findPreTestLaunchLine(swiftSource) {
+  const matches = [];
+  String(swiftSource)
+    .split('\n')
+    .forEach((line, index) => {
+      if (/^\s*app\.launch\(\)\s*$/.test(line)) matches.push(index + 1);
+    });
+  return matches.length === 1 ? matches[0] : null;
+}
+
 // Classify one xcodebuild attempt's log. Only the exact XCUITest
 // infrastructure timeout that fires before the test body runs (the hosted
 // simulator taking longer than XCTest's fixed launch deadline to bring the
@@ -116,14 +134,18 @@ function escapeRegExp(value) {
 // that recorded no test failure at all (a build or simulator error).
 export function classifyXcuiTestFailure(log, options = {}) {
   const bundleId = options.bundleId ?? DEFAULT_BUNDLE_ID;
+  const launchLine = options.launchLine ?? null;
   const recorded = [
     ...String(log).matchAll(/^.*\.swift:\d+: error: .*$/gm),
   ].map((match) => match[0]);
   if (recorded.length === 0) {
     return { signature: 'no-recorded-test-failure', retryable: false };
   }
+  if (launchLine === null) {
+    return { signature: 'test-failure', retryable: false };
+  }
   const launchTimeout = new RegExp(
-    `: Failed to launch ${escapeRegExp(bundleId)}: Timed out attempting to launch app\\.`,
+    `[/\\\\]${escapeRegExp(SMOKE_TEST_FILE)}:${String(launchLine)}: error: .*: Failed to launch ${escapeRegExp(bundleId)}: Timed out attempting to launch app\\.$`,
   );
   if (recorded.every((line) => launchTimeout.test(line))) {
     return { signature: 'app-launch-timeout', retryable: true };
@@ -267,12 +289,25 @@ async function main(argv = process.argv.slice(2)) {
   let failure;
   let attempts = [];
   const startedAt = Date.now();
+  const swiftSource = join(root, 'tests', 'ios-runtime-smoke', SMOKE_TEST_FILE);
+  const launchLine = findPreTestLaunchLine(readFileSync(swiftSource, 'utf8'));
+  const retryPolicy = {
+    retryableSignature: 'app-launch-timeout',
+    launchLine,
+    maxAttempts: launchLine === null ? 1 : 2,
+  };
   const bootAndInstall = () => {
     run('xcrun', ['simctl', 'bootstatus', device.udid, '-b']);
     run('xcrun', ['simctl', 'uninstall', device.udid, options.bundleId], {
       allowFailure: true,
     });
     run('xcrun', ['simctl', 'install', device.udid, app]);
+  };
+  const deviceState = () => {
+    const catalog = JSON.parse(
+      run('xcrun', ['simctl', 'list', 'devices', 'available', '--json']).stdout,
+    );
+    return selectIosSimulator(catalog, options).state;
   };
   try {
     if (!wasBooted) run('xcrun', ['simctl', 'boot', device.udid]);
@@ -296,6 +331,12 @@ async function main(argv = process.argv.slice(2)) {
       },
     );
     const outcome = await runAttemptsWithLaunchRetry({
+      classify: (log) =>
+        classifyXcuiTestFailure(log, {
+          bundleId: options.bundleId,
+          launchLine,
+        }),
+      maxAttempts: retryPolicy.maxAttempts,
       attempt: (index) => {
         const attemptDirectory = join(artifacts, `attempt-${String(index)}`);
         mkdirSync(attemptDirectory, { recursive: true, mode: 0o700 });
@@ -303,9 +344,19 @@ async function main(argv = process.argv.slice(2)) {
           // A launch timeout leaves the simulator in whatever state the slow
           // launch reached. Retry from a fresh boot of the same exact device
           // and a fresh install of the same exact app, never a substitute.
+          // simctl shutdown is synchronous, but a device still transitioning
+          // makes the following boot fail with a state error that reads like
+          // a broken retry; confirm the shutdown before booting so a reset
+          // that did not happen is reported as exactly that.
           run('xcrun', ['simctl', 'shutdown', device.udid], {
             allowFailure: true,
           });
+          const state = deviceState();
+          if (state !== 'Shutdown') {
+            throw new Error(
+              `Simulator ${device.udid} is ${state} after shutdown; cannot reset it for retry attempt ${String(index)}.`,
+            );
+          }
           run('xcrun', ['simctl', 'boot', device.udid]);
           bootAndInstall();
         }
@@ -419,6 +470,7 @@ async function main(argv = process.argv.slice(2)) {
     artifacts,
     attempts,
     retried: attempts.length > 1,
+    retryPolicy,
   };
   writeArtifact(join(artifacts, 'receipt.json'), receipt);
   mkdirSync(options.artifacts, { recursive: true, mode: 0o700 });
