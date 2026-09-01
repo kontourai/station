@@ -20,11 +20,15 @@ const OUTPUT_LIMIT_BYTES = 2 * 1024 * 1024;
 const FAILURE_LOG_TAIL_BYTES = 16 * 1024;
 const SETTLEMENT_MS = 5_000;
 export const PROCESS_HEAVY_MAX_WORKERS = 2;
-export const ORDINARY_SHARD_COUNT = 4;
+// Vitest's native hash partitioning is deterministic, but four slices left a
+// passing-only hosted slice alive past its 20-minute fence (#1156). Eight
+// slices preserve the exact same corpus while making every bounded terminal
+// result independently observable.
+export const ORDINARY_SHARD_COUNT = 8;
 
 export const VITEST_CORPUS_GROUPS = Object.freeze([
   Object.freeze({ name: 'ordinary', maxWorkers: ORDINARY_MAX_WORKERS }),
-  // Direct child-process use requires isolation from the four-worker ordinary
+  // Direct child-process use requires isolation from the ordinary worker
   // pool, not global serialization. Two isolated Vitest fork workers preserve
   // the reviewed resource boundary while allowing independent temp-dir/port
   // fixtures to overlap. Shared repo outputs and dogfood remain truly serial.
@@ -119,6 +123,8 @@ export function buildVitestCommand(
       );
     return [
       ...command,
+      '--reporter=default',
+      `--reporter=${resolve(root, 'scripts/vitest-inflight-reporter.mjs')}`,
       ...ordinaryExcludes.map((pattern) => `--exclude=${pattern}`),
       `--shard=${group.shard}`,
       ...(group.noFileParallelism ? ['--no-file-parallelism'] : []),
@@ -426,14 +432,14 @@ export function parseVitestCorpusArguments(args) {
   if (args.length === 0) return {};
   if (args.length > 2)
     throw new Error(
-      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/4]]',
+      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/8]]',
     );
   const values = new Map();
   for (const argument of args) {
     const match = argument.match(/^--(group|shard)=(.+)$/);
     if (!match || values.has(match[1]))
       throw new Error(
-        'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/4]]',
+        'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/8]]',
       );
     values.set(match[1], match[2]);
   }
@@ -441,7 +447,7 @@ export function parseVitestCorpusArguments(args) {
   const shard = values.get('shard');
   if (!groupName)
     throw new Error(
-      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/4]]',
+      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/8]]',
     );
   if (!VITEST_CORPUS_GROUP_NAMES.includes(groupName))
     throw new Error(`unknown Vitest corpus group '${groupName}'`);

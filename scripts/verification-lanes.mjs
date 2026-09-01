@@ -80,14 +80,15 @@ export const FULL_REGRESSION_PHASES = Object.freeze([
     weight: 60,
     timeoutMs: 15 * 60_000,
   }),
-  // Four deterministic Vitest shards preserve exact ordinary-corpus coverage
-  // while turning one silent 45-minute process into independently receipted
-  // completion phases. They remain sequential under the outer coordinator;
-  // each keeps one fifth of host capacity available for bounded ci:fast.
-  ...Array.from({ length: 4 }, (_, index) => {
+  // Eight deterministic Vitest shards preserve exact ordinary-corpus coverage
+  // while keeping every native Vitest hash slice inside its independently
+  // receipted 20-minute terminal fence (#1156). They remain sequential under
+  // the outer coordinator; each keeps one fifth of host capacity available
+  // for bounded ci:fast.
+  ...Array.from({ length: 8 }, (_, index) => {
     const shard = index + 1;
     return Object.freeze({
-      id: `test-full-ordinary-${shard}-of-4`,
+      id: `test-full-ordinary-${shard}-of-8`,
       command: `npm run test:full:ordinary:${shard}:raw`,
       privateScript: `test:full:ordinary:${shard}:raw`,
       weight: 80,
