@@ -92,7 +92,10 @@ describe('Vitest resource manifest', () => {
 
     for (const quarterIndex of [1, 2, 3, 4]) {
       const quarter = await ordinaryShardFiles(ordinary, quarterIndex, 4);
-      const refined = eighths.slice((quarterIndex - 1) * 2, quarterIndex * 2).flat().sort();
+      const refined = eighths
+        .slice((quarterIndex - 1) * 2, quarterIndex * 2)
+        .flat()
+        .sort();
       expect(refined).toEqual(quarter);
     }
   }, 70_000);
