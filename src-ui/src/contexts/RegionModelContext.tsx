@@ -3,7 +3,6 @@ import {
   type ReactNode,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -14,10 +13,12 @@ import {
   type RegionLayout,
   type RegionState,
   seedRegionLayoutFromDock,
-  syncRegionLayoutFromDock,
   updateRegion,
 } from '../regions/region-model';
-import { useDeviceSettings } from './DeviceSettingsContext';
+import {
+  useDeviceSettings,
+  useDeviceSettingsActions,
+} from './DeviceSettingsContext';
 import { useNavigation } from './NavigationContext';
 
 interface RegionModelValue {
@@ -30,6 +31,7 @@ const RegionModelContext = createContext<RegionModelValue | null>(null);
 
 export function RegionModelProvider({ children }: { children: ReactNode }) {
   const settings = useDeviceSettings();
+  const { setDeviceSetting } = useDeviceSettingsActions();
   const { isDockOpen } = useNavigation();
   const [regions, setRegions] = useState<RegionLayout>(
     // Step 1 persists region layout via legacy dock keys; its own record arrives when regions become user-visible.
@@ -38,35 +40,21 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   const regionsRef = useRef(regions);
   regionsRef.current = regions;
 
-  const setRegion = useCallback((id: RegionId, patch: Partial<RegionState>) => {
-    const next = updateRegion(regionsRef.current, id, patch);
-    if (next === regionsRef.current) return;
-    regionsRef.current = next;
-    setRegions(next);
-  }, []);
-
-  // Until regions become user-visible, the model observes the legacy dock
-  // authority and never drives it.
-  useEffect(() => {
-    setRegions((current) => {
-      const next = syncRegionLayoutFromDock(
-        current,
-        {
-          chatDockHeight: settings.chatDockHeight,
-          chatDockWidth: settings.chatDockWidth,
-          dockSlotPlacement: settings.dockSlotPlacement,
-        },
-        isDockOpen,
-      );
+  const setRegion = useCallback(
+    (id: RegionId, patch: Partial<RegionState>) => {
+      const next = updateRegion(regionsRef.current, id, patch);
+      if (next === regionsRef.current) return;
       regionsRef.current = next;
-      return next;
-    });
-  }, [
-    isDockOpen,
-    settings.chatDockHeight,
-    settings.chatDockWidth,
-    settings.dockSlotPlacement,
-  ]);
+      setRegions(next);
+      if (next[id].occupant === 'chat') {
+        setDeviceSetting('dockSlotPlacement', id === 'main' ? 'bottom' : id);
+        if (id === 'bottom') setDeviceSetting('chatDockHeight', next[id].size);
+        if (id === 'left' || id === 'right')
+          setDeviceSetting('chatDockWidth', next[id].size);
+      }
+    },
+    [setDeviceSetting],
+  );
 
   const value = useMemo(
     () => ({

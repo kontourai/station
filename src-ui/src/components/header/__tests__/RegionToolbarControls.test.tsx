@@ -13,6 +13,7 @@ const harness = vi.hoisted(() => ({
   setDockMode: vi.fn(),
   setDockState: vi.fn(),
   setDockModeOverride: vi.fn(),
+  setRegion: vi.fn(),
   shortcut: null as null | {
     id: string;
     key: string;
@@ -35,12 +36,12 @@ vi.mock('../../../contexts/RegionModelContext', async (importOriginal) => {
     useRegionModelOptional: () => ({
       regions: harness.regions,
       surfaces: REGION_SURFACE_REGISTRY,
-      setRegion: vi.fn(),
+      setRegion: harness.setRegion,
     }),
     useRegionModel: () => ({
       regions: harness.regions,
       surfaces: REGION_SURFACE_REGISTRY,
-      setRegion: vi.fn(),
+      setRegion: harness.setRegion,
     }),
   };
 });
@@ -86,6 +87,7 @@ describe('RegionToolbarControls', () => {
     harness.setDockMode.mockReset();
     harness.setDockState.mockReset();
     harness.setDockModeOverride.mockReset();
+    harness.setRegion.mockReset();
     harness.shortcut = null;
   });
 
@@ -99,13 +101,17 @@ describe('RegionToolbarControls', () => {
       description: 'Toggle Chat region',
     });
     harness.shortcut?.handler();
-    expect(harness.setDockState).toHaveBeenCalledWith(false, false);
+    expect(harness.setRegion).toHaveBeenCalledWith('bottom', {
+      visible: false,
+    });
     expect(harness.regions.bottom.occupant).toBe('chat');
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Hide Chat Bottom region' }),
     );
-    expect(harness.setDockState).toHaveBeenLastCalledWith(false, false);
+    expect(harness.setRegion).toHaveBeenLastCalledWith('bottom', {
+      visible: false,
+    });
   });
 
   test('offers the registered surface in each empty available region', () => {
@@ -115,8 +121,10 @@ describe('RegionToolbarControls', () => {
       screen.getByRole('button', { name: 'Place Chat in Left region' }),
     );
     expect(harness.setDockModeOverride).toHaveBeenCalledWith(null, 'left');
-    expect(harness.setDockMode).toHaveBeenCalledWith('left');
-    expect(harness.setDockState).toHaveBeenCalledWith(true, false);
+    expect(harness.setRegion).toHaveBeenCalledWith('left', {
+      visible: true,
+      occupant: 'chat',
+    });
     expect(
       screen.getByRole('button', { name: 'Place Chat in Right region' }),
     ).toBeTruthy();

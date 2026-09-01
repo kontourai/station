@@ -31,18 +31,7 @@ export function seedRegionLayoutFromDock(
   settings: DockSeedSettings,
   isDockOpen: boolean,
 ): RegionLayout {
-  return syncRegionLayoutFromDock(
-    structuredClone(DEFAULT_DEVICE_REGION_LAYOUT),
-    settings,
-    isDockOpen,
-  );
-}
-
-export function syncRegionLayoutFromDock(
-  layout: RegionLayout,
-  settings: DockSeedSettings,
-  isDockOpen: boolean,
-): RegionLayout {
+  const layout = structuredClone(DEFAULT_DEVICE_REGION_LAYOUT);
   const placement = settings.dockSlotPlacement ?? 'bottom';
   let next = updateRegion(layout, 'bottom', {
     size: settings.chatDockHeight,

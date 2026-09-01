@@ -5,7 +5,7 @@ import {
   useRegionModelOptional,
 } from '../../contexts/RegionModelContext';
 import { setDockModeOverride } from '../../hooks/useDockModePreference';
-import { useDockSlotPlacement, useIsMobile } from '../../hooks/useIsMobile';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
   DOCK_REGION_IDS,
@@ -59,17 +59,13 @@ function RegionShortcut({
  * visible, or empty and performs every placement mutation.
  */
 function ConnectedRegionToolbarControls() {
-  const { regions, surfaces } = useRegionModel();
-  const { dockMode, isDockMaximized, pathname, setDockMode, setDockState } =
-    useNavigation();
+  const { regions, surfaces, setRegion } = useRegionModel();
+  const { pathname } = useNavigation();
   const isMobile = useIsMobile();
-  const { available, effective } = useDockSlotPlacement(dockMode);
   const breakpoint = isMobile ? 'phone' : 'desktop';
-  const firstSurface = surfaces.values().next().value as
-    | RegisteredSurface
-    | undefined;
-  const availableRegions = DOCK_REGION_IDS.filter(
-    (id) => isRegionAvailable(id, breakpoint) && available.includes(id),
+  const surfaceToPlace = [...surfaces.values()][0];
+  const availableRegions = DOCK_REGION_IDS.filter((id) =>
+    isRegionAvailable(id, breakpoint),
   );
 
   const toggleSurface = useCallback(
@@ -79,9 +75,9 @@ function ConnectedRegionToolbarControls() {
       );
       if (!occupied) return;
       const visible = regions[occupied].visible;
-      setDockState(!visible, visible ? false : isDockMaximized);
+      setRegion(occupied, { visible: !visible });
     },
-    [availableRegions, isDockMaximized, regions, setDockState],
+    [availableRegions, regions, setRegion],
   );
 
   const placeSurface = useCallback(
@@ -94,17 +90,9 @@ function ConnectedRegionToolbarControls() {
           ? 'coding'
           : null;
       setDockModeOverride(layoutKey, id as DockMode);
-      setDockMode(id as DockMode);
-      setDockState(true, isDockMaximized);
+      setRegion(id, { visible: true, occupant: surfaceId });
     },
-    [
-      availableRegions,
-      isDockMaximized,
-      pathname,
-      setDockMode,
-      setDockState,
-      surfaces,
-    ],
+    [availableRegions, pathname, setRegion, surfaces],
   );
 
   return (
@@ -121,12 +109,11 @@ function ConnectedRegionToolbarControls() {
         const occupant = regions[id].occupant;
         const surface = occupant ? surfaces.get(occupant) : undefined;
         const label = regionLabel(id);
-        const isCurrent = id === effective;
-        const pressed = Boolean(surface && regions[id].visible && isCurrent);
+        const pressed = Boolean(surface && regions[id].visible);
         const actionLabel = surface
           ? `${pressed ? 'Hide' : 'Show'} ${surface.title} ${label} region`
-          : firstSurface
-            ? `Place ${firstSurface.title} in ${label} region`
+          : surfaceToPlace
+            ? `Place ${surfaceToPlace.title} in ${label} region`
             : `${label} region is empty`;
         return (
           <button
@@ -136,10 +123,12 @@ function ConnectedRegionToolbarControls() {
             aria-label={actionLabel}
             aria-pressed={pressed}
             title={actionLabel}
-            disabled={!surface && !firstSurface}
+            disabled={!surface && !surfaceToPlace}
             onClick={() => {
               if (surface) toggleSurface(surface.id);
-              else if (firstSurface) placeSurface(firstSurface.id, id);
+              else {
+                if (surfaceToPlace) placeSurface(surfaceToPlace.id, id);
+              }
             }}
           >
             <RegionGlyph id={id} />
