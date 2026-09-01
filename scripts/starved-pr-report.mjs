@@ -50,8 +50,24 @@ const HOLD_LABEL = 'blocked';
  * author has not said it is held. Draft PRs are excluded: a draft is a visible
  * statement that the work is not offered yet.
  */
-export function isStarved(pr) {
+/**
+ * A pull request moving between queue states reads CLEAN, unqueued and unarmed
+ * for a few seconds in the gap. Observed live: #1218 reported starved and was
+ * at position 1 moments later. Since this comments once and permanently, a
+ * transient reading leaves a wrong comment that never expires — so require the
+ * pull request to have been untouched for a settle window before believing it.
+ */
+export const SETTLE_MINUTES = 15;
+
+export function isSettled(pr, now = Date.now()) {
+  const updated = Date.parse(pr?.updatedAt ?? '');
+  if (Number.isNaN(updated)) return false;
+  return now - updated >= SETTLE_MINUTES * 60_000;
+}
+
+export function isStarved(pr, now = Date.now()) {
   if (!pr || pr.isDraft) return false;
+  if (!isSettled(pr, now)) return false;
   if (pr.mergeStateStatus !== 'CLEAN') return false;
   if (pr.isInMergeQueue) return false;
   if (pr.autoMergeRequest) return false;
@@ -120,7 +136,7 @@ const QUERY = `query($owner:String!, $name:String!) {
   repository(owner:$owner, name:$name) {
     pullRequests(states:OPEN, first:100) {
       nodes {
-        number isDraft isInMergeQueue mergeStateStatus body
+        number isDraft isInMergeQueue mergeStateStatus body updatedAt
         autoMergeRequest { enabledAt }
         labels(first:20) { nodes { name } }
         comments(last:100) { nodes { body } }

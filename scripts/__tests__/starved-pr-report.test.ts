@@ -7,6 +7,7 @@ import {
   isStarved,
   REPORT_MARKER,
   reportBody,
+  SETTLE_MINUTES,
   selectStarved,
 } from '../starved-pr-report.mjs';
 
@@ -20,6 +21,7 @@ function pr(overrides: Record<string, unknown> = {}) {
     autoMergeRequest: null,
     labels: { nodes: [] },
     comments: { nodes: [] },
+    updatedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
     ...overrides,
   };
 }
@@ -49,6 +51,32 @@ describe('starved pull request detection', () => {
       expect(isStarved(pr({ mergeStateStatus: status }))).toBe(false);
     },
   );
+
+  // A PR moving between queue states reads CLEAN+unqueued+unarmed in the gap.
+  // #1218 reported starved and was at queue position 1 moments later. This
+  // comments once and permanently, so a transient reading is a wrong comment
+  // that never expires.
+  describe('a pull request caught mid-transition is not reported', () => {
+    test('recently updated is not starved', () => {
+      const now = Date.now();
+      const justMoved = pr({
+        updatedAt: new Date(now - 60_000).toISOString(),
+      });
+      expect(isStarved(justMoved, now)).toBe(false);
+    });
+
+    test('settled past the window is starved', () => {
+      const now = Date.now();
+      const settled = pr({
+        updatedAt: new Date(now - (SETTLE_MINUTES + 5) * 60_000).toISOString(),
+      });
+      expect(isStarved(settled, now)).toBe(true);
+    });
+
+    test('an unparseable timestamp fails closed', () => {
+      expect(isStarved(pr({ updatedAt: undefined }))).toBe(false);
+    });
+  });
 
   test('a draft is not starved — being draft is a visible statement', () => {
     expect(isStarved(pr({ isDraft: true }))).toBe(false);
