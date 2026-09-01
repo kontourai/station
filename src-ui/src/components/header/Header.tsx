@@ -5,6 +5,7 @@ import { activatable } from '../../utils/activatable';
 import { MenuGlyph } from '../icons/Glyph';
 import { HeaderActions } from './HeaderActions';
 import { LayoutSwitcher } from './LayoutSwitcher';
+import { RegionToolbarControls } from './RegionToolbarControls';
 import { useHeaderViewModel } from './useHeaderViewModel';
 import '../chat/chat.css';
 
@@ -133,6 +134,8 @@ export function Header({
       )}
 
       <div className="app-toolbar__spacer" />
+
+      <RegionToolbarControls />
 
       <HeaderActions
         currentViewType={currentView?.type}

@@ -39,7 +39,6 @@ import type { DockSnap } from '../components/chat-dock/dockSnap';
 import { shouldMaximizeAfterDockingAsOnlyContent } from '../components/chat-dock/mobile-chrome';
 import { SkeletonBlock } from '../components/state';
 import { useApiBase } from '../contexts/ApiBaseContext';
-import { RegionModelProvider } from '../contexts/RegionModelContext';
 import type { DockSlotGeometry } from '../hooks/dock-slot-geometry';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import type { NavigationView } from '../types';
@@ -538,5 +537,5 @@ export function AmbientChatDockPaneHost({
       }}
     </DockShell>
   );
-  return <RegionModelProvider>{host}</RegionModelProvider>;
+  return host;
 }

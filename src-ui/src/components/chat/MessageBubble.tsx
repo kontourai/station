@@ -1,5 +1,6 @@
 import { memo, useCallback } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import type { ChatMessage } from '../../types';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
@@ -39,6 +40,10 @@ const loadConnectedAnswerBasisAffordance = () =>
   }));
 
 const loadTurnActionsMenu = () => import('./TurnActionsMenu');
+const loadShareAnswerButton = () =>
+  import('./ShareAnswerButton').then((module) => ({
+    default: module.ShareAnswerButton,
+  }));
 
 interface Session {
   id: string;
@@ -113,6 +118,7 @@ function MessageBubbleComponent({
   owner,
   accountableHuman,
 }: MessageBubbleProps) {
+  const { developerToolsEnabled } = useDeviceSettings();
   const textContent = typeof msg.content === 'string' ? msg.content : '';
 
   // Hoisted above the flowPart early-return (hooks can't be called
@@ -282,7 +288,7 @@ function MessageBubbleComponent({
         }}
         className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}`}
       >
-        {msg.traceId && !hasTurnFooter && (
+        {developerToolsEnabled && msg.traceId && !hasTurnFooter && (
           <a
             href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
             target="_blank"
@@ -493,6 +499,13 @@ function MessageBubbleComponent({
                     modelIdentity.claims.length > 0,
                 }}
                 accountableHuman={accountableHuman}
+                shareContent={
+                  <LazyBoundary
+                    load={loadShareAnswerButton}
+                    componentProps={{ provenance: msg.provenance }}
+                    pending={null}
+                  />
+                }
                 basisContent={
                   msg.turnId &&
                   answerSessionId &&
@@ -514,7 +527,7 @@ function MessageBubbleComponent({
               />
             )}
             <div className="turn-footer__actions">
-              {msg.traceId && (
+              {developerToolsEnabled && msg.traceId && (
                 <a
                   href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
                   target="_blank"
@@ -536,15 +549,14 @@ function MessageBubbleComponent({
                   Copy
                 </button>
               )}
-              {(msg.provenance !== undefined ||
-                (msg.turnId &&
-                  answerSessionId &&
-                  msg.answerEligible === true) ||
+              {((msg.turnId &&
+                answerSessionId &&
+                msg.answerEligible === true &&
+                (!isLastMessage || !activeSession.isThinking)) ||
                 (turnForkSource && onForkFromTurn)) && (
                 <LazyBoundary
                   load={loadTurnActionsMenu}
                   componentProps={{
-                    provenance: msg.provenance,
                     taskTarget:
                       msg.turnId &&
                       answerSessionId &&

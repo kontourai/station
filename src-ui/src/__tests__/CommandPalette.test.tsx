@@ -26,6 +26,7 @@ import {
   openChatsStore,
   resetOpenChatIdentitiesCacheForTests,
 } from '../contexts/open-chats-store';
+import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
 
 // --- SDK + navigation mocks ------------------------------------------------
 
@@ -41,6 +42,12 @@ let selectedProjectLayoutMock: string | null = null;
 let messageSearchMock: any = { matches: [], instances: [] };
 const registeredCommand = vi.fn();
 let registeredShortcutAvailability: { disabled?: boolean; when?: unknown } = {};
+let registeredShortcutIdentity = {
+  id: 'app.registered',
+  key: 'j',
+  modifiers: ['cmd'] as ('cmd' | 'ctrl' | 'shift' | 'alt')[],
+  description: 'Run registered command',
+};
 let shortcutWhenEnabled = true;
 
 // Counts index rebuilds. `rankCommands` runs inside the palette's `useMemo`
@@ -111,10 +118,7 @@ vi.mock('../contexts/KeyboardShortcutsContext', () => ({
   useShortcutRegistry: () => ({
     getAllShortcuts: () => [
       {
-        id: 'app.registered',
-        key: 'j',
-        modifiers: ['cmd'],
-        description: 'Run registered command',
+        ...registeredShortcutIdentity,
         handler: registeredCommand,
         ...registeredShortcutAvailability,
       },
@@ -171,6 +175,12 @@ afterEach(() => {
   selectedProjectLayoutMock = null;
   messageSearchMock = { matches: [], instances: [] };
   registeredShortcutAvailability = {};
+  registeredShortcutIdentity = {
+    id: 'app.registered',
+    key: 'j',
+    modifiers: ['cmd'],
+    description: 'Run registered command',
+  };
   shortcutWhenEnabled = true;
   commandFrecencyStorage.reset();
 });
@@ -682,6 +692,23 @@ describe('CommandPalette', () => {
     expect(
       screen.getByRole('option', { name: /Run registered command/ }),
     ).toBeTruthy();
+  });
+
+  test('projects the registered region toggle into the command palette', async () => {
+    const chat = REGION_SURFACE_REGISTRY.get('chat');
+    expect(chat).toBeTruthy();
+    registeredShortcutIdentity = {
+      id: chat!.shortcut.id,
+      key: chat!.shortcut.key,
+      modifiers: [...chat!.shortcut.modifiers],
+      description: `Toggle ${chat!.title} region`,
+    };
+
+    await renderCommandPalette();
+    open();
+
+    fireEvent.click(screen.getByRole('option', { name: /Toggle Chat region/ }));
+    expect(registeredCommand).toHaveBeenCalledTimes(1);
   });
 
   // #766 item 4: the Report-a-problem entry point is a palette action that

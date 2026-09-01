@@ -989,7 +989,15 @@ export function resolveEngineCapabilityMatrix(
     // from a different engine.
     return UNKNOWN_EXTERNAL_ENGINE_MATRIX;
   }
-  if (agentConnectionId) {
+  // A stored `executionClass: 'connected'` still names an external engine even
+  // when no connection id reached this call. Collapsing the binaries removed
+  // the branch that read it, which sent those connections to the final
+  // `station` return below -- Station's capabilities, including declared
+  // control delivery, attributed to an engine Station does not run. The
+  // deprecated field is not authoritative for WHICH engine, so it resolves
+  // through the same external path as a connection id rather than a matrix of
+  // its own.
+  if (agentConnectionId || connection?.config?.executionClass === 'connected') {
     const type = connection?.type;
     if (type && ENGINE_CAPABILITY_MATRICES[type]) {
       return ENGINE_CAPABILITY_MATRICES[type];

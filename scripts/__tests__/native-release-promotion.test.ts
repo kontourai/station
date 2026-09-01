@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { load } from 'js-yaml';
@@ -46,6 +47,7 @@ describe('one-revision native promotion contract', () => {
     const gate = nightly.jobs?.['test-gate'];
     const caller = nightly.jobs?.['native-cohort'];
     const iosCaller = cohort.jobs?.['deliver-ios'];
+    const fleetCaller = nightly.jobs?.['fleet-staging'];
     expect(gate?.outputs?.source_sha).toBe(
       '$' + '{{ steps.source.outputs.sha }}',
     );
@@ -95,6 +97,19 @@ describe('one-revision native promotion contract', () => {
         '$' + '{{ needs.plan-cohort.outputs.marketing_version }}',
       bundle_version: '$' + '{{ needs.plan-cohort.outputs.bundle_version }}',
     });
+    expect(fleetCaller?.needs).toEqual(['test-gate', 'full-regression']);
+    expect((fleetCaller as any)?.uses).toBe(
+      './.github/workflows/nightly-fleet-staging.yml',
+    );
+    expect((fleetCaller as any)?.permissions).toEqual({
+      contents: 'read',
+      attestations: 'write',
+      'id-token': 'write',
+    });
+    expect((fleetCaller as any)?.with?.source_sha).toBe(
+      '$' + '{{ needs.test-gate.outputs.source_sha }}',
+    );
+    expect(fleetCaller).not.toHaveProperty('secrets');
     expect(Object.keys(cohort.jobs ?? {})).toEqual([
       'plan-cohort',
       'stage-android',
@@ -296,6 +311,8 @@ describe('one-revision native promotion contract', () => {
   test('makes stable TestFlight publication and provider receipt fail closed', () => {
     const release = workflow('release.yml');
     const caller = release.jobs?.['ios-device'] ?? {};
+    const nightlyCohort = workflow('nightly-native-cohort.yml');
+    const nightlyCaller = nightlyCohort.jobs?.['deliver-ios'] ?? {};
     const delivery = workflow('testflight-delivery.yml');
     const ios = delivery.jobs?.deliver ?? {};
     expect(
@@ -345,5 +362,120 @@ describe('one-revision native promotion contract', () => {
     expect((caller as any).uses).toBe(
       './.github/workflows/testflight-delivery.yml',
     );
+    expect((nightlyCaller as any).uses).toBe(
+      './.github/workflows/testflight-delivery.yml',
+    );
+    for (const input of [
+      'update_feed_url',
+      'update_provider_origin',
+      'update_action_url',
+      'update_action_kind',
+      'update_action_origins',
+    ]) {
+      expect(delivery.on?.workflow_call?.inputs?.[input]?.required).toBe(false);
+      expect((caller as any).with?.[input]).toBeDefined();
+      expect((nightlyCaller as any).with?.[input]).toBeDefined();
+    }
+  });
+
+  test('keeps TestFlight authoritative when no custom feed is configured', () => {
+    const release = workflow('release.yml');
+    const delivery = workflow('testflight-delivery.yml');
+    const ios = delivery.jobs?.deliver ?? {};
+    const required = namedStep(
+      ios,
+      'Fail closed on channel-owned secrets and exact iOS identity',
+    );
+    const authority = namedStep(ios, 'Resolve optional custom iOS update feed');
+    expect(required.run).not.toContain('VITE_NATIVE_APP_UPDATE_FEED_URL');
+    expect(required.run).not.toContain('NATIVE_APP_UPDATE_ACTION_URL');
+    expect(authority.run).toContain('write-authority-receipt');
+    expect(authority.run).toContain('testflight-update-authority.json');
+    expect(authority.run).toContain('--platform ios');
+    expect(authority.run).toContain('--ios-app-id');
+    expect(authority.run).toContain('steps.app_store.outputs.app_id');
+
+    const iosDependencies = ios.steps?.findIndex(
+      (step) => step.run === 'npm run dependencies:ci',
+    );
+    const iosAuthority = ios.steps?.findIndex(
+      (step) => step.name === 'Resolve optional custom iOS update feed',
+    );
+    expect(iosDependencies).toBeGreaterThanOrEqual(0);
+    expect(iosAuthority).toBeGreaterThan(iosDependencies ?? -1);
+    const iosAppPreflight = ios.steps?.findIndex(
+      (step) =>
+        step.name === 'Verify App Store Connect app authority before signing',
+    );
+    expect(iosAuthority).toBeGreaterThan(iosAppPreflight ?? -1);
+
+    const android = release.jobs?.android ?? {};
+    const androidDependencies = android.steps?.findIndex(
+      (step) =>
+        step.name ===
+        'Install dependencies before resolving the native update feed',
+    );
+    const androidAuthority = android.steps?.findIndex(
+      (step) => step.name === 'Resolve native update feed contract',
+    );
+    expect(androidDependencies).toBeGreaterThanOrEqual(0);
+    expect(androidAuthority).toBeGreaterThan(androidDependencies ?? -1);
+  });
+
+  test('keeps portable fleet staging independent, fixed-plan, and provenance-verified', () => {
+    const fleet = workflow('nightly-fleet-staging.yml');
+    expect(Object.keys(fleet.jobs ?? {})).toEqual([
+      'fleet-plan',
+      'portable',
+      'admit-fleet',
+    ]);
+    const source = readFileSync(
+      resolve(root, '.github/workflows/nightly-fleet-staging.yml'),
+      'utf8',
+    );
+    for (const action of [
+      'anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610',
+      'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
+    ])
+      expect(source).toContain(action);
+    expect(source).toContain('stage-receipt');
+    expect(source).toContain('staged-fleet-inventory.mjs admit-fixed');
+    expect(source).toContain('config/nightly-fleet-staging-plan.json');
+    expect(source).toContain('gh attestation verify "staged/$name"');
+    expect(source).toContain('--source-ref refs/heads/main');
+    expect(source).toContain('--deny-self-hosted-runners');
+    expect(source).toContain('test "$sha" = "$GITHUB_SHA"');
+    for (const forbidden of [
+      'gh release create',
+      'gh release upload',
+      'fastlane pilot upload',
+      'npm publish',
+      ':latest',
+      'container:',
+      'windows:',
+      'linux:',
+      'ios-simulator:',
+    ])
+      expect(source).not.toContain(forbidden);
+  });
+
+  test('canonicalizes a non-UTC commit timestamp before portable packaging', () => {
+    const source = readFileSync(
+      resolve(root, '.github/workflows/nightly-fleet-staging.yml'),
+      'utf8',
+    );
+    expect(source).toContain('git show -s --format=%ct');
+    expect(source).not.toContain('--format=%cI');
+    expect(source).toContain('new Date(epoch*1000).toISOString()');
+    const createdAt = execFileSync(
+      'node',
+      [
+        '-e',
+        'process.stdout.write(new Date(Number(process.argv[1])*1000).toISOString())',
+        '1788084245',
+      ],
+      { encoding: 'utf8' },
+    );
+    expect(createdAt).toBe('2026-08-30T10:04:05.000Z');
   });
 });

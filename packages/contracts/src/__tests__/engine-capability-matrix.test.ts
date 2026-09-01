@@ -935,4 +935,35 @@ describe('resolveComposerImageSupport (station#3344)', () => {
       ).toEqual({ attachable: true });
     }
   });
+
+  // The collapse removed the branches that read the deprecated executionClass.
+  // These pin what stored connections resolve to now, so the removal is an
+  // asserted decision rather than an uncovered one: main asserted this field 12
+  // times and the collapse left it asserted nowhere.
+  test('legacy executionClass connections resolve without borrowing Station', () => {
+    // 'managed' is Station running the agent, which is the default anyway.
+    expect(
+      resolveEngineCapabilityMatrix(undefined, {
+        config: { executionClass: 'managed' },
+      } as never),
+    ).toBe(ENGINE_CAPABILITY_MATRICES.station);
+
+    // 'connected' names an external engine. Without the read-compat below it
+    // reached the final `station` return and reported Station's capabilities
+    // for an engine Station does not run.
+    expect(
+      resolveEngineCapabilityMatrix(undefined, {
+        type: 'claude-code',
+        config: { executionClass: 'connected' },
+      } as never),
+    ).not.toBe(ENGINE_CAPABILITY_MATRICES.station);
+
+    // An unrecognised type stays unknown-external rather than falling back.
+    expect(
+      resolveEngineCapabilityMatrix(undefined, {
+        type: 'not-a-known-engine',
+        config: { executionClass: 'connected' },
+      } as never),
+    ).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
+  });
 });
