@@ -51,7 +51,6 @@ import {
 import type { NavigationView } from '../types';
 import {
   capabilityLabel,
-  connectionDisplayLabel,
   connectionEngineId,
   connectionStatusLabel,
   prerequisiteCategoryLabel,
