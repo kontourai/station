@@ -856,7 +856,9 @@ describe('the nightly workflow keeps its promises', () => {
     const freeze = stage.indexOf(
       'node scripts/write-native-client-build-manifest.mjs',
     );
-    const asset = stage.indexOf('node scripts/write-android-build-manifest.mjs');
+    const asset = stage.indexOf(
+      'node scripts/write-android-build-manifest.mjs',
+    );
     const reuse = stage.indexOf('STATION_CLIENT_BUILD_REUSE=1', asset);
     const build = stage.indexOf('tauri android build --aab --apk');
 
