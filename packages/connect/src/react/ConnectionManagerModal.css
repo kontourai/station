@@ -180,8 +180,21 @@
   pointer-events: auto;
 }
 
+/* #1170: this line mixes a truncatable name (`overflow: hidden`, so its
+   automatic flex-basis minimum is 0) with `.station-connect-chip` badges
+   that had no CSS anywhere in the repo. Unstyled, a chip is a plain <span>:
+   no `flex-shrink`/`white-space` of its own, so on a narrow, unwrapped flex
+   line the browser shrinks every item to fit — the name (min size 0) loses
+   first and the chips survive by wrapping their own text mid-word. At 390px
+   with a long device name plus two chips, the name collapsed to 0 width
+   while the chips held theirs, deleting the one thing that identifies the
+   device. `flex-wrap: wrap` here means an overflowing chip drops to its own
+   row instead of squeezing the name; `.station-connect-chip` below adds its
+   own bounds (`flex: 0 0 auto`, `white-space: nowrap`) so a chip is a stable
+   pill rather than a wrap-by-word blob even before the wrap point. */
 .station-connect-row__name-line {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
@@ -194,6 +207,17 @@
   white-space: nowrap;
   font-size: 14px;
   font-weight: 600;
+}
+
+.station-connect-chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--border-primary, #333) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-primary, #0a0a0a) 55%, transparent);
+  color: var(--text-secondary, #999);
+  font-size: 11px;
 }
 
 .station-connect-row__url {
