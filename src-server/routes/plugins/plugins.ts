@@ -37,6 +37,17 @@ export function createPluginRoutes(
   const pluginsDir = join(projectHomeDir, 'plugins');
   const agentsDir = join(projectHomeDir, 'agents');
 
+  // Literal reserved-segment routes (`/home-role/**`) must register before
+  // any `/:name` catch-all: Hono matches in registration order, and the
+  // lifecycle module's `DELETE /:name` otherwise captures `DELETE /home-role`
+  // (#477). `home-role` is a reserved plugin identity, so no real plugin can
+  // claim the segment these routes own.
+  registerPluginHomeRoleRoutes(app, {
+    eventBus,
+    pluginsDir,
+    projectHomeDir,
+    consentChannel: runtime?.consentChannel,
+  });
   registerPluginLifecycleRoutes(app, {
     agentsDir,
     buildPlugin: (pluginDir, name) => buildPlugin(pluginDir, name, logger),
@@ -72,12 +83,6 @@ export function createPluginRoutes(
       : undefined,
   });
   registerPluginHostApprovalRoutes(app, {
-    eventBus,
-    pluginsDir,
-    projectHomeDir,
-    consentChannel: runtime?.consentChannel,
-  });
-  registerPluginHomeRoleRoutes(app, {
     eventBus,
     pluginsDir,
     projectHomeDir,
