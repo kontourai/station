@@ -244,6 +244,10 @@ jobs:
           node scripts/lib/nightly-build-identity.mjs --package-json package.json --tauri-config src-desktop/tauri.conf.json --date "$date" --build "$build" --output "$RUNNER_TEMP/tauri.nightly.conf.json"
           node scripts/reset-android-generated-project.mjs
           (cd src-desktop && npx tauri android init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.nightly.conf.json")
+          # Freeze the source-owned client record before copying it into the
+          # Android assets. Tauri's later beforeBuildCommand receives the
+          # reuse lease below, so it cannot sample a newer builtAt value.
+          node scripts/write-native-client-build-manifest.mjs
           node scripts/apply-android-release-signing.mjs
           node scripts/apply-android-channel-icons.mjs nightly
           node scripts/apply-android-native-bootstrap.mjs

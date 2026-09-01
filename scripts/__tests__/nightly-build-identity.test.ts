@@ -846,6 +846,28 @@ describe('the nightly workflow keeps its promises', () => {
     expect(apkReadback).toBeGreaterThan(aabReadback);
     expect(stage).toContain('base/assets record');
   });
+
+  it('freezes the source-owned manifest before Android asset staging and reuses it during Tauri packaging', () => {
+    const start = workflow.indexOf('\n  stage-android:');
+    const end = workflow.indexOf('\n  stage-macos:', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const stage = workflow.slice(start, end);
+    const init = stage.indexOf('tauri android init');
+    const freeze = stage.indexOf(
+      'node scripts/write-native-client-build-manifest.mjs',
+    );
+    const asset = stage.indexOf('node scripts/write-android-build-manifest.mjs');
+    const reuse = stage.indexOf('STATION_CLIENT_BUILD_REUSE=1', asset);
+    const build = stage.indexOf('tauri android build --aab --apk');
+
+    expect(init).toBeGreaterThanOrEqual(0);
+    expect(freeze).toBeGreaterThan(init);
+    expect(asset).toBeGreaterThan(freeze);
+    expect(reuse).toBeGreaterThan(asset);
+    expect(build).toBeGreaterThan(asset);
+    expect(build).toBeGreaterThan(reuse);
+  });
 });
 
 describe('the desktop nightly job keeps the same promises (station#575)', () => {

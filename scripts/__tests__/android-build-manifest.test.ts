@@ -139,20 +139,33 @@ describe('android build manifest', () => {
     });
   });
 
-  test('copies the already-frozen native client stamp rather than sampling a later Android timestamp', () => {
+  test('keeps frozen source, Android asset, and later native reuse byte-identical', () => {
     const root = withReleaseManifest(makeRoot());
-    writeNativeClientBuildManifest(root, {
+    const sourcePath = writeNativeClientBuildManifest(root, {
       builtAt: '2026-08-20T18:00:00.000Z',
       env: {},
       refresh: true,
     });
+    const sourceBytes = readFileSync(sourcePath as string, 'utf8');
     const manifestPath = writeAndroidBuildManifest(root, {
       builtAt: '2026-08-20T19:00:00.000Z',
       env: {},
     });
-    expect(
-      JSON.parse(readFileSync(manifestPath as string, 'utf8')).builtAt,
-    ).toBe('2026-08-20T18:00:00.000Z');
+
+    // A different clock at the Android writer must not make the asset a
+    // sibling manifest. It is an exact copy of the source-owned record.
+    expect(readFileSync(manifestPath as string, 'utf8')).toBe(sourceBytes);
+
+    // Tauri calls build:native-client after the asset has been staged. Its
+    // explicit reuse lease must preserve the source and packaged bytes even
+    // if that nested command reaches this writer at a later wall-clock time.
+    const reusedPath = writeNativeClientBuildManifest(root, {
+      builtAt: '2026-08-20T20:00:00.000Z',
+      env: {},
+      refresh: false,
+    });
+    expect(readFileSync(reusedPath as string, 'utf8')).toBe(sourceBytes);
+    expect(readFileSync(manifestPath as string, 'utf8')).toBe(sourceBytes);
   });
 
   test('the packaged entry path is derived from the staged filename, not restated', () => {
