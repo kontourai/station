@@ -658,8 +658,15 @@ describe('registry-backed enriched Agent routes', () => {
 
   test('gets defaults only by their exact public id', async () => {
     const { app } = setup();
-    const exact = await app.request('/codex');
-    const internal = await app.request('/codex');
+    const exactPublicPath = '/codex';
+    // This retired pre-unification alias is intentionally negative. Keep the
+    // explicit inequality guard so a bulk identity replacement cannot silently
+    // turn both requests into the same public route again.
+    const retiredInternalPath = '/codex-runtime';
+    expect(retiredInternalPath).not.toBe(exactPublicPath);
+
+    const exact = await app.request(exactPublicPath);
+    const internal = await app.request(retiredInternalPath);
     expect(exact.status).toBe(200);
     expect((await json(exact)).data.slug).toBe('codex');
     expect(internal.status).toBe(404);

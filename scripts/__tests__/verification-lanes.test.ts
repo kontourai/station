@@ -89,7 +89,12 @@ describe('canonical completion lane literal', () => {
       expect.objectContaining({ id: 'repo-governance', weight: 20 }),
       expect.objectContaining({ id: 'sdk-builds', weight: 50 }),
       expect.objectContaining({ id: 'verify-static', weight: 60 }),
-      expect.objectContaining({ id: 'test-full-ordinary', weight: 80 }),
+      ...Array.from({ length: 8 }, (_, index) =>
+        expect.objectContaining({
+          id: `test-full-ordinary-${index + 1}-of-8`,
+          weight: 80,
+        }),
+      ),
       expect.objectContaining({ id: 'test-full-process-heavy', weight: 60 }),
       expect.objectContaining({
         id: 'test-full-process-exclusive',
@@ -104,10 +109,17 @@ describe('canonical completion lane literal', () => {
     ]);
     for (const phase of FULL_REGRESSION_PHASES)
       expect(phase.timeoutMs).toBeGreaterThan(0);
-    expect(
-      FULL_REGRESSION_PHASES.find((phase) => phase.id === 'test-full-ordinary')
-        ?.timeoutMs,
-    ).toBe(45 * 60_000);
+    for (const shard of Array.from({ length: 8 }, (_, index) => index + 1))
+      expect(
+        FULL_REGRESSION_PHASES.find(
+          (phase) => phase.id === `test-full-ordinary-${shard}-of-8`,
+        ),
+      ).toMatchObject({
+        command: `npm run test:full:ordinary:${shard}:raw`,
+        privateScript: `test:full:ordinary:${shard}:raw`,
+        timeoutMs: 20 * 60_000,
+        weight: 80,
+      });
     expect(
       FULL_REGRESSION_PHASES.find(
         (phase) => phase.id === 'test-full-process-heavy',
@@ -120,7 +132,7 @@ describe('canonical completion lane literal', () => {
         0,
       ),
     );
-    expect(FULL_REGRESSION_TIMEOUT_MS).toBe(128 * 60_000);
+    expect(FULL_REGRESSION_TIMEOUT_MS).toBe(243 * 60_000);
     expect(resolveLane('full-regression').timeoutMs).toBe(
       FULL_REGRESSION_TIMEOUT_MS,
     );
@@ -130,12 +142,10 @@ describe('canonical completion lane literal', () => {
       timeoutMs: CI_FAST_TIMEOUT_MS,
       weight: 20,
     });
-    expect(
-      resolveLane('ci-fast').weight +
-        FULL_REGRESSION_PHASES.find(
-          (phase) => phase.id === 'test-full-ordinary',
-        )!.weight,
-    ).toBe(100);
+    for (const phase of FULL_REGRESSION_PHASES.filter((entry) =>
+      entry.id.startsWith('test-full-ordinary-'),
+    ))
+      expect(resolveLane('ci-fast').weight + phase.weight).toBe(100);
   });
 
   it('keeps every other lane diagnostic and non-completion', () => {

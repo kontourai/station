@@ -77,7 +77,6 @@ export class BedrockAdapter implements ProviderAdapterShape {
       overrideAtStart: true,
       overrideAtResume: true,
       overridePerTurn: true,
-      modelConnectionId: 'bedrock-runtime',
     },
   } as const;
 

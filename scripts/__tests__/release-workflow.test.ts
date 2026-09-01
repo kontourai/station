@@ -18,6 +18,7 @@ import {
   createNativeReleaseConfig,
   NATIVE_UPDATER_ARTIFACT_MODE,
 } from '../lib/native-release-config.mjs';
+import { ANCHORE_SBOM_ACTION } from '../release-container-sbom-source.mjs';
 import { cyclonedxComponents } from '../release-sbom-fragments.mjs';
 import {
   FIXTURE_TEST_TIMEOUT_MS,
@@ -51,6 +52,10 @@ const nativeCohort = readFileSync(
 );
 const testFlightDelivery = readFileSync(
   resolve(root, '.github/workflows/testflight-delivery.yml'),
+  'utf8',
+);
+const mobileReleaseGuide = readFileSync(
+  resolve(root, 'docs/guides/mobile-release.md'),
   'utf8',
 );
 
@@ -98,7 +103,10 @@ describe('mobile release hardening contract', () => {
     ).toHaveLength(1);
     expect(release.match(/configured=false/g)).toHaveLength(1);
     expect(testFlightDelivery).toContain(
-      'native-update-feed.mjs validate-config',
+      'native-update-feed.mjs write-authority-receipt',
+    );
+    expect(testFlightDelivery).toContain(
+      'TestFlight/App Store owns delivered iOS updates',
     );
     expect(testFlightDelivery).toContain(
       'Missing required protected channel value',
@@ -114,6 +122,21 @@ describe('mobile release hardening contract', () => {
     expect(publish).toContain('NATIVE_APP_UPDATE_PUBLISH_TOKEN');
     expect(mobileFeedTransaction).toContain('native-update-feed.mjs deploy');
     expect(publish).toContain('scripts/publish-mobile-feed-transaction.sh');
+    const publishStep = namedStep(
+      workflowJob(publish, 'publish'),
+      'Publish release and compensate to draft until feed verifies',
+    );
+    expect(publishStep.run).toContain('feed_args=()');
+    expect(publishStep.run).not.toContain(
+      'Missing native update provider credential',
+    );
+    expect(mobileFeedTransaction.indexOf('validate-config')).toBeLessThan(
+      mobileFeedTransaction.indexOf('gh release edit'),
+    );
+    expect(mobileFeedTransaction).toContain('if [[ "$custom_feed" != true ]]');
+    expect(mobileReleaseGuide).toContain(
+      'station-<channel>-ios-testflight-<bundle-version>',
+    );
   });
 });
 
@@ -604,7 +627,7 @@ describe('native release workflow topology', () => {
         'Scan immutable linux/amd64 image digest with pinned Syft',
       ),
     ).toMatchObject({
-      uses: 'anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610',
+      uses: ANCHORE_SBOM_ACTION,
       with: {
         format: 'cyclonedx-json',
         image:
@@ -622,7 +645,7 @@ describe('native release workflow topology', () => {
         'Scan immutable linux/arm64 image digest with pinned Syft',
       ),
     ).toMatchObject({
-      uses: 'anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610',
+      uses: ANCHORE_SBOM_ACTION,
       with: {
         image:
           'ghcr.io/$' +

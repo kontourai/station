@@ -1064,6 +1064,72 @@ describe('ConnectionService', () => {
     }
   });
 
+  test('derives the public Station engine readiness from model connections', async () => {
+    const stationAdapter = {
+      provider: 'station-agent',
+      metadata: {
+        displayName: 'Station',
+        description: 'Station engine',
+        capabilities: ['agent-runtime'],
+        engineId: 'station',
+      },
+      getPrerequisites: vi.fn().mockResolvedValue([]),
+    } as any;
+    const service = createConnectionServiceForTest(
+      {
+        listProviderConnections: vi.fn(() => []),
+        saveProviderConnection: vi.fn(),
+        deleteProviderConnection: vi.fn(),
+        checkHealth: vi.fn(),
+      } as any,
+      () => [stationAdapter],
+      async () => [],
+      () => ({ connections: [] }),
+      async () => ({}) as any,
+      vi.fn(),
+    );
+    const list = (models: any[]) =>
+      (
+        service as unknown as {
+          listRuntimeConnectionsForModels(
+            models: any[],
+            options: Record<string, unknown>,
+          ): Promise<any[]>;
+        }
+      ).listRuntimeConnectionsForModels(models, {
+        adapters: [stationAdapter],
+        acpConnections: [],
+        appConfig: {},
+        disableHostDiscovery: true,
+      });
+
+    await expect(list([])).resolves.toMatchObject([
+      {
+        id: 'station',
+        status: 'missing_prerequisites',
+        prerequisites: [{ id: 'station-model-connection', status: 'missing' }],
+      },
+    ]);
+    await expect(
+      list([
+        {
+          id: 'ollama-local',
+          enabled: true,
+          capabilities: ['llm'],
+          status: 'ready',
+        },
+      ]),
+    ).resolves.toMatchObject([
+      {
+        id: 'station',
+        status: 'ready',
+        prerequisites: [
+          { id: 'station-model-connection', status: 'installed' },
+        ],
+      },
+    ]);
+  });
+
   test('does not publish Agent fallback selectors after live discovery fails', async () => {
     const adapter = {
       provider: 'codex',

@@ -1,6 +1,8 @@
+import { join } from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const fs = vi.hoisted(() => ({
+  mkdirSync: vi.fn(),
   mkdtempSync: vi.fn(),
   realpathSync: vi.fn(),
   nativeRealpathSync: vi.fn(),
@@ -14,6 +16,7 @@ vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
   return {
     ...actual,
+    mkdirSync: fs.mkdirSync,
     mkdtempSync: fs.mkdtempSync,
     realpathSync: Object.assign(fs.realpathSync, {
       native: fs.nativeRealpathSync,
@@ -22,7 +25,10 @@ vi.mock('node:fs', async (importOriginal) => {
 });
 vi.mock('../lib/free-ports.mjs', () => ports);
 
-import { allocateLiveStation } from '../../tests/helpers/live-station-task';
+import {
+  allocateLiveStation,
+  stationRootForLiveHome,
+} from '../../tests/helpers/live-station-task';
 
 describe('allocateLiveStation', () => {
   beforeEach(() => {
@@ -40,9 +46,14 @@ describe('allocateLiveStation', () => {
     fs.nativeRealpathSync.mockReturnValue(canonicalHome);
 
     const live = await allocateLiveStation('station-home-', 'test');
+    const expectedHome = join(canonicalHome, 'instances', 'e2e');
 
     expect(fs.nativeRealpathSync).toHaveBeenCalledExactlyOnceWith(shortHome);
     expect(fs.realpathSync).not.toHaveBeenCalled();
-    expect(live.home).toBe(canonicalHome);
+    expect(fs.mkdirSync).toHaveBeenCalledExactlyOnceWith(expectedHome, {
+      recursive: true,
+    });
+    expect(live.home).toBe(expectedHome);
+    expect(stationRootForLiveHome(live.home)).toBe(canonicalHome);
   });
 });
