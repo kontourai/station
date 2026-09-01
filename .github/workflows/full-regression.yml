@@ -70,6 +70,17 @@ jobs:
 
       - run: npm run dependencies:ci
 
+      - name: Provision and preflight zsh for process-heavy installer fixtures
+        timeout-minutes: 5
+        run: |
+          if [[ ! -x /bin/zsh ]]; then
+            sudo apt-get update
+            sudo apt-get install --yes zsh
+          fi
+          command -v zsh
+          test -x /bin/zsh
+          /bin/zsh --version
+
       - name: Install Chromium for full-corpus browser assertions
         timeout-minutes: 20
         run: |

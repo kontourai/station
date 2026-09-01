@@ -165,10 +165,10 @@ describe('Vitest resource manifest', () => {
     expect(groups.processExclusive).not.toContain(policyReader);
   }, 70_000);
 
-  it('keeps reviewed indirect and host-resource seams in the serial process group', () => {
+  it('keeps reviewed indirect and host-resource seams in the two-worker group', () => {
     const groups = discoverVitestResourceGroups();
 
-    expect(PROCESS_HEAVY_MAX_WORKERS).toBe(1);
+    expect(PROCESS_HEAVY_MAX_WORKERS).toBe(2);
     expect(PROCESS_HEAVY_VITEST_FILES).toEqual(
       expect.arrayContaining(REVIEWED_RESOURCE_HEAVY_VITEST_FILES),
     );
