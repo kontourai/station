@@ -21,6 +21,7 @@ import {
 } from '../contexts/DeviceSettingsContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useProjects } from '../contexts/ProjectsContext';
+import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { readToolbarHeight } from '../lib/toolbarGeometry';
 import type { DockMode } from '../types';
 import {
@@ -199,12 +200,22 @@ export function useDockShellChrome({
     setDockMode,
     collapseMaximizedDock,
   } = useNavigation();
+  const regionModel = useRegionModelOptional();
   const isMobile = useIsMobile();
   const visualViewport = useMobileVisualViewport();
+  const modelDockMode =
+    regionModel &&
+    (['left', 'right', 'bottom'] as const).find(
+      (id) => regionModel.regions[id].occupant === 'chat',
+    );
+  const readerDockMode = modelDockMode ?? dockMode;
+  const readerIsDockOpen = regionModel
+    ? regionModel.regions[readerDockMode].visible
+    : isDockOpen;
   const {
     available: availableDockSlotPlacements,
     effective: effectiveDockSlotPlacement,
-  } = useDockSlotPlacement(dockMode);
+  } = useDockSlotPlacement(readerDockMode);
 
   // archive#4525: the dock's remembered project binding. Read LIVE every
   // render (the same pattern `chatShowReasoning`/`chatShowToolDetails` use
@@ -297,7 +308,7 @@ export function useDockShellChrome({
   const [isDragging, setIsDraggingState] = useState(false);
   const [dockSnap, setDockSnap] = useState<DockSnap>(() => readDockSnap());
   const [liveDragHeight, setLiveDragHeight] = useState<number | null>(null);
-  const isCollapsedDragPreview = !isDockOpen && liveDragHeight !== null;
+  const isCollapsedDragPreview = !readerIsDockOpen && liveDragHeight !== null;
 
   const toolbarHeight = useMemo(() => readToolbarHeight(), []);
   const collapsedHeight = useMemo(() => {
@@ -412,7 +423,7 @@ export function useDockShellChrome({
   // snap (Half/Full) whenever open — desktop's continuous drag owns its own
   // height directly.
   useEffect(() => {
-    if (!publishesDockSlotClearance || !isMobile || !isDockOpen) return;
+    if (!publishesDockSlotClearance || !isMobile || !readerIsDockOpen) return;
     const next = isDockMaximized ? 'full' : dockSnap;
     if (next === 'collapsed') return;
     setDockHeight(
@@ -426,7 +437,7 @@ export function useDockShellChrome({
     collapsedHeight,
     dockSnap,
     isDockMaximized,
-    isDockOpen,
+    readerIsDockOpen,
     isMobile,
     publishesDockSlotClearance,
     setDockHeight,
@@ -462,7 +473,7 @@ export function useDockShellChrome({
     onGeometryChange?.(
       deriveDockSlotGeometry({
         placement: effectiveDockSlotPlacement,
-        isOpen: isDockOpen,
+        isOpen: readerIsDockOpen,
         height: dockHeight,
         width: dockWidth,
         liveDragHeight,
@@ -474,7 +485,7 @@ export function useDockShellChrome({
   }, [
     effectiveDockSlotPlacement,
     dockWidth,
-    isDockOpen,
+    readerIsDockOpen,
     dockHeight,
     liveDragHeight,
     publishesDockSlotClearance,
@@ -488,7 +499,7 @@ export function useDockShellChrome({
     direction: 'horizontal',
     fromLeft: effectiveDockSlotPlacement === 'left',
     onDragStart: () => {
-      if (!isDockOpen) setDockState(true, false);
+      if (!readerIsDockOpen) setDockState(true, false);
     },
   });
 
@@ -521,14 +532,14 @@ export function useDockShellChrome({
         setDockState(previousDockOpen, false);
       } else {
         setPreviousDockHeight(dockHeight);
-        setPreviousDockOpen(isDockOpen);
+        setPreviousDockOpen(readerIsDockOpen);
         setDockHeight(window.innerHeight - toolbarHeight);
         setDockState(true, true);
       }
     }, [
       isDockMaximized,
       dockHeight,
-      isDockOpen,
+      readerIsDockOpen,
       previousDockHeight,
       previousDockOpen,
       setDockState,
@@ -541,9 +552,9 @@ export function useDockShellChrome({
   );
 
   return {
-    isDockOpen,
+    isDockOpen: readerIsDockOpen,
     isDockMaximized,
-    dockMode,
+    dockMode: readerDockMode,
     dockHeight,
     dockWidth,
     setDockHeight,

@@ -27,9 +27,11 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { RegionToolbarControls } from '../../components/header/RegionToolbarControls';
 import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../contexts/NavigationContext';
 import { navigationStore } from '../../contexts/navigation-store';
+import { RegionModelProvider } from '../../contexts/RegionModelContext';
 import { AmbientChatDockPaneHost } from '../AmbientChatDockPaneHost';
 import type { WorkspacePaneDockAction } from '../WorkspacePaneDockContext';
 
@@ -97,14 +99,17 @@ function renderHost(
   return render(
     <KeyboardShortcutsProvider>
       <NavigationProvider>
-        <AmbientChatDockPaneHost
-          renderChatPane={(instance) => (
-            <p data-testid="ambient-chat-occupant">
-              Chat pane {instance.instanceId}
-            </p>
-          )}
-          onDockActionChange={onDockActionChange}
-        />
+        <RegionModelProvider>
+          <RegionToolbarControls />
+          <AmbientChatDockPaneHost
+            renderChatPane={(instance) => (
+              <p data-testid="ambient-chat-occupant">
+                Chat pane {instance.instanceId}
+              </p>
+            )}
+            onDockActionChange={onDockActionChange}
+          />
+        </RegionModelProvider>
       </NavigationProvider>
     </KeyboardShortcutsProvider>,
   );
@@ -152,6 +157,21 @@ function expectFullDockControls(occupantName: string) {
 }
 
 describe('every ambient occupant gets the full dock chrome (station#4460)', () => {
+  test('the real region control changes the real dock shell open state', async () => {
+    renderHost();
+    await waitFor(() => {
+      expect(document.querySelector('.chat-dock')).not.toBeNull();
+    });
+    const control = screen.getByRole('button', {
+      name: 'Hide Chat Bottom region',
+    });
+    expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
+    fireEvent.click(control);
+    await waitFor(() => {
+      expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull();
+    });
+  });
+
   // Chat's OWN header content is rendered by the real `ChatWorkspacePane`
   // (a heavy component with its own large context/data-fetching surface),
   // not by this test's mocked `renderChatPane` — so this file cannot mount
