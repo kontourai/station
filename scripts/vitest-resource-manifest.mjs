@@ -186,6 +186,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // sentence and its EXIT STATUS are proven, not just its pure decision
   // functions. Bounded single-shot children per case.
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
+  // station#1137: same shape again — the crypto.randomUUID guard is driven as
+  // a real child process against throwaway git repositories so its `FAIL:`
+  // sentence and its EXIT STATUS are proven, not just its pure decision
+  // functions. Bounded single-shot children per case.
+  'scripts/__tests__/random-uuid-guard.test.ts',
   'scripts/__tests__/dependency-advisory-policy.test.ts',
   // station#1085: builds throwaway git checkouts and drives `git` through
   // `execFileSync` to prove the manifest derives real revision/branch values

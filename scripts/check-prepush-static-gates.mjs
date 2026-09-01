@@ -2,10 +2,11 @@
  * Pre-push scope guard for the cheap `verify:static` gates.
  *
  * The UI-contract ratchets (motion-contract, a11y, focus-visible,
- * state-primitives, shell-conformance, responsive-surface, lazy-boundary) and
+ * state-primitives, shell-conformance, responsive-surface, lazy-boundary),
  * the content gates (noun-consistency, station-vocabulary,
- * coding-composition-inventory) all live in `verify:static`, which is composed
- * only by `full:regression`, which CI runs only on push-to-main or
+ * coding-composition-inventory), and the cross-package random-uuid-guard
+ * (station#1137) all live in `verify:static`, which is composed only by
+ * `full:regression`, which CI runs only on push-to-main or
  * `workflow_dispatch`. Pull requests get `ci:fast`, which by design never runs
  * broad static verification. So nothing evaluates a candidate diff against any
  * of them until it is already on main.
@@ -24,9 +25,9 @@
  * delegates to the existing scripts, so the counts, the ceilings, and the
  * remedies all keep coming from one voice.
  *
- * Cost, measured on this repo: ten of the eleven run in under 500ms each
- * (~2s combined); `a11y` is ~5s because it runs its own biome pass. A
- * docs-only or workflow-only push pays none of it.
+ * Cost, measured on this repo: eleven of the twelve run in under 500ms each
+ * (~2s combined, random-uuid-guard included); `a11y` is ~5s because it runs
+ * its own biome pass. A docs-only or workflow-only push pays none of it.
  *
  * When the scope cannot be computed the gate runs anyway: "I could not look"
  * must not resolve to the same answer as "nothing changed"
@@ -63,6 +64,7 @@ export const PREPUSH_STATIC_GATES = Object.freeze([
   'shell-conformance-ratchet',
   'state-primitives-ratchet',
   'station-vocabulary-gate',
+  'random-uuid-guard',
   'a11y-ratchet',
 ]);
 
