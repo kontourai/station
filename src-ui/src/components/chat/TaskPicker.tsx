@@ -32,6 +32,7 @@ export interface TaskPickerProps<TTarget> {
   initiallyOpen?: boolean;
   /** Lets a host provide the trigger while this picker owns its dialog. */
   hideTrigger?: boolean;
+  triggerRole?: 'menuitem';
   /** Explicit opener for hosts that mount the dialog after their own trigger. */
   returnFocusTarget?: HTMLElement | null;
   onOpen?: () => void;
@@ -63,6 +64,7 @@ export function TaskPicker<TTarget>({
   adapter,
   initiallyOpen = false,
   hideTrigger = false,
+  triggerRole,
   returnFocusTarget,
   onOpen,
   onClose,
@@ -138,6 +140,7 @@ export function TaskPicker<TTarget>({
           className="task-picker__trigger"
           onClick={openDialog}
           aria-label={triggerAriaLabel ?? triggerLabel}
+          role={triggerRole}
         >
           {triggerLabel}
         </Button>

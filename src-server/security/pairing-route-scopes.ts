@@ -67,6 +67,7 @@ import {
 import { PUBLIC_ANSWER_SHARE_VIEW_PATH } from '@kontourai/station-contracts/answer-share';
 import {
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
+  PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
@@ -1168,6 +1169,16 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       match: 'exact',
       capability: 'public',
       reason: 'single-use launcher UI bootstrap capability',
+    },
+    {
+      id: 'public:pairing-api-docs-launch',
+      transport: 'http',
+      method: 'GET',
+      prefix: PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
+      match: 'exact',
+      capability: 'public',
+      reason:
+        'direct-loopback launcher page carrying no credential; the capability arrives in its URL fragment',
     },
     {
       id: 'public:pairing-ui-bootstrap-mint',

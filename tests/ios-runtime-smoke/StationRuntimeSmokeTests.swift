@@ -28,6 +28,18 @@ final class StationRuntimeSmokeTests: XCTestCase {
             connect.waitForExistence(timeout: 30),
             "Station never left its startup surface for an actionable no-connection shell. Accessibility hierarchy:\n\(app.debugDescription)"
         )
+
+        // The notification sheet can arrive after the WKWebView has already
+        // exposed its first actionable control. In that ordering the early
+        // launch-time dismissal sees no alert, while XCTest can still report
+        // the covered WebView button as hittable. Dismiss again only after the
+        // shell exists, then reacquire Station before delivering the tap.
+        dismissSystemAlertIfPresent()
+        app.activate()
+        XCTAssertTrue(
+            connect.waitForExistence(timeout: 5),
+            "Connect to a Station disappeared after dismissing the notification sheet. Accessibility hierarchy:\n\(app.debugDescription)"
+        )
         XCTAssertTrue(connect.isHittable)
         XCTAssertTrue(app.buttons["Open settings"].isHittable)
         XCTAssertFalse(app.staticTexts["That doesn't look like a Station address."].exists)
@@ -35,6 +47,19 @@ final class StationRuntimeSmokeTests: XCTestCase {
         connect.tap()
 
         let addAddress = app.buttons["Add a Station address"]
+        if !addAddress.waitForExistence(timeout: 2) {
+            // The notification sheet can still win the final race between the
+            // post-shell dismissal and the first WebView tap. Recover once,
+            // then let the existing bounded manager assertion decide the run.
+            dismissSystemAlertIfPresent()
+            app.activate()
+            XCTAssertTrue(
+                connect.waitForExistence(timeout: 5),
+                "Connect to a Station disappeared while recovering from a post-tap notification sheet. Accessibility hierarchy:\n\(app.debugDescription)"
+            )
+            XCTAssertTrue(connect.isHittable)
+            connect.tap()
+        }
         XCTAssertTrue(
             addAddress.waitForExistence(timeout: 10),
             "Station manager did not expose Add a Station address. Accessibility hierarchy:\n\(app.debugDescription)"

@@ -27,9 +27,8 @@ diagrams below — the `AgentType`/`executionClass` snippet in "Add agent type t
 `AgentSpec`" further down is retained only as the historical pre-unification sketch it
 always was.
 **Date:** 2026-03-27 (revised 2026-04-05; unification note 2026-07-26; #894 status note 2026-07-26; #975 status note 2026-07-27; #1003 status note 2026-07-27)
-**Author:** Brian Anderson + Station
 **Depends on:** `.plans/01-connected-agents-overhaul.md`, `.plans/03-connections-runtime-ux.md`
-**Reference:** a surveyed provider/orchestration architecture (internal competitive notes)
+**Reference:** a surveyed provider/orchestration architecture
 
 ---
 
@@ -109,7 +108,7 @@ Connections (configured backends — per Plan 03)
 
 ### Key principles
 
-- **Skills and integrations are managed-agent capabilities, with two explicit-opt-in exceptions.** They define what a managed agent can do; connected/External agents own their own capabilities by default. Both revisions live in `docs/design/connections-onboarding.md` §5, and both are off by default — never silent: (1) an ACP-connected agent's connection can explicitly opt in (`ACPConnectionConfig.provideToolServers`) to receiving Station's stdio MCP tool servers inside its own sessions — a wire-only passthrough that never touches the user's working tree; (2) the claude-runtime connection can explicitly opt in (`AgentConnectionSettings.config.provideSkills`) to having its selected Station skills materialized as real `SKILL.md` directory copies into the session's `.claude/skills/`, with a Station-owned manifest, refuse-to-overwrite, and cleanup that only ever removes files Station itself wrote and that are still byte-identical to what it wrote. Both are capability *passthrough*, not Station executing inside the agent's loop — the agent app still owns behavior, permissioning, and (for tool servers) which passthrough tools it actually calls.
+- **Skills and integrations are managed-agent capabilities, with two explicit-opt-in exceptions.** They define what a managed agent can do; connected/External agents own their own capabilities by default. Both revisions live in `docs/design/connections-onboarding.md` §5, and both are off by default — never silent: (1) an ACP-connected agent's connection can explicitly opt in (`ACPConnectionConfig.provideToolServers`) to receiving Station's stdio MCP tool servers inside its own sessions — a wire-only passthrough that never touches the user's working tree; (2) the claude connection can explicitly opt in (`AgentConnectionSettings.config.provideSkills`) to having its selected Station skills materialized as real `SKILL.md` directory copies into the session's `.claude/skills/`, with a Station-owned manifest, refuse-to-overwrite, and cleanup that only ever removes files Station itself wrote and that are still byte-identical to what it wrote. Both are capability *passthrough*, not Station executing inside the agent's loop — the agent app still owns behavior, permissioning, and (for tool servers) which passthrough tools it actually calls.
 - **Agents are members of projects.** A project selects which agents (both managed and connected) are available within it.
 - **Layouts are views of projects.** Managed within the project context, not as standalone entities.
 - **Global install ≠ active.** Installing from the registry makes something available to configure. It doesn't automatically appear in every agent or project.

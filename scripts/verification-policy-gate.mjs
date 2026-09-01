@@ -96,8 +96,21 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
 ]);
 export const CI_FAST_RESERVED_WEIGHT = 20;
 export const FULL_REGRESSION_TEST_WEIGHT = 80;
+export const FULL_REGRESSION_ORDINARY_SHARD_COUNT = 8;
+export const FULL_REGRESSION_ORDINARY_TIMEOUT_MS = 20 * 60_000;
+export const FULL_REGRESSION_ORDINARY_SHARDS = Object.freeze(
+  Array.from({ length: FULL_REGRESSION_ORDINARY_SHARD_COUNT }, (_, index) => {
+    const shard = index + 1;
+    return Object.freeze({
+      id: `test-full-ordinary-${shard}-of-${FULL_REGRESSION_ORDINARY_SHARD_COUNT}`,
+      command: `npm run test:full:ordinary:${shard}:raw`,
+      privateScript: `test:full:ordinary:${shard}:raw`,
+      packageScript: `node scripts/run-vitest-corpus.mjs --group=ordinary --shard=${shard}/${FULL_REGRESSION_ORDINARY_SHARD_COUNT}`,
+    });
+  }),
+);
 export const FULL_REGRESSION_TEST_PHASE_IDS = Object.freeze([
-  'test-full-ordinary',
+  ...FULL_REGRESSION_ORDINARY_SHARDS.map(({ id }) => id),
   'test-full-process-heavy',
   'test-full-process-exclusive',
   'test-full-shared-output',
@@ -171,8 +184,8 @@ export const E2E_LATEST_GUIDANCE_MARKERS = Object.freeze([
 export function renderVerificationSchedulingSection(lanes = LANES) {
   const ciFast = lanes.find((lane) => lane.id === 'ci-fast');
   const full = lanes.find((lane) => lane.id === 'full-regression');
-  const ordinary = full?.phases?.find(
-    (phase) => phase.id === 'test-full-ordinary',
+  const ordinary = full?.phases?.find((phase) =>
+    FULL_REGRESSION_ORDINARY_SHARDS.some(({ id }) => id === phase.id),
   );
   return [
     VERIFICATION_SCHEDULING_SECTION_START,
@@ -180,7 +193,7 @@ export function renderVerificationSchedulingSection(lanes = LANES) {
     '',
     renderLaneCatalogTable(lanes),
     '',
-    `\`ci:fast\` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, and **typecheck** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every \`typecheck:*\` lane through \`scripts/typecheck-aggregate.mjs\` (station#4273), preceded by \`build:connect\` because \`typecheck:ui\` resolves \`@kontourai/station-connect\` through its \`dist\`. It was added because the lane was previously uncovered per-PR: a red \`main\` displayed green on every contributor's checks, twice in 24 hours. Its ${ciFast?.weight ?? 'unknown'}-unit reservation overlaps the ${ordinary?.weight ?? 'unknown'}-unit \`${ordinary?.id ?? 'full-test'}\` phase so feedback can admit while completion work runs.`,
+    `\`ci:fast\` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, and **typecheck** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every \`typecheck:*\` lane through \`scripts/typecheck-aggregate.mjs\` (station#4273), preceded by \`build:connect\` because \`typecheck:ui\` resolves \`@kontourai/station-connect\` through its \`dist\`. It was added because the lane was previously uncovered per-PR: a red \`main\` displayed green on every contributor's checks, twice in 24 hours. Its ${ciFast?.weight ?? 'unknown'}-unit reservation overlaps each ${ordinary?.weight ?? 'unknown'}-unit ordinary shard phase so feedback can admit while completion work runs.`,
     '',
     '`full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:',
     renderFullRegressionPhaseSchedule(lanes),
@@ -407,8 +420,8 @@ export function verificationPolicyErrors({
   const ciFast = lanes.find((lane) => lane.id === 'ci-fast');
   const fullTests =
     lanes.find((lane) => lane.id === 'full-regression')?.phases ?? [];
-  const ordinaryFullTest = fullTests.find(
-    (phase) => phase.id === 'test-full-ordinary',
+  const ordinaryFullTests = fullTests.filter((phase) =>
+    FULL_REGRESSION_ORDINARY_SHARDS.some(({ id }) => id === phase.id),
   );
   if (ciFast?.weight !== CI_FAST_RESERVED_WEIGHT)
     errors.push(
@@ -436,17 +449,46 @@ export function verificationPolicyErrors({
     errors.push(
       `full-regression must checkpoint all ${FULL_REGRESSION_TEST_PHASE_IDS.length} resource-profiled Vitest groups`,
     );
-  if (ordinaryFullTest?.weight !== FULL_REGRESSION_TEST_WEIGHT)
+  if (fullTests.some((phase) => phase.id === 'test-full-ordinary'))
     errors.push(
-      `full-regression test-full-ordinary phase must use exactly ${FULL_REGRESSION_TEST_WEIGHT} coordinator weight`,
+      'full-regression must not retain the stale monolithic ordinary phase',
     );
+  if (manifest.scripts?.['test:full:ordinary:raw'])
+    errors.push(
+      'package scripts must not retain the stale monolithic ordinary runner',
+    );
+  for (const expected of FULL_REGRESSION_ORDINARY_SHARDS) {
+    const matches = fullTests.filter((phase) => phase.id === expected.id);
+    if (matches.length !== 1)
+      errors.push(`full-regression must declare ${expected.id} exactly once`);
+    const phase = matches[0];
+    if (
+      phase?.command !== expected.command ||
+      phase?.privateScript !== expected.privateScript
+    )
+      errors.push(
+        `full-regression ${expected.id} must use its exact shard command and private script`,
+      );
+    if (phase?.weight !== FULL_REGRESSION_TEST_WEIGHT)
+      errors.push(
+        `full-regression ${expected.id} must use exactly ${FULL_REGRESSION_TEST_WEIGHT} coordinator weight`,
+      );
+    if (phase?.timeoutMs !== FULL_REGRESSION_ORDINARY_TIMEOUT_MS)
+      errors.push(
+        `full-regression ${expected.id} must use the exact ${FULL_REGRESSION_ORDINARY_TIMEOUT_MS / 60_000}-minute execution deadline`,
+      );
+    if (manifest.scripts?.[expected.privateScript] !== expected.packageScript)
+      errors.push(
+        `package script ${expected.privateScript} must use exact Vitest shard ${expected.packageScript.split('--shard=')[1]}`,
+      );
+  }
   if (
     !Number.isInteger(ciFast?.weight) ||
-    !Number.isInteger(ordinaryFullTest?.weight) ||
-    ciFast.weight + ordinaryFullTest.weight > 100
+    ordinaryFullTests.some((phase) => !Number.isInteger(phase?.weight)) ||
+    ordinaryFullTests.some((phase) => ciFast.weight + phase.weight > 100)
   )
     errors.push(
-      'ci:fast and full-regression test-full-ordinary must fit within the 100-unit host capacity',
+      'ci:fast and every full-regression ordinary shard must fit within the 100-unit host capacity',
     );
   if (manifest.scripts?.['verify:static:raw']?.includes('test:full:raw'))
     errors.push('verify:static:raw must not embed the full Vitest corpus');

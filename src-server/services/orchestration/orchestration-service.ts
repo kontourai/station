@@ -16,6 +16,7 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   sessionDeliveryChannels,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   AgentRunSummary,
   ConversationHandoffStatusProjection,
@@ -39,7 +40,7 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
-  ProviderKind,
+  EngineId,
   ProviderSendTurnInput,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
@@ -85,10 +86,7 @@ import {
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
 import type { UsagePricingSnapshotCapture } from '../../analytics/usage-pricing-snapshot-capture.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
-import {
-  engineIdForAdapter,
-  runtimeIdForAdapter,
-} from '../../providers/adapter-identity.js';
+import { engineIdForAdapter } from '../../providers/adapter-identity.js';
 import type {
   ProviderAdapterShape,
   ProviderSessionStartInput,
@@ -354,8 +352,8 @@ function chatStartGateReason(error: unknown): string {
 
 /**
  * Station-vs-external collapse of an adapter's engine identity
- * (docs/design/agent-engine-unification.md §4.1; archive#1003 Phase B —
- * replaces the `executionClass` read) for telemetry/projection sites that
+ * (docs/design/agent-engine-unification.md §4.1; archive#1003 Phase B) for
+ * telemetry/projection sites that
  * only need the binary distinction (plus 'unknown' for an unresolvable
  * adapter), not the full engine id. `acp` is not derived through here —
  * callers that want it check `adapter.provider === 'acp'` first, since it's
@@ -375,7 +373,7 @@ function chatStartGateAgentType(adapter: ProviderAdapterShape): string {
 }
 
 export interface OrchestrationProviderSummary {
-  provider: ProviderKind;
+  provider: EngineId;
   prerequisites: Prerequisite[];
   activeSessions: number;
 }
@@ -503,7 +501,7 @@ interface OrchestrationServiceOptions {
    * adapter's own fail-closed ruling authoritative.
    */
   resumeCursorSupport?: (requested: {
-    provider: ProviderKind;
+    provider: EngineId;
     connectionId?: string;
   }) => boolean | undefined;
   /** Real connection Adapter composed by StationRuntime; never a recovery protocol. */
@@ -1026,7 +1024,7 @@ export class OrchestrationService {
   private readonly consumedAdapterEventStreams =
     new WeakSet<ProviderAdapterShape>();
   private readonly activeEventAdapters = new Map<
-    ProviderKind,
+    EngineId,
     ProviderAdapterShape
   >();
   private readonly adapterEventControllers = new Map<
@@ -1074,7 +1072,7 @@ export class OrchestrationService {
   private readonly connectionSmoke: ConnectionSmoke;
   /** Cooperative stop & deferred interrupt (epic archive#4024, archive#4204). */
   private readonly cooperativeStop: CooperativeStop;
-  private readonly threadProviders = new Map<string, ProviderKind>();
+  private readonly threadProviders = new Map<string, EngineId>();
   private readonly clientOriginTurns = new ClientOriginTurnPropagation();
   /**
    * archive#4075 stage 2 review round 1 (F2, MEDIUM/HIGH): `sendTurn`'s
@@ -2476,7 +2474,7 @@ export class OrchestrationService {
     return providers.sort((a, b) => a.provider.localeCompare(b.provider));
   }
 
-  async getProviderCommands(provider: ProviderKind): Promise<
+  async getProviderCommands(provider: EngineId): Promise<
     Array<{
       name: string;
       description: string;
@@ -2494,7 +2492,7 @@ export class OrchestrationService {
    * The caller cannot select or mint a sandbox policy through this Interface;
    * it can only refuse an Adapter that lacks the reviewed native guarantee.
    */
-  supportsReadOnlyReview(provider: ProviderKind): boolean {
+  supportsReadOnlyReview(provider: EngineId): boolean {
     return (
       this.options.adapterRegistry.get(provider)?.metadata.reviewIsolation ===
       'read-only'
@@ -2502,7 +2500,7 @@ export class OrchestrationService {
   }
 
   async getProviderModels(
-    provider: ProviderKind,
+    provider: EngineId,
     options?: { signal?: AbortSignal },
   ): Promise<
     Array<{
@@ -2953,7 +2951,7 @@ export class OrchestrationService {
   async resolveConversationContinuation(
     conversationId: string,
     authority: SessionReadScope,
-    requested: { provider: ProviderKind; connectionId?: string },
+    requested: { provider: EngineId; connectionId?: string },
   ): Promise<{
     sessionId: string;
     startRequired: boolean;
@@ -4735,7 +4733,7 @@ export class OrchestrationService {
           const engineId = matrix?.engineId ?? engineIdForAdapter(adapter);
           steerMetricEngine = engineId;
           const engineName =
-            matrix?.displayName ?? adapter.metadata.displayName;
+            engineDisplayLabel(engineId) ?? adapter.metadata.displayName;
           if (!matrix?.midTurnSteer || !adapter.steerTurn) {
             const result: SteerTurnResult = {
               outcome: 'unsupported-engine',
@@ -5067,7 +5065,7 @@ export class OrchestrationService {
 
   seedSessionRecord(input: {
     threadId: string;
-    provider: ProviderKind;
+    provider: EngineId;
     model?: string;
     status?: ProviderSession['status'];
     controlMode?: ProviderSession['controlMode'];
@@ -5219,7 +5217,7 @@ export class OrchestrationService {
     return this.flowPolicy.readSessionWorkflowState(threadId, authority);
   }
 
-  private runtimeKindFor(provider: ProviderKind): string {
+  private runtimeKindFor(provider: EngineId): string {
     if (provider === 'acp') return 'acp';
     return engineExecutionForAdapter(
       this.options.adapterRegistry.get(provider),
@@ -5649,7 +5647,7 @@ export class OrchestrationService {
     const prerequisites = await this.readPrerequisites(adapter, connectionId);
     const readiness = resolveRuntimeAdapterReadiness({
       adapter,
-      runtimeId: runtimeIdForAdapter(adapter),
+      engineId: engineIdForAdapter(adapter),
       enabled: true,
       prerequisites,
     });
@@ -5671,7 +5669,7 @@ export class OrchestrationService {
     );
   }
 
-  private requireAdapter(provider: ProviderKind): ProviderAdapterShape {
+  private requireAdapter(provider: EngineId): ProviderAdapterShape {
     const adapter = this.options.adapterRegistry.get(provider);
     if (!adapter) {
       throw new Error(`Provider adapter not registered: ${provider}`);
@@ -5680,11 +5678,11 @@ export class OrchestrationService {
   }
 
   /** Registered adapter declaration for execution-target preflight. */
-  getProviderAdapter(provider: ProviderKind): ProviderAdapterShape | undefined {
+  getProviderAdapter(provider: EngineId): ProviderAdapterShape | undefined {
     return this.options.adapterRegistry.get(provider);
   }
 
-  private commandProvider(command: OrchestrationCommand): ProviderKind | null {
+  private commandProvider(command: OrchestrationCommand): EngineId | null {
     if (command.type === 'adoptSession') {
       return (
         this.sessionReadModel.get(command.sourceThreadId)?.provider ??

@@ -6,6 +6,7 @@ import {
   resolveEngineCapabilityMatrix,
   UNKNOWN_EXTERNAL_ENGINE_MATRIX,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   resolveModelLaunchPlan,
@@ -235,7 +236,6 @@ describe('MuseAdapter', () => {
     const adapter: ProviderAdapterShape = new MuseAdapter();
     expect(adapter.provider).toBe('muse');
     expect(adapter.metadata.displayName).toBe('Muse Code');
-    expect(adapter.metadata.runtimeId).toBe('muse-runtime');
     expect(adapter.metadata.engineId).toBe('muse');
     expect(adapter.metadata.builtin).toBe(true);
     // `abortSettlement` is consulted ONLY where a discovery call must settle
@@ -1762,17 +1762,20 @@ describe('Muse registration', () => {
       .filter(Boolean);
     expect(registered).toContain('museAdapter');
     expect(registered).toContain('codexAdapter');
+    expect(registered).toContain('stationAgentAdapter');
+    expect(registered).not.toContain('bedrockAdapter');
+    expect(registered).not.toContain('ollamaAdapter');
   });
 
   test('resolveEngineCapabilityMatrix does not fall back to UNKNOWN for muse', () => {
     expect(ENGINE_CAPABILITY_MATRICES.muse).toBeDefined();
-    const matrix = resolveEngineCapabilityMatrix('muse-runtime', {
+    const matrix = resolveEngineCapabilityMatrix('muse', {
       type: 'muse',
     });
     expect(matrix).toBe(ENGINE_CAPABILITY_MATRICES.muse);
     expect(matrix).not.toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
     expect(matrix.engineId).toBe('muse');
-    expect(matrix.displayName).toBe('Muse Code');
+    expect(engineDisplayLabel(matrix.engineId)).toBe('Muse Code');
   });
 
   test('muse counts as chat-capable while claiming no unproven delivery surface', () => {

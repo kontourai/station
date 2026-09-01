@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
@@ -56,7 +56,7 @@ export interface ConnectionSmokeDeps {
     label: string,
     deadlineAt: number,
   ) => Promise<void>;
-  adapterFor: (provider: ProviderKind) => ProviderAdapterShape | undefined;
+  adapterFor: (provider: EngineId) => ProviderAdapterShape | undefined;
   /** C7's ONE raw read, as a named boolean — never a Map handle (T13). */
   hasThreadProvider: (threadId: string) => boolean;
   /** Deliberately NEVER rescinded on the smoke path — see the class docblock. */

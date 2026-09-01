@@ -15,8 +15,8 @@ diagnosis requires them.
 - An **agent** is the working identity you choose for a Task or Session.
 - A **Station agent** is executed by Station's engine. Station owns its prompt,
   skills, tools, commands, and Model choice.
-- An **External agent** is executed by another engine such as Claude Code,
-  Codex, OpenCode, or Kiro. The agent app owns its behavior and tool loop.
+- An **External agent** is executed by another supported engine. That engine
+  owns its behavior and tool loop.
 - A **Provider** is the user-facing connection to a model service or agent app.
 - A **Model** is the inference option selected within a Provider.
 
@@ -25,12 +25,15 @@ as ACP are connection details, not agent types users need to choose.
 
 Concrete examples:
 
-- **Local model:** Ollama is the Provider, `qwen2.5` is the Model, and a Station
-  agent uses Station's engine to run it.
-- **Coding agent app:** Codex is the Provider and engine; the Agent is an
-  External agent because Codex owns its tool loop.
-- **Hosted model:** Bedrock is the Provider, a Claude model is the Model, and a
-  Station agent owns the prompt, skills, and tools around it.
+- **Local model:** a local model service is the Provider, one of its installed
+  models is the Model, and a Station agent uses Station's engine to run it.
+- **External engine:** the engine is the Provider; the Agent is an External
+  agent because that engine owns its tool loop.
+- **Hosted model:** a hosted model service is the Provider, one of its models is
+  the Model, and a Station agent owns the prompt, skills, and tools around it.
+
+See the [Connections guide](https://github.com/kontourai/station/blob/main/docs/guides/connections.md)
+for the current supported Providers and their setup details.
 
 ## Projects, Tasks, And Sessions
 

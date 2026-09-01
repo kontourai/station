@@ -6,6 +6,7 @@ import {
   installMockOrchestrationConversationEventWindow,
   installMockOrchestrationEventWindow,
   installMockOrchestrationSse,
+  openChatRegion,
   seedActiveChats,
   seedOrchestrationRoutes,
   waitForMockOrchestrationSse,
@@ -232,7 +233,7 @@ test.describe('Orchestration Chat Flow', () => {
           providers: {
             configured: [
               {
-                id: 'codex-runtime',
+                id: 'codex',
                 type: 'codex',
                 enabled: true,
                 capabilities: ['llm'],
@@ -243,7 +244,7 @@ test.describe('Orchestration Chat Flow', () => {
           capabilities: {
             chat: {
               ready: true,
-              source: 'codex-runtime',
+              source: 'codex',
             },
           },
         }),
@@ -283,9 +284,7 @@ test.describe('Orchestration Chat Flow', () => {
     });
     await page.reload();
     await dismissSetupLauncher(page);
-    await page
-      .getByRole('button', { name: 'Expand chat dock', exact: true })
-      .click();
+    await openChatRegion(page);
     await waitForMockOrchestrationSse(page);
     await expect(page.getByText('Ready.', { exact: true })).toBeVisible();
 
@@ -421,9 +420,7 @@ test.describe('Orchestration Chat Flow', () => {
       .toBe('root');
 
     await page.setViewportSize({ width: 1280, height: 720 });
-    await page
-      .getByRole('button', { name: 'Expand chat dock', exact: true })
-      .click();
+    await openChatRegion(page);
 
     await expect
       .poll(() =>

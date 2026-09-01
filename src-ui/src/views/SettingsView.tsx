@@ -115,6 +115,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
   const { data: provenance } = useConfigProvenanceQuery();
   const {
     chatFontSize,
+    featureSettings,
     hapticsEnabled,
     developerToolsEnabled,
     sidebarSections,
@@ -763,6 +764,22 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       {chatFontSize ?? config.defaultChatFontSize ?? 14}px
                     </span>
                   </div>
+                }
+              />
+              <PageRow
+                {...settingsRow('smooth-answer-reveal')}
+                description="Reveal incoming answer text steadily instead of showing network bursts all at once."
+                control={
+                  <Toggle
+                    checked={featureSettings?.smoothReveal ?? false}
+                    onChange={(checked) =>
+                      setDeviceSetting('featureSettings', {
+                        ...featureSettings,
+                        smoothReveal: checked,
+                      })
+                    }
+                    label={settingsRow('smooth-answer-reveal').title}
+                  />
                 }
               />
               <PageRow

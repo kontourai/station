@@ -65,7 +65,7 @@ const taskMetrics = vi.hoisted(() => ({
 
 vi.mock('../../../telemetry/metrics.js', () => taskMetrics);
 
-import { engineRuntimeId } from '@kontourai/station-contracts/agent-identity';
+import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { putProject } from '../../../domain/__tests__/file-storage-test-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
@@ -113,9 +113,8 @@ class PinFakeAdapter implements ProviderAdapterShape {
     displayName: 'Claude Runtime',
     description: 'minimal adapter for the §4.1 pin',
     capabilities: ['agent-runtime'],
-    runtimeId: engineRuntimeId('claude-runtime'),
+    engineId: engineId('claude'),
     builtin: true,
-    executionClass: 'connected',
     modelLaunch: {
       defaultAtStart: 'engine-selected',
       omissionAtResume: 'engine-selected',

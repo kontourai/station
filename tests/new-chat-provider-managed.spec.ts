@@ -423,9 +423,9 @@ test('new chat lists persisted engine defaults and keeps selected and hovered te
         prerequisites: [],
       }),
       agentConnectionFixture({
-        id: 'codex-runtime',
+        id: 'codex',
         kind: 'agent',
-        type: 'codex-runtime',
+        type: 'codex',
         name: 'Codex',
         description: 'Codex Agent',
         enabled: true,
@@ -495,9 +495,9 @@ test('new chat preserves context, search, keyboard, pointer, and close interacti
         prerequisites: [],
       }),
       agentConnectionFixture({
-        id: 'codex-runtime',
+        id: 'codex',
         kind: 'agent',
-        type: 'codex-runtime',
+        type: 'codex',
         name: 'Codex',
         description: 'Codex Agent',
         enabled: true,
@@ -595,9 +595,9 @@ test('new chat selected and hovered rows meet contrast in light and dark themes'
   await seedRoutes(page, {
     runtimeConnections: [
       agentConnectionFixture({
-        id: 'codex-runtime',
+        id: 'codex',
         kind: 'agent',
-        type: 'codex-runtime',
+        type: 'codex',
         name: 'Codex',
         description: 'Connected coding runtime',
         enabled: true,
@@ -976,9 +976,9 @@ test('new chat keeps engine diagnostics out of the mobile Agent chooser', async 
   await seedRoutes(page, {
     runtimeConnections: [
       agentConnectionFixture({
-        id: 'codex-runtime',
+        id: 'codex',
         kind: 'agent',
-        type: 'codex-runtime',
+        type: 'codex',
         name: 'Codex',
         enabled: true,
         capabilities: ['agent-runtime'],
@@ -1055,9 +1055,9 @@ test('new chat shows degraded engine compatibility messaging from its catalog st
   await seedRoutes(page, {
     runtimeConnections: [
       agentConnectionFixture({
-        id: 'codex-runtime',
+        id: 'codex',
         kind: 'agent',
-        type: 'codex-runtime',
+        type: 'codex',
         name: 'Codex',
         enabled: true,
         capabilities: ['agent-runtime'],

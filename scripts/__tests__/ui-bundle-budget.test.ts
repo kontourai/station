@@ -1,13 +1,17 @@
+import { spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -17,6 +21,129 @@ import {
   normalizeViteContentHashEntropy,
   shouldEnforceUiBundleBudget,
 } from '../ui-bundle-budget.mjs';
+
+const repositoryRoot = resolve(import.meta.dirname, '../..');
+const mergeDriver = join(repositoryRoot, 'scripts/merge-ui-bundle-budget.mjs');
+const uiBundleBudget = join(repositoryRoot, 'scripts/ui-bundle-budget.mjs');
+
+describe('UI bundle budget merge-driver entry point', () => {
+  const fixtures: string[] = [];
+  afterEach(() => {
+    while (fixtures.length > 0)
+      rmSync(fixtures.pop()!, { recursive: true, force: true });
+  });
+
+  function fixture() {
+    const root = mkdtempSync(join(tmpdir(), 'station-ui-budget-driver-test-'));
+    fixtures.push(root);
+    const bin = join(root, 'bin');
+    mkdirSync(bin);
+    const fakeNpmModule = join(bin, 'npm.mjs');
+    writeFileSync(
+      fakeNpmModule,
+      [
+        "import { mkdirSync, writeFileSync } from 'node:fs';",
+        "import { join } from 'node:path';",
+        "if (process.env.FAKE_BUILD_FAIL === '1') process.exit(42);",
+        'const output = process.env.STATION_BUILD_UI_DIR;',
+        "mkdirSync(join(output, 'assets'), { recursive: true });",
+        'writeFileSync(join(output, \'index.html\'), \'<script src="/assets/entry.js"></script><link rel="stylesheet" href="/assets/entry.css">\');',
+        "writeFileSync(join(output, 'assets/entry.js'), 'console.log(\"merged tree\");\\n');",
+        "writeFileSync(join(output, 'assets/entry.css'), 'body { color: rebeccapurple; }\\n');",
+      ].join('\n'),
+    );
+    const npm = join(bin, 'npm');
+    writeFileSync(
+      npm,
+      `#!/bin/sh\nexec "${process.execPath}" "${fakeNpmModule}" "$@"\n`,
+    );
+    chmodSync(npm, 0o755);
+    writeFileSync(
+      join(bin, 'npm.cmd'),
+      `@echo off\r\n"${process.execPath}" "${fakeNpmModule}" %*\r\n`,
+    );
+    const paths = {
+      ancestor: join(root, 'ancestor.json'),
+      ours: join(root, 'ours.json'),
+      theirs: join(root, 'theirs.json'),
+    };
+    writeFileSync(
+      paths.ancestor,
+      '{"entryJsGzipBytes":1,"entryCssGzipBytes":1}\n',
+    );
+    writeFileSync(paths.ours, 'OURS MUST SURVIVE FAILURE\n');
+    writeFileSync(
+      paths.theirs,
+      '{"entryJsGzipBytes":3,"entryCssGzipBytes":3}\n',
+    );
+    return { bin, paths };
+  }
+
+  function invoke(
+    subject: ReturnType<typeof fixture>,
+    extraEnv: Record<string, string> = {},
+  ) {
+    return spawnSync(
+      process.execPath,
+      [
+        mergeDriver,
+        subject.paths.ancestor,
+        subject.paths.ours,
+        subject.paths.theirs,
+        '7',
+        'scripts/ui-bundle-budget.json',
+      ],
+      {
+        cwd: repositoryRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          ...extraEnv,
+          PATH: `${subject.bin}${delimiter}${process.env.PATH ?? ''}`,
+        },
+        windowsHide: true,
+      },
+    );
+  }
+
+  it('keeps the UI budget import inert under a suffix-colliding argv path', () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `process.argv[1] = ${JSON.stringify('/tmp/fixture-ui-bundle-budget.mjs')}; await import(${JSON.stringify(pathToFileURL(mergeDriver).href)});`,
+      ],
+      { cwd: repositoryRoot, encoding: 'utf8', windowsHide: true },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).not.toContain('dist-ui/index.html');
+    expect(result.stdout).not.toContain('Initial UI bundle');
+    expect(uiBundleBudget.endsWith('ui-bundle-budget.mjs')).toBe(true);
+  });
+
+  it('overwrites %A with the freshly measured merged-tree values', () => {
+    const subject = fixture();
+    const result = invoke(subject);
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(readFileSync(subject.paths.ours, 'utf8'))).toEqual({
+      entryJsGzipBytes: gzipSync('console.log("merged tree");\n').byteLength,
+      entryCssGzipBytes: gzipSync('body { color: rebeccapurple; }\n')
+        .byteLength,
+    });
+  });
+
+  it('exits non-zero after a failed build without writing %A', () => {
+    const subject = fixture();
+    const before = readFileSync(subject.paths.ours, 'utf8');
+    const result = invoke(subject, { FAKE_BUILD_FAIL: '1' });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(
+      're-measurement failed; conflict left unresolved',
+    );
+    expect(readFileSync(subject.paths.ours, 'utf8')).toBe(before);
+  });
+});
 
 describe('bundle dependency provenance', () => {
   const roots: string[] = [];

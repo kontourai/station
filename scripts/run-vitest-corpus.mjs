@@ -20,10 +20,15 @@ const OUTPUT_LIMIT_BYTES = 2 * 1024 * 1024;
 const FAILURE_LOG_TAIL_BYTES = 16 * 1024;
 const SETTLEMENT_MS = 5_000;
 export const PROCESS_HEAVY_MAX_WORKERS = 2;
+// Vitest's native hash partitioning is deterministic, but four slices left a
+// passing-only hosted slice alive past its 20-minute fence (#1156). Eight
+// slices preserve the exact same corpus while making every bounded terminal
+// result independently observable.
+export const ORDINARY_SHARD_COUNT = 8;
 
 export const VITEST_CORPUS_GROUPS = Object.freeze([
   Object.freeze({ name: 'ordinary', maxWorkers: ORDINARY_MAX_WORKERS }),
-  // Direct child-process use requires isolation from the four-worker ordinary
+  // Direct child-process use requires isolation from the ordinary worker
   // pool, not global serialization. Two isolated Vitest fork workers preserve
   // the reviewed resource boundary while allowing independent temp-dir/port
   // fixtures to overlap. Shared repo outputs and dogfood remain truly serial.
@@ -52,6 +57,41 @@ export const VITEST_CORPUS_GROUP_NAMES = Object.freeze(
   VITEST_CORPUS_GROUPS.map((group) => group.name),
 );
 
+function ordinaryShardDescriptor(shardIndex) {
+  return Object.freeze({
+    ...VITEST_CORPUS_GROUPS[0],
+    shard: `${shardIndex}/${ORDINARY_SHARD_COUNT}`,
+    resultName: `ordinary-${shardIndex}-of-${ORDINARY_SHARD_COUNT}`,
+  });
+}
+
+export const ORDINARY_SHARD_DESCRIPTORS = Object.freeze(
+  Array.from({ length: ORDINARY_SHARD_COUNT }, (_, index) =>
+    ordinaryShardDescriptor(index + 1),
+  ),
+);
+
+function corpusDescriptors(groupName, shard) {
+  if (!groupName)
+    return [...ORDINARY_SHARD_DESCRIPTORS, ...VITEST_CORPUS_GROUPS.slice(1)];
+  if (groupName === 'ordinary') {
+    const selected = ORDINARY_SHARD_DESCRIPTORS.find(
+      (descriptor) => descriptor.shard === shard,
+    );
+    if (!selected)
+      throw new Error(
+        `ordinary Vitest corpus requires exactly --shard=<1-${ORDINARY_SHARD_COUNT}>/${ORDINARY_SHARD_COUNT}`,
+      );
+    return [selected];
+  }
+  if (shard) throw new Error('--shard is supported only with --group=ordinary');
+  const selected = VITEST_CORPUS_GROUPS.find(
+    (descriptor) => descriptor.name === groupName,
+  );
+  if (!selected) throw new Error(`unknown Vitest corpus group '${groupName}'`);
+  return [selected];
+}
+
 function groupFiles(groups, name) {
   const keys = {
     ordinary: 'ordinary',
@@ -77,9 +117,17 @@ export function buildVitestCommand(
     `--maxWorkers=${group.maxWorkers}`,
   ];
   if (group.name === 'ordinary') {
+    if (!ORDINARY_SHARD_DESCRIPTORS.some(({ shard }) => shard === group.shard))
+      throw new Error(
+        `ordinary Vitest corpus requires exactly one of ${ORDINARY_SHARD_DESCRIPTORS.map(({ shard }) => `--shard=${shard}`).join(', ')}`,
+      );
     return [
       ...command,
+      '--reporter=default',
+      `--reporter=${resolve(root, 'scripts/vitest-inflight-reporter.mjs')}`,
       ...ordinaryExcludes.map((pattern) => `--exclude=${pattern}`),
+      `--shard=${group.shard}`,
+      ...(group.noFileParallelism ? ['--no-file-parallelism'] : []),
     ];
   }
   return [
@@ -111,6 +159,7 @@ export function runWindowsSerializedCorpus({
   spawnSync = defaultSpawnSync,
   signal,
   groupName,
+  shard,
   groups,
 } = {}) {
   if (signal?.aborted)
@@ -118,14 +167,12 @@ export function runWindowsSerializedCorpus({
       'windows-serialized-fallback',
       `Vitest corpus cancelled: ${signal.reason ?? 'aborted'}`,
     );
-  const selected = groupName
-    ? VITEST_CORPUS_GROUPS.find((group) => group.name === groupName)
-    : null;
-  if (groupName && !selected)
-    return terminalFailure(
-      'windows-serialized-fallback',
-      `unknown Vitest corpus group '${groupName}'`,
-    );
+  let selected = null;
+  try {
+    selected = groupName ? corpusDescriptors(groupName, shard)[0] : null;
+  } catch (error) {
+    return terminalFailure('windows-serialized-fallback', error);
+  }
   const args = selected
     ? buildVitestCommand(
         { ...selected, maxWorkers: 1, noFileParallelism: true },
@@ -142,7 +189,9 @@ export function runWindowsSerializedCorpus({
     windowsHide: true,
     maxBuffer: OUTPUT_LIMIT_BYTES,
   });
-  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  const stdout = result.stdout ?? '';
+  const stderr = result.stderr ?? '';
+  const output = `${stdout}${stderr}`;
   const error =
     result.error ??
     (result.status === 0
@@ -151,11 +200,16 @@ export function runWindowsSerializedCorpus({
           `serialized Vitest exited with status ${result.status ?? 'unknown'}`,
         ));
   return {
-    name: selected?.name ?? 'windows-serialized-fallback',
+    name:
+      selected?.resultName ?? selected?.name ?? 'windows-serialized-fallback',
     status: result.status,
     passed: result.status === 0 && !error,
     error: error ? String(error.message ?? error) : null,
+    stdout,
+    stderr,
     output,
+    stdoutBytes: Buffer.byteLength(stdout),
+    stderrBytes: Buffer.byteLength(stderr),
     outputBytes: Buffer.byteLength(output),
   };
 }
@@ -173,7 +227,12 @@ function terminalFailure(name, reason) {
     status: null,
     passed: false,
     error: String(reason),
+    stdout: '',
+    stderr: '',
     output: '',
+    stdoutBytes: 0,
+    stderrBytes: 0,
+    outputBytes: 0,
   };
 }
 
@@ -191,14 +250,15 @@ export async function runVitestGroup(
     signal,
   } = {},
 ) {
+  const resultName = group.resultName ?? group.name;
   if (signal?.aborted) {
     return terminalFailure(
-      group.name,
+      resultName,
       `Vitest corpus cancelled: ${signal.reason ?? 'aborted'}`,
     );
   }
   const args = buildVitestCommand(group, files, { root });
-  const label = `Vitest corpus ${group.name}`;
+  const label = `Vitest corpus ${resultName}`;
   let execution;
   try {
     execution = execute(process.execPath, args, spawnProcess, label, {
@@ -207,7 +267,7 @@ export async function runVitestGroup(
       windowsHide: true,
     });
   } catch (error) {
-    return terminalFailure(group.name, error);
+    return terminalFailure(resultName, error);
   }
   let cancellation = null;
   let cleanupPromise = null;
@@ -247,11 +307,15 @@ export async function runVitestGroup(
       const cleanup = await cleanupPromise;
       const captured = output.finish();
       return {
-        name: group.name,
+        name: resultName,
         status: null,
         passed: false,
         error: `${label} cancelled: ${completion.reason}`,
+        stdout: captured.stdout.text,
+        stderr: captured.stderr.text,
         output: `${captured.stdout.text}${captured.stderr.text}`,
+        stdoutBytes: captured.stdout.sourceBytes,
+        stderrBytes: captured.stderr.sourceBytes,
         outputBytes: captured.stdout.sourceBytes + captured.stderr.sourceBytes,
         cleanup,
       };
@@ -278,11 +342,15 @@ export async function runVitestGroup(
               )
             : null);
     return {
-      name: group.name,
+      name: resultName,
       status: result.status,
       passed: result.status === 0 && !error,
       error: error ? String(error.message ?? error) : null,
+      stdout: captured.stdout.text,
+      stderr: captured.stderr.text,
       output: `${captured.stdout.text}${captured.stderr.text}`,
+      stdoutBytes: captured.stdout.sourceBytes,
+      stderrBytes: captured.stderr.sourceBytes,
       outputBytes: captured.stdout.sourceBytes + captured.stderr.sourceBytes,
       cleanup,
     };
@@ -291,14 +359,20 @@ export async function runVitestGroup(
   }
 }
 
-function emitResult(result) {
+export function emitResult(result) {
   const state = result.passed ? 'PASS' : 'FAIL';
   process.stdout.write(
     `[vitest-corpus] ${result.name}: ${state}; ${result.outputBytes ?? 0} byte(s) captured\n`,
   );
   if (!result.passed) {
     process.stderr.write(
-      `[vitest-corpus] ${result.name}: ${result.error ?? 'non-zero Vitest status'}\n${tail(result.output)}\n`,
+      `[vitest-corpus] ${result.name}: ${result.error ?? 'non-zero Vitest status'}\n`,
+    );
+    process.stdout.write(
+      `[vitest-corpus] ${result.name} stdout tail:\n${tail(result.stdout ?? '') || '<empty>'}\n`,
+    );
+    process.stderr.write(
+      `[vitest-corpus] ${result.name} stderr tail:\n${tail(result.stderr ?? '') || '<empty>'}\n`,
     );
   }
 }
@@ -313,6 +387,7 @@ export async function runVitestCorpus({
   signal,
   onResult = emitResult,
   groupName,
+  shard,
 } = {}) {
   if (signal?.aborted) {
     const result = terminalFailure(
@@ -323,26 +398,12 @@ export async function runVitestCorpus({
     return { passed: false, results: [result] };
   }
   const resolvedGroups = groups ?? discoverVitestResourceGroups({ root });
-  if (platform === 'win32') {
-    const result = runWindowsSerialized({
-      root,
-      signal,
-      groupName,
-      groups: resolvedGroups,
-    });
-    onResult?.(result);
-    return { passed: result.passed, results: [result] };
-  }
-  const descriptors = groupName
-    ? VITEST_CORPUS_GROUPS.filter((group) => group.name === groupName)
-    : VITEST_CORPUS_GROUPS;
-  if (descriptors.length === 0)
-    throw new Error(`unknown Vitest corpus group '${groupName}'`);
+  const descriptors = corpusDescriptors(groupName, shard);
   const results = [];
   for (const descriptor of descriptors) {
     if (signal?.aborted) {
       const result = terminalFailure(
-        descriptor.name,
+        descriptor.resultName ?? descriptor.name,
         `Vitest corpus cancelled: ${signal.reason ?? 'aborted'}`,
       );
       results.push(result);
@@ -350,7 +411,16 @@ export async function runVitestCorpus({
       return { passed: false, results };
     }
     const files = groupFiles(resolvedGroups, descriptor.name);
-    const result = await runGroup(descriptor, files, { root, signal });
+    const result =
+      platform === 'win32'
+        ? runWindowsSerialized({
+            root,
+            signal,
+            groupName: descriptor.name,
+            shard: descriptor.shard,
+            groups: resolvedGroups,
+          })
+        : await runGroup(descriptor, files, { root, signal });
     results.push(result);
     onResult?.(result);
     if (!result.passed) return { passed: false, results };
@@ -360,13 +430,35 @@ export async function runVitestCorpus({
 
 export function parseVitestCorpusArguments(args) {
   if (args.length === 0) return {};
-  if (args.length !== 1 || !args[0].startsWith('--group='))
+  if (args.length > 2)
     throw new Error(
-      'usage: node scripts/run-vitest-corpus.mjs [--group=<name>]',
+      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/8]]',
     );
-  const groupName = args[0].slice('--group='.length);
+  const values = new Map();
+  for (const argument of args) {
+    const match = argument.match(/^--(group|shard)=(.+)$/);
+    if (!match || values.has(match[1]))
+      throw new Error(
+        'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/8]]',
+      );
+    values.set(match[1], match[2]);
+  }
+  const groupName = values.get('group');
+  const shard = values.get('shard');
+  if (!groupName)
+    throw new Error(
+      'usage: node scripts/run-vitest-corpus.mjs [--group=<name> [--shard=<index>/8]]',
+    );
   if (!VITEST_CORPUS_GROUP_NAMES.includes(groupName))
     throw new Error(`unknown Vitest corpus group '${groupName}'`);
+  if (groupName === 'ordinary') {
+    if (!ORDINARY_SHARD_DESCRIPTORS.some((entry) => entry.shard === shard))
+      throw new Error(
+        `ordinary Vitest corpus requires exactly --shard=<1-${ORDINARY_SHARD_COUNT}>/${ORDINARY_SHARD_COUNT}`,
+      );
+    return { groupName, shard };
+  }
+  if (shard) throw new Error('--shard is supported only with --group=ordinary');
   return { groupName };
 }
 

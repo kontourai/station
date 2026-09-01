@@ -196,8 +196,6 @@ export interface InitializeRuntimeDeps {
   resolveBuiltinEngineBinding?: (
     appConfig: AppConfig,
   ) => Promise<BuiltinAgentEngineBinding | null>;
-  /** Runs after runtime plugins are composed, before revision-fenced agents. */
-  migrateBuiltinEngineConnectionSelection?: () => Promise<AppConfig>;
   orchestrationEventStore: EventStore;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -308,11 +306,7 @@ export function initializeRuntimeBackgroundTasks(
     loadACPConfig: async () => (await configLoader.loadACPConfig()) as any,
     loadRegisteredRuntimeConnectionIds: async () => {
       const registry = await loadOrCreateAgentRegistry(configLoader as any);
-      return new Set(
-        registry.engineConnections.map(({ id, runtimeConnectionId }) =>
-          String(runtimeConnectionId ?? id),
-        ),
-      );
+      return new Set(registry.engineConnections.map(({ id }) => String(id)));
     },
     acpBridge,
     logger,
@@ -460,14 +454,7 @@ export async function initializeRuntime(
     eventBus,
   });
   registerProviderAdapters(
-    [
-      bedrockAdapter,
-      claudeAdapter,
-      codexAdapter,
-      museAdapter,
-      ollamaAdapter,
-      acpAdapter,
-    ],
+    [claudeAdapter, codexAdapter, museAdapter, acpAdapter, stationAgentAdapter],
     { builtin: true, source: 'station-core' },
   );
   registerACPConnectionRegistryProvider(
@@ -528,13 +515,13 @@ export async function initializeRuntime(
       ],
     });
   const orchestrationService = new OrchestrationService({
-    // Station agents need the canonical orchestration contract, but this
-    // bridge is not an engine connection and must not enter the global
-    // provider registry (which projects adapters into New Chat inventory).
-    adapterRegistry: withPrivateOrchestrationAdapter(
-      publicAdapterRegistry,
-      stationAgentAdapter,
-    ),
+    // Bedrock and Ollama are Station-engine model-provider implementations,
+    // not public engine connections. Keep them available for dispatch without
+    // publishing them through the registry that feeds New Chat inventory.
+    adapterRegistry: withPrivateOrchestrationAdapter(publicAdapterRegistry, [
+      bedrockAdapter,
+      ollamaAdapter,
+    ]),
     eventBus,
     eventStore: orchestrationEventStore,
     pricingSnapshotCapture: {
@@ -746,19 +733,6 @@ export async function initializeRuntime(
   });
 
   // Plugin/native Adapter identity exists only after the asset composition
-  // above. Upgrade legacy runtime selectors here, before the agent revision
-  // snapshot below, and project the authoritative value into the boot config
-  // object every already-composed caller shares.
-  const migratedAppConfig =
-    await deps.migrateBuiltinEngineConnectionSelection?.();
-  if (migratedAppConfig) {
-    if (migratedAppConfig.builtinAgentEngineConnectionId === undefined) {
-      delete appConfig.builtinAgentEngineConnectionId;
-    } else {
-      appConfig.builtinAgentEngineConnectionId =
-        migratedAppConfig.builtinAgentEngineConnectionId;
-    }
-  }
 
   // archive#208: hand appConfig/framework/modelCatalog to StationRuntime immediately —
   // initializeRuntimeAgents() (below) and new VoltAgent(...)/configureRoutes()

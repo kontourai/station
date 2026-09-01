@@ -20,6 +20,7 @@ export interface ProviderPreset {
   desc: string;
   type: string;
   config: Record<string, string>;
+  icon?: string;
 }
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
@@ -29,6 +30,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     desc: 'GPT models · api.openai.com',
     type: 'openai-compat',
     config: { baseUrl: 'https://api.openai.com/v1', apiKey: '' },
+    icon: 'brand:codex',
   },
   {
     id: 'openrouter',
@@ -210,6 +212,7 @@ export type ModelProviderChoice = {
   name: string;
   desc: string;
   config?: Record<string, string>;
+  icon?: string;
 };
 
 export const MODEL_PROVIDER_CHOICES: ModelProviderChoice[] = [
@@ -332,9 +335,7 @@ const BRAND_BY_TYPE: Record<string, string> = {
   anthropic: 'Anthropic',
   bedrock: 'Amazon Bedrock',
   claude: 'Claude',
-  'claude-runtime': 'Claude',
   codex: 'Codex',
-  'codex-runtime': 'Codex',
   google: 'Google',
   ollama: 'Ollama',
   openai: 'OpenAI',

@@ -26,7 +26,7 @@ const AGENTS = [
       'Direct chat using Claude Runtime with project working directory context when available.',
     source: 'local',
     execution: {
-      agentConnectionId: 'claude-runtime',
+      agentConnectionId: 'claude',
       modelId: 'claude-sonnet-4-20250514',
     },
   },
@@ -37,7 +37,7 @@ const AGENTS = [
       'Direct chat using Codex Runtime with project working directory context when available.',
     source: 'local',
     execution: {
-      agentConnectionId: 'codex-runtime',
+      agentConnectionId: 'codex',
       modelId: 'gpt-5-codex',
     },
   },
@@ -149,8 +149,8 @@ async function seedRuntimeRoutes(
             detected: { ollama: false, bedrock: false },
           },
           capabilities: {
-            chat: { ready: true, source: 'codex-runtime' },
-            runtime: { ready: true, source: 'codex-runtime' },
+            chat: { ready: true, source: 'codex' },
+            runtime: { ready: true, source: 'codex' },
             knowledge: { ready: false, source: null },
             acp: { ready: false, source: null },
           },
@@ -195,9 +195,9 @@ async function seedRuntimeRoutes(
           success: true,
           data: [
             agentConnectionFixture({
-              id: 'claude-runtime',
+              id: 'claude',
               kind: 'agent',
-              type: 'claude-runtime',
+              type: 'claude',
               name: 'Claude Runtime',
               enabled: true,
               capabilities: ['agent-runtime'],
@@ -220,9 +220,9 @@ async function seedRuntimeRoutes(
               prerequisites: [],
             }),
             agentConnectionFixture({
-              id: 'codex-runtime',
+              id: 'codex',
               kind: 'agent',
-              type: 'codex-runtime',
+              type: 'codex',
               name: 'Codex Runtime',
               enabled: true,
               capabilities: ['agent-runtime'],

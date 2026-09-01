@@ -13,7 +13,7 @@ import type { StagedAttachmentReference } from '@kontourai/station-contracts/att
 import type { BoardReference } from '@kontourai/station-contracts/board';
 import type {
   ApprovalMode,
-  ProviderKind,
+  EngineId,
 } from '@kontourai/station-contracts/provider';
 import type { ExecutionMode } from '@kontourai/station-contracts/tool';
 import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed-files';
@@ -294,7 +294,7 @@ export interface ChatSession {
   createdAt: number;
   updatedAt: number;
   hasUnread: boolean;
-  provider?: ProviderKind;
+  provider?: EngineId;
   providerOptions?: Record<string, unknown>;
   /** See ChatUIState.lastAppliedApprovalMode (active-chats-state.ts) — not persisted. */
   lastAppliedApprovalMode?: ApprovalMode;
@@ -307,7 +307,7 @@ export interface ChatSession {
   requestedProviderOptions?: Record<string, unknown>;
   defaultModel?: string;
   defaultModelSource?: EffectiveModelSource;
-  orchestrationProvider?: ProviderKind;
+  orchestrationProvider?: EngineId;
   orchestrationModel?: string;
   orchestrationStatus?: string;
   /** This tab's transcript is served by the bounded orchestration window. */

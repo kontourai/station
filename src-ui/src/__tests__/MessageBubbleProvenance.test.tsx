@@ -8,9 +8,9 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '../types';
 
 vi.mock('react-markdown', () => ({
@@ -23,6 +23,28 @@ vi.mock('../components/chat/message-bubble/MessageRating', () => ({
 // UserIcon reads the auth context; irrelevant to what this file asserts.
 vi.mock('../components/icons/UserIcon', () => ({
   UserIcon: () => null,
+}));
+// The trace links are gated on this setting. The behavioural tests below cover
+// the pre-footer site (`!hasTurnFooter`) and the footer site; the source-text
+// contract test separately proves that both guarded sites remain in the file.
+const developerTools = { enabled: false };
+vi.mock('../contexts/DeviceSettingsContext', async () => {
+  const actual = await vi.importActual<
+    typeof import('../contexts/DeviceSettingsContext')
+  >('../contexts/DeviceSettingsContext');
+  const { deviceSettingsStore } = await vi.importActual<
+    typeof import('../lib/device-settings-store')
+  >('../lib/device-settings-store');
+  return {
+    ...actual,
+    useDeviceSettings: () => ({
+      ...deviceSettingsStore.getSnapshot(),
+      developerToolsEnabled: developerTools.enabled,
+    }),
+  };
+});
+vi.mock('../components/chat/ConnectedAnswerBasisAffordance', () => ({
+  ConnectedAnswerBasisAffordance: () => <button type="button">Basis</button>,
 }));
 
 const { MessageBubble } = await import('../components/chat/MessageBubble');
@@ -94,6 +116,10 @@ function renderRow(
 }
 
 describe('MessageBubble turn provenance (station#1410)', () => {
+  afterEach(() => {
+    developerTools.enabled = false;
+  });
+
   it('renders the checkpoint-derived workspace effect on its assistant turn', () => {
     renderRow({
       role: 'assistant',
@@ -142,7 +168,7 @@ describe('MessageBubble turn provenance (station#1410)', () => {
   // archive#1423: the share affordance must be reachable from the same real
   // row as the card — a mint button that only renders in its own unit test
   // is a feature nobody can use.
-  it('offers the share affordance beside the card, bound to the same turn', async () => {
+  it('keeps one inline action row and puts sharing in the provenance disclosure', async () => {
     renderRow({
       role: 'assistant',
       content: 'Here is the answer.',
@@ -151,9 +177,24 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       provenance: envelope,
     });
 
+    expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'Share this answer (turn turn-7)' }),
+      screen.queryByRole('button', { name: /Share this answer/ }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Provenance' }));
+    expect(
+      await screen.findByRole('button', {
+        name: 'Share this answer (turn turn-7)',
+      }),
     ).toBeTruthy();
+
+    const overflow = await screen.findByRole('button', {
+      name: 'More answer actions',
+    });
+    expect(overflow.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(overflow);
+    expect(overflow.getAttribute('aria-expanded')).toBe('true');
     expect(
       // The attach affordance mounts beside a lazy message chunk; under full-
       // corpus worker load its dynamic import can exceed findByRole's 1s
@@ -161,11 +202,14 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       // (the archive#1045 load-composition class). The longer bound changes
       // nothing about test power: an absent affordance still fails here.
       await screen.findByRole(
-        'button',
+        'menuitem',
         { name: 'Add this answer to a Task (turn turn-7)' },
         { timeout: 10_000 },
       ),
     ).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    expect(overflow.getAttribute('aria-expanded')).toBe('false');
+    expect(document.querySelector('.turn-footer [disabled]')).toBeNull();
   });
 
   it('offers no share affordance on a row with no readable envelope', () => {
@@ -180,6 +224,80 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     ).toBeNull();
   });
 
+  it('hides the trace link unless developer tools are on, and shows it when they are', async () => {
+    developerTools.enabled = false;
+    const off = renderRow({
+      role: 'assistant',
+      content: 'Traced.',
+      provenance: envelope,
+      traceId: 'trace-abcdef12',
+    } as ChatMessage);
+    expect(off.container.querySelector('.message__trace')).toBeNull();
+    off.unmount();
+
+    developerTools.enabled = true;
+    const on = renderRow({
+      role: 'assistant',
+      content: 'Traced.',
+      provenance: envelope,
+      traceId: 'trace-abcdef12',
+    } as ChatMessage);
+    expect(on.container.querySelector('.message__trace')).not.toBeNull();
+  });
+
+  it('gates the trace link on an assistant row without a turn footer', () => {
+    developerTools.enabled = false;
+    const off = renderRow({
+      role: 'assistant',
+      content: 'Legacy traced answer.',
+      traceId: 'trace-legacy12',
+    } as ChatMessage);
+    expect(off.container.querySelector('.message__trace')).toBeNull();
+    off.unmount();
+
+    developerTools.enabled = true;
+    const on = renderRow({
+      role: 'assistant',
+      content: 'Legacy traced answer.',
+      traceId: 'trace-legacy12',
+    } as ChatMessage);
+    expect(on.container.querySelector('.message__trace')).not.toBeNull();
+  });
+
+  it('does not render an empty overflow menu for provenance without an eligible answer', async () => {
+    // The trigger arrives through LazyBoundary, so a synchronous query finds
+    // nothing whether or not the gate admits it. Import the chunk first and
+    // flush, so absence here means the gate refused rather than the import
+    // not having landed yet.
+    await import('../components/chat/TurnActionsMenu');
+    renderRow({
+      role: 'assistant',
+      content: 'Still working.',
+      provenance: envelope,
+    });
+    await act(async () => {});
+    expect(
+      screen.queryByRole('button', { name: 'More answer actions' }),
+    ).toBeNull();
+  });
+
+  it('does not render an empty overflow menu while the last answer is thinking', async () => {
+    await import('../components/chat/TurnActionsMenu');
+    renderRow(
+      {
+        role: 'assistant',
+        content: 'Still thinking.',
+        turnId: 'turn-thinking',
+        answerEligible: true,
+      },
+      { isThinking: true },
+    );
+    await act(async () => {});
+    expect(
+      screen.queryByRole('button', { name: 'More answer actions' }),
+    ).toBeNull();
+  });
+
   it('offers Task attachment for an explicitly completed assistant turn even when execution provenance was not recorded', async () => {
     renderRow({
       role: 'assistant',
@@ -188,8 +306,11 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       answerEligible: true,
     });
 
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More answer actions' }),
+    );
     expect(
-      await screen.findByRole('button', {
+      await screen.findByRole('menuitem', {
         name: 'Add this answer to a Task (turn turn-without-provenance)',
       }),
     ).toBeTruthy();
@@ -252,6 +373,31 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Provenance' }));
     expect(screen.getByText('Accountable human')).toBeTruthy();
     expect(screen.getByText('Operator Person')).toBeTruthy();
+  });
+
+  it('keeps Basis inside Provenance and never renders it as a sibling action', async () => {
+    renderRow({
+      role: 'assistant',
+      content: 'Here is the answer.',
+      turnId: 'turn-7',
+      answerEligible: true,
+      provenance: envelope,
+    });
+
+    expect(screen.queryByRole('button', { name: /^Basis/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Provenance' }));
+    expect(
+      await screen.findByRole(
+        'button',
+        { name: /^Basis/ },
+        { timeout: 10_000 },
+      ),
+    ).toBeTruthy();
+    expect(
+      document
+        .querySelector('.turn-provenance__detail')
+        ?.contains(screen.getByRole('button', { name: /^Basis/ })),
+    ).toBe(true);
   });
 
   it('renders no provenance card on a user row', () => {

@@ -421,8 +421,11 @@ export class NativeStationProfileStorage
     }
 
     // The native adapter owns the live ConnectionStore projection now. Leave
-    // no ambiguous legacy pointer for a later upgrade to reinterpret.
+    // no ambiguous legacy pointer or stale renderer-side connection record
+    // for a later upgrade to reinterpret. Any foreign choice retained above
+    // is represented exclusively by the versioned native-profile marker.
     this.clientSelectionStorage.remove(ACTIVE_KEY);
+    this.clientSelectionStorage.remove(CONNECTIONS_KEY);
   }
 
   private resolveLegacyForeignSelection(): StationProfile | undefined {
@@ -514,19 +517,59 @@ export class NativeStationProfileStorage
     );
   }
 
+  private clearExplicitProcessSelection(): void {
+    this.explicitProcessSelection = undefined;
+    if (this.persistsClientSelection)
+      this.clientSelectionStorage.remove(EXPLICIT_SELECTION_KEY);
+  }
+
+  private sharesExactPackagedLoopbackEndpoint(
+    first: StationProfile,
+    second: StationProfile,
+  ): boolean {
+    try {
+      const secondEndpoint = normalizedPairingEndpoint(second.endpoint);
+      const secondUrl = new URL(secondEndpoint);
+      const host = secondUrl.hostname;
+      const strictLoopbackHttp =
+        secondUrl.protocol === 'http:' &&
+        (host === '[::1]' ||
+          host === '::1' ||
+          /^127(?:\.\d{1,3}){3}$/.test(host));
+      return (
+        strictLoopbackHttp &&
+        normalizedPairingEndpoint(first.endpoint) === secondEndpoint
+      );
+    } catch {
+      return false;
+    }
+  }
+
   selectProfileForProcess(profileName: string): string | undefined {
+    const profile = this.profileStore.profiles.find(
+      (candidate) => candidate.name.toLowerCase() === profileName.toLowerCase(),
+    );
+    if (!profile) return undefined;
     if (this.explicitProcessSelection) {
       const explicit = this.profileStore.profiles.find(
         (candidate) =>
           profileConnectionId(candidate) === this.explicitProcessSelection,
       );
-      if (explicit) return this.explicitProcessSelection;
-      this.explicitProcessSelection = undefined;
+      if (
+        explicit &&
+        !this.sharesExactPackagedLoopbackEndpoint(explicit, profile)
+      )
+        return this.explicitProcessSelection;
+
+      // `station_ensure_bundled_local_profile` supplied `profileName` from
+      // the native owner resolver. A legacy renderer selection at its exact
+      // origin is inherited local state even when its old random id had no
+      // localService marker (or claimed to be paired). Keeping it would make
+      // a packaged channel ask its owner to pair with itself. Collapse it to
+      // the native channel profile without changing the shared CLI default.
+      // The same cleanup handles a marker whose native target was deleted.
+      this.clearExplicitProcessSelection();
     }
-    const profile = this.profileStore.profiles.find(
-      (candidate) => candidate.name.toLowerCase() === profileName.toLowerCase(),
-    );
-    if (!profile) return undefined;
     const resolved = profileConnectionId(profile);
     this.values.set(ACTIVE_KEY, resolved);
     return resolved;

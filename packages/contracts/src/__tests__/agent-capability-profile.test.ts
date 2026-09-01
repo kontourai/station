@@ -17,10 +17,10 @@ describe('agent capability profile', () => {
   // matrix-driven equivalence (agent-validation.test.ts) are the
   // replacements' own coverage; that equivalence was proven against this
   // module's resolver before it was deleted.
-  test('keeps prompt affordances tied to the matrix-resolved engine', () => {
-    expect(requiresAgentPromptForRuntime('bedrock-runtime')).toBe(true);
-    expect(requiresAgentPromptForRuntime('ollama-runtime')).toBe(true);
-    expect(requiresAgentPromptForRuntime('codex-runtime')).toBe(false);
+  test('keeps provider-model ids out of Station-native prompt delivery (#1055)', () => {
+    expect(requiresAgentPromptForRuntime('bedrock-runtime')).toBe(false);
+    expect(requiresAgentPromptForRuntime('ollama-runtime')).toBe(false);
+    expect(requiresAgentPromptForRuntime('codex')).toBe(false);
   });
 
   test('a capability surface unsupported by the engine and empty in the spec is hidden', () => {
@@ -151,7 +151,7 @@ describe('built-in engines derive their real editor tabs (#2301)', () => {
     deriveAgentEditorTabs(
       resolveEngineCapabilityMatrix(engineId, {
         type: runtimeId,
-        config: { engineId, executionClass: 'connected' },
+        config: { engineId },
       }),
       authored,
     ).map((tab) => tab.key);
@@ -159,7 +159,7 @@ describe('built-in engines derive their real editor tabs (#2301)', () => {
   test('claude exposes the surfaces it can actually deliver', () => {
     // Under the pre-#2301 fallback this was only basic/engine/connection —
     // Prompt, Skills and Tools were hidden for every Claude Code agent.
-    expect(tabs('claude-code', 'claude-runtime')).toEqual([
+    expect(tabs('claude', 'claude')).toEqual([
       'basic',
       'prompt',
       'skills',
@@ -170,7 +170,7 @@ describe('built-in engines derive their real editor tabs (#2301)', () => {
   });
 
   test('codex exposes tools, which the fallback hid', () => {
-    expect(tabs('codex', 'codex-runtime')).toEqual([
+    expect(tabs('codex', 'codex')).toEqual([
       'basic',
       'tools',
       'engine',
@@ -181,10 +181,6 @@ describe('built-in engines derive their real editor tabs (#2301)', () => {
   test('muse stays minimal, because its matrix genuinely declares no such surface', () => {
     // Guards against reading the fix as "more tabs everywhere": muse's cells
     // are unsupported by design, so its tab set must NOT grow.
-    expect(tabs('muse', 'muse-runtime')).toEqual([
-      'basic',
-      'engine',
-      'connection',
-    ]);
+    expect(tabs('muse', 'muse')).toEqual(['basic', 'engine', 'connection']);
   });
 });

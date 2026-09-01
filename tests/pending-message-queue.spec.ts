@@ -30,7 +30,7 @@ const AGENTS = [
       'Direct chat using Claude Runtime with project working directory context when available.',
     source: 'local',
     execution: {
-      agentConnectionId: 'claude-runtime',
+      agentConnectionId: 'claude',
       modelId: 'claude-sonnet-4-20250514',
     },
   },
@@ -59,8 +59,8 @@ async function seedRuntimeRoutes(
             detected: { ollama: false, bedrock: false },
           },
           capabilities: {
-            chat: { ready: true, source: 'claude-runtime' },
-            runtime: { ready: true, source: 'claude-runtime' },
+            chat: { ready: true, source: 'claude' },
+            runtime: { ready: true, source: 'claude' },
             knowledge: { ready: false, source: null },
             acp: { ready: false, source: null },
           },
@@ -105,9 +105,9 @@ async function seedRuntimeRoutes(
           success: true,
           data: [
             agentConnectionFixture({
-              id: 'claude-runtime',
+              id: 'claude',
               kind: 'agent',
-              type: 'claude-runtime',
+              type: 'claude',
               name: 'Claude Runtime',
               enabled: true,
               capabilities: ['agent-runtime'],
@@ -217,7 +217,7 @@ test.describe('Pending message queue (#613)', () => {
     // which is the state every enqueue step below runs in. Its fieldset carries
     // the stable accessible name (`:430-432`).
     const textarea = page
-      .getByRole('group', { name: 'Message composer file drop area' })
+      .getByRole('group', { name: 'Message composer', exact: true })
       .getByRole('textbox');
     // Send exists only while the composer is idle: mid-turn
     // `ChatInputArea.tsx:597-625` swaps it for "Stop the current turn", and a

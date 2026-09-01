@@ -1,5 +1,5 @@
 import type { AgentId, EngineConnectionId } from './agent-identity.js';
-import type { ModelLaunchPlan, ProviderKind } from './provider.js';
+import type { EngineId, ModelLaunchPlan } from './provider.js';
 import type { WorkspaceIsolationConfig } from './workspace-isolation.js';
 
 declare const environmentIdBrand: unique symbol;
@@ -97,7 +97,7 @@ export interface ExecutionResolutionReceipt {
   environmentId: EnvironmentId;
   agentId: AgentId;
   engine: ResolvedExecutionEngine;
-  provider: ProviderKind;
+  provider: EngineId;
   modelLaunchPlan: ModelLaunchPlan;
   workspace?: ResolvedWorkspaceTarget;
 }

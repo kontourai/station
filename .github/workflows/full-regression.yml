@@ -21,7 +21,10 @@ jobs:
       group: hosted-full-regression-${{ inputs.source_sha }}
       cancel-in-progress: false
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    # Every phase gets its own fail-closed deadline. Eight ordinary slices can
+    # consume 160 minutes by contract, so the hosted envelope must outlive the
+    # complete 243-minute phase plan rather than interrupt a valid final slice.
+    timeout-minutes: 270
     steps:
       - name: Validate immutable source identity
         env:
@@ -47,7 +50,36 @@ jobs:
         with:
           node-version-file: .nvmrc
 
+      # `full:regression` runs `gate:workflows`, and `actionlint-gate.mjs` is
+      # fail-closed: with no `actionlint` on PATH it exits 2 rather than
+      # reporting an unvalidated surface as a pass. Provisioning it here is
+      # what lets that gate actually validate, instead of failing the lane.
+      # `actionlint-gate.mjs` pins this copy through
+      # `fullRegressionActionlintFindings`, so it cannot drift from ci.yml's.
+      - name: Install pinned actionlint
+        env:
+          ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status
+          tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"
+          echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
+
       - run: npm run dependencies:ci
+
+      - name: Provision and preflight zsh for process-heavy installer fixtures
+        timeout-minutes: 5
+        run: |
+          if [[ ! -x /bin/zsh ]]; then
+            sudo apt-get update
+            sudo apt-get install --yes zsh
+          fi
+          command -v zsh
+          test -x /bin/zsh
+          /bin/zsh --version
 
       - name: Install Chromium for full-corpus browser assertions
         timeout-minutes: 20

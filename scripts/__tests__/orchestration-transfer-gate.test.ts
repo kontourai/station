@@ -1,9 +1,11 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -267,6 +269,118 @@ describe('orchestration transfer gate control flow', () => {
         }),
       } as any),
     ).toThrow('capture liveness timeout');
+  });
+
+  test('captures baseline modules after the candidate removes a contracts export', () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-transfer-resolution-'));
+    roots.push(root);
+    const candidate = join(root, 'candidate');
+    const baseline = join(root, 'baseline');
+    const output = join(root, 'capture.json');
+    for (const subject of [candidate, baseline]) {
+      mkdirSync(join(subject, 'node_modules', '@kontourai'), {
+        recursive: true,
+      });
+      mkdirSync(join(subject, 'packages', 'contracts'), { recursive: true });
+      writeFileSync(join(subject, 'package.json'), '{"type":"module"}\n');
+      writeFileSync(
+        join(subject, 'packages', 'contracts', 'package.json'),
+        '{"name":"@kontourai/station-contracts","type":"module","exports":{"./agent-identity":"./agent-identity.ts"}}\n',
+      );
+      symlinkSync(
+        '../../packages/contracts',
+        join(subject, 'node_modules', '@kontourai', 'station-contracts'),
+      );
+    }
+    writeFileSync(
+      join(baseline, 'packages', 'contracts', 'agent-identity.ts'),
+      "export const engineRuntimeId = 'baseline-runtime';\n",
+    );
+    writeFileSync(
+      join(candidate, 'packages', 'contracts', 'agent-identity.ts'),
+      "export const replacementRuntimeId = 'candidate-runtime';\n",
+    );
+    mkdirSync(join(candidate, 'src'), { recursive: true });
+    writeFileSync(
+      join(candidate, 'src', 'tool.ts'),
+      "export { replacementRuntimeId } from '@kontourai/station-contracts/agent-identity';\n",
+    );
+    mkdirSync(join(baseline, 'src'), { recursive: true });
+    writeFileSync(
+      join(baseline, 'src', 'baseline.ts'),
+      "export { engineRuntimeId } from '@kontourai/station-contracts/agent-identity';\n",
+    );
+    mkdirSync(join(candidate, 'scripts'), { recursive: true });
+    writeFileSync(
+      join(candidate, 'tsconfig.json'),
+      '{"compilerOptions":{"paths":{"@kontourai/station-contracts/*":["./packages/contracts/*"]}}}\n',
+    );
+    writeFileSync(
+      join(
+        candidate,
+        'scripts',
+        'orchestration-transfer-capture.tsconfig.json',
+      ),
+      '{"extends":"../tsconfig.json","compilerOptions":{"paths":{}}}\n',
+    );
+    const capture = join(candidate, 'scripts', 'capture.ts');
+    writeFileSync(
+      capture,
+      `import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const targetRoot = process.argv[2];
+const output = process.argv[3];
+const loaded = await import(pathToFileURL(join(targetRoot, 'src/baseline.ts')).href);
+const tool = await import(pathToFileURL(join(import.meta.dirname, '../src/tool.ts')).href);
+writeFileSync(output, JSON.stringify({
+  engineRuntimeId: loaded.engineRuntimeId,
+  replacementRuntimeId: tool.replacementRuntimeId,
+}));
+`,
+    );
+    mkdirSync(join(candidate, 'node_modules'), { recursive: true });
+    symlinkSync(
+      resolve(import.meta.dirname, '../../node_modules/tsx'),
+      join(candidate, 'node_modules', 'tsx'),
+    );
+
+    expect(
+      runTransferCapture({
+        candidateRoot: candidate,
+        targetRoot: baseline,
+        output,
+        baseSha: sha('a'),
+        capture,
+        spawn: ((command: string, args: string[], options: object) =>
+          spawnSync(
+            command,
+            ['--import', 'tsx', ...args.slice(1)],
+            options,
+          )) as any,
+      } as any),
+    ).toEqual({
+      engineRuntimeId: 'baseline-runtime',
+      replacementRuntimeId: 'candidate-runtime',
+    });
+  });
+
+  test('identifies dependency resolution failures without prepare advice', () => {
+    expect(() =>
+      runTransferCapture({
+        candidateRoot: resolve(import.meta.dirname, '../..'),
+        targetRoot: '/fixture-target',
+        output: '/fixture-output.json',
+        baseSha: sha('a'),
+        spawn: () => ({
+          status: 1,
+          stdout: '',
+          stderr: "does not provide an export named 'engineRuntimeId'",
+        }),
+      } as any),
+    ).toThrow(
+      /dependency resolution failed.*preparing the baseline again will not repair/,
+    );
   });
 
   test('guides baseline setup through the approved lifecycle, never raw npm ci', () => {

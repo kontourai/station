@@ -27,11 +27,9 @@ function read(relativePath: string): string {
  * Those call sites must measure the toolbar instead of reading the token,
  * which the CSS-shaped assertion below cannot see.
  */
-// archive#4460: `dock.toggle`/`dock.maximize` and the dock's own toolbar-
-// height measurement moved from `ChatDock.tsx`/`useChatDockKeyboardShortcuts`
-// into the shared `useDockShellChrome` (the ambient `DockShell`'s single
-// chrome instance, and a full-screen Chat placement's own local one) — this
-// is now the one place that measures it.
+// archive#4460: `dock.maximize` and the dock's own toolbar-height measurement
+// moved into the shared `useDockShellChrome`. #928 moves `dock.toggle` again,
+// into app chrome, while this remains the one geometry owner.
 const JS_CONSUMERS = ['hooks/useDockShellChrome.ts'];
 
 const CONSUMERS = ['index.css', 'components/chat-dock/ChatDock.tsx'];
@@ -89,6 +87,18 @@ describe('toolbar geometry accounts for the top safe-area inset', () => {
     const header = read('components/chat-dock/ChatDockHeader.tsx');
     expect(header).toContain('onDockSnap');
     expect(header).not.toContain('setDockHeight');
+  });
+
+  it('keeps expanded region geometry below the app toolbar', () => {
+    const shell = read('components/chat-dock/DockShell.tsx');
+    const css = read('index.css');
+    expect(shell).toContain(
+      'var(--chat-visual-viewport-height) - var(--app-toolbar-total-height)',
+    );
+    expect(css).toContain('var(--app-toolbar-total-height)');
+    expect(css).toContain(
+      'var(--chat-visual-viewport-top) +\n      var(--app-toolbar-total-height)',
+    );
   });
 
   it('anchors the notification popover to the toolbar rather than a literal', () => {

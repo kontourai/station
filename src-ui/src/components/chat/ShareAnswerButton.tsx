@@ -60,6 +60,7 @@ export interface ShareAnswerButtonProps {
   provenance: unknown;
   /** Defaults to the live UI origin; injectable for deterministic host tests. */
   uiOrigin?: string;
+  menuItem?: boolean;
 }
 
 function idsFrom(
@@ -73,6 +74,7 @@ function idsFrom(
 export function ShareAnswerButton({
   provenance,
   uiOrigin = window.location.origin,
+  menuItem = false,
 }: ShareAnswerButtonProps) {
   const mint = useMintAnswerShareMutation();
   const [minted, setMinted] = useState<{
@@ -90,6 +92,13 @@ export function ShareAnswerButton({
   // An envelope this build cannot read cannot be correlated to a turn, and a
   // share of an uncorrelated turn is a link to nothing. No button.
   if (!ids) return null;
+  if (menuItem && !origin.verified) {
+    return (
+      <span className="turn-footer__unavailable-note">
+        Share answer is unavailable. {origin.explanation}
+      </span>
+    );
+  }
 
   const share = () => {
     if (!origin.verified) {
@@ -128,9 +137,12 @@ export function ShareAnswerButton({
       <button
         type="button"
         className="share-answer__button"
-        disabled={mint.isPending}
+        role={menuItem ? 'menuitem' : undefined}
+        aria-busy={mint.isPending || undefined}
         aria-disabled={!origin.verified || undefined}
-        onClick={share}
+        onClick={() => {
+          if (!mint.isPending) share();
+        }}
         title={origin.verified ? undefined : origin.explanation}
         aria-label={
           origin.verified

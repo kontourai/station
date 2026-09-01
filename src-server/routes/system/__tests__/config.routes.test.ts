@@ -118,7 +118,7 @@ describe('Config Routes', () => {
     loader.loadAppConfig.mockResolvedValueOnce({
       defaultModel: 'claude-3',
       agentConnections: {
-        'codex-runtime': {
+        codex: {
           credentialRecovery: {
             pendingApplication: {
               candidateProfileRef: 'candidate',
@@ -141,7 +141,7 @@ describe('Config Routes', () => {
     expect(JSON.stringify(body)).not.toContain('opaque-attempt');
     expect(JSON.stringify(body)).not.toContain('opaque-receipt');
     expect(
-      body.data.agentConnections['codex-runtime'].credentialRecovery,
+      body.data.agentConnections.codex.credentialRecovery,
     ).not.toHaveProperty('pendingApplication');
   });
 
@@ -150,7 +150,7 @@ describe('Config Routes', () => {
       defaultModel: 'claude-3',
       region: 'us-east-1',
       agentConnections: {
-        'codex-runtime': {
+        codex: {
           credentialRecovery: {
             pendingApplication: {
               candidateProfileRef: 'candidate',
@@ -179,10 +179,10 @@ describe('Config Routes', () => {
     );
     const persisted = await loader.loadAppConfig();
     expect(
-      persisted.agentConnections['codex-runtime'].credentialRecovery,
+      persisted.agentConnections.codex.credentialRecovery,
     ).not.toHaveProperty('pendingApplication');
     expect(
-      persisted.agentConnections['codex-runtime'].credentialRecovery,
+      persisted.agentConnections.codex.credentialRecovery,
     ).not.toHaveProperty('applicationReceipts');
     for (const value of [
       JSON.stringify(get),
@@ -289,7 +289,7 @@ describe('Config Routes', () => {
       method: 'PUT',
       body: JSON.stringify({
         agentConnections: {
-          'codex-runtime': {
+          codex: {
             credentialRecovery: {
               pendingApplication: {
                 attemptId: 'forged',
@@ -450,7 +450,7 @@ describe('Config Routes', () => {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          builtinAgentEngineConnectionId: 'codex-runtime',
+          builtinAgentEngineConnectionId: 'codex',
         }),
       });
       expect(res.status).toBe(200);
@@ -514,7 +514,7 @@ describe('Config Routes', () => {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          builtinAgentEngineConnectionId: 'codex-runtime',
+          builtinAgentEngineConnectionId: 'codex',
         }),
       });
       expect(rebindBuiltinAgents).toHaveBeenCalledOnce();
@@ -528,7 +528,7 @@ describe('Config Routes', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           defaultModel: 'claude-4',
-          builtinAgentEngineConnectionId: 'codex-runtime',
+          builtinAgentEngineConnectionId: 'codex',
         }),
       });
       expect(rebindBuiltinAgents).toHaveBeenCalledOnce();
@@ -548,7 +548,7 @@ describe('Config Routes', () => {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          builtinAgentEngineConnectionId: 'codex-runtime',
+          builtinAgentEngineConnectionId: 'codex',
         }),
       });
       expect(eventBus.emit).toHaveBeenCalledWith('system:status-changed', {

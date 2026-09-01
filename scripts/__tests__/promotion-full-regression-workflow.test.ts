@@ -9,16 +9,21 @@ type WorkflowStep = {
   name?: string;
   run?: string;
   uses?: string;
+  env?: Record<string, string>;
   with?: Record<string, unknown>;
   if?: string;
+  'timeout-minutes'?: number;
+  'continue-on-error'?: boolean;
 };
 
 type WorkflowJob = {
   if?: string;
   needs?: string | string[];
   uses?: string;
+  secrets?: string;
   with?: Record<string, unknown>;
   steps?: WorkflowStep[];
+  'timeout-minutes'?: number;
 };
 
 type Workflow = {
@@ -55,6 +60,8 @@ describe('promotion full-regression workflow', () => {
 
     const gate = reusable.jobs?.['full-regression'] ?? {};
     expect(gate.uses).toBeUndefined();
+    expect(gate['timeout-minutes']).toBe(270);
+    expect(source('full-regression.yml')).not.toContain('timeout-minutes: 150');
     const validate = namedStep(gate, 'Validate immutable source identity');
     expect(validate.run).toContain('^[0-9a-f]{40}$');
     const checkout = gate.steps?.find((step) =>
@@ -68,9 +75,32 @@ describe('promotion full-regression workflow', () => {
     expect(
       namedStep(gate, 'Prove checkout matches the requested source').run,
     ).toContain('git rev-parse HEAD');
-    expect(
-      gate.steps?.some((step) => step.run === 'npm run dependencies:ci'),
-    ).toBe(true);
+    const gateSteps = gate.steps ?? [];
+    const actionlint = namedStep(gate, 'Install pinned actionlint');
+    const ciFast = workflow('ci.yml').jobs?.['fast-checks'] ?? {};
+    expect(actionlint).toEqual(namedStep(ciFast, 'Install pinned actionlint'));
+    expect(actionlint).not.toHaveProperty('continue-on-error');
+    const actionlintIndex = gateSteps.indexOf(actionlint);
+    const dependenciesIndex = gateSteps.findIndex(
+      (step) => step.run === 'npm run dependencies:ci',
+    );
+    const zsh = namedStep(
+      gate,
+      'Provision and preflight zsh for process-heavy installer fixtures',
+    );
+    const zshIndex = gateSteps.indexOf(zsh);
+    const completionIndex = gateSteps.findIndex(
+      (step) => step.name === 'Run canonical completion gate',
+    );
+    expect(actionlintIndex).toBeGreaterThan(-1);
+    expect(dependenciesIndex).toBeGreaterThan(actionlintIndex);
+    expect(zshIndex).toBeGreaterThan(dependenciesIndex);
+    expect(zsh['timeout-minutes']).toBe(5);
+    expect(zsh.run).toContain('if [[ ! -x /bin/zsh ]]; then');
+    expect(zsh.run).toContain('apt-get install --yes zsh');
+    expect(zsh.run).toContain('test -x /bin/zsh');
+    expect(zsh.run).toContain('/bin/zsh --version');
+    expect(completionIndex).toBeGreaterThan(dependenciesIndex);
     expect(
       namedStep(gate, 'Install Chromium for full-corpus browser assertions')
         .run,
@@ -147,7 +177,7 @@ describe('promotion full-regression workflow', () => {
     );
   });
 
-  test('gates both Nightly producers on the same exact source', () => {
+  test('gates the reusable native cohort and independent CLI on the same exact source', () => {
     const nightly = workflow('nightly.yml');
     const sourceGate = nightly.jobs?.['test-gate'] ?? {};
     const full = nightly.jobs?.['full-regression'] ?? {};
@@ -161,18 +191,28 @@ describe('promotion full-regression workflow', () => {
         (step) => step.name === 'Bind every Nightly leg to one main revision',
       ),
     ).toBe(true);
-    for (const id of ['nightly', 'nightly-desktop']) {
+    for (const id of ['native-cohort', 'nightly-cli']) {
       const producer = nightly.jobs?.[id] ?? {};
       expect(producer.needs).toEqual(['test-gate', 'full-regression']);
       expect(producer.if).toContain(
         "needs['full-regression'].result == 'success'",
       );
-      const checkout = producer.steps?.find((step) =>
-        step.uses?.startsWith('actions/checkout@'),
-      );
-      expect(checkout?.with?.ref).toBe(
-        githubExpression('needs.test-gate.outputs.source_sha'),
-      );
+      if (id === 'native-cohort') {
+        expect(producer.uses).toBe(
+          './.github/workflows/nightly-native-cohort.yml',
+        );
+        expect(producer.with?.source_sha).toBe(
+          githubExpression('needs.test-gate.outputs.source_sha'),
+        );
+        expect(producer.secrets).toBe('inherit');
+      } else {
+        const checkout = producer.steps?.find((step) =>
+          step.uses?.startsWith('actions/checkout@'),
+        );
+        expect(checkout?.with?.ref).toBe(
+          githubExpression('needs.test-gate.outputs.source_sha'),
+        );
+      }
     }
     expect(source('nightly.yml')).not.toContain('run: npm run full:regression');
   });

@@ -18,7 +18,7 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
-  ProviderKind,
+  EngineId,
   ProviderSendTurnInput,
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
@@ -44,7 +44,7 @@ const logger = createLogger({ name: 'execution-target-execution' });
 async function provisionProjectWorktree(
   workspace: Extract<ResolvedWorkspaceTarget, { kind: 'project' }>,
   threadId: string,
-  providerKind: ProviderKind,
+  providerKind: EngineId,
   deps: ExecutionTargetExecutionDependencies,
 ): Promise<WorktreeSessionMetadata | null> {
   await assertProjectWorktreeDirectory(workspace.projectSlug, workspace.cwd);
@@ -279,7 +279,7 @@ export interface ExecutionTargetExecutionDependencies
   resolveConversationSession?: (
     access: EnvironmentAccess,
     conversationId: string,
-    requested: { provider: ProviderKind; connectionId?: string },
+    requested: { provider: EngineId; connectionId?: string },
   ) => Promise<{
     sessionId: string;
     startRequired: boolean;

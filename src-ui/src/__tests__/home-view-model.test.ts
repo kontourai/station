@@ -715,7 +715,11 @@ describe('buildHomeWorkItems', () => {
       agents: [],
       sessions: [
         {
-          threadId: 'thread-virtual',
+          // This opaque execution id is intentionally distinct from both the
+          // visible Codex engine and the public assigned-agent slug. If Home
+          // falls back to its internal session identity, the assertion below
+          // must fail instead of mistaking a valid Codex label for a leak.
+          threadId: 'codex-runtime',
           provider: 'codex',
           assignedAgentSlug: 'codex',
           status: 'ready',
@@ -730,13 +734,13 @@ describe('buildHomeWorkItems', () => {
     });
     expect(tasks).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ title: 'codex Chat' }),
+        expect.objectContaining({ title: 'Codex Chat' }),
         // archive#3227 A2: was `'codex task'` — see the engine-vs-agent note
         // above. `agentLabel` still pins the slug, which is what this test
         // is actually about (no raw runtime id reaches either field).
         expect.objectContaining({
           title: 'Codex session',
-          agentLabel: 'codex',
+          agentLabel: 'Codex',
         }),
       ]),
     );

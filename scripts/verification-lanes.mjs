@@ -80,18 +80,20 @@ export const FULL_REGRESSION_PHASES = Object.freeze([
     weight: 60,
     timeoutMs: 15 * 60_000,
   }),
-  Object.freeze({
-    id: 'test-full-ordinary',
-    command: 'npm run test:full:ordinary:raw',
-    privateScript: 'test:full:ordinary:raw',
-    // Keep one fifth of host coordinator capacity available for the bounded
-    // per-push lane while the completion corpus is running.
-    weight: 80,
-    // The incident behind #1607 exceeded twenty minutes while making no
-    // progress. Keep this fence below that known stalled run, while allowing
-    // the 80-unit corpus to finish under the explicitly supported overlap
-    // with one 20-unit ci:fast reservation (#881).
-    timeoutMs: 18 * 60_000,
+  // Eight deterministic Vitest shards preserve exact ordinary-corpus coverage
+  // while keeping every native Vitest hash slice inside its independently
+  // receipted 20-minute terminal fence (#1156). They remain sequential under
+  // the outer coordinator; each keeps one fifth of host capacity available
+  // for bounded ci:fast.
+  ...Array.from({ length: 8 }, (_, index) => {
+    const shard = index + 1;
+    return Object.freeze({
+      id: `test-full-ordinary-${shard}-of-8`,
+      command: `npm run test:full:ordinary:${shard}:raw`,
+      privateScript: `test:full:ordinary:${shard}:raw`,
+      weight: 80,
+      timeoutMs: 20 * 60_000,
+    });
   }),
   Object.freeze({
     id: 'test-full-process-heavy',

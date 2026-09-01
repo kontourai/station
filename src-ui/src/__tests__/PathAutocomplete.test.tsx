@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -535,6 +535,49 @@ describe('PathAutocomplete', () => {
       vi.advanceTimersByTime(250);
 
       expect(dropdown()).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // #998. A stale blur — armed for a reason unrelated to the user
+  // leaving the field (e.g. a sibling remount stealing focus then returning
+  // it) — must not dismiss a dropdown the input was re-engaged with before
+  // the 200ms timer fired. Runs under fake timers because the underlying
+  // race is only ~1/6 reproducible against real timers; this deterministically
+  // arms the exact stale-timer window regardless.
+  test('a refocus inside the 200ms blur window keeps suggestions shown', () => {
+    vi.useFakeTimers();
+    try {
+      browseMock.mockReturnValue({
+        data: {
+          path: '/tmp',
+          entries: [{ name: 'project', isDirectory: true }],
+        },
+      });
+      render(
+        <PathAutocomplete
+          value="/tmp/pro"
+          onChange={vi.fn()}
+          apiBase="http://localhost:3000"
+        />,
+      );
+      const input = screen.getByRole('textbox');
+      expect(screen.getByText('project')).toBeTruthy();
+
+      // Blur arms the 200ms dismiss timer.
+      fireEvent.blur(input);
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+      // The input is legitimately re-engaged before the timer fires.
+      fireEvent.focus(input);
+      // Advance past the original 200ms mark (100ms already elapsed + 150ms).
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+
+      expect(screen.getByText('project')).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }

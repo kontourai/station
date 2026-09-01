@@ -1,6 +1,7 @@
 # Station API Documentation
 
-This document describes all REST API endpoints available in Station.
+This document retains historical REST API narrative and worked examples. It is
+not a complete endpoint inventory.
 
 **Base URL**: the selected Station's server origin. The CLI resolves an
 unbootstrapped Stable loopback target to `http://localhost:18141` through the
@@ -983,9 +984,9 @@ Returns the merged Connections surface used by the UI, including both model/prov
       "lastCheckedAt": null
     },
     {
-      "id": "codex-runtime",
+      "id": "codex",
       "kind": "runtime",
-      "type": "codex-runtime",
+      "type": "codex",
       "name": "Codex Runtime",
       "enabled": true,
       "capabilities": ["agent-runtime", "resume"],
@@ -1039,9 +1040,9 @@ Current connected-runtime rows expose runtime-scoped model metadata on the read-
   "success": true,
   "data": [
     {
-      "id": "codex-runtime",
+      "id": "codex",
       "kind": "runtime",
-      "type": "codex-runtime",
+      "type": "codex",
       "name": "Codex Runtime",
       "enabled": true,
       "description": "Codex app-server runtime over the local Codex CLI.",

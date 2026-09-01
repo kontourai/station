@@ -21,13 +21,53 @@ export interface ResolvedStationRuntimeContext {
 
 /**
  * The one app-owned Station root. It contains shared client configuration and
- * channel/worktree runtime instances; STATION_HOME remains a runtime-only
- * override and is deliberately not consulted here.
+ * channel/worktree runtime instances. An explicit root wins; otherwise an
+ * explicit runtime home derives a containing root so root-scoped writes can
+ * never escape to the ambient user's ~/.station.
  */
 export function resolveStationRoot(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  return resolve(env.STATION_ROOT?.trim() || join(homedir(), '.station'));
+  const explicitRoot = env.STATION_ROOT?.trim();
+  if (explicitRoot) return resolve(explicitRoot);
+  const explicitHome = env.STATION_HOME?.trim();
+  if (!explicitHome) return resolve(join(homedir(), '.station'));
+
+  const home = resolve(explicitHome);
+  const parent = dirname(home);
+  if (basename(parent) === 'instances') return dirname(parent);
+  if (basename(parent) === 'dev' && basename(dirname(parent)) === 'instances') {
+    return dirname(dirname(parent));
+  }
+  return home;
+}
+
+/**
+ * The `STATION_ROOT` a spawned Station runtime must carry for `home`, or
+ * `undefined` when it must be left UNSET.
+ *
+ * `undefined` is the self-rooted case -- `--home`, `--base`, `--temp-home`, or
+ * an external `STATION_HOME` naming a raw directory -- where
+ * `resolveStationRoot` roots the home at itself. Writing that value into the
+ * child's environment is not redundant, it is fatal: `admitStationRuntimeHome`
+ * has no way to tell a root DERIVED from this home apart from a foreign root
+ * the home would swallow, because provenance is not observable from the
+ * environment. It reads the absence of `STATION_ROOT` as that proof, so
+ * spelling out `STATION_ROOT === STATION_HOME` is rejected by design and the
+ * runtime cannot boot. The child re-derives the identical root from
+ * `STATION_HOME` alone -- `resolveStationRoot` reads nothing else -- so
+ * omitting it loses no information.
+ *
+ * An operator-set `STATION_ROOT` is always passed through unchanged, including
+ * when it equals the home: that is the original escape, and it stays rejected.
+ */
+export function spawnedStationRoot(
+  home: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const root = resolveStationRoot({ ...env, STATION_HOME: home });
+  if (env.STATION_ROOT?.trim()) return root;
+  return sameRuntimePath(root, home) ? undefined : root;
 }
 
 export class StationRuntimeHomeAdmissionError extends Error {
@@ -180,7 +220,29 @@ export function admitStationRuntimeHome(
     }
   }
 
-  if (equalOrDescendant(root, home)) {
+  // `root === home` is legitimate ONLY when the root was derived from this
+  // home — i.e. `STATION_HOME` was given with no explicit `STATION_ROOT`, so
+  // `resolveStationRoot` self-roots it and every root-scoped write lands
+  // inside the directory the operator named. That is what makes `--home`,
+  // `--base`, `--temp-home` and an external `STATION_HOME` work.
+  //
+  // With an explicit `STATION_ROOT`, a home equal to it is the original
+  // escape: the home swallows a root it does not own. Keep rejecting that.
+  // `sameRuntimePath(root, home)` alone is NOT enough to establish that the
+  // root was derived from this home. With no `STATION_ROOT` and no
+  // `STATION_HOME`, the root is the ambient `~/.station` default, so passing
+  // that directory as the home (`--home=$HOME/.station`, or a script that
+  // computes it) satisfied the equality and was admitted — the shared root
+  // accepted as a runtime home, which is the exact escape this guard exists
+  // to stop. The derivation only happened if `STATION_HOME` was actually set
+  // and names this same directory.
+  const explicitHome = env.STATION_HOME?.trim();
+  const rootWasDerivedFromHome =
+    !env.STATION_ROOT?.trim() &&
+    !!explicitHome &&
+    sameRuntimePath(root, home) &&
+    sameRuntimePath(canonicalPathThroughExistingAncestor(explicitHome), home);
+  if (equalOrDescendant(root, home) && !rootWasDerivedFromHome) {
     throw new StationRuntimeHomeAdmissionError(
       home,
       'it is the shared Station root or an ancestor of that root',

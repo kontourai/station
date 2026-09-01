@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
   parseIosSmokeOptions,
@@ -33,6 +35,14 @@ const catalog = {
     ],
   },
 };
+
+const swiftSmoke = readFileSync(
+  resolve(
+    import.meta.dirname,
+    '../../tests/ios-runtime-smoke/StationRuntimeSmokeTests.swift',
+  ),
+  'utf8',
+);
 
 describe('iOS simulator runtime smoke selection', () => {
   test('keeps evidence beneath the checkout and the target on Station stable', () => {
@@ -90,5 +100,77 @@ describe('iOS simulator runtime smoke selection', () => {
         runtimeIdentifier: 'com.apple.CoreSimulator.SimRuntime.iOS-26-5',
       }),
     ).toThrow(/available iOS simulator/);
+  });
+
+  test('dismisses a late notification sheet before tapping through the WKWebView', () => {
+    const calls = [...swiftSmoke.matchAll(/dismissSystemAlertIfPresent\(\)/g)];
+    // Three invocations plus the helper declaration: launch-time best effort,
+    // the required post-shell retry, then one bounded post-tap recovery for a
+    // permission sheet that wins the final race with the first WebView tap.
+    expect(calls).toHaveLength(4);
+
+    const firstShellWait = swiftSmoke.indexOf(
+      'connect.waitForExistence(timeout: 30)',
+    );
+    const secondDismissal = calls[1].index;
+    const reactivation = swiftSmoke.indexOf('app.activate()', secondDismissal);
+    const reacquire = swiftSmoke.indexOf(
+      'connect.waitForExistence(timeout: 5)',
+      reactivation,
+    );
+    const hittable = swiftSmoke.indexOf(
+      'XCTAssertTrue(connect.isHittable)',
+      reacquire,
+    );
+    const tap = swiftSmoke.indexOf('connect.tap()', hittable);
+    const managerAction = swiftSmoke.indexOf(
+      'app.buttons["Add a Station address"]',
+      tap,
+    );
+    const conditionalRecovery = swiftSmoke.indexOf(
+      'if !addAddress.waitForExistence(timeout: 2)',
+      managerAction,
+    );
+    const postTapDismissal = calls[2].index;
+    const postTapReactivation = swiftSmoke.indexOf(
+      'app.activate()',
+      postTapDismissal,
+    );
+    const postTapReacquire = swiftSmoke.indexOf(
+      'connect.waitForExistence(timeout: 5)',
+      postTapReactivation,
+    );
+    const postTapHittable = swiftSmoke.indexOf(
+      'XCTAssertTrue(connect.isHittable)',
+      postTapReacquire,
+    );
+    const retryTap = swiftSmoke.indexOf('connect.tap()', postTapHittable);
+    const finalManagerWait = swiftSmoke.indexOf(
+      'addAddress.waitForExistence(timeout: 10)',
+      retryTap,
+    );
+
+    const orderedContract = [
+      firstShellWait,
+      secondDismissal,
+      reactivation,
+      reacquire,
+      hittable,
+      tap,
+      managerAction,
+      conditionalRecovery,
+      postTapDismissal,
+      postTapReactivation,
+      postTapReacquire,
+      postTapHittable,
+      retryTap,
+      finalManagerWait,
+    ];
+    expect(orderedContract.every((position) => position >= 0)).toBe(true);
+    expect(orderedContract).toEqual(
+      [...orderedContract].sort((left, right) => left - right),
+    );
+    expect([...swiftSmoke.matchAll(/connect\.tap\(\)/g)]).toHaveLength(2);
+    expect(swiftSmoke).not.toContain('while !addAddress.waitForExistence');
   });
 });

@@ -56,7 +56,7 @@
  */ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { engineRuntimeId } from '@kontourai/station-contracts/agent-identity';
+import { engineId } from '@kontourai/station-contracts/agent-identity';
 import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
@@ -167,9 +167,8 @@ class FakeAdapter implements ProviderAdapterShape {
       displayName: `${provider} Runtime`,
       description: `${provider} adapter for tests`,
       capabilities: ['agent-runtime'],
-      runtimeId: engineRuntimeId(`${provider}-runtime`),
+      engineId: engineId(provider),
       builtin: true,
-      executionClass: 'connected',
     };
   }
 

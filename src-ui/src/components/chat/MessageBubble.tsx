@@ -1,5 +1,6 @@
 import { memo, useCallback } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import type { ChatMessage } from '../../types';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
@@ -20,7 +21,6 @@ import {
   resolveTurnEngine,
   resolveTurnModelIdentity,
 } from './message-bubble/utils';
-import { ShareAnswerButton } from './ShareAnswerButton';
 import { TurnProvenanceCard } from './TurnProvenanceCard';
 import './chat.css';
 
@@ -29,11 +29,6 @@ import './chat.css';
 // completed-answer rows load it only when they can actually render the
 // affordance. This follows the existing chat lazy-boundary pattern used for
 // markdown and model selection.
-const loadConnectedAttachAnswerToTaskButton = () =>
-  import('./AttachAnswerToTaskButton').then((module) => ({
-    default: module.ConnectedAttachAnswerToTaskButton,
-  }));
-
 const loadConnectedAttachUserInputToTaskButton = () =>
   import('./AttachAnswerToTaskButton').then((module) => ({
     default: module.ConnectedAttachUserInputToTaskButton,
@@ -42,6 +37,12 @@ const loadConnectedAttachUserInputToTaskButton = () =>
 const loadConnectedAnswerBasisAffordance = () =>
   import('./AttachAnswerToTaskButton').then((module) => ({
     default: module.ConnectedAnswerBasisAffordance,
+  }));
+
+const loadTurnActionsMenu = () => import('./TurnActionsMenu');
+const loadShareAnswerButton = () =>
+  import('./ShareAnswerButton').then((module) => ({
+    default: module.ShareAnswerButton,
   }));
 
 interface Session {
@@ -117,6 +118,7 @@ function MessageBubbleComponent({
   owner,
   accountableHuman,
 }: MessageBubbleProps) {
+  const { developerToolsEnabled } = useDeviceSettings();
   const textContent = typeof msg.content === 'string' ? msg.content : '';
 
   // Hoisted above the flowPart early-return (hooks can't be called
@@ -286,7 +288,7 @@ function MessageBubbleComponent({
         }}
         className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}`}
       >
-        {msg.traceId && !hasTurnFooter && (
+        {developerToolsEnabled && msg.traceId && !hasTurnFooter && (
           <a
             href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
             target="_blank"
@@ -497,82 +499,35 @@ function MessageBubbleComponent({
                     modelIdentity.claims.length > 0,
                 }}
                 accountableHuman={accountableHuman}
+                shareContent={
+                  <LazyBoundary
+                    load={loadShareAnswerButton}
+                    componentProps={{ provenance: msg.provenance }}
+                    pending={null}
+                  />
+                }
+                basisContent={
+                  msg.turnId &&
+                  answerSessionId &&
+                  msg.answerEligible === true &&
+                  (!isLastMessage || !activeSession.isThinking) ? (
+                    <LazyBoundary
+                      load={loadConnectedAnswerBasisAffordance}
+                      componentProps={{
+                        projectSlug: activeSession.projectSlug,
+                        chatStoreId: activeSession.id,
+                        sessionId: answerSessionId,
+                        turnId: msg.turnId,
+                      }}
+                      pending={null}
+                      unavailable={() => null}
+                    />
+                  ) : null
+                }
               />
             )}
             <div className="turn-footer__actions">
-              {/* archive#1423: sharing an answer is sharing it WITH its
-                  receipts. Keep it in the one action row with Task, copy, and
-                  feedback controls so narrow docks wrap deliberately instead
-                  of centering a single long control on a second line. */}
-              {msg.provenance !== undefined && (
-                <ShareAnswerButton provenance={msg.provenance} />
-              )}
-              {/* A finalized assistant row carries its exact turn id. Attaching
-                  stores only that identity tuple; it is not gated on execution
-                  provenance, and it never calls provenance semantic support. */}
-              {msg.turnId &&
-                answerSessionId &&
-                msg.answerEligible === true &&
-                (!isLastMessage || !activeSession.isThinking) && (
-                  <LazyBoundary
-                    load={loadConnectedAttachAnswerToTaskButton}
-                    componentProps={{
-                      sessionId: answerSessionId,
-                      turnId: msg.turnId,
-                      projectSlug: activeSession.projectSlug,
-                    }}
-                    pending={
-                      <span
-                        className="share-answer__status"
-                        role="status"
-                        aria-busy="true"
-                        aria-label="Loading Task action"
-                      >
-                        <Skeleton variant="line" />
-                      </span>
-                    }
-                    unavailable={(retry) => (
-                      <span className="share-answer__status" role="alert">
-                        Task action unavailable.{' '}
-                        <button type="button" onClick={retry}>
-                          Retry
-                        </button>
-                      </span>
-                    )}
-                  />
-                )}
-              {msg.turnId &&
-                answerSessionId &&
-                msg.answerEligible === true &&
-                (!isLastMessage || !activeSession.isThinking) && (
-                  <LazyBoundary
-                    load={loadConnectedAnswerBasisAffordance}
-                    componentProps={{
-                      projectSlug: activeSession.projectSlug,
-                      chatStoreId: activeSession.id,
-                      sessionId: answerSessionId,
-                      turnId: msg.turnId,
-                    }}
-                    pending={
-                      <span
-                        className="share-answer__status"
-                        role="status"
-                        aria-label="Loading Basis action"
-                      >
-                        <Skeleton variant="line" />
-                      </span>
-                    }
-                    unavailable={(retry) => (
-                      <span className="share-answer__status" role="alert">
-                        Basis action unavailable.{' '}
-                        <button type="button" onClick={retry}>
-                          Retry
-                        </button>
-                      </span>
-                    )}
-                  />
-                )}
-              {msg.traceId && (
+              {developerToolsEnabled && msg.traceId && (
                 <a
                   href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
                   target="_blank"
@@ -583,18 +538,6 @@ function MessageBubbleComponent({
                   {msg.traceId.slice(-8)}
                 </a>
               )}
-              {textContent &&
-                (turnForkSource && onForkFromTurn ? (
-                  <button
-                    type="button"
-                    onClick={() => onForkFromTurn(turnForkSource)}
-                    className="message__copy-btn message__fork-btn"
-                    title="Fork from this completed turn"
-                    aria-label="Fork from here"
-                  >
-                    Fork from here…
-                  </button>
-                ) : null)}
               {textContent && (
                 <button
                   type="button"
@@ -605,6 +548,32 @@ function MessageBubbleComponent({
                 >
                   Copy
                 </button>
+              )}
+              {((msg.turnId &&
+                answerSessionId &&
+                msg.answerEligible === true &&
+                (!isLastMessage || !activeSession.isThinking)) ||
+                (turnForkSource && onForkFromTurn)) && (
+                <LazyBoundary
+                  load={loadTurnActionsMenu}
+                  componentProps={{
+                    taskTarget:
+                      msg.turnId &&
+                      answerSessionId &&
+                      msg.answerEligible === true &&
+                      (!isLastMessage || !activeSession.isThinking)
+                        ? {
+                            sessionId: answerSessionId,
+                            turnId: msg.turnId,
+                            projectId: activeSession.projectSlug,
+                          }
+                        : undefined,
+                    forkSource: turnForkSource,
+                    onForkFromTurn,
+                  }}
+                  pending={null}
+                  unavailable={() => null}
+                />
               )}
               {textContent && feedbackConversationId && rowAgentSlug && (
                 <MessageRating

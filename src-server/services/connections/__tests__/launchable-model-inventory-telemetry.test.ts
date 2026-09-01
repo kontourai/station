@@ -162,7 +162,7 @@ describe('launchable model inventory telemetry', () => {
         displayName: 'Codex',
         description: 'Codex',
         capabilities: ['agent-runtime'],
-        runtimeId: 'codex-runtime',
+        runtimeId: 'codex',
         executionClass: 'connected',
       },
       getPrerequisites,

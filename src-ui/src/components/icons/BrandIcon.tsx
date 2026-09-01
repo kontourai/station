@@ -1,9 +1,11 @@
+import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import { useState } from 'react';
 import { identiconHue } from '../../utils/identicon';
 import { getInitials } from '../../utils/layout';
 import './BrandIcon.css';
 
 export type BrandKey =
+  | 'station'
   | 'claude'
   | 'codex'
   | 'pi'
@@ -14,57 +16,36 @@ export type BrandKey =
   | 'goose'
   | 'qwen';
 
-const BRAND_ALIASES: Record<BrandKey, string[]> = {
-  claude: ['claude', 'claude code', 'anthropic', 'anthropic claude'],
-  codex: ['codex', 'openai', 'openai codex'],
-  pi: ['pi', 'pi dev', 'pi agent'],
-  kiro: ['kiro'],
-  opencode: ['opencode', 'open code'],
-  muse: ['muse', 'muse code', 'meta muse', 'meta muse code'],
-  cursor: ['cursor', 'cursor agent'],
-  goose: ['goose', 'codename goose', 'goose cli'],
-  qwen: ['qwen', 'qwen code'],
-};
+const BRAND_KEYS = [
+  'station',
+  'claude',
+  'codex',
+  'pi',
+  'kiro',
+  'opencode',
+  'muse',
+  'cursor',
+  'goose',
+  'qwen',
+] as const satisfies readonly BrandKey[];
 
-function normalized(value: string | undefined): string {
-  return (value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-/** One local mapping for Agent app names, ids, virtual-agent slugs and ACP ids. */
-export function resolveBrandKey(
-  ...values: Array<string | undefined>
-): BrandKey | undefined {
-  const candidates = values.map(normalized).filter(Boolean);
-  for (const [key, aliases] of Object.entries(BRAND_ALIASES) as Array<
-    [BrandKey, string[]]
-  >) {
-    if (
-      candidates.some((candidate) =>
-        aliases.some(
-          (alias) =>
-            candidate === alias ||
-            candidate.startsWith(`${alias} `) ||
-            candidate.endsWith(` ${alias}`),
-        ),
-      )
-    ) {
-      return key;
-    }
+/** Exact engine-id-to-mark lookup. Engine display names never participate. */
+export function resolveBrandKey(engineId: EngineId): BrandKey | undefined {
+  if (
+    engineId === 'station-agent' ||
+    engineId === 'bedrock' ||
+    engineId === 'ollama'
+  ) {
+    return 'station';
   }
-  return undefined;
+  return BRAND_KEYS.find((brand) => brand === engineId);
 }
 
 function explicitBrand(value: unknown): BrandKey | undefined {
   if (typeof value !== 'string' || !value.startsWith('brand:'))
     return undefined;
   const key = value.slice('brand:'.length);
-  return (Object.keys(BRAND_ALIASES) as BrandKey[]).find(
-    (candidate) => candidate === key,
-  );
+  return BRAND_KEYS.find((candidate) => candidate === key);
 }
 
 function isGlyph(value: unknown): value is string {
@@ -111,6 +92,16 @@ function safeSameOriginImage(value: unknown): string | undefined {
 
 function Mark({ brand }: { brand: BrandKey }) {
   switch (brand) {
+    case 'station':
+      return (
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <rect width="32" height="32" rx="8" />
+          <path
+            className="brand-icon__inverse"
+            d="M9 10.5C9 8.57 10.57 7 12.5 7H23v4h-9.5a.5.5 0 0 0 0 1H19a4.5 4.5 0 0 1 0 9h-10v-4h9.5a.5.5 0 0 0 0-1H13a4.5 4.5 0 0 1-4-6.5Z"
+          />
+        </svg>
+      );
     case 'claude':
       return (
         <svg viewBox="0 0 256 257" aria-hidden="true">
@@ -174,6 +165,7 @@ function Mark({ brand }: { brand: BrandKey }) {
 export interface BrandIconProps {
   name: string;
   id?: string;
+  engineId?: EngineId;
   icon?: unknown;
   /** Output-only same-origin URL issued by Station's local icon route. */
   iconUrl?: string;
@@ -202,6 +194,7 @@ export interface BrandIconProps {
 export function BrandIcon({
   name,
   id,
+  engineId,
   icon,
   iconUrl,
   allowSafeImageIcon = false,
@@ -213,7 +206,8 @@ export function BrandIcon({
 }: BrandIconProps) {
   const [failedImageSource, setFailedImageSource] = useState<string>();
   const explicitBrandKey = explicitBrand(icon);
-  const brand = explicitBrandKey ?? resolveBrandKey(id, name);
+  const brand =
+    explicitBrandKey ?? (engineId ? resolveBrandKey(engineId) : undefined);
   const localUrl =
     typeof iconUrl === 'string' &&
     /^\/(?:api\/)?integrations\/[A-Za-z0-9._-]+\/icon$/.test(iconUrl)

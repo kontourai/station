@@ -247,7 +247,7 @@ describe('reloadRuntimeAgents', () => {
   // runtime-cold-start-custom-agent.test.ts's "external-engine-bound agent
   // records ... do not build managed runtime instances" (archive#954) — the
   // reload path previously lacked this skip, so a managed external-engine
-  // agent (e.g. a user-created agent bound to the claude-runtime connection)
+  // agent (e.g. a user-created agent bound to the claude connection)
   // was unconditionally sent through `prepareVoltAgentInstance`, threw
   // `ManagedModelUnavailableError`, and was logged/tracked as
   // "unavailable until a model is configured" even though it is fully
@@ -266,7 +266,7 @@ describe('reloadRuntimeAgents', () => {
           {
             slug: 'engine-lab',
             name: 'Engine Lab',
-            execution: { agentConnectionId: 'claude-runtime' },
+            execution: { agentConnectionId: 'claude' },
           },
           { slug: 'ready', name: 'Ready' },
         ]),
@@ -308,7 +308,7 @@ describe('reloadRuntimeAgents', () => {
       'Skipping agent record with no instance to build',
       expect.objectContaining({
         agent: 'engine-lab',
-        agentConnectionId: 'claude-runtime',
+        agentConnectionId: 'claude',
       }),
     );
   });

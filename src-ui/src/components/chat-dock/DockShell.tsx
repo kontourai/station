@@ -17,7 +17,7 @@ import { ChatDockResizeHandle } from './ChatDockResizeHandle';
  * - geometry, snap and drag state via `useDockShellChrome` — the single
  *   authority an occupant switch cannot desync, because this component (not
  *   the occupant) is what stays mounted across a switch;
- * - `dock.toggle` / `dock.maximize`.
+ * - `dock.maximize` (region visibility lives in the app toolbar).
  *
  * What it does NOT own: the header's occupant-specific content (identity,
  * project context, session controls) and the body. Those are composed by
@@ -35,8 +35,7 @@ export function DockShell({
 }) {
   const chrome = useDockShellChrome({
     publishesDockSlotClearance: true,
-    // `DockShell` is the ambient owner — always registers `dock.toggle` /
-    // `dock.maximize` (station#4460 review H1).
+    // `DockShell` is the ambient owner of the region maximize command.
     registersDockShortcuts: true,
     onGeometryChange,
   });

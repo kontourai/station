@@ -18,9 +18,9 @@ import {
   environmentId,
 } from '@kontourai/station-contracts/execution-target';
 import {
+  type EngineId,
   type ModelLaunchCapabilities,
   type ModelLaunchPlan,
-  type ProviderKind,
   resolveModelLaunchPlan,
   unsupportedModelOptionError,
   unsupportedModelOptionKeys,
@@ -78,9 +78,7 @@ export interface ExecutionTargetResolverDependencies {
    * Registered adapter lookup on the selected Station. Model-launch support
    * belongs to the adapter declaration; it is not a provider-name policy.
    */
-  getProviderAdapter: (
-    provider: ProviderKind,
-  ) => ProviderAdapterShape | undefined;
+  getProviderAdapter: (provider: EngineId) => ProviderAdapterShape | undefined;
   now?: () => Date;
 }
 
@@ -89,7 +87,7 @@ export interface ResolvedExecutionTarget {
   access: EnvironmentAccess;
   agentId: AgentId;
   engine: ResolvedExecutionEngine;
-  provider: ProviderKind;
+  provider: EngineId;
   modelLaunchPlan: ModelLaunchPlan;
   /**
    * The model this turn actually launches with: the caller's per-turn override
@@ -127,7 +125,7 @@ function assertConnectionReady(connection: ConnectionConfig): void {
   }
 }
 
-function connectionProvider(connection: ConnectionConfig): ProviderKind {
+function connectionProvider(connection: ConnectionConfig): EngineId {
   if (connection.type === 'acp' || connection.capabilities.includes('acp')) {
     return 'acp';
   }
@@ -141,7 +139,7 @@ function connectionProvider(connection: ConnectionConfig): ProviderKind {
 }
 
 function assertModelOptionsSupported(
-  provider: ProviderKind,
+  provider: EngineId,
   options: Readonly<Record<string, unknown>> | undefined,
   agent: AgentId,
 ): void {
@@ -337,7 +335,7 @@ async function resolveWorkspace(
 }
 
 function launchCapabilities(
-  provider: ProviderKind,
+  provider: EngineId,
   getProviderAdapter: ExecutionTargetResolverDependencies['getProviderAdapter'],
 ): ModelLaunchCapabilities | undefined {
   return getProviderAdapter(provider)?.metadata.modelLaunch;
@@ -372,7 +370,7 @@ export async function resolveExecutionTarget(
 
   const boundConnectionId = agent.execution?.agentConnectionId;
   let engine: ResolvedExecutionEngine;
-  let provider: ProviderKind;
+  let provider: EngineId;
   if (boundConnectionId) {
     const resolvedEngineConnectionId = engineConnectionId(
       String(boundConnectionId),

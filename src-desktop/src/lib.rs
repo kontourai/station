@@ -6712,16 +6712,20 @@ struct SidecarLaunchContext {
 /// Builds, but does not spawn, a sidecar child command. Keeping this separate
 /// makes the inherited-environment removals and loopback contract testable.
 #[cfg(not(mobile))]
-fn build_sidecar_command(context: &SidecarLaunchContext, boot_id: &str) -> Command {
+fn build_sidecar_command(
+    context: &SidecarLaunchContext,
+    boot_id: &str,
+    explicit_station_root: Option<std::ffi::OsString>,
+) -> Command {
     let mut command = Command::new(find_node());
     command
         .arg(command_station_script_path(&context.resource_dir))
         .current_dir(&context.resource_dir)
-        .env("STATION_ROOT", &context.station_root)
         .env("STATION_HOME", &context.station_home)
         .env("STATION_HOST", "127.0.0.1")
         .env("STATION_STDOUT_HANDSHAKE", "1")
         .env("STATION_INSTANCE_ID", &context.instance_id)
+        .env_remove("STATION_ROOT")
         // A boot identifies one concrete Node process. Generate it at the
         // spawn boundary so every supervised restart rotates the value while
         // retaining the channel-scoped instance identity above.
@@ -6736,6 +6740,18 @@ fn build_sidecar_command(context: &SidecarLaunchContext, boot_id: &str) -> Comma
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // Set or removed above, never inherited, and OMITTED for a self-rooted
+    // home. Spelling out `STATION_ROOT == STATION_HOME` is what the runtime's
+    // admission guard reads as a home swallowing a root it does not own, so
+    // the sidecar refused to boot for every raw external `STATION_HOME`
+    // (#1108). The child derives the identical root from `STATION_HOME` alone.
+    if let Some(root) = service_state::spawned_station_root(
+        &context.station_root,
+        &context.station_home,
+        explicit_station_root,
+    ) {
+        command.env("STATION_ROOT", root);
+    }
     match &context.channel {
         Some(channel) => {
             command.env("STATION_DESKTOP_CHANNEL", channel);
@@ -8717,7 +8733,14 @@ fn apply_supervisor_input(
 #[cfg(not(mobile))]
 fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String), String> {
     let boot_id = fresh_sidecar_boot_id();
-    build_sidecar_command(&context.launch, &boot_id)
+    // The ambient read lives at the edge so the builder stays a pure function
+    // of its inputs -- otherwise its tests would pass or fail depending on the
+    // developer's own STATION_ROOT.
+    build_sidecar_command(
+        &context.launch,
+        &boot_id,
+        std::env::var_os("STATION_ROOT"),
+    )
         .spawn()
         .map(|child| (child, boot_id))
         .map_err(|error| format!("launch Station sidecar: {error}"))
@@ -9556,6 +9579,11 @@ If a stable instance is running, this launch will focus its window and exit.",
                 // values to the bridge rather than letting its Node process
                 // select a root/home from inherited environment or cwd.
                 let station_root = service_state::resolve_station_root();
+                log::info!(
+                    "resolved Station startup paths: root='{}' home='{}'",
+                    station_root.display(),
+                    station_home.display()
+                );
                 if let Err(error) = ensure_station_profile_store_genesis(&app.handle(), &station_root)
                 {
                     exit_desktop_home_preparation_failure(
@@ -11353,7 +11381,7 @@ mod tests {
     #[test]
     fn sidecar_launch_targets_command_station_with_loopback_handshake() {
         let context = sample_sidecar_context(None);
-        let command = build_sidecar_command(&context, "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a111");
+        let command = build_sidecar_command(&context, "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a111", None);
         assert_eq!(command.get_program(), "node");
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
@@ -11395,8 +11423,8 @@ mod tests {
         assert!(uuid::Uuid::parse_str(&second).is_ok());
 
         let context = sample_sidecar_context(None);
-        let first_env = command_env(&build_sidecar_command(&context, &first));
-        let second_env = command_env(&build_sidecar_command(&context, &second));
+        let first_env = command_env(&build_sidecar_command(&context, &first, None));
+        let second_env = command_env(&build_sidecar_command(&context, &second, None));
         assert!(first_env.contains(&(
             "STATION_INSTANCE_ID".to_string(),
             Some(context.instance_id.clone())
@@ -11443,10 +11471,61 @@ mod tests {
 
     #[cfg(not(mobile))]
     #[test]
+    fn a_self_rooted_sidecar_home_is_spawned_without_a_root_it_would_swallow() {
+        // #1108: the desktop derived the root FROM a raw external STATION_HOME
+        // -- which self-roots -- and then sent both, so the sidecar arrived at
+        // STATION_ROOT == STATION_HOME. The runtime reads an explicit root
+        // equal to the home as a home swallowing a root it does not own, and
+        // refused to boot. The child derives the identical root from
+        // STATION_HOME alone, so the value must simply be omitted.
+        let mut context = sample_sidecar_context(None);
+        context.station_root = PathBuf::from("/data/station");
+        context.station_home = PathBuf::from("/data/station");
+        let env = command_env(&build_sidecar_command(
+            &context,
+            "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a333",
+            None,
+        ));
+        assert!(
+            !env.iter()
+                .any(|(name, value)| name == "STATION_ROOT" && value.is_some()),
+            "a self-rooted home must be spawned with no STATION_ROOT, got {env:?}"
+        );
+        // The home itself is still passed, or the child has nothing to derive
+        // from and this assertion would pass for the wrong reason.
+        assert!(env.contains(&(
+            "STATION_HOME".to_string(),
+            Some("/data/station".to_string())
+        )));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn an_operator_set_root_still_reaches_the_sidecar_even_when_it_equals_the_home() {
+        // The original escape stays closed: only a root the desktop DERIVED
+        // from the home may be omitted. One the operator wrote down is passed
+        // through, and the runtime still rejects it.
+        let mut context = sample_sidecar_context(None);
+        context.station_root = PathBuf::from("/data/station");
+        context.station_home = PathBuf::from("/data/station");
+        let env = command_env(&build_sidecar_command(
+            &context,
+            "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a444",
+            Some(std::ffi::OsString::from("/data/station")),
+        ));
+        assert!(env.contains(&(
+            "STATION_ROOT".to_string(),
+            Some("/data/station".to_string())
+        )));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
     fn pinned_nightly_port_removes_auto_mode_from_child_environment() {
         let command = build_sidecar_command(
             &sample_sidecar_context(Some(38141)),
             "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a222",
+            None,
         );
         let env = command_env(&command);
         assert!(env.contains(&("PORT".to_string(), Some("38141".to_string()))));

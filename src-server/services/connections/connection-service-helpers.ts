@@ -3,7 +3,7 @@ import type {
   ACPProviderRoutingStatus,
   ACPStatusValue,
 } from '@kontourai/station-contracts/acp';
-import type { EngineRuntimeId } from '@kontourai/station-contracts/agent-identity';
+import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import type {
   GuidanceAssetReference,
   ProviderCapabilityFreshness,
@@ -166,7 +166,7 @@ export function providerLabelForAdapter(adapter: ProviderAdapterShape): string {
 
 export function runtimeSettingsFor(
   appConfig: AppConfig,
-  id: EngineRuntimeId | string,
+  id: EngineId | string,
 ): AgentConnectionSettings {
   return appConfig.agentConnections?.[id] ?? {};
 }
@@ -196,22 +196,22 @@ export function runtimeSetupState(
 }
 
 /**
- * The claude-runtime connection's opted-in skill materialization ids
+ * The claude connection's opted-in skill materialization ids
  * (docs/design/connections-onboarding.md §5). Filesystem-safety-checked
  * with the same predicate the MCP passthrough slice added
  * (`isSafeToolServerId`) — this list ultimately joins into
  * `<sessionCwd>/.claude/skills/<id>/` (claude-skills-materialization.ts),
  * so the only property that matters is "cannot escape that directory".
  */
-const CLAUDE_RUNTIME_ID = 'claude-runtime';
+const CLAUDE_RUNTIME_ID = 'claude';
 
 /**
- * archive#896 wave 2: codex-runtime's app-home opt-in (docs/design/
- * connections-onboarding.md §1.1) — mirrors claude-runtime's `useAppHome`
+ * archive#896 wave 2: codex's app-home opt-in (docs/design/
+ * connections-onboarding.md §1.1) — mirrors claude's `useAppHome`
  * field. Codex does not get `provideSkills`: skills stay claude/
  * workspace-channel only this wave.
  */
-const CODEX_RUNTIME_ID = 'codex-runtime';
+const CODEX_RUNTIME_ID = 'codex';
 
 function sanitizeProvideSkills(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -245,7 +245,7 @@ function runtimeDefaultConfig(
           useAppHome: false,
         }
       : {}),
-    // archive#896 wave 2: codex-runtime gets the same app-home opt-in as claude,
+    // archive#896 wave 2: codex gets the same app-home opt-in as claude,
     // but never `provideSkills` (skills stay claude/workspace-channel only
     // this wave).
     ...(id === CODEX_RUNTIME_ID ? { useAppHome: false } : {}),
@@ -273,7 +273,7 @@ export function sanitizeRuntimeConfig(
     sanitized.useAppHome = config.useAppHome === true;
   }
   if (id === CODEX_RUNTIME_ID) {
-    // archive#896 wave 2: same boolean-only contract as claude-runtime; codex
+    // archive#896 wave 2: same boolean-only contract as claude; codex
     // never gains `provideSkills`.
     sanitized.useAppHome = config.useAppHome === true;
   }

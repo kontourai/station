@@ -38,6 +38,9 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // EventStore owns a high-cardinality SQLite fixture whose large replay and
+  // backfill assertions are scheduler-sensitive under the two-worker pool.
+  'src-server/services/orchestration/__tests__/event-store.test.ts',
   // Owns detached real-process fixtures, scans live sibling instances, and
   // contains synchronous crash-recovery probes that Vitest cannot interrupt
   // while another process-heavy file is consuming the host.
@@ -186,6 +189,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // sentence and its EXIT STATUS are proven, not just its pure decision
   // functions. Bounded single-shot children per case.
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
+  // #1130: same shape again — the dialog-surface-class guard is driven as a
+  // real child process against throwaway git repositories so its `FAIL:`
+  // sentence and its EXIT STATUS are proven, not just its pure decision
+  // functions. Bounded single-shot children per case.
+  'scripts/__tests__/dialog-surface-class-guard.test.ts',
   'scripts/__tests__/dependency-advisory-policy.test.ts',
   // station#1085: builds throwaway git checkouts and drives `git` through
   // `execFileSync` to prove the manifest derives real revision/branch values
@@ -239,6 +247,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#4389: runs the root shell launcher against isolated PATH stubs to
   // prove lifecycle delegation and launch sequencing at the process boundary.
   'scripts/__tests__/dependency-lifecycle.test.ts',
+  // Drives the merge driver's executable entry point with a hermetic build
+  // command so both measured success and fail-without-writing are real exits.
+  'scripts/__tests__/ui-bundle-budget.test.ts',
   'scripts/__tests__/install-script.test.ts',
   'scripts/__tests__/installer-tool-output-parsing.test.ts',
   'scripts/__tests__/local-verification.test.ts',
@@ -269,6 +280,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // These tests start real children through the owned-process helper rather
   // than importing node:child_process directly.
   'scripts/__tests__/owned-process.test.ts',
+  // Executes the Node UTC conversion used by the reusable fleet workflow;
+  // retain the process boundary so a host-local offset cannot be mistaken for
+  // the canonical portable-release timestamp contract.
+  'scripts/__tests__/native-release-promotion.test.ts',
   'scripts/__tests__/package-portable-release.test.ts',
   // station#1686: runs the shadow-record reader as a real child process so
   // its REFUSAL path (`--gate` on a home that has never observed anything)
@@ -440,10 +455,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture. The children are network-free and short-lived, but the actual
   // process boundary is the claim, so it belongs in the bounded spawn pool.
   'scripts/__tests__/version-packages-lock.test.ts',
-  // station#3616: invokes the real Claude and Codex CLIs against isolated
-  // config homes; their child lifecycles and host binary availability make
-  // this an explicit process-heavy integration test, never ordinary work.
-  'src-server/services/orchestration/__tests__/event-store.test.ts',
   // The room runtime intentionally hard-exits a child after durable history
   // commit and before recovery settlement, then reopens the same SQLite file.
   // That crash/reopen lifecycle must not overlap ordinary workers.
@@ -582,6 +593,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Exercises the release-cohort CLI through real Node subprocesses so its
   // externally persisted receipt boundary is observable end-to-end.
   'scripts/__tests__/release-cohort.test.ts',
+  // Injects a fixed command adapter at the protected provider boundary and
+  // asserts exact child-process argv/options without using a real credential.
+  'scripts/__tests__/verify-release-cohort.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

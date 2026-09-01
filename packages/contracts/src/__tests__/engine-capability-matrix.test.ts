@@ -11,6 +11,7 @@ import {
   sessionDeliveryChannels,
   UNKNOWN_EXTERNAL_ENGINE_MATRIX,
 } from '../engine-capability-matrix';
+import { engineDisplayLabel } from '../engine-display';
 
 /**
  * The ACP adapter's declared capabilities, restated here rather than imported:
@@ -79,6 +80,14 @@ describe('engine capability matrix', () => {
       });
     });
 
+    test('keys every capability matrix by its canonical EngineId', () => {
+      for (const [engineId, matrix] of Object.entries(
+        ENGINE_CAPABILITY_MATRICES,
+      )) {
+        expect(matrix.engineId).toBe(engineId);
+      }
+    });
+
     test('cross-check: no shipped matrix entry claims both a native systemPrompt AND the first-turn fallback — the fallback is a genuine fallback, never a second channel', () => {
       for (const [provider, matrix] of Object.entries(
         ENGINE_CAPABILITY_MATRICES,
@@ -101,16 +110,16 @@ describe('engine capability matrix', () => {
     });
   });
 
-  test('resolveEngineCapabilityMatrix branch order (managed ids, executionClass, acp, unknown-external)', () => {
+  test('resolveEngineCapabilityMatrix branch order (engineId, acp, unknown-external)', () => {
     expect(resolveEngineCapabilityMatrix()).toBe(
       ENGINE_CAPABILITY_MATRICES.station,
     );
     expect(resolveEngineCapabilityMatrix('bedrock-runtime')).toBe(
-      ENGINE_CAPABILITY_MATRICES.station,
+      UNKNOWN_EXTERNAL_ENGINE_MATRIX,
     );
     expect(
       resolveEngineCapabilityMatrix('strands-runtime', {
-        config: { executionClass: 'managed' },
+        config: { engineId: 'station' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.station);
     expect(resolveEngineCapabilityMatrix('acp')).toBe(
@@ -120,15 +129,15 @@ describe('engine capability matrix', () => {
       resolveEngineCapabilityMatrix('kiro-connection', { type: 'acp' }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.acp);
     expect(
-      resolveEngineCapabilityMatrix('codex-runtime', {
+      resolveEngineCapabilityMatrix('codex', {
         type: 'codex',
-        config: { executionClass: 'connected' },
+        config: { engineId: 'codex' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
     expect(
-      resolveEngineCapabilityMatrix('claude-runtime', {
+      resolveEngineCapabilityMatrix('claude', {
         type: 'claude',
-        config: { executionClass: 'connected' },
+        config: { engineId: 'claude' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.claude);
   });
@@ -141,49 +150,43 @@ describe('engine capability matrix', () => {
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.station);
     expect(
-      resolveEngineCapabilityMatrix('codex-runtime', {
+      resolveEngineCapabilityMatrix('codex', {
         type: 'codex',
         engineId: 'codex',
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
-    // Native adapter projections intentionally use their private runtime
-    // selector as `type` (`codex-runtime`) while publishing the public
-    // engine identity separately. The picker receives that exact live shape;
-    // a declared Codex delivery mechanism must not disappear at this
-    // projection boundary.
+    // Native adapter projections use the same canonical EngineId throughout.
     expect(
       resolveEngineCapabilityMatrix('codex', {
-        type: 'codex-runtime',
+        type: 'codex',
         config: { engineId: 'codex' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
-    // An unknown adapter cannot inherit Codex's declared delivery merely by
-    // reporting its public id.
+    // A known canonical EngineId is authoritative; connection type is not a
+    // second engine identity to reconcile.
     expect(
       resolveEngineCapabilityMatrix('untrusted', {
         type: 'untrusted-runtime',
         config: { engineId: 'codex' },
       }),
-    ).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
-    // A canonical identity is authoritative. A contradictory provider type
-    // must fail closed rather than borrow either engine's delivery claim.
+    ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
     expect(
       resolveEngineCapabilityMatrix('contradictory-codex', {
         type: 'codex',
-        config: { engineId: 'claude-code' },
+        config: { engineId: 'claude' },
       }),
-    ).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
+    ).toBe(ENGINE_CAPABILITY_MATRICES.claude);
     expect(
       resolveEngineCapabilityMatrix('contradictory-claude', {
         type: 'claude',
         config: { engineId: 'codex' },
       }),
-    ).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
+    ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
     // config-nested engineId (AgentConnectionView/ConnectionConfig shape).
     expect(
-      resolveEngineCapabilityMatrix('claude-runtime', {
+      resolveEngineCapabilityMatrix('claude', {
         type: 'claude',
-        config: { engineId: 'claude-code' },
+        config: { engineId: 'claude' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.claude);
     expect(
@@ -199,25 +202,24 @@ describe('engine capability matrix', () => {
         engineId: 'station',
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.acp);
-    // Legacy executionClass (no engineId at all) still resolves exactly as
-    // before — read-compat, not a behavior change.
+    // A missing engine identity is no longer upgraded from legacy metadata.
     expect(
       resolveEngineCapabilityMatrix('strands-runtime', {
-        config: { executionClass: 'managed' },
+        config: {},
       }),
-    ).toBe(ENGINE_CAPABILITY_MATRICES.station);
+    ).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
     expect(
-      resolveEngineCapabilityMatrix('codex-runtime', {
+      resolveEngineCapabilityMatrix('codex', {
         type: 'codex',
-        config: { executionClass: 'connected' },
+        config: { engineId: 'codex' },
       }),
     ).toBe(ENGINE_CAPABILITY_MATRICES.codex);
   });
 
-  test('an acp connection carrying a stale executionClass "managed" still resolves acp (acp is checked first)', () => {
+  test('an acp connection resolves acp regardless of other config (acp is checked first)', () => {
     const staleConnection = {
       type: 'acp',
-      config: { executionClass: 'managed' },
+      config: {},
     };
     expect(
       resolveEngineCapabilityMatrix('kiro-connection', staleConnection),
@@ -227,7 +229,7 @@ describe('engine capability matrix', () => {
   test('an unknown external engine resolves to the all-unsupported conservative matrix, never silently editable surfaces', () => {
     const result = resolveEngineCapabilityMatrix('opencode-connection', {
       type: 'opencode',
-      config: { executionClass: 'connected' },
+      config: {},
     });
     expect(result).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
     expect(result.systemPrompt).toEqual({ state: 'unsupported' });
@@ -327,7 +329,7 @@ describe('station#1194: engineControlPlaneCapability (can the engine host statio
     );
     expect(controlPlaneCapableEngineNames().sort()).toEqual(
       capable
-        .map((matrix) => matrix.displayName)
+        .map((matrix) => engineDisplayLabel(matrix.engineId))
         .filter((name): name is string => name !== null)
         .sort(),
     );
@@ -335,11 +337,11 @@ describe('station#1194: engineControlPlaneCapability (can the engine host statio
     // assistant but cannot say so would silently vanish from the sentence
     // that tells the user what to connect.
     for (const matrix of capable) {
-      expect(matrix.displayName).not.toBeNull();
+      expect(engineDisplayLabel(matrix.engineId)).not.toBeNull();
     }
   });
 
-  test('displayName is null exactly where only the live connection can name the engine', () => {
+  test('engineDisplayLabel preserves the canonical engine vocabulary', () => {
     // A command-backed connection is shown by its own name ("Kiro"), never
     // by the protocol it speaks; the unknown-engine fallback has nothing
     // honest to call itself. Neither derives 'full' from the matrix ALONE
@@ -347,11 +349,21 @@ describe('station#1194: engineControlPlaneCapability (can the engine host statio
     // is chat-only), so neither can reach controlPlaneCapableEngineNames() —
     // which deliberately passes no observation because it is a statement
     // about engines, not connections.
-    expect(ENGINE_CAPABILITY_MATRICES.acp.displayName).toBeNull();
-    expect(UNKNOWN_EXTERNAL_ENGINE_MATRIX.displayName).toBeNull();
-    expect(ENGINE_CAPABILITY_MATRICES.station.displayName).toBe('Station');
-    expect(ENGINE_CAPABILITY_MATRICES.claude.displayName).toBe('Claude Code');
-    expect(ENGINE_CAPABILITY_MATRICES.codex.displayName).toBe('Codex');
+    expect(engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.acp.engineId)).toBe(
+      'Custom engine',
+    );
+    expect(
+      engineDisplayLabel(UNKNOWN_EXTERNAL_ENGINE_MATRIX.engineId),
+    ).toBeNull();
+    expect(
+      engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.station.engineId),
+    ).toBe('Station');
+    expect(engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.claude.engineId)).toBe(
+      'Claude Code',
+    );
+    expect(engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.codex.engineId)).toBe(
+      'Codex',
+    );
   });
 
   test('a session channel WITHOUT a delivery mechanism is chat-only regardless of channel name — proves this keys on the delivery field, not a channel or engine list', () => {
@@ -795,32 +807,19 @@ describe('station#1194: resolveBuiltinAgentEngineBinding (rebind + default-selec
 });
 
 describe('built-in engines resolve to their own matrix (#2301)', () => {
-  // The exact shape `listRuntimeConnectionsForAdapters` projects: `type` is the
-  // RUNTIME id, `config.engineId` is the ENGINE id. The resolver's own comment
-  // calls engineId "the canonical engine identity", but it resolved by `type`,
-  // which is never a matrix key — so every built-in external engine silently
-  // fell back to the all-unsupported unknown matrix and derived its agent
-  // editor tabs from that.
-  const projected = (runtimeId: string, engineId: string) => ({
-    type: runtimeId,
-    config: { engineId, executionClass: 'connected' },
+  const projected = (engineId: string) => ({
+    type: engineId,
+    config: { engineId },
   });
 
-  // The engine id each adapter actually publishes — claude's is `claude-code`,
-  // not `claude`. Using the matrix KEY here instead would assert a shape no
-  // projection ever emits.
-  test.each([
-    ['claude-runtime', 'claude-code', 'claude'],
-    ['codex-runtime', 'codex', 'codex'],
-    ['muse-runtime', 'muse', 'muse'],
-  ])(
+  test.each(['claude', 'codex', 'muse'])(
     '%s resolves to its own matrix, not the unknown fallback',
-    (rt, engineId, key) => {
+    (engineId) => {
       const result = resolveEngineCapabilityMatrix(
         engineId,
-        projected(rt, engineId),
+        projected(engineId),
       );
-      expect(result).toBe(ENGINE_CAPABILITY_MATRICES[key]);
+      expect(result).toBe(ENGINE_CAPABILITY_MATRICES[engineId]);
       expect(result).not.toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
     },
   );
@@ -828,7 +827,7 @@ describe('built-in engines resolve to their own matrix (#2301)', () => {
   test('a genuinely unknown engineId still falls back, rather than inventing a matrix', () => {
     const result = resolveEngineCapabilityMatrix('mystery', {
       type: 'mystery-runtime',
-      config: { engineId: 'mystery', executionClass: 'connected' },
+      config: { engineId: 'mystery' },
     });
     expect(result).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
   });
@@ -946,5 +945,36 @@ describe('resolveComposerImageSupport (station#3344)', () => {
         }),
       ).toEqual({ attachable: true });
     }
+  });
+
+  // The collapse removed the branches that read the deprecated executionClass.
+  // These pin what stored connections resolve to now, so the removal is an
+  // asserted decision rather than an uncovered one: main asserted this field 12
+  // times and the collapse left it asserted nowhere.
+  test('legacy executionClass connections resolve without borrowing Station', () => {
+    // 'managed' is Station running the agent, which is the default anyway.
+    expect(
+      resolveEngineCapabilityMatrix(undefined, {
+        config: { executionClass: 'managed' },
+      } as never),
+    ).toBe(ENGINE_CAPABILITY_MATRICES.station);
+
+    // 'connected' names an external engine. Without the read-compat below it
+    // reached the final `station` return and reported Station's capabilities
+    // for an engine Station does not run.
+    expect(
+      resolveEngineCapabilityMatrix(undefined, {
+        type: 'claude-code',
+        config: { executionClass: 'connected' },
+      } as never),
+    ).not.toBe(ENGINE_CAPABILITY_MATRICES.station);
+
+    // An unrecognised type stays unknown-external rather than falling back.
+    expect(
+      resolveEngineCapabilityMatrix(undefined, {
+        type: 'not-a-known-engine',
+        config: { executionClass: 'connected' },
+      } as never),
+    ).toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
   });
 });

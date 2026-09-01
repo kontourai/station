@@ -574,7 +574,7 @@ describe('useChatDockActiveChatSync', () => {
     renderHook(() =>
       useChatDockActiveChatSync({
         activeChat: 'dead-chat',
-        agentCatalogKey: '__agent:claude-runtime',
+        agentCatalogKey: '__agent:claude',
         agentsLoaded: true,
         apiBase: '/api',
         sessions: [],
@@ -605,7 +605,7 @@ describe('useChatDockActiveChatSync', () => {
     renderHook(() =>
       useChatDockActiveChatSync({
         activeChat: 'thread-network-error',
-        agentCatalogKey: '__agent:claude-runtime',
+        agentCatalogKey: '__agent:claude',
         agentsLoaded: true,
         apiBase: '/api',
         sessions: [],

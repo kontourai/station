@@ -1,3 +1,4 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   isSupportedTurnProvenanceEnvelope,
   type TurnProvenanceEnvelope,
@@ -11,13 +12,12 @@ import {
   cacheInclusiveTotalTokens,
   providerPromptCacheInclusivity,
 } from '@kontourai/station-shared/usage-fold';
-import { useId, useState } from 'react';
+import { type ReactNode, useId, useState } from 'react';
 import {
   exactTokenCount,
   formatTokenCount,
 } from '../../utils/formatTokenCount';
 import { displayModelIdentifier } from '../../utils/modelDisplay';
-import { engineLabelForProvider } from '../../utils/sessionDisplay';
 import { LazyBoundary } from '../LazyBoundary';
 import './TurnProvenanceCard.css';
 
@@ -239,7 +239,7 @@ function headlineUsage(
  */
 function engineDisplay(provider: string): { label: string; slug: string } {
   return {
-    label: engineLabelForProvider(provider) ?? provider,
+    label: engineDisplayLabel(provider) ?? provider,
     slug: provider,
   };
 }
@@ -527,12 +527,18 @@ export interface TurnProvenanceCardProps {
   statedInRow?: TurnProvenanceStatedInRow;
   /** Display name of the human accountable for this Station, if available. */
   accountableHuman?: string | null;
+  /** Per-turn evidence navigation belongs inside this disclosure, not beside actions. */
+  basisContent?: ReactNode;
+  /** The share entry point is part of the always-visible disclosure line. */
+  shareContent?: ReactNode;
 }
 
 export function TurnProvenanceCard({
   provenance,
   statedInRow = NOTHING_STATED_IN_ROW,
   accountableHuman,
+  basisContent,
+  shareContent,
 }: TurnProvenanceCardProps) {
   const [open, setOpen] = useState(false);
   const detailsId = useId();
@@ -608,6 +614,11 @@ export function TurnProvenanceCard({
               </div>
             ))}
           </dl>
+
+          {basisContent && (
+            <div className="turn-provenance__basis">{basisContent}</div>
+          )}
+          {shareContent}
 
           {provenance.contextInjection?.state === 'observed' && (
             <LazyBoundary

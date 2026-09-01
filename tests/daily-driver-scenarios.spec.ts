@@ -86,7 +86,7 @@ const PROFILE_PATHS = [
     agentSlug: 'claude',
     provider: 'claude',
     runtimeName: 'Claude Runtime',
-    connectionId: 'claude-runtime',
+    connectionId: 'claude',
     model: 'claude-sonnet-4-20250514',
     conversationId: 'dd-agree-claude',
     contextToken: 'CARRY-7391',
@@ -96,7 +96,7 @@ const PROFILE_PATHS = [
     agentSlug: 'codex',
     provider: 'codex',
     runtimeName: 'Codex Runtime',
-    connectionId: 'codex-runtime',
+    connectionId: 'codex',
     model: 'gpt-5-codex',
     conversationId: 'dd-agree-codex',
     contextToken: 'CARRY-8412',
@@ -395,7 +395,15 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
         },
       ];
       await page.route(
-        `**/api/orchestration/sessions/${settleThread}/event-window**`,
+        // `useActiveChatTranscript` reads a resumed chat's history through
+        // the CONVERSATION-scoped window (`useSessionEventWindow` is
+        // deliberately "conversation-shaped" per its own doc comment) — the
+        // session-scoped route this used to mock is never queried once the
+        // conversation route resolves (station-worktrees/audit-dd found it
+        // reads `sessionIds=[settleThread]` and answers 200 with no events,
+        // so the legacy session-route fallback in `readConversationWindow`
+        // never triggers either).
+        `**/api/orchestration/conversations/${settleThread}/event-window**`,
         (route) =>
           route.fulfill({
             status: 200,
@@ -404,6 +412,10 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
               success: true,
               data: {
                 protocolVersion: 1,
+                conversationId: settleThread,
+                currentSessionId: settleThread,
+                handoffs: [],
+                contextBoundaries: [],
                 session: {
                   threadId: settleThread,
                   provider: path.provider,
@@ -479,7 +491,10 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
         },
       ];
       await page.route(
-        `**/api/orchestration/sessions/${failureThread}/event-window**`,
+        // See the settle-thread route above: the transcript reads a resumed
+        // or cold-opened chat's history through the CONVERSATION-scoped
+        // window, never the session-scoped one.
+        `**/api/orchestration/conversations/${failureThread}/event-window**`,
         (route) =>
           route.fulfill({
             status: 200,
@@ -488,6 +503,10 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
               success: true,
               data: {
                 protocolVersion: 1,
+                conversationId: failureThread,
+                currentSessionId: failureThread,
+                handoffs: [],
+                contextBoundaries: [],
                 session: {
                   threadId: failureThread,
                   provider: path.provider,
@@ -738,11 +757,17 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
         conversations: SHELL_CONVERSATIONS,
       });
       await page.route(
-        `**/api/orchestration/sessions/${threadId}/event-window**`,
+        // `useActiveChatTranscript` reads history through the CONVERSATION-
+        // scoped window exclusively; the shared shell's own conversation
+        // route (`installMockOrchestrationConversationEventWindow`) already
+        // answers 200 with no events for a known conversationId, so a
+        // session-scoped route here would never be reached.
+        `**/api/orchestration/conversations/${threadId}/event-window**`,
         createLongSessionEventWindowHandler({
           threadId,
           provider: path.provider,
           availableTurns: () => turns,
+          conversationId: threadId,
         }),
       );
       // Every sample restores the 10k conversation INTO A RUNNING APP, from a
@@ -964,7 +989,7 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
       // which is exactly the state the drain step below needs. The composer's
       // own fieldset carries the stable accessible name (`:430-432`).
       const textarea = page
-        .getByRole('group', { name: 'Message composer file drop area' })
+        .getByRole('group', { name: 'Message composer', exact: true })
         .getByRole('textbox');
       await expect(textarea).toBeVisible({ timeout: 10_000 });
       const requestsBefore = shell.executionRequests.length;

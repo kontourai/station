@@ -63,6 +63,7 @@ export const PREPUSH_STATIC_GATES = Object.freeze([
   'shell-conformance-ratchet',
   'state-primitives-ratchet',
   'station-vocabulary-gate',
+  'dialog-surface-class-guard',
   'a11y-ratchet',
 ]);
 

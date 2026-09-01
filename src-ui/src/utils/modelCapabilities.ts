@@ -2,7 +2,7 @@ import type { ModelOption } from '@kontourai/station-contracts/tool';
 
 export type SelectableModel = Pick<
   ModelOption,
-  'id' | 'name' | 'capabilities'
+  'id' | 'name' | 'capabilities' | 'canonicalModelIdentity'
 > &
   Partial<Pick<ModelOption, 'originalId' | 'resolvedModel'>> & {
     providerId?: string;
@@ -216,4 +216,85 @@ export function sanitizeRuntimeOptionsForModel(
     next.thinking = current.thinking;
   }
   return next;
+}
+
+/**
+ * A route the picker can offer, or several routes the reviewed map says are the
+ * same model.
+ */
+export type ModelPickerSection =
+  | { kind: 'route'; model: SelectableModel }
+  | {
+      kind: 'model';
+      canonicalId: string;
+      displayName: string;
+      verifiedAgainst: string;
+      routes: SelectableModel[];
+    };
+
+/**
+ * Group routes under the model they run, model-first (#947).
+ *
+ * Grouping happens ONLY on the reviewed canonical identity. Routes whose
+ * provider-native id the curated map does not recognise stay separate, so a
+ * coverage gap degrades to the flat list this replaced rather than to a guess:
+ * matching two routes by name similarity is the equivalence #943 declined to
+ * infer, and it would present a wrong model as the same one.
+ *
+ * A lone identified route renders as a plain route. A group of one is not a
+ * model with choices, and drawing it as one implies routes that do not exist.
+ *
+ * Order follows each model's first appearance, so an upstream sort (favourites,
+ * availability) still decides what the reader sees first.
+ */
+export function groupModelsByCanonicalIdentity(
+  models: readonly SelectableModel[],
+  lookupDisplayName: (
+    canonicalId: string,
+  ) => { displayName: string; verifiedAgainst: string } | undefined,
+): ModelPickerSection[] {
+  const order: string[] = [];
+  const byCanonicalId = new Map<string, SelectableModel[]>();
+  for (const model of models) {
+    const canonicalId = model.canonicalModelIdentity?.canonicalId;
+    if (!canonicalId) continue;
+    const existing = byCanonicalId.get(canonicalId);
+    if (existing) {
+      existing.push(model);
+    } else {
+      byCanonicalId.set(canonicalId, [model]);
+      order.push(canonicalId);
+    }
+  }
+
+  const grouped = new Set(
+    order.filter((id) => (byCanonicalId.get(id)?.length ?? 0) > 1),
+  );
+  const emitted = new Set<string>();
+  const sections: ModelPickerSection[] = [];
+  for (const model of models) {
+    const canonicalId = model.canonicalModelIdentity?.canonicalId;
+    if (!canonicalId || !grouped.has(canonicalId)) {
+      sections.push({ kind: 'route', model });
+      continue;
+    }
+    if (emitted.has(canonicalId)) continue;
+    emitted.add(canonicalId);
+    const routes = byCanonicalId.get(canonicalId) ?? [];
+    const reviewed = lookupDisplayName(canonicalId);
+    if (!reviewed) {
+      // Identified but unnamed: show the routes rather than invent a heading.
+      for (const route of routes)
+        sections.push({ kind: 'route', model: route });
+      continue;
+    }
+    sections.push({
+      kind: 'model',
+      canonicalId,
+      displayName: reviewed.displayName,
+      verifiedAgainst: reviewed.verifiedAgainst,
+      routes,
+    });
+  }
+  return sections;
 }

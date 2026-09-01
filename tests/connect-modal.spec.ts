@@ -11,8 +11,26 @@
  *  - discover panel renders
  *  - status dot states render correctly
  */
-import { expect, test } from '@playwright/test';
+import { expect, type Locator, test } from '@playwright/test';
 import { requireE2EOperatorCredential } from './helpers/e2e-operator-credential';
+
+/**
+ * Per-connection actions (Edit/Check/Forget) live behind a "More actions"
+ * overflow menu, not as standalone title-attributed buttons
+ * (`ConnectionListPanel.tsx` station#4512 review M6). Open it and return the
+ * menu scoped to this connection so its menuitems can be clicked.
+ *
+ * Lifted from `tests/connect-remote-auth-recovery.spec.ts` (station#1140,
+ * not yet on `main` as of this fix) rather than reinvented — two independent
+ * copies of the same navigation is how these drift apart. If that PR lands
+ * first, prefer importing its helper instead of keeping this local copy.
+ */
+async function openConnectionActionsMenu(scope: Locator, name: string) {
+  await scope
+    .getByRole('button', { name: `More actions for ${name}`, exact: true })
+    .click();
+  return scope.getByRole('menu', { name: `Actions for ${name}` });
+}
 
 const STATUS_READY = JSON.stringify({
   ready: true,
@@ -141,9 +159,15 @@ test.describe('Connection Manager Modal', () => {
   test('clicking the chip opens the connection modal', async ({ page }) => {
     await page.getByRole('button', { name: /^Manage Stations/ }).click();
     await expect(page.getByRole('heading', { name: 'Stations' })).toBeVisible();
-    // The existing connection should appear in the modal list
+    // The existing connection should appear in the modal list. A row's name
+    // renders in two nested elements (`.station-connect-row__name-line` and
+    // its child `.station-connect-row__name`, station#994), so `div`
+    // `hasText` matches both and is a strict-mode violation — the row's own
+    // `Select <name>` control is a stable, unique handle instead.
     await expect(
-      page.locator('div').filter({ hasText: /^Dev Server$/ }),
+      page
+        .getByRole('dialog')
+        .getByRole('button', { name: 'Select Dev Server', exact: true }),
     ).toBeVisible();
   });
 
@@ -302,6 +326,35 @@ test.describe('Connection Manager Modal', () => {
     expect(after.width).toBeCloseTo(before.width, 1);
   });
 
+  test('resolves exactly one "Manage Stations" control at 390px, collapsed and maximized (#1048)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // Default mobile state: the ambient chat dock is present but collapsed,
+    // NOT full-screen (`chat-dock is-collapsed`, not
+    // `app__main--mobile-dock-fullscreen`) — this is the state every phone
+    // user lands in on a fresh load, not an edge case. Before #1048 the app
+    // toolbar's `app-toolbar-connection` and the dock header's
+    // `chat-dock-mobile-connection` both rendered here and both matched.
+    await expect(
+      page.getByRole('button', { name: /^Manage Stations/ }),
+    ).toHaveCount(1);
+
+    // Maximized mobile dock: the app toolbar is genuinely hidden
+    // (`app__main--mobile-dock-fullscreen`), and the dock header's own
+    // connection control must still be the one surviving control — that is
+    // the entire reason it exists (station#3297).
+    await page.goto('/?dock=open&maximize=true');
+    await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
+    const survivor = page.getByRole('button', { name: /^Manage Stations/ });
+    await expect(survivor).toHaveCount(1);
+    await expect(survivor).toHaveAttribute(
+      'data-testid',
+      'chat-dock-mobile-connection',
+    );
+  });
+
   test('can switch between connections', async ({ page }) => {
     // Add a second connection via the UI
     await page.getByRole('button', { name: /^Manage Stations/ }).click();
@@ -341,10 +394,13 @@ test.describe('Connection Manager Modal', () => {
   test('can edit a connection', async ({ page }) => {
     await page.getByRole('button', { name: /^Manage Stations/ }).click();
     await expect(page.getByRole('heading', { name: 'Stations' })).toBeVisible();
+    const dialog = page.getByRole('dialog');
 
-    // Click the edit button (✎)
-    await page
-      .getByRole('button', { name: 'Edit Station', exact: true })
+    // Edit/Check reachability/Forget live behind the row's "More actions"
+    // overflow menu, not standalone title-attributed buttons
+    // (ConnectionListPanel.tsx station#4512 review M6).
+    await (await openConnectionActionsMenu(dialog, 'Dev Server'))
+      .getByRole('menuitem', { name: 'Edit Station', exact: true })
       .click();
 
     // Edit form should appear with pre-filled values
@@ -355,14 +411,13 @@ test.describe('Connection Manager Modal', () => {
 
     // Change the name
     await nameInput.fill('Home Lab');
-    await page
-      .getByRole('dialog')
-      .getByRole('button', { name: 'Save', exact: true })
-      .click();
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
 
-    // Updated name should appear
+    // Updated name should appear. The row's `Select <name>` control is a
+    // stable handle — a bare `div` `hasText` match is ambiguous (station#994
+    // nests the name in two elements) and one DOM change from breaking.
     await expect(
-      page.locator('div').filter({ hasText: /^Home Lab$/ }),
+      dialog.getByRole('button', { name: 'Select Home Lab', exact: true }),
     ).toBeVisible();
   });
 
@@ -385,12 +440,19 @@ test.describe('Connection Manager Modal', () => {
       .getByRole('button', { name: 'Back' })
       .click();
 
-    // Modal is still open — the × buttons map to remove. ToDelete row has buttons [↻, ✎, ×]
-    // Find all × buttons with title="Remove" and click the last one (ToDelete is the second row)
-    const removeButtons = page.locator('button[title="Forget Station"]');
-    await removeButtons.last().click();
+    // Modal is still open. Forget lives behind the row's "More actions"
+    // overflow menu (ConnectionListPanel.tsx station#4512 review M6), and
+    // forgetting is destructive so it arms a second, explicit Confirm step
+    // rather than removing on the first click.
+    const dialog = page.getByRole('dialog');
+    await (await openConnectionActionsMenu(dialog, 'ToDelete'))
+      .getByRole('menuitem', { name: 'Forget Station', exact: true })
+      .click();
+    await dialog
+      .getByRole('button', { name: 'Confirm forgetting ToDelete', exact: true })
+      .click();
 
-    await expect(page.locator('text=ToDelete')).not.toBeVisible();
+    await expect(page.getByText('ToDelete')).not.toBeVisible();
   });
 
   test('modal closes when clicking the backdrop', async ({ page }) => {

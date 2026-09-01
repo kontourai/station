@@ -75,7 +75,7 @@ describe('Agent schema validation', () => {
       name: 'Claude Runtime Chat',
       prompt: 'You are a project-aware chat assistant.',
       execution: {
-        agentConnectionId: 'claude-runtime',
+        agentConnectionId: 'claude',
         modelId: 'claude-sonnet-4',
         runtimeOptions: {
           thinking: true,
@@ -114,14 +114,14 @@ describe('Agent schema validation', () => {
       name: 'Codex Runtime Chat',
       prompt: '',
       execution: {
-        agentConnectionId: 'codex-runtime',
+        agentConnectionId: 'codex',
       },
     };
 
     expect(() => validator.validateAgentSpec(spec)).not.toThrow();
   });
 
-  it('rejects an empty prompt for managed runtimes', () => {
+  it('does not treat a Bedrock provider-model id as a managed Agent runtime (#1055)', () => {
     const spec = {
       name: 'Managed Agent',
       prompt: '',
@@ -130,9 +130,7 @@ describe('Agent schema validation', () => {
       },
     };
 
-    expect(() => validator.validateAgentSpec(spec)).toThrowError(
-      /System prompt is required for managed agents/,
-    );
+    expect(() => validator.validateAgentSpec(spec)).not.toThrow();
   });
 
   it('an unbound spec is a STATION-engine spec, so it needs a prompt (#3662)', () => {
@@ -158,7 +156,7 @@ describe('Agent schema validation', () => {
     );
   });
 
-  it('rejects an empty prompt for non-Bedrock managed runtimes', () => {
+  it('does not treat an Ollama provider-model id as a managed Agent runtime (#1055)', () => {
     const spec = {
       name: 'Ollama Managed Agent',
       prompt: '',
@@ -167,9 +165,7 @@ describe('Agent schema validation', () => {
       },
     };
 
-    expect(() => validator.validateAgentSpec(spec)).toThrowError(
-      /System prompt is required for managed agents/,
-    );
+    expect(() => validator.validateAgentSpec(spec)).not.toThrow();
   });
 });
 

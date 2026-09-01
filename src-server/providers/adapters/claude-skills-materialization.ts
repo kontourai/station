@@ -1,7 +1,7 @@
 /**
  * Claude Code skills materialization (docs/design/connections-onboarding.md
  * §5): copies the Claude runtime connection's opted-in Station skills
- * (`AgentConnectionSettings.config.provideSkills` for the `claude-runtime`
+ * (`AgentConnectionSettings.config.provideSkills` for the `claude`
  * connection, off/empty by default — the hygiene rule is "never silent",
  * same as MCP passthrough) into `<cwd>/.claude/skills/<skill-id>/` so
  * Claude Code's native skill loader discovers them without any Station
@@ -259,7 +259,7 @@ export interface SkillMaterializationSkip {
 }
 
 export interface MaterializeSkillsInput {
-  /** `AgentConnectionSettings.config.provideSkills` for `claude-runtime` — absent/empty ⇒ true no-op, no I/O at all. */
+  /** `AgentConnectionSettings.config.provideSkills` for `claude` — absent/empty ⇒ true no-op, no I/O at all. */
   skillIds: string[] | undefined;
   /** The session's working directory — skills land in `<cwd>/.claude/skills/<id>/`. */
   cwd: string;

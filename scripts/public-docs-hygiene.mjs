@@ -12,6 +12,17 @@ const INTERNAL_OPERATION =
   /\b(?:src-(?:server|ui)\/|scripts\/|config\/|node_modules|\.kontourai|dist-pages)\b/g;
 const SOURCE_PROVENANCE = /\b(?:derived|adapted|inspired)\s+(?:from|by)\b/gi;
 
+export const MARKETING_FILES = Object.freeze([
+  'README.md',
+  'docs/pages/index.html',
+]);
+
+// Marketing explains Station in Station's own terms. Integration guides,
+// protocol references, compatibility notes, and required attribution may name
+// third parties when the name is part of the technical truth.
+const MARKETING_EXTERNAL_BRAND =
+  /\b(?:Anthropic|Bedrock|Claude(?: Code)?|Codex|Copilot|Cursor|Kiro|Ollama|OpenAI|OpenCode|T3 Code|Windsurf|Zed)\b/gi;
+
 // The privacy subset also backs scripts/repo-docs-hygiene.mjs, which sweeps
 // EVERY tracked doc rather than the public manifest's nine — these patterns
 // found nothing outside the manifest for months because nothing pointed them
@@ -76,12 +87,37 @@ export function publicDocsHygieneFindings(
   return findings;
 }
 
+/**
+ * @param {readonly string[]} [files]
+ * @param {(file: string, encoding: BufferEncoding) => string} [read]
+ */
+export function marketingHygieneFindings(
+  files = MARKETING_FILES,
+  read = (file, encoding) => readFileSync(file, encoding),
+) {
+  const findings = [];
+  for (const file of files) {
+    const source = read(file, 'utf8');
+    MARKETING_EXTERNAL_BRAND.lastIndex = 0;
+    for (const match of source.matchAll(MARKETING_EXTERNAL_BRAND)) {
+      const lineNumber = source.slice(0, match.index).split('\n').length;
+      findings.push(
+        `${file}:${lineNumber} marketing-external-brand: ${match[0]}`,
+      );
+    }
+  }
+  return findings;
+}
+
 export async function runPublicDocsHygiene() {
   const documents = await loadPublicDocs();
-  const findings = publicDocsHygieneFindings(documents);
+  const findings = [
+    ...publicDocsHygieneFindings(documents),
+    ...marketingHygieneFindings(),
+  ];
   if (findings.length === 0) {
     console.log(
-      `Public documentation hygiene passed for ${documents.length} admitted documents.`,
+      `Public documentation hygiene passed for ${documents.length} admitted documents and ${MARKETING_FILES.length} marketing surfaces.`,
     );
     return 0;
   }

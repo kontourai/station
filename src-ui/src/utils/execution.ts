@@ -1,5 +1,6 @@
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
-import type { ProviderKind } from '@kontourai/station-contracts/provider';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import type { EngineId } from '@kontourai/station-contracts/provider';
 import {
   type AgentConnectionView,
   type ConnectionConfig,
@@ -10,53 +11,7 @@ import {
   type RuntimeCatalogSource,
 } from '@kontourai/station-contracts/tool';
 import { modelDisplayLabel } from './modelCapabilities';
-/**
- * What kind of thing a connection is, in a name somebody chose.
- *
- * Every `type` Station itself ships is listed. `muse-runtime` was not, so an
- * engine Station ships rendered as its raw slug on /connections/engines
- * (archive#3739); `lancedb` was not, so the built-in vector store rendered as
- * an implementation name that ADR-0009 already retired. A slug is a name
- * nobody chose, so prefer {@link connectionDisplayLabel} wherever the
- * connection RECORD is in hand — it carries the name its owner gave it.
- *
- * Deliberately a literal map rather than a read of
- * `ENGINE_CAPABILITY_MATRICES[...].displayName`: that table is data-heavy and
- * currently lands in a lazy chunk, and this module is eagerly loaded by the
- * shell. Its `station-runtime-types` test pins the two lists together instead.
- */
-export function connectionTypeLabel(type: string): string {
-  switch (type) {
-    case 'bedrock':
-      return 'Amazon Bedrock';
-    case 'ollama':
-      return 'Ollama';
-    case 'openai-compat':
-      return 'OpenAI-Compatible';
-    case 'anthropic':
-      return 'Anthropic';
-    case 'google':
-      return 'Google';
-    case 'lancedb':
-      return 'Built-in vector store';
-    case 'bedrock-runtime':
-      return 'Amazon Bedrock';
-    case 'claude-runtime':
-      return 'Claude Code';
-    case 'codex-runtime':
-      return 'Codex';
-    case 'muse-runtime':
-      return 'Muse Code';
-    case 'ollama-runtime':
-      return 'Ollama';
-    case 'station-agent-runtime':
-      return 'Station';
-    case 'acp':
-      return 'Custom engine';
-    default:
-      return type;
-  }
-}
+import { modelProviderDisplayLabel } from './modelProviderDisplay';
 
 /**
  * A connection named the way its owner named it: the server's own provider
@@ -64,16 +19,6 @@ export function connectionTypeLabel(type: string): string {
  * holding a connection record should use this — the record always carries a
  * `name`, so none of them has any reason to re-derive one from a slug.
  */
-export function connectionDisplayLabel(
-  connection: Pick<ConnectionConfig, 'name' | 'type' | 'config'>,
-): string {
-  const providerLabel = connection.config?.providerLabel;
-  if (typeof providerLabel === 'string' && providerLabel.trim()) {
-    return providerLabel;
-  }
-  return connection.name?.trim() || connectionTypeLabel(connection.type);
-}
-
 export function resolveModelProviderLabel({
   executionMode,
   providerConnectionName,
@@ -84,11 +29,13 @@ export function resolveModelProviderLabel({
   executionMode?: ExecutionMode;
   providerConnectionName?: string;
   runtimeConnectionName?: string;
-  provider?: ProviderKind;
+  provider?: EngineId;
   agentName?: string;
 }): string | undefined {
   const persistedProviderLabel = provider
-    ? connectionTypeLabel(provider)
+    ? modelProviderDisplayLabel(provider) !== provider
+      ? modelProviderDisplayLabel(provider)
+      : (engineDisplayLabel(provider) ?? provider)
     : undefined;
   return executionMode === EXECUTION_MODE.STATION
     ? (providerConnectionName ??
@@ -216,9 +163,7 @@ type AgentWithExecution = {
   /**
    * The backing connection's adapter type (archive#954), e.g. 'acp' —
    * `resolveAgentExecution` uses it to route a promoted ACP default through
-   * the `acp` provider, since `agentConnectionIdToProviderKind` can only
-   * infer a provider from the `<id>-runtime` id convention native
-   * runtimes use, not an arbitrary ACP connection id.
+   * the `acp` provider rather than treating the connection id as an engine id.
    */
   engineConnectionType?: string;
 };
@@ -226,9 +171,9 @@ type AgentWithExecution = {
 type ChatBindingState = {
   executionMode?: ExecutionMode;
   agentConnectionId?: string | null;
-  provider?: ProviderKind | null;
+  provider?: EngineId | null;
   providerId?: string | null;
-  orchestrationProvider?: ProviderKind | null;
+  orchestrationProvider?: EngineId | null;
   model?: string | null;
 };
 
@@ -255,7 +200,7 @@ export type ChatExecutionMetadata = {
   executionMode: ExecutionMode;
   executionScope?: 'project' | 'global';
   agentConnectionId?: string;
-  provider?: ProviderKind;
+  provider?: EngineId;
   providerId?: string;
   defaultProviderId?: string;
   model?: string;
@@ -435,21 +380,14 @@ export function runtimeCatalogVisibleModels(
 
 /**
  * archive#1003: reads a connection's canonical engine identity
- * (`config.engineId`) with a `config.executionClass` read-compat fallback
- * (`'managed'` -> `'station'`, `'connected'`/`'external'` -> `'external'`)
- * so hand-built test-double connection views (still constructing the legacy
- * field) keep resolving correctly.
+ * (`config.engineId`). Missing identity remains unknown; deprecated metadata
+ * is not normalized at read time.
  */
 export function connectionEngineId(
   runtimeConnection?: AgentConnectionView | ConnectionConfig | null,
 ): string | undefined {
   const engineId = runtimeConnection?.config.engineId;
   if (typeof engineId === 'string') return engineId;
-  const executionClass = runtimeConnection?.config.executionClass;
-  if (executionClass === 'managed') return 'station';
-  if (executionClass === 'connected' || executionClass === 'external') {
-    return 'external';
-  }
   if (runtimeConnection?.id === 'acp' || runtimeConnection?.type === 'acp') {
     return 'acp';
   }
@@ -552,7 +490,7 @@ export function resolveBindingStatus({
   const activeProvider =
     chatState?.orchestrationProvider ??
     chatState?.provider ??
-    agentConnectionIdToProviderKind(agentConnectionId);
+    (agentConnectionId || undefined);
   const engineId = connectionEngineId(runtimeConnection);
   const agentModels = asModelOptions(agent?.modelOptions);
   const runtimeModels = runtimeCatalogVisibleModels(runtimeConnection);
@@ -631,10 +569,10 @@ export function resolveEffectiveCapabilityState({
 }
 
 type SessionExecutionSummary = {
-  provider?: ProviderKind | null;
+  provider?: EngineId | null;
   model?: string | null;
   status?: string | null;
-  orchestrationProvider?: ProviderKind | null;
+  orchestrationProvider?: EngineId | null;
   orchestrationModel?: string | null;
   orchestrationStatus?: string | null;
 };
@@ -642,19 +580,6 @@ type SessionExecutionSummary = {
 type SessionExecutionActivity = SessionExecutionSummary & {
   status?: string | null;
 };
-
-export function agentConnectionIdToProviderKind(
-  agentConnectionId?: string | null,
-): ProviderKind | undefined {
-  if (!agentConnectionId || agentConnectionId === 'acp') {
-    return undefined;
-  }
-  if (agentConnectionId === 'claude') return 'claude';
-  if (agentConnectionId === 'codex') return 'codex';
-  if (agentConnectionId === 'bedrock') return 'bedrock';
-  if (agentConnectionId === 'ollama') return 'ollama';
-  return agentConnectionId;
-}
 
 export function isManagedRuntimeConnectionId(
   agentConnectionId?: string | null,
@@ -755,25 +680,6 @@ export function preferredConnectedRuntime(
   return connected[0] ?? null;
 }
 
-export function agentConnectionLabel(
-  agentConnectionId?: string | null,
-): string {
-  switch (agentConnectionId) {
-    case 'bedrock':
-      return 'Amazon Bedrock';
-    case 'claude':
-      return 'Claude Code';
-    case 'codex':
-      return 'Codex';
-    case 'ollama':
-      return 'Ollama';
-    case 'acp':
-      return 'Custom engine';
-    default:
-      return connectionTypeLabel(agentConnectionId ?? '');
-  }
-}
-
 export function executionStatusLabel(status?: string | null): string {
   if (!status) return 'Not started';
   return connectionStatusLabel(status);
@@ -839,7 +745,7 @@ export function resolveAgentExecution(
     provider:
       agent.engineConnectionType === 'acp'
         ? 'acp'
-        : agentConnectionIdToProviderKind(agentConnectionId),
+        : agentConnectionId || undefined,
     model: agent.execution?.modelId || agent.model || undefined,
     modelSource:
       agent.execution?.modelId || agent.model ? 'agent default' : 'unknown',
@@ -1021,7 +927,7 @@ export function preferredChatRuntime(
 export function resolveSessionExecutionSummary(
   session?: SessionExecutionSummary | null,
 ): {
-  provider?: ProviderKind;
+  provider?: EngineId;
   model?: string;
   status?: string;
 } {
@@ -1089,10 +995,4 @@ export function isTurnStreamLive(session?: TurnStreamActivity | null): boolean {
     );
   }
   return isSessionExecutionActive(session);
-}
-
-export function formatExecutionSummary(agent: AgentWithExecution): string {
-  const runtime = agentConnectionLabel(agent.execution?.agentConnectionId);
-  const model = agent.execution?.modelId || agent.model;
-  return model ? `${runtime} · ${model}` : runtime;
 }

@@ -14,9 +14,7 @@ import {
   type AgentId,
   agentId,
   type EngineConnectionId,
-  type EngineRuntimeId,
   engineConnectionId,
-  engineRuntimeId,
   ReservedStationIdentityError,
   STATION_AGENT_ID,
 } from '@kontourai/station-contracts/agent-identity';
@@ -30,7 +28,7 @@ import {
   StationHomeResetRequiredError,
 } from './home-schema-gate.js';
 
-const REGISTRY_VERSION = 1;
+const REGISTRY_VERSION = 2;
 const REGISTRY_MAX_BYTES = 256 * 1024;
 const REGISTRY_LOAD_MAX_ATTEMPTS = 8;
 
@@ -39,8 +37,6 @@ export interface AgentRegistry {
   revision: number;
   engineConnections: Array<{
     id: EngineConnectionId;
-    /** Internal adapter/ACP selector; public identity never infers from it. */
-    runtimeConnectionId?: EngineRuntimeId;
     source?:
       | { kind: 'native' }
       | { kind: 'user-acp' }
@@ -178,11 +174,18 @@ function registrySignatureSync(homeDir: string): string | null {
   return registryFileSignature(homeDir);
 }
 
-function assertRegistry(value: unknown): asserts value is AgentRegistry {
+function assertRegistry(
+  value: unknown,
+  incompatibleHomeDir?: string,
+): asserts value is AgentRegistry {
   const registry = value as Partial<AgentRegistry>;
+  if (!registry || registry.version !== REGISTRY_VERSION) {
+    if (incompatibleHomeDir) {
+      throw new StationHomeResetRequiredError(incompatibleHomeDir);
+    }
+    throw new Error('Agent registry is invalid.');
+  }
   if (
-    !registry ||
-    registry.version !== REGISTRY_VERSION ||
     typeof registry.revision !== 'number' ||
     !Number.isSafeInteger(registry.revision) ||
     registry.revision < 0 ||
@@ -207,17 +210,6 @@ function assertRegistry(value: unknown): asserts value is AgentRegistry {
       throw new Error('Agent registry has duplicate engine connections.');
     }
     connectionIds.add(connection.id);
-    if (
-      connection.runtimeConnectionId !== undefined &&
-      typeof connection.runtimeConnectionId !== 'string'
-    ) {
-      throw new Error(
-        'Agent registry has an invalid runtime connection binding.',
-      );
-    }
-    if (connection.runtimeConnectionId !== undefined) {
-      engineRuntimeId(connection.runtimeConnectionId);
-    }
   }
 
   let stationDefaults = 0;
@@ -285,7 +277,7 @@ async function readRegistry(
     throw new Error('Agent registry exceeds the byte limit.');
   }
   const registry = JSON.parse(source) as unknown;
-  assertRegistry(registry);
+  assertRegistry(registry, homeDir);
   return registry;
 }
 
@@ -490,7 +482,6 @@ export class DeclinedEngineConnectionError extends Error {
 export async function registerEngineConnection(
   configLoader: ConfigLoader,
   id: string,
-  runtimeConnectionId: string = id,
   source: NonNullable<AgentRegistry['engineConnections'][number]['source']> = {
     kind: 'native',
   },
@@ -500,7 +491,6 @@ export async function registerEngineConnection(
     await registerEngineConnectionDetailed(
       configLoader,
       engineConnectionId(id),
-      engineRuntimeId(runtimeConnectionId),
       source,
       options,
     )
@@ -523,7 +513,6 @@ interface RegisterEngineConnectionOptions {
 async function registerEngineConnectionDetailed(
   configLoader: ConfigLoader,
   id: EngineConnectionId,
-  runtimeConnectionId: EngineRuntimeId = engineRuntimeId(id),
   source: NonNullable<AgentRegistry['engineConnections'][number]['source']> = {
     kind: 'native',
   },
@@ -555,9 +544,8 @@ async function registerEngineConnectionDetailed(
     );
     if (existing) {
       if (
-        (existing.runtimeConnectionId ?? existing.id) !== runtimeConnectionId ||
         JSON.stringify(existing.source ?? { kind: 'native' }) !==
-          JSON.stringify(source)
+        JSON.stringify(source)
       ) {
         throw new EngineConnectionBindingCollisionError(id);
       }
@@ -571,7 +559,7 @@ async function registerEngineConnectionDetailed(
           ...value,
           engineConnections: [
             ...value.engineConnections,
-            { id: connectionId, runtimeConnectionId, source },
+            { id: connectionId, source },
           ],
           defaultAgents: [
             ...value.defaultAgents,
@@ -630,7 +618,6 @@ export type NativeEngineAdoptionOutcome =
 export async function adoptNativeEngineConnection(
   configLoader: ConfigLoader,
   id: string,
-  runtimeConnectionId: string = id,
 ): Promise<NativeEngineAdoptionOutcome> {
   try {
     // The decline/exists checks live INSIDE the registration CAS snapshot:
@@ -639,7 +626,6 @@ export async function adoptNativeEngineConnection(
     const { created } = await registerEngineConnectionDetailed(
       configLoader,
       engineConnectionId(id),
-      engineRuntimeId(runtimeConnectionId),
       { kind: 'native' },
       { onDeclined: 'abort' },
     );
@@ -1080,6 +1066,7 @@ export function assertRegistryIntegrityAtHomeSync(
     JSON.parse(
       readRegularFileNoFollow(homeDir, registryPath(homeDir)),
     ) as unknown,
+    homeDir,
   );
 }
 
@@ -1097,7 +1084,7 @@ export function registryEngineConnectionForDefaultSync(
   const registry = JSON.parse(
     readRegularFileNoFollow(homeDir, registryPath(homeDir)),
   ) as unknown;
-  assertRegistry(registry);
+  assertRegistry(registry, homeDir);
   const identity = registry.defaultAgents.find((agent) => agent.id === id);
   return identity?.kind === 'engine-connection'
     ? identity.engineConnectionId
@@ -1112,21 +1099,8 @@ export function registryOwnsAgentAtHomeSync(
   if (registrySignatureSync(homeDir) === null) return false;
   const source = readRegularFileNoFollow(homeDir, registryPath(homeDir));
   const registry = JSON.parse(source) as unknown;
-  assertRegistry(registry);
+  assertRegistry(registry, homeDir);
   return isRegistryDefaultAgent(registry, id);
-}
-
-export function registryIdentityForRuntimeConnection(
-  registry: AgentRegistry,
-  runtimeConnectionId: EngineRuntimeId,
-): EngineConnectionId | null {
-  return (
-    registry.engineConnections.find(
-      (connection) =>
-        (connection.runtimeConnectionId ?? connection.id) ===
-        runtimeConnectionId,
-    )?.id ?? null
-  );
 }
 
 export async function reconcilePluginEngineConnections(
@@ -1148,7 +1122,6 @@ export async function reconcilePluginEngineConnections(
     await registerEngineConnection(
       configLoader,
       engineConnectionId(connection.id),
-      engineRuntimeId(connection.id),
       {
         kind: 'plugin-acp',
         plugin: connection.plugin,
@@ -1187,7 +1160,7 @@ export async function replacePluginEngineConnections(
         existing &&
         (existing.source?.kind !== 'plugin-acp' ||
           existing.source.plugin !== plugin ||
-          (existing.runtimeConnectionId ?? existing.id) !== id)
+          existing.id !== id)
       ) {
         throw new EngineConnectionBindingCollisionError(id);
       }
@@ -1221,7 +1194,6 @@ export async function replacePluginEngineConnections(
             ...retainedConnections,
             ...[...desired].map((id) => ({
               id,
-              runtimeConnectionId: engineRuntimeId(id),
               source: { kind: 'plugin-acp' as const, plugin },
             })),
           ],
