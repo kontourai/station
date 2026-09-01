@@ -18,7 +18,11 @@ import {
   lookupProcessBirthFingerprintAsync,
   probeExactProcessIdentity,
   resolveOwnProcessIdentity,
+  WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS,
+  WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS,
   WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS,
+  WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS,
+  WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS,
 } from '../process-identity.mjs';
 
 describe('birthProvesReuse (station#2904)', () => {
@@ -183,14 +187,24 @@ describe('birthProvesReuse (station#2904)', () => {
     ).resolves.toBeNull();
   });
 
-  test('own-process publication retries exact Windows probes and never grants PID-only ownership', () => {
-    const lookup = vi.fn(() => '2026-08-29T16:16:27.1234567Z');
+  test('own-process publication retries the same direct Windows authority after a transient unavailable probe', () => {
+    const canonical = '2026-08-29T16:16:27.1234567Z';
+    const exec = vi
+      .fn<
+        (
+          file: string,
+          args: readonly string[],
+          options?: Record<string, unknown>,
+        ) => string
+      >()
+      .mockReturnValueOnce('')
+      .mockReturnValue(canonical);
     const alive = vi.fn(() => 'alive' as const);
     const wait = vi.fn();
     expect(
       resolveOwnProcessIdentity(42, {
         platform: 'win32',
-        lookup,
+        exec,
         alive,
         wait,
       }),
@@ -198,30 +212,18 @@ describe('birthProvesReuse (station#2904)', () => {
       state: 'exact',
       identity: { pid: 42, start: '2026-08-29T16:16:27.1234567Z' },
     });
-    expect(lookup).toHaveBeenCalledOnce();
-    expect(alive).toHaveBeenCalledOnce();
-    expect(wait).not.toHaveBeenCalled();
-
-    const delayed = vi
-      .fn<() => string | null>()
-      .mockReturnValueOnce(null)
-      .mockReturnValue('2026-08-29T16:16:27.1234567Z');
-    expect(
-      resolveOwnProcessIdentity(42, {
-        platform: 'win32',
-        lookup: delayed,
-        alive: () => 'alive',
-        wait,
-      }),
-    ).toEqual({
-      state: 'exact',
-      identity: { pid: 42, start: '2026-08-29T16:16:27.1234567Z' },
-    });
-    expect(delayed).toHaveBeenCalledTimes(2);
+    expect(exec).toHaveBeenCalledTimes(2);
+    expect(alive).toHaveBeenCalledTimes(2);
+    expect(exec.mock.calls.map((call) => call[2]?.timeout)).toEqual([
+      WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS,
+      WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS,
+    ]);
     expect(wait).toHaveBeenCalledWith(WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS);
+  });
 
+  test('own-process publication exhausts its bounded direct probes without granting PID-only ownership', () => {
     const unavailable = vi.fn(() => null);
-    wait.mockClear();
+    const wait = vi.fn();
     expect(
       resolveOwnProcessIdentity(42, {
         platform: 'win32',
@@ -230,8 +232,58 @@ describe('birthProvesReuse (station#2904)', () => {
         wait,
       }),
     ).toEqual({ state: 'unavailable' });
-    expect(unavailable).toHaveBeenCalledTimes(3);
-    expect(wait).toHaveBeenCalledTimes(2);
+    expect(unavailable).toHaveBeenCalledTimes(2);
+    expect(wait).toHaveBeenCalledOnce();
+
+    const deadlineLookup = vi.fn(() => null);
+    const deadlineWait = vi.fn();
+    const now = vi
+      .fn<() => number>()
+      .mockReturnValueOnce(0)
+      .mockReturnValue(WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS);
+    expect(
+      resolveOwnProcessIdentity(42, {
+        platform: 'win32',
+        lookup: deadlineLookup,
+        alive: () => 'alive',
+        now,
+        wait: deadlineWait,
+      }),
+    ).toEqual({ state: 'unavailable' });
+    expect(deadlineLookup).toHaveBeenCalledOnce();
+    expect(deadlineWait).not.toHaveBeenCalled();
+  });
+
+  test('stops own-process retries when the PID dies', () => {
+    const lookup = vi.fn(() => null);
+    const alive = vi
+      .fn<() => 'alive' | 'dead'>()
+      .mockReturnValueOnce('alive')
+      .mockReturnValue('dead');
+    const wait = vi.fn();
+    expect(
+      resolveOwnProcessIdentity(42, {
+        platform: 'win32',
+        lookup,
+        alive,
+        wait,
+      }),
+    ).toEqual({ state: 'dead' });
+    expect(lookup).toHaveBeenCalledOnce();
+    expect(alive).toHaveBeenCalledTimes(2);
+    expect(wait).toHaveBeenCalledOnce();
+  });
+
+  test('keeps claimant and reclaim identity probes single-attempt on Windows', () => {
+    const lookup = vi.fn(() => null);
+    expect(
+      probeExactProcessIdentity(42, {
+        platform: 'win32',
+        lookup,
+        alive: () => 'alive',
+      }),
+    ).toEqual({ state: 'unavailable' });
+    expect(lookup).toHaveBeenCalledOnce();
   });
 
   test('gives only own-process publication the larger bounded shell-start budget', () => {
@@ -249,26 +301,20 @@ describe('birthProvesReuse (station#2904)', () => {
       alive: () => 'alive' as const,
     };
 
+    expect(WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS).toBe(
+      WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS,
+    );
+
     expect(resolveOwnProcessIdentity(42, common).state).toBe('exact');
     expect(exec.mock.calls[0]?.[2]).toEqual(
-      expect.objectContaining({ timeout: 10_000 }),
+      expect.objectContaining({
+        timeout: WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS,
+      }),
     );
 
     expect(probeExactProcessIdentity(42, common).state).toBe('exact');
     expect(exec.mock.calls[1]?.[2]).toEqual(
       expect.objectContaining({ timeout: 1_500 }),
     );
-  });
-
-  test('keeps claimant and reclaim identity probes single-attempt on Windows', () => {
-    const lookup = vi.fn(() => null);
-    expect(
-      probeExactProcessIdentity(42, {
-        platform: 'win32',
-        lookup,
-        alive: () => 'alive',
-      }),
-    ).toEqual({ state: 'unavailable' });
-    expect(lookup).toHaveBeenCalledTimes(1);
   });
 });
