@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { FolderBrowserModal } from '../../components/modals/FolderBrowserModal';
 import {
   ResponsiveDialogSurface,
@@ -82,7 +83,24 @@ export function PluginModalStack({
   onCreateProject: () => Promise<void>;
   onAddToProjects: () => Promise<void>;
 }) {
-  return (
+  // #1131: rendered where `PluginManagementView` places it — a plain sibling
+  // of `SplitPaneLayout`, inside the route frame `PageFrame` marks `inert`
+  // while that layout's mobile detail sheet is open (PageFrame.tsx). The
+  // sheet's own content escapes through `usePageFrameMobileDetailSlot`, a
+  // portal target `PageFrame` renders as a SIBLING of the inert frame div —
+  // but this stack is not that content; it opens from actions (Install,
+  // Remove, …) that live inside the sheet, and rendered in place it was a
+  // descendant of the inert subtree. `inert` makes a focusable, connected,
+  // correctly-sized panel silently refuse `.focus()` and drop out of hit
+  // testing, so `ResponsiveDialogSurface`'s own focus/return-focus machinery
+  // ran without any visible effect and every button in these dialogs stopped
+  // being clickable. Portalling to `document.body` — the same escape
+  // `ConfirmModal` already uses, for the same reason — moves the DOM node
+  // out of the inert ancestor without touching `inert` itself (still needed
+  // to keep the backdrop out of the accessibility tree). This changes DOM
+  // placement only: React context and event bubbling still follow the
+  // React tree, so nothing else here needed to change.
+  return createPortal(
     <>
       {showInstallModal && (
         <InstallPluginModal
@@ -190,6 +208,7 @@ export function PluginModalStack({
           onAddToProjects={onAddToProjects}
         />
       )}
-    </>
+    </>,
+    document.body,
   );
 }
