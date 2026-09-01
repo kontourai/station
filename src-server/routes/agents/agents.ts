@@ -265,7 +265,14 @@ export function createAgentRoutes(
       tools: !!spec.tools?.mcpServers && spec.tools.mcpServers.length > 0,
       commands: !!spec.commands && Object.keys(spec.commands).length > 0,
     };
-    const engineDisplayName = connection?.name || matrix.engineId;
+    // An unresolved engine binding must not borrow a mismatched connection's
+    // vendor label. That would turn an honest `engineId: unknown` finding into
+    // an authoritative-sounding claim about a model provider (for example,
+    // Amazon Bedrock) that is not the Agent's execution engine.
+    const engineDisplayName =
+      matrix.engineId === 'unknown'
+        ? 'This engine'
+        : connection?.name || matrix.displayName || matrix.engineId;
     const findings = agentEngineValidationFindings(
       matrix,
       authored,

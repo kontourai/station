@@ -75,7 +75,36 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
     ]);
   });
 
-  test('a clean save with no findings omits validation', async () => {
+  test('a Station-engine save with a Bedrock model connection omits validation', async () => {
+    const getRuntimeConnections = vi.fn().mockResolvedValue([
+      {
+        id: 'claude',
+        type: 'claude',
+        name: 'Claude Code',
+        enabled: true,
+        status: 'ready',
+      },
+    ]);
+    const { app, agentService } = setup(getRuntimeConnections);
+    agentService.updateAgent.mockResolvedValue({
+      name: 'Managed Agent',
+      prompt: 'You are helpful.',
+      skills: ['writing'],
+      execution: { modelConnectionId: 'bedrock-runtime' },
+    });
+
+    const res = await app.request('/managed-agent', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Managed Agent' }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.validation).toBeUndefined();
+    expect(getRuntimeConnections).toHaveBeenCalledOnce();
+  });
+
+  test('an unknown engine binding does not borrow a model vendor identity', async () => {
     const getRuntimeConnections = vi.fn().mockResolvedValue([
       {
         id: 'bedrock-runtime',
@@ -87,20 +116,26 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
     ]);
     const { app, agentService } = setup(getRuntimeConnections);
     agentService.updateAgent.mockResolvedValue({
-      name: 'Managed Agent',
+      name: 'Unknown Engine Agent',
       prompt: 'You are helpful.',
-      skills: ['writing'],
       execution: { agentConnectionId: 'bedrock-runtime' },
     });
 
-    const res = await app.request('/managed-agent', {
+    const res = await app.request('/unknown-engine-agent', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'Managed Agent' }),
+      body: JSON.stringify({ name: 'Unknown Engine Agent' }),
     });
     expect(res.status).toBe(200);
     const body = await json(res);
-    expect(body.validation).toBeUndefined();
+    expect(body.validation.findings).toEqual([
+      {
+        capability: 'prompt',
+        engineId: 'unknown',
+        message: "This engine can't receive a system prompt from Station",
+      },
+    ]);
+    expect(JSON.stringify(body.validation)).not.toContain('Amazon Bedrock');
   });
 
   test('a runtime-connection fetch failure marks the response degraded, never a 500', async () => {
