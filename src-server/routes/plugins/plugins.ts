@@ -40,8 +40,10 @@ export function createPluginRoutes(
   // Literal reserved-segment routes (`/home-role/**`) must register before
   // any `/:name` catch-all: Hono matches in registration order, and the
   // lifecycle module's `DELETE /:name` otherwise captures `DELETE /home-role`
-  // (#477). `home-role` is a reserved plugin identity, so no real plugin can
-  // claim the segment these routes own.
+  // (#477). `home-role` is a reserved plugin identity: every supported
+  // install path refuses the name, so only a hand-placed tree can collide —
+  // and for that one name, HTTP removal is intentionally forfeited (see
+  // reserved-plugin-identities.ts).
   registerPluginHomeRoleRoutes(app, {
     eventBus,
     pluginsDir,

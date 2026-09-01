@@ -47,9 +47,9 @@ describe('composed plugin route order', () => {
 
     const response = await app.request('/home-role', { method: 'DELETE' });
 
-    // The lifecycle catch-all answers 404 "Plugin not found" here (there is
-    // no plugin directory named home-role, and there never can be — the
-    // segment is a reserved plugin identity). Success proves the home-role
+    // The lifecycle catch-all answers 404 "Plugin not found" here (no plugin
+    // directory named home-role exists, and every supported install path
+    // refuses the name as a reserved identity). Success proves the home-role
     // handler received the request.
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ success: true });
