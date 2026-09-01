@@ -25,6 +25,14 @@ const messageBubble = readFileSync(
   join(uiRoot, 'components', 'chat', 'MessageBubble.tsx'),
   'utf8',
 );
+const turnActionsMenu = readFileSync(
+  join(uiRoot, 'components', 'chat', 'TurnActionsMenu.tsx'),
+  'utf8',
+);
+const turnProvenanceCard = readFileSync(
+  join(uiRoot, 'components', 'chat', 'TurnProvenanceCard.tsx'),
+  'utf8',
+);
 const taskPicker = readFileSync(
   join(uiRoot, 'components', 'chat', 'TaskPicker.css'),
   'utf8',
@@ -108,6 +116,21 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     expect(chatCss).toMatch(
       /\.message__rating-btn\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/s,
     );
+    const footerActions = messageBubble.indexOf(
+      'className="turn-footer__actions"',
+    );
+    const shareContent = messageBubble.indexOf('shareContent={');
+    const shareLoader = messageBubble.indexOf('load={loadShareAnswerButton}');
+    expect(footerActions).toBeGreaterThanOrEqual(0);
+    expect(shareContent).toBeGreaterThanOrEqual(0);
+    expect(shareLoader).toBeGreaterThan(shareContent);
+    expect(footerActions).toBeGreaterThan(shareLoader);
+    expect(messageBubble.indexOf('load={loadTurnActionsMenu}')).toBeGreaterThan(
+      footerActions,
+    );
+    expect(messageBubble).not.toContain('<ShareAnswerButton');
+    expect(turnActionsMenu).not.toContain('ShareAnswerButton');
+    expect(turnProvenanceCard).toContain('{shareContent}');
   });
 
   test('hover-only footer collapse preserves keyboard access and touch targets', () => {
