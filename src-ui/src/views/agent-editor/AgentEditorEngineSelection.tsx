@@ -3,11 +3,11 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { EngineCapabilitySummary } from '../../components/acp-connections/EngineCapabilitySummary';
 import { navigationStore } from '../../contexts/navigation-store';
 import {
-  agentConnectionLabel,
   connectionStatusLabel,
   isAgentConnectionSelectable,
 } from '../../utils/execution';
@@ -119,7 +119,13 @@ export function AgentEditorEngineSelection({
           {isStationBound
             ? 'Station'
             : (boundConnection?.name ??
-              agentConnectionLabel(boundConnectionId))}
+              engineDisplayLabel(
+                resolveEngineCapabilityMatrix(
+                  boundConnectionId,
+                  boundConnection,
+                ).engineId,
+              ) ??
+              boundConnectionId)}
         </output>
         <span className="editor-hint">
           The built-in Agent runs on whichever engine this Station is set up to
@@ -150,7 +156,13 @@ export function AgentEditorEngineSelection({
             isStationBound
               ? 'Station'
               : (boundConnection?.name ??
-                agentConnectionLabel(boundConnectionId))
+                engineDisplayLabel(
+                  resolveEngineCapabilityMatrix(
+                    boundConnectionId,
+                    boundConnection,
+                  ).engineId,
+                ) ??
+                boundConnectionId)
           }
         />
       </div>

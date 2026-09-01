@@ -26,6 +26,7 @@ import {
   resolveBuiltinAgentEngineBinding,
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
 
 export interface EnginePickerOption {
@@ -81,7 +82,9 @@ export function readyEngineOptions(input: {
   if (input.stationChatReady) {
     options.push({
       connectionId: null,
-      name: 'Station',
+      name:
+        engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.station.engineId) ??
+        'station',
       capability: 'full',
       matrix: ENGINE_CAPABILITY_MATRICES.station,
     });
@@ -238,7 +241,8 @@ export function builtinEngineDisplay(input: {
     : undefined;
   const name = binding
     ? (boundOption?.name ?? binding.connectionId)
-    : 'Station';
+    : (engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.station.engineId) ??
+      'station');
 
   if (input.value === undefined) {
     // Nothing pinned: this is whatever the resolver derives each boot, and

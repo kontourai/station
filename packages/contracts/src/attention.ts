@@ -172,7 +172,7 @@ export interface SessionFailedAttentionItem extends AttentionItemBase {
    * absence is rendered as absence, never as a placeholder.
    *
    * `engine` is the raw `ProviderSession.provider` id, deliberately NOT a
-   * display label: `engineLabelForProvider` (src-ui/src/utils/sessionDisplay.ts)
+   * display label: `engineDisplayLabel` (engine-capability-matrix.ts)
    * owns that table for every other surface, and re-deriving it server-side
    * is exactly the drift #3139 was. The UI labels it; a provider this build
    * does not know renders as its own id, which is what that helper's `null`
