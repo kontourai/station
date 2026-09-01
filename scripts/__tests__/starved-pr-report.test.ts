@@ -95,6 +95,18 @@ describe('starved pull request detection', () => {
   // Arming is lost several ways and a push does NOT reliably clear it (#1063
   // lost it across a push, #1166 did not), so the comment must say "verify"
   // rather than assert a causal rule the evidence does not support.
+  // A CLEAN+unqueued pull request has at least two causes and arming only
+  // helps one of them, so the comment must not present arming as unconditional.
+  test('the comment names the case where arming will not help', () => {
+    const body = reportBody(42);
+    expect(body).toContain('One case where arming will not help');
+    expect(body).toContain('mergeQueue');
+    // The mechanism behind queue removal is correlation only; the comment
+    // must not assert a cause it cannot support.
+    expect(body).toContain('mechanism is not established');
+    expect(body).not.toContain('check-response timeout');
+  });
+
   test('the comment says to arm after the last push, and how to confirm', () => {
     const body = reportBody(42);
     expect(body).toContain('Verify the arming took');

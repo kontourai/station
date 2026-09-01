@@ -98,6 +98,13 @@ gh api graphql -f query='query{repository(owner:"kontourai",name:"station"){
   pullRequest(number:${number}){isInMergeQueue mergeStateStatus autoMergeRequest{enabledAt}}}}'
 \`\`\`
 
+**One case where arming will not help.** A pull request can also reach this state by being removed from the merge queue while the queue was jammed, rather than by never being armed — and the two look identical from here. Under \`max_entries_to_merge: 1\` a stuck head blocks everything behind it, and entries behind it have been observed dropping back to CLEAN and unarmed with no author action. The mechanism is not established; only the correlation is. If the queue's head has been AWAITING_CHECKS for a long time, re-arming this pull request just returns it behind the same blockage, and the head is what needs attention:
+
+\`\`\`
+gh api graphql -f query='query{repository(owner:"kontourai",name:"station"){mergeQueue{
+  entries(first:5){nodes{position state enqueuedAt pullRequest{number}}}}}}'
+\`\`\`
+
 If it is held deliberately, say so and this will stop reporting it — either apply the \`${HOLD_LABEL}\` label, or add a line to the PR body naming the reason:
 
 \`\`\`
