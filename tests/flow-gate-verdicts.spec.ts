@@ -3,6 +3,7 @@ import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
+  openChatRegion,
   seedActiveChats,
   seedOrchestrationRoutes,
   waitForMockOrchestrationSse,
@@ -31,9 +32,7 @@ test.describe('Flow gate verdicts in session UI', () => {
   }) => {
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
     await dismissSetupLauncher(page);
-    await page
-      .getByRole('button', { name: 'Expand chat dock', exact: true })
-      .click();
+    await openChatRegion(page);
     await waitForMockOrchestrationSse(page);
 
     await emitMockOrchestrationEvent(page, 'orchestration:event', {

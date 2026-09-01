@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import {
   E2E_STATION_COMPATIBILITY,
   installE2EWorkspacePaneCatalog,
@@ -17,6 +17,95 @@ const conversationSessionReaders = new WeakMap<
   Page,
   (conversationId: string) => string[]
 >();
+
+const CHAT_REGION_LABELS = ['Left', 'Right', 'Bottom'] as const;
+type ChatRegionLabel = (typeof CHAT_REGION_LABELS)[number];
+
+async function activeChatRegion(page: Page): Promise<ChatRegionLabel | null> {
+  const className = await page
+    .getByRole('region', { name: 'Dock', exact: true })
+    .getAttribute('class')
+    .catch(() => null);
+  const region = className?.match(/\bchat-dock--(left|right|bottom)\b/)?.[1];
+  if (!region) return null;
+  return `${region[0]?.toUpperCase()}${region.slice(1)}` as ChatRegionLabel;
+}
+
+/**
+ * Opens Chat through the shell's region controls instead of an internal dock
+ * affordance. The region command is the public ownership boundary for where
+ * Chat lives: after opening or placing it, the same region must expose its
+ * complementary Hide command.
+ *
+ * Phone chrome does not always render the desktop region toolbar, so it falls
+ * back only to the named mobile/legacy Chat expander. The anchored label
+ * deliberately excludes sidebar actions such as "Open chats" and
+ * "Expand chat list".
+ */
+export async function openChatRegion(page: Page): Promise<void> {
+  for (const region of CHAT_REGION_LABELS) {
+    const hide = page.getByRole('button', {
+      name: `Hide Chat ${region} region`,
+      exact: true,
+    });
+    if (await hide.isVisible().catch(() => false)) {
+      await expect(hide).toBeVisible();
+      return;
+    }
+  }
+
+  // The Dock's own region class is the live shell state. A surface registry
+  // can retain a dormant Chat registration in another region, so choosing the
+  // first visible Place action would move the test arbitrarily rather than
+  // open the shell's active Chat region.
+  const activeRegion = await activeChatRegion(page);
+  if (activeRegion) {
+    const show = page.getByRole('button', {
+      name: `Show Chat ${activeRegion} region`,
+      exact: true,
+    });
+    if (await show.isVisible().catch(() => false)) {
+      await show.click();
+      await expect(
+        page.getByRole('button', {
+          name: `Hide Chat ${activeRegion} region`,
+          exact: true,
+        }),
+      ).toBeVisible();
+      return;
+    }
+
+    const place = page.getByRole('button', {
+      name: `Place Chat in ${activeRegion} region`,
+      exact: true,
+    });
+    if (await place.isVisible().catch(() => false)) {
+      await place.click();
+      await expect(
+        page.getByRole('button', {
+          name: `Hide Chat ${activeRegion} region`,
+          exact: true,
+        }),
+      ).toBeVisible();
+      return;
+    }
+  }
+
+  const expand = page.getByRole('button', {
+    name: /^Expand chat(?: dock)?$/,
+  });
+  if (await expand.isVisible().catch(() => false)) {
+    await expand.click();
+    await expect(
+      page.getByRole('button', { name: /^Collapse chat(?: dock)?$/ }),
+    ).toBeVisible();
+    return;
+  }
+
+  throw new Error(
+    `Chat has no visible command for its ${activeRegion ?? 'unknown'} shell region or mobile Chat expander; refusing to match a sidebar chat-list control.`,
+  );
+}
 
 export const STATUS_READY = JSON.stringify({
   ready: true,

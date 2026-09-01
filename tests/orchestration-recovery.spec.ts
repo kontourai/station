@@ -4,6 +4,7 @@ import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
+  openChatRegion,
   seedActiveChats,
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
@@ -68,9 +69,7 @@ test.describe('Orchestration Recovery', () => {
 
     await page.goto('/projects/dev/layouts/code?chat=conv-restore');
     await dismissSetupLauncher(page);
-    await page
-      .getByRole('button', { name: 'Expand chat dock', exact: true })
-      .click();
+    await openChatRegion(page);
     await emitMockOrchestrationEvent(page, 'orchestration:snapshot', {
       sessions: [
         {
@@ -167,9 +166,7 @@ test.describe('Orchestration Recovery', () => {
 
     await page.goto('/projects/dev/layouts/code?chat=conv-closed');
     await dismissSetupLauncher(page);
-    await page
-      .getByRole('button', { name: 'Expand chat dock', exact: true })
-      .click();
+    await openChatRegion(page);
     await emitMockOrchestrationEvent(page, 'orchestration:snapshot', {
       sessions: [],
     });
