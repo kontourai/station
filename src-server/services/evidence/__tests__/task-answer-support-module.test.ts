@@ -389,14 +389,18 @@ describe('CanonicalProjectTrustReportReader', () => {
     const bundleDir = join(root, '.station', 'trust-bundles');
     mkdirSync(bundleDir, { recursive: true });
     const source = join(bundleDir, 'basis.json');
+    const replacement = join(bundleDir, 'basis.replacement.json');
     writeFileSync(source, JSON.stringify(bundle()));
+    writeFileSync(replacement, JSON.stringify(bundle('changed')));
     const reader = new CanonicalProjectTrustReportReader(
       () => ({ workspacePath: root }),
       PERSONAL_PROJECT_TRUST_CAPABILITY,
       {
         noFollow: null,
-        afterOpen: () =>
-          writeFileSync(source, JSON.stringify(bundle('changed'))),
+        // The open descriptor keeps the original inode while the pathname now
+        // names a different generation. An in-place same-size rewrite can
+        // legitimately coalesce every metadata field on fast filesystems.
+        afterOpen: () => renameSync(replacement, source),
       },
     );
     const [choice] = await reader.listBundles('project-a');

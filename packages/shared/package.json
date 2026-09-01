@@ -73,7 +73,8 @@
     "./sqlite-corruption-watch": "./src/sqlite-corruption-watch.ts",
     "./sqlite-store-integrity": "./src/sqlite-store-integrity.ts",
     "./orchestration-store-quarantine": "./src/orchestration-store-quarantine.ts",
-    "./setup-import-bounds": "./src/setup-import-bounds.ts"
+    "./setup-import-bounds": "./src/setup-import-bounds.ts",
+    "./random-id": "./src/random-id.ts"
   },
   "publishConfig": {
     "access": "public"

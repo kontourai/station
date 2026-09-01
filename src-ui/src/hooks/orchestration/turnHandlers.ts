@@ -3,7 +3,10 @@ import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   isApprovalMode,
 } from '@kontourai/station-contracts/provider';
-import { activeChatsStore } from '../../contexts/active-chats-store';
+import {
+  type ActiveChatsStore,
+  activeChatsStore,
+} from '../../contexts/active-chats-store';
 import { toastStore } from '../../contexts/ToastContext';
 import {
   formatChatErrorDisplay,
@@ -50,6 +53,10 @@ function reconcileDurableTurn(sessionId: string, providerTurnId: string): void {
 
 export function handleTurnStartedEvent(
   event: Extract<OrchestrationEvent, { method: 'turn.started' }>,
+  store: Pick<
+    ActiveChatsStore,
+    'getChatForExecutionSession' | 'updateChat'
+  > = activeChatsStore,
 ) {
   // Durable per-turn confirmation of the actually-applied approval mode
   // (archive#727 3) — clears/updates the pending-apply chip
@@ -67,9 +74,7 @@ export function handleTurnStartedEvent(
     !Array.isArray(event.metadata.effectiveModelOptions)
       ? (event.metadata.effectiveModelOptions as Record<string, unknown>)
       : undefined;
-  const currentChat = activeChatsStore.getChatForExecutionSession(
-    event.threadId,
-  );
+  const currentChat = store.getChatForExecutionSession(event.threadId);
   const acceptedExplicitChoice = acknowledgesModelRequest(
     currentChat?.requestedModel,
     currentChat?.defaultModel,
@@ -100,7 +105,7 @@ export function handleTurnStartedEvent(
       )
       .catch(() => undefined);
   }
-  activeChatsStore.updateChat(event.threadId, {
+  store.updateChat(event.threadId, {
     // The dispatch this turn came from has started; the pre-start cancel
     // window it named is over
     pendingClientTurnId: undefined,
