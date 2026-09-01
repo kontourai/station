@@ -113,16 +113,22 @@ const SMOKE_TEST_FILE = 'StationRuntimeSmokeTests.swift';
 // test body runs. XCTest records its launch timeout against that line, so
 // the retry policy binds to it instead of to the message text alone: the
 // same text recorded anywhere else (a later launch, a future edit) is not
-// the pre-test signature. Null — no launch line or more than one — fails
-// closed to "never retry" rather than guessing.
+// the pre-test signature. Null — no launch line, more than one, or one that
+// follows an assertion — fails closed to "never retry" rather than guessing.
 export function findPreTestLaunchLine(swiftSource) {
+  const lines = String(swiftSource).split('\n');
   const matches = [];
-  String(swiftSource)
-    .split('\n')
-    .forEach((line, index) => {
-      if (/^\s*app\.launch\(\)\s*$/.test(line)) matches.push(index + 1);
-    });
-  return matches.length === 1 ? matches[0] : null;
+  lines.forEach((line, index) => {
+    if (/^\s*app\.launch\(\)\s*$/.test(line)) matches.push(index + 1);
+  });
+  if (matches.length !== 1) return null;
+  // "Pre-test" is computed, not assumed: the launch must come before the
+  // first assertion, otherwise a timeout there could follow real test work.
+  const firstAssertion = lines.findIndex((line) =>
+    /\bXCTAssert\w*\(/.test(line),
+  );
+  if (firstAssertion !== -1 && matches[0] > firstAssertion + 1) return null;
+  return matches[0];
 }
 
 // Classify one xcodebuild attempt's log. Only the exact XCUITest

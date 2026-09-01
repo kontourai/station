@@ -216,6 +216,22 @@ describe('iOS simulator runtime smoke retry policy', () => {
       findPreTestLaunchLine(`${swiftSmoke}\n        app.launch()\n`),
     ).toBeNull();
     expect(findPreTestLaunchLine('        app.launch() // later')).toBeNull();
+    // A launch that follows an assertion is not the pre-test launch: a
+    // timeout there could come after real test work, so it never retries.
+    expect(
+      findPreTestLaunchLine(
+        ['        XCTAssertTrue(connect.exists)', '        app.launch()'].join(
+          '\n',
+        ),
+      ),
+    ).toBeNull();
+    expect(
+      findPreTestLaunchLine(
+        ['        app.launch()', '        XCTAssertTrue(connect.exists)'].join(
+          '\n',
+        ),
+      ),
+    ).toBe(1);
   });
 
   test('retries only the exact pre-test launch timeout', () => {
