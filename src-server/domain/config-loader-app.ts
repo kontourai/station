@@ -124,18 +124,68 @@ async function readAppConfigBounded(path: string): Promise<string> {
 
 export interface AppConfigFileMutationOptions {
   expectedSourceSignature?: string | null;
-  /**
-   * The caller already owns this app file's mutation lock. This is only for
-   * ConfigLoader's read-derive-write authority, so load-time migration can
-   * persist without trying to acquire its own non-reentrant lock.
-   */
-  mutationLockHeld?: boolean;
+}
+
+/** An active, module-issued capability for one app-config mutation lock. */
+export type AppConfigMutationAuthority = object;
+
+const activeAppConfigMutationAuthorities = new WeakSet<object>();
+
+function assertActiveAppConfigMutationAuthority(
+  authority: AppConfigMutationAuthority,
+): void {
+  if (!activeAppConfigMutationAuthorities.has(authority)) {
+    throw new Error('app configuration mutation authority is no longer active');
+  }
+}
+
+/**
+ * Own one app config's cross-process authority for the duration of `operation`.
+ * The capability is module-issued and becomes unusable before the lock releases,
+ * so callers cannot forge or retain a lock-bypass flag.
+ */
+export async function withAppConfigMutationAuthority<T>(
+  projectHomeDir: string,
+  operation: (authority: AppConfigMutationAuthority) => Promise<T>,
+): Promise<T> {
+  const path = getAppConfigPath(projectHomeDir);
+  const configDirectory = join(projectHomeDir, 'config');
+  await mkdir(configDirectory, { recursive: true, mode: 0o700 });
+  await chmod(configDirectory, 0o700);
+  const release = await acquireFileMutationLockAsync(`${path}.mutation`);
+  const authority = Object.freeze({});
+  activeAppConfigMutationAuthorities.add(authority);
+  try {
+    return await operation(authority);
+  } finally {
+    activeAppConfigMutationAuthorities.delete(authority);
+    await release();
+  }
 }
 
 export async function saveAppConfigFile(
   projectHomeDir: string,
   config: AppConfig,
   options: AppConfigFileMutationOptions = {},
+): Promise<void> {
+  return saveAppConfigFileInternal(projectHomeDir, config, options);
+}
+
+export async function saveAppConfigFileWithMutationAuthority(
+  projectHomeDir: string,
+  authority: AppConfigMutationAuthority,
+  config: AppConfig,
+  options: AppConfigFileMutationOptions = {},
+): Promise<void> {
+  assertActiveAppConfigMutationAuthority(authority);
+  return saveAppConfigFileInternal(projectHomeDir, config, options, authority);
+}
+
+async function saveAppConfigFileInternal(
+  projectHomeDir: string,
+  config: AppConfig,
+  options: AppConfigFileMutationOptions,
+  authority?: AppConfigMutationAuthority,
 ): Promise<void> {
   validator.validateAppConfig(config);
   assertSafeAppConfig(config);
@@ -167,7 +217,7 @@ export async function saveAppConfigFile(
       }
       renameSync(temporaryPath, path);
     };
-    if (options.mutationLockHeld) {
+    if (authority) {
       commit();
       return;
     }
@@ -186,7 +236,21 @@ export async function saveAppConfigFile(
 
 export async function loadAppConfigFile(
   projectHomeDir: string,
-  options: Pick<AppConfigFileMutationOptions, 'mutationLockHeld'> = {},
+): Promise<AppConfig> {
+  return loadAppConfigFileInternal(projectHomeDir);
+}
+
+export async function loadAppConfigFileWithMutationAuthority(
+  projectHomeDir: string,
+  authority: AppConfigMutationAuthority,
+): Promise<AppConfig> {
+  assertActiveAppConfigMutationAuthority(authority);
+  return loadAppConfigFileInternal(projectHomeDir, authority);
+}
+
+async function loadAppConfigFileInternal(
+  projectHomeDir: string,
+  authority?: AppConfigMutationAuthority,
 ): Promise<AppConfig> {
   const path = getAppConfigPath(projectHomeDir);
   for (let attempt = 0; attempt < APP_CONFIG_LOAD_MAX_ATTEMPTS; attempt += 1) {
@@ -211,10 +275,12 @@ export async function loadAppConfigFile(
         firstRun: { status: 'pending' },
       };
       try {
-        await saveAppConfigFile(projectHomeDir, defaultConfig, {
-          expectedSourceSignature: null,
-          mutationLockHeld: options.mutationLockHeld,
-        });
+        await saveAppConfigFileInternal(
+          projectHomeDir,
+          defaultConfig,
+          { expectedSourceSignature: null },
+          authority,
+        );
         return defaultConfig;
       } catch (error) {
         if (error instanceof AppConfigConflictError) continue;
@@ -278,10 +344,12 @@ export async function loadAppConfigFile(
     assertSafeAppConfig(data);
     if (!shouldPersist) return data;
     try {
-      await saveAppConfigFile(projectHomeDir, data, {
-        expectedSourceSignature: sourceSignature,
-        mutationLockHeld: options.mutationLockHeld,
-      });
+      await saveAppConfigFileInternal(
+        projectHomeDir,
+        data,
+        { expectedSourceSignature: sourceSignature },
+        authority,
+      );
       return data;
     } catch (error) {
       if (error instanceof AppConfigConflictError) continue;

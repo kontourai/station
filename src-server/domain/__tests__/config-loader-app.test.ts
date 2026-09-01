@@ -37,6 +37,7 @@ import {
   loadAppConfigFile,
   mergeAppConfigUpdate,
   saveAppConfigFile,
+  saveAppConfigFileWithMutationAuthority,
   updateAppConfigFile,
 } from '../config-loader-app.js';
 
@@ -203,6 +204,20 @@ describe('config-loader-app', () => {
       }),
     ).rejects.toThrow(
       /Blocked potentially unsafe context in app system prompt/,
+    );
+  });
+
+  it('refuses a forged app-config mutation authority', async () => {
+    const config = await loadAppConfigFile(tempDir);
+
+    await expect(
+      saveAppConfigFileWithMutationAuthority(
+        tempDir,
+        {},
+        { ...config, defaultModel: 'forged-authority-model' },
+      ),
+    ).rejects.toThrow(
+      'app configuration mutation authority is no longer active',
     );
   });
 
