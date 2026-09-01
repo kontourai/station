@@ -410,6 +410,35 @@ Per `local-merge-readiness.md`, extended by measured practice:
   not assume the states are exclusive.)
 - **Never hand a directory to a formatter.** `biome check --write docs`
   reformatted 32 checked-in evidence files in one command.
+- **Resolving a measured ceiling: attribution, not direction.** Files like
+  `scripts/ui-bundle-budget.json` and `scripts/mobile-css-baseline.json` carry a
+  number that several lanes edit, and a merge conflict there cannot be resolved
+  by taking a side — neither side describes the merged tree. Rebuild, measure,
+  and then decide by **what you can attribute to your own diff**:
+
+  - **Your measurement exceeds main's ceiling** → raise to your measurement.
+    Forced; your change costs those bytes.
+  - **Your measurement is lower and you cannot say why** → keep **main's**.
+    That gap is measurement drift, and banking it as a ceiling leaves every
+    in-flight lane failing against a number main had already sanctioned, for no
+    gain.
+  - **Your measurement is lower and you can point at the cause** → tighten to
+    your measurement, and say in the commit what produced the reduction
+    (an import moved out of the eager chunk; a deleted effect). A real
+    reduction that is not banked is headroom the next lane inherits and spends
+    silently.
+
+  The gate fails only on EXCEEDS, so a ceiling is a permission to grow rather
+  than a claim about the tree. That is why an unattributed lowering is a cost
+  with no benefit and an unattributed raise is a silent loosening — the same
+  error in opposite directions. "Always take the higher" is safe but turns the
+  ratchet into a one-way valve; "always take my measurement" squeezes every
+  other lane with your drift. Both were tried on `fix/923-chrome` across five
+  passes before this rule settled it.
+
+  Verify by building, not by arithmetic: a ceiling adopted without a build is a
+  number, not a measurement.
+
 - **A repo-wide count-ratchet fails on whoever gates next, not on whoever
   caused it.** The signal is real and worth keeping, but it misattributes by
   design, and the path of least resistance under deadline is to raise the
