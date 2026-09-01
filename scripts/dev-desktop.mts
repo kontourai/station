@@ -84,35 +84,31 @@ export async function resolveDesktopDevContract({
     pairingDeepLinkScheme: desktopDevPairingDeepLinkScheme(instance),
   };
 }
-/** `{ STATION_ROOT }` when the child needs it, and `{}` when naming it would
- * make the runtime home guard refuse the home (#1109). */
-function spawnRootEnv(
-  home: string,
-  env: NodeJS.ProcessEnv,
-): { STATION_ROOT?: string } {
-  const root = spawnedStationRoot(home, env);
-  return root ? { STATION_ROOT: root } : {};
-}
-
 export function desktopDevEnvironment(
   contract: DesktopDevContract,
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
-  return {
+  const spawned: NodeJS.ProcessEnv = {
     ...env,
-    // Correct by construction rather than by an invariant about callers: a
-    // paired call cannot collide, because `contract.home` is
-    // `<root>/instances/dev/<id>`, but nothing stops a caller passing an env
-    // whose STATION_HOME already IS that home -- and naming the root then
-    // makes the child's admission guard refuse it. `spawnedStationRoot`
-    // answers exactly that question, so the collision cannot be reintroduced
-    // by a future caller.
-    ...spawnRootEnv(contract.home, env),
     STATION_HOME: contract.home,
     STATION_DESKTOP_PORT: String(contract.serverPort),
     STATION_SERVER_PORT: String(contract.serverPort),
     STATION_UI_PORT: String(contract.uiPort),
   };
+  // Set or REMOVED, never merged: spreading an object that omits the key
+  // leaves whatever `...env` contributed, so an inherited `undefined` would
+  // reach `spawn` as a non-string environment value.
+  //
+  // Correct by construction rather than by an invariant about callers. A
+  // paired call cannot collide, since `contract.home` is
+  // `<root>/instances/dev/<id>` -- but nothing stops a caller passing an env
+  // whose STATION_HOME already IS that home, and naming the root then makes
+  // the child's admission guard refuse it. `spawnedStationRoot` answers
+  // exactly that question, so a future caller cannot reintroduce it.
+  const root = spawnedStationRoot(contract.home, env);
+  if (root) spawned.STATION_ROOT = root;
+  else delete spawned.STATION_ROOT;
+  return spawned;
 }
 export function desktopDevTauriConfig(contract: DesktopDevContract) {
   return {
