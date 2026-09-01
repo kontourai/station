@@ -49,6 +49,7 @@ describe('birthProvesReuse (station#2904)', () => {
     };
     expect(
       birthProvesReuse('Mon Aug 17 13:00:00 2026', process.pid, {
+        platform: 'darwin',
         exec: throwingExec,
       }),
     ).toBe(false);
@@ -59,6 +60,7 @@ describe('birthProvesReuse (station#2904)', () => {
     const emptyExec = () => '';
     expect(
       birthProvesReuse('Mon Aug 17 13:00:00 2026', process.pid, {
+        platform: 'darwin',
         exec: emptyExec,
       }),
     ).toBe(false);
@@ -68,6 +70,7 @@ describe('birthProvesReuse (station#2904)', () => {
     const observedExec = () => 'Mon Aug 17 13:00:00 2026\n';
     expect(
       birthProvesReuse('Tue Jan  6 01:02:03 2026', process.pid, {
+        platform: 'darwin',
         exec: observedExec,
       }),
     ).toBe(true);
@@ -77,6 +80,7 @@ describe('birthProvesReuse (station#2904)', () => {
     const observedExec = () => 'Mon Aug 17 13:00:00 2026\n';
     expect(
       birthProvesReuse('Mon Aug 17 13:00:00 2026', process.pid, {
+        platform: 'darwin',
         exec: observedExec,
       }),
     ).toBe(false);
@@ -88,14 +92,18 @@ describe('birthProvesReuse (station#2904)', () => {
     expect(birthProvesReuse('', process.pid)).toBe(false);
   });
 
-  test('the real probe is env-pinned: stable for the same live process', () => {
+  test('the real probe is stable for the same live process', () => {
     // The writer/reader skew defense (LC_ALL=C + TZ=UTC): the same live
     // process must fingerprint identically across reads, or every consumer
     // treats a live instance as pid-reused — the lazy-start-competitor
-    // hazard this seam exists to prevent.
+    // hazard this seam exists to prevent. Linux takes the /proc path instead
+    // of invoking ps, so assert its platform-specific fingerprint shape too.
     const first = lookupProcessBirthFingerprint(process.pid);
     const second = lookupProcessBirthFingerprint(process.pid);
     expect(first).not.toBeNull();
+    if (process.platform === 'linux') {
+      expect(first).toMatch(/^linux:[0-9a-f-]+:\d+$/);
+    }
     expect(second).toBe(first);
     expect(birthProvesReuse(first, process.pid)).toBe(false);
   });
