@@ -203,15 +203,28 @@ export function useDockShellChrome({
   const regionModel = useRegionModelOptional();
   const isMobile = useIsMobile();
   const visualViewport = useMobileVisualViewport();
-  const modelDockMode =
+  // Step 3a moves the dock's OPEN STATE onto the region model and deliberately
+  // leaves PLACEMENT on navigation. The model seeds its chat occupant from
+  // `settings.dockSlotPlacement` alone, whereas navigation's `dockMode` is a
+  // precedence chain — URL param, then `dockModeOverride`, then the setting
+  // (navigation-store.ts:415). The Coding layout takes the override path via
+  // `setDockModeQuiet`, which never writes the setting, so deriving placement
+  // from the model would move that dock from the right panel to a bottom bar.
+  // Placement moves in the step where the model actually owns it.
+  const modelChatRegion =
     regionModel &&
     (['left', 'right', 'bottom'] as const).find(
       (id) => regionModel.regions[id].occupant === 'chat',
     );
-  const readerDockMode = modelDockMode ?? dockMode;
-  const readerIsDockOpen = regionModel
-    ? regionModel.regions[readerDockMode].visible
-    : isDockOpen;
+  const readerDockMode = dockMode;
+  // Visibility is read from whichever region the model says holds chat — the
+  // sync effect writes `visible: isDockOpen` there, so this is equal to
+  // `isDockOpen` today. Reading `regions[dockMode]` instead would be wrong
+  // whenever the two disagree: an unoccupied region seeds `visible: false`.
+  const readerIsDockOpen =
+    regionModel && modelChatRegion
+      ? regionModel.regions[modelChatRegion].visible
+      : isDockOpen;
   const {
     available: availableDockSlotPlacements,
     effective: effectiveDockSlotPlacement,

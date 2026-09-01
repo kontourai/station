@@ -24,6 +24,7 @@ const harness = vi.hoisted(() => ({
     dockSlotPlacement: 'bottom' as const,
   },
   isDockOpen: true,
+  dockMode: 'bottom' as 'left' | 'bottom' | 'right',
   setDeviceSetting: vi.fn(),
 }));
 
@@ -31,7 +32,7 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     isDockOpen: harness.isDockOpen,
     isDockMaximized: false,
-    dockMode: 'bottom' as const,
+    dockMode: harness.dockMode,
     pathname: '/',
     setDockState: vi.fn(),
     setDockMode: vi.fn(),
@@ -86,5 +87,37 @@ describe('useDockShellChrome reads its open state from the region model', () => 
 
     expect(harness.isDockOpen).toBe(true);
     expect(result.current.chrome.isDockOpen).toBe(false);
+  });
+
+  // The Coding layout sets navigation's dockMode through `setDockModeQuiet`,
+  // which never writes `dockSlotPlacement` — so the model, which seeds from
+  // that setting alone, holds chat at 'bottom' while navigation says 'right'.
+  // Deriving placement from the model would move that dock to a bottom bar.
+  // Step 3a moves open state only; this pins that.
+  test('keeps navigation as the placement authority when the two disagree', () => {
+    harness.dockMode = 'right';
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        chrome: useDockShellChrome({
+          publishesDockSlotClearance: false,
+          registersDockShortcuts: false,
+        }),
+        model: useRegionModel(),
+      }),
+      { wrapper },
+    );
+
+    // The model holds chat at 'bottom' (seeded from dockSlotPlacement).
+    expect(result.current.model.regions.bottom.occupant).toBe('chat');
+    // Navigation is mocked at 'right', the Coding-layout override shape.
+    expect(result.current.chrome.dockMode).toBe('right');
   });
 });
