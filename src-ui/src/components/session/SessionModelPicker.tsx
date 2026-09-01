@@ -416,17 +416,18 @@ export function SessionModelPicker({
               <div className="session-model-picker__models" role="listbox">
                 {modelSections.map((section) =>
                   section.kind === 'model' ? (
-                    <div
+                    // A fieldset IS role="group", which is what a listbox
+                    // accepts around its options; the legend names the model
+                    // whose routes these are.
+                    <fieldset
                       key={`model:${section.canonicalId}`}
-                      role="group"
-                      aria-label={section.displayName}
                       className="session-model-picker__model-group"
                     >
-                      <p className="session-model-picker__model-group-name">
+                      <legend className="session-model-picker__model-group-name">
                         {section.displayName}
-                      </p>
+                      </legend>
                       {section.routes.map(renderModelRow)}
-                    </div>
+                    </fieldset>
                   ) : (
                     renderModelRow(section.model)
                   ),
