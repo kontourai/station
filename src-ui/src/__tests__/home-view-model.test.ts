@@ -742,7 +742,7 @@ describe('buildHomeWorkItems', () => {
     );
     expect(
       tasks.map((task) => `${task.title} ${task.agentLabel}`).join(' '),
-    ).not.toContain('codex');
+    ).not.toContain('codex-runtime');
   });
 
   test('shows a durable Task once while removing only exactly correlated chats and sessions', () => {
