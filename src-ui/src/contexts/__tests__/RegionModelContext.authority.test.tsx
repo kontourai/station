@@ -46,8 +46,10 @@ function Probe({ onReady }: { onReady: (value: unknown) => void }) {
 
 type Model = ReturnType<typeof useRegionModel>;
 
+let latest: Model | undefined;
+
 function renderModel() {
-  let latest: Model | undefined;
+  latest = undefined;
   const view = render(
     <RegionModelProvider>
       <Probe
@@ -77,9 +79,16 @@ describe('RegionModelContext — the region layout is the placement authority', 
     // changed setting and both must survive.
     harness.settings = { ...harness.settings, chatDockHeight: 512 };
     act(() => {
+      // Keep capturing: rerendering with a no-op onReady would leave `model()`
+      // holding the pre-change value object, and the assertions below would
+      // read a stale snapshot that cannot see an overwrite.
       view.rerender(
         <RegionModelProvider>
-          <Probe onReady={() => {}} />
+          <Probe
+            onReady={(value) => {
+              latest = value as Model;
+            }}
+          />
         </RegionModelProvider>,
       );
     });
