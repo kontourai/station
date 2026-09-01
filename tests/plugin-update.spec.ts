@@ -557,7 +557,14 @@ test.describe('Plugin Update Flow', () => {
       const bounds = await confirm.getByRole('button', { name }).boundingBox();
       expect(bounds?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     }
-    await page.keyboard.press('Escape');
+    // A visible, focused panel is not sufficient: `inert` on an ancestor
+    // silently drops an element from hit testing as well as focus, so a
+    // click that never reaches the button would be indistinguishable from
+    // this assertion's absence. Click Cancel for real, through Playwright's
+    // actionability check (which fails loudly if something intercepts the
+    // pointer event), instead of dismissing with a keyboard Escape that
+    // never proves the button itself is reachable. #1131.
+    await confirm.getByRole('button', { name: 'Cancel' }).click();
     await expect(confirm).toBeHidden();
     await expect(removeTrigger).toBeFocused();
   });
