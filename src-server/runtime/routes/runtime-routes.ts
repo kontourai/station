@@ -4425,6 +4425,12 @@ function timingSafeSecretEqual(candidate: string, expected: string): boolean {
  *
  * A capability that expires is not a lockout: `station start` prints a fresh
  * one, and the tray mints on demand.
+ *
+ * An inherited `STATION_UI_BOOTSTRAP_TOKEN` starts its lifetime when the routes
+ * are configured rather than when the value was created -- there is no
+ * observable issue time for it. That matches `station start`, which prints and
+ * uses it immediately, and it does mean a token supplied to a long-lived
+ * process ages out from boot rather than from first use.
  */
 const UI_BOOTSTRAP_CAPABILITY_TTL_MS = 15 * 60 * 1000;
 
@@ -4766,9 +4772,16 @@ export function configureDevicePairingPublicRoutes(
     // STAMPING rather than by refusal, so narrowing who may redeem would fight
     // that design. Narrowing HOW LONG does not: every real redemption happens
     // within seconds of the page that carries the fragment loading.
-    if (now() - uiBootstrapIssuedAt > UI_BOOTSTRAP_CAPABILITY_TTL_MS) {
+    // `>=`, so the stated lifetime is the last moment it is NOT redeemable
+    // rather than a fencepost nobody chose. A rollback fails CLOSED: the clock
+    // is `Date.now()`, which is not monotonic, so a system time or NTP
+    // correction that moves backwards would otherwise revive a capability that
+    // had already aged out -- and clearing below only runs when someone
+    // attempts a redemption, so an untouched capability would survive it.
+    const age = now() - uiBootstrapIssuedAt;
+    if (age >= UI_BOOTSTRAP_CAPABILITY_TTL_MS || age < 0) {
       // Cleared, not merely refused: an expired capability must not survive to
-      // be retried, and leaving it live would make the window reopenable.
+      // be retried.
       uiBootstrapToken = undefined;
       return c.json({ error: 'ui_bootstrap_expired' }, 403);
     }

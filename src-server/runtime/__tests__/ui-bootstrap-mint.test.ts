@@ -240,6 +240,50 @@ describe('ui-bootstrap mint', () => {
     });
   });
 
+  test('a clock that moves backwards expires the capability rather than reviving it', async () => {
+    // Review finding: clearing only runs when someone ATTEMPTS a redemption,
+    // and `Date.now()` is not monotonic. A system time or NTP correction that
+    // moved past the lifetime and back would have revived an untouched
+    // capability -- so the guard fails closed on a negative age rather than
+    // trusting the clock to move one way.
+    const harness = createHarness();
+    const { token } = (await (
+      await mint(harness, harness.secret())
+    ).json()) as { token: string };
+
+    harness.advance(-1);
+    const rolledBack = await harness.request(
+      PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
+      { token },
+      remote(),
+      { Origin: 'https://station.example.test' },
+    );
+    expect(rolledBack.status).toBe(403);
+    await expect(rolledBack.json()).resolves.toEqual({
+      error: 'ui_bootstrap_expired',
+    });
+  });
+
+  test('the lifetime boundary itself is refused, not left to a fencepost', async () => {
+    // Exactly at the stated lifetime. `>` would have admitted this, which is a
+    // boundary nobody chose rather than one anybody decided.
+    const harness = createHarness();
+    const { token } = (await (
+      await mint(harness, harness.secret())
+    ).json()) as { token: string };
+    harness.advance(15 * 60 * 1000);
+    expect(
+      (
+        await harness.request(
+          PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
+          { token },
+          remote(),
+          { Origin: 'https://station.example.test' },
+        )
+      ).status,
+    ).toBe(403);
+  });
+
   test('a capability well inside its lifetime is still redeemable', async () => {
     // The lifetime must not become a lockout: the human gap between
     // `station start` printing a URL and someone clicking it is the case it
