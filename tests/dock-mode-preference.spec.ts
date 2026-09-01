@@ -357,21 +357,6 @@ test.describe('Dock Mode Preference', () => {
     expect(reopenedBox!.width).toBeLessThanOrEqual(360);
   });
 
-  test('coding layout applies right dock mode without URL param', async ({
-    page,
-  }) => {
-    await page.goto('/projects/dev/layouts/code');
-    await page.waitForTimeout(3000);
-
-    // Dock should be in right mode (coding layout preference)
-    const chatDock = page.locator('.chat-dock');
-    await expect(chatDock).toHaveClass(/chat-dock--right/);
-
-    // URL should NOT contain dockSlotPlacement param
-    const url = new URL(page.url());
-    expect(url.searchParams.has('dockSlotPlacement')).toBe(false);
-  });
-
   test('right dock mode never renders the inbox chat list or its toggle', async ({
     page,
   }) => {
@@ -484,7 +469,7 @@ test.describe('Dock Mode Preference', () => {
     await page.keyboard.press('Meta+Shift+M');
     await page.waitForTimeout(500);
 
-    // URL should now contain dockSlotPlacement (cycled from 'right' → 'bottom')
+    // URL should now contain dockSlotPlacement, cycled from the device setting.
     const url = new URL(page.url());
     expect(url.searchParams.has('dockSlotPlacement')).toBe(true);
 
@@ -494,83 +479,19 @@ test.describe('Dock Mode Preference', () => {
     await expect.poll(() => new URL(page.url()).pathname).toBe('/developer');
   });
 
-  test('⌘⇧M persists override in sessionStorage', async ({ page }) => {
-    await page.goto('/projects/dev/layouts/code');
-    await page.waitForTimeout(3000);
-
-    // Cycle dock mode
-    await page.keyboard.press('Meta+Shift+M');
-    await page.waitForTimeout(500);
-
-    // Check sessionStorage has the override
-    const override = await page.evaluate(() =>
-      sessionStorage.getItem('station-dock-mode-override:coding'),
-    );
-    expect(override).toBeTruthy();
-  });
-
-  test('sessionStorage override applies without URL param on revisit', async ({
-    page,
-  }) => {
-    // Pre-seed sessionStorage with a legacy 'bottom-inline' override — it
-    // must normalize to the renamed 'bottom' (inline) mode
-    await page.addInitScript(() => {
-      sessionStorage.setItem(
-        'station-dock-mode-override:coding',
-        'bottom-inline',
-      );
-    });
-
-    await page.goto('/projects/dev/layouts/code');
-    await page.waitForTimeout(3000);
-
-    // Dock should be in bottom (inline) mode (from sessionStorage override)
-    const chatDock = page.locator('.chat-dock');
-    await expect(chatDock).toHaveClass(/chat-dock--bottom(?!-)/);
-
-    // URL should still NOT contain dockSlotPlacement (override applied quietly)
-    const url = new URL(page.url());
-    expect(url.searchParams.has('dockSlotPlacement')).toBe(false);
-  });
-
-  test('explicit URL dockSlotPlacement is respected over layout preference', async ({
+  test('explicit URL dockSlotPlacement is respected over the device setting', async ({
     page,
   }) => {
     await page.goto('/projects/dev/layouts/code?dockSlotPlacement=bottom');
     await page.waitForTimeout(3000);
 
-    // Dock should be in bottom (inline) mode (from URL), not right (layout preference)
+    // Dock should be in bottom (inline) mode from the URL, regardless of device setting.
     const chatDock = page.locator('.chat-dock');
     await expect(chatDock).toHaveClass(/chat-dock--bottom(?!-)/);
 
     // URL param should persist
     const url = new URL(page.url());
     expect(url.searchParams.get('dockSlotPlacement')).toBe('bottom');
-  });
-
-  test('navigating away from coding layout restores previous dock mode', async ({
-    page,
-  }) => {
-    // Start on home (default bottom dock)
-    await page.goto('/');
-    await page.waitForTimeout(2000);
-
-    // Navigate to coding layout
-    await page.goto('/projects/dev/layouts/code');
-    await page.waitForTimeout(3000);
-
-    // Dock should be right
-    await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--right/);
-
-    // Navigate away
-    await page.goto('/');
-    await page.waitForTimeout(2000);
-
-    // Dock should be back to the default bottom mode (not --right)
-    const chatDock = page.locator('.chat-dock');
-    const classes = await chatDock.getAttribute('class');
-    expect(classes).not.toContain('chat-dock--right');
-    expect(classes).toContain('chat-dock--bottom');
   });
 
   // station#settings-revamp slice 4 (docs/design/settings-architecture.md

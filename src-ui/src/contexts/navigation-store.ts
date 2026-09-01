@@ -396,7 +396,7 @@ class NavigationStore {
       ),
       isDockOpen: params.get('dock') === 'open',
       isDockMaximized: params.get('maximize') === 'true',
-      // archive#settings-revamp (docs/design/settings-architecture.md
+      // archive#settings-revamp (docs/design/settings-architecture.md §3, §6).
       // Precedence: URL param, then device setting, then the registry default.
       dockMode:
         normalizeDockMode(params.get('dockSlotPlacement')) ||
