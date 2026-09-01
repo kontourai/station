@@ -421,13 +421,19 @@ Per `local-merge-readiness.md`, extended by measured practice:
 - **Resolving a measured ceiling: attribution, not direction.** Files like
   `scripts/ui-bundle-budget.json` and `scripts/mobile-css-baseline.json` carry a
   number that several lanes edit, and a merge conflict there cannot be resolved
-  by taking a side — neither side describes the merged tree. Rebuild, measure,
-  and then decide by **what you can attribute to your own diff**:
+  by taking a side — neither side describes the merged tree. The
+  `ui-bundle-budget.json` merge driver writes a *provisional* value (the
+  higher of each field; a driver runs before the merged tree exists, so it
+  cannot measure it — station#1107). Rebuild, measure, and then decide by
+  **what you can attribute to your own diff**:
 
   - **Your measurement exceeds main's ceiling** → raise to your measurement.
     Forced; your change costs those bytes.
   - **Your measurement is lower and you cannot say why** → keep **main's**.
-    That gap is measurement drift, and banking it as a ceiling leaves every
+    That gap is slack someone else already recorded (the build is
+    deterministic — three independent re-measurements of one merge agreed to
+    the byte — but the gate only fails on *exceeds*, so an over-recorded
+    ceiling enters main unchallenged), and banking it as a ceiling leaves every
     in-flight lane failing against a number main had already sanctioned, for no
     gain.
   - **Your measurement is lower and you can point at the cause** → tighten to
