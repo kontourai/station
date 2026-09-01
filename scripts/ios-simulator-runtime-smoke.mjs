@@ -116,9 +116,9 @@ function escapeRegExp(value) {
 // that recorded no test failure at all (a build or simulator error).
 export function classifyXcuiTestFailure(log, options = {}) {
   const bundleId = options.bundleId ?? DEFAULT_BUNDLE_ID;
-  const recorded = [...String(log).matchAll(/^.*\.swift:\d+: error: .*$/gm)].map(
-    (match) => match[0],
-  );
+  const recorded = [
+    ...String(log).matchAll(/^.*\.swift:\d+: error: .*$/gm),
+  ].map((match) => match[0]);
   if (recorded.length === 0) {
     return { signature: 'no-recorded-test-failure', retryable: false };
   }
@@ -310,7 +310,10 @@ async function main(argv = process.argv.slice(2)) {
           bootAndInstall();
         }
         const attemptStartedAt = new Date().toISOString();
-        const resultBundle = join(attemptDirectory, 'StationRuntimeSmoke.xcresult');
+        const resultBundle = join(
+          attemptDirectory,
+          'StationRuntimeSmoke.xcresult',
+        );
         const test = run(
           'xcodebuild',
           [
@@ -385,7 +388,10 @@ async function main(argv = process.argv.slice(2)) {
     attempts = outcome.attempts;
     if (!outcome.passed) {
       const last = attempts[attempts.length - 1];
-      const lastLog = readFileSync(join(last.artifacts, 'xcodebuild.log'), 'utf8');
+      const lastLog = readFileSync(
+        join(last.artifacts, 'xcodebuild.log'),
+        'utf8',
+      );
       throw new Error(
         `iOS runtime XCUITest failed (${String(last.status)}, ${last.signature}, attempt ${String(last.index)} of ${String(attempts.length)}):\n${lastLog.slice(-8_000)}`,
       );

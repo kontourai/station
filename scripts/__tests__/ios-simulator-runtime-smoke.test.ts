@@ -181,7 +181,8 @@ describe('iOS simulator runtime smoke selection', () => {
 // macOS runner (path prefix shortened). The launch timeout is XCTest's own
 // infrastructure failure at `app.launch()`; the other two are assertions
 // inside the test body.
-const swiftPath = '/w/station/tests/ios-runtime-smoke/StationRuntimeSmokeTests.swift';
+const swiftPath =
+  '/w/station/tests/ios-runtime-smoke/StationRuntimeSmokeTests.swift';
 const testCase =
   '-[StationRuntimeSmokeTests.StationRuntimeSmokeTests testCleanInstallLeavesStartupForActionableConnectionState]';
 const launchTimeoutLine = `${swiftPath}:10: error: ${testCase} : Failed to launch io.kontourai.station: Timed out attempting to launch app.`;
@@ -202,7 +203,11 @@ describe('iOS simulator runtime smoke retry policy', () => {
 
   test('keeps every recorded test-body failure terminal', () => {
     for (const line of [startupAssertionLine, managerAssertionLine]) {
-      expect(classifyXcuiTestFailure(`${line}\n    Application, pid: 1\n${failedTail}`)).toEqual({
+      expect(
+        classifyXcuiTestFailure(
+          `${line}\n    Application, pid: 1\n${failedTail}`,
+        ),
+      ).toEqual({
         signature: 'test-failure',
         retryable: false,
       });
@@ -248,7 +253,11 @@ describe('iOS simulator runtime smoke retry policy', () => {
       attempt: async (index: number) => {
         seen.push(index);
         return index === 1
-          ? { status: 65, log: `${launchTimeoutLine}\n${failedTail}`, artifacts: '/a/1' }
+          ? {
+              status: 65,
+              log: `${launchTimeoutLine}\n${failedTail}`,
+              artifacts: '/a/1',
+            }
           : { status: 0, log: 'Test Suite passed', artifacts: '/a/2' };
       },
     });
@@ -263,7 +272,13 @@ describe('iOS simulator runtime smoke retry policy', () => {
           signature: 'app-launch-timeout',
           retryable: true,
         },
-        { index: 2, status: 0, artifacts: '/a/2', signature: 'passed', retryable: false },
+        {
+          index: 2,
+          status: 0,
+          artifacts: '/a/2',
+          signature: 'passed',
+          retryable: false,
+        },
       ],
     });
 
@@ -276,9 +291,9 @@ describe('iOS simulator runtime smoke retry policy', () => {
     });
     expect(seen).toEqual([1]);
     expect(terminal.passed).toBe(false);
-    expect(terminal.attempts.map((entry: { signature: string }) => entry.signature)).toEqual([
-      'test-failure',
-    ]);
+    expect(
+      terminal.attempts.map((entry: { signature: string }) => entry.signature),
+    ).toEqual(['test-failure']);
   });
 
   test('stops after the second attempt even when it times out again', async () => {
@@ -292,9 +307,11 @@ describe('iOS simulator runtime smoke retry policy', () => {
     expect(seen).toEqual([1, 2]);
     expect(outcome.passed).toBe(false);
     expect(outcome.attempts).toHaveLength(2);
-    expect(outcome.attempts.every((entry: { retryable: boolean }) => entry.retryable)).toBe(
-      true,
-    );
+    expect(
+      outcome.attempts.every(
+        (entry: { retryable: boolean }) => entry.retryable,
+      ),
+    ).toBe(true);
   });
 
   test('a passing first attempt never runs a second', async () => {
@@ -308,7 +325,9 @@ describe('iOS simulator runtime smoke retry policy', () => {
     expect(seen).toEqual([1]);
     expect(outcome).toEqual({
       passed: true,
-      attempts: [{ index: 1, status: 0, signature: 'passed', retryable: false }],
+      attempts: [
+        { index: 1, status: 0, signature: 'passed', retryable: false },
+      ],
     });
   });
 });
