@@ -8,8 +8,8 @@ import ts from 'typescript';
  *
  * Most files are isolated by Vitest's per-run homes and can use the root
  * four-worker cap. A deliberately explicit set starts child processes or
- * exercises timing-sensitive global state; hosted evidence requires their
- * child-owning files to run serially. Tests that exercise host-global ownership stay in a
+ * exercises timing-sensitive global state; independent members use a bounded
+ * two-worker pool. Tests that exercise host-global ownership stay in a
  * separate exclusive group. The package publish checks share
  * `packages/cli/dist/`, so they also remain a separate one-worker group.
  * Finally, the dogfood-reconcile corpus retains its historical serial
@@ -38,6 +38,9 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // EventStore owns a high-cardinality SQLite fixture whose large replay and
+  // backfill assertions are scheduler-sensitive under the two-worker pool.
+  'src-server/services/orchestration/__tests__/event-store.test.ts',
   // Owns detached real-process fixtures, scans live sibling instances, and
   // contains synchronous crash-recovery probes that Vitest cannot interrupt
   // while another process-heavy file is consuming the host.
@@ -66,7 +69,7 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
 //
 // ## The constraint on anything you add here (station#1804)
 //
-// This group runs on **one worker under a thirty-minute execution deadline**
+// This group runs on **two workers under a thirty-minute execution deadline**
 // (`test-full-process-heavy`), and its members' job is to spawn child
 // processes. Every file admitted here therefore raises the contention floor
 // under every other file in it — including files whose assertions are bounded
@@ -89,7 +92,7 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fsync-backed AgentRegistry fixtures compose the runtime bootstrap path;
-  // they own durable state but can share the bounded serial process-heavy pool.
+  // they own durable state but can share the bounded two-worker pool.
   'src-server/runtime/bootstrap/__tests__/runtime-service-bootstrap.test.ts',
   // Builds two tiny real repositories to prove CLI artifact provenance ignores
   // hostile inherited Git routing and sees a staged dirty index.
@@ -105,7 +108,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#4294: owns a real loopback listener, fresh HTTP sockets, a
   // streaming SDK transport, and a temporary SQLite EventStore.  The test's
   // barriers are stream facts, never a wall-clock budget, but the host
-  // resources still require the serial process-heavy pool.
+  // resources still require the two-worker process-heavy pool.
   'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
   // Spawns a copied Node ESM CLI from a path containing spaces to prove the
   // executable entrypoint, not merely its imported helper, emits JSON errors.
@@ -130,7 +133,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/cli/src/__tests__/platform.test.ts',
   // station#4458: the stale-profile-lock proof kills a bounded fixture owner
   // and waits for its exit before reclaiming the exact on-disk record. This is
-  // a real child ownership boundary, so it belongs in the serial process pool.
+  // a real child ownership boundary, so it belongs in the two-worker pool.
   'packages/cli/src/__tests__/profile.test.ts',
   'packages/cli/src/__tests__/service.integration.test.ts',
   // #2917: proves the reinstall remedy's shell escaping by handing the
@@ -186,6 +189,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // sentence and its EXIT STATUS are proven, not just its pure decision
   // functions. Bounded single-shot children per case.
   'scripts/__tests__/sdk-error-message-ratchet.test.ts',
+  // station#1137: same shape again — the crypto.randomUUID guard is driven as
+  // a real child process against throwaway git repositories so its `FAIL:`
+  // sentence and its EXIT STATUS are proven, not just its pure decision
+  // functions. Bounded single-shot children per case.
+  'scripts/__tests__/random-uuid-guard.test.ts',
   // #1130: same shape again — the dialog-surface-class guard is driven as a
   // real child process against throwaway git repositories so its `FAIL:`
   // sentence and its EXIT STATUS are proven, not just its pure decision
@@ -452,10 +460,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture. The children are network-free and short-lived, but the actual
   // process boundary is the claim, so it belongs in the bounded spawn pool.
   'scripts/__tests__/version-packages-lock.test.ts',
-  // station#3616: invokes the real Claude and Codex CLIs against isolated
-  // config homes; their child lifecycles and host binary availability make
-  // this an explicit process-heavy integration test, never ordinary work.
-  'src-server/services/orchestration/__tests__/event-store.test.ts',
   // The room runtime intentionally hard-exits a child after durable history
   // commit and before recovery settlement, then reopens the same SQLite file.
   // That crash/reopen lifecycle must not overlap ordinary workers.

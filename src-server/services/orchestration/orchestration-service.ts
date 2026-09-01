@@ -16,6 +16,7 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   sessionDeliveryChannels,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   AgentRunSummary,
   ConversationHandoffStatusProjection,
@@ -351,8 +352,8 @@ function chatStartGateReason(error: unknown): string {
 
 /**
  * Station-vs-external collapse of an adapter's engine identity
- * (docs/design/agent-engine-unification.md §4.1; archive#1003 Phase B —
- * replaces the `executionClass` read) for telemetry/projection sites that
+ * (docs/design/agent-engine-unification.md §4.1; archive#1003 Phase B) for
+ * telemetry/projection sites that
  * only need the binary distinction (plus 'unknown' for an unresolvable
  * adapter), not the full engine id. `acp` is not derived through here —
  * callers that want it check `adapter.provider === 'acp'` first, since it's
@@ -4732,7 +4733,7 @@ export class OrchestrationService {
           const engineId = matrix?.engineId ?? engineIdForAdapter(adapter);
           steerMetricEngine = engineId;
           const engineName =
-            matrix?.displayName ?? adapter.metadata.displayName;
+            engineDisplayLabel(engineId) ?? adapter.metadata.displayName;
           if (!matrix?.midTurnSteer || !adapter.steerTurn) {
             const result: SteerTurnResult = {
               outcome: 'unsupported-engine',

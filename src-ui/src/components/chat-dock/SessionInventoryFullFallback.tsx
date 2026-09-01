@@ -1,5 +1,6 @@
 import { createSessionInventoryBasisPaneInstance } from '@kontourai/station-basis-pane/workspace-basis-pane';
 import type { SessionInventoryScope } from '@kontourai/station-contracts/session-inventory';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useRef } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useBasisPaneLauncher } from '../../workspace-panes/BasisPaneLauncher';
@@ -32,7 +33,7 @@ export function SessionInventoryFullFallback({
 }) {
   const { openBasis, focusBasis, fallback } = useBasisPaneLauncher();
   const authority = useHostRequestAuthorityScope();
-  const mobileBindingId = useRef(`mobile:${crypto.randomUUID()}`).current;
+  const mobileBindingId = useRef(`mobile:${randomCorrelationId()}`).current;
   useEffect(
     () =>
       forceFallback && authority && chatStoreId
@@ -76,7 +77,7 @@ export function SessionInventoryFullFallback({
           authority.authorityKey,
           scope.sessionId,
           {
-            hostId: `hosted:${hostId ?? crypto.randomUUID()}`,
+            hostId: `hosted:${hostId ?? randomCorrelationId()}`,
             chatStoreId,
           },
         );

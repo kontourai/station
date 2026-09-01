@@ -6,6 +6,7 @@ import {
   resolveEngineCapabilityMatrix,
   UNKNOWN_EXTERNAL_ENGINE_MATRIX,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   resolveModelLaunchPlan,
@@ -1774,7 +1775,7 @@ describe('Muse registration', () => {
     expect(matrix).toBe(ENGINE_CAPABILITY_MATRICES.muse);
     expect(matrix).not.toBe(UNKNOWN_EXTERNAL_ENGINE_MATRIX);
     expect(matrix.engineId).toBe('muse');
-    expect(matrix.displayName).toBe('Muse Code');
+    expect(engineDisplayLabel(matrix.engineId)).toBe('Muse Code');
   });
 
   test('muse counts as chat-capable while claiming no unproven delivery surface', () => {

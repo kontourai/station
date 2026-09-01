@@ -1,3 +1,5 @@
+import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { unanswerableRequestNotice } from '@kontourai/station-contracts/orchestration';
 import type {
   OrchestrationSessionSummary,
@@ -16,11 +18,7 @@ import {
   activeTurnProgress,
   orchestrationLifecycleLabel,
 } from '../../utils/session-state';
-import {
-  engineLabelForProvider,
-  sessionProjectLabel,
-  sessionTitle,
-} from '../../utils/sessionDisplay';
+import { sessionProjectLabel, sessionTitle } from '../../utils/sessionDisplay';
 
 export interface HomeWorkItem {
   id: string;
@@ -176,7 +174,7 @@ function latestChatTimestamp(chat: ChatUIState): number {
  *
  * When nothing resolves — no cached name, no assigned slug, i.e. exactly the
  * attached/external population — this falls back to the ENGINE's product name
- * from `engineLabelForProvider`, the one place Station turns a provider id
+ * from `engineDisplayLabel`, the one place Station turns a provider id
  * into engine vocabulary.
  *
  * archive#3227 A4: this used to reach a PRIVATE second provider table that
@@ -204,9 +202,13 @@ function safeAgentLabel({
   provider?: string;
 }): string {
   if (name?.trim()) return name;
-  if (slug) return slug;
+  if (slug) {
+    const engineId = parseEngineId(slug);
+    return (engineId && engineDisplayLabel(engineId)) ?? slug;
+  }
   if (!provider) return 'Agent not reported';
-  return engineLabelForProvider(provider) ?? provider;
+  const engineId = parseEngineId(provider);
+  return (engineId && engineDisplayLabel(engineId)) ?? provider;
 }
 
 /**

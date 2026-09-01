@@ -36,6 +36,14 @@ function fixture({ foreignLock = false, signalParent = false } = {}) {
     chmodSync(path, 0o755);
   };
   script('uname', '[[ "$1" == -s ]] && print Darwin || print arm64');
+  // Only the installer version guard is simulated. Its inline Node modules
+  // validate the station root and build-only output, so they must execute
+  // under the real runtime and create their real fixture paths.
+  script(
+    'node',
+    `if [[ "$1" == '-p' && "$2" == *process.versions.node* ]]; then print 24; exit 0; fi
+exec ${JSON.stringify(process.execPath)} "$@"`,
+  );
   const marker = join(dir, 'child-done');
   const releases = join(dir, 'lock-releases');
   script(

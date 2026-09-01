@@ -4,6 +4,7 @@ import {
   parseEngineId,
   engineId as toEngineId,
 } from './agent-identity.js';
+import { engineDisplayLabel } from './engine-display.js';
 
 /**
  * The honest, single-source capability
@@ -330,18 +331,6 @@ export type BuiltInToolControlCell =
 
 export interface EngineCapabilityMatrix {
   engineId: EngineId;
-  /**
-   * The engine's canonical human name, or `null` when this matrix genuinely
-   * cannot name the engine and only the live connection can — a
-   * command-backed connection is shown by its OWN connection name ("Kiro"),
-   * never by the protocol it happens to speak (docs/glossary.md), and the
-   * unknown-engine default below has nothing honest to call itself. Carried
-   * HERE, next to the capability cells, so any surface that has to name the
-   * engines a capability applies to reads the same objects the capability
-   * predicate reads (`controlPlaneCapableEngineNames` below) instead of
-   * keeping a parallel list that can silently drift out of date.
-   */
-  displayName: string | null;
   systemPrompt: CapabilityDelivery;
   /**
    * archive#895 wave C: the fallback for an authored prompt when
@@ -462,7 +451,7 @@ export function resolveComposerImageSupport(
       refusal:
         matrix.imageInput.state === 'unsupported'
           ? matrix.imageInput.reason
-          : `${matrix.displayName ?? 'This engine'} cannot see images.`,
+          : `${matrix.engineId === 'acp' ? 'This engine' : (engineDisplayLabel(matrix.engineId) ?? 'This engine')} cannot see images.`,
     };
   }
   // The cell said an observation is required. If one exists and says no, that
@@ -563,7 +552,6 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
 > = {
   station: {
     engineId: toEngineId('station'),
-    displayName: 'Station',
     systemPrompt: { state: 'native' },
     // Native systemPrompt already delivers the authored prompt; the
     // first-turn fallback is never reached.
@@ -593,7 +581,6 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   claude: {
     engineId: toEngineId('claude'),
-    displayName: 'Claude Code',
     // systemPrompt deliverable via a per-session flag.
     systemPrompt: { state: 'session', channel: 'flag' },
     // The native flag channel above already delivers the authored prompt;
@@ -659,7 +646,6 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   codex: {
     engineId: toEngineId('codex'),
-    displayName: 'Codex',
     // Evidence gate (docs/design/agent-engine-unification.md
     // §4.1/§6.1): `codex app-server generate-json-schema` against the
     // installed codex-cli 0.145.0 CONFIRMS `developerInstructions` as a
@@ -752,7 +738,6 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   muse: {
     engineId: toEngineId('muse'),
-    displayName: 'Muse Code',
     // Slice 1 is deliberately narrow. `muse exec` is a one-prompt-per-process
     // headless runner; nothing in its flag surface or its observed JSONL
     // stream delivers an authored system prompt, MCP tool servers, skills, or
@@ -801,9 +786,6 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   },
   acp: {
     engineId: toEngineId('acp'),
-    // Only the connection can name a command-backed engine — see
-    // `displayName`'s doc comment on the interface above.
-    displayName: null,
     systemPrompt: { state: 'unsupported' },
     // archive#895 wave C: `acp-adapter.ts` already builds an ordinary
     // `{type:'text', text: input.input}` prompt content block on every
@@ -900,7 +882,6 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
  */
 export const UNKNOWN_EXTERNAL_ENGINE_MATRIX: EngineCapabilityMatrix = {
   engineId: toEngineId('unknown'),
-  displayName: null,
   systemPrompt: { state: 'unsupported' },
   // Never guessed for an unknown engine class, same as every other surface.
   instructionsInFirstTurn: { state: 'unsupported' },
@@ -953,11 +934,6 @@ export function sessionDeliveryChannels(
  *                                                     its type is its exact
  *                                                     provider/native selector;
  *                                                     otherwise UNKNOWN_EXTERNAL_ENGINE_MATRIX
- *   executionClass 'managed'                      -> station (deprecated
- *                                                     read-compat)
- *   executionClass 'connected' or any other id     -> that connection's type
- *                                                     (a matrix entry, else
- *                                                     UNKNOWN_EXTERNAL_ENGINE_MATRIX)
  *   otherwise (no id, no connection)               -> station
  */
 export function resolveEngineCapabilityMatrix(
@@ -973,7 +949,7 @@ export function resolveEngineCapabilityMatrix(
   }
   // Phase B: engineId (top-level, e.g. server RuntimeConnectionSummary; or
   // config-nested, e.g. AgentConnectionView/ConnectionConfig) is the
-  // canonical engine identity and wins over the deprecated executionClass
+  // canonical engine identity is authoritative
   // read-compat fields below when present.
   const rawExplicitEngineId =
     connection?.engineId ??
@@ -994,10 +970,15 @@ export function resolveEngineCapabilityMatrix(
     // from a different engine.
     return UNKNOWN_EXTERNAL_ENGINE_MATRIX;
   }
-  if (connection?.config?.executionClass === 'managed') {
-    return ENGINE_CAPABILITY_MATRICES.station;
-  }
-  if (connection?.config?.executionClass === 'connected' || agentConnectionId) {
+  // A stored `executionClass: 'connected'` still names an external engine even
+  // when no connection id reached this call. Collapsing the binaries removed
+  // the branch that read it, which sent those connections to the final
+  // `station` return below -- Station's capabilities, including declared
+  // control delivery, attributed to an engine Station does not run. The
+  // deprecated field is not authoritative for WHICH engine, so it resolves
+  // through the same external path as a connection id rather than a matrix of
+  // its own.
+  if (agentConnectionId || connection?.config?.executionClass === 'connected') {
     const type = connection?.type;
     if (type && ENGINE_CAPABILITY_MATRICES[type]) {
       return ENGINE_CAPABILITY_MATRICES[type];
@@ -1122,9 +1103,9 @@ export function engineControlPlaneCapability(
  * Codex's does with `'url-token'`) its name appears here on the
  * same commit, with no copy change anywhere.
  *
- * An entry whose `displayName` is `null` is omitted rather than named by its
- * id: only the live connection can name a command-backed engine, and this
- * list is a general statement about engines, not about one connection.
+ * An engine the canonical label function cannot name is omitted rather than
+ * named by its id: only the live connection can name an unknown command-backed
+ * engine, and this list is about engines rather than one connection.
  *
  * This is a statement about ENGINES, so it deliberately passes
  * no observation — a `runtime_observation` cell therefore derives
@@ -1146,7 +1127,7 @@ export function engineControlPlaneCapability(
 export function controlPlaneCapableEngineNames(): string[] {
   return Object.values(ENGINE_CAPABILITY_MATRICES)
     .filter((matrix) => engineControlPlaneCapability(matrix) === 'full')
-    .map((matrix) => matrix.displayName)
+    .map((matrix) => engineDisplayLabel(matrix.engineId))
     .filter((name): name is string => name !== null);
 }
 

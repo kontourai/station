@@ -117,6 +117,14 @@ function runInstaller(
       ...overrides,
     },
   });
+  if (result.error || result.signal) {
+    const detail = result.error
+      ? `${result.error.name}: ${result.error.message}`
+      : `terminated by ${result.signal}`;
+    throw new Error(
+      `Android nightly installer could not execute /bin/zsh: ${detail}`,
+    );
+  }
   return result;
 }
 
