@@ -13,8 +13,13 @@
  * screen.
  *
  * This proves the fix by simulating the insecure-context condition
- * directly — deleting `crypto.randomUUID` before rendering — rather than by
- * navigating to a real non-localhost origin. Revert
+ * directly — overriding `crypto.randomUUID` to `undefined` before rendering
+ * — rather than by navigating to a real non-localhost origin. `randomUUID`
+ * lives on `Crypto.prototype`, not as an own property of the `crypto`
+ * instance, so `delete globalThis.crypto.randomUUID` is a silent no-op (the
+ * prototype method stays reachable) — this must assign `undefined` directly
+ * so it shadows the prototype, the same way the method's real absence in an
+ * insecure context leaves nothing else to fall through to. Revert
  * `randomCorrelationId()`'s adoption in `ConnectionsContext.tsx` back to a
  * bare `crypto.randomUUID()` call and this test fails with the exact
  * production `TypeError`.
@@ -66,10 +71,12 @@ describe('ConnectionsProvider on an insecure (non-localhost, plain HTTP) origin'
     originalRandomUUID = globalThis.crypto.randomUUID;
     // Simulates the real condition: on `http://192.168.1.50:3141` (or any
     // non-localhost plain-HTTP origin) `Crypto.randomUUID` is absent per the
-    // Web Crypto secure-context requirement — not merely throwing.
-    // @ts-expect-error deliberately deleting a required method to simulate
-    // an insecure context.
-    delete globalThis.crypto.randomUUID;
+    // Web Crypto secure-context requirement — not merely throwing. Direct
+    // assignment (not `delete`) is required: `randomUUID` lives on
+    // `Crypto.prototype`, so `delete` on the instance is a no-op.
+    // @ts-expect-error deliberately overriding a required method to
+    // simulate an insecure context.
+    globalThis.crypto.randomUUID = undefined;
 
     const store = new ConnectionStore({ storage: memoryAdapter() });
 
@@ -87,9 +94,9 @@ describe('ConnectionsProvider on an insecure (non-localhost, plain HTTP) origin'
 
   it('still produces a usable, string activation id with randomUUID absent', () => {
     originalRandomUUID = globalThis.crypto.randomUUID;
-    // @ts-expect-error deliberately deleting a required method to simulate
-    // an insecure context.
-    delete globalThis.crypto.randomUUID;
+    // @ts-expect-error deliberately overriding a required method to
+    // simulate an insecure context.
+    globalThis.crypto.randomUUID = undefined;
 
     const store = new ConnectionStore({ storage: memoryAdapter() });
     const { getByTestId } = render(
