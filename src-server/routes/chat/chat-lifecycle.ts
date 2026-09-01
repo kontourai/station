@@ -365,6 +365,9 @@ export async function finalizeChatRequest({
         ctx.agentSpecs.get(slug)?.model ||
         ctx.appConfig.invokeModel;
       let region = ctx.appConfig.region || 'us-east-1';
+      // Unknown until the identity resolves; an unresolved route stays unpriced
+      // rather than borrowing Amazon's price list.
+      let providerType: string | undefined;
       const agentSpec = ctx.agentSpecs.get(slug);
       if (agentSpec) {
         try {
@@ -384,6 +387,7 @@ export async function finalizeChatRequest({
           });
           modelId = identity.modelId;
           region = identity.region ?? region;
+          providerType = identity.providerType;
         } catch {
           // Preserve token accounting when legacy/incomplete provider state exists.
         }
@@ -393,6 +397,7 @@ export async function finalizeChatRequest({
           ctx.modelCatalog,
           modelId,
           region,
+          providerType,
         );
         estimatedCost = estimateCost(pricing, {
           ...(usage.promptTokens !== undefined ||
