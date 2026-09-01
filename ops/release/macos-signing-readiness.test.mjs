@@ -717,74 +717,103 @@ test('CLI requires exact mode-specific arguments and only asks each mode for the
 });
 
 test('both macOS release paths retain the required signing-readiness topology and leave iOS untouched', () => {
-  for (const [file, jobName, deadline] of [
-    [
-      '.github/workflows/nightly.yml',
-      'nightly-desktop',
-      'nightly_macos_release_deadline',
-    ],
-    [
-      '.github/workflows/release.yml',
-      'desktop-macos',
-      'macos_release_deadline',
-    ],
+  for (const { file, jobName, deadline, combinedStep } of [
+    {
+      file: '.github/workflows/nightly-native-cohort.yml',
+      jobName: 'stage-macos',
+      deadline: 'macos_cohort_deadline',
+      combinedStep:
+        'Fail closed and build/sign/notarize macOS staging artifacts',
+    },
+    {
+      file: '.github/workflows/release.yml',
+      jobName: 'desktop-macos',
+      deadline: 'macos_release_deadline',
+      combinedStep: null,
+    },
   ]) {
     const workflow = load(readFileSync(file, 'utf8'));
     const job = workflow.jobs[jobName];
+    expect(job, `${file} must retain ${jobName}`).toBeDefined();
     const indexOfStep = (name) =>
       job.steps.findIndex((step) => step.name === name);
-    const prepare = indexOfStep('Import macOS Developer ID certificate');
-    const build =
-      indexOfStep('Build an unsigned macOS nightly staging candidate') >= 0
-        ? indexOfStep('Build an unsigned macOS nightly staging candidate')
-        : indexOfStep('Build an unsigned macOS staging candidate');
-    const seal = job.steps.findIndex((step) =>
-      step.name?.startsWith('Seal, notarize'),
-    );
     const cleanup = indexOfStep('Cleanup macOS Developer ID keychain');
     expect(job.steps[0]).toMatchObject({ id: deadline });
-    expect(prepare).toBeGreaterThan(-1);
-    expect(prepare).toBeLessThan(build);
-    expect(build).toBeLessThan(seal);
-    expect(seal).toBeLessThan(cleanup);
-    expect(job.steps[prepare].env).toHaveProperty(
-      'APPLE_DEVELOPER_ID_SIGNING_IDENTITY',
-    );
-    expect(job.steps[prepare].run).toContain(
-      `--deadline-epoch "\${{ steps.${deadline}.outputs.epoch }}"`,
-    );
-    expect(job.steps[seal].env).toHaveProperty(
-      'APPLE_DEVELOPER_ID_SIGNING_IDENTITY',
-    );
-    expect(job.steps[seal].run).toContain('macos-signing-readiness.mjs unlock');
-    expect(job.steps[seal].run).toContain('macos-signing-readiness.mjs probe');
-    expect(
-      job.steps[seal].run.indexOf('macos-signing-readiness.mjs unlock'),
-    ).toBeLessThan(
-      job.steps[seal].run.indexOf('macos-notarized-artifacts.mjs'),
-    );
+    if (combinedStep) {
+      const combined = indexOfStep(combinedStep);
+      expect(combined).toBeGreaterThan(-1);
+      expect(combined).toBeLessThan(cleanup);
+      expect(job.steps[combined].env).toHaveProperty(
+        'APPLE_DEVELOPER_ID_SIGNING_IDENTITY',
+      );
+      const run = job.steps[combined].run;
+      const topology = [
+        'macos-signing-readiness.mjs prepare',
+        'npx tauri build --no-sign',
+        'macos-signing-readiness.mjs unlock',
+        'macos-signing-readiness.mjs probe',
+        'macos-notarized-artifacts.mjs',
+      ].map((command) => run.indexOf(command));
+      expect(topology.every((index) => index >= 0)).toBe(true);
+      expect(topology).toEqual(
+        [...topology].sort((left, right) => left - right),
+      );
+      expect(run).toContain(
+        `--deadline-epoch "\${{ steps.${deadline}.outputs.epoch }}"`,
+      );
+    } else {
+      const prepare = indexOfStep('Import macOS Developer ID certificate');
+      const build = indexOfStep('Build an unsigned macOS staging candidate');
+      const seal = job.steps.findIndex((step) =>
+        step.name?.startsWith('Seal, notarize'),
+      );
+      expect(prepare).toBeGreaterThan(-1);
+      expect(prepare).toBeLessThan(build);
+      expect(build).toBeLessThan(seal);
+      expect(seal).toBeLessThan(cleanup);
+      expect(job.steps[prepare].env).toHaveProperty(
+        'APPLE_DEVELOPER_ID_SIGNING_IDENTITY',
+      );
+      expect(job.steps[prepare].run).toContain(
+        `--deadline-epoch "\${{ steps.${deadline}.outputs.epoch }}"`,
+      );
+      expect(job.steps[seal].env).toHaveProperty(
+        'APPLE_DEVELOPER_ID_SIGNING_IDENTITY',
+      );
+      expect(job.steps[seal].run).toContain(
+        'macos-signing-readiness.mjs unlock',
+      );
+      expect(job.steps[seal].run).toContain(
+        'macos-signing-readiness.mjs probe',
+      );
+      expect(
+        job.steps[seal].run.indexOf('macos-signing-readiness.mjs unlock'),
+      ).toBeLessThan(
+        job.steps[seal].run.indexOf('macos-notarized-artifacts.mjs'),
+      );
+    }
     expect(job.steps[cleanup]).toMatchObject({ if: 'always()' });
     expect(job.steps[cleanup].run).toContain('helper_status=$?');
     expect(job.steps[cleanup].run).toContain('rm_status=$?');
     expect(job.steps[cleanup].run).toContain(
       'test "$helper_status" -eq 0 && test "$rm_status" -eq 0',
     );
-    if (jobName === 'nightly-desktop') {
-      const manifest = indexOfStep('Assemble the signed updater manifest');
-      const publish = indexOfStep(
-        'Publish the rolling desktop nightly prerelease',
-      );
-      expect(cleanup).toBeLessThan(manifest);
-      expect(manifest).toBeLessThan(publish);
-    } else {
-      const attestation = job.steps.findIndex(
-        (step) =>
-          step.uses ===
-          'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
-      );
-      expect(cleanup).toBeLessThan(attestation);
-    }
+    const attestation = job.steps.findIndex(
+      (step) =>
+        step.uses ===
+        'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
+    );
+    expect(cleanup).toBeLessThan(attestation);
   }
+  const nightly = load(
+    readFileSync('.github/workflows/nightly-native-cohort.yml', 'utf8'),
+  );
+  const nightlyHelperJobs = Object.entries(nightly.jobs)
+    .filter(([, job]) =>
+      JSON.stringify(job).includes('macos-signing-readiness.mjs'),
+    )
+    .map(([name]) => name);
+  expect(nightlyHelperJobs).toEqual(['stage-macos']);
   const release = load(readFileSync('.github/workflows/release.yml', 'utf8'));
   const helperJobs = Object.entries(release.jobs)
     .filter(([, job]) =>

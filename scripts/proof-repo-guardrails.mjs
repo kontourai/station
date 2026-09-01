@@ -3802,7 +3802,7 @@ const sdkChatRuntimeTypes = readRequiredSource(
   '../packages/sdk/src/query-domains/chatRuntimeTypes.ts',
 );
 for (const requiredHelper of [
-  'export type OrchestrationProviderKind =',
+  'export type OrchestrationEngineId =',
   'export interface ConversationSummary',
   'export interface ConversationLookup',
   'export interface ConversationMessagePart',
