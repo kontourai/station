@@ -352,6 +352,13 @@ describe('CI verification workflow contracts', () => {
     expect(containerSmoke).toContain(
       `group: container-smoke-\${{ github.ref }}`,
     );
+    // A 20-minute smoke must outlive the next queue merge; the group still
+    // collapses pending runs, so only the in-progress verdict is preserved.
+    const containerSmokeJob = containerSmoke.slice(
+      containerSmoke.indexOf('  smoke:'),
+    );
+    expect(containerSmokeJob).toContain('cancel-in-progress: false');
+    expect(containerSmokeJob).not.toContain('cancel-in-progress: true');
     expect(ci).not.toMatch(/^concurrency:/m);
     expect(containerSmoke).not.toMatch(/^concurrency:/m);
   });

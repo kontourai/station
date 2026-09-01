@@ -39,9 +39,16 @@ jobs:
   smoke:
     needs: classify
     if: github.event_name != 'pull_request' && (github.event_name == 'workflow_dispatch' || needs.classify.outputs.container == 'true')
+    # Never cancel a running smoke: the job takes 20+ minutes and the merge
+    # queue lands a non-docs entry every ~18, so cancelling on push meant
+    # only the last commit of a burst ever got a verdict (17 cancelled main
+    # runs on 2026-09-01 alone, each the only run for its commit, including
+    # the first two carrying the #917 fix).
+    # Without cancel the group still keeps at most one pending run, so the
+    # latest main is verified next; main-health ignores `cancelled` runs.
     concurrency:
       group: container-smoke-${{ github.ref }}
-      cancel-in-progress: true
+      cancel-in-progress: false
     # The fleet listener provides docker + playwright. (Run 33228038600's
     # device-pairing timeout, once blamed on the github-hosted environment
     # here, was actually the anonymous-browser premise gap fixed in #917 —
