@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 102,
+  "pageLocalMediaQueryCeiling": 101,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -166,8 +166,8 @@
       "reason": "The profile hero and stats grid stack and centre at 700px."
     },
     "src-ui/src/views/HomeView.css": {
-      "count": 2,
-      "reason": "Single-column action cards, a taller card floor, and stacked task rows; plus hides the desktop-only top-actions row below 1024px, #890 mobile polish."
+      "count": 1,
+      "reason": "Single-column action cards, a taller card floor and stacked task rows on the page's own bottom gutter. The second block this entry recorded \u2014 the 1024px hide of the desktop-only top-actions row \u2014 went away with #992's shell-chrome move; corrected here because the ratchet never reports an over-recorded file (#1160)."
     },
     "src-ui/src/views/IntegrationsView.css": {
       "count": 1,
