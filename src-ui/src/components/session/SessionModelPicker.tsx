@@ -1,11 +1,4 @@
-import { authenticatedFetch } from '@kontourai/station-sdk';
-import {
-  type KeyboardEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { type KeyboardEvent, useMemo, useRef, useState } from 'react';
 import {
   modelPreferenceKey,
   updateModelPickerPreferences,
@@ -42,32 +35,10 @@ interface SessionModelPickerProps {
   onClose: () => void;
 }
 
-type ModelPricing = {
-  inputTokenPrice: number | null;
-  outputTokenPrice: number | null;
-  currency: string;
-};
-
 export function formatContextWindow(tokens: number): string {
   return tokens >= 1_000_000
     ? `${tokens / 1_000_000}m`
     : `${Math.round(tokens / 1_000)}k`;
-}
-
-function formatTokenPrice(price: number, currency: string): string {
-  return `${currency === 'USD' ? '$' : `${currency} `}${(price * 1_000).toFixed(2)}/M`;
-}
-
-function isModelPricing(value: unknown): value is ModelPricing {
-  if (!value || typeof value !== 'object') return false;
-  const pricing = value as Record<string, unknown>;
-  const isPrice = (price: unknown) =>
-    price === null || (typeof price === 'number' && Number.isFinite(price));
-  return (
-    isPrice(pricing.inputTokenPrice) &&
-    isPrice(pricing.outputTokenPrice) &&
-    typeof pricing.currency === 'string'
-  );
 }
 
 export function SessionModelPicker({
@@ -90,7 +61,6 @@ export function SessionModelPicker({
     currentProviderId ?? 'all',
   );
   const [capabilityFilters, setCapabilityFilters] = useState<string[]>([]);
-  const [pricing, setPricing] = useState<ModelPricing | null>(null);
   const preferences = useModelPickerPreferences();
   const searchRef = useRef<HTMLInputElement>(null);
   const activeModel = currentModel || defaultModel;
@@ -102,10 +72,6 @@ export function SessionModelPicker({
     ) ??
     models.find((model) => model.id === activeModel) ??
     models[0];
-  const pricingModel =
-    activeModel && selectedModel?.id === activeModel
-      ? selectedModel
-      : undefined;
   const capabilities = selectedModel?.capabilities;
   const filters = useMemo(
     () => [
@@ -208,32 +174,6 @@ export function SessionModelPicker({
     providerFilter,
     query,
   ]);
-
-  useEffect(() => {
-    const model = pricingModel;
-    if (model?.providerType !== 'bedrock') {
-      setPricing(null);
-      return;
-    }
-    let cancelled = false;
-    setPricing(null);
-    void authenticatedFetch(
-      `${window.location.origin}/api/models/pricing/${encodeURIComponent(model.id)}`,
-    )
-      .then(async (response) => (response.ok ? response.json() : null))
-      .then((result) => {
-        if (!cancelled)
-          setPricing(
-            result?.success && isModelPricing(result.data) ? result.data : null,
-          );
-      })
-      .catch(() => {
-        if (!cancelled) setPricing(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [pricingModel]);
 
   const selectModel = (model: SelectableModel) => {
     const key = modelPreferenceKey(
@@ -417,6 +357,10 @@ export function SessionModelPicker({
                         <small>
                           {[model.providerName, model.id]
                             .filter(Boolean)
+                            .filter(
+                              (value, index, values) =>
+                                values.indexOf(value) === index,
+                            )
                             .join(' · ')}
                           {model.available === false
                             ? ` · ${model.unavailableReason ?? 'Unavailable'}`
@@ -441,23 +385,6 @@ export function SessionModelPicker({
                               .join(' · ')}
                           </small>
                         )}
-                        {active &&
-                          pricing &&
-                          (pricing.inputTokenPrice !== null ||
-                            pricing.outputTokenPrice !== null) && (
-                            <small className="session-model-picker__model-pricing">
-                              {[
-                                pricing.inputTokenPrice !== null
-                                  ? `In ${formatTokenPrice(pricing.inputTokenPrice, pricing.currency)}`
-                                  : undefined,
-                                pricing.outputTokenPrice !== null
-                                  ? `Out ${formatTokenPrice(pricing.outputTokenPrice, pricing.currency)}`
-                                  : undefined,
-                              ]
-                                .filter(Boolean)
-                                .join(' · ')}
-                            </small>
-                          )}
                         {active && (
                           <span
                             className="session-model-picker__model-check"

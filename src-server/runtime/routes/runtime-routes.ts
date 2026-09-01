@@ -31,6 +31,7 @@ import {
   DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
   type PairingScope,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
+  PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   PUBLIC_DEVICE_PAIRING_EXCHANGE_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_STARTUP_PROOF_PATH,
@@ -444,6 +445,10 @@ import type {
   AgentConfigurationMutationRunner,
   RuntimeContext,
 } from '../types.js';
+import {
+  API_DOCS_LAUNCH_HEADERS,
+  renderApiDocsLaunchPage,
+} from './api-docs-launch.js';
 import { createOrchestrationBoardAuthorization } from './board-route-authorization.js';
 import {
   configureRuntimeSupportServices,
@@ -4636,6 +4641,20 @@ export function configureDevicePairingPublicRoutes(
         pairingErrorStatus(error),
       );
     }
+  });
+  // Station's own launcher for the framework-served API docs (#934). Serves
+  // static HTML and no credential; the single-use capability arrives in the
+  // fragment, which never reaches this server. Direct loopback only: the sole
+  // caller is the local tray opening the local browser, so there is no reason
+  // to expose it to a peer that can reach the listener.
+  app.get(PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH, (c) => {
+    if (new URL(c.req.url).search) {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+    if (!isDirectLoopbackCaller(c)) {
+      return c.json({ error: 'local_grant_forbidden' }, 403);
+    }
+    return c.body(renderApiDocsLaunchPage(), 200, API_DOCS_LAUNCH_HEADERS);
   });
   app.post(PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH, async (c) => {
     if (new URL(c.req.url).search) {

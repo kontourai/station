@@ -65,6 +65,23 @@ export const PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH =
   '/.well-known/station/v1/pairing/mint-ui-bootstrap' as const;
 
 /**
+ * A Station-owned launcher page for the framework-served API docs (#934).
+ *
+ * The tray's "Open API docs" opens the system browser, which has no credential
+ * and cannot set an `Authorization` header on a top-level navigation, so `/ui`
+ * and `/doc` answer 401. This page is the only thing on that path that Station
+ * controls: it redeems a single-use bootstrap capability carried in its own URL
+ * fragment for the ordinary HttpOnly device-session cookie, then navigates to
+ * the docs. Swagger UI's own HTML is served before any script of ours could
+ * run, which is why the redemption needs a page of its own.
+ *
+ * It carries no credential itself and its redirect target is fixed, never
+ * taken from the request.
+ */
+export const PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH =
+  '/.well-known/station/v1/pairing/api-docs' as const;
+
+/**
  * Scoped pairing (archive#1098): OAuth-style space-delimited scope strings on
  * pairing grants and the device sessions/credentials exchanged from them. A
  * leaked read-only credential can read and stream state but must 403 on

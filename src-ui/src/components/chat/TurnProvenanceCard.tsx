@@ -529,6 +529,8 @@ export interface TurnProvenanceCardProps {
   accountableHuman?: string | null;
   /** Per-turn evidence navigation belongs inside this disclosure, not beside actions. */
   basisContent?: ReactNode;
+  /** The share entry point is part of the always-visible disclosure line. */
+  shareContent?: ReactNode;
 }
 
 export function TurnProvenanceCard({
@@ -536,6 +538,7 @@ export function TurnProvenanceCard({
   statedInRow = NOTHING_STATED_IN_ROW,
   accountableHuman,
   basisContent,
+  shareContent,
 }: TurnProvenanceCardProps) {
   const [open, setOpen] = useState(false);
   const detailsId = useId();
@@ -615,6 +618,7 @@ export function TurnProvenanceCard({
           {basisContent && (
             <div className="turn-provenance__basis">{basisContent}</div>
           )}
+          {shareContent}
 
           {provenance.contextInjection?.state === 'observed' && (
             <LazyBoundary

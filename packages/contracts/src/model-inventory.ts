@@ -37,6 +37,8 @@ export interface LaunchableModelRecord {
   model: ModelInventoryModelIdentity;
   /** Exact provider-native model id used at invocation time. */
   providerModel: string;
+  /** Exact-match identity from the reviewed cross-connection map, when known. */
+  canonicalModelIdentity?: CanonicalModelIdentityReference;
   /** Explicit selectors reported for the same provider-native model id. */
   aliases: string[];
   displayName: string;
@@ -48,6 +50,52 @@ export interface LaunchableModelRecord {
   /** null is unknown; an empty array is known-empty. */
   toolSurface: string[] | null;
   supportsVision: boolean | null;
+}
+
+export interface CanonicalModelIdentityReference {
+  canonicalId: string;
+  /** Human-readable review anchor; this is not a live discovery timestamp. */
+  verifiedAgainst: string;
+}
+
+export interface CuratedModelIdentity {
+  canonicalId: string;
+  displayName: string;
+  verifiedAgainst: string;
+  /** Provider-native IDs are compared as opaque, exact strings. */
+  providerModels: readonly string[];
+}
+
+/**
+ * Reviewed data only. Do not derive entries from names, prefixes, or model
+ * metadata. An omitted provider-native ID is intentionally unrecognised.
+ */
+export const CURATED_MODEL_IDENTITIES: readonly CuratedModelIdentity[] = [
+  {
+    canonicalId: 'anthropic:claude-sonnet-4-5',
+    displayName: 'Claude Sonnet 4.5',
+    verifiedAgainst: 'Anthropic model documentation, reviewed 2026-08-31',
+    providerModels: [
+      'sonnet',
+      'anthropic.claude-sonnet-4-5-v1:0',
+      'anthropic/claude-sonnet-4.5',
+      'claude-sonnet-4-5',
+    ],
+  },
+];
+
+export function curatedModelIdentityFor(
+  providerModel: string,
+): CanonicalModelIdentityReference | undefined {
+  const identity = CURATED_MODEL_IDENTITIES.find((candidate) =>
+    candidate.providerModels.some((knownId) => knownId === providerModel),
+  );
+  return identity
+    ? {
+        canonicalId: identity.canonicalId,
+        verifiedAgainst: identity.verifiedAgainst,
+      }
+    : undefined;
 }
 
 export type ModelInventoryDiagnosticCode =

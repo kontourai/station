@@ -373,6 +373,27 @@ Per `local-merge-readiness.md`, extended by measured practice:
   `cd <worktree> && git merge` whose `cd` failed ran the merge in the primary
   checkout. It was harmless by luck. Use `git -C <path>`, or verify the branch
   before any write.
+- **`autoMergeRequest: null` does not mean "not armed".** It is the union of
+  *never armed* and *already queued* — arming appears to be consumed when a PR
+  enters the merge queue. Measured in one evening: #992 and #1059 both read
+  null while `isInMergeQueue` was true, and #1103 read non-null while it was
+  false. So the field alone can never tell you which state you are in. Read
+  three things together, via GraphQL because REST does not expose the first:
+
+  ```
+  gh api graphql -f query='query{repository(owner:"kontourai",name:"station"){
+    pullRequests(states:OPEN,first:60){nodes{number isInMergeQueue mergeStateStatus
+    autoMergeRequest{enabledAt}}}}}'
+  ```
+
+  `armed=N` + `isInMergeQueue=true` is **queued and moving** — leave it alone.
+  `armed=N` + `isInMergeQueue=false` + `CLEAN` is **ready and stuck** — nothing
+  will ever merge it. The failure is asymmetric, which is why it is worth
+  writing down: re-arming a queued PR is a loud no-op, while leaving a stuck
+  one costs a PR that sits ready and unnoticed. Three sessions each misread it
+  the same way on the same day, two of them one field short of a redundant
+  re-arm. (Not established: whether a PR can be armed and queued at once — do
+  not assume the states are exclusive.)
 - **Never hand a directory to a formatter.** `biome check --write docs`
   reformatted 32 checked-in evidence files in one command.
 - **A repo-wide count-ratchet fails on whoever gates next, not on whoever

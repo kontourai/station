@@ -188,12 +188,16 @@ describe('a corruption observation survives the session that made it', () => {
     );
   });
 
-  test('an unwritable location fails quietly', () => {
+  test('an invalid filesystem location fails quietly', () => {
     // The caller is mid-failure. A marker that cannot be written is a lost
     // diagnosis, never a reason to fail differently.
+    const root = mkdtempSync(join(tmpdir(), 'corruption-marker-'));
+    roots.push(root);
+    const blocker = join(root, 'not-a-directory');
+    writeFileSync(blocker, 'blocks child creation', 'utf8');
     expect(
       recordCorruptionObserved({
-        databasePath: '/proc/definitely-not-writable/db.sqlite',
+        databasePath: join(blocker, 'db.sqlite'),
         observedAt: '2026-08-18T00:00:00.000Z',
       }),
     ).toBe(false);
