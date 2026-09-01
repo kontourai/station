@@ -1321,8 +1321,11 @@
 }
 
 @media (max-width: 480px) {
-  .turn-footer__actions {
-    justify-content: flex-start;
+  /* The footer is a column now, so the narrow-screen decision that these
+     controls sit at the reading edge is expressed on the cross axis. It was
+     `justify-content: flex-start` while the footer was a row. */
+  .turn-footer .turn-footer__actions {
+    align-self: flex-start;
   }
 
   /* station#3151's `.chat-input__approval-chip-policy { display: none }`
@@ -1758,23 +1761,22 @@
    reading column. */
 .turn-footer {
   display: flex;
-  flex-wrap: nowrap;
+  flex-direction: column;
   align-items: flex-start;
-  gap: 6px 12px;
+  gap: 6px;
   margin-top: 6px;
   min-width: 0;
 }
 
 .turn-footer .turn-provenance {
-  flex: 1 1 12rem;
   min-width: 0;
 }
 
 .turn-footer__actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  flex: 1 1 14rem;
+  align-self: flex-end;
+  flex: 0 0 auto;
   flex-wrap: nowrap;
   gap: 4px 6px;
   min-width: 0;
@@ -1795,6 +1797,26 @@
 .turn-footer__actions .message__rating {
   opacity: 0.6;
   min-height: 44px;
+}
+
+@media (hover: hover) {
+  .turn-footer__actions {
+    opacity: 0;
+    height: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .turn-footer__actions .message__rating {
+    min-height: 0;
+  }
+
+  .message:is(:hover, :focus-within) .turn-footer__actions {
+    opacity: 1;
+    height: auto;
+    overflow: visible;
+    pointer-events: auto;
+  }
 }
 
 /* The footer's controls are nested inside their own components, so the

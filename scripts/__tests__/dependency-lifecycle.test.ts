@@ -54,13 +54,24 @@ const policy = JSON.parse(
 const nodes = readLifecycleLocks(root);
 const shellLauncherTest = process.platform === 'win32' ? it.skip : it;
 
+// `installGitIntegration` compares `resolve(toplevel)` against `root`, so the
+// fixture root has to be an absolute path for THIS platform: a hardcoded POSIX
+// '/repo' resolves to '<cwd-drive>:\repo' on Windows and can never equal the
+// '/repo' passed as `root`, which failed the enclosing-repo guard spuriously.
+// Real `git rev-parse --show-toplevel` reports forward slashes on every
+// platform (Git for Windows prints 'C:/checkout'), so feed the toplevel in that
+// form and let production's `resolve()` normalise it — that is exactly the
+// conversion the guard relies on, now actually exercised on Windows.
+const gitFixtureRoot = resolve(tmpdir(), 'station-git-integration-repo');
+const gitFixtureToplevel = gitFixtureRoot.replaceAll('\\', '/');
+
 describe('git integration installer', () => {
   it('writes and reads back hooks and every merge-driver setting', () => {
     const config = new Map<string, string>();
     const calls: string[][] = [];
     const runGit = (args: string[]) => {
       calls.push(args);
-      if (args[0] === 'rev-parse') return '/repo';
+      if (args[0] === 'rev-parse') return gitFixtureToplevel;
       if (args[1] === '--local' && args[2] === '--get')
         return config.get(args[3]) ?? '';
       if (args[0] === 'config' && args[1] === '--local') {
@@ -71,7 +82,7 @@ describe('git integration installer', () => {
     };
 
     installGitIntegration({
-      root: '/repo',
+      root: gitFixtureRoot,
       runGit,
       pathExists: () => true,
     });
@@ -100,7 +111,7 @@ describe('git integration installer', () => {
   it('fails when a merge-driver write does not read back exactly', () => {
     const config = new Map<string, string>();
     const runGit = (args: string[]) => {
-      if (args[0] === 'rev-parse') return '/repo';
+      if (args[0] === 'rev-parse') return gitFixtureToplevel;
       if (args[1] === '--local' && args[2] === '--get') {
         if (args[3] === 'merge.station-ui-bundle-budget.driver') return '';
         return config.get(args[3]) ?? '';
@@ -111,7 +122,7 @@ describe('git integration installer', () => {
 
     expect(() =>
       installGitIntegration({
-        root: '/repo',
+        root: gitFixtureRoot,
         runGit,
         pathExists: () => true,
       }),
@@ -533,30 +544,40 @@ describe('dependency lifecycle policy', () => {
     }
   });
 
-  it('restores only the approved node-pty spawn-helper execute bit', () => {
-    const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-lifecycle-'));
-    try {
-      const packageRoot = resolve(fixtureRoot, 'node_modules', 'node-pty');
-      const helper = resolve(
-        packageRoot,
-        'prebuilds/darwin-arm64/spawn-helper',
-      );
-      mkdirSync(resolve(helper, '..'), { recursive: true });
-      writeFileSync(
-        resolve(packageRoot, 'package.json'),
-        JSON.stringify({ name: 'node-pty', version: '1.1.0' }),
-      );
-      writeFileSync(helper, '#!/bin/sh\nexit 0\n');
-      chmodSync(helper, 0o644);
-      const entry = policy.entries.find(
-        (item: any) => item.name === 'node-pty',
-      );
-      prepareLifecycleArtifacts(fixtureRoot, entry, 'darwin', 'arm64');
-      expect(statSync(helper).mode & 0o111).not.toBe(0);
-    } finally {
-      rmSync(fixtureRoot, { recursive: true, force: true });
-    }
-  });
+  // POSIX-only: the assertion is about a real execute bit surviving in the
+  // filesystem's mode. Windows has no per-file execute permission — Node's
+  // `chmodSync` only toggles the read-only attribute and `statSync().mode`
+  // reports a synthesised 0o666/0o444, so `mode & 0o111` is 0 both before and
+  // after `prepareLifecycleArtifacts`. The production call still runs here (the
+  // fixture passes darwin/arm64 explicitly, so the win32 early-return does not
+  // apply); it is only the observable bit that Windows cannot represent.
+  it.skipIf(process.platform === 'win32')(
+    'restores only the approved node-pty spawn-helper execute bit',
+    () => {
+      const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-lifecycle-'));
+      try {
+        const packageRoot = resolve(fixtureRoot, 'node_modules', 'node-pty');
+        const helper = resolve(
+          packageRoot,
+          'prebuilds/darwin-arm64/spawn-helper',
+        );
+        mkdirSync(resolve(helper, '..'), { recursive: true });
+        writeFileSync(
+          resolve(packageRoot, 'package.json'),
+          JSON.stringify({ name: 'node-pty', version: '1.1.0' }),
+        );
+        writeFileSync(helper, '#!/bin/sh\nexit 0\n');
+        chmodSync(helper, 0o644);
+        const entry = policy.entries.find(
+          (item: any) => item.name === 'node-pty',
+        );
+        prepareLifecycleArtifacts(fixtureRoot, entry, 'darwin', 'arm64');
+        expect(statSync(helper).mode & 0o111).not.toBe(0);
+      } finally {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('keeps the cold bootstrap validator dependency-free', () => {
     const source = readFileSync(
