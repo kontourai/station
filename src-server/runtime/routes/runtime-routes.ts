@@ -4766,8 +4766,10 @@ export function configureDevicePairingPublicRoutes(
         delivery: DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
       });
     }
-    // Every slot is compared, with no early exit, so which purpose a presented
-    // capability belongs to is not observable from timing.
+    // Every populated slot is compared, with no early exit on a match, so which
+    // purpose a presented capability belongs to is not observable from timing.
+    // (Empty slots are skipped, so slot OCCUPANCY is — that was already true of
+    // the single slot, and occupancy carries nothing about the token bytes.)
     let matchedPurpose: UiBootstrapPurpose | undefined;
     for (const candidate of UI_BOOTSTRAP_PURPOSES) {
       const stored = uiBootstrapTokens.get(candidate);
