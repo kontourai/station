@@ -12,7 +12,6 @@ const harness = vi.hoisted(() => ({
   },
   setDockMode: vi.fn(),
   setDockState: vi.fn(),
-  setDockModeOverride: vi.fn(),
   shortcut: null as null | {
     id: string;
     key: string;
@@ -55,10 +54,6 @@ vi.mock('../../../contexts/NavigationContext', () => ({
   }),
 }));
 
-vi.mock('../../../hooks/useDockModePreference', () => ({
-  setDockModeOverride: harness.setDockModeOverride,
-}));
-
 vi.mock('../../../hooks/useIsMobile', () => ({
   useIsMobile: () => false,
   useDockSlotPlacement: () => ({
@@ -85,7 +80,6 @@ describe('RegionToolbarControls', () => {
   beforeEach(() => {
     harness.setDockMode.mockReset();
     harness.setDockState.mockReset();
-    harness.setDockModeOverride.mockReset();
     harness.shortcut = null;
   });
 
@@ -114,7 +108,6 @@ describe('RegionToolbarControls', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Place Chat in Left region' }),
     );
-    expect(harness.setDockModeOverride).toHaveBeenCalledWith(null, 'left');
     expect(harness.setDockMode).toHaveBeenCalledWith('left');
     expect(harness.setDockState).toHaveBeenCalledWith(true, false);
     expect(
