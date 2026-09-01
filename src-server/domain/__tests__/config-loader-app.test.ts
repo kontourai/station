@@ -484,7 +484,12 @@ describe('config-loader-app', () => {
 
     writeFileSync(appPath, '{"defaultModel":"model-between"}', 'utf8');
     (loader as any).notifyConfigFileEvent('change', appPath);
-    writeFileSync(appPath, '{"defaultModel":"model-a"}', 'utf8');
+    const replacementPath = join(configDir, 'app.external.json');
+    writeFileSync(replacementPath, '{"defaultModel":"model-a"}', 'utf8');
+    // Both observations are queued, so they may run only after the final A is
+    // present. Give that final external commit its own observable generation
+    // instead of relying on an in-place timestamp tick.
+    renameSync(replacementPath, appPath);
     (loader as any).notifyConfigFileEvent('change', appPath);
     await (loader as any).launchabilityObservationQueue;
 
