@@ -86,10 +86,12 @@ This pull request is **ready and will not merge**: every required check is green
 Arm it when you are satisfied it is ready:
 
 \`\`\`
-gh pr merge ${number} --auto --squash
+gh pr merge ${number} --auto --squash    # --merge instead, if this PR's grouped commit history is the point
 \`\`\`
 
-**Arm it AFTER your last push, not before.** A push clears auto-merge, so arming first leaves you a pull request that reads armed when you check and is starved a minute later — worse than not arming, because it has already been ticked off. Confirm it took with \`isInMergeQueue\`, not \`autoMergeRequest\`:
+**Verify the arming took rather than assuming it did.** Arming is lost in several ways on this repo: entering the merge queue consumes it (benign — the pull request is moving); a conflict-resolution push has dropped it; and an already-queued pull request has fallen back out to CLEAN and unarmed with no author action at all. A push does not always clear it, so this is "check afterwards", not a rule about pushes.
+
+Check with \`isInMergeQueue\`, never \`autoMergeRequest\` alone — that field reads null both for "never armed" and "already queued", which are opposite facts:
 
 \`\`\`
 gh api graphql -f query='query{repository(owner:"kontourai",name:"station"){
