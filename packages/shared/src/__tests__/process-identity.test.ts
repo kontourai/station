@@ -49,6 +49,7 @@ describe('birthProvesReuse (station#2904)', () => {
     };
     expect(
       birthProvesReuse('Mon Aug 17 13:00:00 2026', process.pid, {
+        platform: 'darwin',
         exec: throwingExec,
       }),
     ).toBe(false);
@@ -59,6 +60,7 @@ describe('birthProvesReuse (station#2904)', () => {
     const emptyExec = () => '';
     expect(
       birthProvesReuse('Mon Aug 17 13:00:00 2026', process.pid, {
+        platform: 'darwin',
         exec: emptyExec,
       }),
     ).toBe(false);
@@ -68,6 +70,7 @@ describe('birthProvesReuse (station#2904)', () => {
     const observedExec = () => 'Mon Aug 17 13:00:00 2026\n';
     expect(
       birthProvesReuse('Tue Jan  6 01:02:03 2026', process.pid, {
+        platform: 'darwin',
         exec: observedExec,
       }),
     ).toBe(true);
@@ -77,6 +80,7 @@ describe('birthProvesReuse (station#2904)', () => {
     const observedExec = () => 'Mon Aug 17 13:00:00 2026\n';
     expect(
       birthProvesReuse('Mon Aug 17 13:00:00 2026', process.pid, {
+        platform: 'darwin',
         exec: observedExec,
       }),
     ).toBe(false);
