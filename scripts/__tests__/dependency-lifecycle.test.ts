@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   chmodSync,
   copyFileSync,
@@ -30,6 +31,7 @@ import {
 import { installGitIntegration } from '../install-git-hooks.mjs';
 import {
   allowlistDigest,
+  assertNodePtyPrebuildConsistency,
   assertPtyHandshakeOutcome,
   confinedPackageTarget,
   evaluateLifecyclePolicy,
@@ -37,6 +39,8 @@ import {
   platformMatches,
   prepareLifecycleArtifacts,
   readLifecycleLocks,
+  readNodePtyPrebuildManifest,
+  stageNodePtyPrebuild,
   verifyArtifact,
   verifyNodePtyHandshake,
 } from '../lib/dependency-lifecycle-policy.mjs';
@@ -543,6 +547,156 @@ describe('dependency lifecycle policy', () => {
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }
+  });
+
+  describe('node-pty Linux prebuild staging (#1245)', () => {
+    const ptyEntry = () =>
+      policy.entries.find((item: any) => item.name === 'node-pty');
+
+    function stagingFixture({ digest }: { digest?: string } = {}) {
+      const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-prebuilds-'));
+      const packageRoot = resolve(fixtureRoot, 'node_modules', 'node-pty');
+      mkdirSync(packageRoot, { recursive: true });
+      writeFileSync(
+        resolve(packageRoot, 'package.json'),
+        JSON.stringify({ name: 'node-pty', version: '1.1.0' }),
+      );
+      const artifactDir = resolve(
+        fixtureRoot,
+        'packaging/node-pty-prebuilds/linux-arm64',
+      );
+      mkdirSync(artifactDir, { recursive: true });
+      const artifact = Buffer.from('not a real addon, digest is what matters');
+      writeFileSync(resolve(artifactDir, 'pty.node'), artifact);
+      const sha256 =
+        digest ?? createHash('sha256').update(artifact).digest('hex');
+      writeFileSync(
+        resolve(fixtureRoot, 'packaging/node-pty-prebuilds/manifest.json'),
+        JSON.stringify({
+          schemaVersion: 1,
+          package: 'node-pty',
+          version: '1.1.0',
+          artifacts: { 'linux-arm64': { sha256 } },
+        }),
+      );
+      return { fixtureRoot, packageRoot };
+    }
+
+    it('stages the pinned artifact into the package prebuilds directory', () => {
+      const { fixtureRoot, packageRoot } = stagingFixture();
+      try {
+        const result = stageNodePtyPrebuild(fixtureRoot, ptyEntry(), {
+          platform: 'linux',
+          arch: 'arm64',
+          env: {},
+        });
+        expect(result.staged).toBe(true);
+        expect(
+          existsSync(resolve(packageRoot, 'prebuilds/linux-arm64/pty.node')),
+        ).toBe(true);
+      } finally {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('aborts on a digest mismatch instead of staging a tampered artifact', () => {
+      const { fixtureRoot, packageRoot } = stagingFixture({
+        digest: 'a'.repeat(64),
+      });
+      try {
+        expect(() =>
+          stageNodePtyPrebuild(fixtureRoot, ptyEntry(), {
+            platform: 'linux',
+            arch: 'arm64',
+            env: {},
+          }),
+        ).toThrow(/digest mismatch/);
+        expect(
+          existsSync(resolve(packageRoot, 'prebuilds/linux-arm64/pty.node')),
+        ).toBe(false);
+      } finally {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('keeps the compile path for source-build opt-out, non-linux, and unpinned targets', () => {
+      const { fixtureRoot } = stagingFixture();
+      try {
+        expect(
+          stageNodePtyPrebuild(fixtureRoot, ptyEntry(), {
+            platform: 'linux',
+            arch: 'arm64',
+            env: { npm_config_build_from_source: 'true' },
+          }).staged,
+        ).toBe(false);
+        expect(
+          stageNodePtyPrebuild(fixtureRoot, ptyEntry(), {
+            platform: 'darwin',
+            arch: 'arm64',
+            env: {},
+          }).staged,
+        ).toBe(false);
+        expect(
+          stageNodePtyPrebuild(fixtureRoot, ptyEntry(), {
+            platform: 'linux',
+            arch: 'x64',
+            env: {},
+          }).staged,
+        ).toBe(false);
+      } finally {
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('requires the manifest and the allowlist to flip together', () => {
+      // The committed state must be consistent…
+      expect(() =>
+        assertNodePtyPrebuildConsistency(
+          policy,
+          readNodePtyPrebuildManifest(root),
+        ),
+      ).not.toThrow();
+      // …a pinned artifact without the allowlist flip fails…
+      expect(() =>
+        assertNodePtyPrebuildConsistency(policy, {
+          schemaVersion: 1,
+          package: 'node-pty',
+          version: '1.1.0',
+          artifacts: { 'linux-arm64': { sha256: 'a'.repeat(64) } },
+        }),
+      ).toThrow(/disagree for linux-arm64/);
+      // …and an allowlist flip without a pinned artifact fails too.
+      const flipped = structuredClone(policy);
+      flipped.entries.find(
+        (item: any) => item.name === 'node-pty',
+      ).artifact.platforms['linux/arm64'] = ['prebuilds/linux-arm64/pty.node'];
+      expect(() =>
+        assertNodePtyPrebuildConsistency(
+          flipped,
+          readNodePtyPrebuildManifest(root),
+        ),
+      ).toThrow(/disagree for linux-arm64/);
+      // A version drift between manifest and approved entry fails.
+      expect(() =>
+        assertNodePtyPrebuildConsistency(
+          (() => {
+            const consistent = structuredClone(policy);
+            consistent.entries.find(
+              (item: any) => item.name === 'node-pty',
+            ).artifact.platforms['linux/arm64'] = [
+              'prebuilds/linux-arm64/pty.node',
+            ];
+            return consistent;
+          })(),
+          {
+            schemaVersion: 1,
+            package: 'node-pty',
+            version: '1.0.0',
+            artifacts: { 'linux-arm64': { sha256: 'a'.repeat(64) } },
+          },
+        ),
+      ).toThrow(/pins version 1.0.0/);
+    });
   });
 
   // POSIX-only: the assertion is about a real execute bit surviving in the

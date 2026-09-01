@@ -1,0 +1,109 @@
+name: node-pty Linux prebuilds
+
+# Builds attested linux-x64 and linux-arm64 (glibc) prebuilds of the EXACT
+# node-pty version pinned in package-lock.json (#1245), so Linux stops being
+# the only platform whose install needs a C++ toolchain. Upstream ships
+# prebuilds for darwin-arm64/x64 and win32-arm64/x64 and nothing for Linux;
+# its loader (lib/utils.js) and its install hook (scripts/prebuild.js) both
+# already understand `prebuilds/<platform>-<arch>/`, which is the layout this
+# workflow produces — no fork, no vendored package.
+#
+# Each artifact is built by the approved dependency lifecycle itself
+# (npm run dependencies:ci compiles node-pty and passes the real-PTY
+# handshake proof), then re-proven STANDALONE by
+# scripts/verify-node-pty-prebuild.mjs: upstream's prebuild.js must exit 0
+# and the module must load from prebuilds/ and pass the handshake with no
+# build/ directory and no node-gyp. The proof report (sha256 + glibc floor)
+# is uploaded next to the binary, and actions/attest-build-provenance binds
+# the artifact to this workflow run — the same trust mechanism release.yml
+# uses for release assets.
+#
+# Consuming a refreshed artifact is a reviewed PR, not an automatic push:
+# download both artifacts from the run, place them under
+# packaging/node-pty-prebuilds/<target>/pty.node, record their sha256 and
+# floors in packaging/node-pty-prebuilds/manifest.json, and flip the
+# node-pty entry's linux artifact arrays in
+# config/dependency-lifecycle-allowlist.json from build/Release/pty.node to
+# prebuilds/<target>/pty.node. scripts/__tests__/dependency-lifecycle.test.ts
+# enforces that the manifest and the allowlist flip together.
+#
+# Decisions this matrix encodes (#1245 risks):
+# - glibc baseline: built on ubuntu-22.04 runners. The proof report records
+#   each artifact's actual GLIBC_/GLIBCXX_ symbol-version floor; the
+#   consuming PR must copy those floors into the manifest and the docs. A
+#   host below the floor falls back to compiling from source.
+# - musl (Alpine) is OUT of this matrix, deliberately: no musl artifact is
+#   built or staged, musl hosts keep the compile-from-source path, and #1244's
+#   loud terminal degradation is their toolchain-less floor. Revisit only
+#   with a musl cross set up in CI and a musl host in the verification fleet.
+# - spawn-helper: a darwin-only executable. Linux prebuilds are pty.node
+#   alone (proven by the standalone verifier), so npm's +x-stripping risk
+#   does not apply to this matrix; the darwin chmod paths in
+#   scripts/lib/dependency-lifecycle-policy.mjs are unchanged.
+#
+# node-pty builds against node-addon-api (N-API), so these artifacts are
+# ABI-stable across Node majors: the matrix is per platform x arch x libc,
+# and does NOT need rebuilding for a new Node version — only for a node-pty
+# version bump (the manifest pins the version, and the consistency test
+# fails when the lockfile moves past it).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: node-pty-prebuilds-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: linux-x64
+          - runner: ubuntu-22.04-arm
+            target: linux-arm64
+    name: Build and prove ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      # The approved lifecycle compiles node-pty from the integrity-pinned
+      # lockfile tarball and proves it with the real PTY handshake
+      # (node-pty-smoke) before this job ever touches the artifact.
+      - run: npm run dependencies:ci
+      - name: Confirm the runner built the matrix target
+        run: |
+          test "$(node -p 'process.platform + "-" + process.arch')" = "${{ matrix.target }}"
+      - name: Assemble the prebuild artifact
+        run: |
+          set -euo pipefail
+          mkdir -p "prebuild-out/${{ matrix.target }}"
+          cp node_modules/node-pty/build/Release/pty.node "prebuild-out/${{ matrix.target }}/pty.node"
+      - name: Prove the artifact standalone (prebuild.js exit 0, no node-gyp, real PTY handshake)
+        run: |
+          node scripts/verify-node-pty-prebuild.mjs \
+            --artifact "prebuild-out/${{ matrix.target }}/pty.node" \
+            | tee "prebuild-out/${{ matrix.target }}/proof.json"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: prebuild-out/${{ matrix.target }}/pty.node
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: node-pty-prebuild-${{ matrix.target }}
+          path: prebuild-out/${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 30

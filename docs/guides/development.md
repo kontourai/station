@@ -2,6 +2,17 @@
 
 This guide keeps contributor and operator detail out of the public README while preserving the commands and conventions needed to work on Station.
 
+## Source Prerequisites
+
+Working from source needs Node.js 24.x, npm 10 or newer, and git. On Linux,
+`npm run dependencies:install` additionally needs a C++ toolchain (`g++`,
+`make`, `python3`) to compile the `node-pty` terminal module — the only
+source-built native addon; macOS and Windows use upstream prebuilds. When
+`packaging/node-pty-prebuilds/manifest.json` pins attested Linux artifacts
+(#1245), the dependency lifecycle stages those instead and the Linux
+toolchain requirement disappears; `npm_config_build_from_source=true` opts
+back into compiling. Rust is optional and only needed for desktop builds.
+
 ## Optional `just` contributor Interface
 
 `just` forwards to Station's existing commands; it does not replace them. Use

@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  assertNodePtyPrebuildConsistency,
   confinedPackageTarget,
   evaluateLifecyclePolicy,
   expectedLifecyclePurls,
@@ -19,6 +20,8 @@ import {
   preflightLifecycleArtifactTargets,
   prepareLifecycleArtifacts,
   readLifecycleLocks,
+  readNodePtyPrebuildManifest,
+  stageNodePtyPrebuild,
   verifyArtifact,
 } from './lib/dependency-lifecycle-policy.mjs';
 import { assertWorkspaceDependencySatisfaction } from './lib/workspace-dependency-satisfaction.mjs';
@@ -44,6 +47,10 @@ export function check({ cwd = root } = {}) {
     throw new Error(
       `dependency lifecycle policy failed:\n${findings.map((finding) => `- ${finding}`).join('\n')}`,
     );
+  // #1245: a pinned Linux prebuild and its allowlist verification path must
+  // flip together; any mixed state either verifies a file staging never
+  // wrote or skips verifying the file the loader actually uses.
+  assertNodePtyPrebuildConsistency(allowlist, readNodePtyPrebuildManifest(cwd));
   return allowlist;
 }
 
@@ -292,12 +299,33 @@ function inertInstall(developer) {
   npmCommand([verb, '--ignore-scripts']);
 }
 
+/**
+ * #1245: stage the pinned, attested node-pty Linux prebuild (when this
+ * checkout ships one for this platform/arch) into the installed package
+ * BEFORE its approved hook runs, so `node scripts/prebuild.js || node-gyp
+ * rebuild` takes the prebuild branch and no C++ toolchain is required.
+ * See packaging/node-pty-prebuilds/README.md for the trust chain.
+ */
+export function stageLifecyclePrebuilds(allowlist, { cwd = root } = {}) {
+  for (const entry of allowlist.entries) {
+    if (entry.scope !== 'root' || entry.artifact?.proof !== 'node-pty-smoke')
+      continue;
+    const result = stageNodePtyPrebuild(cwd, entry);
+    console.log(
+      result.staged
+        ? `[dependency-lifecycle] staged pinned prebuild ${entry.lock}:${entry.path}:${result.target} (sha256 ${result.sha256.slice(0, 12)})`
+        : `[dependency-lifecycle] prebuild staging skipped for ${entry.lock}:${entry.path}: ${result.reason}`,
+    );
+  }
+}
+
 export function install({ developer = false } = {}) {
   // Node is a trust boundary for every following command. Check it before npm.
   command(process.execPath, ['scripts/node-runtime-contract.mjs']);
   const allowlist = check();
   inertInstall(developer);
   check();
+  stageLifecyclePrebuilds(allowlist);
   runApprovedHooks(allowlist);
   stationOwnedHooks();
   return verify();
