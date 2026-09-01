@@ -141,9 +141,15 @@ test.describe('Connection Manager Modal', () => {
   test('clicking the chip opens the connection modal', async ({ page }) => {
     await page.getByRole('button', { name: /^Manage Stations/ }).click();
     await expect(page.getByRole('heading', { name: 'Stations' })).toBeVisible();
-    // The existing connection should appear in the modal list
+    // The existing connection should appear in the modal list. A row's name
+    // renders in two nested elements (`.station-connect-row__name-line` and
+    // its child `.station-connect-row__name`, station#994), so `div`
+    // `hasText` matches both and is a strict-mode violation — the row's own
+    // `Select <name>` control is a stable, unique handle instead.
     await expect(
-      page.locator('div').filter({ hasText: /^Dev Server$/ }),
+      page
+        .getByRole('dialog')
+        .getByRole('button', { name: 'Select Dev Server', exact: true }),
     ).toBeVisible();
   });
 
@@ -389,9 +395,13 @@ test.describe('Connection Manager Modal', () => {
       .getByRole('button', { name: 'Save', exact: true })
       .click();
 
-    // Updated name should appear
+    // Updated name should appear. The row's `Select <name>` control is a
+    // stable handle — a bare `div` `hasText` match is ambiguous (station#994
+    // nests the name in two elements) and one DOM change from breaking.
     await expect(
-      page.locator('div').filter({ hasText: /^Home Lab$/ }),
+      page
+        .getByRole('dialog')
+        .getByRole('button', { name: 'Select Home Lab', exact: true }),
     ).toBeVisible();
   });
 
