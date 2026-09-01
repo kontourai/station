@@ -380,21 +380,14 @@ export function runtimeCatalogVisibleModels(
 
 /**
  * archive#1003: reads a connection's canonical engine identity
- * (`config.engineId`) with a `config.executionClass` read-compat fallback
- * (`'managed'` -> `'station'`, `'connected'`/`'external'` -> `'external'`)
- * so hand-built test-double connection views (still constructing the legacy
- * field) keep resolving correctly.
+ * (`config.engineId`). Missing identity remains unknown; deprecated metadata
+ * is not normalized at read time.
  */
 export function connectionEngineId(
   runtimeConnection?: AgentConnectionView | ConnectionConfig | null,
 ): string | undefined {
   const engineId = runtimeConnection?.config.engineId;
   if (typeof engineId === 'string') return engineId;
-  const executionClass = runtimeConnection?.config.executionClass;
-  if (executionClass === 'managed') return 'station';
-  if (executionClass === 'connected' || executionClass === 'external') {
-    return 'external';
-  }
   if (runtimeConnection?.id === 'acp' || runtimeConnection?.type === 'acp') {
     return 'acp';
   }

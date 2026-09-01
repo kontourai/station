@@ -30,6 +30,7 @@ export type {
   AppConfig,
   TemplateVariable,
 } from '@kontourai/station-contracts/config';
+export type { ConnectionKind } from '@kontourai/station-contracts/connection';
 export type {
   KnowledgeDocumentMeta,
   KnowledgeNamespaceBehavior,
@@ -104,7 +105,6 @@ export type {
   AgentConnectionSettings,
   ConnectionCapability,
   ConnectionConfig,
-  ConnectionKind,
   ConnectionStatus,
   Prerequisite,
   ProviderConnectionConfig,
