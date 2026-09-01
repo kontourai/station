@@ -10,6 +10,7 @@ import {
   COOPERATIVE_STOP_BUDGET_MS,
   withNormalizedAnswerability,
 } from '@kontourai/station-contracts/orchestration';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation } from '@tanstack/react-query';
 import { apiErrorMessage } from '../api-core';
 import {
@@ -387,7 +388,7 @@ export interface AdoptOrchestrationSessionIntent {
 
 /** One user Continue intent; reuse this object for every retry of that intent. */
 export function createAdoptOrchestrationSessionIntent(): AdoptOrchestrationSessionIntent {
-  return Object.freeze({ idempotencyKey: crypto.randomUUID() });
+  return Object.freeze({ idempotencyKey: randomCorrelationId() });
 }
 
 export async function adoptOrchestrationSession(input: {
