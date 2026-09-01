@@ -378,6 +378,14 @@ Per `local-merge-readiness.md`, extended by measured practice:
   failure artifacts (`if: failure()`) — #917's investigation had zero
   artifacts to read, which is why the misdiagnosis ("hosted-runner
   environment") survived long enough to be baked into a workflow comment.
+  Caveat, measured the same day: self-hosted runner **groups** carry
+  ref-pinned workflow allowlists (`workflow.yml@refs/heads/main`), so a
+  branch-ref dispatch of a fleet-bound lane is structurally unassignable — it
+  queues forever against healthy idle runners with no error anywhere. The
+  proof run for #917 needed a temporary allowlist entry for the branch ref
+  (added via the runner-groups API, removed after the run). Budget that step,
+  and remove the entry immediately — a standing branch-ref entry is a
+  standing invitation to run unreviewed workflow code on the fleet.
 - **A squash merge leaves no ancestry, so an absorbed branch looks unmerged.**
   A branch sat "unmerged" for hours after its content squash-landed under a
   different PR. Before re-applying anything, merge `origin/main` in and
