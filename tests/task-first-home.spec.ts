@@ -1001,6 +1001,58 @@ test.describe('Task-first Home (#332, mocked)', () => {
     );
   });
 
+  // #1180: `/activity` is one of the routes where `SplitPaneLayout`'s mobile
+  // detail sheet marks `PageFrame`'s route frame `inert` (PageFrame.tsx:155)
+  // while it is open. `DelegationLauncher` is a hand-rolled overlay (no
+  // `ResponsiveDialogSurface`), rendered as a plain sibling of
+  // `SplitPaneLayout` in `SessionsView`. Its own trigger ("Delegate subtask")
+  // lives in the list pane, which a phone hides the instant a session's
+  // mobile detail sheet is showing — so opening it AFTER a session is already
+  // selected on a phone is not reachable through the UI at all. The
+  // realistic ordering is the other way around: select the session and open
+  // the launcher while both panes are still visible (desktop — `SessionsView`
+  // selection is local state, not a URL/route change, so nothing here
+  // replays the route's entrance), then cross the mobile breakpoint
+  // underneath both of them — a window resize, a foldable rotation, or a
+  // narrowed split view all flip `useIsMobile()` the same way. The launcher's
+  // own state survives that (nothing about routing changed); `PageFrame`
+  // marking the frame `inert` is what used to trap it.
+  test('the delegation launcher survives crossing the mobile breakpoint underneath it', async ({
+    page,
+  }) => {
+    await installVisualViewportFixture(page);
+    await mockTaskFirstHome(page);
+    await page.goto('/activity');
+
+    await page.getByRole('button', { name: /task first home/i }).click();
+    await expect(page.getByTestId('session-detail')).toBeVisible();
+
+    const delegate = page
+      .getByTestId('delegated-task-coordinator')
+      .getByRole('button', { name: 'Delegate subtask' });
+    await delegate.click();
+    const launcher = page.getByRole('dialog', { name: 'Delegate a task' });
+    await expect(launcher).toBeVisible();
+    await expect(launcher.getByLabel('Task')).toBeFocused();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(launcher).toBeVisible();
+
+    // `SplitPaneLayout` deliberately moves focus to its own "Back to list"
+    // button the instant its mobile sheet opens (a11y for the newly shown
+    // surface) — so focus right after the resize tells us nothing about this
+    // dialog. The real question is whether the ALREADY-OPEN launcher can
+    // still take focus back: unlike `ResponsiveDialogSurface`, this hand-rolled
+    // overlay has no effect that re-asserts focus when `isMobile` flips, so an
+    // explicit `.focus()` call is what proves (or disproves) reachability —
+    // `.focus()` on an element inside an `inert` ancestor is called and
+    // silently does nothing, exactly the symptom #1131's investigation named.
+    await launcher.getByLabel('Task').focus();
+    await expect(launcher.getByLabel('Task')).toBeFocused();
+    await launcher.getByRole('button', { name: 'Cancel' }).click();
+    await expect(launcher).toHaveCount(0);
+  });
+
   test.describe('Pixel 7', () => {
     const { defaultBrowserType: _defaultBrowserType, ...pixel7 } =
       devices['Pixel 7'];
