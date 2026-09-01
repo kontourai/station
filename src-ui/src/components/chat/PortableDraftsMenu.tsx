@@ -49,7 +49,7 @@ export function PortableDraftsMenu({
           ariaLabel="Portable drafts"
           onClose={close}
           historyMode="entry"
-          panelClassName="composer-popover-panel portable-drafts-menu"
+          panelClassName="composer-popover-panel"
         >
           <ResponsiveDialogHeader
             title="Portable drafts"

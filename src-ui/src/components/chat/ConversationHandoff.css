@@ -1,3 +1,20 @@
+/* Sweep for #1130's class (a class referenced in JSX with no stylesheet
+   rule): `overlayClassName="conversation-handoff-dialog__overlay"`
+   (ConversationHandoffDialog.tsx) had no matching rule, same as
+   `.acp-add-dialog__overlay` — the panel below assumes a fixed, centered
+   overlay, but nothing supplied it. */
+.conversation-handoff-dialog__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--layer-dialog);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(7, 10, 16, 0.68);
+  backdrop-filter: blur(6px);
+}
+
 .conversation-handoff-dialog {
   width: min(680px, calc(100vw - 32px));
   max-height: min(760px, calc(100dvh - 32px));
