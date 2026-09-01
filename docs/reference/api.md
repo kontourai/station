@@ -1,6 +1,7 @@
 # Station API Documentation
 
-This document describes all REST API endpoints available in Station.
+This document retains historical REST API narrative and worked examples. It is
+not a complete endpoint inventory.
 
 **Base URL**: the selected Station's server origin. The CLI resolves an
 unbootstrapped Stable loopback target to `http://localhost:18141` through the

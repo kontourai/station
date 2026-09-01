@@ -1207,6 +1207,23 @@ test.describe('Connections CRUD', () => {
 
       await kiro.click();
       await expect(page).toHaveURL(/\/connections\/engines\/new\/kiro$/);
+      // #1130: `.route-transition` (app-shell/route-transition.css) runs a
+      // translateY entrance on every route change, and per spec a
+      // non-`none` `transform` on an ANCESTOR makes it the containing block
+      // for a `position: fixed` descendant — so mid-animation, this dialog's
+      // overlay is "fixed" relative to `.route-transition`'s box, not the
+      // viewport, and the geometry assertion below reads nonsense (measured:
+      // panel bottom 1042px against an 839px-tall overlay) until the
+      // animation reaches its resting `transform: none` frame. Waiting for
+      // the route's own entrance animations to finish — not an arbitrary
+      // timeout — is what actually resolves the race; `--motion-base` is
+      // 0.2s and this repo bans `waitForTimeout` in product specs
+      // (tests/e2e-manifest.mjs) for exactly this reason.
+      await page.waitForFunction(() =>
+        Array.from(document.querySelectorAll('.route-transition')).every((el) =>
+          el.getAnimations().every((a) => a.playState === 'finished'),
+        ),
+      );
       const dialog = page.getByRole('dialog', { name: 'Add engine' });
       const geometry = await dialog.evaluate((element) => ({
         overflows: element.scrollWidth > element.clientWidth,

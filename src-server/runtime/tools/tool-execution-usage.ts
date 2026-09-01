@@ -110,6 +110,7 @@ export async function recordToolExecutionUsage(input: {
     let modelId =
       agentSpec.execution?.modelId || agentSpec.model || appConfig.defaultModel;
     let region = appConfig.region;
+    let providerType: string | undefined;
     if (listProviderConnections) {
       try {
         const identity = resolveManagedModelIdentity(agentSpec, {
@@ -118,6 +119,7 @@ export async function recordToolExecutionUsage(input: {
         });
         modelId = identity.modelId;
         region = identity.region ?? region;
+        providerType = identity.providerType;
       } catch {
         // Usage persistence remains available for legacy provider state.
       }
@@ -126,6 +128,7 @@ export async function recordToolExecutionUsage(input: {
       modelId,
       usage,
       modelCatalog,
+      providerType,
       appConfig,
       logger,
       region,
@@ -229,6 +232,7 @@ export async function recordToolExecutionUsage(input: {
             configRegion: appConfig.region,
             env: process.env,
           }).region,
+          providerType,
         );
 
         await adapter.removeLastMessage(

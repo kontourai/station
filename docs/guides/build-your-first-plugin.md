@@ -6,9 +6,9 @@ what you have:
 - **[Start from npm](#start-from-npm)** — nothing but npm and the published
   `@kontourai/station-sdk` / `@kontourai/station-shared` packages. Use this if
   you do not have a Station checkout.
-- **[Scaffold with the CLI](#choose-a-template)** — `./station plugin create`
-  plus the watching dev server. `@kontourai/station-cli` is not published, so
-  this path needs a Station checkout (the repo-root `./station` script).
+- **[Scaffold with the CLI](#choose-a-template)** — the published Station CLI
+  creates a template and runs the watching dev server. A checkout's `./station`
+  launcher is an equivalent source-development path.
 
 Both produce the same artifact: a `plugin.json` manifest and a
 `dist/bundle.js` built by `buildPlugin()`.
@@ -44,7 +44,7 @@ Write the manifest Station reads, `plugin.json`:
 {
   "name": "hello-station",
   "version": "1.0.0",
-  "sdkVersion": "^0.4.0",
+  "sdkVersion": "^0.7.0",
   "displayName": "Hello Station",
   "description": "A Station layout plugin",
   "entrypoint": "src/index.tsx",
@@ -123,8 +123,7 @@ The simplest way is the CLI, which does the whole sequence for you — it
 previews the source, prints what installing it would require, and asks:
 
 ```bash
-station_checkout=/absolute/path/to/station
-"$station_checkout/station" plugin install "$PWD"
+npx @kontourai/station-cli@latest plugin install "$PWD"
 ```
 
 Over HTTP it is two calls, because an install carries the approval a preview
@@ -151,43 +150,51 @@ API.
 
 ## Choose a Template
 
-The rest of this guide uses `./station plugin create`, which needs a Station
-checkout.
+The rest of this guide uses the published CLI. Install it once, then confirm
+the version before scaffolding:
+
+```bash
+npm install -g @kontourai/station-cli@latest
+station --version
+```
+
+This guide describes current `main` and targets the published 0.7 SDK/shared
+line. A released CLI can lag `main`; inspect the generated `package.json` and
+upgrade its Station package ranges when you intentionally target a newer
+published contract.
 
 Use the template that matches the job:
 
 ```bash
-./station plugin create hello-layout --template=layout
-./station plugin create provider-kit --template=provider
-./station plugin create full-workspace --template=full
+station plugin create hello-layout --template=layout
+station plugin create provider-kit --template=provider
+station plugin create full-workspace --template=full
 ```
 
 - `layout` creates a UI-focused plugin with a layout manifest and entrypoint.
 - `provider` creates a server-side plugin with `plugin.mjs`, a `serverModule`, and a sample provider file.
 - `full` creates the combined starter: layout, agent, build config, and README.
 
-`./station plugin init` still works, but it is now just a compatibility alias for the `full` template.
+`station plugin init` still works, but it is now just a compatibility alias for the `full` template.
 
 ## Start With a Layout Plugin
 
-Run the command above (`./station plugin create hello-layout --template=layout`) from wherever you want the plugin scaffolded — for example your projects directory, not necessarily the Station checkout.
-
-`./station` (or a `station link` symlink on `PATH`) `cd`s into the Station repo root internally to bootstrap the CLI, but it records the directory you actually invoked it from and the `plugin` command family uses that recorded directory — not the repo root — to resolve `plugin.json` and other paths. So `plugin create` scaffolds `hello-layout/` wherever your shell was when you ran the command, and `plugin build`/`plugin dev` run from inside that directory operate on it directly:
+Run `station plugin create hello-layout --template=layout` from the directory
+where you want the plugin scaffolded. The plugin command family resolves
+`plugin.json` and other paths from the directory where you invoke it:
 
 ```bash
 cd hello-layout
 npm install
 npm run build                              # tsx build.ts → dist/bundle.js
-/path/to/station/station plugin dev 4300   # watching preview server
+station plugin dev 4300                    # watching preview server
 ```
 
 The scaffold's `npm run build` runs its own `build.ts`, which calls
 `buildPlugin()` from `@kontourai/station-shared` — the same call
-`./station plugin build` wraps, and the one that works without a checkout.
+`station plugin build` wraps.
 `plugin dev` is the CLI-only part: it adds watching, hot rebuilds, the preview
 shell, and the mock host surface described below.
-
-(Replace `/path/to/station` with your Station checkout's path, or just use `station` if you've run `station link`.)
 
 Open `http://127.0.0.1:4300` and keep the dev server running. The dev server binds only to IPv4 loopback; direct `--host`/non-loopback exposure is unavailable. For a remote development host, forward the loopback listener with `ssh -N -L 4300:127.0.0.1:4300 user@dev-host` and open the same local URL. The dev server:
 
@@ -205,14 +212,15 @@ Edit `src/index.tsx` and `layout.json`, then confirm the preview reloads cleanly
 Install from either the parent directory of `hello-layout` or the plugin directory itself:
 
 ```bash
-/path/to/station/station plugin install ./hello-layout
+station plugin install ./hello-layout
 # Or, from inside hello-layout:
-/path/to/station/station plugin install .
+station plugin install .
 ```
 
 Local paths are resolved from the directory where Station was invoked. Use `./hello-layout` from its parent or bare `.` from inside the plugin directory.
 
-If you want to test the registry path too, point Station at the bundled local manifest:
+If you are working from a Station checkout and want to test the repository's
+registry fixture too, point its source launcher at the bundled local manifest:
 
 ```bash
 ./station registry ./examples/registry/manifest.json

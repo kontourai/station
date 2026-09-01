@@ -398,60 +398,11 @@ describe('SessionModelPicker', () => {
     expect(screen.queryByRole('option', { name: /Abort only/ })).toBeNull();
   });
 
-  test('renders contract-priced input-only Bedrock pricing per million tokens', async () => {
-    const fetchMock = vi.mocked(authenticatedFetch);
-    fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          success: true,
-          data: {
-            inputTokenPrice: 0.003,
-            outputTokenPrice: null,
-            currency: 'USD',
-          },
-        }),
-        { status: 200 },
-      ),
-    );
-    renderPicker({
-      models: [
-        { id: 'bedrock-model', name: 'Bedrock model', providerType: 'bedrock' },
-      ],
-      currentModel: 'bedrock-model',
-    });
-    await waitFor(() => expect(screen.getByText(/In \$3.00\/M/)).toBeTruthy());
-    expect(screen.queryByText(/Out \$/)).toBeNull();
-    expect(fetchMock).toHaveBeenCalledOnce();
-  });
-
-  test('does not render absent metadata or malformed pricing payloads', async () => {
-    const fetchMock = vi.mocked(authenticatedFetch);
-    fetchMock.mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          success: true,
-          data: { inputTokenPrice: 0.003, currency: 'USD' },
-        }),
-        { status: 200 },
-      ),
-    );
-    renderPicker({
-      models: [
-        { id: 'bedrock-model', name: 'Bedrock model', providerType: 'bedrock' },
-      ],
-      currentModel: 'bedrock-model',
-    });
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    expect(screen.queryByText(/\/M/)).toBeNull();
-    expect(screen.queryByText('200k')).toBeNull();
-    expect(screen.queryByText('Vision')).toBeNull();
-  });
-
-  test('does not render pricing when its successful response has no payload', async () => {
-    const fetchMock = vi.mocked(authenticatedFetch);
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ success: true }), { status: 200 }),
-    );
+  // The picker used to fetch Bedrock's pricing endpoint and render the result
+  // beside the selected model whatever its provider, so an OpenAI or Ollama
+  // route could display an Amazon price. Nothing sources a per-route price yet,
+  // so the picker must show none rather than borrow one.
+  test('renders no price and requests no pricing for a selected Bedrock model', async () => {
     renderPicker({
       models: [
         { id: 'bedrock-model', name: 'Bedrock model', providerType: 'bedrock' },
@@ -459,20 +410,14 @@ describe('SessionModelPicker', () => {
       currentModel: 'bedrock-model',
     });
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
-    expect(screen.queryByText(/\/M/)).toBeNull();
-  });
-
-  test('does not fetch Bedrock pricing for a positional fallback without a selection', () => {
-    renderPicker({
-      models: [
-        { id: 'bedrock-model', name: 'Bedrock model', providerType: 'bedrock' },
-      ],
-      currentModel: undefined,
-      defaultModel: undefined,
-    });
-
+    await waitFor(() =>
+      expect(
+        screen.getByRole('option', { name: /Bedrock model/ }),
+      ).toBeTruthy(),
+    );
     expect(authenticatedFetch).not.toHaveBeenCalled();
+    expect(screen.queryByText(/\/M/)).toBeNull();
+    expect(screen.queryByText(/Cost:/)).toBeNull();
   });
 
   test('searches across providers and persists a device-local favorite', () => {
