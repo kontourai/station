@@ -41,6 +41,7 @@ describe('dialog-surface-class guard source matching', () => {
   test('extracts the static prefix of a template literal and drops the dynamic tail', () => {
     // Dialog.tsx's own shape.
     const source =
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source deliberately embeds a template placeholder
       '<ResponsiveDialogSurface overlayClassName={`station-dialog__overlay ${overlayClassName}`.trim()}>';
     expect(extractDialogSurfaceClasses(source)).toEqual([
       { prop: 'overlayClassName', tokens: ['station-dialog__overlay'] },
@@ -49,6 +50,7 @@ describe('dialog-surface-class guard source matching', () => {
 
   test('drops a group that is entirely a runtime interpolation', () => {
     const source =
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source deliberately embeds a template placeholder
       '<ResponsiveDialogSurface panelClassName={`station-dialog--${variant}`}>';
     expect(extractDialogSurfaceClasses(source)).toEqual([]);
   });
@@ -142,27 +144,21 @@ describe('dialog-surface-class guard "any token defined" rule', () => {
       ['a.css'],
       () => '.composer-popover-panel { background: red; }',
     );
-    const violations = findUndefinedDialogSurfaceClasses(
-      ['f.tsx'],
-      {
-        readSource: () =>
-          '<ResponsiveDialogSurface panelClassName="composer-popover-panel composer-mode-sheet" />',
-        isDefined,
-      },
-    );
+    const violations = findUndefinedDialogSurfaceClasses(['f.tsx'], {
+      readSource: () =>
+        '<ResponsiveDialogSurface panelClassName="composer-popover-panel composer-mode-sheet" />',
+      isDefined,
+    });
     expect(violations).toEqual([]);
   });
 
   test('a value is a violation when none of its tokens are defined', () => {
     const isDefined = buildDefinedClassChecker(['a.css'], () => '.other { }');
-    const violations = findUndefinedDialogSurfaceClasses(
-      ['f.tsx'],
-      {
-        readSource: () =>
-          '<ResponsiveDialogSurface overlayClassName="acp-add-dialog__overlay" />',
-        isDefined,
-      },
-    );
+    const violations = findUndefinedDialogSurfaceClasses(['f.tsx'], {
+      readSource: () =>
+        '<ResponsiveDialogSurface overlayClassName="acp-add-dialog__overlay" />',
+      isDefined,
+    });
     expect(violations).toEqual([
       {
         file: 'f.tsx',
@@ -228,7 +224,10 @@ describe('dialog-surface-class guard scope honesty', () => {
  * in `scripts/vitest-resource-manifest.mjs` for exactly that reason.
  */
 describe('dialog-surface-class guard at the process boundary', () => {
-  const GUARD = resolve(import.meta.dirname, '../dialog-surface-class-guard.mjs');
+  const GUARD = resolve(
+    import.meta.dirname,
+    '../dialog-surface-class-guard.mjs',
+  );
   const created: string[] = [];
 
   afterEach(() => {
@@ -259,10 +258,9 @@ describe('dialog-surface-class guard at the process boundary', () => {
         ');\n',
     ]),
   );
-  const sentinelCss =
-    SCOPE_SENTINELS.map((_, index) => `.sentinel-${index}-overlay { }`).join(
-      '\n',
-    ) + '\n';
+  const sentinelCss = `${SCOPE_SENTINELS.map(
+    (_, index) => `.sentinel-${index}-overlay { }`,
+  ).join('\n')}\n`;
 
   function runGuard(dir: string) {
     return spawnSync(process.execPath, [GUARD], {

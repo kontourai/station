@@ -251,7 +251,9 @@ export function findUndefinedDialogSurfaceClasses(
     for (const { prop, tokens } of extractDialogSurfaceClasses(source)) {
       if (tokens.some((token) => isDefined(token))) continue;
       const isExempt = tokens.some((token) =>
-        exempt.some((entry) => entry.file === file && entry.className === token),
+        exempt.some(
+          (entry) => entry.file === file && entry.className === token,
+        ),
       );
       if (isExempt) continue;
       violations.push({ file, prop, tokens });
@@ -307,7 +309,7 @@ function main() {
       'Give the class real positioning CSS (see NewProjectModal.css or',
     );
     console.error(
-      'Dialog.tsx/index.css\'s `.station-dialog__overlay` for the pattern),',
+      "Dialog.tsx/index.css's `.station-dialog__overlay` for the pattern),",
     );
     console.error(
       'or if it truly needs no rule (its stylesheet lives in a sibling',
