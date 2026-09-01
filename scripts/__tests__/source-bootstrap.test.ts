@@ -1,6 +1,11 @@
-import { resolve } from 'node:path';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { resolveRuntimeHome } from '@kontourai/station-shared/runtime-path-resolver';
+import {
+  admitStationRuntimeHome,
+  resolveRuntimeHome,
+} from '@kontourai/station-shared/runtime-path-resolver';
 import { describe, expect, test, vi } from 'vitest';
 import { initializeSourceBootstrap } from '../source-bootstrap.js';
 
@@ -176,5 +181,50 @@ describe('source Station bootstrap', () => {
       }
       vi.resetModules();
     }
+  });
+});
+
+describe('an external STATION_HOME must still launch (#1109)', () => {
+  test('a raw external home is left self-rooted, not handed a root equal to itself', () => {
+    // `STATION_HOME=/tmp/x ./station start` was refused before the CLI ran.
+    // `resolveStationRoot` self-roots a raw home, and writing that value back
+    // made the runtime home guard see an explicit root equal to the home --
+    // which it reads as a home swallowing a root it does not own. Nothing is
+    // lost by omitting it: the derivation reads only STATION_ROOT and
+    // STATION_HOME, so the same value is recomputed from the home alone.
+    const home = mkdtempSync(join(tmpdir(), 'station-source-home-'));
+    const env: NodeJS.ProcessEnv = {
+      STATION_HOME: home,
+      STATION_CHANNEL: 'stable',
+    };
+    initializeSourceBootstrap({ env, wrapperUrl });
+    expect(env.STATION_ROOT ?? '').toBe('');
+    expect(() => admitStationRuntimeHome(home, env)).not.toThrow();
+  });
+
+  test('with no external home the ambient root is still written', () => {
+    // The omission is specific to the self-rooted case. Dropping the root
+    // unconditionally would leave every ordinary source launch deriving it
+    // downstream instead of having the decision frozen here.
+    const env: NodeJS.ProcessEnv = { STATION_CHANNEL: 'stable' };
+    initializeSourceBootstrap({ env, wrapperUrl });
+    expect(env.STATION_ROOT).toBeTruthy();
+    expect(env.STATION_ROOT).toMatch(/\.station$/);
+  });
+
+  test('an operator-set root equal to the home is still refused', () => {
+    // The original escape. Only a root DERIVED from the home may be omitted;
+    // one the operator wrote down is passed through and stays rejected.
+    const shared = mkdtempSync(join(tmpdir(), 'station-source-shared-'));
+    const env: NodeJS.ProcessEnv = {
+      STATION_ROOT: shared,
+      STATION_HOME: shared,
+      STATION_CHANNEL: 'stable',
+    };
+    initializeSourceBootstrap({ env, wrapperUrl });
+    expect(env.STATION_ROOT).toBe(shared);
+    expect(() => admitStationRuntimeHome(shared, env)).toThrow(
+      /shared Station root/,
+    );
   });
 });

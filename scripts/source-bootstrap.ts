@@ -9,7 +9,10 @@ import {
   resolveStationChannel,
   stationChannelPorts,
 } from '@kontourai/station-shared/ports';
-import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
+import {
+  resolveStationRoot,
+  spawnedStationRoot,
+} from '@kontourai/station-shared/runtime-path-resolver';
 import {
   deriveDevInstanceAndHome,
   resolveDevOffset,
@@ -90,7 +93,23 @@ export function initializeSourceBootstrap({
     consentPort ??= serverPort + 3;
   }
 
-  env.STATION_ROOT = stationRoot;
+  // Written back so the decision is frozen for everything downstream --
+  // EXCEPT when it is the home's own directory. `resolveStationRoot` self-roots
+  // a raw external `STATION_HOME`, and the runtime home guard reads an explicit
+  // `STATION_ROOT` equal to the home as a home swallowing a root it does not
+  // own. Spelling it out here made `STATION_HOME=/tmp/x ./station start`
+  // refuse before the CLI ran (#1109). Nothing is lost by omitting it: the
+  // downstream derivation reads only `STATION_ROOT` and `STATION_HOME`, so it
+  // recomputes the identical value from the home alone.
+  // Keyed on the EXTERNAL home, which is the only one that can self-root here:
+  // this function never synthesizes `STATION_HOME`, so with none set the root
+  // is the ambient default and no home can equal it.
+  const externalHome = env.STATION_HOME?.trim();
+  const spawnRoot = externalHome
+    ? spawnedStationRoot(externalHome, env)
+    : stationRoot;
+  if (spawnRoot) env.STATION_ROOT = spawnRoot;
+  else delete env.STATION_ROOT;
   env.STATION_CHANNEL = channel;
   env.STATION_INSTANCE_ID = instanceId;
   // The lifecycle parser reads STATION_SERVER_PORT while request resolution
