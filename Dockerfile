@@ -2,6 +2,10 @@
 # `station service run`: one UI origin proxies the API, streams, and WebSockets.
 FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS dependencies
 WORKDIR /app
+# g++/make/python3 exist solely to compile node-pty, the one source-built
+# native addon on Linux (#1245). Once packaging/node-pty-prebuilds/manifest.json
+# pins attested linux-x64/linux-arm64 artifacts, the lifecycle stages those
+# prebuilds instead of compiling and this toolchain layer can be dropped.
 RUN apt-get update \
   && apt-get install --no-install-recommends -y g++ make python3 \
   && rm -rf /var/lib/apt/lists/*
@@ -20,6 +24,9 @@ COPY examples/fieldwork-review/package.json examples/fieldwork-review/
 COPY config/dependency-lifecycle-allowlist.json config/plugin-scaffold-dependencies.json config/
 COPY schemas/dependency-lifecycle-allowlist.schema.json schemas/
 COPY patches ./patches
+# The node-pty prebuild channel (#1245): the lifecycle's consistency check and
+# staging read this whether or not the manifest pins artifacts.
+COPY packaging/node-pty-prebuilds packaging/node-pty-prebuilds
 COPY scripts/node-runtime-contract.mjs scripts/dependency-lifecycle.mjs scripts/
 COPY scripts/lib/dependency-lifecycle-policy.mjs scripts/lib/workspace-dependency-satisfaction.mjs scripts/lib/
 RUN npm run dependencies:ci
