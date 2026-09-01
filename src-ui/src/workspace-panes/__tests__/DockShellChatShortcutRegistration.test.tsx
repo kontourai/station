@@ -312,8 +312,8 @@ function rerenderWithOccupant(
   );
 }
 
-describe('dock.toggle / dock.maximize registration with Chat docked (station#4460 H1/H2)', () => {
-  test('dock.maximize is registered exactly once while Chat is docked', async () => {
+describe('dock.maximize registration with Chat docked (station#4460 H1/H2)', () => {
+  test('DockShell owns maximize but no longer registers the app-toolbar region toggle', async () => {
     renderFixture();
     await waitFor(() => {
       expect(document.querySelector('.chat-dock')).not.toBeNull();
@@ -327,7 +327,7 @@ describe('dock.toggle / dock.maximize registration with Chat docked (station#446
     // replaced the first" — the round-trip test below does. This asserts
     // the weaker, still-necessary fact: the registration exists at all.
     expect(maximizeEntries.length).toBe(1);
-    expect(toggleEntries.length).toBe(1);
+    expect(toggleEntries.length).toBe(0);
   });
 
   test('a maximize -> restore round trip through the registry survives a switch to Home and back', async () => {
