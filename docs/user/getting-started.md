@@ -39,24 +39,25 @@ identity, launcher, and port mapping are verified by the release installer.
 
 ## Choose A Provider
 
-A Provider is anything that can power an agent: a local or hosted model service
-such as Ollama or Bedrock, or an agent app such as Claude Code or Codex.
+A Provider is anything that can power an agent: a local or hosted model service,
+or an external engine that runs its own agent loop.
 
 1. Open **Connections**.
 2. Choose a detected Provider or select **Add Provider**.
 3. Follow its setup action until it reports **Ready**.
 
-For a credential-free first path, install [Ollama](https://ollama.com), pull a
-model such as `llama3.1` or `qwen2.5`, and then return to Connections. Detection
-is read-only: Station does not create a connection or read credentials merely
-because it finds a Provider.
+For a credential-free first path, use a supported local model service and then
+return to Connections. Detection is read-only: Station does not create a
+connection or read credentials merely because it finds a Provider. The
+[Connections guide](https://github.com/kontourai/station/blob/main/docs/guides/connections.md)
+lists current integrations and their exact setup steps.
 
 Choose the simplest path for what you want to do:
 
 | You want to… | Start with… |
 | --- | --- |
-| Keep inference on this machine | Ollama, a local Model, and a Station agent |
-| Use an existing coding agent app | Claude Code or Codex and its External agent |
+| Keep inference on this machine | A local Model Provider and a Station agent |
+| Use an existing agent engine | A supported engine Provider and its External agent |
 | Use a hosted model through Station | A hosted Model Provider and a Station agent |
 
 ## Start Your First Task
@@ -139,11 +140,11 @@ execution only; read
 its findings and decide what to do rather than treating completion as a passed
 gate.
 
-For example, open the Station repository as a Project, create a Task named
-“Update the documentation,” and choose the Codex External agent. That work's
-first execution is a Session. Reopen the Task later to see its files, evidence,
-and receipts together. For a one-off question that does not need that durable
-history, use a direct chat instead.
+For example, open a repository as a Project, create a Task named “Update the
+documentation,” and choose a ready External agent. That work's first execution
+is a Session. Reopen the Task later to see its files, evidence, and receipts
+together. For a one-off question that does not need that durable history, use a
+direct chat instead.
 
 ## Update, Stop, Or Uninstall
 

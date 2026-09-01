@@ -1,3 +1,4 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   isSupportedTurnProvenanceEnvelope,
   type TurnProvenanceEnvelope,
@@ -17,7 +18,6 @@ import {
   formatTokenCount,
 } from '../../utils/formatTokenCount';
 import { displayModelIdentifier } from '../../utils/modelDisplay';
-import { engineLabelForProvider } from '../../utils/sessionDisplay';
 import { LazyBoundary } from '../LazyBoundary';
 import './TurnProvenanceCard.css';
 
@@ -239,7 +239,7 @@ function headlineUsage(
  */
 function engineDisplay(provider: string): { label: string; slug: string } {
   return {
-    label: engineLabelForProvider(provider) ?? provider,
+    label: engineDisplayLabel(provider) ?? provider,
     slug: provider,
   };
 }

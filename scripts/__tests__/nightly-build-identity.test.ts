@@ -893,10 +893,11 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
   const jobEnd = nextJob
     ? jobStart + 1 + (nextJob.index ?? 0)
     : workflow.length;
-  // Promotion and final ledger are separate cohort jobs. Keep the bounded
-  // stage slice above as a topology guard, but inspect the reusable workflow
-  // for cross-job ordering below.
-  const desktopJob = workflow;
+  // Signing belongs to the bounded stage-macos job. Promotion and the final
+  // ledger stay in separate cohort jobs, so inspect the full release path
+  // only for their cross-job ordering and publication assertions.
+  const desktopJob = workflow.slice(jobStart, jobEnd);
+  const desktopReleasePath = workflow;
 
   it('exists as its own job, gated identically to the Android job', () => {
     expect(jobStart).toBeGreaterThan(0);
@@ -970,13 +971,13 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     // moving it before a publish that can still fail would assert a ship
     // that never happened — and desktop has no rebuild input to recover
     // with, so a hand-deleted tag would be the only fix.
-    const publish = desktopJob.indexOf(
+    const publish = desktopReleasePath.indexOf(
       'name: Promote all four admitted macOS assets and bind the rolling tag',
     );
-    const advance = desktopJob.indexOf(
+    const advance = desktopReleasePath.indexOf(
       'name: Record only a reported-success macOS provider state',
     );
-    const ledger = desktopJob.indexOf(
+    const ledger = desktopReleasePath.indexOf(
       'name: Record durable completion only after the verified final receipt',
     );
     expect(publish).toBeGreaterThanOrEqual(0);
@@ -985,11 +986,11 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
   });
 
   it('refuses draft and unbootstrapped rolling releases rather than asking GITHUB_TOKEN to create a workflow-changing ref', () => {
-    const publish = desktopJob.slice(
-      desktopJob.indexOf(
+    const publish = desktopReleasePath.slice(
+      desktopReleasePath.indexOf(
         'name: Promote all four admitted macOS assets and bind the rolling tag',
       ),
-      desktopJob.indexOf(
+      desktopReleasePath.indexOf(
         'name: Record only a reported-success macOS provider state',
       ),
     );
@@ -1002,11 +1003,11 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
   });
 
   it('uploads latest.json as its OWN gh release upload invocation, after the binaries invocation completes (station#575 MED-3)', () => {
-    const publish = desktopJob.slice(
-      desktopJob.indexOf(
+    const publish = desktopReleasePath.slice(
+      desktopReleasePath.indexOf(
         'name: Promote all four admitted macOS assets and bind the rolling tag',
       ),
-      desktopJob.indexOf(
+      desktopReleasePath.indexOf(
         'name: Record only a reported-success macOS provider state',
       ),
     );
@@ -1058,11 +1059,11 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
     expect(manifestStep).toContain(
       '/releases/download/nightly-desktop/station-nightly-desktop-macos-aarch64.app.tar.gz',
     );
-    const publish = desktopJob.slice(
-      desktopJob.indexOf(
+    const publish = desktopReleasePath.slice(
+      desktopReleasePath.indexOf(
         'name: Promote all four admitted macOS assets and bind the rolling tag',
       ),
-      desktopJob.indexOf(
+      desktopReleasePath.indexOf(
         'name: Record only a reported-success macOS provider state',
       ),
     );
@@ -1112,16 +1113,16 @@ describe('the desktop nightly job keeps the same promises (station#575)', () => 
   });
 
   it('records the desktop ship in the deploy ledger after publish, at the decided SHA', () => {
-    const publish = desktopJob.indexOf(
+    const publish = desktopReleasePath.indexOf(
       'name: Promote all four admitted macOS assets and bind the rolling tag',
     );
-    const ledger = desktopJob.indexOf(
+    const ledger = desktopReleasePath.indexOf(
       'name: Record durable completion only after the verified final receipt',
     );
     expect(ledger).toBeGreaterThan(publish);
-    const ledgerStep = desktopJob.slice(
+    const ledgerStep = desktopReleasePath.slice(
       ledger,
-      desktopJob.indexOf(
+      desktopReleasePath.indexOf(
         'name: Advance final Android marker with exact REST readback',
       ),
     );

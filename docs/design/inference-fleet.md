@@ -35,14 +35,11 @@
 > 1–3 shipped), #423 (Datum routing seed), #1425 (portable project bindings),
 > #1392 (multi-tenant tier / owner attestation).
 
-## 0. Naming, sources, and one repo-policy note
+## 0. Naming and sources
 
-This repo does not name competitors (`AGENTS.md:21`; precedent
-`docs/design/settings-architecture.md:3-5`). The reference implementation
-#1398 compares us against is called **"the reference mesh"** throughout this
-doc. Its product name, repo, and file:line evidence live in #1398's body and
-comments and in the private ops workspace analysis; nothing here depends on
-reading them.
+The reference implementation #1398 compares us against is called **"the
+reference mesh"** throughout this doc. The separate attributed research record
+is not required to understand or implement this design.
 
 Where this doc asserts something about the reference mesh, it is a
 code-verified reading of that implementation, not a reading of its marketing.

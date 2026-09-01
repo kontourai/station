@@ -6,27 +6,26 @@ The Station CLI manages the application lifecycle, plugin system, and plugin dev
 
 There are three entry points, and they are not the same program surface.
 
-### The operator entry point: `npx @kontourai/station-cli@<channel>`
+### The operator entry point: `npx @kontourai/station-cli@<version-or-published-tag>`
 
-Works once `@kontourai/station-cli` is published to npm (station#4536 tracks
-the bootstrap; `npm view @kontourai/station-cli` shows whether it's live
-yet) — until then this 404s, and the contributor entry point below
-(`./station` from a checkout) is the way to run the CLI.
+`@kontourai/station-cli` is published on npm. Check the live version and
+available dist-tags before scripting an install:
 
-The way to run the CLI against a Station you did not build — pick the channel
-dist-tag matching the Station you are operating (`nightly` for Station
-Nightly, `latest` for stable):
+```bash
+npm view @kontourai/station-cli version dist-tags
+```
+
+Run the published stable client against a Station you did not build:
 
 ```bash
 npx @kontourai/station-cli@latest --help
-npx @kontourai/station-cli@nightly stations list
 ```
 
-`npx` resolves and runs that exact published version per invocation — no
-separate install step, no version drift between "which build am I running"
-and "which build actually answered." For latency-sensitive or scripted use, an
-explicit global install pins one version instead: `npm install -g
-@kontourai/station-cli@<tag>`.
+`npx` resolves and runs the selected published version per invocation. For
+latency-sensitive or scripted use, an explicit global install pins one version
+instead: `npm install -g
+@kontourai/station-cli@<version-or-published-tag>`. Use a channel dist-tag only
+after `npm view` reports it.
 
 Only the **Client** tier (see the table below) is reachable this way. A
 host-local or contributor verb invoked through the published CLI fails with
@@ -606,7 +605,7 @@ station config set registryUrl null      # unset
 ```
 
 **`config set` writes through Station's live `PUT /config/app` route by
-default** (station#175): when a Station is reachable at the resolved
+default** (archive#175): when a Station is reachable at the resolved
 `--api-base`/`--station`/`STATION_TARGET`, the write goes through the same
 sanitize/validate/reload path the Settings UI uses, so a running Station never
 silently diverges from the file on disk. A typed violation exits non-zero with
@@ -1112,7 +1111,7 @@ refresh: `GET /api/orchestration/sessions/:threadId` (seeds a session's full
 history), `GET /api/orchestration/sessions/:threadId/flow-run`
 (`getSessionFlowRun`), and `GET
 /api/orchestration/sessions/:threadId/builder-run` (`getSessionBuilderRun`,
-station#189 S4).
+archive#189 S4).
 
 The GATES pane renders the Builder run as its own row, never merged into the
 Flow-run lines above it: they are two different runs with independent

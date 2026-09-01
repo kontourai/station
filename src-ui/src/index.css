@@ -3927,6 +3927,22 @@ button.background-tasks-banner:focus-visible {
   clip: rect(0 0 0 0);
 }
 
+/* #1130/#1170 sweep: `CollaborativeEditorPane.tsx` (remote-cursor-count and
+   working-revision live regions) and `OutboundQueuedMessages.tsx` (offline
+   queue announcement) both reached for a bare `className="sr-only"` — a name
+   no stylesheet in this repo defined, so the "visually-hidden" text rendered
+   fully visible instead. Every other call site above scopes its own
+   feature-named class to this identical clip technique rather than sharing
+   one; these two independently reached for a shared generic name instead, so
+   this is that shared utility rather than a fifth near-identical copy. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
 /* archive#3341: the two shapes every clipboard call site needs once its copy
    affordance is derived from `copyToClipboard`'s boolean.
 

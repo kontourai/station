@@ -178,6 +178,7 @@ describe('usage-stats', () => {
       'claude-4-sonnet',
       { promptTokens: 1000, completionTokens: 500 },
       modelCatalog as any,
+      'bedrock',
       { region: 'us-west-2' } as any,
       logger,
     );
@@ -185,6 +186,36 @@ describe('usage-stats', () => {
     expect(cost).toBeCloseTo(0.0105, 10);
     expect(modelCatalog.getModelPricing).toHaveBeenCalledWith('us-west-2');
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('leaves a non-Bedrock route unpriced even when a Bedrock row would match', async () => {
+    // The Bedrock catalog is constructed unconditionally, so every provider's
+    // turn used to reach Amazon's price list. This row matches 'claude-4-sonnet'
+    // by the same slug containment the Bedrock tests above rely on -- so if the
+    // route's provider is not consulted, this turn is priced from Amazon's rate
+    // for a route Station never billed through Bedrock.
+    const logger = { warn: vi.fn() };
+    const modelCatalog = {
+      getModelPricing: vi.fn().mockResolvedValue([
+        {
+          modelId: 'Claude 4 Sonnet',
+          inputTokenPrice: 0.003,
+          outputTokenPrice: 0.015,
+        },
+      ]),
+    };
+
+    const cost = await calculateUsageCost(
+      'claude-4-sonnet',
+      { promptTokens: 1000, completionTokens: 500 },
+      modelCatalog as any,
+      'anthropic',
+      { region: 'us-west-2' } as any,
+      logger,
+    );
+
+    expect(cost).toBeNull();
+    expect(modelCatalog.getModelPricing).not.toHaveBeenCalled();
   });
 
   it('keeps cache-bearing usage unpriced when the catalog has no cache rates', async () => {
@@ -209,6 +240,7 @@ describe('usage-stats', () => {
           cacheReadTokens: 2_000,
         },
         modelCatalog as any,
+        'bedrock',
         { region: 'us-west-2' } as any,
         logger,
       ),
@@ -236,6 +268,7 @@ describe('usage-stats', () => {
         'claude-4-sonnet',
         { promptTokens: Number.NaN, completionTokens: 500 },
         modelCatalog as any,
+        'bedrock',
         { region: 'us-west-2' } as any,
         logger,
       ),

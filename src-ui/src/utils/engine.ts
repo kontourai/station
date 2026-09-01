@@ -1,4 +1,5 @@
 import type { EngineId } from '@kontourai/station-contracts/agent-identity';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 
 /**
  * What executes an agent (docs/glossary.md — "the one question"): a display
@@ -32,7 +33,8 @@ export function agentEngineDescriptor(agent: {
   execution?: { agentConnectionId?: string | null };
 }): EngineDescriptor | null {
   if (agent.engineConnectionType === 'acp') {
-    const resolvedName = agent.connectionName ?? agent.name ?? 'Custom engine';
+    const resolvedName =
+      agent.connectionName ?? agent.name ?? engineDisplayLabel('acp') ?? 'acp';
     // acp-manager-view.ts falls back the live-model field to the
     // connection's own name/id when no current model has been reported yet
     // (`model: modelConfig?.currentValue || config?.name || id`) — that
@@ -53,11 +55,15 @@ export function agentEngineDescriptor(agent: {
 
   if (agent.engineDisplayName) {
     return agent.engineId === 'station'
-      ? { name: 'Station' }
+      ? { name: engineDisplayLabel(agent.engineId) ?? agent.engineId }
       : { name: agent.engineDisplayName };
   }
 
-  if (agent.engineId === 'station') return { name: 'Station' };
-  if (!agent.execution?.agentConnectionId) return { name: 'Station' };
+  if (agent.engineId === 'station') {
+    return { name: engineDisplayLabel(agent.engineId) ?? agent.engineId };
+  }
+  if (!agent.execution?.agentConnectionId) {
+    return { name: engineDisplayLabel('station') ?? 'station' };
+  }
   return null;
 }

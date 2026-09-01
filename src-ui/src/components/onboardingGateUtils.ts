@@ -1,6 +1,6 @@
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { SystemStatus } from '@kontourai/station-sdk';
-import { connectionTypeLabel } from '../utils/execution';
+import { modelProviderDisplayLabel } from '../utils/modelProviderDisplay';
 
 type ConfiguredProvider = NonNullable<
   SystemStatus['providers']
@@ -234,8 +234,8 @@ export function buildSetupBannerContent(
         badges: dedupeBadges(
           configured.map((provider) =>
             provider.enabled
-              ? `Configured: ${connectionTypeLabel(provider.type)}`
-              : `Disabled: ${connectionTypeLabel(provider.type)}`,
+              ? `Configured: ${modelProviderDisplayLabel(provider.type)}`
+              : `Disabled: ${modelProviderDisplayLabel(provider.type)}`,
           ),
         ),
         actionTarget: 'providers',
@@ -256,7 +256,8 @@ export function buildSetupBannerContent(
         actionLabel: 'Open Connections',
         badges: dedupeBadges(
           enabledProviders.map(
-            (provider) => `Configured: ${connectionTypeLabel(provider.type)}`,
+            (provider) =>
+              `Configured: ${modelProviderDisplayLabel(provider.type)}`,
           ),
         ),
         actionTarget: 'providers',

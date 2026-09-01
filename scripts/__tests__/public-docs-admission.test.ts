@@ -15,7 +15,10 @@ import {
   renderDocsIndexSections,
   renderInline,
 } from '../build-github-pages.mjs';
-import { publicDocsHygieneFindings } from '../public-docs-hygiene.mjs';
+import {
+  marketingHygieneFindings,
+  publicDocsHygieneFindings,
+} from '../public-docs-hygiene.mjs';
 
 async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), 'station-public-docs-'));
@@ -166,6 +169,24 @@ describe('public documentation admission', () => {
         [{ source: 'guides/ok.md' }],
         () =>
           'The values 100.64 and 100.127 are ordinary numeric prose; 100.63.255.255, 100.128.0.0, fe7f::1, fec0::1, and 203.0.113.7 are public controls.',
+      ),
+    ).toEqual([]);
+  });
+
+  it('keeps external product names out of marketing without blocking technical docs', () => {
+    expect(
+      marketingHygieneFindings(
+        ['README.md'],
+        () => 'Station works with Claude Code, Codex, and other engines.',
+      ),
+    ).toEqual([
+      'README.md:1 marketing-external-brand: Claude Code',
+      'README.md:1 marketing-external-brand: Codex',
+    ]);
+    expect(
+      publicDocsHygieneFindings(
+        [{ source: 'guides/connections.md' }],
+        () => 'Configure a supported Codex engine connection.',
       ),
     ).toEqual([]);
   });

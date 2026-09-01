@@ -66,12 +66,8 @@ describe('createPlugin', () => {
     expect(pkg.scripts.dev).toBe('tsx build.ts --dev');
     expect(JSON.stringify(pkg)).not.toContain('station plugin');
     // These packages are peer dependencies at runtime and published
-    // devDependencies for external authors. The range must stay public-registry
-    // compatible instead of copying the local SDK's unpublished 0.4.2 version.
-    expect(pkg.peerDependencies['@kontourai/station-shared']).toBe('^0.4.0');
-    expect(pkg.peerDependencies['@kontourai/station-sdk']).toBe('^0.4.0');
-    expect(pkg.devDependencies['@kontourai/station-shared']).toBe('^0.4.0');
-    expect(pkg.devDependencies['@kontourai/station-sdk']).toBe('^0.4.0');
+    // devDependencies for external authors. The checked-in dependency
+    // authority is independently verified against the public registry.
     const dependencyAuthority = JSON.parse(
       readFileSync(
         join(
@@ -90,6 +86,12 @@ describe('createPlugin', () => {
       dependencyAuthority['@kontourai/station-shared'],
     );
     expect(pkg.peerDependencies['@kontourai/station-sdk']).toBe(
+      dependencyAuthority['@kontourai/station-sdk'],
+    );
+    expect(pkg.devDependencies['@kontourai/station-shared']).toBe(
+      dependencyAuthority['@kontourai/station-shared'],
+    );
+    expect(pkg.devDependencies['@kontourai/station-sdk']).toBe(
       dependencyAuthority['@kontourai/station-sdk'],
     );
     expect(JSON.stringify(pkg)).not.toContain('workspace:');
