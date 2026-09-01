@@ -4414,6 +4414,20 @@ function timingSafeSecretEqual(candidate: string, expected: string): boolean {
   return timingSafeEqual(candidateDigest, expectedDigest);
 }
 
+/**
+ * How long a launcher UI-bootstrap capability stays redeemable (#1122).
+ *
+ * Every real redemption happens within seconds: the SPA exchanges the fragment
+ * as the page mounts, and the API-docs launcher does it before navigating. The
+ * window exists for the human gap between `station start` printing a URL and
+ * someone clicking it, not for a link to stay live indefinitely — which is what
+ * made a forwarded fragment worth stealing.
+ *
+ * A capability that expires is not a lockout: `station start` prints a fresh
+ * one, and the tray mints on demand.
+ */
+const UI_BOOTSTRAP_CAPABILITY_TTL_MS = 15 * 60 * 1000;
+
 export function configureDevicePairingPublicRoutes(
   app: HonoApp,
   pairing: DevicePairingService,
@@ -4459,14 +4473,21 @@ export function configureDevicePairingPublicRoutes(
   const localGrantSecret = options.localGrant
     ? writeLocalGrantSecretFile(options.localGrant.secretPath)
     : undefined;
+  // Injectable so the capability's lifetime is testable without sleeping, and
+  // so it shares one clock with the failure limiter below.
+  const now = options.now ?? Date.now;
   let uiBootstrapToken = options.uiBootstrapToken;
+  // An inherited capability has no observable issue time, so it is treated as
+  // issued now rather than as already expired: refusing it would break the
+  // `STATION_UI_BOOTSTRAP_TOKEN` launch path outright.
+  let uiBootstrapIssuedAt = now();
   const startupIdentity = options.startupIdentity?.();
   // This id is server-owned and stable for this launcher's lifetime. A
   // browser cannot choose a replacement domain merely by replaying a link,
   // while a preserved HttpOnly session remains the cross-restart identity.
   const uiBootstrapClientInstanceId = randomUUID();
   const failureLimiter =
-    options.failureLimiter ?? new PairingFailureLimiter({ now: options.now });
+    options.failureLimiter ?? new PairingFailureLimiter({ now });
   const attemptBudget = new BoundedAttemptBudget();
   const auditFailedAuthentication = (
     event: PairingAuthFailureAuditRecord['event'],
@@ -4693,6 +4714,7 @@ export function configureDevicePairingPublicRoutes(
     // There is one server-held capability. Refreshing it deliberately makes a
     // previously copied but unspent launcher fragment unusable.
     uiBootstrapToken = randomBytes(32).toString('base64url');
+    uiBootstrapIssuedAt = now();
     return c.json(
       {
         token: uiBootstrapToken,
@@ -4735,6 +4757,20 @@ export function configureDevicePairingPublicRoutes(
       !timingSafeSecretEqual(body.token, uiBootstrapToken)
     ) {
       return c.json({ error: 'ui_bootstrap_forbidden' }, 403);
+    }
+    // #1122: the capability had no lifetime at all — it stayed redeemable
+    // until spent or replaced, so a launch URL printed days ago still worked,
+    // and a forwarded fragment stayed live indefinitely. The redemption route
+    // deliberately accepts callers a long way from this machine (a UI proxy, a
+    // Serve hop, a non-loopback authority) and distinguishes them by LOCALITY
+    // STAMPING rather than by refusal, so narrowing who may redeem would fight
+    // that design. Narrowing HOW LONG does not: every real redemption happens
+    // within seconds of the page that carries the fragment loading.
+    if (now() - uiBootstrapIssuedAt > UI_BOOTSTRAP_CAPABILITY_TTL_MS) {
+      // Cleared, not merely refused: an expired capability must not survive to
+      // be retried, and leaving it live would make the window reopenable.
+      uiBootstrapToken = undefined;
+      return c.json({ error: 'ui_bootstrap_expired' }, 403);
     }
 
     let bootstrapOfferId: string | undefined;

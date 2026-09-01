@@ -33,6 +33,9 @@ function createHarness() {
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   const secretPath = join(homeDir, 'runtime', 'local-grant.secret');
   const app = new Hono<{ Bindings: TestBindings }>();
+  // A controllable clock, so the capability's lifetime is asserted by
+  // advancing time rather than by sleeping through it.
+  const clock = { current: Date.now() };
   configureDevicePairingPublicRoutes(
     app as never,
     new DevicePairingService({
@@ -42,6 +45,7 @@ function createHarness() {
     {
       localGrant: { secretPath },
       allowedOrigins: ['https://station.example.test'],
+      now: () => clock.current,
     },
   );
   const request = (path: string, body: unknown, peer: string, headers = {}) =>
@@ -54,7 +58,13 @@ function createHarness() {
       },
       { incoming: { socket: { remoteAddress: peer } } } as TestBindings,
     );
-  return { request, secret: () => readFileSync(secretPath, 'utf8') };
+  return {
+    request,
+    secret: () => readFileSync(secretPath, 'utf8'),
+    advance: (ms: number) => {
+      clock.current += ms;
+    },
+  };
 }
 
 async function mint(
@@ -169,6 +179,86 @@ describe('ui-bootstrap mint', () => {
     expect(redeemed.status).toBe(200);
     const body = (await redeemed.json()) as { device: { scope: string } };
     expect(body.device.scope).toBe(DEFAULT_GRANT_PAIRING_SCOPE);
+  });
+
+  test('a capability stops being redeemable once it is stale (#1122)', async () => {
+    // It previously had NO lifetime: it stayed redeemable until spent or
+    // replaced, so a `station start` URL printed days earlier still worked and
+    // a forwarded fragment stayed live indefinitely. Narrowing WHO may redeem
+    // would fight this route's design -- it deliberately accepts a UI proxy, a
+    // Serve hop and a non-loopback authority, and distinguishes them by
+    // locality stamping rather than refusal. Narrowing HOW LONG does not.
+    const harness = createHarness();
+    const { token } = (await (
+      await mint(harness, harness.secret())
+    ).json()) as { token: string };
+
+    harness.advance(15 * 60 * 1000 + 1);
+    const stale = await harness.request(
+      PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
+      { token },
+      remote(),
+      { Origin: 'https://station.example.test' },
+    );
+    expect(stale.status).toBe(403);
+    await expect(stale.json()).resolves.toEqual({
+      error: 'ui_bootstrap_expired',
+    });
+  });
+
+  test('an expired capability is discarded, not left live for a retry', async () => {
+    // Refusing without clearing would leave the window reopenable: the same
+    // fragment would still be sitting in the server, one clock adjustment or
+    // one lucky race away from being spent.
+    const harness = createHarness();
+    const { token } = (await (
+      await mint(harness, harness.secret())
+    ).json()) as { token: string };
+    harness.advance(15 * 60 * 1000 + 1);
+    expect(
+      (
+        await harness.request(
+          PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
+          { token },
+          remote(),
+          { Origin: 'https://station.example.test' },
+        )
+      ).status,
+    ).toBe(403);
+
+    // Even rewound, the capability is gone rather than merely out of date.
+    harness.advance(-(15 * 60 * 1000 + 1));
+    const replay = await harness.request(
+      PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
+      { token },
+      remote(),
+      { Origin: 'https://station.example.test' },
+    );
+    expect(replay.status).toBe(403);
+    await expect(replay.json()).resolves.toEqual({
+      error: 'ui_bootstrap_forbidden',
+    });
+  });
+
+  test('a capability well inside its lifetime is still redeemable', async () => {
+    // The lifetime must not become a lockout: the human gap between
+    // `station start` printing a URL and someone clicking it is the case it
+    // exists to accommodate.
+    const harness = createHarness();
+    const { token } = (await (
+      await mint(harness, harness.secret())
+    ).json()) as { token: string };
+    harness.advance(14 * 60 * 1000);
+    expect(
+      (
+        await harness.request(
+          PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
+          { token },
+          remote(),
+          { Origin: 'https://station.example.test' },
+        )
+      ).status,
+    ).toBe(200);
   });
 
   test('a later mint invalidates the prior unspent token', async () => {
