@@ -991,9 +991,17 @@ describe('ExistingAgentSetupImportModule', () => {
     // concurrent preview path, then restore the stable fixture identity for
     // the real receipt/apply/rollback assertions below.
     processIdentity.birth = null;
-    await expect(
-      Promise.all(modules.map((module) => module.preview('codex-prompts'))),
-    ).rejects.toThrow('STORE_UNAVAILABLE');
+    const unavailablePreviews = await Promise.allSettled(
+      modules.map((module) => module.preview('codex-prompts')),
+    );
+    expect(unavailablePreviews).toHaveLength(modules.length);
+    for (const result of unavailablePreviews) {
+      expect(result.status).toBe('rejected');
+      if (result.status === 'rejected')
+        expect(result.reason).toMatchObject({ message: 'STORE_UNAVAILABLE' });
+    }
+    // `allSettled` is the in-flight boundary: no injected lock attempt may
+    // survive into the real receipt/apply/rollback sequence below.
     processIdentity.birth = 'setup-import-test-process-birth';
 
     const previews = [];
