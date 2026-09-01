@@ -28,6 +28,12 @@ describe('connection service pure helpers', () => {
         provider: 'bedrock',
         metadata: { executionClass: 'managed' },
       } as any),
+    ).toBe('bedrock');
+    expect(
+      engineIdForAdapter({
+        provider: 'bedrock',
+        metadata: { engineId: 'station' },
+      } as any),
     ).toBe('station');
     expect(
       engineIdForAdapter({

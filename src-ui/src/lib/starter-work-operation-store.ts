@@ -7,6 +7,8 @@
  * all fail closed. This module never repairs, expires, or evicts a record.
  */
 
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+
 export const STARTER_WORK_OPERATION_STORAGE_KEY =
   'station-starter-work-operations-v1';
 
@@ -240,7 +242,7 @@ const unavailableStorage: StarterWorkOperationStorage = {
 export function createStarterWorkOperationStore({
   storage,
   lock,
-  createUuid = () => crypto.randomUUID(),
+  createUuid = () => randomCorrelationId(),
   lockWaitTimeoutMs = DEFAULT_LOCK_WAIT_TIMEOUT_MS,
 }: StarterWorkOperationStoreOptions): StarterWorkOperationStore {
   function read(projectId: string): StarterWorkOperationRead {

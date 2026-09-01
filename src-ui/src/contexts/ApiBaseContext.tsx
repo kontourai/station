@@ -18,6 +18,7 @@ import {
   notifyCredentialChanged,
   setClientCredentialResolver,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   type ReactNode,
   useEffect,
@@ -74,7 +75,7 @@ const lazyNativePairingExchangeTransport = async (
   const input = args[0] as (typeof args)[0] & { operationId?: string };
   return nativePairingExchangeTransport({
     ...input,
-    operationId: input.operationId ?? crypto.randomUUID(),
+    operationId: input.operationId ?? randomCorrelationId(),
   });
 };
 

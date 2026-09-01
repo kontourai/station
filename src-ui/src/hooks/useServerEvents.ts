@@ -5,6 +5,7 @@
 
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { fetchSSE } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 import {
@@ -189,7 +190,7 @@ const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
 
 // One UUID per browser document. Do not use sessionStorage: a window opened
 // from another can clone its tab state and collapse two live tabs into one.
-const serverEventClientSessionId = crypto.randomUUID();
+const serverEventClientSessionId = randomCorrelationId();
 
 function invalidateInboxQueries(queryClient: {
   invalidateQueries: (options: { queryKey: string[] }) => unknown;
