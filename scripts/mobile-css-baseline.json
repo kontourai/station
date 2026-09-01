@@ -51,7 +51,7 @@
     },
     "src-ui/src/components/chat/chat.css": {
       "count": 6,
-      "reason": "Four blocks. The composer's two-row mobile stack and the composer popover sheet are this surface's own. The app-toolbar rules here are a KNOWN duplication with index.css (station#3766 records two same-specificity rules contradicting each other); the toolbar wants one mobile home. Two 480px toolbar blocks could not be folded \u2014 `__conn-name`/`__conn-note` `display` is decided again between them. station#926: the composer's agent picker drops its name to the avatar initial below 420px, where the row cannot afford both pickers' values \u2014 a genuine viewport decision the shared primitives cannot make, since it depends on this row's own control count."
+      "reason": "Six blocks. The composer's two-row mobile stack and the composer popover sheet are this surface's own. The app-toolbar rules here are a KNOWN duplication with index.css (station#3766 records two same-specificity rules contradicting each other); the toolbar wants one mobile home. Two 480px toolbar blocks could not be folded \u2014 `__conn-name`/`__conn-note` `display` is decided again between them. station#926: the composer's agent picker drops its name to the avatar initial below 420px, where the row cannot afford both pickers' values \u2014 a genuine viewport decision the shared primitives cannot make, since it depends on this row's own control count. `@media (hover: hover)` is a CAPABILITY query, not responsive layout; its hover-only footer collapse is recorded here rather than moved to a primitive that has no hover concept."
     },
     "src-ui/src/components/coding-layout/BranchToolbar.css": {
       "count": 1,

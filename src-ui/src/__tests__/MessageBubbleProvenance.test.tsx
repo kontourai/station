@@ -10,7 +10,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '../types';
 
 vi.mock('react-markdown', () => ({
@@ -24,9 +24,9 @@ vi.mock('../components/chat/message-bubble/MessageRating', () => ({
 vi.mock('../components/icons/UserIcon', () => ({
   UserIcon: () => null,
 }));
-// The trace link is gated on this setting. Mocked so the gate can be exercised
-// in BOTH directions here, where the real MessageBubble renders — a source-text
-// assertion of the same thing lives in a test no module edge can reach (#1141).
+// The trace links are gated on this setting. The behavioural tests below cover
+// the pre-footer site (`!hasTurnFooter`) and the footer site; the source-text
+// contract test separately proves that both guarded sites remain in the file.
 const developerTools = { enabled: false };
 vi.mock('../contexts/DeviceSettingsContext', async () => {
   const actual = await vi.importActual<
@@ -116,6 +116,10 @@ function renderRow(
 }
 
 describe('MessageBubble turn provenance (station#1410)', () => {
+  afterEach(() => {
+    developerTools.enabled = false;
+  });
+
   it('renders the checkpoint-derived workspace effect on its assistant turn', () => {
     renderRow({
       role: 'assistant',
@@ -173,8 +177,6 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       provenance: envelope,
     });
 
-    const actions = document.querySelector('.turn-footer__actions');
-    expect(getComputedStyle(actions!).flexWrap).toBe('nowrap');
     expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: /Share this answer/ }),
@@ -241,7 +243,25 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       traceId: 'trace-abcdef12',
     } as ChatMessage);
     expect(on.container.querySelector('.message__trace')).not.toBeNull();
+  });
+
+  it('gates the trace link on an assistant row without a turn footer', () => {
     developerTools.enabled = false;
+    const off = renderRow({
+      role: 'assistant',
+      content: 'Legacy traced answer.',
+      traceId: 'trace-legacy12',
+    } as ChatMessage);
+    expect(off.container.querySelector('.message__trace')).toBeNull();
+    off.unmount();
+
+    developerTools.enabled = true;
+    const on = renderRow({
+      role: 'assistant',
+      content: 'Legacy traced answer.',
+      traceId: 'trace-legacy12',
+    } as ChatMessage);
+    expect(on.container.querySelector('.message__trace')).not.toBeNull();
   });
 
   it('does not render an empty overflow menu for provenance without an eligible answer', async () => {
@@ -255,6 +275,23 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       content: 'Still working.',
       provenance: envelope,
     });
+    await act(async () => {});
+    expect(
+      screen.queryByRole('button', { name: 'More answer actions' }),
+    ).toBeNull();
+  });
+
+  it('does not render an empty overflow menu while the last answer is thinking', async () => {
+    await import('../components/chat/TurnActionsMenu');
+    renderRow(
+      {
+        role: 'assistant',
+        content: 'Still thinking.',
+        turnId: 'turn-thinking',
+        answerEligible: true,
+      },
+      { isThinking: true },
+    );
     await act(async () => {});
     expect(
       screen.queryByRole('button', { name: 'More answer actions' }),

@@ -154,5 +154,14 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     expect(chatCss).toMatch(
       /\n\.turn-footer__actions \{[^}]*align-self: flex-end;/s,
     );
+    const narrowRuleStart = chatCss.lastIndexOf(
+      '.turn-footer .turn-footer__actions {',
+    );
+    expect(narrowRuleStart).toBeGreaterThanOrEqual(0);
+    const narrowRuleEnd = chatCss.indexOf('}', narrowRuleStart);
+    expect(narrowRuleEnd).toBeGreaterThan(narrowRuleStart);
+    expect(chatCss.slice(narrowRuleEnd + 1)).not.toMatch(
+      /\.turn-footer \.turn-footer__actions\s*\{[^}]*align-self:/s,
+    );
   });
 });
