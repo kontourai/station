@@ -1,3 +1,4 @@
+import { curatedModelIdentityByCanonicalId } from '@kontourai/station-contracts/model-inventory';
 import { type KeyboardEvent, useMemo, useRef, useState } from 'react';
 import {
   modelPreferenceKey,
@@ -5,6 +6,7 @@ import {
   useModelPickerPreferences,
 } from '../../settings/modelPickerPreferences';
 import {
+  groupModelsByCanonicalIdentity,
   type ModelProviderOption,
   type SelectableModel,
 } from '../../utils/modelCapabilities';
@@ -200,6 +202,103 @@ export function SessionModelPicker({
     }));
   };
 
+  const modelSections = useMemo(
+    () =>
+      groupModelsByCanonicalIdentity(visibleModels, (canonicalId) => {
+        const reviewed = curatedModelIdentityByCanonicalId(canonicalId);
+        return reviewed
+          ? {
+              displayName: reviewed.displayName,
+              verifiedAgainst: reviewed.verifiedAgainst,
+            }
+          : undefined;
+      }),
+    [visibleModels],
+  );
+
+  const renderModelRow = (model: SelectableModel) => {
+    const key = modelPreferenceKey(
+      model.providerId ?? currentProviderId ?? 'current',
+      model.id,
+    );
+    const active =
+      model.id === activeModel &&
+      (!currentProviderId ||
+        !model.providerId ||
+        model.providerId === currentProviderId);
+    const favorite = preferences.favorites.includes(key);
+    const favoriteTarget = model.providerName
+      ? `${model.name} (${model.providerName})`
+      : model.name;
+    return (
+      <div className="session-model-picker__model-row" key={key}>
+        <button
+          type="button"
+          role="option"
+          aria-selected={active}
+          disabled={model.available === false}
+          className={active ? 'session-model-picker__model--active' : ''}
+          onClick={() => selectModel(model)}
+          onKeyDown={(event) =>
+            moveOptionFocus(
+              event,
+              event.key === 'Home'
+                ? 'first'
+                : event.key === 'End'
+                  ? 'last'
+                  : event.key === 'ArrowUp'
+                    ? -1
+                    : 1,
+            )
+          }
+        >
+          <span>{model.name}</span>
+          <small>
+            {[model.providerName, model.id]
+              .filter(Boolean)
+              .filter((value, index, values) => values.indexOf(value) === index)
+              .join(' · ')}
+            {model.available === false
+              ? ` · ${model.unavailableReason ?? 'Unavailable'}`
+              : ''}
+          </small>
+          {(model.capabilities?.contextWindow ||
+            model.supportsVision === true ||
+            model.description) && (
+            <small className="session-model-picker__model-metadata">
+              {[
+                model.capabilities?.contextWindow
+                  ? formatContextWindow(model.capabilities.contextWindow)
+                  : undefined,
+                model.supportsVision === true ? 'Vision' : undefined,
+                model.description,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </small>
+          )}
+          {active && (
+            <span
+              className="session-model-picker__model-check"
+              aria-hidden="true"
+            >
+              <CheckGlyph />
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          className="session-model-picker__favorite"
+          aria-label={`${favorite ? 'Remove' : 'Add'} ${favoriteTarget} ${favorite ? 'from' : 'to'} favorites`}
+          aria-pressed={favorite}
+          disabled={model.available === false}
+          onClick={() => toggleFavorite(model)}
+        >
+          {favorite ? '★' : '☆'}
+        </button>
+      </div>
+    );
+  };
   const moveOptionFocus = (
     event: KeyboardEvent<HTMLButtonElement>,
     direction: -1 | 1 | 'first' | 'last',
@@ -315,98 +414,23 @@ export function SessionModelPicker({
                 </fieldset>
               )}
               <div className="session-model-picker__models" role="listbox">
-                {visibleModels.map((model) => {
-                  const key = modelPreferenceKey(
-                    model.providerId ?? currentProviderId ?? 'current',
-                    model.id,
-                  );
-                  const active =
-                    model.id === activeModel &&
-                    (!currentProviderId ||
-                      !model.providerId ||
-                      model.providerId === currentProviderId);
-                  const favorite = preferences.favorites.includes(key);
-                  const favoriteTarget = model.providerName
-                    ? `${model.name} (${model.providerName})`
-                    : model.name;
-                  return (
-                    <div className="session-model-picker__model-row" key={key}>
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={active}
-                        disabled={model.available === false}
-                        className={
-                          active ? 'session-model-picker__model--active' : ''
-                        }
-                        onClick={() => selectModel(model)}
-                        onKeyDown={(event) =>
-                          moveOptionFocus(
-                            event,
-                            event.key === 'Home'
-                              ? 'first'
-                              : event.key === 'End'
-                                ? 'last'
-                                : event.key === 'ArrowUp'
-                                  ? -1
-                                  : 1,
-                          )
-                        }
-                      >
-                        <span>{model.name}</span>
-                        <small>
-                          {[model.providerName, model.id]
-                            .filter(Boolean)
-                            .filter(
-                              (value, index, values) =>
-                                values.indexOf(value) === index,
-                            )
-                            .join(' · ')}
-                          {model.available === false
-                            ? ` · ${model.unavailableReason ?? 'Unavailable'}`
-                            : ''}
-                        </small>
-                        {(model.capabilities?.contextWindow ||
-                          model.supportsVision === true ||
-                          model.description) && (
-                          <small className="session-model-picker__model-metadata">
-                            {[
-                              model.capabilities?.contextWindow
-                                ? formatContextWindow(
-                                    model.capabilities.contextWindow,
-                                  )
-                                : undefined,
-                              model.supportsVision === true
-                                ? 'Vision'
-                                : undefined,
-                              model.description,
-                            ]
-                              .filter(Boolean)
-                              .join(' · ')}
-                          </small>
-                        )}
-                        {active && (
-                          <span
-                            className="session-model-picker__model-check"
-                            aria-hidden="true"
-                          >
-                            <CheckGlyph />
-                          </span>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        className="session-model-picker__favorite"
-                        aria-label={`${favorite ? 'Remove' : 'Add'} ${favoriteTarget} ${favorite ? 'from' : 'to'} favorites`}
-                        aria-pressed={favorite}
-                        disabled={model.available === false}
-                        onClick={() => toggleFavorite(model)}
-                      >
-                        {favorite ? '★' : '☆'}
-                      </button>
+                {modelSections.map((section) =>
+                  section.kind === 'model' ? (
+                    <div
+                      key={`model:${section.canonicalId}`}
+                      role="group"
+                      aria-label={section.displayName}
+                      className="session-model-picker__model-group"
+                    >
+                      <p className="session-model-picker__model-group-name">
+                        {section.displayName}
+                      </p>
+                      {section.routes.map(renderModelRow)}
                     </div>
-                  );
-                })}
+                  ) : (
+                    renderModelRow(section.model)
+                  ),
+                )}
                 {visibleModels.length === 0 && (
                   <Empty
                     className="session-model-picker__state"

@@ -7,6 +7,7 @@ import type {
 } from './connection-recovery';
 import type { ControlPlaneObservation } from './engine-capability-matrix';
 import type { ModelInventoryExecutionIdentity } from './model-inventory';
+import type { CanonicalModelIdentityReference } from './model-inventory.js';
 
 /**
  * Filesystem-safety-only guard for a tool-server/integration id (repo
@@ -255,6 +256,13 @@ export interface ModelOption {
    * engine's choice (#1012).
    */
   resolvedModel?: string;
+  /**
+   * The reviewed cross-connection identity for this route's model, when the
+   * curated map recognises its provider-native id. Absent means unrecognised,
+   * which is a real answer: surfaces must leave the route on its own rather
+   * than match it to another by name (#943).
+   */
+  canonicalModelIdentity?: CanonicalModelIdentityReference;
   capabilities?: ModelOptionCapabilities;
 }
 
