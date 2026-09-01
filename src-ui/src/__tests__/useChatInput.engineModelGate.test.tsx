@@ -78,7 +78,7 @@ const opencodeConnection = {
   type: 'opencode-runtime',
   name: 'OpenCode',
   enabled: true,
-  config: { executionClass: 'external' },
+  config: {},
   status: 'ready',
   runtimeCatalog: {
     source: 'live' as const,

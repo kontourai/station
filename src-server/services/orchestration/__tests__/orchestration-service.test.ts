@@ -247,11 +247,9 @@ class FakeAdapter implements ProviderAdapterShape {
           : provider,
       ),
       builtin: true,
-      executionClass: provider === 'bedrock' ? 'managed' : 'connected',
       // archive#980: the private `station-agent` adapter carries the real
-      // `engineId: 'station'` (station-agent-adapter.ts:237), not the legacy
-      // `executionClass` — mirrored here so `engineExecutionForAdapter`
-      // resolves `'station'` for it exactly as it does in production.
+      // `engineId: 'station'` (station-agent-adapter.ts:237), so this fixture
+      // resolves the same way as production.
       modelLaunch:
         provider === 'acp'
           ? {

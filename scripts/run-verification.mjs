@@ -385,6 +385,23 @@ export async function runVerificationCli(
     return result?.receipt?.terminal?.passed === false ? 1 : 0;
   } catch (caught) {
     error(redactVerificationSubmissionError(caught));
+    // `errorText` scrubs every absolute path to `[PATH]`, which is right for
+    // handoff records but destroys the only actionable content this particular
+    // failure carries: the tree to repair. Print it back for this disposition
+    // rather than loosening a scrub that also guards persisted records.
+    //
+    // On THIS CLI the root is always the caller's own git toplevel — there is
+    // no `--cwd`, and both coordinator and submission derive it from
+    // `process.cwd()`. The value here is narrower than un-scrubbing a foreign
+    // path: it says WHICH of several open `../station-worktrees/<lane>` trees
+    // the check read, which is not otherwise recoverable from a scrubbed line.
+    // The genuinely foreign root — the prepared transfer baseline — is
+    // reported by `orchestration-transfer-gate.mjs`, which prints
+    // `error.message` raw through its own handler and never reaches this catch.
+    if (caught?.disposition === 'environment-stale' && caught.repositoryRoot)
+      error(
+        `environment-stale root: ${caught.repositoryRoot} -- run \`npm run dependencies:ci\` there`,
+      );
     return 2;
   }
 }
