@@ -224,8 +224,15 @@ const VERBS: Record<string, VerbSpec> = {
   service: {
     group: 'Lifecycle',
     summary: 'Install and manage Station as a user service',
-    actions: ['install', 'start', 'status', 'stop', 'uninstall'],
+    actions: ['install', 'start', 'status', 'stop', 'uninstall', 'run'],
     detail: [
+      'run is the foreground supervisor: it runs the server and UI in the',
+      'current process and never returns. It is what the installed systemd',
+      'unit, launchd plist, and container image invoke, and it is the way to',
+      'supervise Station on a host with no service manager (a container, or',
+      'any Linux without a systemd user session). Use install/start for a',
+      'durable OS-registered service; use `station start` to launch detached.',
+      '',
       'Options:',
       '  --json                status: print machine-readable status',
       `  --home=<dir>          Runtime home for the service (default: STATION_HOME or ${runtimeHelp.channelHome})`,
