@@ -960,7 +960,7 @@ export function resolveEngineCapabilityMatrix(
   connection?: {
     type?: string;
     engineId?: EngineId | string;
-    config?: { engineId?: unknown };
+    config?: { engineId?: unknown; executionClass?: unknown };
   } | null,
 ): EngineCapabilityMatrix {
   if (agentConnectionId === 'acp' || connection?.type === 'acp') {
