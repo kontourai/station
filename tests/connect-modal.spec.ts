@@ -11,8 +11,7 @@
  *  - discover panel renders
  *  - status dot states render correctly
  */
-import { expect, test } from '@playwright/test';
-import type { Locator } from '@playwright/test';
+import { expect, type Locator, test } from '@playwright/test';
 import { requireE2EOperatorCredential } from './helpers/e2e-operator-credential';
 
 /**
