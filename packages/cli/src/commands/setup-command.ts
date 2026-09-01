@@ -11,6 +11,11 @@ import {
   resolveLifecycleInstanceId,
 } from './helpers.js';
 import {
+  isLocalSelfAuthCandidate,
+  type LocalSelfAuthOutcome,
+  selfAuthorizeLocalProfile,
+} from './local-self-auth.js';
+import {
   addUniquePairingFlag,
   pairingBooleanFlag,
   pairingValueFlag,
@@ -39,6 +44,8 @@ export interface SetupCommandDependencies {
     serviceArgs: string[],
   ) => Promise<ServiceInstallReceipt>;
   pair: (input: PairSavedStationInput) => Promise<PairSavedStationResult>;
+  /** Test seam for the same-machine local-grant exchange (#1098). */
+  selfAuthorizeLocal?: typeof selfAuthorizeLocalProfile;
   stdout?: (value: string) => void;
 }
 
@@ -203,9 +210,40 @@ export async function runSetupCommand(
       );
     }
     retireDiscardedCredential(previousRef, dependencies);
-    stdout(
-      `Local Station service installed. Default Station "${profile.name}" targets ${profile.endpoint}.`,
-    );
+    // Same-machine self-authorization (#1098): the install is already
+    // durable and the default already selected, so from here on every
+    // outcome — including a thrown one — only changes what is REPORTED,
+    // never rolls the healthy install back.
+    const selfAuthorize =
+      dependencies.selfAuthorizeLocal ?? selfAuthorizeLocalProfile;
+    let authorization: LocalSelfAuthOutcome;
+    try {
+      authorization = await selfAuthorize(profile, {
+        ...(dependencies.credentialStore
+          ? { credentialStore: dependencies.credentialStore }
+          : {}),
+      });
+    } catch (error) {
+      authorization = {
+        status: 'failed',
+        reason: (error as Error).message,
+      };
+    }
+    const installed = `Local Station service installed. Default Station "${profile.name}" targets ${profile.endpoint}`;
+    if (authorization.status === 'authorized') {
+      stdout(
+        `${installed}. CLI authorized; credential stored in the OS credential store.`,
+      );
+      if (authorization.warning) stdout(authorization.warning);
+    } else if (isLocalSelfAuthCandidate(profile)) {
+      stdout(
+        `${installed}, but the CLI is not yet authorized (${authorization.reason}). It retries automatically on the next station command, or pair explicitly: station stations pair ${profile.name}`,
+      );
+    } else {
+      stdout(
+        `${installed}, but the CLI cannot self-authorize a non-loopback endpoint. Pair it explicitly: station stations pair ${profile.name}`,
+      );
+    }
     return;
   }
 
