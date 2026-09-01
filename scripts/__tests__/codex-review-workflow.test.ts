@@ -56,7 +56,12 @@ describe('standalone Codex PR review workflow', () => {
       (step: Record<string, any>) => step.uses === FLOW_AGENTS_REVIEW,
     );
     expect(codex.with).toEqual({
-      'openai-api-key': expression('secrets.OPENAI_API_KEY'),
+      // Provider override: an org/repo secret CODEX_REVIEW_API_KEY takes
+      // precedence, falling back to the official OPENAI_API_KEY — absent
+      // configuration is byte-identical to the pre-override workflow.
+      'openai-api-key': expression(
+        'secrets.CODEX_REVIEW_API_KEY || secrets.OPENAI_API_KEY',
+      ),
       'github-token': expression('github.token'),
       repository: expression('github.repository'),
       'pull-request': expression(
@@ -69,7 +74,15 @@ describe('standalone Codex PR review workflow', () => {
       model: 'gpt-5.6-sol',
       effort: 'xhigh',
     });
+    // The base-URL override rides step env (composite steps inherit it) and
+    // must default to the official endpoint when the variable is unset.
+    expect(codex.env).toEqual({
+      OPENAI_BASE_URL: expression(
+        "vars.CODEX_REVIEW_BASE_URL || 'https://api.openai.com/v1'",
+      ),
+    });
     expect(source.match(/secrets\.OPENAI_API_KEY/g)).toHaveLength(1);
+    expect(source.match(/secrets\.CODEX_REVIEW_API_KEY/g)).toHaveLength(1);
   });
 
   it('retains the validated result without invoking Builder or Flow', () => {
