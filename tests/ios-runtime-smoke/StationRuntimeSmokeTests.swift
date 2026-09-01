@@ -67,7 +67,7 @@ final class StationRuntimeSmokeTests: XCTestCase {
         addAddress.tap()
 
         let name = app.textFields["Name (optional)"]
-        let address = app.textFields["https://station.example.ts.net"]
+        let address = app.textFields["Station address"]
         XCTAssertTrue(
             name.waitForExistence(timeout: 10),
             "Add Station name input did not appear. Accessibility hierarchy:\n\(app.debugDescription)"
@@ -79,7 +79,7 @@ final class StationRuntimeSmokeTests: XCTestCase {
         assertContained(
             address.frame,
             within: appFrame,
-            label: "https://station.example.ts.net"
+            label: "Station address"
         )
 
         let title = app.staticTexts["Add Station"]
@@ -92,7 +92,7 @@ final class StationRuntimeSmokeTests: XCTestCase {
         assertContained(
             address.frame,
             within: appFrame,
-            label: "focused https://station.example.ts.net"
+            label: "focused Station address"
         )
         XCTAssertEqual(
             title.frame.origin.x,
