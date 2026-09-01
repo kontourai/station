@@ -66,7 +66,10 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     );
     const { result } = renderHook(
       () => ({
-        chrome: useDockShellChrome({}),
+        chrome: useDockShellChrome({
+          publishesDockSlotClearance: false,
+          registersDockShortcuts: false,
+        }),
         model: useRegionModel(),
       }),
       { wrapper },
