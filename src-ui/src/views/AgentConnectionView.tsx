@@ -187,13 +187,10 @@ export function AgentConnectionView({
 
   const testMutation = useTestAgentConnectionMutation();
 
-  const externalEngines = useMemo(
-    () =>
-      runtimes.filter(
-        (connection) => connectionEngineId(connection) !== 'station',
-      ),
-    [runtimes],
-  );
+  // #1054 stopped excluding Station here: the Station engine is a row this
+  // view legitimately shows, and its test asserts so. This branch renames the
+  // binding and must not reinstate the filter that rename predates.
+  const externalEngines = runtimes;
   const availableEngines = useMemo(() => {
     const addedIds = new Set(
       externalEngines.filter(isAddedEngine).map(({ id }) => id),
