@@ -15,11 +15,13 @@ import {
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   inertInstallTimeout,
   preflightInstalledLifecycle,
   resolveNpmCli,
+  runApprovedHooks,
+  verifyLifecycleArtifacts,
 } from '../dependency-lifecycle.mjs';
 import {
   checkWorkflowDirectory,
@@ -31,6 +33,7 @@ import {
   allowlistDigest,
   assertPtyHandshakeOutcome,
   confinedPackageTarget,
+  degradableLifecycleCapability,
   evaluateLifecyclePolicy,
   expectedLifecyclePurls,
   platformMatches,
@@ -540,6 +543,200 @@ describe('dependency lifecycle policy', () => {
       writeFileSync(resolve(packageRoot, 'missing.node'), 'not a native addon');
       expect(() => verifyArtifact(fixtureRoot, entry)).toThrow();
     } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('degrades only the terminal-backing node-pty entry, never other proofs (#1244)', () => {
+    const ptyEntry = policy.entries.find(
+      (item: any) => item.name === 'node-pty',
+    );
+    const degradable = degradableLifecycleCapability(ptyEntry);
+    expect(degradable?.capability).toBe('terminal');
+    expect(degradable?.remediation).toContain('npm rebuild node-pty');
+    for (const entry of policy.entries) {
+      if (entry.name === 'node-pty') continue;
+      expect(
+        degradableLifecycleCapability(entry),
+        `${entry.name} must not silently become degradable`,
+      ).toBeUndefined();
+    }
+  });
+
+  it('converts a failed degradable build into a loud DEGRADED report and keeps installing (#1244)', () => {
+    const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-lifecycle-'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const writeFixturePackage = (
+        name: string,
+        script: string,
+        source: string,
+      ) => {
+        const packageRoot = resolve(fixtureRoot, 'node_modules', name);
+        mkdirSync(resolve(packageRoot, 'scripts'), { recursive: true });
+        writeFileSync(
+          resolve(packageRoot, 'package.json'),
+          JSON.stringify({
+            name,
+            version: '1.0.0',
+            scripts: { install: `node scripts/${script}` },
+          }),
+        );
+        writeFileSync(resolve(packageRoot, 'scripts', script), source);
+        return packageRoot;
+      };
+      writeFixturePackage('fixture-degradable', 'fail.mjs', 'process.exit(1);');
+      const survivorRoot = writeFixturePackage(
+        'fixture-survivor',
+        'ok.mjs',
+        "import { writeFileSync } from 'node:fs'; writeFileSync('built.marker', 'ok');",
+      );
+      const entryBase = {
+        scope: 'root',
+        lock: 'package-lock.json',
+        version: '1.0.0',
+        decision: 'execute',
+        platform: { os: [], cpu: [] },
+      };
+      const allowlist = {
+        entries: [
+          {
+            ...entryBase,
+            path: 'node_modules/fixture-degradable',
+            name: 'fixture-degradable',
+            hooks: [{ name: 'install', command: 'node scripts/fail.mjs' }],
+            // node-pty-smoke marks the one entry whose failure degrades the
+            // terminal capability instead of aborting the install.
+            artifact: { path: 'missing.node', proof: 'node-pty-smoke' },
+          },
+          {
+            ...entryBase,
+            path: 'node_modules/fixture-survivor',
+            name: 'fixture-survivor',
+            hooks: [{ name: 'install', command: 'node scripts/ok.mjs' }],
+            artifact: { path: 'built.marker', proof: 'fixture' },
+          },
+        ],
+      };
+      runApprovedHooks(allowlist, { cwd: fixtureRoot });
+      // The failure was loud and specific…
+      const degradedLine = warn.mock.calls
+        .map((call) => String(call[0]))
+        .find((line) => line.includes('DEGRADED terminal'));
+      expect(degradedLine).toBeDefined();
+      expect(degradedLine).toContain('terminal panes will be unavailable');
+      expect(degradedLine).toContain('npm rebuild node-pty');
+      // …and did not abort the entries behind it.
+      expect(existsSync(resolve(survivorRoot, 'built.marker'))).toBe(true);
+    } finally {
+      warn.mockRestore();
+      log.mockRestore();
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('a non-degradable hook failure still aborts the install (#1244)', () => {
+    const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-lifecycle-'));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const packageRoot = resolve(
+        fixtureRoot,
+        'node_modules',
+        'fixture-required',
+      );
+      mkdirSync(resolve(packageRoot, 'scripts'), { recursive: true });
+      writeFileSync(
+        resolve(packageRoot, 'package.json'),
+        JSON.stringify({
+          name: 'fixture-required',
+          version: '1.0.0',
+          scripts: { install: 'node scripts/fail.mjs' },
+        }),
+      );
+      writeFileSync(
+        resolve(packageRoot, 'scripts', 'fail.mjs'),
+        'process.exit(1);',
+      );
+      const allowlist = {
+        entries: [
+          {
+            scope: 'root',
+            lock: 'package-lock.json',
+            path: 'node_modules/fixture-required',
+            name: 'fixture-required',
+            version: '1.0.0',
+            decision: 'execute',
+            platform: { os: [], cpu: [] },
+            hooks: [{ name: 'install', command: 'node scripts/fail.mjs' }],
+            artifact: { path: 'built.marker', proof: 'fixture' },
+          },
+        ],
+      };
+      expect(() => runApprovedHooks(allowlist, { cwd: fixtureRoot })).toThrow();
+    } finally {
+      log.mockRestore();
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('verifies degradable artifacts as loud degraded results while others fail closed (#1244)', () => {
+    const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-lifecycle-'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const packageRoot = resolve(fixtureRoot, 'node_modules', 'node-pty');
+      mkdirSync(packageRoot, { recursive: true });
+      writeFileSync(
+        resolve(packageRoot, 'package.json'),
+        JSON.stringify({ name: 'node-pty', version: '1.1.0' }),
+      );
+      // `optionalPackageMayBeAbsent` reads every lifecycle lock from cwd.
+      const emptyLock = JSON.stringify({ packages: {} });
+      writeFileSync(resolve(fixtureRoot, 'package-lock.json'), emptyLock);
+      for (const scoped of ['sdk', 'shared']) {
+        mkdirSync(resolve(fixtureRoot, 'packages', scoped), {
+          recursive: true,
+        });
+        writeFileSync(
+          resolve(fixtureRoot, 'packages', scoped, 'package-lock.json'),
+          emptyLock,
+        );
+      }
+      const degradableEntry = {
+        scope: 'root',
+        lock: 'package-lock.json',
+        path: 'node_modules/node-pty',
+        name: 'node-pty',
+        version: '1.1.0',
+        platform: { os: [], cpu: [] },
+        artifact: { path: 'build/Release/pty.node', proof: 'node-pty-smoke' },
+      };
+      const results = verifyLifecycleArtifacts(
+        { entries: [degradableEntry] },
+        { cwd: fixtureRoot },
+      );
+      expect(results).toEqual([
+        expect.objectContaining({ degraded: true, skipped: false }),
+      ]);
+      expect(
+        warn.mock.calls
+          .map((call) => String(call[0]))
+          .some((line) => line.includes('DEGRADED terminal')),
+      ).toBe(true);
+
+      // The same missing artifact on a NON-degradable entry still fails closed.
+      const requiredEntry = {
+        ...degradableEntry,
+        artifact: { path: 'build/Release/pty.node', proof: 'fixture' },
+      };
+      expect(() =>
+        verifyLifecycleArtifacts(
+          { entries: [requiredEntry] },
+          { cwd: fixtureRoot },
+        ),
+      ).toThrow(/missing lifecycle artifact/);
+    } finally {
+      warn.mockRestore();
       rmSync(fixtureRoot, { recursive: true, force: true });
     }
   });

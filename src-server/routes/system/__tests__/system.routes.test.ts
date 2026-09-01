@@ -173,6 +173,68 @@ describe('System Routes', () => {
     }
   });
 
+  test('GET /status reports the degraded terminal capability with its specific reason (#1244)', async () => {
+    const reason =
+      'node-pty failed to load. Interactive terminal panes are unavailable; agent execution is unaffected.';
+    const app = createSystemRoutes(
+      {
+        ...createMockDeps(),
+        probeTerminalCapability: vi
+          .fn()
+          .mockResolvedValue({ state: 'unavailable', reason }),
+      } as any,
+      mockLogger,
+    );
+    const body = await json(await app.request('/status'));
+    expect(body.capabilities.terminal).toEqual({
+      ready: false,
+      source: null,
+      reason,
+    });
+  });
+
+  test('GET /status reports terminal ready when the PTY backend loads, and makes no terminal claim without a probe (#1244)', async () => {
+    const withProbe = createSystemRoutes(
+      {
+        ...createMockDeps(),
+        probeTerminalCapability: vi
+          .fn()
+          .mockResolvedValue({ state: 'available' }),
+      } as any,
+      mockLogger,
+    );
+    const ready = await json(await withProbe.request('/status'));
+    expect(ready.capabilities.terminal).toEqual({
+      ready: true,
+      source: 'node-pty',
+    });
+
+    // An older route host that wires no probe observed nothing; status must
+    // not fabricate either readiness or degradation.
+    const withoutProbe = createSystemRoutes(
+      createMockDeps() as any,
+      mockLogger,
+    );
+    const silent = await json(await withoutProbe.request('/status'));
+    expect(silent.capabilities).not.toHaveProperty('terminal');
+  });
+
+  test('GET /status converts a throwing terminal probe into a degraded reason, never fabricated readiness (#1244)', async () => {
+    const app = createSystemRoutes(
+      {
+        ...createMockDeps(),
+        probeTerminalCapability: vi
+          .fn()
+          .mockRejectedValue(new Error('probe exploded')),
+      } as any,
+      mockLogger,
+    );
+    const body = await json(await app.request('/status'));
+    expect(body.capabilities.terminal.ready).toBe(false);
+    expect(body.capabilities.terminal.reason).toContain('probe exploded');
+    expect(body.capabilities.terminal.reason).toContain('npm rebuild node-pty');
+  });
+
   test('GET /status can be forced chat-ready for deterministic E2E runs', async () => {
     process.env.STATION_E2E_SYSTEM_STATUS_READY = '1';
     try {

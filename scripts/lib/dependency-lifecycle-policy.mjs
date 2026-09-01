@@ -701,3 +701,31 @@ export function verifyArtifact(
 export function expectedLifecyclePurls(allowlist) {
   return [...new Set(allowlist.entries.map((entry) => entry.purl))].sort();
 }
+
+/**
+ * #1244: which allowlist entries back a bounded product surface Station can
+ * run without. node-pty is the only one — it powers interactive terminal
+ * panes and nothing else, and it is the only Station dependency that needs a
+ * C++ toolchain on Linux. For such an entry, a failed build or artifact
+ * verification is reported as a LOUD capability degradation by the install
+ * orchestrator instead of aborting the install; the runtime, `station
+ * doctor`, and the system-status capability record then all carry the same
+ * degraded-terminal reason. This deliberately trades the former install-time
+ * "completed install has a working terminal" guarantee for installability on
+ * toolchain-less hosts — the product decision recorded on the issue.
+ *
+ * The artifact PROOF itself stays fail-closed: `verifyArtifact` still throws,
+ * and confinement/tamper preflights are never relaxed. Only the install
+ * orchestrator consults this to decide that the failure degrades a
+ * capability rather than the install.
+ */
+export function degradableLifecycleCapability(entry) {
+  if (entry?.artifact?.proof !== 'node-pty-smoke') return undefined;
+  return {
+    capability: 'terminal',
+    consequence:
+      'interactive terminal panes will be unavailable (agent execution is unaffected)',
+    remediation:
+      'install a C++ toolchain (g++, make, python3), run `npm rebuild node-pty`, then restart Station',
+  };
+}

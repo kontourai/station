@@ -769,6 +769,34 @@ describe('MyService', () => {
 });
 ```
 
+### No-PTY (Degraded Terminal) Configuration
+
+The terminal surface must stay covered in the configuration where `node-pty`
+never loaded (#1244) — a Linux install without a C++ toolchain. No test may
+uninstall or rebuild the real module; the degraded path is reached through
+injected seams, so it runs identically on a machine whose `node-pty` works:
+
+- `NodePtyAdapter` takes a loader in its constructor. Pass
+  `() => Promise.reject(new Error('Failed to load native module: …'))` to
+  exercise `probeCapability()` and the `PtyUnavailableError` spawn rejection
+  (`src-server/adapters/__tests__/node-pty-adapter.test.ts`).
+- `TerminalService` receives a mock `IPtyAdapter` whose `spawn` rejects with
+  `PtyUnavailableError`; assert `open()` rethrows the specific reason rather
+  than the generic "no viable shell found"
+  (`src-server/services/terminal/__tests__/terminal-service.test.ts`).
+- The WebSocket transport must answer an `open` with
+  `{ type: 'error', code: 'terminal-unavailable' }` carrying only the fixed
+  product-owned text
+  (`src-server/services/terminal/__tests__/terminal-ws-server.test.ts`).
+- `/api/system/status` takes `probeTerminalCapability` in its deps; assert
+  the `capabilities.terminal` record and its `reason`
+  (`src-server/routes/system/__tests__/system.routes.test.ts`), and the
+  doctor takes `probeTerminalPty`
+  (`packages/cli/src/__tests__/lifecycle-doctor-terminal.test.ts`).
+
+A change to any of these seams must keep the degraded assertions passing —
+the silent-dead-terminal regression is exactly what they exist to catch.
+
 ### Route Integration Test
 
 Routes are exercised through Hono's `app.request()` against the real router.

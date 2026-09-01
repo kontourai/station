@@ -2061,6 +2061,15 @@ installation is a fail-level check with an `npm install` repair suggestion.
 Optional tools and whether chat and External-agent paths are ready are checked
 separately.
 
+The `Terminal PTY (node-pty)` check reports whether the `node-pty` native
+module loads from the checkout. When it does not — typically a Linux host that
+installed without a C++ toolchain — the check is a **warn**, not a fail:
+Station runs, but interactive terminal panes are unavailable until the module
+builds. The line carries the load failure's cause, and the fix-commands
+section suggests `npm rebuild node-pty` (which needs `g++`, `make`, and
+`python3`); restart Station afterwards. Agent execution does not use
+`node-pty` and is unaffected either way.
+
 ```
 station doctor [--json]
 ```

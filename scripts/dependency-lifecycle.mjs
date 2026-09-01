@@ -11,6 +11,7 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   confinedPackageTarget,
+  degradableLifecycleCapability,
   evaluateLifecyclePolicy,
   expectedLifecyclePurls,
   installedPackagePath,
@@ -210,6 +211,21 @@ function runExactHook(packageRoot, hook) {
   throw new Error(`unsupported reviewed lifecycle command: ${hook.command}`);
 }
 
+/**
+ * #1244: a degradable entry's failure becomes a loud capability report, not
+ * an aborted install. One fixed, greppable line shape so `install.sh` logs,
+ * CI receipts, and humans all find it: `DEGRADED <capability>: ...`.
+ */
+function reportDegradedCapability(entry, phase, error) {
+  const degradable = degradableLifecycleCapability(entry);
+  const cause = String(error instanceof Error ? error.message : error)
+    .split(/\r?\n/, 1)[0]
+    .trim();
+  console.warn(
+    `[dependency-lifecycle] DEGRADED ${degradable.capability}: ${entry.name} ${phase} failed — ${degradable.consequence}. Remediation: ${degradable.remediation}. Cause: ${cause}`,
+  );
+}
+
 export function runApprovedHooks(allowlist, { cwd = root } = {}) {
   const ready = preflightInstalledLifecycle(allowlist, { cwd });
   for (const { entry } of ready)
@@ -220,15 +236,53 @@ export function runApprovedHooks(allowlist, { cwd = root } = {}) {
     console.log(
       `[dependency-lifecycle] approved build ${entry.lock}:${entry.path}`,
     );
-    for (const hook of entry.hooks) {
-      const started = performance.now();
-      runExactHook(packageRoot, hook);
-      console.log(
-        `[dependency-lifecycle] executed ${entry.lock}:${entry.path}:${hook.name} in ${Math.round(performance.now() - started)}ms`,
-      );
+    try {
+      for (const hook of entry.hooks) {
+        const started = performance.now();
+        runExactHook(packageRoot, hook);
+        console.log(
+          `[dependency-lifecycle] executed ${entry.lock}:${entry.path}:${hook.name} in ${Math.round(performance.now() - started)}ms`,
+        );
+      }
+      prepareLifecycleArtifacts(cwd, entry);
+    } catch (error) {
+      // #1244: only an entry that backs a degradable capability (today:
+      // node-pty/terminal) may convert a failed build into a loud degraded
+      // install — typically a Linux host without a C++ toolchain. Every
+      // other lifecycle failure still aborts, and the tamper/confinement
+      // preflights above ran before any hook, so this never bypasses them.
+      if (!degradableLifecycleCapability(entry)) throw error;
+      reportDegradedCapability(entry, 'build', error);
     }
-    prepareLifecycleArtifacts(cwd, entry);
   }
+}
+
+/**
+ * Runs every root artifact proof. A failure on an entry backing a degradable
+ * capability (#1244, see `degradableLifecycleCapability`) becomes a loud
+ * DEGRADED report and a `{ degraded: true }` result instead of an aborted
+ * verify; every other entry's failure still throws. The artifact proof
+ * itself stays fail-closed — `verifyArtifact` threw before this caught it.
+ */
+export function verifyLifecycleArtifacts(allowlist, { cwd = root } = {}) {
+  return allowlist.entries
+    .filter(
+      (entry) =>
+        entry.scope === 'root' && !optionalPackageMayBeAbsent(cwd, entry),
+    )
+    .map((entry) => {
+      try {
+        return verifyArtifact(cwd, entry);
+      } catch (error) {
+        if (!degradableLifecycleCapability(entry)) throw error;
+        reportDegradedCapability(entry, 'artifact verification', error);
+        return {
+          skipped: false,
+          degraded: true,
+          detail: `${entry.lock}:${entry.path}`,
+        };
+      }
+    });
 }
 
 export function verify({ cwd = root } = {}) {
@@ -238,16 +292,13 @@ export function verify({ cwd = root } = {}) {
   // receipt. It validates what Node will resolve from each workspace, not
   // merely the versions represented somewhere in a lockfile.
   assertWorkspaceDependencySatisfaction({ root: cwd });
-  const results = allowlist.entries
-    .filter(
-      (entry) =>
-        entry.scope === 'root' && !optionalPackageMayBeAbsent(cwd, entry),
-    )
-    .map((entry) => verifyArtifact(cwd, entry));
-  for (const result of results)
+  const results = verifyLifecycleArtifacts(allowlist, { cwd });
+  for (const result of results) {
+    if (result.degraded) continue;
     console.log(
       `[dependency-lifecycle] ${result.skipped ? 'NOT_APPLICABLE' : 'artifact'} ${result.detail}`,
     );
+  }
   return { allowlist, purls: expectedLifecyclePurls(allowlist) };
 }
 
