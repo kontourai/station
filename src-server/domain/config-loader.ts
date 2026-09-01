@@ -20,6 +20,7 @@ import {
   type ToolDef,
   type ToolMetadata,
 } from '@kontourai/station-contracts/tool';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { type FSWatcher, watch } from 'chokidar';
 import {
   type AppConfigLaunchabilitySnapshot,
@@ -81,7 +82,6 @@ import {
 import { validator } from './validator.js';
 
 const logger = createLogger({ name: 'config-loader' });
-const APP_CONFIG_MUTATION_MAX_ATTEMPTS = 8;
 const INTEGRATION_POLICY_MAX_BYTES = 2 * 1024 * 1024;
 export type IntegrationPolicySnapshot = Readonly<{
   id: string;
@@ -359,51 +359,45 @@ export class ConfigLoader {
   ): Promise<AppConfig> {
     if (this.enforceHomeSchema) await this.ensureHomeSchema();
     return this.serializeAppMutation(async () => {
+      const path = join(this.projectHomeDir, 'config', 'app.json');
+      await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+      const release = await acquireFileMutationLockAsync(`${path}.mutation`);
       this.beginInternalAppMutation();
       try {
-        for (
-          let attempt = 0;
-          attempt < APP_CONFIG_MUTATION_MAX_ATTEMPTS;
-          attempt += 1
+        // Every cooperating Station writer owns this exact file authority
+        // before it reads. A peer therefore waits and derives from the latest
+        // bytes; an uncoordinated edit detected inside this window is a real
+        // conflict, not a retryable stale read that may overwrite that edit.
+        await loadAppConfigFile(this.projectHomeDir, {
+          mutationLockHeld: true,
+        });
+        const sourceSnapshot = this.stableAppConfigFileSnapshot(path);
+        const existing = await loadAppConfigFile(this.projectHomeDir, {
+          mutationLockHeld: true,
+        });
+        if (
+          sourceSnapshot.signature !==
+            (await appConfigFileSignature(this.projectHomeDir)) ||
+          sourceSnapshot.fingerprint !== this.appConfigFingerprint(existing)
         ) {
-          try {
-            await loadAppConfigFile(this.projectHomeDir);
-            const path = join(this.projectHomeDir, 'config', 'app.json');
-            const sourceSnapshot = this.stableAppConfigFileSnapshot(path);
-            const existing = await loadAppConfigFile(this.projectHomeDir);
-            if (
-              sourceSnapshot.signature !==
-                (await appConfigFileSignature(this.projectHomeDir)) ||
-              sourceSnapshot.fingerprint !== this.appConfigFingerprint(existing)
-            ) {
-              throw new AppConfigConflictError();
-            }
-            const updates = mutate(structuredClone(existing));
-            // An explicit null/undefined in `updates` clears non-nullable
-            // fields instead of assigning a value AJV would reject.
-            const updated = mergeAppConfigUpdate(existing, updates);
-            if (
-              this.appConfigFingerprint(updated) === sourceSnapshot.fingerprint
-            ) {
-              return existing;
-            }
-            await saveAppConfigFile(this.projectHomeDir, updated, {
-              expectedSourceSignature: sourceSnapshot.signature,
-            });
-            this.recordInternalAppCommit(updated);
-            return updated;
-          } catch (error) {
-            if (
-              !(error instanceof AppConfigConflictError) ||
-              attempt === APP_CONFIG_MUTATION_MAX_ATTEMPTS - 1
-            ) {
-              throw error;
-            }
-          }
+          throw new AppConfigConflictError();
         }
-        throw new AppConfigConflictError();
+        const updates = mutate(structuredClone(existing));
+        // An explicit null/undefined in `updates` clears non-nullable
+        // fields instead of assigning a value AJV would reject.
+        const updated = mergeAppConfigUpdate(existing, updates);
+        if (this.appConfigFingerprint(updated) === sourceSnapshot.fingerprint) {
+          return existing;
+        }
+        await saveAppConfigFile(this.projectHomeDir, updated, {
+          expectedSourceSignature: sourceSnapshot.signature,
+          mutationLockHeld: true,
+        });
+        this.recordInternalAppCommit(updated);
+        return updated;
       } finally {
         this.endInternalAppMutation();
+        await release();
       }
     });
   }

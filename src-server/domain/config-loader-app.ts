@@ -122,10 +122,20 @@ async function readAppConfigBounded(path: string): Promise<string> {
   }
 }
 
+export interface AppConfigFileMutationOptions {
+  expectedSourceSignature?: string | null;
+  /**
+   * The caller already owns this app file's mutation lock. This is only for
+   * ConfigLoader's read-derive-write authority, so load-time migration can
+   * persist without trying to acquire its own non-reentrant lock.
+   */
+  mutationLockHeld?: boolean;
+}
+
 export async function saveAppConfigFile(
   projectHomeDir: string,
   config: AppConfig,
-  options: { expectedSourceSignature?: string | null } = {},
+  options: AppConfigFileMutationOptions = {},
 ): Promise<void> {
   validator.validateAppConfig(config);
   assertSafeAppConfig(config);
@@ -147,10 +157,7 @@ export async function saveAppConfigFile(
     } finally {
       await temporary.close();
     }
-    // Async acquisition (archive#2646): a contended cross-process lock wait must not
-    // freeze the server's event loop. The held section stays synchronous.
-    const release = await acquireFileMutationLockAsync(`${path}.mutation`);
-    try {
+    const commit = (): void => {
       if (
         Object.hasOwn(options, 'expectedSourceSignature') &&
         appConfigFileSignatureSync(projectHomeDir) !==
@@ -159,6 +166,16 @@ export async function saveAppConfigFile(
         throw new AppConfigConflictError();
       }
       renameSync(temporaryPath, path);
+    };
+    if (options.mutationLockHeld) {
+      commit();
+      return;
+    }
+    // Async acquisition (archive#2646): a contended cross-process lock wait must not
+    // freeze the server's event loop. The held section stays synchronous.
+    const release = await acquireFileMutationLockAsync(`${path}.mutation`);
+    try {
+      commit();
     } finally {
       await release();
     }
@@ -169,6 +186,7 @@ export async function saveAppConfigFile(
 
 export async function loadAppConfigFile(
   projectHomeDir: string,
+  options: Pick<AppConfigFileMutationOptions, 'mutationLockHeld'> = {},
 ): Promise<AppConfig> {
   const path = getAppConfigPath(projectHomeDir);
   for (let attempt = 0; attempt < APP_CONFIG_LOAD_MAX_ATTEMPTS; attempt += 1) {
@@ -195,6 +213,7 @@ export async function loadAppConfigFile(
       try {
         await saveAppConfigFile(projectHomeDir, defaultConfig, {
           expectedSourceSignature: null,
+          mutationLockHeld: options.mutationLockHeld,
         });
         return defaultConfig;
       } catch (error) {
@@ -261,6 +280,7 @@ export async function loadAppConfigFile(
     try {
       await saveAppConfigFile(projectHomeDir, data, {
         expectedSourceSignature: sourceSignature,
+        mutationLockHeld: options.mutationLockHeld,
       });
       return data;
     } catch (error) {
