@@ -1,0 +1,11 @@
+{
+  "kind": "station.nightly-fleet-staging-plan/v1",
+  "requiredVariants": ["portable-server"],
+  "requiredArtifacts": [
+    "station-nightly-portable.tar.gz",
+    "station-nightly-portable.tar.gz.sha256",
+    "station-nightly-portable-manifest.json",
+    "portable-build-check.json",
+    "portable-sbom.cdx.json"
+  ]
+}

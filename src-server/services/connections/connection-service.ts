@@ -1263,54 +1263,48 @@ export class ConnectionService {
     }
     const runtimes = inspection.connections;
 
-    // Station's managed engine runs an agent on whatever Model connection it
-    // uses, so a managed runtime is usable whenever ANY LLM Model connection is
-    // ready — it isn't Bedrock-specific. Without this, the managed runtime
-    // inherits Bedrock's "missing prerequisites" and reports "Setup required"
-    // on a perfectly working creds-free Ollama setup. (Bedrock's own readiness
-    // still surfaces on the Bedrock *model* connection.)
     const hasReadyModel = models.some(
       (model) =>
         model.enabled &&
         model.capabilities.includes('llm') &&
         model.status === 'ready',
     );
-    const availableRuntimes = hasReadyModel
-      ? runtimes.map((runtime) =>
-          runtime.config?.engineId === 'station' &&
-          runtime.enabled &&
-          runtime.status === 'missing_prerequisites'
-            ? {
-                ...runtime,
-                status: 'ready' as ConnectionStatus,
-                config: {
-                  ...runtime.config,
-                  readinessReason:
-                    'Station’s engine runs on an available model connection.',
+    const projected = runtimes.map((runtime) => {
+      const engineRuntime =
+        runtime.config.provider === 'station-agent'
+          ? {
+              ...runtime,
+              status: hasReadyModel
+                ? ('ready' as const)
+                : ('missing_prerequisites' as const),
+              config: {
+                ...runtime.config,
+                readinessReason: hasReadyModel
+                  ? 'Station’s engine has an available model connection.'
+                  : 'Station’s engine requires an available model connection.',
+              },
+              prerequisites: [
+                {
+                  id: 'station-model-connection',
+                  name: 'Model connection',
+                  description:
+                    'Station requires at least one ready model connection.',
+                  status: hasReadyModel
+                    ? ('installed' as const)
+                    : ('missing' as const),
+                  category: 'required' as const,
                 },
-                // The runtime is usable via an available model, so its own provider
-                // prerequisites (e.g. Bedrock credentials) are no longer blocking.
-                // Surface them as optional rather than a missing "required" item
-                // that reads as broken on an otherwise-working creds-free setup.
-                prerequisites: runtime.prerequisites.map((prereq) =>
-                  prereq.category === 'required' && prereq.status === 'missing'
-                    ? { ...prereq, category: 'optional' as const }
-                    : prereq,
-                ),
-              }
-            : runtime,
-        )
-      : runtimes;
-
-    const projected = availableRuntimes.map((runtime) => {
-      const provider = runtime.config.provider;
+              ],
+            }
+          : runtime;
+      const provider = engineRuntime.config.provider;
       const failure =
         typeof provider === 'string'
           ? this.runtimeAuthHealth?.getFailure(provider)
           : null;
       const projected = failure
-        ? applyRuntimeAuthenticationFailure(runtime, failure)
-        : runtime;
+        ? applyRuntimeAuthenticationFailure(engineRuntime, failure)
+        : engineRuntime;
       return this.withReadinessEvidence(
         projected,
         this.runtimeConnectionFingerprint(

@@ -132,7 +132,7 @@ export interface DockShellChrome {
 
 /**
  * The single owner of dock CHROME — geometry, snap state, placement,
- * drag/resize wiring and the dock.toggle/dock.maximize shortcuts. Every
+ * drag/resize wiring and the dock.maximize shortcut. Every
  * occupant of the ambient dock (Chat, Home, Activity) reads the SAME instance
  * through `DockShell`; a full-screen Chat placement (`ChatWorkspacePane`
  * outside the ambient dock) gets its own independent instance so cmd+D /
@@ -154,7 +154,7 @@ export interface DockShellChrome {
  * `ChatWorkspacePane` STILL calls this hook once locally (rules of hooks
  * forbid calling it conditionally), even though `DockShell` already owns the
  * real registration for that render — that local call must NOT also register
- * `dock.toggle`/`dock.maximize`, or the shortcut registry (last-register-wins,
+ * `dock.maximize`, or the shortcut registry (last-register-wins,
  * mount-order-only `useLayoutEffect`s) can end up dispatching through the
  * dead local closure after an occupant switch away and back, silently
  * desyncing from `DockShell`'s actual state. The ambient dock and a
@@ -507,23 +507,9 @@ export function useDockShellChrome({
     onDragStateChange: setIsDragging,
   });
 
-  // dock.toggle / dock.maximize: the two shortcuts every dock occupant
-  // shares. Gated on `registersDockShortcuts` (archive#4460) — a
-  // docked Chat's local instance of this hook passes false so it never
-  // fights `DockShell`'s real registration for the same ids.
-  useKeyboardShortcut(
-    'dock.toggle',
-    'd',
-    ['cmd'],
-    'Toggle dock',
-    useCallback(() => {
-      setDockState(!isDockOpen, isDockOpen ? false : isDockMaximized);
-    }, [isDockOpen, isDockMaximized, setDockState]),
-    registersDockShortcuts,
-    0,
-    DOCK_WHEN,
-  );
-
+  // Maximize remains region chrome. The visibility shortcut is registered by
+  // `RegionToolbarControls` from the surface registry's metadata, outside all
+  // surface renderers.
   useKeyboardShortcut(
     'dock.maximize',
     'm',
