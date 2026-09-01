@@ -203,6 +203,8 @@ describe('iOS simulator runtime smoke retry policy', () => {
     .split('\n').length;
   const classify = (log: string, launchLine: number | null = 10) =>
     classifyXcuiTestFailure(log, { launchLine });
+  // The orchestration takes a one-argument classifier, as main() passes it.
+  const classifyAttempt = (log: string) => classify(log);
 
   test('binds the retryable signature to the one pre-test app.launch() line', () => {
     expect(findPreTestLaunchLine(swiftSmoke)).toBe(realLaunchLine);
@@ -322,7 +324,7 @@ describe('iOS simulator runtime smoke retry policy', () => {
   test('runs a second attempt only after a retryable first attempt', async () => {
     const seen: number[] = [];
     const retried = await runAttemptsWithLaunchRetry({
-      classify,
+      classify: classifyAttempt,
       attempt: async (index: number) => {
         seen.push(index);
         return index === 1
@@ -357,7 +359,7 @@ describe('iOS simulator runtime smoke retry policy', () => {
 
     seen.length = 0;
     const terminal = await runAttemptsWithLaunchRetry({
-      classify,
+      classify: classifyAttempt,
       attempt: async (index: number) => {
         seen.push(index);
         return { status: 65, log: `${startupAssertionLine}\n${failedTail}` };
@@ -373,7 +375,7 @@ describe('iOS simulator runtime smoke retry policy', () => {
   test('stops after the second attempt even when it times out again', async () => {
     const seen: number[] = [];
     const outcome = await runAttemptsWithLaunchRetry({
-      classify,
+      classify: classifyAttempt,
       attempt: async (index: number) => {
         seen.push(index);
         return { status: 65, log: `${launchTimeoutLine}\n${failedTail}` };
@@ -392,7 +394,7 @@ describe('iOS simulator runtime smoke retry policy', () => {
   test('maxAttempts 1 never retries even a retryable failure', async () => {
     const seen: number[] = [];
     const outcome = await runAttemptsWithLaunchRetry({
-      classify,
+      classify: classifyAttempt,
       maxAttempts: 1,
       attempt: async (index: number) => {
         seen.push(index);
@@ -407,7 +409,7 @@ describe('iOS simulator runtime smoke retry policy', () => {
   test('a passing first attempt never runs a second', async () => {
     const seen: number[] = [];
     const outcome = await runAttemptsWithLaunchRetry({
-      classify,
+      classify: classifyAttempt,
       attempt: async (index: number) => {
         seen.push(index);
         return { status: 0, log: 'Test Suite passed' };
