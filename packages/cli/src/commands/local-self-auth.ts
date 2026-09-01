@@ -324,10 +324,12 @@ export async function selfAuthorizeLocalProfile(
  * unauthenticated, which fails exactly as it did before this existed.
  *
  * Beyond candidacy, healing requires `setupSource === 'local'` — the binding
- * must be one `station setup local` itself created. This is the CLI's closest
- * available analogue of the desktop's runtime-ownership check (see the module
- * doc for the divergence): a hand-authored or imported profile that merely
- * points at a loopback port never triggers a background exchange.
+ * must claim setup-local provenance. The field is a stored string, not proof
+ * of who wrote it (profiles.json is user-authored; that adversary is already
+ * the same-user arbitrary one the server route's threat model accepts), so
+ * this is the CLI's closest available analogue of the desktop's
+ * runtime-ownership check (see the module doc for the divergence): a profile
+ * that does not claim it never triggers a background exchange.
  */
 export function createLocalSelfHealCredentialResolver(
   stationName: string,
