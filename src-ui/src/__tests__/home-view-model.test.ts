@@ -715,7 +715,11 @@ describe('buildHomeWorkItems', () => {
       agents: [],
       sessions: [
         {
-          threadId: 'thread-virtual',
+          // This opaque execution id is intentionally distinct from both the
+          // visible Codex engine and the public assigned-agent slug. If Home
+          // falls back to its internal session identity, the assertion below
+          // must fail instead of mistaking a valid Codex label for a leak.
+          threadId: 'codex-runtime',
           provider: 'codex',
           assignedAgentSlug: 'codex',
           status: 'ready',
@@ -742,7 +746,7 @@ describe('buildHomeWorkItems', () => {
     );
     expect(
       tasks.map((task) => `${task.title} ${task.agentLabel}`).join(' '),
-    ).not.toContain('codex');
+    ).not.toContain('codex-runtime');
   });
 
   test('shows a durable Task once while removing only exactly correlated chats and sessions', () => {
