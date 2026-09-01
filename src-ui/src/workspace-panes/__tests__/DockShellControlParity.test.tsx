@@ -26,9 +26,13 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { RegionToolbarControls } from '../../components/header/RegionToolbarControls';
-import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
+import {
+  KeyboardShortcutsProvider,
+  useShortcutRegistry,
+} from '../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../contexts/NavigationContext';
 import { navigationStore } from '../../contexts/navigation-store';
 import { RegionModelProvider } from '../../contexts/RegionModelContext';
@@ -100,6 +104,11 @@ function renderHost(
     <KeyboardShortcutsProvider>
       <NavigationProvider>
         <RegionModelProvider>
+          <ShortcutProbe
+            onReady={(registry) => {
+              shortcutRegistry = registry;
+            }}
+          />
           <RegionToolbarControls />
           <AmbientChatDockPaneHost
             renderChatPane={(instance) => (
@@ -114,6 +123,8 @@ function renderHost(
     </KeyboardShortcutsProvider>,
   );
 }
+
+let shortcutRegistry: ReturnType<typeof useShortcutRegistry> | null = null;
 
 async function dockedAction(): Promise<WorkspacePaneDockAction> {
   const published: (WorkspacePaneDockAction | null)[] = [];
@@ -156,7 +167,51 @@ function expectFullDockControls(occupantName: string) {
   ).toBeTruthy();
 }
 
+/**
+ * The registry probe exists so a test can drive `dock.toggle` through the same
+ * channel ⌘D does, rather than clicking the button and hoping the binding is
+ * wired. #1202 shipped a dead ⌘D past 175 green tests because nothing ever
+ * exercised the shortcut id itself.
+ */
+function ShortcutProbe({
+  onReady,
+}: {
+  onReady: (registry: ReturnType<typeof useShortcutRegistry>) => void;
+}) {
+  const registry = useShortcutRegistry();
+  useEffect(() => {
+    onReady(registry);
+  }, [registry, onReady]);
+  return null;
+}
+
 describe('every ambient occupant gets the full dock chrome (station#4460)', () => {
+  test('the dock.toggle shortcut (cmd+D) collapses the real dock shell', async () => {
+    renderHost();
+    await waitFor(() => {
+      expect(document.querySelector('.chat-dock')).not.toBeNull();
+    });
+    await waitFor(() => {
+      expect(shortcutRegistry).not.toBeNull();
+    });
+    const toggle = (shortcutRegistry?.getAllShortcuts() ?? []).find(
+      (shortcut) => shortcut.id === 'dock.toggle',
+    );
+    expect(
+      toggle,
+      'dock.toggle must be registered by the shell chrome',
+    ).toBeTruthy();
+    expect(toggle?.key).toBe('d');
+    expect(toggle?.modifiers).toContain('cmd');
+    expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
+    act(() => {
+      toggle?.handler();
+    });
+    await waitFor(() => {
+      expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull();
+    });
+  });
+
   test('the real region control changes the real dock shell open state', async () => {
     renderHost();
     await waitFor(() => {
