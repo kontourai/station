@@ -12,7 +12,26 @@
  *  - status dot states render correctly
  */
 import { expect, test } from '@playwright/test';
+import type { Locator } from '@playwright/test';
 import { requireE2EOperatorCredential } from './helpers/e2e-operator-credential';
+
+/**
+ * Per-connection actions (Edit/Check/Forget) live behind a "More actions"
+ * overflow menu, not as standalone title-attributed buttons
+ * (`ConnectionListPanel.tsx` station#4512 review M6). Open it and return the
+ * menu scoped to this connection so its menuitems can be clicked.
+ *
+ * Lifted from `tests/connect-remote-auth-recovery.spec.ts` (station#1140,
+ * not yet on `main` as of this fix) rather than reinvented — two independent
+ * copies of the same navigation is how these drift apart. If that PR lands
+ * first, prefer importing its helper instead of keeping this local copy.
+ */
+async function openConnectionActionsMenu(scope: Locator, name: string) {
+  await scope
+    .getByRole('button', { name: `More actions for ${name}`, exact: true })
+    .click();
+  return scope.getByRole('menu', { name: `Actions for ${name}` });
+}
 
 const STATUS_READY = JSON.stringify({
   ready: true,
@@ -376,10 +395,13 @@ test.describe('Connection Manager Modal', () => {
   test('can edit a connection', async ({ page }) => {
     await page.getByRole('button', { name: /^Manage Stations/ }).click();
     await expect(page.getByRole('heading', { name: 'Stations' })).toBeVisible();
+    const dialog = page.getByRole('dialog');
 
-    // Click the edit button (✎)
-    await page
-      .getByRole('button', { name: 'Edit Station', exact: true })
+    // Edit/Check reachability/Forget live behind the row's "More actions"
+    // overflow menu, not standalone title-attributed buttons
+    // (ConnectionListPanel.tsx station#4512 review M6).
+    await (await openConnectionActionsMenu(dialog, 'Dev Server'))
+      .getByRole('menuitem', { name: 'Edit Station', exact: true })
       .click();
 
     // Edit form should appear with pre-filled values
@@ -390,18 +412,13 @@ test.describe('Connection Manager Modal', () => {
 
     // Change the name
     await nameInput.fill('Home Lab');
-    await page
-      .getByRole('dialog')
-      .getByRole('button', { name: 'Save', exact: true })
-      .click();
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click();
 
     // Updated name should appear. The row's `Select <name>` control is a
     // stable handle — a bare `div` `hasText` match is ambiguous (station#994
     // nests the name in two elements) and one DOM change from breaking.
     await expect(
-      page
-        .getByRole('dialog')
-        .getByRole('button', { name: 'Select Home Lab', exact: true }),
+      dialog.getByRole('button', { name: 'Select Home Lab', exact: true }),
     ).toBeVisible();
   });
 
@@ -424,12 +441,19 @@ test.describe('Connection Manager Modal', () => {
       .getByRole('button', { name: 'Back' })
       .click();
 
-    // Modal is still open — the × buttons map to remove. ToDelete row has buttons [↻, ✎, ×]
-    // Find all × buttons with title="Remove" and click the last one (ToDelete is the second row)
-    const removeButtons = page.locator('button[title="Forget Station"]');
-    await removeButtons.last().click();
+    // Modal is still open. Forget lives behind the row's "More actions"
+    // overflow menu (ConnectionListPanel.tsx station#4512 review M6), and
+    // forgetting is destructive so it arms a second, explicit Confirm step
+    // rather than removing on the first click.
+    const dialog = page.getByRole('dialog');
+    await (await openConnectionActionsMenu(dialog, 'ToDelete'))
+      .getByRole('menuitem', { name: 'Forget Station', exact: true })
+      .click();
+    await dialog
+      .getByRole('button', { name: 'Confirm forgetting ToDelete', exact: true })
+      .click();
 
-    await expect(page.locator('text=ToDelete')).not.toBeVisible();
+    await expect(page.getByText('ToDelete')).not.toBeVisible();
   });
 
   test('modal closes when clicking the backdrop', async ({ page }) => {
