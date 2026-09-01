@@ -51,14 +51,25 @@ describe('groupModelsByCanonicalIdentity', () => {
   });
 
   test('leaves unrecognised routes separate rather than matching them by name', () => {
-    // These two are the same model to a human reader. The curated map does not
-    // say so, so the picker must not either.
+    // These two are the same model to a human reader, and their ids share a
+    // long prefix. The curated map does not say so, so the picker must not
+    // either.
+    //
+    // The lookup names ANY id on purpose. Under the strict stub a fabricated
+    // grouping key fell through the "identified but unnamed" path and emitted
+    // separate routes -- the same output as not grouping at all -- so this
+    // assertion passed whether or not the key was honest. A fault injection
+    // keying on `name.slice(0, 6)` went undetected until this changed.
+    const namesAnything = (canonicalId: string) => ({
+      displayName: `Reviewed ${canonicalId}`,
+      verifiedAgainst: 'reviewed 2026-08-31',
+    });
     const sections = groupModelsByCanonicalIdentity(
       [
         route('claude-sonnet-4-5-20250929', 'Anthropic'),
         route('claude-sonnet-4.5', 'OpenRouter'),
       ],
-      reviewed,
+      namesAnything,
     );
     expect(sections.map((s) => s.kind)).toEqual(['route', 'route']);
   });
