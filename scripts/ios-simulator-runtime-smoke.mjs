@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -95,6 +101,55 @@ export function parseIosSmokeOptions(argv) {
     runtimeIdentifier: valueAfter(argv, '--runtime') ?? DEFAULT_RUNTIME,
     sourceSha: valueAfter(argv, '--source-sha'),
   };
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Classify one xcodebuild attempt's log. Only the exact XCUITest
+// infrastructure timeout that fires before the test body runs (the hosted
+// simulator taking longer than XCTest's fixed launch deadline to bring the
+// app up) is retryable, and only when it is the sole recorded failure. Any
+// other recorded test failure — an assertion, a later launch of the manager,
+// a loading/zoom regression — keeps the attempt terminal, as does an attempt
+// that recorded no test failure at all (a build or simulator error).
+export function classifyXcuiTestFailure(log, options = {}) {
+  const bundleId = options.bundleId ?? DEFAULT_BUNDLE_ID;
+  const recorded = [...String(log).matchAll(/^.*\.swift:\d+: error: .*$/gm)].map(
+    (match) => match[0],
+  );
+  if (recorded.length === 0) {
+    return { signature: 'no-recorded-test-failure', retryable: false };
+  }
+  const launchTimeout = new RegExp(
+    `: Failed to launch ${escapeRegExp(bundleId)}: Timed out attempting to launch app\\.`,
+  );
+  if (recorded.every((line) => launchTimeout.test(line))) {
+    return { signature: 'app-launch-timeout', retryable: true };
+  }
+  return { signature: 'test-failure', retryable: false };
+}
+
+// Runs attempts until one passes, retrying at most once and only when the
+// classifier says the previous attempt never reached the test body. Every
+// attempt is retained in the returned list so the receipt shows the retry
+// rather than hiding it.
+export async function runAttemptsWithLaunchRetry({
+  attempt,
+  classify = classifyXcuiTestFailure,
+  maxAttempts = 2,
+}) {
+  const attempts = [];
+  for (let index = 1; index <= maxAttempts; index += 1) {
+    const { status, log, ...rest } = await attempt(index);
+    const classification =
+      status === 0 ? { signature: 'passed', retryable: false } : classify(log);
+    attempts.push({ index, status, ...rest, ...classification });
+    if (status === 0) return { passed: true, attempts };
+    if (!classification.retryable) return { passed: false, attempts };
+  }
+  return { passed: false, attempts };
 }
 
 function printHelp() {
@@ -210,14 +265,18 @@ async function main(argv = process.argv.slice(2)) {
 
   let passed = false;
   let failure;
+  let attempts = [];
   const startedAt = Date.now();
-  try {
-    if (!wasBooted) run('xcrun', ['simctl', 'boot', device.udid]);
+  const bootAndInstall = () => {
     run('xcrun', ['simctl', 'bootstatus', device.udid, '-b']);
     run('xcrun', ['simctl', 'uninstall', device.udid, options.bundleId], {
       allowFailure: true,
     });
     run('xcrun', ['simctl', 'install', device.udid, app]);
+  };
+  try {
+    if (!wasBooted) run('xcrun', ['simctl', 'boot', device.udid]);
+    bootAndInstall();
 
     const xcodeDirectory = join(artifacts, 'xcode');
     mkdirSync(xcodeDirectory, { recursive: true, mode: 0o700 });
@@ -236,62 +295,99 @@ async function main(argv = process.argv.slice(2)) {
         env: { ...process.env, STATION_IOS_SMOKE_ROOT: root },
       },
     );
-    const resultBundle = join(artifacts, 'StationRuntimeSmoke.xcresult');
-    const test = run(
-      'xcodebuild',
-      [
-        'test',
-        '-project',
-        join(xcodeDirectory, 'StationRuntimeSmoke.xcodeproj'),
-        '-scheme',
-        'StationRuntimeSmoke',
-        '-destination',
-        `platform=iOS Simulator,id=${device.udid}`,
-        '-resultBundlePath',
-        resultBundle,
-      ],
-      { allowFailure: true },
-    );
-    writeArtifact(
-      join(artifacts, 'xcodebuild.log'),
-      `${test.stdout ?? ''}${test.stderr ?? ''}`,
-    );
-    if (existsSync(resultBundle)) {
-      const summary = run(
-        'xcrun',
-        [
-          'xcresulttool',
-          'get',
-          'test-results',
-          'summary',
-          '--path',
-          resultBundle,
-        ],
-        { allowFailure: true },
-      );
-      writeArtifact(
-        join(artifacts, 'xcresult-summary.json'),
-        summary.stdout || summary.stderr || '{}\n',
-      );
-      const attachmentDirectory = join(artifacts, 'xcresult-attachments');
-      mkdirSync(attachmentDirectory, { recursive: true, mode: 0o700 });
-      run(
-        'xcrun',
-        [
-          'xcresulttool',
-          'export',
-          'attachments',
-          '--path',
-          resultBundle,
-          '--output-path',
-          attachmentDirectory,
-        ],
-        { allowFailure: true },
-      );
-    }
-    if (test.status !== 0) {
+    const outcome = await runAttemptsWithLaunchRetry({
+      attempt: (index) => {
+        const attemptDirectory = join(artifacts, `attempt-${String(index)}`);
+        mkdirSync(attemptDirectory, { recursive: true, mode: 0o700 });
+        if (index > 1) {
+          // A launch timeout leaves the simulator in whatever state the slow
+          // launch reached. Retry from a fresh boot of the same exact device
+          // and a fresh install of the same exact app, never a substitute.
+          run('xcrun', ['simctl', 'shutdown', device.udid], {
+            allowFailure: true,
+          });
+          run('xcrun', ['simctl', 'boot', device.udid]);
+          bootAndInstall();
+        }
+        const attemptStartedAt = new Date().toISOString();
+        const resultBundle = join(attemptDirectory, 'StationRuntimeSmoke.xcresult');
+        const test = run(
+          'xcodebuild',
+          [
+            'test',
+            '-project',
+            join(xcodeDirectory, 'StationRuntimeSmoke.xcodeproj'),
+            '-scheme',
+            'StationRuntimeSmoke',
+            '-destination',
+            `platform=iOS Simulator,id=${device.udid}`,
+            '-resultBundlePath',
+            resultBundle,
+          ],
+          { allowFailure: true },
+        );
+        const log = `${test.stdout ?? ''}${test.stderr ?? ''}`;
+        writeArtifact(join(attemptDirectory, 'xcodebuild.log'), log);
+        if (existsSync(resultBundle)) {
+          const summary = run(
+            'xcrun',
+            [
+              'xcresulttool',
+              'get',
+              'test-results',
+              'summary',
+              '--path',
+              resultBundle,
+            ],
+            { allowFailure: true },
+          );
+          writeArtifact(
+            join(attemptDirectory, 'xcresult-summary.json'),
+            summary.stdout || summary.stderr || '{}\n',
+          );
+          const attachmentDirectory = join(
+            attemptDirectory,
+            'xcresult-attachments',
+          );
+          mkdirSync(attachmentDirectory, { recursive: true, mode: 0o700 });
+          run(
+            'xcrun',
+            [
+              'xcresulttool',
+              'export',
+              'attachments',
+              '--path',
+              resultBundle,
+              '--output-path',
+              attachmentDirectory,
+            ],
+            { allowFailure: true },
+          );
+        }
+        if (test.status !== 0) {
+          // Capture this attempt's simulator evidence before any retry resets
+          // the device; the run-level capture below only sees the last state.
+          captureDiagnostics({
+            artifacts: attemptDirectory,
+            bundleId: options.bundleId,
+            udid: device.udid,
+          });
+        }
+        return {
+          status: test.status,
+          log,
+          artifacts: attemptDirectory,
+          startedAt: attemptStartedAt,
+          finishedAt: new Date().toISOString(),
+        };
+      },
+    });
+    attempts = outcome.attempts;
+    if (!outcome.passed) {
+      const last = attempts[attempts.length - 1];
+      const lastLog = readFileSync(join(last.artifacts, 'xcodebuild.log'), 'utf8');
       throw new Error(
-        `iOS runtime XCUITest failed (${String(test.status)}):\n${String(test.stdout ?? test.stderr ?? '').slice(-8_000)}`,
+        `iOS runtime XCUITest failed (${String(last.status)}, ${last.signature}, attempt ${String(last.index)} of ${String(attempts.length)}):\n${lastLog.slice(-8_000)}`,
       );
     }
     passed = true;
@@ -315,6 +411,8 @@ async function main(argv = process.argv.slice(2)) {
     passed,
     failure: failure ?? null,
     artifacts,
+    attempts,
+    retried: attempts.length > 1,
   };
   writeArtifact(join(artifacts, 'receipt.json'), receipt);
   mkdirSync(options.artifacts, { recursive: true, mode: 0o700 });

@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
+  classifyXcuiTestFailure,
   parseIosSmokeOptions,
+  runAttemptsWithLaunchRetry,
   selectIosSimulator,
 } from '../ios-simulator-runtime-smoke.mjs';
 
@@ -110,7 +112,7 @@ describe('iOS simulator runtime smoke selection', () => {
     expect(calls).toHaveLength(4);
 
     const firstShellWait = swiftSmoke.indexOf(
-      'connect.waitForExistence(timeout: 30)',
+      'waitForStartupShell(connect, budget: 90)',
     );
     const secondDismissal = calls[1].index;
     const reactivation = swiftSmoke.indexOf('app.activate()', secondDismissal);
@@ -172,5 +174,141 @@ describe('iOS simulator runtime smoke selection', () => {
     );
     expect([...swiftSmoke.matchAll(/connect\.tap\(\)/g)]).toHaveLength(2);
     expect(swiftSmoke).not.toContain('while !addAddress.waitForExistence');
+  });
+});
+
+// Recorded-failure lines exactly as xcodebuild prints them on the hosted
+// macOS runner (path prefix shortened). The launch timeout is XCTest's own
+// infrastructure failure at `app.launch()`; the other two are assertions
+// inside the test body.
+const swiftPath = '/w/station/tests/ios-runtime-smoke/StationRuntimeSmokeTests.swift';
+const testCase =
+  '-[StationRuntimeSmokeTests.StationRuntimeSmokeTests testCleanInstallLeavesStartupForActionableConnectionState]';
+const launchTimeoutLine = `${swiftPath}:10: error: ${testCase} : Failed to launch io.kontourai.station: Timed out attempting to launch app.`;
+const startupAssertionLine = `${swiftPath}:27: error: ${testCase} : XCTAssertTrue failed - Station never left its startup surface for an actionable no-connection shell. Accessibility hierarchy:`;
+const managerAssertionLine = `${swiftPath}:71: error: ${testCase} : XCTAssertTrue failed - Add Station name input did not appear. Accessibility hierarchy:`;
+const failedTail = [
+  `Test Case '${testCase}' failed (50.383 seconds).`,
+  '\t Executed 1 test, with 1 failure (0 unexpected) in 50.383 (50.392) seconds',
+  '** TEST FAILED **',
+].join('\n');
+
+describe('iOS simulator runtime smoke retry policy', () => {
+  test('retries only the exact pre-test launch timeout', () => {
+    expect(
+      classifyXcuiTestFailure(`${launchTimeoutLine}\n${failedTail}`),
+    ).toEqual({ signature: 'app-launch-timeout', retryable: true });
+  });
+
+  test('keeps every recorded test-body failure terminal', () => {
+    for (const line of [startupAssertionLine, managerAssertionLine]) {
+      expect(classifyXcuiTestFailure(`${line}\n    Application, pid: 1\n${failedTail}`)).toEqual({
+        signature: 'test-failure',
+        retryable: false,
+      });
+    }
+    // A launch timeout alongside any other recorded failure is not the
+    // pre-test signature: the body ran, so the run is a real failure.
+    expect(
+      classifyXcuiTestFailure(
+        `${launchTimeoutLine}\n${startupAssertionLine}\n${failedTail}`,
+      ),
+    ).toEqual({ signature: 'test-failure', retryable: false });
+  });
+
+  test('does not retry a launch timeout recorded for a different bundle', () => {
+    const otherBundle = launchTimeoutLine.replace(
+      'io.kontourai.station',
+      'com.example.other',
+    );
+    expect(classifyXcuiTestFailure(`${otherBundle}\n${failedTail}`)).toEqual({
+      signature: 'test-failure',
+      retryable: false,
+    });
+  });
+
+  test('does not retry an attempt that recorded no test failure', () => {
+    expect(
+      classifyXcuiTestFailure(
+        'error: Unable to find a destination matching the provided destination specifier\n** TEST FAILED **',
+      ),
+    ).toEqual({ signature: 'no-recorded-test-failure', retryable: false });
+    // The timeout text outside a recorded `.swift:N: error:` line (for
+    // example quoted in a diagnostics dump) is not a recorded failure.
+    expect(
+      classifyXcuiTestFailure(
+        'Failed to launch io.kontourai.station: Timed out attempting to launch app.',
+      ),
+    ).toEqual({ signature: 'no-recorded-test-failure', retryable: false });
+  });
+
+  test('runs a second attempt only after a retryable first attempt', async () => {
+    const seen: number[] = [];
+    const retried = await runAttemptsWithLaunchRetry({
+      attempt: async (index: number) => {
+        seen.push(index);
+        return index === 1
+          ? { status: 65, log: `${launchTimeoutLine}\n${failedTail}`, artifacts: '/a/1' }
+          : { status: 0, log: 'Test Suite passed', artifacts: '/a/2' };
+      },
+    });
+    expect(seen).toEqual([1, 2]);
+    expect(retried).toEqual({
+      passed: true,
+      attempts: [
+        {
+          index: 1,
+          status: 65,
+          artifacts: '/a/1',
+          signature: 'app-launch-timeout',
+          retryable: true,
+        },
+        { index: 2, status: 0, artifacts: '/a/2', signature: 'passed', retryable: false },
+      ],
+    });
+
+    seen.length = 0;
+    const terminal = await runAttemptsWithLaunchRetry({
+      attempt: async (index: number) => {
+        seen.push(index);
+        return { status: 65, log: `${startupAssertionLine}\n${failedTail}` };
+      },
+    });
+    expect(seen).toEqual([1]);
+    expect(terminal.passed).toBe(false);
+    expect(terminal.attempts.map((entry: { signature: string }) => entry.signature)).toEqual([
+      'test-failure',
+    ]);
+  });
+
+  test('stops after the second attempt even when it times out again', async () => {
+    const seen: number[] = [];
+    const outcome = await runAttemptsWithLaunchRetry({
+      attempt: async (index: number) => {
+        seen.push(index);
+        return { status: 65, log: `${launchTimeoutLine}\n${failedTail}` };
+      },
+    });
+    expect(seen).toEqual([1, 2]);
+    expect(outcome.passed).toBe(false);
+    expect(outcome.attempts).toHaveLength(2);
+    expect(outcome.attempts.every((entry: { retryable: boolean }) => entry.retryable)).toBe(
+      true,
+    );
+  });
+
+  test('a passing first attempt never runs a second', async () => {
+    const seen: number[] = [];
+    const outcome = await runAttemptsWithLaunchRetry({
+      attempt: async (index: number) => {
+        seen.push(index);
+        return { status: 0, log: 'Test Suite passed' };
+      },
+    });
+    expect(seen).toEqual([1]);
+    expect(outcome).toEqual({
+      passed: true,
+      attempts: [{ index: 1, status: 0, signature: 'passed', retryable: false }],
+    });
   });
 });

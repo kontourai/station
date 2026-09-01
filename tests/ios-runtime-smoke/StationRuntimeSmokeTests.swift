@@ -25,7 +25,7 @@ final class StationRuntimeSmokeTests: XCTestCase {
 
         let connect = app.buttons["Connect to a Station"]
         XCTAssertTrue(
-            connect.waitForExistence(timeout: 30),
+            waitForStartupShell(connect, budget: 90),
             "Station never left its startup surface for an actionable no-connection shell. Accessibility hierarchy:\n\(app.debugDescription)"
         )
 
@@ -106,6 +106,29 @@ final class StationRuntimeSmokeTests: XCTestCase {
             accuracy: 1,
             "Focusing the address field changed the Add Station surface scale."
         )
+    }
+
+    /// One `waitForExistence(timeout: 30)` is not a 30-second budget on a slow
+    /// hosted simulator: each poll is a full accessibility snapshot of the
+    /// WKWebView, and a single snapshot has been observed to stall for 25 s,
+    /// so the wait overruns its own timeout inside a handful of polls and then
+    /// reports false while the very next snapshot (the failure dump) shows the
+    /// button present. Waiting in short slices re-queries the element each
+    /// time, so a stalled poll expires and a fresh snapshot decides. The total
+    /// budget stays finite: an app that genuinely never exposes the control
+    /// still fails here, and the wall time is bounded by the wait itself
+    /// because slices never start after the deadline.
+    private func waitForStartupShell(_ element: XCUIElement, budget: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(budget)
+        while true {
+            let remaining = deadline.timeIntervalSinceNow
+            if remaining <= 0 {
+                return element.exists
+            }
+            if element.waitForExistence(timeout: min(10, remaining)) {
+                return true
+            }
+        }
     }
 
     private func dismissSystemAlertIfPresent() {
