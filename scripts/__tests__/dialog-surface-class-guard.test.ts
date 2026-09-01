@@ -23,16 +23,18 @@ describe('dialog-surface-class guard source matching', () => {
         panelClassName="acp-add-dialog"
       >`;
     expect(extractDialogSurfaceClasses(source)).toEqual([
-      { prop: 'overlayClassName', token: 'acp-add-dialog__overlay' },
-      { prop: 'panelClassName', token: 'acp-add-dialog' },
+      { prop: 'overlayClassName', tokens: ['acp-add-dialog__overlay'] },
+      { prop: 'panelClassName', tokens: ['acp-add-dialog'] },
     ]);
   });
 
-  test('extracts every space-separated class in a multi-class literal', () => {
+  test('extracts every space-separated class in a multi-class literal as one group', () => {
     const source = `<ResponsiveDialogSurface overlayClassName="composer-popover-overlay composer-popover-overlay--start">`;
     expect(extractDialogSurfaceClasses(source)).toEqual([
-      { prop: 'overlayClassName', token: 'composer-popover-overlay' },
-      { prop: 'overlayClassName', token: 'composer-popover-overlay--start' },
+      {
+        prop: 'overlayClassName',
+        tokens: ['composer-popover-overlay', 'composer-popover-overlay--start'],
+      },
     ]);
   });
 
@@ -41,11 +43,11 @@ describe('dialog-surface-class guard source matching', () => {
     const source =
       '<ResponsiveDialogSurface overlayClassName={`station-dialog__overlay ${overlayClassName}`.trim()}>';
     expect(extractDialogSurfaceClasses(source)).toEqual([
-      { prop: 'overlayClassName', token: 'station-dialog__overlay' },
+      { prop: 'overlayClassName', tokens: ['station-dialog__overlay'] },
     ]);
   });
 
-  test('drops a token that is entirely a runtime interpolation', () => {
+  test('drops a group that is entirely a runtime interpolation', () => {
     const source =
       '<ResponsiveDialogSurface panelClassName={`station-dialog--${variant}`}>';
     expect(extractDialogSurfaceClasses(source)).toEqual([]);
@@ -76,8 +78,8 @@ describe('dialog-surface-class guard source matching', () => {
       }
     `;
     expect(extractDialogSurfaceClasses(source)).toEqual([
-      { prop: 'overlayClassName', token: 'first-overlay' },
-      { prop: 'overlayClassName', token: 'second-overlay' },
+      { prop: 'overlayClassName', tokens: ['first-overlay'] },
+      { prop: 'overlayClassName', tokens: ['second-overlay'] },
     ]);
   });
 
@@ -87,7 +89,7 @@ describe('dialog-surface-class guard source matching', () => {
       <ResponsiveDialogSurface overlayClassName="acp-add-dialog__overlay" />
     `;
     expect(extractDialogSurfaceClasses(source)).toEqual([
-      { prop: 'overlayClassName', token: 'acp-add-dialog__overlay' },
+      { prop: 'overlayClassName', tokens: ['acp-add-dialog__overlay'] },
     ]);
   });
 });
@@ -115,6 +117,59 @@ describe('dialog-surface-class guard definition checking', () => {
       () => '.foo.bar:hover { }',
     );
     expect(isDefined('bar')).toBe(true);
+  });
+
+  test('a comment merely naming a class is not a definition', () => {
+    // The second false-negative this gate was rewritten to fix, caught by
+    // its own fault-injection proof: deleting the real
+    // `.acp-add-dialog__overlay` rule still passed because
+    // ConversationHandoff.css's cross-reference comment names it verbatim.
+    const isDefined = buildDefinedClassChecker(
+      ['a.css'],
+      () => '/* see .foo for the pattern */\n.bar { }',
+    );
+    expect(isDefined('foo')).toBe(false);
+    expect(isDefined('bar')).toBe(true);
+  });
+});
+
+describe('dialog-surface-class guard "any token defined" rule', () => {
+  test('a value is safe when one of its several tokens is defined', () => {
+    // ComposerModeSheet.tsx's real shape: `composer-popover-panel` (the
+    // shared, always-opaque base, chat.css) plus a scoping modifier with no
+    // rule of its own.
+    const isDefined = buildDefinedClassChecker(
+      ['a.css'],
+      () => '.composer-popover-panel { background: red; }',
+    );
+    const violations = findUndefinedDialogSurfaceClasses(
+      ['f.tsx'],
+      {
+        readSource: () =>
+          '<ResponsiveDialogSurface panelClassName="composer-popover-panel composer-mode-sheet" />',
+        isDefined,
+      },
+    );
+    expect(violations).toEqual([]);
+  });
+
+  test('a value is a violation when none of its tokens are defined', () => {
+    const isDefined = buildDefinedClassChecker(['a.css'], () => '.other { }');
+    const violations = findUndefinedDialogSurfaceClasses(
+      ['f.tsx'],
+      {
+        readSource: () =>
+          '<ResponsiveDialogSurface overlayClassName="acp-add-dialog__overlay" />',
+        isDefined,
+      },
+    );
+    expect(violations).toEqual([
+      {
+        file: 'f.tsx',
+        prop: 'overlayClassName',
+        tokens: ['acp-add-dialog__overlay'],
+      },
+    ]);
   });
 });
 

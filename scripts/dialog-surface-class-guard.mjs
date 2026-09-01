@@ -40,6 +40,22 @@
 //    `` `station-dialog--${variant}` ``) is dropped rather than flagged —
 //    its final name depends on a runtime value this static scan cannot
 //    resolve, and guessing would be noise too.
+// 3. A prop VALUE with more than one class is a violation only when NONE of
+//    its tokens are defined — not when any single token in it lacks a rule.
+//    `SnoozeMenu.tsx`'s `overlayClassName="composer-popover-overlay
+//    composer-popover-overlay--start"` pairs a fully-styled base
+//    (`.composer-popover-overlay`: `position: fixed; inset: 0; …`,
+//    chat.css) with a horizontal-alignment modifier that need not exist on
+//    its own. `ComposerModeSheet.tsx`/`ChatDockMobileOverflowSheet.tsx` do
+//    the identical thing for `panelClassName` (`"composer-popover-panel
+//    composer-mode-sheet"` / `"composer-popover-panel
+//    chat-dock__mobile-overflow-panel"` — chat.css's own comment on
+//    `.composer-popover-panel` names both as the reason that class became
+//    every popover's default opaque surface, archive#992). One token in the
+//    value providing real geometry means the surface IS positioned/opaque
+//    regardless of whether a sibling modifier token also has a rule —
+//    checking every token independently here reintroduced exactly the noise
+//    this gate's scope note above says to avoid.
 //
 // Not "every className in src-ui has a rule" — unenforceable (dynamic/
 // composed class names, classes owned by a sibling published package's own
@@ -141,11 +157,13 @@ export function listScannedStyleFiles() {
 }
 
 /**
- * Every `(prop, token)` a DIRECT `<ResponsiveDialogSurface>`
- * `overlayClassName`/`panelClassName` value in this source references, one
- * entry per space-separated class name. A token that still contains `${` (a
- * composed class whose suffix is a runtime value) is dropped — see the
- * module docblock.
+ * Every DIRECT `<ResponsiveDialogSurface>` `overlayClassName`/
+ * `panelClassName` occurrence in this source, as `{ prop, tokens }` — tokens
+ * in the ORIGINAL order of the value, one entry per space-separated class
+ * name, grouped per prop occurrence rather than flattened (module docblock,
+ * point 3: a value is judged as a whole, not token by token). A token that
+ * still contains `${` (a composed class whose suffix is a runtime value) is
+ * dropped — see the module docblock, point 2.
  *
  * "Direct" is resolved positionally: for each matched prop, the nearest
  * preceding `<ResponsiveDialogSurface`/`<Dialog` open-tag is its owner. A
@@ -172,10 +190,11 @@ export function extractDialogSurfaceClasses(source) {
     const [, prop, literal, template] = match;
     if (ownerAt(match.index) !== 'ResponsiveDialogSurface') continue;
     const raw = literal ?? template ?? '';
-    for (const token of raw.split(/\s+/)) {
-      if (!token || token.includes('${')) continue;
-      found.push({ prop, token });
-    }
+    const tokens = raw
+      .split(/\s+/)
+      .filter((token) => token && !token.includes('${'));
+    if (tokens.length === 0) continue;
+    found.push({ prop, tokens });
   }
   return found;
 }
@@ -185,11 +204,23 @@ export function extractDialogSurfaceClasses(source) {
  * — consistent with every other ratchet in this family — so it also matches
  * a class inside a compound selector (`.foo.bar`) or a `:is()`/`:has()`
  * group without needing to understand either. */
+/** Strips `/* ... *\/` CSS comments before the text is searched. Without
+ * this, a doc comment that merely NAMES a class as an example (this file's
+ * own module docblock does exactly that, and so does
+ * ConversationHandoff.css's cross-reference to `.acp-add-dialog__overlay`)
+ * reads as a definition — caught live during this gate's own fault-injection
+ * proof, where deleting the real `.acp-add-dialog__overlay` rule still
+ * passed because the sibling file's comment mentioning it verbatim was
+ * enough to satisfy the substring check. */
+function stripCssComments(text) {
+  return text.replace(/\/\*[\s\S]*?\*\//g, '');
+}
+
 export function buildDefinedClassChecker(
   cssFiles,
   read = (file) => readFileSync(file, 'utf8'),
 ) {
-  const text = cssFiles.map((file) => read(file)).join('\n');
+  const text = stripCssComments(cssFiles.map((file) => read(file)).join('\n'));
   const cache = new Map();
   return function isDefined(token) {
     if (cache.has(token)) return cache.get(token);
@@ -200,6 +231,12 @@ export function buildDefinedClassChecker(
   };
 }
 
+/**
+ * A prop occurrence is a violation only when NONE of its tokens are defined
+ * (module docblock, point 3) and none are exempted. `exempt` matches on ANY
+ * token in the occurrence, so a single-class exemption
+ * (`station-basis-pane__inspector`) still clears its one-token value.
+ */
 export function findUndefinedDialogSurfaceClasses(
   files,
   {
@@ -211,13 +248,13 @@ export function findUndefinedDialogSurfaceClasses(
   const violations = [];
   for (const file of files) {
     const source = readSource(file);
-    for (const { prop, token } of extractDialogSurfaceClasses(source)) {
-      if (isDefined(token)) continue;
-      const isExempt = exempt.some(
-        (entry) => entry.file === file && entry.className === token,
+    for (const { prop, tokens } of extractDialogSurfaceClasses(source)) {
+      if (tokens.some((token) => isDefined(token))) continue;
+      const isExempt = tokens.some((token) =>
+        exempt.some((entry) => entry.file === file && entry.className === token),
       );
       if (isExempt) continue;
-      violations.push({ file, prop, token });
+      violations.push({ file, prop, tokens });
     }
   }
   return violations;
@@ -279,7 +316,7 @@ function main() {
     console.error('scripts/dialog-surface-class-guard.mjs with why.');
     for (const violation of violations) {
       console.error(
-        `  ${violation.file}: ${violation.prop}="${violation.token}"`,
+        `  ${violation.file}: ${violation.prop}="${violation.tokens.join(' ')}"`,
       );
     }
     process.exit(1);
