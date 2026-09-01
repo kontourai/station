@@ -364,6 +364,20 @@ Per `local-merge-readiness.md`, extended by measured practice:
   before any check; Node 24 via an explicit PATH (the ambient node may be
   22.x and engine-strict will refuse); **never `git stash` anywhere** (the
   stash stack is shared across all worktrees of this repo).
+- **Nothing runs for the first time on `main`: a main-only lane's inputs get
+  a dispatch proof before merge.** Some workflows never run on pull requests
+  by design (container smoke: `if: github.event_name != 'pull_request'`), so
+  a green PR proves nothing about them and `main` is where their failures are
+  discovered. Measured: the 390px pairing test had **never once passed in the
+  container harness** — its premise was only ever supplied by the e2e runner —
+  and it surfaced as a two-day `main` red the moment an unrelated docker fix
+  unmasked it (#917), starving a sibling required lane's capacity the whole
+  time (#925). The rule: a change touching the test files, harness scripts,
+  or workflow of a main-only lane runs that lane once via `workflow_dispatch`
+  on the branch, and the PR cites the run. The lane must also upload its
+  failure artifacts (`if: failure()`) — #917's investigation had zero
+  artifacts to read, which is why the misdiagnosis ("hosted-runner
+  environment") survived long enough to be baked into a workflow comment.
 - **A squash merge leaves no ancestry, so an absorbed branch looks unmerged.**
   A branch sat "unmerged" for hours after its content squash-landed under a
   different PR. Before re-applying anything, merge `origin/main` in and
