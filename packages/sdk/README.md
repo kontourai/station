@@ -87,7 +87,7 @@ mkdir src
 {
   "name": "hello-station",
   "version": "1.0.0",
-  "sdkVersion": "^0.4.0",
+  "sdkVersion": "^0.7.0",
   "displayName": "Hello Station",
   "description": "A Station layout plugin",
   "entrypoint": "src/index.tsx",

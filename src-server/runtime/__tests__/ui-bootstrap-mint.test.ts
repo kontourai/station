@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type HttpBindings } from '@hono/node-server';
 import {
+  DEFAULT_GRANT_PAIRING_SCOPE,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
@@ -138,6 +139,36 @@ describe('ui-bootstrap mint', () => {
       );
     expect((await exchange()).status).toBe(200);
     expect((await exchange()).status).toBe(403);
+  });
+
+  test('a redeemed bootstrap lands in the default grant, and that breadth is pinned', async () => {
+    // The seam is the redeem handler's `pairing.createOffer({ endpoint })`,
+    // which passes no scope: `createOffer` then applies
+    // DEFAULT_GRANT_PAIRING_SCOPE, and the stored device takes `offer.scope`.
+    // So the browser lands in the default grant — `terminal:operate` and
+    // `access:manage` included. That is deliberate and longstanding (the same
+    // session `station start`'s own fragment produces), but nothing asserted
+    // it: the CONSTANT is pinned in the contracts test, this caller's landing
+    // place was not. #1118 routes the tray's "Open API docs" through this path.
+    //
+    // Fault injection located the seam precisely, and two earlier attempts are
+    // worth recording so the next reader does not repeat them: a `scope` added
+    // to `pairing.exchange(...)` is ignored (scope comes from the offer), and
+    // one added inside the `isSameMachineBrowserCaller` branch is unreachable
+    // for an off-box redemption. Only `createOffer` moves this assertion.
+    const harness = createHarness();
+    const { token } = (await (
+      await mint(harness, harness.secret())
+    ).json()) as { token: string };
+    const redeemed = await harness.request(
+      PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
+      { token },
+      remote(),
+      { Origin: 'https://station.example.test' },
+    );
+    expect(redeemed.status).toBe(200);
+    const body = (await redeemed.json()) as { device: { scope: string } };
+    expect(body.device.scope).toBe(DEFAULT_GRANT_PAIRING_SCOPE);
   });
 
   test('a later mint invalidates the prior unspent token', async () => {

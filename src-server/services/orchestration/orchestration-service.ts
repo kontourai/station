@@ -16,6 +16,7 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   sessionDeliveryChannels,
 } from '@kontourai/station-contracts/engine-capability-matrix';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type {
   AgentRunSummary,
   ConversationHandoffStatusProjection,
@@ -4732,7 +4733,7 @@ export class OrchestrationService {
           const engineId = matrix?.engineId ?? engineIdForAdapter(adapter);
           steerMetricEngine = engineId;
           const engineName =
-            matrix?.displayName ?? adapter.metadata.displayName;
+            engineDisplayLabel(engineId) ?? adapter.metadata.displayName;
           if (!matrix?.midTurnSteer || !adapter.steerTurn) {
             const result: SteerTurnResult = {
               outcome: 'unsupported-engine',

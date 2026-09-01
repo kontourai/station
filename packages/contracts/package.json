@@ -56,6 +56,7 @@
     "./diff-comment": "./src/diff-comment.ts",
     "./datum-secret-reference": "./src/datum-secret-reference.ts",
     "./engine-capability-matrix": "./src/engine-capability-matrix.ts",
+    "./engine-display": "./src/engine-display.ts",
     "./enriched-agent": "./src/enriched-agent.ts",
     "./environment-security": "./src/environment-security.ts",
     "./external-monitor": "./src/external-monitor.ts",

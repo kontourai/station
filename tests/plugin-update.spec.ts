@@ -378,6 +378,18 @@ test.describe('Plugin Update Flow', () => {
           components: [],
           conflicts: [],
           dependencies: [],
+          // `usePluginManagementViewModel.confirmInstall` fail-closes ("no
+          // preview, no basis, no install", archive#4288) unless the preview
+          // itself carries `contentDigest` and `permissions` — without them
+          // it never calls `installMutation.mutate` at all, so `/api/plugins/
+          // install` (mocked below with the real `pendingConsent` this test
+          // means to exercise) was never reached and "Permission Request"
+          // never appeared. `pendingConsent: []` here means the PREVIEW finds
+          // nothing to ask about; the install response's own pendingConsent
+          // (checked post-install, permissions only knowable once installed)
+          // is what this test is actually about.
+          contentDigest: 'sha256-test-network-kit-digest',
+          permissions: { required: [], autoGranted: [], pendingConsent: [] },
         },
       }),
     );
@@ -557,7 +569,14 @@ test.describe('Plugin Update Flow', () => {
       const bounds = await confirm.getByRole('button', { name }).boundingBox();
       expect(bounds?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     }
-    await page.keyboard.press('Escape');
+    // A visible, focused panel is not sufficient: `inert` on an ancestor
+    // silently drops an element from hit testing as well as focus, so a
+    // click that never reaches the button would be indistinguishable from
+    // this assertion's absence. Click Cancel for real, through Playwright's
+    // actionability check (which fails loudly if something intercepts the
+    // pointer event), instead of dismissing with a keyboard Escape that
+    // never proves the button itself is reachable. #1131.
+    await confirm.getByRole('button', { name: 'Cancel' }).click();
     await expect(confirm).toBeHidden();
     await expect(removeTrigger).toBeFocused();
   });

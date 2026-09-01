@@ -11,6 +11,7 @@ import {
   engineId,
   isStationAgentIdentity,
 } from '@kontourai/station-contracts/agent-identity';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { EnrichedAgentProjection } from '@kontourai/station-contracts/enriched-agent';
 import { agentOwnershipFinding } from '@kontourai/station-contracts/project-reference-integrity';
 import { Hono } from 'hono';
@@ -345,7 +346,11 @@ export function createEnrichedAgentRoutes(deps: EnrichedAgentDeps) {
           // execution binding said codex and the label said otherwise.
           isStationAgentIdentity(metadata.slug) &&
             !spec.execution?.agentConnectionId
-          ? { engineId: engineId('station'), engineDisplayName: 'Station' }
+          ? {
+              engineId: engineId('station'),
+              engineDisplayName:
+                engineDisplayLabel(engineId('station')) ?? 'station',
+            }
           : {}),
     };
   }

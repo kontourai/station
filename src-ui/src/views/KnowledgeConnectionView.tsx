@@ -16,7 +16,7 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
-import { connectionTypeLabel } from '../utils/execution';
+import { modelProviderDisplayLabel } from '../utils/modelProviderDisplay';
 import {
   findModelConnectionById,
   getKnowledgeInventory,
@@ -225,7 +225,7 @@ export function KnowledgeConnectionView({
                     </span>
                   </>
                 }
-                description={connectionTypeLabel(vectorDb.type)}
+                description={modelProviderDisplayLabel(vectorDb.type)}
                 status={
                   <span
                     className={`knowledge-view__status knowledge-view__status--${vectorDb.enabled ? 'enabled' : 'disabled'}`}
@@ -380,7 +380,7 @@ export function KnowledgeConnectionView({
                     </span>
                   </>
                 }
-                description={connectionTypeLabel(embeddingProvider.type)}
+                description={modelProviderDisplayLabel(embeddingProvider.type)}
                 control={
                   <button
                     type="button"
