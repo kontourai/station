@@ -62,12 +62,37 @@ async function mint(
   secret: string,
   peer = loopback(),
   headers: Record<string, string> = {},
+  purpose?: string,
 ) {
   return harness.request(
     PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH,
-    { secret },
+    purpose === undefined ? { secret } : { secret, purpose },
     peer,
     headers,
+  );
+}
+
+async function mintedToken(
+  harness: ReturnType<typeof createHarness>,
+  purpose?: string,
+) {
+  const response = await mint(
+    harness,
+    harness.secret(),
+    loopback(),
+    {},
+    purpose,
+  );
+  expect(response.status).toBe(200);
+  return ((await response.json()) as { token: string }).token;
+}
+
+function redeem(harness: ReturnType<typeof createHarness>, token: string) {
+  return harness.request(
+    PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
+    { token },
+    remote(),
+    { Origin: 'https://station.example.test' },
   );
 }
 
@@ -169,6 +194,67 @@ describe('ui-bootstrap mint', () => {
     expect(redeemed.status).toBe(200);
     const body = (await redeemed.json()) as { device: { scope: string } };
     expect(body.device.scope).toBe(DEFAULT_GRANT_PAIRING_SCOPE);
+  });
+
+  test('minting for the API docs leaves a pending start link usable (#1259)', async () => {
+    // The regression #1118 shipped. There was ONE server-held capability, so
+    // the tray minting for the docs replaced an unspent `station start` link,
+    // and the user's terminal URL then failed with nothing on screen
+    // connecting it to the menu item they had clicked.
+    const harness = createHarness();
+    const launcher = await mintedToken(harness);
+    await mintedToken(harness, 'api-docs');
+
+    expect((await redeem(harness, launcher)).status).toBe(200);
+  });
+
+  test('minting a start link leaves a pending API-docs capability usable', async () => {
+    // The same collision in the other direction: opening the UI must not kill
+    // a docs capability already in flight.
+    const harness = createHarness();
+    const docs = await mintedToken(harness, 'api-docs');
+    await mintedToken(harness);
+
+    expect((await redeem(harness, docs)).status).toBe(200);
+  });
+
+  test('replace-on-mint still holds WITHIN a purpose', async () => {
+    // The rule the single slot was there to enforce is intact; it just applies
+    // per purpose now rather than across unrelated ones.
+    const harness = createHarness();
+    const first = await mintedToken(harness, 'api-docs');
+    const second = await mintedToken(harness, 'api-docs');
+    expect(first).not.toBe(second);
+
+    expect((await redeem(harness, first)).status).toBe(403);
+    expect((await redeem(harness, second)).status).toBe(200);
+  });
+
+  test('spending one purpose does not spend the other', async () => {
+    const harness = createHarness();
+    const launcher = await mintedToken(harness);
+    const docs = await mintedToken(harness, 'api-docs');
+
+    expect((await redeem(harness, docs)).status).toBe(200);
+    // The launcher capability was never presented, so it is still live.
+    expect((await redeem(harness, launcher)).status).toBe(200);
+  });
+
+  test('an unknown purpose is refused rather than given a slot', async () => {
+    // An open vocabulary would let a caller allocate unbounded slots and make
+    // "which capabilities are live" unanswerable.
+    const harness = createHarness();
+    const response = await mint(
+      harness,
+      harness.secret(),
+      loopback(),
+      {},
+      'anything-i-like',
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_request',
+    });
   });
 
   test('a later mint invalidates the prior unspent token', async () => {
