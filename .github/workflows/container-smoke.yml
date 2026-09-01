@@ -42,10 +42,10 @@ jobs:
     concurrency:
       group: container-smoke-${{ github.ref }}
       cancel-in-progress: true
-    # Pairing e2e timed out on github-hosted ubuntu-22.04 (run 33228038600):
-    # the container image built, then device-pairing-mobile never saw a
-    # Connections entry control within 15s. Keep this job on the docker +
-    # playwright fleet listener.
+    # The fleet listener provides docker + playwright. (Run 33228038600's
+    # device-pairing timeout, once blamed on the github-hosted environment
+    # here, was actually the anonymous-browser premise gap fixed in #917 —
+    # the runner move neither caused nor fixed it.)
     runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]
     timeout-minutes: 45
     steps:
@@ -85,6 +85,16 @@ jobs:
           STATION_RELEASE_REF: v0.0.0-preview.1
           STATION_RELEASE_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
         run: scripts/container-smoke.sh
+      # A red smoke with no trace or screenshot is undiagnosable from logs
+      # alone (#917's investigation had zero artifacts to read).
+      - name: Upload Playwright results on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-smoke-test-results-${{ github.run_id }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Remove isolated Docker client state
         if: always()
         run: |
