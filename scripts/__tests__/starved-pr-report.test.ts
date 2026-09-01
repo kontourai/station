@@ -91,6 +91,15 @@ describe('starved pull request detection', () => {
     expect(reportBody(42)).toContain(REPORT_MARKER);
     expect(reportBody(42)).toContain('gh pr merge 42 --auto --squash');
   });
+
+  // A push clears auto-merge, so "re-arm" without "after your last push" is
+  // advice that fails silently: the PR reads armed when checked and is starved
+  // a minute later. Observed on #1063.
+  test('the comment says to arm after the last push, and how to confirm', () => {
+    const body = reportBody(42);
+    expect(body).toContain('AFTER your last push');
+    expect(body).toContain('isInMergeQueue');
+  });
 });
 
 // Run as a real child process: the refusal is only reachable through the

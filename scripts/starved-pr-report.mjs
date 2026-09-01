@@ -89,6 +89,13 @@ Arm it when you are satisfied it is ready:
 gh pr merge ${number} --auto --squash
 \`\`\`
 
+**Arm it AFTER your last push, not before.** A push clears auto-merge, so arming first leaves you a pull request that reads armed when you check and is starved a minute later — worse than not arming, because it has already been ticked off. Confirm it took with \`isInMergeQueue\`, not \`autoMergeRequest\`:
+
+\`\`\`
+gh api graphql -f query='query{repository(owner:"kontourai",name:"station"){
+  pullRequest(number:${number}){isInMergeQueue mergeStateStatus autoMergeRequest{enabledAt}}}}'
+\`\`\`
+
 If it is held deliberately, say so and this will stop reporting it — either apply the \`${HOLD_LABEL}\` label, or add a line to the PR body naming the reason:
 
 \`\`\`
