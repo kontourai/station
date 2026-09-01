@@ -51,6 +51,7 @@ src-ui/src/components/flow/FlowRunConsole.tsx|covered|src-ui/src/__tests__/FlowR
 src-ui/src/components/flow/WorkflowPlanPanel.tsx|exception|Workflow plan actions; reviewed for incremental migration
 src-ui/src/components/header/Header.tsx|covered|tests/header-responsive.spec.ts
 src-ui/src/components/header/HeaderActions.tsx|covered|tests/header-responsive.spec.ts
+src-ui/src/components/header/RegionToolbarControls.tsx|covered|src-ui/src/components/header/__tests__/RegionToolbarControls.test.tsx drives the occupied-region toggle and both empty-region occupancy choices; the app-toolbar group renders one 40px control on phone breakpoints and only the model-available bottom region there
 src-ui/src/components/header/OverflowMenu.tsx|covered|tests/header-responsive.spec.ts
 src-ui/src/components/home/HomeActionSection.tsx|covered|tests/task-first-home.spec.ts desktop and Pixel 7 action geometry
 src-ui/src/components/home/HomeWorkRow.tsx|covered|src-ui/src/__tests__/HomeView.test.tsx shared row actions and tests/task-first-home.spec.ts Pixel 7 action geometry
@@ -92,7 +93,6 @@ src-ui/src/views/agent-editor/AgentEditorStateViews.tsx|covered|src-ui/src/__tes
 src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx|exception|Agent tool actions; reviewed for incremental migration
 src-ui/src/views/agent-editor/AgentsViewEditorPane.tsx|exception|Agent editor activation banner (ux/seed-agents-materialise): the 'Finishing setup' / activation-failure banner carries a Retry action. Behaviour is pinned by src-ui/src/views/agent-editor/__tests__ view-model tests (503 retry window, spent state, failure reason), but nothing measures the banner's rendered tap-target geometry under --bp-mobile; needs mobile action geometry evidence before this surface can be covered.
 src-ui/src/views/home/HomeRolePane.tsx|covered|src-ui/src/views/home/__tests__/HomeRolePane.test.tsx proves the fallback's Try again / Keep the built-in Home actions and the provenance bar's Use built-in Home action; .home-role-bar and .home-role-fallback__actions are flex with flex-wrap so the actions stack on narrow viewports, and the buttons inherit the inventory-wide mobile 44px action floor
-src-ui/src/views/home/HomeSurface.tsx|exception|station#4463 F6: the intro row's top-actions slot hosts WorkspacePaneDockAction (one compact button inheriting the global mobile floor); placement pinned by src-ui/src/views/home/__tests__/HomeWorkspacePaneDockActionPlacement.test.tsx and :empty renders nothing when the dock context is null. Marked exception: 390px geometry was pixel-verified in-lane (stacked below the intro) but no automated 390px fixture asserts it yet.
 src-ui/src/views/integrations/DeleteIntegrationModal.tsx|covered|ResponsiveSurfaceActions destructive confirmation contract
 src-ui/src/views/monitoring/MonitoringHeader.tsx|exception|Monitoring header actions; reviewed for incremental migration
 src-ui/src/views/plugin-management/InstallPreviewModal.tsx|covered|ResponsiveSurfaceActions long-content confirmation contract

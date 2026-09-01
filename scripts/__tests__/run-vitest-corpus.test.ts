@@ -65,10 +65,22 @@ describe('Vitest corpus runner', () => {
     expect(command).not.toContain('one.test.ts');
     expect(command.some((arg) => arg.startsWith('--exclude='))).toBe(true);
     expect(command).toContain('--shard=1/4');
-    expect(command).not.toContain('--no-file-parallelism');
+    expect(command).toContain('--reporter=default');
     expect(
-      buildVitestCommand(VITEST_CORPUS_GROUPS[1], ['process.test.ts']),
-    ).toContain('--maxWorkers=2');
+      command.some((arg) =>
+        arg
+          .replaceAll('\\', '/')
+          .endsWith('/scripts/vitest-inflight-reporter.mjs'),
+      ),
+    ).toBe(true);
+    expect(command).not.toContain('--no-file-parallelism');
+    const processHeavy = buildVitestCommand(VITEST_CORPUS_GROUPS[1], [
+      'process.test.ts',
+    ]);
+    expect(processHeavy).toContain('--maxWorkers=2');
+    expect(processHeavy.some((arg) => arg.startsWith('--reporter='))).toBe(
+      false,
+    );
     expect(
       buildVitestCommand(VITEST_CORPUS_GROUPS[2], ['exclusive.test.ts']),
     ).toEqual(
