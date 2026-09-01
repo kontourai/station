@@ -222,7 +222,6 @@ class ContinuationFakeAdapter implements ProviderAdapterShape {
       capabilities: ['agent-runtime'],
       engineId: engineId(provider),
       builtin: true,
-      executionClass: 'connected',
       // archive#980 shape (mirrors the orchestration-service test fake): the
       // private station-agent adapter carries the real engineId 'station'.
       ...(provider === 'station-agent'

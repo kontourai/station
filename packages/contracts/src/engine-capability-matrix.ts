@@ -934,11 +934,6 @@ export function sessionDeliveryChannels(
  *                                                     its type is its exact
  *                                                     provider/native selector;
  *                                                     otherwise UNKNOWN_EXTERNAL_ENGINE_MATRIX
- *   executionClass 'managed'                      -> station (deprecated
- *                                                     read-compat)
- *   executionClass 'connected' or any other id     -> that connection's type
- *                                                     (a matrix entry, else
- *                                                     UNKNOWN_EXTERNAL_ENGINE_MATRIX)
  *   otherwise (no id, no connection)               -> station
  */
 export function resolveEngineCapabilityMatrix(
@@ -954,7 +949,7 @@ export function resolveEngineCapabilityMatrix(
   }
   // Phase B: engineId (top-level, e.g. server RuntimeConnectionSummary; or
   // config-nested, e.g. AgentConnectionView/ConnectionConfig) is the
-  // canonical engine identity and wins over the deprecated executionClass
+  // canonical engine identity is authoritative
   // read-compat fields below when present.
   const rawExplicitEngineId =
     connection?.engineId ??
@@ -975,10 +970,15 @@ export function resolveEngineCapabilityMatrix(
     // from a different engine.
     return UNKNOWN_EXTERNAL_ENGINE_MATRIX;
   }
-  if (connection?.config?.executionClass === 'managed') {
-    return ENGINE_CAPABILITY_MATRICES.station;
-  }
-  if (connection?.config?.executionClass === 'connected' || agentConnectionId) {
+  // A stored `executionClass: 'connected'` still names an external engine even
+  // when no connection id reached this call. Collapsing the binaries removed
+  // the branch that read it, which sent those connections to the final
+  // `station` return below -- Station's capabilities, including declared
+  // control delivery, attributed to an engine Station does not run. The
+  // deprecated field is not authoritative for WHICH engine, so it resolves
+  // through the same external path as a connection id rather than a matrix of
+  // its own.
+  if (agentConnectionId || connection?.config?.executionClass === 'connected') {
     const type = connection?.type;
     if (type && ENGINE_CAPABILITY_MATRICES[type]) {
       return ENGINE_CAPABILITY_MATRICES[type];

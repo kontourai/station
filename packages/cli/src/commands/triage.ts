@@ -723,6 +723,9 @@ async function remoteFacts(
   try {
     // This helper is the only place a profile credential may be materialized;
     // triage itself never reads a keyring value or persists the flag/env value.
+    // A `true` return can also mean a local self-heal resolver was installed
+    // (#1098) rather than a credential in hand — if that heal later fails,
+    // the diagnostics request below surfaces it as an ordinary HTTP 401.
     if (!configureApiCredential(parsed, resolved.apiBase)) {
       return {
         status: 'unavailable',
