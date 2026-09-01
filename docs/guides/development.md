@@ -117,6 +117,26 @@ it owns dependencies that the root install must provide. Root-managed examples
 use the repository's `package-lock.json`; do not add a second lock inside the
 example.
 
+### Dependency install deadline
+
+The dependency bootstrap gives the inert `npm ci`/`npm install` step a finite
+deadline — twenty minutes on Windows, ten minutes elsewhere — so a wedged
+install fails instead of hanging forever. That default is not a claim about the
+slowest supported machine. A cold 1552-package install takes about eleven
+minutes on an ARM64 handset, which the fixed bound killed outright with
+`npm error signal SIGTERM` and an already-emptied `node_modules/`.
+
+Raise it on a host that is slow rather than stuck:
+
+```bash
+STATION_DEPENDENCY_INSTALL_TIMEOUT_MS=1800000 npm run dependencies:ci
+```
+
+The value is whole milliseconds and must be positive; a malformed value fails
+loudly rather than silently restoring the default. Lifecycle hooks keep their
+separate two-minute bound — the `node-pty` compile, the only one that builds
+native code, takes about 27 seconds on that same handset.
+
 ## Project Structure
 
 ```text

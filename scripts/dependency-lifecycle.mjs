@@ -80,14 +80,36 @@ function command(command, args, options = {}) {
   });
 }
 
-export function inertInstallTimeout(platform = process.platform) {
+export const INERT_INSTALL_TIMEOUT_ENV =
+  'STATION_DEPENDENCY_INSTALL_TIMEOUT_MS';
+
+export function inertInstallTimeout(
+  platform = process.platform,
+  env = process.env,
+) {
+  const override = env?.[INERT_INSTALL_TIMEOUT_ENV];
+  if (override !== undefined && override !== '') {
+    // Only a positive, finite, integral millisecond count is a timeout. A
+    // malformed value is a mistake in the caller's environment, not a licence
+    // to fall back to a default they believed they had replaced.
+    const parsed = Number(override);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0)
+      throw new Error(
+        `${INERT_INSTALL_TIMEOUT_ENV} must be a positive whole number of milliseconds; received ${JSON.stringify(override)}`,
+      );
+    return parsed;
+  }
   return platform === 'win32' ? 1_200_000 : 600_000;
 }
 
 function npmCommand(args, cwd = root) {
   // A cold workspace install can legitimately exceed the short lifecycle-hook
-  // bound. Windows cache misses may be slower; this remains finite at twenty
-  // minutes there and ten minutes elsewhere. Lifecycle hooks stay at 2 minutes.
+  // bound, and the default here is not a claim about the slowest supported
+  // machine: a cold 1552-package install measured 11 minutes on an ARM64
+  // handset, which the previous fixed ten-minute bound killed outright. The
+  // deadline stays finite so a wedged install still fails, and
+  // STATION_DEPENDENCY_INSTALL_TIMEOUT_MS raises it for a host that is merely
+  // slow rather than stuck. Lifecycle hooks stay at 2 minutes.
   command(process.execPath, [resolveNpmCli(), ...args], {
     cwd,
     timeout: inertInstallTimeout(),

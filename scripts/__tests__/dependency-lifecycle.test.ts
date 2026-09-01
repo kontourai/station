@@ -17,6 +17,7 @@ import { delimiter, join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import {
+  INERT_INSTALL_TIMEOUT_ENV,
   inertInstallTimeout,
   preflightInstalledLifecycle,
   resolveNpmCli,
@@ -770,9 +771,30 @@ describe('dependency lifecycle policy', () => {
   });
 
   it('gives Windows inert installs a bounded extended cache-miss deadline', () => {
-    expect(inertInstallTimeout('darwin')).toBe(600_000);
-    expect(inertInstallTimeout('linux')).toBe(600_000);
-    expect(inertInstallTimeout('win32')).toBe(1_200_000);
+    expect(inertInstallTimeout('darwin', {})).toBe(600_000);
+    expect(inertInstallTimeout('linux', {})).toBe(600_000);
+    expect(inertInstallTimeout('win32', {})).toBe(1_200_000);
+  });
+
+  it('lets a slow host raise the inert install deadline without losing it', () => {
+    const env = { [INERT_INSTALL_TIMEOUT_ENV]: '1800000' };
+    expect(inertInstallTimeout('linux', env)).toBe(1_800_000);
+    expect(inertInstallTimeout('win32', env)).toBe(1_800_000);
+  });
+
+  it('ignores an unset or empty override rather than treating it as zero', () => {
+    expect(inertInstallTimeout('linux', {})).toBe(600_000);
+    expect(
+      inertInstallTimeout('linux', { [INERT_INSTALL_TIMEOUT_ENV]: '' }),
+    ).toBe(600_000);
+  });
+
+  it('refuses a malformed override instead of silently restoring the default', () => {
+    for (const value of ['0', '-1', 'soon', '1.5', 'Infinity']) {
+      expect(() =>
+        inertInstallTimeout('linux', { [INERT_INSTALL_TIMEOUT_ENV]: value }),
+      ).toThrow(INERT_INSTALL_TIMEOUT_ENV);
+    }
   });
 
   shellLauncherTest(
