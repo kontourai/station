@@ -154,6 +154,12 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
     expect(chatCss).toMatch(
       /\n\.turn-footer__actions \{[^}]*align-self: flex-end;/s,
     );
+    // Replaces a `getComputedStyle(...).flexWrap` assertion that could not
+    // fail: vitest stubs CSS imports, and `nowrap` is the initial value, so it
+    // passed with no stylesheet loaded at all.
+    expect(chatCss).toMatch(
+      /\n\.turn-footer__actions \{[^}]*flex-wrap: nowrap;/s,
+    );
     const narrowRuleStart = chatCss.lastIndexOf(
       '.turn-footer .turn-footer__actions {',
     );
