@@ -9,7 +9,7 @@ interface EngineChipProps {
 /**
  * The quiet engine-identity chip (docs/design/agent-engine-unification.md
  * §8.1): one pill naming the engine that executes an agent — "Station",
- * "Claude Code", "Codex", "OpenCode - GLM-4.7". `engine === null` means the
+ * "Claude Code", "Codex", "OpenCode · GLM-4.7". `engine === null` means the
  * caller could not resolve the agent — render nothing rather than
  * guess.
  *
@@ -22,12 +22,12 @@ interface EngineChipProps {
 /**
  * What the chip WILL say. A caller deciding whether the chip repeats the
  * agent's name (Y1) has to compare against this, not against `engine.name`:
- * an ACP engine's chip is "OpenCode - GLM-4.7" while its `name` is
+ * an ACP engine's chip is "OpenCode · GLM-4.7" while its `name` is
  * "OpenCode", so comparing names dropped a chip that was carrying the model.
  */
 export function engineChipLabel(engine: EngineDescriptor | null): string {
   if (!engine) return '';
-  return engine.model ? `${engine.name} - ${engine.model}` : engine.name;
+  return engine.model ? `${engine.name} · ${engine.model}` : engine.name;
 }
 
 export function EngineChip({ engine, className = '' }: EngineChipProps) {
