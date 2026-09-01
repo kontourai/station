@@ -1,7 +1,11 @@
+import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH } from '@kontourai/station-contracts/environment-security';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { LocalSelfAuthOutcome } from '../commands/local-self-auth.js';
 import { readProfileStore, upsertProfile } from '../commands/profile-store.js';
 import { runSetupCommand } from '../commands/setup-command.js';
 
@@ -258,6 +262,154 @@ describe('station setup', () => {
       defaultProfile: null,
       profiles: [],
     });
+  });
+
+  it('self-authorizes the CLI against the installed local service (#1098)', async () => {
+    // A loopback stand-in for the freshly installed service, answering the
+    // server's real local-grant route with its real wire shapes.
+    const secret = randomBytes(32).toString('base64url');
+    const credential = `issued-${randomUUID()}`;
+    const exchanged: Array<Record<string, unknown>> = [];
+    const server = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on('data', (chunk: Buffer) => chunks.push(chunk));
+      request.on('end', () => {
+        if (
+          request.method === 'POST' &&
+          request.url === PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH
+        ) {
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+            secret?: string;
+          };
+          exchanged.push(body as Record<string, unknown>);
+          if (body.secret !== secret) {
+            response.writeHead(403, { 'Content-Type': 'application/json' });
+            response.end(JSON.stringify({ error: 'local_grant_forbidden' }));
+            return;
+          }
+          response.writeHead(200, { 'Content-Type': 'application/json' });
+          response.end(
+            JSON.stringify({
+              environmentId: 'env-local',
+              device: {
+                id: randomUUID(),
+                name: 'stub device',
+                scope: 'chat',
+                kind: 'device',
+                createdAt: Date.now(),
+              },
+              credential,
+            }),
+          );
+          return;
+        }
+        response.writeHead(404).end();
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', () => resolve()),
+    );
+    const port = (server.address() as { port: number }).port;
+    try {
+      const stored = new Map<string, string>();
+      const deps = {
+        ...dependencies(),
+        credentialStore: {
+          get: (ref: { id: string }) => stored.get(ref.id),
+          set: (ref: { id: string }, value: string) =>
+            void stored.set(ref.id, value),
+          delete: (ref: { id: string }) => void stored.delete(ref.id),
+          status: () => 'available' as const,
+        },
+      };
+      deps.installLocalService.mockImplementationOnce(async () => {
+        // The installed service materializes its per-boot secret with the
+        // server's exact bytes: 32 random bytes base64url, no newline, 0600.
+        mkdirSync(join(home, 'runtime'), { recursive: true, mode: 0o700 });
+        writeFileSync(join(home, 'runtime', 'local-grant.secret'), secret, {
+          encoding: 'utf8',
+          mode: 0o600,
+        });
+        return { rollback: vi.fn() };
+      });
+
+      await runSetupCommand(['local', `--port=${port}`], deps);
+
+      expect(exchanged).toHaveLength(1);
+      const profile = readProfileStore().profiles[0];
+      expect(profile?.credentialRef?.id).toMatch(/^local-grant:/);
+      expect(profile?.environmentId).toBe('env-local');
+      expect(stored.get(profile!.credentialRef!.id)).toBe(credential);
+      expect(deps.stdout).toHaveBeenCalledWith(
+        expect.stringContaining('CLI authorized'),
+      );
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('keeps a healthy install and prints the remedy when self-authorization fails', async () => {
+    const rollback = vi.fn();
+    const deps = {
+      ...dependencies(),
+      selfAuthorizeLocal: vi.fn(
+        async (): Promise<LocalSelfAuthOutcome> => ({
+          status: 'failed',
+          reason: 'the service is unreachable',
+        }),
+      ),
+    };
+    deps.installLocalService.mockImplementationOnce(async () => ({
+      rollback,
+    }));
+
+    await runSetupCommand(['local', '--port=43141'], deps);
+
+    expect(rollback).not.toHaveBeenCalled();
+    expect(readProfileStore()).toMatchObject({
+      defaultProfile: 'kontour',
+      profiles: [{ name: 'kontour', configurationState: 'configured' }],
+    });
+    expect(deps.stdout).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /not yet authorized \(the service is unreachable\).*station stations pair kontour/,
+      ),
+    );
+  });
+
+  it('keeps a healthy install even when self-authorization throws', async () => {
+    const rollback = vi.fn();
+    const deps = {
+      ...dependencies(),
+      selfAuthorizeLocal: vi.fn(async (): Promise<LocalSelfAuthOutcome> => {
+        throw new Error('keyring exploded');
+      }),
+    };
+    deps.installLocalService.mockImplementationOnce(async () => ({
+      rollback,
+    }));
+
+    await runSetupCommand(['local', '--port=43141'], deps);
+
+    expect(rollback).not.toHaveBeenCalled();
+    expect(readProfileStore().defaultProfile).toBe('kontour');
+    expect(deps.stdout).toHaveBeenCalledWith(
+      expect.stringContaining('not yet authorized (keyring exploded)'),
+    );
+  });
+
+  it('names pairing as the remedy for a non-loopback local endpoint', async () => {
+    const deps = dependencies();
+    await runSetupCommand(
+      ['local', '--name=lan', '--host=192.0.2.40', '--port=43142'],
+      deps,
+    );
+    expect(deps.stdout).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /cannot self-authorize a non-loopback endpoint.*station stations pair lan/,
+      ),
+    );
+    expect(readProfileStore().profiles[0]?.credentialRef).toBeUndefined();
   });
 
   it('preserves an existing default when an existing-target pairing is denied', async () => {
