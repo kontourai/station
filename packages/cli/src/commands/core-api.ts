@@ -10,6 +10,7 @@ import {
 } from '@kontourai/station-sdk/client';
 import { readActiveLocalStation } from './active-local-station.js';
 import { DEFAULT_SERVER_PORT } from './helpers.js';
+import { createLocalSelfHealCredentialResolver } from './local-self-auth.js';
 import {
   assertCredentialTransportAllowed,
   getProfileCredentialStore,
@@ -385,6 +386,21 @@ export function configureApiCredential(
           ? getProfileCredentialStore().get(stationCredential)
           : undefined);
   if (!credential) {
+    // #1098 self-heal: a saved Station with an installed loopback local
+    // service but no materialized credential (the state every pre-fix
+    // `station setup local` left behind, and the state after a lost keyring
+    // entry) can prove home possession via the per-boot local-grant secret.
+    // Install a one-shot resolver that performs that exchange before the
+    // first authenticated request; if it cannot, the request proceeds
+    // unauthenticated and fails exactly as it always did.
+    const selfHeal = resolved?.station
+      ? createLocalSelfHealCredentialResolver(resolved.station, origin)
+      : undefined;
+    if (selfHeal) {
+      assertCredentialTransportAllowed(origin);
+      setClientCredentialResolver(selfHeal);
+      return true;
+    }
     setClientCredentialResolver(undefined);
     return false;
   }

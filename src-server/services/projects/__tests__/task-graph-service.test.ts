@@ -115,7 +115,6 @@ class PinFakeAdapter implements ProviderAdapterShape {
     capabilities: ['agent-runtime'],
     engineId: engineId('claude'),
     builtin: true,
-    executionClass: 'connected',
     modelLaunch: {
       defaultAtStart: 'engine-selected',
       omissionAtResume: 'engine-selected',
