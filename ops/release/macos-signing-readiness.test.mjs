@@ -716,92 +716,105 @@ test('CLI requires exact mode-specific arguments and only asks each mode for the
   ).toMatchObject({ mode: 'cleanup' });
 });
 
-test('nightly stage-macos and release desktop-macos retain their signing-readiness topologies', () => {
+test('both macOS release paths retain the required signing-readiness topology and leave iOS untouched', () => {
+  for (const { file, jobName, deadline, combinedStep } of [
+    {
+      file: '.github/workflows/nightly-native-cohort.yml',
+      jobName: 'stage-macos',
+      deadline: 'macos_cohort_deadline',
+      combinedStep:
+        'Fail closed and build/sign/notarize macOS staging artifacts',
+    },
+    {
+      file: '.github/workflows/release.yml',
+      jobName: 'desktop-macos',
+      deadline: 'macos_release_deadline',
+      combinedStep: null,
+    },
+  ]) {
+    const workflow = load(readFileSync(file, 'utf8'));
+    const job = workflow.jobs[jobName];
+    expect(job, `${file} must retain ${jobName}`).toBeDefined();
+    const indexOfStep = (name) =>
+      job.steps.findIndex((step) => step.name === name);
+    const cleanup = indexOfStep('Cleanup macOS Developer ID keychain');
+    expect(job.steps[0]).toMatchObject({ id: deadline });
+    if (combinedStep) {
+      const combined = indexOfStep(combinedStep);
+      expect(combined).toBeGreaterThan(-1);
+      expect(combined).toBeLessThan(cleanup);
+      expect(job.steps[combined].env).toHaveProperty(
+        'APPLE_DEVELOPER_ID_SIGNING_IDENTITY',
+      );
+      const run = job.steps[combined].run;
+      const topology = [
+        'macos-signing-readiness.mjs prepare',
+        'npx tauri build --no-sign',
+        'macos-signing-readiness.mjs unlock',
+        'macos-signing-readiness.mjs probe',
+        'macos-notarized-artifacts.mjs',
+      ].map((command) => run.indexOf(command));
+      expect(topology.every((index) => index >= 0)).toBe(true);
+      expect(topology).toEqual(
+        [...topology].sort((left, right) => left - right),
+      );
+      expect(run).toContain(
+        `--deadline-epoch "\${{ steps.${deadline}.outputs.epoch }}"`,
+      );
+    } else {
+      const prepare = indexOfStep('Import macOS Developer ID certificate');
+      const build = indexOfStep('Build an unsigned macOS staging candidate');
+      const seal = job.steps.findIndex((step) =>
+        step.name?.startsWith('Seal, notarize'),
+      );
+      expect(prepare).toBeGreaterThan(-1);
+      expect(prepare).toBeLessThan(build);
+      expect(build).toBeLessThan(seal);
+      expect(seal).toBeLessThan(cleanup);
+      expect(job.steps[prepare].env).toHaveProperty(
+        'APPLE_DEVELOPER_ID_SIGNING_IDENTITY',
+      );
+      expect(job.steps[prepare].run).toContain(
+        `--deadline-epoch "\${{ steps.${deadline}.outputs.epoch }}"`,
+      );
+      expect(job.steps[seal].env).toHaveProperty(
+        'APPLE_DEVELOPER_ID_SIGNING_IDENTITY',
+      );
+      expect(job.steps[seal].run).toContain(
+        'macos-signing-readiness.mjs unlock',
+      );
+      expect(job.steps[seal].run).toContain(
+        'macos-signing-readiness.mjs probe',
+      );
+      expect(
+        job.steps[seal].run.indexOf('macos-signing-readiness.mjs unlock'),
+      ).toBeLessThan(
+        job.steps[seal].run.indexOf('macos-notarized-artifacts.mjs'),
+      );
+    }
+    expect(job.steps[cleanup]).toMatchObject({ if: 'always()' });
+    expect(job.steps[cleanup].run).toContain('helper_status=$?');
+    expect(job.steps[cleanup].run).toContain('rm_status=$?');
+    expect(job.steps[cleanup].run).toContain(
+      'test "$helper_status" -eq 0 && test "$rm_status" -eq 0',
+    );
+    const attestation = job.steps.findIndex(
+      (step) =>
+        step.uses ===
+        'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
+    );
+    expect(cleanup).toBeLessThan(attestation);
+  }
   const nightly = load(
     readFileSync('.github/workflows/nightly-native-cohort.yml', 'utf8'),
   );
-  const stage = nightly.jobs['stage-macos'];
-  const stageCombined = stage.steps.findIndex(
-    (step) => step.name === 'Fail closed and build/sign/notarize macOS staging artifacts',
-  );
-  const stageCleanup = stage.steps.findIndex(
-    (step) => step.name === 'Cleanup macOS Developer ID keychain',
-  );
-  expect(stage.steps[0]).toMatchObject({ id: 'macos_cohort_deadline' });
-  expect(stageCombined).toBeGreaterThan(-1);
-  expect(stageCombined).toBeLessThan(stageCleanup);
-  expect(stage.steps[stageCombined].env).toHaveProperty(
-    'APPLE_DEVELOPER_ID_SIGNING_IDENTITY',
-  );
-  const stageRun = stage.steps[stageCombined].run;
-  expect(stageRun).toContain('macos-signing-readiness.mjs prepare');
-  expect(stageRun).toContain('npx tauri build --no-sign');
-  expect(stageRun).toContain('macos-signing-readiness.mjs unlock');
-  expect(stageRun).toContain('macos-signing-readiness.mjs probe');
-  expect(stageRun).toContain('macos-notarized-artifacts.mjs');
-  expect(stageRun.indexOf('macos-signing-readiness.mjs prepare')).toBeLessThan(
-    stageRun.indexOf('npx tauri build --no-sign'),
-  );
-  expect(stageRun.indexOf('npx tauri build --no-sign')).toBeLessThan(
-    stageRun.indexOf('macos-signing-readiness.mjs unlock'),
-  );
-  expect(stageRun.indexOf('macos-signing-readiness.mjs unlock')).toBeLessThan(
-    stageRun.indexOf('macos-signing-readiness.mjs probe'),
-  );
-  expect(stageRun.indexOf('macos-signing-readiness.mjs probe')).toBeLessThan(
-    stageRun.indexOf('macos-notarized-artifacts.mjs'),
-  );
-  expect(stage.steps[stageCleanup]).toMatchObject({ if: 'always()' });
-  expect(stage.steps[stageCleanup].run).toContain('helper_status=$?');
-  expect(stage.steps[stageCleanup].run).toContain('rm_status=$?');
-  expect(stage.steps[stageCleanup].run).toContain(
-    'test "$helper_status" -eq 0 && test "$rm_status" -eq 0',
-  );
-  const stageAttestation = stage.steps.findIndex(
-    (step) =>
-      step.uses ===
-      'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
-  );
-  expect(stageCleanup).toBeLessThan(stageAttestation);
-
+  const nightlyHelperJobs = Object.entries(nightly.jobs)
+    .filter(([, job]) =>
+      JSON.stringify(job).includes('macos-signing-readiness.mjs'),
+    )
+    .map(([name]) => name);
+  expect(nightlyHelperJobs).toEqual(['stage-macos']);
   const release = load(readFileSync('.github/workflows/release.yml', 'utf8'));
-  const desktop = release.jobs['desktop-macos'];
-  const indexOfStep = (name) =>
-    desktop.steps.findIndex((step) => step.name === name);
-  const prepare = indexOfStep('Import macOS Developer ID certificate');
-  const build = indexOfStep('Build an unsigned macOS staging candidate');
-  const seal = desktop.steps.findIndex((step) =>
-    step.name?.startsWith('Seal, notarize'),
-  );
-  const cleanup = indexOfStep('Cleanup macOS Developer ID keychain');
-  expect(desktop.steps[0]).toMatchObject({ id: 'macos_release_deadline' });
-  expect(prepare).toBeGreaterThan(-1);
-  expect(prepare).toBeLessThan(build);
-  expect(build).toBeLessThan(seal);
-  expect(seal).toBeLessThan(cleanup);
-  expect(desktop.steps[prepare].env).toHaveProperty(
-    'APPLE_DEVELOPER_ID_SIGNING_IDENTITY',
-  );
-  expect(desktop.steps[prepare].run).toContain(
-    '--deadline-epoch "${{ steps.macos_release_deadline.outputs.epoch }}"',
-  );
-  expect(desktop.steps[seal].run).toContain('macos-signing-readiness.mjs unlock');
-  expect(desktop.steps[seal].run).toContain('macos-signing-readiness.mjs probe');
-  expect(desktop.steps[seal].env).toHaveProperty(
-    'APPLE_DEVELOPER_ID_SIGNING_IDENTITY',
-  );
-  expect(desktop.steps[cleanup]).toMatchObject({ if: 'always()' });
-  expect(desktop.steps[cleanup].run).toContain('helper_status=$?');
-  expect(desktop.steps[cleanup].run).toContain('rm_status=$?');
-  expect(desktop.steps[cleanup].run).toContain(
-    'test "$helper_status" -eq 0 && test "$rm_status" -eq 0',
-  );
-  const releaseAttestation = desktop.steps.findIndex(
-    (step) =>
-      step.uses ===
-      'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
-  );
-  expect(cleanup).toBeLessThan(releaseAttestation);
   const helperJobs = Object.entries(release.jobs)
     .filter(([, job]) =>
       JSON.stringify(job).includes('macos-signing-readiness.mjs'),
