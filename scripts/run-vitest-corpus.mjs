@@ -19,7 +19,7 @@ import {
 const OUTPUT_LIMIT_BYTES = 2 * 1024 * 1024;
 const FAILURE_LOG_TAIL_BYTES = 16 * 1024;
 const SETTLEMENT_MS = 5_000;
-export const PROCESS_HEAVY_MAX_WORKERS = 2;
+export const PROCESS_HEAVY_MAX_WORKERS = 1;
 // Vitest's native hash partitioning is deterministic, but four slices left a
 // passing-only hosted slice alive past its 20-minute fence (#1156). Eight
 // slices preserve the exact same corpus while making every bounded terminal
@@ -28,13 +28,14 @@ export const ORDINARY_SHARD_COUNT = 8;
 
 export const VITEST_CORPUS_GROUPS = Object.freeze([
   Object.freeze({ name: 'ordinary', maxWorkers: ORDINARY_MAX_WORKERS }),
-  // Direct child-process use requires isolation from the ordinary worker
-  // pool, not global serialization. Two isolated Vitest fork workers preserve
-  // the reviewed resource boundary while allowing independent temp-dir/port
-  // fixtures to overlap. Shared repo outputs and dogfood remain truly serial.
+  // Hosted evidence showed that even independent temp-dir child fixtures can
+  // starve or outlive their assertions when two process owners overlap. Keep
+  // the process-heavy corpus serial and hermetic; shared repo outputs and
+  // dogfood retain their separate ownership groups below.
   Object.freeze({
     name: 'process-heavy',
     maxWorkers: PROCESS_HEAVY_MAX_WORKERS,
+    noFileParallelism: true,
   }),
   Object.freeze({
     name: 'process-exclusive',
@@ -70,6 +71,12 @@ export const ORDINARY_SHARD_DESCRIPTORS = Object.freeze(
     ordinaryShardDescriptor(index + 1),
   ),
 );
+
+export function vitestGroupEnvironment(group, env = process.env) {
+  if (group.name !== 'process-heavy') return env;
+  const { PLAYWRIGHT_BROWSERS_PATH: _ambientBrowserCache, ...sanitized } = env;
+  return sanitized;
+}
 
 function corpusDescriptors(groupName, shard) {
   if (!groupName)
@@ -263,6 +270,7 @@ export async function runVitestGroup(
   try {
     execution = execute(process.execPath, args, spawnProcess, label, {
       cwd: root,
+      env: vitestGroupEnvironment(group),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });

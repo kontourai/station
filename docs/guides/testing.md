@@ -336,13 +336,13 @@ Ordinary and focused Vitest invocations inherit the checked-in four-worker
 ceiling. `npm run test:full` discovers the complete corpus, validates exact and
 disjoint ownership through `scripts/vitest-resource-manifest.mjs`, then runs
 five resource groups in order: ordinary isolated files at four workers,
-independent process-heavy files at two isolated fork workers, host-global
+process-heavy child-owning files at one fork worker with file parallelism disabled, host-global
 process-exclusive files at one worker with file parallelism disabled,
 shared-output files under the same serial constraint, and dogfood-reconcile
 files under their historical serial constraint. Direct child-process use
-requires a bounded process group, not global serialization: two workers keep
-aggregate load below the ordinary pool while independent temp-dir and
-dynamically allocated-port fixtures overlap. A test that owns host-global
+requires a bounded process group and hosted completion runs that group serially:
+even independent temp-dir and dynamically allocated-port fixtures can starve
+child settlement when two owners overlap. A test that owns host-global
 leases, fencing, or coordinator capacity belongs in process-exclusive. New
 direct child-process users fail the manifest gate until deliberately
 classified. Tests that write shared repo paths belong in shared-output and
