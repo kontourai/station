@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import {
   admitStationRuntimeHome,
   resolveRuntimeHome,
+  resolveStationRoot,
 } from '@kontourai/station-shared/runtime-path-resolver';
 import { describe, expect, test, vi } from 'vitest';
 import { initializeSourceBootstrap } from '../source-bootstrap.js';
@@ -210,6 +211,23 @@ describe('an external STATION_HOME must still launch (#1109)', () => {
     initializeSourceBootstrap({ env, wrapperUrl });
     expect(env.STATION_ROOT).toBeTruthy();
     expect(env.STATION_ROOT).toMatch(/\.station$/);
+  });
+
+  test('a downstream consumer that DERIVES still gets the chosen root', () => {
+    // The omission only works if consumers derive rather than read the raw
+    // variable. `station dev` and `dev-desktop` both feed
+    // `deriveDevInstanceAndHome({ stationRoot })`; reading `env.STATION_ROOT`
+    // there would fall back to the ambient ~/.station and start a dev instance
+    // under a root the operator did not choose. This asserts the value they
+    // must derive, so the omission cannot silently redirect them.
+    const home = mkdtempSync(join(tmpdir(), 'station-source-derive-'));
+    const env: NodeJS.ProcessEnv = {
+      STATION_HOME: home,
+      STATION_CHANNEL: 'stable',
+    };
+    initializeSourceBootstrap({ env, wrapperUrl });
+    expect(env.STATION_ROOT ?? '').toBe('');
+    expect(resolveStationRoot(env)).toBe(home);
   });
 
   test('an operator-set root equal to the home is still refused', () => {

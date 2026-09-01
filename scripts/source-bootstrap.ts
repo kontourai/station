@@ -101,9 +101,11 @@ export function initializeSourceBootstrap({
   // refuse before the CLI ran (#1109). Nothing is lost by omitting it: the
   // downstream derivation reads only `STATION_ROOT` and `STATION_HOME`, so it
   // recomputes the identical value from the home alone.
-  // Keyed on the EXTERNAL home, which is the only one that can self-root here:
+  // Keyed on the EXTERNAL home, the only one that can self-root at THIS call:
   // this function never synthesizes `STATION_HOME`, so with none set the root
-  // is the ambient default and no home can equal it.
+  // is the ambient default and nothing here names it as a home. That is a
+  // statement about this function, not a universal invariant -- a later caller
+  // passing its own home is admitted on its own terms.
   const externalHome = env.STATION_HOME?.trim();
   const spawnRoot = externalHome
     ? spawnedStationRoot(externalHome, env)

@@ -7,8 +7,8 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { homedir, tmpdir } from 'node:os';
+import { join, relative, sep } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import {
   ensurePrivateDevHome,
@@ -92,6 +92,30 @@ describe('runDevCommand — wiring to the start path', () => {
     expect(() => ensurePrivateDevHome(fileHome)).toThrow(
       /must be a real directory/,
     );
+  });
+
+  test('derives the root from STATION_HOME when STATION_ROOT is unset (#1109)', async () => {
+    // The source bootstrap deliberately leaves STATION_ROOT UNSET for a
+    // self-rooted external STATION_HOME, because spelling it out makes the
+    // runtime home guard refuse the home. Reading the variable raw here fell
+    // back to the ambient ~/.station, so `station dev` started -- and would
+    // have cleaned -- an instance under a root the operator never chose.
+    const externalRoot = mkdtempSync(join(tmpdir(), 'station-dev-external-'));
+    const { start, deps } = baseDeps({
+      env: { STATION_HOME: externalRoot } as NodeJS.ProcessEnv,
+    });
+
+    await runDevCommand([], deps);
+
+    const baseDir = String(start.mock.calls[0]![0]!.baseDir);
+    // Segment-aware, not a string prefix: `startsWith(externalRoot)` is also
+    // satisfied by a sibling like `<externalRoot>-other/...`.
+    expect(
+      baseDir.startsWith(join(externalRoot, 'instances', 'dev') + sep),
+    ).toBe(true);
+    // ...and pin the exact root, so no other wrong root can satisfy it either.
+    expect(relative(externalRoot, baseDir).startsWith('..')).toBe(false);
+    expect(baseDir).not.toContain(join(homedir(), '.station'));
   });
 
   test('derives deterministic ports + isolated home and reuses start', async () => {

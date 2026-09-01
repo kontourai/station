@@ -11,6 +11,10 @@ import {
   resolveWorktreePath,
 } from '../packages/cli/src/commands/dev-ports.js';
 import { devPairingDeepLinkScheme } from '../packages/connect/src/core/pairingDeepLinkChannels.generated.js';
+import {
+  resolveStationRoot,
+  spawnedStationRoot,
+} from '../packages/shared/src/runtime-path-resolver.js';
 
 export interface DesktopDevContract {
   readonly productName: string;
@@ -65,7 +69,9 @@ export async function resolveDesktopDevContract({
     cwd,
     worktreePath,
     devInstance: env.STATION_DEV_INSTANCE,
-    stationRoot: env.STATION_ROOT,
+    // Derived, not read raw -- see dev-command.ts: a self-rooted external
+    // STATION_HOME leaves STATION_ROOT unset by design.
+    stationRoot: resolveStationRoot(env),
   });
   return {
     productName: `Station Dev (${instance})`,
@@ -78,13 +84,30 @@ export async function resolveDesktopDevContract({
     pairingDeepLinkScheme: desktopDevPairingDeepLinkScheme(instance),
   };
 }
+/** `{ STATION_ROOT }` when the child needs it, and `{}` when naming it would
+ * make the runtime home guard refuse the home (#1109). */
+function spawnRootEnv(
+  home: string,
+  env: NodeJS.ProcessEnv,
+): { STATION_ROOT?: string } {
+  const root = spawnedStationRoot(home, env);
+  return root ? { STATION_ROOT: root } : {};
+}
+
 export function desktopDevEnvironment(
   contract: DesktopDevContract,
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   return {
     ...env,
-    STATION_ROOT: env.STATION_ROOT,
+    // Correct by construction rather than by an invariant about callers: a
+    // paired call cannot collide, because `contract.home` is
+    // `<root>/instances/dev/<id>`, but nothing stops a caller passing an env
+    // whose STATION_HOME already IS that home -- and naming the root then
+    // makes the child's admission guard refuse it. `spawnedStationRoot`
+    // answers exactly that question, so the collision cannot be reintroduced
+    // by a future caller.
+    ...spawnRootEnv(contract.home, env),
     STATION_HOME: contract.home,
     STATION_DESKTOP_PORT: String(contract.serverPort),
     STATION_SERVER_PORT: String(contract.serverPort),
