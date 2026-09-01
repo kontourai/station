@@ -2,10 +2,15 @@
  * @vitest-environment jsdom
  *
  * #928 step 3a: the region layout is the authority for placement, not a
- * projection of the single legacy dock. The property that did not exist before
- * this step is two regions holding two DIFFERENT occupants at once — and
- * keeping them across a device-settings change, which used to overwrite region
- * state on every settings edit.
+ * projection of the single legacy dock.
+ *
+ * The property that changed is narrower than "two occupants are expressible" —
+ * the old `syncRegionLayoutFromDock` only cleared occupants equal to 'chat', so
+ * a differently-named second occupant always survived it. What it DID do on
+ * every settings change was force the chat surface back to
+ * `settings.dockSlotPlacement` and re-derive visibility from the global
+ * `isDockOpen`. So a region write that moved chat, or hid it, was reverted by
+ * the next unrelated settings edit. That is what these assert.
  */
 
 import { act, render } from '@testing-library/react';
@@ -63,20 +68,21 @@ function renderModel() {
 }
 
 describe('RegionModelContext — the region layout is the placement authority', () => {
-  it('holds two different occupants at once, and keeps them across a settings change', () => {
+  it('keeps a region write to the chat surface across an unrelated settings change', () => {
     const { view, model } = renderModel();
 
+    // Persisted placement is 'bottom'. Move chat to 'right' through the region
+    // model, and put a second surface in 'bottom'.
     act(() => {
-      model().setRegion('bottom', { occupant: 'chat', visible: true });
-      model().setRegion('right', { occupant: 'activity', visible: true });
+      model().setRegion('bottom', { occupant: 'activity', visible: true });
+      model().setRegion('right', { occupant: 'chat', visible: true });
     });
 
-    expect(model().regions.bottom.occupant).toBe('chat');
-    expect(model().regions.right.occupant).toBe('activity');
+    expect(model().regions.right.occupant).toBe('chat');
+    expect(model().regions.bottom.occupant).toBe('activity');
 
-    // The old model re-derived the whole layout from dockSlotPlacement on every
-    // settings change, which cleared any second occupant. Re-render under a
-    // changed setting and both must survive.
+    // The old projection forced chat back to settings.dockSlotPlacement on any
+    // settings change, taking 'bottom' from its occupant. Both must survive.
     harness.settings = { ...harness.settings, chatDockHeight: 512 };
     act(() => {
       // Keep capturing: rerendering with a no-op onReady would leave `model()`
@@ -93,8 +99,8 @@ describe('RegionModelContext — the region layout is the placement authority', 
       );
     });
 
-    expect(model().regions.bottom.occupant).toBe('chat');
-    expect(model().regions.right.occupant).toBe('activity');
+    expect(model().regions.right.occupant).toBe('chat');
+    expect(model().regions.bottom.occupant).toBe('activity');
   });
 
   it('hiding a region keeps its occupant', () => {
