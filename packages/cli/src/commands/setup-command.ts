@@ -311,8 +311,13 @@ export async function runSetupCommand(
 
   throw new Error(
     'Usage: station setup <local|existing|hosted>\n' +
+      '  Setup chooses your default saved Station; the variant is where it lives.\n' +
+      '  Only setup selects a default — a failed setup never leaves a broken one.\n' +
       '  station setup local [--name=kontour] [service flags]\n' +
+      '      install this machine’s Station service and make it the default\n' +
       '  station setup existing <name> <endpoint> [--pair]\n' +
-      '  station setup hosted [--name=station.kontourai.io]',
+      '      save a Station that already runs elsewhere (--pair to authorize)\n' +
+      '  station setup hosted [--name=station.kontourai.io]\n' +
+      '      pair the hosted Station',
   );
 }
