@@ -55,18 +55,19 @@ sh -c 'set -eu; file=$(mktemp &quot;${TMPDIR:-/tmp}/station-install.XXXXXX&quot;
 <p>retired <code>STATION_CHANNEL=preview</code>; the installer refuses it. The exact channel</p>
 <p>identity, launcher, and port mapping are verified by the release installer.</p>
 <h2>Choose A Provider</h2>
-<p>A Provider is anything that can power an agent: a local or hosted model service</p>
-<p>such as Ollama or Bedrock, or an agent app such as Claude Code or Codex.</p>
+<p>A Provider is anything that can power an agent: a local or hosted model service,</p>
+<p>or an external engine that runs its own agent loop.</p>
 <p>1. Open <strong>Connections</strong>.</p>
 <p>2. Choose a detected Provider or select <strong>Add Provider</strong>.</p>
 <p>3. Follow its setup action until it reports <strong>Ready</strong>.</p>
-<p>For a credential-free first path, install <a href="https://ollama.com">Ollama</a>, pull a</p>
-<p>model such as <code>llama3.1</code> or <code>qwen2.5</code>, and then return to Connections. Detection</p>
-<p>is read-only: Station does not create a connection or read credentials merely</p>
-<p>because it finds a Provider.</p>
+<p>For a credential-free first path, use a supported local model service and then</p>
+<p>return to Connections. Detection is read-only: Station does not create a</p>
+<p>connection or read credentials merely because it finds a Provider. The</p>
+<p><a href="https://github.com/kontourai/station/blob/main/docs/guides/connections.html">Connections guide</a></p>
+<p>lists current integrations and their exact setup steps.</p>
 <p>Choose the simplest path for what you want to do:</p>
-<div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>You want to…</th><th>Start with…</th></tr></thead><tbody><tr><td>Keep inference on this machine</td><td>Ollama, a local Model, and a Station agent</td></tr>
-<tr><td>Use an existing coding agent app</td><td>Claude Code or Codex and its External agent</td></tr>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>You want to…</th><th>Start with…</th></tr></thead><tbody><tr><td>Keep inference on this machine</td><td>A local Model Provider and a Station agent</td></tr>
+<tr><td>Use an existing agent engine</td><td>A supported engine Provider and its External agent</td></tr>
 <tr><td>Use a hosted model through Station</td><td>A hosted Model Provider and a Station agent</td></tr></tbody></table></div>
 <h2>Start Your First Task</h2>
 <p>When Home offers <strong>Start your first task</strong>, it appears only after the durable</p>
@@ -135,11 +136,11 @@ sh -c 'set -eu; file=$(mktemp &quot;${TMPDIR:-/tmp}/station-install.XXXXXX&quot;
 <p>execution only; read</p>
 <p>its findings and decide what to do rather than treating completion as a passed</p>
 <p>gate.</p>
-<p>For example, open the Station repository as a Project, create a Task named</p>
-<p>“Update the documentation,” and choose the Codex External agent. That work's</p>
-<p>first execution is a Session. Reopen the Task later to see its files, evidence,</p>
-<p>and receipts together. For a one-off question that does not need that durable</p>
-<p>history, use a direct chat instead.</p>
+<p>For example, open a repository as a Project, create a Task named “Update the</p>
+<p>documentation,” and choose a ready External agent. That work's first execution</p>
+<p>is a Session. Reopen the Task later to see its files, evidence, and receipts</p>
+<p>together. For a one-off question that does not need that durable history, use a</p>
+<p>direct chat instead.</p>
 <h2>Update, Stop, Or Uninstall</h2>
 <h2>Recovery boundaries</h2>
 <p>Use the recovery path that owns the thing you need to recover. The bundled</p>

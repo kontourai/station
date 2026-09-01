@@ -40,9 +40,9 @@
 </ul>
 <p>  skills, tools, commands, and Model choice.</p>
 <ul>
-<li>An <strong>External agent</strong> is executed by another engine such as Claude Code,</li>
+<li>An <strong>External agent</strong> is executed by another supported engine. That engine</li>
 </ul>
-<p>  Codex, OpenCode, or Kiro. The agent app owns its behavior and tool loop.</p>
+<p>  owns its behavior and tool loop.</p>
 <ul>
 <li>A <strong>Provider</strong> is the user-facing connection to a model service or agent app.</li>
 <li>A <strong>Model</strong> is the inference option selected within a Provider.</li>
@@ -51,17 +51,19 @@
 <p>as ACP are connection details, not agent types users need to choose.</p>
 <p>Concrete examples:</p>
 <ul>
-<li><strong>Local model:</strong> Ollama is the Provider, <code>qwen2.5</code> is the Model, and a Station</li>
+<li><strong>Local model:</strong> a local model service is the Provider, one of its installed</li>
 </ul>
-<p>  agent uses Station's engine to run it.</p>
+<p>  models is the Model, and a Station agent uses Station's engine to run it.</p>
 <ul>
-<li><strong>Coding agent app:</strong> Codex is the Provider and engine; the Agent is an</li>
+<li><strong>External engine:</strong> the engine is the Provider; the Agent is an External</li>
 </ul>
-<p>  External agent because Codex owns its tool loop.</p>
+<p>  agent because that engine owns its tool loop.</p>
 <ul>
-<li><strong>Hosted model:</strong> Bedrock is the Provider, a Claude model is the Model, and a</li>
+<li><strong>Hosted model:</strong> a hosted model service is the Provider, one of its models is</li>
 </ul>
-<p>  Station agent owns the prompt, skills, and tools around it.</p>
+<p>  the Model, and a Station agent owns the prompt, skills, and tools around it.</p>
+<p>See the <a href="https://github.com/kontourai/station/blob/main/docs/guides/connections.html">Connections guide</a></p>
+<p>for the current supported Providers and their setup details.</p>
 <h2>Projects, Tasks, And Sessions</h2>
 <ul>
 <li>A <strong>Project</strong> supplies the working context and available agents.</li>
