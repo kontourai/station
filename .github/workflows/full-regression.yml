@@ -21,7 +21,10 @@ jobs:
       group: hosted-full-regression-${{ inputs.source_sha }}
       cancel-in-progress: false
     runs-on: ubuntu-22.04
-    timeout-minutes: 180
+    # Every phase gets its own fail-closed deadline. Eight ordinary slices can
+    # consume 160 minutes by contract, so the hosted envelope must outlive the
+    # complete 243-minute phase plan rather than interrupt a valid final slice.
+    timeout-minutes: 270
     steps:
       - name: Validate immutable source identity
         env:

@@ -96,7 +96,7 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
 ]);
 export const CI_FAST_RESERVED_WEIGHT = 20;
 export const FULL_REGRESSION_TEST_WEIGHT = 80;
-export const FULL_REGRESSION_ORDINARY_SHARD_COUNT = 4;
+export const FULL_REGRESSION_ORDINARY_SHARD_COUNT = 8;
 export const FULL_REGRESSION_ORDINARY_TIMEOUT_MS = 20 * 60_000;
 export const FULL_REGRESSION_ORDINARY_SHARDS = Object.freeze(
   Array.from({ length: FULL_REGRESSION_ORDINARY_SHARD_COUNT }, (_, index) => {

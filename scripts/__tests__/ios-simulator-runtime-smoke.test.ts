@@ -104,9 +104,10 @@ describe('iOS simulator runtime smoke selection', () => {
 
   test('dismisses a late notification sheet before tapping through the WKWebView', () => {
     const calls = [...swiftSmoke.matchAll(/dismissSystemAlertIfPresent\(\)/g)];
-    // Two invocations plus the helper declaration: launch-time best effort,
-    // then the required post-shell retry that covers a late permission sheet.
-    expect(calls).toHaveLength(3);
+    // Three invocations plus the helper declaration: launch-time best effort,
+    // the required post-shell retry, then one bounded post-tap recovery for a
+    // permission sheet that wins the final race with the first WebView tap.
+    expect(calls).toHaveLength(4);
 
     const firstShellWait = swiftSmoke.indexOf(
       'connect.waitForExistence(timeout: 30)',
@@ -126,6 +127,28 @@ describe('iOS simulator runtime smoke selection', () => {
       'app.buttons["Add a Station address"]',
       tap,
     );
+    const conditionalRecovery = swiftSmoke.indexOf(
+      'if !addAddress.waitForExistence(timeout: 2)',
+      managerAction,
+    );
+    const postTapDismissal = calls[2].index;
+    const postTapReactivation = swiftSmoke.indexOf(
+      'app.activate()',
+      postTapDismissal,
+    );
+    const postTapReacquire = swiftSmoke.indexOf(
+      'connect.waitForExistence(timeout: 5)',
+      postTapReactivation,
+    );
+    const postTapHittable = swiftSmoke.indexOf(
+      'XCTAssertTrue(connect.isHittable)',
+      postTapReacquire,
+    );
+    const retryTap = swiftSmoke.indexOf('connect.tap()', postTapHittable);
+    const finalManagerWait = swiftSmoke.indexOf(
+      'addAddress.waitForExistence(timeout: 10)',
+      retryTap,
+    );
 
     const orderedContract = [
       firstShellWait,
@@ -135,10 +158,19 @@ describe('iOS simulator runtime smoke selection', () => {
       hittable,
       tap,
       managerAction,
+      conditionalRecovery,
+      postTapDismissal,
+      postTapReactivation,
+      postTapReacquire,
+      postTapHittable,
+      retryTap,
+      finalManagerWait,
     ];
     expect(orderedContract.every((position) => position >= 0)).toBe(true);
     expect(orderedContract).toEqual(
       [...orderedContract].sort((left, right) => left - right),
     );
+    expect([...swiftSmoke.matchAll(/connect\.tap\(\)/g)]).toHaveLength(2);
+    expect(swiftSmoke).not.toContain('while !addAddress.waitForExistence');
   });
 });

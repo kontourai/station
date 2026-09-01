@@ -311,6 +311,8 @@ describe('one-revision native promotion contract', () => {
   test('makes stable TestFlight publication and provider receipt fail closed', () => {
     const release = workflow('release.yml');
     const caller = release.jobs?.['ios-device'] ?? {};
+    const nightlyCohort = workflow('nightly-native-cohort.yml');
+    const nightlyCaller = nightlyCohort.jobs?.['deliver-ios'] ?? {};
     const delivery = workflow('testflight-delivery.yml');
     const ios = delivery.jobs?.deliver ?? {};
     expect(
@@ -360,6 +362,64 @@ describe('one-revision native promotion contract', () => {
     expect((caller as any).uses).toBe(
       './.github/workflows/testflight-delivery.yml',
     );
+    expect((nightlyCaller as any).uses).toBe(
+      './.github/workflows/testflight-delivery.yml',
+    );
+    for (const input of [
+      'update_feed_url',
+      'update_provider_origin',
+      'update_action_url',
+      'update_action_kind',
+      'update_action_origins',
+    ]) {
+      expect(delivery.on?.workflow_call?.inputs?.[input]?.required).toBe(false);
+      expect((caller as any).with?.[input]).toBeDefined();
+      expect((nightlyCaller as any).with?.[input]).toBeDefined();
+    }
+  });
+
+  test('keeps TestFlight authoritative when no custom feed is configured', () => {
+    const release = workflow('release.yml');
+    const delivery = workflow('testflight-delivery.yml');
+    const ios = delivery.jobs?.deliver ?? {};
+    const required = namedStep(
+      ios,
+      'Fail closed on channel-owned secrets and exact iOS identity',
+    );
+    const authority = namedStep(ios, 'Resolve optional custom iOS update feed');
+    expect(required.run).not.toContain('VITE_NATIVE_APP_UPDATE_FEED_URL');
+    expect(required.run).not.toContain('NATIVE_APP_UPDATE_ACTION_URL');
+    expect(authority.run).toContain('write-authority-receipt');
+    expect(authority.run).toContain('testflight-update-authority.json');
+    expect(authority.run).toContain('--platform ios');
+    expect(authority.run).toContain('--ios-app-id');
+    expect(authority.run).toContain('steps.app_store.outputs.app_id');
+
+    const iosDependencies = ios.steps?.findIndex(
+      (step) => step.run === 'npm run dependencies:ci',
+    );
+    const iosAuthority = ios.steps?.findIndex(
+      (step) => step.name === 'Resolve optional custom iOS update feed',
+    );
+    expect(iosDependencies).toBeGreaterThanOrEqual(0);
+    expect(iosAuthority).toBeGreaterThan(iosDependencies ?? -1);
+    const iosAppPreflight = ios.steps?.findIndex(
+      (step) =>
+        step.name === 'Verify App Store Connect app authority before signing',
+    );
+    expect(iosAuthority).toBeGreaterThan(iosAppPreflight ?? -1);
+
+    const android = release.jobs?.android ?? {};
+    const androidDependencies = android.steps?.findIndex(
+      (step) =>
+        step.name ===
+        'Install dependencies before resolving the native update feed',
+    );
+    const androidAuthority = android.steps?.findIndex(
+      (step) => step.name === 'Resolve native update feed contract',
+    );
+    expect(androidDependencies).toBeGreaterThanOrEqual(0);
+    expect(androidAuthority).toBeGreaterThan(androidDependencies ?? -1);
   });
 
   test('keeps portable fleet staging independent, fixed-plan, and provenance-verified', () => {

@@ -17,9 +17,9 @@ describe('agent capability profile', () => {
   // matrix-driven equivalence (agent-validation.test.ts) are the
   // replacements' own coverage; that equivalence was proven against this
   // module's resolver before it was deleted.
-  test('keeps prompt affordances tied to the matrix-resolved engine', () => {
-    expect(requiresAgentPromptForRuntime('bedrock-runtime')).toBe(true);
-    expect(requiresAgentPromptForRuntime('ollama-runtime')).toBe(true);
+  test('keeps provider-model ids out of Station-native prompt delivery (#1055)', () => {
+    expect(requiresAgentPromptForRuntime('bedrock-runtime')).toBe(false);
+    expect(requiresAgentPromptForRuntime('ollama-runtime')).toBe(false);
     expect(requiresAgentPromptForRuntime('codex')).toBe(false);
   });
 
@@ -159,7 +159,7 @@ describe('built-in engines derive their real editor tabs (#2301)', () => {
   test('claude exposes the surfaces it can actually deliver', () => {
     // Under the pre-#2301 fallback this was only basic/engine/connection —
     // Prompt, Skills and Tools were hidden for every Claude Code agent.
-    expect(tabs('claude-code', 'claude')).toEqual([
+    expect(tabs('claude', 'claude')).toEqual([
       'basic',
       'prompt',
       'skills',

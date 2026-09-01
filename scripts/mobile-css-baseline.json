@@ -50,8 +50,8 @@
       "reason": "The queued-steer controls carry their own compact touch geometry, tighter than the shared floor."
     },
     "src-ui/src/components/chat/chat.css": {
-      "count": 5,
-      "reason": "Four blocks. The composer's two-row mobile stack and the composer popover sheet are this surface's own. The app-toolbar rules here are a KNOWN duplication with index.css (station#3766 records two same-specificity rules contradicting each other); the toolbar wants one mobile home. Two 480px toolbar blocks could not be folded \u2014 `__conn-name`/`__conn-note` `display` is decided again between them. station#926: the composer's agent picker drops its name to the avatar initial below 420px, where the row cannot afford both pickers' values \u2014 a genuine viewport decision the shared primitives cannot make, since it depends on this row's own control count."
+      "count": 6,
+      "reason": "Six blocks. The composer's two-row mobile stack and the composer popover sheet are this surface's own. The app-toolbar rules here are a KNOWN duplication with index.css (station#3766 records two same-specificity rules contradicting each other); the toolbar wants one mobile home. Two 480px toolbar blocks could not be folded \u2014 `__conn-name`/`__conn-note` `display` is decided again between them. station#926: the composer's agent picker drops its name to the avatar initial below 420px, where the row cannot afford both pickers' values \u2014 a genuine viewport decision the shared primitives cannot make, since it depends on this row's own control count. `@media (hover: hover)` is a CAPABILITY query, not responsive layout; its hover-only footer collapse is recorded here rather than moved to a primitive that has no hover concept."
     },
     "src-ui/src/components/coding-layout/BranchToolbar.css": {
       "count": 1,
@@ -167,7 +167,7 @@
     },
     "src-ui/src/views/HomeView.css": {
       "count": 1,
-      "reason": "Single-column action cards, a taller card floor and stacked task rows on the page's own bottom gutter. The second block this entry recorded \u2014 the 1024px hide of the desktop-only top-actions row \u2014 went away with #992's shell-chrome move; the count is corrected here because the ratchet never reports an over-recorded file."
+      "reason": "Single-column action cards, a taller card floor and stacked task rows on the page's own bottom gutter. The second block this entry recorded \u2014 the 1024px hide of the desktop-only top-actions row \u2014 went away with #992's shell-chrome move; corrected here because the ratchet never reports an over-recorded file (#1160)."
     },
     "src-ui/src/views/IntegrationsView.css": {
       "count": 1,
@@ -264,10 +264,6 @@
     "src-ui/src/workspace-panes/SessionInventory.css": {
       "count": 1,
       "reason": "The inventory group index switches from a constrained desktop column to a readable one-column phone layout; shared dialog and page primitives do not own this pane-specific dependency navigation."
-    },
-    "src-ui/src/components/chat/TurnActionsMenu.css": {
-      "count": 1,
-      "reason": "station#926: `@media (hover: hover)` is a CAPABILITY query, not responsive layout \u2014 the answer card's action row hides until hover on pointer devices and is always present on touch, with :focus-within giving keyboard the identical reveal. The ratchet's @media pattern cannot distinguish capability from viewport, so this is recorded rather than moved to a primitive that has no hover concept."
     }
   }
 }

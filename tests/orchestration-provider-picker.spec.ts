@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
 import {
   dismissSetupLauncher,
+  openChatRegion,
   seedActiveChats,
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
@@ -102,9 +103,7 @@ test.describe('Orchestration Execution Settings', () => {
 
     await page.goto('/projects/dev/layouts/code?chat=conv-1');
     await dismissSetupLauncher(page);
-    await page
-      .getByRole('button', { name: 'Expand chat dock', exact: true })
-      .click();
+    await openChatRegion(page);
 
     await page.getByPlaceholder('Type a message...').fill('Inspect the repo');
     await page.getByRole('button', { name: 'Send' }).click();

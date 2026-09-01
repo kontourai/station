@@ -53,6 +53,22 @@ describe('EphemeralMessage html content', () => {
 });
 
 describe('MarkdownLoadingProjection', () => {
+  test('projects a normal simple web link while the renderer loads', () => {
+    const projection = MarkdownLoadingProjection({
+      source: 'Open [Station docs](https://example.com/docs) now.',
+    });
+    render(projection);
+
+    expect(
+      screen.getByRole('link', { name: 'Station docs' }).getAttribute('href'),
+    ).toBe('https://example.com/docs');
+  });
+
+  test('leaves a bracket-containing nested label untouched', () => {
+    const source = '[outer[inner]](https://example.com/docs)';
+    expect(MarkdownLoadingProjection({ source })).toBe(source);
+  });
+
   test('bounds an unterminated inline-link label (station#2384)', () => {
     const source = '['.repeat(50_000);
     const startedAt = performance.now();

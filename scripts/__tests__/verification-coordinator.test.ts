@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   chmodSync,
@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
+import { lookupProcessBirthFingerprint } from '../../packages/shared/src/process-identity.mjs';
 import {
   latestE2EEvidenceBinding,
   projectLatestE2EEvidence,
@@ -51,10 +52,14 @@ import {
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
 const ORDINARY_FULL_PHASE_IDS = Object.freeze([
-  'test-full-ordinary-1-of-4',
-  'test-full-ordinary-2-of-4',
-  'test-full-ordinary-3-of-4',
-  'test-full-ordinary-4-of-4',
+  'test-full-ordinary-1-of-8',
+  'test-full-ordinary-2-of-8',
+  'test-full-ordinary-3-of-8',
+  'test-full-ordinary-4-of-8',
+  'test-full-ordinary-5-of-8',
+  'test-full-ordinary-6-of-8',
+  'test-full-ordinary-7-of-8',
+  'test-full-ordinary-8-of-8',
 ]);
 
 /**
@@ -229,17 +234,21 @@ function canonicalRequestKey(seed: string) {
 
 function nativeProcessStart(pid: number | undefined): string | null {
   if (!pid || process.platform === 'win32') return null;
-  // Pinned exactly like packages/shared/src/process-identity.mjs's probe
-  // (#3048): lstart output is locale- AND timezone-shaped, and the liveness
-  // comparison is string equality — an unpinned reading here mismatches the
-  // pinned probe whenever the host TZ is not UTC, so every fixture lease
-  // read as pid-reused and nine tests failed on non-UTC hosts.
-  return (
-    spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], {
-      encoding: 'utf8',
-      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
-    }).stdout?.trim() || null
-  );
+  // CALL the production authority rather than re-deriving it (#1074).
+  //
+  // Fixture leases are compared to the real probe by STRING EQUALITY, and
+  // that probe is platform-shaped: macOS/BSD read `ps -o lstart=`, but Linux
+  // reads /proc/<pid>/stat field 22 plus boot_id and returns
+  // `linux:<boot_id>:<starttime>`. A hand-rolled `ps` reading here therefore
+  // matched on macOS and could never match on Linux, so every fixture lease
+  // read as pid-reused-and-dead: capacity went to 0, blockers vanished, held
+  // claims read as released, and stale-owner reclamation never fired. That is
+  // the whole of #1074's nine failures.
+  //
+  // #3048 hit the same defect class from the timezone direction and fixed it
+  // by pinning LC_ALL/TZ *on the copy*. The Linux /proc branch defeats that
+  // pin. A copy of a probe is not the probe — so there is no copy here.
+  return lookupProcessBirthFingerprint(pid);
 }
 
 function alternateToolchain(
@@ -1317,7 +1326,7 @@ describe('verification coordinator', () => {
       expect(first.disposition).toBe('executed');
       expect(projected.disposition).toBe('reused');
       expect(localReuse.disposition).toBe('reused');
-      expect(phaseCalls).toBe(12);
+      expect(phaseCalls).toBe(16);
       expect(projected.receipt.request.worktree).toBe(secondWorktree);
       expect(localReuse.receipt.request.worktree).toBe(secondWorktree);
       expect(localReuse.receipt.artifacts).toEqual(projected.receipt.artifacts);
@@ -1795,7 +1804,7 @@ describe('verification coordinator', () => {
       const phaseArtifacts = ciResult.receipt.artifacts.filter((artifact) =>
         artifact.path.includes('/attachment-'),
       );
-      expect(phaseArtifacts).toHaveLength(12);
+      expect(phaseArtifacts).toHaveLength(16);
       const records = phaseArtifacts.map((artifact) =>
         JSON.parse(readFileSync(join(worktree, artifact.path), 'utf8')),
       );
@@ -2508,7 +2517,7 @@ setInterval(() => {
     try {
       const first = await coordinateVerification(options);
       expect(first.receipt.terminal.passed).toBe(true);
-      expect(executedPhases).toHaveLength(12);
+      expect(executedPhases).toHaveLength(16);
 
       const path = join(
         worktree,
@@ -4096,11 +4105,8 @@ setInterval(() => {
       });
       parent.kill('SIGKILL');
       await new Promise((resolveClose) => parent.once('close', resolveClose));
-      // Pinned like the shared probe (#3048) — see nativeProcessStart above.
-      const start = spawnSync('ps', ['-o', 'lstart=', '-p', String(childPid)], {
-        encoding: 'utf8',
-        env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
-      }).stdout.trim();
+      // The production authority, not a copy of it — see nativeProcessStart.
+      const start = nativeProcessStart(childPid) ?? '';
       try {
         expect(start).not.toBe('');
         expect(

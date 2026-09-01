@@ -89,10 +89,12 @@ describe('canonical completion lane literal', () => {
       expect.objectContaining({ id: 'repo-governance', weight: 20 }),
       expect.objectContaining({ id: 'sdk-builds', weight: 50 }),
       expect.objectContaining({ id: 'verify-static', weight: 60 }),
-      expect.objectContaining({ id: 'test-full-ordinary-1-of-4', weight: 80 }),
-      expect.objectContaining({ id: 'test-full-ordinary-2-of-4', weight: 80 }),
-      expect.objectContaining({ id: 'test-full-ordinary-3-of-4', weight: 80 }),
-      expect.objectContaining({ id: 'test-full-ordinary-4-of-4', weight: 80 }),
+      ...Array.from({ length: 8 }, (_, index) =>
+        expect.objectContaining({
+          id: `test-full-ordinary-${index + 1}-of-8`,
+          weight: 80,
+        }),
+      ),
       expect.objectContaining({ id: 'test-full-process-heavy', weight: 60 }),
       expect.objectContaining({
         id: 'test-full-process-exclusive',
@@ -107,10 +109,10 @@ describe('canonical completion lane literal', () => {
     ]);
     for (const phase of FULL_REGRESSION_PHASES)
       expect(phase.timeoutMs).toBeGreaterThan(0);
-    for (const shard of [1, 2, 3, 4])
+    for (const shard of Array.from({ length: 8 }, (_, index) => index + 1))
       expect(
         FULL_REGRESSION_PHASES.find(
-          (phase) => phase.id === `test-full-ordinary-${shard}-of-4`,
+          (phase) => phase.id === `test-full-ordinary-${shard}-of-8`,
         ),
       ).toMatchObject({
         command: `npm run test:full:ordinary:${shard}:raw`,
@@ -130,7 +132,7 @@ describe('canonical completion lane literal', () => {
         0,
       ),
     );
-    expect(FULL_REGRESSION_TIMEOUT_MS).toBe(163 * 60_000);
+    expect(FULL_REGRESSION_TIMEOUT_MS).toBe(243 * 60_000);
     expect(resolveLane('full-regression').timeoutMs).toBe(
       FULL_REGRESSION_TIMEOUT_MS,
     );

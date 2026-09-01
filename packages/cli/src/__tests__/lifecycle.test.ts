@@ -29,6 +29,10 @@ import {
 } from '@kontourai/station-shared/instance-registry';
 import { readLifecycleEvents } from '@kontourai/station-shared/lifecycle-events';
 import {
+  admitStationRuntimeHome,
+  resolveStationRoot,
+} from '@kontourai/station-shared/runtime-path-resolver';
+import {
   ensureStationHomeSchemaSync,
   STATION_HOME_RESET_COMMAND,
   STATION_HOME_SCHEMA_FILE,
@@ -1540,6 +1544,63 @@ describe('lifecycle instance state', () => {
       });
     },
   );
+
+  it('spawns a self-rooted home with an environment the server can boot (#962)', async () => {
+    // The seam the #962 regression broke, asserted on the environment the
+    // spawner ACTUALLY hands the child rather than on a reconstruction of it.
+    // The spawner wrote the derived root into that environment, so a raw home
+    // arrived as STATION_ROOT === STATION_HOME; admission reads an explicit
+    // root equal to the home as a home swallowing a root it does not own, and
+    // the server crashed at boot before its own try/catch.
+    //
+    // The suite injects an ambient STATION_ROOT, which would take the
+    // operator-set branch and hide this case entirely; empty it so the home is
+    // genuinely self-rooted, the way `--base` reaches a user's machine.
+    vi.stubEnv('STATION_ROOT', '');
+    ensureDir(TEST_CWD);
+    ensureBuildOutputs('selfrooted');
+    ensureDir(TEST_ALT_HOME);
+
+    const spawn = vi
+      .fn()
+      .mockReturnValueOnce({ pid: 41101, unref: vi.fn() })
+      .mockReturnValueOnce({ pid: 41102, unref: vi.fn() });
+    vi.spyOn(process, 'kill').mockImplementation(((
+      pid: number,
+      signal?: NodeJS.Signals | number,
+    ) => {
+      if (signal === 0 && (pid === 41101 || pid === 41102)) return true;
+      throw new Error(`unexpected process.kill(${pid}, ${String(signal)})`);
+    }) as typeof process.kill);
+    vi.stubGlobal('fetch', vi.fn(readyLifecycleFetch));
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const { lifecycle } = await loadLifecycleModule({
+      childProcessMock: { execSync: vi.fn(), spawn },
+      platformOverrides: { sleepSync: vi.fn() },
+    });
+
+    await lifecycle.start({
+      baseDir: TEST_ALT_HOME,
+      homeSource: '--base',
+      instanceName: 'selfrooted',
+      serverPort: 3242,
+      uiPort: 5274,
+    });
+
+    const childEnv = spawn.mock.calls[0][2]?.env as NodeJS.ProcessEnv;
+    expect(childEnv.STATION_HOME).toBe(TEST_ALT_HOME);
+    // Precondition: this home really is self-rooted, or the assertion below
+    // would pass for the uninteresting reason that root and home differ.
+    expect(resolveStationRoot({ STATION_HOME: TEST_ALT_HOME })).toBe(
+      TEST_ALT_HOME,
+    );
+    expect(childEnv.STATION_ROOT ?? '').toBe('');
+    // The claim that matters: this environment boots.
+    expect(() =>
+      admitStationRuntimeHome(TEST_ALT_HOME, childEnv),
+    ).not.toThrow();
+  });
 
   it('writes per-instance state and injects instance env on start', async () => {
     vi.stubEnv('STATION_HOME_SOURCE', '--temp-home');
@@ -6095,7 +6156,9 @@ describe('lifecycle build + restart ergonomics', () => {
 
     const marker = join(TEST_ALT_HOME, STATION_HOME_SCHEMA_FILE);
     expect(existsSync(marker)).toBe(true);
-    expect(JSON.parse(readFileSync(marker, 'utf8'))).toEqual({ version: 1 });
+    expect(JSON.parse(readFileSync(marker, 'utf8'))).toEqual({
+      version: STATION_HOME_SCHEMA_VERSION,
+    });
   });
 
   it('creates a multi-level missing home path before gating it (#1570)', async () => {
