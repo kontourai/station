@@ -18,6 +18,7 @@ import {
   createNativeReleaseConfig,
   NATIVE_UPDATER_ARTIFACT_MODE,
 } from '../lib/native-release-config.mjs';
+import { ANCHORE_SBOM_ACTION } from '../release-container-sbom-source.mjs';
 import { cyclonedxComponents } from '../release-sbom-fragments.mjs';
 import {
   FIXTURE_TEST_TIMEOUT_MS,
@@ -604,7 +605,7 @@ describe('native release workflow topology', () => {
         'Scan immutable linux/amd64 image digest with pinned Syft',
       ),
     ).toMatchObject({
-      uses: 'anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610',
+      uses: ANCHORE_SBOM_ACTION,
       with: {
         format: 'cyclonedx-json',
         image:
@@ -622,7 +623,7 @@ describe('native release workflow topology', () => {
         'Scan immutable linux/arm64 image digest with pinned Syft',
       ),
     ).toMatchObject({
-      uses: 'anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610',
+      uses: ANCHORE_SBOM_ACTION,
       with: {
         image:
           'ghcr.io/$' +

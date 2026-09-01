@@ -12,7 +12,7 @@ import {
 import { sanitizePath } from '@kontourai/station-shared/launch-path';
 import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
 import { assertSupportedNodeVersion } from '@kontourai/station-shared/node-runtime';
-import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
+import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import {
   CWD,
@@ -969,10 +969,13 @@ export async function runServiceCommand(
       // Same derivation as the CLI spawn path: `--base` selects baseDir but
       // never reaches process.env, so a bare call would pin the shared
       // ~/.station root against an isolated home.
-      stationRoot: resolveStationRoot({
-        ...process.env,
-        STATION_HOME: lifecycle.baseDir,
-      }),
+      //
+      // Undefined for a self-rooted base, and the generated unit then carries
+      // no root: spelling out `STATION_ROOT === STATION_HOME` is what the
+      // runtime home guard reads as a home swallowing a root it does not own,
+      // so the installed service would refuse to boot. The runtime derives the
+      // same root from STATION_HOME alone.
+      stationRoot: spawnedStationRoot(lifecycle.baseDir, process.env),
     };
     // ONE-OWNER PRE-CHECK (station#3047): refuse before any backend mutation
     // when the registry id is held by a LIVE process this install does not
