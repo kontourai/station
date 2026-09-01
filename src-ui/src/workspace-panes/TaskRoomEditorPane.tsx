@@ -7,6 +7,7 @@ import {
   useProjectTaskRoomDocumentQuery,
   useSubmitProjectTaskRoomBatchMutation,
 } from '@kontourai/station-sdk/project-task-rooms';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
@@ -373,7 +374,7 @@ export function TaskRoomEditorPane({
       | undefined;
     try {
       const planned = await plan.mutateAsync({
-        intentId: crypto.randomUUID(),
+        intentId: randomCorrelationId(),
         desiredText: text,
         selection,
       });
