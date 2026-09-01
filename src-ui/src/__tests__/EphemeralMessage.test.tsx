@@ -53,11 +53,89 @@ describe('EphemeralMessage html content', () => {
 });
 
 describe('MarkdownLoadingProjection', () => {
-  test('bounds an unterminated inline-link label (station#2384)', () => {
+  test('scans an unterminated inline-link label once with a grammar-capped deque', () => {
     const source = '['.repeat(50_000);
-    const startedAt = performance.now();
-    expect(MarkdownLoadingProjection({ source })).toBe(source);
-    expect(performance.now() - startedAt).toBeLessThan(250);
+    let inspectedCodePoints = 0;
+    const stringIterator = String.prototype[Symbol.iterator];
+    const iteratorSpy = vi
+      .spyOn(String.prototype, Symbol.iterator)
+      .mockImplementation(function (this: string) {
+        const iterator = stringIterator.call(this);
+        if (this.valueOf() !== source) return iterator;
+
+        const inspectedIterator = {
+          next() {
+            const next = iterator.next();
+            if (!next.done) inspectedCodePoints += 1;
+            return next;
+          },
+          [Symbol.iterator]() {
+            return this;
+          },
+          [Symbol.dispose]() {},
+        };
+        return inspectedIterator as ReturnType<typeof stringIterator>;
+      });
+
+    try {
+      expect(MarkdownLoadingProjection({ source })).toBe(source);
+    } finally {
+      iteratorSpy.mockRestore();
+    }
+    expect(inspectedCodePoints).toBe(50_000);
+  });
+
+  test('falls back to a safe nested link after an overlong unmatched target', () => {
+    const source = `[outer](${'a'.repeat(500)}[safe](https://example.com)`;
+    render(<MarkdownLoadingProjection source={source} />);
+
+    expect(
+      screen.getByRole('link', { name: 'safe' }).getAttribute('href'),
+    ).toBe('https://example.com/');
+  });
+
+  test('retains a safe link through arbitrary nested target overflows', () => {
+    const source = `[outer](${'a'.repeat(500)}[middle](${'b'.repeat(500)}[safe](https://example.com)`;
+    render(<MarkdownLoadingProjection source={source} />);
+
+    expect(
+      screen.getByRole('link', { name: 'safe' }).getAttribute('href'),
+    ).toBe('https://example.com/');
+  });
+
+  test('bounds many nested candidates without losing the final safe link', () => {
+    const source = `[outer](${Array.from(
+      { length: 80 },
+      () => `[candidate](${'x'.repeat(513)}`,
+    ).join('')}[safe](https://example.com)`;
+    render(<MarkdownLoadingProjection source={source} />);
+
+    expect(
+      screen.getByRole('link', { name: 'safe' }).getAttribute('href'),
+    ).toBe('https://example.com/');
+  });
+
+  test('keeps the original bounded grammar and leftmost unsafe consumption', () => {
+    const source =
+      '[outer](javascript:[safe](https://example.com)) [label😀)](https://example.com/a]b)';
+    render(<MarkdownLoadingProjection source={source} />);
+
+    expect(screen.queryByRole('link', { name: 'safe' })).toBeNull();
+    expect(
+      screen.getByRole('link', { name: 'label😀)' }).getAttribute('href'),
+    ).toBe('https://example.com/a]b');
+  });
+
+  test('keeps literal unmatched and unsafe Markdown source while projecting safe links', () => {
+    const source =
+      'prefix [unfinished and [unsafe](javascript:alert(1)) then [safe](https://example.com/docs)';
+    render(<MarkdownLoadingProjection source={source} />);
+
+    expect(
+      screen.getByRole('link', { name: 'safe' }).getAttribute('href'),
+    ).toBe('https://example.com/docs');
+    expect(screen.queryByRole('link', { name: 'unsafe' })).toBeNull();
+    expect(screen.getByText(/prefix \[unfinished and \[unsafe\]/)).toBeTruthy();
   });
 });
 

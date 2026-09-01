@@ -41,6 +41,174 @@ function safeWebHref(value: string): string | undefined {
   }
 }
 
+const MAX_INLINE_LINK_SEGMENT_CODE_POINTS = 512;
+const MAX_MARKDOWN_LOADING_CANDIDATES = MAX_INLINE_LINK_SEGMENT_CODE_POINTS + 1;
+
+interface MarkdownLoadingLink {
+  start: number;
+  end: number;
+  label: string;
+  target: string;
+}
+
+interface MarkdownLoadingLabelOpener {
+  start: number;
+  labelStart: number;
+  codePointIndex: number;
+}
+
+interface MarkdownLoadingTargetCandidate {
+  start: number;
+  labelStart: number;
+  labelEnd: number;
+  targetStart: number;
+  targetStartCodePoint: number;
+}
+
+/** A fixed-capacity FIFO keeps grammar candidates bounded independent of input. */
+class MarkdownLoadingCandidateDeque<T> {
+  private readonly values: Array<T | undefined> = Array(
+    MAX_MARKDOWN_LOADING_CANDIDATES,
+  );
+  private head = 0;
+  private length = 0;
+
+  first(): T | undefined {
+    return this.length > 0 ? this.values[this.head] : undefined;
+  }
+
+  removeFirst(): void {
+    if (this.length === 0) return;
+    this.values[this.head] = undefined;
+    this.head = (this.head + 1) % MAX_MARKDOWN_LOADING_CANDIDATES;
+    this.length -= 1;
+  }
+
+  push(value: T): void {
+    if (this.length === MAX_MARKDOWN_LOADING_CANDIDATES) {
+      throw new Error(
+        'Markdown loading candidate queue exceeded its grammar cap',
+      );
+    }
+    this.values[(this.head + this.length) % MAX_MARKDOWN_LOADING_CANDIDATES] =
+      value;
+    this.length += 1;
+  }
+
+  clear(): void {
+    while (this.length > 0) this.removeFirst();
+  }
+}
+
+/**
+ * Scan the deliberately small loading-time Markdown grammar in one forward
+ * pass. The matching test exercises hostile input as a semantic contract, not
+ * a host-load-sensitive wall-clock sample.
+ */
+function scanMarkdownLoadingLinks(
+  source: string,
+): readonly MarkdownLoadingLink[] {
+  const matches: MarkdownLoadingLink[] = [];
+  let offset = 0;
+  let codePointIndex = 0;
+  const labelOpeners =
+    new MarkdownLoadingCandidateDeque<MarkdownLoadingLabelOpener>();
+  const targetCandidates =
+    new MarkdownLoadingCandidateDeque<MarkdownLoadingTargetCandidate>();
+  let pendingTarget:
+    | Omit<
+        MarkdownLoadingTargetCandidate,
+        'targetStart' | 'targetStartCodePoint'
+      >
+    | undefined;
+
+  for (const character of source) {
+    const nextOffset = offset + character.length;
+
+    const targetMaxDistance =
+      character === ')'
+        ? MAX_INLINE_LINK_SEGMENT_CODE_POINTS
+        : MAX_INLINE_LINK_SEGMENT_CODE_POINTS - 1;
+    while (
+      targetCandidates.first() &&
+      codePointIndex - targetCandidates.first()!.targetStartCodePoint >
+        targetMaxDistance
+    ) {
+      targetCandidates.removeFirst();
+    }
+
+    const labelMaxDistance =
+      character === ']'
+        ? MAX_INLINE_LINK_SEGMENT_CODE_POINTS + 1
+        : MAX_INLINE_LINK_SEGMENT_CODE_POINTS;
+    while (
+      labelOpeners.first() &&
+      codePointIndex - labelOpeners.first()!.codePointIndex > labelMaxDistance
+    ) {
+      labelOpeners.removeFirst();
+    }
+
+    if (character === ')') {
+      const candidate = targetCandidates.first();
+      if (
+        candidate &&
+        codePointIndex > candidate.targetStartCodePoint &&
+        codePointIndex - candidate.targetStartCodePoint <=
+          MAX_INLINE_LINK_SEGMENT_CODE_POINTS
+      ) {
+        matches.push({
+          start: candidate.start,
+          end: nextOffset,
+          label: source.slice(candidate.labelStart, candidate.labelEnd),
+          target: source.slice(candidate.targetStart, offset),
+        });
+        // A global Markdown match consumes every nested candidate through its
+        // closing delimiter, so the next scan starts cleanly after this point.
+        labelOpeners.clear();
+        pendingTarget = undefined;
+      }
+      targetCandidates.clear();
+      pendingTarget = undefined;
+    } else {
+      if (pendingTarget) {
+        if (character === '(') {
+          targetCandidates.push({
+            ...pendingTarget,
+            targetStart: nextOffset,
+            targetStartCodePoint: codePointIndex + 1,
+          });
+        }
+        pendingTarget = undefined;
+      }
+
+      if (character === '[') {
+        labelOpeners.push({
+          start: offset,
+          labelStart: nextOffset,
+          codePointIndex,
+        });
+      } else if (character === ']') {
+        const opener = labelOpeners.first();
+        pendingTarget =
+          opener && codePointIndex - opener.codePointIndex > 1
+            ? {
+                start: opener.start,
+                labelStart: opener.labelStart,
+                labelEnd: offset,
+              }
+            : undefined;
+        // A label cannot cross `]`; future candidates begin after it.
+        labelOpeners.clear();
+      }
+    }
+
+    offset = nextOffset;
+    codePointIndex += 1;
+  }
+
+  return matches;
+}
+
 /**
  * Keep actionable web links usable while the Markdown renderer chunk loads.
  * The full renderer replaces this projection as soon as it is ready; this
@@ -48,28 +216,24 @@ function safeWebHref(value: string): string | undefined {
  * other source text untouched.
  */
 export function MarkdownLoadingProjection({ source }: { source: string }) {
-  // This is intentionally bounded. The loading projection runs on message text
-  // before the Markdown chunk arrives; an unclosed run of `[` used to make the
-  // global matcher rescan almost the entire message from each character.
-  const matches = [...source.matchAll(/\[([^\]]{1,512})\]\(([^)]{1,512})\)/gu)];
+  const matches = scanMarkdownLoadingLinks(source);
   if (matches.length === 0) return source;
 
   const parts: React.ReactNode[] = [];
   let offset = 0;
   for (const [index, match] of matches.entries()) {
-    const start = match.index ?? offset;
-    parts.push(source.slice(offset, start));
-    const href = safeWebHref(match[2] ?? '');
+    parts.push(source.slice(offset, match.start));
+    const href = safeWebHref(match.target);
     parts.push(
       href ? (
-        <a href={href} key={`${start}-${index}`}>
-          {match[1]}
+        <a href={href} key={`${match.start}-${index}`}>
+          {match.label}
         </a>
       ) : (
-        match[0]
+        source.slice(match.start, match.end)
       ),
     );
-    offset = start + match[0].length;
+    offset = match.end;
   }
   parts.push(source.slice(offset));
   return <>{parts}</>;
