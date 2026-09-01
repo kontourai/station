@@ -1,3 +1,4 @@
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -33,7 +34,7 @@ function NewChatGlyph() {
 
 export function ChatDockWorkspaceControls(props: Controls) {
   const authority = useHostRequestAuthorityScope();
-  const hostId = useRef(`session-inventory:${crypto.randomUUID()}`).current;
+  const hostId = useRef(`session-inventory:${randomCorrelationId()}`).current;
   const inventory = props.sessionInventory;
   const authorityKey = authority?.authorityKey;
   const chatStoreId = inventory?.chatStoreId;

@@ -357,6 +357,18 @@ mint-time contract, and `configureDevicePairingPublicRoutes` in
 `writeLocalGrantSecretFile`) for the route implementation and its threat-model
 comment.
 
+The CLI performs this exchange itself (#1098,
+`packages/cli/src/commands/local-self-auth.ts`): `station setup local` runs it
+right after a successful service install and stores the credential through the
+OS keyring exactly as pairing does, so the saved default works with no further
+pairing step; and when a command finds a saved Station with an installed local
+service, an IP-literal loopback endpoint, and no materialized credential, it
+performs the exchange once before the first request (a machine left
+credential-less by an older `setup local` heals without a reinstall). A
+non-loopback endpoint is never self-authorized — network position must not
+stand in for filesystem possession — and if the exchange fails, `setup local`
+keeps the healthy install and prints exactly what is and is not set up.
+
 For a script or agent driving `./station` non-interactively against an
 instance it just started, exchange that secret directly instead of opening a
 browser. This is the exact sequence proven live against a real instance

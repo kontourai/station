@@ -51,14 +51,10 @@ export interface ProviderAdapterMetadata {
   /**
    * Canonical engine identity (docs/design/agent-engine-unification.md §4.1):
    * `'station'` for Station's own engine, otherwise the engine's canonical
-   * id (e.g. `'claude'`, `'codex'`, `'acp'`). Replaces `executionClass`
-   * as of Phase B (archive#1003 unification slice 6) — derive engineId via
-   * `engineIdForAdapter` (adapter-identity.ts) rather than reading
-   * `executionClass` directly.
+   * id (e.g. `'claude'`, `'codex'`, `'acp'`). Derive the adapter identity via
+   * `engineIdForAdapter` (adapter-identity.ts).
    */
   engineId?: EngineId;
-  /** @deprecated Phase-B read-compat for out-of-tree adapters; derive engineId instead. */
-  executionClass?: 'managed' | 'connected';
   /** Evidence-scoping identity for models launched through this adapter. */
   modelExecution?: ModelInventoryExecutionIdentity;
   /** Abort does not settle discovery until adapter-owned resources are closed. */
