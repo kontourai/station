@@ -284,7 +284,7 @@ describe('verification policy gate', () => {
         ? {
             ...lane,
             phases: lane.phases.map((phase) =>
-              phase.id === 'test-full-ordinary-2-of-4'
+              phase.id === 'test-full-ordinary-2-of-8'
                 ? { ...phase, weight: 81 }
                 : phase,
             ),
@@ -292,7 +292,7 @@ describe('verification policy gate', () => {
         : lane,
     );
     expect(verificationPolicyErrors({ lanes: crowded })).toContain(
-      'full-regression test-full-ordinary-2-of-4 must use exactly 80 coordinator weight',
+      'full-regression test-full-ordinary-2-of-8 must use exactly 80 coordinator weight',
     );
   });
 
@@ -312,7 +312,7 @@ describe('verification policy gate', () => {
         ? {
             ...lane,
             phases: lane.phases?.map((phase) =>
-              phase.id === 'test-full-ordinary-3-of-4'
+              phase.id === 'test-full-ordinary-3-of-8'
                 ? { ...phase, timeoutMs: 45 * 60_000 }
                 : phase,
             ),
@@ -320,31 +320,35 @@ describe('verification policy gate', () => {
         : lane,
     );
     expect(verificationPolicyErrors({ lanes: stale })).toContain(
-      'full-regression test-full-ordinary-3-of-4 must use the exact 20-minute execution deadline',
+      'full-regression test-full-ordinary-3-of-8 must use the exact 20-minute execution deadline',
     );
   });
 
   test('rejects missing, duplicate, misrouted, or monolithic ordinary shards', () => {
-    expect(FULL_REGRESSION_ORDINARY_SHARD_COUNT).toBe(4);
+    expect(FULL_REGRESSION_ORDINARY_SHARD_COUNT).toBe(8);
     expect(FULL_REGRESSION_ORDINARY_SHARDS.map(({ id }) => id)).toEqual([
-      'test-full-ordinary-1-of-4',
-      'test-full-ordinary-2-of-4',
-      'test-full-ordinary-3-of-4',
-      'test-full-ordinary-4-of-4',
+      'test-full-ordinary-1-of-8',
+      'test-full-ordinary-2-of-8',
+      'test-full-ordinary-3-of-8',
+      'test-full-ordinary-4-of-8',
+      'test-full-ordinary-5-of-8',
+      'test-full-ordinary-6-of-8',
+      'test-full-ordinary-7-of-8',
+      'test-full-ordinary-8-of-8',
     ]);
     const completion = LANES.find((lane) => lane.id === 'full-regression')!;
-    const withoutFourth = LANES.map((lane) =>
+    const withoutEighth = LANES.map((lane) =>
       lane === completion
         ? {
             ...lane,
             phases: lane.phases.filter(
-              (phase) => phase.id !== 'test-full-ordinary-4-of-4',
+              (phase) => phase.id !== 'test-full-ordinary-8-of-8',
             ),
           }
         : lane,
     );
-    expect(verificationPolicyErrors({ lanes: withoutFourth })).toContain(
-      'full-regression must declare test-full-ordinary-4-of-4 exactly once',
+    expect(verificationPolicyErrors({ lanes: withoutEighth })).toContain(
+      'full-regression must declare test-full-ordinary-8-of-8 exactly once',
     );
     const duplicateFirst = LANES.map((lane) =>
       lane === completion
@@ -353,20 +357,20 @@ describe('verification policy gate', () => {
             phases: [
               ...lane.phases,
               lane.phases.find(
-                (phase) => phase.id === 'test-full-ordinary-1-of-4',
+                (phase) => phase.id === 'test-full-ordinary-1-of-8',
               )!,
             ],
           }
         : lane,
     );
     expect(verificationPolicyErrors({ lanes: duplicateFirst })).toContain(
-      'full-regression must declare test-full-ordinary-1-of-4 exactly once',
+      'full-regression must declare test-full-ordinary-1-of-8 exactly once',
     );
     const misrouted = structuredClone(packageJson);
     misrouted.scripts['test:full:ordinary:2:raw'] =
-      'node scripts/run-vitest-corpus.mjs --group=ordinary --shard=1/4';
+      'node scripts/run-vitest-corpus.mjs --group=ordinary --shard=1/8';
     expect(verificationPolicyErrors({ manifest: misrouted })).toContain(
-      'package script test:full:ordinary:2:raw must use exact Vitest shard 2/4',
+      'package script test:full:ordinary:2:raw must use exact Vitest shard 2/8',
     );
     const monolithicManifest = structuredClone(packageJson);
     monolithicManifest.scripts['test:full:ordinary:raw'] =
@@ -536,8 +540,8 @@ describe('verification policy gate', () => {
         ? {
             ...doc,
             text: doc.text.replace(
-              '`test-full-ordinary-2-of-4` — 80-unit',
-              '`test-full-ordinary-2-of-4` — 100-unit',
+              '`test-full-ordinary-2-of-8` — 80-unit',
+              '`test-full-ordinary-2-of-8` — 100-unit',
             ),
           }
         : doc,
@@ -551,8 +555,8 @@ describe('verification policy gate', () => {
         ? {
             ...doc,
             text: doc.text.replace(
-              '`test-full-ordinary-3-of-4` — 80-unit host reservation; 20-minute execution deadline.',
-              '`test-full-ordinary-3-of-4` — 80-unit host reservation; 45-minute execution deadline.',
+              '`test-full-ordinary-3-of-8` — 80-unit host reservation; 20-minute execution deadline.',
+              '`test-full-ordinary-3-of-8` — 80-unit host reservation; 45-minute execution deadline.',
             ),
           }
         : doc,

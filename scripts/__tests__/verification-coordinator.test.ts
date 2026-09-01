@@ -51,10 +51,14 @@ import {
 import { FIXTURE_TOOLCHAIN_IDENTITY } from './fixtures/verification-toolchain.mjs';
 
 const ORDINARY_FULL_PHASE_IDS = Object.freeze([
-  'test-full-ordinary-1-of-4',
-  'test-full-ordinary-2-of-4',
-  'test-full-ordinary-3-of-4',
-  'test-full-ordinary-4-of-4',
+  'test-full-ordinary-1-of-8',
+  'test-full-ordinary-2-of-8',
+  'test-full-ordinary-3-of-8',
+  'test-full-ordinary-4-of-8',
+  'test-full-ordinary-5-of-8',
+  'test-full-ordinary-6-of-8',
+  'test-full-ordinary-7-of-8',
+  'test-full-ordinary-8-of-8',
 ]);
 
 /**
@@ -1317,7 +1321,7 @@ describe('verification coordinator', () => {
       expect(first.disposition).toBe('executed');
       expect(projected.disposition).toBe('reused');
       expect(localReuse.disposition).toBe('reused');
-      expect(phaseCalls).toBe(12);
+      expect(phaseCalls).toBe(16);
       expect(projected.receipt.request.worktree).toBe(secondWorktree);
       expect(localReuse.receipt.request.worktree).toBe(secondWorktree);
       expect(localReuse.receipt.artifacts).toEqual(projected.receipt.artifacts);
@@ -1795,7 +1799,7 @@ describe('verification coordinator', () => {
       const phaseArtifacts = ciResult.receipt.artifacts.filter((artifact) =>
         artifact.path.includes('/attachment-'),
       );
-      expect(phaseArtifacts).toHaveLength(12);
+      expect(phaseArtifacts).toHaveLength(16);
       const records = phaseArtifacts.map((artifact) =>
         JSON.parse(readFileSync(join(worktree, artifact.path), 'utf8')),
       );
@@ -2508,7 +2512,7 @@ setInterval(() => {
     try {
       const first = await coordinateVerification(options);
       expect(first.receipt.terminal.passed).toBe(true);
-      expect(executedPhases).toHaveLength(12);
+      expect(executedPhases).toHaveLength(16);
 
       const path = join(
         worktree,

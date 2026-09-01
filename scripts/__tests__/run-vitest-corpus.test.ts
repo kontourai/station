@@ -48,12 +48,16 @@ describe('Vitest corpus runner', () => {
       { name: 'shared-output', maxWorkers: 1, noFileParallelism: true },
       { name: 'dogfood-reconcile', maxWorkers: 1, noFileParallelism: true },
     ]);
-    expect(ORDINARY_SHARD_COUNT).toBe(4);
+    expect(ORDINARY_SHARD_COUNT).toBe(8);
     expect(ORDINARY_SHARD_DESCRIPTORS.map(({ shard }) => shard)).toEqual([
-      '1/4',
-      '2/4',
-      '3/4',
-      '4/4',
+      '1/8',
+      '2/8',
+      '3/8',
+      '4/8',
+      '5/8',
+      '6/8',
+      '7/8',
+      '8/8',
     ]);
     const command = buildVitestCommand(ORDINARY_SHARD_DESCRIPTORS[0], [
       'one.test.ts',
@@ -64,7 +68,7 @@ describe('Vitest corpus runner', () => {
     expect(command).toContain('--maxWorkers=4');
     expect(command).not.toContain('one.test.ts');
     expect(command.some((arg) => arg.startsWith('--exclude='))).toBe(true);
-    expect(command).toContain('--shard=1/4');
+    expect(command).toContain('--shard=1/8');
     expect(command).toContain('--reporter=default');
     expect(
       command.some((arg) =>
@@ -125,14 +129,18 @@ describe('Vitest corpus runner', () => {
       onResult: () => {},
     });
     expect(calls).toEqual([
-      'ordinary-1-of-4',
-      'ordinary-2-of-4',
-      'ordinary-3-of-4',
-      'ordinary-4-of-4',
+      'ordinary-1-of-8',
+      'ordinary-2-of-8',
+      'ordinary-3-of-8',
+      'ordinary-4-of-8',
+      'ordinary-5-of-8',
+      'ordinary-6-of-8',
+      'ordinary-7-of-8',
+      'ordinary-8-of-8',
       'process-heavy',
     ]);
     expect(result.passed).toBe(false);
-    expect(result.results).toHaveLength(5);
+    expect(result.results).toHaveLength(9);
   });
 
   it('settles an ordinary writer before starting the shared-output policy reader', async () => {
@@ -145,7 +153,7 @@ describe('Vitest corpus runner', () => {
       },
       platform: 'linux',
       runGroup: async (group) => {
-        if (group.resultName === 'ordinary-4-of-4') {
+        if (group.resultName === 'ordinary-8-of-8') {
           events.push('writer-started');
           await Promise.resolve();
           events.push('writer-settled');
@@ -192,19 +200,19 @@ describe('Vitest corpus runner', () => {
   it('accepts only a known explicit resource-group selector', () => {
     expect(parseVitestCorpusArguments([])).toEqual({});
     expect(
-      parseVitestCorpusArguments(['--group=ordinary', '--shard=3/4']),
-    ).toEqual({ groupName: 'ordinary', shard: '3/4' });
+      parseVitestCorpusArguments(['--group=ordinary', '--shard=3/8']),
+    ).toEqual({ groupName: 'ordinary', shard: '3/8' });
     expect(() => parseVitestCorpusArguments(['--group=ordinary'])).toThrow(
       /requires exactly --shard/,
     );
     expect(() =>
-      parseVitestCorpusArguments(['--group=process-heavy', '--shard=1/4']),
+      parseVitestCorpusArguments(['--group=process-heavy', '--shard=1/8']),
     ).toThrow(/only with --group=ordinary/);
     expect(() =>
-      parseVitestCorpusArguments(['--group=ordinary', '--shard=0/4']),
+      parseVitestCorpusArguments(['--group=ordinary', '--shard=0/8']),
     ).toThrow(/requires exactly --shard/);
     expect(() =>
-      parseVitestCorpusArguments(['--group=ordinary', '--shard=1/5']),
+      parseVitestCorpusArguments(['--group=ordinary', '--shard=1/9']),
     ).toThrow(/requires exactly --shard/);
     expect(() => parseVitestCorpusArguments(['--group=unknown'])).toThrow(
       /unknown Vitest corpus group/,
@@ -236,7 +244,7 @@ describe('Vitest corpus runner', () => {
     expect(result.passed).toBe(true);
     expect(result.output).toBe('ok');
     expect(result).toMatchObject({
-      name: 'ordinary-1-of-4',
+      name: 'ordinary-1-of-8',
       stdout: 'ok',
       stderr: '',
       stdoutBytes: 2,
@@ -249,7 +257,7 @@ describe('Vitest corpus runner', () => {
     const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
     try {
       emitResult({
-        name: 'ordinary-2-of-4',
+        name: 'ordinary-2-of-8',
         passed: false,
         status: 1,
         error: 'Vitest exited 1',
@@ -258,10 +266,10 @@ describe('Vitest corpus runner', () => {
         outputBytes: 33,
       });
       expect(stdout.mock.calls.flat().join('')).toContain(
-        '[vitest-corpus] ordinary-2-of-4 stdout tail:\nlast passing test',
+        '[vitest-corpus] ordinary-2-of-8 stdout tail:\nlast passing test',
       );
       expect(stderr.mock.calls.flat().join('')).toContain(
-        '[vitest-corpus] ordinary-2-of-4 stderr tail:\nfatal diagnostic',
+        '[vitest-corpus] ordinary-2-of-8 stderr tail:\nfatal diagnostic',
       );
     } finally {
       stdout.mockRestore();
@@ -319,7 +327,7 @@ describe('Vitest corpus runner', () => {
       },
       onResult: () => {},
     });
-    expect(calls).toEqual(['ordinary-1-of-4']);
+    expect(calls).toEqual(['ordinary-1-of-8']);
     expect(result.passed).toBe(false);
     expect(result.results.at(-1)?.error).toMatch(/between groups/);
   });
@@ -444,20 +452,20 @@ describe('Vitest corpus runner', () => {
     expect(fallback.passed).toBe(true);
     const ordinaryFallback = runWindowsSerializedCorpus({
       groupName: 'ordinary',
-      shard: '2/4',
+      shard: '2/8',
       groups: GROUPS,
       spawnSync: (_executable, args) => {
         expect(args).toEqual(
           expect.arrayContaining([
             '--maxWorkers=1',
-            '--shard=2/4',
+            '--shard=2/8',
             '--no-file-parallelism',
           ]),
         );
         return { status: 0, stdout: 'ordinary ok', stderr: '' } as never;
       },
     });
-    expect(ordinaryFallback.name).toBe('ordinary-2-of-4');
+    expect(ordinaryFallback.name).toBe('ordinary-2-of-8');
     let normalRunGroups = 0;
     const serializedCalls: Array<[string, string | undefined]> = [];
     const result = await runVitestCorpus({
@@ -478,16 +486,20 @@ describe('Vitest corpus runner', () => {
     });
     expect(normalRunGroups).toBe(0);
     expect(serializedCalls).toEqual([
-      ['ordinary', '1/4'],
-      ['ordinary', '2/4'],
-      ['ordinary', '3/4'],
-      ['ordinary', '4/4'],
+      ['ordinary', '1/8'],
+      ['ordinary', '2/8'],
+      ['ordinary', '3/8'],
+      ['ordinary', '4/8'],
+      ['ordinary', '5/8'],
+      ['ordinary', '6/8'],
+      ['ordinary', '7/8'],
+      ['ordinary', '8/8'],
       ['process-heavy', undefined],
       ['process-exclusive', undefined],
       ['shared-output', undefined],
       ['dogfood-reconcile', undefined],
     ]);
     expect(result.passed).toBe(true);
-    expect(result.results).toHaveLength(8);
+    expect(result.results).toHaveLength(12);
   });
 });

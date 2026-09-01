@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { BaseSequencer } from 'vitest/node';
 import config from '../../vitest.config';
 import { PROCESS_HEAVY_MAX_WORKERS } from '../run-vitest-corpus.mjs';
 import {
@@ -37,6 +38,22 @@ function temporaryRoot() {
   return root;
 }
 
+async function ordinaryShardFiles(
+  files: readonly string[],
+  index: number,
+  count: number,
+) {
+  // Delegate the mapping to Vitest's installed BaseSequencer. `vitest list`
+  // deliberately reports all discovered files and does not apply --shard.
+  const sequencer = new BaseSequencer({
+    config: { root: process.cwd(), shard: { index, count } },
+  } as never);
+  const selected = await sequencer.shard(
+    files.map((moduleId) => ({ moduleId })) as never,
+  );
+  return selected.map((spec) => spec.moduleId).sort();
+}
+
 afterEach(() => {
   for (const root of temporaryRoots.splice(0))
     rmSync(root, { recursive: true, force: true });
@@ -54,6 +71,33 @@ describe('Vitest resource manifest', () => {
     expect(groups.dogfoodReconcile.length).toBeGreaterThan(0);
     expect(groups.ordinary.length).toBeGreaterThan(0);
     expect(assertOrdinaryVitestSelection(groups)).toEqual(groups.ordinary);
+  }, 70_000);
+
+  it('proves eight ordinary slices cover exactly once and refine every former quarter', async () => {
+    // Vitest sorts a SHA-1 path projection and slices that ordered set. This
+    // calls the installed selector itself—not a reimplementation—so changes
+    // in discovery count or Vitest shard semantics force an explicit mapping
+    // review instead of silently moving #1156's failing slice elsewhere.
+    const ordinary = discoverVitestResourceGroups().ordinary;
+    const eighths = await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        ordinaryShardFiles(ordinary, index + 1, 8),
+      ),
+    );
+    const allEighths = eighths.flat();
+
+    expect(allEighths).toHaveLength(ordinary.length);
+    expect(new Set(allEighths).size).toBe(ordinary.length);
+    expect([...new Set(allEighths)].sort()).toEqual([...ordinary].sort());
+
+    for (const quarterIndex of [1, 2, 3, 4]) {
+      const quarter = await ordinaryShardFiles(ordinary, quarterIndex, 4);
+      const refined = eighths
+        .slice((quarterIndex - 1) * 2, quarterIndex * 2)
+        .flat()
+        .sort();
+      expect(refined).toEqual(quarter);
+    }
   }, 70_000);
 
   // station#3465 disposition, made assertable in code (coordinator review):
