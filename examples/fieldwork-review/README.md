@@ -25,7 +25,7 @@ opens Fieldwork's protected review application in a sandboxed frame.
 
 The Station repository owns this example's development install as an npm
 workspace. From a fresh checkout, install once at the repository root so npm
-can link the private `@kontourai/station-sdk` host peer and install the
+can link the workspace `@kontourai/station-sdk` package and install the
 example-owned `@kontourai/fieldwork` dependency:
 
 ```bash
