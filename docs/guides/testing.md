@@ -390,6 +390,14 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 - `test-full-ordinary-6-of-8` — 80-unit host reservation; 20-minute execution deadline.
 - `test-full-ordinary-7-of-8` — 80-unit host reservation; 20-minute execution deadline.
 - `test-full-ordinary-8-of-8` — 80-unit host reservation; 20-minute execution deadline.
+
+A stopped phase reports itself as stopped. When a shard exceeds its execution
+deadline the corpus runner prints `[vitest-corpus] <group>: CANCELLED` — never
+`FAIL` — followed by an explicit note that no test results were produced and
+that the captured bytes are a partial transcript. The receipt summary names the
+step under `inFlightStep` instead of `failingStep`. If you see either, the
+answer is budget or sharding, not a hunt for a failing test: the suite did not
+finish, so no failing test name exists to find.
 - `test-full-process-heavy` — 60-unit host reservation; 30-minute execution deadline.
 - `test-full-process-exclusive` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-shared-output` — 60-unit host reservation; 4-minute execution deadline.
