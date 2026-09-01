@@ -989,7 +989,7 @@ test.describe('daily-driver scenario qualification (station#3307)', () => {
       // which is exactly the state the drain step below needs. The composer's
       // own fieldset carries the stable accessible name (`:430-432`).
       const textarea = page
-        .getByRole('group', { name: 'Message composer file drop area' })
+        .getByRole('group', { name: 'Message composer', exact: true })
         .getByRole('textbox');
       await expect(textarea).toBeVisible({ timeout: 10_000 });
       const requestsBefore = shell.executionRequests.length;

@@ -4,8 +4,7 @@
 
 Station is Kontour's local-first agent workspace. It keeps projects, Tasks,
 Sessions, evidence gates, readiness, and receipts in one place while letting
-you work with Station agents or External agents such as Claude Code, Codex,
-OpenCode, and Kiro.
+you work with Station agents and supported external engines.
 
 ## Why Station
 
@@ -14,8 +13,8 @@ reason it is allowed to advance together.
 
 - **One project context** — Tasks, Sessions, changed files, artifacts, and
   receipts stay connected.
-- **Your choice of Provider** — use a local model, a hosted model service, or
-  an agent app without exposing transport details as product concepts.
+- **Your choice of connection** — use a local model, a hosted model service, or
+  an external engine without exposing transport details as product concepts.
 - **Visible trust state** — gates, missing evidence, route-backs, exceptions,
   and readiness remain beside the work they describe.
 - **Local-first ownership** — Station data lives under `~/.station` by default,
@@ -47,12 +46,12 @@ For first launch, Provider setup, updates, and uninstall instructions, read
 
 ## Start Working
 
-Station detects available Providers, including local Ollama models and
-supported agent apps. You do not need to configure every Provider before you
-begin.
+Station detects available connections, including local model services and
+supported external engines. You do not need to configure every connection
+before you begin.
 
 1. Open Station at `http://localhost:18000`.
-2. Choose or add a Provider in **Connections**.
+2. Choose or add a connection in **Connections**.
 3. Open a local project.
 4. Start a Task or a direct chat with the agent you want.
 

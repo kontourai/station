@@ -11,6 +11,7 @@ import {
   runVitestGroup,
   runWindowsSerializedCorpus,
   VITEST_CORPUS_GROUPS,
+  vitestGroupEnvironment,
 } from '../run-vitest-corpus.mjs';
 
 const GROUPS = {
@@ -43,7 +44,7 @@ describe('Vitest corpus runner', () => {
   it('builds explicit Node/Vitest commands with resource-bounded worker counts', () => {
     expect(VITEST_CORPUS_GROUPS).toEqual([
       { name: 'ordinary', maxWorkers: 4 },
-      { name: 'process-heavy', maxWorkers: 2 },
+      { name: 'process-heavy', maxWorkers: 1, noFileParallelism: true },
       { name: 'process-exclusive', maxWorkers: 1, noFileParallelism: true },
       { name: 'shared-output', maxWorkers: 1, noFileParallelism: true },
       { name: 'dogfood-reconcile', maxWorkers: 1, noFileParallelism: true },
@@ -81,7 +82,9 @@ describe('Vitest corpus runner', () => {
     const processHeavy = buildVitestCommand(VITEST_CORPUS_GROUPS[1], [
       'process.test.ts',
     ]);
-    expect(processHeavy).toContain('--maxWorkers=2');
+    expect(processHeavy).toEqual(
+      expect.arrayContaining(['--maxWorkers=1', '--no-file-parallelism']),
+    );
     expect(processHeavy.some((arg) => arg.startsWith('--reporter='))).toBe(
       false,
     );
@@ -90,6 +93,21 @@ describe('Vitest corpus runner', () => {
     ).toEqual(
       expect.arrayContaining(['--maxWorkers=1', '--no-file-parallelism']),
     );
+  });
+
+  it('removes only the inherited Playwright cache from process-heavy work', () => {
+    const inherited = {
+      PATH: '/reviewed/bin',
+      PLAYWRIGHT_BROWSERS_PATH: '/ambient/ms-playwright',
+      STATION_TEST_MARKER: 'preserved',
+    };
+    expect(vitestGroupEnvironment(VITEST_CORPUS_GROUPS[1], inherited)).toEqual({
+      PATH: '/reviewed/bin',
+      STATION_TEST_MARKER: 'preserved',
+    });
+    expect(
+      vitestGroupEnvironment(ORDINARY_SHARD_DESCRIPTORS[0], inherited),
+    ).toBe(inherited);
   });
 
   it('never accepts an empty group as a pass', async () => {

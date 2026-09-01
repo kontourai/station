@@ -140,6 +140,13 @@ export function listExamples(examplesDir = EXAMPLES_DIR) {
     .sort();
 }
 
+export function uncataloguedExamples(
+  examples = listExamples(),
+  catalog = readFileSync(join(EXAMPLES_DIR, 'README.md'), 'utf8'),
+) {
+  return examples.filter((name) => !catalog.includes(`](${name}/README.md)`));
+}
+
 function buildExample(dir, name) {
   const pkgPath = join(dir, 'package.json');
   if (!existsSync(pkgPath)) return { name, status: 'no-package' };
@@ -164,6 +171,13 @@ function main() {
   console.log(`\nExamples conformance (${examples.length} examples).`);
 
   let failed = 0;
+  const uncatalogued = uncataloguedExamples(examples);
+  if (uncatalogued.length > 0) {
+    failed += 1;
+    console.error(
+      `\n  examples/README.md does not list: ${uncatalogued.join(', ')}`,
+    );
+  }
   for (const name of examples) {
     const problems = checkExample(join(EXAMPLES_DIR, name), name);
     if (problems.length === 0) continue;

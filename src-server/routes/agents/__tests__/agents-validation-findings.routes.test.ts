@@ -46,6 +46,7 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
       {
         id: 'codex',
         type: 'codex',
+        engineId: 'codex',
         name: 'Codex',
         enabled: true,
         status: 'ready',
@@ -75,22 +76,16 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
     ]);
   });
 
-  test('a clean save with no findings omits validation', async () => {
-    const getRuntimeConnections = vi.fn().mockResolvedValue([
-      {
-        id: 'bedrock-runtime',
-        type: 'bedrock',
-        name: 'Amazon Bedrock',
-        enabled: true,
-        status: 'ready',
-      },
-    ]);
+  test('a Station-agent save using a Bedrock model connection omits validation', async () => {
+    // Bedrock is a Model connection. Station owns this agent's prompt and
+    // skills, so its runtime lookup contains external engines only.
+    const getRuntimeConnections = vi.fn().mockResolvedValue([]);
     const { app, agentService } = setup(getRuntimeConnections);
     agentService.updateAgent.mockResolvedValue({
       name: 'Managed Agent',
       prompt: 'You are helpful.',
       skills: ['writing'],
-      execution: { agentConnectionId: 'bedrock-runtime' },
+      execution: { modelConnectionId: 'bedrock-runtime' },
     });
 
     const res = await app.request('/managed-agent', {
@@ -101,6 +96,74 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
     expect(res.status).toBe(200);
     const body = await json(res);
     expect(body.validation).toBeUndefined();
+  });
+
+  test('a matched runtime connection without canonical engine identity degrades validation', async () => {
+    const getRuntimeConnections = vi.fn().mockResolvedValue([
+      {
+        id: 'codex',
+        type: 'codex',
+        name: 'Codex',
+        enabled: true,
+        status: 'ready',
+      },
+    ]);
+    const { app, agentService } = setup(getRuntimeConnections);
+    agentService.updateAgent.mockResolvedValue({
+      name: 'Codex Agent',
+      skills: ['writing'],
+      execution: { agentConnectionId: 'codex' },
+    });
+
+    const res = await app.request('/codex-agent', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Codex Agent' }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.success).toBe(true);
+    expect(body.validation).toEqual({ findings: [], degraded: true });
+  });
+
+  test('a canonical unknown external engine keeps conservative findings and its display name', async () => {
+    const getRuntimeConnections = vi.fn().mockResolvedValue([
+      {
+        id: 'custom-engine',
+        type: 'custom-runtime',
+        engineId: 'mystery',
+        name: 'My Engine',
+        enabled: true,
+        status: 'ready',
+      },
+    ]);
+    const { app, agentService } = setup(getRuntimeConnections);
+    agentService.updateAgent.mockResolvedValue({
+      name: 'Custom Agent',
+      prompt: 'You are helpful.',
+      skills: ['writing'],
+      execution: { agentConnectionId: 'custom-engine' },
+    });
+
+    const res = await app.request('/custom-agent', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Custom Agent' }),
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body.validation.findings).toEqual([
+      {
+        capability: 'prompt',
+        engineId: 'unknown',
+        message: "My Engine can't receive a system prompt from Station",
+      },
+      {
+        capability: 'skills',
+        engineId: 'unknown',
+        message: "My Engine can't receive skills from Station",
+      },
+    ]);
   });
 
   test('a runtime-connection fetch failure marks the response degraded, never a 500', async () => {
@@ -193,6 +256,7 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
       {
         id: 'codex',
         type: 'codex',
+        engineId: 'codex',
         name: 'Codex',
         enabled: true,
         status: 'ready',
@@ -219,6 +283,7 @@ describe('Agent Routes — station#975 D-3 validation findings', () => {
       {
         id: 'codex',
         type: 'codex',
+        engineId: 'codex',
         name: 'Codex',
         enabled: true,
         status: 'ready',

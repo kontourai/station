@@ -118,7 +118,6 @@ export const ALLOWED_MISSING = new Map([
     'examples/meeting-notes/src/api.ts',
     'referenced only in the record of its own deletion in a Wave 3 cleanup',
   ],
-  ['src-desktop/gen/android/', 'Android build output, absent until built'],
   [
     'src-desktop/gen/android/app/build/outputs/apk/universal/debug/',
     'Android build output, absent until built',
