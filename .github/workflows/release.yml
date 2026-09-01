@@ -403,7 +403,9 @@ jobs:
       ANDROID_UPLOAD_KEY_ALIAS: ${{ vars.ANDROID_UPLOAD_KEY_ALIAS }}
       VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
       VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
-      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ vars.NATIVE_APP_UPDATE_CHANNEL }}
+      # The channel is part of the signed app identity, not provider-managed
+      # feed configuration. Keep it valid even when no optional feed exists.
+      VITE_NATIVE_APP_UPDATE_CHANNEL: ${{ needs.preflight.outputs.channel == 'preview' && 'beta' || 'stable' }}
       VITE_NATIVE_APP_VERSION: ${{ needs.preflight.outputs.version }}
       NATIVE_APP_UPDATE_ACTION_URL: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}
       NATIVE_APP_UPDATE_ACTION_KIND: ${{ vars.NATIVE_APP_UPDATE_ACTION_KIND }}
@@ -413,6 +415,8 @@ jobs:
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
+      - name: Install dependencies before resolving the native update feed
+        run: npm run dependencies:ci
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android }
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
@@ -433,18 +437,17 @@ jobs:
           # eleven steps before reaching it. Nothing downstream lies about it —
           # an unconfigured client renders no update state at all (#2217), so
           # there is no user-visible claim left for this gate to protect.
-          missing=""
-          for name in VITE_NATIVE_APP_UPDATE_FEED_URL VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION NATIVE_APP_UPDATE_ACTION_URL NATIVE_APP_UPDATE_ACTION_KIND NATIVE_APP_UPDATE_ACTION_ORIGINS; do
-            test -n "${!name}" || missing="$missing $name"
-          done
-          if [ -z "$missing" ]; then
-            node scripts/native-update-feed.mjs validate-config
+          # The shared resolver distinguishes an absent feed from a partial
+          # one. It validates identity in both cases and exits before the
+          # build on any malformed or incomplete configured feed.
+          node scripts/native-update-feed.mjs validate-config
+          if [ -n "$VITE_NATIVE_APP_UPDATE_FEED_URL" ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::Native update feed not configured (missing:$missing); skipping feed publish. Store-track upload is the update path for this build."
+            echo "::notice::Native update feed not configured; skipping feed publish. Store-track upload is the update path for this build."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           fi
-      - run: npm run dependencies:ci && npm run build:native-client
+      - run: npm run build:native-client
       - run: node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json"
       - name: Initialize Android with the channel overlay before the tag overlay
         working-directory: src-desktop

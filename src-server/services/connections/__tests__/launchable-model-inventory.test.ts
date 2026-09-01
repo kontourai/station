@@ -19,6 +19,45 @@ function input(
 }
 
 describe('buildLaunchableModelInventory', () => {
+  test('marks curated routes and leaves an unknown provider-native id ungrouped', () => {
+    const inventory = buildLaunchableModelInventory(
+      input({
+        modelConnections: [
+          ...['claude-sonnet-4-5', 'claude-sonnet-4-5-v2'].map((id) => ({
+            connection: {
+              id: `anthropic-${id}`,
+              kind: 'model' as const,
+              type: 'anthropic',
+              name: id,
+              enabled: true,
+              capabilities: ['llm' as const],
+              config: {},
+              status: 'ready' as const,
+              prerequisites: [],
+            },
+            execution: null,
+            catalog: {
+              source: 'live' as const,
+              observedAt: OBSERVED_AT,
+              models: [{ id, name: id }],
+            },
+          })),
+        ],
+      }),
+    );
+    const known = inventory.models.find(
+      (model) => model.providerModel === 'claude-sonnet-4-5',
+    );
+    const unknown = inventory.models.find(
+      (model) => model.providerModel === 'claude-sonnet-4-5-v2',
+    );
+    expect(known?.canonicalModelIdentity?.canonicalId).toBe(
+      'anthropic:claude-sonnet-4-5',
+    );
+    expect(unknown?.canonicalModelIdentity).toBeUndefined();
+    expect(unknown?.providerModel).toBe('claude-sonnet-4-5-v2');
+  });
+
   test('projects live Ollama models with adapter-declared locality and metadata', () => {
     const inventory = buildLaunchableModelInventory(
       input({
@@ -30,7 +69,7 @@ describe('buildLaunchableModelInventory', () => {
               type: 'ollama',
               name: 'Local Ollama',
               enabled: true,
-              capabilities: ['llm'],
+              capabilities: ['llm' as const],
               config: {},
               status: 'ready',
               prerequisites: [],
@@ -103,7 +142,7 @@ describe('buildLaunchableModelInventory', () => {
               type: 'openai-compat',
               name: 'Bounded',
               enabled: true,
-              capabilities: ['llm'],
+              capabilities: ['llm' as const],
               config: {},
               status: 'ready',
               prerequisites: [],
@@ -146,7 +185,7 @@ describe('buildLaunchableModelInventory', () => {
               type: 'openai-compat',
               name: 'Bounded records',
               enabled: true,
-              capabilities: ['llm'],
+              capabilities: ['llm' as const],
               config: {},
               status: 'ready',
               prerequisites: [],
@@ -170,7 +209,7 @@ describe('buildLaunchableModelInventory', () => {
               type: 'openai-compat',
               name: 'Bounded bytes',
               enabled: true,
-              capabilities: ['llm'],
+              capabilities: ['llm' as const],
               config: {},
               status: 'ready',
               prerequisites: [],
@@ -284,7 +323,7 @@ describe('buildLaunchableModelInventory', () => {
               type: 'openai-compat',
               name: 'Remote API',
               enabled: true,
-              capabilities: ['llm'],
+              capabilities: ['llm' as const],
               config: { apiKey: 'must-not-escape' },
               status: 'ready',
               prerequisites: [],
@@ -413,7 +452,7 @@ describe('buildLaunchableModelInventory', () => {
               type: 'openai-compat',
               name: 'Configured remote',
               enabled: true,
-              capabilities: ['llm'],
+              capabilities: ['llm' as const],
               config: { defaultModel: 'provider/model-v1' },
               status: 'ready',
               prerequisites: [],
@@ -447,7 +486,7 @@ describe('buildLaunchableModelInventory', () => {
         type: 'openai-compat',
         name: 'Remote models',
         enabled: true,
-        capabilities: ['llm'],
+        capabilities: ['llm' as const],
         config: {},
         status: 'ready',
         prerequisites: [],
@@ -507,7 +546,7 @@ describe('buildLaunchableModelInventory', () => {
               type: 'ollama',
               name: 'Disabled',
               enabled: false,
-              capabilities: ['llm'],
+              capabilities: ['llm' as const],
               config: {},
               status: 'disabled',
               prerequisites: [],

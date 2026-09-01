@@ -378,6 +378,18 @@ test.describe('Plugin Update Flow', () => {
           components: [],
           conflicts: [],
           dependencies: [],
+          // `usePluginManagementViewModel.confirmInstall` fail-closes ("no
+          // preview, no basis, no install", archive#4288) unless the preview
+          // itself carries `contentDigest` and `permissions` — without them
+          // it never calls `installMutation.mutate` at all, so `/api/plugins/
+          // install` (mocked below with the real `pendingConsent` this test
+          // means to exercise) was never reached and "Permission Request"
+          // never appeared. `pendingConsent: []` here means the PREVIEW finds
+          // nothing to ask about; the install response's own pendingConsent
+          // (checked post-install, permissions only knowable once installed)
+          // is what this test is actually about.
+          contentDigest: 'sha256-test-network-kit-digest',
+          permissions: { required: [], autoGranted: [], pendingConsent: [] },
         },
       }),
     );

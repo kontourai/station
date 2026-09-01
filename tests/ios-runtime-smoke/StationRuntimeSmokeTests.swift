@@ -47,6 +47,19 @@ final class StationRuntimeSmokeTests: XCTestCase {
         connect.tap()
 
         let addAddress = app.buttons["Add a Station address"]
+        if !addAddress.waitForExistence(timeout: 2) {
+            // The notification sheet can still win the final race between the
+            // post-shell dismissal and the first WebView tap. Recover once,
+            // then let the existing bounded manager assertion decide the run.
+            dismissSystemAlertIfPresent()
+            app.activate()
+            XCTAssertTrue(
+                connect.waitForExistence(timeout: 5),
+                "Connect to a Station disappeared while recovering from a post-tap notification sheet. Accessibility hierarchy:\n\(app.debugDescription)"
+            )
+            XCTAssertTrue(connect.isHittable)
+            connect.tap()
+        }
         XCTAssertTrue(
             addAddress.waitForExistence(timeout: 10),
             "Station manager did not expose Add a Station address. Accessibility hierarchy:\n\(app.debugDescription)"

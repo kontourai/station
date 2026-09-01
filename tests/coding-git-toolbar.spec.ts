@@ -280,7 +280,7 @@ test.describe('Coding layout git branch toolbar', () => {
     await seedOrchestrationRoutes(page);
     await seedGitRoutes(page);
     await page.goto('/projects/dev/layouts/code');
-    await page.getByRole('tab', { name: /coding:diff/ }).click();
+    await page.getByRole('tab', { name: 'Diff', exact: true }).click();
   });
 
   test('shows the current branch and lists branches in the switcher', async ({
@@ -326,7 +326,7 @@ test.describe('Coding layout multi-repo toolbar', () => {
     await seedOrchestrationRoutes(page);
     await seedMultiRepoRoutes(page);
     await page.goto('/projects/dev/layouts/code');
-    await page.getByRole('tab', { name: /coding:diff/ }).click();
+    await page.getByRole('tab', { name: 'Diff', exact: true }).click();
   });
 
   test('lists discovered repos and switching updates the branch', async ({

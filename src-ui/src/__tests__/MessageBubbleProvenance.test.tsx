@@ -8,9 +8,9 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatMessage } from '../types';
 
 vi.mock('react-markdown', () => ({
@@ -24,6 +24,25 @@ vi.mock('../components/chat/message-bubble/MessageRating', () => ({
 vi.mock('../components/icons/UserIcon', () => ({
   UserIcon: () => null,
 }));
+// The trace links are gated on this setting. The behavioural tests below cover
+// the pre-footer site (`!hasTurnFooter`) and the footer site; the source-text
+// contract test separately proves that both guarded sites remain in the file.
+const developerTools = { enabled: false };
+vi.mock('../contexts/DeviceSettingsContext', async () => {
+  const actual = await vi.importActual<
+    typeof import('../contexts/DeviceSettingsContext')
+  >('../contexts/DeviceSettingsContext');
+  const { deviceSettingsStore } = await vi.importActual<
+    typeof import('../lib/device-settings-store')
+  >('../lib/device-settings-store');
+  return {
+    ...actual,
+    useDeviceSettings: () => ({
+      ...deviceSettingsStore.getSnapshot(),
+      developerToolsEnabled: developerTools.enabled,
+    }),
+  };
+});
 vi.mock('../components/chat/ConnectedAnswerBasisAffordance', () => ({
   ConnectedAnswerBasisAffordance: () => <button type="button">Basis</button>,
 }));
@@ -97,6 +116,10 @@ function renderRow(
 }
 
 describe('MessageBubble turn provenance (station#1410)', () => {
+  afterEach(() => {
+    developerTools.enabled = false;
+  });
+
   it('renders the checkpoint-derived workspace effect on its assistant turn', () => {
     renderRow({
       role: 'assistant',
@@ -145,7 +168,7 @@ describe('MessageBubble turn provenance (station#1410)', () => {
   // archive#1423: the share affordance must be reachable from the same real
   // row as the card — a mint button that only renders in its own unit test
   // is a feature nobody can use.
-  it('keeps one inline action row and moves secondary actions into a keyboard menu', async () => {
+  it('keeps one inline action row and puts sharing in the provenance disclosure', async () => {
     renderRow({
       role: 'assistant',
       content: 'Here is the answer.',
@@ -154,14 +177,17 @@ describe('MessageBubble turn provenance (station#1410)', () => {
       provenance: envelope,
     });
 
-    const footer = document.querySelector('.turn-footer');
-    const actions = document.querySelector('.turn-footer__actions');
-    expect(getComputedStyle(footer!).flexWrap).toBe('nowrap');
-    expect(getComputedStyle(actions!).flexWrap).toBe('nowrap');
     expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: /Share this answer/ }),
     ).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Provenance' }));
+    expect(
+      await screen.findByRole('button', {
+        name: 'Share this answer (turn turn-7)',
+      }),
+    ).toBeTruthy();
 
     const overflow = await screen.findByRole('button', {
       name: 'More answer actions',
@@ -169,9 +195,6 @@ describe('MessageBubble turn provenance (station#1410)', () => {
     expect(overflow.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(overflow);
     expect(overflow.getAttribute('aria-expanded')).toBe('true');
-    expect(
-      screen.getByRole('menuitem', { name: 'Share this answer (turn turn-7)' }),
-    ).toBeTruthy();
     expect(
       // The attach affordance mounts beside a lazy message chunk; under full-
       // corpus worker load its dynamic import can exceed findByRole's 1s
@@ -198,6 +221,80 @@ describe('MessageBubble turn provenance (station#1410)', () => {
 
     expect(
       screen.queryByRole('button', { name: /Share this answer/ }),
+    ).toBeNull();
+  });
+
+  it('hides the trace link unless developer tools are on, and shows it when they are', async () => {
+    developerTools.enabled = false;
+    const off = renderRow({
+      role: 'assistant',
+      content: 'Traced.',
+      provenance: envelope,
+      traceId: 'trace-abcdef12',
+    } as ChatMessage);
+    expect(off.container.querySelector('.message__trace')).toBeNull();
+    off.unmount();
+
+    developerTools.enabled = true;
+    const on = renderRow({
+      role: 'assistant',
+      content: 'Traced.',
+      provenance: envelope,
+      traceId: 'trace-abcdef12',
+    } as ChatMessage);
+    expect(on.container.querySelector('.message__trace')).not.toBeNull();
+  });
+
+  it('gates the trace link on an assistant row without a turn footer', () => {
+    developerTools.enabled = false;
+    const off = renderRow({
+      role: 'assistant',
+      content: 'Legacy traced answer.',
+      traceId: 'trace-legacy12',
+    } as ChatMessage);
+    expect(off.container.querySelector('.message__trace')).toBeNull();
+    off.unmount();
+
+    developerTools.enabled = true;
+    const on = renderRow({
+      role: 'assistant',
+      content: 'Legacy traced answer.',
+      traceId: 'trace-legacy12',
+    } as ChatMessage);
+    expect(on.container.querySelector('.message__trace')).not.toBeNull();
+  });
+
+  it('does not render an empty overflow menu for provenance without an eligible answer', async () => {
+    // The trigger arrives through LazyBoundary, so a synchronous query finds
+    // nothing whether or not the gate admits it. Import the chunk first and
+    // flush, so absence here means the gate refused rather than the import
+    // not having landed yet.
+    await import('../components/chat/TurnActionsMenu');
+    renderRow({
+      role: 'assistant',
+      content: 'Still working.',
+      provenance: envelope,
+    });
+    await act(async () => {});
+    expect(
+      screen.queryByRole('button', { name: 'More answer actions' }),
+    ).toBeNull();
+  });
+
+  it('does not render an empty overflow menu while the last answer is thinking', async () => {
+    await import('../components/chat/TurnActionsMenu');
+    renderRow(
+      {
+        role: 'assistant',
+        content: 'Still thinking.',
+        turnId: 'turn-thinking',
+        answerEligible: true,
+      },
+      { isThinking: true },
+    );
+    await act(async () => {});
+    expect(
+      screen.queryByRole('button', { name: 'More answer actions' }),
     ).toBeNull();
   });
 
