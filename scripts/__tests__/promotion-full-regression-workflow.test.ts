@@ -12,6 +12,7 @@ type WorkflowStep = {
   env?: Record<string, string>;
   with?: Record<string, unknown>;
   if?: string;
+  'timeout-minutes'?: number;
   'continue-on-error'?: boolean;
 };
 
@@ -83,11 +84,22 @@ describe('promotion full-regression workflow', () => {
     const dependenciesIndex = gateSteps.findIndex(
       (step) => step.run === 'npm run dependencies:ci',
     );
+    const zsh = namedStep(
+      gate,
+      'Provision and preflight zsh for process-heavy installer fixtures',
+    );
+    const zshIndex = gateSteps.indexOf(zsh);
     const completionIndex = gateSteps.findIndex(
       (step) => step.name === 'Run canonical completion gate',
     );
     expect(actionlintIndex).toBeGreaterThan(-1);
     expect(dependenciesIndex).toBeGreaterThan(actionlintIndex);
+    expect(zshIndex).toBeGreaterThan(dependenciesIndex);
+    expect(zsh['timeout-minutes']).toBe(5);
+    expect(zsh.run).toContain('if [[ ! -x /bin/zsh ]]; then');
+    expect(zsh.run).toContain('apt-get install --yes zsh');
+    expect(zsh.run).toContain('test -x /bin/zsh');
+    expect(zsh.run).toContain('/bin/zsh --version');
     expect(completionIndex).toBeGreaterThan(dependenciesIndex);
     expect(
       namedStep(gate, 'Install Chromium for full-corpus browser assertions')

@@ -62,8 +62,15 @@ describe('playwrightBrowsersDirectory', () => {
       'playwright-core',
       '.local-browsers',
     );
-    expect(playwrightBrowsersDirectory('/repo', undefined)).toBe(expected);
-    expect(playwrightBrowsersDirectory('/repo', '0')).toBe(expected);
+    const inherited = process.env.PLAYWRIGHT_BROWSERS_PATH;
+    try {
+      delete process.env.PLAYWRIGHT_BROWSERS_PATH;
+      expect(playwrightBrowsersDirectory('/repo', undefined)).toBe(expected);
+      expect(playwrightBrowsersDirectory('/repo', '0')).toBe(expected);
+    } finally {
+      if (inherited === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH;
+      else process.env.PLAYWRIGHT_BROWSERS_PATH = inherited;
+    }
   });
 
   test('honors an explicit shared browser cache', () => {

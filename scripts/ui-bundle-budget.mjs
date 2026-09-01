@@ -254,7 +254,7 @@ export function uiBundleBudgetObserveOnly(env = process.env) {
   return env.STATION_UI_BUNDLE_BUDGET === 'observe';
 }
 
-if (process.argv[1]?.endsWith('ui-bundle-budget.mjs')) {
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (!shouldEnforceUiBundleBudget()) {
     console.log(
       'Reference diagnostic UI build: ordinary first-paint bundle budget is not applicable.',

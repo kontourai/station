@@ -11,6 +11,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -23,6 +24,7 @@ import {
 
 const repositoryRoot = resolve(import.meta.dirname, '../..');
 const mergeDriver = join(repositoryRoot, 'scripts/merge-ui-bundle-budget.mjs');
+const uiBundleBudget = join(repositoryRoot, 'scripts/ui-bundle-budget.mjs');
 
 describe('UI bundle budget merge-driver entry point', () => {
   const fixtures: string[] = [];
@@ -103,6 +105,22 @@ describe('UI bundle budget merge-driver entry point', () => {
       },
     );
   }
+
+  it('keeps the UI budget import inert under a suffix-colliding argv path', () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `process.argv[1] = ${JSON.stringify('/tmp/fixture-ui-bundle-budget.mjs')}; await import(${JSON.stringify(pathToFileURL(mergeDriver).href)});`,
+      ],
+      { cwd: repositoryRoot, encoding: 'utf8', windowsHide: true },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).not.toContain('dist-ui/index.html');
+    expect(result.stdout).not.toContain('Initial UI bundle');
+    expect(uiBundleBudget.endsWith('ui-bundle-budget.mjs')).toBe(true);
+  });
 
   it('overwrites %A with the freshly measured merged-tree values', () => {
     const subject = fixture();
