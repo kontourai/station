@@ -270,12 +270,25 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: station-release-client-build-provenance-${{ github.run_id }}
+          path: release-client-build-provenance
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: x86_64-pc-windows-msvc }
       - run: npm run dependencies:ci
       - run: npm run build:sdk && npm run build:connect
+      - name: Stage the preflight-bound native client provenance bytes
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
+        run: |
+          set -euo pipefail
+          node scripts/release-client-build-provenance.mjs stage \
+            --source-sha "$RELEASE_SHA" \
+            --artifact release-client-build-provenance/station-client-build.json
       - name: Fail closed and create tag-bound updater configuration
         shell: bash
         env:
@@ -307,6 +320,7 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          STATION_CLIENT_BUILD_REUSE: '1'
         with:
           args: --target x86_64-pc-windows-msvc ${{ needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config) }} --config ${{ runner.temp }}/tauri.windows.release.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
       - name: Verify Windows Authenticode signature and versioned build output
@@ -317,6 +331,16 @@ jobs:
           if (-not $installers[0].Name.Contains($env:RELEASE_VERSION)) { throw 'MSI filename does not carry release version' }
           $signature = Get-AuthenticodeSignature $installers[0].FullName
           if ($signature.Status -ne 'Valid') { throw "Invalid Authenticode status: $($signature.Status)" }
+          $extracted = Join-Path $env:RUNNER_TEMP 'station-msi-provenance'
+          $expected = [IO.File]::ReadAllBytes('src-desktop/station-client-build.json')
+          Start-Process msiexec.exe -Wait -ArgumentList @('/a', $installers[0].FullName, '/qn', "TARGETDIR=$extracted")
+          $manifests = @(Get-ChildItem $extracted -Recurse -Filter station-build.json)
+          if ($manifests.Count -ne 1) { throw 'Expected exactly one packaged station-build.json in MSI' }
+          $actual = [IO.File]::ReadAllBytes($manifests[0].FullName)
+          if ($expected.Length -ne $actual.Length) { throw 'MSI build provenance does not byte-equal the preflight manifest' }
+          for ($index = 0; $index -lt $expected.Length; $index += 1) {
+            if ($expected[$index] -ne $actual[$index]) { throw 'MSI build provenance does not byte-equal the preflight manifest' }
+          }
       - name: Stage canonical signed Windows artifacts
         shell: bash
         run: |
@@ -345,13 +369,25 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: station-release-client-build-provenance-${{ github.run_id }}
+          path: release-client-build-provenance
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: x86_64-unknown-linux-gnu }
-      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsoup-3.0-dev libjavascriptcoregtk-4.1-dev rpm2cpio cpio
       - run: npm run dependencies:ci
       - run: npm run build:sdk && npm run build:connect
+      - name: Stage the preflight-bound native client provenance bytes
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
+        run: |
+          set -euo pipefail
+          node scripts/release-client-build-provenance.mjs stage \
+            --source-sha "$RELEASE_SHA" \
+            --artifact release-client-build-provenance/station-client-build.json
       - name: Fail closed and create tag-bound updater configuration
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -365,6 +401,8 @@ jobs:
           node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.version.conf.json"
           node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub" --updater-endpoint "${{ needs.preflight.outputs.desktop_updater_endpoint }}"
       - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
+        env:
+          STATION_CLIENT_BUILD_REUSE: '1'
         with:
           args: --target x86_64-unknown-linux-gnu --bundles deb,rpm ${{ needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config) }} --config ${{ runner.temp }}/tauri.version.conf.json
       - name: Build signed AppImage with the contained runtime overlay
@@ -372,6 +410,7 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          STATION_CLIENT_BUILD_REUSE: '1'
         with:
           args: --target x86_64-unknown-linux-gnu --bundles appimage ${{ needs.preflight.outputs.beta_desktop_config && format('--config {0}', needs.preflight.outputs.beta_desktop_config) }} --config src-desktop/tauri.linux-appimage.conf.json --config ${{ runner.temp }}/tauri.release.conf.json
       - name: Verify emitted Linux package metadata
@@ -379,6 +418,31 @@ jobs:
           find src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/appimage -maxdepth 1 -type f -name "*${RELEASE_VERSION}*.AppImage" | grep -q .
           find src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/deb -maxdepth 1 -type f -name "*${RELEASE_VERSION}*.deb" | grep -q .
           find src-desktop/target/x86_64-unknown-linux-gnu/release/bundle/rpm -maxdepth 1 -type f -name "*${RELEASE_VERSION}*.rpm" | grep -q .
+      - name: Verify every Linux package carries the exact preflight provenance bytes
+        run: |
+          set -euo pipefail
+          expected=src-desktop/station-client-build.json
+          sha='${{ needs.preflight.outputs.sha }}'
+          bundle_root=src-desktop/target/x86_64-unknown-linux-gnu/release/bundle
+          deb=$(find "$bundle_root/deb" -maxdepth 1 -type f -name '*.deb' -print -quit)
+          deb_entry=$(dpkg-deb --fsys-tarfile "$deb" | tar -tf - | grep '/station-build.json$')
+          test "$(printf '%s\n' "$deb_entry" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          dpkg-deb --fsys-tarfile "$deb" | tar -xOf - "$deb_entry" > "$RUNNER_TEMP/station-deb-build.json"
+          node scripts/release-client-build-provenance.mjs verify --source-sha "$sha" --expected "$expected" --actual "$RUNNER_TEMP/station-deb-build.json"
+          rpm=$(find "$bundle_root/rpm" -maxdepth 1 -type f -name '*.rpm' -print -quit)
+          rpm_root="$RUNNER_TEMP/station-rpm-provenance"
+          mkdir -p "$rpm_root"
+          rpm2cpio "$rpm" | (cd "$rpm_root" && cpio -idmu --quiet)
+          rpm_manifest=$(find "$rpm_root" -type f -name station-build.json -print)
+          test "$(printf '%s\n' "$rpm_manifest" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          node scripts/release-client-build-provenance.mjs verify --source-sha "$sha" --expected "$expected" --actual "$rpm_manifest"
+          appimage=$(find "$bundle_root/appimage" -maxdepth 1 -type f -name '*.AppImage' -print -quit)
+          appimage_root="$RUNNER_TEMP/station-appimage-provenance"
+          mkdir -p "$appimage_root"
+          (cd "$appimage_root" && "$appimage" --appimage-extract >/dev/null)
+          appimage_manifest=$(find "$appimage_root/squashfs-root" -type f -name station-build.json -print)
+          test "$(printf '%s\n' "$appimage_manifest" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          node scripts/release-client-build-provenance.mjs verify --source-sha "$sha" --expected "$expected" --actual "$appimage_manifest"
       - name: Stage canonical signed Linux artifacts
         run: |
           mkdir release-assets
@@ -448,6 +512,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: "${{ needs.preflight.outputs.sha }}" }
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: station-release-client-build-provenance-${{ github.run_id }}
+          path: release-client-build-provenance
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
       - name: Install dependencies before resolving the native update feed
@@ -482,7 +550,15 @@ jobs:
             echo "::notice::Native update feed not configured; skipping feed publish. Store-track upload is the update path for this build."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           fi
-      - run: npm run build:native-client
+      - name: Stage the preflight-bound native client provenance bytes
+        env:
+          RELEASE_SHA: ${{ needs.preflight.outputs.sha }}
+        run: |
+          set -euo pipefail
+          node scripts/release-client-build-provenance.mjs stage \
+            --source-sha "$RELEASE_SHA" \
+            --artifact release-client-build-provenance/station-client-build.json
+      - run: STATION_CLIENT_BUILD_REUSE=1 npm run build:native-client
       - run: node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json"
       - name: Initialize Android with the channel overlay before the tag overlay
         working-directory: src-desktop
@@ -505,15 +581,11 @@ jobs:
       - name: Apply native credential bootstrap to the channel namespace
         run: node scripts/apply-android-native-bootstrap.mjs
       # Must run AFTER init (which generates gen/android) and BEFORE the build
-      # that packages its assets — the same stamp the desktop bundle has
-      # carried since #1085, so a released APK on a device can name its commit
-      # (station#3592). A tag checkout is detached, so `rev-parse --abbrev-ref
-      # HEAD` would record the literal string `HEAD`; STATION_BUILD_BRANCH is
-      # the documented way to name the verified source ref instead, and the tag
-      # is what a released APK should say it came from. The sha is the
-      # load-bearing field either way.
+      # that packages its assets. The preflight-staged manifest already binds
+      # the verified tag ref, SHA, and one sampled timestamp, so this writer
+      # copies it without deriving a second record.
       - name: Stage Android build provenance
-        run: STATION_BUILD_BRANCH="$RELEASE_TAG" node scripts/write-android-build-manifest.mjs
+        run: node scripts/write-android-build-manifest.mjs
       - name: Authenticate to Google Cloud with GitHub OIDC
         id: google_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -540,6 +612,7 @@ jobs:
           TAURI_ANDROID_KEY_ALIAS: ${{ env.ANDROID_UPLOAD_KEY_ALIAS }}
           TAURI_ANDROID_KEY_PASSWORD: ${{ steps.android_signing.outputs.keystore_password }}
           NDK_HOME: "${{ env.ANDROID_HOME }}/ndk/27.0.12077973"
+          STATION_CLIENT_BUILD_REUSE: '1'
         run: |
           for name in ANDROID_KEYSTORE_BASE64 TAURI_ANDROID_KEYSTORE_PASSWORD TAURI_ANDROID_KEY_ALIAS TAURI_ANDROID_KEY_PASSWORD; do
             test -n "${!name}" || { echo "Missing required protected secret: $name" >&2; exit 1; }
@@ -565,10 +638,12 @@ jobs:
       # Read the stamp back out of the artefact: staging it can succeed and
       # still not reach the APK, and a released build that cannot name its
       # commit is exactly the hole station#3592 closes.
-      - name: Verify the APK carries its build provenance
+      - name: Verify Play-bound Android archives carry the exact preflight provenance bytes
         run: |
           apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)
-          node scripts/read-android-build-provenance.mjs "$apk"
+          aab=$(find src-desktop/gen/android/app/build/outputs/bundle/universalRelease -name '*.aab' -print -quit)
+          node scripts/read-android-build-provenance.mjs "$apk" --expected src-desktop/station-client-build.json
+          node scripts/read-android-build-provenance.mjs "$aab" --expected src-desktop/station-client-build.json
       - name: Verify Android package version and platform signatures
         run: |
           apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)

@@ -142,7 +142,7 @@ jobs:
           node scripts/app-store-connect-receipt.mjs app-preflight --bundle-id "$bundle_id" --expected-name "$expected_name" --output provider-receipts/app-store-connect-app-preflight.json --github-output "$GITHUB_OUTPUT"
           echo "bundle_id=$bundle_id" >> "$GITHUB_OUTPUT"
       - name: Stage immutable iOS client provenance resource
-        run: node scripts/write-ios-build-manifest.mjs
+        run: STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs
       - name: Resolve optional custom iOS update feed
         run: |
           mkdir -p provider-receipts
