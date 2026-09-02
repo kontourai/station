@@ -9,8 +9,10 @@
 # release archives rather than weakening extraction safety.
 CLAUDE.md export-ignore
 
-# Re-measure this exact-to-actual ceiling after both sides of a merge are in the
-# tree. Clones without the locally registered driver get an ordinary conflict;
-# resolve that by running `npm run build:ui` and writing the measured JS/CSS
-# gzip byte counts into scripts/ui-bundle-budget.json.
+# A merge driver runs before the merged tree exists, so this one writes a
+# PROVISIONAL resolution (the higher of each field across both sides) rather
+# than measuring; the pre-push `npm run build:ui` gate is the measurement.
+# Clones without the locally registered driver get an ordinary conflict;
+# resolve that the same way: run `npm run build:ui` after the merge and write
+# the measured JS/CSS gzip byte counts into scripts/ui-bundle-budget.json.
 scripts/ui-bundle-budget.json merge=station-ui-bundle-budget
