@@ -41,6 +41,7 @@ import {
   mkdirSync,
   readFileSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -287,8 +288,11 @@ export function writeNativeClientBuildManifest(
     return join(projectRoot, NATIVE_CLIENT_BUILD_MANIFEST_PATH);
   }
   const manifest = deriveBuildManifest(projectRoot, options);
-  if (!manifest) return null;
   const manifestPath = join(projectRoot, NATIVE_CLIENT_BUILD_MANIFEST_PATH);
+  if (!manifest) {
+    if (refresh && existsSync(manifestPath)) unlinkSync(manifestPath);
+    return null;
+  }
   mkdirSync(join(projectRoot, 'src-desktop'), { recursive: true });
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   return manifestPath;

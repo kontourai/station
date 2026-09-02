@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -16,6 +17,7 @@ import {
   BUILD_MANIFEST_FILENAME,
   deriveBuildManifest,
   deriveServerBuildIdentity,
+  NATIVE_CLIENT_BUILD_MANIFEST_PATH,
   readNativeClientBuildManifest,
   readPackagedReleaseManifest,
   stageNativeClientBuildManifest,
@@ -183,6 +185,25 @@ describe('desktop build manifest', () => {
     expect(readNativeClientBuildManifest(root)?.builtAt).toBe(
       '2026-08-30T12:00:00.000Z',
     );
+  });
+
+  test('clears a stale native-client manifest when an explicit refresh cannot derive source identity', () => {
+    const root = makeRoot();
+    const manifestPath = join(root, NATIVE_CLIENT_BUILD_MANIFEST_PATH);
+    mkdirSync(join(root, 'src-desktop'), { recursive: true });
+    writeFileSync(
+      manifestPath,
+      `${JSON.stringify({
+        sha: RELEASE_SHA,
+        branch: 'refs/tags/v1.2.3',
+        builtAt: '2026-08-30T12:00:00.000Z',
+      })}\n`,
+    );
+
+    expect(
+      writeNativeClientBuildManifest(root, { refresh: true, env: {} }),
+    ).toBeNull();
+    expect(existsSync(manifestPath)).toBe(false);
   });
 
   test('stages preflight provenance as exact bytes and rejects a same-SHA timestamp divergence', () => {
