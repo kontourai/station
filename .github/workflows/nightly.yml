@@ -196,7 +196,8 @@ jobs:
         if: steps.cli_source_decide.outputs.build == 'true' && steps.npm_idempotency.outputs.publish == 'true' && steps.cli_npm_preflight.outputs.trusted_publisher == 'true'
         working-directory: packages/cli
         run: npm publish --tag nightly --access public
-      - name: Bind the published CLI receipt to npm registry provenance
+      - id: cli_registry_provenance
+        name: Bind the published CLI receipt to npm registry provenance
         if: ${{ always() && steps.cli_npm_publish.outcome == 'success' }}
         env:
           SOURCE_SHA: ${{ needs.test-gate.outputs.source_sha }}
@@ -204,25 +205,25 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p provider-receipts
-          registry_sha=$(npm view "@kontourai/station-cli@$CLI_VERSION" gitHead --json)
-          registry_sha=$(REGISTRY_SHA="$registry_sha" node -e 'const value=JSON.parse(process.env.REGISTRY_SHA); if(typeof value!=="string"||!/^[0-9a-f]{40}$/.test(value)) process.exit(1); process.stdout.write(value)')
-          test "$registry_sha" = "$SOURCE_SHA"
+          registry_record="$RUNNER_TEMP/nightly-cli-registry-githead.json"
+          npm view "@kontourai/station-cli@$CLI_VERSION" gitHead --json > "$registry_record"
+          registry_sha=$(node scripts/verify-npm-registry-provenance.mjs "$registry_record" "$SOURCE_SHA")
           REGISTRY_SHA="$registry_sha" node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync(process.argv[1], JSON.stringify({schemaVersion:1,kind:"station.npm-publish-receipt",package:"@kontourai/station-cli",version:process.env.CLI_VERSION,sourceSha:process.env.SOURCE_SHA,registryGitHead:process.env.REGISTRY_SHA,artifactBuiltAt:null,artifactBuiltAtReason:"npm package has no native artifact manifest",sourceBinding:"npm registry gitHead",},null,2)+"\n")' provider-receipts/nightly-cli.json
       - id: ledger_token
-        if: ${{ always() && steps.cli_npm_publish.outcome == 'success' }}
+        if: ${{ always() && steps.cli_registry_provenance.outcome == 'success' }}
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write
       - name: Record the independent CLI ship in the deploy ledger
-        if: ${{ always() && steps.cli_npm_publish.outcome == 'success' }}
+        if: ${{ always() && steps.cli_registry_provenance.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ steps.ledger_token.outputs.token }}
         run: |
           node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record nightly-npm ${{ steps.identity.outputs.version }} from run $GITHUB_RUN_ID" --summary-line "- recorded: nightly-npm ${{ steps.identity.outputs.version }}" -- node scripts/deploy-ledger.mjs --channel nightly-npm --version "${{ steps.identity.outputs.version }}" --sha "${{ needs.test-gate.outputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'Nightly exact gates success; npm registry gitHead equals source SHA' --github-repo "$GITHUB_REPOSITORY" --artifact "npm:@kontourai/station-cli@${{ steps.identity.outputs.version }} (dist-tag nightly; artifactBuiltAt unknown)" --note 'artifactBuiltAt is null: npm package has no native artifact manifest'
       - name: Retain the Nightly CLI provider receipt
-        if: ${{ always() && steps.cli_npm_publish.outcome == 'success' }}
+        if: ${{ always() && steps.cli_registry_provenance.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nightly-cli-provider-receipt-${{ github.run_id }}

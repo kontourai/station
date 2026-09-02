@@ -185,6 +185,81 @@ export function readNativeClientBuildManifest(projectRoot) {
 }
 
 /**
+ * Stages a previously generated native-client manifest without serializing it
+ * again. Release matrix runners use this to consume one preflight artifact:
+ * parsing and writing JSON anew would make a byte-equality claim meaningless.
+ */
+export function stageNativeClientBuildManifest(
+  projectRoot,
+  sourcePath,
+  { expectedSha } = {},
+) {
+  const bytes = readFileSync(sourcePath);
+  let manifest;
+  try {
+    manifest = validBuildManifest(JSON.parse(bytes.toString('utf8')));
+  } catch {
+    manifest = null;
+  }
+  if (!manifest) {
+    throw new Error(`Invalid native client build manifest: ${sourcePath}`);
+  }
+  if (expectedSha && manifest.sha !== expectedSha) {
+    throw new Error(
+      `Native client build manifest source SHA ${manifest.sha} does not match expected ${expectedSha}.`,
+    );
+  }
+  const destination = join(projectRoot, NATIVE_CLIENT_BUILD_MANIFEST_PATH);
+  mkdirSync(join(projectRoot, 'src-desktop'), { recursive: true });
+  writeFileSync(destination, bytes);
+  return destination;
+}
+
+/**
+ * Verifies an archive-extracted manifest is valid and byte-identical to the
+ * single preflight provenance artifact. Equality of source SHA alone is too
+ * weak: independently sampled builtAt timestamps describe different builds.
+ */
+export function assertNativeClientBuildManifestBytes(
+  expectedPath,
+  actualPath,
+  { expectedSha } = {},
+) {
+  const expected = readFileSync(expectedPath);
+  const actual = readFileSync(actualPath);
+  let expectedManifest;
+  let actualManifest;
+  try {
+    expectedManifest = validBuildManifest(
+      JSON.parse(expected.toString('utf8')),
+    );
+    actualManifest = validBuildManifest(JSON.parse(actual.toString('utf8')));
+  } catch {
+    expectedManifest = null;
+    actualManifest = null;
+  }
+  if (!expectedManifest || !actualManifest) {
+    throw new Error(
+      'Expected and packaged native client build manifests must both be valid.',
+    );
+  }
+  if (
+    expectedSha &&
+    (expectedManifest.sha !== expectedSha || actualManifest.sha !== expectedSha)
+  ) {
+    throw new Error(
+      `Native client build manifest source SHA does not match expected ${expectedSha}.`,
+    );
+  }
+  if (!expected.equals(actual)) {
+    throw new Error(
+      'Packaged native client build manifest differs from the preflight provenance artifact.',
+    );
+  }
+  return actualManifest;
+}
+
+/**
  * Stages one immutable source-derived manifest before UI/Rust packaging. The
  * native host, desktop resource, Android asset, and iOS resource all consume
  * this exact byte sequence; they must never independently sample a clock.

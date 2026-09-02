@@ -813,6 +813,20 @@ describe('native release workflow topology', () => {
     expect(
       namedStep(macos, 'Build an unsigned macOS staging candidate').run,
     ).toContain('--no-sign');
+    expect(
+      namedStep(macos, 'Build an unsigned macOS staging candidate').env,
+    ).toMatchObject({ STATION_CLIENT_BUILD_REUSE: '1' });
+    const stagedProvenance = namedStep(
+      macos,
+      'Stage the preflight-bound native client provenance bytes',
+    );
+    expect(stagedProvenance.run).toContain(
+      'release-client-build-provenance.mjs stage',
+    );
+    expect(seal.run).toContain('release-client-build-provenance.mjs verify');
+    expect(seal.run).toContain(
+      '--expected src-desktop/station-client-build.json',
+    );
     const embeddedSealing = macosArtifacts.indexOf(
       'await sealEmbeddedMacosMachOBounded(app, identity, {',
     );

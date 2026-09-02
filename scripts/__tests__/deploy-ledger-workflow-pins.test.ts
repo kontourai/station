@@ -157,11 +157,16 @@ describe('the nightly workflow records what it ships', () => {
     // LOW-2: the nightly CLI's OWN identity step, not the Android's.
     expect(step).toContain('$' + '{{ steps.identity.outputs.version }}');
     expect(step).not.toMatch(/git rev-parse/);
-    // Records only what actually published, and cannot be suppressed by an
-    // unrelated later-step failure.
+    // A publish alone is insufficient: the registry receipt must bind that
+    // version back to the exact source before a ledger mutation is reachable.
     expect(step).toContain(
-      "always() && steps.cli_npm_publish.outcome == 'success'",
+      "always() && steps.cli_registry_provenance.outcome == 'success'",
     );
+    const verifier = stepBlock(
+      nightlyCaller,
+      'Bind the published CLI receipt to npm registry provenance',
+    );
+    expect(verifier).toContain('verify-npm-registry-provenance.mjs');
     // The push credential is the release app's token — the require-green
     // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
     expect(step).toContain('steps.ledger_token.outputs.token');
@@ -335,11 +340,12 @@ describe('the npm stable ledger record', () => {
     // The push credential is the release app's token — the require-green
     // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
     expect(step).toContain('steps.ledger_token.outputs.token');
-    expect(step).toContain('registry_sha=$(npm view "$name@$version" gitHead');
+    expect(step).toContain('npm view "$name@$version" gitHead --json');
+    expect(step).toContain('verify-npm-registry-provenance.mjs');
+    expect(step).toContain('"$GITHUB_SHA"');
     expect(step).toContain('artifactBuiltAt:null');
-    expect(step).toContain(
-      'sourceBinding:registryGitHead ? "npm registry gitHead" : "unknown"',
-    );
+    expect(step).toContain('sourceSha:process.env.SOURCE_SHA');
+    expect(step).toContain('sourceBinding:"npm registry gitHead"');
   });
 
   it('retains after the record step so a failed push still uploads the files', () => {

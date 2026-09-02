@@ -12,11 +12,13 @@ import { delimiter, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { npmBuildInvocation } from '../lib/desktop-build-command.mjs';
 import {
+  assertNativeClientBuildManifestBytes,
   BUILD_MANIFEST_FILENAME,
   deriveBuildManifest,
   deriveServerBuildIdentity,
   readNativeClientBuildManifest,
   readPackagedReleaseManifest,
+  stageNativeClientBuildManifest,
   writeDesktopBuildManifest,
   writeNativeClientBuildManifest,
 } from '../lib/desktop-build-manifest.mjs';
@@ -181,6 +183,38 @@ describe('desktop build manifest', () => {
     expect(readNativeClientBuildManifest(root)?.builtAt).toBe(
       '2026-08-30T12:00:00.000Z',
     );
+  });
+
+  test('stages preflight provenance as exact bytes and rejects a same-SHA timestamp divergence', () => {
+    const root = makeRoot();
+    const artifact = join(root, 'preflight-station-client-build.json');
+    const packaged = join(root, 'packaged-station-client-build.json');
+    const source = {
+      sha: RELEASE_SHA,
+      branch: 'refs/tags/v1.2.3',
+      builtAt: '2026-09-02T12:00:00.000Z',
+    };
+    writeFileSync(artifact, `${JSON.stringify(source, null, 2)}\n`);
+
+    const staged = stageNativeClientBuildManifest(root, artifact, {
+      expectedSha: RELEASE_SHA,
+    });
+    expect(readFileSync(staged)).toEqual(readFileSync(artifact));
+    expect(
+      assertNativeClientBuildManifestBytes(artifact, staged, {
+        expectedSha: RELEASE_SHA,
+      }),
+    ).toMatchObject(source);
+
+    writeFileSync(
+      packaged,
+      `${JSON.stringify({ ...source, builtAt: '2026-09-02T12:00:01.000Z' }, null, 2)}\n`,
+    );
+    expect(() =>
+      assertNativeClientBuildManifestBytes(artifact, packaged, {
+        expectedSha: RELEASE_SHA,
+      }),
+    ).toThrow(/differs from the preflight provenance artifact/);
   });
 
   test('refuses an impossible staged timestamp rather than normalizing it', () => {
