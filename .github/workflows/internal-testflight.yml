@@ -127,6 +127,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           TESTFLIGHT_AUTHORITY_GPG_PRIVATE_KEY: ${{ secrets.TESTFLIGHT_AUTHORITY_GPG_PRIVATE_KEY }}
           TESTFLIGHT_AUTHORITY_GPG_PASSPHRASE: ${{ secrets.TESTFLIGHT_AUTHORITY_GPG_PASSPHRASE }}
+          TESTFLIGHT_AUTHORITY_GPG_PUBLIC_KEY: ${{ vars.TESTFLIGHT_AUTHORITY_GPG_PUBLIC_KEY }}
           TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT: ${{ vars.TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
           VERSION: ${{ steps.builds.outputs.version }}
@@ -136,13 +137,30 @@ jobs:
           set -euo pipefail
           test -n "$TESTFLIGHT_AUTHORITY_GPG_PRIVATE_KEY"
           test -n "$TESTFLIGHT_AUTHORITY_GPG_PASSPHRASE"
+          test -n "$TESTFLIGHT_AUTHORITY_GPG_PUBLIC_KEY"
           [[ "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT" =~ ^[A-F0-9]{40}$ ]]
           umask 077
           key="$RUNNER_TEMP/testflight-authority.asc"
+          public_key="$RUNNER_TEMP/testflight-authority.pub"
+          github_public_key="$RUNNER_TEMP/testflight-authority-github.pub"
+          authority_colons="$RUNNER_TEMP/testflight-authority.colons"
+          github_colons="$RUNNER_TEMP/testflight-authority-github.colons"
           passphrase_file="$RUNNER_TEMP/testflight-authority.passphrase"
+          preflight_gnupg="$RUNNER_TEMP/testflight-authority-preflight-gnupg"
           authority_gnupg="$RUNNER_TEMP/testflight-authority-gnupg"
-          cleanup_authority_signer() { rm -f "$key" "$passphrase_file"; rm -rf "$authority_gnupg"; }
+          cleanup_authority_signer() { rm -f "$key" "$public_key" "$github_public_key" "$authority_colons" "$github_colons" "$passphrase_file"; rm -rf "$preflight_gnupg" "$authority_gnupg"; }
           trap cleanup_authority_signer EXIT
+          # This observes the owner account's public key registry and the
+          # protected environment values before importing a signing key or
+          # creating a tag. It is intentionally a no-effect precondition.
+          printf '%s' "$TESTFLIGHT_AUTHORITY_GPG_PUBLIC_KEY" | base64 --decode > "$public_key"
+          chmod 600 "$public_key"
+          mkdir -m 700 "$preflight_gnupg"
+          gpg --homedir "$preflight_gnupg" --batch --with-colons --show-keys "$public_key" > "$authority_colons"
+          gh api 'users/briananderson1222/gpg_keys' > "$RUNNER_TEMP/testflight-authority-github-keys.json"
+          node --input-type=module -e 'import {readFileSync,writeFileSync} from "node:fs"; const keys=JSON.parse(readFileSync(process.argv[1],"utf8")); const wanted=process.argv[2].slice(-16); const matches=keys.filter((key)=>String(key.key_id??"").toUpperCase()===wanted); if(matches.length!==1||typeof matches[0].raw_key!=="string") process.exit(1); writeFileSync(process.argv[3],matches[0].raw_key,{mode:0o600});' "$RUNNER_TEMP/testflight-authority-github-keys.json" "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT" "$github_public_key"
+          gpg --homedir "$preflight_gnupg" --batch --with-colons --show-keys "$github_public_key" > "$github_colons"
+          node scripts/verify-ios-testflight-gpg-registration.mjs --expected-fingerprint "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT" --authority-colons "$authority_colons" --github-colons "$github_colons" > authority-gpg-registration.json
           mkdir -m 700 "$authority_gnupg"
           export GNUPGHOME="$authority_gnupg"
           printf '%s' "$TESTFLIGHT_AUTHORITY_GPG_PRIVATE_KEY" | base64 --decode > "$key"
@@ -156,7 +174,7 @@ jobs:
           rm -f "$key"
           git config gpg.program "$GITHUB_WORKSPACE/scripts/git-gpg-loopback-sign.sh"
           git config user.name 'Station TestFlight authority'
-          git config user.email 'release@kontourai.io'
+          git config user.email 'brian.anderson1222@gmail.com'
           write_recovery() {
             node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync("authority-recovery.json",JSON.stringify({schemaVersion:1,kind:"ios-testflight-authority-recovery",channel:process.argv[1],tag:process.argv[2],sourceSha:process.argv[3],reason:process.argv[4],recoveryAction:"Do not dispatch another cohort. Inspect the immutable tag object and provider state before owner reconciliation."},null,2)+"\n",{mode:0o600});' "$1" "$2" "$SOURCE_SHA" "$3"
           }
@@ -227,6 +245,7 @@ jobs:
           path: |
             authority-*.json
             authority-admission.json
+            authority-gpg-registration.json
             authority-recovery.json
           if-no-files-found: warn
           retention-days: 30

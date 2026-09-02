@@ -44,6 +44,12 @@ and [mobile-release.md](./mobile-release.md). Listing copy lives in
   and non-fast-forward changes to `refs/tags/ios-testflight/**`. Do not weaken
   either policy to recover a partial run: inspect the retained authority and
   provider receipts first.
+- The authority key's public half must be registered on GitHub account
+  `briananderson1222` before a cohort is dispatched. The planning job proves
+  that GitHub's exact public key has the protected fingerprint and UID email
+  `brian.anderson1222@gmail.com`, then uses that same email as its annotated
+  tagger. A missing key (the normal first-run state) fails before any tag or
+  provider mutation.
 - Tag overlay derives Android `versionCode` and iOS `CFBundleVersion` from the
   tag. Do not hand-edit `1` / `1.0` fallbacks in Gradle for a store upload.
 

@@ -31,6 +31,22 @@ describe('iOS TestFlight channel config', () => {
     expect(workflow).toContain('provider-artifact-provenance-unverified');
     expect(workflow).toContain('status:"skipped"');
     expect(workflow).not.toContain('workflow_date=$(node -e');
+    expect(workflow).toContain(
+      'iosTestFlightChannel(process.argv[1]).internalGroup',
+    );
+    expect(workflow).not.toContain('Station Stable Internal');
+  });
+
+  test('owns every TestFlight group name with the channel identity', () => {
+    expect(IOS_TESTFLIGHT_CHANNELS.stable.internalGroup).toBe(
+      'Internal Testers',
+    );
+    expect(IOS_TESTFLIGHT_CHANNELS.beta.internalGroup).toBe(
+      'Station Beta Internal',
+    );
+    expect(IOS_TESTFLIGHT_CHANNELS.nightly.internalGroup).toBe(
+      'Station Nightly Internal',
+    );
   });
   test.each(['stable', 'beta', 'nightly'] as const)(
     'creates an isolated %s identity with numeric store versions',

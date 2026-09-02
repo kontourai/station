@@ -40,6 +40,15 @@ describe('internal iOS TestFlight cohort workflow', () => {
     expect(source).toContain('reused-after-race');
     expect(source).toContain('githubTagVerification:"valid"');
     expect(source).toContain('authority-recovery.json');
+    expect(source).toContain('authority-gpg-registration.json');
+    expect(source).toContain("gh api 'users/briananderson1222/gpg_keys'");
+    expect(source).toContain('verify-ios-testflight-gpg-registration.mjs');
+    expect(source).toContain(
+      "git config user.email 'brian.anderson1222@gmail.com'",
+    );
+    expect(
+      source.indexOf('verify-ios-testflight-gpg-registration.mjs'),
+    ).toBeLessThan(source.indexOf('git tag --sign'));
     expect(source).toContain('retention-days: 30');
     expect(signingWrapper).toContain('--pinentry-mode loopback');
     expect(signingWrapper).not.toContain('--passphrase ');
