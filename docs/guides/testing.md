@@ -104,6 +104,64 @@ npm run test:e2e:product -- --spec=tests/foo.spec.ts --grep='delegated work'  # 
 npm run test:connected-agents         # focused connected-agents server suite
 ```
 
+### Pre-push orchestration transfer gate
+
+`.githooks/pre-push` runs `scripts/check-prepush-orchestration-transfer.mjs`
+on every push. When the push range touches a measured transfer input
+(`src-server/runtime/**`, `src-server/routes/orchestration/**`,
+`src-server/providers/**`, `src-server/services/orchestration/**`,
+`packages/contracts/src/**`, `packages/sdk/src/client/**`, `package.json`,
+the lockfile, the gate scripts themselves, or the transfer fixtures) it runs
+`npm run transfer:gate`, which captures the orchestration transfer matrix twice
+on an exact `origin/main` baseline and once on the candidate and compares them
+against `scripts/fixtures/orchestration-transfer/budget.json`. The gate is not
+among the required CI checks, so a push that skips it with `--no-verify` lands
+unverified on `main`. Do not skip it; use the two knobs below.
+
+**The baseline root comes from `STATION_TRANSFER_BASELINE_ROOT`.** The hook
+invokes the gate with no arguments, so `--baseline-root` is unreachable from a
+push; only the environment variable is. Prepare an exact, dependency-verified
+sibling once per base SHA, then export the variable when you push:
+
+```bash
+BASE=$(git rev-parse origin/main)
+BASELINE=$(cd .. && pwd)/4294-transfer-baseline-${BASE:0:12}   # from a lane worktree under ../station-worktrees/
+# from the primary checkout use: BASELINE=$(cd .. && pwd)/station-worktrees/4294-transfer-baseline-${BASE:0:12}
+npm run transfer:gate -- --prepare-baseline --baseline-root "$BASELINE" --base "$BASE"
+(cd "$BASELINE" && npm run dependencies:ci && npm run dependencies:verify)   # its OWN locked deps; not a symlink
+STATION_TRANSFER_BASELINE_ROOT="$BASELINE" npm run transfer:gate            # direct run
+STATION_TRANSFER_BASELINE_ROOT="$BASELINE" git push -u origin <branch>       # what the hook reads
+```
+
+Both roots must be clean, at the exact SHAs, with dependencies matching their
+lockfiles; the gate never installs anything. Pass an absolute path: the
+suggested `../station-worktrees/…` form is relative to the gate's working
+directory, and from a lane worktree that already lives under
+`station-worktrees/` it nests a second `station-worktrees/` inside the lane.
+When `origin/main` moves, prepare a new baseline for the new SHA (the name
+carries the first twelve characters of the base).
+
+**Slow hardware raises `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` (#1279).** Each
+capture is bounded by a liveness timeout that defaults to 60 000 ms,
+calibrated at just under 28 s on the reference Mac. It is a dead-child guard,
+not a performance budget, so raising it weakens no measured claim; the value
+must stay a finite positive integer so a hung capture still fails:
+
+```bash
+STATION_TRANSFER_CAPTURE_TIMEOUT_MS=180000 \
+STATION_TRANSFER_BASELINE_ROOT="$BASELINE" git push -u origin <branch>
+```
+
+Why this is an environment variable rather than a local edit: the gate refuses
+a dirty candidate root, and `scripts/orchestration-transfer-gate.mjs` is itself
+a measured input, so a committed raise of the constant puts the gate in scope
+and trips the gate it is trying to fix. On a machine the default locks out,
+the override is the only way to run the gate at all.
+
+The gate's failure text names both variables. A transfer budget regression
+is a real finding: raise the fixture envelope only with a matching
+`policy-attribution.json` record, never by editing the bound.
+
 ### Latest E2E screenshot evidence
 
 Every completed `verify:e2e:full` run atomically replaces the ignored latest E2E projection

@@ -323,6 +323,14 @@ Dependency updates must also pass the multi-lock advisory floor. See
 [Dependency security](dependency-security.md) for the root, SDK, and shared lock
 workflow, production-reachability interpretation, and exception contract.
 
+Pushes that touch orchestration transfer inputs run the transfer gate from
+`.githooks/pre-push`. It reads its baseline from
+`STATION_TRANSFER_BASELINE_ROOT` and its capture liveness bound from
+`STATION_TRANSFER_CAPTURE_TIMEOUT_MS`; see
+[Pre-push orchestration transfer gate](testing.md#pre-push-orchestration-transfer-gate)
+for baseline preparation and the slow-hardware override. Do not `--no-verify`
+past it: no required CI check re-runs it.
+
 ## Observability
 
 Every runtime feature should include OpenTelemetry instrumentation unless the plan explicitly explains why telemetry is not applicable. Add instruments in `src-server/telemetry/metrics.ts` using the existing `station.<domain>.<metric>` naming pattern.
