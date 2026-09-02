@@ -57,6 +57,11 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
   // absolute speed is not part of the assertion.
   'src-server/runtime/bootstrap/__tests__/store-integrity-verification.event-loop.test.ts',
   'src-server/services/orchestration/__tests__/attached-session-follow-service.test.ts',
+  // station#1309: coordinates the exact SQLite index drop/create window with
+  // multiple real Node children and file barriers. Overlapping another
+  // process-heavy file measures scheduler contention against its 20s cap,
+  // not the migration serialization contract.
+  'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts',
   // Runs the real Play upload wrapper through SIGTERM escalation and asserts
   // exact owned-PID cleanup; overlap would weaken the ownership boundary.
   'scripts/__tests__/play-upload-retry.test.ts',
@@ -506,10 +511,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // claim cannot be reconciled, then SIGKILLs it before reclaiming exactly
   // once. This has the same detached-process lifecycle as event-store.test.
   'src-server/services/orchestration/__tests__/recovery-ledger.test.ts',
-  // station#2562: starts a real Node process that holds the cross-process
-  // credential-profile mutation fence, then SIGKILLs it before reclaiming.
-  // It owns the same child lifecycle as recovery-ledger.test.ts.
-  'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts',
   // station#1528: synchronizes four real EventStore processes at one append
   // boundary to prove global ordering and duplicate rejection across SQLite
   // connections. Keep child ownership out of the ordinary worker pool.
