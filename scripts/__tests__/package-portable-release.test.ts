@@ -318,6 +318,30 @@ describe('portable release packager', { timeout: 30_000 }, () => {
     });
   });
 
+  it('resolves a relative output directory before entering its temp directory', () => {
+    const root = createFixture();
+    execFileSync(
+      'bash',
+      [
+        join(root, 'scripts/package-portable-release.sh'),
+        '--output-dir',
+        'fleet-assets',
+        '--ref',
+        'nightly-2026-08-30-1',
+        '--sha',
+        run('git', ['rev-parse', 'HEAD'], root),
+        '--created-at',
+        CREATED_AT,
+      ],
+      { cwd: root, env: isolatedGitEnvironment(process.env) },
+    );
+    expect(
+      readFileSync(
+        join(root, 'fleet-assets', 'station-nightly-portable.tar.gz'),
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
   it('rejects tracked symlinks before publishing an installer-incompatible archive', () => {
     const root = createFixture();
     symlinkSync('tracked.txt', join(root, 'tracked-link'));

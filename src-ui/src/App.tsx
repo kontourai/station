@@ -40,7 +40,6 @@ import { useModels } from './contexts/ModelsContext';
 import { useNavigation } from './contexts/NavigationContext';
 import { ProjectsProvider } from './contexts/ProjectsContext';
 import { useToast } from './contexts/ToastContext';
-import { setDockModeOverride } from './hooks/useDockModePreference';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
 import {
   type WorkspacePaneDockAction,
@@ -498,10 +497,6 @@ function App() {
     -100,
   );
 
-  // Determine current layout key for sessionStorage override
-  const currentLayoutKey =
-    displayCurrentView.type === 'layout' ? 'coding' : null;
-
   useKeyboardShortcut(
     'dock.cycleMode',
     'm',
@@ -518,14 +513,8 @@ function App() {
             availableDockSlotPlacements.length
         ];
       if (!next) return;
-      setDockModeOverride(currentLayoutKey, next);
       setDockMode(next);
-    }, [
-      availableDockSlotPlacements,
-      currentLayoutKey,
-      effectiveDockSlotPlacement,
-      setDockMode,
-    ]),
+    }, [availableDockSlotPlacements, effectiveDockSlotPlacement, setDockMode]),
   );
 
   // SHELL-07: `.content-view` is the shell's one scroll container, so its

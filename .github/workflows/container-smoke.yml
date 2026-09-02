@@ -39,13 +39,20 @@ jobs:
   smoke:
     needs: classify
     if: github.event_name != 'pull_request' && (github.event_name == 'workflow_dispatch' || needs.classify.outputs.container == 'true')
+    # Never cancel a running smoke: the job takes 20+ minutes and the merge
+    # queue lands a non-docs entry every ~18, so cancelling on push meant
+    # only the last commit of a burst ever got a verdict (17 cancelled main
+    # runs on 2026-09-01 alone, each the only run for its commit, including
+    # the first two carrying the #917 fix).
+    # Without cancel the group still keeps at most one pending run, so the
+    # latest main is verified next; main-health ignores `cancelled` runs.
     concurrency:
       group: container-smoke-${{ github.ref }}
-      cancel-in-progress: true
-    # Pairing e2e timed out on github-hosted ubuntu-22.04 (run 33228038600):
-    # the container image built, then device-pairing-mobile never saw a
-    # Connections entry control within 15s. Keep this job on the docker +
-    # playwright fleet listener.
+      cancel-in-progress: false
+    # The fleet listener provides docker + playwright. (Run 33228038600's
+    # device-pairing timeout, once blamed on the github-hosted environment
+    # here, was actually the anonymous-browser premise gap fixed in #917 —
+    # the runner move neither caused nor fixed it.)
     runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]
     timeout-minutes: 45
     steps:
@@ -85,6 +92,16 @@ jobs:
           STATION_RELEASE_REF: v0.0.0-preview.1
           STATION_RELEASE_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
         run: scripts/container-smoke.sh
+      # A red smoke with no trace or screenshot is undiagnosable from logs
+      # alone (#917's investigation had zero artifacts to read).
+      - name: Upload Playwright results on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-smoke-test-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Remove isolated Docker client state
         if: always()
         run: |

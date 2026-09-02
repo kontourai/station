@@ -1,7 +1,6 @@
 import type { WorkspacePaneAvailability } from '@kontourai/station-contracts/workspace-pane-availability';
 import { useEffect } from 'react';
 import { useNavigation } from '../contexts/NavigationContext';
-import { useDockModePreference } from '../hooks/useDockModePreference';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { BrowserPreviewPaneLauncher } from './BrowserPreviewPaneLauncher';
 import { createFilePreviewPaneInstance } from './filePreviewPaneInstance';
@@ -26,7 +25,6 @@ export function CodingChatPane({
   const isMobile = useIsMobile();
   const { openFilePreviewIntent, setDockState, updateParams } = useNavigation();
   const paneHostOpen = useWorkspacePaneHostOpenAction();
-  useDockModePreference('coding', 'right');
 
   useEffect(() => {
     if (!isMobile) return;

@@ -26,10 +26,16 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
+import { RegionToolbarControls } from '../../components/header/RegionToolbarControls';
+import {
+  KeyboardShortcutsProvider,
+  useShortcutRegistry,
+} from '../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../contexts/NavigationContext';
 import { navigationStore } from '../../contexts/navigation-store';
+import { RegionModelProvider } from '../../contexts/RegionModelContext';
 import { AmbientChatDockPaneHost } from '../AmbientChatDockPaneHost';
 import type { WorkspacePaneDockAction } from '../WorkspacePaneDockContext';
 
@@ -97,18 +103,28 @@ function renderHost(
   return render(
     <KeyboardShortcutsProvider>
       <NavigationProvider>
-        <AmbientChatDockPaneHost
-          renderChatPane={(instance) => (
-            <p data-testid="ambient-chat-occupant">
-              Chat pane {instance.instanceId}
-            </p>
-          )}
-          onDockActionChange={onDockActionChange}
-        />
+        <RegionModelProvider>
+          <ShortcutProbe
+            onReady={(registry) => {
+              shortcutRegistry = registry;
+            }}
+          />
+          <RegionToolbarControls />
+          <AmbientChatDockPaneHost
+            renderChatPane={(instance) => (
+              <p data-testid="ambient-chat-occupant">
+                Chat pane {instance.instanceId}
+              </p>
+            )}
+            onDockActionChange={onDockActionChange}
+          />
+        </RegionModelProvider>
       </NavigationProvider>
     </KeyboardShortcutsProvider>,
   );
 }
+
+let shortcutRegistry: ReturnType<typeof useShortcutRegistry> | null = null;
 
 async function dockedAction(): Promise<WorkspacePaneDockAction> {
   const published: (WorkspacePaneDockAction | null)[] = [];
@@ -151,7 +167,66 @@ function expectFullDockControls(occupantName: string) {
   ).toBeTruthy();
 }
 
+/**
+ * The registry probe exists so a test can drive `dock.toggle` through the same
+ * channel ⌘D does, rather than clicking the button and hoping the binding is
+ * wired. #1202 shipped a dead ⌘D past 175 green tests because nothing ever
+ * exercised the shortcut id itself.
+ */
+function ShortcutProbe({
+  onReady,
+}: {
+  onReady: (registry: ReturnType<typeof useShortcutRegistry>) => void;
+}) {
+  const registry = useShortcutRegistry();
+  useEffect(() => {
+    onReady(registry);
+  }, [registry, onReady]);
+  return null;
+}
+
 describe('every ambient occupant gets the full dock chrome (station#4460)', () => {
+  test('the dock.toggle shortcut (cmd+D) collapses the real dock shell', async () => {
+    renderHost();
+    await waitFor(() => {
+      expect(document.querySelector('.chat-dock')).not.toBeNull();
+    });
+    await waitFor(() => {
+      expect(shortcutRegistry).not.toBeNull();
+    });
+    const toggle = (shortcutRegistry?.getAllShortcuts() ?? []).find(
+      (shortcut) => shortcut.id === 'dock.toggle',
+    );
+    expect(
+      toggle,
+      'dock.toggle must be registered by the shell chrome',
+    ).toBeTruthy();
+    expect(toggle?.key).toBe('d');
+    expect(toggle?.modifiers).toContain('cmd');
+    expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
+    act(() => {
+      toggle?.handler();
+    });
+    await waitFor(() => {
+      expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull();
+    });
+  });
+
+  test('the real region control changes the real dock shell open state', async () => {
+    renderHost();
+    await waitFor(() => {
+      expect(document.querySelector('.chat-dock')).not.toBeNull();
+    });
+    const control = screen.getByRole('button', {
+      name: 'Hide Chat Bottom region',
+    });
+    expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
+    fireEvent.click(control);
+    await waitFor(() => {
+      expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull();
+    });
+  });
+
   // Chat's OWN header content is rendered by the real `ChatWorkspacePane`
   // (a heavy component with its own large context/data-fetching surface),
   // not by this test's mocked `renderChatPane` — so this file cannot mount

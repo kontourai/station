@@ -41,7 +41,6 @@ const expectedDependencies = new Map(
     'src-server/services/projects/workspace-pane-known-declarations.ts':
       'pane-declaration',
     'src-server/telemetry/metrics.ts': 'operation-receipt',
-    'src-ui/src/App.tsx': 'navigation',
     'src-ui/src/app-shell/ProjectLayoutRenderer.tsx': 'aggregate-host',
     'src-ui/src/app-shell/codingFileCompositionTelemetry.ts':
       'operation-receipt',

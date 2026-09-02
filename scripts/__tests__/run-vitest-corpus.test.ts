@@ -277,6 +277,72 @@ describe('Vitest corpus runner', () => {
     }
   });
 
+  it('reports a signal-cancelled group as CANCELLED, never as a test failure', () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    try {
+      emitResult({
+        name: 'ordinary',
+        passed: false,
+        cancelled: true,
+        status: null,
+        error: 'Vitest corpus cancelled: SIGTERM',
+        stdout: 'partial transcript',
+        stderr: '',
+        outputBytes: 903230,
+      });
+      const out = stdout.mock.calls.flat().join('');
+      // The exact regression: a 45-minute phase deadline was printed as FAIL,
+      // sending readers to look for a failing test that never existed.
+      expect(out).toContain('[vitest-corpus] ordinary: CANCELLED; 903230');
+      expect(out).not.toContain('ordinary: FAIL');
+      expect(out).toContain('no test results were produced');
+      expect(stderr.mock.calls.flat().join('')).toContain(
+        'Vitest corpus cancelled: SIGTERM',
+      );
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+    }
+  });
+
+  it('still reports a genuine non-zero Vitest status as FAIL', () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    try {
+      emitResult({
+        name: 'ordinary-2-of-8',
+        passed: false,
+        status: 1,
+        error: 'Vitest exited 1',
+        stdout: 'x',
+        stderr: 'y',
+        outputBytes: 2,
+      });
+      const out = stdout.mock.calls.flat().join('');
+      expect(out).toContain('[vitest-corpus] ordinary-2-of-8: FAIL; 2');
+      expect(out).not.toContain('no test results were produced');
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+    }
+  });
+
+  it('marks a corpus interrupted by the coordinator as cancelled, not failed', async () => {
+    const controller = new AbortController();
+    controller.abort('SIGTERM');
+    const { passed, results } = await runVitestCorpus({
+      signal: controller.signal,
+      onResult: () => {},
+      runGroup: () => {
+        throw new Error('must not run a group after cancellation');
+      },
+    });
+    expect(passed).toBe(false);
+    expect(results[0].cancelled).toBe(true);
+    expect(results[0].error).toContain('cancelled');
+  });
+
   it('does not spawn owned work when a group is already interrupted', async () => {
     const controller = new AbortController();
     controller.abort('test interrupt');
