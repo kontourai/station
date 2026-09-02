@@ -107,7 +107,7 @@ function artifactInput([destination, ...entries]) {
       platformArtifacts = {};
       artifacts[platform] = platformArtifacts;
     }
-    platformArtifacts[name] = resolve(path);
+    platformArtifacts[name] = { path: resolve(path) };
   }
   write(destination, { artifacts });
 }

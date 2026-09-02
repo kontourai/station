@@ -5,27 +5,22 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readFilePreviewPaneState } from '../filePreviewPaneStateStorage';
 import { WorkspacePaneHostOpenContext } from '../WorkspacePaneHostOpenContext';
 
-const { dockModePreference, isMobile, navigation, setDockState } = vi.hoisted(
-  () => ({
-    dockModePreference: vi.fn(),
-    isMobile: vi.fn(() => false),
-    navigation: {
-      openFilePreviewIntent: null as {
-        projectSlug: string;
-        path: string;
-        lineRange?: { start: number; end: number };
-      } | null,
-      updateParams: vi.fn(),
-    },
-    setDockState: vi.fn(),
-  }),
-);
+const { isMobile, navigation, setDockState } = vi.hoisted(() => ({
+  isMobile: vi.fn(() => false),
+  navigation: {
+    openFilePreviewIntent: null as {
+      projectSlug: string;
+      path: string;
+      lineRange?: { start: number; end: number };
+    } | null,
+    updateParams: vi.fn(),
+    setDockMode: vi.fn(),
+  },
+  setDockState: vi.fn(),
+}));
 
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigation: () => ({ ...navigation, setDockState }),
-}));
-vi.mock('../../hooks/useDockModePreference', () => ({
-  useDockModePreference: (...args: unknown[]) => dockModePreference(...args),
 }));
 vi.mock('../../hooks/useIsMobile', () => ({
   useIsMobile: () => isMobile(),
@@ -36,18 +31,23 @@ import { CodingChatPane } from '../CodingChatPane';
 describe('CodingChatPane', () => {
   afterEach(() => {
     window.localStorage.clear();
-    dockModePreference.mockReset();
     isMobile.mockReset();
     isMobile.mockReturnValue(false);
     navigation.openFilePreviewIntent = null;
     navigation.updateParams.mockReset();
+    navigation.setDockMode.mockReset();
     setDockState.mockReset();
   });
 
-  test('keeps Coding chat in the existing right dock without taking shell placement', () => {
-    render(<CodingChatPane projectId="project-uuid" projectSlug="demo" />);
+  test('does not touch dock placement when Coding chat mounts or unmounts', () => {
+    const view = render(
+      <CodingChatPane projectId="project-uuid" projectSlug="demo" />,
+    );
 
-    expect(dockModePreference).toHaveBeenCalledWith('coding', 'right');
+    expect(navigation.setDockMode).not.toHaveBeenCalled();
+    expect(setDockState).not.toHaveBeenCalled();
+    view.unmount();
+    expect(navigation.setDockMode).not.toHaveBeenCalled();
     expect(setDockState).not.toHaveBeenCalled();
   });
 

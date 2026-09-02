@@ -4,7 +4,6 @@ import {
   useRegionModel,
   useRegionModelOptional,
 } from '../../contexts/RegionModelContext';
-import { setDockModeOverride } from '../../hooks/useDockModePreference';
 import { useDockSlotPlacement, useIsMobile } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
@@ -60,7 +59,7 @@ function RegionShortcut({
  */
 function ConnectedRegionToolbarControls() {
   const { regions, surfaces } = useRegionModel();
-  const { dockMode, isDockMaximized, pathname, setDockMode, setDockState } =
+  const { dockMode, isDockMaximized, setDockMode, setDockState } =
     useNavigation();
   const isMobile = useIsMobile();
   const { available, effective } = useDockSlotPlacement(dockMode);
@@ -89,22 +88,10 @@ function ConnectedRegionToolbarControls() {
       if (!availableRegions.includes(id as DockMode)) return;
       const surface = surfaces.get(surfaceId);
       if (!surface) return;
-      const layoutKey =
-        pathname.startsWith('/projects/') && pathname.includes('/layouts/')
-          ? 'coding'
-          : null;
-      setDockModeOverride(layoutKey, id as DockMode);
       setDockMode(id as DockMode);
       setDockState(true, isDockMaximized);
     },
-    [
-      availableRegions,
-      isDockMaximized,
-      pathname,
-      setDockMode,
-      setDockState,
-      surfaces,
-    ],
+    [availableRegions, isDockMaximized, setDockMode, setDockState, surfaces],
   );
 
   return (

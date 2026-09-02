@@ -298,9 +298,6 @@ vi.mock('../contexts/ProjectsContext', () => ({
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast }),
 }));
-vi.mock('../hooks/useDockModePreference', () => ({
-  setDockModeOverride: vi.fn(),
-}));
 vi.mock('../hooks/useFeatureSettings', () => ({
   useFeatureSettings: () => ({ settings: { voiceS2SEnabled: false } }),
 }));

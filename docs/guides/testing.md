@@ -401,6 +401,14 @@ Checkpoint resume is deliberately narrow: rerun the same unchanged `npm run full
 `verification:policy:gate` remains a deterministic default readiness check, not required `repo-governance` evidence: it is already a bounded `ci:fast` invariant, while changing required-evidence routing is a separate human-governed `.veritas` decision. The existing repo-map contract test enforces that boundary.
 <!-- station:verification-scheduling:end -->
 
+A stopped phase reports itself as stopped. When a shard exceeds its execution
+deadline the corpus runner prints `[vitest-corpus] <group>: CANCELLED` — never
+`FAIL` — followed by an explicit note that no test results were produced and
+that the captured bytes are a partial transcript. The receipt summary names the
+step under `inFlightStep` instead of `failingStep`. If you see either, the
+answer is budget or sharding, not a hunt for a failing test: the suite did not
+finish, so no failing test name exists to find.
+
 <!-- station:verification-policy:start -->
 The "Invalidated by" column names only the lane-specific `manifestDigest`
 content; every other field participates in reuse identity for every lane and

@@ -28,7 +28,6 @@ import {
   deriveDockSlotGeometry,
 } from './dock-slot-geometry';
 import { useChatDockVerticalDrag } from './useChatDockVerticalDrag';
-import { setDockModeOverride } from './useDockModePreference';
 import { useDragResize } from './useDragResize';
 import { useDockSlotPlacement, useIsMobile } from './useIsMobile';
 import { useKeyboardShortcut } from './useKeyboardShortcut';
@@ -350,14 +349,9 @@ export function useDockShellChrome({
 
   const commitDockPlacement = useCallback(
     (mode: DockMode) => {
-      const layoutKey =
-        pathname.startsWith('/projects/') && pathname.includes('/layouts/')
-          ? 'coding'
-          : null;
-      setDockModeOverride(layoutKey, mode);
       setDockMode(mode);
     },
-    [pathname, setDockMode],
+    [setDockMode],
   );
 
   // archive#869 / archive#1298: a maximized dock is opaque and full-height, so navigating
