@@ -189,6 +189,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // paths' EXIT STATUS and printed verdicts are proven, not just the pure
   // evaluation functions.
   'scripts/__tests__/codeql-sarif-policy.cli.test.ts',
+  // station#1312: same shape again — the issue-lifecycle module graph is
+  // loaded in fresh node children, one entry module per case, because only a
+  // cold import proves the graph has no evaluation-order cycle; in-process
+  // tests inherit whatever order Vitest already resolved.
+  'scripts/__tests__/issue-lifecycle-entry.test.ts',
   // station#3749: same shape again — the SDK refusal-message gate is driven as
   // a real child process against throwaway git repositories so its `FAIL:`
   // sentence and its EXIT STATUS are proven, not just its pure decision
