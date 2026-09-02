@@ -300,6 +300,9 @@ describe('portable release packager', { timeout: 30_000 }, () => {
       sha: run('git', ['rev-parse', 'HEAD'], root),
     });
     expect(manifest).not.toHaveProperty('available');
+    // releaseChannel is install/update authority and belongs only to the
+    // embedded provenance. The outer staging manifest remains evidence-only.
+    expect(manifest).not.toHaveProperty('releaseChannel');
     const embedded = JSON.parse(
       execFileSync(
         'tar',

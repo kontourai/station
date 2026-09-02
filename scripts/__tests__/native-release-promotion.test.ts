@@ -450,6 +450,9 @@ describe('one-revision native promotion contract', () => {
     expect(source).toContain('stage-receipt');
     expect(source).toContain('staged-fleet-inventory.mjs admit-fixed');
     expect(source).toContain('config/nightly-fleet-staging-plan.json');
+    expect(source).toContain('manifest.prerelease!==true');
+    expect(source).toContain('Object.hasOwn(manifest,"releaseChannel")');
+    expect(source).not.toContain('manifest.releaseChannel!=="nightly-staging"');
     expect(source).toContain('gh attestation verify "staged/$name"');
     expect(source).toContain('--source-ref refs/heads/main');
     expect(source).toContain('--deny-self-hosted-runners');
