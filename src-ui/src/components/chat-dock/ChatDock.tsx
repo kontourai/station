@@ -293,8 +293,8 @@ const loadConversationOpenRevalidator = () =>
  * `status = 'fulfilled'` onto the promise it settles, and a later `lazy()` fed
  * that same object throws it while its own payload is still pending — the
  * reconciler then replays synchronously forever (`isThenableResolved` →
- * `replaySuspendedUnitOfWork`). A second mount of this dock froze on that;
- * nothing remounted it before region shells (#928) made that ordinary.
+ * `replaySuspendedUnitOfWork`). A second mount of this dock froze on that,
+ * and App.tsx's `showAmbientChatDock` remounts it on ordinary navigation.
  */
 const loadAmbientChatDockPaneHost = () =>
   import('../../workspace-panes/AmbientChatDockPaneHost').then((module) => ({

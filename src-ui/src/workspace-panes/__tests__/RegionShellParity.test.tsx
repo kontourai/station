@@ -302,6 +302,9 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       expect(shells()[0]?.classList.contains(`chat-dock--${destination}`)).toBe(
         true,
       );
+      // The re-propped instance republishes clearance for its new region.
+      await waitFor(() => expect(clearance('--dock-slot-size')).toBe('0px'));
+      expect(clearance('--chat-dock-width')).toBe('400px');
     },
   );
 

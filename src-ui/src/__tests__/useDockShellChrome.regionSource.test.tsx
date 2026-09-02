@@ -221,6 +221,38 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(result.current.model.regions.bottom.occupant).toBe('chat');
   });
 
+  test('a desktop side shell persists its drag as its own width', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        chrome: useDockShellChrome({
+          publishesDockSlotClearance: false,
+          registersDockShortcuts: false,
+          regionId: 'right',
+        }),
+        model: useRegionModel(),
+      }),
+      { wrapper },
+    );
+    act(() => result.current.model.placeSurface('chat', 'right'));
+    expect(result.current.chrome.effectiveDockSlotPlacement).toBe('right');
+    act(() => {
+      result.current.chrome.setIsDragging(true);
+      result.current.chrome.setDockWidth(410);
+    });
+    act(() => result.current.chrome.setIsDragging(false));
+    expect(result.current.model.regions.right.size).toBe(410);
+    expect(result.current.model.regions.left.size).toBe(400);
+    expect(result.current.model.regions.bottom.size).toBe(320);
+  });
+
   test('a side shell folded to the bottom persists its drag as a bottom height', () => {
     // ≤768px folds every placement to bottom (useIsMobile.ts
     // `availablePlacements`); the dragged value is a height and must not

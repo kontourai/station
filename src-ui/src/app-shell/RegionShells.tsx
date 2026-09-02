@@ -12,8 +12,9 @@ import type { WorkspacePaneDockAction } from '../workspace-panes/WorkspacePaneDo
  * shell is keyed by its OCCUPANT: moving a surface re-props the same
  * instance instead of tearing the pane down, exactly as the single ambient
  * `ChatDock` behaved before this file existed. Chat is the only registered
- * surface in this slice; `main-provider-order.test.ts` guards the provider,
- * and the no-provider branch keeps App-level tests on the legacy mount.
+ * surface in this slice; a source scan in `main-provider-order.test.ts` pins
+ * the provider's tag order, and the no-provider branch keeps App-level tests
+ * on the legacy mount.
  */
 export function RegionShells({
   homeContinuation,
