@@ -27,6 +27,29 @@ and [mobile-release.md](./mobile-release.md). Listing copy lives in
   but every channel preflights its own App Store Connect app and group before
   signing. Query their current protection configuration; this guide does not
   claim live environment state.
+- The dispatch-only **Internal iOS TestFlight cohort** runs only from current
+  `main`, first proving no-effect admission to all three environments. It then
+  creates signed, immutable `ios-testflight/<channel>/v<version>/<build>`
+  authority tags and calls only the reusable TestFlight delivery workflow in
+  Nightly → Beta → Stable order. It never calls `release.yml`, publishes a
+  GitHub Release/package/container/desktop artifact, changes Play, or submits
+  an App Store version for public review.
+- Internal Stable and Beta use the dedicated build slot `11100`; ordinary
+  release authority keeps slots `11101` through `11199`. Nightly remains on
+  the globally monotonic allocator, which considers both normal Nightly and
+  internal-authority tags. This deliberately avoids moving or reusing the
+  immutable `v0.1.10` release tag.
+- Before the first cohort, every channel environment must explicitly admit the
+  `main` branch and one active, unbypassed tag ruleset must deny both deletion
+  and non-fast-forward changes to `refs/tags/ios-testflight/**`. Do not weaken
+  either policy to recover a partial run: inspect the retained authority and
+  provider receipts first.
+- The authority key's public half must be registered on GitHub account
+  `briananderson1222` before a cohort is dispatched. The planning job proves
+  that GitHub's exact public key has the protected fingerprint and UID email
+  `brian.anderson1222@gmail.com`, then uses that same email as its annotated
+  tagger. A missing key (the normal first-run state) fails before any tag or
+  provider mutation.
 - Tag overlay derives Android `versionCode` and iOS `CFBundleVersion` from the
   tag. Do not hand-edit `1` / `1.0` fallbacks in Gradle for a store upload.
 
@@ -89,6 +112,16 @@ for env in native-release ios-beta ios-nightly; do
   gh secret set APPLE_IOS_SIGNING_IDENTITY --repo kontourai/station --env "$env"
   gh secret set APPLE_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env "$env"
 done
+
+# Internal authority signatures are verified in every delivery environment.
+# Only native-release can read the private key because only the planning job
+# creates a new authority tag.
+for env in native-release ios-beta ios-nightly; do
+  gh variable set TESTFLIGHT_AUTHORITY_GPG_PUBLIC_KEY --repo kontourai/station --env "$env"
+  gh variable set TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT --repo kontourai/station --env "$env"
+done
+gh secret set TESTFLIGHT_AUTHORITY_GPG_PRIVATE_KEY --repo kontourai/station --env native-release
+gh secret set TESTFLIGHT_AUTHORITY_GPG_PASSPHRASE --repo kontourai/station --env native-release
 
 # TestFlight upload (required for each configured channel; absent credentials
 # fail the channel before signing or upload)

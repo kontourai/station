@@ -28,7 +28,6 @@ const NavigationContext = createContext<{
   setDockState: (open: boolean, maximized?: boolean) => void;
   collapseMaximizedDock: () => void;
   setDockMode: (mode: DockMode) => void;
-  setDockModeQuiet: (mode: DockMode) => void;
 } | null>(null);
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
@@ -89,10 +88,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     navigationStore.setDockMode(mode);
   }, []);
 
-  const setDockModeQuiet = useCallback((mode: DockMode) => {
-    navigationStore.setDockModeQuiet(mode);
-  }, []);
-
   // archive#3796: one memoised value per provider — a fresh object literal
   // here republishes the context to every consumer on any render of this
   // provider, whatever the render was actually about.
@@ -109,7 +104,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       setDockState,
       collapseMaximizedDock,
       setDockMode,
-      setDockModeQuiet,
     }),
     [
       navigate,
@@ -123,7 +117,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       setDockState,
       collapseMaximizedDock,
       setDockMode,
-      setDockModeQuiet,
     ],
   );
 

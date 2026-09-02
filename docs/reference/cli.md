@@ -1509,7 +1509,19 @@ station service start [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=
 station service status [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--json]
 station service stop [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--json]
 station service uninstall [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>]
+station service run [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--host=<address>] [--features=<flags>] [--allowed-origin=<origin>]...
 ```
+
+`run` is the foreground supervisor. It runs the server and UI in the current
+process and does not return, so it is the process an external supervisor
+wraps rather than a command that registers one: the installed systemd unit,
+the launchd plist, and this repository's container image all invoke it. Use it
+directly when the host has no service manager to register with — a container,
+or any Linux without a systemd user session — where `service install` fails by
+design (see the backend table below). It is not a replacement for
+`station start`, which builds if needed and launches both processes detached;
+`run` deliberately stays in the foreground so its supervisor owns the
+lifecycle.
 
 The default service uses the selected channel's runtime home and generated
 server/UI ports (`~/.station/instances/stable`, `18141`, and `18000` for
@@ -1534,6 +1546,7 @@ origins on an `origins` line.
 | macOS | LaunchAgent in `~/Library/LaunchAgents/` | after reboot and login | `<STATION_HOME>/logs/*-service.{out,err}.log` |
 | Linux | systemd user unit in `~/.config/systemd/user/` | user-manager startup, including reboot without login | `journalctl --user -u station-<instance>.service` |
 | Windows | Task Scheduler task, `ONLOGON`, `LIMITED` | installing user's logon | `<STATION_HOME>\logs\*-service.{out,err}.log` |
+| No service manager (container, or Linux without a systemd user session) | none — supervise `station service run` yourself | whenever its supervisor starts it | the supervisor's own stdout/stderr |
 
 `service status` reports the OS unit, lifecycle instance/processes, and both
 server/UI identity endpoints. `--json` emits the same data for automation. An

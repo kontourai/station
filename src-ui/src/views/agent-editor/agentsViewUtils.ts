@@ -6,6 +6,7 @@ import type {
 import {
   agentId,
   engineConnectionId,
+  isStationAgentIdentity,
 } from '@kontourai/station-contracts/agent-identity';
 import {
   requiresAgentPromptForRuntime,
@@ -326,7 +327,10 @@ function buildExecutionPayload(form: AgentFormData) {
       ? form.execution.modelOptions
       : undefined;
   const execution = {
-    ...(form.execution.agentConnectionId
+    // The detail read projects the built-in Agent's live Station setting so
+    // the Engine row can state what will run. That projection is display
+    // state, not an Agent field: never submit it back through the write seam.
+    ...(!isStationAgentIdentity(form.slug) && form.execution.agentConnectionId
       ? {
           agentConnectionId: engineConnectionId(
             form.execution.agentConnectionId,
@@ -345,6 +349,22 @@ function buildExecutionPayload(form: AgentFormData) {
   return Object.values(execution).some((value) => value !== undefined)
     ? execution
     : null;
+}
+
+const STATION_ENGINE_SETTING_SAVE_MESSAGE =
+  'Change the built-in Agent engine in Settings, then save your changes again.';
+
+/** Translate structured save refusals into reader-facing editor actions. */
+export function agentSaveErrorMessage(error: unknown): string {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    error.code === 'STATION_ENGINE_IS_APP_SETTING'
+  ) {
+    return STATION_ENGINE_SETTING_SAVE_MESSAGE;
+  }
+  return error instanceof Error ? error.message : 'Could not save this Agent.';
 }
 
 export function buildAgentPayload(

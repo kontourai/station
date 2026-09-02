@@ -32,6 +32,7 @@
     ".": "./src/index.ts",
     "./agent-validation": "./src/agent-validation.ts",
     "./build": "./src/build.ts",
+    "./build-provenance": "./src/build-provenance.ts",
     "./checkpoints": "./src/checkpoints.ts",
     "./git": "./src/git.ts",
     "./json-file-storage": "./src/json-file-storage.ts",

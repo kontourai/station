@@ -118,6 +118,13 @@ export const FULL_REGRESSION_PHASES = Object.freeze([
     timeoutMs: 4 * 60_000,
   }),
   Object.freeze({
+    id: 'test-full-credential-ledger-exclusive',
+    command: 'npm run test:full:credential-ledger-exclusive:raw',
+    privateScript: 'test:full:credential-ledger-exclusive:raw',
+    weight: 60,
+    timeoutMs: 4 * 60_000,
+  }),
+  Object.freeze({
     id: 'test-full-shared-output',
     command: 'npm run test:full:shared-output:raw',
     privateScript: 'test:full:shared-output:raw',

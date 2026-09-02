@@ -9,6 +9,7 @@ import { PROCESS_HEAVY_MAX_WORKERS } from '../run-vitest-corpus.mjs';
 import {
   assertOrdinaryVitestSelection,
   buildVitestResourceGroups,
+  CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES,
   DOGFOOD_RECONCILE_PREFIX,
   discoverVitestFiles,
   discoverVitestResourceGroups,
@@ -73,7 +74,7 @@ describe('Vitest resource manifest', () => {
     expect(assertOrdinaryVitestSelection(groups)).toEqual(groups.ordinary);
   }, 70_000);
 
-  it('proves eight ordinary slices cover exactly once and refine every former quarter', async () => {
+  it('proves eight ordinary slices cover the canonical corpus exactly once', async () => {
     // Vitest sorts a SHA-1 path projection and slices that ordered set. This
     // calls the installed selector itself—not a reimplementation—so changes
     // in discovery count or Vitest shard semantics force an explicit mapping
@@ -90,14 +91,10 @@ describe('Vitest resource manifest', () => {
     expect(new Set(allEighths).size).toBe(ordinary.length);
     expect([...new Set(allEighths)].sort()).toEqual([...ordinary].sort());
 
-    for (const quarterIndex of [1, 2, 3, 4]) {
-      const quarter = await ordinaryShardFiles(ordinary, quarterIndex, 4);
-      const refined = eighths
-        .slice((quarterIndex - 1) * 2, quarterIndex * 2)
-        .flat()
-        .sort();
-      expect(refined).toEqual(quarter);
-    }
+    // Vitest guarantees deterministic coverage for one chosen shard count;
+    // it does not promise that two adjacent eighths equal a separately
+    // computed quarter when the corpus size changes. Eight-way coverage is
+    // the canonical contract and is proved above without a legacy partition.
   }, 70_000);
 
   // station#3465 disposition, made assertable in code (coordinator review):
@@ -203,6 +200,20 @@ describe('Vitest resource manifest', () => {
     expect(groups.sharedOutput).not.toContain(file);
   }, 70_000);
 
+  it('classifies the credential DDL proof exactly once in its exclusive phase', () => {
+    const file =
+      'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts';
+    const groups = discoverVitestResourceGroups();
+    expect(CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES).toEqual([file]);
+    expect(
+      groups.credentialLedgerExclusive.filter((entry) => entry === file),
+    ).toEqual([file]);
+    expect(groups.ordinary).not.toContain(file);
+    expect(groups.processHeavy).not.toContain(file);
+    expect(groups.processExclusive).not.toContain(file);
+    expect(groups.sharedOutput).not.toContain(file);
+  }, 70_000);
+
   it('recognizes bare and import-equals child-process forms before they can enter ordinary', () => {
     for (const source of [
       "import { spawn } from 'child_process'; void spawn;",
@@ -262,6 +273,7 @@ describe('Vitest resource manifest', () => {
         manifest: {
           processHeavy: { files: [heavy] },
           processExclusive: { files: [] },
+          credentialLedgerExclusive: { files: [] },
           sharedOutput: { files: [] },
         },
       }),
@@ -284,6 +296,7 @@ describe('Vitest resource manifest', () => {
         manifest: {
           processHeavy: { files: [first] },
           processExclusive: { files: [] },
+          credentialLedgerExclusive: { files: [] },
           sharedOutput: { files: [first] },
         },
       }),
@@ -294,6 +307,7 @@ describe('Vitest resource manifest', () => {
         manifest: {
           processHeavy: { files: ['missing.test.ts'] },
           processExclusive: { files: [] },
+          credentialLedgerExclusive: { files: [] },
           sharedOutput: { files: [] },
         },
       }),

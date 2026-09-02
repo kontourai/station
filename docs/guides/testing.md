@@ -335,9 +335,10 @@ is diagnostic and does not replace the final `npm run full:regression` receipt.
 Ordinary and focused Vitest invocations inherit the checked-in four-worker
 ceiling. `npm run test:full` discovers the complete corpus, validates exact and
 disjoint ownership through `scripts/vitest-resource-manifest.mjs`, then runs
-five resource groups in order: ordinary isolated files at four workers,
+six resource groups in order: ordinary isolated files at four workers,
 independent process-heavy files at two isolated fork workers, host-global
 process-exclusive files at one worker with file parallelism disabled,
+the credential-ledger DDL proof in its own independently receipted exclusive group,
 shared-output files under the same serial constraint, and dogfood-reconcile
 files under their historical serial constraint. Direct child-process use
 requires a bounded process group, not global serialization: two workers keep
@@ -392,6 +393,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 - `test-full-ordinary-8-of-8` — 80-unit host reservation; 20-minute execution deadline.
 - `test-full-process-heavy` — 60-unit host reservation; 30-minute execution deadline.
 - `test-full-process-exclusive` — 60-unit host reservation; 4-minute execution deadline.
+- `test-full-credential-ledger-exclusive` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-shared-output` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-dogfood-reconcile` — 60-unit host reservation; 5-minute execution deadline.
 - `app-builds` — 60-unit host reservation; 10-minute execution deadline.
@@ -400,6 +402,14 @@ Checkpoint resume is deliberately narrow: rerun the same unchanged `npm run full
 
 `verification:policy:gate` remains a deterministic default readiness check, not required `repo-governance` evidence: it is already a bounded `ci:fast` invariant, while changing required-evidence routing is a separate human-governed `.veritas` decision. The existing repo-map contract test enforces that boundary.
 <!-- station:verification-scheduling:end -->
+
+A stopped phase reports itself as stopped. When a shard exceeds its execution
+deadline the corpus runner prints `[vitest-corpus] <group>: CANCELLED` — never
+`FAIL` — followed by an explicit note that no test results were produced and
+that the captured bytes are a partial transcript. The receipt summary names the
+step under `inFlightStep` instead of `failingStep`. If you see either, the
+answer is budget or sharding, not a hunt for a failing test: the suite did not
+finish, so no failing test name exists to find.
 
 <!-- station:verification-policy:start -->
 The "Invalidated by" column names only the lane-specific `manifestDigest`

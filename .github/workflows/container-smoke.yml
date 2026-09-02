@@ -39,15 +39,25 @@ jobs:
   smoke:
     needs: classify
     if: github.event_name != 'pull_request' && (github.event_name == 'workflow_dispatch' || needs.classify.outputs.container == 'true')
+    # Never cancel a running smoke: the job takes 20+ minutes and the merge
+    # queue lands a non-docs entry every ~18, so cancelling on push meant
+    # only the last commit of a burst ever got a verdict (17 cancelled main
+    # runs on 2026-09-01 alone, each the only run for its commit, including
+    # the first two carrying the #917 fix).
+    # Without cancel the group still keeps at most one pending run, so the
+    # latest main is verified next; main-health ignores `cancelled` runs.
     concurrency:
       group: container-smoke-${{ github.ref }}
-      cancel-in-progress: true
-    # Pairing e2e timed out on github-hosted ubuntu-22.04 (run 33228038600):
-    # the container image built, then device-pairing-mobile never saw a
-    # Connections entry control within 15s. Keep this job on the docker +
-    # playwright fleet listener.
+      cancel-in-progress: false
+    # The fleet listener provides docker + playwright. (Run 33228038600's
+    # device-pairing timeout, once blamed on the github-hosted environment
+    # here, was actually the anonymous-browser premise gap fixed in #917 —
+    # the runner move neither caused nor fixed it.)
     runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]
-    timeout-minutes: 45
+    # Budget = the longest capacity wait below (45 min) + the smoke itself
+    # (~20-25 min) + margin. Raising the wait without raising this only moves
+    # the failure from the reserve step to the job timeout.
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,9 +72,15 @@ jobs:
           host-id: desktop-win
           capacity-units: "10"
           lease-weight: "9"
-          timeout-seconds: "600"
+          # Weight 9 of 10 is admitted only once every other desktop-win
+          # lease has drained, and the Windows PR floor (weight 5, ~18 min,
+          # 45-minute budget) runs on every PR. A 600s wait therefore timed
+          # out whenever a floor run was mid-flight (run 33589882367, a
+          # main red with no code cause). Wait out the floor's full budget.
+          timeout-seconds: "2700"
           owner-lifetime-seconds: "7800"
-      - name: Isolate Docker client state
+      - id: isolate-docker
+        name: Isolate Docker client state
         # Persistent WSL hosts may also use Docker Desktop interactively. Keep
         # CI independent from its credential helper and Windows logon state.
         run: |
@@ -85,8 +101,22 @@ jobs:
           STATION_RELEASE_REF: v0.0.0-preview.1
           STATION_RELEASE_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
         run: scripts/container-smoke.sh
+      # A red smoke with no trace or screenshot is undiagnosable from logs
+      # alone (#917's investigation had zero artifacts to read).
+      - name: Upload Playwright results on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-smoke-test-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Remove isolated Docker client state
-        if: always()
+        # Only when the isolate step ran: if the capacity reservation failed,
+        # DOCKER_CONFIG was never set and the refusal below reported
+        # `Refusing unexpected DOCKER_CONFIG:` as the job's last error,
+        # burying the real one (the same run above).
+        if: always() && steps.isolate-docker.outcome == 'success'
         run: |
           case "$DOCKER_CONFIG" in
             "$RUNNER_TEMP"/station-docker-config.*) rm -rf -- "$DOCKER_CONFIG" ;;

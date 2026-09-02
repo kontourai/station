@@ -120,9 +120,17 @@ describe('the nightly workflow records what it ships', () => {
     expect(step).toContain('androidVersion=');
     // Mirrors the publish condition: no signing material, no ship, no row.
     expect(step).toContain('assert-final cohort/final-cohort-receipt.json');
+    // The ledger timestamp/source binding must be extracted from the actual
+    // Play AAB, never reconstructed from the checkout in this later job.
+    expect(step).toContain(
+      '--artifact-manifest cohort/cohort-android/station-client-build.json',
+    );
     // The push credential is the release app's token — the require-green
     // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
     expect(step).toContain('steps.ledger_token.outputs.token');
+    expect(step).toContain(
+      '--artifact-manifest cohort/cohort-macos/station-client-build.json',
+    );
     // The commit subject is what the changelog exclusion rule keys on.
     expect(step).toMatch(/docs\(ledger\):/);
     expect(
@@ -149,11 +157,16 @@ describe('the nightly workflow records what it ships', () => {
     // LOW-2: the nightly CLI's OWN identity step, not the Android's.
     expect(step).toContain('$' + '{{ steps.identity.outputs.version }}');
     expect(step).not.toMatch(/git rev-parse/);
-    // Records only what actually published, and cannot be suppressed by an
-    // unrelated later-step failure.
+    // A publish alone is insufficient: the registry receipt must bind that
+    // version back to the exact source before a ledger mutation is reachable.
     expect(step).toContain(
-      "always() && steps.cli_npm_publish.outcome == 'success'",
+      "always() && steps.cli_registry_provenance.outcome == 'success'",
     );
+    const verifier = stepBlock(
+      nightlyCaller,
+      'Bind the published CLI receipt to npm registry provenance',
+    );
+    expect(verifier).toContain('verify-npm-registry-provenance.mjs');
     // The push credential is the release app's token — the require-green
     // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
     expect(step).toContain('steps.ledger_token.outputs.token');
@@ -272,6 +285,12 @@ describe('the stable release ledger record', () => {
     // release SHA is not an ancestor of main — a tag cut off-main must
     // never have its commits pushed to main as a ledger side effect.
     expect(step).toContain('--require-ancestor "$RELEASE_SHA"');
+    expect(publishRelease).toContain(
+      'Derive the common frozen desktop provenance only after all package gates',
+    );
+    expect(step).toContain(
+      '--artifact-manifest "$RUNNER_TEMP/station-desktop-common-client-build.json"',
+    );
     // LOW-3: an empty release-assets download must refuse, not record a
     // literal glob string as an artifact.
     expect(step).toContain('shopt -s nullglob');
@@ -321,6 +340,12 @@ describe('the npm stable ledger record', () => {
     // The push credential is the release app's token — the require-green
     // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
     expect(step).toContain('steps.ledger_token.outputs.token');
+    expect(step).toContain('npm view "$name@$version" gitHead --json');
+    expect(step).toContain('verify-npm-registry-provenance.mjs');
+    expect(step).toContain('"$GITHUB_SHA"');
+    expect(step).toContain('artifactBuiltAt:null');
+    expect(step).toContain('sourceSha:process.env.SOURCE_SHA');
+    expect(step).toContain('sourceBinding:"npm registry gitHead"');
   });
 
   it('retains after the record step so a failed push still uploads the files', () => {

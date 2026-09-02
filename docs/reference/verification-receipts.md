@@ -219,6 +219,20 @@ request before any phase ran; it is explicitly non-evidence. `parser_error`
 means the harness ran but could not parse trustworthy counts, and `provisional`
 means an interim, not-yet-final result.
 
+Two of those statuses mean the run was **stopped**, not judged: `timed_out` and
+`canceled`. No step failed and no test verdict exists, so the bounded summary
+names the step that was still running as `inFlightStep` rather than
+`failingStep`, and `failingStep` is absent. Every other non-passing status
+still reports `failingStep` as before. Read `inFlightStep` as "give this phase
+more budget, or shard it further" — not as "this step is broken".
+
+This distinction is load-bearing. Eight consecutive tagged releases reported
+`failingStep: test:full:ordinary:raw` alongside a `[vitest-corpus] ordinary:
+FAIL` tally when the real terminal status was `timed_out` on a 45-minute phase
+deadline. Nothing had failed, which is exactly why no failing test name
+appeared anywhere in the receipt — the suite never finished. A reader who
+trusted the field's name looked for a broken test that did not exist.
+
 ### Schema and runtime semantics compose the pass contract
 
 The JSON Schema and `assertReceiptSemantics` together enforce the fail-closed

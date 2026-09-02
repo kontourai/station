@@ -35,6 +35,7 @@ export function ManualAddPanel({
         value={name}
         onChange={(event) => onNameChange(event.target.value)}
         placeholder="Name (optional)"
+        aria-label="Name (optional)"
         className="station-connect-input"
       />
       <input
@@ -42,6 +43,7 @@ export function ManualAddPanel({
         value={url}
         onChange={(event) => onUrlChange(event.target.value)}
         placeholder="https://station.example.ts.net"
+        aria-label="Station address"
         className="station-connect-input"
         onKeyDown={(event) => {
           if (event.key === 'Enter') onAdd();

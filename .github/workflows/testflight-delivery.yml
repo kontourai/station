@@ -91,10 +91,36 @@ jobs:
           short_sha=$(git rev-parse --short=12 HEAD)
           printf '{"schemaVersion":1,"kind":"testflight-source-identity","sourceSha":"%s","shortSha":"%s","sourceDateUtc":"%s","channel":"%s","marketingVersion":"%s","bundleVersion":"%s"}\n' '${{ inputs.source_sha }}' "$short_sha" "$source_date" '${{ inputs.channel }}' '${{ inputs.marketing_version }}' '${{ inputs.bundle_version }}' > "$RUNNER_TEMP/source-identity.json"
           source_ref='${{ inputs.source_ref }}'
-          [[ "$source_ref" =~ ^refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[1-9][0-9]*)?|nightly-version-code/[0-9]+)$ ]]
+          [[ "$source_ref" =~ ^refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[1-9][0-9]*)?|nightly-version-code/[0-9]+|ios-testflight/(stable|beta|nightly)/v[0-9]+\.[0-9]+\.[0-9]+/[0-9]+)$ ]]
           git fetch --no-tags origin "$source_ref:$source_ref"
           node scripts/verify-ios-testflight-authority.mjs --source-ref "$source_ref" --source-sha '${{ inputs.source_sha }}'
           echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"
+      - name: Reverify immutable internal authority immediately before signing
+        if: startsWith(inputs.source_ref, 'refs/tags/ios-testflight/')
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TESTFLIGHT_AUTHORITY_GPG_PUBLIC_KEY: ${{ vars.TESTFLIGHT_AUTHORITY_GPG_PUBLIC_KEY }}
+          TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT: ${{ vars.TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT }}
+        run: |
+          set -euo pipefail
+          test -n "$TESTFLIGHT_AUTHORITY_GPG_PUBLIC_KEY"
+          [[ "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT" =~ ^[A-F0-9]{40}$ ]]
+          authority_key="$RUNNER_TEMP/testflight-authority.pub"
+          printf '%s' "$TESTFLIGHT_AUTHORITY_GPG_PUBLIC_KEY" | base64 --decode > "$authority_key"
+          chmod 600 "$authority_key"
+          gpg --batch --import "$authority_key"
+          rm -f "$authority_key"
+          tag_name='${{ inputs.source_ref }}'
+          tag_name="${tag_name#refs/tags/}"
+          gpg_status="$RUNNER_TEMP/testflight-authority-gpg-status.txt"
+          git verify-tag --raw "$tag_name" > "$gpg_status" 2>&1
+          local_tag_object_sha=$(git rev-parse "$tag_name^{tag}")
+          github_ref="$RUNNER_TEMP/testflight-authority-ref.json"
+          github_tag="$RUNNER_TEMP/testflight-authority-tag.json"
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag_name" > "$github_ref"
+          github_tag_object_sha=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.object?.type!=="tag"||!/^[0-9a-f]{40}$/.test(value.object?.sha??"")) process.exit(1); process.stdout.write(value.object.sha)' "$github_ref")
+          gh api "repos/$GITHUB_REPOSITORY/git/tags/$github_tag_object_sha" > "$github_tag"
+          node scripts/verify-ios-testflight-internal-tag.mjs --source-ref '${{ inputs.source_ref }}' --source-sha '${{ inputs.source_sha }}' --channel '${{ inputs.channel }}' --marketing-version '${{ inputs.marketing_version }}' --bundle-version '${{ inputs.bundle_version }}' --expected-fingerprint "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT" --local-tag-object-sha "$local_tag_object_sha" --github-ref "$github_ref" --github-tag "$github_tag" --gpg-status "$gpg_status"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, cache: npm }
       - run: npm run dependencies:ci
@@ -107,7 +133,7 @@ jobs:
             test -n "${!name}" || { echo "Missing required protected channel value: $name" >&2; exit 1; }
           done
           [[ "$TESTFLIGHT_INTERNAL_GROUP_ID" =~ ^[A-Za-z0-9-]+$ ]]
-      - run: npm run build:native-client
+      - run: STATION_BUILD_BRANCH="$AUTHORITY_REF" npm run build:native-client
       - name: Generate the exact channel identity overlay
         run: |
           mkdir -p provider-receipts
@@ -141,6 +167,8 @@ jobs:
           expected_name=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).appStoreName);' '${{ inputs.channel }}')
           node scripts/app-store-connect-receipt.mjs app-preflight --bundle-id "$bundle_id" --expected-name "$expected_name" --output provider-receipts/app-store-connect-app-preflight.json --github-output "$GITHUB_OUTPUT"
           echo "bundle_id=$bundle_id" >> "$GITHUB_OUTPUT"
+      - name: Stage immutable iOS client provenance resource
+        run: STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs
       - name: Resolve optional custom iOS update feed
         run: |
           mkdir -p provider-receipts
@@ -157,15 +185,20 @@ jobs:
           printf '%s' "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
           printf '%s' "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile"
           node scripts/ios-testflight-readiness.mjs --channel '${{ inputs.channel }}' --station "$profile" --team "$APPLE_DEVELOPMENT_TEAM" --group-id "$TESTFLIGHT_INTERNAL_GROUP_ID" > provider-receipts/testflight-channel-readiness.json
-          node scripts/check-ios-store-profile.mjs --station "$profile" --label APPLE_PROVISIONING_PROFILE_BASE64 --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id '${{ steps.app_store.outputs.bundle_id }}'
+          profile_metadata="$RUNNER_TEMP/station-ios-profile.json"
+          node scripts/check-ios-store-profile.mjs --station "$profile" --label APPLE_PROVISIONING_PROFILE_BASE64 --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id '${{ steps.app_store.outputs.bundle_id }}' > "$profile_metadata"
           node scripts/ios-store-signing-config.mjs --station "$profile" --identity "$APPLE_SIGNING_IDENTITY" --team "$APPLE_DEVELOPMENT_TEAM" --bundle-id '${{ steps.app_store.outputs.bundle_id }}' --template src-desktop/gen/apple/project.yml --template-output "$RUNNER_TEMP/station-ios-project.yml" --overlay-output "$RUNNER_TEMP/station-ios-signing.json"
+          grep -Fq 'PROVISIONING_PROFILE:' "$RUNNER_TEMP/station-ios-project.yml"
+          grep -Fq 'PROVISIONING_PROFILE_SPECIFIER:' "$RUNNER_TEMP/station-ios-project.yml"
           security create-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
           security unlock-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
           security import "$certificate" -k "$keychain" -P "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
           security list-keychains -d user -s "$keychain"
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/station.mobileprovision"
+          profile_uuid=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).uuid' "$profile_metadata")
+          [[ "$profile_uuid" =~ ^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$ ]]
+          cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
       - name: Build signed and channel-audited iOS package
         working-directory: src-desktop
         run: |
@@ -173,7 +206,7 @@ jobs:
           export IOS_MOBILE_PROVISION
           node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig(process.env.STATION_MOBILE_DEFAULT_ENDPOINT), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
           rm -rf gen/apple/build
-          npx tauri ios build --export-method app-store-connect --ci --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json" -- --config "$RUNNER_TEMP/station-ios-mobile-env.toml"
+          STATION_BUILD_BRANCH="$AUTHORITY_REF" STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --export-method app-store-connect --ci --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json" -- --config "$RUNNER_TEMP/station-ios-mobile-env.toml"
       - name: Verify IPA identity, profile and package contents
         id: package
         run: |
@@ -186,6 +219,9 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")" = '${{ steps.app_store.outputs.bundle_id }}'
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")" = '${{ inputs.marketing_version }}'
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")" = '${{ inputs.bundle_version }}'
+          packaged_manifest=$(find "$app" -type f -name station-build.json -print)
+          test "$(printf '%s\n' "$packaged_manifest" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          cmp "src-desktop/station-client-build.json" "$packaged_manifest"
           test -s "$app/Assets.car"
           generated_icon="src-desktop/gen/apple/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png"
           test -s "$generated_icon"
@@ -240,14 +276,19 @@ jobs:
           WORKFLOW_RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ '${{ steps.reconcile.outputs.upload }}' = true ]; then delivery_mode=uploaded; else delivery_mode=reconciled; fi
-          node scripts/app-store-connect-receipt.mjs build-receipt --app-id '${{ steps.app_store.outputs.app_id }}' --bundle-id '${{ steps.app_store.outputs.bundle_id }}' --bundle-version '${{ inputs.bundle_version }}' --source-sha '${{ inputs.source_sha }}' --ipa '${{ steps.package.outputs.ipa }}' --workflow-run-url "$WORKFLOW_RUN_URL" --delivery-mode "$delivery_mode" --output provider-receipts/testflight-build-receipt.json
+          node scripts/app-store-connect-receipt.mjs build-receipt --app-id '${{ steps.app_store.outputs.app_id }}' --bundle-id '${{ steps.app_store.outputs.bundle_id }}' --bundle-version '${{ inputs.bundle_version }}' --source-sha '${{ inputs.source_sha }}' --artifact-manifest src-desktop/station-client-build.json --ipa '${{ steps.package.outputs.ipa }}' --workflow-run-url "$WORKFLOW_RUN_URL" --delivery-mode "$delivery_mode" --output provider-receipts/testflight-build-receipt.json
           build_id=$(node -p 'JSON.parse(require("node:fs").readFileSync("provider-receipts/testflight-build-receipt.json", "utf8")).buildId')
           source_date=$(node -e 'process.stdout.write(new Date(process.argv[1]).toISOString())' "$(git show -s --format=%cI HEAD)")
-          workflow_date=$(node -e 'process.stdout.write(new Date().toISOString())')
+          artifact_built_at=$(node -p 'JSON.parse(require("node:fs").readFileSync("src-desktop/station-client-build.json", "utf8")).builtAt')
           short_sha=$(git rev-parse --short=12 HEAD)
-          whats_new="Built ${workflow_date:0:10} UTC · ${short_sha} · source ${source_date:0:10} UTC"
-          node scripts/app-store-connect-receipt.mjs upsert-what-to-test --build-id "$build_id" --whats-new "$whats_new" --locale en-US --output provider-receipts/testflight-what-to-test.json
-          node scripts/app-store-connect-receipt.mjs attach-internal-group --app-id '${{ steps.app_store.outputs.app_id }}' --build-id "$build_id" --group-id "$TESTFLIGHT_INTERNAL_GROUP_ID" --group-name '${{ inputs.channel == 'stable' && 'Station Stable Internal' || inputs.channel == 'beta' && 'Station Beta Internal' || 'Station Nightly Internal' }}' --output provider-receipts/testflight-internal-group-assignment.json
+          if [ "$delivery_mode" = uploaded ]; then
+            whats_new="Built ${artifact_built_at:0:10} UTC · ${short_sha} · source ${source_date:0:10} UTC"
+            node scripts/app-store-connect-receipt.mjs upsert-what-to-test --build-id "$build_id" --whats-new "$whats_new" --locale en-US --output provider-receipts/testflight-what-to-test.json
+          else
+            node --input-type=module -e 'import { writeFileSync } from "node:fs"; writeFileSync(process.argv[1], JSON.stringify({schemaVersion:1,kind:"testflight-what-to-test",status:"skipped",reason:"provider-artifact-provenance-unverified"},null,2)+"\n",{mode:0o600});' provider-receipts/testflight-what-to-test.json
+          fi
+          internal_group=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).internalGroup);' '${{ inputs.channel }}')
+          node scripts/app-store-connect-receipt.mjs attach-internal-group --app-id '${{ steps.app_store.outputs.app_id }}' --build-id "$build_id" --group-id "$TESTFLIGHT_INTERNAL_GROUP_ID" --group-name "$internal_group" --output provider-receipts/testflight-internal-group-assignment.json
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: release-assets/* }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
