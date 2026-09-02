@@ -939,6 +939,12 @@ describe('native release workflow topology', () => {
       'node scripts/check-ios-store-profile.mjs --station "$profile" --label APPLE_PROVISIONING_PROFILE_BASE64',
     );
     expect(testFlightDelivery).toContain(
+      'MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision',
+    );
+    expect(testFlightDelivery).not.toContain(
+      'MobileDevice/Provisioning Profiles/station.mobileprovision',
+    );
+    expect(testFlightDelivery).toContain(
       'node scripts/check-ios-store-profile.mjs --station "$app/embedded.mobileprovision" --label \'exported IPA embedded.mobileprovision\'',
     );
     expect(release).toContain('APPLE_DEVELOPER_ID_CERTIFICATE_BASE64');
