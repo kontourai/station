@@ -107,7 +107,7 @@ jobs:
             test -n "${!name}" || { echo "Missing required protected channel value: $name" >&2; exit 1; }
           done
           [[ "$TESTFLIGHT_INTERNAL_GROUP_ID" =~ ^[A-Za-z0-9-]+$ ]]
-      - run: npm run build:native-client
+      - run: STATION_BUILD_BRANCH="$AUTHORITY_REF" npm run build:native-client
       - name: Generate the exact channel identity overlay
         run: |
           mkdir -p provider-receipts

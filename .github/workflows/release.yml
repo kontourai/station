@@ -437,6 +437,7 @@ jobs:
           test "$(printf '%s\n' "$rpm_manifest" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
           node scripts/release-client-build-provenance.mjs verify --source-sha "$sha" --expected "$expected" --actual "$rpm_manifest"
           appimage=$(find "$bundle_root/appimage" -maxdepth 1 -type f -name '*.AppImage' -print -quit)
+          appimage=$(cd "$(dirname "$appimage")" && pwd)/$(basename "$appimage")
           appimage_root="$RUNNER_TEMP/station-appimage-provenance"
           mkdir -p "$appimage_root"
           (cd "$appimage_root" && "$appimage" --appimage-extract >/dev/null)
