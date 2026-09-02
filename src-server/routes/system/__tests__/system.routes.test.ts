@@ -232,7 +232,7 @@ describe('System Routes', () => {
     const body = await json(await app.request('/status'));
     expect(body.capabilities.terminal.ready).toBe(false);
     expect(body.capabilities.terminal.reason).toContain('probe exploded');
-    expect(body.capabilities.terminal.reason).toContain('npm rebuild node-pty');
+    expect(body.capabilities.terminal.reason).toContain('npm run dependencies:install');
   });
 
   test('GET /status can be forced chat-ready for deterministic E2E runs', async () => {

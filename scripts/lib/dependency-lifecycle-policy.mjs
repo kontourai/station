@@ -517,7 +517,11 @@ export function confinedPackageTarget(
     throw new Error(`${description} escapes package root`);
   const candidateStat = lstatOrNull(candidate);
   if (!candidateStat) {
-    if (mustExist) throw new Error(`missing ${description}`);
+    if (mustExist) {
+      const absent = new Error(`missing ${description}`);
+      absent.code = ARTIFACT_ABSENT;
+      throw absent;
+    }
     return candidate;
   }
   if (candidateStat.isSymbolicLink())
@@ -721,6 +725,21 @@ export function expectedLifecyclePurls(allowlist) {
  * orchestrator consults this to decide that the failure degrades a
  * capability rather than the install.
  */
+/**
+ * The ONLY verifyArtifact failure a degradable capability may treat as
+ * degradation: the artifact is simply not there, which is what a host with no
+ * C++ toolchain produces. Every other throw from that function is a
+ * trust-boundary result — a path escaping the package root, a symlink
+ * redirect, installed-version drift, a non-file target, or a failed real-PTY
+ * handshake — and those must keep aborting the install. Degrading them would
+ * accept a tampered or mis-identified native module as merely "unavailable".
+ */
+export const ARTIFACT_ABSENT = 'station:lifecycle:artifact-absent';
+
+export function isArtifactAbsent(error) {
+  return error?.code === ARTIFACT_ABSENT;
+}
+
 export function degradableLifecycleCapability(entry) {
   if (entry?.artifact?.proof !== 'node-pty-smoke') return undefined;
   return {
@@ -728,7 +747,7 @@ export function degradableLifecycleCapability(entry) {
     consequence:
       'interactive terminal panes will be unavailable (agent execution is unaffected)',
     remediation:
-      'install a C++ toolchain (g++, make, python3), run `npm rebuild node-pty`, then restart Station',
+      'install a C++ toolchain (g++, make, python3), run `npm run dependencies:install` in the Station checkout, then restart Station',
   };
 }
 

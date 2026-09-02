@@ -558,7 +558,7 @@ describe('dependency lifecycle policy', () => {
     );
     const degradable = degradableLifecycleCapability(ptyEntry);
     expect(degradable?.capability).toBe('terminal');
-    expect(degradable?.remediation).toContain('npm rebuild node-pty');
+    expect(degradable?.remediation).toContain('npm run dependencies:install');
     for (const entry of policy.entries) {
       if (entry.name === 'node-pty') continue;
       expect(
@@ -631,7 +631,7 @@ describe('dependency lifecycle policy', () => {
         .find((line) => line.includes('DEGRADED terminal'));
       expect(degradedLine).toBeDefined();
       expect(degradedLine).toContain('terminal panes will be unavailable');
-      expect(degradedLine).toContain('npm rebuild node-pty');
+      expect(degradedLine).toContain('npm run dependencies:install');
       // …and did not abort the entries behind it.
       expect(existsSync(resolve(survivorRoot, 'built.marker'))).toBe(true);
     } finally {
@@ -745,6 +745,68 @@ describe('dependency lifecycle policy', () => {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }
   });
+
+  // Review finding `dependency-lifecycle-fail-open` on #1257. Being the
+  // terminal-backing entry buys a pass on "was never built" and nothing else.
+  // verifyArtifact also rejects redirected paths, escapes, version drift and a
+  // failed PTY handshake; degrading those would accept a TAMPERED native
+  // module as merely unavailable, which inverts the gate.
+  it.skipIf(process.platform === 'win32')(
+    'aborts on a redirected degradable artifact instead of degrading it (#1257)',
+    () => {
+      const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'station-lifecycle-'));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const packageRoot = resolve(fixtureRoot, 'node_modules', 'node-pty');
+        mkdirSync(resolve(packageRoot, 'build/Release'), { recursive: true });
+        writeFileSync(
+          resolve(packageRoot, 'package.json'),
+          JSON.stringify({ name: 'node-pty', version: '1.1.0' }),
+        );
+        const emptyLock = JSON.stringify({ packages: {} });
+        writeFileSync(resolve(fixtureRoot, 'package-lock.json'), emptyLock);
+        for (const scoped of ['sdk', 'shared']) {
+          mkdirSync(resolve(fixtureRoot, 'packages', scoped), {
+            recursive: true,
+          });
+          writeFileSync(
+            resolve(fixtureRoot, 'packages', scoped, 'package-lock.json'),
+            emptyLock,
+          );
+        }
+        // Present, but redirected out of the package — a trust-boundary
+        // failure, not an absent artifact.
+        const outside = resolve(fixtureRoot, 'outside.node');
+        writeFileSync(outside, 'planted');
+        symlinkSync(outside, resolve(packageRoot, 'build/Release/pty.node'));
+
+        const degradableEntry = {
+          scope: 'root',
+          lock: 'package-lock.json',
+          path: 'node_modules/node-pty',
+          name: 'node-pty',
+          version: '1.1.0',
+          platform: { os: [], cpu: [] },
+          artifact: { path: 'build/Release/pty.node', proof: 'node-pty-smoke' },
+        };
+
+        expect(() =>
+          verifyLifecycleArtifacts(
+            { entries: [degradableEntry] },
+            { cwd: fixtureRoot },
+          ),
+        ).toThrow(/redirected by a symlink/);
+        expect(
+          warn.mock.calls
+            .map((call) => String(call[0]))
+            .some((line) => line.includes('DEGRADED')),
+        ).toBe(false);
+      } finally {
+        warn.mockRestore();
+        rmSync(fixtureRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   describe('node-pty Linux prebuild staging (#1245)', () => {
     const ptyEntry = () =>

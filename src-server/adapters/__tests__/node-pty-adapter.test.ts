@@ -26,7 +26,7 @@ describe('NodePtyAdapter no-pty configuration (#1244)', () => {
     expect(capability.state).toBe('unavailable');
     if (capability.state !== 'unavailable') return;
     expect(capability.reason).toContain('node-pty failed to load');
-    expect(capability.reason).toContain('npm rebuild node-pty');
+    expect(capability.reason).toContain('npm run dependencies:install');
     expect(capability.reason).toContain('agent execution is unaffected');
     // The loader's first line is preserved as the cause…
     expect(capability.reason).toContain('Failed to load native module');
@@ -43,7 +43,7 @@ describe('NodePtyAdapter no-pty configuration (#1244)', () => {
       (error: unknown) => error,
     );
     expect(isPtyUnavailableError(rejection)).toBe(true);
-    expect((rejection as Error).message).toContain('npm rebuild node-pty');
+    expect((rejection as Error).message).toContain('npm run dependencies:install');
   });
 
   test('a loadable backend keeps the default spawn path and reports available', async () => {

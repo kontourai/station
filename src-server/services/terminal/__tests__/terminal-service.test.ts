@@ -411,7 +411,7 @@ describe('TerminalService', () => {
     // generic message reads as a shell problem the user cannot act on.
     pty.spawn.mockRejectedValue(
       new PtyUnavailableError(
-        'node-pty failed to load. Interactive terminal panes are unavailable; run `npm rebuild node-pty`.',
+        'node-pty failed to load. Interactive terminal panes are unavailable; run `npm run dependencies:install`.',
       ),
     );
     await expect(

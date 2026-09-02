@@ -284,7 +284,7 @@ function buildFixCommands(input: {
   if (!input.terminalPtyAvailable) {
     fixes.push({
       label: 'Rebuild the terminal PTY backend',
-      command: 'npm rebuild node-pty',
+      command: 'npm run dependencies:install',
       reason:
         'node-pty failed to load, so interactive terminal panes are disabled. The rebuild needs a C++ toolchain (g++, make, python3); agent execution is unaffected either way.',
     });

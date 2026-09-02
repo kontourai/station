@@ -28,7 +28,7 @@ export type TerminalCapability =
  */
 export const TERMINAL_PTY_UNAVAILABLE_REMEDIATION =
   'Interactive terminal panes are unavailable; agent execution is unaffected. ' +
-  'Install a C++ toolchain (g++, make, python3), run `npm rebuild node-pty` ' +
+  'Install a C++ toolchain (g++, make, python3), run `npm run dependencies:install` ' +
   'in the Station checkout, then restart Station.';
 
 /**

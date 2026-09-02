@@ -47,7 +47,7 @@ describe('doctor terminal PTY check (#1244)', () => {
       detail: reason,
     });
     const fix = report.fixCommands.find(
-      (candidate) => candidate.command === 'npm rebuild node-pty',
+      (candidate) => candidate.command === 'npm run dependencies:install',
     );
     expect(fix).toBeDefined();
     expect(fix?.reason).toContain('terminal panes are disabled');
@@ -66,7 +66,7 @@ describe('doctor terminal PTY check (#1244)', () => {
     expect(check?.status).toBe('pass');
     expect(
       report.fixCommands.some(
-        (candidate) => candidate.command === 'npm rebuild node-pty',
+        (candidate) => candidate.command === 'npm run dependencies:install',
       ),
     ).toBe(false);
   });
@@ -77,6 +77,6 @@ describe('doctor terminal PTY check (#1244)', () => {
     const capability = probeTerminalPtyModule('/nonexistent/repo-root');
     expect(capability.state).toBe('unavailable');
     if (capability.state !== 'unavailable') return;
-    expect(capability.reason).toContain('npm rebuild node-pty');
+    expect(capability.reason).toContain('npm run dependencies:install');
   });
 });

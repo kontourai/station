@@ -16,6 +16,7 @@ import {
   evaluateLifecyclePolicy,
   expectedLifecyclePurls,
   installedPackagePath,
+  isArtifactAbsent,
   optionalPackageMayBeAbsent,
   platformMatches,
   preflightLifecycleArtifactTargets,
@@ -265,6 +266,7 @@ export function runApprovedHooks(allowlist, { cwd = root } = {}) {
     console.log(
       `[dependency-lifecycle] approved build ${entry.lock}:${entry.path}`,
     );
+    let built = true;
     try {
       for (const hook of entry.hooks) {
         const started = performance.now();
@@ -273,16 +275,22 @@ export function runApprovedHooks(allowlist, { cwd = root } = {}) {
           `[dependency-lifecycle] executed ${entry.lock}:${entry.path}:${hook.name} in ${Math.round(performance.now() - started)}ms`,
         );
       }
-      prepareLifecycleArtifacts(cwd, entry);
     } catch (error) {
       // #1244: only an entry that backs a degradable capability (today:
-      // node-pty/terminal) may convert a failed build into a loud degraded
+      // node-pty/terminal) may convert a failed BUILD into a loud degraded
       // install — typically a Linux host without a C++ toolchain. Every
       // other lifecycle failure still aborts, and the tamper/confinement
       // preflights above ran before any hook, so this never bypasses them.
       if (!degradableLifecycleCapability(entry)) throw error;
       reportDegradedCapability(entry, 'build', error);
+      built = false;
     }
+    // Artifact preparation is outside that catch on purpose. It enforces
+    // confinement and restores only the approved execute bit, so its failure
+    // is a trust-boundary result rather than "no compiler here" — it must
+    // abort even for a degradable entry. Skipped when the build did not
+    // produce anything to prepare.
+    if (built) prepareLifecycleArtifacts(cwd, entry);
   }
 }
 
@@ -303,7 +311,15 @@ export function verifyLifecycleArtifacts(allowlist, { cwd = root } = {}) {
       try {
         return verifyArtifact(cwd, entry);
       } catch (error) {
-        if (!degradableLifecycleCapability(entry)) throw error;
+        // Degrade ONLY when the artifact is absent. verifyArtifact also
+        // rejects redirected or escaping paths, installed-version drift, a
+        // non-file target, and a failed real-PTY handshake; accepting those
+        // as degradation would let a tampered or mis-identified native module
+        // pass as merely unavailable, which is the opposite of this gate's
+        // purpose. Being the terminal-backing entry buys a pass on "was never
+        // built", never on a trust-boundary result.
+        if (!degradableLifecycleCapability(entry) || !isArtifactAbsent(error))
+          throw error;
         reportDegradedCapability(entry, 'artifact verification', error);
         return {
           skipped: false,
