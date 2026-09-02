@@ -288,27 +288,23 @@ const loadConversationOpenRevalidator = () =>
  * evaluated — entry time — so the chunk arrives alongside the entry rather
  * than after it, and the boundary resolves without a visible gap.
  *
- * The promise is remembered so React's `lazy` does not re-request it, and
- * dropped on rejection so `LazyBoundary`'s Retry re-runs the import instead of
- * replaying a cached failure.
+ * Every call returns a NEW promise. The module registry makes the repeat
+ * `import()` free, and a fresh promise is required: React's `lazy` stamps
+ * `status = 'fulfilled'` onto the promise it settles, and a later `lazy()` fed
+ * that same object throws it while its own payload is still pending — the
+ * reconciler then replays synchronously forever (`isThenableResolved` →
+ * `replaySuspendedUnitOfWork`). A second mount of this dock froze on that;
+ * nothing remounted it before region shells (#928) made that ordinary.
  */
-let ambientChatDockPaneHostModule: Promise<{
-  default: typeof import('../../workspace-panes/AmbientChatDockPaneHost').AmbientChatDockPaneHost;
-}> | null = null;
+const loadAmbientChatDockPaneHost = () =>
+  import('../../workspace-panes/AmbientChatDockPaneHost').then((module) => ({
+    default: module.AmbientChatDockPaneHost,
+  }));
 
-const loadAmbientChatDockPaneHost = () => {
-  ambientChatDockPaneHostModule ??= import(
-    '../../workspace-panes/AmbientChatDockPaneHost'
-  )
-    .then((module) => ({ default: module.AmbientChatDockPaneHost }))
-    .catch((error: unknown) => {
-      ambientChatDockPaneHostModule = null;
-      throw error;
-    });
-  return ambientChatDockPaneHostModule;
-};
-
-void loadAmbientChatDockPaneHost();
+void loadAmbientChatDockPaneHost().catch(() => {
+  // The boundary reports a failed import where it renders; the warm-up has
+  // no surface of its own.
+});
 
 function renderAmbientChatPane(
   _instance: WorkspacePaneInstance,
