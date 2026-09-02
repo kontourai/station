@@ -36,6 +36,7 @@ import {
 import { NavigationProvider } from '../../contexts/NavigationContext';
 import { navigationStore } from '../../contexts/navigation-store';
 import { RegionModelProvider } from '../../contexts/RegionModelContext';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { AmbientChatDockPaneHost } from '../AmbientChatDockPaneHost';
 import type { WorkspacePaneDockAction } from '../WorkspacePaneDockContext';
 
@@ -86,6 +87,11 @@ beforeEach(() => {
   window.localStorage.removeItem(DEVICE_SETTINGS_KEY);
   window.history.replaceState({}, '', '/?dock=open');
   navigationStore.navigate('/', { dock: 'open', maximize: null });
+  navigationStore.navigate('/', {
+    dock: 'open',
+    maximize: null,
+    dockSlotPlacement: null,
+  });
 });
 
 afterEach(() => {
@@ -186,6 +192,22 @@ function ShortcutProbe({
 }
 
 describe('every ambient occupant gets the full dock chrome (station#4460)', () => {
+  test('real region placement mirrors navigation and device settings', async () => {
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock')).not.toBeNull(),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Place Chat in Right region' }),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
+    );
+    expect(navigationStore.getSnapshot().dockMode).toBe('right');
+    expect(deviceSettingsStore.get('dockSlotPlacement')).toBe('right');
+    expect(document.querySelector('.chat-dock--bottom')).toBeNull();
+  });
+
   test('the dock.toggle shortcut (cmd+D) collapses the real dock shell', async () => {
     renderHost();
     await waitFor(() => {
