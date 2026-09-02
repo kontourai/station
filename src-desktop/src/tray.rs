@@ -1224,6 +1224,12 @@ const API_DOCS_LAUNCH_PATH: &str = "/.well-known/station/v1/pairing/api-docs";
 const API_DOCS_CAPABILITY_MINT_PATH: &str =
     "/.well-known/station/v1/pairing/mint-ui-bootstrap";
 
+/// Mirrors the `api-docs` member of `UI_BOOTSTRAP_PURPOSES` in
+/// `src-server/runtime/routes/runtime-routes.ts`. An unknown purpose is
+/// refused with 400 rather than silently sharing a slot, so a drift here
+/// surfaces as a failed mint instead of the invalidation bug it fixes.
+const API_DOCS_CAPABILITY_PURPOSE: &str = "api-docs";
+
 /// A base64url encoding of 32 bytes is 43 characters. The margin allows the
 /// server to widen the value without a lockstep desktop release; it does not
 /// admit a value large enough to matter.
@@ -1322,8 +1328,15 @@ fn mint_api_docs_capability(api_origin: &str, base_dir: &Path) -> Result<String,
         .post(endpoint.as_str())
         .header("Content-Type", "application/json")
         .send(
-            serde_json::to_string(&serde_json::json!({ "secret": secret }))
-                .map_err(|_| "invalid API docs capability request".to_string())?,
+            serde_json::to_string(&serde_json::json!({
+                "secret": secret,
+                // Its own capability slot. Sharing the launcher's meant every
+                // click of this menu item invalidated a pending `station
+                // start` link, which then failed for a reason nothing on
+                // screen explained (#1259).
+                "purpose": API_DOCS_CAPABILITY_PURPOSE,
+            }))
+            .map_err(|_| "invalid API docs capability request".to_string())?,
         )
         .map_err(|_| "could not reach Station to mint an API docs capability".to_string())?;
     let status = response.status().as_u16();
