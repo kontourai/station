@@ -825,7 +825,12 @@ async function journeyPairingLoop(note, shared) {
   const apiBase = `http://127.0.0.1:${SERVER_PORT}`;
   const requesterRoot = mkdtempSync(join(tmpdir(), 'core-loop-station-b-'));
   const requesterHome = join(requesterRoot, 'instances', 'requester');
-  mkdirSync(requesterHome, { recursive: true, mode: 0o700 });
+  // Do NOT pre-create the home. The requester's first act is to save a
+  // Station, and profile-store genesis admits only an empty root (or one
+  // holding just `config`/`installs`): a pre-created `instances/` entry reads
+  // as an initialized root with its profiles.json missing, and the CLI refuses
+  // with "saved Station metadata is missing from an initialized or in-progress
+  // shared root". The CLI scaffolds the home itself, owner-only, after genesis.
   note(`second temp-home Station at ${requesterHome}`);
 
   // A freshly paired observer for this journey's host-side reads: the
