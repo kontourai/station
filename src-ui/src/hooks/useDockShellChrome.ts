@@ -213,16 +213,17 @@ export function useDockShellChrome({
   const readerDockMode = readerRegion ?? 'bottom';
   // Visibility comes from the region the shell reads, and the model is
   // authoritative — navigation's `isDockOpen` is its mirror, so the two can
-  // legitimately disagree for a render. Only the OCCUPIED region carries the
-  // dock's visibility; an unoccupied one seeds `visible: false`.
+  // legitimately disagree for a render.
   const readerIsDockOpen =
     regionModel && readerRegion
       ? regionModel.regions[readerRegion].visible
       : isDockOpen;
-  const effectiveIsDockMaximized =
-    regionId && regionModel
-      ? regionModel.regions[regionId].occupant === 'chat' && isDockMaximized
-      : isDockMaximized;
+  // Navigation's `isDockMaximized` is chat's flag (its mirror writes it from
+  // chat's region), so a shell holding another occupant must not read it —
+  // per-region maximize state arrives with the next surface (#928).
+  const shellOccupant =
+    regionId && regionModel ? regionModel.regions[regionId].occupant : 'chat';
+  const effectiveIsDockMaximized = shellOccupant === 'chat' && isDockMaximized;
   const {
     available: availableDockSlotPlacements,
     effective: effectiveDockSlotPlacement,
@@ -297,12 +298,16 @@ export function useDockShellChrome({
   const setIsDragging = useCallback(
     (value: boolean) => {
       if (draggingRef.current && !value) {
+        // The size persists to the region that was SHOWN, not the shell's
+        // own: a side shell folded to the bottom (useIsMobile.ts
+        // `effectivePlacement`) dragged a height, and its region's size is a
+        // width.
         if (effectiveDockSlotPlacement === 'bottom') {
-          regionModel?.setRegion(regionId ?? 'bottom', {
+          regionModel?.setRegion('bottom', {
             size: Math.round(clampDockHeight(dockHeightRef.current)),
           });
         } else {
-          regionModel?.setRegion(regionId ?? effectiveDockSlotPlacement, {
+          regionModel?.setRegion(effectiveDockSlotPlacement, {
             size: Math.round(clampDockWidth(dockWidthRef.current)),
           });
         }
@@ -310,7 +315,7 @@ export function useDockShellChrome({
       draggingRef.current = value;
       setIsDraggingState(value);
     },
-    [effectiveDockSlotPlacement, regionId, regionModel],
+    [effectiveDockSlotPlacement, regionModel],
   );
   const [previousDockHeight, setPreviousDockHeight] = useState(dockHeight);
   const [previousDockOpen, setPreviousDockOpen] = useState(true);
@@ -370,9 +375,9 @@ export function useDockShellChrome({
 
   const commitDockPlacement = useCallback(
     (mode: DockMode) => {
-      regionModel?.placeSurface('chat', mode);
+      if (shellOccupant) regionModel?.placeSurface(shellOccupant, mode);
     },
-    [regionModel],
+    [regionModel, shellOccupant],
   );
 
   // archive#869 / archive#1298: a maximized dock is opaque and full-height, so navigating

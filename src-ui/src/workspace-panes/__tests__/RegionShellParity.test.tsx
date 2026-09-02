@@ -29,6 +29,7 @@ import {
 } from '../../contexts/RegionModelContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import type { DockMode } from '../../types';
+import { AmbientChatDockPaneHost } from '../AmbientChatDockPaneHost';
 
 vi.mock('../../components/chat-dock/ChatDock', async () => {
   const { AmbientChatDockPaneHost } = await import(
@@ -294,6 +295,9 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
         expect(shells()[0]?.dataset.region).toBe(destination),
       );
       expect(shells()).toHaveLength(1);
+      // The same node moved: the shell is keyed by occupant (RegionShells.tsx),
+      // so a move re-props the pane instead of remounting it.
+      expect(shells()[0]).toBe(shell);
       expect(document.querySelectorAll('#chat-dock')).toHaveLength(1);
       expect(shells()[0]?.classList.contains(`chat-dock--${destination}`)).toBe(
         true,
@@ -335,6 +339,44 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     },
   );
 
+  /**
+   * A computed oracle beside the transcribed one: `regionId === undefined`
+   * is the pre-refactor read path (useDockShellChrome.ts `readerRegion`),
+   * so the legacy host rendered in the same harness must produce the same
+   * shell as `RegionShells` for every state.
+   */
+  test.each(PRE_REFACTOR_CAPTURE)(
+    'RegionShells matches the legacy single-host mount ($placement/$state)',
+    async ({ placement, state }) => {
+      seedPlacement(placement, state);
+      render(
+        <Providers>
+          <AmbientChatDockPaneHost renderChatPane={() => <p>Chat pane</p>} />
+        </Providers>,
+      );
+      await waitFor(() => expect(shells()).toHaveLength(1));
+      const legacy = shells()[0];
+      if (!legacy) throw new Error('legacy shell never rendered');
+      await waitFor(() => expect(clearance('--dock-slot-size')).not.toBe(''));
+      const expected = {
+        classes: classTokens(legacy),
+        id: legacy.id,
+        dockSlotSize: clearance('--dock-slot-size'),
+        chatDockWidth: clearance('--chat-dock-width'),
+      };
+      cleanup();
+
+      seedPlacement(placement, state);
+      const shell = await renderShellsSettled();
+      await waitFor(() => expect(classTokens(shell)).toEqual(expected.classes));
+      await waitFor(() =>
+        expect(clearance('--dock-slot-size')).toBe(expected.dockSlotSize),
+      );
+      expect(shell.id).toBe(expected.id);
+      expect(clearance('--chat-dock-width')).toBe(expected.chatDockWidth);
+    },
+  );
+
   test('one live dock.maximize registration owned by the chat shell', async () => {
     seedPlacement('bottom', 'open');
     await renderShellsSettled();
@@ -348,7 +390,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
   });
 
   test('a non-chat shell neither takes the chat id nor the maximize command', async () => {
-    seedPlacement('bottom', 'open');
+    seedPlacement('bottom', 'maximized');
     const twoShells = (showRight: boolean) => (
       <Providers>
         <DockShell regionId="bottom">{() => <p>bottom occupant</p>}</DockShell>
@@ -378,6 +420,10 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     // not chat's: the right shell is a right panel and stays open while the
     // bottom one collapses.
     expect(right.classList.contains('chat-dock--right')).toBe(true);
+    // Navigation's maximize flag is chat's (useDockShellChrome.ts
+    // `shellOccupant`); the fixture shell must not inherit it.
+    expect(bottom.classList.contains('is-maximized')).toBe(true);
+    expect(right.classList.contains('is-maximized')).toBe(false);
     act(() => currentRegionModel().setRegion('bottom', { visible: false }));
     await waitFor(() =>
       expect(bottom.classList.contains('is-collapsed')).toBe(true),
@@ -392,9 +438,15 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     await waitFor(() => expect(shells()).toHaveLength(1));
     const [maximize] = shortcutEntries('dock.maximize');
     if (!maximize) throw new Error('dock.maximize must survive the unmount');
+    // Collapsing cleared the maximize flag (`setDockState(false, false)`),
+    // so the first press maximizes and the second restores.
     act(() => maximize.handler());
     await waitFor(() =>
       expect(bottom.classList.contains('is-maximized')).toBe(true),
+    );
+    act(() => maximize.handler());
+    await waitFor(() =>
+      expect(bottom.classList.contains('is-maximized')).toBe(false),
     );
   });
 

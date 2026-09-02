@@ -42,7 +42,6 @@ import { ProjectsProvider } from './contexts/ProjectsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
-
 import { chatRegion } from './regions/region-model';
 import {
   type WorkspacePaneDockAction,

@@ -9,8 +9,9 @@ import type { DockMode } from '../../types';
 import { ChatDockResizeHandle } from './ChatDockResizeHandle';
 
 /**
- * The one dock chrome shell, mounted ONCE by the ambient host and shared by
- * every occupant it docks (Chat, Home, Activity — station#4460). It owns:
+ * The dock chrome shell, mounted once per occupied region by the ambient host
+ * (`RegionShells`, #928) and shared by every occupant it docks (Chat, Home,
+ * Activity — station#4460). It owns:
  *
  * - the root `.chat-dock` element and its placement/state classes, so the
  *   large existing CSS surface (`:is(.chat-dock, .dock-slot)` and friends)
@@ -42,8 +43,10 @@ export function DockShell({
     regionId && regionModel ? regionModel.regions[regionId].occupant : 'chat';
   const chrome = useDockShellChrome({
     publishesDockSlotClearance: true,
-    // `DockShell` is the ambient owner of the region maximize command.
-    registersDockShortcuts: regionId === undefined || occupant === 'chat',
+    // `DockShell` owns the region maximize command, and only the shell
+    // holding chat registers it: the registry is last-register-wins, so a
+    // second shell's retraction would leave ⌘M dead (#1202's shape).
+    registersDockShortcuts: occupant === 'chat',
     regionId,
     onGeometryChange,
   });
@@ -54,9 +57,7 @@ export function DockShell({
 
   return (
     <section
-      id={
-        occupant === 'chat' || regionId === undefined ? 'chat-dock' : undefined
-      }
+      id={occupant === 'chat' ? 'chat-dock' : undefined}
       data-region={regionId}
       // A landmark region (station#4460 review L2): the per-occupant
       // `aria-label`s `.dock-slot` used to carry ("Home dock"/"Activity
