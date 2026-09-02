@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppViewContent } from './app-shell/AppViewContent';
 import { HomeRoutePendingSkeleton } from './app-shell/HomeRoutePendingSkeleton';
+import { RegionShells } from './app-shell/RegionShells';
 import { resolveHomeSurface } from './app-shell/resolve-home-surface';
 import {
   getLegacyPathRedirect,
@@ -22,7 +23,6 @@ import {
 } from './app-shell/routing';
 import { useScrollRestoration } from './app-shell/useScrollRestoration';
 import { ChatAuthRecoveryProvider } from './components/chat-dock/ChatAuthRecoveryContext';
-import { ChatDock } from './components/chat-dock/ChatDock';
 import {
   isDockOwnedViewType,
   isMobileDockFullscreen as isMobileDockFullscreenState,
@@ -649,7 +649,7 @@ function App() {
               </main>
 
               {showAmbientChatDock && (
-                <ChatDock
+                <RegionShells
                   homeContinuation={
                     homeSurface.status === 'resolved'
                       ? homeSurface.target

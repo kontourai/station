@@ -160,4 +160,139 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(result.current.model.regions.bottom.occupant).toBeNull();
     expect(result.current.chrome.dockMode).toBe('right');
   });
+
+  test('an explicit regionId reads that region even when chat is elsewhere', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        chrome: useDockShellChrome({
+          publishesDockSlotClearance: false,
+          registersDockShortcuts: false,
+          regionId: 'right',
+        }),
+        model: useRegionModel(),
+      }),
+      { wrapper },
+    );
+    act(() => result.current.model.setRegion('right', { visible: true }));
+    expect(result.current.model.regions.bottom.occupant).toBe('chat');
+    expect(result.current.chrome.dockMode).toBe('right');
+    expect(result.current.chrome.isDockOpen).toBe(true);
+  });
+
+  // A shell places ITS occupant; a fixture surface's drag-to-edge must move
+  // the fixture and leave chat where it is.
+  test('a non-chat shell places its own occupant', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        chrome: useDockShellChrome({
+          publishesDockSlotClearance: false,
+          registersDockShortcuts: false,
+          regionId: 'right',
+        }),
+        model: useRegionModel(),
+      }),
+      { wrapper },
+    );
+    act(() =>
+      result.current.model.setRegion('right', {
+        occupant: 'fixture',
+        visible: true,
+      }),
+    );
+    act(() => result.current.chrome.commitDockPlacement('left'));
+    expect(result.current.model.regions.left.occupant).toBe('fixture');
+    expect(result.current.model.regions.right.occupant).toBeNull();
+    expect(result.current.model.regions.bottom.occupant).toBe('chat');
+  });
+
+  test('a desktop side shell persists its drag as its own width', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        chrome: useDockShellChrome({
+          publishesDockSlotClearance: false,
+          registersDockShortcuts: false,
+          regionId: 'right',
+        }),
+        model: useRegionModel(),
+      }),
+      { wrapper },
+    );
+    act(() => result.current.model.placeSurface('chat', 'right'));
+    expect(result.current.chrome.effectiveDockSlotPlacement).toBe('right');
+    act(() => {
+      result.current.chrome.setIsDragging(true);
+      result.current.chrome.setDockWidth(410);
+    });
+    act(() => result.current.chrome.setIsDragging(false));
+    expect(result.current.model.regions.right.size).toBe(410);
+    expect(result.current.model.regions.left.size).toBe(400);
+    expect(result.current.model.regions.bottom.size).toBe(320);
+  });
+
+  test('a side shell folded to the bottom persists its drag as a bottom height', () => {
+    // ≤768px folds every placement to bottom (useIsMobile.ts
+    // `availablePlacements`); the dragged value is a height and must not
+    // land in the side region's `size`, which mirrors to `chatDockWidth`.
+    const innerWidth = Object.getOwnPropertyDescriptor(window, 'innerWidth');
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 390,
+    });
+    try {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>
+          <RegionModelProvider>{children}</RegionModelProvider>
+        </QueryClientProvider>
+      );
+      const { result } = renderHook(
+        () => ({
+          chrome: useDockShellChrome({
+            publishesDockSlotClearance: false,
+            registersDockShortcuts: false,
+            regionId: 'right',
+          }),
+          model: useRegionModel(),
+        }),
+        { wrapper },
+      );
+      act(() => result.current.model.placeSurface('chat', 'right'));
+      expect(result.current.chrome.effectiveDockSlotPlacement).toBe('bottom');
+      act(() => {
+        result.current.chrome.setIsDragging(true);
+        result.current.chrome.setDockHeight(410);
+      });
+      act(() => result.current.chrome.setIsDragging(false));
+      expect(result.current.model.regions.bottom.size).toBe(410);
+      expect(result.current.model.regions.right.size).toBe(400);
+    } finally {
+      if (innerWidth) Object.defineProperty(window, 'innerWidth', innerWidth);
+    }
+  });
 });
