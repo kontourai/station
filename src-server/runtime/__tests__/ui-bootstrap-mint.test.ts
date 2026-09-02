@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { type HttpBindings } from '@hono/node-server';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
@@ -28,7 +29,7 @@ let peerCounter = 1;
 const loopback = () => `127.0.0.${(peerCounter++ % 250) + 2}`;
 const remote = () => `100.96.${(peerCounter++ % 250) + 1}.7`;
 
-function createHarness() {
+function createHarness(options: { uiBootstrapToken?: string } = {}) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-ui-bootstrap-mint-'));
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   const secretPath = join(homeDir, 'runtime', 'local-grant.secret');
@@ -42,6 +43,7 @@ function createHarness() {
     {
       localGrant: { secretPath },
       allowedOrigins: ['https://station.example.test'],
+      ...options,
     },
   );
   const request = (path: string, body: unknown, peer: string, headers = {}) =>
@@ -238,6 +240,46 @@ describe('ui-bootstrap mint', () => {
     expect((await redeem(harness, docs)).status).toBe(200);
     // The launcher capability was never presented, so it is still live.
     expect((await redeem(harness, launcher)).status).toBe(200);
+  });
+
+  test('the token station start inherits from the environment survives a docs mint (#1259, real shape)', async () => {
+    // Production does not mint the launcher over HTTP: `station start` passes
+    // STATION_UI_BOOTSTRAP_TOKEN into the server as `options.uiBootstrapToken`
+    // and prints it in the start link. The tests above mint their launcher
+    // through the route, so this is the fixture that matches what the CLI
+    // actually does — the #1259 report was this token dying.
+    const inherited = 'inherited-launcher-token-from-station-start-0123456789';
+    const harness = createHarness({ uiBootstrapToken: inherited });
+    await mintedToken(harness, 'api-docs');
+
+    expect((await redeem(harness, inherited)).status).toBe(200);
+  });
+
+  test('the purpose literal the tray sends is one the server accepts', async () => {
+    // src-desktop/src/tray.rs cannot import the TypeScript vocabulary, so it
+    // repeats the literal. Bind it behaviourally: mint with exactly what the
+    // Rust source says, so a drift on either side is a 400 here rather than
+    // a tray item that silently stops working.
+    const tray = readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        '..',
+        '..',
+        '..',
+        'src-desktop',
+        'src',
+        'tray.rs',
+      ),
+      'utf8',
+    );
+    const literal = /const API_DOCS_CAPABILITY_PURPOSE: &str = "([^"]+)";/.exec(
+      tray,
+    )?.[1];
+    expect(literal).toBeDefined();
+    const harness = createHarness();
+    expect(
+      (await mint(harness, harness.secret(), loopback(), {}, literal)).status,
+    ).toBe(200);
   });
 
   test('an unknown purpose is refused rather than given a slot', async () => {
