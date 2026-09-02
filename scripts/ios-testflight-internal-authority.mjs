@@ -2,6 +2,11 @@ import { assertProductVersion } from './product-version.mjs';
 
 export const IOS_TESTFLIGHT_INTERNAL_TAG_PREFIX = 'refs/tags/ios-testflight/';
 export const IOS_TESTFLIGHT_INTERNAL_RELEASE_SLOT = 11_100;
+export const INTERNAL_TESTFLIGHT_GPG_GITHUB_LOGIN = 'briananderson1222';
+export const INTERNAL_TESTFLIGHT_GPG_SIGNER_EMAIL =
+  'brian.anderson1222@gmail.com';
+export const INTERNAL_TESTFLIGHT_GPG_TAGGER_NAME =
+  'Station TestFlight authority';
 
 const CHANNELS = new Set(['stable', 'beta', 'nightly']);
 const INTERNAL_TAG = new RegExp(

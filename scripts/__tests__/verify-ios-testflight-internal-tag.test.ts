@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import {
+  INTERNAL_TESTFLIGHT_GPG_SIGNER_EMAIL,
+  INTERNAL_TESTFLIGHT_GPG_TAGGER_NAME,
+} from '../ios-testflight-internal-authority.mjs';
+import {
   verifiedGpgFingerprint,
   verifyInternalTestFlightTag,
 } from '../verify-ios-testflight-internal-tag.mjs';
@@ -21,6 +25,10 @@ function exactTag(overrides = {}) {
     githubTag: {
       tag: 'ios-testflight/beta/v0.1.10/11100',
       object: { type: 'commit', sha: sourceSha },
+      tagger: {
+        name: INTERNAL_TESTFLIGHT_GPG_TAGGER_NAME,
+        email: INTERNAL_TESTFLIGHT_GPG_SIGNER_EMAIL,
+      },
       verification: {
         verified: true,
         reason: 'valid',
@@ -61,6 +69,19 @@ describe('internal iOS TestFlight annotated tag verifier', () => {
       /fingerprint/,
     ],
     [{ channel: 'nightly' }, /channel, version, or build/],
+    [
+      { githubTag: { ...exactTag().githubTag, tagger: undefined } },
+      /tagger identity/,
+    ],
+    [
+      {
+        githubTag: {
+          ...exactTag().githubTag,
+          tagger: { name: 'Mallory', email: 'mallory@example.com' },
+        },
+      },
+      /tagger identity/,
+    ],
   ])('fails closed for forged authority %o', (overrides, message) =>
     expect(() => verifyInternalTestFlightTag(exactTag(overrides))).toThrow(
       message,

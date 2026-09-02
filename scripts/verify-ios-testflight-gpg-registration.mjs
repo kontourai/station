@@ -1,8 +1,13 @@
 import { readFileSync } from 'node:fs';
+import {
+  INTERNAL_TESTFLIGHT_GPG_GITHUB_LOGIN,
+  INTERNAL_TESTFLIGHT_GPG_SIGNER_EMAIL,
+} from './ios-testflight-internal-authority.mjs';
 
-export const INTERNAL_TESTFLIGHT_GPG_GITHUB_LOGIN = 'briananderson1222';
-export const INTERNAL_TESTFLIGHT_GPG_SIGNER_EMAIL =
-  'brian.anderson1222@gmail.com';
+export {
+  INTERNAL_TESTFLIGHT_GPG_GITHUB_LOGIN,
+  INTERNAL_TESTFLIGHT_GPG_SIGNER_EMAIL,
+};
 
 function fail(message) {
   throw new Error(

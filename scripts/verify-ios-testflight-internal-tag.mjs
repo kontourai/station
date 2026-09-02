@@ -1,5 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { parseInternalTestFlightAuthorityRef } from './ios-testflight-internal-authority.mjs';
+import {
+  INTERNAL_TESTFLIGHT_GPG_SIGNER_EMAIL,
+  INTERNAL_TESTFLIGHT_GPG_TAGGER_NAME,
+  parseInternalTestFlightAuthorityRef,
+} from './ios-testflight-internal-authority.mjs';
 
 function fail(message) {
   throw new Error(
@@ -62,6 +66,12 @@ export function verifyInternalTestFlightTag({
     fail(
       'annotated tag does not exactly bind a GitHub-verified signature to this source',
     );
+  if (
+    githubTag?.tagger?.name !== INTERNAL_TESTFLIGHT_GPG_TAGGER_NAME ||
+    githubTag?.tagger?.email !== INTERNAL_TESTFLIGHT_GPG_SIGNER_EMAIL
+  ) {
+    fail('annotated tagger identity does not match the internal authority');
+  }
   if (verifiedGpgFingerprint(gpgStatus) !== expectedFingerprint)
     fail(
       'tag signature fingerprint does not match the protected authority fingerprint',
