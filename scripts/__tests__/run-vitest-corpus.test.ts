@@ -45,6 +45,11 @@ describe('Vitest corpus runner', () => {
       { name: 'ordinary', maxWorkers: 4 },
       { name: 'process-heavy', maxWorkers: 2 },
       { name: 'process-exclusive', maxWorkers: 1, noFileParallelism: true },
+      {
+        name: 'credential-ledger-exclusive',
+        maxWorkers: 1,
+        noFileParallelism: true,
+      },
       { name: 'shared-output', maxWorkers: 1, noFileParallelism: true },
       { name: 'dogfood-reconcile', maxWorkers: 1, noFileParallelism: true },
     ]);
@@ -562,10 +567,11 @@ describe('Vitest corpus runner', () => {
       ['ordinary', '8/8'],
       ['process-heavy', undefined],
       ['process-exclusive', undefined],
+      ['credential-ledger-exclusive', undefined],
       ['shared-output', undefined],
       ['dogfood-reconcile', undefined],
     ]);
     expect(result.passed).toBe(true);
-    expect(result.results).toHaveLength(12);
+    expect(result.results).toHaveLength(13);
   });
 });
