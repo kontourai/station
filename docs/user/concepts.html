@@ -95,6 +95,18 @@
 <p>Example: a test result is evidence. The rule requiring that test is a gate. The</p>
 <p>record saying which command ran and whether it passed is the receipt. If the</p>
 <p>test fails, a route-back sends the work to the step that can fix it.</p>
+<ul>
+<li>A <strong>degraded capability</strong> is a bounded feature Station runs without,</li>
+</ul>
+<p>  reported with a specific reason and remediation instead of failing silently</p>
+<p>  or refusing to start.</p>
+<p>Example: interactive terminal panes need the <code>node-pty</code> native module, which</p>
+<p>requires a C++ compiler to build on Linux. On a machine without one, Station</p>
+<p>installs and runs with the terminal capability degraded: <code>station doctor</code></p>
+<p>prints a warn line with the rebuild command, the system status readiness</p>
+<p>record reports <code>terminal</code> as not ready with the same reason, and opening a</p>
+<p>terminal pane states why it cannot open. Agent execution does not use</p>
+<p><code>node-pty</code> and is unaffected.</p>
 <h2>Local-First Data</h2>
 <p>Station stores its data under <code>~/.station</code> by default. A Provider receives data</p>
 <p>only when you configure it and use a feature that needs it. Observability data</p>

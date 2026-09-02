@@ -37,6 +37,15 @@
 </ul>
 <p>Authentication is used for GitHub release metadata and attestation checks.</p>
 <p>There is no unsigned fallback.</p>
+<p>Optional, Linux only: a C++ toolchain (<code>g++</code>, <code>make</code>, <code>python3</code>) to compile</p>
+<p>the <code>node-pty</code> native module that powers interactive terminal panes. macOS</p>
+<p>and Windows use shipped prebuilds. Without a toolchain on Linux, Station</p>
+<p>still installs and runs, but terminal panes are unavailable and `station</p>
+<p>doctor` reports the degraded terminal capability with the remediation</p>
+<p>(<code>npm run dependencies:install</code> after installing the toolchain, then</p>
+<p>restart — that runs the reviewed lifecycle path, unlike a direct</p>
+<p><code>npm rebuild</code>).</p>
+<p>Agent execution does not use <code>node-pty</code> and works either way.</p>
 <h2>Install Or Upgrade</h2>
 <pre><code>
 sh -c 'set -eu; file=$(mktemp &quot;${TMPDIR:-/tmp}/station-install.XXXXXX&quot;); trap '\''rm -f &quot;$file&quot;'\'' EXIT HUP INT TERM; curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh &gt;&quot;$file&quot;; chmod 600 &quot;$file&quot;; GH_TOKEN=$(gh auth token) sh &quot;$file&quot;'
