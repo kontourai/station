@@ -4414,6 +4414,28 @@ function timingSafeSecretEqual(candidate: string, expected: string): boolean {
   return timingSafeEqual(candidateDigest, expectedDigest);
 }
 
+/**
+ * What a launcher capability is FOR. Each purpose owns its own slot, so a mint
+ * for one cannot invalidate an unspent capability for another (#1259).
+ *
+ * Closed on purpose: an open vocabulary would let a caller allocate unbounded
+ * slots, and would make "which capabilities are live" unanswerable.
+ */
+const UI_BOOTSTRAP_PURPOSES = ['launcher', 'api-docs'] as const;
+type UiBootstrapPurpose = (typeof UI_BOOTSTRAP_PURPOSES)[number];
+
+function uiBootstrapPurposeFrom(
+  value: unknown,
+): UiBootstrapPurpose | undefined {
+  // Absent means the original purpose, so every existing caller -- the CLI's
+  // printed start link and the SPA -- keeps working unchanged.
+  if (value === undefined) return 'launcher';
+  return typeof value === 'string' &&
+    (UI_BOOTSTRAP_PURPOSES as readonly string[]).includes(value)
+    ? (value as UiBootstrapPurpose)
+    : undefined;
+}
+
 export function configureDevicePairingPublicRoutes(
   app: HonoApp,
   pairing: DevicePairingService,
@@ -4459,7 +4481,18 @@ export function configureDevicePairingPublicRoutes(
   const localGrantSecret = options.localGrant
     ? writeLocalGrantSecretFile(options.localGrant.secretPath)
     : undefined;
-  let uiBootstrapToken = options.uiBootstrapToken;
+  // One slot PER PURPOSE (#1259). "Refreshing replaces the previous unspent
+  // capability" is the intended rule and stays intact -- but it only makes
+  // sense between mints for the SAME purpose. With a single shared slot,
+  // #1118's tray minting for the API docs silently invalidated a pending
+  // `station start` link, and the user saw a login URL that had stopped
+  // working for no reason on screen.
+  //
+  // The vocabulary is closed so a caller cannot mint unbounded slots by
+  // inventing purposes.
+  const uiBootstrapTokens = new Map<UiBootstrapPurpose, string>();
+  if (options.uiBootstrapToken)
+    uiBootstrapTokens.set('launcher', options.uiBootstrapToken);
   const startupIdentity = options.startupIdentity?.();
   // This id is server-owned and stable for this launcher's lifetime. A
   // browser cannot choose a replacement domain merely by replaying a link,
@@ -4692,10 +4725,13 @@ export function configureDevicePairingPublicRoutes(
     }
     // There is one server-held capability. Refreshing it deliberately makes a
     // previously copied but unspent launcher fragment unusable.
-    uiBootstrapToken = randomBytes(32).toString('base64url');
+    const purpose = uiBootstrapPurposeFrom(body.purpose);
+    if (!purpose) return c.json({ error: 'invalid_request' }, 400);
+    const minted = randomBytes(32).toString('base64url');
+    uiBootstrapTokens.set(purpose, minted);
     return c.json(
       {
-        token: uiBootstrapToken,
+        token: minted,
         path: PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
       },
       200,
@@ -4715,25 +4751,37 @@ export function configureDevicePairingPublicRoutes(
       return c.json({ error: 'ui_bootstrap_forbidden' }, 403);
     }
 
+    // Every populated slot is compared, with no early exit on a match, so which
+    // purpose a presented capability belongs to is not observable from timing.
+    // (Empty slots are skipped, so slot OCCUPANCY is — that was already true of
+    // the single slot, and occupancy carries nothing about the token bytes.)
+    let matchedPurpose: UiBootstrapPurpose | undefined;
+    for (const candidate of UI_BOOTSTRAP_PURPOSES) {
+      const stored = uiBootstrapTokens.get(candidate);
+      if (stored && timingSafeSecretEqual(body.token, stored))
+        matchedPurpose = candidate;
+    }
+
     // A preserved HttpOnly session is already the strongest evidence this
-    // browser can present. Returning it before comparing/consuming the
-    // launcher capability makes repeated start links idempotent instead of
-    // accumulating identityless credentials or exhausting a spent token.
+    // browser can present, so return it rather than minting a second
+    // identityless credential — repeated start links stay idempotent. But a
+    // capability that was PRESENTED is spent regardless (#1283): it has been
+    // in a browser, and the holder loses nothing they still needed. Leaving it
+    // live was the common outcome of the tray's docs launch (#1259), since the
+    // default browser usually already holds a session.
     const existingCredential = parseDeviceSessionCookie(c.req.header('cookie'));
     const existingDevice = existingCredential
       ? pairing.identifyDevice(existingCredential)
       : null;
     if (existingDevice) {
+      if (matchedPurpose) uiBootstrapTokens.delete(matchedPurpose);
       return c.json({
         environmentId: pairing.environmentId(),
         device: existingDevice,
         delivery: DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
       });
     }
-    if (
-      !uiBootstrapToken ||
-      !timingSafeSecretEqual(body.token, uiBootstrapToken)
-    ) {
+    if (!matchedPurpose) {
       return c.json({ error: 'ui_bootstrap_forbidden' }, 403);
     }
 
@@ -4779,7 +4827,9 @@ export function configureDevicePairingPublicRoutes(
       // Keep a valid capability retryable when the exchange refuses (for
       // example, while the bounded identityless quota is full). This runs
       // only after durable issuance/replacement succeeds.
-      uiBootstrapToken = undefined;
+      // Only the capability that was actually spent. Clearing the map would
+      // reintroduce #1259 at the redemption boundary instead of the mint one.
+      uiBootstrapTokens.delete(matchedPurpose);
       options.audit?.({
         event: 'station.pairing.approved',
         approver: 'ui-bootstrap',

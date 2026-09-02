@@ -5,13 +5,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { HttpBindings } from '@hono/node-server';
 import {
+  DEFAULT_GRANT_PAIRING_SCOPE,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH,
   PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
 } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { DevicePairingService } from '../../services/ssh/device-pairing-service.js';
+import { configureRuntimeHttp } from '../bootstrap/runtime-http.js';
 import { configureDevicePairingPublicRoutes } from '../routes/runtime-routes.js';
 
 type TestBindings = HttpBindings & {
@@ -151,4 +153,70 @@ describe('the tray mirrors these paths as Rust literals', () => {
   ])('%s path matches the server contract', (_label, path) => {
     expect(tray).toContain(`"${path}"`);
   });
+});
+
+describe('the docs stay credentialed at the runtime seam (#934 acceptance)', () => {
+  // #934 reproduced `GET /ui -> 401` live and asked for a test of that
+  // rejection. The classification-table assertion in pairing-route-scopes
+  // stops someone marking `/ui` public in the table; it does not show the
+  // runtime enforces the table for this path. This test does: the same
+  // request that a credential lets through is refused without one.
+  function createRuntimeHarness() {
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+      trace: vi.fn(),
+      fatal: vi.fn(),
+      child: vi.fn().mockReturnThis(),
+      setLevel: vi.fn(),
+      getLevel: vi.fn(() => 'info' as const),
+    };
+    const app = new Hono<{ Bindings: TestBindings }>();
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit: vi.fn() } as never,
+      security: {
+        verifyCredential: (candidate: string) => candidate === CREDENTIAL,
+        resolveGrantedScope: (candidate: string) =>
+          candidate === CREDENTIAL ? DEFAULT_GRANT_PAIRING_SCOPE : undefined,
+        audit: () => {},
+        allowedOrigins: ['https://station.example.test'],
+      },
+    } as Parameters<typeof configureRuntimeHttp>[0]);
+    // Stand-ins for the VoltAgent Swagger mounts; the seam under test is the
+    // credential floor in front of them, not the docs renderer.
+    app.get('/ui', (c) => c.html('<html>swagger</html>'));
+    app.get('/doc', (c) => c.json({ openapi: '3.0.0' }));
+    return (path: string, headers: Record<string, string> = {}) =>
+      app.request(path, { headers }, {
+        incoming: { socket: { remoteAddress: loopback() } },
+      } as TestBindings);
+  }
+  const CREDENTIAL = 'test-only-credential-that-must-never-be-logged';
+
+  test.each(['/ui', '/doc'])(
+    'GET %s from a bare loopback socket is refused without a credential',
+    async (path) => {
+      const request = createRuntimeHarness();
+      const refused = await request(path);
+      expect(refused.status).toBe(401);
+      await expect(refused.json()).resolves.toMatchObject({
+        error: { code: 'authentication_required' },
+      });
+    },
+  );
+
+  test.each(['/ui', '/doc'])(
+    'GET %s with a credential reaches the docs, so the refusal above is the floor and not a missing route',
+    async (path) => {
+      const request = createRuntimeHarness();
+      const allowed = await request(path, {
+        authorization: `Bearer ${CREDENTIAL}`,
+      });
+      expect(allowed.status).toBe(200);
+    },
+  );
 });

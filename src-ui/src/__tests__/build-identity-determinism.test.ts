@@ -55,6 +55,12 @@ describe('build identity stays outside the JavaScript hash graph', () => {
     expect(buildVersion('0.1.2', '0.1.2-nightly.2412')).toBe(
       '0.1.2-nightly.2412',
     );
+    expect(buildVersion('0.1.2', '0.1.2-nightly.2412.1')).toBe(
+      '0.1.2-nightly.2412.1',
+    );
+    expect(() => buildVersion('0.1.2', '0.1.2-nightly.2412.0')).toThrow(
+      /Invalid Station build version/,
+    );
     expect(() => buildVersion('0.1.2', 'latest')).toThrow(
       /Invalid Station build version/,
     );
