@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppViewContent } from './app-shell/AppViewContent';
 import { HomeRoutePendingSkeleton } from './app-shell/HomeRoutePendingSkeleton';
+import { RegionShells } from './app-shell/RegionShells';
 import { resolveHomeSurface } from './app-shell/resolve-home-surface';
 import {
   getLegacyPathRedirect,
@@ -41,7 +42,7 @@ import { ProjectsProvider } from './contexts/ProjectsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
-import { RegionShells } from './regions/RegionShells';
+
 import { chatRegion } from './regions/region-model';
 import {
   type WorkspacePaneDockAction,

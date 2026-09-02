@@ -1,9 +1,9 @@
 import { ChatDock } from '../components/chat-dock/ChatDock';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
+import { DOCK_REGION_IDS } from '../regions/region-model';
 import type { NavigationView } from '../types';
 import type { HomeViewNavigation } from '../views/home/useHomeViewModel';
 import type { WorkspacePaneDockAction } from '../workspace-panes/WorkspacePaneDockContext';
-import { DOCK_REGION_IDS } from './region-model';
 
 export function RegionShells({
   homeContinuation,
