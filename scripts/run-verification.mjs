@@ -190,6 +190,79 @@ function diagnosticStdoutTail(result) {
   }
 }
 
+/** Enough to identify the failing surface; not a substitute for the artifact. */
+const FAILED_TEST_FILE_CAP = 8;
+
+/**
+ * The test FILES a failed run actually failed in (#1139).
+ *
+ * The redacted stdout tail carries `[test:changed] focused: …`, which reads as
+ * an account of what ran — and can omit the very file every failure is in,
+ * because a file is reached through another's import graph. `gh run view
+ * --log-failed` shows only that tail, so the first thing a reader learns about
+ * their red PR points at innocent files. The failure locations already exist,
+ * in the digest-addressed diagnostics attachment, but only if you know to
+ * download the run's artifacts and which one to open.
+ *
+ * `file` is repo-relative and already past the redaction boundary, the same as
+ * the stdout artifact this sits beside. Names are not surfaced: the file plus a
+ * count is what ends the investigation, and it stays small enough to survive
+ * the output cap.
+ */
+function diagnosticFailedTestFiles(result) {
+  if (
+    !['failed', 'infrastructure_error'].includes(
+      result?.receipt?.terminal?.status,
+    )
+  )
+    return undefined;
+  const requestKey = result.receipt.request?.key;
+  const artifact = result.receipt.artifacts?.find((entry) => {
+    const match =
+      /^\.kontourai\/verification-output\/([0-9a-f]{64})\/attachment-[0-9a-f]{64}\.txt$/.exec(
+        entry?.path ?? '',
+      );
+    return match?.[1] === requestKey;
+  });
+  if (!artifact || typeof result.receipt.request?.worktree !== 'string')
+    return undefined;
+  let diagnostic;
+  try {
+    diagnostic = JSON.parse(
+      readVerifiedVerificationArtifact({
+        root: result.receipt.request.worktree,
+        artifact,
+      }),
+    );
+  } catch {
+    return undefined;
+  }
+  const counts = new Map();
+  for (const execution of Array.isArray(diagnostic?.executions)
+    ? diagnostic.executions
+    : [])
+    for (const failure of Array.isArray(execution?.failedTests)
+      ? execution.failedTests
+      : []) {
+      // A malformed entry must not invent a location.
+      if (typeof failure?.file !== 'string' || failure.file.length === 0)
+        continue;
+      counts.set(failure.file, (counts.get(failure.file) ?? 0) + 1);
+    }
+  if (counts.size === 0) return undefined;
+  const ordered = [...counts.entries()].sort(
+    (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+  );
+  const listed = ordered
+    .slice(0, FAILED_TEST_FILE_CAP)
+    .map(([file, count]) => `${file} (${count})`);
+  const omitted = ordered.length - listed.length;
+  // The omission is stated rather than left to be inferred from a short list.
+  return omitted > 0
+    ? [...listed, `… ${omitted} more file(s) in the diagnostics attachment`]
+    : listed;
+}
+
 function tailFallback(bounded, stdoutTail) {
   const envelope = (tail) => ({
     disposition: bounded.disposition,
@@ -199,6 +272,12 @@ function tailFallback(bounded, stdoutTail) {
       counts: bounded.summary?.counts,
       cleanup: bounded.summary?.cleanup,
       passed: bounded.summary?.passed,
+      // Carried through truncation: a capped list of file names is small, and
+      // it is the field that says where to look. Dropping it here would
+      // reproduce #1139 for exactly the largest, least readable failures.
+      ...(bounded.summary?.failedCheckTestFiles
+        ? { failedCheckTestFiles: bounded.summary.failedCheckTestFiles }
+        : {}),
       ...(bounded.summary?.productLawObservationTimeoutMs !== undefined
         ? {
             productLawObservationTimeoutMs:
@@ -238,6 +317,14 @@ export function renderBounded(result) {
     bounded.summary = {
       ...bounded.summary,
       productLawObservationTimeoutMs,
+    };
+  // Before the tail, and separately from it: the tail is what gets trimmed
+  // when the envelope is over cap, and this is the part a reader needs first.
+  const failedTestFiles = diagnosticFailedTestFiles(result);
+  if (failedTestFiles)
+    bounded.summary = {
+      ...bounded.summary,
+      failedCheckTestFiles: failedTestFiles,
     };
   if (stdoutTail)
     bounded.summary = {

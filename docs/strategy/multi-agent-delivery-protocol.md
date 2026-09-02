@@ -364,6 +364,28 @@ Per `local-merge-readiness.md`, extended by measured practice:
   before any check; Node 24 via an explicit PATH (the ambient node may be
   22.x and engine-strict will refuse); **never `git stash` anywhere** (the
   stash stack is shared across all worktrees of this repo).
+- **Nothing runs for the first time on `main`: a main-only lane's inputs get
+  a dispatch proof before merge.** Some workflows never run on pull requests
+  by design (container smoke: `if: github.event_name != 'pull_request'`), so
+  a green PR proves nothing about them and `main` is where their failures are
+  discovered. Measured: the 390px pairing test had **never once passed in the
+  container harness** — its premise was only ever supplied by the e2e runner —
+  and it surfaced as a two-day `main` red the moment an unrelated docker fix
+  unmasked it (#917), starving a sibling required lane's capacity the whole
+  time (#925). The rule: a change touching the test files, harness scripts,
+  or workflow of a main-only lane runs that lane once via `workflow_dispatch`
+  on the branch, and the PR cites the run. The lane must also upload its
+  failure artifacts (`if: failure()`) — #917's investigation had zero
+  artifacts to read, which is why the misdiagnosis ("hosted-runner
+  environment") survived long enough to be baked into a workflow comment.
+  Caveat, measured the same day: self-hosted runner **groups** carry
+  ref-pinned workflow allowlists (`workflow.yml@refs/heads/main`), so a
+  branch-ref dispatch of a fleet-bound lane is structurally unassignable — it
+  queues forever against healthy idle runners with no error anywhere. The
+  proof run for #917 needed a temporary allowlist entry for the branch ref
+  (added via the runner-groups API, removed after the run). Budget that step,
+  and remove the entry immediately — a standing branch-ref entry is a
+  standing invitation to run unreviewed workflow code on the fleet.
 - **A squash merge leaves no ancestry, so an absorbed branch looks unmerged.**
   A branch sat "unmerged" for hours after its content squash-landed under a
   different PR. Before re-applying anything, merge `origin/main` in and
@@ -396,6 +418,35 @@ Per `local-merge-readiness.md`, extended by measured practice:
   not assume the states are exclusive.)
 - **Never hand a directory to a formatter.** `biome check --write docs`
   reformatted 32 checked-in evidence files in one command.
+- **Resolving a measured ceiling: attribution, not direction.** Files like
+  `scripts/ui-bundle-budget.json` and `scripts/mobile-css-baseline.json` carry a
+  number that several lanes edit, and a merge conflict there cannot be resolved
+  by taking a side — neither side describes the merged tree. Rebuild, measure,
+  and then decide by **what you can attribute to your own diff**:
+
+  - **Your measurement exceeds main's ceiling** → raise to your measurement.
+    Forced; your change costs those bytes.
+  - **Your measurement is lower and you cannot say why** → keep **main's**.
+    That gap is measurement drift, and banking it as a ceiling leaves every
+    in-flight lane failing against a number main had already sanctioned, for no
+    gain.
+  - **Your measurement is lower and you can point at the cause** → tighten to
+    your measurement, and say in the commit what produced the reduction
+    (an import moved out of the eager chunk; a deleted effect). A real
+    reduction that is not banked is headroom the next lane inherits and spends
+    silently.
+
+  The gate fails only on EXCEEDS, so a ceiling is a permission to grow rather
+  than a claim about the tree. That is why an unattributed lowering is a cost
+  with no benefit and an unattributed raise is a silent loosening — the same
+  error in opposite directions. "Always take the higher" is safe but turns the
+  ratchet into a one-way valve; "always take my measurement" squeezes every
+  other lane with your drift. Both were tried on `fix/923-chrome` across five
+  passes before this rule settled it.
+
+  Verify by building, not by arithmetic: a ceiling adopted without a build is a
+  number, not a measurement.
+
 - **A repo-wide count-ratchet fails on whoever gates next, not on whoever
   caused it.** The signal is real and worth keeping, but it misattributes by
   design, and the path of least resistance under deadline is to raise the
