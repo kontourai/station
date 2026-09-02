@@ -1,18 +1,15 @@
 /**
  * @vitest-environment jsdom
  *
- * #928 step 3a moves the dock's render path onto the region model. While the
- * model still derives from the legacy dock the two agree, so an end-to-end
- * "click the control, the dock collapses" test passes whether the chrome reads
- * the model or navigation — it cannot tell the two apart.
+ * #928 step 3b: the region model is the authority for chat placement and
+ * visibility; navigation is an outbound mirror plus an inbound seed. While
+ * the two agree, an end-to-end "click the control, the dock collapses" test
+ * passes whether the chrome reads the model or navigation — it cannot tell
+ * them apart.
  *
  * The discriminating case is a DIVERGENCE: write region state directly, leave
- * navigation alone, and assert the chrome follows the region model. That is
- * the property this step actually establishes, and the one the next step (the
- * writer flip) depends on.
- *
- * Open state only. Placement stays with navigation until the writer flips, so
- * the second test pins the opposite direction for `dockMode`.
+ * navigation alone, and assert the chrome follows the region model — for open
+ * state and for placement alike.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
