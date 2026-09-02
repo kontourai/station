@@ -160,4 +160,30 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(result.current.model.regions.bottom.occupant).toBeNull();
     expect(result.current.chrome.dockMode).toBe('right');
   });
+
+  test('an explicit regionId reads that region even when chat is elsewhere', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        chrome: useDockShellChrome({
+          publishesDockSlotClearance: false,
+          registersDockShortcuts: false,
+          regionId: 'right',
+        }),
+        model: useRegionModel(),
+      }),
+      { wrapper },
+    );
+    act(() => result.current.model.setRegion('right', { visible: true }));
+    expect(result.current.model.regions.bottom.occupant).toBe('chat');
+    expect(result.current.chrome.dockMode).toBe('right');
+    expect(result.current.chrome.isDockOpen).toBe(true);
+  });
 });
