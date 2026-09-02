@@ -187,6 +187,40 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(result.current.chrome.isDockOpen).toBe(true);
   });
 
+  // A shell places ITS occupant; a fixture surface's drag-to-edge must move
+  // the fixture and leave chat where it is.
+  test('a non-chat shell places its own occupant', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        chrome: useDockShellChrome({
+          publishesDockSlotClearance: false,
+          registersDockShortcuts: false,
+          regionId: 'right',
+        }),
+        model: useRegionModel(),
+      }),
+      { wrapper },
+    );
+    act(() =>
+      result.current.model.setRegion('right', {
+        occupant: 'fixture',
+        visible: true,
+      }),
+    );
+    act(() => result.current.chrome.commitDockPlacement('left'));
+    expect(result.current.model.regions.left.occupant).toBe('fixture');
+    expect(result.current.model.regions.right.occupant).toBeNull();
+    expect(result.current.model.regions.bottom.occupant).toBe('chat');
+  });
+
   test('a side shell folded to the bottom persists its drag as a bottom height', () => {
     // ≤768px folds every placement to bottom (useIsMobile.ts
     // `availablePlacements`); the dragged value is a height and must not
