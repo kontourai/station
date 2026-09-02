@@ -1,18 +1,15 @@
 /**
  * @vitest-environment jsdom
  *
- * #928 step 3a moves the dock's render path onto the region model. While the
- * model still derives from the legacy dock the two agree, so an end-to-end
- * "click the control, the dock collapses" test passes whether the chrome reads
- * the model or navigation — it cannot tell the two apart.
+ * #928 step 3b: the region model is the authority for chat placement and
+ * visibility; navigation is an outbound mirror plus an inbound seed. While
+ * the two agree, an end-to-end "click the control, the dock collapses" test
+ * passes whether the chrome reads the model or navigation — it cannot tell
+ * them apart.
  *
  * The discriminating case is a DIVERGENCE: write region state directly, leave
- * navigation alone, and assert the chrome follows the region model. That is
- * the property this step actually establishes, and the one the next step (the
- * writer flip) depends on.
- *
- * Open state only. Placement stays with navigation until the writer flips, so
- * the second test pins the opposite direction for `dockMode`.
+ * navigation alone, and assert the chrome follows the region model — for open
+ * state and for placement alike.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -97,12 +94,9 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(result.current.chrome.isDockOpen).toBe(false);
   });
 
-  // The Coding layout sets navigation's dockMode through `setDockModeQuiet`,
-  // which never writes `dockSlotPlacement` — so the model, which seeds from
-  // that setting alone, holds chat at 'bottom' while navigation says 'right'.
-  // Deriving placement from the model would move that dock to a bottom bar.
-  // Step 3a moves open state only; this pins that.
-  test('keeps navigation as the placement authority when the two disagree', () => {
+  // Step 3b makes the region model authoritative; navigation is its durable
+  // mirror, so a disagreement is resolved by the model's occupant.
+  test('keeps the model as the placement authority when the two disagree', () => {
     harness.dockMode = 'right';
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -123,12 +117,47 @@ describe('useDockShellChrome reads its open state from the region model', () => 
       { wrapper },
     );
 
-    // The model holds chat at 'bottom' (seeded from dockSlotPlacement).
-    expect(result.current.model.regions.bottom.occupant).toBe('chat');
-    // Navigation is mocked at 'right', the Coding-layout override shape.
-    expect(result.current.chrome.dockMode).toBe('right');
+    // Seeding uses navigation's resolved placement, so the old device versus
+    // navigation split from before #1265 no longer exists. A later model write
+    // is authoritative and chrome follows it before the mirror runs.
+    expect(result.current.model.regions.right.occupant).toBe('chat');
+    act(() => result.current.model.placeSurface('chat', 'left'));
+    expect(result.current.chrome.dockMode).toBe('left');
     // Open state still comes from the region that holds chat, not from
     // `regions[dockMode]` — 'right' is unoccupied and seeds `visible: false`.
     expect(result.current.chrome.isDockOpen).toBe(true);
+  });
+
+  // The settings-panel choice, drag-to-edge and the "Open chats" route all
+  // arrive here with a mode; the model must receive THAT mode, not a fixed
+  // one. No DOM path exercises this argument, so it is pinned at the hook.
+  test('commitDockPlacement places chat in the region it was given', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        chrome: useDockShellChrome({
+          publishesDockSlotClearance: false,
+          registersDockShortcuts: false,
+        }),
+        model: useRegionModel(),
+      }),
+      { wrapper },
+    );
+    expect(result.current.model.regions.bottom.occupant).toBe('chat');
+
+    act(() => {
+      result.current.chrome.commitDockPlacement('right');
+    });
+
+    expect(result.current.model.regions.right.occupant).toBe('chat');
+    expect(result.current.model.regions.bottom.occupant).toBeNull();
+    expect(result.current.chrome.dockMode).toBe('right');
   });
 });

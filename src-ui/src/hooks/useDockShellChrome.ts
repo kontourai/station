@@ -23,6 +23,7 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { useProjects } from '../contexts/ProjectsContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { readToolbarHeight } from '../lib/toolbarGeometry';
+import { chatRegion } from '../regions/region-model';
 import type { DockMode } from '../types';
 import {
   type DockSlotGeometry,
@@ -193,33 +194,22 @@ export function useDockShellChrome({
   const {
     isDockOpen,
     isDockMaximized,
-    dockMode,
     pathname,
     setDockState,
-    setDockMode,
     collapseMaximizedDock,
   } = useNavigation();
   const regionModel = useRegionModelOptional();
   const isMobile = useIsMobile();
   const visualViewport = useMobileVisualViewport();
-  // Step 3a moves the dock's OPEN STATE onto the region model and deliberately
-  // leaves PLACEMENT on navigation. The model seeds its chat occupant from
-  // `settings.dockSlotPlacement` alone, whereas navigation's `dockMode` is a
-  // precedence chain — URL param, then `dockModeOverride`, then the setting
-  // (navigation-store.ts:415). The Coding layout takes the override path via
-  // `setDockModeQuiet`, which never writes the setting, so deriving placement
-  // from the model would move that dock from the right panel to a bottom bar.
-  // Placement moves in the step where the model actually owns it.
-  const modelChatRegion =
-    regionModel &&
-    (['left', 'right', 'bottom'] as const).find(
-      (id) => regionModel.regions[id].occupant === 'chat',
-    );
-  const readerDockMode = dockMode;
-  // Visibility is read from whichever region the model says holds chat — the
-  // sync effect writes `visible: isDockOpen` there, so this is equal to
-  // `isDockOpen` today. Reading `regions[dockMode]` instead would be wrong
-  // whenever the two disagree: an unoccupied region seeds `visible: false`.
+  // The region holding chat IS the placement (#928 step 3b). The model seeds
+  // from navigation's resolved `dockMode` (URL param, else the device
+  // setting — navigation-store.ts), so a deep link still wins on load.
+  const modelChatRegion = regionModel && chatRegion(regionModel.regions);
+  const readerDockMode = modelChatRegion ?? 'bottom';
+  // Visibility comes from whichever region the model says holds chat, and the
+  // model is authoritative — navigation's `isDockOpen` is its mirror, so the
+  // two can legitimately disagree for a render. Only the OCCUPIED region
+  // carries the dock's visibility; an unoccupied one seeds `visible: false`.
   const readerIsDockOpen =
     regionModel && modelChatRegion
       ? regionModel.regions[modelChatRegion].visible
@@ -299,21 +289,19 @@ export function useDockShellChrome({
     (value: boolean) => {
       if (draggingRef.current && !value) {
         if (effectiveDockSlotPlacement === 'bottom') {
-          setDeviceSetting(
-            'chatDockHeight',
-            Math.round(clampDockHeight(dockHeightRef.current)),
-          );
+          regionModel?.setRegion('bottom', {
+            size: Math.round(clampDockHeight(dockHeightRef.current)),
+          });
         } else {
-          setDeviceSetting(
-            'chatDockWidth',
-            Math.round(clampDockWidth(dockWidthRef.current)),
-          );
+          regionModel?.setRegion(effectiveDockSlotPlacement, {
+            size: Math.round(clampDockWidth(dockWidthRef.current)),
+          });
         }
       }
       draggingRef.current = value;
       setIsDraggingState(value);
     },
-    [effectiveDockSlotPlacement, setDeviceSetting],
+    [effectiveDockSlotPlacement, regionModel],
   );
   const [previousDockHeight, setPreviousDockHeight] = useState(dockHeight);
   const [previousDockOpen, setPreviousDockOpen] = useState(true);
@@ -373,9 +361,9 @@ export function useDockShellChrome({
 
   const commitDockPlacement = useCallback(
     (mode: DockMode) => {
-      setDockMode(mode);
+      regionModel?.placeSurface('chat', mode);
     },
-    [setDockMode],
+    [regionModel],
   );
 
   // archive#869 / archive#1298: a maximized dock is opaque and full-height, so navigating
