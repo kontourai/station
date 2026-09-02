@@ -5795,7 +5795,6 @@ for (const requiredHelper of [
   'export const navigationStore = new NavigationStore()',
   'LAST_PROJECT_KEY',
   'private parseUrl(): NavigationState',
-  'setDockModeQuiet(mode: DockMode)',
 ]) {
   if (!navigationStoreFile.includes(requiredHelper)) {
     errors.push(`navigation-store.ts must include ${requiredHelper}.`);

@@ -1,9 +1,12 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { createOwnedRunner } from '../lib/verification-execution-lifecycle.mjs';
-import { persistVerificationOutput } from '../lib/verification-reporter.mjs';
+import {
+  persistPlaywrightAttachments,
+  persistVerificationOutput,
+} from '../lib/verification-reporter.mjs';
 import { reportExecution } from '../lib/verification-terminal-receipt.mjs';
 import {
   CI_FAST_INFRASTRUCTURE_EXIT_CODE,
@@ -72,6 +75,101 @@ describe('verification status projection', () => {
       expect(reported.summary).toMatchObject({
         firstCausalExcerpt: `verification execution infrastructure error: ${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}`,
       });
+    } finally {
+      rmSync(worktree, { recursive: true, force: true });
+    }
+  });
+
+  test('names the files a failed run actually failed in (#1139)', () => {
+    // The redacted tail carries `[test:changed] focused: …`, which reads as an
+    // account of what ran and can OMIT the file every failure is in, because a
+    // file is reached through another's import graph. `gh run view
+    // --log-failed` shows only that tail, so a reader starts in innocent files.
+    const worktree = mkdtempSync(join(tmpdir(), 'station-verification-files-'));
+    const key = 'c'.repeat(64);
+    try {
+      const attachmentRoot = join(worktree, '.kontourai/test-impact');
+      mkdirSync(attachmentRoot, { recursive: true });
+      const diagnosticPath = join(attachmentRoot, 'changed-selection.json');
+      writeFileSync(
+        diagnosticPath,
+        JSON.stringify({
+          executions: [
+            {
+              kind: 'related',
+              counts: { executed: 329, passed: 320, failed: 3 },
+              failedTests: [
+                { file: 'scripts/__tests__/coordinator.test.ts', name: 'a' },
+                { file: 'scripts/__tests__/coordinator.test.ts', name: 'b' },
+                { file: 'scripts/__tests__/other.test.ts', name: 'c' },
+                // Malformed entries must not invent a location.
+                { name: 'no file at all' },
+              ],
+            },
+          ],
+        }),
+      );
+      // `persistPlaywrightAttachments` is `.mjs` with a `= {}` options default,
+      // so TypeScript infers its parameter from the defaulted keys alone and
+      // sees neither `root` nor a shape for `attachments`. The sibling test
+      // that calls it plainly is in `tsconfig.scripts.json`'s exclude list;
+      // this file is checked, so the call needs the cast the other does not.
+      const attachments = persistPlaywrightAttachments({
+        root: worktree,
+        requestKey: key,
+        attachmentRoot,
+        attachments: [{ path: diagnosticPath }],
+      } as never);
+      const persisted = persistVerificationOutput({
+        root: worktree,
+        requestKey: key,
+        stdout: '[test:changed] focused: scripts/__tests__/innocent.test.ts',
+      });
+      const failed = {
+        disposition: 'executed',
+        request: { key, laneId: 'ci-fast' },
+        receipt: {
+          request: { key, worktree },
+          terminal: { status: 'failed', exitCode: 1, passed: false },
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 3,
+            infrastructureErrors: 0,
+          },
+          cleanup: { status: 'passed', survivingOwnedChildren: 0 },
+          artifacts: [...persisted.artifacts, ...attachments],
+        },
+      };
+
+      const rendered = JSON.parse(renderBounded(failed));
+      expect(rendered.summary.failedCheckTestFiles).toEqual([
+        'scripts/__tests__/coordinator.test.ts (2)',
+        'scripts/__tests__/other.test.ts (1)',
+      ]);
+      // The tail still names only the innocent selection, which is precisely
+      // why the files have to be reported separately rather than trusted to it.
+      expect(rendered.summary.failedCheckRedactedStdoutTail).toContain(
+        'innocent.test.ts',
+      );
+
+      // A green terminal has no failing files to name.
+      const green = JSON.parse(
+        renderBounded({
+          ...failed,
+          receipt: {
+            ...failed.receipt,
+            terminal: { status: 'completed', exitCode: 0, passed: true },
+            counts: {
+              executed: 1,
+              passed: 1,
+              failed: 0,
+              infrastructureErrors: 0,
+            },
+          },
+        }),
+      );
+      expect(green.summary).not.toHaveProperty('failedCheckTestFiles');
     } finally {
       rmSync(worktree, { recursive: true, force: true });
     }
