@@ -74,7 +74,8 @@
     "./sqlite-store-integrity": "./src/sqlite-store-integrity.ts",
     "./orchestration-store-quarantine": "./src/orchestration-store-quarantine.ts",
     "./setup-import-bounds": "./src/setup-import-bounds.ts",
-    "./random-id": "./src/random-id.ts"
+    "./random-id": "./src/random-id.ts",
+    "./terminal-capability": "./src/terminal-capability.ts"
   },
   "publishConfig": {
     "access": "public"

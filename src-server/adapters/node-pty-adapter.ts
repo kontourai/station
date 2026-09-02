@@ -1,7 +1,16 @@
 import { execFile } from 'node:child_process';
 import { chmodSync, existsSync, readlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { IPtyAdapter, IPtyProcess } from '../domain/pty-adapter.js';
+import {
+  describeTerminalPtyLoadFailure,
+  type TerminalCapability,
+  terminalPtyUnavailableReason,
+} from '@kontourai/station-shared/terminal-capability';
+import {
+  type IPtyAdapter,
+  type IPtyProcess,
+  PtyUnavailableError,
+} from '../domain/pty-adapter.js';
 
 let nodePtyPromise: Promise<typeof import('node-pty')> | null = null;
 let didFixSpawnHelper = false;
@@ -39,6 +48,10 @@ function ensureSpawnHelper(): void {
 function getNodePty(): Promise<typeof import('node-pty')> {
   if (!nodePtyPromise) {
     ensureSpawnHelper();
+    // The rejection stays cached deliberately: a native module that failed
+    // to load does not heal without a rebuild and a process restart, and a
+    // sticky failure keeps every later probe and spawn reporting the same
+    // reason instead of re-running a doomed import (#1244).
     nodePtyPromise = import('node-pty');
   }
   return nodePtyPromise;
@@ -111,6 +124,48 @@ class NodePtyProcess implements IPtyProcess {
 }
 
 export class NodePtyAdapter implements IPtyAdapter {
+  /**
+   * Test seam: production always uses the module-cached `getNodePty`, so one
+   * failed native load degrades every adapter instance identically.
+   */
+  constructor(
+    private readonly loadNodePty: () => Promise<
+      typeof import('node-pty')
+    > = getNodePty,
+  ) {}
+
+  /**
+   * Loads the native module or converts its rejection into the one specific,
+   * actionable degraded-terminal error (#1244). A missing or unbuildable
+   * node-pty must never surface as a generic spawn failure.
+   */
+  private async requireNodePty(): Promise<typeof import('node-pty')> {
+    try {
+      return await this.loadNodePty();
+    } catch (error) {
+      throw new PtyUnavailableError(
+        terminalPtyUnavailableReason(describeTerminalPtyLoadFailure(error)),
+      );
+    }
+  }
+
+  async probeCapability(): Promise<TerminalCapability> {
+    try {
+      await this.requireNodePty();
+      return { state: 'available' };
+    } catch (error) {
+      return {
+        state: 'unavailable',
+        reason:
+          error instanceof PtyUnavailableError
+            ? error.message
+            : terminalPtyUnavailableReason(
+                describeTerminalPtyLoadFailure(error),
+              ),
+      };
+    }
+  }
+
   async spawn(input: {
     shell: string;
     args?: string[];
@@ -119,7 +174,7 @@ export class NodePtyAdapter implements IPtyAdapter {
     rows: number;
     env: NodeJS.ProcessEnv;
   }): Promise<IPtyProcess> {
-    const nodePty = await getNodePty();
+    const nodePty = await this.requireNodePty();
     const name =
       process.platform === 'win32' ? 'xterm-color' : 'xterm-256color';
     const pty = nodePty.spawn(input.shell, input.args ?? [], {

@@ -183,6 +183,10 @@ export function createRuntimeSystemRouteDeps(
     skillService: context.skillService,
     resourcePosture:
       context.resourcePosture ?? createEnvironmentRuntimeResourcePostureProbe(),
+    // #1244: the terminal surface's live PTY capability, so a Station whose
+    // node-pty never built reports a specific degraded reason on the same
+    // readiness record that carries chat/runtime/acp.
+    probeTerminalCapability: () => context.terminalService.probeCapability(),
   };
 }
 

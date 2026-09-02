@@ -517,7 +517,11 @@ export function confinedPackageTarget(
     throw new Error(`${description} escapes package root`);
   const candidateStat = lstatOrNull(candidate);
   if (!candidateStat) {
-    if (mustExist) throw new Error(`missing ${description}`);
+    if (mustExist) {
+      const absent = new Error(`missing ${description}`);
+      absent.code = ARTIFACT_ABSENT;
+      throw absent;
+    }
     return candidate;
   }
   if (candidateStat.isSymbolicLink())
@@ -703,6 +707,50 @@ export function verifyArtifact(
 export function expectedLifecyclePurls(allowlist) {
   return [...new Set(allowlist.entries.map((entry) => entry.purl))].sort();
 }
+
+/**
+ * #1244: which allowlist entries back a bounded product surface Station can
+ * run without. node-pty is the only one — it powers interactive terminal
+ * panes and nothing else, and it is the only Station dependency that needs a
+ * C++ toolchain on Linux. For such an entry, a failed build or artifact
+ * verification is reported as a LOUD capability degradation by the install
+ * orchestrator instead of aborting the install; the runtime, `station
+ * doctor`, and the system-status capability record then all carry the same
+ * degraded-terminal reason. This deliberately trades the former install-time
+ * "completed install has a working terminal" guarantee for installability on
+ * toolchain-less hosts — the product decision recorded on the issue.
+ *
+ * The artifact PROOF itself stays fail-closed: `verifyArtifact` still throws,
+ * and confinement/tamper preflights are never relaxed. Only the install
+ * orchestrator consults this to decide that the failure degrades a
+ * capability rather than the install.
+ */
+/**
+ * The ONLY verifyArtifact failure a degradable capability may treat as
+ * degradation: the artifact is simply not there, which is what a host with no
+ * C++ toolchain produces. Every other throw from that function is a
+ * trust-boundary result — a path escaping the package root, a symlink
+ * redirect, installed-version drift, a non-file target, or a failed real-PTY
+ * handshake — and those must keep aborting the install. Degrading them would
+ * accept a tampered or mis-identified native module as merely "unavailable".
+ */
+export const ARTIFACT_ABSENT = 'station:lifecycle:artifact-absent';
+
+export function isArtifactAbsent(error) {
+  return error?.code === ARTIFACT_ABSENT;
+}
+
+export function degradableLifecycleCapability(entry) {
+  if (entry?.artifact?.proof !== 'node-pty-smoke') return undefined;
+  return {
+    capability: 'terminal',
+    consequence:
+      'interactive terminal panes will be unavailable (agent execution is unaffected)',
+    remediation:
+      'install a C++ toolchain (g++, make, python3), run `npm run dependencies:install` in the Station checkout, then restart Station',
+  };
+}
+
 // ── node-pty Linux prebuild staging (#1245) ─────────────────────────────
 
 /**

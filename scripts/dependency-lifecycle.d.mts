@@ -13,6 +13,10 @@ export function runApprovedHooks(
   allowlist: unknown,
   options?: { cwd?: string },
 ): void;
+export function verifyLifecycleArtifacts(
+  allowlist: unknown,
+  options?: { cwd?: string },
+): Array<{ skipped?: boolean; degraded?: boolean; detail: string }>;
 export function stageLifecyclePrebuilds(
   allowlist: unknown,
   options?: { cwd?: string },
