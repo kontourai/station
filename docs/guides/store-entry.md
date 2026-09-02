@@ -46,10 +46,14 @@ and [mobile-release.md](./mobile-release.md). Listing copy lives in
   provider receipts first.
 - The authority key's public half must be registered on GitHub account
   `briananderson1222` before a cohort is dispatched. The planning job proves
-  that GitHub's exact public key has the protected fingerprint and UID email
-  `brian.anderson1222@gmail.com`, then uses that same email as its annotated
-  tagger. A missing key (the normal first-run state) fails before any tag or
-  provider mutation.
+  that GitHub's exact public key has the protected fingerprint and the UID
+  email that `scripts/ios-testflight-internal-authority.mjs` pins as the
+  signer, and the cohort workflow configures that same identity as its
+  annotated tagger; `scripts/verify-ios-testflight-internal-tag.mjs` rejects a
+  pushed tag whose tagger differs from the pinned constant. The address is
+  deliberately not repeated in this guide: change it in the authority script
+  and the workflow together, never in one alone. A missing key (the normal
+  first-run state) fails before any tag or provider mutation.
 - Tag overlay derives Android `versionCode` and iOS `CFBundleVersion` from the
   tag. Do not hand-edit `1` / `1.0` fallbacks in Gradle for a store upload.
 
