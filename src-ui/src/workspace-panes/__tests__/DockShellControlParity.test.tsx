@@ -83,25 +83,38 @@ beforeEach(() => {
       ) => callback({}),
     },
   });
-  window.localStorage.removeItem(AMBIENT_DOCK_STORAGE_KEY);
-  window.localStorage.removeItem(DEVICE_SETTINGS_KEY);
-  window.history.replaceState({}, '', '/?dock=open');
-  navigationStore.navigate('/', { dock: 'open', maximize: null });
-  navigationStore.navigate('/', {
-    dock: 'open',
-    maximize: null,
-    dockSlotPlacement: null,
-  });
+  resetDockPlacementState('/?dock=open', { dock: 'open' });
 });
 
 afterEach(() => {
   cleanup();
-  window.localStorage.removeItem(AMBIENT_DOCK_STORAGE_KEY);
-  window.localStorage.removeItem(DEVICE_SETTINGS_KEY);
-  window.history.replaceState({}, '', '/');
-  navigationStore.navigate('/', { dock: null, maximize: null });
+  resetDockPlacementState('/', { dock: null });
   delete (globalThis.navigator as { locks?: unknown }).locks;
 });
+
+/**
+ * `deviceSettingsStore` is a module singleton whose in-memory snapshot
+ * survives a `localStorage.removeItem`, so a test that lands the region
+ * mirror's `dockSlotPlacement: 'right'` write would otherwise hand every
+ * later test in this file a right-hand dock (and no bottom resize handle).
+ * `reloadFromStorage` is the store's own documented test-isolation seam —
+ * it re-reads the cleared key and notifies, which is also what makes
+ * `navigationStore` recompute its `dockMode` fallback.
+ */
+function resetDockPlacementState(
+  url: string,
+  params: Record<string, string | null>,
+) {
+  window.localStorage.removeItem(AMBIENT_DOCK_STORAGE_KEY);
+  window.localStorage.removeItem(DEVICE_SETTINGS_KEY);
+  window.history.replaceState({}, '', url);
+  navigationStore.navigate('/', {
+    maximize: null,
+    dockSlotPlacement: null,
+    ...params,
+  });
+  deviceSettingsStore.reloadFromStorage();
+}
 
 function renderHost(
   onDockActionChange?: (action: WorkspacePaneDockAction | null) => void,
