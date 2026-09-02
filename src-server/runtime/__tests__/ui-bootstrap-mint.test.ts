@@ -89,13 +89,32 @@ async function mintedToken(
   return ((await response.json()) as { token: string }).token;
 }
 
-function redeem(harness: ReturnType<typeof createHarness>, token: string) {
+function redeem(
+  harness: ReturnType<typeof createHarness>,
+  token: string,
+  headers: Record<string, string> = {},
+) {
   return harness.request(
     PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
     { token },
     remote(),
-    { Origin: 'https://station.example.test' },
+    { Origin: 'https://station.example.test', ...headers },
   );
+}
+
+/** Redeem once and hand back the HttpOnly session cookie the browser would keep. */
+async function sessionCookie(
+  harness: ReturnType<typeof createHarness>,
+): Promise<{ cookie: string; deviceId: string }> {
+  const response = await redeem(harness, await mintedToken(harness));
+  expect(response.status).toBe(200);
+  const setCookie = response.headers.get('set-cookie');
+  expect(setCookie).toContain('HttpOnly');
+  const { device } = (await response.json()) as { device: { id: string } };
+  return {
+    cookie: (setCookie as string).split(';', 1)[0],
+    deviceId: device.id,
+  };
 }
 
 describe('ui-bootstrap mint', () => {
@@ -280,6 +299,47 @@ describe('ui-bootstrap mint', () => {
     expect(
       (await mint(harness, harness.secret(), loopback(), {}, literal)).status,
     ).toBe(200);
+  });
+
+  test('a capability presented by a browser that already holds a session is spent (#1283)', async () => {
+    // The common docs flow: the default browser already has a session from an
+    // earlier start link, the tray mints for the docs, the launcher page
+    // presents that capability. The browser gets its existing device back —
+    // and the capability must not stay live in its slot afterwards.
+    const harness = createHarness();
+    const { cookie, deviceId } = await sessionCookie(harness);
+    const docs = await mintedToken(harness, 'api-docs');
+
+    const presented = await redeem(harness, docs, { Cookie: cookie });
+    expect(presented.status).toBe(200);
+    const body = (await presented.json()) as { device: { id: string } };
+    expect(body.device.id).toBe(deviceId);
+
+    // Spent: a cookieless presentation of the same capability is refused.
+    expect((await redeem(harness, docs)).status).toBe(403);
+  });
+
+  test('re-presenting a spent capability with the session is still idempotent', async () => {
+    // The property the old ordering existed for: a user re-pasting a start
+    // link never sees a refusal while their session is valid.
+    const harness = createHarness();
+    const { cookie } = await sessionCookie(harness);
+    const docs = await mintedToken(harness, 'api-docs');
+    expect((await redeem(harness, docs, { Cookie: cookie })).status).toBe(200);
+    expect((await redeem(harness, docs, { Cookie: cookie })).status).toBe(200);
+  });
+
+  test('a wrong capability presented with a session touches no slot', async () => {
+    const harness = createHarness();
+    const { cookie } = await sessionCookie(harness);
+    const docs = await mintedToken(harness, 'api-docs');
+
+    const wrong = await redeem(harness, 'not-the-capability-0123456789abcdef', {
+      Cookie: cookie,
+    });
+    expect(wrong.status).toBe(200);
+    // The real capability is still live for a browser without a session.
+    expect((await redeem(harness, docs)).status).toBe(200);
   });
 
   test('an unknown purpose is refused rather than given a slot', async () => {
