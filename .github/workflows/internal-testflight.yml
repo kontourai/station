@@ -1,0 +1,277 @@
+name: Internal iOS TestFlight cohort
+
+# This is intentionally a dispatch-only iOS/TestFlight entrypoint. It does not
+# call release.yml or any desktop, package, container, GitHub Release, updater,
+# Play, or public App Store workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: station-internal-ios-testflight-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  admit-stable:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    environment: native-release
+    steps:
+      - name: Record no-effect Stable environment admission
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: >-
+          node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync("admission-stable.json",JSON.stringify({schemaVersion:1,kind:"ios-testflight-environment-admission",channel:"stable",environment:"native-release",sourceSha:process.env.SOURCE_SHA,ref:"refs/heads/main"},null,2)+"\n",{mode:0o600});'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: station-internal-ios-admission-stable-${{ github.run_id }}
+          path: admission-stable.json
+          if-no-files-found: error
+          retention-days: 30
+
+  admit-beta:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    environment: ios-beta
+    steps:
+      - name: Record no-effect Beta environment admission
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: >-
+          node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync("admission-beta.json",JSON.stringify({schemaVersion:1,kind:"ios-testflight-environment-admission",channel:"beta",environment:"ios-beta",sourceSha:process.env.SOURCE_SHA,ref:"refs/heads/main"},null,2)+"\n",{mode:0o600});'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: station-internal-ios-admission-beta-${{ github.run_id }}
+          path: admission-beta.json
+          if-no-files-found: error
+          retention-days: 30
+
+  admit-nightly:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    environment: ios-nightly
+    steps:
+      - name: Record no-effect Nightly environment admission
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: >-
+          node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync("admission-nightly.json",JSON.stringify({schemaVersion:1,kind:"ios-testflight-environment-admission",channel:"nightly",environment:"ios-nightly",sourceSha:process.env.SOURCE_SHA,ref:"refs/heads/main"},null,2)+"\n",{mode:0o600});'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: station-internal-ios-admission-nightly-${{ github.run_id }}
+          path: admission-nightly.json
+          if-no-files-found: error
+          retention-days: 30
+
+  plan:
+    needs: [admit-stable, admit-beta, admit-nightly]
+    if: needs.admit-stable.result == 'success' && needs.admit-beta.result == 'success' && needs.admit-nightly.result == 'success'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    concurrency:
+      group: station-nightly-version-allocation
+      cancel-in-progress: false
+    environment: native-release
+    permissions: { contents: write }
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
+      version: ${{ steps.builds.outputs.version }}
+      stable_build: ${{ steps.builds.outputs.stable_build }}
+      beta_build: ${{ steps.builds.outputs.beta_build }}
+      nightly_build: ${{ steps.authority.outputs.nightly_build }}
+      stable_tag: ${{ steps.authority.outputs.stable_tag }}
+      beta_tag: ${{ steps.authority.outputs.beta_tag }}
+      nightly_tag: ${{ steps.authority.outputs.nightly_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+      - id: source
+        name: Freeze only the current public main revision
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          source_sha=$(git rev-parse HEAD)
+          test "$source_sha" = "$GITHUB_SHA"
+          remote_sha=$(git ls-remote --refs origin refs/heads/main | awk 'NR == 1 { print $1 }')
+          [[ "$remote_sha" =~ ^[0-9a-f]{40}$ ]]
+          test "$remote_sha" = "$source_sha"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with: { node-version-file: .nvmrc, cache: npm }
+      - run: npm run dependencies:ci
+      - name: Prove every channel environment and authority-tag protection before delivery
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ios-testflight-delivery-policy.mjs --repository "$GITHUB_REPOSITORY" --output authority-admission.json
+      - id: builds
+        name: Select channel-safe internal build numbers
+        run: |
+          set -euo pipefail
+          version=$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')
+          node scripts/product-version.mjs --check
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          stable_build=$(node --input-type=module -e 'import { internalTestFlightBuild } from "./scripts/ios-testflight-internal-authority.mjs"; process.stdout.write(internalTestFlightBuild({channel:"stable",version:process.argv[1]}));' "$version")
+          beta_build=$(node --input-type=module -e 'import { internalTestFlightBuild } from "./scripts/ios-testflight-internal-authority.mjs"; process.stdout.write(internalTestFlightBuild({channel:"beta",version:process.argv[1]}));' "$version")
+          { echo "version=$version"; echo "stable_build=$stable_build"; echo "beta_build=$beta_build"; } >> "$GITHUB_OUTPUT"
+      - id: authority
+        name: Sign, create, and verify immutable internal authority tags
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TESTFLIGHT_AUTHORITY_GPG_PRIVATE_KEY: ${{ secrets.TESTFLIGHT_AUTHORITY_GPG_PRIVATE_KEY }}
+          TESTFLIGHT_AUTHORITY_GPG_PASSPHRASE: ${{ secrets.TESTFLIGHT_AUTHORITY_GPG_PASSPHRASE }}
+          TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT: ${{ vars.TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          VERSION: ${{ steps.builds.outputs.version }}
+          STABLE_BUILD: ${{ steps.builds.outputs.stable_build }}
+          BETA_BUILD: ${{ steps.builds.outputs.beta_build }}
+        run: |
+          set -euo pipefail
+          test -n "$TESTFLIGHT_AUTHORITY_GPG_PRIVATE_KEY"
+          test -n "$TESTFLIGHT_AUTHORITY_GPG_PASSPHRASE"
+          [[ "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT" =~ ^[A-F0-9]{40}$ ]]
+          umask 077
+          key="$RUNNER_TEMP/testflight-authority.asc"
+          passphrase_file="$RUNNER_TEMP/testflight-authority.passphrase"
+          authority_gnupg="$RUNNER_TEMP/testflight-authority-gnupg"
+          cleanup_authority_signer() { rm -f "$key" "$passphrase_file"; rm -rf "$authority_gnupg"; }
+          trap cleanup_authority_signer EXIT
+          mkdir -m 700 "$authority_gnupg"
+          export GNUPGHOME="$authority_gnupg"
+          printf '%s' "$TESTFLIGHT_AUTHORITY_GPG_PRIVATE_KEY" | base64 --decode > "$key"
+          printf '%s' "$TESTFLIGHT_AUTHORITY_GPG_PASSPHRASE" > "$passphrase_file"
+          unset TESTFLIGHT_AUTHORITY_GPG_PRIVATE_KEY TESTFLIGHT_AUTHORITY_GPG_PASSPHRASE
+          chmod 600 "$key" "$passphrase_file"
+          export TESTFLIGHT_AUTHORITY_GPG_PASSPHRASE_FILE="$passphrase_file"
+          gpg --batch --import "$key"
+          imported_fingerprint=$(gpg --batch --with-colons --import-options show-only --import "$key" | awk -F: '$1 == "fpr" { print $10; exit }')
+          test "$imported_fingerprint" = "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT"
+          rm -f "$key"
+          git config gpg.program "$GITHUB_WORKSPACE/scripts/git-gpg-loopback-sign.sh"
+          git config user.name 'Station TestFlight authority'
+          git config user.email 'release@kontourai.io'
+          write_recovery() {
+            node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync("authority-recovery.json",JSON.stringify({schemaVersion:1,kind:"ios-testflight-authority-recovery",channel:process.argv[1],tag:process.argv[2],sourceSha:process.argv[3],reason:process.argv[4],recoveryAction:"Do not dispatch another cohort. Inspect the immutable tag object and provider state before owner reconciliation."},null,2)+"\n",{mode:0o600});' "$1" "$2" "$SOURCE_SHA" "$3"
+          }
+          verify_remote_tag() {
+            channel="$1"; build="$2"; tag="$3"; disposition="$4"; ref="refs/tags/$tag"
+            ref_json="$RUNNER_TEMP/testflight-$channel-ref.json"; tag_json="$RUNNER_TEMP/testflight-$channel-tag.json"
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" > "$ref_json"
+            tag_object_sha=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const value=JSON.parse(readFileSync(process.argv[1])); if(value.ref!==process.argv[2]||value.object?.type!=="tag"||!/^[0-9a-f]{40}$/.test(value.object?.sha??"")) process.exit(1); process.stdout.write(value.object.sha)' "$ref_json" "$ref")
+            git fetch --no-tags origin "$ref:$ref"
+            local_tag_object_sha=$(git rev-parse "$tag^{tag}")
+            gpg_status="$RUNNER_TEMP/testflight-$channel-gpg-status.txt"
+            git verify-tag --raw "$tag" > "$gpg_status" 2>&1
+            gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_object_sha" > "$tag_json"
+            node scripts/verify-ios-testflight-internal-tag.mjs --source-ref "$ref" --source-sha "$SOURCE_SHA" --channel "$channel" --marketing-version "$VERSION" --bundle-version "$build" --expected-fingerprint "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT" --local-tag-object-sha "$local_tag_object_sha" --github-ref "$ref_json" --github-tag "$tag_json" --gpg-status "$gpg_status" >&2
+            node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync(process.argv[1],JSON.stringify({schemaVersion:1,kind:"ios-testflight-internal-authority",status:process.argv[2],channel:process.argv[3],sourceSha:process.argv[4],tag:process.argv[5],build:process.argv[6],signatureFingerprint:process.argv[7],githubTagVerification:"valid"},null,2)+"\n",{mode:0o600});' "authority-$channel.json" "$disposition" "$channel" "$SOURCE_SHA" "$ref" "$build" "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT"
+          }
+          create_authority_tag() {
+            channel="$1"; build="$2"; tag="ios-testflight/$channel/v$VERSION/$build"; ref="refs/tags/$tag"
+            response="$RUNNER_TEMP/testflight-$channel-existing-ref.json"
+            status=$(curl --silent --show-error --output "$response" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/tags/$tag")
+            case "$status" in
+              200) verify_remote_tag "$channel" "$build" "$tag" reused || { write_recovery "$channel" "$ref" 'existing authority is conflicting, torn, unsigned, or incorrectly signed'; exit 1; }; printf '%s\n' "$tag"; return ;;
+              404) rm -f "$response" ;;
+              *) write_recovery "$channel" "$ref" "unable to read existing authority ref (HTTP $status)"; exit 1 ;;
+            esac
+            git tag --sign --local-user "$TESTFLIGHT_AUTHORITY_GPG_FINGERPRINT" --message "Station internal TestFlight $channel v$VERSION build $build source $SOURCE_SHA" "$tag" "$SOURCE_SHA"
+            git verify-tag --raw "$tag"
+            if ! git push origin "$ref" >&2; then
+              verify_remote_tag "$channel" "$build" "$tag" reused-after-race || { write_recovery "$channel" "$ref" 'tag creation raced with a conflicting or torn authority'; exit 1; }
+            else
+              verify_remote_tag "$channel" "$build" "$tag" created || { write_recovery "$channel" "$ref" 'new authority could not be read back exactly'; exit 1; }
+            fi
+            printf '%s\n' "$tag"
+          }
+          nightly_prefix="refs/tags/ios-testflight/nightly/v$VERSION/"
+          nightly_ref_listing=$(mktemp)
+          if ! git ls-remote --refs origin "${nightly_prefix}*" > "$nightly_ref_listing"; then
+            rm -f "$nightly_ref_listing"
+            write_recovery nightly "$nightly_prefix*" 'unable to enumerate internal Nightly authorities'
+            exit 1
+          fi
+          mapfile -t nightly_refs < "$nightly_ref_listing"
+          rm -f "$nightly_ref_listing"
+          if [ "${#nightly_refs[@]}" -gt 1 ]; then write_recovery nightly "$nightly_prefix*" 'multiple internal Nightly authorities exist for this version'; exit 1; fi
+          if [ "${#nightly_refs[@]}" = 1 ]; then
+            nightly_tag="${nightly_refs[0]##*$'\t'refs/tags/}"; nightly_build="${nightly_tag##*/}"
+            [[ "$nightly_build" =~ ^(0|[1-9][0-9]*)$ ]]
+            create_authority_tag nightly "$nightly_build" >/dev/null
+          else
+            NIGHTLY_NOW="$(git show -s --format=%cI "$SOURCE_SHA")"
+            export NIGHTLY_NOW
+            NIGHTLY_RESERVED_TAGS="$(git ls-remote --refs origin 'refs/tags/nightly-version-code/*' 'refs/tags/ios-testflight/nightly/**')"
+            export NIGHTLY_RESERVED_TAGS
+            allocation_output=$(mktemp)
+            GITHUB_OUTPUT="$allocation_output" node scripts/allocate-nightly-version-code.mjs >/dev/null
+            nightly_build=$(awk -F= '$1 == "version_code" { print $2 }' "$allocation_output")
+            rm -f "$allocation_output"
+            nightly_tag=$(create_authority_tag nightly "$nightly_build")
+          fi
+          stable_tag=$(create_authority_tag stable "$STABLE_BUILD")
+          beta_tag=$(create_authority_tag beta "$BETA_BUILD")
+          { echo "stable_tag=$stable_tag"; echo "beta_tag=$beta_tag"; echo "nightly_tag=$nightly_tag"; echo "nightly_build=$nightly_build"; } >> "$GITHUB_OUTPUT"
+      - name: Retain bounded authority receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: station-internal-ios-authority-${{ github.run_id }}
+          path: |
+            authority-*.json
+            authority-admission.json
+            authority-recovery.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  deliver-nightly:
+    needs: plan
+    if: needs.plan.result == 'success'
+    permissions: { contents: read, id-token: write, attestations: write }
+    uses: ./.github/workflows/testflight-delivery.yml
+    with:
+      channel: nightly
+      source_sha: ${{ needs.plan.outputs.source_sha }}
+      source_ref: refs/tags/${{ needs.plan.outputs.nightly_tag }}
+      marketing_version: ${{ needs.plan.outputs.version }}
+      bundle_version: ${{ needs.plan.outputs.nightly_build }}
+      release_label: internal-nightly-${{ needs.plan.outputs.nightly_build }}
+      mobile_endpoint: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}
+    secrets: inherit
+
+  deliver-beta:
+    needs: [plan, deliver-nightly]
+    if: needs.plan.result == 'success' && needs.deliver-nightly.result == 'success'
+    permissions: { contents: read, id-token: write, attestations: write }
+    uses: ./.github/workflows/testflight-delivery.yml
+    with:
+      channel: beta
+      source_sha: ${{ needs.plan.outputs.source_sha }}
+      source_ref: refs/tags/${{ needs.plan.outputs.beta_tag }}
+      marketing_version: ${{ needs.plan.outputs.version }}
+      bundle_version: ${{ needs.plan.outputs.beta_build }}
+      release_label: internal-beta-${{ needs.plan.outputs.beta_build }}
+      mobile_endpoint: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_BETA }}
+    secrets: inherit
+
+  deliver-stable:
+    needs: [plan, deliver-beta]
+    if: needs.plan.result == 'success' && needs.deliver-beta.result == 'success'
+    permissions: { contents: read, id-token: write, attestations: write }
+    uses: ./.github/workflows/testflight-delivery.yml
+    with:
+      channel: stable
+      source_sha: ${{ needs.plan.outputs.source_sha }}
+      source_ref: refs/tags/${{ needs.plan.outputs.stable_tag }}
+      marketing_version: ${{ needs.plan.outputs.version }}
+      bundle_version: ${{ needs.plan.outputs.stable_build }}
+      release_label: internal-stable-${{ needs.plan.outputs.stable_build }}
+      mobile_endpoint: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_STABLE }}
+    secrets: inherit
