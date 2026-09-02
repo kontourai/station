@@ -22,8 +22,9 @@ describe('ChatDock region forwarding', () => {
 
   // A second mount in the same document (kontourai/station#1301):
   // `loadAmbientChatDockPaneHost` must hand each `lazy()` its own promise or
-  // this render never returns. `test:focused` has no per-test timeout, so
-  // a regression here hangs the file rather than failing it.
+  // this render never returns. The spin is synchronous, so vitest's 30s
+  // `testTimeout` never gets to fire: a regression hangs the file rather
+  // than failing it.
   test('the legacy mount forwards no region and keeps the other props', async () => {
     const onNavigate = vi.fn();
     render(<ChatDock onNavigate={onNavigate} />);

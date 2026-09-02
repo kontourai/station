@@ -176,10 +176,11 @@ export function useDockShellChrome({
    * Whether this instance reserves route space by publishing
    * `--dock-slot-size` (via `onGeometryChange`).
    *
-   * Required, and deliberately not optional (archive#3972). Exactly ONE
-   * mount may publish it: the ambient shell (`DockShell`), which sits over
-   * the routes. A full-screen Chat placement is INSIDE the layout, so it has
-   * nothing to clear — and when it published anyway,
+   * Required, and deliberately not optional (archive#3972). Only the ambient
+   * shells (`DockShell`, one per occupied region — #928) publish it; with Chat
+   * the only registered surface that is one mount, and the N-writer reducer
+   * arrives with the next surface. A full-screen Chat placement is INSIDE the
+   * layout, so it has nothing to clear — and when it published anyway,
    * `/projects/<p>/layouts/chat` reserved 320px for a dock that was not
    * there. A default here would decide that for a caller that never thought
    * about it, and the safe answer is not the common one; every mount states

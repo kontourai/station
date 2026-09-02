@@ -461,9 +461,9 @@ export function AmbientChatDockPaneHost({
   // DockShell wraps every occupant (Chat, Home, Activity) — the one dock
   // chrome shell (archive#4460): root box, resize handle, geometry/snap/
   // drag state, `dock.toggle`/`dock.maximize`. Its `onGeometryChange` is
-  // the ambient host's only remaining geometry job — apply the shell's
-  // single live report to the CSS variables (archive#3902/archive#3929:
-  // exactly one writer).
+  // this host's only remaining geometry job — apply the shell's live report
+  // to the CSS variables (archive#3902/archive#3929: one writer per shell;
+  // one shell while Chat is the only registered surface, #928).
   const host = (
     <DockShell regionId={regionId} onGeometryChange={writeDockSlotGeometry}>
       {(shellChrome) => {
