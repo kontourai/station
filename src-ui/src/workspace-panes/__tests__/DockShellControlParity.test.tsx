@@ -92,6 +92,10 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  // A test that fails before its own `mockRestore` would otherwise leave the
+  // store spied, and `vi.spyOn` on an already-spied method hands back the SAME
+  // mock — so the next test would read the previous test's calls as its own.
+  vi.restoreAllMocks();
   resetDockPlacementState('/', { dock: null });
   delete (globalThis.navigator as { locks?: unknown }).locks;
 });
@@ -311,7 +315,6 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
     // A visibility change carries no size, so the mirror must write none —
     // a mirror that re-emits every field on every diff would loop the store.
     expect(deviceWrite.mock.calls.map(([key]) => key)).toEqual([]);
-    deviceWrite.mockRestore();
   });
 
   test('an unrelated device-setting change leaves the placed region alone', async () => {
@@ -363,9 +366,6 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
     expect(dockStateWrite).toHaveBeenCalledTimes(1);
     expect(dockModeWrite).not.toHaveBeenCalled();
     expect(deviceWrite.mock.calls.map(([key]) => key)).toEqual([]);
-    dockModeWrite.mockRestore();
-    dockStateWrite.mockRestore();
-    deviceWrite.mockRestore();
   });
 
   test('a hidden region keeps its occupant mounted', async () => {
