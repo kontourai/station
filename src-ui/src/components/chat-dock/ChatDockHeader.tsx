@@ -145,7 +145,7 @@ export function ChatDockHeader({
   regionVisible,
   shellMaximized,
 }: ChatDockHeaderProps) {
-  const isDockOpen = regionVisible ?? false;
+  const isDockOpen = regionVisible ?? true;
   const isDockMaximized = shellMaximized ?? false;
   const toggleDockShortcut = useShortcutDisplay('dock.toggle');
   const maximizeShortcut = useShortcutDisplay('dock.maximize');

@@ -58,6 +58,8 @@ function renderHeader({
       effectiveDockSlotPlacement={dockMode}
       onDockPlacementChange={vi.fn()}
       fullscreen={fullscreen}
+      regionVisible={isDockOpen}
+      shellMaximized={isDockMaximized}
     />,
   );
 }
