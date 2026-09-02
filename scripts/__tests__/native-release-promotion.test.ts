@@ -453,6 +453,8 @@ describe('one-revision native promotion contract', () => {
     expect(source).toContain('manifest.prerelease!==true');
     expect(source).toContain('Object.hasOwn(manifest,"releaseChannel")');
     expect(source).not.toContain('manifest.releaseChannel!=="nightly-staging"');
+    expect(source).toContain('syft-version: v1.51.0');
+    expect(source).not.toContain('syft-version: 1.51.0');
     expect(source).toContain('gh attestation verify "staged/$name"');
     expect(source).toContain('--source-ref refs/heads/main');
     expect(source).toContain('--deny-self-hosted-runners');
