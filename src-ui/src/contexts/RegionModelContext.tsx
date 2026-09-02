@@ -66,7 +66,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     const previous = mirroredRegionsRef.current;
     const diff = dockMirrorDiff(previous, regions);
     const placement = diff.placement;
-    if (placement) setDockMode(placement as Exclude<RegionId, 'main'>);
+    if (placement) setDockMode(placement);
     if (diff.visible !== undefined)
       setDockState(diff.visible, diff.visible ? isDockMaximized : false);
     if (diff.size !== undefined)

@@ -396,8 +396,8 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
       expect(document.querySelector('.chat-dock')).not.toBeNull(),
     );
     // Maximize, then dock back down the way a navigation does: the store
-    // keeps `lastDockMaximized` so the next reveal restores Full
-    // (archive#1298, `useChatDockActions.focusSession`).
+    // keeps `lastDockMaximized` so a later `focusSession` reveal can restore
+    // Full (archive#1298, `useChatDockActions`).
     act(() => navigationStore.setDockState(true, true));
     act(() => navigationStore.collapseMaximizedDock());
     expect(navigationStore.lastDockMaximized).toBe(true);

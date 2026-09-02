@@ -27,16 +27,16 @@ type DockSeedSettings = Pick<
   'chatDockHeight' | 'chatDockWidth'
 >;
 
-/** The dock region holding chat; undefined only for a layout no seed produces. */
-export function chatRegion(
-  layout: RegionLayout,
-): (typeof DOCK_REGION_IDS)[number] | undefined {
+export type DockRegionId = (typeof DOCK_REGION_IDS)[number];
+
+/** The dock region holding chat; undefined when chat sits outside the dock (e.g. 'main'). */
+export function chatRegion(layout: RegionLayout): DockRegionId | undefined {
   return DOCK_REGION_IDS.find((id) => layout[id].occupant === 'chat');
 }
 
 export function seedRegionLayoutFromDock(
   settings: DockSeedSettings,
-  placement: (typeof DOCK_REGION_IDS)[number],
+  placement: DockRegionId,
   isDockOpen: boolean,
 ): RegionLayout {
   return syncRegionLayoutFromDock(
@@ -51,7 +51,7 @@ export function syncRegionLayoutFromDock(
   layout: RegionLayout,
   settings: DockSeedSettings,
   isDockOpen: boolean,
-  placement: (typeof DOCK_REGION_IDS)[number],
+  placement: DockRegionId,
 ): RegionLayout {
   let next = updateRegion(layout, 'bottom', {
     size: settings.chatDockHeight,
@@ -87,14 +87,14 @@ export function dockMirrorDiff(
   previous: RegionLayout,
   next: RegionLayout,
 ): {
-  placement?: RegionId;
+  placement?: DockRegionId;
   visible?: boolean;
   size?: Partial<Record<RegionId, number>>;
 } {
   const previousPlacement = chatRegion(previous);
   const placement = chatRegion(next);
   const result: {
-    placement?: RegionId;
+    placement?: DockRegionId;
     visible?: boolean;
     size?: Partial<Record<RegionId, number>>;
   } = {};
@@ -103,11 +103,10 @@ export function dockMirrorDiff(
   // Visibility is compared across the move, not re-emitted with it: a
   // same-visibility move must not reach `setDockState`, which records
   // `lastDockMaximized` (navigation-store.ts) as a side effect.
-  if (
-    placement &&
-    previousPlacement &&
-    next[placement].visible !== previous[previousPlacement].visible
-  )
+  const previousVisible = previousPlacement
+    ? previous[previousPlacement].visible
+    : false;
+  if (placement && next[placement].visible !== previousVisible)
     result.visible = next[placement].visible;
   const sizes: Partial<Record<RegionId, number>> = {};
   for (const id of DOCK_REGION_IDS)
