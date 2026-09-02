@@ -356,6 +356,7 @@
     "gaxios": "7.3.0",
     "lodash": "4.18.1",
     "node-forge": "1.4.0",
+    "qs": "^6.16.0",
     "router": {
       "path-to-regexp": "8.4.2"
     },
