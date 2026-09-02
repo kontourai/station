@@ -21,6 +21,7 @@ import {
 } from '../contexts/DeviceSettingsContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useProjects } from '../contexts/ProjectsContext';
+import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { readToolbarHeight } from '../lib/toolbarGeometry';
 import type { DockMode } from '../types';
 import {
@@ -198,12 +199,35 @@ export function useDockShellChrome({
     setDockMode,
     collapseMaximizedDock,
   } = useNavigation();
+  const regionModel = useRegionModelOptional();
   const isMobile = useIsMobile();
   const visualViewport = useMobileVisualViewport();
+  // Step 3a moves the dock's OPEN STATE onto the region model and deliberately
+  // leaves PLACEMENT on navigation. The model seeds its chat occupant from
+  // `settings.dockSlotPlacement` alone, whereas navigation's `dockMode` is a
+  // precedence chain — URL param, then `dockModeOverride`, then the setting
+  // (navigation-store.ts:415). The Coding layout takes the override path via
+  // `setDockModeQuiet`, which never writes the setting, so deriving placement
+  // from the model would move that dock from the right panel to a bottom bar.
+  // Placement moves in the step where the model actually owns it.
+  const modelChatRegion =
+    regionModel &&
+    (['left', 'right', 'bottom'] as const).find(
+      (id) => regionModel.regions[id].occupant === 'chat',
+    );
+  const readerDockMode = dockMode;
+  // Visibility is read from whichever region the model says holds chat — the
+  // sync effect writes `visible: isDockOpen` there, so this is equal to
+  // `isDockOpen` today. Reading `regions[dockMode]` instead would be wrong
+  // whenever the two disagree: an unoccupied region seeds `visible: false`.
+  const readerIsDockOpen =
+    regionModel && modelChatRegion
+      ? regionModel.regions[modelChatRegion].visible
+      : isDockOpen;
   const {
     available: availableDockSlotPlacements,
     effective: effectiveDockSlotPlacement,
-  } = useDockSlotPlacement(dockMode);
+  } = useDockSlotPlacement(readerDockMode);
 
   // archive#4525: the dock's remembered project binding. Read LIVE every
   // render (the same pattern `chatShowReasoning`/`chatShowToolDetails` use
@@ -296,7 +320,7 @@ export function useDockShellChrome({
   const [isDragging, setIsDraggingState] = useState(false);
   const [dockSnap, setDockSnap] = useState<DockSnap>(() => readDockSnap());
   const [liveDragHeight, setLiveDragHeight] = useState<number | null>(null);
-  const isCollapsedDragPreview = !isDockOpen && liveDragHeight !== null;
+  const isCollapsedDragPreview = !readerIsDockOpen && liveDragHeight !== null;
 
   const toolbarHeight = useMemo(() => readToolbarHeight(), []);
   const collapsedHeight = useMemo(() => {
@@ -406,7 +430,7 @@ export function useDockShellChrome({
   // snap (Half/Full) whenever open — desktop's continuous drag owns its own
   // height directly.
   useEffect(() => {
-    if (!publishesDockSlotClearance || !isMobile || !isDockOpen) return;
+    if (!publishesDockSlotClearance || !isMobile || !readerIsDockOpen) return;
     const next = isDockMaximized ? 'full' : dockSnap;
     if (next === 'collapsed') return;
     setDockHeight(
@@ -420,7 +444,7 @@ export function useDockShellChrome({
     collapsedHeight,
     dockSnap,
     isDockMaximized,
-    isDockOpen,
+    readerIsDockOpen,
     isMobile,
     publishesDockSlotClearance,
     setDockHeight,
@@ -456,7 +480,7 @@ export function useDockShellChrome({
     onGeometryChange?.(
       deriveDockSlotGeometry({
         placement: effectiveDockSlotPlacement,
-        isOpen: isDockOpen,
+        isOpen: readerIsDockOpen,
         height: dockHeight,
         width: dockWidth,
         liveDragHeight,
@@ -468,7 +492,7 @@ export function useDockShellChrome({
   }, [
     effectiveDockSlotPlacement,
     dockWidth,
-    isDockOpen,
+    readerIsDockOpen,
     dockHeight,
     liveDragHeight,
     publishesDockSlotClearance,
@@ -482,7 +506,7 @@ export function useDockShellChrome({
     direction: 'horizontal',
     fromLeft: effectiveDockSlotPlacement === 'left',
     onDragStart: () => {
-      if (!isDockOpen) setDockState(true, false);
+      if (!readerIsDockOpen) setDockState(true, false);
     },
   });
 
@@ -515,14 +539,14 @@ export function useDockShellChrome({
         setDockState(previousDockOpen, false);
       } else {
         setPreviousDockHeight(dockHeight);
-        setPreviousDockOpen(isDockOpen);
+        setPreviousDockOpen(readerIsDockOpen);
         setDockHeight(window.innerHeight - toolbarHeight);
         setDockState(true, true);
       }
     }, [
       isDockMaximized,
       dockHeight,
-      isDockOpen,
+      readerIsDockOpen,
       previousDockHeight,
       previousDockOpen,
       setDockState,
@@ -535,9 +559,9 @@ export function useDockShellChrome({
   );
 
   return {
-    isDockOpen,
+    isDockOpen: readerIsDockOpen,
     isDockMaximized,
-    dockMode,
+    dockMode: readerDockMode,
     dockHeight,
     dockWidth,
     setDockHeight,
