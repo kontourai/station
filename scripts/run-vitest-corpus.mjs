@@ -42,6 +42,11 @@ export const VITEST_CORPUS_GROUPS = Object.freeze([
     noFileParallelism: true,
   }),
   Object.freeze({
+    name: 'credential-ledger-exclusive',
+    maxWorkers: 1,
+    noFileParallelism: true,
+  }),
+  Object.freeze({
     name: 'shared-output',
     maxWorkers: 1,
     noFileParallelism: true,
@@ -97,6 +102,7 @@ function groupFiles(groups, name) {
     ordinary: 'ordinary',
     'process-heavy': 'processHeavy',
     'process-exclusive': 'processExclusive',
+    'credential-ledger-exclusive': 'credentialLedgerExclusive',
     'shared-output': 'sharedOutput',
     'dogfood-reconcile': 'dogfoodReconcile',
   };

@@ -335,9 +335,10 @@ is diagnostic and does not replace the final `npm run full:regression` receipt.
 Ordinary and focused Vitest invocations inherit the checked-in four-worker
 ceiling. `npm run test:full` discovers the complete corpus, validates exact and
 disjoint ownership through `scripts/vitest-resource-manifest.mjs`, then runs
-five resource groups in order: ordinary isolated files at four workers,
+six resource groups in order: ordinary isolated files at four workers,
 independent process-heavy files at two isolated fork workers, host-global
 process-exclusive files at one worker with file parallelism disabled,
+the credential-ledger DDL proof in its own independently receipted exclusive group,
 shared-output files under the same serial constraint, and dogfood-reconcile
 files under their historical serial constraint. Direct child-process use
 requires a bounded process group, not global serialization: two workers keep
@@ -392,6 +393,7 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 - `test-full-ordinary-8-of-8` — 80-unit host reservation; 20-minute execution deadline.
 - `test-full-process-heavy` — 60-unit host reservation; 30-minute execution deadline.
 - `test-full-process-exclusive` — 60-unit host reservation; 4-minute execution deadline.
+- `test-full-credential-ledger-exclusive` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-shared-output` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-dogfood-reconcile` — 60-unit host reservation; 5-minute execution deadline.
 - `app-builds` — 60-unit host reservation; 10-minute execution deadline.
