@@ -20,9 +20,9 @@ describe('ChatDock region forwarding', () => {
     expect(probe.mock.calls.at(-1)?.[0]).toMatchObject({ regionId: 'right' });
   });
 
-  // A second mount in the same document: `loadAmbientChatDockPaneHost` must
-  // hand each `lazy()` its own promise (ChatDock.tsx, the loader's docblock)
-  // or this render never returns. `test:focused` has no per-test timeout, so
+  // A second mount in the same document (kontourai/station#1301):
+  // `loadAmbientChatDockPaneHost` must hand each `lazy()` its own promise or
+  // this render never returns. `test:focused` has no per-test timeout, so
   // a regression here hangs the file rather than failing it.
   test('the legacy mount forwards no region and keeps the other props', async () => {
     const onNavigate = vi.fn();

@@ -288,13 +288,11 @@ const loadConversationOpenRevalidator = () =>
  * evaluated — entry time — so the chunk arrives alongside the entry rather
  * than after it, and the boundary resolves without a visible gap.
  *
- * Every call returns a NEW promise. The module registry makes the repeat
- * `import()` free, and a fresh promise is required: React's `lazy` stamps
- * `status = 'fulfilled'` onto the promise it settles, and a later `lazy()` fed
- * that same object throws it while its own payload is still pending — the
- * reconciler then replays synchronously forever (`isThenableResolved` →
- * `replaySuspendedUnitOfWork`). A second mount of this dock froze on that,
- * and App.tsx's `showAmbientChatDock` remounts it on ordinary navigation.
+ * Every call returns a NEW promise; the module registry makes the repeat
+ * `import()` free. Memoizing it froze the tab on the dock's second mount
+ * (kontourai/station#1301: React's `lazy` livelocks on a promise it has
+ * already settled), and App.tsx's `showAmbientChatDock` remounts the dock on
+ * ordinary navigation.
  */
 const loadAmbientChatDockPaneHost = () =>
   import('../../workspace-panes/AmbientChatDockPaneHost').then((module) => ({
