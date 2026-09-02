@@ -29,12 +29,14 @@ type DockSeedSettings = Pick<
 
 export function seedRegionLayoutFromDock(
   settings: DockSeedSettings,
+  placement: (typeof DOCK_REGION_IDS)[number],
   isDockOpen: boolean,
 ): RegionLayout {
   return syncRegionLayoutFromDock(
     structuredClone(DEFAULT_DEVICE_REGION_LAYOUT),
     settings,
     isDockOpen,
+    placement,
   );
 }
 
@@ -42,8 +44,8 @@ export function syncRegionLayoutFromDock(
   layout: RegionLayout,
   settings: DockSeedSettings,
   isDockOpen: boolean,
+  placement = settings.dockSlotPlacement ?? 'bottom',
 ): RegionLayout {
-  const placement = settings.dockSlotPlacement ?? 'bottom';
   let next = updateRegion(layout, 'bottom', {
     size: settings.chatDockHeight,
   });
@@ -77,22 +79,34 @@ export function placeSurface(
 export function dockMirrorDiff(
   previous: RegionLayout,
   next: RegionLayout,
-): { placement?: RegionId; visible?: boolean; size?: number } {
+): {
+  placement?: RegionId;
+  visible?: boolean;
+  size?: Partial<Record<RegionId, number>>;
+} {
   const previousPlacement = DOCK_REGION_IDS.find(
     (id) => previous[id].occupant === 'chat',
   );
   const placement = DOCK_REGION_IDS.find((id) => next[id].occupant === 'chat');
-  const result: { placement?: RegionId; visible?: boolean; size?: number } = {};
+  const result: {
+    placement?: RegionId;
+    visible?: boolean;
+    size?: Partial<Record<RegionId, number>>;
+  } = {};
   if (placement !== previousPlacement && placement)
     result.placement = placement;
   if (placement !== previousPlacement && placement)
     result.visible = next[placement].visible;
-  if (placement && previousPlacement) {
-    if (next[placement].visible !== previous[previousPlacement].visible)
-      result.visible = next[placement].visible;
-    if (next[placement].size !== previous[previousPlacement].size)
-      result.size = next[placement].size;
-  }
+  if (
+    placement &&
+    previousPlacement &&
+    next[placement].visible !== previous[previousPlacement].visible
+  )
+    result.visible = next[placement].visible;
+  const sizes: Partial<Record<RegionId, number>> = {};
+  for (const id of DOCK_REGION_IDS)
+    if (next[id].size !== previous[id].size) sizes[id] = next[id].size;
+  if (Object.keys(sizes).length) result.size = sizes;
   return result;
 }
 

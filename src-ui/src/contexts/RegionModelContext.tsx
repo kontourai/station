@@ -41,7 +41,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   const { setDeviceSetting } = useDeviceSettingsActions();
   const [regions, setRegions] = useState<RegionLayout>(
     // Step 1 persists region layout via legacy dock keys; its own record arrives when regions become user-visible.
-    () => seedRegionLayoutFromDock(settings, isDockOpen),
+    () => seedRegionLayoutFromDock(settings, dockMode, isDockOpen),
   );
   const regionsRef = useRef(regions);
   const mirroredRegionsRef = useRef(regions);
@@ -68,12 +68,13 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     if (placement) setDockMode(placement as Exclude<RegionId, 'main'>);
     if (diff.visible !== undefined)
       setDockState(diff.visible, diff.visible ? isDockMaximized : false);
-    if (diff.size !== undefined && placement) {
-      setDeviceSetting(
-        placement === 'bottom' ? 'chatDockHeight' : 'chatDockWidth',
-        diff.size,
-      );
-    }
+    if (diff.size !== undefined)
+      for (const id of DOCK_REGION_IDS)
+        if (diff.size[id] !== undefined)
+          setDeviceSetting(
+            id === 'bottom' ? 'chatDockHeight' : 'chatDockWidth',
+            diff.size[id]!,
+          );
     mirroredRegionsRef.current = regions;
   }, [isDockMaximized, regions, setDeviceSetting, setDockMode, setDockState]);
 
@@ -86,7 +87,7 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     );
     if (placement === dockMode && current[placement]?.visible === isDockOpen)
       return;
-    const next = seedRegionLayoutFromDock(settings, isDockOpen);
+    const next = seedRegionLayoutFromDock(settings, dockMode, isDockOpen);
     regionsRef.current = next;
     setRegions(next);
   }, [dockMode, isDockOpen]);

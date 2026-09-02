@@ -422,7 +422,7 @@ function App() {
   const isAmbientMobileDockFullscreen = isMobileDockFullscreenState({
     isMobile: isMobileViewport,
     isDockOpen: modelChatRegion
-      ? regionModel!.regions[modelChatRegion].visible
+      ? regionModel.regions[modelChatRegion].visible
       : isDockOpen,
     isDockMaximized,
     isDockOwnedView: isDockOwnedViewType(displayCurrentView.type),

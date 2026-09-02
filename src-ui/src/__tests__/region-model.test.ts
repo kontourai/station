@@ -63,13 +63,14 @@ describe('region model', () => {
     ]);
   });
 
-  test('seeds the in-memory model from the persisted legacy dock keys', () => {
+  test('seeds the in-memory model from resolved navigation placement and persisted sizes', () => {
     const layout = seedRegionLayoutFromDock(
       {
         chatDockHeight: 417,
         chatDockWidth: 389,
         dockSlotPlacement: 'right',
       },
+      'right',
       true,
     );
 

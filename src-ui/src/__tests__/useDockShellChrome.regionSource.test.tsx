@@ -120,10 +120,12 @@ describe('useDockShellChrome reads its open state from the region model', () => 
       { wrapper },
     );
 
-    // The model holds chat at 'bottom' (seeded from dockSlotPlacement).
-    expect(result.current.model.regions.bottom.occupant).toBe('chat');
-    // Navigation is mocked at 'right', the Coding-layout override shape.
-    expect(result.current.chrome.dockMode).toBe('bottom');
+    // Seeding uses navigation's resolved placement, so the old device versus
+    // navigation split from before #1265 no longer exists. A later model write
+    // is authoritative and chrome follows it before the mirror runs.
+    expect(result.current.model.regions.right.occupant).toBe('chat');
+    act(() => result.current.model.placeSurface('chat', 'left'));
+    expect(result.current.chrome.dockMode).toBe('left');
     // Open state still comes from the region that holds chat, not from
     // `regions[dockMode]` — 'right' is unoccupied and seeds `visible: false`.
     expect(result.current.chrome.isDockOpen).toBe(true);
