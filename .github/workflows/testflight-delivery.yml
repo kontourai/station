@@ -159,15 +159,20 @@ jobs:
           printf '%s' "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
           printf '%s' "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile"
           node scripts/ios-testflight-readiness.mjs --channel '${{ inputs.channel }}' --station "$profile" --team "$APPLE_DEVELOPMENT_TEAM" --group-id "$TESTFLIGHT_INTERNAL_GROUP_ID" > provider-receipts/testflight-channel-readiness.json
-          node scripts/check-ios-store-profile.mjs --station "$profile" --label APPLE_PROVISIONING_PROFILE_BASE64 --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id '${{ steps.app_store.outputs.bundle_id }}'
+          profile_metadata="$RUNNER_TEMP/station-ios-profile.json"
+          node scripts/check-ios-store-profile.mjs --station "$profile" --label APPLE_PROVISIONING_PROFILE_BASE64 --expected-team "$APPLE_DEVELOPMENT_TEAM" --expected-bundle-id '${{ steps.app_store.outputs.bundle_id }}' > "$profile_metadata"
           node scripts/ios-store-signing-config.mjs --station "$profile" --identity "$APPLE_SIGNING_IDENTITY" --team "$APPLE_DEVELOPMENT_TEAM" --bundle-id '${{ steps.app_store.outputs.bundle_id }}' --template src-desktop/gen/apple/project.yml --template-output "$RUNNER_TEMP/station-ios-project.yml" --overlay-output "$RUNNER_TEMP/station-ios-signing.json"
+          grep -Fq 'PROVISIONING_PROFILE:' "$RUNNER_TEMP/station-ios-project.yml"
+          grep -Fq 'PROVISIONING_PROFILE_SPECIFIER:' "$RUNNER_TEMP/station-ios-project.yml"
           security create-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
           security unlock-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
           security import "$certificate" -k "$keychain" -P "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$keychain"
           security list-keychains -d user -s "$keychain"
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/station.mobileprovision"
+          profile_uuid=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).uuid' "$profile_metadata")
+          [[ "$profile_uuid" =~ ^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$ ]]
+          cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
       - name: Build signed and channel-audited iOS package
         working-directory: src-desktop
         run: |

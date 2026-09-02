@@ -773,7 +773,7 @@ describe('native release workflow topology', () => {
           'ghcr.io/$' +
           '{{ github.repository }}@$' +
           '{{ steps.platforms.outputs.amd64 }}',
-        'syft-version': '1.51.0',
+        'syft-version': 'v1.51.0',
         'upload-artifact': false,
         'upload-release-assets': false,
       },
@@ -806,6 +806,8 @@ describe('native release workflow topology', () => {
           'upload-release-assets',
         ],
       );
+    expect(release).toContain('syft-version: v1.51.0');
+    expect(release).not.toContain('syft-version: 1.51.0');
     expectStepOrder(container, [
       'Create immutable container release descriptor',
       'Resolve exact immutable platform digests from the manifest list',
@@ -1090,6 +1092,12 @@ describe('native release workflow topology', () => {
     expect(release).not.toContain('--export-method release-testing');
     expect(testFlightDelivery).toContain(
       'node scripts/check-ios-store-profile.mjs --station "$profile" --label APPLE_PROVISIONING_PROFILE_BASE64',
+    );
+    expect(testFlightDelivery).toContain(
+      'MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision',
+    );
+    expect(testFlightDelivery).not.toContain(
+      'MobileDevice/Provisioning Profiles/station.mobileprovision',
     );
     expect(testFlightDelivery).toContain(
       'node scripts/check-ios-store-profile.mjs --station "$app/embedded.mobileprovision" --label \'exported IPA embedded.mobileprovision\'',
