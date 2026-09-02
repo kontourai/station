@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react';
+import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import type { DockSlotGeometry } from '../../hooks/dock-slot-geometry';
 import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
+import type { DockMode } from '../../types';
 import { ChatDockResizeHandle } from './ChatDockResizeHandle';
 
 /**
@@ -28,15 +30,21 @@ import { ChatDockResizeHandle } from './ChatDockResizeHandle';
  */
 export function DockShell({
   onGeometryChange,
+  regionId,
   children,
 }: {
   onGeometryChange?: (geometry: DockSlotGeometry | null) => void;
+  regionId?: DockMode;
   children: (chrome: DockShellChrome) => ReactNode;
 }) {
+  const regionModel = useRegionModelOptional();
+  const occupant =
+    regionId && regionModel ? regionModel.regions[regionId].occupant : 'chat';
   const chrome = useDockShellChrome({
     publishesDockSlotClearance: true,
     // `DockShell` is the ambient owner of the region maximize command.
-    registersDockShortcuts: true,
+    registersDockShortcuts: regionId === undefined || occupant === 'chat',
+    regionId,
     onGeometryChange,
   });
 
@@ -46,7 +54,10 @@ export function DockShell({
 
   return (
     <section
-      id="chat-dock"
+      id={
+        occupant === 'chat' || regionId === undefined ? 'chat-dock' : undefined
+      }
+      data-region={regionId}
       // A landmark region (station#4460 review L2): the per-occupant
       // `aria-label`s `.dock-slot` used to carry ("Home dock"/"Activity
       // dock") don't apply once the shell — not the occupant — owns the box.

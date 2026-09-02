@@ -63,7 +63,12 @@ import { useDerivedSessions } from '../../hooks/useDerivedSessions';
 import { useDockShellChrome } from '../../hooks/useDockShellChrome';
 import { useExitTransition } from '../../hooks/useExitTransition';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
-import type { ChatSession, FileAttachment, NavigationView } from '../../types';
+import type {
+  ChatSession,
+  DockMode,
+  FileAttachment,
+  NavigationView,
+} from '../../types';
 import {
   type EffectiveModelSource,
   isSessionExecutionActive,
@@ -2959,6 +2964,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
 /** The ambient application placement of the shared Chat workspace pane. */
 export function ChatDock({
+  regionId,
   onRequestAuth,
   homeContinuation = null,
   onNavigate,
@@ -2968,6 +2974,7 @@ export function ChatDock({
   homeContinuation?: HomeViewNavigation | null;
   onNavigate: (view: NavigationView) => void;
   onDockActionChange?: (action: WorkspacePaneDockAction | null) => void;
+  regionId?: DockMode;
 }) {
   // Mounted directly, not behind a LazyBoundary. The chromeless presentation
   // renders a frame and the occupant — there is no tab or split controller to
@@ -2984,6 +2991,7 @@ export function ChatDock({
         homeContinuation,
         onNavigate,
         onDockActionChange,
+        regionId,
       }}
       pending={null}
     />

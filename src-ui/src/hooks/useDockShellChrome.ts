@@ -169,6 +169,7 @@ export interface DockShellChrome {
 export function useDockShellChrome({
   publishesDockSlotClearance,
   registersDockShortcuts,
+  regionId,
   onGeometryChange,
 }: {
   /**
@@ -187,6 +188,7 @@ export function useDockShellChrome({
   publishesDockSlotClearance: boolean;
   /** See the `registersDockShortcuts` paragraph above. */
   registersDockShortcuts: boolean;
+  regionId?: DockMode;
   onGeometryChange?: (geometry: DockSlotGeometry | null) => void;
 }): DockShellChrome {
   const settings = useDeviceSettings();
@@ -204,16 +206,23 @@ export function useDockShellChrome({
   // The region holding chat IS the placement (#928 step 3b). The model seeds
   // from navigation's resolved `dockMode` (URL param, else the device
   // setting — navigation-store.ts), so a deep link still wins on load.
-  const modelChatRegion = regionModel && chatRegion(regionModel.regions);
-  const readerDockMode = modelChatRegion ?? 'bottom';
-  // Visibility comes from whichever region the model says holds chat, and the
-  // model is authoritative — navigation's `isDockOpen` is its mirror, so the
-  // two can legitimately disagree for a render. Only the OCCUPIED region
-  // carries the dock's visibility; an unoccupied one seeds `visible: false`.
+  // A shell given its own region reads that region (one shell per occupied
+  // region); without one it follows chat, as the fullscreen pane does.
+  const readerRegion =
+    regionId ?? (regionModel ? chatRegion(regionModel.regions) : undefined);
+  const readerDockMode = readerRegion ?? 'bottom';
+  // Visibility comes from the region the shell reads, and the model is
+  // authoritative — navigation's `isDockOpen` is its mirror, so the two can
+  // legitimately disagree for a render. Only the OCCUPIED region carries the
+  // dock's visibility; an unoccupied one seeds `visible: false`.
   const readerIsDockOpen =
-    regionModel && modelChatRegion
-      ? regionModel.regions[modelChatRegion].visible
+    regionModel && readerRegion
+      ? regionModel.regions[readerRegion].visible
       : isDockOpen;
+  const effectiveIsDockMaximized =
+    regionId && regionModel
+      ? regionModel.regions[regionId].occupant === 'chat' && isDockMaximized
+      : isDockMaximized;
   const {
     available: availableDockSlotPlacements,
     effective: effectiveDockSlotPlacement,
@@ -289,11 +298,11 @@ export function useDockShellChrome({
     (value: boolean) => {
       if (draggingRef.current && !value) {
         if (effectiveDockSlotPlacement === 'bottom') {
-          regionModel?.setRegion('bottom', {
+          regionModel?.setRegion(regionId ?? 'bottom', {
             size: Math.round(clampDockHeight(dockHeightRef.current)),
           });
         } else {
-          regionModel?.setRegion(effectiveDockSlotPlacement, {
+          regionModel?.setRegion(regionId ?? effectiveDockSlotPlacement, {
             size: Math.round(clampDockWidth(dockWidthRef.current)),
           });
         }
@@ -301,7 +310,7 @@ export function useDockShellChrome({
       draggingRef.current = value;
       setIsDraggingState(value);
     },
-    [effectiveDockSlotPlacement, regionModel],
+    [effectiveDockSlotPlacement, regionId, regionModel],
   );
   const [previousDockHeight, setPreviousDockHeight] = useState(dockHeight);
   const [previousDockOpen, setPreviousDockOpen] = useState(true);
@@ -402,14 +411,14 @@ export function useDockShellChrome({
     const restore = shouldRestoreDockOnNavigation({
       previousPathname: previousPathnameRef.current,
       pathname,
-      isDockMaximized,
+      isDockMaximized: effectiveIsDockMaximized,
     });
     previousPathnameRef.current = pathname;
     if (!restore) return;
     restoreDockToDocked();
   }, [
     pathname,
-    isDockMaximized,
+    effectiveIsDockMaximized,
     publishesDockSlotClearance,
     restoreDockToDocked,
   ]);
@@ -419,7 +428,7 @@ export function useDockShellChrome({
   // height directly.
   useEffect(() => {
     if (!publishesDockSlotClearance || !isMobile || !readerIsDockOpen) return;
-    const next = isDockMaximized ? 'full' : dockSnap;
+    const next = effectiveIsDockMaximized ? 'full' : dockSnap;
     if (next === 'collapsed') return;
     setDockHeight(
       dockSnapPixels(next, {
@@ -431,7 +440,7 @@ export function useDockShellChrome({
   }, [
     collapsedHeight,
     dockSnap,
-    isDockMaximized,
+    effectiveIsDockMaximized,
     readerIsDockOpen,
     isMobile,
     publishesDockSlotClearance,
@@ -522,7 +531,7 @@ export function useDockShellChrome({
     ['cmd'],
     'Maximize/restore dock',
     useCallback(() => {
-      if (isDockMaximized) {
+      if (effectiveIsDockMaximized) {
         setDockHeight(previousDockHeight);
         setDockState(previousDockOpen, false);
       } else {
@@ -532,7 +541,7 @@ export function useDockShellChrome({
         setDockState(true, true);
       }
     }, [
-      isDockMaximized,
+      effectiveIsDockMaximized,
       dockHeight,
       readerIsDockOpen,
       previousDockHeight,
@@ -548,7 +557,7 @@ export function useDockShellChrome({
 
   return {
     isDockOpen: readerIsDockOpen,
-    isDockMaximized,
+    isDockMaximized: effectiveIsDockMaximized,
     dockMode: readerDockMode,
     dockHeight,
     dockWidth,

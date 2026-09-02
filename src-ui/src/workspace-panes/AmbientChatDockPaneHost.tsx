@@ -41,7 +41,7 @@ import { SkeletonBlock } from '../components/state';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import type { DockSlotGeometry } from '../hooks/dock-slot-geometry';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
-import type { NavigationView } from '../types';
+import type { DockMode, NavigationView } from '../types';
 import { ActivityWorkspacePaneBindingProvider } from '../views/activity/ActivityWorkspacePaneBinding';
 import {
   HomeWorkspacePane,
@@ -308,12 +308,14 @@ export type AmbientDockShellApi = DockShellChrome & {
 
 /** The ambient shell mounts Chat through the same host/frame lifecycle as every pane. */
 export function AmbientChatDockPaneHost({
+  regionId,
   onRequestAuth,
   renderChatPane,
   homeContinuation = null,
   onNavigate = () => undefined,
   onDockActionChange,
 }: {
+  regionId?: DockMode;
   onRequestAuth?: () => Promise<boolean> | undefined;
   renderChatPane(
     instance: WorkspacePaneInstance,
@@ -463,7 +465,7 @@ export function AmbientChatDockPaneHost({
   // single live report to the CSS variables (archive#3902/archive#3929:
   // exactly one writer).
   const host = (
-    <DockShell onGeometryChange={writeDockSlotGeometry}>
+    <DockShell regionId={regionId} onGeometryChange={writeDockSlotGeometry}>
       {(shellChrome) => {
         // station#520: keep `dockPaneAsOnlyContent`'s mobile-maximize ref
         // current every render — see the ref's own doc above.

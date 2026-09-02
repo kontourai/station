@@ -22,7 +22,6 @@ import {
 } from './app-shell/routing';
 import { useScrollRestoration } from './app-shell/useScrollRestoration';
 import { ChatAuthRecoveryProvider } from './components/chat-dock/ChatAuthRecoveryContext';
-import { ChatDock } from './components/chat-dock/ChatDock';
 import {
   isDockOwnedViewType,
   isMobileDockFullscreen as isMobileDockFullscreenState,
@@ -42,6 +41,7 @@ import { ProjectsProvider } from './contexts/ProjectsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
+import { RegionShells } from './regions/RegionShells';
 import { chatRegion } from './regions/region-model';
 import {
   type WorkspacePaneDockAction,
@@ -649,7 +649,7 @@ function App() {
               </main>
 
               {showAmbientChatDock && (
-                <ChatDock
+                <RegionShells
                   homeContinuation={
                     homeSurface.status === 'resolved'
                       ? homeSurface.target
