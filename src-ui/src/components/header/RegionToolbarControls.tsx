@@ -111,8 +111,7 @@ function ConnectedRegionToolbarControls() {
         const occupant = regions[id].occupant;
         const surface = occupant ? surfaces.get(occupant) : undefined;
         const label = regionLabel(id);
-        const isCurrent = Boolean(regions[id].occupant === 'chat');
-        const pressed = Boolean(surface && regions[id].visible && isCurrent);
+        const pressed = Boolean(surface && regions[id].visible);
         const actionLabel = surface
           ? `${pressed ? 'Hide' : 'Show'} ${surface.title} ${label} region`
           : firstSurface

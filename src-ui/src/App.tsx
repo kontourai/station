@@ -42,6 +42,7 @@ import { ProjectsProvider } from './contexts/ProjectsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
+import { chatRegion } from './regions/region-model';
 import {
   type WorkspacePaneDockAction,
   WorkspacePaneDockContext,
@@ -190,11 +191,7 @@ function App() {
     effective: effectiveDockSlotPlacement,
   } = useDockSlotPlacement(dockSlotPreference);
   const regionModel = useRegionModelOptional();
-  const modelChatRegion =
-    regionModel &&
-    (['left', 'right', 'bottom'] as const).find(
-      (id) => regionModel.regions[id].occupant === 'chat',
-    );
+  const modelChatRegion = regionModel && chatRegion(regionModel.regions);
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const {
@@ -510,8 +507,6 @@ function App() {
     ['cmd', 'shift'],
     'Cycle dock mode',
     useCallback(() => {
-      // Legacy placement cycling remains shell chrome until fixed left/right
-      // regions go live. Surfaces do not participate. // #928 step 3
       if (availableDockSlotPlacements.length <= 1) return;
       const next =
         availableDockSlotPlacements[

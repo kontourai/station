@@ -23,6 +23,7 @@ import { useNavigation } from '../contexts/NavigationContext';
 import { useProjects } from '../contexts/ProjectsContext';
 import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { readToolbarHeight } from '../lib/toolbarGeometry';
+import { chatRegion } from '../regions/region-model';
 import type { DockMode } from '../types';
 import {
   type DockSlotGeometry,
@@ -200,17 +201,10 @@ export function useDockShellChrome({
   const regionModel = useRegionModelOptional();
   const isMobile = useIsMobile();
   const visualViewport = useMobileVisualViewport();
-  // Step 3b makes the model the writer for placement too, so the region
-  // holding chat IS the placement. The model seeds from navigation's resolved
-  // `dockMode` — the full precedence chain, URL param then `dockModeOverride`
-  // then the setting (navigation-store.ts) — which is what keeps the Coding
-  // layout's `setDockModeQuiet` override (it never writes the setting) on the
-  // right panel instead of collapsing to a bottom bar.
-  const modelChatRegion =
-    regionModel &&
-    (['left', 'right', 'bottom'] as const).find(
-      (id) => regionModel.regions[id].occupant === 'chat',
-    );
+  // The region holding chat IS the placement (#928 step 3b). The model seeds
+  // from navigation's resolved `dockMode` (URL param, else the device
+  // setting — navigation-store.ts), so a deep link still wins on load.
+  const modelChatRegion = regionModel && chatRegion(regionModel.regions);
   const readerDockMode = modelChatRegion ?? 'bottom';
   // Visibility comes from whichever region the model says holds chat, and the
   // model is authoritative — navigation's `isDockOpen` is its mirror, so the

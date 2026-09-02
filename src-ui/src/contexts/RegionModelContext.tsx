@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react';
 import {
+  chatRegion,
   DOCK_REGION_IDS,
   dockMirrorDiff,
   placeSurface as placeSurfaceInLayout,
@@ -69,12 +70,14 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     if (diff.visible !== undefined)
       setDockState(diff.visible, diff.visible ? isDockMaximized : false);
     if (diff.size !== undefined)
-      for (const id of DOCK_REGION_IDS)
-        if (diff.size[id] !== undefined)
+      for (const id of DOCK_REGION_IDS) {
+        const size = diff.size[id];
+        if (size !== undefined)
           setDeviceSetting(
             id === 'bottom' ? 'chatDockHeight' : 'chatDockWidth',
-            diff.size[id]!,
+            size,
           );
+      }
     mirroredRegionsRef.current = regions;
   }, [isDockMaximized, regions, setDeviceSetting, setDockMode, setDockState]);
 
@@ -82,13 +85,15 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: device-setting notifications are mirror traffic, not inbound navigation.
   useEffect(() => {
     const current = regionsRef.current;
-    const placement = DOCK_REGION_IDS.find(
-      (id) => current[id].occupant === 'chat',
-    );
-    if (placement === dockMode && current[placement]?.visible === isDockOpen)
+    const placement = chatRegion(current);
+    if (placement === dockMode && current[placement].visible === isDockOpen)
       return;
     const next = seedRegionLayoutFromDock(settings, dockMode, isDockOpen);
     regionsRef.current = next;
+    // A seed is inbound; marking it mirrored keeps the outbound effect from
+    // replaying it as a user write (which would stamp `dockSlotPlacement`
+    // into the URL of a tab that merely received another tab's setting).
+    mirroredRegionsRef.current = next;
     setRegions(next);
   }, [dockMode, isDockOpen]);
 

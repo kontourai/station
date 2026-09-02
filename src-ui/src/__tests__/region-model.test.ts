@@ -3,7 +3,9 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   DEFAULT_DEVICE_REGION_LAYOUT,
+  dockMirrorDiff,
   isRegionAvailable,
+  placeSurface,
   REGION_SURFACE_REGISTRY,
   seedRegionLayoutFromDock,
   updateRegion,
@@ -68,7 +70,6 @@ describe('region model', () => {
       {
         chatDockHeight: 417,
         chatDockWidth: 389,
-        dockSlotPlacement: 'right',
       },
       'right',
       true,
@@ -84,6 +85,27 @@ describe('region model', () => {
       visible: true,
       size: 389,
       occupant: 'chat',
+    });
+  });
+
+  test('a same-visibility move mirrors placement only', () => {
+    const before = updateRegion(DEFAULT_DEVICE_REGION_LAYOUT, 'bottom', {
+      visible: true,
+    });
+    const after = placeSurface(before, 'chat', 'right');
+
+    // `visible` is compared across the move, never re-emitted with it: the
+    // mirror's `setDockState` records `lastDockMaximized` as a side effect,
+    // so a spurious write here would forget a remembered maximize.
+    expect(dockMirrorDiff(before, after)).toEqual({ placement: 'right' });
+  });
+
+  test('placing into a region while hidden mirrors the reveal', () => {
+    const after = placeSurface(DEFAULT_DEVICE_REGION_LAYOUT, 'chat', 'right');
+
+    expect(dockMirrorDiff(DEFAULT_DEVICE_REGION_LAYOUT, after)).toEqual({
+      placement: 'right',
+      visible: true,
     });
   });
 });

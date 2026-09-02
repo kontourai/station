@@ -365,12 +365,13 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
       expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
     );
 
-    // A placement moves both mirrored facts of a placement — where chat is
-    // (once, through `setDockMode`, which writes the URL param and the device
-    // setting together) and that it is showing there.
+    // A placement moves one mirrored fact — where chat is (once, through
+    // `setDockMode`, which writes the URL param and the device setting
+    // together). The dock was showing before and after, so `setDockState`,
+    // whose side effect is recording `lastDockMaximized`, must not run.
     expect(dockModeWrite).toHaveBeenCalledTimes(1);
     expect(dockModeWrite).toHaveBeenCalledWith('right');
-    expect(dockStateWrite).toHaveBeenCalledTimes(1);
+    expect(dockStateWrite).not.toHaveBeenCalled();
     expect(deviceWrite.mock.calls.map(([key]) => key)).toEqual([
       'dockSlotPlacement',
     ]);
@@ -387,6 +388,78 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
     expect(dockStateWrite).toHaveBeenCalledTimes(1);
     expect(dockModeWrite).not.toHaveBeenCalled();
     expect(deviceWrite.mock.calls.map(([key]) => key)).toEqual([]);
+  });
+
+  test('moving a docked dock keeps the remembered maximize', async () => {
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock')).not.toBeNull(),
+    );
+    // Maximize, then dock back down the way a navigation does: the store
+    // keeps `lastDockMaximized` so the next reveal restores Full
+    // (archive#1298, `useChatDockActions.focusSession`).
+    act(() => navigationStore.setDockState(true, true));
+    act(() => navigationStore.collapseMaximizedDock());
+    expect(navigationStore.lastDockMaximized).toBe(true);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Place Chat in Right region' }),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
+    );
+
+    expect(navigationStore.lastDockMaximized).toBe(true);
+  });
+
+  test('placing chat while the dock is hidden reveals it there', async () => {
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock')).not.toBeNull(),
+    );
+    act(() => dockToggle()());
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull(),
+    );
+    const dockStateWrite = vi.spyOn(navigationStore, 'setDockState');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Place Chat in Right region' }),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
+    );
+
+    expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
+    expect(dockParam()).toBe('open');
+    expect(dockStateWrite).toHaveBeenCalledTimes(1);
+    expect(dockStateWrite).toHaveBeenCalledWith(true, false);
+  });
+
+  test('a placement arriving through the device setting is not replayed as a choice', async () => {
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock--bottom')).not.toBeNull(),
+    );
+    const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
+
+    // Another tab's choice lands as a device-setting change; navigation
+    // recomputes `dockMode` from it (navigation-store.ts,
+    // `handleDeviceSettingsChange`) and the model re-seeds.
+    act(() => deviceSettingsStore.set('dockSlotPlacement', 'right'));
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
+    );
+
+    // A seed is inbound. Replaying it as a user write would stamp
+    // `dockSlotPlacement` into this tab's URL, after which the URL param
+    // governs and this tab never follows the device setting again.
+    expect(dockModeWrite).not.toHaveBeenCalled();
+    expect(
+      new URLSearchParams(window.location.search).get('dockSlotPlacement'),
+    ).toBeNull();
+    expect(currentRegionModel().regions.right.occupant).toBe('chat');
+    expect(currentRegionModel().regions.bottom.occupant).toBeNull();
   });
 
   test('a hidden region keeps its occupant mounted', async () => {

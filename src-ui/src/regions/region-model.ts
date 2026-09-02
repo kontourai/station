@@ -24,8 +24,15 @@ export const DEFAULT_DEVICE_REGION_LAYOUT: RegionLayout = {
 
 type DockSeedSettings = Pick<
   DeviceSettings,
-  'chatDockHeight' | 'chatDockWidth' | 'dockSlotPlacement'
+  'chatDockHeight' | 'chatDockWidth'
 >;
+
+/** The dock region holding chat; undefined only for a layout no seed produces. */
+export function chatRegion(
+  layout: RegionLayout,
+): (typeof DOCK_REGION_IDS)[number] | undefined {
+  return DOCK_REGION_IDS.find((id) => layout[id].occupant === 'chat');
+}
 
 export function seedRegionLayoutFromDock(
   settings: DockSeedSettings,
@@ -44,7 +51,7 @@ export function syncRegionLayoutFromDock(
   layout: RegionLayout,
   settings: DockSeedSettings,
   isDockOpen: boolean,
-  placement = settings.dockSlotPlacement ?? 'bottom',
+  placement: (typeof DOCK_REGION_IDS)[number],
 ): RegionLayout {
   let next = updateRegion(layout, 'bottom', {
     size: settings.chatDockHeight,
@@ -84,10 +91,8 @@ export function dockMirrorDiff(
   visible?: boolean;
   size?: Partial<Record<RegionId, number>>;
 } {
-  const previousPlacement = DOCK_REGION_IDS.find(
-    (id) => previous[id].occupant === 'chat',
-  );
-  const placement = DOCK_REGION_IDS.find((id) => next[id].occupant === 'chat');
+  const previousPlacement = chatRegion(previous);
+  const placement = chatRegion(next);
   const result: {
     placement?: RegionId;
     visible?: boolean;
@@ -95,8 +100,9 @@ export function dockMirrorDiff(
   } = {};
   if (placement !== previousPlacement && placement)
     result.placement = placement;
-  if (placement !== previousPlacement && placement)
-    result.visible = next[placement].visible;
+  // Visibility is compared across the move, not re-emitted with it: a
+  // same-visibility move must not reach `setDockState`, which records
+  // `lastDockMaximized` (navigation-store.ts) as a side effect.
   if (
     placement &&
     previousPlacement &&

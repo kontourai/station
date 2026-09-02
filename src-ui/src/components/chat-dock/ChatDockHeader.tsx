@@ -125,8 +125,8 @@ interface ChatDockHeaderProps {
    * placement, which has no ambient occupant to switch away from.
    */
   occupantPicker?: React.ReactNode;
-  regionVisible?: boolean;
-  shellMaximized?: boolean;
+  regionVisible: boolean;
+  shellMaximized: boolean;
 }
 
 export function ChatDockHeader({
@@ -145,8 +145,8 @@ export function ChatDockHeader({
   regionVisible,
   shellMaximized,
 }: ChatDockHeaderProps) {
-  const isDockOpen = regionVisible ?? true;
-  const isDockMaximized = shellMaximized ?? false;
+  const isDockOpen = regionVisible;
+  const isDockMaximized = shellMaximized;
   const toggleDockShortcut = useShortcutDisplay('dock.toggle');
   const maximizeShortcut = useShortcutDisplay('dock.maximize');
   const side =
