@@ -48,7 +48,7 @@ export function buildVersion(
 ): string {
   const effective = override?.trim() || packageVersion || '0.0.0';
   if (
-    !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:preview|nightly)\.[1-9]\d*)?$/.test(
+    !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:preview|nightly)\.[1-9]\d*(?:\.[1-9]\d*)?)?$/.test(
       effective,
     )
   ) {

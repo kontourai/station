@@ -71,6 +71,8 @@ else
   ARCHIVE_NAME=station-portable.tar.gz
   MANIFEST_NAME="station-release-ring-${CHANNEL}.json"
 fi
+mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd)
 ARCHIVE_PATH="$OUTPUT_DIR/$ARCHIVE_NAME"
 CHECKSUM_PATH="$ARCHIVE_PATH.sha256"
 RING_MANIFEST_PATH="$OUTPUT_DIR/$MANIFEST_NAME"
@@ -94,7 +96,6 @@ node -e '
   }
 ' "$SHA" "$REF" "$CREATED_AT"
 
-mkdir -p "$OUTPUT_DIR"
 TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/station-portable.XXXXXX")
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
