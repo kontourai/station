@@ -163,9 +163,13 @@
   .app-toolbar__conn-note {
     display: none;
   }
+  /* The region fieldset is min-width: 0 so the toolbar can pack, which lets
+     these shrink to ~34px at phone width. A finger needs the same 44px floor
+     the composer controls get; the glyph does not grow. */
   .app-toolbar__region-btn {
-    width: 40px;
-    height: 40px;
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
   }
 }
 

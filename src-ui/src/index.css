@@ -9047,7 +9047,10 @@ button.tool-call__line:hover {
   align-items: center;
   justify-content: flex-start;
   gap: var(--space-2);
-  min-width: 0;
+  /* Still the bar's absorber (see below), but it stops giving ground at the
+     44px touch floor: at 360px it otherwise lands at 43px and is a button
+     nobody can hit. */
+  min-width: 44px;
   min-height: 44px;
   padding: 0 var(--space-2);
   border: none;
