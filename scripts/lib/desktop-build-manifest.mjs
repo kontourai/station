@@ -287,8 +287,7 @@ export function writeNativeClientBuildManifest(
     !refresh &&
     existing &&
     source &&
-    existing.sha === source.sha &&
-    existing.branch === source.branch
+    existing.sha === source.sha
   ) {
     return join(projectRoot, NATIVE_CLIENT_BUILD_MANIFEST_PATH);
   }

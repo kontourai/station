@@ -252,6 +252,26 @@ describe('desktop build manifest', () => {
     );
   });
 
+  test('reuses a staged manifest across a detached checkout branch alias', () => {
+    const root = makeRoot();
+    makeGitCheckout(root);
+    const manifestPath = writeNativeClientBuildManifest(root, {
+      builtAt: '2026-08-30T12:00:00.000Z',
+      env: { STATION_BUILD_BRANCH: 'refs/tags/v0.1.10' },
+    });
+    const staged = readFileSync(manifestPath as string, 'utf8');
+
+    writeNativeClientBuildManifest(root, {
+      builtAt: '2026-08-30T12:01:00.000Z',
+      env: {
+        STATION_CLIENT_BUILD_REUSE: '1',
+        STATION_BUILD_BRANCH: 'HEAD',
+      },
+    });
+
+    expect(readFileSync(manifestPath as string, 'utf8')).toBe(staged);
+  });
+
   test('refuses to write when the server bundle it should describe is absent', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-desktop-manifest-'));
     roots.push(root);

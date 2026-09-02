@@ -17,7 +17,7 @@ describe('iOS TestFlight channel config', () => {
     );
     expect(workflow).toContain('node scripts/write-ios-build-manifest.mjs');
     expect(workflow).toContain(
-      'STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build',
+      'STATION_BUILD_BRANCH="$AUTHORITY_REF" STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build',
     );
     expect(workflow).toContain(
       '--artifact-manifest src-desktop/station-client-build.json',
