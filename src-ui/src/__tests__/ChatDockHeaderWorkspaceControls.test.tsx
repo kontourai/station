@@ -68,6 +68,8 @@ function renderHeader(
     availableDockSlotPlacements: ['left', 'bottom', 'right'],
     effectiveDockSlotPlacement: 'bottom',
     onDockPlacementChange: vi.fn(),
+    regionVisible: true,
+    shellMaximized: false,
     ...overrides,
   };
   return {

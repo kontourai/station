@@ -31,6 +31,14 @@ scripts/dogfood/
 !patches/
 !patches/**
 
+# The node-pty prebuild channel (#1245): the dependencies stage COPYs this
+# directory so the lifecycle's consistency check can read its manifest. The
+# rest of packaging/ (installer and tap material) never enters the image.
+!packaging/
+packaging/*
+!packaging/node-pty-prebuilds/
+!packaging/node-pty-prebuilds/**
+
 !packages/
 !packages/**
 !src-server/

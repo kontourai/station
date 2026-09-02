@@ -39,8 +39,10 @@ import { useConfig } from './contexts/ConfigContext';
 import { useModels } from './contexts/ModelsContext';
 import { useNavigation } from './contexts/NavigationContext';
 import { ProjectsProvider } from './contexts/ProjectsContext';
+import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
+import { chatRegion } from './regions/region-model';
 import {
   type WorkspacePaneDockAction,
   WorkspacePaneDockContext,
@@ -181,7 +183,6 @@ function App() {
     isDockOpen,
     isDockMaximized,
     setLayout,
-    setDockMode,
     navigate,
   } = useNavigation();
   const isMobileViewport = useIsMobile();
@@ -189,6 +190,8 @@ function App() {
     available: availableDockSlotPlacements,
     effective: effectiveDockSlotPlacement,
   } = useDockSlotPlacement(dockSlotPreference);
+  const regionModel = useRegionModelOptional();
+  const modelChatRegion = regionModel && chatRegion(regionModel.regions);
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const {
@@ -415,8 +418,9 @@ function App() {
    */
   const isAmbientMobileDockFullscreen = isMobileDockFullscreenState({
     isMobile: isMobileViewport,
-    // URL compatibility mirrors the bottom region during step 1. // #928 step 4
-    isDockOpen,
+    isDockOpen: modelChatRegion
+      ? regionModel.regions[modelChatRegion].visible
+      : isDockOpen,
     isDockMaximized,
     isDockOwnedView: isDockOwnedViewType(displayCurrentView.type),
   });
@@ -503,8 +507,6 @@ function App() {
     ['cmd', 'shift'],
     'Cycle dock mode',
     useCallback(() => {
-      // Legacy placement cycling remains shell chrome until fixed left/right
-      // regions go live. Surfaces do not participate. // #928 step 3
       if (availableDockSlotPlacements.length <= 1) return;
       const next =
         availableDockSlotPlacements[
@@ -513,8 +515,8 @@ function App() {
             availableDockSlotPlacements.length
         ];
       if (!next) return;
-      setDockMode(next);
-    }, [availableDockSlotPlacements, effectiveDockSlotPlacement, setDockMode]),
+      regionModel?.placeSurface('chat', next);
+    }, [availableDockSlotPlacements, effectiveDockSlotPlacement, regionModel]),
   );
 
   // SHELL-07: `.content-view` is the shell's one scroll container, so its

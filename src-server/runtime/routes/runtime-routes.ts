@@ -4751,21 +4751,6 @@ export function configureDevicePairingPublicRoutes(
       return c.json({ error: 'ui_bootstrap_forbidden' }, 403);
     }
 
-    // A preserved HttpOnly session is already the strongest evidence this
-    // browser can present. Returning it before comparing/consuming the
-    // launcher capability makes repeated start links idempotent instead of
-    // accumulating identityless credentials or exhausting a spent token.
-    const existingCredential = parseDeviceSessionCookie(c.req.header('cookie'));
-    const existingDevice = existingCredential
-      ? pairing.identifyDevice(existingCredential)
-      : null;
-    if (existingDevice) {
-      return c.json({
-        environmentId: pairing.environmentId(),
-        device: existingDevice,
-        delivery: DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
-      });
-    }
     // Every populated slot is compared, with no early exit on a match, so which
     // purpose a presented capability belongs to is not observable from timing.
     // (Empty slots are skipped, so slot OCCUPANCY is — that was already true of
@@ -4775,6 +4760,26 @@ export function configureDevicePairingPublicRoutes(
       const stored = uiBootstrapTokens.get(candidate);
       if (stored && timingSafeSecretEqual(body.token, stored))
         matchedPurpose = candidate;
+    }
+
+    // A preserved HttpOnly session is already the strongest evidence this
+    // browser can present, so return it rather than minting a second
+    // identityless credential — repeated start links stay idempotent. But a
+    // capability that was PRESENTED is spent regardless (#1283): it has been
+    // in a browser, and the holder loses nothing they still needed. Leaving it
+    // live was the common outcome of the tray's docs launch (#1259), since the
+    // default browser usually already holds a session.
+    const existingCredential = parseDeviceSessionCookie(c.req.header('cookie'));
+    const existingDevice = existingCredential
+      ? pairing.identifyDevice(existingCredential)
+      : null;
+    if (existingDevice) {
+      if (matchedPurpose) uiBootstrapTokens.delete(matchedPurpose);
+      return c.json({
+        environmentId: pairing.environmentId(),
+        device: existingDevice,
+        delivery: DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
+      });
     }
     if (!matchedPurpose) {
       return c.json({ error: 'ui_bootstrap_forbidden' }, 403);
