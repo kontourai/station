@@ -30,7 +30,9 @@ queue is part of it. What that means in practice:
   Several PRs waiting is the queue working, not the queue stuck. Its
   check-response timeout is 120 minutes.
 - **Required checks**: `fast-checks`, `CodeQL JavaScript and TypeScript`,
-  `Dependency review`, `Windows PR portable floor`. Branches are NOT required
+  `Dependency review`, `Windows PR portable floor`, `build-ios-verification`
+  (the ruleset is the authority: `gh api repos/kontourai/station/rules/branches/main`).
+  Branches are NOT required
   to be up to date (`strict: false`), so you do not have to rebase onto every
   intervening commit — but two independently green PRs can still break `main`
   in combination. `main-health.yml` files a P1 when that happens.
