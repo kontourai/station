@@ -244,23 +244,40 @@ jobs:
           node scripts/lib/nightly-build-identity.mjs --package-json package.json --tauri-config src-desktop/tauri.conf.json --date "$date" --build "$build" --output "$RUNNER_TEMP/tauri.nightly.conf.json"
           node scripts/reset-android-generated-project.mjs
           (cd src-desktop && npx tauri android init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.nightly.conf.json")
+          # Freeze the source-owned client record before copying it into the
+          # Android assets. Tauri's later beforeBuildCommand receives the
+          # reuse lease below, so it cannot sample a newer builtAt value.
+          node scripts/write-native-client-build-manifest.mjs
           node scripts/apply-android-release-signing.mjs
           node scripts/apply-android-channel-icons.mjs nightly
           node scripts/apply-android-native-bootstrap.mjs
+          node scripts/write-android-build-manifest.mjs
           keystore="$RUNNER_TEMP/station-nightly.keystore"; printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
           export TAURI_ANDROID_KEYSTORE_PATH="$keystore" NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
           version=$(node -e 'console.log(require("./cohort/cohort-plan.json").versionIdentities.android.versionName)')
-          (cd src-desktop && STATION_BUILD_VERSION="$version" RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384' npx tauri android build --aab --apk --config "$RUNNER_TEMP/tauri.nightly.conf.json")
+          (cd src-desktop && STATION_BUILD_VERSION="$version" STATION_CLIENT_BUILD_REUSE=1 RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384' npx tauri android build --aab --apk --config "$RUNNER_TEMP/tauri.nightly.conf.json")
           mkdir -p cohort-android
           cp src-desktop/gen/android/app/build/outputs/bundle/universalRelease/*.aab cohort-android/station-nightly-universal.aab
           apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)
+          test -n "$apk"
+          cp "$apk" cohort-android/station-nightly-universal.apk
+          # Play receives this AAB, not the staged source tree. Extract its
+          # base/assets record and require literal byte equality before either
+          # provider upload or ledger claim can name this build.
+          node scripts/read-android-build-provenance.mjs cohort-android/station-nightly-universal.aab --expected src-desktop/station-client-build.json --output cohort-android/station-client-build.json
+          # The retained sibling APK is a separate packaging surface.
+          node scripts/read-android-build-provenance.mjs cohort-android/station-nightly-universal.apk --expected src-desktop/station-client-build.json
           aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/aapt"; apksigner="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/apksigner"
           "$aapt" dump badging "$apk" | grep -F "package: name='io.kontourai.station.nightly'"
           node scripts/verify-android-aab-signature.mjs cohort-android/station-nightly-universal.aab "$ANDROID_UPLOAD_CERT_SHA256"
           node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"
           node scripts/check-android-16kb-alignment.mjs "$apk"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with: { subject-path: cohort-android/station-nightly-universal.aab }
+        with:
+          subject-path: |
+            cohort-android/station-nightly-universal.aab
+            cohort-android/station-nightly-universal.apk
+            cohort-android/station-client-build.json
       - name: Bind the exact staged Android inventory into a receipt
         run: |
           node scripts/release-cohort-workflow.mjs stage-input android-stage-input.json cohort/cohort-plan.json android station-nightly-universal.aab=cohort-android/station-nightly-universal.aab
@@ -271,6 +288,8 @@ jobs:
           name: nightly-cohort-android-${{ github.run_id }}
           path: |
             cohort-android/station-nightly-universal.aab
+            cohort-android/station-nightly-universal.apk
+            cohort-android/station-client-build.json
             android-stage-receipt.json
           if-no-files-found: error
           retention-days: 14
@@ -333,6 +352,11 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" = "$bundle_version"
           notary_key="$RUNNER_TEMP/station-notary-api-key.p8"; printf '%s' "$APPLE_API_PRIVATE_KEY" > "$notary_key"; chmod 600 "$notary_key"
           node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir cohort-macos --release-tag nightly-desktop --architecture aarch64 --bundle-id io.kontourai.station.nightly --deadline-epoch "${{ steps.macos_cohort_deadline.outputs.epoch }}"
+          archive=cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz
+          manifest_path=$(tar -tzf "$archive" | grep '/Contents/Resources/dist-server/station-build.json$')
+          test "$(printf '%s\n' "$manifest_path" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          tar -xOf "$archive" "$manifest_path" > cohort-macos/station-client-build.json
+          cmp src-desktop/station-client-build.json cohort-macos/station-client-build.json
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$version"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$app/Contents/Info.plist")" = 'Station Nightly'
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = 'io.kontourai.station.nightly'
@@ -353,6 +377,7 @@ jobs:
             cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz
             cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig
             cohort-macos/station-nightly-desktop-macos-aarch64.dmg
+            cohort-macos/station-client-build.json
       - name: Bind the exact staged macOS inventory into a receipt
         run: |
           node scripts/release-cohort-workflow.mjs stage-input macos-stage-input.json cohort/cohort-plan.json macos latest.json=cohort-macos/latest.json station-nightly-desktop-macos-aarch64.app.tar.gz=cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig station-nightly-desktop-macos-aarch64.dmg=cohort-macos/station-nightly-desktop-macos-aarch64.dmg
@@ -713,6 +738,14 @@ jobs:
         with:
           name: nightly-cohort-admission-${{ github.run_id }}
           path: cohort
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightly-cohort-android-${{ github.run_id }}
+          path: cohort
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nightly-cohort-macos-${{ github.run_id }}
+          path: cohort
       - id: final_attestation
         name: Verify finalized receipt provenance before minting the ledger token
         env:
@@ -735,8 +768,8 @@ jobs:
           node scripts/release-cohort-workflow.mjs assert-final cohort/final-cohort-receipt.json "${{ needs.plan-cohort.outputs.source_sha }}"
           androidVersion=$(node -e 'console.log(require("./cohort/final-cohort-receipt.json").versionIdentities.android.versionName)')
           desktopVersion=$(node -e 'console.log(require("./cohort/final-cohort-receipt.json").versionIdentities.desktop.version)')
-          node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record finalized nightly-android $androidVersion" --summary-line "- finalized cohort Android $androidVersion" -- node scripts/deploy-ledger.mjs --channel nightly-android --version "$androidVersion" --sha "${{ needs.plan-cohort.outputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'native cohort final receipt complete' --github-repo "$GITHUB_REPOSITORY" --artifact 'play-internal-aab:cohort-finalized'
-          node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record finalized nightly-desktop $desktopVersion" --summary-line "- finalized cohort macOS $desktopVersion" -- node scripts/deploy-ledger.mjs --channel nightly-desktop --version "$desktopVersion" --sha "${{ needs.plan-cohort.outputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'native cohort final receipt complete' --github-repo "$GITHUB_REPOSITORY" --artifact 'github-release:nightly-desktop (cohort-finalized)'
+          node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record finalized nightly-android $androidVersion" --summary-line "- finalized cohort Android $androidVersion" -- node scripts/deploy-ledger.mjs --channel nightly-android --version "$androidVersion" --sha "${{ needs.plan-cohort.outputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'native cohort final receipt complete' --github-repo "$GITHUB_REPOSITORY" --artifact-manifest cohort/cohort-android/station-client-build.json --artifact 'play-internal-aab:cohort-finalized'
+          node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record finalized nightly-desktop $desktopVersion" --summary-line "- finalized cohort macOS $desktopVersion" -- node scripts/deploy-ledger.mjs --channel nightly-desktop --version "$desktopVersion" --sha "${{ needs.plan-cohort.outputs.source_sha }}" --timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'native cohort final receipt complete' --github-repo "$GITHUB_REPOSITORY" --artifact-manifest cohort/cohort-macos/station-client-build.json --artifact 'github-release:nightly-desktop (cohort-finalized)'
       - id: nightly_marker
         name: Advance final Android marker with exact REST readback
         env:

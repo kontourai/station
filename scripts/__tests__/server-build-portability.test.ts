@@ -523,9 +523,19 @@ describe('server build package portability', () => {
       'usr/share/Station/dist-server': '../dist-server',
       'usr/share/Station/node_modules': '../dist-desktop-runtime/node_modules',
     });
-    expect(packageConfig.scripts['build:desktop:resources']).toContain(
-      'scripts/stage-desktop-server-runtime.mjs',
+    // The portable wrapper owns one immutable client-build transaction, then
+    // delegates server staging after that stamp has been reused. Keep this
+    // assertion at the package boundary and verify the nested staging command
+    // rather than making the package script duplicate shell-specific env syntax.
+    expect(packageConfig.scripts['build:desktop:resources']).toBe(
+      'node scripts/build-desktop-resources.mjs',
     );
+    expect(
+      readFileSync(
+        join(repoRoot, 'scripts', 'build-desktop-resources.mjs'),
+        'utf8',
+      ),
+    ).toContain('scripts/stage-desktop-server-runtime.mjs');
     expect(packageConfig.scripts.clean).toContain('dist-desktop-runtime');
     expect(packageConfig.scripts.clean).toContain('dist-desktop-wix-resources');
     // station#3379: Tauri's NSIS template removes resources with `Delete`

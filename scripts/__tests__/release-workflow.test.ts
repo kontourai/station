@@ -140,6 +140,145 @@ describe('mobile release hardening contract', () => {
   });
 });
 
+describe('frozen stable client-build provenance', () => {
+  it('makes every desktop and Android producer reuse and byte-verify the one preflight manifest', () => {
+    const preflight = workflowJob(release, 'preflight');
+    const create = namedStep(
+      preflight,
+      'Create one immutable native client provenance artifact',
+    );
+    expect(create.run).toContain('release-client-build-provenance.mjs create');
+    expect(create.run).toContain('--source-ref "refs/tags/$RELEASE_TAG"');
+
+    for (const jobName of ['desktop-windows', 'desktop-linux', 'android']) {
+      const job = workflowJob(release, jobName);
+      const downloaded = job.steps?.filter(
+        (step) =>
+          step.uses?.startsWith('actions/download-artifact@') &&
+          step.with?.name ===
+            'station-release-client-build-provenance-$' + '{{ github.run_id }}',
+      );
+      expect(
+        downloaded,
+        `${jobName} must fetch the preflight artifact`,
+      ).toHaveLength(1);
+      expect(downloaded?.[0]?.with?.path).toBe(
+        'release-client-build-provenance',
+      );
+
+      const staged = namedStep(
+        job,
+        'Stage the preflight-bound native client provenance bytes',
+      );
+      expect(staged.run).toContain('release-client-build-provenance.mjs stage');
+      expect(staged.run).toContain('--source-sha "$RELEASE_SHA"');
+      expect(stepIndex(job, staged.name as string)).toBeLessThan(
+        stepIndex(
+          job,
+          jobName === 'android'
+            ? 'Build signed universal APK and AAB'
+            : 'Fail closed and create tag-bound updater configuration',
+        ),
+      );
+    }
+
+    const windows = workflowJob(release, 'desktop-windows');
+    const windowsBuild = windows.steps?.find((step) =>
+      step.uses?.startsWith('tauri-apps/tauri-action@'),
+    );
+    expect(windowsBuild?.env).toMatchObject({
+      STATION_CLIENT_BUILD_REUSE: '1',
+    });
+    expect(
+      namedStep(
+        windows,
+        'Verify Windows Authenticode signature and versioned build output',
+      ).run,
+    ).toContain(
+      'MSI build provenance does not byte-equal the preflight manifest',
+    );
+
+    const linux = workflowJob(release, 'desktop-linux');
+    const linuxBuilds = linux.steps?.filter((step) =>
+      step.uses?.startsWith('tauri-apps/tauri-action@'),
+    );
+    expect(linuxBuilds).toHaveLength(2);
+    for (const build of linuxBuilds ?? []) {
+      expect(build.env).toMatchObject({ STATION_CLIENT_BUILD_REUSE: '1' });
+    }
+    const linuxVerify = namedStep(
+      linux,
+      'Verify every Linux package carries the exact preflight provenance bytes',
+    );
+    expect(linuxVerify.run).toContain('dpkg-deb --fsys-tarfile');
+    expect(linuxVerify.run).toContain('rpm2cpio');
+    expect(linuxVerify.run).toContain('--appimage-extract');
+    expect(
+      linuxVerify.run.match(/release-client-build-provenance\.mjs verify/g),
+    ).toHaveLength(3);
+    const linuxDependencies = linux.steps?.find(
+      (step) =>
+        typeof step.run === 'string' &&
+        step.run.includes('sudo apt-get install -y'),
+    );
+    expect(linuxDependencies?.run).toContain('rpm2cpio cpio');
+
+    const androidJob = workflowJob(release, 'android');
+    const nativeBuild = namedStep(
+      androidJob,
+      'Build signed universal APK and AAB',
+    );
+    expect(nativeBuild.env).toMatchObject({ STATION_CLIENT_BUILD_REUSE: '1' });
+    const androidVerify = namedStep(
+      androidJob,
+      'Verify Play-bound Android archives carry the exact preflight provenance bytes',
+    );
+    expect(
+      androidVerify.run.match(
+        /--expected src-desktop\/station-client-build\.json/g,
+      ),
+    ).toHaveLength(2);
+    expect(stepIndex(androidJob, androidVerify.name as string)).toBeLessThan(
+      stepIndex(androidJob, 'Upload to Play internal testing track'),
+    );
+  });
+
+  it('binds TestFlight provenance to the ref authority checked before signing', () => {
+    const delivery = workflowJob(testFlightDelivery, 'deliver');
+    const source = namedStep(delivery, 'Reconfirm exact frozen source');
+    const stage = namedStep(
+      delivery,
+      'Stage immutable iOS client provenance resource',
+    );
+    expect(source.run).toContain(
+      'echo "AUTHORITY_REF=$source_ref" >> "$GITHUB_ENV"',
+    );
+    expect(stage.run).toBe(
+      'STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs',
+    );
+  });
+
+  it('records the stable desktop timestamp as a verified common manifest, not an architecture-specific proxy', () => {
+    const publishJob = workflowJob(publish, 'publish');
+    const common = namedStep(
+      publishJob,
+      'Derive the common frozen desktop provenance only after all package gates',
+    );
+    expect(common.run).toContain(
+      'cmp "$RUNNER_TEMP/station-client-build-aarch64.json" "$RUNNER_TEMP/station-client-build-x86_64.json"',
+    );
+    expect(common.run).toContain('station-desktop-common-client-build.json');
+    const record = namedStep(
+      publishJob,
+      'Record the stable release in the deploy ledger',
+    );
+    expect(record.run).toContain(
+      '--artifact-manifest "$RUNNER_TEMP/station-desktop-common-client-build.json"',
+    );
+    expect(record.run).not.toContain('station-client-build-aarch64.json');
+  });
+});
+
 describe('nightly native product-version propagation', () => {
   it('passes the content-bound cohort version to each staged Tauri build', () => {
     const androidJob = workflowJob(nativeCohort, 'stage-android');
@@ -815,6 +954,20 @@ describe('native release workflow topology', () => {
     expect(
       namedStep(macos, 'Build an unsigned macOS staging candidate').run,
     ).toContain('--no-sign');
+    expect(
+      namedStep(macos, 'Build an unsigned macOS staging candidate').env,
+    ).toMatchObject({ STATION_CLIENT_BUILD_REUSE: '1' });
+    const stagedProvenance = namedStep(
+      macos,
+      'Stage the preflight-bound native client provenance bytes',
+    );
+    expect(stagedProvenance.run).toContain(
+      'release-client-build-provenance.mjs stage',
+    );
+    expect(seal.run).toContain('release-client-build-provenance.mjs verify');
+    expect(seal.run).toContain(
+      '--expected src-desktop/station-client-build.json',
+    );
     const embeddedSealing = macosArtifacts.indexOf(
       'await sealEmbeddedMacosMachOBounded(app, identity, {',
     );

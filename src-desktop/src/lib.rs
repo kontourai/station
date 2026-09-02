@@ -78,6 +78,29 @@ struct NativeCapabilityReport {
     /// secret-free and never replaces a saved/default profile in the UI.
     #[serde(skip_serializing_if = "Option::is_none")]
     mobile_default_endpoint: Option<String>,
+    /// Immutable source-derived provenance of this installed client artifact.
+    /// It is intentionally independent from a connected backend's build.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_build: Option<NativeClientBuildProvenance>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeClientBuildProvenance {
+    full_sha: String,
+    branch: String,
+    built_at: String,
+}
+
+fn client_build_provenance() -> Option<NativeClientBuildProvenance> {
+    let full_sha = option_env!("STATION_CLIENT_BUILD_SHA")?;
+    let branch = option_env!("STATION_CLIENT_BUILD_BRANCH")?;
+    let built_at = option_env!("STATION_CLIENT_BUILT_AT")?;
+    Some(NativeClientBuildProvenance {
+        full_sha: full_sha.to_string(),
+        branch: branch.to_string(),
+        built_at: built_at.to_string(),
+    })
 }
 
 fn trusted_mobile_default_endpoint(raw: Option<&str>) -> Option<String> {
@@ -232,6 +255,7 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
         } else {
             None
         },
+        client_build: client_build_provenance(),
         capabilities,
     }
 }

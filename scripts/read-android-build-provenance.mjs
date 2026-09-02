@@ -20,8 +20,10 @@
  * a quiet success would recreate the exact hole this closes.
  */
 import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
 
 export const APK_BUILD_MANIFEST_ENTRY = 'assets/station-build.json';
+export const AAB_BUILD_MANIFEST_ENTRY = `base/${APK_BUILD_MANIFEST_ENTRY}`;
 
 const FULL_GIT_SHA = /^[0-9a-f]{40}$/i;
 
@@ -75,39 +77,93 @@ export function parseAndroidBuildProvenance(text) {
  * `check-android-16kb-alignment.mjs`'s would be a maintenance cost with no
  * corresponding gain.
  */
-export function readApkEntry(apkPath, entry = APK_BUILD_MANIFEST_ENTRY) {
+export function readAndroidArchiveEntry(
+  archivePath,
+  entry = archivePath.endsWith('.aab')
+    ? AAB_BUILD_MANIFEST_ENTRY
+    : APK_BUILD_MANIFEST_ENTRY,
+) {
   try {
-    return execFileSync('unzip', ['-p', apkPath, entry], {
-      encoding: 'utf8',
+    return execFileSync('unzip', ['-p', archivePath, entry], {
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       maxBuffer: 1024 * 1024,
     });
   } catch (error) {
     throw new Error(
-      `Could not read ${entry} from ${apkPath}. The APK carries no build provenance (or \`unzip\` is unavailable): ${error.message}`,
+      `Could not read ${entry} from ${archivePath}. The Android archive carries no build provenance (or \`unzip\` is unavailable): ${error.message}`,
     );
   }
 }
 
-export function readAndroidBuildProvenance(apkPath) {
-  const contents = readApkEntry(apkPath);
-  if (contents.trim().length === 0) {
+/** Backwards-compatible APK-only entry point used by device inspection. */
+export function readApkEntry(apkPath, entry = APK_BUILD_MANIFEST_ENTRY) {
+  return readAndroidArchiveEntry(apkPath, entry);
+}
+
+/**
+ * Extracts and validates the exact manifest bytes from a Play-bound AAB or
+ * sibling APK.  JSON equality is intentionally insufficient: package writers
+ * must carry the staged immutable record byte-for-byte, including its one
+ * sampled build timestamp.
+ */
+export function extractAndroidBuildManifest(
+  archivePath,
+  { expectedPath, outputPath } = {},
+) {
+  const contents = readAndroidArchiveEntry(archivePath);
+  if (contents.length === 0) {
+    throw new Error(`${archivePath} has an empty packaged build manifest`);
+  }
+  parseAndroidBuildProvenance(contents.toString('utf8'));
+  if (expectedPath) {
+    const expected = readFileSync(expectedPath);
+    if (!contents.equals(expected)) {
+      throw new Error(
+        `${archivePath} packaged build manifest does not byte-equal ${expectedPath}`,
+      );
+    }
+  }
+  if (outputPath) writeFileSync(outputPath, contents);
+  return contents;
+}
+
+export function readAndroidBuildProvenance(archivePath) {
+  const contents = readAndroidArchiveEntry(archivePath);
+  if (contents.length === 0) {
     throw new Error(
-      `${APK_BUILD_MANIFEST_ENTRY} is empty in ${apkPath}; the APK carries no build provenance`,
+      `${APK_BUILD_MANIFEST_ENTRY} is empty in ${archivePath}; the Android archive carries no build provenance`,
     );
   }
-  return parseAndroidBuildProvenance(contents);
+  return parseAndroidBuildProvenance(contents.toString('utf8'));
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {
-  const apkPath = process.argv[2];
-  if (!apkPath) {
-    console.error('Expected: read-android-build-provenance.mjs <apk>');
+  const archivePath = process.argv[2];
+  if (!archivePath) {
+    console.error(
+      'Expected: read-android-build-provenance.mjs <apk-or-aab> [--expected <staged-manifest>] [--output <artifact-manifest>]',
+    );
     process.exit(2);
   }
   try {
-    const provenance = readAndroidBuildProvenance(apkPath);
+    const expectedIndex = process.argv.indexOf('--expected');
+    const outputIndex = process.argv.indexOf('--output');
+    const expectedPath =
+      expectedIndex >= 0 ? process.argv[expectedIndex + 1] : undefined;
+    const outputPath =
+      outputIndex >= 0 ? process.argv[outputIndex + 1] : undefined;
+    if (
+      (expectedIndex >= 0 && !expectedPath) ||
+      (outputIndex >= 0 && !outputPath)
+    ) {
+      throw new Error('--expected and --output each require a path');
+    }
+    const contents = extractAndroidBuildManifest(archivePath, {
+      expectedPath,
+      outputPath,
+    });
+    const provenance = parseAndroidBuildProvenance(contents.toString('utf8'));
     console.log(JSON.stringify(provenance, null, 2));
   } catch (error) {
     console.error(`FAIL: ${error.message}`);

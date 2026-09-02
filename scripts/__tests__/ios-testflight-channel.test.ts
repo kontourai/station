@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
   createIosTestFlightConfig,
@@ -5,6 +7,31 @@ import {
 } from '../ios-testflight-channel.mjs';
 
 describe('iOS TestFlight channel config', () => {
+  test('binds TestFlight package, receipt, and What-to-Test to one artifact timestamp', () => {
+    const workflow = readFileSync(
+      resolve(
+        import.meta.dirname,
+        '../../.github/workflows/testflight-delivery.yml',
+      ),
+      'utf8',
+    );
+    expect(workflow).toContain('node scripts/write-ios-build-manifest.mjs');
+    expect(workflow).toContain(
+      'STATION_BUILD_BRANCH="$AUTHORITY_REF" STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build',
+    );
+    expect(workflow).toContain(
+      '--artifact-manifest src-desktop/station-client-build.json',
+    );
+    expect(workflow).toContain('cmp "src-desktop/station-client-build.json"');
+    expect(workflow).toContain('artifact_built_at=$(node -p');
+    expect(workflow).toContain(
+      `whats_new="Built \${artifact_built_at:0:10} UTC`,
+    );
+    expect(workflow).toContain('if [ "$delivery_mode" = uploaded ]');
+    expect(workflow).toContain('provider-artifact-provenance-unverified');
+    expect(workflow).toContain('status:"skipped"');
+    expect(workflow).not.toContain('workflow_date=$(node -e');
+  });
   test.each(['stable', 'beta', 'nightly'] as const)(
     'creates an isolated %s identity with numeric store versions',
     (channel) => {

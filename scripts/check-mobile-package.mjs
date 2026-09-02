@@ -18,6 +18,42 @@ const REVIEWED_IOS_ENTITLEMENTS = new Set([
   'beta-reports-active',
 ]);
 const SYSTEM_DEPENDENCY_PREFIXES = ['/System/Library/', '/usr/lib/'];
+const BUILD_MANIFEST_FILE = 'station-build.json';
+
+export function parseIosClientBuildProvenance(contents) {
+  let parsed;
+  try {
+    parsed = JSON.parse(contents);
+  } catch {
+    throw new Error('Packaged iOS app has invalid station-build.json');
+  }
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    Array.isArray(parsed) ||
+    typeof parsed.sha !== 'string' ||
+    !/^[0-9a-f]{40}$/i.test(parsed.sha) ||
+    typeof parsed.branch !== 'string' ||
+    parsed.branch.trim().length === 0 ||
+    typeof parsed.builtAt !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(
+      parsed.builtAt,
+    ) ||
+    !Number.isFinite(Date.parse(parsed.builtAt))
+  ) {
+    throw new Error('Packaged iOS app has invalid station-build.json');
+  }
+  const canonical = parsed.builtAt.includes('.')
+    ? parsed.builtAt
+    : parsed.builtAt.replace(/Z$/, '.000Z');
+  if (new Date(parsed.builtAt).toISOString() !== canonical)
+    throw new Error('Packaged iOS app has invalid station-build.json');
+  return {
+    sha: parsed.sha.toLowerCase(),
+    branch: parsed.branch,
+    builtAt: new Date(parsed.builtAt).toISOString(),
+  };
+}
 
 function plistKeys(plist) {
   return [...plist.matchAll(/<key>([^<]+)<\/key>/g)].map((match) => match[1]);
@@ -210,24 +246,41 @@ export function inspectIosPackageRoot(root) {
   const staticArchives = lines('find', [app, '-type', 'f', '-name', '*.a']).map(
     (path) => relative(root, path),
   );
+  const buildManifests = lines('find', [
+    app,
+    '-type',
+    'f',
+    '-name',
+    BUILD_MANIFEST_FILE,
+  ]);
+  if (buildManifests.length !== 1)
+    throw new Error(
+      `Packaged iOS app must contain exactly one ${BUILD_MANIFEST_FILE}`,
+    );
+  const clientBuild = parseIosClientBuildProvenance(
+    readFileSync(buildManifests[0], 'utf8'),
+  );
   if (binaries.length === 0) throw new Error('IPA contains no Mach-O binaries');
   const dependencies = binaries.map((binary) => ({
     binary: relative(root, binary),
     output: command('otool', ['-L', binary]),
   }));
-  return auditIosInventory({
-    info: command('plutil', [
-      '-convert',
-      'xml1',
-      '-o',
-      '-',
-      join(app, 'Info.plist'),
-    ]),
-    privacyManifests,
-    signedBundles,
-    dependencies,
-    staticArchives,
-  });
+  return {
+    ...auditIosInventory({
+      info: command('plutil', [
+        '-convert',
+        'xml1',
+        '-o',
+        '-',
+        join(app, 'Info.plist'),
+      ]),
+      privacyManifests,
+      signedBundles,
+      dependencies,
+      staticArchives,
+    }),
+    clientBuild,
+  };
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {
