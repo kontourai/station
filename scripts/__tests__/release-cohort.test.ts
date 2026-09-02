@@ -420,6 +420,36 @@ test('CLI runs the plan-to-finalize path and rejects invalid invocation', () => 
   expect(invalid.stderr).toContain('usage:');
 });
 
+test('artifact input records downloaded paths in the admission reader shape', () => {
+  const root = mkdtempSync(join(tmpdir(), 'station-cohort-artifacts-'));
+  roots.push(root);
+  const destination = join(root, 'artifacts.json');
+  const android = join(root, 'station.aab');
+  const macos = join(root, 'station.dmg');
+  writeFileSync(android, 'android');
+  writeFileSync(macos, 'macos');
+
+  const result = spawnSync(
+    process.execPath,
+    [
+      join(process.cwd(), 'scripts/release-cohort-workflow.mjs'),
+      'artifact-input',
+      destination,
+      `android=station.aab=${android}`,
+      `macos=station.dmg=${macos}`,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+
+  expect(result.status, result.stderr).toBe(0);
+  expect(JSON.parse(readFileSync(destination, 'utf8'))).toEqual({
+    artifacts: {
+      android: { 'station.aab': { path: android } },
+      macos: { 'station.dmg': { path: macos } },
+    },
+  });
+});
+
 test('recovery receipt is content-bound and makes confirmed provider finality distinct from partial durability', () => {
   const root = mkdtempSync(join(tmpdir(), 'station-cohort-recovery-'));
   roots.push(root);
