@@ -2,9 +2,12 @@
  * E2E: Dock Mode Preference
  *
  * Placement resolves URL param, then device setting, then the registry
- * default (#1265: nothing moves the dock on the user's behalf). Explicit
- * user actions (⌘⇧M, settings panel) write both the URL and the device
- * setting.
+ * default (#1265: nothing moves the dock on the user's behalf). That chain
+ * seeds the region model, which #928 step 3b made the writer: an explicit user
+ * action (⌘⇧M, the settings panel, a drag) places the chat surface in a region
+ * and the model's mirror writes the URL param and the device setting from
+ * there. The user-visible contract is unchanged — same param, same class, same
+ * persisted setting — so the assertions below are what they were.
  */
 import { expect, type Page, test } from '@playwright/test';
 import {
@@ -583,6 +586,9 @@ test.describe('Dock Mode Preference', () => {
     await handle.press('Enter');
     const menu = page.getByRole('menu', { name: 'Dock placement' });
     await expect(menu).toBeVisible();
+    // Since #928 step 3b this re-place is resolved by the region model, so
+    // choosing the placement chat already occupies changes no region and the
+    // mirror writes nothing — which is exactly the convergence asserted below.
     await menu.getByRole('menuitemradio', { name: 'Right' }).click();
     const keyboardState = await page.evaluate(() => ({
       stored: JSON.parse(

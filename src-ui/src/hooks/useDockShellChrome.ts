@@ -200,24 +200,22 @@ export function useDockShellChrome({
   const regionModel = useRegionModelOptional();
   const isMobile = useIsMobile();
   const visualViewport = useMobileVisualViewport();
-  // Step 3a moves the dock's OPEN STATE onto the region model and deliberately
-  // leaves PLACEMENT on navigation. The model seeds its chat occupant from
-  // `settings.dockSlotPlacement` alone, whereas navigation's `dockMode` is a
-  // precedence chain — URL param, then `dockModeOverride`, then the setting
-  // (navigation-store.ts:415). The Coding layout takes the override path via
-  // `setDockModeQuiet`, which never writes the setting, so deriving placement
-  // from the model would move that dock from the right panel to a bottom bar.
-  // Placement moves in the step where the model actually owns it.
+  // Step 3b makes the model the writer for placement too, so the region
+  // holding chat IS the placement. The model seeds from navigation's resolved
+  // `dockMode` — the full precedence chain, URL param then `dockModeOverride`
+  // then the setting (navigation-store.ts) — which is what keeps the Coding
+  // layout's `setDockModeQuiet` override (it never writes the setting) on the
+  // right panel instead of collapsing to a bottom bar.
   const modelChatRegion =
     regionModel &&
     (['left', 'right', 'bottom'] as const).find(
       (id) => regionModel.regions[id].occupant === 'chat',
     );
   const readerDockMode = modelChatRegion ?? 'bottom';
-  // Visibility is read from whichever region the model says holds chat — the
-  // sync effect writes `visible: isDockOpen` there, so this is equal to
-  // `isDockOpen` today. Reading `regions[dockMode]` instead would be wrong
-  // whenever the two disagree: an unoccupied region seeds `visible: false`.
+  // Visibility comes from whichever region the model says holds chat, and the
+  // model is authoritative — navigation's `isDockOpen` is its mirror, so the
+  // two can legitimately disagree for a render. Only the OCCUPIED region
+  // carries the dock's visibility; an unoccupied one seeds `visible: false`.
   const readerIsDockOpen =
     regionModel && modelChatRegion
       ? regionModel.regions[modelChatRegion].visible
