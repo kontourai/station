@@ -283,12 +283,7 @@ export function writeNativeClientBuildManifest(
     // Only source identity is compared; this must not sample a second clock.
     builtAt: '2000-01-01T00:00:00.000Z',
   });
-  if (
-    !refresh &&
-    existing &&
-    source &&
-    existing.sha === source.sha
-  ) {
+  if (!refresh && existing && source && existing.sha === source.sha) {
     return join(projectRoot, NATIVE_CLIENT_BUILD_MANIFEST_PATH);
   }
   const manifest = deriveBuildManifest(projectRoot, options);
