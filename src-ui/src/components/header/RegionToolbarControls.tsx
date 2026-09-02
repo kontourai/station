@@ -58,11 +58,15 @@ function RegionShortcut({
  * visible, or empty and performs every placement mutation.
  */
 function ConnectedRegionToolbarControls() {
-  const { regions, surfaces } = useRegionModel();
-  const { dockMode, isDockMaximized, setDockMode, setDockState } =
-    useNavigation();
+  const {
+    regions,
+    surfaces,
+    setRegion,
+    placeSurface: placeSurfaceInModel,
+  } = useRegionModel();
+  const { dockMode } = useNavigation();
   const isMobile = useIsMobile();
-  const { available, effective } = useDockSlotPlacement(dockMode);
+  const { available } = useDockSlotPlacement(dockMode);
   const breakpoint = isMobile ? 'phone' : 'desktop';
   const firstSurface = surfaces.values().next().value as
     | RegisteredSurface
@@ -78,9 +82,9 @@ function ConnectedRegionToolbarControls() {
       );
       if (!occupied) return;
       const visible = regions[occupied].visible;
-      setDockState(!visible, visible ? false : isDockMaximized);
+      setRegion(occupied, { visible: !visible });
     },
-    [availableRegions, isDockMaximized, regions, setDockState],
+    [availableRegions, regions, setRegion],
   );
 
   const placeSurface = useCallback(
@@ -88,10 +92,9 @@ function ConnectedRegionToolbarControls() {
       if (!availableRegions.includes(id as DockMode)) return;
       const surface = surfaces.get(surfaceId);
       if (!surface) return;
-      setDockMode(id as DockMode);
-      setDockState(true, isDockMaximized);
+      placeSurfaceInModel(surfaceId, id);
     },
-    [availableRegions, isDockMaximized, setDockMode, setDockState, surfaces],
+    [availableRegions, placeSurfaceInModel, surfaces],
   );
 
   return (
@@ -108,7 +111,7 @@ function ConnectedRegionToolbarControls() {
         const occupant = regions[id].occupant;
         const surface = occupant ? surfaces.get(occupant) : undefined;
         const label = regionLabel(id);
-        const isCurrent = id === effective;
+        const isCurrent = Boolean(regions[id].occupant === 'chat');
         const pressed = Boolean(surface && regions[id].visible && isCurrent);
         const actionLabel = surface
           ? `${pressed ? 'Hide' : 'Show'} ${surface.title} ${label} region`

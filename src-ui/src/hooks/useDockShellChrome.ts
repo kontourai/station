@@ -193,10 +193,8 @@ export function useDockShellChrome({
   const {
     isDockOpen,
     isDockMaximized,
-    dockMode,
     pathname,
     setDockState,
-    setDockMode,
     collapseMaximizedDock,
   } = useNavigation();
   const regionModel = useRegionModelOptional();
@@ -215,7 +213,7 @@ export function useDockShellChrome({
     (['left', 'right', 'bottom'] as const).find(
       (id) => regionModel.regions[id].occupant === 'chat',
     );
-  const readerDockMode = dockMode;
+  const readerDockMode = modelChatRegion ?? 'bottom';
   // Visibility is read from whichever region the model says holds chat — the
   // sync effect writes `visible: isDockOpen` there, so this is equal to
   // `isDockOpen` today. Reading `regions[dockMode]` instead would be wrong
@@ -299,21 +297,19 @@ export function useDockShellChrome({
     (value: boolean) => {
       if (draggingRef.current && !value) {
         if (effectiveDockSlotPlacement === 'bottom') {
-          setDeviceSetting(
-            'chatDockHeight',
-            Math.round(clampDockHeight(dockHeightRef.current)),
-          );
+          regionModel?.setRegion('bottom', {
+            size: Math.round(clampDockHeight(dockHeightRef.current)),
+          });
         } else {
-          setDeviceSetting(
-            'chatDockWidth',
-            Math.round(clampDockWidth(dockWidthRef.current)),
-          );
+          regionModel?.setRegion(effectiveDockSlotPlacement, {
+            size: Math.round(clampDockWidth(dockWidthRef.current)),
+          });
         }
       }
       draggingRef.current = value;
       setIsDraggingState(value);
     },
-    [effectiveDockSlotPlacement, setDeviceSetting],
+    [effectiveDockSlotPlacement, regionModel],
   );
   const [previousDockHeight, setPreviousDockHeight] = useState(dockHeight);
   const [previousDockOpen, setPreviousDockOpen] = useState(true);
@@ -373,9 +369,9 @@ export function useDockShellChrome({
 
   const commitDockPlacement = useCallback(
     (mode: DockMode) => {
-      setDockMode(mode);
+      regionModel?.placeSurface('chat', mode);
     },
-    [setDockMode],
+    [regionModel],
   );
 
   // archive#869 / archive#1298: a maximized dock is opaque and full-height, so navigating

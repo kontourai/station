@@ -97,12 +97,9 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(result.current.chrome.isDockOpen).toBe(false);
   });
 
-  // The Coding layout sets navigation's dockMode through `setDockModeQuiet`,
-  // which never writes `dockSlotPlacement` — so the model, which seeds from
-  // that setting alone, holds chat at 'bottom' while navigation says 'right'.
-  // Deriving placement from the model would move that dock to a bottom bar.
-  // Step 3a moves open state only; this pins that.
-  test('keeps navigation as the placement authority when the two disagree', () => {
+  // Step 3b makes the region model authoritative; navigation is its durable
+  // mirror, so a disagreement is resolved by the model's occupant.
+  test('keeps the model as the placement authority when the two disagree', () => {
     harness.dockMode = 'right';
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -126,7 +123,7 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     // The model holds chat at 'bottom' (seeded from dockSlotPlacement).
     expect(result.current.model.regions.bottom.occupant).toBe('chat');
     // Navigation is mocked at 'right', the Coding-layout override shape.
-    expect(result.current.chrome.dockMode).toBe('right');
+    expect(result.current.chrome.dockMode).toBe('bottom');
     // Open state still comes from the region that holds chat, not from
     // `regions[dockMode]` — 'right' is unoccupied and seeds `visible: false`.
     expect(result.current.chrome.isDockOpen).toBe(true);

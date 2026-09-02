@@ -1,6 +1,5 @@
 import type React from 'react';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
-import { useNavigation } from '../../contexts/NavigationContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import type { DockMode } from '../../types';
 import { isSessionExecutionActive } from '../../utils/execution';
@@ -126,6 +125,8 @@ interface ChatDockHeaderProps {
    * placement, which has no ambient occupant to switch away from.
    */
   occupantPicker?: React.ReactNode;
+  regionVisible?: boolean;
+  shellMaximized?: boolean;
 }
 
 export function ChatDockHeader({
@@ -141,8 +142,11 @@ export function ChatDockHeader({
   effectiveDockSlotPlacement,
   onDockPlacementChange,
   occupantPicker,
+  regionVisible,
+  shellMaximized,
 }: ChatDockHeaderProps) {
-  const { isDockOpen, isDockMaximized } = useNavigation();
+  const isDockOpen = regionVisible ?? false;
+  const isDockMaximized = shellMaximized ?? false;
   const toggleDockShortcut = useShortcutDisplay('dock.toggle');
   const maximizeShortcut = useShortcutDisplay('dock.maximize');
   const side =

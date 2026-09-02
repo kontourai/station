@@ -60,6 +60,42 @@ export function syncRegionLayoutFromDock(
   });
 }
 
+export function placeSurface(
+  layout: RegionLayout,
+  surfaceId: string,
+  regionId: RegionId,
+): RegionLayout {
+  let next = layout;
+  for (const id of REGION_IDS) {
+    if (id !== regionId && next[id].occupant === surfaceId) {
+      next = updateRegion(next, id, { occupant: null, visible: false });
+    }
+  }
+  return updateRegion(next, regionId, { occupant: surfaceId, visible: true });
+}
+
+export function dockMirrorDiff(
+  previous: RegionLayout,
+  next: RegionLayout,
+): { placement?: RegionId; visible?: boolean; size?: number } {
+  const previousPlacement = DOCK_REGION_IDS.find(
+    (id) => previous[id].occupant === 'chat',
+  );
+  const placement = DOCK_REGION_IDS.find((id) => next[id].occupant === 'chat');
+  const result: { placement?: RegionId; visible?: boolean; size?: number } = {};
+  if (placement !== previousPlacement && placement)
+    result.placement = placement;
+  if (placement !== previousPlacement && placement)
+    result.visible = next[placement].visible;
+  if (placement && previousPlacement) {
+    if (next[placement].visible !== previous[previousPlacement].visible)
+      result.visible = next[placement].visible;
+    if (next[placement].size !== previous[previousPlacement].size)
+      result.size = next[placement].size;
+  }
+  return result;
+}
+
 /** Breakpoint availability belongs to the region model, never to a surface. */
 export const REGION_AVAILABILITY: Readonly<
   Record<RegionBreakpoint, readonly RegionId[]>

@@ -39,6 +39,7 @@ import { useConfig } from './contexts/ConfigContext';
 import { useModels } from './contexts/ModelsContext';
 import { useNavigation } from './contexts/NavigationContext';
 import { ProjectsProvider } from './contexts/ProjectsContext';
+import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
 import {
@@ -181,7 +182,6 @@ function App() {
     isDockOpen,
     isDockMaximized,
     setLayout,
-    setDockMode,
     navigate,
   } = useNavigation();
   const isMobileViewport = useIsMobile();
@@ -189,6 +189,12 @@ function App() {
     available: availableDockSlotPlacements,
     effective: effectiveDockSlotPlacement,
   } = useDockSlotPlacement(dockSlotPreference);
+  const regionModel = useRegionModelOptional();
+  const modelChatRegion =
+    regionModel &&
+    (['left', 'right', 'bottom'] as const).find(
+      (id) => regionModel.regions[id].occupant === 'chat',
+    );
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const {
@@ -415,8 +421,9 @@ function App() {
    */
   const isAmbientMobileDockFullscreen = isMobileDockFullscreenState({
     isMobile: isMobileViewport,
-    // URL compatibility mirrors the bottom region during step 1. // #928 step 4
-    isDockOpen,
+    isDockOpen: modelChatRegion
+      ? regionModel!.regions[modelChatRegion].visible
+      : isDockOpen,
     isDockMaximized,
     isDockOwnedView: isDockOwnedViewType(displayCurrentView.type),
   });
@@ -513,8 +520,8 @@ function App() {
             availableDockSlotPlacements.length
         ];
       if (!next) return;
-      setDockMode(next);
-    }, [availableDockSlotPlacements, effectiveDockSlotPlacement, setDockMode]),
+      regionModel?.placeSurface('chat', next);
+    }, [availableDockSlotPlacements, effectiveDockSlotPlacement, regionModel]),
   );
 
   // SHELL-07: `.content-view` is the shell's one scroll container, so its

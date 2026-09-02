@@ -9,33 +9,42 @@ import {
   useState,
 } from 'react';
 import {
+  DOCK_REGION_IDS,
+  dockMirrorDiff,
+  placeSurface as placeSurfaceInLayout,
   REGION_SURFACE_REGISTRY,
   type RegionId,
   type RegionLayout,
   type RegionState,
   seedRegionLayoutFromDock,
-  syncRegionLayoutFromDock,
   updateRegion,
 } from '../regions/region-model';
-import { useDeviceSettings } from './DeviceSettingsContext';
+import {
+  useDeviceSettings,
+  useDeviceSettingsActions,
+} from './DeviceSettingsContext';
 import { useNavigation } from './NavigationContext';
 
 interface RegionModelValue {
   regions: RegionLayout;
   surfaces: typeof REGION_SURFACE_REGISTRY;
   setRegion(id: RegionId, patch: Partial<RegionState>): void;
+  placeSurface(surfaceId: string, regionId: RegionId): void;
 }
 
 const RegionModelContext = createContext<RegionModelValue | null>(null);
 
 export function RegionModelProvider({ children }: { children: ReactNode }) {
   const settings = useDeviceSettings();
-  const { isDockOpen } = useNavigation();
+  const { isDockOpen, isDockMaximized, dockMode, setDockMode, setDockState } =
+    useNavigation();
+  const { setDeviceSetting } = useDeviceSettingsActions();
   const [regions, setRegions] = useState<RegionLayout>(
     // Step 1 persists region layout via legacy dock keys; its own record arrives when regions become user-visible.
     () => seedRegionLayoutFromDock(settings, isDockOpen),
   );
   const regionsRef = useRef(regions);
+  const mirroredRegionsRef = useRef(regions);
   regionsRef.current = regions;
 
   const setRegion = useCallback((id: RegionId, patch: Partial<RegionState>) => {
@@ -45,36 +54,51 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
     setRegions(next);
   }, []);
 
-  // Until regions become user-visible, the model observes the legacy dock
-  // authority and never drives it.
+  const placeSurface = useCallback((surfaceId: string, regionId: RegionId) => {
+    const next = placeSurfaceInLayout(regionsRef.current, surfaceId, regionId);
+    if (next === regionsRef.current) return;
+    regionsRef.current = next;
+    setRegions(next);
+  }, []);
+
   useEffect(() => {
-    setRegions((current) => {
-      const next = syncRegionLayoutFromDock(
-        current,
-        {
-          chatDockHeight: settings.chatDockHeight,
-          chatDockWidth: settings.chatDockWidth,
-          dockSlotPlacement: settings.dockSlotPlacement,
-        },
-        isDockOpen,
+    const previous = mirroredRegionsRef.current;
+    const diff = dockMirrorDiff(previous, regions);
+    const placement = diff.placement;
+    if (placement) setDockMode(placement as Exclude<RegionId, 'main'>);
+    if (diff.visible !== undefined)
+      setDockState(diff.visible, diff.visible ? isDockMaximized : false);
+    if (diff.size !== undefined && placement) {
+      setDeviceSetting(
+        placement === 'bottom' ? 'chatDockHeight' : 'chatDockWidth',
+        diff.size,
       );
-      regionsRef.current = next;
-      return next;
-    });
-  }, [
-    isDockOpen,
-    settings.chatDockHeight,
-    settings.chatDockWidth,
-    settings.dockSlotPlacement,
-  ]);
+    }
+    mirroredRegionsRef.current = regions;
+  }, [isDockMaximized, regions, setDeviceSetting, setDockMode, setDockState]);
+
+  // Navigation remains an inbound source for deep links and browser history.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: device-setting notifications are mirror traffic, not inbound navigation.
+  useEffect(() => {
+    const current = regionsRef.current;
+    const placement = DOCK_REGION_IDS.find(
+      (id) => current[id].occupant === 'chat',
+    );
+    if (placement === dockMode && current[placement]?.visible === isDockOpen)
+      return;
+    const next = seedRegionLayoutFromDock(settings, isDockOpen);
+    regionsRef.current = next;
+    setRegions(next);
+  }, [dockMode, isDockOpen]);
 
   const value = useMemo(
     () => ({
       regions,
       surfaces: REGION_SURFACE_REGISTRY,
       setRegion,
+      placeSurface,
     }),
-    [regions, setRegion],
+    [regions, setRegion, placeSurface],
   );
   return (
     <RegionModelContext.Provider value={value}>
