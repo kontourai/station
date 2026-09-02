@@ -423,7 +423,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     navigate,
     setActiveChat,
     setDockState,
-    setDockMode,
     setProject,
     setLayout,
   } = useNavigation();
@@ -1709,7 +1708,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         }
         // An edge placement has no panel for `inboxOpen` to reveal, so put the
         // dock somewhere the destination actually mounts first.
-        if (route.switchToBottomMode) setDockMode('bottom');
+        if (route.switchToBottomMode) commitDockPlacement('bottom');
         setDeviceSetting('inboxOpen', true);
         if (route.snapHalf) applyDockSnap('half');
       },
@@ -1733,7 +1732,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     isFullscreenPlacement,
     isMobile,
     effectiveDockSlotPlacement,
-    setDockMode,
+    commitDockPlacement,
     setDeviceSetting,
     showInboxOpenFailure,
     agentsLoaded,
@@ -2150,6 +2149,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               availableDockSlotPlacements={availableDockSlotPlacements}
               effectiveDockSlotPlacement={effectiveDockSlotPlacement}
               onDockPlacementChange={commitDockPlacement}
+              regionVisible={isDockOpen}
+              shellMaximized={isDockMaximized}
               // station#4460: Chat is one entry in the SAME occupant
               // switcher Home/Activity carry — not a special case with no
               // way to leave. Absent for a full-screen placement, which has
