@@ -21,7 +21,9 @@ the `node-pty` native module that powers interactive terminal panes. macOS
 and Windows use shipped prebuilds. Without a toolchain on Linux, Station
 still installs and runs, but terminal panes are unavailable and `station
 doctor` reports the degraded terminal capability with the remediation
-(`npm rebuild node-pty` after installing the toolchain, then restart).
+(`npm run dependencies:install` after installing the toolchain, then
+restart — that runs the reviewed lifecycle path, unlike a direct
+`npm rebuild`).
 Agent execution does not use `node-pty` and works either way.
 
 ## Install Or Upgrade
