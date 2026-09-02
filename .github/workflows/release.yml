@@ -708,7 +708,7 @@ jobs:
           image: ghcr.io/${{ github.repository }}@${{ steps.platforms.outputs.amd64 }}
           format: cyclonedx-json
           output-file: ${{ runner.temp }}/station-container-syft-amd64.cdx.json
-          syft-version: 1.51.0
+          syft-version: v1.51.0
           upload-artifact: false
           upload-release-assets: false
       - name: Scan immutable linux/arm64 image digest with pinned Syft
@@ -717,7 +717,7 @@ jobs:
           image: ghcr.io/${{ github.repository }}@${{ steps.platforms.outputs.arm64 }}
           format: cyclonedx-json
           output-file: ${{ runner.temp }}/station-container-syft-arm64.cdx.json
-          syft-version: 1.51.0
+          syft-version: v1.51.0
           upload-artifact: false
           upload-release-assets: false
       - name: Bind the scanner inventory to the immutable release descriptor
