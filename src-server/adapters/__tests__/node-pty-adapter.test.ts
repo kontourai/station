@@ -43,7 +43,9 @@ describe('NodePtyAdapter no-pty configuration (#1244)', () => {
       (error: unknown) => error,
     );
     expect(isPtyUnavailableError(rejection)).toBe(true);
-    expect((rejection as Error).message).toContain('npm run dependencies:install');
+    expect((rejection as Error).message).toContain(
+      'npm run dependencies:install',
+    );
   });
 
   test('a loadable backend keeps the default spawn path and reports available', async () => {
