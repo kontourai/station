@@ -266,6 +266,27 @@ function ShortcutProbe({
  * can pass on a mocked mirror.
  */
 describe('the region model is the dock writer (station#928 step 3b)', () => {
+  test('seeding from a persisted placement writes nothing back', async () => {
+    deviceSettingsStore.set('dockSlotPlacement', 'right');
+    const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
+    const deviceWrite = vi.spyOn(deviceSettingsStore, 'set');
+
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
+    );
+
+    // #1265: resolving a remembered placement is not a user action, so the
+    // mirror must stay silent — a mount that re-emitted its own seed would
+    // write a `dockSlotPlacement` URL param nobody asked for, and would make
+    // every route the user opens look like an explicit placement choice.
+    expect(dockModeWrite).not.toHaveBeenCalled();
+    expect(deviceWrite).not.toHaveBeenCalled();
+    expect(
+      new URLSearchParams(window.location.search).get('dockSlotPlacement'),
+    ).toBeNull();
+  });
+
   test('placing chat in a region vacates the old one and mirrors navigation and device settings', async () => {
     await placeChatRight();
 
