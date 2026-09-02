@@ -286,10 +286,10 @@ describe('the stable release ledger record', () => {
     // never have its commits pushed to main as a ledger side effect.
     expect(step).toContain('--require-ancestor "$RELEASE_SHA"');
     expect(publishRelease).toContain(
-      'Extract exact desktop artifact build provenance before publish',
+      'Derive the common frozen desktop provenance only after all package gates',
     );
     expect(step).toContain(
-      '--artifact-manifest "$RUNNER_TEMP/station-client-build-aarch64.json"',
+      '--artifact-manifest "$RUNNER_TEMP/station-desktop-common-client-build.json"',
     );
     // LOW-3: an empty release-assets download must refuse, not record a
     // literal glob string as an artifact.
