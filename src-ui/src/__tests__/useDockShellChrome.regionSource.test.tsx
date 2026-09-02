@@ -130,4 +130,37 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     // `regions[dockMode]` — 'right' is unoccupied and seeds `visible: false`.
     expect(result.current.chrome.isDockOpen).toBe(true);
   });
+
+  // The settings-panel choice, drag-to-edge and the "Open chats" route all
+  // arrive here with a mode; the model must receive THAT mode, not a fixed
+  // one. No DOM path exercises this argument, so it is pinned at the hook.
+  test('commitDockPlacement places chat in the region it was given', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        chrome: useDockShellChrome({
+          publishesDockSlotClearance: false,
+          registersDockShortcuts: false,
+        }),
+        model: useRegionModel(),
+      }),
+      { wrapper },
+    );
+    expect(result.current.model.regions.bottom.occupant).toBe('chat');
+
+    act(() => {
+      result.current.chrome.commitDockPlacement('right');
+    });
+
+    expect(result.current.model.regions.right.occupant).toBe('chat');
+    expect(result.current.model.regions.bottom.occupant).toBeNull();
+    expect(result.current.chrome.dockMode).toBe('right');
+  });
 });
