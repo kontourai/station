@@ -117,7 +117,8 @@ describe('starved pull request detection', () => {
 
   test('the comment carries its own marker so the next run can see it', () => {
     expect(reportBody(42)).toContain(REPORT_MARKER);
-    expect(reportBody(42)).toContain('gh pr merge 42 --auto --squash');
+    expect(reportBody(42)).toContain('gh pr merge 42 --auto');
+    expect(reportBody(42)).not.toMatch(/--auto --(squash|merge)/u);
   });
 
   // Arming is lost several ways and a push does NOT reliably clear it (#1063

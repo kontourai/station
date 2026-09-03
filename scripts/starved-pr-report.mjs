@@ -102,7 +102,7 @@ This pull request is **ready and will not merge**: every required check is green
 Arm it when you are satisfied it is ready:
 
 \`\`\`
-gh pr merge ${number} --auto --squash    # --merge instead, if this PR's grouped commit history is the point
+gh pr merge ${number} --auto    # no method flag: the merge queue owns the strategy and refuses --squash/--merge
 \`\`\`
 
 **Verify the arming took rather than assuming it did.** Arming is lost in several ways on this repo: entering the merge queue consumes it (benign — the pull request is moving); a conflict-resolution push has dropped it; and an already-queued pull request has fallen back out to CLEAN and unarmed with no author action at all. A push does not always clear it, so this is "check afterwards", not a rule about pushes.
