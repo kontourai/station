@@ -1,13 +1,13 @@
 {
-  "pageLocalMediaQueryCeiling": 101,
+  "pageLocalMediaQueryCeiling": 102,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
       "reason": "The shared checkbox control's own 44px touch floor. Nothing above it owns this control's box."
     },
     "src-ui/src/components/DetailHeader.css": {
-      "count": 2,
-      "reason": "The canonical detail header: stacks title/actions at 640px, and publishes the mobile action footer plus the --detail-body-bottom-clearance token every detail body offsets from."
+      "count": 3,
+      "reason": "station#923: DetailHeader is the shared detail-pane header used by 11 surfaces, and it now owns the 769-1180px tablet band that previously did not exist (layout jumped from mobile at 768px straight to desktop, squeezing the agent name to one character). Its responsive rules are deliberately RECORDED here rather than exempted via PRIMITIVE_ALLOWLIST: exemption would make future growth in this file invisible, while recording keeps it counted and capped. Promote it to a primitive only if a later change shows it needs rules this ceiling cannot hold."
     },
     "src-ui/src/components/InfoTip.css": {
       "count": 1,
