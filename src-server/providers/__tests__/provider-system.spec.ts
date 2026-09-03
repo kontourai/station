@@ -817,7 +817,7 @@ describe('Provider System', () => {
       expect(getProviderAdapter('bedrock')).toBe(sourceA);
     });
 
-    it('bounds staged cleanup, invokes every adapter, and retries retained ownership', async () => {
+    it('bounds staged cleanup and retries retained ownership only for its source', async () => {
       vi.useFakeTimers();
       try {
         const synchronousFailure = new BedrockAdapter();
@@ -850,8 +850,11 @@ describe('Provider System', () => {
         expect(stopStalled).toHaveBeenCalledOnce();
 
         stopFailure.mockResolvedValue(undefined);
-        await disposeRetainedPreparedPluginProviders();
+        await disposeRetainedPreparedPluginProviders('plugin-a');
         expect(stopFailure).toHaveBeenCalledTimes(2);
+        expect(stopStalled).toHaveBeenCalledOnce();
+
+        await disposeRetainedPreparedPluginProviders('plugin-b');
         expect(stopStalled).toHaveBeenCalledTimes(2);
       } finally {
         vi.useRealTimers();

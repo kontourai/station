@@ -1,5 +1,12 @@
 import { describe, expect, test, vi } from 'vitest';
 import {
+  clearAll,
+  disposeRetainedPreparedPluginProviders,
+  pluginProviderSourceGeneration,
+  replacePluginProvidersForSourceGeneration,
+  retirePluginProvidersForSourceGeneration,
+} from '../../../providers/registries/registry.js';
+import {
   createPluginGrantReconciliationService,
   type PluginGrantReconciliationAdapters,
   type PluginGrantRuntimeSnapshot,
@@ -41,7 +48,7 @@ function harness(
       };
       return 'activated' as const;
     }),
-    settleProviderAdapters: vi.fn(async () => {
+    settleProviderAdapters: vi.fn(async (_pluginName: string) => {
       order.push('settle-adapters');
     }),
     removeEngineConnections: vi.fn(async () => {
@@ -189,6 +196,159 @@ describe('plugin grant reconciliation', () => {
     expect(fixture.adapters.retireProviders).toHaveBeenCalledTimes(2);
     expect(fixture.adapters.removeEngineConnections).toHaveBeenCalledOnce();
     expect(fixture.adapters.quiesceModule).toHaveBeenCalledOnce();
+  });
+
+  test('refuses new capacity instead of discarding incomplete cleanup and its permission vector', async () => {
+    const fixture = harness();
+    let retirementFails = true;
+    vi.mocked(fixture.adapters.retireProviders).mockImplementation(
+      async (_pluginName, expectedGeneration) => {
+        if (retirementFails) throw new Error('forced retirement failure');
+        fixture.setSnapshot({
+          installed: true,
+          installationGeneration: 'sha256:generation-1',
+          providerGeneration: expectedGeneration + 1,
+          grants: [],
+        });
+        return 'retired';
+      },
+    );
+    const service = createPluginGrantReconciliationService(fixture.adapters);
+
+    for (let index = 0; index < 256; index += 1) {
+      await expect(
+        service.reconcile({
+          pluginName: `provider-plugin-${index}`,
+          permissions: ['providers.register'],
+        }),
+      ).resolves.toMatchObject({
+        status: 'incomplete',
+        failures: ['provider-retirement'],
+      });
+    }
+    const retained = service.inspect('provider-plugin-0');
+
+    await expect(
+      service.reconcile({
+        pluginName: 'provider-plugin-over-capacity',
+        permissions: ['providers.register'],
+      }),
+    ).resolves.toMatchObject({
+      status: 'incomplete',
+      generation: 0,
+      failures: ['capacity'],
+    });
+    expect(service.inspect('provider-plugin-0')).toEqual(retained);
+
+    retirementFails = false;
+    await expect(
+      service.reconcile({
+        pluginName: 'provider-plugin-0',
+        permissions: ['plugin.server'],
+      }),
+    ).resolves.toMatchObject({ status: 'completed' });
+    expect(fixture.adapters.retireProviders).toHaveBeenLastCalledWith(
+      'provider-plugin-0',
+      1,
+    );
+    expect(fixture.adapters.quiesceModule).toHaveBeenCalledOnce();
+  });
+
+  test('a winning revoke retries source-bound staged adapter disposal before completing', async () => {
+    clearAll();
+    const pluginName = 'staged-cleanup-plugin';
+    let grants = ['providers.register'];
+    let releaseDisplaced!: () => void;
+    const displacedCleanup = new Promise<void>((resolve) => {
+      releaseDisplaced = resolve;
+    });
+    let markDisplacedCleanupStarted!: () => void;
+    const displacedCleanupStarted = new Promise<void>((resolve) => {
+      markDisplacedCleanupStarted = resolve;
+    });
+    const displacedAdapter = {
+      provider: 'probe',
+      stopAll: vi.fn(async () => {
+        markDisplacedCleanupStarted();
+        await displacedCleanup;
+      }),
+    };
+    let activeCleanupAttempts = 0;
+    const settlementGrantSnapshots: string[][] = [];
+    const activeAdapter = {
+      provider: 'probe',
+      stopAll: vi.fn(async () => {
+        activeCleanupAttempts += 1;
+        if (activeCleanupAttempts === 1) {
+          throw new Error('first staged cleanup failed');
+        }
+      }),
+    };
+    const adapters: PluginGrantReconciliationAdapters = {
+      snapshot: async () => ({
+        installed: true,
+        installationGeneration: 'sha256:generation-1',
+        providerGeneration: pluginProviderSourceGeneration(pluginName),
+        grants,
+      }),
+      quiesceModule: async () => ({ release() {} }),
+      quiesceSubscriptions: async () => ({ release() {} }),
+      retireProviders: (source, generation) =>
+        retirePluginProvidersForSourceGeneration(source, generation),
+      activateProviders: (source, expected, isCurrent) =>
+        replacePluginProvidersForSourceGeneration(
+          source,
+          expected.providerGeneration,
+          [
+            {
+              type: 'providerAdapter',
+              provider: displacedAdapter as any,
+              source,
+            },
+            {
+              type: 'providerAdapter',
+              provider: activeAdapter as any,
+              source,
+            },
+          ],
+          isCurrent,
+        ),
+      settleProviderAdapters: async (source) => {
+        settlementGrantSnapshots.push([...grants]);
+        await disposeRetainedPreparedPluginProviders(source);
+      },
+      removeEngineConnections: async () => 'removed',
+      reconcileEngineConnections: async () => {},
+      reconcileSubscriptions: async () => ({ kind: 'applied' }),
+    };
+    const service = createPluginGrantReconciliationService(adapters, {
+      responseDeadlineMs: 1_000,
+    });
+
+    try {
+      const regrant = service.reconcile({
+        pluginName,
+        permissions: ['providers.register'],
+      });
+      await displacedCleanupStarted;
+      grants = [];
+      const revoke = service.reconcile({
+        pluginName,
+        permissions: ['providers.register'],
+      });
+      releaseDisplaced();
+
+      await expect(regrant).resolves.toMatchObject({ status: 'superseded' });
+      await expect(revoke).resolves.toMatchObject({ status: 'completed' });
+      expect(activeCleanupAttempts).toBe(2);
+      expect(settlementGrantSnapshots).toEqual([[]]);
+      await disposeRetainedPreparedPluginProviders(pluginName);
+      expect(activeCleanupAttempts).toBe(2);
+    } finally {
+      releaseDisplaced();
+      await disposeRetainedPreparedPluginProviders().catch(() => undefined);
+      clearAll();
+    }
   });
 
   test('passes the exact installation generation into retained provider activation and honors supersession', async () => {

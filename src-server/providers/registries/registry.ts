@@ -54,7 +54,32 @@ export interface PreparedPluginProviderRegistration {
 }
 
 const PREPARED_ADAPTER_CLEANUP_TIMEOUT_MS = 2_000;
-const retainedPreparedAdapterCleanup = new Set<ProviderAdapterShape>();
+/**
+ * Prepared adapters can start processes before registry publication. Keep a
+ * failed disposal bound to the plugin source that prepared it so that source's
+ * winning grant reconciliation can settle the exact debt before reporting
+ * completion. Shutdown may still drain every source by omitting the filter.
+ */
+const retainedPreparedAdapterCleanup = new Map<
+  string,
+  Set<ProviderAdapterShape>
+>();
+
+function retainPreparedAdapterCleanup(
+  source: string,
+  adapter: ProviderAdapterShape,
+): void {
+  const retained = retainedPreparedAdapterCleanup.get(source) ?? new Set();
+  retained.add(adapter);
+  retainedPreparedAdapterCleanup.set(source, retained);
+}
+
+function forgetPreparedAdapterCleanup(adapter: ProviderAdapterShape): void {
+  for (const [source, retained] of retainedPreparedAdapterCleanup) {
+    retained.delete(adapter);
+    if (retained.size === 0) retainedPreparedAdapterCleanup.delete(source);
+  }
+}
 let pluginProviderMutationQueue = Promise.resolve();
 const pluginProviderSourceGenerations = new Map<string, number>();
 
@@ -123,31 +148,32 @@ function splitPreparedPluginProviders(
 export async function disposePreparedPluginProviders(
   registrations: PreparedPluginProviderRegistration[],
 ): Promise<void> {
-  const adapters = new Set(
-    registrations
-      .filter((registration) => registration.type === 'providerAdapter')
-      .map((registration) => registration.provider as ProviderAdapterShape),
-  );
+  const adapters = new Map<ProviderAdapterShape, string>();
+  for (const registration of registrations) {
+    if (registration.type !== 'providerAdapter') continue;
+    const adapter = registration.provider as ProviderAdapterShape;
+    if (!adapters.has(adapter)) adapters.set(adapter, registration.source);
+  }
   const results = await Promise.allSettled(
-    [...adapters].map(async (adapter) => {
+    [...adapters].map(async ([adapter, source]) => {
       const cleanup = Promise.resolve().then(() => adapter.stopAll());
       const settled = await awaitSettlementWithin(
         cleanup,
         PREPARED_ADAPTER_CLEANUP_TIMEOUT_MS,
       );
       if (!settled) {
-        retainedPreparedAdapterCleanup.add(adapter);
+        retainPreparedAdapterCleanup(source, adapter);
         void cleanup.then(
-          () => retainedPreparedAdapterCleanup.delete(adapter),
+          () => forgetPreparedAdapterCleanup(adapter),
           () => undefined,
         );
         throw new Error('Prepared plugin provider cleanup timed out.');
       }
       try {
         await cleanup;
-        retainedPreparedAdapterCleanup.delete(adapter);
+        forgetPreparedAdapterCleanup(adapter);
       } catch (error) {
-        retainedPreparedAdapterCleanup.add(adapter);
+        retainPreparedAdapterCleanup(source, adapter);
         throw error;
       }
     }),
@@ -165,13 +191,27 @@ export async function disposePreparedPluginProviders(
   }
 }
 
-export async function disposeRetainedPreparedPluginProviders(): Promise<void> {
+export async function disposeRetainedPreparedPluginProviders(
+  source?: string,
+): Promise<void> {
+  const retained =
+    source === undefined
+      ? retainedPreparedAdapterCleanup
+      : new Map([
+          [
+            source,
+            retainedPreparedAdapterCleanup.get(source) ??
+              new Set<ProviderAdapterShape>(),
+          ],
+        ]);
   await disposePreparedPluginProviders(
-    [...retainedPreparedAdapterCleanup].map((provider) => ({
-      type: 'providerAdapter',
-      provider,
-      source: 'retained-cleanup',
-    })),
+    [...retained].flatMap(([retainedSource, providers]) =>
+      [...providers].map((provider) => ({
+        type: 'providerAdapter' as const,
+        provider,
+        source: retainedSource,
+      })),
+    ),
   );
 }
 

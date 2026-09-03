@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import {
+  disposeRetainedPreparedPluginProviders,
   pluginProviderSourceGeneration,
   replacePluginProvidersForSourceGeneration,
   retirePluginProvidersForSourceGeneration,
@@ -105,7 +106,25 @@ export function createPluginRoutes(
               ? activation.value
               : ('superseded' as const);
           },
-          settleProviderAdapters: runtime.settleProviderAdapterRetirements,
+          settleProviderAdapters: async (pluginName) => {
+            const failures: unknown[] = [];
+            try {
+              await disposeRetainedPreparedPluginProviders(pluginName);
+            } catch (error) {
+              failures.push(error);
+            }
+            try {
+              await runtime.settleProviderAdapterRetirements();
+            } catch (error) {
+              failures.push(error);
+            }
+            if (failures.length > 0) {
+              throw new AggregateError(
+                failures,
+                `Provider adapter cleanup for '${pluginName}' is incomplete.`,
+              );
+            }
+          },
           removeEngineConnections: async (pluginName, expected) => {
             const installation = await withPluginInstallationGeneration({
               pluginsDir,

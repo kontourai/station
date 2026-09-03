@@ -32,7 +32,7 @@ export interface PluginGrantReconciliationAdapters {
     expected: PluginGrantRuntimeGenerationFence,
     isCurrent: () => boolean,
   ): Promise<'activated' | 'superseded'>;
-  settleProviderAdapters(): Promise<void>;
+  settleProviderAdapters(pluginName: string): Promise<void>;
   removeEngineConnections(
     pluginName: string,
     expected: PluginGrantRuntimeGenerationFence,
@@ -254,6 +254,14 @@ export function createPluginGrantReconciliationService(
           } catch {
             failures.push('provider-activation');
           }
+          if (current()) {
+            try {
+              await adapters.settleProviderAdapters(input.pluginName);
+              effects.push('adapter-retirement');
+            } catch {
+              failures.push('adapter-retirement');
+            }
+          }
           let activatedSnapshot: PluginGrantRuntimeSnapshot | undefined;
           try {
             activatedSnapshot = await adapters.snapshot(input.pluginName);
@@ -300,7 +308,7 @@ export function createPluginGrantReconciliationService(
             failures.push('provider-retirement');
           }
           try {
-            await adapters.settleProviderAdapters();
+            await adapters.settleProviderAdapters(input.pluginName);
             effects.push('adapter-retirement');
           } catch {
             failures.push('adapter-retirement');
@@ -418,13 +426,15 @@ export function createPluginGrantReconciliationService(
     }): Promise<PluginGrantReconciliationResult> {
       const operationId = randomUUID();
       if (!retained.has(input.pluginName) && retained.size >= 256) {
-        const evictable = [...retained.keys()].find(
-          (pluginName) => !tails.has(pluginName),
+        const evictable = [...retained].find(
+          ([pluginName, record]) =>
+            !tails.has(pluginName) && record.result?.status === 'completed',
         );
         if (evictable) {
-          retained.delete(evictable);
-          generations.delete(evictable);
-          pendingPermissions.delete(evictable);
+          const [evictablePluginName] = evictable;
+          retained.delete(evictablePluginName);
+          generations.delete(evictablePluginName);
+          pendingPermissions.delete(evictablePluginName);
         }
       }
       if (!retained.has(input.pluginName) && retained.size >= 256) {
