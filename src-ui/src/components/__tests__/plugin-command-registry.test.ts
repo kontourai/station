@@ -1,4 +1,4 @@
-import type { PluginCommandContribution } from '@kontourai/station-contracts/plugin';
+import type { PluginCommandContribution } from '@kontourai/station-contracts/agent-plugin';
 import { describe, expect, test } from 'vitest';
 import {
   type InstalledPluginCommandSource,

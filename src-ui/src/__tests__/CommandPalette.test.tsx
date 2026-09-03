@@ -113,6 +113,13 @@ const setProjectMock = vi.fn();
 const setDockStateMock = vi.fn();
 
 vi.mock('../contexts/NavigationContext', () => ({
+  navigationStore: {
+    getSnapshot: () => ({
+      activeChat: activeChatMock,
+      pathname: pathnameMock,
+      selectedProject: 'alpha',
+    }),
+  },
   useNavigation: () => ({
     navigate: navigateMock,
     setProject: setProjectMock,
@@ -182,6 +189,7 @@ vi.mock('../hooks/useKeyboardShortcut', () => ({
 }));
 
 import { CommandPalette } from '../components/CommandPalette';
+import { retirePluginCommandExecutions } from '../components/plugin-command-execution-lifecycle';
 
 afterEach(() => {
   indexRebuilds.count = 0;
@@ -767,7 +775,13 @@ describe('CommandPalette', () => {
             kind: 'composer',
             sessionId: 'session-plugin-command',
           },
+          context: {
+            activeChatSessionId: 'session-plugin-command',
+            projectSlug: 'alpha',
+            sessionId: 'session-plugin-command',
+          },
         },
+        { signal: expect.objectContaining({ aborted: false }) },
       );
       expect(
         JSON.stringify(authorizePluginPaletteCommand.mock.calls[0]?.[1]),
@@ -853,6 +867,99 @@ describe('CommandPalette', () => {
       expect(setDockStateMock).not.toHaveBeenCalled();
     } finally {
       activeChatsStore.removeChat('session-plugin-refused');
+    }
+  });
+
+  test('does not seed a chat that stopped being active while admission was pending', async () => {
+    activeChatsStore.initChat('session-old', {
+      agentSlug: 'station',
+      agentName: 'Station',
+      title: 'Old chat',
+    });
+    activeChatsStore.initChat('session-new', {
+      agentSlug: 'station',
+      agentName: 'Station',
+      title: 'New chat',
+    });
+    activeChatMock = 'session-old';
+    pluginsMock = [
+      {
+        name: 'demo-plugin',
+        version: '1.0.0',
+        commandGeneration: 'a'.repeat(64),
+        commandContributions: [
+          {
+            version: '1.0',
+            id: 'demo-plugin.review-work',
+            title: 'Review this work',
+            intent: {
+              kind: 'seed-composer',
+              text: 'Do not stage in the old chat.',
+            },
+          },
+        ],
+      },
+    ];
+    let resolve!: (value: { receiptId: string }) => void;
+    authorizePluginPaletteCommand.mockReturnValueOnce(
+      new Promise((settle) => {
+        resolve = settle;
+      }),
+    );
+    try {
+      await renderCommandPalette();
+      open();
+      fireEvent.click(screen.getByRole('option', { name: /Review this work/ }));
+      activeChatMock = 'session-new';
+      await act(async () => resolve({ receiptId: 'receipt-a' }));
+      expect(activeChatsStore.getSnapshot()['session-old']?.input).toBe('');
+      expect(activeChatsStore.getSnapshot()['session-new']?.input).toBe('');
+    } finally {
+      activeChatsStore.removeChat('session-old');
+      activeChatsStore.removeChat('session-new');
+    }
+  });
+
+  test('retires a pending local effect when plugin lifecycle changes', async () => {
+    activeChatsStore.initChat('session-retired', {
+      agentSlug: 'station',
+      agentName: 'Station',
+      title: 'Retired command chat',
+    });
+    activeChatMock = 'session-retired';
+    pluginsMock = [
+      {
+        name: 'demo-plugin',
+        version: '1.0.0',
+        commandGeneration: 'a'.repeat(64),
+        commandContributions: [
+          {
+            version: '1.0',
+            id: 'demo-plugin.review-work',
+            title: 'Review this work',
+            intent: {
+              kind: 'seed-composer',
+              text: 'Do not stage after removal.',
+            },
+          },
+        ],
+      },
+    ];
+    let resolve!: (value: { receiptId: string }) => void;
+    authorizePluginPaletteCommand.mockReturnValueOnce(
+      new Promise((settle) => {
+        resolve = settle;
+      }),
+    );
+    try {
+      await renderCommandPalette();
+      open();
+      fireEvent.click(screen.getByRole('option', { name: /Review this work/ }));
+      retirePluginCommandExecutions();
+      await act(async () => resolve({ receiptId: 'receipt-a' }));
+      expect(activeChatsStore.getSnapshot()['session-retired']?.input).toBe('');
+    } finally {
+      activeChatsStore.removeChat('session-retired');
     }
   });
 

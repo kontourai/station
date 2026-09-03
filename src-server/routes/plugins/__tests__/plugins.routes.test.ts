@@ -1217,6 +1217,7 @@ describe('Plugin Routes', () => {
         ...mockManifest,
         extensions: {
           'io.kontourai.station': {
+            schemaVersion: '1.0',
             commands: [
               {
                 version: '1.0',

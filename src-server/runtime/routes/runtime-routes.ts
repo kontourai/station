@@ -2025,6 +2025,45 @@ export function configureRuntimeRoutes(
             return { kind: 'unavailable' as const };
           }
         },
+        resolveRequirement: ({ requirement, request }) => {
+          if (requirement === 'active-chat') {
+            return request.context.activeChatSessionId &&
+              (request.target.kind !== 'composer' ||
+                request.target.sessionId ===
+                  request.context.activeChatSessionId)
+              ? { kind: 'available' as const }
+              : { kind: 'missing' as const };
+          }
+          if (requirement === 'session') {
+            return request.context.sessionId &&
+              (request.target.kind !== 'composer' ||
+                request.target.sessionId === request.context.sessionId)
+              ? { kind: 'available' as const }
+              : { kind: 'missing' as const };
+          }
+          if (requirement === 'project') {
+            if (!request.context.projectSlug) {
+              return { kind: 'missing' as const };
+            }
+            try {
+              return context.projectService.getProject(
+                request.context.projectSlug,
+              )
+                ? { kind: 'available' as const }
+                : { kind: 'missing' as const };
+            } catch {
+              return { kind: 'missing' as const };
+            }
+          }
+          const task = request.context.taskId
+            ? context.taskGraphService.readTask(request.context.taskId)
+            : null;
+          return task &&
+            (!request.context.projectSlug ||
+              task.projectId === request.context.projectSlug)
+            ? { kind: 'available' as const }
+            : { kind: 'missing' as const };
+        },
       }),
     }),
   );

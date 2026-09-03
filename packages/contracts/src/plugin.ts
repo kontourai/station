@@ -1,3 +1,7 @@
+import {
+  STATION_AGENT_PLUGIN_EXTENSION_ID,
+  type StationAgentPluginExtensionV1,
+} from './agent-plugin.js';
 import type { KnowledgeNamespaceConfig } from './knowledge.js';
 import type {
   OperationalEventProjection,
@@ -97,88 +101,20 @@ export interface PluginSettingField {
   required?: boolean;
 }
 
-/** Reserved Agent Plugins extension key for Station-owned host contributions. */
-export const STATION_PLUGIN_EXTENSION_ID = 'io.kontourai.station' as const;
-
-/**
- * Host-rendered icon vocabulary for inert command contributions. Plugin data
- * selects one of these identities; it never supplies markup or a component.
- */
-export type PluginCommandIcon =
-  | 'agent'
-  | 'chat'
-  | 'command'
-  | 'plugin'
-  | 'project'
-  | 'search';
-
-/** Facts the host must be able to resolve before a contributed command runs. */
-export type PluginCommandRequirement =
-  | 'active-chat'
-  | 'plugin-server'
-  | 'project'
-  | 'session'
-  | 'task';
-
-interface PluginCommandArgumentBase {
-  label: string;
-  required?: boolean;
-}
-
-/**
- * Closed, host-owned argument vocabulary. Manifests describe the value the
- * host should collect; they cannot contribute validators, patterns, or code.
- */
-export type PluginCommandArgument =
-  | (PluginCommandArgumentBase & { kind: 'text' })
-  | (PluginCommandArgumentBase & {
-      kind: 'url';
-      /** Exact host values (optionally including a port), never patterns. */
-      allowedHosts: string[];
-    })
-  | (PluginCommandArgumentBase & {
-      kind: 'project' | 'task' | 'session' | 'file' | 'registry-item';
-    });
-
-/** Safe command intents resolved and executed by Station-owned code. */
-export type PluginCommandIntent =
-  | {
-      kind: 'navigate';
-      /** An existing SurfaceRegistry identity, not a plugin-supplied route. */
-      surfaceId: string;
-    }
-  | {
-      kind: 'seed-composer';
-      /** Visible draft text. This intent has no send or auto-submit mode. */
-      text: string;
-      argumentMode?: 'append' | 'replace';
-    }
-  | {
-      kind: 'invoke-declared-plugin-operation';
-      operationId: string;
-      argumentMode?: 'body';
-    };
-
-/** Versioned inert row contributed to Station's host command registry. */
-export interface PluginCommandContribution {
-  version: '1.0';
-  /** Owner-qualified identity: `<plugin-name>.<local-command-id>`. */
-  id: string;
-  title: string;
-  subtitle?: string;
-  icon?: PluginCommandIcon;
-  keywords?: string[];
-  requires?: PluginCommandRequirement[];
-  argument?: PluginCommandArgument;
-  intent: PluginCommandIntent;
-}
-
 export const PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION =
   'station.plugin-command-execution/v1' as const;
 
 export type PluginCommandResolvedTarget =
   | { kind: 'surface'; surfaceId: string }
   | { kind: 'composer'; sessionId: string };
+
+/** Client-visible host facts bound into admission and rechecked before effect. */
+export interface PluginCommandResolvedContext {
+  activeChatSessionId?: string;
+  projectSlug?: string;
+  sessionId?: string;
+  taskId?: string;
+}
 
 /** Browser intent admitted by the host before a local palette effect. */
 export interface PluginCommandExecutionRequest {
@@ -189,6 +125,7 @@ export interface PluginCommandExecutionRequest {
   commandGeneration: string;
   commandId: string;
   target: PluginCommandResolvedTarget;
+  context: PluginCommandResolvedContext;
 }
 
 /** Durable operational-event receipt. No command input or composer text. */
@@ -208,14 +145,9 @@ export interface PluginCommandExecutionReceipt {
   recordedAt: string;
 }
 
-/** Station's reserved Agent Plugins extension payload. */
-export interface StationPluginExtension {
-  commands?: PluginCommandContribution[];
-}
-
 /** Other Agent Plugins extension namespaces remain opaque to Station. */
 export interface PluginExtensions {
-  [STATION_PLUGIN_EXTENSION_ID]?: StationPluginExtension;
+  [STATION_AGENT_PLUGIN_EXTENSION_ID]?: StationAgentPluginExtensionV1;
   [namespace: string]: unknown;
 }
 

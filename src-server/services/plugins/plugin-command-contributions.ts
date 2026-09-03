@@ -4,8 +4,8 @@ import {
   type PluginCommandContribution,
   type PluginCommandIntent,
   type PluginCommandRequirement,
-  STATION_PLUGIN_EXTENSION_ID,
-} from '@kontourai/station-contracts/plugin';
+  STATION_AGENT_PLUGIN_EXTENSION_ID,
+} from '@kontourai/station-contracts/agent-plugin';
 
 const COMMAND_LOCAL_ID = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
 const HOST_SURFACE_ID = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
@@ -36,6 +36,29 @@ const ARGUMENT_KINDS = new Set([
 ]);
 const MAX_COMMANDS = 32;
 const MAX_KEYWORDS = 12;
+const STATION_EXTENSION_FIELDS = [
+  'schemaVersion',
+  'title',
+  'permissions',
+  'settings',
+  'secretReferences',
+  'dependencies',
+  'sdkVersion',
+  'entrypoint',
+  'serverModule',
+  'build',
+  'capabilities',
+  'commands',
+  'links',
+  'agents',
+  'workspacePanes',
+  'operationalEventSubscriptions',
+  'providers',
+  'integrations',
+  'tools',
+  'knowledge',
+  'prompts',
+] as const;
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -199,21 +222,26 @@ export function parsePluginCommandContributions(
 ): PluginCommandContribution[] {
   if (extensions === undefined) return [];
   const extensionMap = record(extensions, 'Plugin manifest extensions');
-  const stationExtension = extensionMap[STATION_PLUGIN_EXTENSION_ID];
+  const stationExtension = extensionMap[STATION_AGENT_PLUGIN_EXTENSION_ID];
   if (stationExtension === undefined) return [];
   const station = record(
     stationExtension,
-    `Plugin extension '${STATION_PLUGIN_EXTENSION_ID}'`,
+    `Plugin extension '${STATION_AGENT_PLUGIN_EXTENSION_ID}'`,
   );
   exactKeys(
     station,
-    ['commands'],
-    `Plugin extension '${STATION_PLUGIN_EXTENSION_ID}'`,
+    STATION_EXTENSION_FIELDS,
+    `Plugin extension '${STATION_AGENT_PLUGIN_EXTENSION_ID}'`,
   );
+  if (station.schemaVersion !== '1.0') {
+    throw new Error(
+      `Plugin extension '${STATION_AGENT_PLUGIN_EXTENSION_ID}'.schemaVersion must be '1.0'`,
+    );
+  }
   if (station.commands === undefined) return [];
   if (!Array.isArray(station.commands)) {
     throw new Error(
-      `Plugin extension '${STATION_PLUGIN_EXTENSION_ID}'.commands must be an array`,
+      `Plugin extension '${STATION_AGENT_PLUGIN_EXTENSION_ID}'.commands must be an array`,
     );
   }
   if (station.commands.length > MAX_COMMANDS) {
@@ -357,7 +385,7 @@ export function pluginCommandGeneration(
   >,
 ): string {
   const commands =
-    manifest.extensions?.[STATION_PLUGIN_EXTENSION_ID]?.commands ?? [];
+    manifest.extensions?.[STATION_AGENT_PLUGIN_EXTENSION_ID]?.commands ?? [];
   return createHash('sha256')
     .update(
       JSON.stringify([

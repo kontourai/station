@@ -9,14 +9,12 @@ import {
   rmSync,
 } from 'node:fs';
 import { basename, join, resolve, sep } from 'node:path';
+import { STATION_AGENT_PLUGIN_EXTENSION_ID } from '@kontourai/station-contracts/agent-plugin';
 import type {
   InstallResult,
   RegistryItem,
 } from '@kontourai/station-contracts/catalog';
-import {
-  type PluginManifest,
-  STATION_PLUGIN_EXTENSION_ID,
-} from '@kontourai/station-contracts/plugin';
+import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import { withPluginContentLock } from '../../services/plugins/plugin-content-integrity.js';
 import { readPluginManifestFileSync } from '../../services/plugins/plugin-manifest-loader.js';
@@ -397,7 +395,7 @@ export function detectPluginConflicts(
   }
 
   const commands =
-    manifest.extensions?.[STATION_PLUGIN_EXTENSION_ID]?.commands ?? [];
+    manifest.extensions?.[STATION_AGENT_PLUGIN_EXTENSION_ID]?.commands ?? [];
   if (
     !manifest.layout &&
     !manifest.workspacePanes?.length &&
@@ -427,7 +425,7 @@ export function detectPluginConflicts(
       if (installedManifest.name !== manifest.name) {
         const installedCommandIds = new Set(
           (
-            installedManifest.extensions?.[STATION_PLUGIN_EXTENSION_ID]
+            installedManifest.extensions?.[STATION_AGENT_PLUGIN_EXTENSION_ID]
               ?.commands ?? []
           ).map((command) => command.id),
         );

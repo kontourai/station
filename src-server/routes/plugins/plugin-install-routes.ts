@@ -1,10 +1,8 @@
 import { existsSync, rmSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import {
-  isCanonicalPluginId,
-  STATION_PLUGIN_EXTENSION_ID,
-} from '@kontourai/station-contracts/plugin';
+import { STATION_AGENT_PLUGIN_EXTENSION_ID } from '@kontourai/station-contracts/agent-plugin';
+import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
@@ -142,7 +140,8 @@ export function registerPluginInstallRoutes(
           providers: manifest.providers,
           links: manifest.links,
           commandContributions:
-            manifest.extensions?.[STATION_PLUGIN_EXTENSION_ID]?.commands ?? [],
+            manifest.extensions?.[STATION_AGENT_PLUGIN_EXTENSION_ID]
+              ?.commands ?? [],
           commandGeneration: pluginCommandGeneration(manifest),
           commandCapabilities: {
             invokeDeclaredOperation: manifest.serverModule
@@ -322,8 +321,9 @@ export function registerPluginInstallRoutes(
           });
         }
 
-        for (const command of manifest.extensions?.[STATION_PLUGIN_EXTENSION_ID]
-          ?.commands ?? []) {
+        for (const command of manifest.extensions?.[
+          STATION_AGENT_PLUGIN_EXTENSION_ID
+        ]?.commands ?? []) {
           const conflict = conflicts.find(
             (entry) => entry.type === 'command' && entry.id === command.id,
           );

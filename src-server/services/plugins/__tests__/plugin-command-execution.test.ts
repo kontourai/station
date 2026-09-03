@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -9,10 +15,15 @@ import {
   type OperationalEventEnvelope,
   validateOperationalEventEnvelope,
 } from '@kontourai/station-contracts/operational-event';
-import { PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION } from '@kontourai/station-contracts/plugin';
+import {
+  PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION,
+  type PluginManifest,
+} from '@kontourai/station-contracts/plugin';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { pluginCommandGeneration } from '../plugin-command-contributions.js';
 import { createPluginCommandExecutionAuthority } from '../plugin-command-execution.js';
+import { withPluginContentLock } from '../plugin-content-integrity.js';
+import { readPluginManifestFileSync } from '../plugin-manifest-loader.js';
 
 const roots: string[] = [];
 const origin: ClientOrigin = {
@@ -42,6 +53,7 @@ function fixture() {
     version: '1.0.0',
     extensions: {
       'io.kontourai.station': {
+        schemaVersion: '1.0' as const,
         commands: [
           {
             version: '1.0' as const,
@@ -60,7 +72,9 @@ function fixture() {
   return { pluginsDir, manifest };
 }
 
-function request(manifest: ReturnType<typeof fixture>['manifest']) {
+function request(
+  manifest: Pick<PluginManifest, 'name' | 'version' | 'extensions'>,
+) {
   return {
     schemaVersion: PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION,
     requestId: 'request-a',
@@ -69,11 +83,15 @@ function request(manifest: ReturnType<typeof fixture>['manifest']) {
     commandGeneration: pluginCommandGeneration(manifest),
     commandId: 'demo-plugin.review',
     target: { kind: 'composer' as const, sessionId: 'session-a' },
+    context: {
+      activeChatSessionId: 'session-a',
+      sessionId: 'session-a',
+    },
   };
 }
 
 describe('plugin command execution authority', () => {
-  test('persists a bounded actor/target receipt before admitting the UI effect', () => {
+  test('persists a bounded actor/target receipt before admitting the UI effect', async () => {
     const { pluginsDir, manifest } = fixture();
     const append = vi.fn((value: unknown) => ({
       kind: 'appended' as const,
@@ -84,9 +102,10 @@ describe('plugin command execution authority', () => {
       pluginsDir,
       publisher: { append },
       grantedPermissions: () => ({ kind: 'available', permissions: [] }),
+      resolveRequirement: () => ({ kind: 'available' }),
     });
 
-    const outcome = authority.authorize(request(manifest), origin);
+    const outcome = await authority.authorize(request(manifest), origin);
 
     expect(outcome).toMatchObject({
       kind: 'authorized',
@@ -118,7 +137,7 @@ describe('plugin command execution authority', () => {
     expect(JSON.stringify(event)).not.toContain('Private prompt text');
   });
 
-  test('refuses and audits a stale command generation', () => {
+  test('refuses and audits a stale command generation', async () => {
     const { pluginsDir, manifest } = fixture();
     const append = vi.fn((value: unknown) => ({
       kind: 'appended' as const,
@@ -129,10 +148,11 @@ describe('plugin command execution authority', () => {
       pluginsDir,
       publisher: { append },
       grantedPermissions: () => ({ kind: 'available', permissions: [] }),
+      resolveRequirement: () => ({ kind: 'available' }),
     });
 
     expect(
-      authority.authorize(
+      await authority.authorize(
         { ...request(manifest), commandGeneration: '0'.repeat(64) },
         origin,
       ),
@@ -148,16 +168,179 @@ describe('plugin command execution authority', () => {
     });
   });
 
-  test('admits no effect when durable audit storage is unavailable', () => {
+  test('admits no effect when durable audit storage is unavailable', async () => {
     const { pluginsDir, manifest } = fixture();
     const authority = createPluginCommandExecutionAuthority({
       pluginsDir,
       publisher: { append: () => ({ kind: 'unavailable' }) },
       grantedPermissions: () => ({ kind: 'available', permissions: [] }),
+      resolveRequirement: () => ({ kind: 'available' }),
     });
 
-    expect(authority.authorize(request(manifest), origin)).toEqual({
+    expect(await authority.authorize(request(manifest), origin)).toEqual({
       kind: 'unavailable',
     });
+  });
+
+  test('accepts a bounded non-SemVer Agent Plugins version', async () => {
+    const { pluginsDir, manifest } = fixture();
+    manifest.version = 'release candidate 1';
+    writeFileSync(
+      join(pluginsDir, manifest.name, 'plugin.json'),
+      JSON.stringify(manifest),
+    );
+    const installed = readPluginManifestFileSync(
+      join(pluginsDir, manifest.name, 'plugin.json'),
+    );
+    const authority = createPluginCommandExecutionAuthority({
+      pluginsDir,
+      publisher: {
+        append: (event) => ({
+          kind: 'appended',
+          journalSequence: 1,
+          event: event as OperationalEventEnvelope,
+        }),
+      },
+      grantedPermissions: () => ({ kind: 'available', permissions: [] }),
+      resolveRequirement: () => ({ kind: 'available' }),
+    });
+
+    await expect(
+      authority.authorize(request(installed), origin),
+    ).resolves.toMatchObject({
+      kind: 'authorized',
+      receipt: { pluginVersion: 'release candidate 1' },
+    });
+  });
+
+  test('refuses an unresolved host-context requirement before admission', async () => {
+    const { pluginsDir, manifest } = fixture();
+    manifest.extensions['io.kontourai.station'].commands[0] = {
+      ...manifest.extensions['io.kontourai.station'].commands[0],
+      requires: ['project'],
+    };
+    writeFileSync(
+      join(pluginsDir, manifest.name, 'plugin.json'),
+      JSON.stringify(manifest),
+    );
+    const installed = readPluginManifestFileSync(
+      join(pluginsDir, manifest.name, 'plugin.json'),
+    );
+    const append = vi.fn((event: unknown) => ({
+      kind: 'appended' as const,
+      journalSequence: 1,
+      event: event as OperationalEventEnvelope,
+    }));
+    const resolveRequirement = vi.fn(() => ({ kind: 'missing' as const }));
+    const authority = createPluginCommandExecutionAuthority({
+      pluginsDir,
+      publisher: { append },
+      grantedPermissions: () => ({ kind: 'available', permissions: [] }),
+      resolveRequirement,
+    });
+
+    await expect(
+      authority.authorize(request(installed), origin),
+    ).resolves.toEqual({
+      kind: 'refused',
+      reason: 'requirement-not-satisfied',
+    });
+    expect(resolveRequirement).toHaveBeenCalledWith(
+      expect.objectContaining({ requirement: 'project' }),
+    );
+    expect(append).toHaveBeenCalledOnce();
+  });
+
+  test('requires a declared server module as well as its grant', async () => {
+    const { pluginsDir, manifest } = fixture();
+    manifest.extensions['io.kontourai.station'].commands[0] = {
+      ...manifest.extensions['io.kontourai.station'].commands[0],
+      requires: ['plugin-server'],
+    };
+    writeFileSync(
+      join(pluginsDir, manifest.name, 'plugin.json'),
+      JSON.stringify(manifest),
+    );
+    const installed = readPluginManifestFileSync(
+      join(pluginsDir, manifest.name, 'plugin.json'),
+    );
+    const authority = createPluginCommandExecutionAuthority({
+      pluginsDir,
+      publisher: {
+        append: (event) => ({
+          kind: 'appended',
+          journalSequence: 1,
+          event: event as OperationalEventEnvelope,
+        }),
+      },
+      grantedPermissions: () => ({
+        kind: 'available',
+        permissions: ['plugin.server'],
+      }),
+      resolveRequirement: () => ({ kind: 'available' }),
+    });
+
+    await expect(
+      authority.authorize(request(installed), origin),
+    ).resolves.toEqual({
+      kind: 'refused',
+      reason: 'requirement-not-satisfied',
+    });
+  });
+
+  test('waits for the lifecycle lock and observes a completed uninstall', async () => {
+    const { pluginsDir, manifest } = fixture();
+    let release!: () => void;
+    const held = withPluginContentLock(pluginsDir, manifest.name, async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    });
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    const append = vi.fn((event: unknown) => ({
+      kind: 'appended' as const,
+      journalSequence: 1,
+      event: event as OperationalEventEnvelope,
+    }));
+    const authority = createPluginCommandExecutionAuthority({
+      pluginsDir,
+      publisher: { append },
+      grantedPermissions: () => ({ kind: 'available', permissions: [] }),
+      resolveRequirement: () => ({ kind: 'available' }),
+    });
+    const outcome = authority.authorize(request(manifest), origin);
+    await Promise.resolve();
+    expect(append).not.toHaveBeenCalled();
+    rmSync(join(pluginsDir, manifest.name), { recursive: true });
+    release();
+    await held;
+
+    await expect(outcome).resolves.toEqual({
+      kind: 'refused',
+      reason: 'plugin-not-installed',
+    });
+  });
+
+  test('does not follow a symlinked installed plugin directory', async () => {
+    const { pluginsDir, manifest } = fixture();
+    const external = mkdtempSync(join(tmpdir(), 'plugin-command-external-'));
+    roots.push(external);
+    writeFileSync(join(external, 'plugin.json'), JSON.stringify(manifest));
+    rmSync(join(pluginsDir, manifest.name), { recursive: true });
+    symlinkSync(external, join(pluginsDir, manifest.name), 'dir');
+    const append = vi.fn();
+    const authority = createPluginCommandExecutionAuthority({
+      pluginsDir,
+      publisher: { append },
+      grantedPermissions: () => ({ kind: 'available', permissions: [] }),
+      resolveRequirement: () => ({ kind: 'available' }),
+    });
+
+    await expect(
+      authority.authorize(request(manifest), origin),
+    ).resolves.toEqual({
+      kind: 'unavailable',
+    });
+    expect(append).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,7 @@
 import type {
   PluginCommandContribution,
   PluginCommandRequirement,
-} from '@kontourai/station-contracts/plugin';
+} from '@kontourai/station-contracts/agent-plugin';
 
 export interface InstalledPluginCommandSource {
   name: string;
@@ -69,7 +69,7 @@ function requirementUnavailableReason(
   return available ? null : REQUIREMENT_COPY[requirement];
 }
 
-function commandUnavailableReason(
+export function pluginCommandUnavailableReason(
   plugin: InstalledPluginCommandSource,
   command: PluginCommandContribution,
   context: PluginCommandHostContext,
@@ -137,7 +137,7 @@ export function projectPluginPaletteCommands(
         contribution,
         unavailableReason: collision
           ? `Command id '${paletteId}' is already registered.`
-          : commandUnavailableReason(plugin, contribution, context),
+          : pluginCommandUnavailableReason(plugin, contribution, context),
       });
       occupied.add(paletteId);
     }

@@ -23,6 +23,7 @@ function writePlugin(directory: string, name: string, commandId: string) {
       version: '1.0.0',
       extensions: {
         'io.kontourai.station': {
+          schemaVersion: '1.0',
           commands: [
             {
               version: '1.0',

@@ -1,7 +1,5 @@
-import type {
-  PluginCommandContribution,
-  PluginManifest,
-} from '@kontourai/station-contracts/plugin';
+import type { PluginCommandContribution } from '@kontourai/station-contracts/agent-plugin';
+import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { type ClientRequestOptions, getJson } from './http';
 
 export type InstalledPluginRecord = PluginManifest & {

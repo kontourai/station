@@ -25,7 +25,7 @@ import {
   evaluateShortcutWhen,
   useShortcutRegistry,
 } from '../contexts/KeyboardShortcutsContext';
-import { useNavigation } from '../contexts/NavigationContext';
+import { navigationStore, useNavigation } from '../contexts/NavigationContext';
 import {
   openChatIdentitiesSnapshot,
   openChatsStore,
@@ -58,10 +58,31 @@ import {
   rankCommands,
 } from './command-palette-utils';
 import { authorizePluginPaletteCommand } from './plugin-command-execution';
-import { projectPluginPaletteCommands } from './plugin-command-registry';
+import { beginPluginCommandExecution } from './plugin-command-execution-lifecycle';
+import {
+  pluginCommandUnavailableReason,
+  projectPluginPaletteCommands,
+} from './plugin-command-registry';
 
 /** `dock.session1` … `dock.session9` — the ⌘1–⌘9 chat-switch bindings. */
 const SESSION_SWITCH_SHORTCUT = /^dock\.session[1-9]$/;
+
+function activeSessionIdFor(activeChat: string | null): string | undefined {
+  return Object.entries(openChatsStore.getSnapshot()).find(
+    ([sessionId, chat]) =>
+      sessionId === activeChat || chat.conversationId === activeChat,
+  )?.[0];
+}
+
+function taskIdForPath(pathname: string): string | undefined {
+  const encoded = pathname.match(/^\/tasks\/([^/]+)/)?.[1];
+  if (!encoded) return undefined;
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return undefined;
+  }
+}
 
 function settingsScopeDetail(
   scope: SettingsPaletteCommand['scope'],
@@ -149,6 +170,8 @@ export function CommandPalette() {
   // archive#3313: previewFlag-gated surfaces (Developer, enabled previews)
   // appear here iff their flag is on — same set the sidebar filters with.
   const surfaceVisibilityFlags = useSurfaceVisibilityFlags();
+  const surfaceVisibilityFlagsRef = useRef(surfaceVisibilityFlags);
+  surfaceVisibilityFlagsRef.current = surfaceVisibilityFlags;
 
   const {
     navigate,
@@ -224,6 +247,8 @@ export function CommandPalette() {
   const { data: skills = [] } = useSkillsQuery();
   const pluginsQuery = usePluginsQuery();
   const plugins = pluginsQuery.isError ? [] : (pluginsQuery.data ?? []);
+  const pluginsRef = useRef(plugins);
+  pluginsRef.current = plugins;
   // SHELL-19: the palette used to advertise "Switch to session 1" … "Switch to
   // session 9" as nine static commands whatever the truth was — there was one
   // session, and eight of those rows ran a handler that returns without doing
@@ -586,10 +611,7 @@ export function CommandPalette() {
       });
     }
 
-    const activeSessionId = Object.entries(openChatsStore.getSnapshot()).find(
-      ([sessionId, chat]) =>
-        sessionId === activeChat || chat.conversationId === activeChat,
-    )?.[0];
+    const activeSessionId = activeSessionIdFor(activeChat);
     const pluginCommands = projectPluginPaletteCommands(plugins, {
       activeChatId: activeSessionId ?? null,
       hasProject: Boolean(selectedProject),
@@ -646,19 +668,70 @@ export function CommandPalette() {
                 ? { kind: 'composer' as const, sessionId: activeSessionId }
                 : null;
           if (!target) return;
+          const context = {
+            ...(activeSessionId
+              ? {
+                  activeChatSessionId: activeSessionId,
+                  sessionId: activeSessionId,
+                }
+              : {}),
+            ...(selectedProject ? { projectSlug: selectedProject } : {}),
+            ...(taskIdForPath(pathname)
+              ? { taskId: taskIdForPath(pathname) }
+              : {}),
+          };
           pluginCommandInFlight.current.add(projected.paletteId);
-          void authorizePluginPaletteCommand(apiBase, {
-            pluginId: projected.pluginName,
-            pluginVersion: projected.pluginVersion,
-            commandGeneration: projected.commandGeneration,
-            commandId: contribution.id,
-            target,
-          })
+          const execution = beginPluginCommandExecution();
+          void authorizePluginPaletteCommand(
+            apiBase,
+            {
+              pluginId: projected.pluginName,
+              pluginVersion: projected.pluginVersion,
+              commandGeneration: projected.commandGeneration,
+              commandId: contribution.id,
+              target,
+              context,
+            },
+            { signal: execution.signal },
+          )
             .then(() => {
+              if (!execution.isCurrent()) return;
+              const liveNavigation = navigationStore.getSnapshot();
+              const liveActiveSessionId = activeSessionIdFor(
+                liveNavigation.activeChat,
+              );
+              const livePlugin = pluginsRef.current.find(
+                (plugin) =>
+                  plugin.name === projected.pluginName &&
+                  plugin.version === projected.pluginVersion &&
+                  plugin.commandGeneration === projected.commandGeneration,
+              );
+              if (!livePlugin) return;
+              const liveContext = {
+                activeChatId: liveActiveSessionId ?? null,
+                hasProject: Boolean(liveNavigation.selectedProject),
+                hasSession: Boolean(liveActiveSessionId),
+                hasTask: /^\/tasks\/[^/]+/.test(liveNavigation.pathname),
+                surfaceIds: new Set(
+                  APP_SURFACE_REGISTRY.getAdvertised(
+                    surfaceVisibilityFlagsRef.current,
+                  ).map((surface) => surface.id),
+                ),
+                occupiedCommandIds: new Set<string>(),
+              };
+              if (
+                pluginCommandUnavailableReason(
+                  livePlugin,
+                  contribution,
+                  liveContext,
+                )
+              ) {
+                return;
+              }
               if (contribution.intent.kind === 'navigate') {
                 const surfaceId = contribution.intent.surfaceId;
                 const surface = APP_SURFACE_REGISTRY.getAdvertised(
-                  surfaceVisibilityFlags,
+                  surfaceVisibilityFlagsRef.current,
                 ).find((candidate) => candidate.id === surfaceId);
                 if (!surface) return;
                 navigate(surface.route, surface.palette?.params);
@@ -667,10 +740,11 @@ export function CommandPalette() {
               }
               if (
                 contribution.intent.kind === 'seed-composer' &&
-                activeSessionId &&
-                activeChatsStore.getSnapshot()[activeSessionId]
+                liveActiveSessionId !== undefined &&
+                liveActiveSessionId === target.sessionId &&
+                activeChatsStore.getSnapshot()[liveActiveSessionId]
               ) {
-                activeChatsStore.updateChat(activeSessionId, {
+                activeChatsStore.updateChat(liveActiveSessionId, {
                   input: contribution.intent.text,
                 });
                 setDockState(true);
@@ -678,6 +752,7 @@ export function CommandPalette() {
               }
             })
             .catch((error: unknown) => {
+              if (!execution.isCurrent()) return;
               setPaneNotice({
                 label: contribution.title,
                 stateLabel: 'Unavailable',
@@ -688,6 +763,7 @@ export function CommandPalette() {
               });
             })
             .finally(() => {
+              execution.release();
               pluginCommandInFlight.current.delete(projected.paletteId);
             });
         },

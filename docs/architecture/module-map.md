@@ -86,6 +86,10 @@ closed until their dedicated host Adapters exist. Every executable command
 must present its exact normalized declaration generation to the server; the
 server re-reads that installed manifest and durably records actor, target,
 decision, and admitted outcome before the browser performs the local effect.
+The read and receipt append share the plugin lifecycle lock and reject
+physically uncontained manifest paths. Station resolves declared availability
+requirements during admission and repeats device-local context checks at the
+effect boundary.
 The receipt never contains composer text or future argument input.
 Hosted multi-tenant execution remains unavailable until this receipt carries
 an exact tenant binding.
@@ -100,7 +104,9 @@ after its built-in, shortcut-derived, Project, Pane, Agent, and Skill rows are
 known, then calls `PluginCommandExecutionAuthority` for a durable operational-
 event receipt before resolving navigation or composer seeding through existing
 host owners. Update, grant-change, and removal events synchronously clear cached
-command generations before refetch. Behavioral coverage lives in
+command generations before refetch. Pending effects carry that lifecycle epoch
+and are aborted or ignored when the installed generation, grants, or ownership
+is withdrawn. Behavioral coverage lives in
 `src-server/services/plugins/__tests__/plugin-manifest-loader.test.ts`,
 `src-server/services/plugins/__tests__/plugin-command-execution.test.ts`,
 `src-server/routes/plugins/__tests__/plugin-install-inventory.routes.test.ts`,

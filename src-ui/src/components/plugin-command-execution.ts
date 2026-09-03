@@ -48,6 +48,7 @@ function sameTarget(
 export async function authorizePluginPaletteCommand(
   apiBase: string,
   input: Omit<PluginCommandExecutionRequest, 'schemaVersion' | 'requestId'>,
+  options: { signal?: AbortSignal } = {},
 ): Promise<PluginCommandExecutionReceipt> {
   const request: PluginCommandExecutionRequest = {
     schemaVersion: PLUGIN_COMMAND_EXECUTION_SCHEMA_VERSION,
@@ -60,6 +61,7 @@ export async function authorizePluginPaletteCommand(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
+      signal: options.signal,
     },
   );
   const body = (await response.json().catch(() => null)) as {

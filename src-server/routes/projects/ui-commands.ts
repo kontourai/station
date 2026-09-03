@@ -60,7 +60,7 @@ export function createUICommandRoutes(
         400,
       );
     }
-    const outcome = deps.pluginCommandExecution.authorize(
+    const outcome = await deps.pluginCommandExecution.authorize(
       body,
       resolveClientOriginForRequest(c.req.raw),
     );

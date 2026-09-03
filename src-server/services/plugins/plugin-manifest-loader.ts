@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
+import { STATION_AGENT_PLUGIN_EXTENSION_ID } from '@kontourai/station-contracts/agent-plugin';
 import { validateOperationalEventScopes } from '@kontourai/station-contracts/operational-event';
 import {
   isCanonicalPluginId,
   type PluginManifest,
-  STATION_PLUGIN_EXTENSION_ID,
 } from '@kontourai/station-contracts/plugin';
 import { parseWorkspacePaneDescriptor } from '@kontourai/station-contracts/workspace-pane';
 import { isReservedObjectKey } from '../../utils/reserved-object-keys.js';
@@ -84,11 +84,10 @@ export function parsePluginManifest(
   );
   if (commandContributions.length > 0) {
     const extensions = candidate.extensions as Record<string, unknown>;
-    const stationExtension = extensions[STATION_PLUGIN_EXTENSION_ID] as Record<
-      string,
-      unknown
-    >;
-    extensions[STATION_PLUGIN_EXTENSION_ID] = {
+    const stationExtension = extensions[
+      STATION_AGENT_PLUGIN_EXTENSION_ID
+    ] as Record<string, unknown>;
+    extensions[STATION_AGENT_PLUGIN_EXTENSION_ID] = {
       ...stationExtension,
       commands: commandContributions,
     };

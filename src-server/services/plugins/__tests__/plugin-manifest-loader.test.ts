@@ -55,7 +55,9 @@ describe('plugin-manifest-loader', () => {
           name: 'demo-plugin',
           version: '1.0.0',
           ...manifest,
-          extensions: { [STATION_EXTENSION]: { commands } },
+          extensions: {
+            [STATION_EXTENSION]: { schemaVersion: '1.0', commands },
+          },
         }),
       );
       return readPluginManifestFile(manifestPath);
@@ -76,6 +78,7 @@ describe('plugin-manifest-loader', () => {
       await expect(loadCommands([navigateCommand])).resolves.toMatchObject({
         extensions: {
           [STATION_EXTENSION]: {
+            schemaVersion: '1.0',
             commands: [navigateCommand],
           },
         },
@@ -91,6 +94,37 @@ describe('plugin-manifest-loader', () => {
       });
       expect(iframe.extensions?.[STATION_EXTENSION]).toEqual(
         trusted.extensions?.[STATION_EXTENSION],
+      );
+    });
+
+    test('accepts commands beside other canonical Station namespace fields', async () => {
+      const manifestPath = join(dir, 'plugin.json');
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          name: 'demo-plugin',
+          version: 'release candidate 1',
+          extensions: {
+            [STATION_EXTENSION]: {
+              schemaVersion: '1.0',
+              title: 'Demo plugin',
+              permissions: ['navigation.dock'],
+              commands: [navigateCommand],
+            },
+          },
+        }),
+      );
+
+      await expect(readPluginManifestFile(manifestPath)).resolves.toMatchObject(
+        {
+          extensions: {
+            [STATION_EXTENSION]: {
+              schemaVersion: '1.0',
+              title: 'Demo plugin',
+              commands: [navigateCommand],
+            },
+          },
+        },
       );
     });
 
@@ -140,7 +174,10 @@ describe('plugin-manifest-loader', () => {
       ).rejects.toThrow(/contains duplicate id 'demo-plugin\.open-settings'/);
     });
 
-    test.each([{ commands: [], callback: 'run-me' }, { validator: '.*' }])(
+    test.each([
+      { schemaVersion: '1.0', commands: [], callback: 'run-me' },
+      { schemaVersion: '1.0', validator: '.*' },
+    ])(
       'rejects unknown fields in the reserved Station namespace',
       async (station) => {
         const manifestPath = join(dir, 'plugin.json');

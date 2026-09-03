@@ -113,7 +113,10 @@ Argument-free commands execute only after Station revalidates the exact
 installed declaration generation and durably records a content-free admission
 receipt. Preview/staging trees never enter installed inventory. Update,
 permission-change, and removal events withdraw cached command generations
-before a fresh installed projection may replace them.
+and retire pending local effects before a fresh installed projection may
+replace them. Admission holds the plugin lifecycle lock across physically
+contained manifest validation and receipt persistence; device-local context is
+rechecked immediately before navigation or composer mutation.
 
 Command ids are owner-qualified (`<plugin-name>.<command-id>`) and enter the
 same final-id collision check as existing host commands. Icons and availability

@@ -17,6 +17,10 @@ const input = {
   commandGeneration: 'a'.repeat(64),
   commandId: 'demo-plugin.review',
   target: { kind: 'composer' as const, sessionId: 'session-a' },
+  context: {
+    activeChatSessionId: 'session-a',
+    sessionId: 'session-a',
+  },
 };
 
 beforeEach(() => authenticatedFetch.mockReset());
@@ -50,7 +54,7 @@ describe('plugin command execution client', () => {
       ...input,
     });
     expect(String(request.body)).not.toContain('prompt');
-    expect(String(request.body)).not.toContain('text');
+    expect(JSON.parse(String(request.body))).not.toHaveProperty('text');
   });
 
   test('rejects a receipt for a different installed generation', async () => {
