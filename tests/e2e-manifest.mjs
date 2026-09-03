@@ -440,7 +440,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'UX audit E2 (DESIGN §4 "Chat with a model"): with no ready model connection the Create button is disabled and the inline "Add model connection" repair is offered instead of shot 17\'s after-submit validation error; with a local model fixture provisioned as the only enabled LLM connection, the journey creates the agent and completes a genuine assistant turn through the composer. Live because the turn dispatches through POST /api/orchestration/chat into a real model server. Desktop plus a 390x844 variant running the same real turn.',
+      'UX audit E2 (DESIGN §4 "Run it on Station"): with no ready model connection the Create button is disabled and the inline "Add model connection" repair is offered instead of shot 17\'s after-submit validation error; with a local model fixture provisioned as the only enabled LLM connection, the journey creates the agent and completes a genuine assistant turn through the composer. Live because the turn dispatches through POST /api/orchestration/chat into a real model server. Desktop plus a 390x844 variant running the same real turn.',
     exceptions: [],
   },
   {
