@@ -7411,6 +7411,7 @@ button.tool-call__line:hover {
     height: 100%;
     max-height: 100%;
     border-top: none;
+    border-left: 2px solid var(--accent-primary);
     box-shadow: none;
   }
 
@@ -7428,7 +7429,6 @@ button.tool-call__line:hover {
 
   .app__main > [data-region="right"] {
     grid-column: 3;
-    border-left: 2px solid var(--accent-primary);
   }
 
   .app__main
