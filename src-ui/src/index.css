@@ -7348,14 +7348,10 @@ button.tool-call__line:hover {
    which routes landscape phones to the mobile bottom-sheet treatment). */
 @media (min-width: 769px) and (not ((max-height: 540px) and (pointer: coarse))) {
   /* #928: region shells contribute independent tracks to the desktop grid.
-     Keyed on the three placed regions, not bare `[data-region]`, so a shell
-     stamped with an unplaced value never turns the grid on around itself.
-     Side tracks default to 0 and the bottom track to 0, which means every
-     direct child of `.app__main` must be out of flow or explicitly placed:
-     an auto-placed child lands in a zero-width track. */
-  .app__main:has(
-    > :is([data-region="left"], [data-region="right"], [data-region="bottom"])
-  ) {
+     Side tracks and the bottom track default to 0, so every direct child of
+     `.app__main` must be out of flow or explicitly placed: an auto-placed
+     child lands in a zero-width track. */
+  .app__main:has(> [data-region]) {
     display: grid;
     grid-template-columns: var(--region-left-track, 0) minmax(0, 1fr) var(
         --region-right-track,

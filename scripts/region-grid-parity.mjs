@@ -120,7 +120,7 @@ const EXPECTED_ELEMENTS = [
 ];
 
 function usage() {
-  return 'Usage: region-grid-parity.mjs --css <stylesheet> --out <json> [--legacy-parent]\n       region-grid-parity.mjs --diff <before.json> <after.json>';
+  return 'Usage: region-grid-parity.mjs --css <built entry css> --out <json> [--legacy-parent]\n       region-grid-parity.mjs --diff <before.json> <after.json>';
 }
 
 function parseArgs(argv) {

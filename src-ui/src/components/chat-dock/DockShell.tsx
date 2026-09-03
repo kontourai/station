@@ -55,7 +55,9 @@ export function DockShell({
   const isPaneMaximized = chrome.isDockMaximized;
   // Rendered region, not `regionId`: coarse pointers fold side placements to
   // bottom (useIsMobile.ts `availablePlacements`) and index.css keys the grid
-  // tracks on this attribute, so both must come from the one expression.
+  // tracks on this attribute, so both must come from the one expression. The
+  // fold also means every shell on a coarse device renders bottom, so at most
+  // one shell may mount there (RegionShells.tsx).
   const renderedRegion = chrome.effectiveDockSlotPlacement;
   const isSidePanel = renderedRegion !== 'bottom';
 
@@ -96,7 +98,7 @@ export function DockShell({
           <button
             type="button"
             tabIndex={-1}
-            className={`chat-dock__resize-handle chat-dock__resize-handle--horizontal${chrome.effectiveDockSlotPlacement === 'left' ? ' chat-dock__resize-handle--left' : ''}`}
+            className={`chat-dock__resize-handle chat-dock__resize-handle--horizontal${renderedRegion === 'left' ? ' chat-dock__resize-handle--left' : ''}`}
             aria-label="Resize chat dock"
             onPointerDown={chrome.onSidePanelResizePointerDown}
             // M5 (station#4460 review): this handle sits OUTSIDE any
