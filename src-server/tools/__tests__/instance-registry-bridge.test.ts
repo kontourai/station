@@ -1164,6 +1164,53 @@ describe('instance registry bridge legacy manifest transaction (archive#4457)', 
     expect(existsSync(committedReceiptPath(fixture.home, digest))).toBe(true);
   });
 
+  test('accepts fully committed evidence after only the filesystem device number changes', async () => {
+    const stationRoot = root();
+    const fixture = legacyFixture(stationRoot);
+    const digest = manifestDigest(fixture.manifest);
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
+    for (const path of [
+      preparedReceiptPath(fixture.home, digest),
+      committedReceiptPath(fixture.home, digest),
+    ]) {
+      const receipt = JSON.parse(readFileSync(path, 'utf8')) as {
+        source: { dev: number };
+      };
+      receipt.source.dev += 1;
+      writeFileSync(path, `${JSON.stringify(receipt)}\n`, { mode: 0o600 });
+    }
+
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'already',
+    });
+    expect(existsSync(fixture.manifest)).toBe(false);
+  });
+
+  test('still refuses prepared evidence when its filesystem device number changes', async () => {
+    const stationRoot = root();
+    const fixture = legacyFixture(stationRoot);
+    const digest = manifestDigest(fixture.manifest);
+    await expect(
+      quarantineLegacyServiceManifest(fixture.home, stationRoot, {
+        afterRenameBeforeCommit: () => {
+          throw new Error('prepared target without commit');
+        },
+      }),
+    ).rejects.toThrow('prepared target without commit');
+    const path = preparedReceiptPath(fixture.home, digest);
+    const receipt = JSON.parse(readFileSync(path, 'utf8')) as {
+      source: { dev: number };
+    };
+    receipt.source.dev += 1;
+    writeFileSync(path, `${JSON.stringify(receipt)}\n`, { mode: 0o600 });
+
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'refused',
+    });
+  });
+
   test('cleans an exact prepared final/temp replay before recovering a target-only move', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);

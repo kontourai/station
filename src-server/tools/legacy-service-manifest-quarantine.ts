@@ -623,7 +623,13 @@ function inspectQuarantineEvidence(
   if (
     !target ||
     target.digest !== receipt.digest ||
-    !sameIdentity(target, receipt.source)
+    // A filesystem remount can renumber the device while preserving the
+    // inode. Once both matching receipts are committed and the source name is
+    // gone, the exact owner-only one-link bytes are the authority. Prepared
+    // recovery still requires the original dev+ino identity.
+    (committed
+      ? target.ino !== receipt.source.ino
+      : !sameIdentity(target, receipt.source))
   )
     refuse();
   const exactDualNameReplay =
@@ -652,7 +658,9 @@ function recoverMovedManifest(
   if (
     target.nlink !== 1 ||
     target.digest !== evidence.receipt.digest ||
-    !sameIdentity(target, evidence.receipt.source)
+    (evidence.committed
+      ? target.ino !== evidence.receipt.source.ino
+      : !sameIdentity(target, evidence.receipt.source))
   )
     refuse();
   if (evidence.committed) return { kind: 'already' };
