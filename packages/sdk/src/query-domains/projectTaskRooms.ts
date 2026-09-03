@@ -375,19 +375,25 @@ export function useProjectTaskRoomStream(
         return;
       }
       const connectionId = `${taskId}:${++taskRoomConnectionSequence}`;
+      // Lifecycle closure is owed to the exact observer that received this
+      // connection id. Unlike data events it must still run after the stream
+      // becomes stale, so bind it now rather than dereferencing Task B's
+      // callback or routing it through the current-generation data fence.
+      const lifecycleCallbacks = callbackRef.current;
       let notifiedClosed = false;
       const notifyClosed = () => {
         if (notifiedClosed) return;
         notifiedClosed = true;
-        notifyCurrent(() =>
-          callbackRef.current?.onConnectionClosed?.(connectionId),
+        notifyProjectTaskRoomCallback(() =>
+          lifecycleCallbacks?.onConnectionClosed?.(connectionId),
         );
       };
-      notifyCurrent(() =>
-        callbackRef.current?.onConnectionCreated?.(connectionId),
+      notifyProjectTaskRoomCallback(() =>
+        lifecycleCallbacks?.onConnectionCreated?.(connectionId),
       );
       void connection.completed.finally(notifyClosed);
       if (isCurrentStream()) connectionRef.current = connection;
+      else connection.close();
     });
     return () => {
       closed = true;

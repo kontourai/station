@@ -13,12 +13,15 @@ const documentRequests: Array<{
 }> = [];
 type StreamCallbacks = {
   onCheckpoint?(id: string): void;
+  onConnectionCreated?(id: string): void;
+  onConnectionClosed?(id: string): void;
   onEvent(event: { kind: string; value?: unknown }): void;
 };
 let callbacks: StreamCallbacks | undefined;
 const streamConnections: Array<{
   taskId: string;
   callbacks: StreamCallbacks;
+  close: ReturnType<typeof vi.fn>;
 }> = [];
 
 vi.mock('../api', () => ({ _getApiBase: async () => 'https://station.test' }));
@@ -40,8 +43,13 @@ vi.mock('../client/project-task-rooms', () => ({
     input: StreamCallbacks,
   ) => {
     callbacks = input;
-    streamConnections.push({ taskId, callbacks: input });
-    return { close: vi.fn(), restart: vi.fn(), completed: Promise.resolve() };
+    let complete!: () => void;
+    const completed = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    const close = vi.fn(complete);
+    streamConnections.push({ taskId, callbacks: input, close });
+    return { close, restart: vi.fn(), completed };
   },
   parseAuthoritativeProjectTaskRoomDocumentEvent: (value: any) =>
     value?.kind === 'committed'
@@ -444,6 +452,70 @@ test('rejects callbacks from the previous Task during the render-to-cleanup hand
     value: { kind: 'committed', revision: 'rev-b', text: 'task b' },
   });
   expect(delivered).toEqual(['task-b:document:task b']);
+});
+
+test('closes the originating lifecycle exactly once across Task and generation changes', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const lifecycle: string[] = [];
+  const documents: string[] = [];
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const rendered = renderHook(
+    ({ taskId, generation }: { taskId: string; generation: number }) =>
+      useProjectTaskRoomStream(
+        taskId,
+        {
+          onConnectionCreated: (id) =>
+            lifecycle.push(`${taskId}:created:${id}`),
+          onConnectionClosed: (id) => lifecycle.push(`${taskId}:closed:${id}`),
+          onAuthoritativeDocument: (document) =>
+            documents.push(`${taskId}:${document.text}`),
+        },
+        generation,
+      ),
+    {
+      initialProps: { taskId: 'task-a', generation: 0 },
+      wrapper,
+    },
+  );
+  await waitFor(() => expect(streamConnections).toHaveLength(1));
+  await waitFor(() => expect(lifecycle).toHaveLength(1));
+  const firstId = lifecycle[0].split(':created:')[1];
+
+  rendered.rerender({ taskId: 'task-b', generation: 0 });
+  await waitFor(() => expect(streamConnections).toHaveLength(2));
+  await waitFor(() =>
+    expect(lifecycle).toEqual(
+      expect.arrayContaining([
+        `task-a:closed:${firstId}`,
+        expect.stringMatching(/^task-b:created:task-b:/),
+      ]),
+    ),
+  );
+  expect(streamConnections[0].close).toHaveBeenCalledOnce();
+  streamConnections[0].callbacks.onEvent({
+    kind: 'document',
+    value: { kind: 'committed', revision: 'late-a', text: 'late task a' },
+  });
+  expect(documents).toEqual([]);
+  const secondCreated = lifecycle.find((entry) =>
+    entry.startsWith('task-b:created:'),
+  );
+  const secondId = secondCreated?.split(':created:')[1];
+
+  rendered.rerender({ taskId: 'task-b', generation: 1 });
+  await waitFor(() => expect(streamConnections).toHaveLength(3));
+  await waitFor(() => expect(lifecycle).toContain(`task-b:closed:${secondId}`));
+  expect(streamConnections[1].close).toHaveBeenCalledOnce();
+  expect(
+    lifecycle.filter((entry) => entry === `task-a:closed:${firstId}`),
+  ).toHaveLength(1);
+  expect(
+    lifecycle.filter((entry) => entry === `task-b:closed:${secondId}`),
+  ).toHaveLength(1);
 });
 
 test('committed SSE cancels a deferred older GET and duplicate cannot regress cache', async () => {
