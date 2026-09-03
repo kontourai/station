@@ -275,7 +275,9 @@ function shortcutEntries(id: string) {
   );
 }
 
-function clearance(name: '--dock-slot-size' | '--chat-dock-width'): string {
+function clearance(
+  name: '--dock-slot-size' | '--chat-dock-width' | `--region-${DockMode}-size`,
+): string {
   return document.documentElement.style.getPropertyValue(name);
 }
 
@@ -305,6 +307,10 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       // The re-propped instance republishes clearance for its new region.
       await waitFor(() => expect(clearance('--dock-slot-size')).toBe('0px'));
       expect(clearance('--chat-dock-width')).toBe('400px');
+      // Per-region clearance follows the shell: the vacated region's
+      // variable is withdrawn, the destination's is written.
+      expect(clearance(`--region-${destination}-size`)).toBe('400px');
+      expect(clearance(`--region-${placement}-size`)).toBe('');
     },
   );
 
@@ -481,5 +487,11 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     expect(shell.dataset.region).toBe('right');
     expect(shell.classList.contains('chat-dock--bottom')).toBe(true);
     await waitFor(() => expect(clearance('--dock-slot-size')).not.toBe(''));
+    // Clearance is reported under the rendered region (the one the grid
+    // keys on, #1366), not the persisted one.
+    expect(clearance('--region-bottom-size')).toBe(
+      clearance('--dock-slot-size'),
+    );
+    expect(clearance('--region-right-size')).toBe('');
   });
 });
