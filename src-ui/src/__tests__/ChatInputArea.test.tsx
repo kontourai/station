@@ -191,18 +191,20 @@ describe('ChatInputArea', () => {
     expect(screen.getByRole('button', { name: 'Send' })).not.toBeNull();
   });
 
-  test('disables the model button when model selection is unavailable', () => {
-    renderChatInputArea({
+  test('keeps an unavailable model control focusable and names the reason', () => {
+    const props = renderChatInputArea({
       canModelSelect: false,
+      modelSelectionReason: 'This Agent reports no selectable models.',
     });
 
-    expect(
-      (
-        screen.getByRole('button', {
-          name: /^Model/,
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
+    const model = screen.getByRole('button', {
+      name: /Unavailable: This Agent reports no selectable models\./,
+    });
+    expect(model.getAttribute('aria-disabled')).toBe('true');
+    model.focus();
+    fireEvent.click(model);
+    expect(document.activeElement).toBe(model);
+    expect(props.onModelOpen).not.toHaveBeenCalled();
   });
 
   // Stop could be pressed again while the first request was
@@ -243,7 +245,7 @@ describe('ChatInputArea', () => {
     expect(props.onInputChange).not.toHaveBeenCalled();
   });
 
-  test('exposes named Agent and Model controls and routes Agent change to the existing handoff action', () => {
+  test('exposes named Agent and Model dialog controls and supports keyboard activation', () => {
     const onOpenAgentHandoff = vi.fn();
     const agentHandoffTriggerRef = createRef<HTMLButtonElement>();
     renderChatInputArea({
@@ -260,13 +262,17 @@ describe('ChatInputArea', () => {
     expect(agent.textContent).toContain('Codex reviewer');
     expect(agent.textContent).toContain('⌄');
     expect(agentHandoffTriggerRef.current).toBe(agent);
+    expect(agent.getAttribute('aria-haspopup')).toBe('dialog');
     expect(
       screen.getByRole('button', { name: /^Model:/ }).textContent,
     ).toContain('Model');
     expect(
       screen.getByRole('button', { name: /^Model:/ }).textContent,
     ).toContain('⌄');
-    fireEvent.click(agent);
+    agent.focus();
+    // Browsers synthesize an untrusted click for keyboard activation of a
+    // native button; detail=0 distinguishes that path from pointer input.
+    fireEvent.click(agent, { detail: 0 });
     expect(onOpenAgentHandoff).toHaveBeenCalledOnce();
   });
 
@@ -279,10 +285,14 @@ describe('ChatInputArea', () => {
     });
 
     const agent = screen.getByRole('button', {
-      name: 'Agent: Codex reviewer. Change Agent',
+      name: 'Agent: Codex reviewer. Wait for the current turn to finish.',
     }) as HTMLButtonElement;
-    expect(agent.disabled).toBe(true);
+    expect(agent.getAttribute('aria-disabled')).toBe('true');
+    agent.focus();
+    expect(document.activeElement).toBe(agent);
     expect(agent.title).toBe('Wait for the current turn to finish.');
+    fireEvent.click(agent);
+    expect(document.activeElement).toBe(agent);
   });
 
   test('opens offline with no cached catalog and explains that models are unavailable', async () => {

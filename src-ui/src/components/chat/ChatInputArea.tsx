@@ -300,6 +300,9 @@ export function ChatInputArea({
       ? `${modelProviderLabel} — ${fullModelIdentity}`
       : fullModelIdentity,
     modelSource !== 'unknown' ? `(${modelSourceLabel(modelSource)})` : '',
+    !canModelSelect
+      ? `Unavailable: ${modelSelectionReason ?? 'You can’t change the model for this chat'}`
+      : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -416,9 +419,14 @@ export function ChatInputArea({
             ref={agentHandoffTriggerRef}
             type="button"
             className="chat-input__agent-btn"
-            onClick={onOpenAgentHandoff}
-            disabled={agentHandoffDisabled}
-            aria-label={`Agent: ${agentLabel ?? 'current Agent'}. Change Agent`}
+            onClick={agentHandoffDisabled ? undefined : onOpenAgentHandoff}
+            aria-disabled={agentHandoffDisabled}
+            aria-haspopup="dialog"
+            aria-label={`Agent: ${agentLabel ?? 'current Agent'}. ${
+              agentHandoffDisabled
+                ? (agentHandoffDisabledReason ?? 'Unavailable')
+                : 'Change Agent'
+            }`}
             title={
               agentHandoffDisabled
                 ? agentHandoffDisabledReason
@@ -435,8 +443,8 @@ export function ChatInputArea({
         <button
           ref={modelButtonRef}
           type="button"
-          onClick={onModelOpen}
-          disabled={!canModelSelect}
+          onClick={canModelSelect ? onModelOpen : undefined}
+          aria-disabled={!canModelSelect}
           className={`chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
           aria-haspopup="dialog"
           aria-expanded={modelQuery !== null && !input.startsWith('/model ')}

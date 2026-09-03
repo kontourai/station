@@ -1192,7 +1192,7 @@
   white-space: nowrap;
 }
 
-.chat-input__meta .chat-input__agent-btn:hover:not(:disabled) {
+.chat-input__meta .chat-input__agent-btn:hover:not([aria-disabled="true"]) {
   background: var(--accent-light);
 }
 
