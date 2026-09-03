@@ -65,6 +65,7 @@ describe('promotion full-regression workflow', () => {
     expect(source('full-regression.yml')).not.toContain('timeout-minutes: 150');
     const validate = namedStep(gate, 'Validate immutable source identity');
     expect(validate.run).toContain('^[0-9a-f]{40}$');
+    expect(validate['timeout-minutes']).toBe(2);
     const checkout = gate.steps?.find((step) =>
       step.uses?.startsWith('actions/checkout@'),
     );
@@ -76,6 +77,11 @@ describe('promotion full-regression workflow', () => {
     expect(checkout?.['timeout-minutes']).toBe(10);
     const receipts = namedStep(gate, 'Retain exact-SHA completion receipts');
     expect(receipts['timeout-minutes']).toBe(10);
+    const proveCheckout = namedStep(
+      gate,
+      'Prove checkout matches the requested source',
+    );
+    expect(proveCheckout['timeout-minutes']).toBe(2);
     expect(
       namedStep(gate, 'Prove checkout matches the requested source').run,
     ).toContain('git rev-parse HEAD');
@@ -126,14 +132,27 @@ describe('promotion full-regression workflow', () => {
     );
     expect(setupNode?.['timeout-minutes']).toBe(5);
     expect(actionlint['timeout-minutes']).toBe(5);
-    const boundedSetupMinutes =
-      (checkout?.['timeout-minutes'] ?? 0) +
-      (setupNode?.['timeout-minutes'] ?? 0) +
-      (actionlint['timeout-minutes'] ?? 0) +
-      (gateSteps[dependenciesIndex]['timeout-minutes'] ?? 0) +
-      (zsh['timeout-minutes'] ?? 0) +
-      (chromium['timeout-minutes'] ?? 0) +
-      (receipts['timeout-minutes'] ?? 0);
+    // Every step in this list must declare `timeout-minutes`: no `?? 0`
+    // fallback, so an added or edited pre-gate/publication step without one
+    // silently drops out of the bound instead of failing this assertion.
+    const boundedSteps = [
+      validate,
+      checkout,
+      setupNode,
+      actionlint,
+      gateSteps[dependenciesIndex],
+      zsh,
+      chromium,
+      proveCheckout,
+      receipts,
+    ];
+    for (const step of boundedSteps) {
+      expect(typeof step?.['timeout-minutes']).toBe('number');
+    }
+    const boundedSetupMinutes = boundedSteps.reduce(
+      (total, step) => total + (step?.['timeout-minutes'] as number),
+      0,
+    );
     const phaseMinutes = FULL_REGRESSION_TIMEOUT_MS / 60_000;
     expect(gate['timeout-minutes']).toBeGreaterThanOrEqual(
       boundedSetupMinutes + phaseMinutes,

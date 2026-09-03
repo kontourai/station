@@ -23,17 +23,19 @@ jobs:
     runs-on: ubuntu-22.04
     # Every phase gets its own fail-closed deadline; their sum is the
     # canonical 251-minute phase plan (scripts/verification-lanes.mjs
-    # FULL_REGRESSION_TIMEOUT_MS). Every pre-gate and publication step now
-    # carries an explicit deadline: checkout 10m, setup-node 5m, actionlint
-    # 5m (mirrored in ci.yml's fast-checks copy so the two stay identical),
-    # dependencies:ci 15m, the 5-minute zsh step, the 20-minute Chromium
-    # step, the receipt upload 10m = 70m bounded setup. 340 keeps real
-    # margin over that 321-minute bounded worst case rather than
-    # interrupting a valid final phase slice or a completed gate's receipt
-    # upload.
+    # FULL_REGRESSION_TIMEOUT_MS). Literally every step before and after
+    # that gate now carries an explicit deadline, including the two local,
+    # network-free bash checks: source-SHA validation 2m, checkout 10m,
+    # checkout-matches proof 2m, setup-node 5m, actionlint 5m (mirrored in
+    # ci.yml's fast-checks copy so the two stay identical), dependencies:ci
+    # 15m, the 5-minute zsh step, the 20-minute Chromium step, the receipt
+    # upload 10m = 74m bounded setup. 340 keeps real margin over that
+    # 325-minute bounded worst case rather than interrupting a valid final
+    # phase slice or a completed gate's receipt upload.
     timeout-minutes: 340
     steps:
       - name: Validate immutable source identity
+        timeout-minutes: 2
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
@@ -50,6 +52,7 @@ jobs:
           persist-credentials: false
 
       - name: Prove checkout matches the requested source
+        timeout-minutes: 2
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
