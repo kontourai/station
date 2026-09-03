@@ -258,6 +258,41 @@ describe('frozen stable client-build provenance', () => {
     );
   });
 
+  it('regenerates the Xcode project with the signing template after import and restages provenance before the signed build', () => {
+    const delivery = workflowJob(testFlightDelivery, 'deliver');
+    expectStepOrder(delivery, [
+      'Initialize the channel-specific Xcode project',
+      'Stage immutable iOS client provenance resource',
+      'Import protected signing material bound to this channel',
+      'Regenerate the Xcode project with the manual signing template',
+      'Build signed and channel-audited iOS package',
+    ]);
+    const regenerate = namedStep(
+      delivery,
+      'Regenerate the Xcode project with the manual signing template',
+    );
+    const run = regenerate.run as string;
+    expect(regenerate['working-directory']).toBe('src-desktop');
+    expect(run).toContain(
+      'npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json"',
+    );
+    expect(run).toContain(
+      "grep -Fq 'CODE_SIGN_STYLE: Manual' gen/apple/project.yml",
+    );
+    expect(run).toContain(
+      "grep -Fq 'PROVISIONING_PROFILE_SPECIFIER:' gen/apple/project.yml",
+    );
+    // The regeneration deletes gen/apple, so the gitignored provenance
+    // resource must be staged again afterwards or IPA verification fails.
+    const restage =
+      '(cd .. && STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs)';
+    expect(run.indexOf('rm -rf gen/apple')).toBeGreaterThanOrEqual(0);
+    expect(run.indexOf(restage)).toBeGreaterThan(
+      run.indexOf('rm -rf gen/apple'),
+    );
+    expect(run).toContain('test -s gen/apple/assets/station-build.json');
+  });
+
   it('records the stable desktop timestamp as a verified common manifest, not an architecture-specific proxy', () => {
     const publishJob = workflowJob(publish, 'publish');
     const common = namedStep(
@@ -336,6 +371,7 @@ type WorkflowStep = {
   name?: string;
   run?: string;
   if?: string;
+  'working-directory'?: string;
   with?: Record<string, unknown>;
   'continue-on-error'?: boolean | string;
   env?: Record<string, unknown>;

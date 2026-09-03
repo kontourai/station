@@ -199,6 +199,30 @@ jobs:
           profile_uuid=$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).uuid' "$profile_metadata")
           [[ "$profile_uuid" =~ ^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$ ]]
           cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
+      - name: Regenerate the Xcode project with the manual signing template
+        working-directory: src-desktop
+        run: |
+          # Tauri renders `bundle.iOS.template` only while `tauri ios init`
+          # writes project.yml; `tauri ios build` reuses whatever project
+          # gen/apple already holds. The first init produced the channel
+          # identity the signing template was derived from, so run it again
+          # with the signing overlay and prove the generated spec carries the
+          # manual provisioning that xcodebuild demands before it will sign.
+          preserved="$RUNNER_TEMP/station-ios-preserved"
+          rm -rf gen/apple
+          npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.ios.channel.json" --config "$RUNNER_TEMP/station-ios-signing.json"
+          for item in .gitignore ExportOptions.plist LaunchScreen.storyboard Podfile PrivacyInfo.xcprivacy Sources; do
+            ditto "$preserved/$item" "gen/apple/$item"
+          done
+          git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources
+          grep -Fq 'CODE_SIGN_STYLE: Manual' gen/apple/project.yml
+          grep -Fq 'PROVISIONING_PROFILE_SPECIFIER:' gen/apple/project.yml
+          # `rm -rf gen/apple` also removed the staged provenance resource
+          # (gen/apple/assets/station-build.json, gitignored). The packaged
+          # copy is what "Verify IPA identity" compares byte for byte, so
+          # stage it again from the same authority before building.
+          (cd .. && STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs)
+          test -s gen/apple/assets/station-build.json
       - name: Build signed and channel-audited iOS package
         working-directory: src-desktop
         run: |
