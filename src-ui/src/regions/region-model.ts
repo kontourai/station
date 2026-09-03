@@ -29,9 +29,16 @@ type DockSeedSettings = Pick<
 
 export type DockRegionId = (typeof DOCK_REGION_IDS)[number];
 
+export function occupiedDockRegion(
+  layout: RegionLayout,
+  surfaceId: string,
+): DockRegionId | undefined {
+  return DOCK_REGION_IDS.find((id) => layout[id].occupant === surfaceId);
+}
+
 /** The dock region holding chat; undefined when chat sits outside the dock (e.g. 'main'). */
 export function chatRegion(layout: RegionLayout): DockRegionId | undefined {
-  return DOCK_REGION_IDS.find((id) => layout[id].occupant === 'chat');
+  return occupiedDockRegion(layout, 'chat');
 }
 
 export function seedRegionLayoutFromDock(
