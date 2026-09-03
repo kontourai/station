@@ -779,7 +779,9 @@ function snapshotFactory(value: unknown): PluginCompositionFactory | undefined {
   if (!record || typeof record.stage !== 'function') return;
   return Object.freeze({
     stage: (input: Parameters<PluginCompositionFactory['stage']>[0]) =>
-      (record.stage as PluginCompositionFactory['stage']).call(value, input),
+      Reflect.apply(record.stage as PluginCompositionFactory['stage'], value, [
+        input,
+      ]),
   });
 }
 
@@ -866,8 +868,9 @@ function validatePlanAuthorization(
     kind: 'granted',
     lease: Object.freeze({
       bindings,
-      isCurrent: () => (lease.isCurrent as () => boolean).call(rawLease),
-      release: () => (lease.release as () => void).call(rawLease),
+      isCurrent: () =>
+        Reflect.apply(lease.isCurrent as () => boolean, rawLease, []),
+      release: () => Reflect.apply(lease.release as () => void, rawLease, []),
     }),
     bindings: byIdentity,
   };
@@ -903,7 +906,7 @@ function releaseRecognizableInvalidAuthorization(value: unknown): void {
       typeof release.value !== 'function'
     )
       return;
-    release.value.call(rawLease);
+    Reflect.apply(release.value, rawLease, []);
   } catch {
     // Invalid authority output is unavailable regardless of release behavior.
   }
@@ -935,9 +938,11 @@ function snapshotStagedHandle(value: unknown):
     return {
       handle: Object.freeze({
         dispose: () =>
-          (
-            dispose.value as StagedPluginCompositionContribution['dispose']
-          ).call(value),
+          Reflect.apply(
+            dispose.value as StagedPluginCompositionContribution['dispose'],
+            value,
+            [],
+          ),
       }),
       identity: value,
       disposer: dispose.value as object,
@@ -1245,8 +1250,15 @@ export function createPluginCompositionModule(options: {
         kind: 'pending' | 'refused';
         entries: PluginCompositionInspectionEntry[];
       } => {
+    if (!ID.test(profile.profileId)) {
+      return {
+        kind: 'refused',
+        entries: profile.contributions.map((contribution) =>
+          invalidEntry(profile, contribution, 'invalid-contribution'),
+        ),
+      };
+    }
     if (
-      !ID.test(profile.profileId) ||
       !validScope(profile.scope) ||
       !Array.isArray(profile.contributions) ||
       profile.contributions.length > MAX_CONTRIBUTIONS

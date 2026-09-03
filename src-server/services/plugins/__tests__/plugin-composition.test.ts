@@ -521,6 +521,37 @@ describe('plugin composition profiles', () => {
     }
   });
 
+  test('projects every safe contribution when the profile identity is invalid', async () => {
+    const module = moduleWith([]);
+    const contributions = [
+      contribution('first', 'workspace.first'),
+      contribution('second', 'workspace.second'),
+    ];
+
+    await expect(
+      module.apply({
+        ...profile(projectA, contributions),
+        profileId: 'INVALID PROFILE',
+      }),
+    ).resolves.toMatchObject({
+      kind: 'refused',
+      inspection: {
+        pending: [],
+        failed: [
+          expect.objectContaining({
+            instanceId: 'first',
+            reason: 'invalid-contribution',
+          }),
+          expect.objectContaining({
+            instanceId: 'second',
+            reason: 'invalid-contribution',
+          }),
+        ],
+        shadowed: [],
+      },
+    });
+  });
+
   test('keeps the prior generation active when staging fails', async () => {
     const events: string[] = [];
     const module = moduleWith([
@@ -723,6 +754,100 @@ describe('plugin composition profiles', () => {
     });
   });
 
+  test('invokes host capabilities without consulting hostile callable.call properties', async () => {
+    const callHijack = vi.fn(() => {
+      throw new Error('call property must not be consulted');
+    });
+    const proxyCallRead = vi.fn();
+    let stageReceiver = false;
+    let currentReceiver = false;
+    let releaseReceiver = false;
+    let disposeReceiver = false;
+    let handle!: { dispose: () => void };
+    let hostLease!: Extract<
+      PluginCompositionAuthorization,
+      { kind: 'granted' }
+    >['lease'];
+    const disposeTarget = function (this: object) {
+      disposeReceiver = this === handle;
+    };
+    const dispose = new Proxy(disposeTarget, {
+      get(target, property, receiver) {
+        if (property === 'call') proxyCallRead();
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    handle = { dispose };
+    const implementation: PluginCompositionFactory = {
+      async stage() {
+        stageReceiver = this === implementation;
+        return handle;
+      },
+    };
+    Object.defineProperty(implementation.stage, 'call', {
+      value: callHijack,
+    });
+    const currentTarget = function (this: object) {
+      currentReceiver = this === hostLease;
+      return true;
+    };
+    const current = new Proxy(currentTarget, {
+      get(target, property, receiver) {
+        if (property === 'call') proxyCallRead();
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const release = function (this: object) {
+      releaseReceiver = this === hostLease;
+    };
+    Object.defineProperty(release, 'call', { value: callHijack });
+    const module = moduleWith([], {
+      authorizer: {
+        authorize(input) {
+          const candidate = input.contributions[0];
+          hostLease = {
+            bindings: [
+              {
+                instanceIdentity: candidate.instanceIdentity,
+                pluginId: candidate.contribution.pluginId,
+                contributionId: candidate.contribution.contributionId,
+                implementationId: candidate.contribution.implementationId,
+                installationGeneration: 'installed:workspace-tools:1',
+                factory: implementation,
+              },
+            ],
+            isCurrent: current,
+            release,
+          };
+          return { kind: 'granted', lease: hostLease };
+        },
+      },
+    });
+
+    await expect(
+      module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({ kind: 'activated' });
+    await expect(module.retire(projectA)).resolves.toMatchObject({
+      kind: 'retired',
+      liveFences: [],
+    });
+    expect(callHijack).not.toHaveBeenCalled();
+    expect(proxyCallRead).not.toHaveBeenCalled();
+    expect({
+      stageReceiver,
+      currentReceiver,
+      releaseReceiver,
+      disposeReceiver,
+    }).toEqual({
+      stageReceiver: true,
+      currentReceiver: true,
+      releaseReceiver: true,
+      disposeReceiver: true,
+    });
+  });
+
   test('rejects an owner-mismatched installed binding before staging and releases its recognizable lease', async () => {
     const events: string[] = [];
     const implementations = new Map([factory('cache', events)]);
@@ -848,6 +973,10 @@ describe('plugin composition profiles', () => {
     const events: string[] = [];
     const implementations = new Map([factory('cache', events)]);
     const release = vi.fn();
+    const releaseCallHijack = vi.fn(() => {
+      throw new Error('release.call must not be consulted');
+    });
+    Object.defineProperty(release, 'call', { value: releaseCallHijack });
     const hostileGetter = vi.fn(() => {
       throw new Error('unrelated accessor must not run');
     });
@@ -879,6 +1008,7 @@ describe('plugin composition profiles', () => {
     });
     expect(hostileGetter).not.toHaveBeenCalled();
     expect(release).toHaveBeenCalledOnce();
+    expect(releaseCallHijack).not.toHaveBeenCalled();
     expect(events).toEqual([]);
   });
 
