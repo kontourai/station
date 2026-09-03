@@ -11,7 +11,9 @@ import { createRequire } from 'node:module';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { isCanonicalPluginId } from '@kontourai/station-contracts/plugin';
 import type {
+  PluginDataAbsenceRevision,
   PluginDataDeleteOutcome,
+  PluginDataExpectedRevision,
   PluginDataJson,
   PluginDataListOutcome,
   PluginDataOwner,
@@ -95,7 +97,7 @@ export interface PluginDataCapability {
   set(
     key: string,
     value: PluginDataJson,
-    expectedRevision: number | null,
+    expectedRevision: PluginDataExpectedRevision,
   ): PluginDataWriteOutcome;
   delete(key: string, expectedRevision: number): PluginDataDeleteOutcome;
 }
@@ -127,6 +129,59 @@ function validateKey(key: unknown): string | null {
   return typeof key === 'string' && DATA_KEY.test(key)
     ? null
     : 'key must be a bounded identifier containing letters, numbers, dot, colon, underscore, or dash';
+}
+
+function absenceRevision(revision: number | null): PluginDataAbsenceRevision {
+  return { kind: 'absent', revision };
+}
+
+function snapshotExpectedRevision(
+  value: unknown,
+): PluginDataExpectedRevision | undefined {
+  if (Number.isSafeInteger(value) && (value as number) >= 1) {
+    return value as number;
+  }
+  try {
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      (Object.getPrototypeOf(value) !== Object.prototype &&
+        Object.getPrototypeOf(value) !== null) ||
+      Object.getOwnPropertySymbols(value).length > 0
+    ) {
+      return;
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (
+      Object.keys(descriptors).length !== 2 ||
+      !('value' in (descriptors.kind ?? {})) ||
+      descriptors.kind?.value !== 'absent' ||
+      descriptors.kind.enumerable !== true ||
+      !('value' in (descriptors.revision ?? {})) ||
+      descriptors.revision?.enumerable !== true
+    ) {
+      return;
+    }
+    const revision = descriptors.revision.value;
+    if (
+      revision !== null &&
+      (!Number.isSafeInteger(revision) || revision < 1)
+    ) {
+      return;
+    }
+    return absenceRevision(revision);
+  } catch {
+    return;
+  }
+}
+
+function sameExpectedRevision(
+  left: PluginDataExpectedRevision,
+  right: PluginDataExpectedRevision,
+): boolean {
+  return typeof left === 'number' || typeof right === 'number'
+    ? left === right
+    : left.revision === right.revision;
 }
 
 type ValidatedJson =
@@ -487,7 +542,7 @@ export class PluginDataStore {
       set: (
         key: string,
         value: PluginDataJson,
-        expectedRevision: number | null,
+        expectedRevision: PluginDataExpectedRevision,
       ) => this.set(boundOwner, key, value, expectedRevision),
       delete: (key: string, expectedRevision: number) =>
         this.delete(boundOwner, key, expectedRevision),
@@ -567,7 +622,10 @@ export class PluginDataStore {
             revisionHead === undefined ||
             revisionHead.record_state === 'tombstone'
           ) {
-            return { kind: 'not-found' };
+            return {
+              kind: 'not-found',
+              absence: absenceRevision(revisionHead?.last_revision ?? null),
+            };
           }
           throw new PluginDataCorruptError();
         }
@@ -619,17 +677,16 @@ export class PluginDataStore {
     owner: PluginDataOwner,
     key: string,
     value: PluginDataJson,
-    expectedRevision: number | null,
+    expectedRevision: PluginDataExpectedRevision,
   ): PluginDataWriteOutcome {
     const invalid = validateKey(key);
     if (invalid) return { kind: 'invalid', reason: invalid };
-    if (
-      expectedRevision !== null &&
-      (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1)
-    ) {
+    const expected = snapshotExpectedRevision(expectedRevision);
+    if (expected === undefined) {
       return {
         kind: 'invalid',
-        reason: 'expectedRevision must be null or a positive integer',
+        reason:
+          'expectedRevision must be a positive live revision or an exact absence revision',
       };
     }
     const normalized = validatedJson(value);
@@ -647,11 +704,13 @@ export class PluginDataStore {
         const snapshot = this.readNamespaceSnapshot(owner);
         const currentRow = snapshot.rows.find((row) => row.key === key);
         const current = snapshot.records.find((record) => record.key === key);
-        const currentRevision = current?.revision ?? null;
-        if (currentRevision !== expectedRevision) {
+        const priorHead = snapshot.revisionHeads.get(key);
+        const currentRevision: PluginDataExpectedRevision = current
+          ? current.revision
+          : absenceRevision(priorHead?.revision ?? null);
+        if (!sameExpectedRevision(currentRevision, expected)) {
           return { kind: 'conflict', currentRevision };
         }
-        const priorHead = snapshot.revisionHeads.get(key);
         const priorRevision = priorHead?.revision;
         if (
           priorRevision === undefined &&
@@ -738,7 +797,14 @@ export class PluginDataStore {
       return this.transaction(() => {
         const snapshot = this.readNamespaceSnapshot(owner);
         const current = snapshot.records.find((record) => record.key === key);
-        if (!current) return { kind: 'not-found' };
+        if (!current) {
+          return {
+            kind: 'not-found',
+            absence: absenceRevision(
+              snapshot.revisionHeads.get(key)?.revision ?? null,
+            ),
+          };
+        }
         const revisionHead = snapshot.revisionHeads.get(key);
         if (
           revisionHead === undefined ||

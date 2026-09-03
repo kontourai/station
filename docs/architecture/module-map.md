@@ -381,9 +381,12 @@ transaction callback, unbounded scan, or arbitrary filesystem value.
 replacement installation cannot inherit another identity's state merely by
 choosing the same plugin name. Every write takes `BEGIN IMMEDIATE`, re-reads the
 current revision inside that transaction, and applies only when it matches the
-caller's observed revision. A retained per-key revision head survives deletion,
-and carries an explicit live or tombstone state, so delete/recreate cannot
-manufacture an old revision and admit an ABA stale writer. A missing payload is
+caller's state-qualified observation. Live writes use their numeric revision;
+first creation and recreation use the exact absence token returned by `get`,
+which distinguishes first-ever absence from a retained tombstone. A retained
+per-key revision head survives deletion and carries an explicit live or tombstone
+state, so neither stale absence nor stale live state can admit an ABA resurrection.
+A missing payload is
 absence only for an explicit tombstone; a surviving live head makes it
 corruption. Live keys and retained revision heads share one lifetime-key capacity;
 recreating an existing key remains possible at capacity while first-ever keys

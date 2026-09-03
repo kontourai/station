@@ -38,12 +38,15 @@ const owner = {
   installationKey: `sha256:${'a'.repeat(64)}`,
 };
 
+const absent = (revision: number | null = null) =>
+  ({ kind: 'absent', revision }) as const;
+
 describe('PluginDataStore', () => {
   test('persists owner-qualified JSON across handles', () => {
     const directory = root();
     const firstStore = store(directory);
     const first = firstStore.bind(owner);
-    const created = first.set('preferences.theme', { mode: 'dark' }, null);
+    const created = first.set('preferences.theme', { mode: 'dark' }, absent());
     expect(created).toMatchObject({
       kind: 'written',
       record: {
@@ -114,11 +117,11 @@ describe('PluginDataStore', () => {
     const secondStore = store(directory);
     const first = firstStore.bind(owner);
     const second = secondStore.bind(owner);
-    expect(first.set('state', { value: 1 }, null)).toMatchObject({
+    expect(first.set('state', { value: 1 }, absent())).toMatchObject({
       kind: 'written',
       record: { revision: 1 },
     });
-    expect(second.set('state', { value: 2 }, null)).toEqual({
+    expect(second.set('state', { value: 2 }, absent())).toEqual({
       kind: 'conflict',
       currentRevision: 1,
     });
@@ -131,7 +134,11 @@ describe('PluginDataStore', () => {
       currentRevision: 2,
     });
     expect(first.delete('state', 2)).toEqual({ kind: 'deleted' });
-    expect(first.set('state', { value: 3 }, null)).toMatchObject({
+    expect(first.get('state')).toEqual({
+      kind: 'not-found',
+      absence: absent(2),
+    });
+    expect(first.set('state', { value: 3 }, absent(2))).toMatchObject({
       kind: 'written',
       record: { revision: 3 },
     });
@@ -143,6 +150,59 @@ describe('PluginDataStore', () => {
     secondStore.close();
   });
 
+  test('rejects stale absence and stale live observations across two-writer create-delete-recreate ABA', () => {
+    const directory = root();
+    const firstStore = store(directory);
+    const secondStore = store(directory);
+    const first = firstStore.bind(owner);
+    const second = secondStore.bind(owner);
+    const initiallyAbsent = first.get('state');
+    expect(initiallyAbsent).toEqual({
+      kind: 'not-found',
+      absence: absent(),
+    });
+    if (initiallyAbsent.kind !== 'not-found')
+      throw new Error('expected absence');
+
+    expect(second.set('state', 'one', initiallyAbsent.absence)).toMatchObject({
+      kind: 'written',
+      record: { revision: 1 },
+    });
+    expect(second.delete('state', 1)).toEqual({ kind: 'deleted' });
+    expect(
+      first.set('state', 'stale-absence', initiallyAbsent.absence),
+    ).toEqual({
+      kind: 'conflict',
+      currentRevision: absent(1),
+    });
+
+    const afterDelete = first.get('state');
+    expect(afterDelete).toEqual({
+      kind: 'not-found',
+      absence: absent(1),
+    });
+    if (afterDelete.kind !== 'not-found') throw new Error('expected tombstone');
+    expect(first.set('state', 'two', afterDelete.absence)).toMatchObject({
+      kind: 'written',
+      record: { revision: 2 },
+    });
+    const staleLiveRevision = 2;
+    expect(second.delete('state', staleLiveRevision)).toEqual({
+      kind: 'deleted',
+    });
+    expect(first.set('state', 'stale-live', staleLiveRevision)).toEqual({
+      kind: 'conflict',
+      currentRevision: absent(2),
+    });
+    expect(first.set('state', 'three', absent(2))).toMatchObject({
+      kind: 'written',
+      record: { revision: 3, value: 'three' },
+    });
+
+    firstStore.close();
+    secondStore.close();
+  });
+
   test('isolates data by host-issued installation identity', () => {
     const dataStore = store(root());
     const original = dataStore.bind(owner);
@@ -150,13 +210,16 @@ describe('PluginDataStore', () => {
       ...owner,
       installationKey: `sha256:${'b'.repeat(64)}`,
     };
-    expect(original.set('state', 'original', null)).toMatchObject({
+    expect(original.set('state', 'original', absent())).toMatchObject({
       kind: 'written',
     });
     const replacementCapability = dataStore.bind(replacement);
-    expect(replacementCapability.get('state')).toEqual({ kind: 'not-found' });
+    expect(replacementCapability.get('state')).toEqual({
+      kind: 'not-found',
+      absence: absent(),
+    });
     expect(
-      replacementCapability.set('state', 'replacement', null),
+      replacementCapability.set('state', 'replacement', absent()),
     ).toMatchObject({
       kind: 'written',
     });
@@ -173,22 +236,39 @@ describe('PluginDataStore', () => {
       'pluginId must be a canonical plugin identifier',
     );
     const capability = dataStore.bind(owner);
-    expect(capability.set('../escape', 'x', null)).toMatchObject({
+    expect(capability.set('../escape', 'x', absent())).toMatchObject({
       kind: 'invalid',
     });
-    expect(capability.set('nan', Number.NaN, null)).toMatchObject({
+    expect(capability.set('nan', Number.NaN, absent())).toMatchObject({
       kind: 'invalid',
     });
-    expect(capability.set('date', new Date() as never, null)).toMatchObject({
+    expect(capability.set('date', new Date() as never, absent())).toMatchObject(
+      {
+        kind: 'invalid',
+      },
+    );
+    expect(capability.set('legacy-null', 'x', null as never)).toMatchObject({
       kind: 'invalid',
     });
+    const revisionGetter = vi.fn(() => null);
+    const accessorRevision = Object.defineProperty(
+      { kind: 'absent' },
+      'revision',
+      { enumerable: true, get: revisionGetter },
+    );
+    expect(
+      capability.set('accessor-revision', 'x', accessorRevision as never),
+    ).toMatchObject({ kind: 'invalid' });
+    expect(revisionGetter).not.toHaveBeenCalled();
     const accessor = Object.defineProperty({}, 'value', {
       enumerable: true,
       get() {
         throw new Error('must not escape');
       },
     });
-    expect(capability.set('accessor', accessor as never, null)).toMatchObject({
+    expect(
+      capability.set('accessor', accessor as never, absent()),
+    ).toMatchObject({
       kind: 'invalid',
     });
     expect(capability.get(Symbol('key') as never)).toMatchObject({
@@ -221,13 +301,13 @@ describe('PluginDataStore', () => {
     const parse = vi.spyOn(JSON, 'parse');
     try {
       const value = 'x'.repeat(PLUGIN_DATA_LIMITS.valueBytes + 1);
-      expect(capability.set('large', value, null)).toEqual({
+      expect(capability.set('large', value, absent())).toEqual({
         kind: 'capacity',
         reason: 'value-bytes',
       });
       const property = 'x'.repeat(PLUGIN_DATA_LIMITS.valueBytes + 1);
       expect(
-        capability.set('large-property', { [property]: null }, null),
+        capability.set('large-property', { [property]: null }, absent()),
       ).toEqual({
         kind: 'capacity',
         reason: 'value-bytes',
@@ -238,8 +318,14 @@ describe('PluginDataStore', () => {
       stringify.mockRestore();
       parse.mockRestore();
     }
-    expect(capability.get('large')).toEqual({ kind: 'not-found' });
-    expect(capability.get('large-property')).toEqual({ kind: 'not-found' });
+    expect(capability.get('large')).toEqual({
+      kind: 'not-found',
+      absence: absent(),
+    });
+    expect(capability.get('large-property')).toEqual({
+      kind: 'not-found',
+      absence: absent(),
+    });
     dataStore.close();
   });
 
@@ -251,20 +337,20 @@ describe('PluginDataStore', () => {
       index < PLUGIN_DATA_LIMITS.keysPerInstallation;
       index += 1
     ) {
-      expect(capability.set(`key-${index}`, null, null)).toMatchObject({
+      expect(capability.set(`key-${index}`, null, absent())).toMatchObject({
         kind: 'written',
       });
     }
-    expect(capability.set('one-too-many', null, null)).toEqual({
+    expect(capability.set('one-too-many', null, absent())).toEqual({
       kind: 'capacity',
       reason: 'keys',
     });
     expect(capability.delete('key-0', 1)).toEqual({ kind: 'deleted' });
-    expect(capability.set('still-one-too-many', null, null)).toEqual({
+    expect(capability.set('still-one-too-many', null, absent())).toEqual({
       kind: 'capacity',
       reason: 'keys',
     });
-    expect(capability.set('key-0', null, null)).toMatchObject({
+    expect(capability.set('key-0', null, absent(1))).toMatchObject({
       kind: 'written',
       record: { revision: 2 },
     });
@@ -276,11 +362,11 @@ describe('PluginDataStore', () => {
     const aggregate = dataStore.bind(aggregateOwner);
     const chunk = 'x'.repeat(PLUGIN_DATA_LIMITS.valueBytes - 2);
     for (let index = 0; index < 16; index += 1) {
-      expect(aggregate.set(`chunk-${index}`, chunk, null)).toMatchObject({
+      expect(aggregate.set(`chunk-${index}`, chunk, absent())).toMatchObject({
         kind: 'written',
       });
     }
-    expect(aggregate.set('overflow', 'extra', null)).toEqual({
+    expect(aggregate.set('overflow', 'extra', absent())).toEqual({
       kind: 'capacity',
       reason: 'total-bytes',
     });
@@ -299,7 +385,7 @@ describe('PluginDataStore', () => {
     const directory = root();
     const dataStore = store(directory);
     expect(
-      dataStore.bind(owner).set('state', { value: 1 }, null),
+      dataStore.bind(owner).set('state', { value: 1 }, absent()),
     ).toMatchObject({
       kind: 'written',
     });
@@ -320,7 +406,7 @@ describe('PluginDataStore', () => {
     const directory = root();
     const dataStore = store(directory);
     const capability = dataStore.bind(owner);
-    expect(capability.set('state', 'one', null)).toMatchObject({
+    expect(capability.set('state', 'one', absent())).toMatchObject({
       kind: 'written',
     });
     expect(capability.set('state', 'two', 1)).toMatchObject({
@@ -353,7 +439,7 @@ describe('PluginDataStore', () => {
   test('does not repair a missing retained revision head during reopen', () => {
     const directory = root();
     const dataStore = store(directory);
-    expect(dataStore.bind(owner).set('state', 'one', null)).toMatchObject({
+    expect(dataStore.bind(owner).set('state', 'one', absent())).toMatchObject({
       kind: 'written',
     });
     dataStore.close();
@@ -376,7 +462,7 @@ describe('PluginDataStore', () => {
   test('does not reinterpret a missing live payload as a tombstone', () => {
     const directory = root();
     const dataStore = store(directory);
-    expect(dataStore.bind(owner).set('state', 'one', null)).toMatchObject({
+    expect(dataStore.bind(owner).set('state', 'one', absent())).toMatchObject({
       kind: 'written',
       record: { revision: 1 },
     });
@@ -395,7 +481,7 @@ describe('PluginDataStore', () => {
       kind: 'unavailable',
       reason: 'corrupt',
     });
-    expect(rebound.set('state', 'replacement', null)).toEqual({
+    expect(rebound.set('state', 'replacement', absent())).toEqual({
       kind: 'unavailable',
       reason: 'corrupt',
     });
@@ -406,7 +492,7 @@ describe('PluginDataStore', () => {
     const directory = root();
     const dataStore = store(directory);
     const capability = dataStore.bind(owner);
-    expect(capability.set('state', 'one', null)).toMatchObject({
+    expect(capability.set('state', 'one', absent())).toMatchObject({
       kind: 'written',
       record: { revision: 1 },
     });
@@ -415,9 +501,12 @@ describe('PluginDataStore', () => {
 
     const reopened = store(directory);
     const rebound = reopened.bind(owner);
-    expect(rebound.get('state')).toEqual({ kind: 'not-found' });
+    expect(rebound.get('state')).toEqual({
+      kind: 'not-found',
+      absence: absent(1),
+    });
     expect(rebound.list()).toEqual({ kind: 'available', records: [] });
-    expect(rebound.set('state', 'two', null)).toMatchObject({
+    expect(rebound.set('state', 'two', absent(1))).toMatchObject({
       kind: 'written',
       record: { revision: 2, value: 'two' },
     });
@@ -428,7 +517,7 @@ describe('PluginDataStore', () => {
     const directory = root();
     const dataStore = store(directory);
     const capability = dataStore.bind(owner);
-    expect(capability.set('state', 'one', null)).toMatchObject({
+    expect(capability.set('state', 'one', absent())).toMatchObject({
       kind: 'written',
       record: { revision: 1 },
     });
@@ -452,10 +541,10 @@ describe('PluginDataStore', () => {
     const directory = root();
     const dataStore = store(directory);
     const capability = dataStore.bind(owner);
-    expect(capability.set('corrupt-peer', 'one', null)).toMatchObject({
+    expect(capability.set('corrupt-peer', 'one', absent())).toMatchObject({
       kind: 'written',
     });
-    expect(capability.set('healthy-peer', 'one', null)).toMatchObject({
+    expect(capability.set('healthy-peer', 'one', absent())).toMatchObject({
       kind: 'written',
     });
     dataStore.close();
@@ -485,7 +574,7 @@ describe('PluginDataStore', () => {
   test('lists one coherent WAL snapshot while another handle commits', () => {
     const directory = root();
     const seeded = store(directory);
-    expect(seeded.bind(owner).set('state', 'one', null)).toMatchObject({
+    expect(seeded.bind(owner).set('state', 'one', absent())).toMatchObject({
       kind: 'written',
     });
     seeded.close();
@@ -594,7 +683,7 @@ describe('PluginDataStore', () => {
   test('rejects oversized persisted metadata before row materialization', () => {
     const directory = root();
     const dataStore = store(directory);
-    expect(dataStore.bind(owner).set('state', 'one', null)).toMatchObject({
+    expect(dataStore.bind(owner).set('state', 'one', absent())).toMatchObject({
       kind: 'written',
     });
     dataStore.close();
@@ -621,7 +710,7 @@ describe('PluginDataStore', () => {
   test('rejects oversized persisted revision-head keys', () => {
     const directory = root();
     const dataStore = store(directory);
-    expect(dataStore.bind(owner).set('state', 'one', null)).toMatchObject({
+    expect(dataStore.bind(owner).set('state', 'one', absent())).toMatchObject({
       kind: 'written',
     });
     dataStore.close();

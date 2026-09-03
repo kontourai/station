@@ -51,9 +51,13 @@ import type { ToolDef } from '@kontourai/station-contracts/tool';
 `plugin-data` describes the bounded host-side storage authority introduced by
 Station #1359. The host binds the canonical plugin id and its host-issued
 installation key into an owner-scoped capability, so plugin calls cannot select
-another namespace and the contract never exposes a filesystem path. Writes and
-deletes require the revision the caller observed; retained revision heads keep
-stale writers conflicting even across delete/recreate. This tracer does not yet
+another namespace and the contract never exposes a filesystem path. Live
+writes and deletes require the numeric revision the caller observed. Creation
+and recreation require the state-qualified absence token returned by an
+exact-key `get`; first-ever absence and a retained tombstone are distinct,
+while `list` continues to expose live records only. Retained revision heads
+keep both stale-absence and stale-live writers conflicting across
+delete/recreate. This tracer does not yet
 publish a plugin SDK or HTTP transport, and no plugin permission claims access
 to it until that enforcement path exists.
 

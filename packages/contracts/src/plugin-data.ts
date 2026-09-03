@@ -24,11 +24,24 @@ export interface PluginDataRecord {
   updatedAt: string;
 }
 
+/**
+ * Exact absence observation for first creation or tombstone-qualified
+ * recreation. The state tag keeps a live revision from authorizing a write
+ * after another writer deletes that revision.
+ */
+export interface PluginDataAbsenceRevision {
+  kind: 'absent';
+  /** Null is first-ever absence; a number is the retained tombstone head. */
+  revision: number | null;
+}
+
+export type PluginDataExpectedRevision = number | PluginDataAbsenceRevision;
+
 export type PluginDataUnavailableReason = 'transient' | 'corrupt';
 
 export type PluginDataReadOutcome =
   | { kind: 'found'; record: PluginDataRecord }
-  | { kind: 'not-found' }
+  | { kind: 'not-found'; absence: PluginDataAbsenceRevision }
   | { kind: 'invalid'; reason: string }
   | { kind: 'unavailable'; reason: PluginDataUnavailableReason };
 
@@ -39,14 +52,14 @@ export type PluginDataListOutcome =
 
 export type PluginDataWriteOutcome =
   | { kind: 'written'; record: PluginDataRecord }
-  | { kind: 'conflict'; currentRevision: number | null }
+  | { kind: 'conflict'; currentRevision: PluginDataExpectedRevision }
   | { kind: 'capacity'; reason: 'keys' | 'value-bytes' | 'total-bytes' }
   | { kind: 'invalid'; reason: string }
   | { kind: 'unavailable'; reason: PluginDataUnavailableReason };
 
 export type PluginDataDeleteOutcome =
   | { kind: 'deleted' }
-  | { kind: 'not-found' }
+  | { kind: 'not-found'; absence: PluginDataAbsenceRevision }
   | { kind: 'conflict'; currentRevision: number }
   | { kind: 'invalid'; reason: string }
   | { kind: 'unavailable'; reason: PluginDataUnavailableReason };
