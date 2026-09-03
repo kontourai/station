@@ -4723,7 +4723,7 @@ for (const requiredImport of [
   './agent-editor/types',
   // No `AgentEditorConnectionTab`: there is no extracted connection module
   // any more. The form resolves the bound engine connection itself through
-  // `useAgentConnectionsQuery`, so requiring an import here would require a
+  // `useEngineConnectionsQuery`, so requiring an import here would require a
   // file nobody intends to write.
 ]) {
   if (!agentEditorForm.includes(requiredImport)) {
@@ -4823,7 +4823,7 @@ const headerViewModel = readRequiredSource(
 );
 for (const requiredHelper of [
   'export function useHeaderViewModel',
-  'useAgentConnectionsQuery',
+  'useEngineConnectionsQuery',
   'useLaunchChat',
   'useNavigation',
   'getHelpPrompts',
@@ -4841,7 +4841,7 @@ if (hasRawFetchCall(agentConnectionView)) {
   errors.push('AgentConnectionView must not issue raw fetch() calls.');
 }
 for (const requiredHook of [
-  'useAgentConnectionsQuery',
+  'useEngineConnectionsQuery',
   'useAgentConnectionQuery',
   'useDeleteAgentConnectionMutation',
   'useSaveAgentConnectionMutation',

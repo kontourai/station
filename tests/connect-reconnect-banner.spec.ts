@@ -242,9 +242,10 @@ test.describe('compatibility-aware reconnect', () => {
       };
       await installTransport(page, state);
       await page.goto(`/?dockSlotPlacement=${placement}`);
-      await expect(page.locator('.app__main')).toHaveClass(
-        new RegExp(`app__main--dock-${placement}`),
+      const regionShell = page.locator(
+        `.app__main > [data-region="${placement}"]`,
       );
+      await expect(regionShell).toBeVisible();
       await expect(
         page.getByRole('heading', { name: 'What do you want to work on?' }),
       ).toBeVisible();
@@ -422,9 +423,10 @@ test.describe('compatibility-aware reconnect', () => {
       );
       await page.goto(`/?${dock.query}`);
 
-      await expect(page.locator('.app__main')).toHaveClass(
-        new RegExp(`app__main--dock-${dock.mode}`),
+      const regionShell = page.locator(
+        `.app__main > [data-region="${dock.mode}"]`,
       );
+      await expect(regionShell).toBeVisible();
       const chatDock = page.locator('.app__main > .chat-dock');
       await expect(chatDock).toBeVisible();
       // Fail loudly if the URL params did not actually reach the dock state

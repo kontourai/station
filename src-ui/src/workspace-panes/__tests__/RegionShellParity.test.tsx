@@ -172,6 +172,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   resetDockPlacementState('/', { dock: null });
   delete (globalThis.navigator as { locks?: unknown }).locks;
 });
@@ -487,6 +488,10 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     );
   });
 
+  // `data-region` names the region the shell RENDERS in, because the desktop
+  // grid keys its tracks on it (index.css `.app__main:has(> [data-region])`).
+  // The persisted region stays `right` in the model; the fold is what the
+  // grid must see (DockShell.tsx `renderedRegion`).
   test('phone with a persisted side placement still renders the folded bottom shell', async () => {
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
@@ -495,9 +500,8 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     seedPlacement('right', 'open');
     const shell = await renderShellsSettled();
     expect(shells()).toHaveLength(1);
-    // The region is right; the fold to bottom is presentational
-    // (useIsMobile.ts `effectivePlacement`), so the phone keeps its dock.
-    expect(shell.dataset.region).toBe('right');
+    expect(currentRegionModel().regions.right.occupant).toBe('chat');
+    expect(shell.dataset.region).toBe('bottom');
     expect(shell.classList.contains('chat-dock--bottom')).toBe(true);
     await waitFor(() => expect(clearance('--dock-slot-size')).not.toBe(''));
     // Clearance is reported under the rendered region (the one the grid
@@ -506,5 +510,30 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       clearance('--dock-slot-size'),
     );
     expect(clearance('--region-right-size')).toBe('');
+  });
+
+  // A wide coarse-pointer device (landscape tablet) keeps the desktop grid ON
+  // while `availablePlacements` still folds to bottom — the one device class
+  // where region and fold can disagree with the grid watching.
+  test('a wide coarse-pointer device stamps the folded region the grid keys on', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: query === '(pointer: coarse)',
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+    seedPlacement('right', 'open');
+    const shell = await renderShellsSettled();
+    expect(shells()).toHaveLength(1);
+    expect(currentRegionModel().regions.right.occupant).toBe('chat');
+    expect(shell.dataset.region).toBe('bottom');
+    expect(shell.classList.contains('chat-dock--bottom')).toBe(true);
   });
 });
