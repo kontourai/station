@@ -1012,6 +1012,59 @@ describe('plugin composition profiles', () => {
     expect(events).toEqual([]);
   });
 
+  test('waits for recognizable-invalid async lease release before returning', async () => {
+    const implementations = new Map([factory('cache', [])]);
+    let finishRelease!: () => void;
+    const release = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishRelease = resolve;
+        }),
+    );
+    const module = moduleWith([], {
+      authorizer: {
+        authorize(input) {
+          const granted = grantedPlanAuthorization(input, implementations, {
+            release,
+          });
+          return { ...granted, unexpected: true } as never;
+        },
+      },
+    });
+    let settled = false;
+    const applying = module
+      .apply(profile(projectA, [contribution('cache', 'workspace.cache')]))
+      .finally(() => {
+        settled = true;
+      });
+
+    await vi.waitFor(() => expect(release).toHaveBeenCalledOnce());
+    expect(settled).toBe(false);
+    finishRelease();
+
+    await expect(applying).resolves.toMatchObject({ kind: 'pending' });
+  });
+
+  test('contains a rejected async release after successful publication', async () => {
+    const implementations = new Map([factory('cache', [])]);
+    const release = vi.fn(async () => {
+      throw new Error('release failed asynchronously');
+    });
+    const module = moduleWith([], {
+      authorizer: {
+        authorize: (input) =>
+          grantedPlanAuthorization(input, implementations, { release }),
+      },
+    });
+
+    await expect(
+      module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({ kind: 'activated' });
+    expect(release).toHaveBeenCalledOnce();
+  });
+
   test('holds one whole-plan authorization lease and rolls back when it becomes stale before publication', async () => {
     const events: string[] = [];
     let current = true;

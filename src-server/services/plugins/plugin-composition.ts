@@ -160,7 +160,7 @@ export interface PluginCompositionAuthorizationLease {
   /** Reads the exact whole-plan authorization/install snapshot held by this lease. */
   isCurrent(): boolean;
   /** Releases the whole-plan snapshot after publication or rollback. */
-  release(): void;
+  release(): void | Promise<void>;
 }
 
 export type PluginCompositionAuthorization =
@@ -870,13 +870,20 @@ function validatePlanAuthorization(
       bindings,
       isCurrent: () =>
         Reflect.apply(lease.isCurrent as () => boolean, rawLease, []),
-      release: () => Reflect.apply(lease.release as () => void, rawLease, []),
+      release: () =>
+        Reflect.apply(
+          lease.release as () => void | Promise<void>,
+          rawLease,
+          [],
+        ),
     }),
     bindings: byIdentity,
   };
 }
 
-function releaseRecognizableInvalidAuthorization(value: unknown): void {
+async function releaseRecognizableInvalidAuthorization(
+  value: unknown,
+): Promise<void> {
   try {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return;
     const prototype = Object.getPrototypeOf(value);
@@ -906,7 +913,7 @@ function releaseRecognizableInvalidAuthorization(value: unknown): void {
       typeof release.value !== 'function'
     )
       return;
-    Reflect.apply(release.value, rawLease, []);
+    await Reflect.apply(release.value, rawLease, []);
   } catch {
     // Invalid authority output is unavailable regardless of release behavior.
   }
@@ -1494,7 +1501,7 @@ export function createPluginCompositionModule(options: {
     );
     if (authorization?.kind !== 'granted') {
       if (!authorization) {
-        releaseRecognizableInvalidAuthorization(rawAuthorization);
+        await releaseRecognizableInvalidAuthorization(rawAuthorization);
       }
       const unavailable =
         !authorization || authorization.kind === 'unavailable';
@@ -1515,11 +1522,11 @@ export function createPluginCompositionModule(options: {
     }
 
     let released = false;
-    const releaseAuthorization = () => {
+    const releaseAuthorization = async () => {
       if (released) return;
       released = true;
       try {
-        authorization.lease.release();
+        await authorization.lease.release();
       } catch {
         // A host authority must not turn a completed rollback/publication into
         // an unhandled rejection. Its currentness was already consumed while
@@ -1540,7 +1547,7 @@ export function createPluginCompositionModule(options: {
       const missing = new Set(
         missingBindings.map((candidate) => candidate.instanceIdentity),
       );
-      releaseAuthorization();
+      await releaseAuthorization();
       recordAttempt(profile.scope, [
         ...planned.plan.selected.map((candidate) =>
           missing.has(candidate.instanceIdentity)
@@ -1666,7 +1673,7 @@ export function createPluginCompositionModule(options: {
         scope: structuredClone(profile.scope),
         contributions: staged,
       });
-      releaseAuthorization();
+      await releaseAuthorization();
       const retirementFailures = previous
         ? await disposeReverse(
             previous.contributions,
@@ -1689,7 +1696,7 @@ export function createPluginCompositionModule(options: {
         inspection: inspect(profile.scope),
       };
     } finally {
-      releaseAuthorization();
+      await releaseAuthorization();
     }
   };
 
