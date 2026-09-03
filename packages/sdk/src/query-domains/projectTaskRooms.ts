@@ -17,6 +17,7 @@ import {
   fetchProjectTaskRoomDocument,
   fetchProjectTaskRoomHistory,
   type ProjectTaskRoomLiveCommand,
+  ProjectTaskRoomProtocolError,
   parseAuthoritativeProjectTaskRoomDocumentEvent,
   parseProjectTaskRoomDocumentResponse,
   planProjectTaskRoomEdit,
@@ -60,6 +61,10 @@ function notifyProjectTaskRoomCallback(callback: (() => void) | undefined) {
   } catch {
     // One host observer cannot turn an authenticated frame into transport loss.
   }
+}
+
+function immutableAuthoritativeDocument<T extends object>(document: T): T {
+  return Object.freeze({ ...document }) as T;
 }
 
 /** The small cache seam the settled-edit authority decision needs. */
@@ -284,16 +289,29 @@ export function useProjectTaskRoomStream(
     void _getApiBase().then((base) => {
       if (!isCurrentStream()) return;
       connection = subscribeProjectTaskRoomEvents(base, taskId, {
+        onError: (error) => {
+          if (
+            !isCurrentStream() ||
+            !(error instanceof ProjectTaskRoomProtocolError)
+          ) {
+            return;
+          }
+          void refetchAuthoritativeProjectTaskRoomDocument(
+            client,
+            taskId,
+          ).catch(() => {});
+        },
         onCheckpoint: (id) =>
           notifyCurrent(() => callbackRef.current?.onCheckpoint?.(id)),
         onEvent: (event) => {
           if (!isCurrentStream()) return;
           if (event.kind === 'document') {
+            const parsedDocument =
+              parseAuthoritativeProjectTaskRoomDocumentEvent(event.value);
+            const document = parsedDocument
+              ? immutableAuthoritativeDocument(parsedDocument)
+              : undefined;
             notifyCurrent(() => callbackRef.current?.onDocument?.(event.value));
-            if (!isCurrentStream()) return;
-            const document = parseAuthoritativeProjectTaskRoomDocumentEvent(
-              event.value,
-            );
             if (document?.kind === 'snapshot' || document?.kind === 'delta')
               notifyCurrent(() =>
                 callbackRef.current?.onAuthoritativeDocument?.(document),
@@ -337,11 +355,14 @@ export function useProjectTaskRoomStream(
               | ReturnType<typeof parseProjectTaskRoomDocumentResponse>
               | undefined;
             try {
-              document = parseProjectTaskRoomDocumentResponse(
+              const parsedDocument = parseProjectTaskRoomDocumentResponse(
                 event.value && typeof event.value === 'object'
                   ? (event.value as { document?: unknown }).document
                   : undefined,
               );
+              document = parsedDocument
+                ? immutableAuthoritativeDocument(parsedDocument)
+                : undefined;
             } catch {
               // Unknown snapshot document shapes remain a cache invalidation,
               // never an optimistic cache write.

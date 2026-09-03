@@ -453,14 +453,20 @@ export function subscribeProjectTaskRoomEvents(
     onCheckpoint?(id: string): void;
   },
 ): FetchSseConnection {
+  let rejectNextCheckpoint = false;
   return fetchSSE(`${apiBase}${roomPath(taskId, '/events')}`, {
     onOpen: () => callbacks.onOpen?.(),
     onError: callbacks.onError,
     onTerminal: () => callbacks.onTerminal?.(),
     onCheckpoint: (checkpoint) => {
+      if (rejectNextCheckpoint) {
+        rejectNextCheckpoint = false;
+        return;
+      }
       if (checkpoint.id) callbacks.onCheckpoint?.(checkpoint.id);
     },
     onMessage: (message) => {
+      rejectNextCheckpoint = false;
       if (message.event === 'ping') return;
       if (message.event === 'terminal')
         return callbacks.onEvent({
@@ -471,10 +477,13 @@ export function subscribeProjectTaskRoomEvents(
         message.event !== 'snapshot' &&
         message.event !== 'room' &&
         message.event !== 'document'
-      )
-        return callbacks.onError?.(
+      ) {
+        rejectNextCheckpoint = true;
+        callbacks.onError?.(
           new ProjectTaskRoomProtocolError('Unknown room SSE event'),
         );
+        return;
+      }
       try {
         callbacks.onEvent({
           kind: message.event,
@@ -482,6 +491,7 @@ export function subscribeProjectTaskRoomEvents(
           value: JSON.parse(message.data),
         });
       } catch {
+        rejectNextCheckpoint = true;
         callbacks.onError?.(
           new ProjectTaskRoomProtocolError('Malformed room SSE event'),
         );

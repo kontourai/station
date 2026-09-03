@@ -12,6 +12,7 @@ const documentRequests: Array<{
   resolve(value: unknown): void;
 }> = [];
 type StreamCallbacks = {
+  onError?(error: unknown): void;
   onCheckpoint?(id: string): void;
   onConnectionCreated?(id: string): void;
   onConnectionClosed?(id: string): void;
@@ -26,6 +27,7 @@ const streamConnections: Array<{
 
 vi.mock('../api', () => ({ _getApiBase: async () => 'https://station.test' }));
 vi.mock('../client/project-task-rooms', () => ({
+  ProjectTaskRoomProtocolError: class ProjectTaskRoomProtocolError extends Error {},
   fetchProjectTaskRoomDocument: (
     _base: string,
     _task: string,
@@ -69,6 +71,7 @@ vi.mock('../client/project-task-rooms', () => ({
 
 import {
   adoptCommittedProjectTaskRoomDocument,
+  ProjectTaskRoomProtocolError,
   projectTaskRoomQueries,
   refetchAuthoritativeProjectTaskRoomDocument,
   useProjectTaskRoomDocumentQuery,
@@ -186,6 +189,52 @@ test.each([
     ).toBe(value);
   },
 );
+
+test('a transport protocol error recovers through the authoritative no-cache read', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const rendered = renderHook(
+    () => {
+      const document = useProjectTaskRoomDocumentQuery('task-1');
+      useProjectTaskRoomStream('task-1');
+      return document.data;
+    },
+    { wrapper },
+  );
+  await waitFor(() => expect(callbacks).toBeDefined());
+  await waitFor(() => expect(documentRequests).toHaveLength(1));
+  documentRequests[0]?.resolve({
+    kind: 'snapshot',
+    revision: 'baseline',
+    text: 'baseline',
+  });
+  await waitFor(() =>
+    expect(rendered.result.current).toMatchObject({ revision: 'baseline' }),
+  );
+
+  act(() =>
+    callbacks!.onError?.(
+      new ProjectTaskRoomProtocolError('Malformed room SSE event'),
+    ),
+  );
+  await waitFor(() => expect(documentRequests).toHaveLength(2));
+  expect(documentRequests[1]?.init.headers).toEqual({
+    'Cache-Control': 'no-cache',
+  });
+  documentRequests[1]?.resolve({
+    kind: 'snapshot',
+    revision: 'recovered',
+    text: 'recovered text',
+  });
+
+  await waitFor(() =>
+    expect(rendered.result.current).toMatchObject({ revision: 'recovered' }),
+  );
+});
 
 test('committed settlement treats accessor and custom-prototype cache values as a refetch boundary', () => {
   const accessor = Object.defineProperty({}, 'kind', {
@@ -509,6 +558,34 @@ test('isolates throwing document observers without delaying cache normalization'
   expect(
     client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
   ).toEqual({ kind: 'snapshot', revision: 'rev2', text: 'two' });
+});
+
+test('observer mutation cannot alter authoritative cache truth', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const observer = vi.fn((document: { text: string }) => {
+    document.text = 'observer-poisoned';
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  renderHook(
+    () =>
+      useProjectTaskRoomStream('task-1', { onAuthoritativeDocument: observer }),
+    { wrapper },
+  );
+  await waitFor(() => expect(callbacks).toBeDefined());
+
+  callbacks!.onEvent({
+    kind: 'document',
+    value: { kind: 'committed', revision: 'rev2', text: 'canonical' },
+  });
+
+  expect(observer).toHaveBeenCalledOnce();
+  expect(
+    client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
+  ).toEqual({ kind: 'snapshot', revision: 'rev2', text: 'canonical' });
 });
 
 test('rejects callbacks from the previous Task during the render-to-cleanup handoff', async () => {
