@@ -447,6 +447,15 @@ function snapshotScope(value: unknown): PluginCompositionScope | undefined {
   if (!allowed) return;
   const record = dataRecord(value, allowed);
   if (!record) return;
+  if (
+    (record.kind === 'project' && typeof record.projectId !== 'string') ||
+    (record.kind === 'agent' &&
+      (typeof record.agentId !== 'string' ||
+        (record.projectId !== undefined &&
+          typeof record.projectId !== 'string')))
+  ) {
+    return;
+  }
   const scope =
     record.kind === 'project'
       ? { kind: 'project' as const, projectId: record.projectId as string }
@@ -465,6 +474,13 @@ function snapshotRequirement(
 ): PluginCompositionRequirement | undefined {
   const record = dataRecord(value, REQUIREMENT_KEYS);
   if (!record) return;
+  if (
+    typeof record.capability !== 'string' ||
+    typeof record.version !== 'string' ||
+    (record.instanceId !== undefined && typeof record.instanceId !== 'string')
+  ) {
+    return;
+  }
   const scope =
     record.scope === undefined ? undefined : snapshotScope(record.scope);
   if (record.scope !== undefined && !scope) return;
@@ -483,6 +499,17 @@ function snapshotContribution(
 ): PluginCompositionContribution | undefined {
   const record = dataRecord(value, CONTRIBUTION_KEYS);
   if (!record) return;
+  if (
+    typeof record.instanceId !== 'string' ||
+    typeof record.pluginId !== 'string' ||
+    typeof record.contributionId !== 'string' ||
+    typeof record.implementationId !== 'string' ||
+    typeof record.capability !== 'string' ||
+    typeof record.version !== 'string' ||
+    record.isolation !== 'profile'
+  ) {
+    return;
+  }
   const configuration = canonicalConfiguration(record.configuration);
   const requires = dataArray(
     record.requires,
@@ -547,6 +574,12 @@ function normalizeContribution(
   contribution: PluginCompositionContribution,
 ): NormalizedContribution | undefined {
   if (
+    typeof contribution.instanceId !== 'string' ||
+    typeof contribution.pluginId !== 'string' ||
+    typeof contribution.contributionId !== 'string' ||
+    typeof contribution.implementationId !== 'string' ||
+    typeof contribution.capability !== 'string' ||
+    typeof contribution.version !== 'string' ||
     !ID.test(contribution.instanceId) ||
     !isCanonicalPluginId(contribution.pluginId) ||
     !ID.test(contribution.contributionId) ||
@@ -558,6 +591,10 @@ function normalizeContribution(
     contribution.requires.length > MAX_REQUIREMENTS ||
     contribution.requires.some(
       (requirement) =>
+        typeof requirement.capability !== 'string' ||
+        typeof requirement.version !== 'string' ||
+        (requirement.instanceId !== undefined &&
+          typeof requirement.instanceId !== 'string') ||
         !ID.test(requirement.capability) ||
         !ID.test(requirement.version) ||
         (requirement.instanceId !== undefined &&
@@ -741,7 +778,8 @@ function snapshotFactory(value: unknown): PluginCompositionFactory | undefined {
   const record = dataRecord(value, FACTORY_KEYS);
   if (!record || typeof record.stage !== 'function') return;
   return Object.freeze({
-    stage: record.stage as PluginCompositionFactory['stage'],
+    stage: (input: Parameters<PluginCompositionFactory['stage']>[0]) =>
+      (record.stage as PluginCompositionFactory['stage']).call(value, input),
   });
 }
 
@@ -790,7 +828,8 @@ function validatePlanAuthorization(
   if (initial.kind !== 'granted') return;
   const granted = dataRecord(value, GRANTED_AUTHORIZATION_RESULT_KEYS);
   if (!granted) return;
-  const lease = dataRecord(granted.lease, AUTHORIZATION_LEASE_KEYS);
+  const rawLease = granted.lease;
+  const lease = dataRecord(rawLease, AUTHORIZATION_LEASE_KEYS);
   if (
     !lease ||
     typeof lease.isCurrent !== 'function' ||
@@ -827,8 +866,8 @@ function validatePlanAuthorization(
     kind: 'granted',
     lease: Object.freeze({
       bindings,
-      isCurrent: lease.isCurrent as () => boolean,
-      release: lease.release as () => void,
+      isCurrent: () => (lease.isCurrent as () => boolean).call(rawLease),
+      release: () => (lease.release as () => void).call(rawLease),
     }),
     bindings: byIdentity,
   };
@@ -837,10 +876,11 @@ function validatePlanAuthorization(
 function releaseRecognizableInvalidAuthorization(value: unknown): void {
   const granted = dataRecord(value);
   if (granted?.kind !== 'granted') return;
-  const lease = dataRecord(granted.lease);
+  const rawLease = granted.lease;
+  const lease = dataRecord(rawLease);
   if (!lease || typeof lease.release !== 'function') return;
   try {
-    lease.release();
+    lease.release.call(rawLease);
   } catch {
     // Invalid authority output is unavailable regardless of release behavior.
   }
@@ -851,9 +891,10 @@ function snapshotStagedHandle(value: unknown):
       readonly handle: StagedPluginCompositionContribution;
       readonly identity: object;
       readonly disposer: object;
+      readonly exact: boolean;
     }
   | undefined {
-  const record = dataRecord(value, STAGED_HANDLE_KEYS);
+  const record = dataRecord(value);
   if (
     !record ||
     (typeof value !== 'object' && typeof value !== 'function') ||
@@ -870,6 +911,9 @@ function snapshotStagedHandle(value: unknown):
     }),
     identity: value,
     disposer: record.dispose as object,
+    exact:
+      Object.keys(record).length === STAGED_HANDLE_KEYS.size &&
+      Object.keys(record).every((key) => STAGED_HANDLE_KEYS.has(key)),
   };
 }
 
@@ -1412,10 +1456,15 @@ export function createPluginCompositionModule(options: {
       (candidate) => !authorization.bindings.has(candidate.instanceIdentity),
     );
     if (missingBindings.length > 0) {
+      const missing = new Set(
+        missingBindings.map((candidate) => candidate.instanceIdentity),
+      );
       releaseAuthorization();
       recordAttempt(profile.scope, [
-        ...missingBindings.map((candidate) =>
-          entry(candidate, 'failed', 'implementation-unavailable'),
+        ...planned.plan.selected.map((candidate) =>
+          missing.has(candidate.instanceIdentity)
+            ? entry(candidate, 'failed', 'implementation-unavailable')
+            : entry(candidate, 'pending', 'activation-aborted'),
         ),
         ...planned.plan.shadowed,
       ]);
@@ -1476,12 +1525,17 @@ export function createPluginCompositionModule(options: {
             occurrence: leaseControl.lease,
             dependencies,
           });
-          const occurrence = claimOccurrence(
-            leaseControl,
-            snapshotStagedHandle(rawHandle),
-          );
+          const stagedHandle = snapshotStagedHandle(rawHandle);
+          const occurrence = claimOccurrence(leaseControl, stagedHandle);
           if (!occurrence) throw new Error('invalid staged contribution');
           staged.push({ ...contribution, binding, occurrence });
+          // A recognizable disposer is still rollback authority even when the
+          // surrounding result is malformed. Claim it before refusing so this
+          // occurrence is fenced and disposed without touching an already-
+          // claimed handle or disposer from another scope.
+          if (!stagedHandle?.exact) {
+            throw new Error('malformed staged contribution');
+          }
         } catch {
           leaseControl.fence();
           const rollback = await disposeReverse(
@@ -1495,11 +1549,24 @@ export function createPluginCompositionModule(options: {
             .map((candidate) =>
               entry(candidate, 'pending', 'activation-aborted'),
             );
+          const rollbackFailures = new Set(
+            rollback.map((candidate) => candidate.instanceIdentity),
+          );
+          const rolledBack = staged
+            .filter(
+              (candidate) =>
+                candidate.instanceIdentity !== contribution.instanceIdentity &&
+                !rollbackFailures.has(candidate.instanceIdentity),
+            )
+            .map((candidate) =>
+              entry(candidate, 'pending', 'activation-aborted'),
+            );
           recordAttempt(profile.scope, [
             entry(contribution, 'failed', 'activation-failed', undefined, {
               binding,
               occurrence: leaseControl.lease,
             }),
+            ...rolledBack,
             ...blocked,
             ...rollback,
             ...planned.plan.shadowed,

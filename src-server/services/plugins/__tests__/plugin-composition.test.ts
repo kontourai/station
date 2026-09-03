@@ -456,7 +456,18 @@ describe('plugin composition profiles', () => {
       kind: 'failed',
       inspection: {
         generation: 0,
-        failed: [expect.objectContaining({ reason: 'activation-failed' })],
+        pending: [
+          expect.objectContaining({
+            instanceId: 'store',
+            reason: 'activation-aborted',
+          }),
+        ],
+        failed: [
+          expect.objectContaining({
+            instanceId: 'search',
+            reason: 'activation-failed',
+          }),
+        ],
       },
     });
     expect(events).toEqual(['stage:store', 'stage:search', 'dispose:store']);
@@ -535,6 +546,67 @@ describe('plugin composition profiles', () => {
     expect(events).toEqual(['stage:store', 'stage:search']);
   });
 
+  test('preserves receiver-bound host lease and factory capabilities', async () => {
+    const factoryState = new WeakMap<object, { staged: number }>();
+    const leaseState = new WeakMap<
+      object,
+      { current: boolean; released: number }
+    >();
+    const implementation: PluginCompositionFactory = {
+      async stage() {
+        const state = factoryState.get(this);
+        if (!state) throw new Error('factory receiver changed');
+        state.staged += 1;
+        return { dispose() {} };
+      },
+    };
+    factoryState.set(implementation, { staged: 0 });
+    let hostLease: Extract<
+      PluginCompositionAuthorization,
+      { kind: 'granted' }
+    >['lease'];
+    const module = moduleWith([], {
+      authorizer: {
+        authorize(input) {
+          const candidate = input.contributions[0];
+          hostLease = {
+            bindings: [
+              {
+                instanceIdentity: candidate.instanceIdentity,
+                pluginId: candidate.contribution.pluginId,
+                contributionId: candidate.contribution.contributionId,
+                implementationId: candidate.contribution.implementationId,
+                installationGeneration: 'installed:workspace-tools:1',
+                factory: implementation,
+              },
+            ],
+            isCurrent() {
+              return leaseState.get(this)?.current === true;
+            },
+            release() {
+              const state = leaseState.get(this);
+              if (!state) throw new Error('lease receiver changed');
+              state.released += 1;
+            },
+          };
+          leaseState.set(hostLease, { current: true, released: 0 });
+          return { kind: 'granted', lease: hostLease };
+        },
+      },
+    });
+
+    await expect(
+      module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({ kind: 'activated' });
+    expect(factoryState.get(implementation)).toEqual({ staged: 1 });
+    expect(leaseState.get(hostLease!)).toEqual({
+      current: true,
+      released: 1,
+    });
+  });
+
   test('rejects an owner-mismatched installed binding before staging and releases its recognizable lease', async () => {
     const events: string[] = [];
     const implementations = new Map([factory('cache', events)]);
@@ -560,6 +632,58 @@ describe('plugin composition profiles', () => {
       inspection: {
         pending: [
           expect.objectContaining({ reason: 'authorization-unavailable' }),
+        ],
+      },
+    });
+    expect(events).toEqual([]);
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  test('keeps every selected contribution visible when a whole-plan binding is missing', async () => {
+    const events: string[] = [];
+    const implementations = new Map([
+      factory('first', events),
+      factory('second', events),
+    ]);
+    const release = vi.fn();
+    const module = moduleWith([], {
+      authorizer: {
+        authorize(input) {
+          const granted = grantedPlanAuthorization(input, implementations, {
+            release,
+          });
+          return {
+            ...granted,
+            lease: {
+              ...granted.lease,
+              bindings: granted.lease.bindings.slice(0, 1),
+            },
+          };
+        },
+      },
+    });
+
+    await expect(
+      module.apply(
+        profile(projectA, [
+          contribution('first', 'workspace.first'),
+          contribution('second', 'workspace.second'),
+        ]),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'failed',
+      inspection: {
+        pending: [
+          expect.objectContaining({
+            instanceId: 'first',
+            reason: 'activation-aborted',
+          }),
+        ],
+        failed: [
+          expect.objectContaining({
+            instanceId: 'second',
+            reason: 'implementation-unavailable',
+          }),
         ],
       },
     });
@@ -691,6 +815,40 @@ describe('plugin composition profiles', () => {
     });
     expect(observations).toEqual(['stage:true', 'dispose:false']);
     expect(release).toHaveBeenCalledOnce();
+  });
+
+  test('fences and disposes a recognizable resource returned in a malformed staged outcome', async () => {
+    const observations: string[] = [];
+    let occurrence: { isCurrent(): boolean } | undefined;
+    const dispose = vi.fn(() => {
+      observations.push(`dispose:${occurrence?.isCurrent()}`);
+    });
+    const implementation: PluginCompositionFactory = {
+      async stage(input) {
+        occurrence = input.occurrence;
+        return { dispose, unexpected: true } as never;
+      },
+    };
+    const module = moduleWith([['cache', implementation]]);
+
+    await expect(
+      module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'failed',
+      inspection: {
+        active: [],
+        failed: [
+          expect.objectContaining({
+            instanceId: 'cache',
+            reason: 'activation-failed',
+          }),
+        ],
+      },
+    });
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(observations).toEqual(['dispose:false']);
   });
 
   test('fences an occurrence synchronously before replacement and explicit-retirement disposal', async () => {
@@ -945,6 +1103,22 @@ describe('plugin composition profiles', () => {
     const malformedContribution = contribution('cache', 'workspace.cache', {
       configuration: configuration as never,
     });
+    const scalarToString = vi.fn(() => {
+      throw new Error('hostile scalar coercion');
+    });
+    const hostileScalar = { toString: scalarToString };
+    const hostileContribution = {
+      ...contribution('cache', 'workspace.cache'),
+      instanceId: hostileScalar,
+    };
+    const hostileRequirement = contribution('cache', 'workspace.cache', {
+      requires: [
+        {
+          capability: hostileScalar as never,
+          version: '1.0.0',
+        },
+      ],
+    });
     const throwingProxy = new Proxy(
       {},
       {
@@ -959,6 +1133,8 @@ describe('plugin composition profiles', () => {
       accessorProfile,
       throwingProxy,
       profile(projectA, [malformedContribution]),
+      profile(projectA, [hostileContribution as never]),
+      profile(projectA, [hostileRequirement]),
       { ...profile(projectA, []), contributions: Array(1) },
     ]) {
       await expect(module.apply(candidate as never)).resolves.toEqual({
@@ -975,5 +1151,6 @@ describe('plugin composition profiles', () => {
     }
     expect(scopeGetter).not.toHaveBeenCalled();
     expect(configurationGetter).not.toHaveBeenCalled();
+    expect(scalarToString).not.toHaveBeenCalled();
   });
 });
