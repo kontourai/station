@@ -139,6 +139,65 @@ describe('plugin CLI API authority', () => {
     expect(printed).toContain('shared-lib');
     expect(printed).toContain('shared-lib requires providers.register');
     expect(printed).toContain('an in-page bundle');
+    expect(printed).toContain(
+      'Installed demo@1.0.0, but activation is incomplete',
+    );
+    expect(printed).toContain(
+      'shared-lib requires host approval for providers.register',
+    );
+    expect(printed).toContain('Station host in the Plugins page');
+    expect(printed).not.toContain('✅ Installed demo@1.0.0 through Station');
+  });
+
+  test('reports complete success only when the install response and dependencies have no trusted approvals pending', async () => {
+    authenticatedFetch
+      .mockResolvedValueOnce(
+        Response.json({
+          valid: true,
+          manifest: { name: 'demo', version: '1.0.0' },
+          components: [],
+          conflicts: [],
+          dependencies: [
+            {
+              id: 'shared-lib',
+              status: 'will-install',
+              consent: {
+                permissions: ['network.fetch'],
+                contentDigest: 'sha256:dependency',
+                dependencies: [],
+                pendingConsent: [
+                  { permission: 'network.fetch', tier: 'active' },
+                ],
+              },
+            },
+          ],
+          contentDigest: 'sha256:reviewed',
+          permissions: {
+            required: [],
+            autoGranted: [],
+            pendingConsent: [],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          success: true,
+          plugin: { name: 'demo', version: '1.0.0' },
+          permissions: { pendingConsent: [] },
+        }),
+      );
+    const { install } = await import('../commands/install.js');
+    vi.mocked(console.log).mockClear();
+
+    await install('/tmp/demo', [], parsed, approve);
+
+    const printed = (
+      console.log as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls
+      .map((args) => String(args[0]))
+      .join('\n');
+    expect(printed).toContain('✅ Installed demo@1.0.0 through Station');
+    expect(printed).not.toContain('activation is incomplete');
   });
 
   /**

@@ -52,7 +52,7 @@ interface PluginRegistryInstaller {
   install(
     id: string,
     options?: { expectedInstalledPluginName?: string },
-  ): Promise<InstallResult>;
+  ): Promise<InstallResult & { rollback?: () => Promise<void> }>;
   listAvailable?(): Promise<RegistryItem[]>;
   resolveSource?(id: string): Promise<string | null>;
 }
@@ -1114,7 +1114,8 @@ export async function installPluginDependency(
         );
         return { success: true };
       }
-      const registryResult = await getPluginRegistryProvider().install(
+      const registryProvider = getPluginRegistryProvider();
+      const registryResult = await registryProvider.install(
         dependency.id,
         // See `PluginRegistryInstaller.install`: the provider picks its target
         // from the fetched manifest's name, this call has already committed to
@@ -1178,23 +1179,43 @@ export async function installPluginDependency(
           dependencyDir: targetDir,
           manifest: depManifest,
         });
+        // Bind deletion authority before reporting success. Keeping this in
+        // the provider-validation try means an undigestible tree receives the
+        // same registry compensation as any other post-install refusal.
+        await recordCreatedDependency({
+          dependencyId: dependency.id,
+          pluginsDir,
+          targetDir,
+          createdPluginTrees,
+          createdPluginDigests,
+          lifecycle,
+        });
       } catch (error) {
         logger.debug(
           'Failed to validate plugin dependency after registry install',
           { dep: dependency.id, error },
         );
         if (createdHere) {
+          const rollbackFailures: unknown[] = [];
           try {
             await lifecycle?.rollback(dependency.id);
           } catch (rollbackError) {
+            rollbackFailures.push(rollbackError);
+          }
+          try {
+            await registryResult.rollback?.();
+          } catch (rollbackError) {
+            rollbackFailures.push(rollbackError);
+          }
+          rmSync(targetDir, { recursive: true, force: true });
+          if (rollbackFailures.length > 0) {
             return dependencyFailure(
               new AggregateError(
-                [error, rollbackError],
+                [error, ...rollbackFailures],
                 `Plugin dependency '${dependency.id}' activation and rollback both failed`,
               ),
             );
           }
-          rmSync(targetDir, { recursive: true, force: true });
         } else {
           // The provider reported success but nothing is at `targetDir`: it
           // resolved a different plugin name and wrote somewhere else. That
@@ -1208,16 +1229,6 @@ export async function installPluginDependency(
         }
         return dependencyFailure(error);
       }
-      // Created here and left standing: bind deletion authority to its exact
-      // bytes before exposing it to the caller's later rollback.
-      await recordCreatedDependency({
-        dependencyId: dependency.id,
-        pluginsDir,
-        targetDir,
-        createdPluginTrees,
-        createdPluginDigests,
-        lifecycle,
-      });
       return { success: true };
     });
   } catch (error: unknown) {

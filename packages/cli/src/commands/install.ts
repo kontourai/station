@@ -250,6 +250,9 @@ export async function install(
   const result = await pluginRequest<{
     success: boolean;
     plugin: { name: string; version: string };
+    permissions?: {
+      pendingConsent?: Array<{ permission: string; tier: string }>;
+    };
   }>(
     parsed,
     '/install',
@@ -288,9 +291,34 @@ export async function install(
     },
     target,
   );
-  console.log(
-    `✅ Installed ${result.plugin.name}@${result.plugin.version} through Station`,
-  );
+  const pendingHostApprovals = [
+    ...(result.permissions?.pendingConsent ?? []).map((entry) => ({
+      plugin: result.plugin.name,
+      ...entry,
+    })),
+    ...(previewed.dependencies ?? []).flatMap((dependency) =>
+      (dependency.consent?.pendingConsent ?? [])
+        .filter((entry) => entry.tier === 'trusted')
+        .map((entry) => ({ plugin: dependency.id, ...entry })),
+    ),
+  ];
+  if (pendingHostApprovals.length > 0) {
+    console.log(
+      `⚠️ Installed ${result.plugin.name}@${result.plugin.version}, but activation is incomplete.`,
+    );
+    for (const pending of pendingHostApprovals) {
+      console.log(
+        `  ${pending.plugin} requires host approval for ${pending.permission}.`,
+      );
+    }
+    console.log(
+      '  Finish these reviews on the Station host in the Plugins page.',
+    );
+  } else {
+    console.log(
+      `✅ Installed ${result.plugin.name}@${result.plugin.version} through Station`,
+    );
+  }
   return {
     pluginName: result.plugin.name,
     version: result.plugin.version,

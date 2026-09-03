@@ -20,6 +20,7 @@ import {
   withUnreadable,
 } from '../../../services/infra/__tests__/helpers/store-faults.js';
 import { ContextSafetyError } from '../../../services/orchestration/context-safety.js';
+import { JsonManifestRegistryProvider } from '../../../providers/registries/json-manifest-registry.js';
 import { DistributionProfileService } from '../../../services/plugins/distribution-profile-service.js';
 import {
   computePluginContentDigest,
@@ -38,6 +39,7 @@ import { readPluginManifestFile } from '../../../services/plugins/plugin-manifes
 import {
   getPluginGrants,
   grantPermissions,
+  readPluginDependencyOwnership,
   PluginGrantsUnavailableError,
   readPluginGrantState,
 } from '../../../services/plugins/plugin-permissions.js';
@@ -3312,6 +3314,89 @@ describe('plugin install consent gate (station#4288)', () => {
     expect(existsSync(join(pluginsDir, 'b'))).toBe(false);
   });
 
+  test('removes the exact registry alias when post-install dependency validation refuses', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'station-registry-dep-rollback-'));
+    cleanupDirs.push(root);
+    const dependencySource = join(root, 'dependency-source');
+    writePlugin(dependencySource, {
+      name: 'registry-dependency',
+      version: '1.0.0',
+      permissions: ['providers.register'],
+      providers: [{ type: 'remote', module: './provider.js' }],
+    });
+    writeFileSync(join(dependencySource, 'provider.js'), 'export default {};');
+    const registryManifest = join(root, 'registry.json');
+    writeFileSync(
+      registryManifest,
+      JSON.stringify({
+        version: 1,
+        plugins: [
+          {
+            id: 'registry-dependency',
+            displayName: 'Registry dependency',
+            description: 'Dependency rollback fixture',
+            version: '1.0.0',
+            source: dependencySource,
+            type: 'plugin',
+          },
+        ],
+      }),
+    );
+    const provider = new JsonManifestRegistryProvider(registryManifest, root);
+
+    const result = await installPluginDependency(
+      { id: 'registry-dependency' },
+      join(root, 'plugins'),
+      () => ({ install: provider.install.bind(provider) }),
+      vi.fn().mockResolvedValue(undefined),
+      logger(),
+      new Set(),
+      new Set(),
+      new Set(['registry-dependency']),
+      {
+        validate() {
+          throw new Error('forced lifecycle validation refusal');
+        },
+        activate: vi.fn().mockResolvedValue(undefined),
+        rollback: vi.fn().mockResolvedValue(undefined),
+      },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: 'forced lifecycle validation refusal',
+    });
+    expect(existsSync(join(root, 'plugins', 'registry-dependency'))).toBe(
+      false,
+    );
+    expect(
+      JSON.parse(
+        readFileSync(join(root, 'config', 'registry-installs.json'), 'utf-8'),
+      ),
+    ).toEqual({});
+
+    const secondInstall = await provider.install('registry-dependency', {
+      expectedInstalledPluginName: 'registry-dependency',
+    });
+    expect(secondInstall.success).toBe(true);
+    const newerOwner = {
+      'registry-dependency': {
+        pluginName: 'other-plugin',
+        registryKey: 'registry:newer',
+      },
+    };
+    writeFileSync(
+      join(root, 'config', 'registry-installs.json'),
+      JSON.stringify(newerOwner),
+    );
+    await secondInstall.rollback?.();
+    expect(
+      JSON.parse(
+        readFileSync(join(root, 'config', 'registry-installs.json'), 'utf-8'),
+      ),
+    ).toEqual(newerOwner);
+  });
+
   test('seeds the top-level plugin identity so install-over cannot adopt its own tree as a dependency', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-parent-dep-cycle-'));
     cleanupDirs.push(root);
@@ -3656,6 +3741,158 @@ describe('plugin install consent gate (station#4288)', () => {
       );
     });
 
+    test('retires dependencies dropped by a replacement before replacing ownership', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const firstSource = join(root, 'enterprise-layout-v1');
+      writePlugin(firstSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const secondSource = join(root, 'enterprise-layout-v2');
+      writePlugin(secondSource, {
+        name: 'enterprise-layout',
+        version: '2.0.0',
+      });
+      const installDeps = deps(root);
+
+      await installPluginFromSource(firstSource, [], installDeps, {
+        consent: await approvedParent(firstSource, dependencySource, root),
+      });
+      expect(
+        readPluginDependencyOwnership(root, 'enterprise-layout').map(
+          (entry) => entry.id,
+        ),
+      ).toEqual(['shared-providers']);
+
+      await installPluginFromSource(secondSource, [], installDeps, {
+        consent: await approvedConsent(secondSource, root),
+      });
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(readPluginDependencyOwnership(root, 'enterprise-layout')).toEqual(
+        [],
+      );
+      expect(replacePluginProvidersForSource).toHaveBeenCalledWith(
+        'shared-providers',
+        [],
+      );
+    });
+
+    test('retains dropped dependency ownership when retirement fails so replacement can retry', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const firstSource = join(root, 'enterprise-layout-v1');
+      writePlugin(firstSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const secondSource = join(root, 'enterprise-layout-v2');
+      writePlugin(secondSource, {
+        name: 'enterprise-layout',
+        version: '2.0.0',
+      });
+      let failRetirement = false;
+      const installDeps = {
+        ...deps(root),
+        reconcileEngineConnections: vi.fn(async (plugin: string) => {
+          if (failRetirement && plugin === 'shared-providers') {
+            failRetirement = false;
+            throw new Error('forced retirement failure');
+          }
+        }),
+      };
+      await installPluginFromSource(firstSource, [], installDeps, {
+        consent: await approvedParent(firstSource, dependencySource, root),
+      });
+
+      failRetirement = true;
+      await expect(
+        installPluginFromSource(secondSource, [], installDeps, {
+          consent: await approvedConsent(secondSource, root),
+        }),
+      ).rejects.toThrow('forced retirement failure');
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+      expect(
+        readPluginDependencyOwnership(root, 'enterprise-layout').map(
+          (entry) => entry.id,
+        ),
+      ).toEqual(['shared-providers']);
+      expect(
+        JSON.parse(
+          readFileSync(
+            join(root, 'plugins', 'enterprise-layout', 'plugin.json'),
+            'utf-8',
+          ),
+        ).version,
+      ).toBe('1.0.0');
+
+      await installPluginFromSource(secondSource, [], installDeps, {
+        consent: await approvedConsent(secondSource, root),
+      });
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(readPluginDependencyOwnership(root, 'enterprise-layout')).toEqual(
+        [],
+      );
+    });
+
+    test('restores retired dependencies when replacement fails after ownership changed', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const firstSource = join(root, 'enterprise-layout-v1');
+      writePlugin(firstSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const secondSource = join(root, 'enterprise-layout-v2');
+      writePlugin(secondSource, {
+        name: 'enterprise-layout',
+        version: '2.0.0',
+      });
+      let failReplacementPublication = false;
+      replacePluginProvidersForSource.mockImplementation(
+        async (plugin: string) => {
+          if (failReplacementPublication && plugin === 'enterprise-layout') {
+            failReplacementPublication = false;
+            throw new Error('forced parent publication failure');
+          }
+        },
+      );
+      const installDeps = deps(root);
+      await installPluginFromSource(firstSource, [], installDeps, {
+        consent: await approvedParent(firstSource, dependencySource, root),
+      });
+
+      failReplacementPublication = true;
+      await expect(
+        installPluginFromSource(secondSource, [], installDeps, {
+          consent: await approvedConsent(secondSource, root),
+        }),
+      ).rejects.toThrow('forced parent publication failure');
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
+      expect(
+        readPluginDependencyOwnership(root, 'enterprise-layout').map(
+          (entry) => entry.id,
+        ),
+      ).toEqual(['shared-providers']);
+      expect(
+        JSON.parse(
+          readFileSync(
+            join(root, 'plugins', 'enterprise-layout', 'plugin.json'),
+            'utf-8',
+          ),
+        ).version,
+      ).toBe('1.0.0');
+    });
+
     test('removes registry ownership aliases with a successfully removed owned dependency', async () => {
       const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
       cleanupDirs.push(root);
@@ -3689,6 +3926,48 @@ describe('plugin install consent gate (station#4288)', () => {
           readFileSync(join(configDir, 'registry-installs.json'), 'utf-8'),
         ),
       ).toEqual({});
+    });
+
+    test('preserves an unrelated registry alias whose id equals the removed dependency name', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
+      cleanupDirs.push(root);
+      const dependencySource = writeProviderDependency(root);
+      const parentSource = join(root, 'enterprise-layout');
+      writePlugin(parentSource, {
+        name: 'enterprise-layout',
+        version: '1.0.0',
+        dependencies: [{ id: 'shared-providers', source: dependencySource }],
+      });
+      const installDeps = deps(root);
+      await installPluginFromSource(parentSource, [], installDeps, {
+        consent: await approvedParent(parentSource, dependencySource, root),
+      });
+      writePlugin(join(root, 'plugins', 'other-plugin'), {
+        name: 'other-plugin',
+        version: '1.0.0',
+      });
+      const configDir = join(root, 'config');
+      mkdirSync(configDir, { recursive: true });
+      const aliases = {
+        'shared-providers': {
+          pluginName: 'other-plugin',
+          registryKey: 'registry:test',
+        },
+      };
+      writeFileSync(
+        join(configDir, 'registry-installs.json'),
+        JSON.stringify(aliases),
+      );
+
+      await uninstallInstalledPlugin('enterprise-layout', installDeps);
+
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(existsSync(join(root, 'plugins', 'other-plugin'))).toBe(true);
+      expect(
+        JSON.parse(
+          readFileSync(join(configDir, 'registry-installs.json'), 'utf-8'),
+        ),
+      ).toEqual(aliases);
     });
 
     test('rechecks owned dependency bytes after acquiring its content lock', async () => {

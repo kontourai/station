@@ -1381,10 +1381,13 @@ function forgetRegistryInstallsForPlugin(
   let changed = false;
 
   for (const [registryId, alias] of Object.entries(aliases)) {
+    // A registry id is not a plugin identity. Delete only an alias whose
+    // target is the plugin being removed, and when the caller knows the
+    // registry id require that owner too. This preserves `{ dep -> other }`
+    // while retiring an owned plugin named `dep`.
     if (
-      registryId === explicitRegistryId ||
-      registryId === pluginName ||
-      alias.pluginName === pluginName
+      alias.pluginName === pluginName &&
+      (!explicitRegistryId || registryId === explicitRegistryId)
     ) {
       delete aliases[registryId];
       changed = true;
@@ -1806,6 +1809,7 @@ export async function installPluginFromSource(
   // diff — see `removeDependencyTreesCreatedByThisInstall`.
   const createdPluginTrees = new Set<string>();
   const createdPluginDigests = new Map<string, string>();
+  let retiredDependencyBackups: RemovedDependencyBackup[] = [];
 
   const result = await fetchPluginSource(source, pluginsDir, logger);
   if ('error' in result) {
@@ -2166,6 +2170,27 @@ export async function installPluginFromSource(
           );
           eventBus?.emit('plugins:grants-changed', { name: pluginName });
         }
+        const droppedDependencyOwnership = retainedDependencyOwnership.filter(
+          (entry) => !approvedDependencyIds.has(entry.id),
+        );
+        if (droppedDependencyOwnership.length > 0) {
+          // Retire old graph members before replacing the ownership record.
+          // If retirement fails, the helper restores every completed removal
+          // and the old record remains authoritative for a retry. If a later
+          // publication step fails, the outer catch restores these backups
+          // alongside the old parent tree and grant/ownership snapshot.
+          retiredDependencyBackups = await removeOwnedDependencyLifecycles({
+            dependencies: droppedDependencyOwnership,
+            removedPluginName: pluginName,
+            pluginsDir,
+            projectHomeDir,
+            backupRoot: installBackupRoot,
+            logger,
+            reconcileEngineConnections: deps.reconcileEngineConnections,
+            settleProviderAdapterRetirements:
+              deps.settleProviderAdapterRetirements,
+          });
+        }
         await recordPluginDependencyOwnership(
           projectHomeDir,
           pluginName,
@@ -2277,6 +2302,15 @@ export async function installPluginFromSource(
               backupRoot,
             );
             await restorePluginDurableState(projectHomeDir, backupRoot);
+            await restoreRemovedDependencyLifecycles({
+              backups: retiredDependencyBackups,
+              pluginsDir,
+              projectHomeDir,
+              logger,
+              reconcileEngineConnections: deps.reconcileEngineConnections,
+              settleProviderAdapterRetirements:
+                deps.settleProviderAdapterRetirements,
+            });
             await synchronizePluginAgentDefinitions({
               agentsDir,
               pluginDir,
@@ -2469,7 +2503,11 @@ export async function uninstallInstalledPlugin(
       reconcileEngineConnections: deps.reconcileEngineConnections,
       settleProviderAdapterRetirements: deps.settleProviderAdapterRetirements,
     });
-    forgetRegistryInstallsForPlugin(projectHomeDir, installedPluginName, name);
+    forgetRegistryInstallsForPlugin(
+      projectHomeDir,
+      installedPluginName,
+      name === installedPluginName ? undefined : name,
+    );
     await removePluginHostRecord(projectHomeDir, pluginName);
     eventBus?.emit('plugins:removed', { name: pluginName });
     pluginUninstalls.add(1, { plugin: pluginName });
