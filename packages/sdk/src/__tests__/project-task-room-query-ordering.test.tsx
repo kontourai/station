@@ -1,8 +1,8 @@
 /** @vitest-environment jsdom */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
-import { type ReactNode, useLayoutEffect } from 'react';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { type ReactNode, useLayoutEffect, useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 
 let resolveDocument: ((value: unknown) => void) | undefined;
@@ -71,6 +71,7 @@ import {
   adoptCommittedProjectTaskRoomDocument,
   projectTaskRoomQueries,
   refetchAuthoritativeProjectTaskRoomDocument,
+  useProjectTaskRoomDocumentQuery,
   useProjectTaskRoomStream,
 } from '../query-domains/projectTaskRooms';
 
@@ -323,6 +324,116 @@ test('a committed SSE cancels an authoritative GET and preserves its newer canon
     client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
   ).toEqual({ kind: 'snapshot', revision: 'rev3', text: 'three' });
 });
+
+test('initial SSE snapshot cancels the older GET before cache publication and preserves mounted editor text', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const rendered = renderHook(
+    () => {
+      const document = useProjectTaskRoomDocumentQuery('task-1');
+      const [editorText, setEditorText] = useState('');
+      useProjectTaskRoomStream('task-1', {
+        onAuthoritativeDocument: (next) => setEditorText(next.text),
+      });
+      return { document: document.data, editorText };
+    },
+    { wrapper },
+  );
+  await waitFor(() => expect(callbacks).toBeDefined());
+  await waitFor(() => expect(documentRequests).toHaveLength(1));
+
+  act(() =>
+    callbacks!.onEvent({
+      kind: 'snapshot',
+      value: {
+        document: {
+          kind: 'snapshot',
+          revision: 'stream-new',
+          text: 'new editor text',
+        },
+      },
+    }),
+  );
+  expect(documentRequests[0]?.init.signal?.aborted).toBe(true);
+  expect(
+    client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
+  ).toEqual({
+    kind: 'snapshot',
+    revision: 'stream-new',
+    text: 'new editor text',
+  });
+  documentRequests[0]?.resolve({
+    kind: 'snapshot',
+    revision: 'http-old',
+    text: 'old editor text',
+  });
+  await Promise.resolve();
+
+  await waitFor(() =>
+    expect(rendered.result.current.editorText).toBe('new editor text'),
+  );
+  expect(rendered.result.current.document).toEqual({
+    kind: 'snapshot',
+    revision: 'stream-new',
+    text: 'new editor text',
+  });
+});
+
+test.each([
+  ['duplicate', { kind: 'duplicate', revision: 'rev-duplicate' }],
+  ['malformed', { kind: 'unexpected' }],
+] as const)(
+  'an active document observer recovers a %s event through the no-cache authoritative read',
+  async (_label, value) => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const rendered = renderHook(
+      () => {
+        const document = useProjectTaskRoomDocumentQuery('task-1');
+        useProjectTaskRoomStream('task-1');
+        return document.data;
+      },
+      { wrapper },
+    );
+    await waitFor(() => expect(callbacks).toBeDefined());
+    await waitFor(() => expect(documentRequests).toHaveLength(1));
+    documentRequests[0]?.resolve({
+      kind: 'snapshot',
+      revision: 'baseline',
+      text: 'baseline',
+    });
+    await waitFor(() =>
+      expect(rendered.result.current).toMatchObject({ revision: 'baseline' }),
+    );
+
+    act(() => callbacks!.onEvent({ kind: 'document', value }));
+    await waitFor(() => expect(documentRequests).toHaveLength(2));
+    expect(documentRequests[1]?.init.headers).toEqual({
+      'Cache-Control': 'no-cache',
+    });
+    documentRequests[1]?.resolve({
+      kind: 'snapshot',
+      revision: 'recovered',
+      text: 'recovered text',
+    });
+
+    await waitFor(() =>
+      expect(rendered.result.current).toEqual({
+        kind: 'snapshot',
+        revision: 'recovered',
+        text: 'recovered text',
+      }),
+    );
+  },
+);
 
 test('applies a parsed accepted document synchronously without a recovery refetch', async () => {
   const client = new QueryClient({

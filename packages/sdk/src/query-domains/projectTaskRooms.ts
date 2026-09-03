@@ -316,9 +316,10 @@ export function useProjectTaskRoomStream(
                 document,
               );
             } else
-              void client.invalidateQueries({
-                queryKey: projectTaskRoomQueries.document(taskId).queryKey,
-              });
+              void refetchAuthoritativeProjectTaskRoomDocument(
+                client,
+                taskId,
+              ).catch(() => {});
           } else if (event.kind === 'room') {
             const live = parseProjectTaskRoomBrowserLiveSnapshot(event.value);
             if (live?.scope.taskId === taskId)
@@ -359,12 +360,19 @@ export function useProjectTaskRoomStream(
             void client.invalidateQueries({
               queryKey: projectTaskRoomQueries.history(taskId).queryKey,
             });
-            if (document?.kind === 'snapshot' || document?.kind === 'delta')
+            if (document?.kind === 'snapshot' || document?.kind === 'delta') {
+              // The ordinary document GET commonly starts before this initial
+              // stream snapshot. Abort its exact query before publishing the
+              // newer stream object, or its late response can regress both
+              // canonical cache and the mounted editor.
+              void cancelProjectTaskRoomDocumentQuery(client, taskId).catch(
+                () => {},
+              );
               client.setQueryData(
                 projectTaskRoomQueries.document(taskId).queryKey,
                 document,
               );
-            else
+            } else
               void refetchAuthoritativeProjectTaskRoomDocument(client, taskId);
           } else notifyCurrent(() => callbackRef.current?.onTerminal?.());
         },
