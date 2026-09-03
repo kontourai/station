@@ -203,6 +203,37 @@ describe('plugin composition profiles', () => {
     expect(module.inspect(projectB).active).toEqual([]);
   });
 
+  test('keeps colon-bearing Agent scope tuples structurally distinct', async () => {
+    const events: string[] = [];
+    const module = moduleWith([factory('cache', events)]);
+    const firstScope = {
+      kind: 'agent',
+      projectId: 'project:a',
+      agentId: 'agent-b',
+    } as const;
+    const secondScope = {
+      kind: 'agent',
+      projectId: 'project',
+      agentId: 'a:agent-b',
+    } as const;
+
+    await module.apply(
+      profile(firstScope, [contribution('cache', 'workspace.cache')]),
+    );
+    await module.apply(
+      profile(secondScope, [contribution('cache', 'workspace.cache')]),
+    );
+
+    const first = module.inspect(firstScope);
+    const second = module.inspect(secondScope);
+    expect(first.generation).toBe(1);
+    expect(second.generation).toBe(1);
+    expect(first.active[0].instanceIdentity).not.toBe(
+      second.active[0].instanceIdentity,
+    );
+    expect(events).toEqual(['stage:cache', 'stage:cache']);
+  });
+
   test('stages dependencies first and disposes a retired generation in reverse order', async () => {
     const events: string[] = [];
     const module = moduleWith([
@@ -403,6 +434,91 @@ describe('plugin composition profiles', () => {
       },
     });
     expect(events).toEqual([]);
+  });
+
+  test('keeps every contribution inspectable across plan-level refusal branches', async () => {
+    const module = moduleWith([]);
+    const cases = [
+      {
+        label: 'invalid duplicate identity',
+        kind: 'refused',
+        contributions: [
+          contribution('first', 'workspace.first', {
+            contributionId: 'shared',
+          }),
+          contribution('duplicate', 'workspace.duplicate', {
+            contributionId: 'shared',
+          }),
+          contribution('independent', 'workspace.independent'),
+        ],
+        expected: {
+          duplicate: 'invalid-contribution',
+          first: 'activation-aborted',
+          independent: 'activation-aborted',
+        },
+      },
+      {
+        label: 'fixed authority',
+        kind: 'refused',
+        contributions: [
+          contribution('fixed', 'station.authorization'),
+          contribution('independent', 'workspace.independent'),
+        ],
+        expected: {
+          fixed: 'fixed-authority',
+          independent: 'activation-aborted',
+        },
+      },
+      {
+        label: 'ambiguous selection',
+        kind: 'refused',
+        contributions: [
+          contribution('local', 'workspace.index'),
+          contribution('remote', 'workspace.index'),
+          contribution('independent', 'workspace.independent'),
+        ],
+        expected: {
+          local: 'ambiguous-provider',
+          remote: 'ambiguous-provider',
+          independent: 'activation-aborted',
+        },
+      },
+      {
+        label: 'missing dependency',
+        kind: 'pending',
+        contributions: [
+          contribution('consumer', 'workspace.consumer', {
+            requires: [{ capability: 'workspace.missing', version: '1.0.0' }],
+          }),
+          contribution('independent', 'workspace.independent'),
+        ],
+        expected: {
+          consumer: 'missing-dependency',
+          independent: 'activation-aborted',
+        },
+      },
+    ] as const;
+
+    for (const candidate of cases) {
+      const result = await module.apply(
+        profile(projectA, candidate.contributions),
+      );
+      expect(result.kind, candidate.label).toBe(candidate.kind);
+      const projected = [
+        ...result.inspection.pending,
+        ...result.inspection.failed,
+        ...result.inspection.shadowed,
+      ];
+      expect(projected, candidate.label).toHaveLength(
+        candidate.contributions.length,
+      );
+      expect(
+        Object.fromEntries(
+          projected.map((entry) => [entry.instanceId, entry.reason]),
+        ),
+        candidate.label,
+      ).toEqual(candidate.expected);
+    }
   });
 
   test('keeps the prior generation active when staging fails', async () => {
@@ -728,6 +844,44 @@ describe('plugin composition profiles', () => {
     expect(release).not.toHaveBeenCalled();
   });
 
+  test('releases a safe own lease capability without evaluating unrelated hostile fields', async () => {
+    const events: string[] = [];
+    const implementations = new Map([factory('cache', events)]);
+    const release = vi.fn();
+    const hostileGetter = vi.fn(() => {
+      throw new Error('unrelated accessor must not run');
+    });
+    const module = moduleWith([], {
+      authorizer: {
+        authorize(input) {
+          const granted = grantedPlanAuthorization(input, implementations, {
+            release,
+          });
+          return Object.defineProperty(granted, 'hostile', {
+            enumerable: true,
+            get: hostileGetter,
+          }) as never;
+        },
+      },
+    });
+
+    await expect(
+      module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'pending',
+      inspection: {
+        pending: [
+          expect.objectContaining({ reason: 'authorization-unavailable' }),
+        ],
+      },
+    });
+    expect(hostileGetter).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
+    expect(events).toEqual([]);
+  });
+
   test('holds one whole-plan authorization lease and rolls back when it becomes stale before publication', async () => {
     const events: string[] = [];
     let current = true;
@@ -849,6 +1003,48 @@ describe('plugin composition profiles', () => {
     });
     expect(dispose).toHaveBeenCalledOnce();
     expect(observations).toEqual(['dispose:false']);
+  });
+
+  test('disposes a safe own staged capability without evaluating unrelated hostile fields', async () => {
+    const observations: string[] = [];
+    const hostileGetter = vi.fn(() => {
+      throw new Error('unrelated accessor must not run');
+    });
+    let handle!: { dispose(): void; hostile?: unknown };
+    const dispose = vi.fn(function (this: object) {
+      observations.push(`dispose:${this === handle}`);
+    });
+    handle = { dispose };
+    Object.defineProperty(handle, 'hostile', {
+      enumerable: true,
+      get: hostileGetter,
+    });
+    const implementation: PluginCompositionFactory = {
+      async stage() {
+        return handle;
+      },
+    };
+    const module = moduleWith([['cache', implementation]]);
+
+    await expect(
+      module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'failed',
+      inspection: {
+        active: [],
+        failed: [
+          expect.objectContaining({
+            instanceId: 'cache',
+            reason: 'activation-failed',
+          }),
+        ],
+      },
+    });
+    expect(hostileGetter).not.toHaveBeenCalled();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(observations).toEqual(['dispose:true']);
   });
 
   test('fences an occurrence synchronously before replacement and explicit-retirement disposal', async () => {

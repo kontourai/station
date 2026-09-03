@@ -238,8 +238,8 @@ interface PlannedComposition {
 
 function scopeKey(scope: PluginCompositionScope): string {
   return scope.kind === 'project'
-    ? `project:${scope.projectId}`
-    : `agent:${scope.projectId ?? '-'}:${scope.agentId}`;
+    ? JSON.stringify(['project', scope.projectId])
+    : JSON.stringify(['agent', scope.projectId ?? null, scope.agentId]);
 }
 
 function validScope(scope: PluginCompositionScope): boolean {
@@ -874,13 +874,36 @@ function validatePlanAuthorization(
 }
 
 function releaseRecognizableInvalidAuthorization(value: unknown): void {
-  const granted = dataRecord(value);
-  if (granted?.kind !== 'granted') return;
-  const rawLease = granted.lease;
-  const lease = dataRecord(rawLease);
-  if (!lease || typeof lease.release !== 'function') return;
   try {
-    lease.release.call(rawLease);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return;
+    const kind = Object.getOwnPropertyDescriptor(value, 'kind');
+    const lease = Object.getOwnPropertyDescriptor(value, 'lease');
+    if (
+      !kind ||
+      !('value' in kind) ||
+      kind.enumerable !== true ||
+      kind.value !== 'granted' ||
+      !lease ||
+      !('value' in lease) ||
+      lease.enumerable !== true
+    )
+      return;
+    const rawLease = lease.value;
+    if (!rawLease || typeof rawLease !== 'object' || Array.isArray(rawLease))
+      return;
+    const leasePrototype = Object.getPrototypeOf(rawLease);
+    if (leasePrototype !== Object.prototype && leasePrototype !== null) return;
+    const release = Object.getOwnPropertyDescriptor(rawLease, 'release');
+    if (
+      !release ||
+      !('value' in release) ||
+      release.enumerable !== true ||
+      typeof release.value !== 'function'
+    )
+      return;
+    release.value.call(rawLease);
   } catch {
     // Invalid authority output is unavailable regardless of release behavior.
   }
@@ -894,27 +917,38 @@ function snapshotStagedHandle(value: unknown):
       readonly exact: boolean;
     }
   | undefined {
-  const record = dataRecord(value);
-  if (
-    !record ||
-    (typeof value !== 'object' && typeof value !== 'function') ||
-    value === null ||
-    typeof record.dispose !== 'function'
-  )
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return;
+    const symbols = Object.getOwnPropertySymbols(value);
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const dispose = descriptors.dispose;
+    if (
+      !dispose ||
+      !('value' in dispose) ||
+      dispose.enumerable !== true ||
+      typeof dispose.value !== 'function'
+    )
+      return;
+    const names = Object.keys(descriptors);
+    return {
+      handle: Object.freeze({
+        dispose: () =>
+          (
+            dispose.value as StagedPluginCompositionContribution['dispose']
+          ).call(value),
+      }),
+      identity: value,
+      disposer: dispose.value as object,
+      exact:
+        symbols.length === 0 &&
+        names.length === STAGED_HANDLE_KEYS.size &&
+        names.every((key) => STAGED_HANDLE_KEYS.has(key)),
+    };
+  } catch {
     return;
-  return {
-    handle: Object.freeze({
-      dispose: () =>
-        (record.dispose as StagedPluginCompositionContribution['dispose']).call(
-          value,
-        ),
-    }),
-    identity: value,
-    disposer: record.dispose as object,
-    exact:
-      Object.keys(record).length === STAGED_HANDLE_KEYS.size &&
-      Object.keys(record).every((key) => STAGED_HANDLE_KEYS.has(key)),
-  };
+  }
 }
 
 export function createPluginCompositionModule(options: {
@@ -1244,7 +1278,16 @@ export function createPluginCompositionModule(options: {
       }
       normalized.push(candidate);
     }
-    if (invalid.length > 0) return { kind: 'refused', entries: invalid };
+    if (invalid.length > 0)
+      return {
+        kind: 'refused',
+        entries: [
+          ...invalid,
+          ...normalized.map((candidate) =>
+            entry(candidate, 'pending', 'activation-aborted'),
+          ),
+        ],
+      };
 
     const byCapability = new Map<string, NormalizedContribution[]>();
     for (const contribution of normalized) {
@@ -1296,9 +1339,22 @@ export function createPluginCompositionModule(options: {
       }
     }
     if (selectionFailures.length > 0) {
+      const failedIdentities = new Set(
+        selectionFailures.map((candidate) => candidate.instanceIdentity),
+      );
       return {
         kind: 'refused',
-        entries: [...selectionFailures, ...shadowed],
+        entries: [
+          ...selectionFailures,
+          ...[...providers.values()]
+            .filter(
+              (candidate) => !failedIdentities.has(candidate.instanceIdentity),
+            )
+            .map((candidate) =>
+              entry(candidate, 'pending', 'activation-aborted'),
+            ),
+          ...shadowed,
+        ],
       };
     }
 
@@ -1331,13 +1387,26 @@ export function createPluginCompositionModule(options: {
       }
     }
     if (dependencyFailures.length > 0) {
+      const blockedIdentities = new Set(
+        dependencyFailures.map((candidate) => candidate.instanceIdentity),
+      );
       return {
         kind: dependencyFailures.some(
           (candidate) => candidate.status === 'failed',
         )
           ? 'refused'
           : 'pending',
-        entries: [...dependencyFailures, ...shadowed],
+        entries: [
+          ...dependencyFailures,
+          ...[...providers.values()]
+            .filter(
+              (candidate) => !blockedIdentities.has(candidate.instanceIdentity),
+            )
+            .map((candidate) =>
+              entry(candidate, 'pending', 'activation-aborted'),
+            ),
+          ...shadowed,
+        ],
       };
     }
     const selected = [...providers.values()];
