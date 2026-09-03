@@ -13,6 +13,13 @@ const ref = (kind: string, id: string, revision?: string) => ({
   ...(revision ? { revision } : {}),
 });
 
+const revisionRef = (kind: string, id: string, revision: string) => ({
+  authority: 'learning-owner',
+  kind,
+  id,
+  revision,
+});
+
 function projection(
   overrides: Partial<LearningReviewProjection> = {},
 ): LearningReviewProjection {
@@ -40,8 +47,8 @@ function projection(
         title: 'Preserve exact evidence identity',
         expectedEffect: 'Fewer reviews cite stale evidence.',
         scope: { kind: 'project', id: 'station' },
-        proposedRevisionRef: ref('skill', 'evidence-review', '5'),
-        currentRevisionRef: ref('skill', 'evidence-review', '4'),
+        proposedRevisionRef: revisionRef('skill', 'evidence-review', '5'),
+        currentRevisionRef: revisionRef('skill', 'evidence-review', '4'),
         supportingRefs: [ref('receipt', 'receipt-1')],
         counterRefs: [],
         conflictRefs: [],
@@ -177,13 +184,17 @@ describe('learningReviewViewModel', () => {
             state: 'available',
             value: {
               status: 'active',
-              activeRevisionRef: ref('skill', 'evidence-review', '5'),
+              activeRevisionRef: revisionRef('skill', 'evidence-review', '5'),
               activatedAt: '2026-09-03T12:04:00.000Z',
               deploymentTargets: [ref('skill-target', 'reviewers')],
               contributionDisclosures: [
                 {
                   turnRef: ref('turn', 'turn-1'),
-                  activeRevisionRef: ref('skill', 'evidence-review', '5'),
+                  activeRevisionRef: revisionRef(
+                    'skill',
+                    'evidence-review',
+                    '5',
+                  ),
                 },
               ],
             },

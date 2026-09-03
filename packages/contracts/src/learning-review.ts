@@ -22,6 +22,11 @@ export interface LearningReviewOwnerRef {
   readonly revision?: string;
 }
 
+/** Owner record reference whose exact revision is part of the identity. */
+export interface LearningReviewRevisionRef extends LearningReviewOwnerRef {
+  readonly revision: string;
+}
+
 export interface LearningReviewScope {
   readonly kind: 'global' | 'project' | 'agent' | 'session';
   readonly id: string;
@@ -70,8 +75,8 @@ export interface LearningReviewCandidate {
   readonly title: string;
   readonly expectedEffect: string;
   readonly scope: LearningReviewScope;
-  readonly proposedRevisionRef?: LearningReviewOwnerRef;
-  readonly currentRevisionRef?: LearningReviewOwnerRef;
+  readonly proposedRevisionRef?: LearningReviewRevisionRef;
+  readonly currentRevisionRef?: LearningReviewRevisionRef;
   readonly supportingRefs: readonly LearningReviewOwnerRef[];
   readonly counterRefs: readonly LearningReviewOwnerRef[];
   readonly conflictRefs: readonly LearningReviewOwnerRef[];
@@ -106,7 +111,7 @@ export type LearningReviewDecision =
 
 export interface LearningReviewContributionDisclosure {
   readonly turnRef: LearningReviewOwnerRef;
-  readonly activeRevisionRef: LearningReviewOwnerRef;
+  readonly activeRevisionRef: LearningReviewRevisionRef;
 }
 
 export type LearningReviewActivation =
@@ -117,7 +122,7 @@ export type LearningReviewActivation =
     }
   | {
       readonly status: 'active' | 'superseded';
-      readonly activeRevisionRef: LearningReviewOwnerRef;
+      readonly activeRevisionRef: LearningReviewRevisionRef;
       readonly activatedAt: string;
       readonly deploymentTargets: readonly LearningReviewOwnerRef[];
       readonly contributionDisclosures: readonly LearningReviewContributionDisclosure[];
