@@ -53,7 +53,7 @@ export type LearningReviewViewModel =
       title: string;
       ownerLabel: string;
       scopeLabel: string;
-      active: boolean;
+      currentActivity: 'active' | 'inactive' | 'unknown';
       effectConclusion: LearningEffectConclusion;
       steps: readonly LearningReviewStepViewModel[];
     };
@@ -230,6 +230,23 @@ function step(
     : gapStep(id, stage);
 }
 
+function currentActivity(
+  projection: LearningReviewProjection,
+): 'active' | 'inactive' | 'unknown' {
+  if (
+    projection.retirement.state === 'available' &&
+    projection.retirement.value.status === 'retired'
+  ) {
+    return 'inactive';
+  }
+  if (projection.activation.state !== 'available') return 'unknown';
+  if (projection.activation.value.status !== 'active') return 'inactive';
+  return projection.retirement.state === 'available' &&
+    projection.retirement.value.status === 'not-retired'
+    ? 'active'
+    : 'unknown';
+}
+
 export function learningReviewViewModel(
   outcome: LearningReviewProjectionOutcome,
 ): LearningReviewViewModel {
@@ -264,13 +281,6 @@ export function learningReviewViewModel(
     };
   }
   const projection = outcome.projection;
-  const active =
-    projection.activation.state === 'available' &&
-    projection.activation.value.status === 'active' &&
-    !(
-      projection.retirement.state === 'available' &&
-      projection.retirement.value.status === 'retired'
-    );
   return {
     state: 'ready',
     title:
@@ -279,7 +289,7 @@ export function learningReviewViewModel(
         : 'Learning review',
     ownerLabel: `${projection.owner.authority} · ${projection.owner.kind}`,
     scopeLabel: `${projection.scope.kind} · ${projection.scope.id}`,
-    active,
+    currentActivity: currentActivity(projection),
     effectConclusion: effectConclusion(projection.effect),
     steps: LEARNING_REVIEW_STAGE_IDS.map((id) => step(id, projection)),
   };

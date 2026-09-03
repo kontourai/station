@@ -100,7 +100,7 @@ describe('learningReviewViewModel', () => {
     const result = learningReviewViewModel(available(projection()));
     expect(result).toMatchObject({
       state: 'ready',
-      active: false,
+      currentActivity: 'unknown',
       effectConclusion: 'not-observed',
     });
     if (result.state !== 'ready') throw new Error('expected ready projection');
@@ -212,7 +212,10 @@ describe('learningReviewViewModel', () => {
         }),
       ),
     );
-    expect(result).toMatchObject({ state: 'ready', active: false });
+    expect(result).toMatchObject({
+      state: 'ready',
+      currentActivity: 'inactive',
+    });
     if (result.state !== 'ready') throw new Error('expected ready projection');
     expect(result.steps.find((step) => step.id === 'activation')).toMatchObject(
       {
@@ -226,6 +229,49 @@ describe('learningReviewViewModel', () => {
           'The owner reports this learning retired; history is preserved.',
       },
     );
+  });
+
+  test('requires explicit not-retired truth before reporting current activity', () => {
+    const activeRevision = {
+      state: 'available' as const,
+      value: {
+        status: 'active' as const,
+        activeRevisionRef: revisionRef('skill', 'evidence-review', '5'),
+        activatedAt: '2026-09-03T12:04:00.000Z',
+        deploymentTargets: [ref('skill-target', 'reviewers')],
+        contributionDisclosures: [],
+      },
+    };
+    const confirmed = learningReviewViewModel(
+      available(
+        projection({
+          activation: activeRevision,
+          retirement: {
+            state: 'available',
+            value: { status: 'not-retired' },
+          },
+        }),
+      ),
+    );
+    expect(confirmed).toMatchObject({ currentActivity: 'active' });
+
+    for (const state of [
+      'not-captured',
+      'restricted',
+      'unavailable',
+      'unsupported-version',
+      'corrupt',
+    ] as const) {
+      const result = learningReviewViewModel(
+        available(
+          projection({
+            activation: activeRevision,
+            retirement: { state },
+          }),
+        ),
+      );
+      expect(result).toMatchObject({ currentActivity: 'unknown' });
+    }
   });
 
   test('renders top-level access gaps without owner identity', () => {
