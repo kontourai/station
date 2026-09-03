@@ -315,6 +315,28 @@ then `npm run screenshot:diff -- --screens=<touched screens>` to see whether
 the change moved any pixels, without paying for a full 29-screen run or
 committing a new baseline until the change is intentional.
 
+### Region grid parity (`scripts/region-grid-parity.mjs`)
+
+The dock grid in `src-ui/src/index.css` keys its tracks on the shell's
+`data-region` (#928). `scripts/region-grid-parity.mjs` renders
+`scripts/fixtures/region-grid-skeleton.html` under a built entry stylesheet
+in headless Chromium and records every rectangle and declared computed
+property for 4 viewports × 3 placements × 3 states, so a CSS change to the
+grid can be proven pixel-identical rather than argued. It is a hand-run
+differential tool, not a gate: capture twice, diff once.
+
+```bash
+npm run build:ui                              # on each of the two trees
+node scripts/region-grid-parity.mjs --css <base>/dist-ui/assets/index-*.css --out before.json [--legacy-parent]
+node scripts/region-grid-parity.mjs --css dist-ui/assets/index-*.css --out after.json
+node scripts/region-grid-parity.mjs --diff before.json after.json   # exit 1 on any difference
+```
+
+`--legacy-parent` reconstructs the pre-#928 `app__main--dock-*` parent
+class and is only for capturing a tree that still carries it. A capture
+whose fixture inventory drifts from the pinned `EXPECTED_ELEMENTS` list
+fails instead of comparing less, and the inventory is part of the diff.
+
 ### Browser-test admission and maintenance
 
 Playwright is reserved for claims that require a real browser, packaged

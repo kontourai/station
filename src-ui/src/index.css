@@ -1466,7 +1466,7 @@ button:hover {
 /* A SIDE dock is the one placement where upward is wrong: its header sits at
    the top of a full-height column, so above the header is out of the window.
    Downward opens over the occupant's own body instead. */
-:is(.app__main--dock-left, .app__main--dock-right) .dock-occupant-menu {
+.chat-dock:is(.chat-dock--left, .chat-dock--right) .dock-occupant-menu {
   top: calc(100% + var(--space-1));
   bottom: auto;
 }
@@ -7298,12 +7298,12 @@ button.tool-call__line:hover {
 
 /* ── Dock Modes: Left / Right Split ────────────────────────────── */
 
-:is(.app__main--dock-left, .app__main--dock-right) {
+.app__main:has(> :is(.chat-dock--left, .chat-dock--right)) {
   display: flex;
   flex-direction: column;
 }
 
-:is(.app__main--dock-left, .app__main--dock-right) > .chat-dock {
+.app__main > :is(.chat-dock--left, .chat-dock--right) {
   position: fixed;
   border-left: none;
   border-top: 2px solid var(--accent-primary);
@@ -7313,7 +7313,7 @@ button.tool-call__line:hover {
      or it would beat the inline `liveDragHeight` style and freeze the drag. */
 }
 
-:is(.app__main--dock-left, .app__main--dock-right)
+.app__main:has(> :is(.chat-dock--left, .chat-dock--right))
   > .main-content
   > .content-view {
   padding-bottom: var(--dock-bottom-clearance);
@@ -7343,52 +7343,73 @@ button.tool-call__line:hover {
    above Station's 768px breakpoint (with main's short-coarse-screen carve-out,
    which routes landscape phones to the mobile bottom-sheet treatment). */
 @media (min-width: 769px) and (not ((max-height: 540px) and (pointer: coarse))) {
-  :is(.app__main--dock-left, .app__main--dock-right) {
+  /* #928: region shells contribute independent tracks to the desktop grid.
+     Side tracks and the bottom track default to 0, so every direct child of
+     `.app__main` must be out of flow or explicitly placed: an auto-placed
+     child lands in a zero-width track. */
+  .app__main:has(> [data-region]) {
     display: grid;
-    grid-template-columns: 1fr var(--chat-dock-width, 400px);
-    /* Toolbar row + content row. BannerHost is an absolutely-positioned
-       overlay (station#3308) and takes no grid row. */
-    grid-template-rows: auto 1fr;
+    grid-template-columns: var(--region-left-track, 0) minmax(0, 1fr) var(
+        --region-right-track,
+        0
+      );
+    /* Toolbar row + content row + bottom-region row. BannerHost is an
+       absolutely-positioned overlay (station#3308) and takes no grid row. */
+    grid-template-rows: auto minmax(0, 1fr) var(--region-bottom-track, 0);
   }
 
-  .app__main--dock-left {
-    grid-template-columns: var(--chat-dock-width, 400px) 1fr;
+  .app__main:has(> [data-region="left"]) {
+    --region-left-track: var(--region-left-size, var(--chat-dock-width, 400px));
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right):has(
-    > .chat-dock.is-collapsed
-  ) {
-    grid-template-columns: 1fr 36px;
+  .app__main:has(> [data-region="right"]) {
+    --region-right-track: var(
+      --region-right-size,
+      var(--chat-dock-width, 400px)
+    );
   }
 
-  .app__main--dock-left:has(> .chat-dock.is-collapsed) {
-    grid-template-columns: 36px 1fr;
+  .app__main:has(> [data-region="bottom"]) {
+    --region-bottom-track: var(
+      --region-bottom-size,
+      var(--dock-slot-size, 300px)
+    );
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right) > .app-toolbar {
+  .app__main:has(> [data-region="left"].is-collapsed) {
+    --region-left-track: 36px;
+  }
+
+  .app__main:has(> [data-region="right"].is-collapsed) {
+    --region-right-track: 36px;
+  }
+
+  .app__main:has(> [data-region="bottom"].is-collapsed) {
+    --region-bottom-track: auto;
+  }
+
+  .app__main:has(> [data-region]) > .app-toolbar {
     grid-column: 1 / -1;
     grid-row: 1;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right) > .main-content {
-    grid-column: 1;
+  .app__main:has(> [data-region]) > .main-content {
+    /* Explicit column pin (archive#1055 empirical follow-up): every item
+       explicitly placed in row 2 must also pin its column or Chromium creates
+       an implicit shrink-to-fit column (measured live: a maximized dock came
+       out 400.7px wide instead of the full 1040px content column). Future
+       row-2 items must do the same. */
+    grid-column: 2;
     grid-row: 2;
     overflow: hidden;
   }
 
-  .app__main--dock-left > .main-content {
-    grid-column: 2;
-  }
-
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .main-content
-    > .content-view {
+  .app__main:has(> [data-region]) > .main-content > .content-view {
     padding-bottom: 0;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right) > .chat-dock {
+  .app__main > :is([data-region="left"], [data-region="right"]) {
     position: relative;
-    grid-column: 2;
     grid-row: 2;
     height: 100%;
     max-height: 100%;
@@ -7397,29 +7418,31 @@ button.tool-call__line:hover {
     box-shadow: none;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right) > .chat-dock {
+  .app__main > :is([data-region="left"], [data-region="right"]) {
     height: 100% !important;
     flex-direction: column;
     overflow: hidden;
   }
 
-  .app__main--dock-left > .chat-dock {
+  .app__main > [data-region="left"] {
     grid-column: 1;
     border-left: none;
     border-right: 2px solid var(--accent-primary);
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main > [data-region="right"] {
+    grid-column: 3;
+  }
+
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .chat-dock__body {
     flex: 1;
     min-height: 0;
     overflow: hidden;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
-    .chat-messages {
+  .app__main > :is([data-region="left"], [data-region="right"]) .chat-messages {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
@@ -7428,20 +7451,19 @@ button.tool-call__line:hover {
     width: 100%;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right) > .chat-dock.is-collapsed {
-    grid-column: 2;
+  .app__main > :is([data-region="left"], [data-region="right"]).is-collapsed {
     overflow: hidden;
     border-left: 1px solid var(--border-primary);
   }
 
-  .app__main--dock-left > .chat-dock.is-collapsed {
+  .app__main > [data-region="left"].is-collapsed {
     grid-column: 1;
     border-left: none;
     border-right: 1px solid var(--border-primary);
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock.is-collapsed
+  .app__main
+    > :is([data-region="left"], [data-region="right"]).is-collapsed
     .chat-dock__header {
     writing-mode: vertical-rl;
     text-orientation: mixed;
@@ -7452,8 +7474,8 @@ button.tool-call__line:hover {
     flex-direction: row;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock.is-collapsed
+  .app__main
+    > :is([data-region="left"], [data-region="right"]).is-collapsed
     .chat-dock__header-actions {
     writing-mode: vertical-rl;
     text-orientation: mixed;
@@ -7463,32 +7485,32 @@ button.tool-call__line:hover {
     align-items: center;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock.is-collapsed
+  .app__main
+    > :is([data-region="left"], [data-region="right"]).is-collapsed
     .chat-dock__counter {
     writing-mode: vertical-rl;
     text-orientation: mixed;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock.is-collapsed
+  .app__main
+    > :is([data-region="left"], [data-region="right"]).is-collapsed
     .chat-dock__activity,
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock.is-collapsed
+  .app__main
+    > :is([data-region="left"], [data-region="right"]).is-collapsed
     .chat-dock__badge {
     display: none;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock.is-collapsed
+  .app__main
+    > :is([data-region="left"], [data-region="right"]).is-collapsed
     .chat-dock__maximize-btn,
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock.is-collapsed
+  .app__main
+    > :is([data-region="left"], [data-region="right"]).is-collapsed
     .chat-dock__icon-btn {
     writing-mode: horizontal-tb;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right) > .chat-dock.is-maximized {
+  .app__main > :is([data-region="left"], [data-region="right"]).is-maximized {
     grid-column: 1 / -1;
   }
 
@@ -7497,50 +7519,53 @@ button.tool-call__line:hover {
      hiding .main-content prevents the underlying workspace (including the
      coding-layout inspector side panel) from consuming a grid column or
      painting through behind the spanning dock. Mirrors the existing
-     :has(> .chat-dock.is-collapsed) pattern above. */
-  :is(.app__main--dock-left, .app__main--dock-right):has(
-    > .chat-dock.is-maximized
+     :has(> .chat-dock.is-collapsed) pattern above.
+     Single-occupant only: with a second region shell present this collapse
+     leaves that shell's column outside the explicit grid (archive#1055 on
+     the column axis). Per-region maximize is the #928 follow-up slice. */
+  .app__main:has(
+    > :is([data-region="left"], [data-region="right"]).is-maximized
   ) {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right):has(
-      > .chat-dock.is-maximized
+  .app__main:has(
+      > :is([data-region="left"], [data-region="right"]).is-maximized
     )
     > .main-content {
     display: none;
   }
 
   /* Side-mode header: compact horizontal layout */
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .chat-dock__header {
     padding: 6px 12px;
     gap: 8px;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .chat-dock__title {
     font-size: var(--text-md);
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .chat-dock__subtitle {
     display: none;
   }
 
   /* Side-mode header actions (archive#3309): the ~400px column has no room for
      labeled Open/New buttons in the one-bar chrome — icon-only, compact. */
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .chat-dock__tab-actions {
     gap: 4px;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .chat-dock__tab-actions
     .chat-dock__new {
     min-width: 30px;
@@ -7549,16 +7574,16 @@ button.tool-call__line:hover {
     gap: 0;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .chat-dock__tab-actions
     :is(.chat-dock__new-label, .chat-dock__subtitle) {
     display: none;
   }
 
   /* Side-mode input area: full-width stacked layout */
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .chat-input-container {
     padding: 8px 10px;
   }
@@ -7567,12 +7592,12 @@ button.tool-call__line:hover {
      row; against today's column composer it made the capsule shrink to content
      width in right-dock mode. The composer stays a column everywhere — only
      the tighter gap survives for the narrow dock. */
-  :is(.app__main--dock-left, .app__main--dock-right) > .chat-dock .chat-input {
+  .app__main > :is([data-region="left"], [data-region="right"]) .chat-input {
     gap: 4px;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .chat-input
     textarea {
     min-height: 40px;
@@ -7581,50 +7606,48 @@ button.tool-call__line:hover {
     padding: 8px 10px;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .chat-controls-row {
     flex-wrap: nowrap;
   }
 
   /* Compact context indicator in side mode */
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .context-indicator-content {
     font-size: var(--text-2xs);
     padding: 2px 4px;
   }
 
   /* Side-mode session info bar */
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .chat-dock__session-info {
     padding: 2px 8px;
     font-size: var(--text-xs);
   }
 
   /* Side-mode project filter pills */
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .chat-dock__project-filter {
     padding: 2px 6px;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .chat-dock__filter-pill {
     padding: 1px 6px;
     font-size: var(--text-xs);
   }
 
   /* Side-mode messages: compact conversation flow */
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
-    .chat-messages {
+  .app__main > :is([data-region="left"], [data-region="right"]) .chat-messages {
     align-items: flex-end;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right) > .chat-dock .message {
+  .app__main > :is([data-region="left"], [data-region="right"]) .message {
     max-width: 95%;
     overflow-x: hidden;
     overflow-wrap: break-word;
@@ -7632,109 +7655,66 @@ button.tool-call__line:hover {
     min-width: 0;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right) > .chat-dock .message-row {
+  .app__main > :is([data-region="left"], [data-region="right"]) .message-row {
     width: 100%;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right) > .chat-dock .message pre {
+  .app__main > :is([data-region="left"], [data-region="right"]) .message pre {
     overflow-x: auto;
     max-width: 100%;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .streaming-message {
     max-width: 100%;
     overflow-x: hidden;
     min-width: 0;
   }
 
-  :is(.app__main--dock-left, .app__main--dock-right)
-    > .chat-dock
+  .app__main
+    > :is([data-region="left"], [data-region="right"])
     .streaming-text {
     overflow-wrap: break-word;
     word-break: break-word;
     min-width: 0;
   }
 
-  .app__main--dock-bottom {
-    display: grid;
-    grid-template-columns: 1fr;
-    /* Toolbar row + content row + dock row. BannerHost is an absolutely-
-       positioned overlay (station#3308) and takes no grid row. */
-    grid-template-rows: auto 1fr var(--dock-slot-size, 300px);
-  }
-
-  .app__main--dock-bottom > .app-toolbar {
-    grid-row: 1;
-  }
-
-  .app__main--dock-bottom > .main-content {
-    grid-row: 2;
-    /* Explicit column pin (archive#1055 empirical follow-up): once the maximized
-       dock below also explicitly claims column 1 for row 2,
-       CSS Grid's auto-placement algorithm treats that explicitly-placed
-       cell as occupied and pushes THIS item — still `grid-column: auto` —
-       into a new implicit shrink-to-fit column instead, which only moves
-       the #1055 symptom from the dock onto `.main-content` (confirmed via
-       a live Playwright measurement: without this line the maximized dock
-       measured 400.7px wide instead of the full 1040px content-column
-       width). Pinning both explicit-row items to column 1 removes the
-       implicit-column ambiguity entirely; they only ever occupy the same
-       cell simultaneously while maximized, which is the intended overlap.
-       FOOTGUN: any future third item placed into this block's row 2 with
-       an unset `grid-column` will reintroduce the same implicit-column bug
-       — pin it to column 1 too (#1055). */
-    grid-column: 1;
-    overflow: hidden;
-  }
-
-  .app__main--dock-bottom > .main-content > .content-view {
-    padding-bottom: 0;
-  }
-
-  .app__main--dock-bottom > .chat-dock {
+  .app__main > [data-region="bottom"] {
     position: relative;
+    grid-column: 1 / -1;
     grid-row: 3;
     height: 100%;
     max-height: 100%;
   }
 
-  .app__main--dock-bottom > .chat-dock {
+  .app__main > [data-region="bottom"] {
     height: 100% !important;
   }
 
-  .app__main--dock-bottom > .chat-dock.is-maximized {
+  .app__main > [data-region="bottom"].is-maximized {
     grid-row: 2;
     /* Without an explicit column, CSS Grid's auto-placement algorithm finds
-       row 2 already claimed (by `.main-content`, above) and opens a new
-       implicit shrink-to-fit column to the right instead of reusing column 1
-       (#1055). Explicit placement is safe here because the overlap with
-       `.main-content` in row 2 is the intended "maximized dock covers the
-       content" behavior — see the matching `grid-column: 1` on
-       `.main-content` above: both sides of the overlap need the explicit
-       pin, or the auto-placement algorithm just relocates the ambiguity
-       onto whichever one is still `auto`. FOOTGUN: a future third row-2
-       item left `grid-column: auto` reintroduces this bug (#1055). */
-    grid-column: 1;
+       row 2 already claimed and opens an implicit shrink-to-fit column instead
+       of overlapping the content (#1055). Pin every explicitly-row-placed
+       item; a future row-2 item left at `grid-column: auto` revives the bug. */
+    grid-column: 1 / -1;
   }
 
   /* A maximized bottom dock owns one real fill row. Keeping the normal
      `var(--dock-slot-size)` third row and spanning across it left percentage
      height resolution anchored to the content row in Chromium, producing a
-     dead band roughly the size of the former dock at the viewport bottom. */
-  .app__main--dock-bottom:has(> .chat-dock.is-maximized) {
+     dead band roughly the size of the former dock at the viewport bottom.
+     Single-occupant only, like the side-maximize collapse above: a side
+     shell would share row 2 with the maximized bottom shell. */
+  .app__main:has(> [data-region="bottom"].is-maximized) {
     grid-template-rows: auto minmax(0, 1fr);
   }
 
   /* Collapsed: size the row to the header's real rendered height instead of
      the 38px height token — the dock carries a 2px accent border on top of
      the header content, so the fixed token clips the bar's bottom edge. */
-  .app__main--dock-bottom:has(> .chat-dock.is-collapsed) {
-    grid-template-rows: auto 1fr auto;
-  }
-
-  .app__main--dock-bottom > .chat-dock.is-collapsed {
+  .app__main > [data-region="bottom"].is-collapsed {
     height: auto !important;
   }
 }
