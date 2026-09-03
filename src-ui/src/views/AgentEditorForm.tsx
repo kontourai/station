@@ -6,7 +6,7 @@ import {
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
-import { useAgentConnectionsQuery } from '@kontourai/station-sdk';
+import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { runtimeCatalogVisibleModels } from '../utils/execution';
 import { AgentDelegationDenialCatalog } from './agent-editor/AgentDelegationDenialCatalog';
@@ -32,9 +32,8 @@ export type { AgentFormData } from './agent-editor/types';
  * engine question behind a tab strip while the answer decided what every
  * other tab could even contain.
  *
- * Section order is the dependency order (P1): Basics, Engine, then whatever
- * that engine makes true — §3.3 Model for Station's own engine, §3.4 Model
- * options for an installed CLI — then the agent-owned sections.
+ * Section order is the dependency order (P1): Basics, Engine, one matrix-led
+ * Model surface, then the agent-owned sections.
  */
 export function AgentEditorForm(props: AgentEditorFormProps) {
   const {
@@ -50,7 +49,7 @@ export function AgentEditorForm(props: AgentEditorFormProps) {
     stationConnectionId,
   } = props;
 
-  const { data: engineConnections = [] } = useAgentConnectionsQuery() as {
+  const { data: engineConnections = [] } = useEngineConnectionsQuery() as {
     data?: AgentConnectionView[];
   };
   const [expandedIntegrations, setExpandedIntegrations] = useState<
@@ -94,20 +93,25 @@ export function AgentEditorForm(props: AgentEditorFormProps) {
         ?.provideSkills?.length ?? undefined)
     : undefined;
 
-  // §3.3 vs §3.4 — the two are mutually exclusive by construction, which is
-  // what makes Y2 structural rather than a rule someone has to remember: a
-  // CLI agent's page has no branch that can mention a model connection.
+  // `engineKind` remains authoritative during creation when a person has
+  // chosen the external-engine path but has not yet named a connection. An
+  // absent binding resolves to Station everywhere else by contract.
   const stationEngine = engineKind === 'model' && matrix.engineId === 'station';
   const cliModels = runtimeCatalogVisibleModels(boundConnection);
   const modelSelectable = matrix.modelSelection.state !== 'unsupported';
-  const showModelOptions =
-    engineKind === 'cli' &&
-    !!boundConnection &&
+  const modelCarriesContent =
+    !!form.modelId.trim() ||
+    Object.keys(form.execution.runtimeOptions).length > 0 ||
+    Object.keys(form.execution.modelOptions ?? {}).length > 0;
+  const showExternalModelControls =
+    !stationEngine &&
     deliversModelOptions({
       modelSelectable,
       models: cliModels,
       selectedModelId: form.modelId,
     });
+  const showModelSection =
+    stationEngine || showExternalModelControls || modelCarriesContent;
 
   return (
     <>
@@ -140,7 +144,7 @@ export function AgentEditorForm(props: AgentEditorFormProps) {
         />
       </section>
 
-      {stationEngine && (
+      {showModelSection && (
         <section
           className="agent-editor__section"
           aria-labelledby="agent-model"
@@ -149,38 +153,46 @@ export function AgentEditorForm(props: AgentEditorFormProps) {
             Model
           </h3>
           <p className="agent-editor__section-desc">
-            What Station’s engine runs this agent on.
+            What {engineDisplayName} runs this agent on.
           </p>
-          <AgentEditorModelSection
-            form={form}
-            setForm={props.setForm}
-            appConfig={props.appConfig}
-            locked={props.locked}
-            isPlugin={props.isPlugin}
-            isLocked={props.isLocked}
-            modelChoices={runtimeCatalogVisibleModels(boundConnection)}
-          />
-        </section>
-      )}
-
-      {showModelOptions && (
-        <section
-          className="agent-editor__section"
-          aria-labelledby="agent-model-options"
-        >
-          <h3 id="agent-model-options" className="agent-editor__section-title">
-            Model options
-          </h3>
-          <p className="agent-editor__section-desc">
-            What {engineDisplayName} lets Station set.
-          </p>
-          <AgentEditorModelOptionsSection
-            form={form}
-            setForm={props.setForm}
-            locked={props.locked}
-            modelSelectable={modelSelectable}
-            models={cliModels}
-          />
+          {stationEngine ? (
+            <AgentEditorModelSection
+              form={form}
+              setForm={props.setForm}
+              appConfig={props.appConfig}
+              locked={props.locked}
+              isPlugin={props.isPlugin}
+              isLocked={props.isLocked}
+              modelChoices={runtimeCatalogVisibleModels(boundConnection)}
+            />
+          ) : modelSelectable ? (
+            <AgentEditorModelOptionsSection
+              form={form}
+              setForm={props.setForm}
+              locked={props.locked}
+              modelSelectable={modelSelectable}
+              models={cliModels}
+            />
+          ) : (
+            <div className="agent-editor__capability-banner" role="status">
+              <strong>
+                {engineDisplayName} can’t receive model selection from Station.
+              </strong>{' '}
+              The authored model settings are preserved read-only and will not
+              be delivered by this engine.
+              {form.modelId && <div>Model: {form.modelId}</div>}
+              {Object.keys(form.execution.runtimeOptions).length > 0 && (
+                <pre>
+                  {JSON.stringify(form.execution.runtimeOptions, null, 2)}
+                </pre>
+              )}
+              {Object.keys(form.execution.modelOptions ?? {}).length > 0 && (
+                <pre>
+                  {JSON.stringify(form.execution.modelOptions, null, 2)}
+                </pre>
+              )}
+            </div>
+          )}
         </section>
       )}
 

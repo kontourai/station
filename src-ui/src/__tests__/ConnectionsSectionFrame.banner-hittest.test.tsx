@@ -91,7 +91,7 @@ const navigate = vi.fn();
 vi.mock('@kontourai/station-sdk', () => ({
   useConnectionsQuery: () => ({ data: [] }),
   useModelConnectionsQuery: () => ({ data: [] }),
-  useAgentConnectionsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: [] }),
   useIntegrationsQuery: () => ({ data: [] }),
   useGlobalKnowledgeStatusQuery: () => ({ data: undefined }),
   useSshEnvironmentsQuery: () => ({ data: [] }),
@@ -140,7 +140,7 @@ function renderFixtureMarkup(input: { withBanner: boolean }): string {
     }
   });
   const { container, unmount } = render(
-    <div className="app__main app__main--dock-none">
+    <div className="app__main">
       <BannerHost connectionSlot />
       <div className="main-content">
         <ConnectionsSectionFrame sectionId="computers">

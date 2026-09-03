@@ -37,7 +37,7 @@ vi.mock('../hooks/useSystemStatus', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useAgentConnectionsQuery: () => ({ data: connectionsData }),
+  useEngineConnectionsQuery: () => ({ data: connectionsData }),
   useConfigQuery: () => ({ data: configData }),
   useUpdateConfigMutation: () => ({ mutate, isPending: false }),
   useReconnectACPConnectionMutation: () => ({ mutateAsync: reconnectMutate }),

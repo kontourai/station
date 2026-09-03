@@ -10,7 +10,7 @@ import type {
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import {
   useACPConnectionsQuery,
-  useAgentConnectionsQuery,
+  useEngineConnectionsQuery,
   useModelConnectionsQuery,
   useProjectLayoutQuery,
   useProjectQuery,
@@ -160,7 +160,7 @@ export function useNewChatSelectionModel({
     isLoading: runtimeLoading,
     error: runtimeError,
     refetch: refetchAgentConnections,
-  } = useAgentConnectionsQuery() as {
+  } = useEngineConnectionsQuery() as {
     data?: AgentConnectionView[];
     isLoading?: boolean;
     error?: unknown;
