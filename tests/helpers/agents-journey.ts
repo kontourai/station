@@ -244,7 +244,7 @@ export function startingPoint(
   which: 'model' | 'cli' | 'copy',
 ): Locator {
   const label = {
-    model: /^Chat with a model/,
+    model: /^Run it on Station/,
     cli: /^Wrap an installed agent CLI/,
     copy: /^Copy an existing agent/,
   }[which];
