@@ -38,7 +38,7 @@ describe('Station unified-search providers', () => {
     ]);
     const service = new UnifiedSearchService([
       createStationMessageSearchProvider({
-        stationId: 'station-home-a',
+        authority: { mode: 'personal', stationId: 'station-home-a' },
         source: { searchAuthorizedMessages },
         now,
       }),
@@ -49,12 +49,15 @@ describe('Station unified-search providers', () => {
       query: 'parser',
     });
 
-    expect(searchAuthorizedMessages).toHaveBeenCalledWith('parser', 8);
+    expect(searchAuthorizedMessages).toHaveBeenCalledWith({
+      query: 'parser',
+      limit: 9,
+    });
     if (result.state === 'invalid')
       throw new Error('unexpected invalid result');
     expect(result.results).toEqual([
       expect.objectContaining({
-        id: 'session-1:message-1',
+        id: JSON.stringify(['session-1', 'message-1']),
         kind: 'message',
         owner: { kind: 'station', stationId: 'station-home-a' },
         scope: { projectId: 'alpha', sessionId: 'session-1' },
@@ -65,6 +68,97 @@ describe('Station unified-search providers', () => {
         },
       }),
     ]);
+  });
+
+  test('binds hosted message ownership and source scope to exact tenant authority', async () => {
+    const searchAuthorizedMessages = vi.fn(() =>
+      Array.from({ length: 9 }, (_, index) => ({
+        conversationId: 'session-1',
+        messageId: `message-${index}`,
+        role: 'assistant' as const,
+        excerpt: `Parser result ${index}`,
+        projectSlug: 'alpha',
+      })),
+    );
+    const service = new UnifiedSearchService([
+      createStationMessageSearchProvider({
+        authority: {
+          mode: 'hosted',
+          stationId: 'station-home-a',
+          tenantId: 'tenant-a',
+        },
+        source: { searchAuthorizedMessages },
+        now,
+      }),
+    ]);
+
+    const result = await service.search({
+      version: UNIFIED_SEARCH_V1,
+      query: 'parser',
+      filters: { projectId: 'alpha' },
+    });
+
+    expect(searchAuthorizedMessages).toHaveBeenCalledWith({
+      query: 'parser',
+      limit: 9,
+      projectId: 'alpha',
+    });
+    if (result.state === 'invalid')
+      throw new Error('unexpected invalid result');
+    expect(result.state).toBe('partial');
+    expect(result.results).toHaveLength(8);
+    expect(result.results[0]?.owner).toEqual({
+      kind: 'station',
+      stationId: 'station-home-a',
+      tenantId: 'tenant-a',
+    });
+    expect(result.sources[0]).toMatchObject({
+      state: 'partial',
+      reason: 'result-window',
+    });
+  });
+
+  test('refuses hosted message composition without tenant authority', () => {
+    expect(() =>
+      createStationMessageSearchProvider({
+        authority: { mode: 'hosted', stationId: 'station-home-a' } as never,
+        source: { searchAuthorizedMessages: () => [] },
+      }),
+    ).toThrow('Hosted message search requires tenant authority');
+  });
+
+  test('fails closed when a Project-scoped message source returns another Project', async () => {
+    const provider = createStationMessageSearchProvider({
+      authority: { mode: 'personal', stationId: 'station-home-a' },
+      source: {
+        searchAuthorizedMessages: () => [
+          {
+            conversationId: 'session-1',
+            messageId: 'message-1',
+            role: 'user',
+            excerpt: 'Parser result from the wrong Project',
+            projectSlug: 'beta',
+          },
+        ],
+      },
+      now,
+    });
+
+    await expect(
+      provider.search(
+        {
+          version: UNIFIED_SEARCH_V1,
+          query: 'parser',
+          limit: 8,
+          filters: { projectId: 'alpha' },
+        },
+        new AbortController().signal,
+      ),
+    ).resolves.toEqual({
+      version: UNIFIED_SEARCH_V1,
+      state: 'unavailable',
+      reason: 'source-unavailable',
+    });
   });
 
   test('searches the personal Task authority with exact Project and Task filters', async () => {

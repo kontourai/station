@@ -71,7 +71,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 one to eight immutable typed Providers for independently authorized pages and
 returns a versioned result envelope whose key includes provider and semantic
 owner identity. Results retain kind, exact scope, matched fields, currentness,
-authorization check time, and a typed open intent that must be re-resolved by
+and a typed open intent that must be re-resolved by
 its owner before navigation.
 
 **Contract.** Query, provider, result, string, count, byte, continuation, and
@@ -82,7 +82,11 @@ detail. Restricted sources return no results or resource counts. A partial,
 stale, restricted, or unavailable source never erases authorized results from
 another source, and ranking uses provider relevance only—not trust or inferred
 correlation. Same-text ids from different Station/tenant/Console owners cannot
-collide. Console projection is a contract owner only: Station has no sibling
+collide. Provider continuations are wrapped by the host and bind provider
+owner/version, normalized query, and exact filters. Providers are composed over
+request-bound read authority, but the aggregate result does not invent a host
+authorization receipt; navigation must re-resolve current authority. Console
+projection is a contract owner only: Station has no sibling
 store reader, and cross-product results remain blocked on a published Console
 Adapter.
 

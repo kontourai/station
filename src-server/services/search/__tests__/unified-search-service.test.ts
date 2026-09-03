@@ -73,11 +73,9 @@ describe('UnifiedSearchService', () => {
       { kind: 'station', stationId: 'station-a' },
       { kind: 'station', stationId: 'station-b' },
     ]);
-    expect(
-      result.results.every(
-        (entry) => entry.authorization.state === 'authorized',
-      ),
-    ).toBe(true);
+    expect(result.results.some((entry) => 'authorization' in entry)).toBe(
+      false,
+    );
   });
 
   test('preserves authorized results while naming restricted and unavailable providers', async () => {
@@ -132,22 +130,33 @@ describe('UnifiedSearchService', () => {
     );
   });
 
-  test('passes only the owning provider continuation and preserves the next token', async () => {
-    const search = vi.fn(async (_request) => ({
+  test('unwraps only a host-bound continuation for the same query and filters', async () => {
+    const search = vi.fn(async (request) => ({
       version: UNIFIED_SEARCH_V1,
       state: 'partial' as const,
       reason: 'result-window' as const,
-      continuation: 'next-token',
+      continuation: request.continuation ? 'next-token' : 'current-token',
       results: [task('task-2')],
     }));
     const service = new UnifiedSearchService([
       provider({ id: 'station.tasks', search }),
     ]);
 
+    const first = await service.search({
+      version: UNIFIED_SEARCH_V1,
+      query: 'parser',
+      filters: { projectId: 'alpha' },
+    });
+    if (first.state === 'invalid') throw new Error('unexpected invalid result');
+    const token = first.sources[0]?.continuation;
+    expect(token).toBeTruthy();
+    expect(token).not.toBe('current-token');
+
     const result = await service.search({
       version: UNIFIED_SEARCH_V1,
       query: 'parser',
-      continuations: [{ providerId: 'station.tasks', token: 'current-token' }],
+      filters: { projectId: 'alpha' },
+      continuations: [{ providerId: 'station.tasks', token: token! }],
     });
 
     expect(search).toHaveBeenCalledWith(
@@ -158,8 +167,120 @@ describe('UnifiedSearchService', () => {
       throw new Error('unexpected invalid result');
     expect(result.sources[0]).toMatchObject({
       state: 'partial',
-      continuation: 'next-token',
     });
+    expect(result.sources[0]?.continuation).not.toBe('next-token');
+
+    const callsBeforeMismatch = search.mock.calls.length;
+    await expect(
+      service.search({
+        version: UNIFIED_SEARCH_V1,
+        query: 'different-query',
+        filters: { projectId: 'alpha' },
+        continuations: [{ providerId: 'station.tasks', token: token! }],
+      }),
+    ).resolves.toMatchObject({
+      state: 'unavailable',
+      sources: [{ reason: 'continuation-invalid' }],
+    });
+    expect(search).toHaveBeenCalledTimes(callsBeforeMismatch);
+
+    await expect(
+      service.search({
+        version: UNIFIED_SEARCH_V1,
+        query: 'parser',
+        filters: { projectId: 'different-project' },
+        continuations: [{ providerId: 'station.tasks', token: token! }],
+      }),
+    ).resolves.toMatchObject({
+      state: 'unavailable',
+      sources: [{ reason: 'continuation-invalid' }],
+    });
+    expect(search).toHaveBeenCalledTimes(callsBeforeMismatch);
+  });
+
+  test('rejects non-exact and accessor-backed request fields without invoking them', async () => {
+    const search = vi.fn(async () => ({
+      version: UNIFIED_SEARCH_V1,
+      state: 'available' as const,
+      results: [],
+    }));
+    const service = new UnifiedSearchService([
+      provider({ id: 'station.tasks', search }),
+    ]);
+    const queryGetter = vi.fn(() => 'parser');
+    const accessorRequest = { version: UNIFIED_SEARCH_V1 } as Record<
+      string,
+      unknown
+    >;
+    Object.defineProperty(accessorRequest, 'query', {
+      enumerable: true,
+      get: queryGetter,
+    });
+    const kindGetter = vi.fn(() => 'task');
+    const accessorKinds: unknown[] = [];
+    Object.defineProperty(accessorKinds, '0', {
+      enumerable: true,
+      get: kindGetter,
+    });
+    accessorKinds.length = 1;
+    const tokenGetter = vi.fn(() => 'opaque');
+    const accessorContinuation = { providerId: 'station.tasks' } as Record<
+      string,
+      unknown
+    >;
+    Object.defineProperty(accessorContinuation, 'token', {
+      enumerable: true,
+      get: tokenGetter,
+    });
+
+    await expect(
+      service.search(accessorRequest as never),
+    ).resolves.toMatchObject({ state: 'invalid' });
+    await expect(
+      service.search({
+        version: UNIFIED_SEARCH_V1,
+        query: 'parser',
+        filters: { projectId: 'alpha', futureScope: 'secret' } as never,
+      }),
+    ).resolves.toMatchObject({ state: 'invalid' });
+    await expect(
+      service.search({
+        version: UNIFIED_SEARCH_V1,
+        query: 'parser',
+        unexpected: true,
+      } as never),
+    ).resolves.toMatchObject({ state: 'invalid' });
+    await expect(
+      service.search({
+        version: UNIFIED_SEARCH_V1,
+        query: 'parser',
+        continuations: [
+          {
+            providerId: 'station.tasks',
+            token: 'opaque',
+            futureBinding: 'ignored-at-our-peril',
+          } as never,
+        ],
+      }),
+    ).resolves.toMatchObject({ state: 'invalid' });
+    await expect(
+      service.search({
+        version: UNIFIED_SEARCH_V1,
+        query: 'parser',
+        filters: { kinds: accessorKinds } as never,
+      }),
+    ).resolves.toMatchObject({ state: 'invalid' });
+    await expect(
+      service.search({
+        version: UNIFIED_SEARCH_V1,
+        query: 'parser',
+        continuations: [accessorContinuation as never],
+      }),
+    ).resolves.toMatchObject({ state: 'invalid' });
+    expect(queryGetter).not.toHaveBeenCalled();
+    expect(kindGetter).not.toHaveBeenCalled();
+    expect(tokenGetter).not.toHaveBeenCalled();
+    expect(search).not.toHaveBeenCalled();
   });
 
   test('preserves a stale provider page without rewriting result currentness', async () => {
@@ -272,6 +393,46 @@ describe('UnifiedSearchService', () => {
     ).resolves.toMatchObject({
       state: 'unavailable',
       results: [],
+      sources: [{ reason: 'provider-response-invalid' }],
+    });
+  });
+
+  test('rejects a message intent that opens a different stable message identity', async () => {
+    const service = new UnifiedSearchService([
+      {
+        descriptor: {
+          id: 'station.messages',
+          version: '1.0.0',
+          owner: { kind: 'station', stationId: 'station-a' },
+          kinds: ['message'],
+        },
+        search: async () => ({
+          version: UNIFIED_SEARCH_V1,
+          state: 'available',
+          results: [
+            {
+              id: JSON.stringify(['session-1', 'message-shown']),
+              kind: 'message',
+              scope: { sessionId: 'session-1' },
+              title: 'Shown message',
+              matchedFields: ['title'],
+              currentness: { state: 'current', observedAt },
+              relevance: 1,
+              openIntent: {
+                kind: 'session-message',
+                sessionId: 'session-1',
+                messageId: 'message-other',
+              },
+            },
+          ],
+        }),
+      },
+    ]);
+
+    await expect(
+      service.search({ version: UNIFIED_SEARCH_V1, query: 'shown' }),
+    ).resolves.toMatchObject({
+      state: 'unavailable',
       sources: [{ reason: 'provider-response-invalid' }],
     });
   });

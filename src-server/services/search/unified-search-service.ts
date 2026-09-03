@@ -1,4 +1,10 @@
 import {
+  createHash,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
+import {
   UNIFIED_SEARCH_V1,
   type UnifiedSearchCandidate,
   type UnifiedSearchCurrentness,
@@ -26,7 +32,8 @@ export const UNIFIED_SEARCH_LIMITS = Object.freeze({
   titleBytes: 160,
   snippetBytes: 512,
   reasonBytes: 240,
-  continuationBytes: 1_024,
+  providerContinuationBytes: 1_024,
+  continuationBytes: 4_096,
   candidateBytes: 2_048,
   responseBytes: 256 * 1_024,
   providerTimeoutMs: 2_000,
@@ -71,6 +78,82 @@ type BoundProvider = {
   };
   search: UnifiedSearchProvider['search'];
 };
+
+type DataRecord = Readonly<Record<string, unknown>>;
+
+function exactDataRecord(
+  value: unknown,
+  allowed: readonly string[],
+  required: readonly string[] = [],
+): DataRecord | null {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    if (Object.getOwnPropertySymbols(value).length > 0) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Object.keys(descriptors);
+    if (
+      keys.some((key) => !allowed.includes(key)) ||
+      required.some((key) => !keys.includes(key)) ||
+      keys.some((key) => {
+        const descriptor = descriptors[key];
+        return (
+          !descriptor ||
+          !('value' in descriptor) ||
+          descriptor.enumerable !== true
+        );
+      })
+    ) {
+      return null;
+    }
+    return Object.fromEntries(
+      keys.map((key) => [key, descriptors[key]!.value]),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function denseDataArray(
+  value: unknown,
+  maximum: number,
+): readonly unknown[] | null {
+  try {
+    if (!Array.isArray(value)) return null;
+    if (Object.getOwnPropertySymbols(value).length > 0) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+    if (
+      !lengthDescriptor ||
+      !('value' in lengthDescriptor) ||
+      typeof lengthDescriptor.value !== 'number'
+    ) {
+      return null;
+    }
+    const length = lengthDescriptor.value;
+    if (length > maximum) return null;
+    const keys = Object.keys(descriptors).filter((key) => key !== 'length');
+    if (
+      keys.length !== length ||
+      keys.some((key, index) => key !== String(index)) ||
+      keys.some((key) => {
+        const descriptor = descriptors[key];
+        return (
+          !descriptor ||
+          !('value' in descriptor) ||
+          descriptor.enumerable !== true
+        );
+      })
+    ) {
+      return null;
+    }
+    return keys.map((key) => descriptors[key]!.value);
+  } catch {
+    return null;
+  }
+}
 
 function bytes(value: string): number {
   return Buffer.byteLength(value, 'utf8');
@@ -229,6 +312,7 @@ function cloneOpenIntent(
     safeText(intent.sessionId, UNIFIED_SEARCH_LIMITS.idBytes) &&
     safeText(intent.messageId, UNIFIED_SEARCH_LIMITS.idBytes) &&
     intent.sessionId === candidateScope?.sessionId &&
+    candidateId === JSON.stringify([intent.sessionId, intent.messageId]) &&
     owner.kind === 'station'
   ) {
     return {
@@ -378,7 +462,10 @@ function clonePage(
       return null;
     if (
       page.continuation !== undefined &&
-      !safeText(page.continuation, UNIFIED_SEARCH_LIMITS.continuationBytes)
+      !safeText(
+        page.continuation,
+        UNIFIED_SEARCH_LIMITS.providerContinuationBytes,
+      )
     ) {
       return null;
     }
@@ -414,18 +501,20 @@ function clonePage(
 
 function cloneFilters(value: unknown): UnifiedSearchFilters | null | undefined {
   if (value === undefined) return undefined;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const filters = value as Record<string, unknown>;
+  const filters = exactDataRecord(value, ['kinds', 'projectId', 'taskId']);
+  if (!filters) return null;
+  const kinds =
+    filters.kinds === undefined
+      ? undefined
+      : denseDataArray(filters.kinds, RESULT_KINDS.size);
   if (
     filters.kinds !== undefined &&
-    (!Array.isArray(filters.kinds) ||
-      filters.kinds.length > RESULT_KINDS.size ||
-      !filters.kinds.every(
-        (kind) =>
-          typeof kind === 'string' &&
-          RESULT_KINDS.has(kind as UnifiedSearchResultKind),
-      ) ||
-      new Set(filters.kinds).size !== filters.kinds.length)
+    (!kinds?.every(
+      (kind) =>
+        typeof kind === 'string' &&
+        RESULT_KINDS.has(kind as UnifiedSearchResultKind),
+    ) ||
+      new Set(kinds).size !== kinds.length)
   ) {
     return null;
   }
@@ -438,9 +527,7 @@ function cloneFilters(value: unknown): UnifiedSearchFilters | null | undefined {
     }
   }
   return {
-    ...(Array.isArray(filters.kinds)
-      ? { kinds: [...filters.kinds] as UnifiedSearchResultKind[] }
-      : {}),
+    ...(kinds ? { kinds: [...kinds] as UnifiedSearchResultKind[] } : {}),
     ...(typeof filters.projectId === 'string'
       ? { projectId: filters.projectId }
       : {}),
@@ -473,6 +560,7 @@ function responseState(
 
 export class UnifiedSearchService {
   private readonly providers: readonly BoundProvider[];
+  private readonly continuationKey = randomBytes(32);
 
   constructor(providers: readonly UnifiedSearchProvider[]) {
     if (
@@ -533,25 +621,40 @@ export class UnifiedSearchService {
     let filters: UnifiedSearchFilters | undefined;
     const continuations = new Map<string, string>();
     try {
+      const parsedRequest = exactDataRecord(
+        request,
+        ['version', 'query', 'filters', 'continuations'],
+        ['version', 'query'],
+      );
       if (
-        request?.version !== UNIFIED_SEARCH_V1 ||
-        typeof request.query !== 'string'
+        !parsedRequest ||
+        parsedRequest.version !== UNIFIED_SEARCH_V1 ||
+        typeof parsedRequest.query !== 'string'
       ) {
         throw new Error();
       }
-      query = request.query.trim();
+      query = parsedRequest.query.trim();
       if (query.length < 2 || bytes(query) > UNIFIED_SEARCH_LIMITS.queryBytes) {
         throw new Error();
       }
-      const parsedFilters = cloneFilters(request.filters);
+      const parsedFilters = cloneFilters(parsedRequest.filters);
       if (parsedFilters === null) throw new Error();
       filters = parsedFilters;
-      if (request.continuations !== undefined) {
-        if (!Array.isArray(request.continuations)) throw new Error();
-        for (const continuation of request.continuations) {
+      if (parsedRequest.continuations !== undefined) {
+        const parsedContinuations = denseDataArray(
+          parsedRequest.continuations,
+          this.providers.length,
+        );
+        if (!parsedContinuations) throw new Error();
+        for (const continuationValue of parsedContinuations) {
+          const continuation = exactDataRecord(
+            continuationValue,
+            ['providerId', 'token'],
+            ['providerId', 'token'],
+          );
           if (
             !continuation ||
-            typeof continuation !== 'object' ||
+            typeof continuation.providerId !== 'string' ||
             !PROVIDER_ID.test(continuation.providerId) ||
             !safeText(
               continuation.token,
@@ -645,6 +748,12 @@ export class UnifiedSearchService {
     if (outerSignal?.aborted) {
       return { source: unavailableSource('search-cancelled'), results: [] };
     }
+    const providerContinuation = continuation
+      ? this.unwrapContinuation(provider, query, filters, continuation)
+      : undefined;
+    if (continuation && providerContinuation === null) {
+      return { source: unavailableSource('continuation-invalid'), results: [] };
+    }
     const controller = new AbortController();
     const abort = () => controller.abort();
     outerSignal?.addEventListener('abort', abort, { once: true });
@@ -656,7 +765,9 @@ export class UnifiedSearchService {
             version: UNIFIED_SEARCH_V1,
             query,
             limit: UNIFIED_SEARCH_LIMITS.resultsPerProvider,
-            ...(continuation ? { continuation } : {}),
+            ...(providerContinuation
+              ? { continuation: providerContinuation }
+              : {}),
             ...(filters ? { filters } : {}),
           },
           controller.signal,
@@ -709,7 +820,6 @@ export class UnifiedSearchService {
           results: [],
         };
       }
-      const checkedAt = new Date().toISOString();
       const results = normalized.results.map((candidate) => ({
         ...candidate,
         version: UNIFIED_SEARCH_V1,
@@ -720,7 +830,6 @@ export class UnifiedSearchService {
         ),
         providerId: provider.descriptor.id,
         owner: provider.descriptor.owner,
-        authorization: { state: 'authorized' as const, checkedAt },
       }));
       return {
         source: {
@@ -729,7 +838,14 @@ export class UnifiedSearchService {
           state: normalized.state,
           ...(normalized.reason ? { reason: normalized.reason } : {}),
           ...(normalized.continuation
-            ? { continuation: normalized.continuation }
+            ? {
+                continuation: this.wrapContinuation(
+                  provider,
+                  query,
+                  filters,
+                  normalized.continuation,
+                ),
+              }
             : {}),
         },
         results,
@@ -746,6 +862,101 @@ export class UnifiedSearchService {
     } finally {
       clearTimeout(timer);
       outerSignal?.removeEventListener('abort', abort);
+    }
+  }
+
+  private continuationBinding(
+    provider: BoundProvider,
+    query: string,
+    filters: UnifiedSearchFilters | undefined,
+  ) {
+    const digest = (value: unknown) =>
+      createHash('sha256').update(JSON.stringify(value)).digest('base64url');
+    return {
+      providerId: provider.descriptor.id,
+      providerVersion: provider.descriptor.version,
+      owner: digest(provider.descriptor.owner),
+      query: digest(query),
+      filters: digest(filters ?? null),
+    };
+  }
+
+  private wrapContinuation(
+    provider: BoundProvider,
+    query: string,
+    filters: UnifiedSearchFilters | undefined,
+    providerToken: string,
+  ): string {
+    const payload = JSON.stringify({
+      version: 1,
+      ...this.continuationBinding(provider, query, filters),
+      providerToken,
+    });
+    const signature = createHmac('sha256', this.continuationKey)
+      .update(payload)
+      .digest('base64url');
+    return `${Buffer.from(payload).toString('base64url')}.${signature}`;
+  }
+
+  private unwrapContinuation(
+    provider: BoundProvider,
+    query: string,
+    filters: UnifiedSearchFilters | undefined,
+    token: string,
+  ): string | null {
+    try {
+      const [encoded, suppliedSignature, extra] = token.split('.');
+      if (!encoded || !suppliedSignature || extra !== undefined) return null;
+      const payload = Buffer.from(encoded, 'base64url').toString('utf8');
+      const expectedSignature = createHmac('sha256', this.continuationKey)
+        .update(payload)
+        .digest();
+      const signature = Buffer.from(suppliedSignature, 'base64url');
+      if (
+        signature.length !== expectedSignature.length ||
+        !timingSafeEqual(signature, expectedSignature)
+      ) {
+        return null;
+      }
+      const parsed = exactDataRecord(
+        JSON.parse(payload),
+        [
+          'version',
+          'providerId',
+          'providerVersion',
+          'owner',
+          'query',
+          'filters',
+          'providerToken',
+        ],
+        [
+          'version',
+          'providerId',
+          'providerVersion',
+          'owner',
+          'query',
+          'filters',
+          'providerToken',
+        ],
+      );
+      const binding = this.continuationBinding(provider, query, filters);
+      if (
+        parsed?.version !== 1 ||
+        parsed.providerId !== binding.providerId ||
+        parsed.providerVersion !== binding.providerVersion ||
+        parsed.owner !== binding.owner ||
+        parsed.query !== binding.query ||
+        parsed.filters !== binding.filters ||
+        !safeText(
+          parsed.providerToken,
+          UNIFIED_SEARCH_LIMITS.providerContinuationBytes,
+        )
+      ) {
+        return null;
+      }
+      return parsed.providerToken;
+    } catch {
+      return null;
     }
   }
 }

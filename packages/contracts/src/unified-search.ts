@@ -82,7 +82,6 @@ export interface UnifiedSearchResult extends UnifiedSearchCandidate {
   key: string;
   providerId: string;
   owner: UnifiedSearchOwner;
-  authorization: { state: 'authorized'; checkedAt: string };
 }
 
 export interface UnifiedSearchFilters {

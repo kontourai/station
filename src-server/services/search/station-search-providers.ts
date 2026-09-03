@@ -36,11 +36,16 @@ export interface AuthorizedMessageSearchMatch {
 
 export interface StationMessageSearchSource {
   /** Existing SessionTranscriptReads search with request authority already bound. */
-  searchAuthorizedMessages(
-    query: string,
-    limit: number,
-  ): readonly AuthorizedMessageSearchMatch[];
+  searchAuthorizedMessages(request: {
+    query: string;
+    limit: number;
+    projectId?: string;
+  }): readonly AuthorizedMessageSearchMatch[];
 }
+
+export type StationMessageSearchAuthority =
+  | { mode: 'personal'; stationId: string }
+  | { mode: 'hosted'; stationId: string; tenantId: string };
 
 export interface PersonalTaskSearchSource {
   /** Personal-mode TaskGraph list; hosted composition must not use this Adapter. */
@@ -49,6 +54,22 @@ export interface PersonalTaskSearchSource {
 
 function stationOwner(stationId: string): UnifiedSearchOwner {
   return { kind: 'station', stationId };
+}
+
+function messageOwner(
+  authority: StationMessageSearchAuthority,
+): UnifiedSearchOwner {
+  if (
+    authority.mode === 'hosted' &&
+    (typeof authority.tenantId !== 'string' || authority.tenantId.length === 0)
+  ) {
+    throw new TypeError('Hosted message search requires tenant authority');
+  }
+  return {
+    kind: 'station',
+    stationId: authority.stationId,
+    ...(authority.mode === 'hosted' ? { tenantId: authority.tenantId } : {}),
+  };
 }
 
 function queryMatchesFilter(
@@ -158,11 +179,11 @@ export function createPersonalTaskSearchProvider(input: {
 
 /** Adapter over the existing authority-filtered message-search index. */
 export function createStationMessageSearchProvider(input: {
-  stationId: string;
+  authority: StationMessageSearchAuthority;
   source: StationMessageSearchSource;
   now?: () => string;
 }): UnifiedSearchProvider {
-  const owner = stationOwner(input.stationId);
+  const owner = messageOwner(input.authority);
   const now = input.now ?? (() => new Date().toISOString());
   return {
     descriptor: {
@@ -185,17 +206,28 @@ export function createStationMessageSearchProvider(input: {
       if (request.filters?.taskId) {
         return { version: UNIFIED_SEARCH_V1, state: 'available', results: [] };
       }
-      const matches = input.source.searchAuthorizedMessages(
-        request.query,
-        request.limit,
-      );
-      const filtered = matches.filter(
-        (match) =>
-          !request.filters?.projectId ||
-          match.projectSlug === request.filters.projectId,
-      );
-      const results = filtered.slice(0, request.limit).map((match) => ({
-        id: `${match.conversationId}:${match.messageId}`,
+      const matches = input.source.searchAuthorizedMessages({
+        query: request.query,
+        limit: request.limit + 1,
+        ...(request.filters?.projectId
+          ? { projectId: request.filters.projectId }
+          : {}),
+      });
+      if (
+        request.filters?.projectId &&
+        matches.some(
+          (match) => match.projectSlug !== request.filters!.projectId,
+        )
+      ) {
+        return {
+          version: UNIFIED_SEARCH_V1,
+          state: 'unavailable',
+          reason: 'source-unavailable',
+        };
+      }
+      const partial = matches.length > request.limit;
+      const results = matches.slice(0, request.limit).map((match) => ({
+        id: JSON.stringify([match.conversationId, match.messageId]),
         kind: 'message' as const,
         scope: {
           ...(match.projectSlug ? { projectId: match.projectSlug } : {}),
@@ -217,9 +249,9 @@ export function createStationMessageSearchProvider(input: {
       }));
       return {
         version: UNIFIED_SEARCH_V1,
-        state: filtered.length > request.limit ? 'partial' : 'available',
+        state: partial ? 'partial' : 'available',
         results,
-        ...(filtered.length > request.limit ? { reason: 'result-window' } : {}),
+        ...(partial ? { reason: 'result-window' } : {}),
       };
     },
   };
