@@ -110,9 +110,11 @@ describe('starved pull request detection', () => {
     const starved = pr({ number: 10 });
     const queued = pr({ number: 11, isInMergeQueue: true });
     const held = pr({ number: 12, labels: { nodes: [{ name: 'blocked' }] } });
-    expect(selectStarved([starved, queued, held]).map((p: { number: number }) => p.number)).toEqual(
-      [10],
-    );
+    expect(
+      selectStarved([starved, queued, held]).map(
+        (p: { number: number }) => p.number,
+      ),
+    ).toEqual([10]);
   });
 
   test('the comment carries its own marker so the next run can see it', () => {
