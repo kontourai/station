@@ -192,7 +192,10 @@ function singlePassExpand(
 
 function resolveContainedPath(root: string, candidate: string): string {
   const resolvedRoot = realpathSync(root);
-  const target = resolve(candidate);
+  // Absolute placeholder expansions remain absolute; a `./` value is
+  // plugin-relative by specification and must not inherit Station's process
+  // cwd. `resolve(root, absolute)` preserves the absolute value.
+  const target = resolve(resolvedRoot, candidate);
   if (!isInside(resolvedRoot, target)) throw new Error('path escapes its root');
 
   // A not-yet-created PLUGIN_DATA child is valid. Prove its nearest existing

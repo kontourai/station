@@ -64,6 +64,9 @@ Agent Plugins 1.0 schemas, reports bounded component failures, and projects
 read-only Skill sources and live ToolDefs from installed package bytes.
 `ConfigLoader` accepts that projection through its read-only integration-source
 Interface; Station-owned files retain collision precedence.
+Package ToolDefs remain definition-read-only: probes may return ephemeral
+health, while mutations refuse until an owner-bound overlay exists, so no
+Station integration snapshot can mask an updated or uninstalled package.
 
 **Contract.** Fatal manifest failures discover nothing. Unknown root fields and
 a non-object `extensions` value are reported and ignored; only

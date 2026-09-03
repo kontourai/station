@@ -158,6 +158,7 @@ export class MCPService {
     integrationId: string;
     bindings: Record<string, { bindingId: string; expectedRevision: number }>;
   }): Promise<{ outcome: 'migrated'; migratedEnvNames: string[] }> {
+    this.assertMutableIntegration(input.integrationId);
     let current = await this.getIntegration(input.integrationId);
     const names = Object.keys(input.bindings).sort();
     if (
@@ -286,7 +287,20 @@ export class MCPService {
     return this.configLoader.getToolAgentMap();
   }
 
+  private isLiveContributedIntegration(id: string): boolean {
+    return this.configLoader.isLiveContributedIntegration?.(id) === true;
+  }
+
+  private assertMutableIntegration(id: string): void {
+    if (this.isLiveContributedIntegration(id)) {
+      throw new Error(
+        'Package-supplied integration definitions are read-only; uninstall or update the owning package instead',
+      );
+    }
+  }
+
   async saveIntegration(def: ToolDef): Promise<void> {
+    this.assertMutableIntegration(def.id);
     let existing: ToolDef | undefined;
     try {
       existing = await this.configLoader.loadIntegration(def.id);
@@ -335,11 +349,13 @@ export class MCPService {
   }
 
   async deleteIntegration(id: string): Promise<void> {
+    this.assertMutableIntegration(id);
     await this.configLoader.deleteIntegration(id);
     this.oauthFlows.delete(id);
   }
 
   async setEnabled(id: string, enabled: boolean): Promise<ToolDef> {
+    this.assertMutableIntegration(id);
     const existing = await this.getIntegration(id);
     const updated =
       !enabled && toolServerOAuthResourceIdentity(existing)
@@ -366,6 +382,7 @@ export class MCPService {
     mode: 'local-browser-opened' | 'remote-manual-open';
     completionInstructions: string;
   }> {
+    this.assertMutableIntegration(id);
     const def = await this.getIntegration(id);
     if (def.transport !== 'sse' && def.transport !== 'streamable-http')
       throw new Error(
@@ -427,6 +444,7 @@ export class MCPService {
   }
 
   async finishOAuth(id: string, callbackUrl: string): Promise<ToolDef> {
+    this.assertMutableIntegration(id);
     const flow = this.oauthFlows.get(id);
     if (!flow) {
       throw new Error('No OAuth consent flow is awaiting completion');
@@ -559,6 +577,7 @@ export class MCPService {
     id: string,
     disabledTools: string[],
   ): Promise<ToolDef> {
+    this.assertMutableIntegration(id);
     const existing = await this.getIntegration(id);
     const updated = { ...existing, disabledTools: [...new Set(disabledTools)] };
     await this.saveIntegration(updated);
@@ -594,6 +613,7 @@ export class MCPService {
 
   async probeIntegration(id: string): Promise<ToolDef> {
     const existing = await this.getIntegration(id);
+    const liveContributed = this.isLiveContributedIntegration(id);
     const oauthProvider =
       existing.transport === 'sse' || existing.transport === 'streamable-http'
         ? this.createOAuthProvider(existing)
@@ -625,11 +645,24 @@ export class MCPService {
       // Probe state is an internal projection write. It must retain an
       // operator-authored binding reference without reopening the public
       // integration authoring boundary.
-      await this.configLoader.saveIntegration(id, updated);
+      if (!liveContributed) {
+        await this.configLoader.saveIntegration(id, updated);
+      }
       toolServerProbes.add(1, { outcome: 'success' });
       return updated;
     } catch (error) {
       captureToolServerOperationFailure(error, 'probe', id, this.logger);
+      if (liveContributed) {
+        const checkedAt = new Date().toISOString();
+        const message = formatToolServerFailure(
+          classifyToolServerProbeFailure(error, existing.transport),
+        );
+        toolServerProbes.add(1, { outcome: 'failure' });
+        return {
+          ...existing,
+          probe: { ok: false, error: message, toolCount: 0, checkedAt },
+        };
+      }
       const authorizationUrl = oauthProvider?.takeAuthorizationUrl();
       if (
         oauthProvider &&

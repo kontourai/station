@@ -281,6 +281,42 @@ describe('AgentPluginLoader', () => {
     );
   });
 
+  test.runIf(process.platform !== 'win32')(
+    'does not let the SkillService rescan re-admit an escaping SKILL.md symlink',
+    async () => {
+      const stationHome = home();
+      const root = plugin(stationHome);
+      skill(root, 'valid');
+      const outside = join(stationHome, 'outside-skill');
+      mkdirSync(outside, { recursive: true });
+      writeFileSync(
+        join(outside, 'SKILL.md'),
+        '---\nname: escape\ndescription: Must remain outside.\n---\n',
+      );
+      const escapingSkill = join(root, 'skills', 'escape');
+      mkdirSync(escapingSkill, { recursive: true });
+      symlinkSync(join(outside, 'SKILL.md'), join(escapingSkill, 'SKILL.md'));
+
+      const loader = new AgentPluginLoader({ projectHomeDir: stationHome });
+      expect(
+        loader.listInstalled()[0]?.skills.map((entry) => entry.name),
+      ).toEqual(['valid']);
+      const service = new SkillService(
+        new ConfigLoader({ projectHomeDir: stationHome }),
+        { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+        { canonicalSources: () => loader.skillSources() },
+      );
+      await service.discoverSkills(stationHome);
+
+      expect(service.listSkills().map((entry) => entry.name)).toContain(
+        'valid',
+      );
+      expect(service.listSkills().map((entry) => entry.name)).not.toContain(
+        'escape',
+      );
+    },
+  );
+
   test('isolates MCP top-level, entry, transport, path, URL, and header failures', () => {
     const stationHome = home();
     const root = plugin(stationHome);
@@ -355,6 +391,29 @@ describe('AgentPluginLoader', () => {
         expect.objectContaining({ code: 'mcp-transport-unsupported' }),
       ]),
     );
+  });
+
+  test('anchors plugin-relative cwd against the plugin root under a hostile process cwd', () => {
+    const stationHome = home();
+    const root = plugin(stationHome);
+    const work = join(root, 'runtime-work');
+    mkdirSync(work, { recursive: true });
+    writeJson(join(root, 'mcp.json'), {
+      $schema: MCP_SCHEMA,
+      mcpServers: {
+        local: { type: 'stdio', command: 'node', cwd: './runtime-work' },
+      },
+    });
+    process.chdir(home());
+
+    const loaded = new AgentPluginLoader({
+      projectHomeDir: stationHome,
+    }).loadPackage(root);
+
+    expect(loaded?.tools).toEqual([
+      expect.objectContaining({ cwd: realpathSync(work) }),
+    ]);
+    expect(loaded?.reports).toEqual([]);
   });
 
   test('disables MCP only for invalid JSON, top-level shape, or schema mismatch', () => {
@@ -453,6 +512,18 @@ describe('AgentPluginLoader', () => {
     expect((await config.loadIntegration(metadata.id)).endpoint).toBe(
       'https://one.example/mcp',
     );
+    expect(existsSync(join(stationHome, 'integrations'))).toBe(false);
+
+    const live = await config.loadIntegration(metadata.id);
+    await expect(
+      config.saveIntegration(metadata.id, { ...live, enabled: false }),
+    ).rejects.toThrow(/supplied by an installed package.*read-only/);
+    await expect(
+      config.updateIntegration(metadata.id, (current) => ({
+        ...current,
+        enabled: false,
+      })),
+    ).rejects.toThrow(/supplied by an installed package.*read-only/);
     expect(existsSync(join(stationHome, 'integrations'))).toBe(false);
 
     writeJson(join(root, 'mcp.json'), {

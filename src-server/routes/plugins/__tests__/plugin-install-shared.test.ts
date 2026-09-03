@@ -419,6 +419,7 @@ describe('installPluginFromSource', () => {
 
     await uninstallInstalledPlugin('acme.tools', deps(root));
     expect(existsSync(installed!.dataRoot)).toBe(false);
+    expect(existsSync(join(root, 'integrations'))).toBe(false);
   });
 
   test('installs a pane-only plugin and projects its inert catalog declaration', async () => {

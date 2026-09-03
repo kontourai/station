@@ -86,7 +86,11 @@ immediate `skills/*/SKILL.md` children with `agent-plugin:<name>` provenance,
 and a local Project Skill with the same name wins. MCP servers are projected
 from the live package as stable, owner-qualified Station ToolDefs rather than
 copied into `integrations/`; installing one makes it available but does not
-attach it to an Agent.
+attach it to an Agent. Probes return ephemeral health for these read-only
+definitions. Definition mutations such as enablement, tool filtering, OAuth
+health, edits, or deletion are refused until Station has an owner-bound overlay
+store; they never materialize a shadow integration that could outlive or mask
+the package.
 
 The loader supports stdio and Streamable HTTP. It reports and skips SSE,
 invalid Skills, and invalid individual server entries at their narrow failure

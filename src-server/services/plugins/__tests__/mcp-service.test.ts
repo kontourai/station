@@ -79,6 +79,46 @@ const mockLogger = {
 };
 
 describe('MCPService', () => {
+  test('probes live package integrations without snapshotting and refuses definition mutations', async () => {
+    connectMCPMock.mockReset();
+    connectMCPMock.mockResolvedValue({ tools: [], disconnect: vi.fn() } as any);
+    const loader = createMockConfigLoader();
+    loader.loadIntegration.mockResolvedValue({
+      id: 'agent-plugin-live',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'node',
+    });
+    Object.assign(loader, {
+      isLiveContributedIntegration: vi.fn(() => true),
+    });
+    const svc = new MCPService(
+      loader as any,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      mockLogger,
+    );
+
+    await expect(svc.probeIntegration('agent-plugin-live')).resolves.toEqual(
+      expect.objectContaining({ probe: expect.objectContaining({ ok: true }) }),
+    );
+    expect(loader.saveIntegration).not.toHaveBeenCalled();
+    await expect(svc.setEnabled('agent-plugin-live', false)).rejects.toThrow(
+      /Package-supplied integration definitions are read-only/,
+    );
+    await expect(
+      svc.applyDisabledTools('agent-plugin-live', ['tool']),
+    ).rejects.toThrow(/Package-supplied integration definitions are read-only/);
+    await expect(svc.startOAuth('agent-plugin-live', 'remote')).rejects.toThrow(
+      /Package-supplied integration definitions are read-only/,
+    );
+    expect(loader.saveIntegration).not.toHaveBeenCalled();
+    expect(connectMCPMock).toHaveBeenCalledTimes(1);
+  });
+
   test('migrates stored env only after a fresh bound child succeeds and retries a safe partial grant', async () => {
     let current: any = {
       id: 'github',

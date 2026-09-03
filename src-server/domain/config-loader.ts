@@ -731,6 +731,24 @@ export class ConfigLoader {
   }
 
   /**
+   * Whether `id` is currently owned by a live read-only definition source.
+   * A Station file always wins; source ownership applies only while no local
+   * definition shadows the id.
+   */
+  isLiveContributedIntegration(id: string): boolean {
+    if (integrationConfigExists(this.projectHomeDir, id)) return false;
+    return this.integrationSources.some((source) => source.loadIntegration(id));
+  }
+
+  private assertIntegrationDefinitionWritable(id: string): void {
+    if (this.isLiveContributedIntegration(id)) {
+      throw new Error(
+        `Integration '${id}' is supplied by an installed package and its definition is read-only; uninstall or update the owning package instead`,
+      );
+    }
+  }
+
+  /**
    * Load tool definition
    */
   async loadIntegration(id: string): Promise<ToolDef> {
@@ -808,6 +826,7 @@ export class ConfigLoader {
    * churn). A genuine content change still writes and still activates.
    */
   async saveIntegration(id: string, def: ToolDef): Promise<void> {
+    this.assertIntegrationDefinitionWritable(id);
     // archive#3063: a registered built-in's spawn identity never reaches
     // disk — projected out BEFORE the byte comparison so the compare runs
     // against the bytes that would actually be written. Credential writes
@@ -844,6 +863,7 @@ export class ConfigLoader {
     update: (current: ToolDef) => ToolDef,
   ): Promise<ToolDef> {
     await this.ensureHomeSchema();
+    this.assertIntegrationDefinitionWritable(id);
     return updateIntegrationConfig(this.projectHomeDir, id, (current) => {
       const updated = update(current);
       this.assertBuiltinIntegrationCredentialFree(id, updated);
@@ -854,6 +874,7 @@ export class ConfigLoader {
   }
 
   async deleteIntegration(id: string): Promise<void> {
+    this.assertIntegrationDefinitionWritable(id);
     await deleteIntegrationConfig(this.projectHomeDir, id);
   }
 

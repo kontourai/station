@@ -455,7 +455,31 @@ export class SkillService {
       const skillMdPath = join(entryDir, 'SKILL.md');
       if (existsSync(skillMdPath)) {
         try {
-          const content = await readFile(skillMdPath, 'utf-8');
+          let readableSkillPath = skillMdPath;
+          if (options.containmentRoot) {
+            const containedRoot = await realpath(options.containmentRoot);
+            const containedDirectory = await realpath(entryDir);
+            const containedManifest = await realpath(skillMdPath);
+            for (const [label, candidate] of [
+              ['skill directory', containedDirectory],
+              ['SKILL.md', containedManifest],
+            ] as const) {
+              const rel = relative(containedRoot, candidate);
+              if (
+                rel === '..' ||
+                rel.startsWith(`..${sep}`) ||
+                isAbsolute(rel)
+              ) {
+                throw new Error(`${label} resolves outside its package`);
+              }
+            }
+            const manifestInfo = await lstat(containedManifest);
+            if (!manifestInfo.isFile()) {
+              throw new Error('SKILL.md does not resolve to a regular file');
+            }
+            readableSkillPath = containedManifest;
+          }
+          const content = await readFile(readableSkillPath, 'utf-8');
           // One parse, two readers: the spec properties the SDK models, and
           // the raw frontmatter map that carries Station's own `command`/
           // `variables` declarations.
@@ -505,7 +529,7 @@ export class SkillService {
             description: properties.description,
             body,
             resources,
-            location: skillMdPath,
+            location: readableSkillPath,
             declaredCommand: readSkillCommand(frontmatter.command),
             declaredVariables: readSkillVariables(frontmatter.variables),
           });
