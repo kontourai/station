@@ -40,6 +40,53 @@ describe('ConnectionInspector Interface', () => {
     });
   }
 
+  // #1208 review: the engine's catalog is decorated with reviewed identity
+  // keyed on (engine family, id). `sonnet` from the Claude Code engine is a
+  // reviewed route; the identical id from another engine carries nothing.
+  test('decorates an engine catalog with identity qualified by the engine', async () => {
+    const catalogOf = async (engineId: string) => {
+      const subject = inspector({
+        provider: engineId,
+        metadata: {
+          displayName: engineId,
+          description: 'test',
+          capabilities: [],
+          engineId,
+        },
+        getPrerequisites: vi.fn(async () => []),
+        listModels: vi.fn(async () => [
+          { id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' },
+          { id: 'other', name: 'Other', originalId: 'other' },
+        ]),
+      });
+      const result = (await subject.inspect({
+        kind: 'runtime-capability-inventory',
+      })) as {
+        connections: Array<{
+          runtimeCatalog?: {
+            models: Array<{
+              id: string;
+              canonicalModelIdentity?: { canonicalId: string };
+            }>;
+          };
+        }>;
+      };
+      return result.connections[0]?.runtimeCatalog?.models ?? [];
+    };
+    const claude = await catalogOf('claude');
+    expect(
+      claude.find((m) => m.id === 'sonnet')?.canonicalModelIdentity
+        ?.canonicalId,
+    ).toBe('anthropic:claude-sonnet-4-5');
+    expect(
+      claude.find((m) => m.id === 'other')?.canonicalModelIdentity,
+    ).toBeUndefined();
+    const codex = await catalogOf('codex');
+    expect(
+      codex.find((m) => m.id === 'sonnet')?.canonicalModelIdentity,
+    ).toBeUndefined();
+  });
+
   test('owns catalog fallback, prerequisite and command contributions behind a public identity', async () => {
     const listModels = vi.fn(async () => [
       { id: 'gpt', name: 'GPT', originalId: 'gpt' },

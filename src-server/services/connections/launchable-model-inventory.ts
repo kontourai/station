@@ -7,7 +7,11 @@ import type {
   ModelInventoryFreshness,
   ModelInventoryLocality,
 } from '@kontourai/station-contracts/model-inventory';
-import { curatedModelIdentityFor } from '@kontourai/station-contracts/model-inventory';
+import {
+  curatedModelIdentityFor,
+  type ModelRouteFamily,
+  modelRouteFamilyFor,
+} from '@kontourai/station-contracts/model-inventory';
 import type {
   AgentConnectionView,
   ConnectionConfig,
@@ -73,7 +77,10 @@ function unanimous<T>(values: Array<T | undefined>): T | null {
   return rest.every((value) => Object.is(value, first)) ? first : null;
 }
 
-function groupModels(models: ModelProjection[]): Array<{
+function groupModels(
+  models: ModelProjection[],
+  family: ModelRouteFamily | undefined,
+): Array<{
   providerModel: string;
   canonicalModelIdentity?: CanonicalModelIdentityReference;
   aliases: string[];
@@ -97,7 +104,10 @@ function groupModels(models: ModelProjection[]): Array<{
 
   return [...groups.entries()].map(([providerModel, group]) => {
     const supportsTools = unanimous(group.map((model) => model.supportsTools));
-    const canonicalModelIdentity = curatedModelIdentityFor(providerModel);
+    const canonicalModelIdentity = curatedModelIdentityFor({
+      family,
+      providerModel,
+    });
     return {
       providerModel,
       ...(canonicalModelIdentity ? { canonicalModelIdentity } : {}),
@@ -240,6 +250,7 @@ function modelRecords(
       supportsTools: item.supportsTools,
       supportsVision: item.supportsVision,
     })),
+    modelRouteFamilyFor(source.connection),
   ).map((model) =>
     record({
       connectionId: source.connection.id,
@@ -340,6 +351,14 @@ function agentRecords(
       providerModel: item.originalId,
       displayName: item.name,
     })),
+    // An engine connection's family is its engine id: `sonnet` from the
+    // Claude Code engine is a reviewed route, `sonnet` from elsewhere is not.
+    modelRouteFamilyFor({
+      type:
+        typeof connection.config.engineId === 'string'
+          ? connection.config.engineId
+          : connection.type,
+    }),
   ).map((model) =>
     record({
       connectionId: connection.id,

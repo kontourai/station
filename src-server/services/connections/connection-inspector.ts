@@ -5,9 +5,15 @@ import {
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import {
+  curatedModelIdentityFor,
+  modelRouteFamilyFor,
+} from '@kontourai/station-contracts/model-inventory';
 import type {
   AgentConnectionView,
+  ModelOption,
   Prerequisite,
+  RuntimeCatalogStatus,
 } from '@kontourai/station-contracts/tool';
 import { engineIdForAdapter } from '../../providers/adapter-identity.js';
 import type {
@@ -351,14 +357,17 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         liveDiscoveryFailed = true;
       }
     }
-    const runtimeCatalog = buildRuntimeCatalogStatus({
-      adapter,
-      liveCatalog,
-      liveDiscoveryFailed,
-      allowBuiltInOnDiscoveryFailure:
-        request.allowBuiltInOnDiscoveryFailure !== false,
-      now: this.dependencies.now(),
-    });
+    const runtimeCatalog = withCanonicalModelIdentity(
+      buildRuntimeCatalogStatus({
+        adapter,
+        liveCatalog,
+        liveDiscoveryFailed,
+        allowBuiltInOnDiscoveryFailure:
+          request.allowBuiltInOnDiscoveryFailure !== false,
+        now: this.dependencies.now(),
+      }),
+      engineIdValue,
+    );
     recordRuntimeCatalogStatus({ adapter, catalog: runtimeCatalog });
     let commands: AdapterCommands = [];
     if (!hostDiscoveryDisabled && request.includeCommands !== false) {
@@ -472,4 +481,34 @@ export function createConnectionInspector(
   dependencies: ConnectionInspectorDependencies,
 ): ConnectionInspector {
   return new ConnectionInspectorImplementation(dependencies);
+}
+
+/**
+ * Decorate an engine's catalog with the reviewed identity for its route family,
+ * keyed on what an alias RESOLVED to when the engine reported that, else the
+ * native id. The engine id is the family: `sonnet` from the Claude Code engine
+ * is a reviewed route; `sonnet` from anything else is not (#1208 review).
+ */
+function withCanonicalModelIdentity(
+  catalog: RuntimeCatalogStatus | undefined,
+  engine: string,
+): RuntimeCatalogStatus | undefined {
+  if (!catalog) return catalog;
+  const family = modelRouteFamilyFor({ type: engine });
+  if (!family) return catalog;
+  const decorate = (models: ModelOption[]): ModelOption[] =>
+    models.map((model) => {
+      const canonicalModelIdentity = curatedModelIdentityFor({
+        family,
+        providerModel: model.resolvedModel ?? model.originalId,
+      });
+      return canonicalModelIdentity
+        ? { ...model, canonicalModelIdentity }
+        : model;
+    });
+  return {
+    ...catalog,
+    models: decorate(catalog.models),
+    builtInModels: decorate(catalog.builtInModels),
+  };
 }

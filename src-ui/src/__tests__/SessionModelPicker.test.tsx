@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { authenticatedFetch } from '@kontourai/station-sdk';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { useState } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ResponsiveDialogSurface } from '../components/ResponsiveDialogSurface';
@@ -464,6 +470,99 @@ describe('SessionModelPicker', () => {
     expect(
       deviceSettingsStore.get('modelPickerPreferences').favorites,
     ).toContain('bedrock-prod\u001fclaude-sonnet');
+  });
+
+  // #1208 review: nothing exercised the render seam. Removing the grouping
+  // from the picker left every helper test green.
+  test('renders routes the reviewed identity unites as one named group', () => {
+    const sonnet = {
+      canonicalId: 'anthropic:claude-sonnet-4-5',
+      verifiedAgainst: 'reviewed 2026-08-31',
+    };
+    renderPicker({
+      currentModel: undefined,
+      models: [
+        { id: 'gpt-5.6', name: 'GPT-5.6' },
+        {
+          id: 'claude-sonnet-4-5',
+          name: 'Claude Sonnet 4.5',
+          providerName: 'Anthropic',
+          canonicalModelIdentity: sonnet,
+        },
+        {
+          id: 'sonnet',
+          name: 'sonnet',
+          providerName: 'Claude Code',
+          canonicalModelIdentity: sonnet,
+        },
+      ],
+    });
+    const group = screen.getByRole('group', { name: 'Claude Sonnet 4.5' });
+    expect(group.tagName).toBe('FIELDSET');
+    expect(
+      within(group)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual([
+      expect.stringContaining('Claude Sonnet 4.5'),
+      expect.stringContaining('sonnet'),
+    ]);
+    expect(within(group).queryByRole('option', { name: /GPT-5.6/ })).toBeNull();
+    expect(screen.getByRole('listbox', { name: 'Models' })).toBeTruthy();
+  });
+
+  test('a lone identified route is a plain row, not a group of one', () => {
+    renderPicker({
+      currentModel: undefined,
+      models: [
+        {
+          id: 'sonnet',
+          name: 'sonnet',
+          canonicalModelIdentity: {
+            canonicalId: 'anthropic:claude-sonnet-4-5',
+            verifiedAgainst: 'reviewed 2026-08-31',
+          },
+        },
+      ],
+    });
+    expect(screen.queryByRole('group')).toBeNull();
+    expect(screen.getByRole('option', { name: /sonnet/ })).toBeTruthy();
+  });
+
+  test('arrow keys cross a group boundary in visual order', () => {
+    const sonnet = {
+      canonicalId: 'anthropic:claude-sonnet-4-5',
+      verifiedAgainst: 'reviewed 2026-08-31',
+    };
+    renderPicker({
+      currentModel: undefined,
+      models: [
+        { id: 'gpt-5.6', name: 'GPT-5.6' },
+        {
+          id: 'claude-sonnet-4-5',
+          name: 'Claude Sonnet 4.5',
+          canonicalModelIdentity: sonnet,
+        },
+        { id: 'sonnet', name: 'sonnet', canonicalModelIdentity: sonnet },
+        { id: 'gpt-5.5', name: 'GPT-5.5' },
+      ],
+    });
+    const options = screen.getAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual([
+      expect.stringContaining('GPT-5.6'),
+      expect.stringContaining('Claude Sonnet 4.5'),
+      expect.stringContaining('sonnet'),
+      expect.stringContaining('GPT-5.5'),
+    ]);
+    options[0]!.focus();
+    fireEvent.keyDown(options[0]!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(options[1]);
+    fireEvent.keyDown(options[1]!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(options[2]);
+    fireEvent.keyDown(options[2]!, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(options[3]);
+    fireEvent.keyDown(options[3]!, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(options[2]);
   });
 
   test('moves between model options with arrow, Home, and End keys', () => {

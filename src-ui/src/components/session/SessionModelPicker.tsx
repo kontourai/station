@@ -413,7 +413,11 @@ export function SessionModelPicker({
                   ))}
                 </fieldset>
               )}
-              <div className="session-model-picker__models" role="listbox">
+              <div
+                className="session-model-picker__models"
+                role="listbox"
+                aria-label="Models"
+              >
                 {modelSections.map((section) =>
                   section.kind === 'model' ? (
                     // A fieldset IS role="group", which is what a listbox

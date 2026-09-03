@@ -19,6 +19,73 @@ function input(
 }
 
 describe('buildLaunchableModelInventory', () => {
+  // #1208 review: identity is a fact about (route family, id), never id alone.
+  // The same string from a family the reviewed data never named must carry
+  // nothing, or an unrelated model renders as Claude Sonnet 4.5.
+  test('qualifies identity by the route family the connection issues ids for', () => {
+    const modelConnection = (
+      id: string,
+      type: string,
+      config: Record<string, unknown>,
+      providerModel: string,
+    ) => ({
+      connection: {
+        id,
+        kind: 'model' as const,
+        type,
+        name: id,
+        enabled: true,
+        capabilities: ['llm' as const],
+        config,
+        status: 'ready' as const,
+        prerequisites: [],
+      },
+      execution: null,
+      catalog: {
+        source: 'live' as const,
+        observedAt: OBSERVED_AT,
+        models: [{ id: providerModel, name: providerModel }],
+      },
+    });
+    const inventory = buildLaunchableModelInventory(
+      input({
+        modelConnections: [
+          modelConnection(
+            'bedrock-1',
+            'bedrock',
+            {},
+            'anthropic.claude-sonnet-4-5-v1:0',
+          ),
+          modelConnection(
+            'openrouter-1',
+            'openai-compat',
+            { baseUrl: 'https://openrouter.ai/api/v1' },
+            'anthropic/claude-sonnet-4.5',
+          ),
+          modelConnection(
+            'other-compat',
+            'openai-compat',
+            { baseUrl: 'https://api.openai.com/v1' },
+            'sonnet',
+          ),
+          modelConnection('ollama-1', 'ollama', {}, 'claude-sonnet-4-5'),
+        ],
+      }),
+    );
+    const byConnection = (connectionId: string) =>
+      inventory.models.find((model) => model.connectionId === connectionId);
+    expect(byConnection('bedrock-1')?.canonicalModelIdentity?.canonicalId).toBe(
+      'anthropic:claude-sonnet-4-5',
+    );
+    expect(
+      byConnection('openrouter-1')?.canonicalModelIdentity?.canonicalId,
+    ).toBe('anthropic:claude-sonnet-4-5');
+    expect(
+      byConnection('other-compat')?.canonicalModelIdentity,
+    ).toBeUndefined();
+    expect(byConnection('ollama-1')?.canonicalModelIdentity).toBeUndefined();
+  });
+
   test('marks curated routes and leaves an unknown provider-native id ungrouped', () => {
     const inventory = buildLaunchableModelInventory(
       input({

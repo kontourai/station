@@ -119,6 +119,23 @@
   padding: 0 var(--space-3) var(--space-3);
 }
 
+.session-model-picker__model-group {
+  display: contents;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.session-model-picker__model-group-name {
+  padding: var(--space-2) var(--space-3) 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .session-model-picker__model-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 44px;
