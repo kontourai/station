@@ -438,7 +438,7 @@ export function isModelConnectionRunnable(
  * it cannot run — from the LIVE connection list.
  *
  * archive#3743/archive#3740: the Create gate used to test a connection id captured
- * into form state when "Chat with a model" was pressed. Pressed before the
+ * into form state when "Run it on Station" was pressed. Pressed before the
  * connections query resolved, that captured the empty string and nothing ever
  * backfilled it, so the §3.3 picker listed a connection as Ready while Create
  * stayed disabled with nothing on screen saying why — a state-dependent
