@@ -7,7 +7,7 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, resolve, sep } from 'node:path';
+import { basename, dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   gitLocationKeys,
@@ -154,6 +154,58 @@ function prepareBaseline(candidateRoot, baselineRoot, baseSha) {
 // remains a dead-child liveness bound, not a product-performance budget; 60s
 // leaves scheduler/contention margin without allowing an unbounded push hook.
 export const TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS = 60_000;
+export const TRANSFER_CAPTURE_TIMEOUT_ENV =
+  'STATION_TRANSFER_CAPTURE_TIMEOUT_MS';
+export const TRANSFER_BASELINE_ROOT_ENV = 'STATION_TRANSFER_BASELINE_ROOT';
+
+/**
+ * The liveness bound, with a per-machine override (#1279). Slower hardware
+ * than the reference Mac needs more than 60s for an honest capture, and the
+ * bound is a dead-child guard rather than a budget, so raising it locally
+ * weakens no measured claim. The override must stay a finite positive integer:
+ * a hung child still fails, it just fails later.
+ *
+ * Bootstrap note: this file is itself an orchestration transfer input, so a
+ * commit that changes it puts the gate in scope, and the gate refuses a dirty
+ * candidate root. On a machine the default bound locks out, the override is
+ * the only way to run the gate at all; without it neither an uncommitted nor
+ * a committed raise could pass the gate it fixes.
+ */
+export function transferCaptureLivenessTimeoutMs(env = process.env) {
+  const raw = env[TRANSFER_CAPTURE_TIMEOUT_ENV];
+  if (raw === undefined || raw.trim() === '')
+    return TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS;
+  const value = Number(raw.trim());
+  if (!Number.isSafeInteger(value) || value <= 0)
+    fail(
+      `${TRANSFER_CAPTURE_TIMEOUT_ENV} must be a positive integer of milliseconds (finite, so a hung capture still fails); got ${JSON.stringify(raw)}`,
+    );
+  return value;
+}
+
+/**
+ * Where a baseline belongs for this candidate. Relative `../station-worktrees/…`
+ * advice only resolves correctly from the primary checkout; a lane worktree
+ * already under `station-worktrees/` would nest a second `station-worktrees/`
+ * inside it, so the suggestion is absolute and sibling-aware.
+ */
+export function suggestedBaselineRoot(candidateRoot, baseSha) {
+  const name = `4294-transfer-baseline-${baseSha.slice(0, 12)}`;
+  const parent = dirname(resolve(candidateRoot));
+  return basename(parent) === 'station-worktrees'
+    ? resolve(parent, name)
+    : resolve(parent, 'station-worktrees', name);
+}
+
+export function missingBaselineRootMessage(baseSha, candidateRoot) {
+  const suggested = suggestedBaselineRoot(candidateRoot, baseSha);
+  return [
+    `missing baseline root. The pre-push hook runs this gate with no arguments, so pass it through the environment: ${TRANSFER_BASELINE_ROOT_ENV}=${suggested} (the --baseline-root flag only reaches a direct \`npm run transfer:gate\` invocation).`,
+    `Prepare an exact sibling first: npm run transfer:gate -- --prepare-baseline --baseline-root ${suggested} --base ${baseSha}`,
+    `then install its OWN locked dependencies (cd ${suggested} && npm run dependencies:ci && npm run dependencies:verify)`,
+    `and re-run with ${TRANSFER_BASELINE_ROOT_ENV}=${suggested} exported, e.g. ${TRANSFER_BASELINE_ROOT_ENV}=${suggested} git push ...`,
+  ].join('\n  ');
+}
 
 export function runTransferCapture({
   candidateRoot,
@@ -162,6 +214,7 @@ export function runTransferCapture({
   baseSha,
   capture: captureOverride = undefined,
   spawn = spawnSync,
+  timeout = transferCaptureLivenessTimeoutMs(),
 }) {
   const tsx = resolve(candidateRoot, 'node_modules/tsx/dist/cli.mjs');
   if (!existsSync(tsx)) fail(`candidate capture tool unavailable: ${tsx}`);
@@ -179,7 +232,7 @@ export function runTransferCapture({
       cwd: candidateRoot,
       encoding: 'utf8',
       env: transferGitEnvironment({ TSX_TSCONFIG_PATH: captureTsconfig }),
-      timeout: TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS,
+      timeout,
       windowsHide: true,
     },
   );
@@ -187,7 +240,7 @@ export function runTransferCapture({
   if (result.stderr) process.stderr.write(result.stderr);
   if (result.error?.code === 'ETIMEDOUT')
     fail(
-      `capture liveness timeout after ${TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS}ms for ${targetRoot}`,
+      `capture liveness timeout after ${timeout}ms for ${targetRoot}. This is a dead-child liveness bound, not a performance budget: on hardware slower than the reference machine, raise it for this run with ${TRANSFER_CAPTURE_TIMEOUT_ENV}=<milliseconds> (default ${TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS}); a hung capture still fails at the raised bound`,
     );
   if (result.status !== 0) {
     const resolutionFailure =
@@ -412,8 +465,13 @@ function runTransferGateInner(options) {
     return { prepared: true };
   }
   if (!options.baselineRoot)
-    fail(
-      `missing --baseline-root. Prepare an exact sibling first: npm run transfer:gate -- --prepare-baseline --baseline-root ../station-worktrees/4294-transfer-baseline-${baseSha.slice(0, 12)} --base ${baseSha}`,
+    fail(missingBaselineRootMessage(baseSha, candidateRoot));
+  // Validate the override before any root check or capture so a typo fails
+  // in milliseconds, not after a minute of honest work.
+  const timeout = transferCaptureLivenessTimeoutMs();
+  if (timeout !== TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS)
+    console.log(
+      `capture liveness bound raised to ${timeout}ms by ${TRANSFER_CAPTURE_TIMEOUT_ENV} (liveness guard only; not a measured budget)`,
     );
   const baselineRoot = exactRoot(options.baselineRoot, 'baseline', baseSha);
   exactRoot(candidateRoot, 'candidate', candidateSha);

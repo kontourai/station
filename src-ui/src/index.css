@@ -458,10 +458,6 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-}
-
-/* ── Global themed scrollbars ── */
-* {
   scrollbar-width: thin;
   scrollbar-color: var(--border-secondary) transparent;
 }
@@ -930,12 +926,6 @@ button:hover {
 }
 .app-toolbar__brand {
   display: none;
-}
-
-.header-nav {
-  display: flex;
-  gap: 4px;
-  align-items: center;
 }
 
 .header-divider {
@@ -4303,19 +4293,36 @@ button.tool-call__line:hover {
   margin-left: 0.25rem;
 }
 
-/* --success-secondary / --success-primary were defined nowhere either, so the
-   badge that says a tool call was APPROVED rendered exactly like the one that
-   says nothing: unpainted, with the `color` declaration invalid at
-   computed-value time and therefore falling back to `inherit` — measured live
-   at rgba(0, 0, 0, 0) on #eef3f8 body copy in dark and #202124 in light. This
-   is the mirror of the --error-* pair one rule below, missed because
-   station#1168's sweep was scoped to the --error- prefix (station#1246).
-   --success-bg / --success-text are the tinted-success pair the rest of the
-   app already uses for this shape, and they measure 5.01:1 light /
-   8.84:1 dark composited. */
-.tool-call__status-badge--success {
+/* The kit's filled tone rules bind all four semantic fills to the unrelated
+   --k-brand-contrast token. Beta/nightly override that token to white, making
+   every dark-theme tone fail AA. Station already has proven quiet pairs for
+   success, warning and error, so StatusBadge uses those complete trios here.
+   Border follows the quiet semantic border instead of retaining a saturated
+   ring around a muted chip. The kit has no info trio; its existing quiet
+   Active treatment is the toast contract: raised panel, normal text, active
+   border. Reuse that exact treatment rather than minting new info colors. */
+.tone-positive {
   background: var(--success-bg);
   color: var(--success-text);
+  border-color: var(--success-border);
+}
+
+.tone-caution {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border-color: var(--warning-border);
+}
+
+.tone-negative {
+  background: var(--error-bg);
+  color: var(--error-text);
+  border-color: var(--error-border);
+}
+
+.tone-active {
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  border-color: var(--k-active);
 }
 
 /* --error-secondary / --error-primary were never defined anywhere in the repo,
@@ -9036,7 +9043,10 @@ button.tool-call__line:hover {
   align-items: center;
   justify-content: flex-start;
   gap: var(--space-2);
-  min-width: 0;
+  /* Still the bar's absorber (see below), but it stops giving ground at the
+     44px touch floor: at 360px it otherwise lands at 43px and is a button
+     nobody can hit. */
+  min-width: 44px;
   min-height: 44px;
   padding: 0 var(--space-2);
   border: none;

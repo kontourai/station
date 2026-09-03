@@ -29,6 +29,15 @@ import { redactVerificationOutput } from './verification-redaction.mjs';
 // attachment allowance inside MAX_ARTIFACT_TOTAL_BYTES.
 export const DEFAULT_OUTPUT_BYTE_CAP = 3 * 1024 * 1024;
 export const DEFAULT_SUMMARY_BYTE_CAP = 8 * 1024;
+/**
+ * Terminal statuses where the command was stopped rather than judged: the
+ * deadline expired or a signal arrived, so no step failed and no test verdict
+ * exists. `failed` and `infrastructure_error` are deliberately NOT here --
+ * those reached a verdict and still attribute a failing step.
+ */
+export const STOPPED_TERMINAL_STATUSES = Object.freeze(
+  new Set(['timed_out', 'canceled', 'cancelled']),
+);
 export const MAX_ATTACHMENT_BYTES = 512 * 1024;
 export const MAX_ATTACHMENT_TOTAL_BYTES = 2 * 1024 * 1024;
 export const MAX_REDACTED_ATTACHMENT_BYTES = 320 * 1024;
@@ -625,12 +634,28 @@ export function summarizeVerificationOutput({
   //    stay silent on exactly the run a reader needs the field for.
   const exitedNonZero =
     typeof terminal.exitCode === 'number' && terminal.exitCode !== 0;
+  // The step is reported under a name that matches what the status actually
+  // claims. Under `timed_out` or `canceled` nothing failed -- the note above
+  // says as much, and asked the reader not to read `failingStep` as blame.
+  // A field named `failingStep` cannot carry that instruction: the name IS the
+  // claim, and readers acted on it. It is now `inFlightStep` for those
+  // statuses, which says the true and still-useful thing (this is the step
+  // that was running when the clock ran out) without accusing it.
+  //
+  // The carve-out is exactly the two statuses that mean the run was STOPPED.
+  // `failed` and `infrastructure_error` are non-passing terminal states that
+  // did reach a verdict, so they keep naming a failing step as before; only a
+  // clock or a signal produces a step that was merely in flight.
+  const attributableStep =
+    stepBoundary && !terminal.truncated ? stepBoundary.step : null;
+  const stopped = STOPPED_TERMINAL_STATUSES.has(terminal.status);
   const failingStep =
-    stepBoundary &&
-    !terminal.truncated &&
+    attributableStep &&
+    !stopped &&
     (terminal.status !== 'completed' || exitedNonZero)
-      ? stepBoundary.step
+      ? attributableStep
       : null;
+  const inFlightStep = attributableStep && stopped ? attributableStep : null;
   // "Final" is scoped the same way as the cause, and to the same stream: a
   // tally is something a runner PRINTS, so it belongs to stdout, and taking it
   // from the failing step's own region keeps an earlier step's tally-shaped
@@ -664,6 +689,14 @@ export function summarizeVerificationOutput({
   if (failingStep) {
     const candidate = { ...summary, failingStep };
     if (fitsSummary(candidate, maxBytes)) summary.failingStep = failingStep;
+  }
+  // inFlightStep earns the same whole-or-omitted budget claim as failingStep:
+  // it is an identifier for the same reason, and on a timeout it is the single
+  // most useful field in the summary -- the one that says which phase to give
+  // more budget or to shard further.
+  if (inFlightStep) {
+    const candidate = { ...summary, inFlightStep };
+    if (fitsSummary(candidate, maxBytes)) summary.inFlightStep = inFlightStep;
   }
   // causeStream is an enum, and it gets the same whole-or-omitted treatment
   // for a sharper reason than failingStep's. Truncating `'stderr'` to `'s'`

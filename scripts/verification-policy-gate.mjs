@@ -22,6 +22,8 @@ const VITEST_RESOURCE_GROUP_NAMES = Object.freeze([
   'ordinary',
   'processHeavy',
   'processExclusive',
+  'coordinatorExclusive',
+  'credentialLedgerExclusive',
   'sharedOutput',
   'dogfoodReconcile',
 ]);
@@ -113,6 +115,8 @@ export const FULL_REGRESSION_TEST_PHASE_IDS = Object.freeze([
   ...FULL_REGRESSION_ORDINARY_SHARDS.map(({ id }) => id),
   'test-full-process-heavy',
   'test-full-process-exclusive',
+  'test-full-coordinator-exclusive',
+  'test-full-credential-ledger-exclusive',
   'test-full-shared-output',
   'test-full-dogfood-reconcile',
 ]);

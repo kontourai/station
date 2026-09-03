@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { type HttpBindings } from '@hono/node-server';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
@@ -28,7 +29,7 @@ let peerCounter = 1;
 const loopback = () => `127.0.0.${(peerCounter++ % 250) + 2}`;
 const remote = () => `100.96.${(peerCounter++ % 250) + 1}.7`;
 
-function createHarness() {
+function createHarness(options: { uiBootstrapToken?: string } = {}) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-ui-bootstrap-mint-'));
   mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
   const secretPath = join(homeDir, 'runtime', 'local-grant.secret');
@@ -42,6 +43,7 @@ function createHarness() {
     {
       localGrant: { secretPath },
       allowedOrigins: ['https://station.example.test'],
+      ...options,
     },
   );
   const request = (path: string, body: unknown, peer: string, headers = {}) =>
@@ -62,13 +64,57 @@ async function mint(
   secret: string,
   peer = loopback(),
   headers: Record<string, string> = {},
+  purpose?: string,
 ) {
   return harness.request(
     PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_MINT_PATH,
-    { secret },
+    purpose === undefined ? { secret } : { secret, purpose },
     peer,
     headers,
   );
+}
+
+async function mintedToken(
+  harness: ReturnType<typeof createHarness>,
+  purpose?: string,
+) {
+  const response = await mint(
+    harness,
+    harness.secret(),
+    loopback(),
+    {},
+    purpose,
+  );
+  expect(response.status).toBe(200);
+  return ((await response.json()) as { token: string }).token;
+}
+
+function redeem(
+  harness: ReturnType<typeof createHarness>,
+  token: string,
+  headers: Record<string, string> = {},
+) {
+  return harness.request(
+    PUBLIC_DEVICE_PAIRING_UI_BOOTSTRAP_PATH,
+    { token },
+    remote(),
+    { Origin: 'https://station.example.test', ...headers },
+  );
+}
+
+/** Redeem once and hand back the HttpOnly session cookie the browser would keep. */
+async function sessionCookie(
+  harness: ReturnType<typeof createHarness>,
+): Promise<{ cookie: string; deviceId: string }> {
+  const response = await redeem(harness, await mintedToken(harness));
+  expect(response.status).toBe(200);
+  const setCookie = response.headers.get('set-cookie');
+  expect(setCookie).toContain('HttpOnly');
+  const { device } = (await response.json()) as { device: { id: string } };
+  return {
+    cookie: (setCookie as string).split(';', 1)[0],
+    deviceId: device.id,
+  };
 }
 
 describe('ui-bootstrap mint', () => {
@@ -169,6 +215,148 @@ describe('ui-bootstrap mint', () => {
     expect(redeemed.status).toBe(200);
     const body = (await redeemed.json()) as { device: { scope: string } };
     expect(body.device.scope).toBe(DEFAULT_GRANT_PAIRING_SCOPE);
+  });
+
+  test('minting for the API docs leaves a pending start link usable (#1259)', async () => {
+    // The regression #1118 shipped. There was ONE server-held capability, so
+    // the tray minting for the docs replaced an unspent `station start` link,
+    // and the user's terminal URL then failed with nothing on screen
+    // connecting it to the menu item they had clicked.
+    const harness = createHarness();
+    const launcher = await mintedToken(harness);
+    await mintedToken(harness, 'api-docs');
+
+    expect((await redeem(harness, launcher)).status).toBe(200);
+  });
+
+  test('minting a start link leaves a pending API-docs capability usable', async () => {
+    // The same collision in the other direction: opening the UI must not kill
+    // a docs capability already in flight.
+    const harness = createHarness();
+    const docs = await mintedToken(harness, 'api-docs');
+    await mintedToken(harness);
+
+    expect((await redeem(harness, docs)).status).toBe(200);
+  });
+
+  test('replace-on-mint still holds WITHIN a purpose', async () => {
+    // The rule the single slot was there to enforce is intact; it just applies
+    // per purpose now rather than across unrelated ones.
+    const harness = createHarness();
+    const first = await mintedToken(harness, 'api-docs');
+    const second = await mintedToken(harness, 'api-docs');
+    expect(first).not.toBe(second);
+
+    expect((await redeem(harness, first)).status).toBe(403);
+    expect((await redeem(harness, second)).status).toBe(200);
+  });
+
+  test('spending one purpose does not spend the other', async () => {
+    const harness = createHarness();
+    const launcher = await mintedToken(harness);
+    const docs = await mintedToken(harness, 'api-docs');
+
+    expect((await redeem(harness, docs)).status).toBe(200);
+    // The launcher capability was never presented, so it is still live.
+    expect((await redeem(harness, launcher)).status).toBe(200);
+  });
+
+  test('the token station start inherits from the environment survives a docs mint (#1259, real shape)', async () => {
+    // Production does not mint the launcher over HTTP: `station start` passes
+    // STATION_UI_BOOTSTRAP_TOKEN into the server as `options.uiBootstrapToken`
+    // and prints it in the start link. The tests above mint their launcher
+    // through the route, so this is the fixture that matches what the CLI
+    // actually does — the #1259 report was this token dying.
+    const inherited = 'inherited-launcher-token-from-station-start-0123456789';
+    const harness = createHarness({ uiBootstrapToken: inherited });
+    await mintedToken(harness, 'api-docs');
+
+    expect((await redeem(harness, inherited)).status).toBe(200);
+  });
+
+  test('the purpose literal the tray sends is one the server accepts', async () => {
+    // src-desktop/src/tray.rs cannot import the TypeScript vocabulary, so it
+    // repeats the literal. Bind it behaviourally: mint with exactly what the
+    // Rust source says, so a drift on either side is a 400 here rather than
+    // a tray item that silently stops working.
+    const tray = readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        '..',
+        '..',
+        '..',
+        'src-desktop',
+        'src',
+        'tray.rs',
+      ),
+      'utf8',
+    );
+    const literal = /const API_DOCS_CAPABILITY_PURPOSE: &str = "([^"]+)";/.exec(
+      tray,
+    )?.[1];
+    expect(literal).toBeDefined();
+    const harness = createHarness();
+    expect(
+      (await mint(harness, harness.secret(), loopback(), {}, literal)).status,
+    ).toBe(200);
+  });
+
+  test('a capability presented by a browser that already holds a session is spent (#1283)', async () => {
+    // The common docs flow: the default browser already has a session from an
+    // earlier start link, the tray mints for the docs, the launcher page
+    // presents that capability. The browser gets its existing device back —
+    // and the capability must not stay live in its slot afterwards.
+    const harness = createHarness();
+    const { cookie, deviceId } = await sessionCookie(harness);
+    const docs = await mintedToken(harness, 'api-docs');
+
+    const presented = await redeem(harness, docs, { Cookie: cookie });
+    expect(presented.status).toBe(200);
+    const body = (await presented.json()) as { device: { id: string } };
+    expect(body.device.id).toBe(deviceId);
+
+    // Spent: a cookieless presentation of the same capability is refused.
+    expect((await redeem(harness, docs)).status).toBe(403);
+  });
+
+  test('re-presenting a spent capability with the session is still idempotent', async () => {
+    // The property the old ordering existed for: a user re-pasting a start
+    // link never sees a refusal while their session is valid.
+    const harness = createHarness();
+    const { cookie } = await sessionCookie(harness);
+    const docs = await mintedToken(harness, 'api-docs');
+    expect((await redeem(harness, docs, { Cookie: cookie })).status).toBe(200);
+    expect((await redeem(harness, docs, { Cookie: cookie })).status).toBe(200);
+  });
+
+  test('a wrong capability presented with a session touches no slot', async () => {
+    const harness = createHarness();
+    const { cookie } = await sessionCookie(harness);
+    const docs = await mintedToken(harness, 'api-docs');
+
+    const wrong = await redeem(harness, 'not-the-capability-0123456789abcdef', {
+      Cookie: cookie,
+    });
+    expect(wrong.status).toBe(200);
+    // The real capability is still live for a browser without a session.
+    expect((await redeem(harness, docs)).status).toBe(200);
+  });
+
+  test('an unknown purpose is refused rather than given a slot', async () => {
+    // An open vocabulary would let a caller allocate unbounded slots and make
+    // "which capabilities are live" unanswerable.
+    const harness = createHarness();
+    const response = await mint(
+      harness,
+      harness.secret(),
+      loopback(),
+      {},
+      'anything-i-like',
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'invalid_request',
+    });
   });
 
   test('a later mint invalidates the prior unspent token', async () => {

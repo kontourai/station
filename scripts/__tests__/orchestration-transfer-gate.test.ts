@@ -14,9 +14,15 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { collectRepositoryIdentity } from '../lib/test-reliability.mjs';
 import {
   executeTransferComparison,
+  missingBaselineRootMessage,
   policyAttribution,
   runTransferCapture,
+  runTransferGate,
+  suggestedBaselineRoot,
+  TRANSFER_BASELINE_ROOT_ENV,
   TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS,
+  TRANSFER_CAPTURE_TIMEOUT_ENV,
+  transferCaptureLivenessTimeoutMs,
   transferGitEnvironment,
   withTransferGitEnvironment,
 } from '../orchestration-transfer-gate.mjs';
@@ -253,22 +259,128 @@ describe('orchestration transfer gate control flow', () => {
       }
     }
   });
-  test('fails a capture liveness timeout instead of waiting indefinitely', () => {
+  test('fails a capture liveness timeout instead of waiting indefinitely, naming the override', () => {
     expect(TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS).toBe(60_000);
+    let spawnedTimeout: unknown;
     expect(() =>
       runTransferCapture({
         candidateRoot: resolve(import.meta.dirname, '../..'),
         targetRoot: '/fixture-target',
         output: '/fixture-output.json',
         baseSha: sha('a'),
-        spawn: () => ({
-          status: null,
-          error: { code: 'ETIMEDOUT' },
-          stdout: '',
-          stderr: '',
-        }),
+        spawn: (_command: string, _args: string[], options: any) => {
+          spawnedTimeout = options.timeout;
+          return {
+            status: null,
+            error: { code: 'ETIMEDOUT' },
+            stdout: '',
+            stderr: '',
+          };
+        },
       } as any),
-    ).toThrow('capture liveness timeout');
+    ).toThrow(
+      new RegExp(
+        `capture liveness timeout after ${TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS}ms.*${TRANSFER_CAPTURE_TIMEOUT_ENV}`,
+      ),
+    );
+    expect(spawnedTimeout).toBe(TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS);
+  });
+
+  test('#1279: the liveness bound is overridable from the environment, finite, and reaches the child', () => {
+    expect(transferCaptureLivenessTimeoutMs({})).toBe(
+      TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS,
+    );
+    expect(
+      transferCaptureLivenessTimeoutMs({ [TRANSFER_CAPTURE_TIMEOUT_ENV]: '' }),
+    ).toBe(TRANSFER_CAPTURE_LIVENESS_TIMEOUT_MS);
+    expect(
+      transferCaptureLivenessTimeoutMs({
+        [TRANSFER_CAPTURE_TIMEOUT_ENV]: ' 180000 ',
+      }),
+    ).toBe(180_000);
+    for (const rejected of ['0', '-5', '1.5', 'abc', 'Infinity', 'NaN'])
+      expect(() =>
+        transferCaptureLivenessTimeoutMs({
+          [TRANSFER_CAPTURE_TIMEOUT_ENV]: rejected,
+        }),
+      ).toThrow(`${TRANSFER_CAPTURE_TIMEOUT_ENV} must be a positive integer`);
+
+    const prior = process.env[TRANSFER_CAPTURE_TIMEOUT_ENV];
+    process.env[TRANSFER_CAPTURE_TIMEOUT_ENV] = '180000';
+    try {
+      let spawnedTimeout: unknown;
+      expect(() =>
+        runTransferCapture({
+          candidateRoot: resolve(import.meta.dirname, '../..'),
+          targetRoot: '/fixture-target',
+          output: '/fixture-output.json',
+          baseSha: sha('a'),
+          spawn: (_command: string, _args: string[], options: any) => {
+            spawnedTimeout = options.timeout;
+            return {
+              status: null,
+              error: { code: 'ETIMEDOUT' },
+              stdout: '',
+              stderr: '',
+            };
+          },
+        } as any),
+      ).toThrow('capture liveness timeout after 180000ms');
+      expect(spawnedTimeout).toBe(180_000);
+    } finally {
+      if (prior === undefined) delete process.env[TRANSFER_CAPTURE_TIMEOUT_ENV];
+      else process.env[TRANSFER_CAPTURE_TIMEOUT_ENV] = prior;
+    }
+  });
+
+  test('#1279: a missing baseline root names the env var the pre-push path reads', () => {
+    const { candidate, baselineSha } = twoRootGitFixture();
+    const prior = process.env[TRANSFER_BASELINE_ROOT_ENV];
+    delete process.env[TRANSFER_BASELINE_ROOT_ENV];
+    try {
+      let message = '';
+      try {
+        runTransferGate({
+          candidateRoot: candidate,
+          baselineRoot: '',
+          base: baselineSha,
+          outputDir: '.kontourai/orchestration-transfer-gate',
+          prepareBaseline: false,
+        });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toBe(
+        `orchestration transfer gate: ${missingBaselineRootMessage(baselineSha, candidate)}`,
+      );
+      expect(message).toContain(
+        `${TRANSFER_BASELINE_ROOT_ENV}=${suggestedBaselineRoot(candidate, baselineSha)}`,
+      );
+      expect(message).toContain('--prepare-baseline');
+      expect(message).toContain('npm run dependencies:ci');
+      expect(message).toContain('npm run dependencies:verify');
+      expect(message).toContain(baselineSha);
+    } finally {
+      if (prior !== undefined) process.env[TRANSFER_BASELINE_ROOT_ENV] = prior;
+    }
+  });
+
+  test('#1279: suggests a sibling baseline for a lane worktree, not a nested station-worktrees', () => {
+    const base = sha('c');
+    expect(
+      suggestedBaselineRoot('/work/station-worktrees/1279-lane', base),
+    ).toBe(
+      resolve(
+        '/work/station-worktrees',
+        `4294-transfer-baseline-${base.slice(0, 12)}`,
+      ),
+    );
+    expect(suggestedBaselineRoot('/work/station', base)).toBe(
+      resolve(
+        '/work/station-worktrees',
+        `4294-transfer-baseline-${base.slice(0, 12)}`,
+      ),
+    );
   });
 
   test('captures baseline modules after the candidate removes a contracts export', () => {

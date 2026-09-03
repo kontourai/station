@@ -9,6 +9,8 @@ import { PROCESS_HEAVY_MAX_WORKERS } from '../run-vitest-corpus.mjs';
 import {
   assertOrdinaryVitestSelection,
   buildVitestResourceGroups,
+  COORDINATOR_EXCLUSIVE_VITEST_FILES,
+  CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES,
   DOGFOOD_RECONCILE_PREFIX,
   discoverVitestFiles,
   discoverVitestResourceGroups,
@@ -199,6 +201,34 @@ describe('Vitest resource manifest', () => {
     expect(groups.sharedOutput).not.toContain(file);
   }, 70_000);
 
+  it('classifies the credential DDL proof exactly once in its exclusive phase', () => {
+    const file =
+      'src-server/services/orchestration/__tests__/credential-application-ledger.test.ts';
+    const groups = discoverVitestResourceGroups();
+    expect(CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES).toEqual([file]);
+    expect(
+      groups.credentialLedgerExclusive.filter((entry) => entry === file),
+    ).toEqual([file]);
+    expect(groups.ordinary).not.toContain(file);
+    expect(groups.processHeavy).not.toContain(file);
+    expect(groups.processExclusive).not.toContain(file);
+    expect(groups.sharedOutput).not.toContain(file);
+  }, 70_000);
+
+  it('classifies the verification coordinator exactly once in its exclusive phase', () => {
+    const file = 'scripts/__tests__/verification-coordinator.test.ts';
+    const groups = discoverVitestResourceGroups();
+    expect(COORDINATOR_EXCLUSIVE_VITEST_FILES).toEqual([file]);
+    expect(
+      groups.coordinatorExclusive.filter((entry) => entry === file),
+    ).toEqual([file]);
+    expect(groups.ordinary).not.toContain(file);
+    expect(groups.processHeavy).not.toContain(file);
+    expect(groups.processExclusive).not.toContain(file);
+    expect(groups.credentialLedgerExclusive).not.toContain(file);
+    expect(groups.sharedOutput).not.toContain(file);
+  }, 70_000);
+
   it('recognizes bare and import-equals child-process forms before they can enter ordinary', () => {
     for (const source of [
       "import { spawn } from 'child_process'; void spawn;",
@@ -258,6 +288,8 @@ describe('Vitest resource manifest', () => {
         manifest: {
           processHeavy: { files: [heavy] },
           processExclusive: { files: [] },
+          coordinatorExclusive: { files: [] },
+          credentialLedgerExclusive: { files: [] },
           sharedOutput: { files: [] },
         },
       }),
@@ -280,6 +312,8 @@ describe('Vitest resource manifest', () => {
         manifest: {
           processHeavy: { files: [first] },
           processExclusive: { files: [] },
+          coordinatorExclusive: { files: [] },
+          credentialLedgerExclusive: { files: [] },
           sharedOutput: { files: [first] },
         },
       }),
@@ -290,6 +324,8 @@ describe('Vitest resource manifest', () => {
         manifest: {
           processHeavy: { files: ['missing.test.ts'] },
           processExclusive: { files: [] },
+          coordinatorExclusive: { files: [] },
+          credentialLedgerExclusive: { files: [] },
           sharedOutput: { files: [] },
         },
       }),

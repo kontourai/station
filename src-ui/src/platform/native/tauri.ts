@@ -363,6 +363,7 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
       // of the capability report remains useful and the pairing UI remains.
     }
   }
+  const clientBuild = parseClientBuildProvenance(candidate.clientBuild);
   return {
     platform: candidate.platform as NativeCapabilityReport['platform'],
     channel:
@@ -376,6 +377,37 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
     // install. Dropping it here silently disabled the dev tint entirely.
     devBuild: candidate.devBuild === true,
     ...(mobileDefaultEndpoint ? { mobileDefaultEndpoint } : {}),
+    ...(clientBuild ? { clientBuild } : {}),
+  };
+}
+
+/** Optional client artifact metadata: malformed input is omitted, never guessed. */
+function parseClientBuildProvenance(
+  value: unknown,
+): NativeCapabilityReport['clientBuild'] | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof candidate.fullSha !== 'string' ||
+    !/^[0-9a-f]{40}$/i.test(candidate.fullSha) ||
+    typeof candidate.branch !== 'string' ||
+    candidate.branch.trim().length === 0 ||
+    typeof candidate.builtAt !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(
+      candidate.builtAt,
+    ) ||
+    !Number.isFinite(Date.parse(candidate.builtAt))
+  ) {
+    return undefined;
+  }
+  const canonical = candidate.builtAt.includes('.')
+    ? candidate.builtAt
+    : candidate.builtAt.replace(/Z$/, '.000Z');
+  if (new Date(candidate.builtAt).toISOString() !== canonical) return undefined;
+  return {
+    fullSha: candidate.fullSha.toLowerCase(),
+    branch: candidate.branch,
+    builtAt: new Date(candidate.builtAt).toISOString(),
   };
 }
 

@@ -888,7 +888,7 @@ export async function runServiceCommand(
     )
   ) {
     throw new Error(
-      'Usage: station service <install|start|status|stop|uninstall> [flags]',
+      'Usage: station service <install|start|status|stop|uninstall|run> [flags]',
     );
   }
   if (lifecycle.homeSource === '--temp-home') {

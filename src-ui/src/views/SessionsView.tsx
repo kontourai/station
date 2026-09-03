@@ -375,7 +375,6 @@ export function SessionsView({
     error: sessionsError,
     refetch,
   } = useOrchestrationSessionsQuery();
-  const { data: pairedDevices = [] } = usePairedDevicesQuery(apiBase);
   const agents = useAgents();
   const openChats = useOpenChats(agents, sessions);
   const openConversationIds = useMemo(
@@ -402,6 +401,15 @@ export function SessionsView({
     useState<SessionEvidenceReveal | null>(null);
   const [search, setSearch] = useState('');
   const [axis, setAxis] = useState<ActivityAxis>('task');
+  // The device inventory is operator-only on the server
+  // (`/api/pairing/devices` answers 401 to a paired device's own session), and
+  // this view only needs it to name the groups of the origin axis. Reading it
+  // eagerly made every fresh-home Activity visit poll a refused route every
+  // 15 s, which the release walkthrough counts as a request-error. Read it
+  // only while the origin axis is the one being looked at.
+  const { data: pairedDevices = [] } = usePairedDevicesQuery(apiBase, {
+    enabled: axis === 'origin',
+  });
   /** Active project filter, set by clicking a row's project pill. */
   const [projectFilter, setProjectFilter] = useState<string | null>(null);
   const [delegationParent, setDelegationParent] =

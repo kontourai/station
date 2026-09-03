@@ -59,6 +59,14 @@ export interface NativeCapabilityReport {
    * release environment. Saved/default profiles remain authoritative.
    */
   mobileDefaultEndpoint?: string;
+  /** Immutable provenance baked into this installed native client artifact. */
+  clientBuild?: NativeClientBuildProvenance;
+}
+
+export interface NativeClientBuildProvenance {
+  fullSha: string;
+  branch: string;
+  builtAt: string;
 }
 
 export type NativeCommandName =

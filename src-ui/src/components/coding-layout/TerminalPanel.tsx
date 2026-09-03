@@ -49,6 +49,12 @@ export function TerminalPanel({
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const [wsError, setWsError] = useState(false);
+  // #1244: the server's specific degraded-terminal reason (node-pty failed
+  // to load). Distinct from wsError so a dead PTY backend reads as "here is
+  // why, and what still works", never as a silent pane or a transport blip.
+  const [unavailableReason, setUnavailableReason] = useState<string | null>(
+    null,
+  );
   const [selection, setSelection] = useState('');
   const [handoffError, setHandoffError] = useState<string | null>(null);
   // Populated by the WS effect; sends text to the PTY as if typed.
@@ -173,6 +179,15 @@ export function TerminalPanel({
           } else if (msg.type === 'exited') {
             exited = true;
             terminal.write('\r\n[terminal exited]\r\n');
+          } else if (
+            msg.type === 'error' &&
+            msg.code === 'terminal-unavailable' &&
+            typeof msg.message === 'string'
+          ) {
+            // The server's PTY backend (node-pty) is unavailable (#1244).
+            // Surface the server's actionable reason and swap to the
+            // command-executor fallback, which runs without a PTY.
+            setUnavailableReason(msg.message);
           }
         } catch {
           /* ignore malformed */
@@ -333,6 +348,17 @@ export function TerminalPanel({
     );
     return () => activeTerminalWriter.clearActive(terminalId);
   }, [isActive, terminalId]);
+
+  if (unavailableReason) {
+    // Loud degradation (#1244): name the reason, then keep the user working
+    // through the non-PTY command executor.
+    return (
+      <div className="coding-terminal-shell">
+        <p role="alert">{unavailableReason}</p>
+        <CommandExecutor workingDir={workingDir} />
+      </div>
+    );
+  }
 
   if (wsError) {
     return <CommandExecutor workingDir={workingDir} />;

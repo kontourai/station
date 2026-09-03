@@ -107,9 +107,12 @@ function artifactInput([destination, ...entries]) {
       platformArtifacts = {};
       artifacts[platform] = platformArtifacts;
     }
-    platformArtifacts[name] = resolve(path);
+    platformArtifacts[name] = { path: resolve(path) };
   }
-  write(destination, { artifacts });
+  // release-cohort.mjs consumes the downloaded platform map directly. Keep
+  // this file in that exact reader shape so the workflow cannot accidentally
+  // add a transport-only wrapper that the admission schema does not know.
+  write(destination, artifacts);
 }
 
 function promotionFenceValue(value, expected = undefined) {

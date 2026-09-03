@@ -4,6 +4,9 @@ interface ProjectSidebarHeaderProps {
   homeLabel: string;
   /** Release-channel presentation is intentionally separate from the title. */
   channelBadge?: string;
+  /** Compact local artifact age; the title carries canonical UTC detail. */
+  buildLabel?: string;
+  buildDescription?: string;
   collapsed: boolean;
   isMobile: boolean;
   onCloseMobile: () => void;
@@ -15,6 +18,8 @@ export function ProjectSidebarHeader({
   appName,
   homeLabel,
   channelBadge,
+  buildLabel,
+  buildDescription,
   collapsed,
   isMobile,
   onCloseMobile,
@@ -55,6 +60,15 @@ export function ProjectSidebarHeader({
             >
               {channelBadge}
             </small>
+          )}
+          {buildLabel && (
+            <>
+              <br />
+              <small className="sidebar__build-age" title={buildDescription}>
+                <span aria-hidden="true">{buildLabel}</span>
+                <span className="sr-only">{buildDescription}</span>
+              </small>
+            </>
           )}
         </span>
       </button>
