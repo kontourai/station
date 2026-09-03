@@ -291,6 +291,21 @@ export class MCPService {
     return this.configLoader.isLiveContributedIntegration?.(id) === true;
   }
 
+  private async loadIntegrationWithOwnership(id: string) {
+    const loader = this.configLoader as ConfigLoader & {
+      loadIntegrationWithOwnership?: ConfigLoader['loadIntegrationWithOwnership'];
+    };
+    if (typeof loader.loadIntegrationWithOwnership === 'function') {
+      return loader.loadIntegrationWithOwnership(id);
+    }
+    // Test/adapter compatibility only. Production ConfigLoader always exposes
+    // the atomic method above; legacy narrow adapters retain their old shape.
+    return {
+      definition: await loader.loadIntegration(id),
+      contributed: this.isLiveContributedIntegration(id),
+    };
+  }
+
   private assertMutableIntegration(id: string): void {
     if (this.isLiveContributedIntegration(id)) {
       throw new Error(
@@ -612,8 +627,12 @@ export class MCPService {
   }
 
   async probeIntegration(id: string): Promise<ToolDef> {
-    const existing = await this.getIntegration(id);
-    const liveContributed = this.isLiveContributedIntegration(id);
+    const loaded = await this.loadIntegrationWithOwnership(id);
+    const existing = loaded.definition;
+    // Retain how THIS definition was obtained. Re-reading ownership after a
+    // probe would let an uninstall turn a package snapshot into a writable
+    // Station integration.
+    const liveContributed = loaded.contributed;
     const oauthProvider =
       existing.transport === 'sse' || existing.transport === 'streamable-http'
         ? this.createOAuthProvider(existing)

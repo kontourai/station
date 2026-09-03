@@ -206,6 +206,12 @@ export interface IntegrationDefinitionSource {
   listIntegrations(): ToolMetadata[];
 }
 
+export interface LoadedIntegrationDefinition {
+  definition: ToolDef;
+  /** True only when the returned definition came from a live read-only source. */
+  contributed: boolean;
+}
+
 export interface SkillConfig extends SkillConfigRecord {}
 
 export class ConfigLoader {
@@ -752,15 +758,29 @@ export class ConfigLoader {
    * Load tool definition
    */
   async loadIntegration(id: string): Promise<ToolDef> {
+    return (await this.loadIntegrationWithOwnership(id)).definition;
+  }
+
+  /**
+   * Resolves definition and ownership in one read. Callers must retain this
+   * provenance instead of re-reading live ownership after using the value: a
+   * package can disappear between those operations.
+   */
+  async loadIntegrationWithOwnership(
+    id: string,
+  ): Promise<LoadedIntegrationDefinition> {
     await this.ensureHomeSchema();
     if (!integrationConfigExists(this.projectHomeDir, id)) {
       for (const source of this.integrationSources) {
         const projected = source.loadIntegration(id);
-        if (projected) return projected;
+        if (projected) return { definition: projected, contributed: true };
       }
     }
     const def = await loadIntegrationConfig(this.projectHomeDir, id);
-    return this.withBuiltinIntegrationRuntimeIdentity(id, def);
+    return {
+      definition: this.withBuiltinIntegrationRuntimeIdentity(id, def),
+      contributed: false,
+    };
   }
 
   async captureIntegrationPolicySnapshot(

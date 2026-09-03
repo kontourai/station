@@ -543,6 +543,16 @@ describe('AgentPluginLoader', () => {
     expect((await config.loadIntegration(metadata.id)).endpoint).toBe(
       'https://one.example/mcp',
     );
+    await expect(
+      config.loadIntegrationWithOwnership(metadata.id),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        contributed: true,
+        definition: expect.objectContaining({
+          endpoint: 'https://one.example/mcp',
+        }),
+      }),
+    );
     expect(existsSync(join(stationHome, 'integrations'))).toBe(false);
 
     const live = await config.loadIntegration(metadata.id);

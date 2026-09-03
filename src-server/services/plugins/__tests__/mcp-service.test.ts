@@ -37,7 +37,7 @@ const { connectMCP } = await import('@kontourai/station-shared/mcp');
 const connectMCPMock = vi.mocked(connectMCP);
 
 function createMockConfigLoader() {
-  return withAtomicUpdate({
+  const loader = withAtomicUpdate({
     listIntegrations: vi
       .fn()
       .mockResolvedValue([{ id: 'mcp-1', name: 'Test' }]),
@@ -51,6 +51,12 @@ function createMockConfigLoader() {
       tools: { mcpServers: ['mcp-1'], available: ['*'] },
     }),
     updateAgent: vi.fn().mockResolvedValue(undefined),
+  });
+  return Object.assign(loader, {
+    loadIntegrationWithOwnership: vi.fn(async (id: string) => ({
+      definition: await loader.loadIntegration(id),
+      contributed: false,
+    })),
   });
 }
 
@@ -91,6 +97,10 @@ describe('MCPService', () => {
     });
     Object.assign(loader, {
       isLiveContributedIntegration: vi.fn(() => true),
+      loadIntegrationWithOwnership: vi.fn(async () => ({
+        definition: await loader.loadIntegration('agent-plugin-live'),
+        contributed: true,
+      })),
     });
     const svc = new MCPService(
       loader as any,
@@ -117,6 +127,40 @@ describe('MCPService', () => {
     );
     expect(loader.saveIntegration).not.toHaveBeenCalled();
     expect(connectMCPMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('never persists a probed package definition after its owner disappears', async () => {
+    connectMCPMock.mockReset();
+    connectMCPMock.mockResolvedValue({ tools: [], disconnect: vi.fn() } as any);
+    const loader = createMockConfigLoader();
+    loader.loadIntegration.mockResolvedValue({
+      id: 'removed-package-tool',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'removed-package-command',
+    });
+    loader.loadIntegrationWithOwnership.mockImplementationOnce(async () => ({
+      definition: await loader.loadIntegration('removed-package-tool'),
+      contributed: true,
+    }));
+    Object.assign(loader, {
+      // The package disappears after its definition was returned.
+      isLiveContributedIntegration: vi.fn(() => false),
+    });
+    const svc = new MCPService(
+      loader as any,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      mockLogger,
+    );
+
+    await expect(svc.probeIntegration('removed-package-tool')).resolves.toEqual(
+      expect.objectContaining({ probe: expect.objectContaining({ ok: true }) }),
+    );
+    expect(loader.saveIntegration).not.toHaveBeenCalled();
   });
 
   test('migrates stored env only after a fresh bound child succeeds and retries a safe partial grant', async () => {
