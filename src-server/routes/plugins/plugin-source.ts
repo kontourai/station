@@ -798,6 +798,41 @@ async function validateAndBuildInstalledDependency(
   );
 }
 
+async function recordCreatedDependency(options: {
+  dependencyId: string;
+  pluginsDir: string;
+  targetDir: string;
+  createdPluginTrees: Set<string>;
+  createdPluginDigests: Map<string, string>;
+  lifecycle?: PluginDependencyLifecycle;
+}): Promise<void> {
+  const installedDigest = computePluginContentDigest(
+    options.pluginsDir,
+    options.dependencyId,
+  );
+  if (!installedDigest) {
+    const digestError = new Error(
+      `Plugin dependency '${options.dependencyId}' could not bind rollback ownership to installed bytes`,
+    );
+    // The creating frame still holds this dependency's content lock, so this
+    // is the last point at which the undigestible tree can be removed without
+    // risking deletion of a later replacement. Never hand a name-only entry
+    // to the outer rollback.
+    try {
+      await options.lifecycle?.rollback(options.dependencyId);
+      rmSync(options.targetDir, { recursive: true, force: true });
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [digestError, rollbackError],
+        `Plugin dependency '${options.dependencyId}' digest binding and rollback both failed`,
+      );
+    }
+    throw digestError;
+  }
+  options.createdPluginTrees.add(options.dependencyId);
+  options.createdPluginDigests.set(options.dependencyId, installedDigest);
+}
+
 /**
  * Installs one dependency, recursing into its own dependencies.
  *
@@ -866,6 +901,16 @@ export async function installPluginDependency(
     return dependencyFailure(error);
   }
 
+  // Recursion membership is graph authority and must win over filesystem
+  // presence. Registry installers materialize a parent before traversing its
+  // children, so checking the target first turns A -> B -> A into an
+  // "already installed" success instead of a cycle refusal.
+  if (installing.has(dependency.id)) {
+    return {
+      success: false,
+      error: `Plugin dependency cycle detected: ${dependency.id}`,
+    };
+  }
   if (existsSync(targetDir)) {
     try {
       await validateAndBuildInstalledDependency(
@@ -879,13 +924,6 @@ export async function installPluginDependency(
       return dependencyFailure(error);
     }
   }
-  if (installing.has(dependency.id)) {
-    return {
-      success: false,
-      error: `Plugin dependency cycle detected: ${dependency.id}`,
-    };
-  }
-
   installing.add(dependency.id);
   let dependencySource = dependency.source;
   if (!dependencySource) {
@@ -1014,18 +1052,16 @@ export async function installPluginDependency(
               rmSync(targetDir, { recursive: true, force: true });
               throw error;
             }
-            // Created here and left standing: the caller may have to undo it.
-            createdPluginTrees.add(dependency.id);
-            const installedDigest = computePluginContentDigest(
+            // Created here and left standing: bind deletion authority to its
+            // exact bytes before exposing it to the caller's later rollback.
+            await recordCreatedDependency({
+              dependencyId: dependency.id,
               pluginsDir,
-              dependency.id,
-            );
-            if (!installedDigest) {
-              throw new Error(
-                `Plugin dependency '${dependency.id}' could not bind rollback ownership to installed bytes`,
-              );
-            }
-            createdPluginDigests.set(dependency.id, installedDigest);
+              targetDir,
+              createdPluginTrees,
+              createdPluginDigests,
+              lifecycle,
+            });
             return { success: true };
           },
         );
@@ -1172,19 +1208,16 @@ export async function installPluginDependency(
         }
         return dependencyFailure(error);
       }
-      // Created here and left standing: the caller may have to undo it.
-      createdPluginTrees.add(dependency.id);
-      const installedDigest = computePluginContentDigest(
+      // Created here and left standing: bind deletion authority to its exact
+      // bytes before exposing it to the caller's later rollback.
+      await recordCreatedDependency({
+        dependencyId: dependency.id,
         pluginsDir,
-        dependency.id,
-      );
-      if (!installedDigest) {
-        return {
-          success: false,
-          error: `Plugin dependency '${dependency.id}' could not bind rollback ownership to installed bytes`,
-        };
-      }
-      createdPluginDigests.set(dependency.id, installedDigest);
+        targetDir,
+        createdPluginTrees,
+        createdPluginDigests,
+        lifecycle,
+      });
       return { success: true };
     });
   } catch (error: unknown) {

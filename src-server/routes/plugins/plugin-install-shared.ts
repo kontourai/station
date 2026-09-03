@@ -537,6 +537,46 @@ function createDependencyLifecycle(options: {
   >();
   const activated = new Set<string>();
 
+  const rollbackDependency = async (dependencyId: string): Promise<void> => {
+    if (!activated.has(dependencyId)) return;
+    const failures: unknown[] = [];
+    const attempt = async (cleanup: () => Promise<void>): Promise<void> => {
+      try {
+        await cleanup();
+      } catch (error) {
+        failures.push(error);
+      }
+    };
+    await attempt(async () => {
+      const { replacePluginProvidersForSource } = await import(
+        '../../providers/registries/registry.js'
+      );
+      await replacePluginProvidersForSource(dependencyId, []);
+    });
+    await attempt(() =>
+      restorePluginGrantEntry(
+        options.projectHomeDir,
+        dependencyId,
+        grantSnapshots.get(dependencyId) ?? null,
+      ),
+    );
+    await attempt(async () => {
+      await options.reconcileEngineConnections?.(dependencyId);
+    });
+    await attempt(async () => {
+      await options.settleProviderAdapterRetirements?.();
+    });
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        `Plugin dependency '${dependencyId}' lifecycle rollback failed`,
+      );
+    }
+    // Keep the claim until every cleanup step settles so a caller can retry a
+    // partial rollback without the second attempt becoming a no-op.
+    activated.delete(dependencyId);
+  };
+
   return {
     validate({ dependencyId, dependencyDir, manifest }) {
       if (!pluginHasDependencyLifecycle(manifest)) return;
@@ -587,6 +627,10 @@ function createDependencyLifecycle(options: {
           `Plugin dependency '${dependencyId}' was not validated for lifecycle activation`,
         );
       }
+      // Activation ownership begins before the first effect. If any later
+      // step fails, compensation retains this claim until all derived state
+      // (providers, grants, engine connections, and retirements) is settled.
+      activated.add(dependencyId);
       try {
         await processInstallPermissions(
           options.projectHomeDir,
@@ -610,34 +654,19 @@ function createDependencyLifecycle(options: {
         );
         await options.reconcileEngineConnections?.(dependencyId);
         await options.settleProviderAdapterRetirements?.();
-        activated.add(dependencyId);
       } catch (error) {
-        const { replacePluginProvidersForSource } = await import(
-          '../../providers/registries/registry.js'
-        );
-        await replacePluginProvidersForSource(dependencyId, []);
-        await restorePluginGrantEntry(
-          options.projectHomeDir,
-          dependencyId,
-          grantSnapshots.get(dependencyId) ?? null,
-        );
+        try {
+          await rollbackDependency(dependencyId);
+        } catch (rollbackError) {
+          throw new AggregateError(
+            [error, rollbackError],
+            `Plugin dependency '${dependencyId}' activation and rollback both failed`,
+          );
+        }
         throw error;
       }
     },
-    async rollback(dependencyId) {
-      if (!activated.delete(dependencyId)) return;
-      const { replacePluginProvidersForSource } = await import(
-        '../../providers/registries/registry.js'
-      );
-      await replacePluginProvidersForSource(dependencyId, []);
-      await restorePluginGrantEntry(
-        options.projectHomeDir,
-        dependencyId,
-        grantSnapshots.get(dependencyId) ?? null,
-      );
-      await options.reconcileEngineConnections?.(dependencyId);
-      await options.settleProviderAdapterRetirements?.();
-    },
+    rollback: rollbackDependency,
   };
 }
 
@@ -722,6 +751,10 @@ async function removeOwnedDependencyLifecycles(options: {
             rmSync(dependencyDir, { recursive: true, force: true });
             forgetPluginContentDigest(options.pluginsDir, dependency.id);
             await removePluginHostRecord(options.projectHomeDir, dependency.id);
+            forgetRegistryInstallsForPlugin(
+              options.projectHomeDir,
+              dependency.id,
+            );
             await options.reconcileEngineConnections?.(dependency.id);
             await options.settleProviderAdapterRetirements?.();
             removed.push(backup);
@@ -1438,7 +1471,9 @@ export async function removeDependencyTreesCreatedByThisInstall(
   rollbackLifecycle?: (dependencyId: string) => Promise<void>,
   createdPluginDigests?: ReadonlyMap<string, string>,
 ): Promise<void> {
-  for (const name of createdPluginTrees) {
+  // Recursive creation records postorder (leaf before its dependent). Undo in
+  // the reverse so a dependent lifecycle retires before the service it uses.
+  for (const name of [...createdPluginTrees].reverse()) {
     if (name === parentPluginName) continue;
     const target = join(pluginsDir, name);
     try {
@@ -1463,10 +1498,14 @@ export async function removeDependencyTreesCreatedByThisInstall(
         if (expired) return;
         admitted = true;
         const expectedDigest = createdPluginDigests?.get(name);
-        if (
-          expectedDigest &&
-          computePluginContentDigest(pluginsDir, name) !== expectedDigest
-        ) {
+        if (!expectedDigest) {
+          logger.warn(
+            'Preserved a dependency because this install could not bind rollback ownership to its exact content',
+            { dep: name },
+          );
+          return;
+        }
+        if (computePluginContentDigest(pluginsDir, name) !== expectedDigest) {
           logger.warn(
             'Preserved a dependency because its installed content changed after this install created it',
             { dep: name },
@@ -1898,6 +1937,11 @@ export async function installPluginFromSource(
     deps.beginConfigurationMutation?.();
 
     const dependencyResults: InstalledPluginResult['dependencies'] = [];
+    // The parent is the root of this dependency walk even though its staged
+    // tree is not copied until later. Seeding it closes edges back to an
+    // already-installed parent during install-over instead of letting the
+    // filesystem fast path disguise that self-cycle as satisfaction.
+    const installingDependencyIds = new Set([pluginName]);
     let installedLayoutSlug: string | null = null;
     // archive#4288, review HIGH 3: this is a tree-mutating path like update
     // and uninstall — it deletes `<plugins>/<name>` and copies a new tree in
@@ -1957,7 +2001,7 @@ export async function installPluginFromSource(
             }),
             buildPlugin,
             logger,
-            undefined,
+            installingDependencyIds,
             createdPluginTrees,
             approvedDependencyIds,
             dependencyLifecycle,
