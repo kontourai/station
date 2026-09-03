@@ -101,14 +101,18 @@ jobs:
       # See station#2306: the app ROOT comes from cwd, not from --config.
       - working-directory: src-desktop
         run: npx tauri ios init --ci --skip-targets-install --config tauri.conf.json
+      - run: node scripts/write-ios-build-manifest.mjs
       - working-directory: src-desktop
-        run: rm -rf gen/apple/build && npx tauri ios build --target aarch64-sim --no-sign --ci --config tauri.conf.json
+        run: rm -rf gen/apple/build && STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --target aarch64-sim --no-sign --ci --config tauri.conf.json
       - id: simulator_artifact
         name: Verify and package simulator artifact
         run: |
           simulator_app=$(find src-desktop/gen/apple -type d -name '*.app' -print -quit)
           test -n "$simulator_app"
           simulator_app=$(cd "$simulator_app" && pwd -P)
+          packaged_manifest=$(find "$simulator_app" -type f -name station-build.json -print)
+          test "$(printf '%s\n' "$packaged_manifest" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
+          cmp "src-desktop/station-client-build.json" "$packaged_manifest"
           echo "app=$simulator_app" >> "$GITHUB_OUTPUT"
           mkdir release-assets
           tar -C "$(dirname "$simulator_app")" -czf "release-assets/station-ios-simulator-debug.app.tar.gz" "$(basename "$simulator_app")"

@@ -98,6 +98,20 @@ export function curatedModelIdentityFor(
     : undefined;
 }
 
+/**
+ * The reviewed entry behind a canonical id, for surfaces that group routes and
+ * need a name for the group. The name is reviewed data, never derived from a
+ * route's own label -- two routes for one model often disagree about what to
+ * call it, and picking one route's name silently privileges that provider.
+ */
+export function curatedModelIdentityByCanonicalId(
+  canonicalId: string,
+): CuratedModelIdentity | undefined {
+  return CURATED_MODEL_IDENTITIES.find(
+    (candidate) => candidate.canonicalId === canonicalId,
+  );
+}
+
 export type ModelInventoryDiagnosticCode =
   | 'disabled'
   | 'not-ready'

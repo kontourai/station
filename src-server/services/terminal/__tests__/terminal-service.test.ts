@@ -7,6 +7,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const { TerminalService } = await import('../terminal-service.js');
+const { PtyUnavailableError } = await import('../../../domain/pty-adapter.js');
 
 function createMockPty() {
   return {
@@ -401,6 +402,53 @@ describe('TerminalService', () => {
         rows: 24,
       }),
     ).rejects.toThrow('no viable shell');
+  });
+
+  test('open reports the specific degraded reason when the PTY backend is unavailable (#1244)', async () => {
+    // A missing node-pty fails EVERY shell candidate identically, so the
+    // service must rethrow the adapter's PtyUnavailableError instead of
+    // exhausting the candidate list into "no viable shell found" — the
+    // generic message reads as a shell problem the user cannot act on.
+    pty.spawn.mockRejectedValue(
+      new PtyUnavailableError(
+        'node-pty failed to load. Interactive terminal panes are unavailable; run `npm run dependencies:install`.',
+      ),
+    );
+    await expect(
+      svc.open({
+        projectSlug: 'test',
+        terminalId: 't-no-pty',
+        cwd: '/tmp',
+        cols: 80,
+        rows: 24,
+      }),
+    ).rejects.toThrow(/node-pty failed to load/);
+  });
+
+  test('probeCapability forwards the adapter probe and defaults to available without one', async () => {
+    // The default mock adapter has no probe: absence of a native backend to
+    // lose must not be reported as a degradation nothing observed.
+    await expect(svc.probeCapability()).resolves.toEqual({
+      state: 'available',
+    });
+    const degraded = new TerminalService(
+      {
+        ...createMockPty(),
+        probeCapability: vi.fn(async () => ({
+          state: 'unavailable' as const,
+          reason: 'node-pty failed to load.',
+        })),
+      } as any,
+      createMockHistoryStore() as any,
+    );
+    try {
+      await expect(degraded.probeCapability()).resolves.toEqual({
+        state: 'unavailable',
+        reason: 'node-pty failed to load.',
+      });
+    } finally {
+      await degraded.dispose();
+    }
   });
 
   test('write is no-op for unknown session', () => {

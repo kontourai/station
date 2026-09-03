@@ -42,6 +42,16 @@ export const VITEST_CORPUS_GROUPS = Object.freeze([
     noFileParallelism: true,
   }),
   Object.freeze({
+    name: 'coordinator-exclusive',
+    maxWorkers: 1,
+    noFileParallelism: true,
+  }),
+  Object.freeze({
+    name: 'credential-ledger-exclusive',
+    maxWorkers: 1,
+    noFileParallelism: true,
+  }),
+  Object.freeze({
     name: 'shared-output',
     maxWorkers: 1,
     noFileParallelism: true,
@@ -97,6 +107,8 @@ function groupFiles(groups, name) {
     ordinary: 'ordinary',
     'process-heavy': 'processHeavy',
     'process-exclusive': 'processExclusive',
+    'coordinator-exclusive': 'coordinatorExclusive',
+    'credential-ledger-exclusive': 'credentialLedgerExclusive',
     'shared-output': 'sharedOutput',
     'dogfood-reconcile': 'dogfoodReconcile',
   };
@@ -221,11 +233,12 @@ function tail(text, maxBytes = FAILURE_LOG_TAIL_BYTES) {
   return `[tail of ${bytes} byte(s)]\n${Buffer.from(value).subarray(-maxBytes).toString('utf8')}`;
 }
 
-function terminalFailure(name, reason) {
+function terminalFailure(name, reason, { cancelled = false } = {}) {
   return {
     name,
     status: null,
     passed: false,
+    cancelled,
     error: String(reason),
     stdout: '',
     stderr: '',
@@ -295,10 +308,23 @@ export async function runVitestGroup(
     onOverflow: () =>
       void cancel(`output exceeded ${OUTPUT_LIMIT_BYTES} byte limit`),
   });
-  const abort = () => void cancel(signal?.reason ?? 'aborted');
+  // Only an EXTERNAL abort (the coordinator's deadline, or SIGINT/SIGTERM) is
+  // a cancellation. The other paths through `cancel` -- an output-limit
+  // overflow, a runner error, a process tree that would not settle -- are real
+  // failures of this group, and reporting them as "cancelled" would excuse a
+  // genuine defect. Track which one fired rather than inferring from the
+  // reason string.
+  let signalAborted = false;
+  const abort = () => {
+    signalAborted = true;
+    void cancel(signal?.reason ?? 'aborted');
+  };
   signal?.addEventListener?.('abort', abort, { once: true });
   try {
-    if (signal?.aborted) await cancel(signal.reason ?? 'aborted');
+    if (signal?.aborted) {
+      signalAborted = true;
+      await cancel(signal.reason ?? 'aborted');
+    }
     const completion = await Promise.race([
       execution.completion.then((result) => ({ kind: 'completed', result })),
       cancellationRequested.then((reason) => ({ kind: 'cancelled', reason })),
@@ -310,6 +336,7 @@ export async function runVitestGroup(
         name: resultName,
         status: null,
         passed: false,
+        cancelled: signalAborted,
         error: `${label} cancelled: ${completion.reason}`,
         stdout: captured.stdout.text,
         stderr: captured.stderr.text,
@@ -360,10 +387,22 @@ export async function runVitestGroup(
 }
 
 export function emitResult(result) {
-  const state = result.passed ? 'PASS' : 'FAIL';
+  // FAIL is a claim about the tests. A cancelled group made no such claim: it
+  // was killed by the coordinator's deadline or a signal, so its suite never
+  // reached a verdict and the captured bytes are a partial transcript rather
+  // than a result. Printing FAIL there sent readers hunting for a broken test
+  // that does not exist -- it cost this repository eight consecutive releases,
+  // where a 45-minute phase deadline was reported as a test failure whose
+  // names were, necessarily, nowhere in the receipt.
+  const cancelled = !result.passed && result.cancelled === true;
+  const state = result.passed ? 'PASS' : cancelled ? 'CANCELLED' : 'FAIL';
   process.stdout.write(
     `[vitest-corpus] ${result.name}: ${state}; ${result.outputBytes ?? 0} byte(s) captured\n`,
   );
+  if (cancelled)
+    process.stdout.write(
+      `[vitest-corpus] ${result.name}: no test results were produced — the run did not complete, so the capture below is a partial transcript and names no failing test.\n`,
+    );
   if (!result.passed) {
     process.stderr.write(
       `[vitest-corpus] ${result.name}: ${result.error ?? 'non-zero Vitest status'}\n`,
@@ -393,6 +432,7 @@ export async function runVitestCorpus({
     const result = terminalFailure(
       'vitest-corpus',
       `Vitest corpus cancelled: ${signal.reason ?? 'aborted'}`,
+      { cancelled: true },
     );
     onResult?.(result);
     return { passed: false, results: [result] };
@@ -405,6 +445,7 @@ export async function runVitestCorpus({
       const result = terminalFailure(
         descriptor.resultName ?? descriptor.name,
         `Vitest corpus cancelled: ${signal.reason ?? 'aborted'}`,
+        { cancelled: true },
       );
       results.push(result);
       onResult?.(result);

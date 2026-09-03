@@ -27,6 +27,10 @@ reason it is allowed to advance together.
 When a signed stable ring manifest is published, the installer supports macOS and Linux. It requires
 Node.js 24.x, npm 10 or newer, git, curl, tar, and an authenticated
 [GitHub CLI](https://cli.github.com/) session for release attestation checks.
+On Linux, compiling the `node-pty` terminal module additionally needs a C++
+toolchain (`g++`, `make`, `python3`) until attested Linux prebuilds are
+pinned in `packaging/node-pty-prebuilds/`; macOS and Windows use upstream
+prebuilds and need no compiler.
 
 ```bash
 sh -c 'set -eu; file=$(mktemp "${TMPDIR:-/tmp}/station-install.XXXXXX"); trap '\''rm -f "$file"'\'' EXIT HUP INT TERM; curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh >"$file"; chmod 600 "$file"; GH_TOKEN=$(gh auth token) sh "$file"'

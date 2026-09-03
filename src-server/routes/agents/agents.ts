@@ -377,6 +377,17 @@ export function createAgentRoutes(
     return error instanceof StationEngineIsAppSettingError ? 409 : 400;
   }
 
+  /** Match the repository's canonical top-level coded error envelope. */
+  function mutationErrorEnvelope(error: unknown) {
+    return {
+      success: false as const,
+      error: errorMessage(error),
+      ...(error instanceof StationEngineIsAppSettingError
+        ? { code: error.code }
+        : {}),
+    };
+  }
+
   // Create new agent
   app.post('/', validate(agentCreateSchema), async (c) => {
     try {
@@ -446,10 +457,7 @@ export function createAgentRoutes(
         configurationMutationStatus(mutation.activation, 201),
       );
     } catch (error: unknown) {
-      return c.json(
-        { success: false, error: errorMessage(error) },
-        mutationErrorStatus(error),
-      );
+      return c.json(mutationErrorEnvelope(error), mutationErrorStatus(error));
     }
   });
 
@@ -548,10 +556,7 @@ export function createAgentRoutes(
         configurationMutationStatus(mutation.activation, 200),
       );
     } catch (error: unknown) {
-      return c.json(
-        { success: false, error: errorMessage(error) },
-        mutationErrorStatus(error),
-      );
+      return c.json(mutationErrorEnvelope(error), mutationErrorStatus(error));
     }
   });
 

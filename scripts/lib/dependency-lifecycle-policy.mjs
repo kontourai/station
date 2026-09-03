@@ -2,13 +2,15 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
+  copyFileSync,
   lstatSync,
+  mkdirSync,
   readFileSync,
   realpathSync,
   statSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 
 export const LIFECYCLE_LOCKS = Object.freeze([
   { scope: 'root', path: 'package-lock.json' },
@@ -515,7 +517,11 @@ export function confinedPackageTarget(
     throw new Error(`${description} escapes package root`);
   const candidateStat = lstatOrNull(candidate);
   if (!candidateStat) {
-    if (mustExist) throw new Error(`missing ${description}`);
+    if (mustExist) {
+      const absent = new Error(`missing ${description}`);
+      absent.code = ARTIFACT_ABSENT;
+      throw absent;
+    }
     return candidate;
   }
   if (candidateStat.isSymbolicLink())
@@ -700,4 +706,179 @@ export function verifyArtifact(
 
 export function expectedLifecyclePurls(allowlist) {
   return [...new Set(allowlist.entries.map((entry) => entry.purl))].sort();
+}
+
+/**
+ * #1244: which allowlist entries back a bounded product surface Station can
+ * run without. node-pty is the only one — it powers interactive terminal
+ * panes and nothing else, and it is the only Station dependency that needs a
+ * C++ toolchain on Linux. For such an entry, a failed build or artifact
+ * verification is reported as a LOUD capability degradation by the install
+ * orchestrator instead of aborting the install; the runtime, `station
+ * doctor`, and the system-status capability record then all carry the same
+ * degraded-terminal reason. This deliberately trades the former install-time
+ * "completed install has a working terminal" guarantee for installability on
+ * toolchain-less hosts — the product decision recorded on the issue.
+ *
+ * The artifact PROOF itself stays fail-closed: `verifyArtifact` still throws,
+ * and confinement/tamper preflights are never relaxed. Only the install
+ * orchestrator consults this to decide that the failure degrades a
+ * capability rather than the install.
+ */
+/**
+ * The ONLY verifyArtifact failure a degradable capability may treat as
+ * degradation: the artifact is simply not there, which is what a host with no
+ * C++ toolchain produces. Every other throw from that function is a
+ * trust-boundary result — a path escaping the package root, a symlink
+ * redirect, installed-version drift, a non-file target, or a failed real-PTY
+ * handshake — and those must keep aborting the install. Degrading them would
+ * accept a tampered or mis-identified native module as merely "unavailable".
+ */
+export const ARTIFACT_ABSENT = 'station:lifecycle:artifact-absent';
+
+export function isArtifactAbsent(error) {
+  return error?.code === ARTIFACT_ABSENT;
+}
+
+export function degradableLifecycleCapability(entry) {
+  if (entry?.artifact?.proof !== 'node-pty-smoke') return undefined;
+  return {
+    capability: 'terminal',
+    consequence:
+      'interactive terminal panes will be unavailable (agent execution is unaffected)',
+    remediation:
+      'install a C++ toolchain (g++, make, python3), run `npm run dependencies:install` in the Station checkout, then restart Station',
+  };
+}
+
+// ── node-pty Linux prebuild staging (#1245) ─────────────────────────────
+
+/**
+ * Repository-relative home of the attested Linux prebuild channel. The
+ * manifest pins the node-pty version and each artifact's sha256; an empty
+ * `artifacts` map means no prebuild ships and every Linux install compiles
+ * from source exactly as before. See packaging/node-pty-prebuilds/README.md
+ * for the trust chain.
+ */
+export const NODE_PTY_PREBUILD_DIR = 'packaging/node-pty-prebuilds';
+export const NODE_PTY_PREBUILD_TARGETS = Object.freeze([
+  'linux-x64',
+  'linux-arm64',
+]);
+
+export function readNodePtyPrebuildManifest(root) {
+  const path = resolve(root, NODE_PTY_PREBUILD_DIR, 'manifest.json');
+  if (!lstatOrNull(path)) return null;
+  const manifest = JSON.parse(readFileSync(path, 'utf8'));
+  if (
+    manifest?.schemaVersion !== 1 ||
+    manifest.package !== 'node-pty' ||
+    typeof manifest.version !== 'string' ||
+    !isObject(manifest.artifacts) ||
+    !Object.entries(manifest.artifacts).every(
+      ([target, record]) =>
+        NODE_PTY_PREBUILD_TARGETS.includes(target) &&
+        isObject(record) &&
+        /^[0-9a-f]{64}$/.test(record.sha256 ?? ''),
+    )
+  )
+    throw new Error('node-pty prebuild manifest is malformed');
+  return manifest;
+}
+
+/**
+ * The manifest and the allowlist must flip together: a target with a pinned
+ * prebuild must be verified AT the prebuild path, and a target without one
+ * must still be verified at the from-source build path. Any mixed state
+ * would either verify a file staging never wrote or skip verifying the file
+ * the loader actually uses, so it fails the whole policy check.
+ */
+export function assertNodePtyPrebuildConsistency(allowlist, manifest) {
+  const entry = allowlist.entries?.find?.(
+    (candidate) => candidate?.artifact?.proof === 'node-pty-smoke',
+  );
+  if (!entry) return;
+  for (const target of NODE_PTY_PREBUILD_TARGETS) {
+    const paths = entry.artifact.platforms?.[target.replace('-', '/')] ?? [];
+    const pinned = Boolean(manifest?.artifacts?.[target]);
+    const verifiedAtPrebuild = paths.includes(`prebuilds/${target}/pty.node`);
+    if (pinned !== verifiedAtPrebuild)
+      throw new Error(
+        `node-pty prebuild manifest and allowlist disagree for ${target}: ` +
+          (pinned
+            ? 'a pinned prebuild exists but the allowlist still verifies build/Release/pty.node'
+            : 'the allowlist expects a prebuild no manifest entry pins'),
+      );
+  }
+  if (
+    manifest &&
+    Object.keys(manifest.artifacts).length > 0 &&
+    manifest.version !== entry.version
+  )
+    throw new Error(
+      `node-pty prebuild manifest pins version ${manifest.version} but the approved entry is ${entry.version}; rebuild the prebuilds`,
+    );
+}
+
+/**
+ * Stages the pinned, attested Linux prebuild into
+ * `node_modules/node-pty/prebuilds/<target>/pty.node` BEFORE the approved
+ * install hook runs, so upstream's `node scripts/prebuild.js || node-gyp
+ * rebuild` takes its prebuild branch and no C++ toolchain is needed (#1245).
+ *
+ * Fail-closed rules: a digest mismatch is treated as tampering and aborts
+ * the install; an absent manifest, absent target, or explicit
+ * `npm_config_build_from_source=true` quietly keeps today's compile path.
+ */
+export function stageNodePtyPrebuild(
+  root,
+  entry,
+  {
+    platform = process.platform,
+    arch = process.arch,
+    env = process.env,
+    manifest,
+  } = {},
+) {
+  if (entry?.artifact?.proof !== 'node-pty-smoke')
+    return { staged: false, reason: 'entry has no prebuild channel' };
+  if (platform !== 'linux')
+    return { staged: false, reason: `${platform} uses upstream prebuilds` };
+  if (env.npm_config_build_from_source === 'true')
+    return {
+      staged: false,
+      reason: 'npm_config_build_from_source requested a source build',
+    };
+  const resolved =
+    manifest === undefined ? readNodePtyPrebuildManifest(root) : manifest;
+  const target = `${platform}-${arch}`;
+  const record = resolved?.artifacts?.[target];
+  if (!record)
+    return { staged: false, reason: `no pinned prebuild for ${target}` };
+  if (resolved.version !== entry.version)
+    throw new Error(
+      `node-pty prebuild manifest pins ${resolved.version}, entry approves ${entry.version}`,
+    );
+  const source = resolve(root, NODE_PTY_PREBUILD_DIR, target, 'pty.node');
+  if (!lstatOrNull(source))
+    throw new Error(
+      `manifest pins a prebuild that is not committed: ${target}`,
+    );
+  const digest = createHash('sha256')
+    .update(readFileSync(source))
+    .digest('hex');
+  if (digest !== record.sha256)
+    throw new Error(
+      `node-pty prebuild digest mismatch for ${target}; refusing to stage a tampered artifact`,
+    );
+  const packageRoot = installedPackagePath(root, entry);
+  const destination = confinedPackageTarget(
+    packageRoot,
+    `prebuilds/${target}/pty.node`,
+    `staged node-pty prebuild for ${entry.path}`,
+    { mustExist: false },
+  );
+  mkdirSync(dirname(destination), { recursive: true });
+  copyFileSync(source, destination);
+  return { staged: true, target, sha256: digest };
 }

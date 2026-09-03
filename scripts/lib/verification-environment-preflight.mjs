@@ -292,36 +292,60 @@ function scopeLabel(relDir) {
 }
 
 export class VerificationEnvironmentStaleError extends Error {
-  constructor(message, { mismatches = [], skipped = [], reason } = {}) {
+  constructor(
+    message,
+    { mismatches = [], skipped = [], reason, repositoryRoot } = {},
+  ) {
     super(message);
     this.name = 'VerificationEnvironmentStaleError';
     this.disposition = 'environment-stale';
     this.reason = reason;
     this.mismatches = mismatches;
     this.skipped = skipped;
+    /** The tree that was inspected — where the remedy must be run. */
+    this.repositoryRoot = repositoryRoot;
   }
 }
 
-function mismatchError(mismatches, skipped) {
+/**
+ * The remedy is `npm run dependencies:ci` IN THE INSPECTED TREE, which is not
+ * always the caller's own worktree: `orchestration-transfer-gate.mjs` inspects
+ * the prepared baseline sibling, whose `node_modules` a freshly created
+ * baseline does not have at all. An unqualified "run npm run dependencies:ci"
+ * reads as being about the tree you are standing in — running it there repairs
+ * nothing while the identical error repeats, naming packages that are correctly
+ * installed where you are.
+ *
+ * Reached through `run-verification.mjs`, the coordinator and submission paths
+ * pass their OWN git toplevel (that CLI has no `--cwd`), so there the root
+ * disambiguates which open lane worktree was read rather than pointing
+ * somewhere foreign. Other entry points may pass a foreign cwd — the
+ * stress harness does — which is why the message names the root either way.
+ */
+function remedyFor(repositoryRoot) {
+  return `run \`npm run dependencies:ci\` in ${repositoryRoot}`;
+}
+
+function mismatchError(mismatches, skipped, repositoryRoot) {
   const lines = mismatches
     .map(
       ({ name, relDir, installed, locked }) =>
-        `  ${scopeLabel(relDir)} → ${name}: installed ${installed ?? 'missing'}, locked ${locked} (run npm run dependencies:ci)`,
+        `  ${scopeLabel(relDir)} → ${name}: installed ${installed ?? 'missing'}, locked ${locked}`,
     )
     .join('\n');
   return new VerificationEnvironmentStaleError(
     `environment-stale: node_modules does not match package-lock.json for ` +
       `${mismatches.length} package${mismatches.length === 1 ? '' : 's'} ` +
-      `(run npm run dependencies:ci):\n${lines}`,
-    { mismatches, skipped, reason: 'dependency-mismatch' },
+      `-- ${remedyFor(repositoryRoot)}:\n${lines}`,
+    { mismatches, skipped, reason: 'dependency-mismatch', repositoryRoot },
   );
 }
 
-function lockfileUnreadableError() {
+function lockfileUnreadableError(repositoryRoot) {
   return new VerificationEnvironmentStaleError(
-    'environment-stale: package-lock.json unreadable/unsupported shape ' +
-      '-- cannot verify environment (run npm run dependencies:ci)',
-    { reason: 'lockfile-unreadable' },
+    `environment-stale: package-lock.json unreadable/unsupported shape ` +
+      `-- cannot verify environment -- ${remedyFor(repositoryRoot)}`,
+    { reason: 'lockfile-unreadable', repositoryRoot },
   );
 }
 
@@ -332,10 +356,24 @@ function lockfileUnreadableError() {
  * test. Throwing before request admission means the caller never reaches a
  * lease, an admitted phase, or a receipt: there is nothing to quarantine or
  * reuse, because nothing was ever created.
+ *
+ * That holds for the receipt surface, not for every artifact: on the detached
+ * worker path this error is caught and persisted into the handoff record via
+ * `errorText`, which scrubs absolute paths. `repositoryRoot` is a plain own
+ * property and is never spread into that record, so the unredacted root
+ * reaches only stderr — this CLI's, and `orchestration-transfer-gate.mjs`'s,
+ * which prints `error.message` raw through its own handler. Do not start
+ * serializing this error object wholesale without revisiting that.
  */
 export function assertInstalledDependenciesMatchLockfile({ repositoryRoot }) {
+  // Report the tree the check actually read, not the caller's argument:
+  // `findStaleInstalledDependencies` canonicalizes before every lockfile and
+  // node_modules lookup, and on macOS `/var/...` vs `/private/var/...` makes
+  // those genuinely different strings. Naming the argument would document a
+  // root nobody inspected.
+  const inspectedRoot = canonicalRoot(repositoryRoot);
   const result = findStaleInstalledDependencies({ repositoryRoot });
-  if (result.lockfileUnreadable) throw lockfileUnreadableError();
+  if (result.lockfileUnreadable) throw lockfileUnreadableError(inspectedRoot);
   if (result.mismatches.length > 0)
-    throw mismatchError(result.mismatches, result.skipped);
+    throw mismatchError(result.mismatches, result.skipped, inspectedRoot);
 }

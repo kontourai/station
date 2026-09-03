@@ -32,17 +32,19 @@ describe('plugin scaffold public dependency qualification', () => {
       assertPublishedPluginScaffoldDependencies(dependencies, () => [
         '0.4.0',
         '0.4.1',
+        '0.5.0',
+        '0.7.0',
       ]),
     ).toEqual([
       {
         packageName: '@kontourai/station-sdk',
-        range: '^0.4.0',
-        resolved: '0.4.1',
+        range: '^0.7.0',
+        resolved: '0.7.0',
       },
       {
         packageName: '@kontourai/station-shared',
-        range: '^0.4.0',
-        resolved: '0.4.1',
+        range: '^0.7.0',
+        resolved: '0.7.0',
       },
     ]);
   });

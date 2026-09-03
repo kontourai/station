@@ -8,6 +8,10 @@ on:
       - Windows Verification
       - Secret Scan
       - Backlog disposition policy
+      # Chained: Android Tests is itself a workflow_run of the Android build
+      # (two levels, within GitHub's limit of three). Its green runs have no
+      # skipped jobs, so the close guard below can clear its tracker (#1315).
+      - Android Tests
     types: [completed]
 
 permissions:

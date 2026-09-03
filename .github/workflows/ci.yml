@@ -98,6 +98,7 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Install pinned actionlint
+        timeout-minutes: 5
         env:
           ACTIONLINT_ARCHIVE: actionlint_1.7.12_linux_amd64.tar.gz
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8

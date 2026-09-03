@@ -2,6 +2,17 @@
 
 This guide keeps contributor and operator detail out of the public README while preserving the commands and conventions needed to work on Station.
 
+## Source Prerequisites
+
+Working from source needs Node.js 24.x, npm 10 or newer, and git. On Linux,
+`npm run dependencies:install` additionally needs a C++ toolchain (`g++`,
+`make`, `python3`) to compile the `node-pty` terminal module — the only
+source-built native addon; macOS and Windows use upstream prebuilds. When
+`packaging/node-pty-prebuilds/manifest.json` pins attested Linux artifacts
+(#1245), the dependency lifecycle stages those instead and the Linux
+toolchain requirement disappears; `npm_config_build_from_source=true` opts
+back into compiling. Rust is optional and only needed for desktop builds.
+
 ## Optional `just` contributor Interface
 
 `just` forwards to Station's existing commands; it does not replace them. Use
@@ -116,6 +127,26 @@ new example there when its tests are part of the root verification corpus and
 it owns dependencies that the root install must provide. Root-managed examples
 use the repository's `package-lock.json`; do not add a second lock inside the
 example.
+
+### Dependency install deadline
+
+The dependency bootstrap gives the inert `npm ci`/`npm install` step a finite
+deadline — twenty minutes on Windows, ten minutes elsewhere — so a wedged
+install fails instead of hanging forever. That default is not a claim about the
+slowest supported machine. A cold 1552-package install takes about eleven
+minutes on an ARM64 handset, which the fixed bound killed outright with
+`npm error signal SIGTERM` and an already-emptied `node_modules/`.
+
+Raise it on a host that is slow rather than stuck:
+
+```bash
+STATION_DEPENDENCY_INSTALL_TIMEOUT_MS=1800000 npm run dependencies:ci
+```
+
+The value is whole milliseconds and must be positive; a malformed value fails
+loudly rather than silently restoring the default. Lifecycle hooks keep their
+separate two-minute bound — the `node-pty` compile, the only one that builds
+native code, takes about 27 seconds on that same handset.
 
 ## Project Structure
 
@@ -291,6 +322,14 @@ Every Playwright spec must be assigned to exactly one bucket in `tests/e2e-manif
 Dependency updates must also pass the multi-lock advisory floor. See
 [Dependency security](dependency-security.md) for the root, SDK, and shared lock
 workflow, production-reachability interpretation, and exception contract.
+
+Pushes that touch orchestration transfer inputs run the transfer gate from
+`.githooks/pre-push`. It reads its baseline from
+`STATION_TRANSFER_BASELINE_ROOT` and its capture liveness bound from
+`STATION_TRANSFER_CAPTURE_TIMEOUT_MS`; see
+[Pre-push orchestration transfer gate](testing.md#pre-push-orchestration-transfer-gate)
+for baseline preparation and the slow-hardware override. Do not `--no-verify`
+past it: no required CI check re-runs it.
 
 ## Observability
 

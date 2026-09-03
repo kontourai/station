@@ -9,6 +9,11 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ExternalEngineReadinessProjection } from '@kontourai/station-contracts/system-status';
 import { DEFAULT_SERVER_PORT } from '@kontourai/station-shared/ports';
+import {
+  describeTerminalPtyLoadFailure,
+  type TerminalCapability,
+  terminalPtyUnavailableReason,
+} from '@kontourai/station-shared/terminal-capability';
 import { Hono } from 'hono';
 import { resolveDeploymentCapabilities } from '../../capabilities/deployment-capabilities.js';
 import {
@@ -539,6 +544,7 @@ function buildCapabilityStates(input: {
   managedChatReady: boolean;
   configuredProviders: Array<ConfiguredProvider & { capabilities: string[] }>;
   binding?: ManagedChatBinding;
+  terminalCapability?: TerminalCapability;
 }): Record<string, CapabilityState> {
   // Review H1: a connection whose latest bound check was refused is not a
   // chat-capable model connection, however many prerequisites it satisfies.
@@ -601,6 +607,22 @@ function buildCapabilityStates(input: {
       ready: input.acpConnected,
       source: input.acpConnected ? 'acp' : null,
     },
+    // #1244: the degraded-terminal capability. Present only when the route
+    // host supplied a live probe — a host that observed nothing makes no
+    // terminal claim. `reason` carries the specific, actionable cause so the
+    // UI's readiness surface never renders a silently dead terminal pane.
+    ...(input.terminalCapability
+      ? {
+          terminal:
+            input.terminalCapability.state === 'available'
+              ? { ready: true, source: 'node-pty' }
+              : {
+                  ready: false,
+                  source: null,
+                  reason: input.terminalCapability.reason,
+                },
+        }
+      : {}),
   };
 }
 
@@ -1077,6 +1099,18 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
     const managedChatReady =
       (deps.isManagedChatReady?.() ?? configuredLlmProviders.length > 0) &&
       managedChatBindingUsable;
+    // #1244: a probe that itself throws is a degraded terminal with the
+    // throw as its reason, never a fabricated "ready".
+    const terminalCapability = deps.probeTerminalCapability
+      ? await deps.probeTerminalCapability().catch(
+          (error): TerminalCapability => ({
+            state: 'unavailable',
+            reason: terminalPtyUnavailableReason(
+              describeTerminalPtyLoadFailure(error),
+            ),
+          }),
+        )
+      : undefined;
     const capabilities = buildCapabilityStates({
       credentialsFound,
       ollamaReachable,
@@ -1086,6 +1120,7 @@ export function createSystemStatusRoutes(deps: SystemStatusDeps) {
       configuredProviders,
       managedChatReady,
       binding,
+      terminalCapability,
     });
     const recommendation = buildSystemRecommendation({
       configuredProviders,
