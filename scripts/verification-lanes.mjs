@@ -115,7 +115,12 @@ export const FULL_REGRESSION_PHASES = Object.freeze([
     command: 'npm run test:full:process-exclusive:raw',
     privateScript: 'test:full:process-exclusive:raw',
     weight: 60,
-    timeoutMs: 4 * 60_000,
+    // #1338/#1341's Nightly (run 33755532145) measured this phase at 289s
+    // wall time locally after event-store.test.ts joined the group on
+    // 2026-09-01; the hosted runner hit the prior 240s fence and SIGTERM'd
+    // it with zero test results. Six minutes restores headroom over the
+    // measured worst case without approaching the 270-minute job cap.
+    timeoutMs: 6 * 60_000,
   }),
   Object.freeze({
     id: 'test-full-credential-ledger-exclusive',
