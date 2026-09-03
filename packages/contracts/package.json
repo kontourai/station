@@ -74,6 +74,7 @@
     "./known-environment": "./src/known-environment.ts",
     "./knowledge-store": "./src/knowledge-store.ts",
     "./knowledge-index": "./src/knowledge-index.ts",
+    "./learning-review": "./src/learning-review.ts",
     "./layout": "./src/layout.ts",
     "./live-activity": "./src/live-activity.ts",
     "./managed-model-binding": "./src/managed-model-binding.ts",
