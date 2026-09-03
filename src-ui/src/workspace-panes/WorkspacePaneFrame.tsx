@@ -82,7 +82,7 @@ export function WorkspacePaneFrame({
    * It exists for the shell's ambient dock (archive#3973). `display: contents`
    * is not enough there: it removes a wrapper's BOX but not its place in the
    * DOM, and the shell positions the dock with child combinators
-   * (`.app__main--dock-left > .chat-dock`, `:has(> .chat-dock)`), which stop
+   * (`.app__main > [data-region="left"]`, `:has(> [data-region])`), which stop
    * matching the moment anything sits between them. An occupant that owns its
    * own placement needs the frame to contribute no node at all.
    *

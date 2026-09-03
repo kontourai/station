@@ -347,7 +347,7 @@ export function WorkspacePaneHostTree({
         {/* No chrome AND no element. `display: contents` was not enough: it
             removes a wrapper's box but not its place in the DOM, and the shell
             positions the dock with child combinators
-            (`.app__main--dock-left > .chat-dock`, `:has(> .chat-dock)`) that
+            (`.app__main > [data-region="left"]`, `:has(> [data-region])`) that
             stop matching the moment anything sits between them — the desktop
             dock measured x=0 instead of the sidebar's right edge. An occupant
             that owns its own placement needs this host to contribute nothing.

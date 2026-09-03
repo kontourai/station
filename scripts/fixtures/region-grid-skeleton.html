@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Region grid parity fixture</title>
+  </head>
+  <body>
+    <div class="app">
+      <div class="app__main" data-parity="app-main">
+        <header class="app-toolbar" data-parity="app-toolbar">Toolbar</header>
+        <div class="banner-host" data-parity="banner-host">Banner</div>
+        <main class="main-content" data-parity="main-content">
+          <div class="content-view" data-parity="content-view">Content</div>
+        </main>
+        <section
+          id="chat-dock"
+          class="chat-dock"
+          data-parity="chat-dock"
+          aria-label="Dock"
+        >
+          <button
+            type="button"
+            class="chat-dock__resize-handle chat-dock__resize-handle--horizontal"
+            data-parity="resize-handle"
+          ></button>
+          <header class="chat-dock__header" data-parity="dock-header">
+            <span class="chat-dock__title" data-parity="dock-title">Title</span>
+            <span class="chat-dock__subtitle" data-parity="dock-subtitle">Subtitle</span>
+            <span class="chat-dock__counter" data-parity="dock-counter">1</span>
+            <span class="chat-dock__activity" data-parity="dock-activity">Activity</span>
+            <span class="chat-dock__badge" data-parity="dock-badge">Badge</span>
+            <div class="chat-dock__tab-actions" data-parity="tab-actions">
+              <button type="button" class="chat-dock__new" data-parity="dock-new">
+                <span class="chat-dock__new-label" data-parity="dock-new-label">New</span>
+              </button>
+            </div>
+            <div class="chat-dock__header-actions" data-parity="header-actions">
+              <button type="button" class="chat-dock__maximize-btn" data-parity="maximize-button">Max</button>
+              <button type="button" class="chat-dock__icon-btn" data-parity="icon-button">Icon</button>
+            </div>
+            <div class="dock-occupant-menu" data-parity="occupant-menu">Menu</div>
+          </header>
+          <div class="chat-dock__body" data-parity="dock-body">
+            <div class="chat-dock__session-info" data-parity="session-info">Session</div>
+            <div class="chat-dock__project-filter" data-parity="project-filter">
+              <span class="chat-dock__filter-pill" data-parity="filter-pill">Project</span>
+            </div>
+            <div class="chat-messages" data-parity="chat-messages">
+              <div class="message-row" data-parity="message-row">
+                <div class="message" data-parity="message"><pre data-parity="message-pre">code</pre></div>
+              </div>
+              <div class="streaming-message" data-parity="streaming-message">
+                <span class="streaming-text" data-parity="streaming-text">Streaming</span>
+              </div>
+            </div>
+            <div class="chat-input-container" data-parity="input-container">
+              <div class="context-indicator-content" data-parity="context-indicator">Context</div>
+              <div class="chat-input" data-parity="chat-input">
+                <textarea data-parity="chat-textarea">Message</textarea>
+                <div class="chat-controls-row" data-parity="controls-row">Controls</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </body>
+</html>

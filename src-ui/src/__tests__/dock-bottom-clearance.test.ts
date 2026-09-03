@@ -74,7 +74,7 @@ describe('the dock clearance is one derivation (station#3902)', () => {
   });
 
   test("the shell's route outlet reserves it, so every route clears the dock", () => {
-    // The BASE rule. The compound `.app__main--dock-left/right/bottom > …`
+    // The BASE rule. The compound `.app__main:has(> [data-region]) > …`
     // rules deliberately zero it: in those modes the dock is a real grid row
     // beside the content rather than fixed over it.
     const bodies = ruleBodies(indexCss, '\n.content-view');

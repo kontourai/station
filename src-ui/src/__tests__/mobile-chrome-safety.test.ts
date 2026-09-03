@@ -77,14 +77,16 @@ describe('the connection banner slot bounds without reserving', () => {
     // tests/connect-reconnect-banner.spec.ts; this only guards deletion.
     const css = read(BANNER_CSS);
     for (const rule of [
-      '.app__main--dock-right:has(> .chat-dock) > .banner-host',
-      '.app__main--dock-right:has(> .chat-dock.is-collapsed) > .banner-host',
-      '.app__main--dock-left:has(> .chat-dock) > .banner-host',
-      '.app__main--dock-left:has(> .chat-dock.is-collapsed) > .banner-host',
+      '.app__main:has(> [data-region="right"]) > .banner-host',
+      '.app__main:has(> [data-region="right"].is-collapsed) > .banner-host',
+      '.app__main:has(> [data-region="left"]) > .banner-host',
+      '.app__main:has(> [data-region="left"].is-collapsed) > .banner-host',
     ]) {
       const [body] = ruleBodies(css, rule);
       expect(body, `missing rule: ${rule}`).toBeDefined();
-      expect(body).toMatch(/(left|right):\s*(var\(--chat-dock-width|36px)/);
+      expect(body).toMatch(
+        /(left|right):\s*(var\(--region-(left|right)-size|36px)/,
+      );
     }
     // Maximized is the active full work surface. Its occupant header/search
     // must remain reachable, so ordinary notices return below the dock.
@@ -121,14 +123,14 @@ describe('the connection banner slot bounds without reserving', () => {
     const css = read('index.css');
     const [main] = ruleBodies(
       css,
-      '.app__main--dock-bottom:has(> .chat-dock.is-maximized)',
+      '.app__main:has(> [data-region="bottom"].is-maximized)',
     );
     expect(main).toBeDefined();
     expect(main).toMatch(/grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)/);
 
     const [dock] = ruleBodies(
       css,
-      '.app__main--dock-bottom > .chat-dock.is-maximized',
+      '.app__main > [data-region="bottom"].is-maximized',
     );
     expect(dock).toBeDefined();
     expect(dock).toMatch(/grid-row:\s*2\s*;/);
@@ -143,7 +145,7 @@ describe('the connection banner slot bounds without reserving', () => {
     // lives in tests/connect-reconnect-banner.spec.ts; this guards deletion.
     const css = read(BANNER_CSS);
     for (const rule of [
-      '.app__main--dock-bottom > .banner-host',
+      '.app__main:has(> [data-region="bottom"]) > .banner-host',
       '.app__main > .banner-host',
     ]) {
       const [body] = ruleBodies(css, rule);
