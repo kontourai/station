@@ -39,7 +39,7 @@ const DESKTOP_SERVER_READINESS_TIMEOUT_MS = 60_000;
 const DESKTOP_SERVER_READINESS_POLL_INTERVAL_MS = 250;
 const DESKTOP_SERVER_OUTPUT_TAIL_BYTES = 4_096;
 
-class DesktopLivenessTransportError extends Error {}
+class DesktopProbeTransportError extends Error {}
 
 interface DesktopIdentityProbeOptions {
   fetchImpl?: typeof fetch;
@@ -300,7 +300,7 @@ async function probeDesktopIdentityOnce(
       signal: AbortSignal.timeout(DESKTOP_SERVER_READINESS_POLL_INTERVAL_MS),
     });
   } catch (error) {
-    throw new DesktopLivenessTransportError('Liveness transport failed', {
+    throw new DesktopProbeTransportError('Liveness transport failed', {
       cause: error,
     });
   }
@@ -319,13 +319,17 @@ async function probeDesktopIdentityOnce(
       'Packaged desktop server did not persist its operator credential',
     );
   }
-  const identity = await fetchImpl(
-    `http://127.0.0.1:${port}/api/system/identity`,
-    {
+  let identity: Response;
+  try {
+    identity = await fetchImpl(`http://127.0.0.1:${port}/api/system/identity`, {
       headers: { Authorization: `Bearer ${securityRecord.credential}` },
       signal: AbortSignal.timeout(DESKTOP_SERVER_READINESS_POLL_INTERVAL_MS),
-    },
-  );
+    });
+  } catch (error) {
+    throw new DesktopProbeTransportError('Identity transport failed', {
+      cause: error,
+    });
+  }
   if (!identity.ok) {
     throw new Error(
       `Packaged desktop identity probe failed with ${identity.status}`,
@@ -349,7 +353,7 @@ async function waitForDesktopIdentity(
     try {
       return await probeDesktopIdentityOnce(port, launched.homeDir);
     } catch (error) {
-      if (!(error instanceof DesktopLivenessTransportError)) throw error;
+      if (!(error instanceof DesktopProbeTransportError)) throw error;
       // The resource-shaped server is still starting.
     }
     await new Promise((resolve) =>
@@ -473,6 +477,26 @@ describe('server build package portability', () => {
     expect(String(fetchImpl.mock.calls[1]?.[0])).toContain(
       '/api/system/identity',
     );
+  });
+
+  it('classifies a transient authenticated identity transport failure as retryable', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ live: true }))
+      .mockRejectedValueOnce(
+        new DOMException(
+          'The operation was aborted due to timeout',
+          'TimeoutError',
+        ),
+      );
+    await expect(
+      probeDesktopIdentityOnce(3142, '/unused', {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        readCredentialRecord: () =>
+          JSON.stringify({ credential: 'fixture-credential' }),
+      }),
+    ).rejects.toThrow(DesktopProbeTransportError);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('fails on a missing persisted credential without requesting identity', async () => {
