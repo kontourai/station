@@ -456,6 +456,17 @@ describe('one-revision native promotion contract', () => {
     expect(source).toContain('syft-version: v1.51.0');
     expect(source).not.toContain('syft-version: 1.51.0');
     expect(source).toContain('gh attestation verify "staged/$name"');
+    const admission = fleet.jobs?.['admit-fleet'] ?? {};
+    const verification = admission.steps?.find(
+      (step) =>
+        step.name ===
+        'Verify every attested subject with exact workflow identity',
+    );
+    expect(verification?.env?.GH_TOKEN).toBe(`${'${{'} github.token }}`);
+    expect(verification?.run).toContain(
+      "jq -c '.attestation.subjects[]' staged/stage-receipt-portable.json",
+    );
+    expect(verification?.run).not.toContain('staged/subjects.json');
     expect(source).toContain('--source-ref refs/heads/main');
     expect(source).toContain('--deny-self-hosted-runners');
     expect(source).toContain('test "$sha" = "$GITHUB_SHA"');
