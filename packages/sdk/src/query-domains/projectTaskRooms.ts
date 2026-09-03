@@ -54,6 +54,14 @@ type ProjectTaskRoomDocumentSnapshot = Extract<
   { readonly kind: 'snapshot' | 'delta' }
 >;
 
+function notifyProjectTaskRoomCallback(callback: (() => void) | undefined) {
+  try {
+    callback?.();
+  } catch {
+    // One host observer cannot turn an authenticated frame into transport loss.
+  }
+}
+
 /** The small cache seam the settled-edit authority decision needs. */
 export interface ProjectTaskRoomDocumentCache {
   setQueryData(
@@ -255,12 +263,16 @@ export function useProjectTaskRoomStream(
         onEvent: (event) => {
           if (closed) return;
           if (event.kind === 'document') {
-            callbackRef.current?.onDocument?.(event.value);
+            notifyProjectTaskRoomCallback(() =>
+              callbackRef.current?.onDocument?.(event.value),
+            );
             const document = parseAuthoritativeProjectTaskRoomDocumentEvent(
               event.value,
             );
             if (document?.kind === 'snapshot' || document?.kind === 'delta')
-              callbackRef.current?.onAuthoritativeDocument?.(document);
+              notifyProjectTaskRoomCallback(() =>
+                callbackRef.current?.onAuthoritativeDocument?.(document),
+              );
             if (document?.kind === 'gap')
               void refetchAuthoritativeProjectTaskRoomDocument(
                 client,
@@ -307,8 +319,13 @@ export function useProjectTaskRoomStream(
               // never an optimistic cache write.
             }
             if (document?.kind === 'snapshot' || document?.kind === 'delta')
-              callbackRef.current?.onAuthoritativeDocument?.(document);
-            if (document) callbackRef.current?.onDocument?.(document);
+              notifyProjectTaskRoomCallback(() =>
+                callbackRef.current?.onAuthoritativeDocument?.(document),
+              );
+            if (document)
+              notifyProjectTaskRoomCallback(() =>
+                callbackRef.current?.onDocument?.(document),
+              );
             void client.invalidateQueries({
               queryKey: projectTaskRoomQueries.discovery(taskId).queryKey,
             });

@@ -11,6 +11,7 @@ import {
   createProjectTaskRoomRoutes,
   createProjectTaskRoomSseDeliveryQueue,
   settleProjectTaskRoomCadence,
+  settleProjectTaskRoomTerminal,
 } from '../project-task-rooms.js';
 
 async function successfulData(response: Response): Promise<unknown> {
@@ -113,6 +114,49 @@ describe('project task room routes', () => {
     await vi.waitFor(() => expect(closeTerminal).toHaveBeenCalledOnce());
     expect(write).not.toHaveBeenCalled();
     expect(delivery.terminal).toBe(true);
+  });
+
+  test('terminalizes an overflow while a prior delivery is still settling', async () => {
+    let releaseAuthority!: (alive: boolean) => void;
+    const authority = new Promise<boolean>((resolve) => {
+      releaseAuthority = resolve;
+    });
+    const write = vi.fn(async () => {});
+    const closeTerminal = vi.fn(async () => {});
+    const delivery = createProjectTaskRoomSseDeliveryQueue({
+      aborted: () => false,
+      subscriptionAlive: vi
+        .fn<() => Promise<boolean>>()
+        .mockReturnValueOnce(authority)
+        .mockResolvedValue(true),
+      closeTerminal,
+      write,
+    });
+
+    delivery.enqueue({ type: 'room' });
+    for (let index = 0; index < 65; index += 1) {
+      delivery.enqueue({ type: 'room', revision: `room-${index}` });
+    }
+    expect(delivery.terminal).toBe(true);
+    releaseAuthority(true);
+    await vi.waitFor(() => expect(closeTerminal).toHaveBeenCalledOnce());
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  test('finishes terminal ownership when both terminal write and close reject', async () => {
+    const finish = vi.fn();
+    await expect(
+      settleProjectTaskRoomTerminal({
+        writeTerminal: async () => {
+          throw new Error('write failed');
+        },
+        close: async () => {
+          throw new Error('close failed');
+        },
+        finish,
+      }),
+    ).rejects.toThrow('Task room terminal delivery failed');
+    expect(finish).toHaveBeenCalledOnce();
   });
 
   test('keeps a successful cadence open with a ping', async () => {

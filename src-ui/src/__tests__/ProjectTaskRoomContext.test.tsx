@@ -105,6 +105,18 @@ function DocumentConsumer() {
   return <span>{revision}</span>;
 }
 
+function ThrowingDocumentConsumer() {
+  const room = useProjectTaskRoomContext('task-1');
+  useLayoutEffect(
+    () =>
+      room?.subscribeDocument(() => {
+        throw new Error('pane observer failed');
+      }),
+    [room],
+  );
+  return null;
+}
+
 beforeEach(() => {
   mocks.command.mockReset();
   mocks.restart.mockReset();
@@ -170,6 +182,26 @@ test('forwards parsed documents synchronously while the stream is current', () =
       text: 'three',
     }),
   );
+  expect(screen.getByText('revision-2')).toBeTruthy();
+});
+
+test('isolates a throwing document listener from sibling panes', () => {
+  render(
+    <ProjectTaskRoomProvider taskId="task-1">
+      <ThrowingDocumentConsumer />
+      <DocumentConsumer />
+    </ProjectTaskRoomProvider>,
+  );
+
+  expect(() =>
+    act(() =>
+      mocks.stream?.onAuthoritativeDocument?.({
+        kind: 'delta',
+        revision: 'revision-2',
+        text: 'two',
+      }),
+    ),
+  ).not.toThrow();
   expect(screen.getByText('revision-2')).toBeTruthy();
 });
 

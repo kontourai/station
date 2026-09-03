@@ -70,6 +70,8 @@ export function TaskRoomEditorPane({
   const operationGeneration = useRef(0);
   const authorizationRef = useRef(true);
   const displayedTaskId = useRef(taskId);
+  const sharedStreamPresentRef = useRef(shared !== undefined);
+  const queryApplicationInitialized = useRef(false);
   const authoritativeTextRef = useRef(authoritativeText);
   const lastDocumentIdentity = useRef<string | undefined>(undefined);
   const pendingPerformanceApply = useRef<
@@ -85,6 +87,7 @@ export function TaskRoomEditorPane({
     authorizationRef.current = authorizationCurrent;
     operationGeneration.current += 1;
   }
+  sharedStreamPresentRef.current = shared !== undefined;
   authoritativeTextRef.current = authoritativeText;
   useLayoutEffect(() => {
     // Task identity defines the lifetime, even though only the generation is read.
@@ -139,6 +142,7 @@ export function TaskRoomEditorPane({
     displayedTaskId.current = taskId;
     lastDocumentIdentity.current = undefined;
     pendingPerformanceApply.current = undefined;
+    queryApplicationInitialized.current = false;
     setPossibleEffect(undefined);
     setRejection(undefined);
     setSettlement(undefined);
@@ -174,7 +178,15 @@ export function TaskRoomEditorPane({
   }, [shared]);
   useLayoutEffect(() => {
     if (document.data?.kind === 'snapshot' || document.data?.kind === 'delta') {
-      applyAuthoritativeDocumentRef.current(document.data, false);
+      const requireCurrentStream =
+        sharedStreamPresentRef.current && queryApplicationInitialized.current;
+      queryApplicationInitialized.current = true;
+      applyAuthoritativeDocumentRef.current(
+        document.data,
+        requireCurrentStream,
+      );
+    } else {
+      queryApplicationInitialized.current = true;
     }
   }, [document.data]);
   const queryDocument =

@@ -346,6 +346,44 @@ test('applies a parsed accepted document synchronously without a recovery refetc
   ).toEqual({ kind: 'snapshot', revision: 'rev2', text: 'two' });
 });
 
+test('isolates throwing document observers without delaying cache normalization', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const rawObserver = vi.fn(() => {
+    throw new Error('raw observer failed');
+  });
+  const authoritativeObserver = vi.fn(() => {
+    throw new Error('authoritative observer failed');
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  renderHook(
+    () => {
+      useProjectTaskRoomStream('task-1', {
+        onDocument: rawObserver,
+        onAuthoritativeDocument: authoritativeObserver,
+      });
+    },
+    { wrapper },
+  );
+  await waitFor(() => expect(callbacks).toBeDefined());
+
+  expect(() =>
+    callbacks!.onEvent({
+      kind: 'document',
+      value: { kind: 'committed', revision: 'rev2', text: 'two' },
+    }),
+  ).not.toThrow();
+
+  expect(rawObserver).toHaveBeenCalledOnce();
+  expect(authoritativeObserver).toHaveBeenCalledOnce();
+  expect(
+    client.getQueryData(projectTaskRoomQueries.document('task-1').queryKey),
+  ).toEqual({ kind: 'snapshot', revision: 'rev2', text: 'two' });
+});
+
 test('committed SSE cancels a deferred older GET and duplicate cannot regress cache', async () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },

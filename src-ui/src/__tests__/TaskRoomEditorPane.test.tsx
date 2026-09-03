@@ -884,4 +884,22 @@ describe('TaskRoomEditorPane', () => {
         .matches(':disabled'),
     ).toBe(true);
   });
+
+  test('does not apply a query notification that arrives after stream revocation', async () => {
+    const rendered = render(<TaskRoomEditorPane taskId="task-1" />);
+    await waitFor(() =>
+      expect((editor() as HTMLTextAreaElement).value).toBe('shared base'),
+    );
+    mocks.stream = 'terminal';
+    rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+    mocks.document.data = {
+      kind: 'snapshot',
+      revision: 'revision-after-revocation',
+      text: 'must not apply',
+    };
+    rendered.rerender(<TaskRoomEditorPane taskId="task-1" />);
+
+    expect((editor() as HTMLTextAreaElement).value).toBe('shared base');
+    expect((editor() as HTMLTextAreaElement).readOnly).toBe(true);
+  });
 });

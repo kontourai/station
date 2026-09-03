@@ -175,7 +175,13 @@ export function ProjectTaskRoomProvider({
       },
       onAuthoritativeDocument: (document) => {
         if (streamRef.current === 'terminal') return;
-        for (const listener of documentListeners.current) listener(document);
+        for (const listener of documentListeners.current) {
+          try {
+            listener(document);
+          } catch {
+            // A failing Pane observer cannot starve sibling panes or cache truth.
+          }
+        }
       },
       onTerminal: () => {
         terminalGenerationRef.current = liveGenerationRef.current;

@@ -46,6 +46,32 @@ export async function settleProjectTaskRoomCadence(input: {
   }
 }
 
+/** Terminal transport settlement always releases the owning route lifetime. */
+export async function settleProjectTaskRoomTerminal(input: {
+  readonly writeTerminal: () => Promise<void>;
+  readonly close: () => Promise<void>;
+  readonly finish: () => void;
+}): Promise<void> {
+  const failures: unknown[] = [];
+  try {
+    try {
+      await input.writeTerminal();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      await input.close();
+    } catch (error) {
+      failures.push(error);
+    }
+  } finally {
+    input.finish();
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1)
+    throw new AggregateError(failures, 'Task room terminal delivery failed');
+}
+
 type ProjectTaskRoomSseDelivery = {
   readonly type?: string;
   readonly revision?: string;
@@ -296,9 +322,12 @@ export function createProjectTaskRoomRoutes(runtime: ProjectTaskRoomRuntime) {
         if (aborted || terminalWritten) return;
         deliveryQueue?.terminalize();
         terminalWritten = true;
-        await stream.writeSSE({ event: 'terminal', data: '{}' });
-        await stream.close();
-        resolveAbort?.();
+        await settleProjectTaskRoomTerminal({
+          writeTerminal: () =>
+            stream.writeSSE({ event: 'terminal', data: '{}' }),
+          close: () => stream.close(),
+          finish: () => resolveAbort?.(),
+        });
       };
       deliveryQueue = createProjectTaskRoomSseDeliveryQueue({
         aborted: () => aborted,
