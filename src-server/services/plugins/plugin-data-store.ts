@@ -385,9 +385,6 @@ export class PluginDataStore {
           last_revision INTEGER NOT NULL,
           PRIMARY KEY (plugin_id, installation_key, key)
         ) WITHOUT ROWID;
-        INSERT OR IGNORE INTO plugin_data_revisions
-          (plugin_id, installation_key, key, last_revision)
-        SELECT plugin_id, installation_key, key, revision FROM plugin_data;
       `);
     } catch (error) {
       this.db.close();
@@ -419,17 +416,29 @@ export class PluginDataStore {
     if (invalid) return { kind: 'invalid', reason: invalid };
     try {
       return this.readTransaction(() => {
+        const revisionHead = this.db
+          .prepare(
+            `SELECT key, last_revision
+             FROM plugin_data_revisions
+             WHERE plugin_id = ? AND installation_key = ? AND key = ?`,
+          )
+          .get(owner.pluginId, owner.installationKey, key) as
+          | StoredRevisionHead
+          | undefined;
+        if (
+          revisionHead !== undefined &&
+          (!DATA_KEY.test(revisionHead.key) ||
+            !Number.isSafeInteger(revisionHead.last_revision) ||
+            revisionHead.last_revision < 1)
+        ) {
+          throw new PluginDataCorruptError();
+        }
         const bounds = this.db
           .prepare(
             `SELECT data.byte_length,
                     length(CAST(data.value_json AS BLOB)) AS actual_byte_length,
-                    data.revision,
-                    revisions.last_revision
+                    data.revision
              FROM plugin_data AS data
-             LEFT JOIN plugin_data_revisions AS revisions
-               ON revisions.plugin_id = data.plugin_id
-              AND revisions.installation_key = data.installation_key
-              AND revisions.key = data.key
              WHERE data.plugin_id = ?
                AND data.installation_key = ?
                AND data.key = ?`,
@@ -439,7 +448,6 @@ export class PluginDataStore {
               byte_length: number;
               actual_byte_length: number;
               revision: number;
-              last_revision: number | null;
             }
           | undefined;
         if (!bounds) return { kind: 'not-found' };
@@ -451,8 +459,8 @@ export class PluginDataStore {
           bounds.actual_byte_length > PLUGIN_DATA_LIMITS.valueBytes ||
           !Number.isSafeInteger(bounds.revision) ||
           bounds.revision < 1 ||
-          !Number.isSafeInteger(bounds.last_revision) ||
-          bounds.last_revision !== bounds.revision
+          revisionHead === undefined ||
+          revisionHead.last_revision !== bounds.revision
         ) {
           throw new PluginDataCorruptError();
         }

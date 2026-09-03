@@ -295,6 +295,53 @@ describe('PluginDataStore', () => {
     reopened.close();
   });
 
+  test('does not repair a missing retained revision head during reopen', () => {
+    const directory = root();
+    const store = new PluginDataStore({ directory });
+    expect(store.bind(owner).set('state', 'one', null)).toMatchObject({
+      kind: 'written',
+    });
+    store.close();
+    const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
+    database.exec("DELETE FROM plugin_data_revisions WHERE key = 'state'");
+    database.close();
+
+    const reopened = new PluginDataStore({ directory });
+    expect(reopened.bind(owner).get('state')).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
+    });
+    expect(reopened.bind(owner).list()).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
+    });
+    reopened.close();
+  });
+
+  test('reports a corrupt tombstone revision head instead of absence', () => {
+    const directory = root();
+    const store = new PluginDataStore({ directory });
+    const capability = store.bind(owner);
+    expect(capability.set('state', 'one', null)).toMatchObject({
+      kind: 'written',
+      record: { revision: 1 },
+    });
+    expect(capability.delete('state', 1)).toEqual({ kind: 'deleted' });
+    store.close();
+    const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
+    database.exec(
+      "UPDATE plugin_data_revisions SET last_revision = -1 WHERE key = 'state'",
+    );
+    database.close();
+
+    const reopened = new PluginDataStore({ directory });
+    expect(reopened.bind(owner).get('state')).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
+    });
+    reopened.close();
+  });
+
   test('refuses every namespace mutation when a peer revision head is corrupt', () => {
     const directory = root();
     const store = new PluginDataStore({ directory });
