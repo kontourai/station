@@ -8,7 +8,10 @@ import type {
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import type { Logger } from '../../utils/logger.js';
 import { ContextSafetyError } from '../orchestration/context-safety.js';
-import { readPluginManifestFileSync } from './plugin-manifest-loader.js';
+import {
+  PluginManifestValidationError,
+  readPluginManifestFileSync,
+} from './plugin-manifest-loader.js';
 
 const PUBLIC_REASON_MAX = 512;
 
@@ -67,51 +70,43 @@ export function describePluginManifestRejection(
         'Repair plugin.json so it is valid JSON, then choose Reload plugins.',
     });
   }
-  if (/name .*not a canonical plugin id/i.test(message)) {
-    return rejection('invalid-plugin-name', message, {
-      kind: 'repair-manifest',
-      instruction:
-        'Use 1–64 lowercase letters, digits, hyphens, or periods with alphanumeric endpoints and no repeated hyphens or periods, then choose Reload plugins.',
-    });
-  }
-  if (/name .*reserved object key/i.test(message)) {
-    return rejection('reserved-plugin-name', message, {
-      kind: 'repair-manifest',
-      instruction:
-        'Choose a non-reserved plugin name in plugin.json, then choose Reload plugins.',
-    });
-  }
-  if (/version must be a non-empty string/i.test(message)) {
-    return rejection('missing-version', message, {
-      kind: 'repair-manifest',
-      instruction:
-        'Add a non-empty version to plugin.json, then choose Reload plugins.',
-    });
-  }
-  if (/workspacePanes/i.test(message)) {
-    return rejection('invalid-workspace-panes', message, {
-      kind: 'repair-manifest',
-      instruction:
-        'Repair the named workspacePanes declaration, then choose Reload plugins.',
-    });
-  }
-  if (/Unexpected token|unterminated JSON/i.test(message)) {
-    return rejection('malformed-json', 'plugin.json contains malformed JSON.', {
-      kind: 'repair-manifest',
-      instruction:
-        'Repair plugin.json so it is valid JSON, then choose Reload plugins.',
-    });
-  }
-  if (/unsafe|hidden|control character/i.test(message)) {
-    return rejection(
-      'unsafe-manifest-content',
-      'plugin.json contains unsafe hidden or control content.',
-      {
-        kind: 'repair-manifest',
-        instruction:
-          'Remove hidden control content from plugin.json, then choose Reload plugins.',
-      },
-    );
+  if (error instanceof PluginManifestValidationError) {
+    switch (error.code) {
+      case 'invalid-plugin-name':
+        return rejection(error.code, message, {
+          kind: 'repair-manifest',
+          instruction:
+            'Use 1–64 lowercase letters, digits, hyphens, or periods with alphanumeric endpoints and no repeated hyphens or periods, then choose Reload plugins.',
+        });
+      case 'reserved-plugin-name':
+        return rejection(error.code, message, {
+          kind: 'repair-manifest',
+          instruction:
+            'Choose a non-reserved plugin name in plugin.json, then choose Reload plugins.',
+        });
+      case 'missing-version':
+        return rejection(error.code, message, {
+          kind: 'repair-manifest',
+          instruction:
+            'Add a non-empty version to plugin.json, then choose Reload plugins.',
+        });
+      case 'invalid-workspace-panes':
+        return rejection(error.code, message, {
+          kind: 'repair-manifest',
+          instruction:
+            'Repair the named workspacePanes declaration, then choose Reload plugins.',
+        });
+      case 'invalid-manifest':
+        return rejection(error.code, message, {
+          kind: 'reinstall-plugin',
+          instruction:
+            'Repair plugin.json if you maintain this plugin; otherwise remove its folder and reinstall a compatible version, then choose Reload plugins.',
+        });
+      default: {
+        const neverCode: never = error.code;
+        return neverCode;
+      }
+    }
   }
   return rejection(
     'invalid-manifest',

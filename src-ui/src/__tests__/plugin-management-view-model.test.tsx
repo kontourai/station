@@ -207,6 +207,58 @@ describe('usePluginManagementViewModel', () => {
     expect(mocks.deselectPlugin).not.toHaveBeenCalled();
   });
 
+  test('does not overwrite user navigation while repaired selection reconciliation is in flight', async () => {
+    mocks.selectedId = 'rejected:repairable';
+    mocks.pluginsData = [
+      {
+        status: 'rejected',
+        name: 'repairable',
+        displayName: 'repairable',
+        rejection: {
+          code: 'malformed-json',
+          reason: 'plugin.json contains malformed JSON.',
+          recovery: {
+            kind: 'repair-manifest',
+            instruction: 'Repair plugin.json, then choose Reload plugins.',
+          },
+        },
+      },
+    ];
+    let finishRefetch!: () => void;
+    mocks.refetchPlugins.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishRefetch = () =>
+            resolve({
+              data: [{ name: 'repairable', version: '2.0.0' }],
+              isError: false,
+              error: null,
+            });
+        }),
+    );
+    const { result, rerender } = renderHook(() =>
+      usePluginManagementViewModel(),
+    );
+
+    let reload!: Promise<void>;
+    act(() => {
+      reload = result.current.reloadRejectedPlugin();
+    });
+    await waitFor(() => expect(mocks.refetchPlugins).toHaveBeenCalledOnce());
+
+    act(() => {
+      mocks.selectedId = 'another-plugin';
+      rerender();
+    });
+    await act(async () => {
+      finishRefetch();
+      await reload;
+    });
+
+    expect(mocks.selectPlugin).not.toHaveBeenCalled();
+    expect(mocks.deselectPlugin).not.toHaveBeenCalled();
+  });
+
   test('keeps a client-registry reload failure visible and does not refresh the collection', async () => {
     mocks.reloadClientRegistry.mockRejectedValueOnce(
       new Error('registry is still unavailable'),

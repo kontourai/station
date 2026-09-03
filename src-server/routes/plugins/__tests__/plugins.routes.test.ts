@@ -1,4 +1,4 @@
-import { cpSync, existsSync, lstatSync, readFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, readFileSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
@@ -283,6 +283,7 @@ describe('Plugin Routes', () => {
     scanPluginPromptFileSafety.mockClear();
     execGit.mockClear();
     vi.mocked(cpSync).mockClear();
+    vi.mocked(rmSync).mockClear();
     vi.mocked(existsSync).mockImplementation((p) => {
       if (typeof p === 'string' && p.includes('nonexistent')) return false;
       if (typeof p === 'string' && p.includes('plugins')) return true;
@@ -1163,6 +1164,78 @@ describe('Plugin Routes', () => {
       [],
     );
     expect(settleProviderAdapterRetirements).toHaveBeenCalledOnce();
+  });
+
+  test('removes an aliased registry plugin by its validated installed target', async () => {
+    vi.mocked(existsSync).mockImplementation((path) => {
+      if (typeof path !== 'string') return false;
+      if (path.includes('/plugins/demo')) return false;
+      if (path.includes('/plugins/actual-plugin')) return true;
+      if (path.includes('plugins')) return true;
+      return false;
+    });
+    pluginRegistryProvider.listInstalled.mockResolvedValue([
+      {
+        id: 'demo',
+        installedPluginName: 'actual-plugin',
+        version: '1.0.0',
+        installed: true,
+      },
+    ]);
+    const app = setup({
+      applyConfigurationMutation: vi.fn(async (operation) =>
+        operation(vi.fn(), { status: 'applied' }),
+      ),
+      settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const response = await app.request('/demo', { method: 'DELETE' });
+
+    expect(response.status).toBe(200);
+    expect(vi.mocked(rmSync)).toHaveBeenCalledWith(
+      '/tmp/project/plugins/actual-plugin',
+      { recursive: true, force: true },
+    );
+    expect(vi.mocked(rmSync)).not.toHaveBeenCalledWith(
+      '/tmp/project/plugins/demo',
+      expect.anything(),
+    );
+  });
+
+  test('refuses an alias collision without deleting the rejected directory', async () => {
+    vi.mocked(existsSync).mockImplementation((path) => {
+      if (typeof path !== 'string') return false;
+      if (path.includes('/plugins/demo')) return true;
+      if (path.includes('/plugins/actual-plugin')) return true;
+      if (path.includes('plugins')) return true;
+      return false;
+    });
+    pluginRegistryProvider.listInstalled.mockResolvedValue([
+      {
+        id: 'demo',
+        installedPluginName: 'actual-plugin',
+        version: '1.0.0',
+        installed: true,
+      },
+    ]);
+    const applyConfigurationMutation = vi.fn();
+    const app = setup({
+      applyConfigurationMutation,
+      settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const response = await app.request('/demo', { method: 'DELETE' });
+    const body = await json(response);
+
+    expect(response.status).toBe(400);
+    expect(body).toMatchObject({
+      success: false,
+      error: expect.stringContaining(
+        "resolves to installed plugin 'actual-plugin', but plugin 'demo' also exists",
+      ),
+    });
+    expect(applyConfigurationMutation).not.toHaveBeenCalled();
+    expect(vi.mocked(rmSync)).not.toHaveBeenCalled();
   });
 
   test('rejects plugin lifecycle names that escape the plugin root', async () => {

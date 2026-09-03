@@ -141,7 +141,13 @@ describe('installed plugin inventory', () => {
     expect(JSON.stringify(entry)).not.toContain(root);
   });
 
-  test.each(['JSON_Plugin', 'unsafe_Plugin'])(
+  test.each([
+    'JSON_Plugin',
+    'unsafe_Plugin',
+    'unsafe\nJSON_Plugin',
+    'JSON\runsafe_Plugin',
+    'control\u0001unsafe_Plugin',
+  ])(
     'does not let validation value %s choose its rejection category',
     (name) => {
       const root = home();
@@ -155,6 +161,14 @@ describe('installed plugin inventory', () => {
       });
     },
   );
+
+  test('does not classify an untyped attacker-controlled message', () => {
+    expect(
+      describePluginManifestRejection(
+        new Error('unsafe hidden control character workspacePanes version'),
+      ),
+    ).toMatchObject({ code: 'invalid-manifest' });
+  });
 
   test('recovers from current directory truth without a rejection store', () => {
     const root = home();

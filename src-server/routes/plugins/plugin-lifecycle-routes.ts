@@ -677,15 +677,59 @@ export function registerPluginLifecycleRoutes(
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
-    const pluginDir = join(pluginsDir, name);
+    let installedPluginName = name;
+    let pluginDir = join(pluginsDir, name);
     try {
       assertPathInside(pluginsDir, pluginDir, 'Plugin removal target');
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
 
-    if (!existsSync(pluginDir)) {
+    const directPluginExists = existsSync(pluginDir);
+    const registryOwner = await findOwningPluginRegistryProvider(
+      name,
+      projectHomeDir,
+    );
+    if (!registryOwner.success && registryOwner.message.includes('multiple')) {
+      return c.json(
+        {
+          success: false,
+          error: 'Plugin is installed by multiple plugin registry providers',
+        },
+        400,
+      );
+    }
+    if (registryOwner.success) {
+      // Keep remove's identity resolution identical to update's. A rejected
+      // directory can share the requested registry id, but it must never win
+      // over (or be silently confused with) the validated installed target.
+      if (directPluginExists && registryOwner.installedName !== name) {
+        return c.json(
+          {
+            success: false,
+            error: `Registry plugin '${name}' resolves to installed plugin '${registryOwner.installedName}', but plugin '${name}' also exists`,
+          },
+          400,
+        );
+      }
+      installedPluginName = registryOwner.installedName;
+      pluginDir = join(pluginsDir, installedPluginName);
+      try {
+        assertPathInside(pluginsDir, pluginDir, 'Plugin removal target');
+      } catch (error) {
+        return c.json({ success: false, error: errorMessage(error) }, 400);
+      }
+      if (!existsSync(pluginDir)) {
+        return c.json({ success: false, error: 'Plugin not found' }, 404);
+      }
+    } else if (!directPluginExists) {
       return c.json({ success: false, error: 'Plugin not found' }, 404);
+    }
+
+    try {
+      assertExistingPluginRootInside(pluginsDir, pluginDir);
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 400);
     }
 
     try {
@@ -693,27 +737,33 @@ export function registerPluginLifecycleRoutes(
       // fingerprint's subject tree — hold the same per-plugin content lock
       // the consent decision's revalidate → commit span takes, so a grant
       // cannot commit for a plugin being removed underneath it.
-      const mutation = await withPluginContentLock(pluginsDir, name, () =>
-        captureConfigurationMutation(
-          applyConfigurationMutation,
-          async (beginMutation) => {
-            const result = await uninstallInstalledPlugin(name, {
-              agentsDir,
-              beginConfigurationMutation: beginMutation,
-              buildPlugin,
-              eventBus,
-              logger,
-              pluginsDir,
-              projectHomeDir,
-              removeEngineConnections,
-              quiesceEventSubscriptions: quiesceEventSubscriptions
-                ? (plugin) => quiesceEventSubscriptions(plugin)
-                : undefined,
-            });
-            await settleProviderAdapterRetirements?.();
-            return result;
-          },
-        ),
+      const mutation = await withPluginContentLock(
+        pluginsDir,
+        installedPluginName,
+        () =>
+          captureConfigurationMutation(
+            applyConfigurationMutation,
+            async (beginMutation) => {
+              const result = await uninstallInstalledPlugin(
+                installedPluginName,
+                {
+                  agentsDir,
+                  beginConfigurationMutation: beginMutation,
+                  buildPlugin,
+                  eventBus,
+                  logger,
+                  pluginsDir,
+                  projectHomeDir,
+                  removeEngineConnections,
+                  quiesceEventSubscriptions: quiesceEventSubscriptions
+                    ? (plugin) => quiesceEventSubscriptions(plugin)
+                    : undefined,
+                },
+              );
+              await settleProviderAdapterRetirements?.();
+              return result;
+            },
+          ),
       );
       if (mutation.value.success) {
         try {

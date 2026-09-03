@@ -332,6 +332,26 @@ describe('plugin CLI API authority', () => {
     );
   });
 
+  test('does not report removal when Station refuses an alias and rejected-directory collision', async () => {
+    authenticatedFetch.mockResolvedValue(
+      Response.json(
+        {
+          success: false,
+          error:
+            "Registry plugin 'demo' resolves to installed plugin 'actual-plugin', but plugin 'demo' also exists",
+        },
+        { status: 400 },
+      ),
+    );
+    const { remove } = await import('../commands/install.js');
+    const logCountBefore = vi.mocked(console.log).mock.calls.length;
+
+    await expect(remove('demo', parsed)).rejects.toThrow(
+      "resolves to installed plugin 'actual-plugin'",
+    );
+    expect(vi.mocked(console.log).mock.calls).toHaveLength(logCountBefore);
+  });
+
   test('does not fall back to direct filesystem mutation when Station is down', async () => {
     authenticatedFetch.mockRejectedValue(new TypeError('fetch failed'));
     const { update } = await import('../commands/install.js');
