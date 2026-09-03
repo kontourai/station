@@ -139,6 +139,25 @@
   stroke-width: 1.5;
 }
 
+.app-toolbar__region-control {
+  position: relative;
+  display: inline-flex;
+}
+
+.app-toolbar__region-swap {
+  position: absolute;
+  right: -3px;
+  bottom: -4px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1;
+}
+
 .app-toolbar__region-add {
   position: absolute;
   right: 1px;

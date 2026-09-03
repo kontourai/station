@@ -1,9 +1,4 @@
 import {
-  isCanonicalWorkspaceActivityPaneInstance,
-  WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-  WORKSPACE_ACTIVITY_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-activity-pane';
-import {
   createWorkspaceChatPaneInstance,
   isCanonicalWorkspaceChatPaneInstance,
   WORKSPACE_CHAT_PANE_DESCRIPTOR,
@@ -36,8 +31,8 @@ import { shouldMaximizeOnOccupantChoice } from '../components/chat-dock/mobile-c
  * That claim is load-bearing, not decorative (archive#4460): a
  * prior version of the occupant-picker fix let `ChatDockHeader.tsx` — part
  * of the EAGER entry path via `ChatDock.tsx` → `App.tsx` — import
- * `DockOccupantPicker` directly, which dragged this module (and all three
- * pane-descriptor contracts packages it imports) out of the lazy chunk and
+ * `DockOccupantPicker` directly, which dragged this module (and the pane
+ * descriptor contract packages it imports) out of the lazy chunk and
  * into the entry bundle (+2554B gzip, measured). The fix is structural, not
  * just "don't do that": `AmbientChatDockPaneHost.tsx` builds the picker
  * element itself and hands `ChatDockHeader` an already-rendered
@@ -62,11 +57,6 @@ export const AMBIENT_DOCK_RENDERABLE_PANES: readonly {
     descriptor: WORKSPACE_HOME_PANE_DESCRIPTOR,
     isCanonicalInstance: isCanonicalWorkspaceHomePaneInstance,
     canonicalInstance: () => WORKSPACE_HOME_PANE_INSTANCE,
-  },
-  {
-    descriptor: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-    isCanonicalInstance: isCanonicalWorkspaceActivityPaneInstance,
-    canonicalInstance: () => WORKSPACE_ACTIVITY_PANE_INSTANCE,
   },
 ];
 
@@ -124,9 +114,9 @@ export function ambientDockOccupantChoices(): readonly {
 /**
  * station#520 (review round 2, M3): which `NavigationView['type']` a given
  * ambient-dockable pane's OWN route renders as its main view. `Home`'s
- * standalone placement is `/` (`{ type: 'home' }`); `Activity`'s is
- * `/activity` (`{ type: 'activity' }`) — see `app-shell/routing.ts`'s
- * `resolveViewFromPath`. `DockOccupantPicker`'s onChoose seam uses this to
+ * standalone placement is `/` (`{ type: 'home' }`) — see
+ * `app-shell/routing.ts`'s `resolveViewFromPath`. `DockOccupantPicker`'s
+ * onChoose seam uses this to
  * tell "picking this occupant would strand the main area behind it" (the
  * route we are ALREADY on) from "picking this occupant switches away from
  * something else entirely" (no stranding — the main area keeps showing
@@ -140,8 +130,6 @@ export function ambientDockOccupantRouteViewType(
   descriptor: WorkspacePaneDescriptor,
 ): string | null {
   if (descriptor.id === WORKSPACE_HOME_PANE_DESCRIPTOR.id) return 'home';
-  if (descriptor.id === WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id)
-    return 'activity';
   return null;
 }
 
