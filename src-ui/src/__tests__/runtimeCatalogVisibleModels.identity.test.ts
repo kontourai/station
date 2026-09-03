@@ -40,11 +40,19 @@ describe('runtimeCatalogVisibleModels identity passthrough', () => {
   });
 
   test('drops a malformed identity rather than trusting its shape', () => {
-    const [model] = runtimeCatalogVisibleModels(
-      connection([
-        { id: 'x', name: 'X', canonicalModelIdentity: 'anthropic:x' },
-      ]),
-    );
-    expect(model?.canonicalModelIdentity).toBeUndefined();
+    for (const malformed of [
+      'anthropic:x',
+      { canonicalId: 'anthropic:x' }, // no review anchor -- not a reference
+      { verifiedAgainst: 'reviewed' },
+      null,
+    ]) {
+      const [model] = runtimeCatalogVisibleModels(
+        connection([{ id: 'x', name: 'X', canonicalModelIdentity: malformed }]),
+      );
+      expect(
+        model?.canonicalModelIdentity,
+        JSON.stringify(malformed),
+      ).toBeUndefined();
+    }
   });
 });

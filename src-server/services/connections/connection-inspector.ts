@@ -366,7 +366,12 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
           request.allowBuiltInOnDiscoveryFailure !== false,
         now: this.dependencies.now(),
       }),
-      engineIdValue,
+      // A plugin may register any clean engineId, including a built-in's, and
+      // wins over the built-in with the same provider. Only a built-in
+      // adapter's engine id names a reviewed route family (#1208 delta).
+      getProviderAdapterRegistrationProvenance(adapter) === 'builtin'
+        ? engineIdValue
+        : undefined,
     );
     recordRuntimeCatalogStatus({ adapter, catalog: runtimeCatalog });
     let commands: AdapterCommands = [];
@@ -484,23 +489,29 @@ export function createConnectionInspector(
 }
 
 /**
- * Decorate an engine's catalog with the reviewed identity for its route family,
- * keyed on what an alias RESOLVED to when the engine reported that, else the
- * native id. The engine id is the family: `sonnet` from the Claude Code engine
- * is a reviewed route; `sonnet` from anything else is not (#1208 review).
+ * Decorate an engine's catalog with the reviewed identity for its route family.
+ * This is THE decision point for engine routes; the launchable inventory reads
+ * these decorations rather than deriving its own, so the two projections
+ * cannot disagree (#1208 delta review).
+ *
+ * Keyed on the NATIVE id the engine issued, which is what the reviewed table
+ * names -- for the Claude Code engine that is the alias `sonnet`, not whatever
+ * it resolved to at discovery. Preferring `resolvedModel` here was an
+ * inference on top of reviewed data, and it left the same row decorated on one
+ * projection and bare on the other.
  */
 function withCanonicalModelIdentity(
   catalog: RuntimeCatalogStatus | undefined,
-  engine: string,
+  engine: string | undefined,
 ): RuntimeCatalogStatus | undefined {
-  if (!catalog) return catalog;
+  if (!catalog || !engine) return catalog;
   const family = modelRouteFamilyFor({ type: engine });
   if (!family) return catalog;
   const decorate = (models: ModelOption[]): ModelOption[] =>
     models.map((model) => {
       const canonicalModelIdentity = curatedModelIdentityFor({
         family,
-        providerModel: model.resolvedModel ?? model.originalId,
+        providerModel: model.originalId,
       });
       return canonicalModelIdentity
         ? { ...model, canonicalModelIdentity }

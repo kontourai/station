@@ -358,7 +358,8 @@ function asModelOptions(value: unknown): ModelOption[] {
         // the runtime catalog silently lose grouping (#1208 review).
         ...(entry.canonicalModelIdentity &&
         typeof entry.canonicalModelIdentity === 'object' &&
-        typeof entry.canonicalModelIdentity.canonicalId === 'string'
+        typeof entry.canonicalModelIdentity.canonicalId === 'string' &&
+        typeof entry.canonicalModelIdentity.verifiedAgainst === 'string'
           ? {
               canonicalModelIdentity:
                 entry.canonicalModelIdentity as ModelOption['canonicalModelIdentity'],

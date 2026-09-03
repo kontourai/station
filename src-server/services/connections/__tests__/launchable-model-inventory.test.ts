@@ -19,6 +19,61 @@ function input(
 }
 
 describe('buildLaunchableModelInventory', () => {
+  // #1208 delta: the inspector decides engine identity (and refuses it for
+  // plugins). The inventory carries that decision; a second derivation here
+  // disagreed with it for resolved aliases and could not see provenance.
+  test('carries the runtime catalog identity for engines and never re-derives one', () => {
+    const agent = (id: string, models: Array<Record<string, unknown>>) =>
+      ({
+        id,
+        kind: 'agent' as const,
+        type: 'claude',
+        name: id,
+        enabled: true,
+        capabilities: ['agent-runtime' as const],
+        config: { engineId: 'claude' },
+        status: 'ready' as const,
+        prerequisites: [],
+        setup: { state: 'ready', detected: true, configured: true },
+        runtimeCatalog: {
+          source: 'live' as const,
+          fetchedAt: OBSERVED_AT,
+          reason: null,
+          models,
+          builtInModels: [],
+        },
+      }) as never;
+    const decorated = {
+      canonicalId: 'anthropic:claude-sonnet-4-5',
+      verifiedAgainst: 'reviewed',
+    };
+    const inventory = buildLaunchableModelInventory(
+      input({
+        agentConnections: [
+          agent('claude-decorated', [
+            {
+              id: 'sonnet',
+              name: 'Sonnet',
+              originalId: 'sonnet',
+              canonicalModelIdentity: decorated,
+            },
+          ]),
+          // Same engine, same id, but the inspector declined (e.g. a plugin
+          // asserting this engine id). The inventory must not fill it in.
+          agent('claude-bare', [
+            { id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' },
+          ]),
+        ],
+      }),
+    );
+    const byConnection = (connectionId: string) =>
+      inventory.models.find((model) => model.connectionId === connectionId);
+    expect(byConnection('claude-decorated')?.canonicalModelIdentity).toEqual(
+      decorated,
+    );
+    expect(byConnection('claude-bare')?.canonicalModelIdentity).toBeUndefined();
+  });
+
   // #1208 review: identity is a fact about (route family, id), never id alone.
   // The same string from a family the reviewed data never named must carry
   // nothing, or an unrelated model renders as Claude Sonnet 4.5.

@@ -55,7 +55,14 @@ describe('ConnectionInspector Interface', () => {
         },
         getPrerequisites: vi.fn(async () => []),
         listModels: vi.fn(async () => [
-          { id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' },
+          // resolvedModel present on purpose: the reviewed route for this
+          // engine is the alias, so decoration must key on the native id.
+          {
+            id: 'sonnet',
+            name: 'Sonnet',
+            originalId: 'sonnet',
+            resolvedModel: 'claude-sonnet-4-5',
+          },
           { id: 'other', name: 'Other', originalId: 'other' },
         ]),
       });
@@ -84,6 +91,51 @@ describe('ConnectionInspector Interface', () => {
     const codex = await catalogOf('codex');
     expect(
       codex.find((m) => m.id === 'sonnet')?.canonicalModelIdentity,
+    ).toBeUndefined();
+  });
+
+  // #1208 delta: a plugin may register any clean engineId, including a
+  // built-in's, and wins over the built-in with the same provider. Its engine
+  // id must not name a reviewed route family.
+  test('refuses to decorate a plugin adapter that asserts a built-in engine id', async () => {
+    const plugin = adapter('claude', {
+      metadata: {
+        displayName: 'Impostor',
+        description: 'test',
+        capabilities: [],
+        engineId: 'claude',
+      },
+      getPrerequisites: vi.fn(async () => []),
+      listModels: vi.fn(async () => [
+        { id: 'sonnet', name: 'Sonnet', originalId: 'sonnet' },
+      ]),
+    });
+    setProviderAdapterRegistrationProvenance(plugin, 'plugin');
+    const subject = createConnectionInspector({
+      adapters: () => [plugin],
+      appConfig: () =>
+        ({
+          agentConnections: { claude: { enabled: true, config: {} } },
+        }) as any,
+      acpConnections: () => [],
+      acpStatus: () => ({}),
+      publicConnection: (runtimeId) => ({
+        id: engineConnectionId('claude'),
+        engineId: runtimeId,
+      }),
+      now: () => Date.parse('2026-08-13T00:00:00.000Z'),
+    });
+    const result = (await subject.inspect({
+      kind: 'runtime-capability-inventory',
+    })) as {
+      connections: Array<{
+        runtimeCatalog?: {
+          models: Array<{ canonicalModelIdentity?: unknown }>;
+        };
+      }>;
+    };
+    expect(
+      result.connections[0]?.runtimeCatalog?.models[0]?.canonicalModelIdentity,
     ).toBeUndefined();
   });
 

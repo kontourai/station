@@ -554,6 +554,11 @@ describe('SessionModelPicker', () => {
       expect.stringContaining('sonnet'),
       expect.stringContaining('GPT-5.5'),
     ]);
+    // The boundary must actually exist: the middle two sit inside the group,
+    // the outer two do not. Without this the test passes on a flat list.
+    expect(
+      options.map((option) => option.closest('fieldset') !== null),
+    ).toEqual([false, true, true, false]);
     options[0]!.focus();
     fireEvent.keyDown(options[0]!, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(options[1]);

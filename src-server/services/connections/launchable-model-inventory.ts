@@ -9,7 +9,6 @@ import type {
 } from '@kontourai/station-contracts/model-inventory';
 import {
   curatedModelIdentityFor,
-  type ModelRouteFamily,
   modelRouteFamilyFor,
 } from '@kontourai/station-contracts/model-inventory';
 import type {
@@ -79,7 +78,9 @@ function unanimous<T>(values: Array<T | undefined>): T | null {
 
 function groupModels(
   models: ModelProjection[],
-  family: ModelRouteFamily | undefined,
+  identityFor: (
+    providerModel: string,
+  ) => CanonicalModelIdentityReference | undefined,
 ): Array<{
   providerModel: string;
   canonicalModelIdentity?: CanonicalModelIdentityReference;
@@ -104,10 +105,7 @@ function groupModels(
 
   return [...groups.entries()].map(([providerModel, group]) => {
     const supportsTools = unanimous(group.map((model) => model.supportsTools));
-    const canonicalModelIdentity = curatedModelIdentityFor({
-      family,
-      providerModel,
-    });
+    const canonicalModelIdentity = identityFor(providerModel);
     return {
       providerModel,
       ...(canonicalModelIdentity ? { canonicalModelIdentity } : {}),
@@ -250,7 +248,12 @@ function modelRecords(
       supportsTools: item.supportsTools,
       supportsVision: item.supportsVision,
     })),
-    modelRouteFamilyFor(source.connection),
+    // Model connections: derived here from the connection's own family.
+    (providerModel) =>
+      curatedModelIdentityFor({
+        family: modelRouteFamilyFor(source.connection),
+        providerModel,
+      }),
   ).map((model) =>
     record({
       connectionId: source.connection.id,
@@ -351,14 +354,12 @@ function agentRecords(
       providerModel: item.originalId,
       displayName: item.name,
     })),
-    // An engine connection's family is its engine id: `sonnet` from the
-    // Claude Code engine is a reviewed route, `sonnet` from elsewhere is not.
-    modelRouteFamilyFor({
-      type:
-        typeof connection.config.engineId === 'string'
-          ? connection.config.engineId
-          : connection.type,
-    }),
+    // Engine connections: the inspector already decided identity when it
+    // built the runtime catalog (and refused it for plugin adapters). Read
+    // that decision; a second derivation here disagreed with it.
+    (providerModel) =>
+      catalog.models.find((item) => item.originalId === providerModel)
+        ?.canonicalModelIdentity,
   ).map((model) =>
     record({
       connectionId: connection.id,
