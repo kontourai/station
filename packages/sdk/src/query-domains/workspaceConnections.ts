@@ -1,7 +1,10 @@
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { FleetContributionManifest } from '@kontourai/station-contracts/fleet-contribution';
 import type { ConnectionInventoryFailure } from '@kontourai/station-contracts/model-inventory';
-import { describeConnectionInventoryFailures } from '@kontourai/station-contracts/model-inventory';
+import {
+  curatedModelIdentityFor,
+  describeConnectionInventoryFailures,
+} from '@kontourai/station-contracts/model-inventory';
 import type {
   AgentConnectionView,
   ConnectionConfig,
@@ -242,6 +245,20 @@ export function useModelPickerCatalogQuery(
                   ...(typeof model.resolvedModel === 'string'
                     ? { resolvedModel: model.resolvedModel }
                     : {}),
+                  // One derivation for every route reaching a surface. Keyed on
+                  // the concrete model an alias resolves to when the engine
+                  // reported one ('default' -> 'claude-sonnet-4-5'), else the
+                  // provider-native id. Unrecognised ids carry no field.
+                  ...(() => {
+                    const identity = curatedModelIdentityFor(
+                      typeof model.resolvedModel === 'string'
+                        ? model.resolvedModel
+                        : typeof model.originalId === 'string'
+                          ? model.originalId
+                          : candidate.id,
+                    );
+                    return identity ? { canonicalModelIdentity: identity } : {};
+                  })(),
                   ...(model.capabilities
                     ? {
                         capabilities: {
@@ -319,9 +336,6 @@ export function useModelPickerCatalogQuery(
       const safeConfig = (connection: ConnectionConfig) => ({
         ...(typeof connection.config.engineId === 'string'
           ? { engineId: connection.config.engineId }
-          : {}),
-        ...(typeof connection.config.executionClass === 'string'
-          ? { executionClass: connection.config.executionClass }
           : {}),
         ...(typeof connection.config.defaultModel === 'string'
           ? { defaultModel: connection.config.defaultModel }

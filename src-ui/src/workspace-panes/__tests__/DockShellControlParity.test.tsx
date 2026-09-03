@@ -26,10 +26,20 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
+import { RegionToolbarControls } from '../../components/header/RegionToolbarControls';
+import {
+  KeyboardShortcutsProvider,
+  useShortcutRegistry,
+} from '../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../contexts/NavigationContext';
 import { navigationStore } from '../../contexts/navigation-store';
+import {
+  RegionModelProvider,
+  useRegionModel,
+} from '../../contexts/RegionModelContext';
+import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { AmbientChatDockPaneHost } from '../AmbientChatDockPaneHost';
 import type { WorkspacePaneDockAction } from '../WorkspacePaneDockContext';
 
@@ -76,20 +86,43 @@ beforeEach(() => {
       ) => callback({}),
     },
   });
-  window.localStorage.removeItem(AMBIENT_DOCK_STORAGE_KEY);
-  window.localStorage.removeItem(DEVICE_SETTINGS_KEY);
-  window.history.replaceState({}, '', '/?dock=open');
-  navigationStore.navigate('/', { dock: 'open', maximize: null });
+  regionModel = null;
+  resetDockPlacementState('/?dock=open', { dock: 'open' });
 });
 
 afterEach(() => {
   cleanup();
-  window.localStorage.removeItem(AMBIENT_DOCK_STORAGE_KEY);
-  window.localStorage.removeItem(DEVICE_SETTINGS_KEY);
-  window.history.replaceState({}, '', '/');
-  navigationStore.navigate('/', { dock: null, maximize: null });
+  // A test that fails before its own `mockRestore` would otherwise leave the
+  // store spied, and `vi.spyOn` on an already-spied method hands back the SAME
+  // mock — so the next test would read the previous test's calls as its own.
+  vi.restoreAllMocks();
+  resetDockPlacementState('/', { dock: null });
   delete (globalThis.navigator as { locks?: unknown }).locks;
 });
+
+/**
+ * `deviceSettingsStore` is a module singleton whose in-memory snapshot
+ * survives a `localStorage.removeItem`, so a test that lands the region
+ * mirror's `dockSlotPlacement: 'right'` write would otherwise hand every
+ * later test in this file a right-hand dock (and no bottom resize handle).
+ * `reloadFromStorage` is the store's own documented test-isolation seam —
+ * it re-reads the cleared key and notifies, which is also what makes
+ * `navigationStore` recompute its `dockMode` fallback.
+ */
+function resetDockPlacementState(
+  url: string,
+  params: Record<string, string | null>,
+) {
+  window.localStorage.removeItem(AMBIENT_DOCK_STORAGE_KEY);
+  window.localStorage.removeItem(DEVICE_SETTINGS_KEY);
+  window.history.replaceState({}, '', url);
+  navigationStore.navigate('/', {
+    maximize: null,
+    dockSlotPlacement: null,
+    ...params,
+  });
+  deviceSettingsStore.reloadFromStorage();
+}
 
 function renderHost(
   onDockActionChange?: (action: WorkspacePaneDockAction | null) => void,
@@ -97,17 +130,71 @@ function renderHost(
   return render(
     <KeyboardShortcutsProvider>
       <NavigationProvider>
-        <AmbientChatDockPaneHost
-          renderChatPane={(instance) => (
-            <p data-testid="ambient-chat-occupant">
-              Chat pane {instance.instanceId}
-            </p>
-          )}
-          onDockActionChange={onDockActionChange}
-        />
+        <RegionModelProvider>
+          <ShortcutProbe
+            onReady={(registry) => {
+              shortcutRegistry = registry;
+            }}
+          />
+          <RegionModelProbe />
+          <RegionToolbarControls />
+          <AmbientChatDockPaneHost
+            renderChatPane={(instance) => (
+              <p data-testid="ambient-chat-occupant">
+                Chat pane {instance.instanceId}
+              </p>
+            )}
+            onDockActionChange={onDockActionChange}
+          />
+        </RegionModelProvider>
       </NavigationProvider>
     </KeyboardShortcutsProvider>,
   );
+}
+
+let shortcutRegistry: ReturnType<typeof useShortcutRegistry> | null = null;
+
+/**
+ * Region state is not addressable from the DOM — the placement class and the
+ * collapsed class only report which region holds chat and whether it is
+ * visible, never which regions were VACATED. Reading the live model is what
+ * lets a test see the difference between "chat moved" and "chat was copied".
+ */
+let regionModel: ReturnType<typeof useRegionModel> | null = null;
+
+function RegionModelProbe() {
+  regionModel = useRegionModel();
+  return null;
+}
+
+function currentRegionModel(): ReturnType<typeof useRegionModel> {
+  if (!regionModel) throw new Error('region model probe never rendered');
+  return regionModel;
+}
+
+function dockParam(): string | null {
+  return new URLSearchParams(window.location.search).get('dock');
+}
+
+async function placeChatRight() {
+  renderHost();
+  await waitFor(() =>
+    expect(document.querySelector('.chat-dock')).not.toBeNull(),
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Place Chat in Right region' }),
+  );
+  await waitFor(() =>
+    expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
+  );
+}
+
+function dockToggle(): () => void {
+  const toggle = (shortcutRegistry?.getAllShortcuts() ?? []).find(
+    (shortcut) => shortcut.id === 'dock.toggle',
+  );
+  if (!toggle) throw new Error('dock.toggle is not registered');
+  return toggle.handler;
 }
 
 async function dockedAction(): Promise<WorkspacePaneDockAction> {
@@ -132,11 +219,13 @@ function expectFullDockControls(occupantName: string) {
     'the bottom-dock resize handle must be present regardless of occupant',
   ).not.toBeNull();
   expect(
-    screen.getByLabelText(/^(Maximize|Restore) chat dock$/),
+    screen.getByLabelText(
+      /^(Expand dock region to workspace|Restore dock region size)$/,
+    ),
     'a maximize/restore control must be present regardless of occupant',
   ).toBeTruthy();
   expect(
-    screen.getByLabelText(/^(Expand|Collapse) chat dock$/),
+    screen.getByLabelText(/^(Show|Hide) dock region$/),
     'a collapse/expand control must be present regardless of occupant',
   ).toBeTruthy();
   expect(
@@ -149,7 +238,291 @@ function expectFullDockControls(occupantName: string) {
   ).toBeTruthy();
 }
 
+/**
+ * The registry probe exists so a test can drive `dock.toggle` through the same
+ * channel ⌘D does, rather than clicking the button and hoping the binding is
+ * wired. #1202 shipped a dead ⌘D past 175 green tests because nothing ever
+ * exercised the shortcut id itself.
+ */
+function ShortcutProbe({
+  onReady,
+}: {
+  onReady: (registry: ReturnType<typeof useShortcutRegistry>) => void;
+}) {
+  const registry = useShortcutRegistry();
+  useEffect(() => {
+    onReady(registry);
+  }, [registry, onReady]);
+  return null;
+}
+
+/**
+ * #928 step 3b flips the writer: a placement, a visibility change or a size
+ * change is made on the REGION MODEL, and navigation's `dock`/`maximize`/
+ * `dockSlotPlacement` params plus the `dockSlotPlacement`/`chatDockHeight`/
+ * `chatDockWidth` device settings become its durable mirror. These tests drive
+ * the real toolbar control, the real `dock.toggle` handler and the real
+ * `DockShell` against the real navigation and device stores, so nothing here
+ * can pass on a mocked mirror.
+ */
+describe('the region model is the dock writer (station#928 step 3b)', () => {
+  test('seeding from a persisted placement writes nothing back', async () => {
+    deviceSettingsStore.set('dockSlotPlacement', 'right');
+    const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
+    const deviceWrite = vi.spyOn(deviceSettingsStore, 'set');
+
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
+    );
+
+    // #1265: resolving a remembered placement is not a user action, so the
+    // mirror must stay silent — a mount that re-emitted its own seed would
+    // write a `dockSlotPlacement` URL param nobody asked for, and would make
+    // every route the user opens look like an explicit placement choice.
+    expect(dockModeWrite).not.toHaveBeenCalled();
+    expect(deviceWrite).not.toHaveBeenCalled();
+    expect(
+      new URLSearchParams(window.location.search).get('dockSlotPlacement'),
+    ).toBeNull();
+  });
+
+  test('placing chat in a region vacates the old one and mirrors navigation and device settings', async () => {
+    await placeChatRight();
+
+    expect(navigationStore.getSnapshot().dockMode).toBe('right');
+    expect(deviceSettingsStore.get('dockSlotPlacement')).toBe('right');
+    // The move is a move, not a copy: nothing but the model can report this.
+    expect(currentRegionModel().regions.bottom.occupant).toBeNull();
+    expect(currentRegionModel().regions.right.occupant).toBe('chat');
+    expect(document.querySelector('.chat-dock--bottom')).toBeNull();
+  });
+
+  test("a region size write is mirrored to that region's own device setting", async () => {
+    await placeChatRight();
+
+    act(() => currentRegionModel().setRegion('right', { size: 517 }));
+
+    await waitFor(() =>
+      expect(deviceSettingsStore.get('chatDockWidth')).toBe(517),
+    );
+    // The bottom region's own setting is untouched — the mirror is per region,
+    // not a single "dock size".
+    expect(deviceSettingsStore.get('chatDockHeight')).toBe(320);
+  });
+
+  test('toggling visibility moves only the dock param and writes no size', async () => {
+    await placeChatRight();
+    const deviceWrite = vi.spyOn(deviceSettingsStore, 'set');
+    const toggle = dockToggle();
+
+    expect(dockParam()).toBe('open');
+    expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
+
+    act(() => toggle());
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull(),
+    );
+    expect(dockParam()).toBeNull();
+    expect(currentRegionModel().regions.right.visible).toBe(false);
+
+    act(() => toggle());
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull(),
+    );
+    expect(dockParam()).toBe('open');
+    expect(currentRegionModel().regions.right.visible).toBe(true);
+
+    // A visibility change carries no size, so the mirror must write none —
+    // a mirror that re-emits every field on every diff would loop the store.
+    expect(deviceWrite.mock.calls.map(([key]) => key)).toEqual([]);
+  });
+
+  test('an unrelated device-setting change leaves the placed region alone', async () => {
+    await placeChatRight();
+
+    act(() => deviceSettingsStore.set('inboxOpen', false));
+
+    expect(currentRegionModel().regions.right.occupant).toBe('chat');
+    expect(currentRegionModel().regions.right.visible).toBe(true);
+    expect(document.querySelector('.chat-dock--right')).not.toBeNull();
+    expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
+  });
+
+  test('one user action produces exactly one mirror write per mirrored field', async () => {
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock')).not.toBeNull(),
+    );
+    const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
+    const dockStateWrite = vi.spyOn(navigationStore, 'setDockState');
+    const deviceWrite = vi.spyOn(deviceSettingsStore, 'set');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Place Chat in Right region' }),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
+    );
+
+    // A placement moves one mirrored fact — where chat is (once, through
+    // `setDockMode`, which writes the URL param and the device setting
+    // together). The dock was showing before and after, so `setDockState`,
+    // whose side effect is recording `lastDockMaximized`, must not run.
+    expect(dockModeWrite).toHaveBeenCalledTimes(1);
+    expect(dockModeWrite).toHaveBeenCalledWith('right');
+    expect(dockStateWrite).not.toHaveBeenCalled();
+    expect(deviceWrite.mock.calls.map(([key]) => key)).toEqual([
+      'dockSlotPlacement',
+    ]);
+
+    dockModeWrite.mockClear();
+    dockStateWrite.mockClear();
+    deviceWrite.mockClear();
+
+    act(() => dockToggle()());
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull(),
+    );
+
+    expect(dockStateWrite).toHaveBeenCalledTimes(1);
+    expect(dockModeWrite).not.toHaveBeenCalled();
+    expect(deviceWrite.mock.calls.map(([key]) => key)).toEqual([]);
+  });
+
+  test('moving a docked dock keeps the remembered maximize', async () => {
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock')).not.toBeNull(),
+    );
+    // Maximize, then dock back down the way a navigation does: the store
+    // keeps `lastDockMaximized` so a later `focusSession` reveal can restore
+    // Full (archive#1298, `useChatDockActions`).
+    act(() => navigationStore.setDockState(true, true));
+    act(() => navigationStore.collapseMaximizedDock());
+    expect(navigationStore.lastDockMaximized).toBe(true);
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Place Chat in Right region' }),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
+    );
+
+    expect(navigationStore.lastDockMaximized).toBe(true);
+  });
+
+  test('placing chat while the dock is hidden reveals it there', async () => {
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock')).not.toBeNull(),
+    );
+    act(() => dockToggle()());
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull(),
+    );
+    const dockStateWrite = vi.spyOn(navigationStore, 'setDockState');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Place Chat in Right region' }),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
+    );
+
+    expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
+    expect(dockParam()).toBe('open');
+    expect(dockStateWrite).toHaveBeenCalledTimes(1);
+    expect(dockStateWrite).toHaveBeenCalledWith(true, false);
+  });
+
+  test('a placement arriving through the device setting is not replayed as a choice', async () => {
+    renderHost();
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock--bottom')).not.toBeNull(),
+    );
+    const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
+
+    // Another tab's choice lands as a device-setting change; navigation
+    // recomputes `dockMode` from it (navigation-store.ts,
+    // `handleDeviceSettingsChange`) and the model re-seeds.
+    act(() => deviceSettingsStore.set('dockSlotPlacement', 'right'));
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
+    );
+
+    // A seed is inbound. Replaying it as a user write would stamp
+    // `dockSlotPlacement` into this tab's URL, after which the URL param
+    // governs and this tab never follows the device setting again.
+    expect(dockModeWrite).not.toHaveBeenCalled();
+    expect(
+      new URLSearchParams(window.location.search).get('dockSlotPlacement'),
+    ).toBeNull();
+    expect(currentRegionModel().regions.right.occupant).toBe('chat');
+    expect(currentRegionModel().regions.bottom.occupant).toBeNull();
+  });
+
+  test('a hidden region keeps its occupant mounted', async () => {
+    renderHost();
+    await waitFor(() =>
+      expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
+    );
+
+    act(() => currentRegionModel().setRegion('bottom', { visible: false }));
+
+    await waitFor(() =>
+      expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull(),
+    );
+    expect(currentRegionModel().regions.bottom.visible).toBe(false);
+    // `DockShell` renders its occupant unconditionally and collapses the box
+    // with a class — hiding a region must not unmount the surface inside it,
+    // or every collapse would throw away the occupant's live state.
+    expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull();
+  });
+});
+
 describe('every ambient occupant gets the full dock chrome (station#4460)', () => {
+  test('the dock.toggle shortcut (cmd+D) collapses the real dock shell', async () => {
+    renderHost();
+    await waitFor(() => {
+      expect(document.querySelector('.chat-dock')).not.toBeNull();
+    });
+    await waitFor(() => {
+      expect(shortcutRegistry).not.toBeNull();
+    });
+    const toggle = (shortcutRegistry?.getAllShortcuts() ?? []).find(
+      (shortcut) => shortcut.id === 'dock.toggle',
+    );
+    expect(
+      toggle,
+      'dock.toggle must be registered by the shell chrome',
+    ).toBeTruthy();
+    expect(toggle?.key).toBe('d');
+    expect(toggle?.modifiers).toContain('cmd');
+    expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
+    act(() => {
+      toggle?.handler();
+    });
+    await waitFor(() => {
+      expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull();
+    });
+  });
+
+  test('the real region control changes the real dock shell open state', async () => {
+    renderHost();
+    await waitFor(() => {
+      expect(document.querySelector('.chat-dock')).not.toBeNull();
+    });
+    const control = screen.getByRole('button', {
+      name: 'Hide Chat Bottom region',
+    });
+    expect(document.querySelector('.chat-dock.is-collapsed')).toBeNull();
+    fireEvent.click(control);
+    await waitFor(() => {
+      expect(document.querySelector('.chat-dock.is-collapsed')).not.toBeNull();
+    });
+  });
+
   // Chat's OWN header content is rendered by the real `ChatWorkspacePane`
   // (a heavy component with its own large context/data-fetching surface),
   // not by this test's mocked `renderChatPane` — so this file cannot mount
@@ -221,7 +594,7 @@ describe('maximize state survives an occupant switch (station#4460)', () => {
       expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
     });
 
-    fireEvent.click(screen.getByLabelText('Maximize chat dock'));
+    fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
     await waitFor(() => {
       expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull();
     });
@@ -244,7 +617,7 @@ describe('maximize state survives an occupant switch (station#4460)', () => {
       document.querySelector('.chat-dock.is-maximized'),
       'the dock must remain maximized across the occupant switch',
     ).not.toBeNull();
-    const restoreControl = screen.getByLabelText('Restore chat dock');
+    const restoreControl = screen.getByLabelText('Restore dock region size');
     fireEvent.click(restoreControl);
     await waitFor(() => {
       expect(document.querySelector('.chat-dock.is-maximized')).toBeNull();
@@ -268,7 +641,7 @@ describe('dock-slot geometry is stable across an occupant switch (station#4460)'
     // Commit a height that does not match the device-setting default (320)
     // — the exact scenario a settings-derived fallback would have gotten
     // wrong for a non-chat occupant pre-fix.
-    fireEvent.click(screen.getByLabelText('Maximize chat dock'));
+    fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
     await waitFor(() => {
       expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull();
     });

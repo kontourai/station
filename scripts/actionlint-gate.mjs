@@ -45,6 +45,9 @@ const WORKFLOW_DIR = join(REPO_ROOT, '.github', 'workflows');
 const GITHUB_HOSTED_RUNNER_IMAGES = new Set([
   'ubuntu-latest',
   'ubuntu-22.04',
+  // GitHub's partner arm64 hosted image (free for public repositories),
+  // used by node-pty-prebuilds.yml to build the linux-arm64 artifact (#1245).
+  'ubuntu-22.04-arm',
   'windows-latest',
   'macos-latest',
   'macos-15',
@@ -1430,7 +1433,7 @@ function candidatePullRequestWorkflowFindings(file, document) {
  */
 function fullRegressionActionlintFindings(file, document) {
   if (file !== FULL_REGRESSION_WORKFLOW) return [];
-  const job = (document?.jobs ?? {})[FULL_REGRESSION_JOB_ID];
+  const job = document?.jobs?.[FULL_REGRESSION_JOB_ID];
   if (!job) return [];
   if (hasPinnedActionlintProvision(job, FULL_REGRESSION_COMPLETION_STEP))
     return [];

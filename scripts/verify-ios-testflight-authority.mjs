@@ -2,6 +2,7 @@
 import { execFileSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { parseInternalTestFlightAuthorityRef } from './ios-testflight-internal-authority.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
 export function verifyIosTestFlightAuthority({
@@ -9,12 +10,11 @@ export function verifyIosTestFlightAuthority({
   sourceSha,
   resolveRef,
 }) {
-  if (
-    !/^refs\/tags\/(v\d+\.\d+\.\d+(?:-preview\.\d+)?|nightly-version-code\/\d+)$/.test(
+  const isReleaseAuthority =
+    /^refs\/tags\/(v\d+\.\d+\.\d+(?:-preview\.\d+)?|nightly-version-code\/\d+)$/.test(
       sourceRef,
-    )
-  )
-    throw new Error('source ref is not an immutable Station release authority');
+    );
+  if (!isReleaseAuthority) parseInternalTestFlightAuthorityRef(sourceRef);
   if (!SHA.test(sourceSha))
     throw new Error('source SHA must be 40 lowercase hex characters');
   let resolved;

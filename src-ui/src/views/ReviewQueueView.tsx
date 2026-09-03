@@ -23,6 +23,7 @@ import {
   useRunIndependentReviewMutation,
   useSurveyFlowReviewsQuery,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '../components/Button';
@@ -524,7 +525,7 @@ function IndependentReviewRunModal({
     }
     setValidationError(null);
     const request: IndependentReviewRequest = {
-      requestId: crypto.randomUUID(),
+      requestId: randomCorrelationId(),
       mode,
       target: {
         kind: 'git-range',

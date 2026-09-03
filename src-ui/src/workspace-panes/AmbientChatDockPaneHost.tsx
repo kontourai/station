@@ -39,10 +39,9 @@ import type { DockSnap } from '../components/chat-dock/dockSnap';
 import { shouldMaximizeAfterDockingAsOnlyContent } from '../components/chat-dock/mobile-chrome';
 import { SkeletonBlock } from '../components/state';
 import { useApiBase } from '../contexts/ApiBaseContext';
-import { RegionModelProvider } from '../contexts/RegionModelContext';
 import type { DockSlotGeometry } from '../hooks/dock-slot-geometry';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
-import type { NavigationView } from '../types';
+import type { DockMode, NavigationView } from '../types';
 import { ActivityWorkspacePaneBindingProvider } from '../views/activity/ActivityWorkspacePaneBinding';
 import {
   HomeWorkspacePane,
@@ -309,12 +308,14 @@ export type AmbientDockShellApi = DockShellChrome & {
 
 /** The ambient shell mounts Chat through the same host/frame lifecycle as every pane. */
 export function AmbientChatDockPaneHost({
+  regionId,
   onRequestAuth,
   renderChatPane,
   homeContinuation = null,
   onNavigate = () => undefined,
   onDockActionChange,
 }: {
+  regionId?: DockMode;
   onRequestAuth?: () => Promise<boolean> | undefined;
   renderChatPane(
     instance: WorkspacePaneInstance,
@@ -460,11 +461,11 @@ export function AmbientChatDockPaneHost({
   // DockShell wraps every occupant (Chat, Home, Activity) — the one dock
   // chrome shell (archive#4460): root box, resize handle, geometry/snap/
   // drag state, `dock.toggle`/`dock.maximize`. Its `onGeometryChange` is
-  // the ambient host's only remaining geometry job — apply the shell's
-  // single live report to the CSS variables (archive#3902/archive#3929:
-  // exactly one writer).
+  // this host's only remaining geometry job — apply the shell's live report
+  // to the CSS variables (archive#3902/archive#3929: one writer per shell;
+  // one shell while Chat is the only registered surface, #928).
   const host = (
-    <DockShell onGeometryChange={writeDockSlotGeometry}>
+    <DockShell regionId={regionId} onGeometryChange={writeDockSlotGeometry}>
       {(shellChrome) => {
         // station#520: keep `dockPaneAsOnlyContent`'s mobile-maximize ref
         // current every render — see the ref's own doc above.
@@ -538,5 +539,5 @@ export function AmbientChatDockPaneHost({
       }}
     </DockShell>
   );
-  return <RegionModelProvider>{host}</RegionModelProvider>;
+  return host;
 }

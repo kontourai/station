@@ -32,6 +32,7 @@
     ".": "./src/index.ts",
     "./agent-validation": "./src/agent-validation.ts",
     "./build": "./src/build.ts",
+    "./build-provenance": "./src/build-provenance.ts",
     "./checkpoints": "./src/checkpoints.ts",
     "./git": "./src/git.ts",
     "./json-file-storage": "./src/json-file-storage.ts",
@@ -72,7 +73,9 @@
     "./sqlite-corruption-watch": "./src/sqlite-corruption-watch.ts",
     "./sqlite-store-integrity": "./src/sqlite-store-integrity.ts",
     "./orchestration-store-quarantine": "./src/orchestration-store-quarantine.ts",
-    "./setup-import-bounds": "./src/setup-import-bounds.ts"
+    "./setup-import-bounds": "./src/setup-import-bounds.ts",
+    "./random-id": "./src/random-id.ts",
+    "./terminal-capability": "./src/terminal-capability.ts"
   },
   "publishConfig": {
     "access": "public"

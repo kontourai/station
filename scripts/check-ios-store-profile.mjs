@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 const APP_STORE_PROFILE_REQUIREMENT =
   'APPLE_PROVISIONING_PROFILE_BASE64 must contain an App Store distribution provisioning profile';
 const REQUIRED_PROFILE_KEYS = [
+  'Name',
   'UUID',
   'TeamIdentifier',
   'ExpirationDate',
@@ -184,6 +185,9 @@ export function inspectAppStoreDistributionProfile(
 ) {
   assertAppStoreDistributionProfile(plist, label);
   const profile = parsedProfile(plist);
+  const name = profile.Name;
+  if (typeof name !== 'string' || !name.trim() || /[\r\n]/.test(name))
+    throw new Error(`${label} has an invalid Name.`);
   const team = profile.TeamIdentifier[0];
   const parseDate = (value, key) => {
     if (
@@ -260,6 +264,7 @@ export function inspectAppStoreDistributionProfile(
   }
   return {
     distribution: 'app-store-connect',
+    name,
     uuid: profile.UUID,
     team,
     expiration: expiration.toISOString(),

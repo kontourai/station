@@ -137,12 +137,17 @@ test.describe('Android — Mobile Layout', () => {
     await expect(page.locator('.settings__section-nav')).toBeVisible();
     await page.getByRole('link', { name: 'System', exact: true }).click();
 
+    // #1063 renamed the group and renders the timestamp as `date · age` with
+    // a separate screen-reader description that repeats the age, so match the
+    // visible line whole rather than the age substring.
     const provenance = page.getByRole('group', {
-      name: 'Deployed build provenance',
+      name: 'Connected Station build provenance',
     });
     await expect(provenance).toBeVisible();
     await expect(provenance.getByText('abcdef0')).toBeVisible();
-    await expect(provenance.getByText('2 minutes ago')).toBeVisible();
+    await expect(
+      provenance.getByText('Jul 10, 2026 18:00 UTC · 2 minutes ago'),
+    ).toBeVisible();
     await expect(provenance.getByText('phone-dogfood')).toBeVisible();
     await expect(
       provenance.getByTitle('abcdef0123456789abcdef0123456789abcdef01'),

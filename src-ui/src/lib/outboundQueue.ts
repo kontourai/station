@@ -14,6 +14,8 @@
  * accepted row, so tabs cannot consume another session's evidence or race a
  * second terminal mutation.
  */
+
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { createStore, get, set, update } from 'idb-keyval';
 import type { FileAttachment } from '../types';
 
@@ -1046,7 +1048,7 @@ async function edit(
     }
     const edited = {
       ...entries[index]!,
-      clientTurnId: crypto.randomUUID(),
+      clientTurnId: randomCorrelationId(),
       content: trimmed,
     };
     const next = [...entries];
@@ -1108,7 +1110,7 @@ async function merge(
     const displayedTurns = [current, nextTurn];
     const merged: QueuedOutboundTurn = {
       ...current,
-      clientTurnId: crypto.randomUUID(),
+      clientTurnId: randomCorrelationId(),
       content: mergedContent(displayedTurns),
       attachments: mergedAttachments(displayedTurns),
       mergedTurns: displayedTurns,

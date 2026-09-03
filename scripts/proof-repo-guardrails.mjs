@@ -3802,7 +3802,7 @@ const sdkChatRuntimeTypes = readRequiredSource(
   '../packages/sdk/src/query-domains/chatRuntimeTypes.ts',
 );
 for (const requiredHelper of [
-  'export type OrchestrationProviderKind =',
+  'export type OrchestrationEngineId =',
   'export interface ConversationSummary',
   'export interface ConversationLookup',
   'export interface ConversationMessagePart',
@@ -5795,7 +5795,6 @@ for (const requiredHelper of [
   'export const navigationStore = new NavigationStore()',
   'LAST_PROJECT_KEY',
   'private parseUrl(): NavigationState',
-  'setDockModeQuiet(mode: DockMode)',
 ]) {
   if (!navigationStoreFile.includes(requiredHelper)) {
     errors.push(`navigation-store.ts must include ${requiredHelper}.`);

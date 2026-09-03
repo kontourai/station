@@ -79,7 +79,6 @@ class FakeAdapter implements ProviderAdapterShape {
       capabilities: ['agent-runtime'],
       engineId: engineId(provider),
       builtin: true,
-      executionClass: 'connected',
     };
   }
 

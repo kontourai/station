@@ -170,19 +170,32 @@ describe('portable installer data-root claim', () => {
     );
   });
 
-  it('treats an unreadable marker as not-scaffolding instead of throwing', () => {
-    // The discriminating case for the hardened read: the raw reader threw
-    // EACCES here, escaping the fail-closed predicate entirely.
-    const home = mkdtempSync(join(tmpdir(), 'station-home-unreadable-marker-'));
-    const marker = join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER);
-    writeFileSync(marker, PORTABLE_INSTALL_DATA_ROOT_SIGNATURE);
-    chmodSync(marker, 0o000);
-    try {
-      expect(stationHomeSchemaNeedsReset(home)).toBe(true);
-    } finally {
-      chmodSync(marker, 0o600);
-    }
-  });
+  // POSIX-only: this test needs `openSync` to fail with EACCES, and the only
+  // portable way to arrange that is a mode-0 file. On Windows `chmodSync` is
+  // synthetic — Node maps it onto the single read-only attribute and it never
+  // denies a read — so the marker stays readable, `openSync` succeeds, the
+  // signature matches, and the unreadable branch under test is unreachable.
+  // NTFS ACLs could deny the read, but only by depending on `icacls` and on the
+  // test account not holding the bypass-traverse/backup privileges that would
+  // defeat the deny ACE anyway, so the honest outcome here is an explicit skip.
+  it.skipIf(process.platform === 'win32')(
+    'treats an unreadable marker as not-scaffolding instead of throwing',
+    () => {
+      // The discriminating case for the hardened read: the raw reader threw
+      // EACCES here, escaping the fail-closed predicate entirely.
+      const home = mkdtempSync(
+        join(tmpdir(), 'station-home-unreadable-marker-'),
+      );
+      const marker = join(home, PORTABLE_INSTALL_DATA_ROOT_MARKER);
+      writeFileSync(marker, PORTABLE_INSTALL_DATA_ROOT_SIGNATURE);
+      chmodSync(marker, 0o000);
+      try {
+        expect(stationHomeSchemaNeedsReset(home)).toBe(true);
+      } finally {
+        chmodSync(marker, 0o600);
+      }
+    },
+  );
 
   it('refuses a symlinked marker even when its target holds the exact signature', () => {
     const home = mkdtempSync(join(tmpdir(), 'station-home-symlink-marker-'));

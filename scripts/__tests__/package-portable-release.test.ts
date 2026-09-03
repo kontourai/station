@@ -276,6 +276,75 @@ describe('portable release packager', { timeout: 30_000 }, () => {
     });
   });
 
+  it('creates a staging-only portable manifest without a release-ring claim', () => {
+    const root = createFixture();
+    const output = packageFixture(
+      root,
+      'nightly-stage',
+      process.env,
+      'nightly-2026-08-30-1',
+    );
+    expect(() =>
+      readFileSync(join(output, 'station-release-ring-stable.json')),
+    ).toThrow();
+    const manifest = JSON.parse(
+      readFileSync(
+        join(output, 'station-nightly-portable-manifest.json'),
+        'utf8',
+      ),
+    );
+    expect(manifest).toMatchObject({
+      channel: 'nightly-staging',
+      prerelease: true,
+      ref: 'nightly-2026-08-30-1',
+      sha: run('git', ['rev-parse', 'HEAD'], root),
+    });
+    expect(manifest).not.toHaveProperty('available');
+    // releaseChannel is install/update authority and belongs only to the
+    // embedded provenance. The outer staging manifest remains evidence-only.
+    expect(manifest).not.toHaveProperty('releaseChannel');
+    const embedded = JSON.parse(
+      execFileSync(
+        'tar',
+        [
+          '-xOzf',
+          join(output, 'station-nightly-portable.tar.gz'),
+          'station/.station-release.json',
+        ],
+        { encoding: 'utf8' },
+      ),
+    );
+    expect(embedded).toMatchObject({
+      channel: 'nightly-staging',
+      releaseChannel: 'nightly-staging',
+      sha: manifest.sha,
+    });
+  });
+
+  it('resolves a relative output directory before entering its temp directory', () => {
+    const root = createFixture();
+    execFileSync(
+      'bash',
+      [
+        join(root, 'scripts/package-portable-release.sh'),
+        '--output-dir',
+        'fleet-assets',
+        '--ref',
+        'nightly-2026-08-30-1',
+        '--sha',
+        run('git', ['rev-parse', 'HEAD'], root),
+        '--created-at',
+        CREATED_AT,
+      ],
+      { cwd: root, env: isolatedGitEnvironment(process.env) },
+    );
+    expect(
+      readFileSync(
+        join(root, 'fleet-assets', 'station-nightly-portable.tar.gz'),
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
   it('rejects tracked symlinks before publishing an installer-incompatible archive', () => {
     const root = createFixture();
     symlinkSync('tracked.txt', join(root, 'tracked-link'));

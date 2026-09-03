@@ -1,3 +1,5 @@
+import type { EngineId } from '@kontourai/station-contracts/agent-identity';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   foldedSessionLifecycleState,
   isSessionLifecycleStateStopped,
@@ -275,7 +277,7 @@ export function permissionPostureLabel(posture: PermissionPosture): string {
  * Bedrock and Ollama are Model connections it executes through, and the
  * `station-agent` adapter relays to Station's own `/chat`. Naming them
  * "Station" matches `agentEngineDescriptor`'s existing verdict for the same
- * execution (`KNOWN_MANAGED_RUNTIME_IDS` -> `{ name: 'Station' }`), so the
+ * execution (an engineId-carrying Station connection -> `{ name: 'Station' }`), so the
  * picker and a turn's chip cannot disagree about one engine.
  *
  * `null` is reserved for ids this build genuinely does not know — a
@@ -284,24 +286,10 @@ export function permissionPostureLabel(posture: PermissionPosture): string {
  * because an identifier actually observed on the turn beats an invented
  * label.
  */
-export function engineLabelForProvider(provider: string): string | null {
-  if (provider === 'claude') return 'Claude Code';
-  if (provider === 'codex') return 'Codex';
-  if (provider === 'muse') return 'Muse Code';
-  if (provider === 'acp') return 'Custom engine';
-  if (
-    provider === 'station-agent' ||
-    provider === 'bedrock' ||
-    provider === 'ollama'
-  ) {
-    return 'Station';
-  }
-  return null;
-}
-
 /** The minimum an agent catalog entry has to offer to be drawn as an icon. */
 export interface SessionIconAgent {
   name: string;
+  engineId?: EngineId;
   icon?: string;
   slug?: string;
   iconUrl?: string;
@@ -316,7 +304,7 @@ export interface SessionIconAgent {
  *
  * When nothing resolves — attribution unavailable, an agent that is gone, an
  * attached external transcript with no assigned agent — it falls back to the
- * ENGINE's product name from `engineLabelForProvider`, the one place Station
+ * ENGINE's product name from `engineDisplayLabel`, the one place Station
  * turns a provider id into engine vocabulary. `AgentIcon` then renders its own
  * fallback for that name: a brand mark when the engine has one ("Claude Code",
  * "Codex"), otherwise a tile with the name's initials. Nothing here invents a
@@ -337,7 +325,10 @@ export function sessionIconAgent(
     ? agents.find((agent) => agent.slug === slug)
     : undefined;
   if (resolved) return resolved;
-  return { name: engineLabelForProvider(session.provider) ?? session.provider };
+  return {
+    name: engineDisplayLabel(session.provider) ?? session.provider,
+    engineId: session.provider,
+  };
 }
 
 /**
@@ -366,7 +357,7 @@ export function delegationTargetLabel(
   if (session.delegation?.targetKind === 'agent-app') {
     return 'Engine';
   }
-  return engineLabelForProvider(session.provider) ?? 'Station agent';
+  return engineDisplayLabel(session.provider) ?? 'Station agent';
 }
 
 export function displayProvider(session: OrchestrationSessionSummary): string {
@@ -377,7 +368,7 @@ export function displayProvider(session: OrchestrationSessionSummary): string {
       session.provider;
     return `${delegationTargetLabel(session)} · ${identity}`;
   }
-  const engineLabel = engineLabelForProvider(session.provider);
+  const engineLabel = engineDisplayLabel(session.provider);
   return engineLabel ?? `Station agent · ${session.provider}`;
 }
 

@@ -21,14 +21,15 @@ import {
 } from '../contexts/DeviceSettingsContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useProjects } from '../contexts/ProjectsContext';
+import { useRegionModelOptional } from '../contexts/RegionModelContext';
 import { readToolbarHeight } from '../lib/toolbarGeometry';
+import { chatRegion } from '../regions/region-model';
 import type { DockMode } from '../types';
 import {
   type DockSlotGeometry,
   deriveDockSlotGeometry,
 } from './dock-slot-geometry';
 import { useChatDockVerticalDrag } from './useChatDockVerticalDrag';
-import { setDockModeOverride } from './useDockModePreference';
 import { useDragResize } from './useDragResize';
 import { useDockSlotPlacement, useIsMobile } from './useIsMobile';
 import { useKeyboardShortcut } from './useKeyboardShortcut';
@@ -132,7 +133,7 @@ export interface DockShellChrome {
 
 /**
  * The single owner of dock CHROME — geometry, snap state, placement,
- * drag/resize wiring and the dock.toggle/dock.maximize shortcuts. Every
+ * drag/resize wiring and the dock.maximize shortcut. Every
  * occupant of the ambient dock (Chat, Home, Activity) reads the SAME instance
  * through `DockShell`; a full-screen Chat placement (`ChatWorkspacePane`
  * outside the ambient dock) gets its own independent instance so cmd+D /
@@ -154,7 +155,7 @@ export interface DockShellChrome {
  * `ChatWorkspacePane` STILL calls this hook once locally (rules of hooks
  * forbid calling it conditionally), even though `DockShell` already owns the
  * real registration for that render — that local call must NOT also register
- * `dock.toggle`/`dock.maximize`, or the shortcut registry (last-register-wins,
+ * `dock.maximize`, or the shortcut registry (last-register-wins,
  * mount-order-only `useLayoutEffect`s) can end up dispatching through the
  * dead local closure after an occupant switch away and back, silently
  * desyncing from `DockShell`'s actual state. The ambient dock and a
@@ -168,16 +169,18 @@ export interface DockShellChrome {
 export function useDockShellChrome({
   publishesDockSlotClearance,
   registersDockShortcuts,
+  regionId,
   onGeometryChange,
 }: {
   /**
    * Whether this instance reserves route space by publishing
    * `--dock-slot-size` (via `onGeometryChange`).
    *
-   * Required, and deliberately not optional (archive#3972). Exactly ONE
-   * mount may publish it: the ambient shell (`DockShell`), which sits over
-   * the routes. A full-screen Chat placement is INSIDE the layout, so it has
-   * nothing to clear — and when it published anyway,
+   * Required, and deliberately not optional (archive#3972). Only the ambient
+   * shells (`DockShell`, one per occupied region — #928) publish it; with Chat
+   * the only registered surface that is one mount, and the N-writer reducer
+   * arrives with the next surface. A full-screen Chat placement is INSIDE the
+   * layout, so it has nothing to clear — and when it published anyway,
    * `/projects/<p>/layouts/chat` reserved 320px for a dock that was not
    * there. A default here would decide that for a caller that never thought
    * about it, and the safe answer is not the common one; every mount states
@@ -186,6 +189,7 @@ export function useDockShellChrome({
   publishesDockSlotClearance: boolean;
   /** See the `registersDockShortcuts` paragraph above. */
   registersDockShortcuts: boolean;
+  regionId?: DockMode;
   onGeometryChange?: (geometry: DockSlotGeometry | null) => void;
 }): DockShellChrome {
   const settings = useDeviceSettings();
@@ -193,18 +197,38 @@ export function useDockShellChrome({
   const {
     isDockOpen,
     isDockMaximized,
-    dockMode,
     pathname,
     setDockState,
-    setDockMode,
     collapseMaximizedDock,
   } = useNavigation();
+  const regionModel = useRegionModelOptional();
   const isMobile = useIsMobile();
   const visualViewport = useMobileVisualViewport();
+  // The region holding chat IS the placement (#928 step 3b). The model seeds
+  // from navigation's resolved `dockMode` (URL param, else the device
+  // setting — navigation-store.ts), so a deep link still wins on load.
+  // A shell given its own region reads that region (one shell per occupied
+  // region); without one it follows chat, as the fullscreen pane does.
+  const readerRegion =
+    regionId ?? (regionModel ? chatRegion(regionModel.regions) : undefined);
+  const readerDockMode = readerRegion ?? 'bottom';
+  // Visibility comes from the region the shell reads, and the model is
+  // authoritative — navigation's `isDockOpen` is its mirror, so the two can
+  // legitimately disagree for a render.
+  const readerIsDockOpen =
+    regionModel && readerRegion
+      ? regionModel.regions[readerRegion].visible
+      : isDockOpen;
+  // Navigation's `isDockMaximized` is chat's flag (its mirror writes it from
+  // chat's region), so a shell holding another occupant must not read it —
+  // per-region maximize state arrives with the next surface (#928).
+  const shellOccupant =
+    regionId && regionModel ? regionModel.regions[regionId].occupant : 'chat';
+  const effectiveIsDockMaximized = shellOccupant === 'chat' && isDockMaximized;
   const {
     available: availableDockSlotPlacements,
     effective: effectiveDockSlotPlacement,
-  } = useDockSlotPlacement(dockMode);
+  } = useDockSlotPlacement(readerDockMode);
 
   // archive#4525: the dock's remembered project binding. Read LIVE every
   // render (the same pattern `chatShowReasoning`/`chatShowToolDetails` use
@@ -275,29 +299,31 @@ export function useDockShellChrome({
   const setIsDragging = useCallback(
     (value: boolean) => {
       if (draggingRef.current && !value) {
+        // The size persists to the region that was SHOWN, not the shell's
+        // own: a side shell folded to the bottom (useIsMobile.ts
+        // `effectivePlacement`) dragged a height, and its region's size is a
+        // width.
         if (effectiveDockSlotPlacement === 'bottom') {
-          setDeviceSetting(
-            'chatDockHeight',
-            Math.round(clampDockHeight(dockHeightRef.current)),
-          );
+          regionModel?.setRegion('bottom', {
+            size: Math.round(clampDockHeight(dockHeightRef.current)),
+          });
         } else {
-          setDeviceSetting(
-            'chatDockWidth',
-            Math.round(clampDockWidth(dockWidthRef.current)),
-          );
+          regionModel?.setRegion(effectiveDockSlotPlacement, {
+            size: Math.round(clampDockWidth(dockWidthRef.current)),
+          });
         }
       }
       draggingRef.current = value;
       setIsDraggingState(value);
     },
-    [effectiveDockSlotPlacement, setDeviceSetting],
+    [effectiveDockSlotPlacement, regionModel],
   );
   const [previousDockHeight, setPreviousDockHeight] = useState(dockHeight);
   const [previousDockOpen, setPreviousDockOpen] = useState(true);
   const [isDragging, setIsDraggingState] = useState(false);
   const [dockSnap, setDockSnap] = useState<DockSnap>(() => readDockSnap());
   const [liveDragHeight, setLiveDragHeight] = useState<number | null>(null);
-  const isCollapsedDragPreview = !isDockOpen && liveDragHeight !== null;
+  const isCollapsedDragPreview = !readerIsDockOpen && liveDragHeight !== null;
 
   const toolbarHeight = useMemo(() => readToolbarHeight(), []);
   const collapsedHeight = useMemo(() => {
@@ -350,14 +376,9 @@ export function useDockShellChrome({
 
   const commitDockPlacement = useCallback(
     (mode: DockMode) => {
-      const layoutKey =
-        pathname.startsWith('/projects/') && pathname.includes('/layouts/')
-          ? 'coding'
-          : null;
-      setDockModeOverride(layoutKey, mode);
-      setDockMode(mode);
+      if (shellOccupant) regionModel?.placeSurface(shellOccupant, mode);
     },
-    [pathname, setDockMode],
+    [regionModel, shellOccupant],
   );
 
   // archive#869 / archive#1298: a maximized dock is opaque and full-height, so navigating
@@ -396,14 +417,14 @@ export function useDockShellChrome({
     const restore = shouldRestoreDockOnNavigation({
       previousPathname: previousPathnameRef.current,
       pathname,
-      isDockMaximized,
+      isDockMaximized: effectiveIsDockMaximized,
     });
     previousPathnameRef.current = pathname;
     if (!restore) return;
     restoreDockToDocked();
   }, [
     pathname,
-    isDockMaximized,
+    effectiveIsDockMaximized,
     publishesDockSlotClearance,
     restoreDockToDocked,
   ]);
@@ -412,8 +433,8 @@ export function useDockShellChrome({
   // snap (Half/Full) whenever open — desktop's continuous drag owns its own
   // height directly.
   useEffect(() => {
-    if (!publishesDockSlotClearance || !isMobile || !isDockOpen) return;
-    const next = isDockMaximized ? 'full' : dockSnap;
+    if (!publishesDockSlotClearance || !isMobile || !readerIsDockOpen) return;
+    const next = effectiveIsDockMaximized ? 'full' : dockSnap;
     if (next === 'collapsed') return;
     setDockHeight(
       dockSnapPixels(next, {
@@ -425,8 +446,8 @@ export function useDockShellChrome({
   }, [
     collapsedHeight,
     dockSnap,
-    isDockMaximized,
-    isDockOpen,
+    effectiveIsDockMaximized,
+    readerIsDockOpen,
     isMobile,
     publishesDockSlotClearance,
     setDockHeight,
@@ -462,7 +483,7 @@ export function useDockShellChrome({
     onGeometryChange?.(
       deriveDockSlotGeometry({
         placement: effectiveDockSlotPlacement,
-        isOpen: isDockOpen,
+        isOpen: readerIsDockOpen,
         height: dockHeight,
         width: dockWidth,
         liveDragHeight,
@@ -474,7 +495,7 @@ export function useDockShellChrome({
   }, [
     effectiveDockSlotPlacement,
     dockWidth,
-    isDockOpen,
+    readerIsDockOpen,
     dockHeight,
     liveDragHeight,
     publishesDockSlotClearance,
@@ -488,7 +509,7 @@ export function useDockShellChrome({
     direction: 'horizontal',
     fromLeft: effectiveDockSlotPlacement === 'left',
     onDragStart: () => {
-      if (!isDockOpen) setDockState(true, false);
+      if (!readerIsDockOpen) setDockState(true, false);
     },
   });
 
@@ -507,42 +528,28 @@ export function useDockShellChrome({
     onDragStateChange: setIsDragging,
   });
 
-  // dock.toggle / dock.maximize: the two shortcuts every dock occupant
-  // shares. Gated on `registersDockShortcuts` (archive#4460) — a
-  // docked Chat's local instance of this hook passes false so it never
-  // fights `DockShell`'s real registration for the same ids.
-  useKeyboardShortcut(
-    'dock.toggle',
-    'd',
-    ['cmd'],
-    'Toggle dock',
-    useCallback(() => {
-      setDockState(!isDockOpen, isDockOpen ? false : isDockMaximized);
-    }, [isDockOpen, isDockMaximized, setDockState]),
-    registersDockShortcuts,
-    0,
-    DOCK_WHEN,
-  );
-
+  // Maximize remains region chrome. The visibility shortcut is registered by
+  // `RegionToolbarControls` from the surface registry's metadata, outside all
+  // surface renderers.
   useKeyboardShortcut(
     'dock.maximize',
     'm',
     ['cmd'],
     'Maximize/restore dock',
     useCallback(() => {
-      if (isDockMaximized) {
+      if (effectiveIsDockMaximized) {
         setDockHeight(previousDockHeight);
         setDockState(previousDockOpen, false);
       } else {
         setPreviousDockHeight(dockHeight);
-        setPreviousDockOpen(isDockOpen);
+        setPreviousDockOpen(readerIsDockOpen);
         setDockHeight(window.innerHeight - toolbarHeight);
         setDockState(true, true);
       }
     }, [
-      isDockMaximized,
+      effectiveIsDockMaximized,
       dockHeight,
-      isDockOpen,
+      readerIsDockOpen,
       previousDockHeight,
       previousDockOpen,
       setDockState,
@@ -555,9 +562,9 @@ export function useDockShellChrome({
   );
 
   return {
-    isDockOpen,
-    isDockMaximized,
-    dockMode,
+    isDockOpen: readerIsDockOpen,
+    isDockMaximized: effectiveIsDockMaximized,
+    dockMode: readerDockMode,
     dockHeight,
     dockWidth,
     setDockHeight,

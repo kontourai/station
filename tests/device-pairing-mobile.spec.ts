@@ -161,14 +161,35 @@ test('keeps direct pairing methods usable at 390px without an advanced detour', 
   // storage. Keep its scenario bounded, but allow the same startup budget as
   // the longer pairing scenario below instead of the unit-sized default.
   test.setTimeout(60_000);
+  // This test's premise is an ESTABLISHED browser: `LocalUiSessionGate`
+  // keeps the whole shell unmounted for an anonymous one, which renders
+  // GuidedConnect — a surface with none of the affordances `openConnections`
+  // polls. The e2e runner supplies that premise through the suite storage
+  // state (`STATION_E2E_RUNNER`); the container harness cannot (the browser
+  // bootstrap mint is e2e-runner-only), so present the operator bearer and
+  // seed the saved connection — the exact recipe the pairing scenario's host
+  // context below already proves green in the container (#917).
+  const operatorCredential = hostCredential();
+  if (!operatorCredential) {
+    throw new Error(
+      'STATION_E2E_HOST_CREDENTIAL or STATION_CONTAINER_HOST_CREDENTIAL is required',
+    );
+  }
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     isMobile: true,
     hasTouch: true,
+    extraHTTPHeaders: hostCredentialHeaders(),
+  });
+  if (!baseURL) throw new Error('Playwright baseURL is required');
+  await seedBrowserConnection(context, {
+    id: 'e2e-mobile-established',
+    url: baseURL,
+    credentialState: 'saved',
+    credential: operatorCredential,
   });
   const page = await context.newPage();
 
-  if (!baseURL) throw new Error('Playwright baseURL is required');
   await page.goto(baseURL);
   const connections = await openConnections(page);
   await expect(

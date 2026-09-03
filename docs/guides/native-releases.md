@@ -43,7 +43,7 @@ digests and binds them to the exact stable or preview tag.
 `@cyclonedx/cyclonedx-npm` is pinned to `6.0.1`; `src-desktop/Cargo.toml`
 records the matching `cargo-cyclonedx` tool pin `0.5.9`. The container producer
 also pins `anchore/sbom-action` at
-`e22c389904149dbc22b58101806040fa8d37a610` and Syft `1.51.0`: after push it
+`3ad7283483fc7af8ff2b4ea19663c2d5ca935e26` and Syft `1.51.0`: after push it
 scans `ghcr.io/kontourai/station@sha256:...` (never a mutable tag) as
 CycloneDX JSON. Its nonempty package inventory is bound to the recorded image
 digest, source SHA, and two-platform descriptor, transferred as a runner
@@ -127,6 +127,21 @@ The independently published CLI remains outside this cohort. The Nightly Android
 `requiredForPromotion: true` and an atomic cohort availability policy; this is
 only an available configured subset, and fleet/CLI completion remains
 `NOT_VERIFIED`.
+
+## Nightly fleet staging
+
+`nightly-fleet-staging.yml` is an independent reusable, portable-only evidence
+lane. It is not a native-promotion dependency. Its Actions artifacts are
+staging receipts, not a GitHub release, updater feed, Play upload, TestFlight
+build, container registry image, or Linux package-repository publication.
+
+The final `nightly-fleet-staged-inventory-*` artifact content-binds every
+portable variant to the source SHA, workflow run, static-plan digest, build
+check/SBOM evidence, artifact bytes, and GitHub attestation verification. It
+does not stage container, Windows, Linux, or iOS variants: those remain gated
+and `NOT_VERIFIED`. No staged portable artifact proves availability, an
+install, or an update; those outcomes remain `NOT_PUBLISHED`, `NOT_INSTALLED`,
+and `NOT_UPDATED` in the admitted inventory.
 
 Normal operation is the scheduled Nightly build, which builds the current
 workflow event SHA once and no-ops when the rolling `nightly` tag already names

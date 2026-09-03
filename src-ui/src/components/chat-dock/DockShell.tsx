@@ -1,14 +1,17 @@
 import type { ReactNode } from 'react';
+import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import type { DockSlotGeometry } from '../../hooks/dock-slot-geometry';
 import {
   type DockShellChrome,
   useDockShellChrome,
 } from '../../hooks/useDockShellChrome';
+import type { DockMode } from '../../types';
 import { ChatDockResizeHandle } from './ChatDockResizeHandle';
 
 /**
- * The one dock chrome shell, mounted ONCE by the ambient host and shared by
- * every occupant it docks (Chat, Home, Activity — station#4460). It owns:
+ * The dock chrome shell, mounted once per occupied region by the ambient host
+ * (`RegionShells`, #928) and shared by every occupant it docks (Chat, Home,
+ * Activity — station#4460). It owns:
  *
  * - the root `.chat-dock` element and its placement/state classes, so the
  *   large existing CSS surface (`:is(.chat-dock, .dock-slot)` and friends)
@@ -17,7 +20,7 @@ import { ChatDockResizeHandle } from './ChatDockResizeHandle';
  * - geometry, snap and drag state via `useDockShellChrome` — the single
  *   authority an occupant switch cannot desync, because this component (not
  *   the occupant) is what stays mounted across a switch;
- * - `dock.toggle` / `dock.maximize`.
+ * - `dock.maximize` (region visibility lives in the app toolbar).
  *
  * What it does NOT own: the header's occupant-specific content (identity,
  * project context, session controls) and the body. Those are composed by
@@ -28,16 +31,23 @@ import { ChatDockResizeHandle } from './ChatDockResizeHandle';
  */
 export function DockShell({
   onGeometryChange,
+  regionId,
   children,
 }: {
   onGeometryChange?: (geometry: DockSlotGeometry | null) => void;
+  regionId?: DockMode;
   children: (chrome: DockShellChrome) => ReactNode;
 }) {
+  const regionModel = useRegionModelOptional();
+  const occupant =
+    regionId && regionModel ? regionModel.regions[regionId].occupant : 'chat';
   const chrome = useDockShellChrome({
     publishesDockSlotClearance: true,
-    // `DockShell` is the ambient owner — always registers `dock.toggle` /
-    // `dock.maximize` (station#4460 review H1).
-    registersDockShortcuts: true,
+    // `DockShell` owns the region maximize command, and only the shell
+    // holding chat registers it: the registry is last-register-wins, so a
+    // second shell's retraction would leave ⌘M dead (#1202's shape).
+    registersDockShortcuts: occupant === 'chat',
+    regionId,
     onGeometryChange,
   });
 
@@ -47,7 +57,8 @@ export function DockShell({
 
   return (
     <section
-      id="chat-dock"
+      id={occupant === 'chat' ? 'chat-dock' : undefined}
+      data-region={regionId}
       // A landmark region (station#4460 review L2): the per-occupant
       // `aria-label`s `.dock-slot` used to carry ("Home dock"/"Activity
       // dock") don't apply once the shell — not the occupant — owns the box.

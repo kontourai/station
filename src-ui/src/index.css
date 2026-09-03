@@ -458,10 +458,6 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-}
-
-/* ── Global themed scrollbars ── */
-* {
   scrollbar-width: thin;
   scrollbar-color: var(--border-secondary) transparent;
 }
@@ -930,12 +926,6 @@ button:hover {
 }
 .app-toolbar__brand {
   display: none;
-}
-
-.header-nav {
-  display: flex;
-  gap: 4px;
-  align-items: center;
 }
 
 .header-divider {
@@ -2026,11 +2016,22 @@ button:hover {
   font-weight: 500;
 }
 /* #765 F8: plain copy ("Home folder"), not machine framing — normal type in
-   the UI face, muted, never italic monospace. */
+   the UI face, muted, never italic monospace.
+   #1046: this is real content (station#4525/1.4.3 — "Placeholders are
+   content, not inactive chrome" applies here too), not decorative chrome, so
+   it has to clear 4.5:1 like the working-directory text beside it. --text-muted
+   (--k-text-faint) measures 4.37:1 on dark's --bg-tertiary (#16202d) and
+   4.33:1 on light's — the actual surface this label composites over inside
+   the dock header, where `.chat-dock__header-context .chat-dock__project-context`
+   sets `background: none` and the header's own --bg-tertiary shows through.
+   --text-secondary — the same "neutral status-text tone" the base
+   `.chat-dock__project-dir` rule already uses — measures 11.38:1 dark /
+   9.68:1 light on that surface. Still visually muted relative to the accent
+   leaf/badge; just not the fainter token. */
 .chat-dock__project-dir--fallback {
   font-family: var(--font-sans);
   font-style: normal;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .chat-dock__project-dir--link {
   cursor: pointer;
@@ -3169,18 +3170,13 @@ button:hover {
   white-space: nowrap;
 }
 
-/* Turns rather than flips (archive#3309): the same token-timed rotation the
-   collapse chevron beside it already used, so two adjacent controls that both
-   answer "which way is the dock about to go" behave the same way. */
-.chat-dock__maximize-glyph {
-  display: inline-flex;
-  font-size: 0.95em;
-  line-height: 1;
-  transition: transform var(--motion-base) var(--ease-standard);
-}
-
-.chat-dock__maximize-glyph.is-flipped {
-  transform: rotate(180deg);
+.chat-dock__extent-svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .chat-dock__maximize-btn:hover {
@@ -3921,6 +3917,22 @@ button.background-tasks-banner:focus-visible {
   clip: rect(0 0 0 0);
 }
 
+/* #1130/#1170 sweep: `CollaborativeEditorPane.tsx` (remote-cursor-count and
+   working-revision live regions) and `OutboundQueuedMessages.tsx` (offline
+   queue announcement) both reached for a bare `className="sr-only"` — a name
+   no stylesheet in this repo defined, so the "visually-hidden" text rendered
+   fully visible instead. Every other call site above scopes its own
+   feature-named class to this identical clip technique rather than sharing
+   one; these two independently reached for a shared generic name instead, so
+   this is that shared utility rather than a fifth near-identical copy. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
 /* archive#3341: the two shapes every clipboard call site needs once its copy
    affordance is derived from `copyToClipboard`'s boolean.
 
@@ -4285,19 +4297,36 @@ button.tool-call__line:hover {
   margin-left: 0.25rem;
 }
 
-/* --success-secondary / --success-primary were defined nowhere either, so the
-   badge that says a tool call was APPROVED rendered exactly like the one that
-   says nothing: unpainted, with the `color` declaration invalid at
-   computed-value time and therefore falling back to `inherit` — measured live
-   at rgba(0, 0, 0, 0) on #eef3f8 body copy in dark and #202124 in light. This
-   is the mirror of the --error-* pair one rule below, missed because
-   station#1168's sweep was scoped to the --error- prefix (station#1246).
-   --success-bg / --success-text are the tinted-success pair the rest of the
-   app already uses for this shape, and they measure 5.01:1 light /
-   8.84:1 dark composited. */
-.tool-call__status-badge--success {
+/* The kit's filled tone rules bind all four semantic fills to the unrelated
+   --k-brand-contrast token. Beta/nightly override that token to white, making
+   every dark-theme tone fail AA. Station already has proven quiet pairs for
+   success, warning and error, so StatusBadge uses those complete trios here.
+   Border follows the quiet semantic border instead of retaining a saturated
+   ring around a muted chip. The kit has no info trio; its existing quiet
+   Active treatment is the toast contract: raised panel, normal text, active
+   border. Reuse that exact treatment rather than minting new info colors. */
+.tone-positive {
   background: var(--success-bg);
   color: var(--success-text);
+  border-color: var(--success-border);
+}
+
+.tone-caution {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  border-color: var(--warning-border);
+}
+
+.tone-negative {
+  background: var(--error-bg);
+  color: var(--error-text);
+  border-color: var(--error-border);
+}
+
+.tone-active {
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  border-color: var(--k-active);
 }
 
 /* --error-secondary / --error-primary were never defined anywhere in the repo,
@@ -9018,7 +9047,10 @@ button.tool-call__line:hover {
   align-items: center;
   justify-content: flex-start;
   gap: var(--space-2);
-  min-width: 0;
+  /* Still the bar's absorber (see below), but it stops giving ground at the
+     44px touch floor: at 360px it otherwise lands at 43px and is a button
+     nobody can hit. */
+  min-width: 44px;
   min-height: 44px;
   padding: 0 var(--space-2);
   border: none;

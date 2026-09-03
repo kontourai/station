@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   PAIRING_SCOPES,
+  PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
   pairingScopeIncludes,
   pairingScopePresetString,
 } from '@kontourai/station-contracts';
@@ -1369,3 +1370,34 @@ describe.each([
     });
   },
 );
+
+describe('API docs stay credentialed while their launcher does not (#934)', () => {
+  // The tempting fix for the tray's 401 is to exempt the docs as `public`. The
+  // `public` bypass does not check loopback, so on a Station bound to all
+  // interfaces that hands the full route inventory and every schema to any
+  // peer that can reach the listener. The launcher page exists so the docs
+  // never have to become public; these assertions are what stops the shortcut
+  // from being taken later.
+  test.each(['/ui', '/doc'])('%s requires a credential', (path) => {
+    const rule = requiredExternalSurfaceCapability('http', 'GET', path);
+    expect(rule).toBeDefined();
+    expect(rule?.capability).not.toBe('public');
+  });
+
+  test('the launcher itself is public, and only for GET', () => {
+    expect(
+      requiredExternalSurfaceCapability(
+        'http',
+        'GET',
+        PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
+      )?.capability,
+    ).toBe('public');
+    // A public POST here would be a second, unproven write surface.
+    const post = requiredExternalSurfaceCapability(
+      'http',
+      'POST',
+      PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
+    );
+    expect(post?.capability).not.toBe('public');
+  });
+});

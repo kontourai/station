@@ -1,6 +1,5 @@
 import { spawnSync } from 'node:child_process';
 import {
-  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -10,7 +9,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -23,6 +23,7 @@ import {
 
 const repositoryRoot = resolve(import.meta.dirname, '../..');
 const mergeDriver = join(repositoryRoot, 'scripts/merge-ui-bundle-budget.mjs');
+const uiBundleBudget = join(repositoryRoot, 'scripts/ui-bundle-budget.mjs');
 
 describe('UI bundle budget merge-driver entry point', () => {
   const fixtures: string[] = [];
@@ -31,35 +32,12 @@ describe('UI bundle budget merge-driver entry point', () => {
       rmSync(fixtures.pop()!, { recursive: true, force: true });
   });
 
-  function fixture() {
+  function fixture({
+    ours = '{"entryJsGzipBytes":309647,"entryCssGzipBytes":43400}\n',
+    theirs = '{"entryJsGzipBytes":309574,"entryCssGzipBytes":43419}\n',
+  } = {}) {
     const root = mkdtempSync(join(tmpdir(), 'station-ui-budget-driver-test-'));
     fixtures.push(root);
-    const bin = join(root, 'bin');
-    mkdirSync(bin);
-    const fakeNpmModule = join(bin, 'npm.mjs');
-    writeFileSync(
-      fakeNpmModule,
-      [
-        "import { mkdirSync, writeFileSync } from 'node:fs';",
-        "import { join } from 'node:path';",
-        "if (process.env.FAKE_BUILD_FAIL === '1') process.exit(42);",
-        'const output = process.env.STATION_BUILD_UI_DIR;',
-        "mkdirSync(join(output, 'assets'), { recursive: true });",
-        'writeFileSync(join(output, \'index.html\'), \'<script src="/assets/entry.js"></script><link rel="stylesheet" href="/assets/entry.css">\');',
-        "writeFileSync(join(output, 'assets/entry.js'), 'console.log(\"merged tree\");\\n');",
-        "writeFileSync(join(output, 'assets/entry.css'), 'body { color: rebeccapurple; }\\n');",
-      ].join('\n'),
-    );
-    const npm = join(bin, 'npm');
-    writeFileSync(
-      npm,
-      `#!/bin/sh\nexec "${process.execPath}" "${fakeNpmModule}" "$@"\n`,
-    );
-    chmodSync(npm, 0o755);
-    writeFileSync(
-      join(bin, 'npm.cmd'),
-      `@echo off\r\n"${process.execPath}" "${fakeNpmModule}" %*\r\n`,
-    );
     const paths = {
       ancestor: join(root, 'ancestor.json'),
       ours: join(root, 'ours.json'),
@@ -67,21 +45,62 @@ describe('UI bundle budget merge-driver entry point', () => {
     };
     writeFileSync(
       paths.ancestor,
-      '{"entryJsGzipBytes":1,"entryCssGzipBytes":1}\n',
+      '{"entryJsGzipBytes":309574,"entryCssGzipBytes":43400}\n',
     );
-    writeFileSync(paths.ours, 'OURS MUST SURVIVE FAILURE\n');
-    writeFileSync(
-      paths.theirs,
-      '{"entryJsGzipBytes":3,"entryCssGzipBytes":3}\n',
-    );
-    return { bin, paths };
+    writeFileSync(paths.ours, ours);
+    writeFileSync(paths.theirs, theirs);
+    return { paths };
   }
 
-  function invoke(
-    subject: ReturnType<typeof fixture>,
-    extraEnv: Record<string, string> = {},
-  ) {
+  function invoke(subject: ReturnType<typeof fixture>) {
     return spawnSync(
+      process.execPath,
+      [
+        mergeDriver,
+        subject.paths.ancestor,
+        subject.paths.ours,
+        subject.paths.theirs,
+        '7',
+        'scripts/ui-bundle-budget.json',
+      ],
+      { cwd: repositoryRoot, encoding: 'utf8', windowsHide: true },
+    );
+  }
+
+  it('keeps the UI budget import inert under a suffix-colliding argv path', () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `process.argv[1] = ${JSON.stringify('/tmp/fixture-ui-bundle-budget.mjs')}; await import(${JSON.stringify(pathToFileURL(mergeDriver).href)});`,
+      ],
+      { cwd: repositoryRoot, encoding: 'utf8', windowsHide: true },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).not.toContain('dist-ui/index.html');
+    expect(result.stdout).not.toContain('Initial UI bundle');
+    expect(uiBundleBudget.endsWith('ui-bundle-budget.mjs')).toBe(true);
+  });
+
+  it('overwrites %A with the higher of each field across both sides', () => {
+    // Each side is higher on a different field, so neither take-ours nor
+    // take-theirs produces this result.
+    const subject = fixture();
+    const result = invoke(subject);
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(readFileSync(subject.paths.ours, 'utf8'))).toEqual({
+      entryJsGzipBytes: 309647,
+      entryCssGzipBytes: 43419,
+    });
+  });
+
+  it('never runs a build: no npm on PATH, no node_modules required', () => {
+    // The old design built the pre-merge working tree and called the result
+    // the merged tree (station#1107). Running with an empty PATH proves the
+    // resolution cannot be coming from a build.
+    const subject = fixture();
+    const result = spawnSync(
       process.execPath,
       [
         mergeDriver,
@@ -94,34 +113,43 @@ describe('UI bundle budget merge-driver entry point', () => {
       {
         cwd: repositoryRoot,
         encoding: 'utf8',
-        env: {
-          ...process.env,
-          ...extraEnv,
-          PATH: `${subject.bin}${delimiter}${process.env.PATH ?? ''}`,
-        },
+        env: { PATH: '' },
         windowsHide: true,
       },
     );
-  }
-
-  it('overwrites %A with the freshly measured merged-tree values', () => {
-    const subject = fixture();
-    const result = invoke(subject);
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(readFileSync(subject.paths.ours, 'utf8'))).toEqual({
-      entryJsGzipBytes: gzipSync('console.log("merged tree");\n').byteLength,
-      entryCssGzipBytes: gzipSync('body { color: rebeccapurple; }\n')
-        .byteLength,
+      entryJsGzipBytes: 309647,
+      entryCssGzipBytes: 43419,
     });
   });
 
-  it('exits non-zero after a failed build without writing %A', () => {
+  it('labels the written number provisional and names the real measurement', () => {
     const subject = fixture();
+    const result = invoke(subject);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('provisional');
+    expect(result.stdout).toContain('npm run build:ui');
+    expect(result.stdout).not.toContain('measured');
+  });
+
+  it('exits non-zero without writing %A when a side is not a budget document', () => {
+    const subject = fixture({ ours: '<<<<<<< not json\n' });
     const before = readFileSync(subject.paths.ours, 'utf8');
-    const result = invoke(subject, { FAKE_BUILD_FAIL: '1' });
+    const result = invoke(subject);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('conflict left unresolved');
+    expect(result.stderr).toContain('ours side is not parseable JSON');
+    expect(readFileSync(subject.paths.ours, 'utf8')).toBe(before);
+  });
+
+  it('exits non-zero without writing %A when a side is missing a field', () => {
+    const subject = fixture({ theirs: '{"entryJsGzipBytes":1}\n' });
+    const before = readFileSync(subject.paths.ours, 'utf8');
+    const result = invoke(subject);
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain(
-      're-measurement failed; conflict left unresolved',
+      'theirs side has no non-negative integer entryCssGzipBytes',
     );
     expect(readFileSync(subject.paths.ours, 'utf8')).toBe(before);
   });

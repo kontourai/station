@@ -1,4 +1,5 @@
 import type {
+  CanonicalModelIdentityReference,
   LaunchableModelInventory,
   LaunchableModelRecord,
   ModelInventoryComponentIdentity,
@@ -6,6 +7,7 @@ import type {
   ModelInventoryFreshness,
   ModelInventoryLocality,
 } from '@kontourai/station-contracts/model-inventory';
+import { curatedModelIdentityFor } from '@kontourai/station-contracts/model-inventory';
 import type {
   AgentConnectionView,
   ConnectionConfig,
@@ -73,6 +75,7 @@ function unanimous<T>(values: Array<T | undefined>): T | null {
 
 function groupModels(models: ModelProjection[]): Array<{
   providerModel: string;
+  canonicalModelIdentity?: CanonicalModelIdentityReference;
   aliases: string[];
   displayName: string;
   effectiveContextTokens: number | null;
@@ -94,8 +97,10 @@ function groupModels(models: ModelProjection[]): Array<{
 
   return [...groups.entries()].map(([providerModel, group]) => {
     const supportsTools = unanimous(group.map((model) => model.supportsTools));
+    const canonicalModelIdentity = curatedModelIdentityFor(providerModel);
     return {
       providerModel,
+      ...(canonicalModelIdentity ? { canonicalModelIdentity } : {}),
       aliases: [...new Set(group.map((model) => model.selector))].sort(
         compareText,
       ),
@@ -163,6 +168,9 @@ function record(options: {
       quantization: null,
     },
     providerModel: options.model.providerModel,
+    ...(options.model.canonicalModelIdentity
+      ? { canonicalModelIdentity: options.model.canonicalModelIdentity }
+      : {}),
     aliases: options.model.aliases,
     displayName: options.model.displayName,
     locality: options.locality,

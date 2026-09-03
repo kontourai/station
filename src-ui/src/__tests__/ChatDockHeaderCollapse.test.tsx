@@ -58,6 +58,8 @@ function renderHeader({
       effectiveDockSlotPlacement={dockMode}
       onDockPlacementChange={vi.fn()}
       fullscreen={fullscreen}
+      regionVisible={isDockOpen}
+      shellMaximized={isDockMaximized}
     />,
   );
 }
@@ -80,7 +82,7 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
   test('collapsing a maximized dock clears the maximized flag', () => {
     renderHeader();
 
-    fireEvent.click(screen.getByTitle('Collapse'));
+    fireEvent.click(screen.getByTitle('Hide dock region'));
 
     expect(onDockSnap).toHaveBeenCalledWith('collapsed');
   });
@@ -91,7 +93,7 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
     window.localStorage.setItem('station.chatDock.snap', 'half');
     renderHeader();
 
-    fireEvent.click(screen.getByTitle('Expand'));
+    fireEvent.click(screen.getByTitle('Show dock region'));
 
     expect(onDockSnap).toHaveBeenCalledWith('half');
   });
@@ -105,7 +107,7 @@ describe('ChatDockHeader collapse/maximize reconciliation (#795)', () => {
     window.localStorage.setItem('station.chatDock.snap', 'full');
     renderHeader();
 
-    fireEvent.click(screen.getByTitle('Expand'));
+    fireEvent.click(screen.getByTitle('Show dock region'));
 
     expect(onDockSnap).toHaveBeenCalledWith('full');
   });
@@ -151,11 +153,11 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     expect(screen.getByText('Start a chat')).toBeTruthy();
   });
 
-  test('the collapse/expand chevron and settings control carry accessible names', () => {
+  test('the region visibility and settings controls carry accessible names', () => {
     isDockOpen = false;
     renderHeader();
 
-    expect(screen.getByLabelText('Expand chat dock')).toBeTruthy();
+    expect(screen.getByLabelText('Show dock region')).toBeTruthy();
     expect(screen.getByLabelText('Chat settings')).toBeTruthy();
   });
 
@@ -164,7 +166,7 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     isDockOpen = true;
     renderHeader();
 
-    const collapse = screen.getByLabelText('Collapse chat dock');
+    const collapse = screen.getByLabelText('Hide dock region');
     expect(collapse.querySelector('svg')?.classList).toContain('is-left-open');
   });
 
@@ -173,22 +175,38 @@ describe('collapsed dock "Start a chat" affordance (#800)', () => {
     isDockMaximized = false;
     renderHeader();
 
-    fireEvent.click(screen.getByLabelText('Maximize chat dock'));
+    fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
     expect(onDockSnap).toHaveBeenCalledWith('full');
 
     isDockMaximized = true;
     // Re-rendering represents navigation state after the snap owner applies Full.
     renderHeader();
-    fireEvent.click(screen.getByLabelText('Restore chat dock'));
+    fireEvent.click(screen.getByLabelText('Restore dock region size'));
     expect(onDockSnap).toHaveBeenLastCalledWith('half');
   });
 
   test('keeps ambient dock controls out of the full-screen pane placement', () => {
     renderHeader({ fullscreen: true });
 
-    expect(screen.queryByLabelText('Maximize chat dock')).toBeNull();
-    expect(screen.queryByLabelText('Restore chat dock')).toBeNull();
-    expect(screen.queryByLabelText('Collapse chat dock')).toBeNull();
+    expect(
+      screen.queryByLabelText('Expand dock region to workspace'),
+    ).toBeNull();
+    expect(screen.queryByLabelText('Restore dock region size')).toBeNull();
+    expect(screen.queryByLabelText('Hide dock region')).toBeNull();
+  });
+
+  test('names and depicts region extent separately from region visibility', () => {
+    isDockOpen = true;
+    isDockMaximized = false;
+    renderHeader();
+
+    const extent = screen.getByLabelText('Expand dock region to workspace');
+    const visibility = screen.getByLabelText('Hide dock region');
+    expect(extent.getAttribute('aria-label')).not.toBe(
+      visibility.getAttribute('aria-label'),
+    );
+    expect(extent.querySelector('.chat-dock__extent-svg')).not.toBeNull();
+    expect(visibility.querySelector('.chat-dock__chevron-svg')).not.toBeNull();
   });
 
   test('toggles from non-interactive project context and identity text', () => {
@@ -257,6 +275,8 @@ describe('occupant picker (station#4460)', () => {
         availableDockSlotPlacements={['left', 'bottom', 'right']}
         effectiveDockSlotPlacement={dockMode}
         onDockPlacementChange={vi.fn()}
+        regionVisible={isDockOpen}
+        shellMaximized={isDockMaximized}
         occupantPicker={
           <DockOccupantPicker
             current={{ id: 'pane:builtin:chat', name: 'Chat' } as never}
@@ -287,6 +307,8 @@ describe('occupant picker (station#4460)', () => {
         availableDockSlotPlacements={['left', 'bottom', 'right']}
         effectiveDockSlotPlacement={dockMode}
         onDockPlacementChange={vi.fn()}
+        regionVisible={isDockOpen}
+        shellMaximized={isDockMaximized}
         fullscreen
         occupantPicker={
           <DockOccupantPicker

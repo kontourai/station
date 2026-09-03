@@ -243,6 +243,7 @@ describe('CI verification workflow contracts', () => {
       '.github/workflows/windows-verification.yml',
       '.github/workflows/secret-scan.yml',
       '.github/workflows/backlog-priority-policy.yml',
+      '.github/workflows/android-test.yml',
     ];
     const intendedTargetNames = intendedTargetFiles.map((targetFile) => {
       const target = workflowDocuments.find(({ file }) => file === targetFile)
@@ -283,7 +284,7 @@ describe('CI verification workflow contracts', () => {
         'github.event.workflow_run.head_repository.full_name == github.repository',
       );
       expect(job).toContain(
-        'actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd',
+        'actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3',
       );
       expect(job).toContain('github.event.workflow_run.html_url');
       expect(job).toContain('github.event.workflow_run.head_sha');
@@ -352,8 +353,91 @@ describe('CI verification workflow contracts', () => {
     expect(containerSmoke).toContain(
       `group: container-smoke-\${{ github.ref }}`,
     );
+    // A 20-minute smoke must outlive the next queue merge; the group still
+    // collapses pending runs, so only the in-progress verdict is preserved.
+    const containerSmokeJob = containerSmoke.slice(
+      containerSmoke.indexOf('  smoke:'),
+    );
+    expect(containerSmokeJob).toContain('cancel-in-progress: false');
+    expect(containerSmokeJob).not.toContain('cancel-in-progress: true');
     expect(ci).not.toMatch(/^concurrency:/m);
     expect(containerSmoke).not.toMatch(/^concurrency:/m);
+  });
+
+  it('lets the container smoke wait out every desktop-win lease it cannot share the host with', () => {
+    // Run 33589882367: the smoke (weight 9 of 10) waited 600s behind the
+    // Windows PR floor (weight 5, budgeted 45 min, runs on every PR), timed
+    // out, and main-health reopened #917 for a red with no code cause. Two
+    // relations hold this closed, both read from the parsed workflows so a
+    // renamed key or a string-typed number cannot satisfy them by accident.
+    type Step = {
+      id?: string;
+      name?: string;
+      if?: string;
+      uses?: string;
+      with?: Record<string, unknown>;
+    };
+    type Job = { 'timeout-minutes'?: number; steps?: Step[] };
+    const documents = readWorkflowDocuments();
+    const job = (file: string, jobId: string): Job => {
+      const document = documents.find(
+        (entry) => entry.file === `.github/workflows/${file}`,
+      )?.document as { jobs?: Record<string, Job> } | undefined;
+      const found = document?.jobs?.[jobId];
+      expect(found, `${file} must define job "${jobId}"`).toBeDefined();
+      return found as Job;
+    };
+    const capacityStep = (candidate: Job): Step => {
+      const step = candidate.steps?.find((entry) =>
+        entry.uses?.startsWith(
+          'kontourai/.github/actions/physical-host-capacity@',
+        ),
+      );
+      expect(step, 'job must reserve physical-host capacity').toBeDefined();
+      return step as Step;
+    };
+
+    const smoke = job('container-smoke.yml', 'smoke');
+    const smokeCapacity = capacityStep(smoke);
+    const smokeWaitSeconds = Number(smokeCapacity.with?.['timeout-seconds']);
+    const smokeBudgetMinutes = Number(smoke['timeout-minutes']);
+    expect(Number.isInteger(smokeWaitSeconds)).toBe(true);
+    expect(Number.isInteger(smokeBudgetMinutes)).toBe(true);
+
+    // (1) The smoke's weight leaves no room for the floor beside it, so its
+    // admission waits for a floor run to finish — the wait must cover the
+    // floor's whole budget, not a typical duration.
+    const floor = job('windows-verification.yml', 'portable-floor');
+    const floorCapacity = capacityStep(floor);
+    const units = Number(smokeCapacity.with?.['capacity-units']);
+    expect(
+      Number(smokeCapacity.with?.['lease-weight']) +
+        Number(floorCapacity.with?.['lease-weight']),
+    ).toBeGreaterThan(units);
+    expect(smokeWaitSeconds).toBeGreaterThanOrEqual(
+      Number(floor['timeout-minutes']) * 60,
+    );
+
+    // (2) Whatever the wait is, the job must keep the smoke's own running
+    // time after it: raising the wait alone moves the red from the reserve
+    // step to the job timeout. 25 minutes is the observed smoke duration
+    // (af2ae065: 03:45 -> 04:06) with margin.
+    expect(smokeBudgetMinutes * 60 - smokeWaitSeconds).toBeGreaterThanOrEqual(
+      25 * 60,
+    );
+
+    // (3) The Docker-state cleanup is conditional on the isolate step having
+    // run. With a bare `always()` it refused the empty DOCKER_CONFIG after a
+    // failed reservation and reported that refusal as the job's last error.
+    const isolate = smoke.steps?.find(
+      (step) => step.name === 'Isolate Docker client state',
+    );
+    const remove = smoke.steps?.find(
+      (step) => step.name === 'Remove isolated Docker client state',
+    );
+    expect(isolate?.id).toEqual(expect.any(String));
+    expect(remove?.if).toContain('always()');
+    expect(remove?.if).toContain(`steps.${isolate?.id}.outcome == 'success'`);
   });
 
   it('pins remaining desktop-win capacity leases to a bounded shared lifetime', () => {

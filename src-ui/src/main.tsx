@@ -42,6 +42,7 @@ import { KeyboardShortcutsProvider } from './contexts/KeyboardShortcutsContext';
 import { MessageContextContext } from './contexts/MessageContextContext';
 import { NavigationProvider } from './contexts/NavigationContext';
 import { PreviewProvider } from './contexts/PreviewContext';
+import { RegionModelProvider } from './contexts/RegionModelContext';
 import { StreamingProvider } from './contexts/StreamingContext';
 import { SyntaxHighlighterProvider } from './contexts/SyntaxHighlighterContext';
 import { ToastProvider } from './contexts/ToastContext';
@@ -289,7 +290,9 @@ function renderApp(): void {
                                               developmentLocale
                                             }
                                           >
-                                            <App />
+                                            <RegionModelProvider>
+                                              <App />
+                                            </RegionModelProvider>
                                             <NotificationContainer />
                                           </LocaleProvider>
                                         </PreviewProvider>

@@ -1,10 +1,10 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   isSupportedTurnProvenanceEnvelope,
   type TurnProvenanceEnvelope,
 } from '@kontourai/station-contracts/turn-provenance';
 import type { EngineDescriptor } from '../../../utils/engine';
 import { displayModelIdentifier } from '../../../utils/modelDisplay';
-import { engineLabelForProvider } from '../../../utils/sessionDisplay';
 
 export function getModelDisplayName(model: string): string {
   if (model.includes('claude-3-7-sonnet')) return 'Claude 3.7 Sonnet';
@@ -61,7 +61,7 @@ function readEnvelope(msg: TurnIdentitySource): TurnProvenanceEnvelope | null {
  *   discovery-only design), and inventing one here would be a guess wearing
  *   a chip.
  *
- * The label comes from `engineLabelForProvider` — the same function
+ * The label comes from `engineDisplayLabel` — the same function
  * `TurnProvenanceCard` uses — so the chip and the card speak ONE vocabulary
  * for one fact. When the provider has no product name yet, the raw slug is
  * the honest answer (identical to the card's own unknown state); it is an
@@ -74,7 +74,7 @@ export function resolveTurnEngine(
   const envelope = readEnvelope(msg);
   if (envelope?.engine.state !== 'observed') return null;
   const { provider } = envelope.engine.value;
-  return { name: engineLabelForProvider(provider) ?? provider };
+  return { name: engineDisplayLabel(provider) ?? provider };
 }
 
 /** Which model slot a rendered claim came from. */

@@ -3,7 +3,9 @@
  */
 
 import { act, renderHook } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { RegionModelProvider as RegionModelProviderComponent } from '../contexts/RegionModelContext';
 import type { useDockShellChrome as UseDockShellChromeFn } from '../hooks/useDockShellChrome';
 
 const setDockState = vi.fn();
@@ -64,6 +66,27 @@ async function freshUseDockShellChrome(): Promise<typeof UseDockShellChromeFn> {
   return mod.useDockShellChrome;
 }
 
+/**
+ * The same fresh-module import, plus the region model's own provider from the
+ * SAME post-reset module registry — a provider imported before `resetModules`
+ * would create a different `RegionModelContext` than the hook then reads, so
+ * `useRegionModelOptional` would still see `null`.
+ */
+async function freshDockShellChromeInRegionModel(): Promise<{
+  useDockShellChrome: typeof UseDockShellChromeFn;
+  wrapper: ({ children }: { children: ReactNode }) => ReactNode;
+}> {
+  vi.resetModules();
+  const chrome = await import('../hooks/useDockShellChrome');
+  const region = await import('../contexts/RegionModelContext');
+  const Provider =
+    region.RegionModelProvider as typeof RegionModelProviderComponent;
+  return {
+    useDockShellChrome: chrome.useDockShellChrome,
+    wrapper: ({ children }) => createElement(Provider, null, children),
+  };
+}
+
 describe('useDockShellChrome', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -118,13 +141,22 @@ describe('useDockShellChrome', () => {
     expect(result.current.dockWidth).toBe(280);
   });
 
+  // #928 step 3b: drag release no longer writes `chatDockHeight` itself — it
+  // writes the bottom region's size, and `RegionModelProvider`'s mirror is what
+  // persists the device setting. The property this test exists for is unchanged
+  // (no per-frame persistence; exactly one final write carrying the final
+  // value), so it is asserted at the new seam: the hook inside a REAL region
+  // model, still measured on the storage write.
   test('does not persist drag frames and writes the final height once on drag end', async () => {
-    const useDockShellChrome = await freshUseDockShellChrome();
-    const { result } = renderHook(() =>
-      useDockShellChrome({
-        publishesDockSlotClearance: true,
-        registersDockShortcuts: true,
-      }),
+    const { useDockShellChrome, wrapper } =
+      await freshDockShellChromeInRegionModel();
+    const { result } = renderHook(
+      () =>
+        useDockShellChrome({
+          publishesDockSlotClearance: true,
+          registersDockShortcuts: true,
+        }),
+      { wrapper },
     );
     const storageWrite = vi.spyOn(Storage.prototype, 'setItem');
 

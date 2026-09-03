@@ -104,6 +104,64 @@ npm run test:e2e:product -- --spec=tests/foo.spec.ts --grep='delegated work'  # 
 npm run test:connected-agents         # focused connected-agents server suite
 ```
 
+### Pre-push orchestration transfer gate
+
+`.githooks/pre-push` runs `scripts/check-prepush-orchestration-transfer.mjs`
+on every push. When the push range touches a measured transfer input
+(`src-server/runtime/**`, `src-server/routes/orchestration/**`,
+`src-server/providers/**`, `src-server/services/orchestration/**`,
+`packages/contracts/src/**`, `packages/sdk/src/client/**`, `package.json`,
+the lockfile, the gate scripts themselves, or the transfer fixtures) it runs
+`npm run transfer:gate`, which captures the orchestration transfer matrix twice
+on an exact `origin/main` baseline and once on the candidate and compares them
+against `scripts/fixtures/orchestration-transfer/budget.json`. The gate is not
+among the required CI checks, so a push that skips it with `--no-verify` lands
+unverified on `main`. Do not skip it; use the two knobs below.
+
+**The baseline root comes from `STATION_TRANSFER_BASELINE_ROOT`.** The hook
+invokes the gate with no arguments, so `--baseline-root` is unreachable from a
+push; only the environment variable is. Prepare an exact, dependency-verified
+sibling once per base SHA, then export the variable when you push:
+
+```bash
+BASE=$(git rev-parse origin/main)
+BASELINE=$(cd .. && pwd)/4294-transfer-baseline-${BASE:0:12}   # from a lane worktree under ../station-worktrees/
+# from the primary checkout use: BASELINE=$(cd .. && pwd)/station-worktrees/4294-transfer-baseline-${BASE:0:12}
+npm run transfer:gate -- --prepare-baseline --baseline-root "$BASELINE" --base "$BASE"
+(cd "$BASELINE" && npm run dependencies:ci && npm run dependencies:verify)   # its OWN locked deps; not a symlink
+STATION_TRANSFER_BASELINE_ROOT="$BASELINE" npm run transfer:gate            # direct run
+STATION_TRANSFER_BASELINE_ROOT="$BASELINE" git push -u origin <branch>       # what the hook reads
+```
+
+Both roots must be clean, at the exact SHAs, with dependencies matching their
+lockfiles; the gate never installs anything. Pass an absolute path: the
+suggested `../station-worktrees/…` form is relative to the gate's working
+directory, and from a lane worktree that already lives under
+`station-worktrees/` it nests a second `station-worktrees/` inside the lane.
+When `origin/main` moves, prepare a new baseline for the new SHA (the name
+carries the first twelve characters of the base).
+
+**Slow hardware raises `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` (#1279).** Each
+capture is bounded by a liveness timeout that defaults to 60 000 ms,
+calibrated at just under 28 s on the reference Mac. It is a dead-child guard,
+not a performance budget, so raising it weakens no measured claim; the value
+must stay a finite positive integer so a hung capture still fails:
+
+```bash
+STATION_TRANSFER_CAPTURE_TIMEOUT_MS=180000 \
+STATION_TRANSFER_BASELINE_ROOT="$BASELINE" git push -u origin <branch>
+```
+
+Why this is an environment variable rather than a local edit: the gate refuses
+a dirty candidate root, and `scripts/orchestration-transfer-gate.mjs` is itself
+a measured input, so a committed raise of the constant puts the gate in scope
+and trips the gate it is trying to fix. On a machine the default locks out,
+the override is the only way to run the gate at all.
+
+The gate's failure text names both variables. A transfer budget regression
+is a real finding: raise the fixture envelope only with a matching
+`policy-attribution.json` record, never by editing the bound.
+
 ### Latest E2E screenshot evidence
 
 Every completed `verify:e2e:full` run atomically replaces the ignored latest E2E projection
@@ -335,9 +393,11 @@ is diagnostic and does not replace the final `npm run full:regression` receipt.
 Ordinary and focused Vitest invocations inherit the checked-in four-worker
 ceiling. `npm run test:full` discovers the complete corpus, validates exact and
 disjoint ownership through `scripts/vitest-resource-manifest.mjs`, then runs
-five resource groups in order: ordinary isolated files at four workers,
+seven resource groups in order: ordinary isolated files at four workers,
 independent process-heavy files at two isolated fork workers, host-global
 process-exclusive files at one worker with file parallelism disabled,
+the verification coordinator and credential-ledger DDL proof in their own
+independently receipted exclusive groups,
 shared-output files under the same serial constraint, and dogfood-reconcile
 files under their historical serial constraint. Direct child-process use
 requires a bounded process group, not global serialization: two workers keep
@@ -376,15 +436,24 @@ This scheduling contract is rendered from `scripts/verification-lanes.mjs`; do n
 | `verify-local` | `npm run verify:local` | diagnostic native / local | verify:static + desktop Rust + mobile Cargo compile | static / integration | diagnostic | command only |
 | `verify-e2e-full` | `npm run verify:e2e:full` | diagnostic full E2E | product, first-run, starter-clean-install, smoke-live, extended, screenshot, Android buckets | full E2E | diagnostic | E2E spec→bucket assignment |
 
-`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, and **typecheck** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. Its 20-unit reservation overlaps the 80-unit `test-full-ordinary` phase so feedback can admit while completion work runs.
+`ci:fast` is diagnostic bounded feedback: it runs the base-pinned affected Vitest selection followed only by fixed runtime, lockfile, workflow, verification-policy, and **typecheck** invariants—not the global static/build chain or the full corpus. The typecheck invariant runs every `typecheck:*` lane through `scripts/typecheck-aggregate.mjs` (station#4273), preceded by `build:connect` because `typecheck:ui` resolves `@kontourai/station-connect` through its `dist`. It was added because the lane was previously uncovered per-PR: a red `main` displayed green on every contributor's checks, twice in 24 hours. Its 20-unit reservation overlaps each 80-unit ordinary shard phase so feedback can admit while completion work runs.
 
 `full-regression` admits these cataloged phases independently; the outer receipt is completion evidence only after every phase succeeds:
 - `repo-governance` — 20-unit host reservation; 5-minute execution deadline.
 - `sdk-builds` — 50-unit host reservation; 10-minute execution deadline.
 - `verify-static` — 60-unit host reservation; 15-minute execution deadline.
-- `test-full-ordinary` — 80-unit host reservation; 45-minute execution deadline.
+- `test-full-ordinary-1-of-8` — 80-unit host reservation; 20-minute execution deadline.
+- `test-full-ordinary-2-of-8` — 80-unit host reservation; 20-minute execution deadline.
+- `test-full-ordinary-3-of-8` — 80-unit host reservation; 20-minute execution deadline.
+- `test-full-ordinary-4-of-8` — 80-unit host reservation; 20-minute execution deadline.
+- `test-full-ordinary-5-of-8` — 80-unit host reservation; 20-minute execution deadline.
+- `test-full-ordinary-6-of-8` — 80-unit host reservation; 20-minute execution deadline.
+- `test-full-ordinary-7-of-8` — 80-unit host reservation; 20-minute execution deadline.
+- `test-full-ordinary-8-of-8` — 80-unit host reservation; 20-minute execution deadline.
 - `test-full-process-heavy` — 60-unit host reservation; 30-minute execution deadline.
 - `test-full-process-exclusive` — 60-unit host reservation; 4-minute execution deadline.
+- `test-full-coordinator-exclusive` — 60-unit host reservation; 4-minute execution deadline.
+- `test-full-credential-ledger-exclusive` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-shared-output` — 60-unit host reservation; 4-minute execution deadline.
 - `test-full-dogfood-reconcile` — 60-unit host reservation; 5-minute execution deadline.
 - `app-builds` — 60-unit host reservation; 10-minute execution deadline.
@@ -393,6 +462,14 @@ Checkpoint resume is deliberately narrow: rerun the same unchanged `npm run full
 
 `verification:policy:gate` remains a deterministic default readiness check, not required `repo-governance` evidence: it is already a bounded `ci:fast` invariant, while changing required-evidence routing is a separate human-governed `.veritas` decision. The existing repo-map contract test enforces that boundary.
 <!-- station:verification-scheduling:end -->
+
+A stopped phase reports itself as stopped. When a shard exceeds its execution
+deadline the corpus runner prints `[vitest-corpus] <group>: CANCELLED` — never
+`FAIL` — followed by an explicit note that no test results were produced and
+that the captured bytes are a partial transcript. The receipt summary names the
+step under `inFlightStep` instead of `failingStep`. If you see either, the
+answer is budget or sharding, not a hunt for a failing test: the suite did not
+finish, so no failing test name exists to find.
 
 <!-- station:verification-policy:start -->
 The "Invalidated by" column names only the lane-specific `manifestDigest`
@@ -761,6 +838,34 @@ describe('MyService', () => {
   });
 });
 ```
+
+### No-PTY (Degraded Terminal) Configuration
+
+The terminal surface must stay covered in the configuration where `node-pty`
+never loaded (#1244) — a Linux install without a C++ toolchain. No test may
+uninstall or rebuild the real module; the degraded path is reached through
+injected seams, so it runs identically on a machine whose `node-pty` works:
+
+- `NodePtyAdapter` takes a loader in its constructor. Pass
+  `() => Promise.reject(new Error('Failed to load native module: …'))` to
+  exercise `probeCapability()` and the `PtyUnavailableError` spawn rejection
+  (`src-server/adapters/__tests__/node-pty-adapter.test.ts`).
+- `TerminalService` receives a mock `IPtyAdapter` whose `spawn` rejects with
+  `PtyUnavailableError`; assert `open()` rethrows the specific reason rather
+  than the generic "no viable shell found"
+  (`src-server/services/terminal/__tests__/terminal-service.test.ts`).
+- The WebSocket transport must answer an `open` with
+  `{ type: 'error', code: 'terminal-unavailable' }` carrying only the fixed
+  product-owned text
+  (`src-server/services/terminal/__tests__/terminal-ws-server.test.ts`).
+- `/api/system/status` takes `probeTerminalCapability` in its deps; assert
+  the `capabilities.terminal` record and its `reason`
+  (`src-server/routes/system/__tests__/system.routes.test.ts`), and the
+  doctor takes `probeTerminalPty`
+  (`packages/cli/src/__tests__/lifecycle-doctor-terminal.test.ts`).
+
+A change to any of these seams must keep the degraded assertions passing —
+the silent-dead-terminal regression is exactly what they exist to catch.
 
 ### Route Integration Test
 
