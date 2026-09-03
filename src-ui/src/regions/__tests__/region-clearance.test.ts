@@ -101,13 +101,4 @@ describe('region clearance writer', () => {
     expect(value(root, '--region-right-size')).toBe('');
     expect(value(root, '--region-bottom-size')).toBe('');
   });
-
-  test('a persisted right occupant folded under bottom writes its rendered region', () => {
-    const { root, writer } = setup();
-
-    writer.report('bottom', { size: 280, width: null });
-
-    expect(value(root, '--region-bottom-size')).toBe('280px');
-    expect(value(root, '--region-right-size')).toBe('');
-  });
 });

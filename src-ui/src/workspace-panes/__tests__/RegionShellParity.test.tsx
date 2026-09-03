@@ -362,9 +362,24 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
         expect(clearance('--dock-slot-size')).toBe(dockSlotSize),
       );
       expect(clearance('--chat-dock-width')).toBe(chatDockWidth);
-      // The rendered region's variable carries the same value its legacy
-      // alias does (the width for a side, the size for bottom); the other
-      // two regions publish nothing.
+    },
+  );
+
+  /**
+   * #928 contract, not a capture: the rendered region's variable carries
+   * the value its legacy alias does (a side's width, bottom's size) and the
+   * other two regions publish nothing. A collapsed side still reports its
+   * expanded width — the 36px rail is owned by the `.is-collapsed` track
+   * override in index.css/BannerHost.css, not by `--region-<id>-size`.
+   */
+  test.each(PRE_REFACTOR_CAPTURE)(
+    'the rendered region alone publishes --region-<id>-size ($placement/$state)',
+    async ({ placement, state, dockSlotSize, chatDockWidth }) => {
+      seedPlacement(placement, state);
+      await renderShellsSettled();
+      await waitFor(() =>
+        expect(clearance('--dock-slot-size')).toBe(dockSlotSize),
+      );
       for (const region of DOCK_REGION_IDS) {
         expect(clearance(`--region-${region}-size`)).toBe(
           region !== placement

@@ -39,7 +39,6 @@ import type { DockSnap } from '../components/chat-dock/dockSnap';
 import { shouldMaximizeAfterDockingAsOnlyContent } from '../components/chat-dock/mobile-chrome';
 import { SkeletonBlock } from '../components/state';
 import { useApiBase } from '../contexts/ApiBaseContext';
-import type { DockSlotGeometry } from '../hooks/dock-slot-geometry';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
 import { reportRegionClearance } from '../regions/region-clearance';
 import type { DockMode, NavigationView } from '../types';
@@ -130,20 +129,6 @@ export function ambientWorkspacePaneDockAction(
     occupantInstanceId,
     undockOccupant,
   };
-}
-
-/**
- * `DockShell` is the geometry authority regardless of occupant
- * (archive#4460); each shell reports its live geometry keyed by its
- * rendered region, and the clearance reducer (regions/region-clearance.ts)
- * is the one writer of the CSS variables (archive#3902/archive#3929).
- */
-function useAmbientDockSlotGeometryWriter() {
-  return useCallback(
-    (regionId: DockMode | null, geometry: DockSlotGeometry | null) =>
-      reportRegionClearance(regionId, geometry),
-    [],
-  );
 }
 
 function admitsAmbientDockInstance(
@@ -332,7 +317,6 @@ export function AmbientChatDockPaneHost({
   const [activeInstanceId, setActiveInstanceId] = useState(
     ambientChatDockPaneDocument.activeInstanceId,
   );
-  const writeDockSlotGeometry = useAmbientDockSlotGeometryWriter();
   // Internal, boolean-returning: `dockPane`'s PUBLIC shape (both on
   // `AmbientDockShellApi` and `WorkspacePaneDockAction`) returns `void`, but
   // `dockPaneAsOnlyContent` below must not maximize the dock for a request
@@ -449,11 +433,12 @@ export function AmbientChatDockPaneHost({
   // DockShell wraps every occupant (Chat, Home, Activity) — the one dock
   // chrome shell (archive#4460): root box, resize handle, geometry/snap/
   // drag state, `dock.toggle`/`dock.maximize`. Its geometry report goes to
-  // the clearance reducer, one entry per rendered region (#928).
+  // the clearance reducer, one entry per rendered region (#928; the reducer
+  // is the one writer of the CSS variables, archive#3902/archive#3929).
   const host = (
     <DockShell
       regionId={regionId}
-      onRenderedRegionGeometryChange={writeDockSlotGeometry}
+      onRenderedRegionGeometryChange={reportRegionClearance}
     >
       {(shellChrome) => {
         // station#520: keep `dockPaneAsOnlyContent`'s mobile-maximize ref

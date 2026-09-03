@@ -43,8 +43,9 @@ export function createRegionClearanceWriter(root: HTMLElement) {
         Math.max(...[...reports.values()].map(({ size }) => size)),
     );
     // The alias names ONE side width. With both sides occupied there is no
-    // single width to name, so it is withheld rather than guessed and its
-    // readers fall back; the region grid reads the per-region variables.
+    // single width to name, so it is withheld rather than guessed; every
+    // reader prefers the per-region variable and falls back only without
+    // it (#1366: index.css grid tracks, BannerHost.css insets).
     const side = left && right ? undefined : (left ?? right);
     write('--chat-dock-width', side?.width ?? undefined);
   };
