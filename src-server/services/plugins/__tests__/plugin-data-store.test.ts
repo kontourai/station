@@ -278,6 +278,80 @@ describe('PluginDataStore', () => {
     reopened.close();
   });
 
+  test('refuses every namespace mutation when a peer revision head is corrupt', () => {
+    const directory = root();
+    const store = new PluginDataStore({ directory });
+    const capability = store.bind(owner);
+    expect(capability.set('corrupt-peer', 'one', null)).toMatchObject({
+      kind: 'written',
+    });
+    expect(capability.set('healthy-peer', 'one', null)).toMatchObject({
+      kind: 'written',
+    });
+    store.close();
+    const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
+    database.exec(
+      "UPDATE plugin_data_revisions SET last_revision = 2 WHERE key = 'corrupt-peer'",
+    );
+    database.close();
+
+    const reopened = new PluginDataStore({ directory });
+    const rebound = reopened.bind(owner);
+    expect(rebound.set('healthy-peer', 'two', 1)).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
+    });
+    expect(rebound.delete('healthy-peer', 1)).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
+    });
+    expect(rebound.get('healthy-peer')).toMatchObject({
+      kind: 'found',
+      record: { revision: 1, value: 'one' },
+    });
+    reopened.close();
+  });
+
+  test('lists one coherent WAL snapshot while another handle commits', () => {
+    const directory = root();
+    const seeded = new PluginDataStore({ directory });
+    expect(seeded.bind(owner).set('state', 'one', null)).toMatchObject({
+      kind: 'written',
+    });
+    seeded.close();
+
+    const writer = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
+    let interleaved = false;
+    const reader = new PluginDataStore({
+      directory,
+      afterRevisionHeadsRead() {
+        if (interleaved) return;
+        interleaved = true;
+        writer.exec('BEGIN IMMEDIATE');
+        writer.exec(
+          `UPDATE plugin_data
+           SET value_json = '"two"', byte_length = 5, revision = 2,
+               updated_at = '2026-09-03T00:00:01.000Z'
+           WHERE key = 'state';
+           UPDATE plugin_data_revisions SET last_revision = 2 WHERE key = 'state';`,
+        );
+        writer.exec('COMMIT');
+      },
+    });
+    expect(reader.bind(owner).list()).toEqual({
+      kind: 'available',
+      records: [
+        expect.objectContaining({ key: 'state', value: 'one', revision: 1 }),
+      ],
+    });
+    expect(reader.bind(owner).get('state')).toMatchObject({
+      kind: 'found',
+      record: { value: 'two', revision: 2 },
+    });
+    reader.close();
+    writer.close();
+  });
+
   test('refuses an oversized persisted namespace on reads and updates', () => {
     const directory = root();
     const store = new PluginDataStore({ directory });

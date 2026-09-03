@@ -58,6 +58,20 @@ interface StoredRevisionHead {
   last_revision: number;
 }
 
+interface PluginDataNamespaceSnapshot {
+  revisionHeads: Map<string, number>;
+  rows: StoredRow[];
+  records: PluginDataRecord[];
+  totalBytes: number;
+}
+
+interface StoredPayloadBounds {
+  row_count: number;
+  declared_bytes: number;
+  actual_bytes: number;
+  max_value_bytes: number | null;
+}
+
 class PluginDataCorruptError extends Error {}
 
 export interface PluginDataCapability {
@@ -214,12 +228,16 @@ function unavailable(error: unknown): {
 export interface PluginDataStoreOptions {
   directory: string;
   busyTimeoutMs?: number;
+  /** Test seam for a WAL writer between revision-head and payload reads. */
+  afterRevisionHeadsRead?: () => void;
 }
 
 export class PluginDataStore {
   private readonly db: InstanceType<typeof DatabaseSync>;
+  private readonly afterRevisionHeadsRead?: () => void;
 
   constructor(options: PluginDataStoreOptions) {
+    this.afterRevisionHeadsRead = options.afterRevisionHeadsRead;
     if (existsSync(options.directory)) {
       const stat = lstatSync(options.directory);
       if (stat.isSymbolicLink() || !stat.isDirectory()) {
@@ -294,18 +312,39 @@ export class PluginDataStore {
     const invalid = validateKey(key);
     if (invalid) return { kind: 'invalid', reason: invalid };
     try {
-      const row = this.db
-        .prepare(
-          `SELECT key, value_json, byte_length, revision, updated_at
-           FROM plugin_data
-           WHERE plugin_id = ? AND installation_key = ? AND key = ?`,
-        )
-        .get(owner.pluginId, owner.installationKey, key) as
-        | StoredRow
-        | undefined;
-      return row
-        ? { kind: 'found', record: parseRow(row) }
-        : { kind: 'not-found' };
+      return this.readTransaction(() => {
+        const bounds = this.db
+          .prepare(
+            `SELECT byte_length,
+                    length(CAST(value_json AS BLOB)) AS actual_byte_length
+             FROM plugin_data
+             WHERE plugin_id = ? AND installation_key = ? AND key = ?`,
+          )
+          .get(owner.pluginId, owner.installationKey, key) as
+          | { byte_length: number; actual_byte_length: number }
+          | undefined;
+        if (!bounds) return { kind: 'not-found' };
+        if (
+          !Number.isSafeInteger(bounds.byte_length) ||
+          !Number.isSafeInteger(bounds.actual_byte_length) ||
+          bounds.byte_length < 0 ||
+          bounds.byte_length !== bounds.actual_byte_length ||
+          bounds.actual_byte_length > PLUGIN_DATA_LIMITS.valueBytes
+        ) {
+          throw new PluginDataCorruptError();
+        }
+        const row = this.db
+          .prepare(
+            `SELECT key, value_json, byte_length, revision, updated_at
+             FROM plugin_data
+             WHERE plugin_id = ? AND installation_key = ? AND key = ?`,
+          )
+          .get(owner.pluginId, owner.installationKey, key) as
+          | StoredRow
+          | undefined;
+        if (!row) throw new PluginDataCorruptError();
+        return { kind: 'found', record: parseRow(row) };
+      });
     } catch (error) {
       return unavailable(error);
     }
@@ -313,28 +352,10 @@ export class PluginDataStore {
 
   private list(owner: PluginDataOwner): PluginDataListOutcome {
     try {
-      const revisionHeads = this.readRevisionHeads(owner);
-      const rows = this.db
-        .prepare(
-          `SELECT key, value_json, byte_length, revision, updated_at
-           FROM plugin_data
-           WHERE plugin_id = ? AND installation_key = ?
-           ORDER BY key
-           LIMIT ${PLUGIN_DATA_LIMITS.keysPerInstallation + 1}`,
-        )
-        .all(owner.pluginId, owner.installationKey) as StoredRow[];
-      const records = rows.map(parseRow);
-      if (
-        records.length > PLUGIN_DATA_LIMITS.keysPerInstallation ||
-        rows.reduce((total, row) => total + row.byte_length, 0) >
-          PLUGIN_DATA_LIMITS.totalBytesPerInstallation ||
-        records.some(
-          (record) => revisionHeads.get(record.key) !== record.revision,
-        )
-      ) {
-        throw new PluginDataCorruptError();
-      }
-      return { kind: 'available', records };
+      return this.readTransaction(() => ({
+        kind: 'available',
+        records: this.readNamespaceSnapshot(owner).records,
+      }));
     } catch (error) {
       return unavailable(error);
     }
@@ -369,55 +390,28 @@ export class PluginDataStore {
 
     try {
       return this.transaction(() => {
-        const revisionHeads = this.readRevisionHeads(owner);
-        const currentRow = this.db
-          .prepare(
-            `SELECT key, value_json, byte_length, revision, updated_at
-             FROM plugin_data
-             WHERE plugin_id = ? AND installation_key = ? AND key = ?`,
-          )
-          .get(owner.pluginId, owner.installationKey, key) as
-          | StoredRow
-          | undefined;
-        const current = currentRow ? parseRow(currentRow) : undefined;
+        const snapshot = this.readNamespaceSnapshot(owner);
+        const currentRow = snapshot.rows.find((row) => row.key === key);
+        const current = snapshot.records.find((record) => record.key === key);
         const currentRevision = current?.revision ?? null;
         if (currentRevision !== expectedRevision) {
           return { kind: 'conflict', currentRevision };
         }
-        const priorRevision = revisionHeads.get(key);
+        const priorRevision = snapshot.revisionHeads.get(key);
         if (
           priorRevision === undefined &&
-          revisionHeads.size >= PLUGIN_DATA_LIMITS.keysPerInstallation
+          snapshot.revisionHeads.size >= PLUGIN_DATA_LIMITS.keysPerInstallation
         ) {
           return { kind: 'capacity', reason: 'keys' };
         }
-        const rows = this.db
-          .prepare(
-            `SELECT key, value_json, byte_length, revision, updated_at
-             FROM plugin_data
-             WHERE plugin_id = ? AND installation_key = ?
-             LIMIT ${PLUGIN_DATA_LIMITS.keysPerInstallation + 1}`,
-          )
-          .all(owner.pluginId, owner.installationKey) as StoredRow[];
-        const validatedRows = rows.map(parseRow);
-        const totalBytes = rows.reduce(
-          (total, row) => total + row.byte_length,
-          0,
-        );
-        if (
-          validatedRows.length > PLUGIN_DATA_LIMITS.keysPerInstallation ||
-          totalBytes > PLUGIN_DATA_LIMITS.totalBytesPerInstallation
-        ) {
-          throw new PluginDataCorruptError();
-        }
         if (
           !current &&
-          validatedRows.length >= PLUGIN_DATA_LIMITS.keysPerInstallation
+          snapshot.records.length >= PLUGIN_DATA_LIMITS.keysPerInstallation
         ) {
           return { kind: 'capacity', reason: 'keys' };
         }
         const nextTotal =
-          totalBytes - (currentRow?.byte_length ?? 0) + byteLength;
+          snapshot.totalBytes - (currentRow?.byte_length ?? 0) + byteLength;
         if (nextTotal > PLUGIN_DATA_LIMITS.totalBytesPerInstallation) {
           return { kind: 'capacity', reason: 'total-bytes' };
         }
@@ -486,19 +480,10 @@ export class PluginDataStore {
     }
     try {
       return this.transaction(() => {
-        const revisionHeads = this.readRevisionHeads(owner);
-        const currentRow = this.db
-          .prepare(
-            `SELECT key, value_json, byte_length, revision, updated_at
-             FROM plugin_data
-             WHERE plugin_id = ? AND installation_key = ? AND key = ?`,
-          )
-          .get(owner.pluginId, owner.installationKey, key) as
-          | StoredRow
-          | undefined;
-        if (!currentRow) return { kind: 'not-found' };
-        const current = parseRow(currentRow);
-        const revisionHead = revisionHeads.get(key);
+        const snapshot = this.readNamespaceSnapshot(owner);
+        const current = snapshot.records.find((record) => record.key === key);
+        if (!current) return { kind: 'not-found' };
+        const revisionHead = snapshot.revisionHeads.get(key);
         if (
           revisionHead === undefined ||
           !Number.isSafeInteger(revisionHead) ||
@@ -538,6 +523,22 @@ export class PluginDataStore {
     }
   }
 
+  private readTransaction<T>(work: () => T): T {
+    this.db.exec('BEGIN');
+    try {
+      const value = work();
+      this.db.exec('COMMIT');
+      return value;
+    } catch (error) {
+      try {
+        this.db.exec('ROLLBACK');
+      } catch {
+        // The original read failure remains authoritative.
+      }
+      throw error;
+    }
+  }
+
   private readRevisionHeads(owner: PluginDataOwner): Map<string, number> {
     const rows = this.db
       .prepare(
@@ -563,5 +564,58 @@ export class PluginDataStore {
       heads.set(row.key, row.last_revision);
     }
     return heads;
+  }
+
+  private readNamespaceSnapshot(
+    owner: PluginDataOwner,
+  ): PluginDataNamespaceSnapshot {
+    const bounds = this.db
+      .prepare(
+        `SELECT COUNT(*) AS row_count,
+                COALESCE(SUM(byte_length), 0) AS declared_bytes,
+                COALESCE(SUM(length(CAST(value_json AS BLOB))), 0) AS actual_bytes,
+                MAX(length(CAST(value_json AS BLOB))) AS max_value_bytes
+         FROM plugin_data
+         WHERE plugin_id = ? AND installation_key = ?`,
+      )
+      .get(owner.pluginId, owner.installationKey) as StoredPayloadBounds;
+    if (
+      !Number.isSafeInteger(bounds.row_count) ||
+      !Number.isSafeInteger(bounds.declared_bytes) ||
+      !Number.isSafeInteger(bounds.actual_bytes) ||
+      (bounds.max_value_bytes !== null &&
+        !Number.isSafeInteger(bounds.max_value_bytes)) ||
+      bounds.row_count < 0 ||
+      bounds.row_count > PLUGIN_DATA_LIMITS.keysPerInstallation ||
+      bounds.declared_bytes < 0 ||
+      bounds.declared_bytes !== bounds.actual_bytes ||
+      bounds.actual_bytes > PLUGIN_DATA_LIMITS.totalBytesPerInstallation ||
+      (bounds.max_value_bytes ?? 0) > PLUGIN_DATA_LIMITS.valueBytes
+    ) {
+      throw new PluginDataCorruptError();
+    }
+    const revisionHeads = this.readRevisionHeads(owner);
+    this.afterRevisionHeadsRead?.();
+    const rows = this.db
+      .prepare(
+        `SELECT key, value_json, byte_length, revision, updated_at
+         FROM plugin_data
+         WHERE plugin_id = ? AND installation_key = ?
+         ORDER BY key
+         LIMIT ${PLUGIN_DATA_LIMITS.keysPerInstallation + 1}`,
+      )
+      .all(owner.pluginId, owner.installationKey) as StoredRow[];
+    const records = rows.map(parseRow);
+    const totalBytes = bounds.actual_bytes;
+    if (
+      records.length > PLUGIN_DATA_LIMITS.keysPerInstallation ||
+      totalBytes > PLUGIN_DATA_LIMITS.totalBytesPerInstallation ||
+      records.some(
+        (record) => revisionHeads.get(record.key) !== record.revision,
+      )
+    ) {
+      throw new PluginDataCorruptError();
+    }
+    return { revisionHeads, rows, records, totalBytes };
   }
 }
