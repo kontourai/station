@@ -26,6 +26,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes |
 | `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts |
+| `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes |
 | `@kontourai/station-contracts/project` | Project config and metadata |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types |
 | `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses |
