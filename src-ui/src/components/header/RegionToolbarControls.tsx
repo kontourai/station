@@ -103,9 +103,11 @@ function RegionSurfaceMenu({
         onPointerDown={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          requestAnimationFrame(onClose);
         }}
-        onClick={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          onClose();
+        }}
       />
       <div
         ref={menuRef}
@@ -283,7 +285,6 @@ function ConnectedRegionToolbarControls() {
                   <button
                     type="button"
                     className="app-toolbar__region-swap"
-                    style={{ minWidth: 24, minHeight: 24 }}
                     aria-label={`Change ${label} region surface`}
                     aria-haspopup="menu"
                     aria-expanded={menuRegion === id}

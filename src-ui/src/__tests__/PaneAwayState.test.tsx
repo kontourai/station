@@ -219,8 +219,12 @@ test('Activity route points at its occupied region without mounting a second pan
   regionOccupant.activity = true;
   renderActivity(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
 
-  expect(screen.getByText('Activity is in Right region')).not.toBeNull();
+  expect(screen.getByText('Activity is in the Right region')).not.toBeNull();
+  expect(
+    screen.getByText('This pane is currently open in the right region.'),
+  ).not.toBeNull();
   expect(screen.queryByTestId('activity-surface')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Show Activity' })).toBeNull();
   expect(
     screen.queryByRole('button', { name: 'Bring it back here' }),
   ).toBeNull();
@@ -231,7 +235,9 @@ test('desktop: a hidden Activity region offers a working Show Activity action', 
   regionOccupant.activityVisible = false;
   renderActivity(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
 
-  expect(screen.getByText('Activity is hidden from Right region')).toBeTruthy();
+  expect(
+    screen.getByText('Activity is hidden from the Right region'),
+  ).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
   expect(regionOccupant.setRegion).toHaveBeenCalledWith('right', {
     visible: true,

@@ -142,6 +142,20 @@ export function placeSurface(
       visible: displacedSurface === null ? false : layout[regionId].visible,
     });
   }
+  if (displacedSurface !== null && displacedSurface !== surfaceId) {
+    const freeRegion = firstFreeDockRegion(
+      next,
+      DOCK_REGION_IDS.includes(regionId as DockRegionId)
+        ? (regionId as DockRegionId)
+        : 'bottom',
+    );
+    if (freeRegion) {
+      return updateRegion(next, freeRegion, {
+        occupant: displacedSurface,
+        visible: layout[regionId].visible,
+      });
+    }
+  }
   return next;
 }
 

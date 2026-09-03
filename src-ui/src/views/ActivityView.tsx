@@ -89,7 +89,7 @@ export function ActivityView({
         regionName={
           bottomOnly
             ? 'the bottom bar'
-            : `${regionLabel(activityRegion)} region`
+            : `the ${regionLabel(activityRegion)} region`
         }
         regionVisible={activityIsShown}
         onShowPane={() => {

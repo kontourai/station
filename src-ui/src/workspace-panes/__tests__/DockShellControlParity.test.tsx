@@ -233,7 +233,7 @@ function expectFullDockControls(occupantName: string) {
     'a maximize/restore control must be present regardless of occupant',
   ).toBeTruthy();
   expect(
-    screen.getByLabelText(/^(Show|Hide) dock region$/),
+    screen.getByLabelText(new RegExp(`^(Show|Hide) ${occupantName}$`)),
     'a collapse/expand control must be present regardless of occupant',
   ).toBeTruthy();
   expect(

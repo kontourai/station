@@ -1,7 +1,10 @@
 /** @vitest-environment jsdom */
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { createEvent, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+
+const chatCss = readFileSync('src-ui/src/components/chat/chat.css', 'utf8');
 
 const harness = vi.hoisted(() => ({
   regions: {
@@ -153,7 +156,6 @@ describe('RegionToolbarControls', () => {
     harness.shortcuts.get('activity.toggle')?.handler();
 
     expect(harness.placeSurface).toHaveBeenCalledWith('activity', 'bottom');
-    expect(harness.regions.right.occupant).toBe('chat');
   });
 
   test('the Activity chord toggles its existing region hidden and visible', () => {
@@ -208,8 +210,12 @@ describe('RegionToolbarControls', () => {
     const trigger = screen.getByRole('button', {
       name: 'Change Bottom region surface',
     });
-    expect(trigger.style.minWidth).toBe('24px');
-    expect(trigger.style.minHeight).toBe('24px');
+    expect(trigger.classList.contains('app-toolbar__region-swap')).toBe(true);
+    const swapRule = chatCss.match(
+      /\.app-toolbar__region-swap\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(swapRule).toMatch(/min-width:\s*24px/);
+    expect(swapRule).toMatch(/min-height:\s*24px/);
     trigger.focus();
     fireEvent.click(trigger);
     expect(
@@ -219,26 +225,16 @@ describe('RegionToolbarControls', () => {
     expect(screen.queryByRole('menu')).toBeNull();
     expect(document.activeElement).toBe(trigger);
 
-    const frameCallbacks: FrameRequestCallback[] = [];
-    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
-      frameCallbacks.push(callback);
-      return frameCallbacks.length;
-    });
-    const underneath = vi.fn();
-    const beneath = document.createElement('button');
-    beneath.addEventListener('click', underneath);
-    document.body.append(beneath);
     fireEvent.click(trigger);
     const backdrop = screen.getByRole('button', {
       name: 'Close Bottom region menu',
     });
-    fireEvent.pointerDown(backdrop);
+    const pointerDown = createEvent.pointerDown(backdrop);
+    fireEvent(backdrop, pointerDown);
+    expect(pointerDown.defaultPrevented).toBe(true);
     expect(screen.queryByRole('menu')).not.toBeNull();
     fireEvent.click(backdrop);
-    expect(underneath).not.toHaveBeenCalled();
-    act(() => frameCallbacks.forEach((callback) => callback(0)));
     expect(screen.queryByRole('menu')).toBeNull();
-    beneath.remove();
   });
 
   test('a bottom-only device renders one control per surface and makes either surface the sole visible region', () => {

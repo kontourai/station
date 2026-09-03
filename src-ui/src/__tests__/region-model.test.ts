@@ -155,12 +155,24 @@ describe('region model', () => {
     expect(swapped.right).toMatchObject({ occupant: 'chat', visible: true });
   });
 
-  test('placing a homeless surface vacates the displaced occupant', () => {
+  test('placing a homeless surface relocates the displaced occupant to the first free dock region', () => {
     const placed = placeSurface(
       DEFAULT_DEVICE_REGION_LAYOUT,
       'activity',
       'bottom',
     );
+
+    expect(placed.bottom.occupant).toBe('activity');
+    expect(placed.right).toMatchObject({ occupant: 'chat', visible: false });
+  });
+
+  test('placing a homeless surface vacates the displaced occupant when no dock region is free', () => {
+    const fullLayout = {
+      ...structuredClone(DEFAULT_DEVICE_REGION_LAYOUT),
+      left: { visible: true, size: 400, occupant: 'left-surface' },
+      right: { visible: true, size: 400, occupant: 'right-surface' },
+    };
+    const placed = placeSurface(fullLayout, 'activity', 'bottom');
 
     expect(placed.bottom.occupant).toBe('activity');
     expect(occupiedDockRegion(placed, 'chat')).toBeUndefined();

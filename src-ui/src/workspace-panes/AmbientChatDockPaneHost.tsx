@@ -137,12 +137,16 @@ function admitsAmbientDockInstance(
  * occupant) and already lives, pre-rendered, on `shellChrome.occupantPicker`
  * — see `AmbientDockShellApi`.
  */
-function ambientNonChatHeaderProps(shellChrome: AmbientDockShellApi) {
+function ambientNonChatHeaderProps(
+  shellChrome: AmbientDockShellApi,
+  surfaceTitle: string,
+) {
   return {
     regionVisible: shellChrome.isDockOpen,
     shellMaximized: shellChrome.isDockMaximized,
     canMaximize: shellChrome.canMaximize,
     surfaceShortcutId: shellChrome.surfaceShortcutId,
+    surfaceTitle,
     isDragging: shellChrome.isDragging,
     onDockSnap: shellChrome.applyDockSnap,
     availableDockSlotPlacements: shellChrome.availableDockSlotPlacements,
@@ -167,7 +171,12 @@ function AmbientHomeDock({
   const model = useHomeViewModel(onNavigate);
   return (
     <>
-      <ChatDockHeader {...ambientNonChatHeaderProps(shellChrome)} />
+      <ChatDockHeader
+        {...ambientNonChatHeaderProps(
+          shellChrome,
+          WORKSPACE_HOME_PANE_DESCRIPTOR.name,
+        )}
+      />
       <div className="dock-slot__body">
         <HomeWorkspacePaneBindingProvider
           binding={{ model, continuation, onNavigate }}
@@ -373,7 +382,7 @@ export function AmbientChatDockPaneHost({
     replace,
     undockOccupant,
   ]);
-  // DockShell wraps every legacy ambient occupant (Chat, Home) — the one dock
+  // DockShell wraps each legacy ambient occupant (Chat or Home) — the one dock
   // chrome shell (archive#4460): root box, resize handle, geometry/snap/
   // drag state, `dock.toggle`/`dock.maximize`. Its geometry report goes to
   // the clearance reducer, one entry per rendered region (#928; the reducer

@@ -36,8 +36,9 @@ import {
   useRegionModel,
 } from '../../contexts/RegionModelContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
-import { DOCK_REGION_IDS } from '../../regions/region-model';
+import { DOCK_REGION_IDS, foldedDockRegion } from '../../regions/region-model';
 import type { DockMode } from '../../types';
+import { ActivityView } from '../../views/ActivityView';
 import { AmbientChatDockPaneHost } from '../AmbientChatDockPaneHost';
 
 vi.mock('../../components/chat-dock/ChatDock', async () => {
@@ -75,6 +76,10 @@ vi.mock('../../contexts/ProjectsContext', () => ({
     isLoading: false,
     isConfirmedLoaded: true,
   }),
+}));
+vi.mock('../../contexts/ConfigContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../contexts/ConfigContext')>()),
+  useConfig: () => null,
 }));
 
 const AMBIENT_DOCK_STORAGE_KEY =
@@ -472,6 +477,37 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     );
   });
 
+  test('the default Bottom swap relocates Chat and mirrors its new region', async () => {
+    seedPlacement('bottom', 'open');
+    await renderShellsSettled();
+    const dockModeWrite = vi.spyOn(navigationStore, 'setDockMode');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Change Bottom region surface' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Swap in Activity' }));
+
+    await waitFor(() =>
+      expect(currentRegionModel().regions.bottom.occupant).toBe('activity'),
+    );
+    expect(currentRegionModel().regions.right).toMatchObject({
+      occupant: 'chat',
+      visible: true,
+    });
+    await waitFor(() =>
+      expect(
+        document.querySelector('section[aria-label="Activity"]'),
+      ).not.toBeNull(),
+    );
+    await waitFor(() =>
+      expect(document.querySelector('#chat-dock')).not.toBeNull(),
+    );
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().dockMode).toBe('right'),
+    );
+    expect(dockModeWrite).toHaveBeenCalledWith('right');
+  });
+
   test('a non-chat shell neither takes the chat id nor the maximize command', async () => {
     seedPlacement('bottom', 'maximized');
     const twoShells = (showRight: boolean) => (
@@ -563,7 +599,7 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     expect(within(activityShell).queryByText('⌘M')).toBeNull();
     expect(
       within(activityShell)
-        .getByLabelText('Hide dock region')
+        .getByLabelText('Hide Activity')
         .getAttribute('title'),
     ).toContain('Ctrl+Shift+A');
     expect(
@@ -571,14 +607,14 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     ).toBeTruthy();
 
     window.localStorage.setItem('station.chatDock.snap', 'half');
-    fireEvent.click(within(activityShell).getByLabelText('Hide dock region'));
+    fireEvent.click(within(activityShell).getByLabelText('Hide Activity'));
     await waitFor(() =>
       expect(activityShell.classList.contains('is-collapsed')).toBe(true),
     );
     // Asserted mid-cycle: after the expand below the key would read 'half'
     // again even if Activity had written it.
     expect(window.localStorage.getItem('station.chatDock.snap')).toBe('half');
-    fireEvent.click(within(activityShell).getByLabelText('Show dock region'));
+    fireEvent.click(within(activityShell).getByLabelText('Show Activity'));
     await waitFor(() =>
       expect(activityShell.classList.contains('is-collapsed')).toBe(false),
     );
@@ -652,18 +688,80 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       ).not.toBeNull(),
     );
     expect(shells()).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Hide Activity' }));
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Regions' })).getByRole(
+        'button',
+        { name: 'Hide Activity' },
+      ),
+    );
     await waitFor(() =>
       expect(
         document.querySelector('section[aria-label="Activity"]'),
       ).toBeNull(),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
+    fireEvent.click(
+      within(screen.getByRole('group', { name: 'Regions' })).getByRole(
+        'button',
+        { name: 'Show Activity' },
+      ),
+    );
     await waitFor(() =>
       expect(
         document.querySelector('section[aria-label="Activity"]'),
       ).not.toBeNull(),
     );
+  });
+
+  test('ActivityView shows its hidden region exclusively through the real coarse provider', async () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 390,
+    });
+    seedPlacement('bottom', 'open');
+    render(
+      <Providers>
+        <ActivityView apiBase="http://test.local" />
+        <RegionShells
+          homeContinuation={null}
+          onNavigate={vi.fn()}
+          onDockActionChange={vi.fn()}
+        />
+      </Providers>,
+    );
+    act(() => {
+      currentRegionModel().placeSurface('activity', 'right');
+      currentRegionModel().setRegion('right', { visible: false });
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText('Activity is hidden from the bottom bar'),
+      ).toBeTruthy(),
+    );
+
+    const awayState = screen
+      .getByText('Activity is hidden from the bottom bar')
+      .closest('.empty');
+    if (!awayState) throw new Error('Activity away state never rendered');
+    fireEvent.click(
+      within(awayState as HTMLElement).getByRole('button', {
+        name: 'Show Activity',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(
+        document.querySelector('section[aria-label="Activity"]'),
+      ).not.toBeNull(),
+    );
+    expect(
+      foldedDockRegion(
+        currentRegionModel().regions,
+        currentRegionModel().lastShownRegion,
+      ),
+    ).toBe('right');
+    expect(currentRegionModel().regions.right.visible).toBe(true);
+    expect(currentRegionModel().regions.bottom.visible).toBe(false);
+    expect(document.querySelector('#chat-dock')).toBeNull();
   });
 
   test('rotating a two-visible-occupant desktop layout to coarse keeps only the last shown occupant', async () => {

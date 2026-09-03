@@ -10,8 +10,8 @@ import { ChatDockResizeHandle } from './ChatDockResizeHandle';
 
 /**
  * The dock chrome shell, mounted once per occupied region by the ambient host
- * (`RegionShells`, #928) and shared by every occupant it docks (Chat, Home,
- * Activity — station#4460). It owns:
+ * (`RegionShells`, #928) and shared by the legacy ambient occupants it docks
+ * (Chat and Home — station#4460). It owns:
  *
  * - the root `.chat-dock` element and its placement/state classes, so the
  *   large existing CSS surface (`:is(.chat-dock, .dock-slot)` and friends)

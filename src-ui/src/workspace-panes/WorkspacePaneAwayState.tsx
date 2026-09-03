@@ -58,7 +58,7 @@ export function WorkspacePaneAwayState({
             : 'This pane is currently docked at the edge of your workspace.'
       }
       action={
-        regionName && onShowPane ? (
+        hiddenRegion && onShowPane ? (
           <Button onClick={onShowPane}>Show {paneName}</Button>
         ) : dock && !regionName ? (
           <Button onClick={dock.undockOccupant}>Bring it back here</Button>

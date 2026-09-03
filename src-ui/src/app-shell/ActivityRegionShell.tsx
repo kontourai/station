@@ -8,7 +8,10 @@ import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { reportRegionClearance } from '../regions/region-clearance';
-import type { DockRegionId } from '../regions/region-model';
+import {
+  type DockRegionId,
+  REGION_SURFACE_REGISTRY,
+} from '../regions/region-model';
 import { ActivityWorkspacePaneBindingProvider } from '../views/activity/ActivityWorkspacePaneBinding';
 
 const loadActivityWorkspacePane = () =>
@@ -30,6 +33,7 @@ export function ActivityRegionShell({ regionId }: { regionId: DockRegionId }) {
             shellMaximized={chrome.isDockMaximized}
             canMaximize={chrome.canMaximize}
             surfaceShortcutId={chrome.surfaceShortcutId}
+            surfaceTitle={REGION_SURFACE_REGISTRY.get('activity')?.title}
             isDragging={chrome.isDragging}
             onDockSnap={chrome.applyDockSnap}
             availableDockSlotPlacements={chrome.availableDockSlotPlacements}

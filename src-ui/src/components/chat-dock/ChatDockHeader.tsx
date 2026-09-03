@@ -129,6 +129,8 @@ interface ChatDockHeaderProps {
   shellMaximized: boolean;
   /** Registered visibility shortcut for the shell's surface. */
   surfaceShortcutId?: string;
+  /** Registered title for a non-Chat shell's visibility action. */
+  surfaceTitle?: string;
   /** Whether this shell owns the Chat-only maximize state. */
   canMaximize?: boolean;
 }
@@ -149,12 +151,16 @@ export function ChatDockHeader({
   regionVisible,
   shellMaximized,
   surfaceShortcutId = 'dock.toggle',
+  surfaceTitle,
   canMaximize = true,
 }: ChatDockHeaderProps) {
   const isDockOpen = regionVisible;
   const isDockMaximized = shellMaximized;
   const toggleDockShortcut = useShortcutDisplay(surfaceShortcutId);
   const maximizeShortcut = useShortcutDisplay('dock.maximize');
+  const visibilityLabel = surfaceTitle
+    ? `${isDockOpen ? 'Hide' : 'Show'} ${surfaceTitle}`
+    : `${isDockOpen ? 'Hide' : 'Show'} dock region`;
   const side =
     effectiveDockSlotPlacement === 'bottom' ? null : effectiveDockSlotPlacement;
   const activeSessions = (chatControls?.sessions ?? []).filter((s) =>
@@ -404,11 +410,11 @@ export function ChatDockHeader({
                 );
               }}
               title={withShortcutHint(
-                !isDockOpen ? 'Show dock region' : 'Hide dock region',
+                visibilityLabel,
                 surfaceShortcutId,
                 () => toggleDockShortcut,
               )}
-              aria-label={!isDockOpen ? 'Show dock region' : 'Hide dock region'}
+              aria-label={visibilityLabel}
             >
               <svg
                 aria-hidden="true"
