@@ -34,6 +34,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
 | `@kontourai/station-contracts/scheduler` | Scheduler jobs, stats, capabilities, notifications |
 | `@kontourai/station-contracts/tool` | Tool definitions, permissions, connection configs |
+| `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, and open intents |
 
 ## Import examples
 
@@ -42,6 +43,7 @@ import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import type { SessionMetadata } from '@kontourai/station-contracts/runtime';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import type { UnifiedSearchResult } from '@kontourai/station-contracts/unified-search';
 ```
 
 ## Scheduler deferral events

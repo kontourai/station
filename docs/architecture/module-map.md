@@ -20,6 +20,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | Module | Intent | Primary source |
 | --- | --- | --- |
 | [SurfaceRegistry](#surfaceregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/surface-registry.ts` |
+| [UnifiedSearchService](#unifiedsearchservice) | Aggregate bounded owner-qualified search pages without flattening authorization or source truth. | `src-server/services/search/unified-search-service.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
@@ -63,6 +64,40 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate exact-route owners, duplicate view owners, and duplicate sidebar or palette order slots. It never invokes a label or badge while composing or filtering; locale, branding, and attention state remain render-time inputs. A preview surface stays registered and routable while `getAdvertised` hides it until its named flag is enabled. `hiddenFromNav` removes only the sidebar affordance; route, palette, badge, and header callers remain independent projections. Parameterized Project, layout, task, Agent, connection, and Workspace Pane routes retain their domain parsers. Dynamic Workspace Panes retain their typed availability catalog and join the command palette after static registry projection rather than becoming unvalidated root-route contributions.
 
 **Seam, Implementation, callers, and tests.** The UI shell composes built-in descriptors. `routing.ts` consumes exact routes and semantic management ownership; `ProjectSidebarNav`, `CommandPalette`, and notification header badge consume their ordered projections. Icons are a presentation Adapter keyed by the registry's finite icon vocabulary. Future trusted plugin surface contributions must enter at registry composition and pass the same validation; there is no mutable global `register()` operation or renderer callback in persisted plugin data. Contract coverage is `src-ui/src/app-shell/__tests__/surface-registry.test.ts` plus sidebar, palette, routing, and header suites. **Do not reintroduce:** component-local static destination arrays, route-to-sidebar switch statements, hard-coded badge copy outside the registry, mutable post-construction registration, or treating a contributed renderer declaration as navigation authority.
+
+## UnifiedSearchService
+
+**Intent and Interface.** `UnifiedSearchService.search(request, signal)` asks
+one to eight immutable typed Providers for independently authorized pages and
+returns a versioned result envelope whose key includes provider and semantic
+owner identity. Results retain kind, exact scope, matched fields, currentness,
+authorization check time, and a typed open intent that must be re-resolved by
+its owner before navigation.
+
+**Contract.** Query, provider, result, string, count, byte, continuation, and
+time budgets are fixed by the host. Provider output is cloned and validated;
+unknown shapes, duplicate identities, excessive pages, throwing accessors,
+timeouts, and exceptions become source-level unavailable state without error
+detail. Restricted sources return no results or resource counts. A partial,
+stale, restricted, or unavailable source never erases authorized results from
+another source, and ranking uses provider relevance only—not trust or inferred
+correlation. Same-text ids from different Station/tenant/Console owners cannot
+collide. Console projection is a contract owner only: Station has no sibling
+store reader, and cross-product results remain blocked on a published Console
+Adapter.
+
+**Seam, Implementation, callers, and tests.** Public shapes live in
+`@kontourai/station-contracts/unified-search`; server composition and validation
+live in `src-server/services/search/unified-search-service.ts`. Initial local
+Adapters map the existing authority-filtered Session message index and the
+personal-mode TaskGraph list. The Task Adapter is deliberately not eligible for
+hosted composition until a tenant-bound Task store exists. There is no route,
+SDK hook, command-palette row, file scan, output/receipt Provider, or open-intent
+resolver in this tracer. Focused behavioral evidence lives in
+`src-server/services/search/__tests__/`. **Do not reintroduce:** a universal
+resource graph, sibling-repository scraping, provider-supplied owner stamping,
+unauthorized hit/count projection, cached-snippet authority, inferred identity,
+unbounded fan-out, or a second command-palette registry.
 
 ## DesktopStartupReadiness
 

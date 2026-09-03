@@ -131,6 +131,7 @@
     "./tool": "./src/tool.ts",
     "./user-profile": "./src/user-profile.ts",
     "./usage-rollup": "./src/usage-rollup.ts",
+    "./unified-search": "./src/unified-search.ts",
     "./turn-provenance": "./src/turn-provenance.ts",
     "./turn-provenance-context": "./src/turn-provenance-context.ts",
     "./turn-changed-files": "./src/turn-changed-files.ts",

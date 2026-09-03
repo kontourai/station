@@ -1,0 +1,751 @@
+import {
+  UNIFIED_SEARCH_V1,
+  type UnifiedSearchCandidate,
+  type UnifiedSearchCurrentness,
+  type UnifiedSearchFilters,
+  type UnifiedSearchMatchedField,
+  type UnifiedSearchOpenIntent,
+  type UnifiedSearchOutcome,
+  type UnifiedSearchOwner,
+  type UnifiedSearchProvider,
+  type UnifiedSearchProviderPage,
+  type UnifiedSearchProviderReason,
+  type UnifiedSearchRequest,
+  type UnifiedSearchResponseState,
+  type UnifiedSearchResult,
+  type UnifiedSearchResultKind,
+  type UnifiedSearchScope,
+  type UnifiedSearchSourceState,
+} from '@kontourai/station-contracts/unified-search';
+
+export const UNIFIED_SEARCH_LIMITS = Object.freeze({
+  providers: 8,
+  resultsPerProvider: 8,
+  queryBytes: 256,
+  idBytes: 256,
+  titleBytes: 160,
+  snippetBytes: 512,
+  reasonBytes: 240,
+  continuationBytes: 1_024,
+  candidateBytes: 2_048,
+  responseBytes: 256 * 1_024,
+  providerTimeoutMs: 2_000,
+});
+
+const PROVIDER_ID = /^[a-z0-9][a-z0-9._-]{0,127}$/;
+const RESULT_KINDS = new Set<UnifiedSearchResultKind>([
+  'project',
+  'task',
+  'session',
+  'message',
+  'file',
+  'output',
+  'run',
+  'evidence',
+  'receipt',
+  'contribution',
+]);
+const MATCHED_FIELDS = new Set<UnifiedSearchMatchedField>([
+  'id',
+  'title',
+  'description',
+  'snippet',
+  'label',
+  'path',
+]);
+const PROVIDER_REASONS = new Set<UnifiedSearchProviderReason>([
+  'authorization-restricted',
+  'continuation-invalid',
+  'result-window',
+  'source-partial',
+  'source-stale',
+  'source-unavailable',
+]);
+
+type BoundProvider = {
+  descriptor: {
+    id: string;
+    version: string;
+    owner: UnifiedSearchOwner;
+    kinds: readonly UnifiedSearchResultKind[];
+  };
+  search: UnifiedSearchProvider['search'];
+};
+
+function bytes(value: string): number {
+  return Buffer.byteLength(value, 'utf8');
+}
+
+function safeText(value: unknown, maxBytes: number): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value === value.trim() &&
+    bytes(value) <= maxBytes &&
+    ![...value].some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 0x1f || code === 0x7f;
+    })
+  );
+}
+
+function safeTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  try {
+    return new Date(value).toISOString() === value;
+  } catch {
+    return false;
+  }
+}
+
+function cloneOwner(value: unknown): UnifiedSearchOwner | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const owner = value as Record<string, unknown>;
+  if (
+    owner.kind === 'station' &&
+    safeText(owner.stationId, UNIFIED_SEARCH_LIMITS.idBytes) &&
+    (owner.tenantId === undefined ||
+      safeText(owner.tenantId, UNIFIED_SEARCH_LIMITS.idBytes))
+  ) {
+    return {
+      kind: 'station',
+      stationId: owner.stationId,
+      ...(typeof owner.tenantId === 'string'
+        ? { tenantId: owner.tenantId }
+        : {}),
+    };
+  }
+  if (
+    owner.kind === 'console-projection' &&
+    safeText(owner.projectionId, UNIFIED_SEARCH_LIMITS.idBytes)
+  ) {
+    return { kind: 'console-projection', projectionId: owner.projectionId };
+  }
+  return null;
+}
+
+function cloneScope(value: unknown): UnifiedSearchScope | null | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const scope = value as Record<string, unknown>;
+  if (
+    Object.keys(scope).some(
+      (key) => !['projectId', 'taskId', 'sessionId'].includes(key),
+    )
+  ) {
+    return null;
+  }
+  for (const key of ['projectId', 'taskId', 'sessionId'] as const) {
+    if (
+      scope[key] !== undefined &&
+      !safeText(scope[key], UNIFIED_SEARCH_LIMITS.idBytes)
+    ) {
+      return null;
+    }
+  }
+  return {
+    ...(typeof scope.projectId === 'string'
+      ? { projectId: scope.projectId }
+      : {}),
+    ...(typeof scope.taskId === 'string' ? { taskId: scope.taskId } : {}),
+    ...(typeof scope.sessionId === 'string'
+      ? { sessionId: scope.sessionId }
+      : {}),
+  };
+}
+
+function sameScope(
+  left: UnifiedSearchScope | undefined,
+  right: UnifiedSearchScope | undefined,
+): boolean {
+  return (
+    left?.projectId === right?.projectId &&
+    left?.taskId === right?.taskId &&
+    left?.sessionId === right?.sessionId
+  );
+}
+
+function cloneCurrentness(value: unknown): UnifiedSearchCurrentness | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const currentness = value as Record<string, unknown>;
+  if (!safeTimestamp(currentness.observedAt)) return null;
+  switch (currentness.state) {
+    case 'current':
+    case 'external-live':
+    case 'missing':
+      return { state: currentness.state, observedAt: currentness.observedAt };
+    case 'stale':
+      return safeText(currentness.reason, UNIFIED_SEARCH_LIMITS.reasonBytes)
+        ? {
+            state: 'stale',
+            observedAt: currentness.observedAt,
+            reason: currentness.reason,
+          }
+        : null;
+    case 'superseded':
+      return currentness.replacementId === undefined ||
+        safeText(currentness.replacementId, UNIFIED_SEARCH_LIMITS.idBytes)
+        ? {
+            state: 'superseded',
+            observedAt: currentness.observedAt,
+            ...(typeof currentness.replacementId === 'string'
+              ? { replacementId: currentness.replacementId }
+              : {}),
+          }
+        : null;
+    default:
+      return null;
+  }
+}
+
+function cloneOpenIntent(
+  value: unknown,
+  candidateId: string,
+  candidateKind: UnifiedSearchResultKind,
+  candidateScope: UnifiedSearchScope | undefined,
+  owner: UnifiedSearchOwner,
+): UnifiedSearchOpenIntent | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const intent = value as Record<string, unknown>;
+  if (
+    intent.kind === 'task' &&
+    candidateKind === 'task' &&
+    safeText(intent.projectId, UNIFIED_SEARCH_LIMITS.idBytes) &&
+    safeText(intent.taskId, UNIFIED_SEARCH_LIMITS.idBytes) &&
+    intent.taskId === candidateId &&
+    intent.projectId === candidateScope?.projectId &&
+    intent.taskId === candidateScope.taskId &&
+    owner.kind === 'station'
+  ) {
+    return {
+      kind: 'task',
+      projectId: intent.projectId,
+      taskId: intent.taskId,
+    };
+  }
+  if (
+    intent.kind === 'session-message' &&
+    candidateKind === 'message' &&
+    safeText(intent.sessionId, UNIFIED_SEARCH_LIMITS.idBytes) &&
+    safeText(intent.messageId, UNIFIED_SEARCH_LIMITS.idBytes) &&
+    intent.sessionId === candidateScope?.sessionId &&
+    owner.kind === 'station'
+  ) {
+    return {
+      kind: 'session-message',
+      sessionId: intent.sessionId,
+      messageId: intent.messageId,
+    };
+  }
+  if (
+    intent.kind === 'station-resource' &&
+    owner.kind === 'station' &&
+    candidateKind !== 'task' &&
+    candidateKind !== 'message' &&
+    intent.resourceKind === candidateKind &&
+    intent.resourceId === candidateId &&
+    safeText(intent.resourceId, UNIFIED_SEARCH_LIMITS.idBytes)
+  ) {
+    const scope = cloneScope(intent.scope);
+    if (scope === null || !sameScope(scope, candidateScope)) return null;
+    return {
+      kind: 'station-resource',
+      resourceKind: candidateKind,
+      resourceId: candidateId,
+      ...(scope ? { scope } : {}),
+    };
+  }
+  if (
+    intent.kind === 'console-projection' &&
+    owner.kind === 'console-projection' &&
+    intent.projectionId === owner.projectionId &&
+    intent.resourceId === candidateId &&
+    safeText(intent.resourceId, UNIFIED_SEARCH_LIMITS.idBytes)
+  ) {
+    return {
+      kind: 'console-projection',
+      projectionId: owner.projectionId,
+      resourceId: candidateId,
+    };
+  }
+  return null;
+}
+
+function cloneCandidate(
+  value: unknown,
+  owner: UnifiedSearchOwner,
+): UnifiedSearchCandidate | null {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return null;
+    const candidate = value as Record<string, unknown>;
+    if (
+      !safeText(candidate.id, UNIFIED_SEARCH_LIMITS.idBytes) ||
+      typeof candidate.kind !== 'string' ||
+      !RESULT_KINDS.has(candidate.kind as UnifiedSearchResultKind) ||
+      !safeText(candidate.title, UNIFIED_SEARCH_LIMITS.titleBytes) ||
+      (candidate.snippet !== undefined &&
+        !safeText(candidate.snippet, UNIFIED_SEARCH_LIMITS.snippetBytes)) ||
+      typeof candidate.relevance !== 'number' ||
+      !Number.isFinite(candidate.relevance) ||
+      candidate.relevance < 0 ||
+      candidate.relevance > 1 ||
+      !Array.isArray(candidate.matchedFields) ||
+      candidate.matchedFields.length < 1 ||
+      candidate.matchedFields.length > MATCHED_FIELDS.size ||
+      !candidate.matchedFields.every(
+        (field) =>
+          typeof field === 'string' &&
+          MATCHED_FIELDS.has(field as UnifiedSearchMatchedField),
+      ) ||
+      new Set(candidate.matchedFields).size !== candidate.matchedFields.length
+    ) {
+      return null;
+    }
+    const scope = cloneScope(candidate.scope);
+    const currentness = cloneCurrentness(candidate.currentness);
+    if (scope === null || !currentness) return null;
+    const kind = candidate.kind as UnifiedSearchResultKind;
+    const intent = cloneOpenIntent(
+      candidate.openIntent,
+      candidate.id,
+      kind,
+      scope,
+      owner,
+    );
+    if (!intent) return null;
+    const result: UnifiedSearchCandidate = {
+      id: candidate.id,
+      kind,
+      ...(scope ? { scope } : {}),
+      title: candidate.title,
+      ...(typeof candidate.snippet === 'string'
+        ? { snippet: candidate.snippet }
+        : {}),
+      matchedFields: [
+        ...candidate.matchedFields,
+      ] as UnifiedSearchMatchedField[],
+      currentness,
+      relevance: candidate.relevance,
+      openIntent: intent,
+    };
+    return bytes(JSON.stringify(result)) <= UNIFIED_SEARCH_LIMITS.candidateBytes
+      ? result
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function providerKey(
+  providerId: string,
+  owner: UnifiedSearchOwner,
+  resultId: string,
+): string {
+  return JSON.stringify([
+    providerId,
+    owner.kind,
+    owner.kind === 'station' ? owner.stationId : owner.projectionId,
+    owner.kind === 'station' ? (owner.tenantId ?? '') : '',
+    resultId,
+  ]);
+}
+
+function clonePage(
+  value: unknown,
+  owner: UnifiedSearchOwner,
+  limit: number,
+): UnifiedSearchProviderPage | null {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return null;
+    const page = value as Record<string, unknown>;
+    if (page.version !== UNIFIED_SEARCH_V1) return null;
+    if (page.state === 'restricted' || page.state === 'unavailable') {
+      return typeof page.reason === 'string' &&
+        PROVIDER_REASONS.has(page.reason as UnifiedSearchProviderReason)
+        ? {
+            version: UNIFIED_SEARCH_V1,
+            state: page.state,
+            reason: page.reason as UnifiedSearchProviderReason,
+          }
+        : null;
+    }
+    if (!['available', 'stale', 'partial'].includes(page.state as string)) {
+      return null;
+    }
+    if (!Array.isArray(page.results) || page.results.length > limit)
+      return null;
+    if (
+      page.continuation !== undefined &&
+      !safeText(page.continuation, UNIFIED_SEARCH_LIMITS.continuationBytes)
+    ) {
+      return null;
+    }
+    if (
+      page.state !== 'available' &&
+      (typeof page.reason !== 'string' ||
+        !PROVIDER_REASONS.has(page.reason as UnifiedSearchProviderReason))
+    ) {
+      return null;
+    }
+    if (page.state === 'available' && page.reason !== undefined) return null;
+    const results = page.results.map((candidate) =>
+      cloneCandidate(candidate, owner),
+    );
+    if (results.some((candidate) => candidate === null)) return null;
+    const ids = results.map((candidate) => candidate!.id);
+    if (new Set(ids).size !== ids.length) return null;
+    return {
+      version: UNIFIED_SEARCH_V1,
+      state: page.state as 'available' | 'stale' | 'partial',
+      results: results as UnifiedSearchCandidate[],
+      ...(typeof page.continuation === 'string'
+        ? { continuation: page.continuation }
+        : {}),
+      ...(typeof page.reason === 'string'
+        ? { reason: page.reason as UnifiedSearchProviderReason }
+        : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function cloneFilters(value: unknown): UnifiedSearchFilters | null | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const filters = value as Record<string, unknown>;
+  if (
+    filters.kinds !== undefined &&
+    (!Array.isArray(filters.kinds) ||
+      filters.kinds.length > RESULT_KINDS.size ||
+      !filters.kinds.every(
+        (kind) =>
+          typeof kind === 'string' &&
+          RESULT_KINDS.has(kind as UnifiedSearchResultKind),
+      ) ||
+      new Set(filters.kinds).size !== filters.kinds.length)
+  ) {
+    return null;
+  }
+  for (const key of ['projectId', 'taskId'] as const) {
+    if (
+      filters[key] !== undefined &&
+      !safeText(filters[key], UNIFIED_SEARCH_LIMITS.idBytes)
+    ) {
+      return null;
+    }
+  }
+  return {
+    ...(Array.isArray(filters.kinds)
+      ? { kinds: [...filters.kinds] as UnifiedSearchResultKind[] }
+      : {}),
+    ...(typeof filters.projectId === 'string'
+      ? { projectId: filters.projectId }
+      : {}),
+    ...(typeof filters.taskId === 'string' ? { taskId: filters.taskId } : {}),
+  };
+}
+
+function responseState(
+  results: readonly UnifiedSearchResult[],
+  sources: readonly UnifiedSearchSourceState[],
+): UnifiedSearchResponseState {
+  const states = new Set(sources.map((source) => source.state));
+  if (
+    results.length > 0 &&
+    (states.has('partial') ||
+      states.has('restricted') ||
+      states.has('unavailable'))
+  ) {
+    return 'partial';
+  }
+  if (states.has('partial')) return 'partial';
+  if (states.size > 0 && [...states].every((state) => state === 'restricted')) {
+    return 'restricted';
+  }
+  if (states.has('unavailable')) return 'unavailable';
+  if (states.has('restricted')) return 'restricted';
+  if (states.has('stale')) return 'stale';
+  return 'complete';
+}
+
+export class UnifiedSearchService {
+  private readonly providers: readonly BoundProvider[];
+
+  constructor(providers: readonly UnifiedSearchProvider[]) {
+    if (
+      providers.length < 1 ||
+      providers.length > UNIFIED_SEARCH_LIMITS.providers
+    ) {
+      throw new TypeError(
+        `Unified search requires 1 to ${UNIFIED_SEARCH_LIMITS.providers} providers`,
+      );
+    }
+    const ids = new Set<string>();
+    this.providers = Object.freeze(
+      providers.map((provider) => {
+        try {
+          const descriptor = provider.descriptor;
+          const owner = cloneOwner(descriptor?.owner);
+          if (
+            !descriptor ||
+            !PROVIDER_ID.test(descriptor.id) ||
+            !safeText(descriptor.version, 64) ||
+            !owner ||
+            !Array.isArray(descriptor.kinds) ||
+            descriptor.kinds.length < 1 ||
+            descriptor.kinds.length > RESULT_KINDS.size ||
+            !descriptor.kinds.every((kind) => RESULT_KINDS.has(kind)) ||
+            new Set(descriptor.kinds).size !== descriptor.kinds.length ||
+            typeof provider.search !== 'function' ||
+            ids.has(descriptor.id)
+          ) {
+            throw new TypeError(
+              'Unified search provider descriptor is invalid',
+            );
+          }
+          ids.add(descriptor.id);
+          const bound: BoundProvider = {
+            descriptor: Object.freeze({
+              id: descriptor.id,
+              version: descriptor.version,
+              owner: Object.freeze(owner),
+              kinds: Object.freeze([...descriptor.kinds]),
+            }),
+            search: provider.search.bind(provider),
+          };
+          return Object.freeze(bound);
+        } catch (error) {
+          if (error instanceof TypeError) throw error;
+          throw new TypeError('Unified search provider descriptor is invalid');
+        }
+      }),
+    );
+  }
+
+  async search(
+    request: UnifiedSearchRequest,
+    signal?: AbortSignal,
+  ): Promise<UnifiedSearchOutcome> {
+    let query: string;
+    let filters: UnifiedSearchFilters | undefined;
+    const continuations = new Map<string, string>();
+    try {
+      if (
+        request?.version !== UNIFIED_SEARCH_V1 ||
+        typeof request.query !== 'string'
+      ) {
+        throw new Error();
+      }
+      query = request.query.trim();
+      if (query.length < 2 || bytes(query) > UNIFIED_SEARCH_LIMITS.queryBytes) {
+        throw new Error();
+      }
+      const parsedFilters = cloneFilters(request.filters);
+      if (parsedFilters === null) throw new Error();
+      filters = parsedFilters;
+      if (request.continuations !== undefined) {
+        if (!Array.isArray(request.continuations)) throw new Error();
+        for (const continuation of request.continuations) {
+          if (
+            !continuation ||
+            typeof continuation !== 'object' ||
+            !PROVIDER_ID.test(continuation.providerId) ||
+            !safeText(
+              continuation.token,
+              UNIFIED_SEARCH_LIMITS.continuationBytes,
+            ) ||
+            continuations.has(continuation.providerId) ||
+            !this.providers.some(
+              (provider) => provider.descriptor.id === continuation.providerId,
+            )
+          ) {
+            throw new Error();
+          }
+          continuations.set(continuation.providerId, continuation.token);
+        }
+      }
+    } catch {
+      return {
+        version: UNIFIED_SEARCH_V1,
+        state: 'invalid',
+        reason: 'Search request is invalid',
+      };
+    }
+
+    const activeProviders = filters?.kinds
+      ? this.providers.filter((provider) =>
+          provider.descriptor.kinds.some((kind) =>
+            filters!.kinds!.includes(kind),
+          ),
+        )
+      : this.providers;
+    const settled = await Promise.all(
+      activeProviders.map((provider) =>
+        this.searchProvider(
+          provider,
+          query,
+          filters,
+          continuations.get(provider.descriptor.id),
+          signal,
+        ),
+      ),
+    );
+    const sources = settled.map((entry) => entry.source);
+    const results = settled
+      .flatMap((entry) => entry.results)
+      .sort((left, right) => right.relevance - left.relevance);
+    const response = {
+      version: UNIFIED_SEARCH_V1,
+      state: responseState(results, sources),
+      results,
+      sources,
+    } satisfies UnifiedSearchOutcome;
+    if (
+      bytes(JSON.stringify(response)) <= UNIFIED_SEARCH_LIMITS.responseBytes
+    ) {
+      return response;
+    }
+    return {
+      ...response,
+      state: 'partial',
+      results: [],
+      sources: sources.map((source) =>
+        source.state === 'available'
+          ? {
+              ...source,
+              state: 'partial' as const,
+              reason: 'aggregate-byte-limit',
+            }
+          : source,
+      ),
+    };
+  }
+
+  private async searchProvider(
+    provider: BoundProvider,
+    query: string,
+    filters: UnifiedSearchFilters | undefined,
+    continuation: string | undefined,
+    outerSignal: AbortSignal | undefined,
+  ): Promise<{
+    source: UnifiedSearchSourceState;
+    results: UnifiedSearchResult[];
+  }> {
+    const unavailableSource = (
+      reason: NonNullable<UnifiedSearchSourceState['reason']>,
+    ): UnifiedSearchSourceState => ({
+      providerId: provider.descriptor.id,
+      owner: provider.descriptor.owner,
+      state: 'unavailable',
+      reason,
+    });
+    if (outerSignal?.aborted) {
+      return { source: unavailableSource('search-cancelled'), results: [] };
+    }
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    outerSignal?.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(abort, UNIFIED_SEARCH_LIMITS.providerTimeoutMs);
+    try {
+      const page = await Promise.race([
+        provider.search(
+          {
+            version: UNIFIED_SEARCH_V1,
+            query,
+            limit: UNIFIED_SEARCH_LIMITS.resultsPerProvider,
+            ...(continuation ? { continuation } : {}),
+            ...(filters ? { filters } : {}),
+          },
+          controller.signal,
+        ),
+        new Promise<never>((_resolve, reject) => {
+          controller.signal.addEventListener(
+            'abort',
+            () => reject(new Error('search-aborted')),
+            { once: true },
+          );
+        }),
+      ]);
+      const normalized = clonePage(
+        page,
+        provider.descriptor.owner,
+        UNIFIED_SEARCH_LIMITS.resultsPerProvider,
+      );
+      if (!normalized) {
+        return {
+          source: unavailableSource('provider-response-invalid'),
+          results: [],
+        };
+      }
+      if (
+        normalized.state === 'restricted' ||
+        normalized.state === 'unavailable'
+      ) {
+        return {
+          source: {
+            providerId: provider.descriptor.id,
+            owner: provider.descriptor.owner,
+            state: normalized.state,
+            reason: normalized.reason,
+          },
+          results: [],
+        };
+      }
+      if (
+        normalized.results.some(
+          (candidate) =>
+            !provider.descriptor.kinds.includes(candidate.kind) ||
+            (filters?.kinds && !filters.kinds.includes(candidate.kind)) ||
+            (filters?.projectId &&
+              candidate.scope?.projectId !== filters.projectId) ||
+            (filters?.taskId && candidate.scope?.taskId !== filters.taskId),
+        )
+      ) {
+        return {
+          source: unavailableSource('provider-response-invalid'),
+          results: [],
+        };
+      }
+      const checkedAt = new Date().toISOString();
+      const results = normalized.results.map((candidate) => ({
+        ...candidate,
+        version: UNIFIED_SEARCH_V1,
+        key: providerKey(
+          provider.descriptor.id,
+          provider.descriptor.owner,
+          candidate.id,
+        ),
+        providerId: provider.descriptor.id,
+        owner: provider.descriptor.owner,
+        authorization: { state: 'authorized' as const, checkedAt },
+      }));
+      return {
+        source: {
+          providerId: provider.descriptor.id,
+          owner: provider.descriptor.owner,
+          state: normalized.state,
+          ...(normalized.reason ? { reason: normalized.reason } : {}),
+          ...(normalized.continuation
+            ? { continuation: normalized.continuation }
+            : {}),
+        },
+        results,
+      };
+    } catch {
+      return {
+        source: unavailableSource(
+          outerSignal?.aborted
+            ? 'search-cancelled'
+            : 'provider-timeout-or-error',
+        ),
+        results: [],
+      };
+    } finally {
+      clearTimeout(timer);
+      outerSignal?.removeEventListener('abort', abort);
+    }
+  }
+}
