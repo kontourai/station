@@ -1188,6 +1188,44 @@ describe('instance registry bridge legacy manifest transaction (archive#4457)', 
     expect(existsSync(fixture.manifest)).toBe(false);
   });
 
+  test('refuses fully committed evidence when only one receipt changes device identity', async () => {
+    const stationRoot = root();
+    const fixture = legacyFixture(stationRoot);
+    const digest = manifestDigest(fixture.manifest);
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
+    const path = preparedReceiptPath(fixture.home, digest);
+    const receipt = JSON.parse(readFileSync(path, 'utf8')) as {
+      source: { dev: number };
+    };
+    receipt.source.dev += 1;
+    writeFileSync(path, `${JSON.stringify(receipt)}\n`, { mode: 0o600 });
+
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'refused',
+    });
+  });
+
+  test('refuses a byte-identical replacement of the fully committed target', async () => {
+    const stationRoot = root();
+    const fixture = legacyFixture(stationRoot);
+    const digest = manifestDigest(fixture.manifest);
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'new',
+    });
+    const target = quarantineTarget(fixture.home, digest);
+    const original = lstatSync(target);
+    const raw = readFileSync(target);
+    rmSync(target);
+    writeFileSync(target, raw, { mode: 0o600 });
+    expect(lstatSync(target).ino).not.toBe(original.ino);
+
+    await expect(prepareRuntime(fixture.home, stationRoot)).resolves.toEqual({
+      kind: 'refused',
+    });
+  });
+
   test('still refuses prepared evidence when its filesystem device number changes', async () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);
