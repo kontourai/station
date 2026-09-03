@@ -1,6 +1,8 @@
 import { describe, expect, test, vi } from 'vitest';
 import {
   createPluginCompositionModule,
+  type PluginCompositionAuthorization,
+  type PluginCompositionAuthorizer,
   type PluginCompositionContribution,
   type PluginCompositionFactory,
   type PluginCompositionProfile,
@@ -64,6 +66,41 @@ function factory(
   ];
 }
 
+function grantedPlanAuthorization(
+  input: Parameters<PluginCompositionAuthorizer['authorize']>[0],
+  factories: ReadonlyMap<string, PluginCompositionFactory>,
+  options: {
+    isCurrent?: () => boolean;
+    release?: () => void;
+    mutateBinding?: (
+      binding: Record<string, unknown>,
+      index: number,
+    ) => Record<string, unknown>;
+  } = {},
+): Extract<PluginCompositionAuthorization, { kind: 'granted' }> {
+  return {
+    kind: 'granted',
+    lease: {
+      bindings: input.contributions.flatMap((candidate, index) => {
+        const implementationId = candidate.contribution.implementationId;
+        const implementation = factories.get(implementationId);
+        if (!implementation) return [];
+        const binding = {
+          instanceIdentity: candidate.instanceIdentity,
+          pluginId: candidate.contribution.pluginId,
+          contributionId: candidate.contribution.contributionId,
+          implementationId,
+          installationGeneration: `installed:${candidate.contribution.pluginId}:1`,
+          factory: implementation,
+        };
+        return [options.mutateBinding?.(binding, index) ?? binding];
+      }) as never,
+      isCurrent: () => options.isCurrent?.() ?? true,
+      release: () => options.release?.(),
+    },
+  };
+}
+
 function moduleWith(
   factories: Iterable<[string, PluginCompositionFactory]>,
   options: {
@@ -72,17 +109,27 @@ function moduleWith(
       | 'denied'
       | 'unavailable'
       | Promise<'granted' | 'denied' | 'unavailable'>;
+    isCurrent?: () => boolean;
+    onRelease?: () => void;
+    authorizer?: PluginCompositionAuthorizer;
     disposerTimeoutMs?: number;
     maxRetainedScopes?: number;
   } = {},
 ) {
+  const byImplementation = new Map(factories);
   return createPluginCompositionModule({
-    factories: new Map(factories),
-    authorizer: {
-      authorize: async () => ({
-        kind: (await options.authorize?.()) ?? 'granted',
-      }),
-    },
+    authorizer:
+      options.authorizer ??
+      ({
+        authorize: async (input) => {
+          const kind = (await options.authorize?.()) ?? 'granted';
+          if (kind !== 'granted') return { kind };
+          return grantedPlanAuthorization(input, byImplementation, {
+            isCurrent: options.isCurrent,
+            release: options.onRelease,
+          });
+        },
+      } satisfies PluginCompositionAuthorizer),
     ...(options.disposerTimeoutMs
       ? { disposerTimeoutMs: options.disposerTimeoutMs }
       : {}),
@@ -448,9 +495,118 @@ describe('plugin composition profiles', () => {
     expect(events).toEqual([]);
   });
 
-  test('reauthorizes every staged contribution before generation publication', async () => {
+  test('authorizes the whole dependency plan once and carries exact installed bindings through staging and inspection', async () => {
     const events: string[] = [];
-    let authorization: 'granted' | 'denied' = 'granted';
+    const implementations = new Map([
+      factory('store', events),
+      factory('search', events),
+    ]);
+    const release = vi.fn();
+    const authorize = vi.fn((input) =>
+      grantedPlanAuthorization(input, implementations, { release }),
+    );
+    const module = moduleWith([], { authorizer: { authorize } });
+
+    const result = await module.apply(
+      profile(projectA, [
+        contribution('search', 'workspace.search', {
+          requires: [{ capability: 'workspace.store', version: '1.0.0' }],
+        }),
+        contribution('store', 'workspace.store'),
+      ]),
+    );
+
+    expect(authorize).toHaveBeenCalledOnce();
+    expect(authorize.mock.calls[0][0].contributions).toHaveLength(2);
+    expect(release).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      kind: 'activated',
+      inspection: {
+        active: expect.arrayContaining([
+          expect.objectContaining({
+            pluginId: 'workspace-tools',
+            implementationId: 'store',
+            installationGeneration: 'installed:workspace-tools:1',
+            occurrenceIdentity: expect.stringMatching(/^plugin-occurrence:/),
+          }),
+        ]),
+      },
+    });
+    expect(events).toEqual(['stage:store', 'stage:search']);
+  });
+
+  test('rejects an owner-mismatched installed binding before staging and releases its recognizable lease', async () => {
+    const events: string[] = [];
+    const implementations = new Map([factory('cache', events)]);
+    const release = vi.fn();
+    const authorizer: PluginCompositionAuthorizer = {
+      authorize: (input) =>
+        grantedPlanAuthorization(input, implementations, {
+          release,
+          mutateBinding: (binding) => ({
+            ...binding,
+            pluginId: 'different-owner',
+          }),
+        }),
+    };
+    const module = moduleWith([], { authorizer });
+
+    await expect(
+      module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'pending',
+      inspection: {
+        pending: [
+          expect.objectContaining({ reason: 'authorization-unavailable' }),
+        ],
+      },
+    });
+    expect(events).toEqual([]);
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  test('rejects non-exact authorization outcomes without invoking accessors or staging', async () => {
+    const stage = vi.fn(async () => ({ dispose: vi.fn() }));
+    const implementations = new Map([['cache', { stage }]]);
+    const release = vi.fn();
+    const leaseGetter = vi.fn();
+    const module = moduleWith([], {
+      authorizer: {
+        authorize: (input) =>
+          Object.defineProperty({ kind: 'granted' }, 'lease', {
+            enumerable: true,
+            get: () => {
+              leaseGetter();
+              return grantedPlanAuthorization(input, implementations, {
+                release,
+              }).lease;
+            },
+          }) as never,
+      },
+    });
+
+    await expect(
+      module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'pending',
+      inspection: {
+        pending: [
+          expect.objectContaining({ reason: 'authorization-unavailable' }),
+        ],
+      },
+    });
+    expect(leaseGetter).not.toHaveBeenCalled();
+    expect(stage).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  test('holds one whole-plan authorization lease and rolls back when it becomes stale before publication', async () => {
+    const events: string[] = [];
+    let current = true;
     let releaseStage!: () => void;
     const stageGate = new Promise<void>((resolve) => {
       releaseStage = resolve;
@@ -466,7 +622,7 @@ describe('plugin composition profiles', () => {
     });
     const module = moduleWith(
       [factory('current', events), ['replacement', { stage: delayedStage }]],
-      { authorize: () => authorization },
+      { isCurrent: () => current },
     );
     await module.apply(
       profile(projectA, [contribution('current', 'workspace.index')]),
@@ -475,19 +631,144 @@ describe('plugin composition profiles', () => {
       profile(projectA, [contribution('replacement', 'workspace.index')]),
     );
     await vi.waitFor(() => expect(delayedStage).toHaveBeenCalledOnce());
-    authorization = 'denied';
+    current = false;
     releaseStage();
 
     await expect(replacing).resolves.toMatchObject({
-      kind: 'failed',
+      kind: 'pending',
       inspection: {
         generation: 1,
         active: [expect.objectContaining({ instanceId: 'current' })],
-        failed: [expect.objectContaining({ reason: 'authorization-denied' })],
+        pending: [
+          expect.objectContaining({ reason: 'authorization-unavailable' }),
+        ],
       },
     });
     expect(events).toContain('dispose:replacement');
     expect(events).not.toContain('dispose:current');
+  });
+
+  test('treats a non-boolean currentness outcome as unavailable and fences every staged occurrence before rollback', async () => {
+    const observations: string[] = [];
+    let currentChecks = 0;
+    const implementation: PluginCompositionFactory = {
+      async stage(input) {
+        observations.push(`stage:${input.occurrence.isCurrent()}`);
+        return {
+          dispose: () => {
+            observations.push(`dispose:${input.occurrence.isCurrent()}`);
+          },
+        };
+      },
+    };
+    const implementations = new Map([['cache', implementation]]);
+    const release = vi.fn();
+    const module = moduleWith([], {
+      authorizer: {
+        authorize: (input) =>
+          grantedPlanAuthorization(input, implementations, {
+            release,
+            isCurrent: () => {
+              currentChecks += 1;
+              return (currentChecks === 1 ? true : 'invalid') as boolean;
+            },
+          }),
+      },
+    });
+
+    await expect(
+      module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'pending',
+      inspection: {
+        generation: 0,
+        pending: [
+          expect.objectContaining({ reason: 'authorization-unavailable' }),
+        ],
+      },
+    });
+    expect(observations).toEqual(['stage:true', 'dispose:false']);
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  test('fences an occurrence synchronously before replacement and explicit-retirement disposal', async () => {
+    const observations: string[] = [];
+    const implementation: PluginCompositionFactory = {
+      async stage(input) {
+        const instanceId = input.contribution.instanceId;
+        return {
+          dispose: () => {
+            observations.push(
+              `dispose:${instanceId}:${input.occurrence.isCurrent()}`,
+            );
+          },
+        };
+      },
+    };
+    const module = moduleWith([
+      ['old', implementation],
+      ['new', implementation],
+    ]);
+    await module.apply(
+      profile(projectA, [contribution('old', 'workspace.index')]),
+    );
+    await module.apply(
+      profile(projectA, [contribution('new', 'workspace.index')]),
+    );
+    await module.retire(projectA);
+
+    expect(observations).toEqual(['dispose:old:false', 'dispose:new:false']);
+  });
+
+  test('refuses a shared staged handle without cross-disposing another Project occurrence', async () => {
+    const dispose = vi.fn();
+    const shared = { dispose };
+    const leases: Array<{
+      occurrenceIdentity: string;
+      isCurrent(): boolean;
+    }> = [];
+    const implementation: PluginCompositionFactory = {
+      async stage(input) {
+        leases.push(input.occurrence);
+        return shared;
+      },
+    };
+    const module = moduleWith([['cache', implementation]]);
+    await expect(
+      module.apply(
+        profile(projectA, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({ kind: 'activated' });
+    await expect(
+      module.apply(
+        profile(projectB, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'failed',
+      inspection: {
+        active: [],
+        failed: [expect.objectContaining({ reason: 'activation-failed' })],
+      },
+    });
+
+    expect(leases).toHaveLength(2);
+    expect(leases[0].occurrenceIdentity).not.toBe(leases[1].occurrenceIdentity);
+    expect(leases[0].isCurrent()).toBe(true);
+    expect(leases[1].isCurrent()).toBe(false);
+    expect(dispose).not.toHaveBeenCalled();
+    await module.retire(projectB);
+    expect(dispose).not.toHaveBeenCalled();
+    await module.retire(projectA);
+    expect(dispose).toHaveBeenCalledOnce();
+    await expect(
+      module.apply(
+        profile(projectB, [contribution('cache', 'workspace.cache')]),
+      ),
+    ).resolves.toMatchObject({ kind: 'activated' });
+    await module.retire(projectB);
+    expect(dispose).toHaveBeenCalledTimes(2);
   });
 
   test('publishes a generation atomically while reporting bounded disposer fences', async () => {
