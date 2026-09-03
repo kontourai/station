@@ -895,6 +895,34 @@ GET /api/plugins/check-updates
 
 Install, update, reload, and removal publish one runtime configuration generation. Replacement removes agent directories no longer declared by the plugin, and update rejects a changed manifest name. Station waits for displaced provider adapters to stop before reporting activation complete; an accepted file mutation that still needs runtime reconciliation returns HTTP `202` with a `configurationActivation` receipt.
 
+### Registry supply-chain policy tracer
+
+Station now has a server-side policy and record seam for registry package
+signatures, exact source/version/content pins, and byte-identical
+last-known-good snapshots. It is deliberately not active in the Registry UI or
+installer yet: no configured registry currently supplies a package claim, and
+Station has no configured trusted signing-key source or explicit pin-update
+action. Enforcing a required-signature policy without those trust anchors would
+make every current Registry item uninstallable while claiming stronger safety.
+
+The seam is based on the Agent Plugins 1.0 package/root `plugin.json` schema
+identity, not legacy Station-only manifest contribution fields. Trust anchors
+come from local policy and never from the registry document being verified.
+The signature binds registry identity, registry source, package identity,
+version, source, and complete source-tree digest. A source/version change is
+refused under exact pinning unless a separately authorized pin update is
+present; an accepted provenance change explicitly requires the existing
+installer to invalidate/rebind grants before loading replacement code.
+
+`RegistryLastKnownGoodStore` writes no live plugin tree. It archives one prior
+tree under the Station home, verifies the copy's complete tree digest, and can
+produce a second verified staging tree. Runtime rollback must feed that staging
+tree back through `installPluginFromSource` so the existing content lock,
+agents, integrations, grants, providers, configuration generation, and rollback
+receipts remain the only installation transaction. Until that integration is
+landed, signed installation, explicit pin updates, and user-triggered rollback
+are **NOT_AVAILABLE**.
+
 ## Build System
 
 Layout plugins (with `entrypoint`) are built automatically by the server using esbuild. No custom build script needed.
