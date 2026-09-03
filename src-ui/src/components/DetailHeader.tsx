@@ -40,7 +40,7 @@ export function DetailHeader({
 }: DetailHeaderProps) {
   const Title = useSubjectHeadingLevel() === 'item' ? 'h3' : 'h2';
   return (
-    <div className="detail-header">
+    <header className="detail-header">
       <div className="detail-header__left">
         {icon && <div className="detail-header__icon">{icon}</div>}
         <div className="detail-header__identity">
@@ -65,6 +65,6 @@ export function DetailHeader({
       {mobileFooter && (
         <div className="detail-header__mobile-footer">{mobileFooter}</div>
       )}
-    </div>
+    </header>
   );
 }

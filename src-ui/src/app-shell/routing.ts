@@ -276,12 +276,12 @@ export function resolveViewFromPath(
     return { type: 'plugins' };
   }
   if (path === '/connections/models') {
-    return { type: 'connections-providers' };
+    return { type: 'connections-models' };
   }
   if (path.startsWith('/connections/models/')) {
     const id = path.split('/')[3];
     if (id) {
-      return { type: 'connections-provider-edit', id };
+      return { type: 'connections-model-edit', id };
     }
   }
   // `new/<providerId>` is the command-backed provider setup, not an engine
@@ -293,12 +293,12 @@ export function resolveViewFromPath(
     const providerId = decodeURIComponent(
       path.slice('/connections/engines/new/'.length),
     );
-    if (providerId) return { type: 'connections-acp-new', providerId };
+    if (providerId) return { type: 'connections-engine-new', providerId };
   }
   if (path.startsWith('/connections/engines/')) {
     const id = path.split('/')[3];
     if (id) {
-      return { type: 'connections-runtime-edit', id };
+      return { type: 'connections-engine-edit', id };
     }
   }
   if (path === '/connections/engines') {
@@ -501,15 +501,15 @@ export function getPathForView(view: NavigationView): string | null {
         : '/activity';
     case 'connections':
       return '/connections';
-    case 'connections-providers':
+    case 'connections-models':
       return '/connections/models';
-    case 'connections-provider-edit':
+    case 'connections-model-edit':
       return `/connections/models/${view.id}`;
     case 'connections-engines':
       return '/connections/engines';
-    case 'connections-runtime-edit':
+    case 'connections-engine-edit':
       return `/connections/engines/${view.id}`;
-    case 'connections-acp-new':
+    case 'connections-engine-new':
       return `/connections/engines/new/${encodeURIComponent(view.providerId)}`;
     case 'connections-tools':
       return '/connections/tools';
@@ -572,13 +572,13 @@ export function getParentView(view: NavigationView): NavigationView | null {
     case 'agent-edit':
     case 'agent-new':
       return { type: 'agents' };
-    case 'connections-provider-edit':
-      return { type: 'connections-providers' };
-    case 'connections-runtime-edit':
+    case 'connections-model-edit':
+      return { type: 'connections-models' };
+    case 'connections-engine-edit':
       return { type: 'connections-engines' };
     case 'connections-tool-edit':
       return { type: 'connections-tools' };
-    case 'connections-providers':
+    case 'connections-models':
     case 'connections-engines':
     case 'connections-tools':
     case 'connections-knowledge':

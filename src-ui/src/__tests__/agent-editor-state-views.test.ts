@@ -59,8 +59,11 @@ describe('agent editor state views', () => {
       }),
     );
 
-    expect(markup).toContain('Chat with a model');
-    expect(markup).toContain('Wrap an installed agent CLI');
+    // #946: the starting points name the ENGINE that runs the agent, not the
+    // shape of the thing being wrapped. "Wrap an installed agent CLI" asked
+    // the reader to know what a CLI is before it told them what it does.
+    expect(markup).toContain('Run it on Station');
+    expect(markup).toContain('Run it on another engine');
     expect(markup).toContain('Copy an existing agent');
   });
 

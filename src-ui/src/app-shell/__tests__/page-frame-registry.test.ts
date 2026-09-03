@@ -17,11 +17,11 @@ const ROUTES: NavigationView[] = [
   { type: 'agent-edit', slug: 'a' },
   { type: 'guidance' },
   { type: 'connections' },
-  { type: 'connections-providers' },
-  { type: 'connections-provider-edit', id: 'p' },
+  { type: 'connections-models' },
+  { type: 'connections-model-edit', id: 'p' },
   { type: 'connections-engines' },
-  { type: 'connections-runtime-edit', id: 'r' },
-  { type: 'connections-acp-new', providerId: 'p' },
+  { type: 'connections-engine-edit', id: 'r' },
+  { type: 'connections-engine-new', providerId: 'p' },
   { type: 'connections-tools' },
   { type: 'connections-tool-edit', id: 't' },
   { type: 'connections-knowledge' },
@@ -112,7 +112,7 @@ describe('page-frame registry', () => {
       // hub is 'Connections'; the ACP sub-route is 'Provider setup').
       const stated = new Set([
         'connections',
-        'connections-acp-new',
+        'connections-engine-new',
         'connections-knowledge',
         'registry',
         'schedule',
@@ -139,7 +139,7 @@ describe('page-frame registry', () => {
   it('gives every split-pane route the same frame shape', () => {
     for (const type of [
       'agents',
-      'connections-providers',
+      'connections-models',
       'connections-engines',
       'connections-tools',
       'plugins',
@@ -201,7 +201,7 @@ describe('page-frame registry', () => {
   it('gives every subpage with a static eyebrow just its parent, not a breadcrumb trail', () => {
     expect(resolvePageFrame({ type: 'developer' })?.eyebrow).toBe('Developer');
     for (const route of [
-      { type: 'connections-acp-new', providerId: 'p' },
+      { type: 'connections-engine-new', providerId: 'p' },
       { type: 'connections-knowledge' },
     ] as const) {
       const spec = resolvePageFrame(route as NavigationView);

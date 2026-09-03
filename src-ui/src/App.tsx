@@ -573,7 +573,7 @@ function App() {
             </button>
             <ProjectSidebar />
             <div
-              className={`app__main app__main--dock-${effectiveDockSlotPlacement}${
+              className={`app__main${
                 isMobileDockFullscreen
                   ? ' app__main--mobile-dock-fullscreen'
                   : ''
