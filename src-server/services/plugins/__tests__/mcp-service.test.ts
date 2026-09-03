@@ -210,6 +210,42 @@ describe('MCPService', () => {
     },
   );
 
+  test('generic edits retain package ownership after uninstall wins the read-to-save race', async () => {
+    const loader = createMockConfigLoader();
+    loader.loadIntegration.mockResolvedValue({
+      id: 'removed-package-tool',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'removed-package-command',
+    });
+    loader.loadIntegrationWithOwnership.mockImplementationOnce(async () => ({
+      definition: await loader.loadIntegration('removed-package-tool'),
+      contributed: true,
+    }));
+    Object.assign(loader, {
+      isLiveContributedIntegration: vi.fn(() => false),
+    });
+    const svc = new MCPService(
+      loader as any,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      mockLogger,
+    );
+    const packageDefinition = await svc.getIntegration('removed-package-tool');
+    const genericPutMerge = { ...packageDefinition, enabled: false };
+
+    await expect(svc.saveIntegration(genericPutMerge)).rejects.toThrow(
+      /Package-supplied integration definitions are read-only/,
+    );
+    expect(loader.saveIntegration).not.toHaveBeenCalled();
+    expect(JSON.stringify(genericPutMerge)).not.toContain(
+      'contributed-integration-definition',
+    );
+  });
+
   test('migrates stored env only after a fresh bound child succeeds and retries a safe partial grant', async () => {
     let current: any = {
       id: 'github',

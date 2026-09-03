@@ -49,6 +49,27 @@ import {
 /** Bound on the names a probe records, so one chatty server cannot bloat its
  *  persisted config file (CI-R15). */
 const PROBE_TOOL_NAME_LIMIT = 200;
+const CONTRIBUTED_INTEGRATION_DEFINITION = Symbol(
+  'station.contributed-integration-definition',
+);
+
+type OwnershipTaggedToolDef = ToolDef & {
+  [CONTRIBUTED_INTEGRATION_DEFINITION]?: true;
+};
+
+function retainIntegrationDefinitionOwnership(
+  definition: ToolDef,
+  contributed: boolean,
+): ToolDef {
+  if (!contributed) return definition;
+  // Enumerable symbols survive object spread (the generic PUT merge) while
+  // remaining absent from JSON/HTTP and persisted configuration.
+  return Object.defineProperty(
+    { ...definition },
+    CONTRIBUTED_INTEGRATION_DEFINITION,
+    { value: true, enumerable: true },
+  );
+}
 
 export interface MCPConnectionStatus {
   connected: boolean;
@@ -315,6 +336,14 @@ export class MCPService {
   }
 
   async saveIntegration(def: ToolDef): Promise<void> {
+    if (
+      (def as OwnershipTaggedToolDef)[CONTRIBUTED_INTEGRATION_DEFINITION] ===
+      true
+    ) {
+      throw new Error(
+        'Package-supplied integration definitions are read-only; uninstall or update the owning package instead',
+      );
+    }
     this.assertMutableIntegration(def.id);
     let existing: ToolDef | undefined;
     try {
@@ -360,7 +389,11 @@ export class MCPService {
   }
 
   async getIntegration(id: string): Promise<ToolDef> {
-    return this.configLoader.loadIntegration(id);
+    const loaded = await this.loadIntegrationWithOwnership(id);
+    return retainIntegrationDefinitionOwnership(
+      loaded.definition,
+      loaded.contributed,
+    );
   }
 
   async deleteIntegration(id: string): Promise<void> {
