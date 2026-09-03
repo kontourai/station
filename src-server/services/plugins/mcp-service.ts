@@ -371,7 +371,13 @@ export class MCPService {
 
   async setEnabled(id: string, enabled: boolean): Promise<ToolDef> {
     this.assertMutableIntegration(id);
-    const existing = await this.getIntegration(id);
+    const loaded = await this.loadIntegrationWithOwnership(id);
+    if (loaded.contributed) {
+      throw new Error(
+        'Package-supplied integration definitions are read-only; uninstall or update the owning package instead',
+      );
+    }
+    const existing = loaded.definition;
     const updated =
       !enabled && toolServerOAuthResourceIdentity(existing)
         ? withAuthorizationRequired(
@@ -593,7 +599,13 @@ export class MCPService {
     disabledTools: string[],
   ): Promise<ToolDef> {
     this.assertMutableIntegration(id);
-    const existing = await this.getIntegration(id);
+    const loaded = await this.loadIntegrationWithOwnership(id);
+    if (loaded.contributed) {
+      throw new Error(
+        'Package-supplied integration definitions are read-only; uninstall or update the owning package instead',
+      );
+    }
+    const existing = loaded.definition;
     const updated = { ...existing, disabledTools: [...new Set(disabledTools)] };
     await this.saveIntegration(updated);
     return updated;

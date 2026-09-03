@@ -78,7 +78,8 @@ namespace contents. Vendored schemas resolve from the source or bundled module
 asset tree and immutable compiled validators are shared across reads. Skill, MCP-document, MCP-entry, and
 unsupported-transport failures remain isolated at their specified boundary.
 Every recognized package root is excluded from legacy recursive Skill discovery,
-even when none of its portable Skills validate. Recognized packages never enter
+even when the package fails fatally or none of its portable Skills validate.
+Unreadable Skill enumeration is isolated to that component. Recognized packages never enter
 the legacy `prompts` or copied-`integrations` contribution paths, and the shared
 hidden-content manifest scan runs before format dispatch.
 Stdio path and environment projection owns containment, default cwd,

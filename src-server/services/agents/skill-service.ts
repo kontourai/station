@@ -342,7 +342,12 @@ export class SkillService {
       // Agent Plugin sources also carry package ownership for the legacy-scan
       // exclusion below. A recognized package without a skills directory is
       // a valid empty source, not an unreadable canonical source warning.
-      if (!existsSync(source.root) && source.origin === 'plugin') continue;
+      if (
+        source.excludeOnly ||
+        (!existsSync(source.root) && source.origin === 'plugin')
+      ) {
+        continue;
+      }
       try {
         await this.scanDirectory(source.root, 0, {
           maxDepth: source.immediateOnly ? 0 : 4,

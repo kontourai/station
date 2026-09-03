@@ -163,6 +163,53 @@ describe('MCPService', () => {
     expect(loader.saveIntegration).not.toHaveBeenCalled();
   });
 
+  test.each([
+    [
+      'setEnabled',
+      (svc: InstanceType<typeof MCPService>) =>
+        svc.setEnabled('removed-package-tool', false),
+    ],
+    [
+      'applyDisabledTools',
+      (svc: InstanceType<typeof MCPService>) =>
+        svc.applyDisabledTools('removed-package-tool', ['write']),
+    ],
+  ] as const)(
+    'never persists a package definition through %s after its owner disappears',
+    async (_operation, mutate) => {
+      const loader = createMockConfigLoader();
+      loader.loadIntegration.mockResolvedValue({
+        id: 'removed-package-tool',
+        kind: 'mcp',
+        transport: 'stdio',
+        command: 'removed-package-command',
+      });
+      loader.loadIntegrationWithOwnership.mockImplementationOnce(async () => ({
+        definition: await loader.loadIntegration('removed-package-tool'),
+        contributed: true,
+      }));
+      Object.assign(loader, {
+        // The initial live check has already raced with uninstall. Provenance
+        // from the definition read must still forbid persisting its snapshot.
+        isLiveContributedIntegration: vi.fn(() => false),
+      });
+      const svc = new MCPService(
+        loader as any,
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        mockLogger,
+      );
+
+      await expect(mutate(svc)).rejects.toThrow(
+        /Package-supplied integration definitions are read-only/,
+      );
+      expect(loader.saveIntegration).not.toHaveBeenCalled();
+    },
+  );
+
   test('migrates stored env only after a fresh bound child succeeds and retries a safe partial grant', async () => {
     let current: any = {
       id: 'github',

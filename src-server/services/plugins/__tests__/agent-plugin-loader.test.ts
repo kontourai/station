@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -309,6 +310,60 @@ describe('AgentPluginLoader', () => {
       expect(service.listSkills().map((entry) => entry.name)).not.toContain(
         'escape',
       );
+    },
+  );
+
+  test('keeps a fatally rejected recognized package out of legacy Skill discovery', async () => {
+    const stationHome = home();
+    const root = plugin(stationHome, 'rejected-portable', { layout: {} });
+    skill(root, 'must-not-load');
+    const loader = new AgentPluginLoader({ projectHomeDir: stationHome });
+
+    expect(loader.listInstalled()).toEqual([]);
+    expect(loader.skillSources()).toEqual([
+      expect.objectContaining({
+        label: 'agent-plugin:rejected-portable',
+        excludeOnly: true,
+      }),
+    ]);
+    const service = new SkillService(
+      new ConfigLoader({ projectHomeDir: stationHome }),
+      { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+      { canonicalSources: () => loader.skillSources() },
+    );
+
+    await service.discoverSkills(stationHome);
+
+    expect(service.listSkills().map((entry) => entry.name)).not.toContain(
+      'must-not-load',
+    );
+  });
+
+  test.runIf(process.platform !== 'win32')(
+    'isolates an unreadable skills directory to its component report',
+    () => {
+      const stationHome = home();
+      const root = plugin(stationHome);
+      skill(root, 'portable');
+      const skillsRoot = join(root, 'skills');
+      chmodSync(skillsRoot, 0o000);
+      try {
+        const outcome = new AgentPluginLoader({
+          projectHomeDir: stationHome,
+        }).loadPackageResult(root);
+
+        expect(outcome.ok).toBe(true);
+        if (!outcome.ok) return;
+        expect(outcome.plugin.skills).toEqual([]);
+        expect(outcome.plugin.reports).toEqual([
+          expect.objectContaining({
+            code: 'component-invalid',
+            component: 'skills',
+          }),
+        ]);
+      } finally {
+        chmodSync(skillsRoot, 0o700);
+      }
     },
   );
 

@@ -36,6 +36,8 @@ export interface CanonicalSkillSource {
   version?: string;
   /** Read-only Agent Plugin skills are plugin-owned rather than package-owned. */
   origin?: 'package' | 'plugin';
+  /** Retain package ownership for legacy-scan exclusion without discovery. */
+  excludeOnly?: boolean;
   /** Agent Plugins discover immediate children only; other sources retain recursion. */
   immediateOnly?: boolean;
   /** Apply the Agent Skills specification before registration. */

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import {
   accessSync,
+  type Dirent,
   existsSync,
   constants as fsConstants,
   lstatSync,
@@ -457,18 +458,15 @@ export class AgentPluginLoader {
   }
 
   listInstalled(): LoadedAgentPlugin[] {
-    if (!existsSync(this.pluginsDir)) return [];
     const loaded: LoadedAgentPlugin[] = [];
     const names = new Set<string>();
-    for (const entry of readdirSync(this.pluginsDir, {
-      withFileTypes: true,
-    }).sort((a, b) => a.name.localeCompare(b.name))) {
-      if (!entry.isDirectory() || !isCanonicalPluginId(entry.name)) continue;
-      const candidateRoot = join(this.pluginsDir, entry.name);
-      if (!this.hasAgentPluginSchema(candidateRoot)) continue;
+    for (const {
+      directoryName,
+      root: candidateRoot,
+    } of this.recognizedInstalledPackageRoots()) {
       const plugin = this.loadPackage(candidateRoot);
       if (!plugin) continue;
-      if (plugin.manifest.name !== entry.name) {
+      if (plugin.manifest.name !== directoryName) {
         this.emit(plugin.reports, {
           level: 'error',
           code: 'manifest-invalid',
@@ -494,20 +492,47 @@ export class AgentPluginLoader {
   }
 
   skillSources(): CanonicalSkillSource[] {
-    // Emit an ownership marker for every recognized package, even when no
-    // portable Skill survived validation. SkillService derives its legacy
-    // scanner exclusions from these roots; filtering empty packages here
-    // would let invalid, nested, or escaping Skills fall back into the more
-    // permissive legacy recursive scan.
-    return this.listInstalled().map((plugin) => ({
-      root: join(plugin.root, 'skills'),
-      label: `agent-plugin:${plugin.manifest.name}` as const,
-      version: plugin.manifest.version,
-      origin: 'plugin' as const,
-      immediateOnly: true,
-      validateAgentSkills: true,
-      containmentRoot: plugin.root,
-    }));
+    const loadedByRoot = new Map(
+      this.listInstalled().map((plugin) => [plugin.root, plugin] as const),
+    );
+    // Recognition owns exclusion independently of successful loading. A
+    // fatally rejected package must not fall back into legacy recursive Skill
+    // discovery, but it also must not contribute portable Skills.
+    return this.recognizedInstalledPackageRoots().map(
+      ({ directoryName, root }) => {
+        const plugin = loadedByRoot.get(root);
+        return {
+          root: join(root, 'skills'),
+          label: `agent-plugin:${directoryName}` as const,
+          ...(plugin?.manifest.version
+            ? { version: plugin.manifest.version }
+            : {}),
+          origin: 'plugin' as const,
+          ...(plugin ? {} : { excludeOnly: true }),
+          immediateOnly: true,
+          validateAgentSkills: true,
+          containmentRoot: root,
+        };
+      },
+    );
+  }
+
+  private recognizedInstalledPackageRoots(): Array<{
+    directoryName: string;
+    root: string;
+  }> {
+    if (!existsSync(this.pluginsDir)) return [];
+    return readdirSync(this.pluginsDir, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .flatMap((entry) => {
+        if (!entry.isDirectory() || !isCanonicalPluginId(entry.name)) {
+          return [];
+        }
+        const root = join(this.pluginsDir, entry.name);
+        return this.hasAgentPluginSchema(root)
+          ? [{ directoryName: entry.name, root }]
+          : [];
+      });
   }
 
   loadIntegration(id: string): ToolDef | undefined {
@@ -689,10 +714,24 @@ export class AgentPluginLoader {
       return [];
     }
 
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(resolvedSkillsRoot, { withFileTypes: true }).sort(
+        (a, b) => a.name.localeCompare(b.name),
+      );
+    } catch (error) {
+      this.emit(reports, {
+        level: 'warning',
+        code: 'component-invalid',
+        pluginRoot: root,
+        component: 'skills',
+        message: `Skills component was disabled: ${String(error)}`,
+      });
+      return [];
+    }
+
     const skills: LoadedAgentPluginSkill[] = [];
-    for (const entry of readdirSync(resolvedSkillsRoot, {
-      withFileTypes: true,
-    }).sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const entry of entries) {
       const directory = join(resolvedSkillsRoot, entry.name);
       try {
         if (!statSync(directory).isDirectory()) continue;
