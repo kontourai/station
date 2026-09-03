@@ -67,9 +67,13 @@ interface PluginDataNamespaceSnapshot {
 
 interface StoredPayloadBounds {
   row_count: number;
+  invalid_declared_bytes: number | null;
+  max_value_bytes: number | null;
+}
+
+interface StoredPayloadTotals {
   declared_bytes: number;
   actual_bytes: number;
-  max_value_bytes: number | null;
 }
 
 class PluginDataCorruptError extends Error {}
@@ -114,30 +118,107 @@ function validateKey(key: unknown): string | null {
     : 'key must be a bounded identifier containing letters, numbers, dot, colon, underscore, or dash';
 }
 
-function validatedJson(
-  value: unknown,
-): { value: PluginDataJson; json: string } | undefined {
+type ValidatedJson =
+  | {
+      kind: 'valid';
+      value: PluginDataJson;
+      json: string;
+      byteLength: number;
+    }
+  | { kind: 'invalid' }
+  | { kind: 'capacity' };
+
+function validatedJson(value: unknown): ValidatedJson {
   try {
     let nodes = 0;
-    const visit = (candidate: unknown, depth: number): boolean => {
-      nodes += 1;
-      if (nodes > JSON_NODE_LIMIT || depth > JSON_DEPTH_LIMIT) return false;
-      if (
-        candidate === null ||
-        typeof candidate === 'string' ||
-        typeof candidate === 'boolean'
-      ) {
-        return true;
+    let byteLength = 0;
+    let exceededCapacity = false;
+    const consume = (bytes: number): boolean => {
+      if (byteLength > PLUGIN_DATA_LIMITS.valueBytes - bytes) {
+        exceededCapacity = true;
+        return false;
       }
-      if (typeof candidate === 'number') return Number.isFinite(candidate);
-      if (typeof candidate !== 'object' || candidate === null) return false;
+      byteLength += bytes;
+      return true;
+    };
+    const consumeString = (candidate: string): boolean => {
+      if (!consume(2)) return false;
+      for (let index = 0; index < candidate.length; index += 1) {
+        const codeUnit = candidate.charCodeAt(index);
+        if (codeUnit === 0x22 || codeUnit === 0x5c) {
+          if (!consume(2)) return false;
+        } else if (codeUnit <= 0x1f) {
+          if (
+            !consume(
+              codeUnit === 0x08 ||
+                codeUnit === 0x09 ||
+                codeUnit === 0x0a ||
+                codeUnit === 0x0c ||
+                codeUnit === 0x0d
+                ? 2
+                : 6,
+            )
+          ) {
+            return false;
+          }
+        } else if (codeUnit <= 0x7f) {
+          if (!consume(1)) return false;
+        } else if (codeUnit <= 0x7ff) {
+          if (!consume(2)) return false;
+        } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+          const next = candidate.charCodeAt(index + 1);
+          if (next >= 0xdc00 && next <= 0xdfff) {
+            if (!consume(4)) return false;
+            index += 1;
+          } else if (!consume(6)) {
+            return false;
+          }
+        } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+          if (!consume(6)) return false;
+        } else if (!consume(3)) {
+          return false;
+        }
+      }
+      return true;
+    };
+    const visit = (
+      candidate: unknown,
+      depth: number,
+    ): PluginDataJson | undefined => {
+      nodes += 1;
+      if (nodes > JSON_NODE_LIMIT || depth > JSON_DEPTH_LIMIT) return undefined;
+      if (candidate === null) {
+        return consume(4) ? null : undefined;
+      }
+      if (typeof candidate === 'string') {
+        return consumeString(candidate) ? candidate : undefined;
+      }
+      if (typeof candidate === 'boolean') {
+        return consume(candidate ? 4 : 5) ? candidate : undefined;
+      }
+      if (typeof candidate === 'number') {
+        if (!Number.isFinite(candidate)) return undefined;
+        const encoded = JSON.stringify(candidate);
+        return consume(encoded.length)
+          ? Object.is(candidate, -0)
+            ? 0
+            : candidate
+          : undefined;
+      }
+      if (typeof candidate !== 'object' || candidate === null) return undefined;
       if (
         Object.getPrototypeOf(candidate) !== Object.prototype &&
         !Array.isArray(candidate)
       ) {
-        return false;
+        return undefined;
       }
-      if (Object.getOwnPropertySymbols(candidate).length > 0) return false;
+      if (Object.getOwnPropertySymbols(candidate).length > 0) return undefined;
+      if (
+        Array.isArray(candidate) &&
+        candidate.length > JSON_NODE_LIMIT - nodes
+      ) {
+        return undefined;
+      }
       const descriptors = Object.getOwnPropertyDescriptors(candidate);
       if (Array.isArray(candidate)) {
         const keys = Object.keys(descriptors).filter((key) => key !== 'length');
@@ -145,32 +226,57 @@ function validatedJson(
           keys.length !== candidate.length ||
           keys.some((key, index) => key !== String(index))
         ) {
-          return false;
+          return undefined;
         }
-        return keys.every((key) => {
+        if (!consume(2 + Math.max(0, keys.length - 1))) return undefined;
+        const normalized: PluginDataJson[] = [];
+        for (const key of keys) {
           const descriptor = descriptors[key];
-          return (
-            descriptor !== undefined &&
-            'value' in descriptor &&
-            descriptor.enumerable === true &&
-            visit(descriptor.value, depth + 1)
-          );
+          if (
+            descriptor === undefined ||
+            !('value' in descriptor) ||
+            descriptor.enumerable !== true
+          ) {
+            return undefined;
+          }
+          const child = visit(descriptor.value, depth + 1);
+          if (child === undefined) return undefined;
+          normalized.push(child);
+        }
+        return normalized;
+      }
+      const entries = Object.entries(descriptors);
+      if (!consume(2 + Math.max(0, entries.length - 1))) return undefined;
+      const normalized: Record<string, PluginDataJson> = {};
+      for (const [key, descriptor] of entries) {
+        if (
+          !('value' in descriptor) ||
+          descriptor.enumerable !== true ||
+          !consumeString(key) ||
+          !consume(1)
+        ) {
+          return undefined;
+        }
+        const child = visit(descriptor.value, depth + 1);
+        if (child === undefined) return undefined;
+        Object.defineProperty(normalized, key, {
+          value: child,
+          enumerable: true,
+          configurable: true,
+          writable: true,
         });
       }
-      return Object.entries(descriptors).every(([, descriptor]) => {
-        return (
-          'value' in descriptor &&
-          descriptor.enumerable === true &&
-          visit(descriptor.value, depth + 1)
-        );
-      });
+      return normalized;
     };
-    if (!visit(value, 0)) return undefined;
-    const json = JSON.stringify(value);
-    if (json === undefined) return undefined;
-    return { value: JSON.parse(json) as PluginDataJson, json };
+    const normalized = visit(value, 0);
+    if (normalized === undefined) {
+      return { kind: exceededCapacity ? 'capacity' : 'invalid' };
+    }
+    const json = JSON.stringify(normalized);
+    if (Buffer.byteLength(json) !== byteLength) return { kind: 'invalid' };
+    return { kind: 'valid', value: normalized, json, byteLength };
   } catch {
-    return undefined;
+    return { kind: 'invalid' };
   }
 }
 
@@ -180,7 +286,7 @@ function parseRow(row: StoredRow): PluginDataRecord {
     const normalized = validatedJson(value);
     if (
       !DATA_KEY.test(row.key) ||
-      !normalized ||
+      normalized.kind !== 'valid' ||
       !Number.isSafeInteger(row.byte_length) ||
       row.byte_length < 0 ||
       row.byte_length > PLUGIN_DATA_LIMITS.valueBytes ||
@@ -315,13 +421,26 @@ export class PluginDataStore {
       return this.readTransaction(() => {
         const bounds = this.db
           .prepare(
-            `SELECT byte_length,
-                    length(CAST(value_json AS BLOB)) AS actual_byte_length
-             FROM plugin_data
-             WHERE plugin_id = ? AND installation_key = ? AND key = ?`,
+            `SELECT data.byte_length,
+                    length(CAST(data.value_json AS BLOB)) AS actual_byte_length,
+                    data.revision,
+                    revisions.last_revision
+             FROM plugin_data AS data
+             LEFT JOIN plugin_data_revisions AS revisions
+               ON revisions.plugin_id = data.plugin_id
+              AND revisions.installation_key = data.installation_key
+              AND revisions.key = data.key
+             WHERE data.plugin_id = ?
+               AND data.installation_key = ?
+               AND data.key = ?`,
           )
           .get(owner.pluginId, owner.installationKey, key) as
-          | { byte_length: number; actual_byte_length: number }
+          | {
+              byte_length: number;
+              actual_byte_length: number;
+              revision: number;
+              last_revision: number | null;
+            }
           | undefined;
         if (!bounds) return { kind: 'not-found' };
         if (
@@ -329,7 +448,11 @@ export class PluginDataStore {
           !Number.isSafeInteger(bounds.actual_byte_length) ||
           bounds.byte_length < 0 ||
           bounds.byte_length !== bounds.actual_byte_length ||
-          bounds.actual_byte_length > PLUGIN_DATA_LIMITS.valueBytes
+          bounds.actual_byte_length > PLUGIN_DATA_LIMITS.valueBytes ||
+          !Number.isSafeInteger(bounds.revision) ||
+          bounds.revision < 1 ||
+          !Number.isSafeInteger(bounds.last_revision) ||
+          bounds.last_revision !== bounds.revision
         ) {
           throw new PluginDataCorruptError();
         }
@@ -379,14 +502,14 @@ export class PluginDataStore {
       };
     }
     const normalized = validatedJson(value);
-    if (!normalized) {
+    if (normalized.kind === 'invalid') {
       return { kind: 'invalid', reason: 'value must be bounded JSON data' };
     }
-    const valueJson = normalized.json;
-    const byteLength = Buffer.byteLength(valueJson);
-    if (byteLength > PLUGIN_DATA_LIMITS.valueBytes) {
+    if (normalized.kind === 'capacity') {
       return { kind: 'capacity', reason: 'value-bytes' };
     }
+    const valueJson = normalized.json;
+    const byteLength = normalized.byteLength;
 
     try {
       return this.transaction(() => {
@@ -572,8 +695,12 @@ export class PluginDataStore {
     const bounds = this.db
       .prepare(
         `SELECT COUNT(*) AS row_count,
-                COALESCE(SUM(byte_length), 0) AS declared_bytes,
-                COALESCE(SUM(length(CAST(value_json AS BLOB))), 0) AS actual_bytes,
+                MAX(CASE
+                      WHEN typeof(byte_length) = 'integer'
+                       AND byte_length >= 0
+                       AND byte_length <= ${PLUGIN_DATA_LIMITS.valueBytes}
+                      THEN 0 ELSE 1
+                    END) AS invalid_declared_bytes,
                 MAX(length(CAST(value_json AS BLOB))) AS max_value_bytes
          FROM plugin_data
          WHERE plugin_id = ? AND installation_key = ?`,
@@ -581,16 +708,33 @@ export class PluginDataStore {
       .get(owner.pluginId, owner.installationKey) as StoredPayloadBounds;
     if (
       !Number.isSafeInteger(bounds.row_count) ||
-      !Number.isSafeInteger(bounds.declared_bytes) ||
-      !Number.isSafeInteger(bounds.actual_bytes) ||
+      (bounds.invalid_declared_bytes !== null &&
+        bounds.invalid_declared_bytes !== 0) ||
       (bounds.max_value_bytes !== null &&
         !Number.isSafeInteger(bounds.max_value_bytes)) ||
       bounds.row_count < 0 ||
       bounds.row_count > PLUGIN_DATA_LIMITS.keysPerInstallation ||
-      bounds.declared_bytes < 0 ||
-      bounds.declared_bytes !== bounds.actual_bytes ||
-      bounds.actual_bytes > PLUGIN_DATA_LIMITS.totalBytesPerInstallation ||
+      (bounds.row_count === 0) !==
+        (bounds.invalid_declared_bytes === null &&
+          bounds.max_value_bytes === null) ||
       (bounds.max_value_bytes ?? 0) > PLUGIN_DATA_LIMITS.valueBytes
+    ) {
+      throw new PluginDataCorruptError();
+    }
+    const totals = this.db
+      .prepare(
+        `SELECT COALESCE(SUM(byte_length), 0) AS declared_bytes,
+                COALESCE(SUM(length(CAST(value_json AS BLOB))), 0) AS actual_bytes
+         FROM plugin_data
+         WHERE plugin_id = ? AND installation_key = ?`,
+      )
+      .get(owner.pluginId, owner.installationKey) as StoredPayloadTotals;
+    if (
+      !Number.isSafeInteger(totals.declared_bytes) ||
+      !Number.isSafeInteger(totals.actual_bytes) ||
+      totals.declared_bytes < 0 ||
+      totals.declared_bytes !== totals.actual_bytes ||
+      totals.actual_bytes > PLUGIN_DATA_LIMITS.totalBytesPerInstallation
     ) {
       throw new PluginDataCorruptError();
     }
@@ -606,7 +750,7 @@ export class PluginDataStore {
       )
       .all(owner.pluginId, owner.installationKey) as StoredRow[];
     const records = rows.map(parseRow);
-    const totalBytes = bounds.actual_bytes;
+    const totalBytes = totals.actual_bytes;
     if (
       records.length > PLUGIN_DATA_LIMITS.keysPerInstallation ||
       totalBytes > PLUGIN_DATA_LIMITS.totalBytesPerInstallation ||

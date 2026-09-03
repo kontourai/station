@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { PLUGIN_DATA_LIMITS } from '@kontourai/station-contracts/plugin-data';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PluginDataStore } from '../plugin-data-store.js';
 
 const roots: string[] = [];
@@ -164,12 +164,29 @@ describe('PluginDataStore', () => {
   test('bounds each serialized value before mutation', () => {
     const store = new PluginDataStore({ directory: root() });
     const capability = store.bind(owner);
-    const value = 'x'.repeat(PLUGIN_DATA_LIMITS.valueBytes + 1);
-    expect(capability.set('large', value, null)).toEqual({
-      kind: 'capacity',
-      reason: 'value-bytes',
-    });
+    const stringify = vi.spyOn(JSON, 'stringify');
+    const parse = vi.spyOn(JSON, 'parse');
+    try {
+      const value = 'x'.repeat(PLUGIN_DATA_LIMITS.valueBytes + 1);
+      expect(capability.set('large', value, null)).toEqual({
+        kind: 'capacity',
+        reason: 'value-bytes',
+      });
+      const property = 'x'.repeat(PLUGIN_DATA_LIMITS.valueBytes + 1);
+      expect(
+        capability.set('large-property', { [property]: null }, null),
+      ).toEqual({
+        kind: 'capacity',
+        reason: 'value-bytes',
+      });
+      expect(stringify).not.toHaveBeenCalled();
+      expect(parse).not.toHaveBeenCalled();
+    } finally {
+      stringify.mockRestore();
+      parse.mockRestore();
+    }
     expect(capability.get('large')).toEqual({ kind: 'not-found' });
+    expect(capability.get('large-property')).toEqual({ kind: 'not-found' });
     store.close();
   });
 
@@ -271,9 +288,9 @@ describe('PluginDataStore', () => {
       kind: 'unavailable',
       reason: 'corrupt',
     });
-    expect(rebound.get('state')).toMatchObject({
-      kind: 'found',
-      record: { revision: 3, value: 'three' },
+    expect(rebound.get('state')).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
     });
     reopened.close();
   });
@@ -387,6 +404,33 @@ describe('PluginDataStore', () => {
       reason: 'corrupt',
     });
     expect(rebound.set('corrupt-0', 'updated', 1)).toEqual({
+      kind: 'unavailable',
+      reason: 'corrupt',
+    });
+    reopened.close();
+  });
+
+  test('classifies overflowing persisted declared-byte totals as corrupt', () => {
+    const directory = root();
+    const store = new PluginDataStore({ directory });
+    store.close();
+    const database = new DatabaseSync(join(directory, 'plugin-data.sqlite'));
+    database.exec(`
+      INSERT INTO plugin_data
+        (plugin_id, installation_key, key, value_json, byte_length, revision, updated_at)
+      VALUES
+        ('${owner.pluginId}', '${owner.installationKey}', 'overflow-a', 'null', 9223372036854775807, 1, '2026-09-03T00:00:00.000Z'),
+        ('${owner.pluginId}', '${owner.installationKey}', 'overflow-b', 'null', 1, 1, '2026-09-03T00:00:00.000Z');
+      INSERT INTO plugin_data_revisions
+        (plugin_id, installation_key, key, last_revision)
+      VALUES
+        ('${owner.pluginId}', '${owner.installationKey}', 'overflow-a', 1),
+        ('${owner.pluginId}', '${owner.installationKey}', 'overflow-b', 1);
+    `);
+    database.close();
+
+    const reopened = new PluginDataStore({ directory });
+    expect(reopened.bind(owner).list()).toEqual({
       kind: 'unavailable',
       reason: 'corrupt',
     });
