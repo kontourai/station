@@ -168,6 +168,12 @@ describe('usePluginManagementViewModel', () => {
     expect(mocks.reloadClientRegistry.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.refetchPlugins.mock.invocationCallOrder[0],
     );
+    expect(mocks.queryClient.invalidateQueries.mock.calls).toEqual([
+      [{ queryKey: ['plugin-updates'] }],
+      [{ queryKey: ['layouts'] }],
+      [{ queryKey: ['agents'] }],
+      [{ queryKey: ['projects'] }],
+    ]);
   });
 
   test('keeps a client-registry reload failure visible and does not refresh the collection', async () => {

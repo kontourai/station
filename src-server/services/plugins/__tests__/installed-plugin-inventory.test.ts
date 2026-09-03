@@ -122,6 +122,25 @@ describe('installed plugin inventory', () => {
     expect(JSON.stringify(entry)).not.toContain(root);
   });
 
+  test('classifies hidden manifest content as unsafe rather than malformed JSON', () => {
+    const root = home();
+    plugin(
+      root,
+      'hidden-content',
+      '{"name":"hidden-content","version":"1.0.0","description":"safe​text"}',
+    );
+
+    const [entry] = scanInstalledPluginInventory(join(root, 'plugins'));
+    expect(entry).toMatchObject({
+      state: 'rejected',
+      rejection: {
+        code: 'unsafe-manifest-content',
+        reason: 'plugin.json contains unsafe hidden or control content.',
+      },
+    });
+    expect(JSON.stringify(entry)).not.toContain(root);
+  });
+
   test('recovers from current directory truth without a rejection store', () => {
     const root = home();
     plugin(root, 'repairable', '{');

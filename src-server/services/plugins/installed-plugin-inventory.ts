@@ -7,6 +7,7 @@ import type {
 } from '@kontourai/station-contracts/plugin';
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import type { Logger } from '../../utils/logger.js';
+import { ContextSafetyError } from '../orchestration/context-safety.js';
 import { readPluginManifestFileSync } from './plugin-manifest-loader.js';
 
 const PUBLIC_REASON_MAX = 512;
@@ -43,6 +44,19 @@ export function describePluginManifestRejection(
         kind: 'restore-manifest',
         instruction:
           'Restore readable plugin.json permissions or replace the file, then choose Reload plugins.',
+      },
+    );
+  }
+  // ContextSafetyError includes its `plugin.json` source in the message.
+  // Recognize the typed refusal before the broad JSON syntax fallback.
+  if (error instanceof ContextSafetyError) {
+    return rejection(
+      'unsafe-manifest-content',
+      'plugin.json contains unsafe hidden or control content.',
+      {
+        kind: 'repair-manifest',
+        instruction:
+          'Remove hidden control content from plugin.json, then choose Reload plugins.',
       },
     );
   }

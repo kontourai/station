@@ -205,6 +205,18 @@ export function usePluginManagementViewModel() {
       if (registryState === 'degraded') {
         throw new Error('browser plugin registry is still degraded');
       }
+      // The canonical reload mutation invalidates these plugin-derived graph
+      // caches. Preserve that contract after the ordered server -> browser
+      // registry boundary; the plugin collection itself is explicitly
+      // refetched below so its failure remains observable here.
+      for (const queryKey of [
+        ['plugin-updates'],
+        ['layouts'],
+        ['agents'],
+        ['projects'],
+      ]) {
+        queryClient.invalidateQueries({ queryKey });
+      }
       const refreshed = await refetchPlugins();
       if (refreshed.isError) {
         throw refreshed.error instanceof Error
