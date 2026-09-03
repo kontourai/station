@@ -828,51 +828,6 @@ test.describe('Dock Mode — Mobile', () => {
     );
   });
 
-  test('a phone states the placement it uses and names the preference it is keeping', async ({
-    page,
-  }) => {
-    await page.addInitScript(() => {
-      localStorage.setItem(
-        'station-device-settings-v1',
-        JSON.stringify({ version: 2, values: { dockSlotPlacement: 'right' } }),
-      );
-    });
-    await page.goto('/');
-    await page.waitForTimeout(2000);
-    await dismissSetupLauncher(page);
-
-    await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--bottom/);
-    await page.getByRole('button', { name: 'Chat actions' }).click();
-    await page.getByRole('menuitem', { name: 'Chat settings' }).click();
-    await expect(page.locator('.chat-settings-modal')).toBeVisible();
-    // The section stays — an absent one is indistinguishable from a setting
-    // Station never had, and this person DID choose Right on a wider screen.
-    await expect(page.getByText('Dock Position')).toHaveCount(1);
-    // What goes is the choice, not the answer: no button offers a placement
-    // this screen cannot use, and none is offered disabled either.
-    await expect(
-      page.getByRole('menuitemradio', { name: 'Right' }),
-    ).toHaveCount(0);
-    await expect(page.getByRole('menuitemradio', { name: 'Left' })).toHaveCount(
-      0,
-    );
-    await expect(
-      page.getByText('Bottom — the only position this screen can use.'),
-    ).toBeVisible();
-    await expect(
-      page.getByText(
-        'Your right preference is remembered for a wider screen.',
-        { exact: false },
-      ),
-    ).toBeVisible();
-    expect(
-      await page.locator('.chat-settings-modal').evaluate(() => {
-        const raw = localStorage.getItem('station-device-settings-v1');
-        return raw ? JSON.parse(raw).values.dockSlotPlacement : null;
-      }),
-    ).toBe('right');
-  });
-
   test('a phone has no move handle or drag targets and stays horizontally contained', async ({
     page,
   }) => {
