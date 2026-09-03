@@ -8,6 +8,7 @@ import {
   useEngineConnectionsQuery,
   useInvalidateQuery,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useCallback } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import {
@@ -232,7 +233,7 @@ export function useSendMessage(
       // fresh one for every other call (first send, queued-message drain,
       // "Continue" after tool-calls/length) since those are genuinely new
       // turns, not a resend of this one.
-      const resolvedTurnId = turnId ?? crypto.randomUUID();
+      const resolvedTurnId = turnId ?? randomCorrelationId();
 
       const abortController = new AbortController();
 

@@ -998,6 +998,14 @@ function buildProgram(
       return;
     }
     await runServiceCommand(args, lifecycleArgs);
+    // Signpost only on the DIRECT plumbing invocation: `setup local` composes
+    // this same install and must not tell the user to run setup again (#1098
+    // follow-up: the bare install writes no client profile, by design).
+    if (args[0] === 'install') {
+      console.log(
+        'Service installed. To use it from this machine (CLI and browser), save it as your default Station: station setup local',
+      );
+    }
   });
 
   register('setup', async (args) => {

@@ -2,6 +2,7 @@ export interface CliBundleMetadata {
   version: string;
   sourceSha: string;
   channel: string;
+  builtAt?: string;
 }
 export type CliGit = (
   args: string[],
@@ -16,6 +17,7 @@ export function deriveCheckoutSourceSha(input: {
 export function deriveCliBundleMetadata(input: {
   packageDir: string;
   packageVersion: string;
+  builtAt?: string;
   env?: NodeJS.ProcessEnv;
   git?: CliGit;
 }): CliBundleMetadata;

@@ -55,6 +55,7 @@ import {
   updateProjectLayout,
 } from '@kontourai/station-sdk/client';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { actionsFor, didYouMean } from '../help.js';
 import { runApprovalsCommand } from './approvals.js';
 import {
@@ -784,7 +785,7 @@ async function runTaskDownloadOutput(
     );
   const temporary = join(
     parentBefore.canonicalPath,
-    `.${basename(destination)}.${process.pid}.${crypto.randomUUID()}.tmp`,
+    `.${basename(destination)}.${process.pid}.${randomCorrelationId()}.tmp`,
   );
   try {
     writeFileSync(temporary, content.bytes, { flag: 'wx', mode: 0o600 });

@@ -65,6 +65,18 @@ Example: a test result is evidence. The rule requiring that test is a gate. The
 record saying which command ran and whether it passed is the receipt. If the
 test fails, a route-back sends the work to the step that can fix it.
 
+- A **degraded capability** is a bounded feature Station runs without,
+  reported with a specific reason and remediation instead of failing silently
+  or refusing to start.
+
+Example: interactive terminal panes need the `node-pty` native module, which
+requires a C++ compiler to build on Linux. On a machine without one, Station
+installs and runs with the terminal capability degraded: `station doctor`
+prints a warn line with the rebuild command, the system status readiness
+record reports `terminal` as not ready with the same reason, and opening a
+terminal pane states why it cannot open. Agent execution does not use
+`node-pty` and is unaffected.
+
 ## Local-First Data
 
 Station stores its data under `~/.station` by default. A Provider receives data

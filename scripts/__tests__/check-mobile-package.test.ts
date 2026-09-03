@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { auditIosInventory } from '../check-mobile-package.mjs';
+import {
+  auditIosInventory,
+  parseIosClientBuildProvenance,
+} from '../check-mobile-package.mjs';
 
 const info =
   '<key>NSCameraUsageDescription</key><key>NSLocalNetworkUsageDescription</key><key>NSMicrophoneUsageDescription</key>';
@@ -28,6 +31,30 @@ const base = {
 };
 
 describe('packaged iOS capability audit', () => {
+  test('accepts only canonical, source-derived iOS client build provenance', () => {
+    expect(
+      parseIosClientBuildProvenance(
+        JSON.stringify({
+          sha: 'a'.repeat(40),
+          branch: 'main',
+          builtAt: '2026-08-30T12:00:00.000Z',
+        }),
+      ),
+    ).toEqual({
+      sha: 'a'.repeat(40),
+      branch: 'main',
+      builtAt: '2026-08-30T12:00:00.000Z',
+    });
+    expect(() =>
+      parseIosClientBuildProvenance(
+        JSON.stringify({
+          sha: 'a'.repeat(40),
+          branch: 'main',
+          builtAt: '2026-02-31T12:00:00.000Z',
+        }),
+      ),
+    ).toThrow(/invalid station-build/);
+  });
   test('keeps generated Rust archives out of XcodeGen resource scanning but links libapp.a', () => {
     const project = readFileSync(
       resolve(import.meta.dirname, '../../src-desktop/gen/apple/project.yml'),

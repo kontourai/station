@@ -7,6 +7,7 @@ import { describe, expect, test } from 'vitest';
 const root = resolve(import.meta.dirname, '../..');
 
 type Step = {
+  env?: Record<string, unknown>;
   id?: string;
   name?: string;
   uses?: string;
@@ -433,6 +434,15 @@ describe('one-revision native promotion contract', () => {
       resolve(root, '.github/workflows/nightly-fleet-staging.yml'),
       'utf8',
     );
+    const fleetPlan = fleet.jobs?.['fleet-plan'] ?? {};
+    const dependencyStep = fleetPlan.steps?.findIndex(
+      (step) => step.run === 'npm run dependencies:ci',
+    );
+    const planStep = fleetPlan.steps?.findIndex(
+      (step) => step.name === 'Read the reviewed static portable plan',
+    );
+    expect(dependencyStep).toBeGreaterThanOrEqual(0);
+    expect(planStep).toBeGreaterThan(dependencyStep ?? -1);
     for (const action of [
       'anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610',
       'actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8',
@@ -441,7 +451,23 @@ describe('one-revision native promotion contract', () => {
     expect(source).toContain('stage-receipt');
     expect(source).toContain('staged-fleet-inventory.mjs admit-fixed');
     expect(source).toContain('config/nightly-fleet-staging-plan.json');
+    expect(source).toContain('manifest.prerelease!==true');
+    expect(source).toContain('Object.hasOwn(manifest,"releaseChannel")');
+    expect(source).not.toContain('manifest.releaseChannel!=="nightly-staging"');
+    expect(source).toContain('syft-version: v1.51.0');
+    expect(source).not.toContain('syft-version: 1.51.0');
     expect(source).toContain('gh attestation verify "staged/$name"');
+    const admission = fleet.jobs?.['admit-fleet'] ?? {};
+    const verification = admission.steps?.find(
+      (step) =>
+        step.name ===
+        'Verify every attested subject with exact workflow identity',
+    );
+    expect(verification?.env?.GH_TOKEN).toBe(`${'${{'} github.token }}`);
+    expect(verification?.run).toContain(
+      "jq -c '.attestation.subjects[]' staged/stage-receipt-portable.json",
+    );
+    expect(verification?.run).not.toContain('staged/subjects.json');
     expect(source).toContain('--source-ref refs/heads/main');
     expect(source).toContain('--deny-self-hosted-runners');
     expect(source).toContain('test "$sha" = "$GITHUB_SHA"');
@@ -457,6 +483,20 @@ describe('one-revision native promotion contract', () => {
       'ios-simulator:',
     ])
       expect(source).not.toContain(forbidden);
+  });
+
+  test('treats only npm E404 as an absent nightly CLI version', () => {
+    const nightly =
+      namedStep(
+        workflow('nightly.yml').jobs?.['nightly-cli'] ?? {},
+        'Refuse a conflicting CLI version and skip an exact rerun',
+      ).run ?? '';
+    expect(nightly).toContain('npm_view_status=$?');
+    expect(nightly).toContain(
+      'grep -q \'"code"[[:space:]]*:[[:space:]]*"E404"\'',
+    );
+    expect(nightly).toContain('exit "$npm_view_status"');
+    expect(nightly).not.toContain('gitHead --json 2>/dev/null || true');
   });
 
   test('canonicalizes a non-UTC commit timestamp before portable packaging', () => {

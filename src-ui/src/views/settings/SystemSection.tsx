@@ -1,7 +1,11 @@
 import { useSystemStatusForApiBaseQuery } from '@kontourai/station-sdk';
 import { SettingsGlyph } from '../../components/icons/Glyph';
+import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { AppConfig } from '../../types';
-import { BuildProvenance } from './BuildProvenance';
+import {
+  BuildProvenance,
+  InstalledAppBuildProvenance,
+} from './BuildProvenance';
 import { CoreUpdateCheck } from './CoreUpdateCheck';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
@@ -25,6 +29,7 @@ export function SystemSection({
     apiBase,
     60_000,
   );
+  const platformProfile = usePlatformProfile();
 
   return (
     <SettingsSection
@@ -44,6 +49,12 @@ export function SystemSection({
       </div>
 
       <div {...settingsRow('deployed-build')} tabIndex={-1}>
+        {platformProfile.isTauri ? (
+          <InstalledAppBuildProvenance
+            build={platformProfile.clientBuild}
+            development={platformProfile.isDevBuild}
+          />
+        ) : null}
         <BuildProvenance build={systemStatus?.build} />
       </div>
 

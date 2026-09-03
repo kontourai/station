@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-core",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Station - local-first AI agent workspace platform",
   "private": true,
   "type": "module",
@@ -79,6 +79,7 @@
     "font-origin:ratchet": "node scripts/font-origin-ratchet.mjs",
     "lazy-boundary:ratchet": "node scripts/lazy-boundary-ratchet.mjs",
     "sdk-error-message:ratchet": "node scripts/sdk-error-message-ratchet.mjs",
+    "random-uuid:guard": "node scripts/random-uuid-guard.mjs",
     "dialog-surface-class:guard": "node scripts/dialog-surface-class-guard.mjs",
     "knowledge-kit-import:gate": "node scripts/knowledge-kit-import-gate.mjs",
     "builder-delivery-viewer-import:gate": "node scripts/builder-delivery-viewer-import-gate.mjs",
@@ -141,15 +142,16 @@
     "ui-bundle:budget": "node scripts/ui-bundle-budget.mjs",
     "performance:workspace:smoke": "node scripts/interactive-workspace-performance.mjs --mode=smoke",
     "performance:workspace:reference": "node scripts/interactive-workspace-performance.mjs --mode=reference",
-    "build:native-client": "npm run build:connect && npm run build:sdk && npm run build:ui",
-    "build:desktop:resources": "node scripts/channel-ports.mjs --sync-desktop && npm run build && node scripts/write-desktop-build-manifest.mjs && node scripts/stage-desktop-server-runtime.mjs",
+    "build:native-client": "node scripts/write-native-client-build-manifest.mjs && npm run build:connect && npm run build:sdk && npm run build:ui",
+    "stage:native-client-build-provenance": "node scripts/write-native-client-build-manifest.mjs --refresh",
+    "build:desktop:resources": "node scripts/build-desktop-resources.mjs",
     "channel-ports:check": "node scripts/channel-ports.mjs --check",
     "product-version:check": "node scripts/product-version.mjs --check",
     "product-version:sync": "node scripts/product-version.mjs --sync",
     "build:desktop": "npm run product-version:check && node scripts/build-desktop.mjs",
     "fixture:browser-preview:macos": "npm run build:desktop && node scripts/browser-preview-packaged-fixture.mjs",
-    "build:android": "node scripts/apply-android-channel-icons.mjs dev && node scripts/apply-android-native-bootstrap.mjs && node scripts/write-android-build-manifest.mjs && RUSTFLAGS=\"-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384\" tauri android build --debug --apk",
-    "build:android:release": "node scripts/apply-android-channel-icons.mjs dev && node scripts/apply-android-native-bootstrap.mjs && node scripts/write-android-build-manifest.mjs && RUSTFLAGS=\"-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384\" tauri android build --apk --aab",
+    "build:android": "node scripts/write-native-client-build-manifest.mjs --refresh && node scripts/apply-android-channel-icons.mjs dev && node scripts/apply-android-native-bootstrap.mjs && node scripts/write-android-build-manifest.mjs && STATION_CLIENT_BUILD_REUSE=1 RUSTFLAGS=\"-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384\" tauri android build --debug --apk",
+    "build:android:release": "node scripts/write-native-client-build-manifest.mjs --refresh && node scripts/apply-android-channel-icons.mjs dev && node scripts/apply-android-native-bootstrap.mjs && node scripts/write-android-build-manifest.mjs && STATION_CLIENT_BUILD_REUSE=1 RUSTFLAGS=\"-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384\" tauri android build --apk --aab",
     "build:sdk": "npm run --workspace=packages/sdk build",
     "build:board-pane": "npm run --workspace=packages/board-pane build",
     "basis:mcp:generate": "node scripts/generate-basis-mcp-apps.mjs",
@@ -188,6 +190,8 @@
     "test:full:ordinary:8:raw": "node scripts/run-vitest-corpus.mjs --group=ordinary --shard=8/8",
     "test:full:process-heavy:raw": "node scripts/run-vitest-corpus.mjs --group=process-heavy",
     "test:full:process-exclusive:raw": "node scripts/run-vitest-corpus.mjs --group=process-exclusive",
+    "test:full:coordinator-exclusive:raw": "node scripts/run-vitest-corpus.mjs --group=coordinator-exclusive",
+    "test:full:credential-ledger-exclusive:raw": "node scripts/run-vitest-corpus.mjs --group=credential-ledger-exclusive",
     "test:full:shared-output:raw": "node scripts/run-vitest-corpus.mjs --group=shared-output",
     "test:full:dogfood-reconcile:raw": "node scripts/run-vitest-corpus.mjs --group=dogfood-reconcile",
     "test:dogfood-reconcile": "vitest run scripts/__tests__/station-dogfood-reconcile --no-file-parallelism",
@@ -236,7 +240,7 @@
     "typecheck": "npm run dist:freshness && node scripts/typecheck-aggregate.mjs",
     "content:integrity": "node scripts/content-integrity-gate.mjs",
     "gate:naming": "npm run noun-consistency:gate && npm run station-vocabulary:gate && npm run coding-composition:gate",
-    "gate:ui-contracts": "npm run unsaved-guard:gate && npm run state-primitives:ratchet && node scripts/mobile-css-ratchet.mjs && npm run motion-contract:ratchet && npm run responsive-surface:ratchet && npm run focus-visible:ratchet && npm run accent-foreground:ratchet && npm run shell-conformance:ratchet && npm run a11y:ratchet && npm run claim-fixture:ratchet && npm run font-origin:ratchet && npm run lazy-boundary:ratchet && npm run sdk-error-message:ratchet && npm run dialog-surface-class:guard && npm run stored-path-expansion:guard",
+    "gate:ui-contracts": "npm run unsaved-guard:gate && npm run state-primitives:ratchet && node scripts/mobile-css-ratchet.mjs && npm run motion-contract:ratchet && npm run responsive-surface:ratchet && npm run focus-visible:ratchet && npm run accent-foreground:ratchet && npm run shell-conformance:ratchet && npm run a11y:ratchet && npm run claim-fixture:ratchet && npm run font-origin:ratchet && npm run lazy-boundary:ratchet && npm run sdk-error-message:ratchet && npm run random-uuid:guard && npm run dialog-surface-class:guard && npm run stored-path-expansion:guard",
     "gate:platform": "npm run knowledge-kit-import:gate && npm run builder-delivery-viewer-import:gate && npm run native-platform:ratchet && npm run release:static && npm run examples:conformance && npm run docs:reference:gate",
     "a11y:ratchet": "node scripts/a11y-ratchet.mjs",
     "examples:conformance": "node scripts/examples-conformance.mjs",
@@ -245,7 +249,7 @@
     "typecheck:e2e": "tsc -p tsconfig.e2e.json --noEmit",
     "hooks:install": "node scripts/install-git-hooks.mjs",
     "lockfile-sync:gate": "node scripts/lockfile-sync-gate.mjs",
-    "build:android:arm64": "node scripts/apply-android-channel-icons.mjs dev && node scripts/apply-android-native-bootstrap.mjs && node scripts/write-android-build-manifest.mjs && RUSTFLAGS=\"-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384\" tauri android build -t aarch64 --debug --apk",
+    "build:android:arm64": "node scripts/write-native-client-build-manifest.mjs --refresh && node scripts/apply-android-channel-icons.mjs dev && node scripts/apply-android-native-bootstrap.mjs && node scripts/write-android-build-manifest.mjs && STATION_CLIENT_BUILD_REUSE=1 RUSTFLAGS=\"-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384\" tauri android build -t aarch64 --debug --apk",
     "gate:workflows": "node scripts/actionlint-gate.mjs && node scripts/dependency-lifecycle-workflow-gate.mjs",
     "gate:evidence-check-execution": "node scripts/evidence-check-execution-gate.mjs",
     "gate:test-import-existence": "node scripts/test-import-existence-gate.mjs",
@@ -345,41 +349,42 @@
     "zod-to-json-schema": "^3.25.2"
   },
   "overrides": {
-    "adm-zip": "0.6.0",
-    "axios": "1.18.1",
+    "adm-zip": "^0.6.0",
+    "axios": "^1.18.1",
     "express-rate-limit": "^8.3.1",
-    "fast-uri": "3.1.5",
-    "form-data": "4.0.6",
-    "gaxios": "7.3.0",
-    "lodash": "4.18.1",
-    "node-forge": "1.4.0",
+    "fast-uri": "^3.1.6",
+    "form-data": "^4.0.6",
+    "gaxios": "^7.3.0",
+    "lodash": "^4.18.1",
+    "node-forge": "^1.4.0",
+    "qs": "^6.16.0",
     "router": {
-      "path-to-regexp": "8.4.2"
+      "path-to-regexp": "^8.4.2"
     },
     "anymatch": {
-      "picomatch": "2.3.2"
+      "picomatch": "^2.3.2"
     },
     "micromatch": {
-      "picomatch": "2.3.2"
+      "picomatch": "^2.3.2"
     },
     "gray-matter": {
-      "js-yaml": "3.15.1"
+      "js-yaml": "^3.15.1"
     },
     "read-yaml-file": {
-      "js-yaml": "3.15.1"
+      "js-yaml": "^3.15.1"
     },
     "readdirp": {
-      "picomatch": "2.3.2"
+      "picomatch": "^2.3.2"
     },
-    "socket.io-parser": "4.2.7",
+    "socket.io-parser": "^4.2.7",
     "minimatch@^10.0.0": {
-      "brace-expansion": "5.0.9"
+      "brace-expansion": "^5.0.9"
     },
-    "brace-expansion@^2.0.2": "2.1.4",
-    "js-yaml@^4.1.0": "4.3.1",
-    "js-yaml@^4.1.1": "4.3.1",
-    "nanoid": "3.3.18",
-    "engine.io-client": "6.6.6",
+    "brace-expansion@^2.0.2": "^2.1.4",
+    "js-yaml@^4.1.0": "^4.3.1",
+    "js-yaml@^4.1.1": "^4.3.1",
+    "nanoid": "^3.3.18",
+    "engine.io-client": "^6.6.6",
     "@strands-agents/sdk": {
       "@anthropic-ai/sdk": "$@anthropic-ai/sdk",
       "@opentelemetry/exporter-trace-otlp-http": "$@opentelemetry/exporter-trace-otlp-http",

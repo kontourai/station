@@ -63,7 +63,12 @@ import { useDerivedSessions } from '../../hooks/useDerivedSessions';
 import { useDockShellChrome } from '../../hooks/useDockShellChrome';
 import { useExitTransition } from '../../hooks/useExitTransition';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
-import type { ChatSession, FileAttachment, NavigationView } from '../../types';
+import type {
+  ChatSession,
+  DockMode,
+  FileAttachment,
+  NavigationView,
+} from '../../types';
 import {
   type EffectiveModelSource,
   isSessionExecutionActive,
@@ -283,27 +288,21 @@ const loadConversationOpenRevalidator = () =>
  * evaluated — entry time — so the chunk arrives alongside the entry rather
  * than after it, and the boundary resolves without a visible gap.
  *
- * The promise is remembered so React's `lazy` does not re-request it, and
- * dropped on rejection so `LazyBoundary`'s Retry re-runs the import instead of
- * replaying a cached failure.
+ * Every call returns a NEW promise; the module registry makes the repeat
+ * `import()` free. Memoizing it froze the tab on the dock's second mount
+ * (kontourai/station#1301: React's `lazy` livelocks on a promise it has
+ * already settled), and App.tsx's `showAmbientChatDock` remounts the dock on
+ * ordinary navigation.
  */
-let ambientChatDockPaneHostModule: Promise<{
-  default: typeof import('../../workspace-panes/AmbientChatDockPaneHost').AmbientChatDockPaneHost;
-}> | null = null;
+const loadAmbientChatDockPaneHost = () =>
+  import('../../workspace-panes/AmbientChatDockPaneHost').then((module) => ({
+    default: module.AmbientChatDockPaneHost,
+  }));
 
-const loadAmbientChatDockPaneHost = () => {
-  ambientChatDockPaneHostModule ??= import(
-    '../../workspace-panes/AmbientChatDockPaneHost'
-  )
-    .then((module) => ({ default: module.AmbientChatDockPaneHost }))
-    .catch((error: unknown) => {
-      ambientChatDockPaneHostModule = null;
-      throw error;
-    });
-  return ambientChatDockPaneHostModule;
-};
-
-void loadAmbientChatDockPaneHost();
+void loadAmbientChatDockPaneHost().catch(() => {
+  // The boundary reports a failed import where it renders; the warm-up has
+  // no surface of its own.
+});
 
 function renderAmbientChatPane(
   _instance: WorkspacePaneInstance,
@@ -423,7 +422,6 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     navigate,
     setActiveChat,
     setDockState,
-    setDockMode,
     setProject,
     setLayout,
   } = useNavigation();
@@ -1709,7 +1707,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         }
         // An edge placement has no panel for `inboxOpen` to reveal, so put the
         // dock somewhere the destination actually mounts first.
-        if (route.switchToBottomMode) setDockMode('bottom');
+        if (route.switchToBottomMode) commitDockPlacement('bottom');
         setDeviceSetting('inboxOpen', true);
         if (route.snapHalf) applyDockSnap('half');
       },
@@ -1733,7 +1731,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     isFullscreenPlacement,
     isMobile,
     effectiveDockSlotPlacement,
-    setDockMode,
+    commitDockPlacement,
     setDeviceSetting,
     showInboxOpenFailure,
     agentsLoaded,
@@ -2150,6 +2148,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               availableDockSlotPlacements={availableDockSlotPlacements}
               effectiveDockSlotPlacement={effectiveDockSlotPlacement}
               onDockPlacementChange={commitDockPlacement}
+              regionVisible={isDockOpen}
+              shellMaximized={isDockMaximized}
               // station#4460: Chat is one entry in the SAME occupant
               // switcher Home/Activity carry — not a special case with no
               // way to leave. Absent for a full-screen placement, which has
@@ -2958,6 +2958,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
 /** The ambient application placement of the shared Chat workspace pane. */
 export function ChatDock({
+  regionId,
   onRequestAuth,
   homeContinuation = null,
   onNavigate,
@@ -2967,6 +2968,7 @@ export function ChatDock({
   homeContinuation?: HomeViewNavigation | null;
   onNavigate: (view: NavigationView) => void;
   onDockActionChange?: (action: WorkspacePaneDockAction | null) => void;
+  regionId?: DockMode;
 }) {
   // Mounted directly, not behind a LazyBoundary. The chromeless presentation
   // renders a frame and the occupant — there is no tab or split controller to
@@ -2983,6 +2985,7 @@ export function ChatDock({
         homeContinuation,
         onNavigate,
         onDockActionChange,
+        regionId,
       }}
       pending={null}
     />

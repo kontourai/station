@@ -43,6 +43,7 @@ import {
   buildAgentsViewItems,
 } from './agentsViewHelpers';
 import {
+  agentSaveErrorMessage,
   buildAgentPayload,
   cloneableAgentFields,
   createEmptyAgentForm,
@@ -658,8 +659,8 @@ export function useAgentsViewModel({
         await updateAgent(selectedSlug!, payload);
         setSavedForm(savedSnapshot);
       }
-    } catch (err: any) {
-      setActionError(err.message);
+    } catch (err: unknown) {
+      setActionError(agentSaveErrorMessage(err));
     } finally {
       setIsSaving(false);
     }

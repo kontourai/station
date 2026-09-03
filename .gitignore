@@ -118,3 +118,4 @@ app-universal-debug.apk
 /.codex-*.md
 /.codex-*.log
 /*.exit
+src-desktop/station-client-build.json

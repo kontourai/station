@@ -21,6 +21,7 @@ import {
   useSessionInventoryQuery,
 } from '@kontourai/station-sdk/session-inventory';
 import { useKeepSessionOutputMutation } from '@kontourai/station-sdk/session-output-actions';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { buildBasisPanelViewModel } from '@kontourai/surface/basis/view';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -536,7 +537,7 @@ function KeepOutputInTask({
               taskId,
               sessionId: row.output.ref.sessionId,
               eventId: row.output.ref.eventId,
-              operationId: crypto.randomUUID(),
+              operationId: randomCorrelationId(),
               requestScope,
             })
             .then(

@@ -333,7 +333,10 @@ function configureRuntimeSecurity(
       }
       c.header(
         'Access-Control-Allow-Headers',
-        `Authorization, Content-Type, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${STATION_PLUGIN_HEADER}${
+        // Last-Event-ID: set by the SDK's fetchSSE reconnect loop and consumed
+        // by the orchestration resume cursor — omitting it preflight-blocks
+        // every cross-origin SSE reconnect (#169).
+        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${STATION_PLUGIN_HEADER}${
           process.env.STATION_PERFORMANCE_REFERENCE === '1'
             ? `, ${INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER}`
             : ''

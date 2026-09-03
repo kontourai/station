@@ -1,4 +1,4 @@
-name: Codex Sol PR review
+name: Advisory PR review
 
 # Secret Scan is the existing no-secret pull-request ingress. Listening to its
 # completed run keeps this workflow definition on the protected default branch;
@@ -36,11 +36,27 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Review the exact head with Codex Sol
+      - name: Review the exact head with the selected engine
         id: review
-        uses: kontourai/flow-agents/.github/actions/codex-pr-review@7f8b66336b73452a2932fc3d9295b5af05bfed0c
+        uses: kontourai/flow-agents/.github/actions/codex-pr-review@b0adbb4a5defdff0b0d2c7641f1735c06dd121e8
+        env:
+          # Optional OpenAI-compatible provider override (org/repo variable
+          # CODEX_REVIEW_BASE_URL + secret CODEX_REVIEW_API_KEY). The Codex
+          # CLI reads OPENAI_BASE_URL for its default provider, and composite
+          # steps inherit this step's env. With neither configured, both
+          # expressions fall through and behavior is byte-identical to the
+          # official endpoint + OPENAI_API_KEY. The override endpoint must
+          # speak the Responses wire API for the pinned model. Kiro ignores it.
+          OPENAI_BASE_URL: ${{ vars.CODEX_REVIEW_BASE_URL || 'https://api.openai.com/v1' }}
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          # Engine selection is one org/repo variable; absent, everything below
+          # reduces to the historical codex wiring. The kiro engine reads
+          # api-key ONLY (the composite never falls back to openai-api-key
+          # cross-vendor), so with REVIEW_ENGINE=kiro and no KIRO_API_KEY the
+          # run records reviewer_withheld rather than borrowing a credential.
+          engine: ${{ vars.REVIEW_ENGINE || 'codex' }}
+          api-key: ${{ vars.REVIEW_ENGINE == 'kiro' && secrets.KIRO_API_KEY || '' }}
+          openai-api-key: ${{ secrets.CODEX_REVIEW_API_KEY || secrets.OPENAI_API_KEY }}
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           pull-request: ${{ github.event.workflow_run.pull_requests[0].number }}
@@ -95,8 +111,11 @@ jobs:
 
       - name: Record the withheld fork reviewer as NOT_VERIFIED
         id: review
-        uses: kontourai/flow-agents/.github/actions/codex-pr-review@7f8b66336b73452a2932fc3d9295b5af05bfed0c
+        uses: kontourai/flow-agents/.github/actions/codex-pr-review@b0adbb4a5defdff0b0d2c7641f1735c06dd121e8
         with:
+          # Engine named so the NOT_VERIFIED record carries true provenance for
+          # the reviewer that was withheld; both credentials stay empty here.
+          engine: ${{ vars.REVIEW_ENGINE || 'codex' }}
           openai-api-key: ""
           github-token: ""
           repository: ${{ github.repository }}

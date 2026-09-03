@@ -875,3 +875,62 @@ describe('the Model connection binding round-trips through Save (station#4521 it
     expect(payload.execution?.modelConnectionId).toBe('stub-compat');
   });
 });
+
+describe('the built-in Station Agent saves its fields, not its resolved engine (station#923)', () => {
+  test('an unrelated edit succeeds without submitting the projected binding', async () => {
+    state.selectedId = 'station';
+    state.agents = [
+      agent({ slug: 'station', name: 'Station', engineId: 'station' }),
+    ];
+    state.detail = {
+      slug: 'station',
+      name: 'Station',
+      execution: { agentConnectionId: 'codex' },
+    };
+    const { result } = render();
+
+    act(() => {
+      result.current.setForm((form) => ({
+        ...form,
+        description: 'Owner-authored description',
+      }));
+    });
+    await act(async () => {
+      await result.current.handleSave();
+    });
+
+    expect(updateAgent).toHaveBeenCalledTimes(1);
+    expect(updateAgent).toHaveBeenCalledWith(
+      'station',
+      expect.objectContaining({ description: 'Owner-authored description' }),
+    );
+    expect(JSON.stringify(updateAgent.mock.calls[0]?.[1])).not.toContain(
+      'agentConnectionId',
+    );
+    expect(result.current.error).toBeNull();
+  });
+
+  test('the structured refusal renders the short Settings action', async () => {
+    state.selectedId = 'station';
+    state.detail = { slug: 'station', name: 'Station' };
+    updateAgent.mockRejectedValue({
+      code: 'STATION_ENGINE_IS_APP_SETTING',
+      message: 'server implementation detail must not render',
+    });
+    const { result } = render();
+
+    act(() => {
+      result.current.setForm((form) => ({
+        ...form,
+        description: 'Trigger save',
+      }));
+    });
+    await act(async () => {
+      await result.current.handleSave();
+    });
+
+    expect(result.current.error).toBe(
+      'Change the built-in Agent engine in Settings, then save your changes again.',
+    );
+  });
+});

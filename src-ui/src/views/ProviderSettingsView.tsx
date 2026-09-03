@@ -8,6 +8,7 @@ import {
   useSystemStatusQuery,
   useTestModelConnectionMutation,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useRef, useState } from 'react';
 import { DetailHeader } from '../components/DetailHeader';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
@@ -305,7 +306,7 @@ export function ProviderSettingsView({
     name: string,
     presetConfig?: Record<string, string>,
   ) {
-    const id = crypto.randomUUID();
+    const id = randomCorrelationId();
     // Claim the seed slot now. Without this the row's first appearance (which
     // only happens after the create POST's refetch lands) counts as a new
     // selection and takes the hard overwrite branch, dropping anything typed

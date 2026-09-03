@@ -100,6 +100,14 @@ describe('canonical completion lane literal', () => {
         id: 'test-full-process-exclusive',
         weight: 60,
       }),
+      expect.objectContaining({
+        id: 'test-full-coordinator-exclusive',
+        weight: 60,
+      }),
+      expect.objectContaining({
+        id: 'test-full-credential-ledger-exclusive',
+        weight: 60,
+      }),
       expect.objectContaining({ id: 'test-full-shared-output', weight: 60 }),
       expect.objectContaining({
         id: 'test-full-dogfood-reconcile',
@@ -132,7 +140,7 @@ describe('canonical completion lane literal', () => {
         0,
       ),
     );
-    expect(FULL_REGRESSION_TIMEOUT_MS).toBe(243 * 60_000);
+    expect(FULL_REGRESSION_TIMEOUT_MS).toBe(251 * 60_000);
     expect(resolveLane('full-regression').timeoutMs).toBe(
       FULL_REGRESSION_TIMEOUT_MS,
     );
