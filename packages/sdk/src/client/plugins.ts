@@ -1,7 +1,21 @@
-import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import type {
+  PluginCommandContribution,
+  PluginManifest,
+} from '@kontourai/station-contracts/plugin';
 import { type ClientRequestOptions, getJson } from './http';
 
-export type InstalledPluginRecord = PluginManifest & { hasBundle?: boolean };
+export type InstalledPluginRecord = PluginManifest & {
+  hasBundle?: boolean;
+  /** Parsed, inert Station command declarations from the reserved extension. */
+  commandContributions?: PluginCommandContribution[];
+  /** Server-derived execution facts; clients never infer permission grants. */
+  commandCapabilities?: {
+    invokeDeclaredOperation: {
+      available: boolean;
+      reason?: string;
+    };
+  };
+};
 
 export interface PluginCollectionFailure {
   success: false;

@@ -1,6 +1,7 @@
 import {
   useAgentsQuery,
   useMessageSearchQuery,
+  usePluginsQuery,
   useProjectsQuery,
   useSkillsQuery,
 } from '@kontourai/station-sdk';
@@ -18,6 +19,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { APP_SURFACE_REGISTRY } from '../app-shell/surface-registry';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   evaluateShortcutWhen,
   useShortcutRegistry,
@@ -54,6 +56,7 @@ import {
   type PaletteCommand,
   rankCommands,
 } from './command-palette-utils';
+import { projectPluginPaletteCommands } from './plugin-command-registry';
 
 /** `dock.session1` … `dock.session9` — the ⌘1–⌘9 chat-switch bindings. */
 const SESSION_SWITCH_SHORTCUT = /^dock\.session[1-9]$/;
@@ -108,6 +111,15 @@ const SearchIcon = (
   </svg>
 );
 
+const PLUGIN_COMMAND_ICONS = {
+  agent: 'A',
+  chat: '◌',
+  command: '›',
+  plugin: '◇',
+  project: '▱',
+  search: '⌕',
+} as const;
+
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -139,6 +151,8 @@ export function CommandPalette() {
     navigate,
     setProject,
     setDockState,
+    activeChat,
+    pathname,
     selectedProject,
     selectedProjectLayout,
   } = useNavigation();
@@ -204,6 +218,7 @@ export function CommandPalette() {
   const { data: agents = [] } = useAgentsQuery();
   const { data: projects = [] } = useProjectsQuery();
   const { data: skills = [] } = useSkillsQuery();
+  const { data: plugins = [] } = usePluginsQuery();
   // SHELL-19: the palette used to advertise "Switch to session 1" … "Switch to
   // session 9" as nine static commands whatever the truth was — there was one
   // session, and eight of those rows ran a handler that returns without doing
@@ -566,6 +581,70 @@ export function CommandPalette() {
       });
     }
 
+    const activeSessionId = Object.entries(openChatsStore.getSnapshot()).find(
+      ([sessionId, chat]) =>
+        sessionId === activeChat || chat.conversationId === activeChat,
+    )?.[0];
+    const pluginCommands = projectPluginPaletteCommands(plugins, {
+      activeChatId: activeSessionId ?? null,
+      hasProject: Boolean(selectedProject),
+      hasSession: Boolean(activeSessionId),
+      hasTask: /^\/tasks\/[^/]+/.test(pathname),
+      surfaceIds: new Set(
+        APP_SURFACE_REGISTRY.getRegistered().map((surface) => surface.id),
+      ),
+      occupiedCommandIds: new Set(list.map((command) => command.id)),
+    });
+    for (const projected of pluginCommands) {
+      const { contribution } = projected;
+      list.push({
+        id: projected.paletteId,
+        label: contribution.title,
+        group: 'Plugin commands',
+        keywords: [
+          'plugin',
+          projected.pluginName,
+          contribution.id,
+          ...(contribution.keywords ?? []),
+        ],
+        detail:
+          projected.unavailableReason ??
+          contribution.subtitle ??
+          `From ${projected.pluginName}`,
+        icon: contribution.icon ? (
+          <span aria-hidden="true">
+            {PLUGIN_COMMAND_ICONS[contribution.icon]}
+          </span>
+        ) : undefined,
+        disabled: projected.unavailableReason !== null,
+        closeOnRun: projected.unavailableReason === null,
+        run: () => {
+          if (projected.unavailableReason) {
+            setPaneNotice({
+              label: contribution.title,
+              stateLabel: 'Unavailable',
+              reasonLabel: projected.unavailableReason,
+            });
+            return;
+          }
+          if (contribution.intent.kind === 'navigate') {
+            const surface = APP_SURFACE_REGISTRY.get(
+              contribution.intent.surfaceId,
+            );
+            if (!surface) return;
+            navigate(surface.route, surface.palette?.params);
+            return;
+          }
+          if (contribution.intent.kind === 'seed-composer' && activeSessionId) {
+            activeChatsStore.updateChat(activeSessionId, {
+              input: contribution.intent.text,
+            });
+            setDockState(true);
+          }
+        },
+      });
+    }
+
     // Transcript content is deliberately its own result group. Excerpts are
     // plain React text children below; no HTML string or innerHTML path exists
     // for model output, including when it contains markup-looking characters.
@@ -604,12 +683,15 @@ export function CommandPalette() {
     agents,
     projects,
     skills,
+    plugins,
     navigate,
     setProject,
     setDockState,
     getAllShortcuts,
     paneCatalog.entries,
     selectedProject,
+    activeChat,
+    pathname,
     selectedProjectLayout,
     messageMatches,
     openChats,

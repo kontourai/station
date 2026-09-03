@@ -33,12 +33,15 @@ import { REGION_SURFACE_REGISTRY } from '../regions/region-model';
 let agentsMock: any[] = [];
 let projectsMock: any[] = [];
 let skillsMock: any[] = [];
+let pluginsMock: any[] = [];
 let paneCatalogMock: any = {
   descriptors: [],
   instances: [],
   availability: [],
 };
 let selectedProjectLayoutMock: string | null = null;
+let activeChatMock: string | null = null;
+let pathnameMock = '/';
 let messageSearchMock: any = { matches: [], instances: [] };
 const registeredCommand = vi.fn();
 let registeredShortcutAvailability: { disabled?: boolean; when?: unknown } = {};
@@ -73,6 +76,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   useAgentsQuery: () => ({ data: agentsMock }),
   useProjectsQuery: () => ({ data: projectsMock }),
   useSkillsQuery: () => ({ data: skillsMock }),
+  usePluginsQuery: () => ({ data: pluginsMock }),
   useMessageSearchQuery: () => ({ data: messageSearchMock }),
   // Pane availability consumes deployment facts through the public SDK; this
   // palette test deliberately keeps that independent query inert.
@@ -104,6 +108,8 @@ vi.mock('../contexts/NavigationContext', () => ({
     navigate: navigateMock,
     setProject: setProjectMock,
     setDockState: setDockStateMock,
+    activeChat: activeChatMock,
+    pathname: pathnameMock,
     selectedProject: 'alpha',
     selectedProjectLayout: selectedProjectLayoutMock,
   }),
@@ -171,8 +177,11 @@ afterEach(() => {
   agentsMock = [];
   projectsMock = [];
   skillsMock = [];
+  pluginsMock = [];
   paneCatalogMock = { descriptors: [], instances: [], availability: [] };
   selectedProjectLayoutMock = null;
+  activeChatMock = null;
+  pathnameMock = '/';
   messageSearchMock = { matches: [], instances: [] };
   registeredShortcutAvailability = {};
   registeredShortcutIdentity = {
@@ -692,6 +701,45 @@ describe('CommandPalette', () => {
     expect(
       screen.getByRole('option', { name: /Run registered command/ }),
     ).toBeTruthy();
+  });
+
+  test('stages a manifest-only plugin command visibly without sending it', async () => {
+    activeChatsStore.initChat('session-plugin-command', {
+      agentSlug: 'station',
+      agentName: 'Station',
+      title: 'Plugin command chat',
+    });
+    activeChatMock = 'session-plugin-command';
+    pluginsMock = [
+      {
+        name: 'demo-plugin',
+        version: '1.0.0',
+        commandContributions: [
+          {
+            version: '1.0',
+            id: 'demo-plugin.review-work',
+            title: 'Review this work',
+            intent: {
+              kind: 'seed-composer',
+              text: 'Review the current work and list actionable findings.',
+            },
+          },
+        ],
+      },
+    ];
+    try {
+      await renderCommandPalette();
+      open();
+      fireEvent.click(screen.getByRole('option', { name: /Review this work/ }));
+
+      expect(
+        activeChatsStore.getSnapshot()['session-plugin-command']?.input,
+      ).toBe('Review the current work and list actionable findings.');
+      expect(setDockStateMock).toHaveBeenCalledWith(true);
+      expect(screen.queryByRole('dialog')).toBeNull();
+    } finally {
+      activeChatsStore.removeChat('session-plugin-command');
+    }
   });
 
   test('projects the registered region toggle into the command palette', async () => {

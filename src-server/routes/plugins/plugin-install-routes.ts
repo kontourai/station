@@ -1,6 +1,7 @@
 import { existsSync, rmSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { STATION_PLUGIN_EXTENSION_ID } from '@kontourai/station-contracts/plugin';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { getPluginRegistryProviders } from '../../providers/registries/registry.js';
@@ -126,6 +127,23 @@ export function registerPluginInstallRoutes(
           agents: manifest.agents,
           providers: manifest.providers,
           links: manifest.links,
+          commandContributions:
+            manifest.extensions?.[STATION_PLUGIN_EXTENSION_ID]?.commands ?? [],
+          commandCapabilities: {
+            invokeDeclaredOperation: manifest.serverModule
+              ? granted.includes('plugin.server')
+                ? { available: true }
+                : {
+                    available: false,
+                    reason:
+                      'Grant the plugin.server permission before invoking this plugin operation.',
+                  }
+              : {
+                  available: false,
+                  reason:
+                    'This plugin does not declare a server operation module.',
+                },
+          },
           git,
           permissions: {
             declared,
@@ -285,6 +303,23 @@ export function registerPluginInstallRoutes(
             id: pane.id,
             detail: `${pane.renderer.kind}:${pane.rendererId}`,
             conflict,
+            skippable: false,
+          });
+        }
+
+        for (const command of manifest.extensions?.[STATION_PLUGIN_EXTENSION_ID]
+          ?.commands ?? []) {
+          const conflict = conflicts.find(
+            (entry) => entry.type === 'command' && entry.id === command.id,
+          );
+          components.push({
+            type: 'command',
+            id: command.id,
+            detail: command.intent.kind,
+            conflict,
+            // A command is inert manifest data and is installed as part of the
+            // package. Selective omission would make installed manifest truth
+            // disagree with what the preview approved.
             skippable: false,
           });
         }

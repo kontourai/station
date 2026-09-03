@@ -20,6 +20,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | Module | Intent | Primary source |
 | --- | --- | --- |
 | [SurfaceRegistry](#surfaceregistry) | Project one immutable destination inventory into routing, navigation, commands, and badges. | `src-ui/src/app-shell/surface-registry.ts` |
+| [PluginCommandRegistry](#plugincommandregistry) | Project inert plugin actions into the host command palette without creating navigation, shortcut, or execution authority. | `src-ui/src/components/plugin-command-registry.ts` |
 | [DesktopStartupReadiness](#desktopstartupreadiness) | Admit the main desktop window only after an exact sidecar identity ticket commits. | `src-desktop/src/startup_readiness.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
@@ -63,6 +64,38 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate exact-route owners, duplicate view owners, and duplicate sidebar or palette order slots. It never invokes a label or badge while composing or filtering; locale, branding, and attention state remain render-time inputs. A preview surface stays registered and routable while `getAdvertised` hides it until its named flag is enabled. `hiddenFromNav` removes only the sidebar affordance; route, palette, badge, and header callers remain independent projections. Parameterized Project, layout, task, Agent, connection, and Workspace Pane routes retain their domain parsers. Dynamic Workspace Panes retain their typed availability catalog and join the command palette after static registry projection rather than becoming unvalidated root-route contributions.
 
 **Seam, Implementation, callers, and tests.** The UI shell composes built-in descriptors. `routing.ts` consumes exact routes and semantic management ownership; `ProjectSidebarNav`, `CommandPalette`, and notification header badge consume their ordered projections. Icons are a presentation Adapter keyed by the registry's finite icon vocabulary. Future trusted plugin surface contributions must enter at registry composition and pass the same validation; there is no mutable global `register()` operation or renderer callback in persisted plugin data. Contract coverage is `src-ui/src/app-shell/__tests__/surface-registry.test.ts` plus sidebar, palette, routing, and header suites. **Do not reintroduce:** component-local static destination arrays, route-to-sidebar switch statements, hard-coded badge copy outside the registry, mutable post-construction registration, or treating a contributed renderer declaration as navigation authority.
+
+## PluginCommandRegistry
+
+**Intent and Interface.** `projectPluginPaletteCommands(plugins, context)`
+accepts parsed installed-plugin declarations plus explicit host facts and returns
+ordered palette rows with a total available-or-reason result. The public
+declaration lives under `extensions["io.kontourai.station"].commands` and is
+versioned independently of executable plugin code.
+
+**Contract.** Command ids are plugin-qualified and receive a final `plugin:`
+palette identity. The parser bounds every string and collection, accepts only a
+closed icon, requirement, argument, and intent vocabulary, and rejects unknown
+intent kinds, wildcard URL hosts, duplicate ids, and arguments their intent
+does not consume. Navigation names an existing `SurfaceRegistry` identity, not
+a route. Composer seeding writes a visible draft and has no send operation.
+Collision losers and missing host capabilities stay searchable but unavailable
+with an exact reason. Argument entry and plugin-operation invocation fail
+closed until their dedicated host Adapters exist.
+
+**Seam, Implementation, callers, and tests.** The server manifest loader is the
+admission parser and the installed-plugin collection exposes only its normalized
+declarations plus server-derived operation capability. Install preview lists
+each command as a non-skippable package declaration. `CommandPalette` joins the
+projection after its built-in, shortcut-derived, Project, Pane, Agent, and Skill
+rows are known, then resolves navigation or composer seeding through existing
+host owners. Behavioral coverage lives in
+`src-server/services/plugins/__tests__/plugin-manifest-loader.test.ts`,
+`src-ui/src/components/__tests__/plugin-command-registry.test.ts`, and
+`src-ui/src/__tests__/CommandPalette.test.tsx`. **Do not reintroduce:** raw
+plugin routes, manifest callbacks or markup, plugin-defined shortcuts, client-
+inferred permission grants, auto-sending composer text, or a second navigation
+registry.
 
 ## DesktopStartupReadiness
 
