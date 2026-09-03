@@ -1,7 +1,80 @@
-import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import type {
+  PluginManifest,
+  RejectedInstalledPluginRecord,
+} from '@kontourai/station-contracts/plugin';
 import { type ClientRequestOptions, getJson } from './http';
 
-export type InstalledPluginRecord = PluginManifest & { hasBundle?: boolean };
+export type InstalledPluginRecord =
+  | (PluginManifest & { hasBundle?: boolean })
+  | RejectedInstalledPluginRecord;
+
+const REJECTION_CODES = new Set([
+  'manifest-missing',
+  'manifest-unreadable',
+  'malformed-json',
+  'unsafe-manifest-content',
+  'invalid-plugin-name',
+  'reserved-plugin-name',
+  'missing-version',
+  'invalid-workspace-panes',
+  'invalid-manifest',
+]);
+
+function exactFields(value: Record<string, unknown>, fields: string[]) {
+  const actual = Object.keys(value).sort();
+  const expected = [...fields].sort();
+  return (
+    actual.length === expected.length &&
+    actual.every((field, index) => field === expected[index])
+  );
+}
+
+function boundedText(value: unknown, maximum: number): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= maximum &&
+    value === value.trim()
+  );
+}
+
+function boundedDirectoryName(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 255;
+}
+
+function isRejectedInstalledPlugin(value: Record<string, unknown>): boolean {
+  if (
+    !exactFields(value, ['status', 'name', 'displayName', 'rejection']) ||
+    value.status !== 'rejected' ||
+    !boundedDirectoryName(value.name) ||
+    !boundedText(value.displayName, 255) ||
+    !value.rejection ||
+    typeof value.rejection !== 'object' ||
+    Array.isArray(value.rejection)
+  ) {
+    return false;
+  }
+  const rejection = value.rejection as Record<string, unknown>;
+  if (
+    !exactFields(rejection, ['code', 'reason', 'recovery']) ||
+    typeof rejection.code !== 'string' ||
+    !REJECTION_CODES.has(rejection.code) ||
+    !boundedText(rejection.reason, 512) ||
+    !rejection.recovery ||
+    typeof rejection.recovery !== 'object' ||
+    Array.isArray(rejection.recovery)
+  ) {
+    return false;
+  }
+  const recovery = rejection.recovery as Record<string, unknown>;
+  return (
+    exactFields(recovery, ['kind', 'instruction']) &&
+    ['repair-manifest', 'restore-manifest', 'reinstall-plugin'].includes(
+      String(recovery.kind),
+    ) &&
+    boundedText(recovery.instruction, 512)
+  );
+}
 
 export interface PluginCollectionFailure {
   success: false;
@@ -56,14 +129,18 @@ export async function listPlugins(
   }
   if (
     !Array.isArray(result.plugins) ||
-    result.plugins.some(
-      (plugin) =>
-        !plugin ||
-        typeof plugin !== 'object' ||
-        Array.isArray(plugin) ||
-        typeof (plugin as { name?: unknown }).name !== 'string' ||
-        typeof (plugin as { version?: unknown }).version !== 'string',
-    )
+    result.plugins.some((plugin) => {
+      if (!plugin || typeof plugin !== 'object' || Array.isArray(plugin)) {
+        return true;
+      }
+      const record = plugin as Record<string, unknown>;
+      if (record.status === 'rejected') {
+        return !isRejectedInstalledPlugin(record);
+      }
+      return (
+        typeof record.name !== 'string' || typeof record.version !== 'string'
+      );
+    })
   ) {
     throw new Error('Plugin collection response is malformed');
   }

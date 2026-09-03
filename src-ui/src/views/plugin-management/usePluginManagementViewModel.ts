@@ -31,15 +31,17 @@ import {
   revokeNeedsConfirmation,
 } from '../../core/permission-vocabulary';
 import { useUrlSelection } from '../../hooks/useUrlSelection';
-import type {
-  Plugin,
-  PluginMessage,
-  PluginUpdateSummary,
-  PreviewData,
+import {
+  isRejectedPlugin,
+  type Plugin,
+  type PluginMessage,
+  type PluginUpdateSummary,
+  type PreviewData,
 } from './types';
 import {
   buildPluginListItems,
   filterPlugins,
+  pluginSelectionId,
   slugifyProjectName,
   toggleSetValue,
 } from './view-utils';
@@ -120,21 +122,19 @@ export function usePluginManagementViewModel() {
   );
   const [changelogExpanded, setChangelogExpanded] = useState(false);
 
-  const selected = plugins.find((plugin) => plugin.name === selectedPlugin);
-
-  const { data: settingsData } = usePluginSettingsQuery(
-    selectedPlugin ?? undefined,
-    {
-      enabled: !!selectedPlugin && !!selected?.hasSettings,
-    },
+  const selected = plugins.find(
+    (plugin) => pluginSelectionId(plugin) === selectedPlugin,
   );
+  const selectedReady =
+    selected && !isRejectedPlugin(selected) ? selected : undefined;
 
-  const { data: changelogData } = usePluginChangelogQuery(
-    selectedPlugin ?? undefined,
-    {
-      enabled: !!selectedPlugin && !!selected?.git,
-    },
-  );
+  const { data: settingsData } = usePluginSettingsQuery(selectedReady?.name, {
+    enabled: !!selectedReady?.hasSettings,
+  });
+
+  const { data: changelogData } = usePluginChangelogQuery(selectedReady?.name, {
+    enabled: !!selectedReady?.git,
+  });
 
   const saveSettingsMutation = usePluginSettingsMutation();
   const previewMutation = usePluginPreviewMutation();
@@ -165,8 +165,8 @@ export function usePluginManagementViewModel() {
   const toggleProviderMutation = usePluginProviderToggleMutation();
 
   const { data: providerDetails, isLoading: loadingProviderDetails } =
-    usePluginProvidersQuery(selectedPlugin ?? undefined, {
-      enabled: !!selectedPlugin && expandedProviders.has(selectedPlugin),
+    usePluginProvidersQuery(selectedReady?.name, {
+      enabled: !!selectedReady && expandedProviders.has(selectedReady.name),
     });
 
   const filtered = useMemo(
@@ -180,6 +180,23 @@ export function usePluginManagementViewModel() {
       await pluginRegistry.reload();
     } catch (error) {
       console.warn('Plugin registry reload failed', error);
+    }
+  }
+
+  async function reloadRejectedPlugin() {
+    setMessage(null);
+    try {
+      await reloadPluginsMutation.mutateAsync();
+      await reloadClientPluginRegistry();
+      await refetchPlugins();
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text:
+          error instanceof Error
+            ? `Plugins were not reloaded: ${error.message}`
+            : 'Plugins were not reloaded.',
+      });
     }
   }
 
@@ -482,6 +499,8 @@ export function usePluginManagementViewModel() {
     assigningLayout,
     pluginsError,
     refetchPlugins,
+    reloadRejectedPlugin,
+    reloadRejectedPending: reloadPluginsMutation.isPending,
     changelogData,
     changelogExpanded,
     createProjectForLayout,

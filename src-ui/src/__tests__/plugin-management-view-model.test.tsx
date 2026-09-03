@@ -104,6 +104,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   usePluginUpdateMutation: () => ({ mutate: vi.fn() }),
   usePluginUpdatesQuery: () => ({ data: [] }),
   useReloadPluginsMutation: () => ({
+    isPending: false,
     mutateAsync: mocks.reloadPlugins,
   }),
   // archive#3815: withdrawing a permission.
@@ -145,6 +146,24 @@ describe('usePluginManagementViewModel', () => {
 
     result.current.refetchPlugins();
     expect(mocks.refetchPlugins).toHaveBeenCalledTimes(1);
+  });
+
+  test('reloads server, client registry, and collection after manifest repair', async () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+
+    await act(async () => {
+      await result.current.reloadRejectedPlugin();
+    });
+
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+    expect(mocks.reloadClientRegistry).toHaveBeenCalledOnce();
+    expect(mocks.refetchPlugins).toHaveBeenCalledOnce();
+    expect(mocks.reloadPlugins.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.reloadClientRegistry.mock.invocationCallOrder[0],
+    );
+    expect(mocks.reloadClientRegistry.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.refetchPlugins.mock.invocationCallOrder[0],
+    );
   });
 
   test('uses host approval copy only for trusted pending permissions', () => {

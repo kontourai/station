@@ -1,4 +1,4 @@
-import { cpSync, existsSync, lstatSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
@@ -1233,6 +1233,38 @@ describe('Plugin Routes', () => {
       expect.arrayContaining([
         expect.objectContaining({ permission: 'providers.register' }),
       ]),
+    );
+  });
+
+  test('GET / keeps a rejected manifest visible with exact recovery copy', async () => {
+    vi.mocked(readFileSync).mockImplementationOnce(
+      () => '{"name":"test-plugin","version":',
+    );
+
+    const body = await json(await setup().request('/'));
+
+    expect(body.plugins).toEqual([
+      {
+        status: 'rejected',
+        name: 'test-plugin',
+        displayName: 'test-plugin',
+        rejection: {
+          code: 'malformed-json',
+          reason: 'plugin.json contains malformed JSON.',
+          recovery: {
+            kind: 'repair-manifest',
+            instruction:
+              'Repair plugin.json so it is valid JSON, then choose Reload plugins.',
+          },
+        },
+      },
+    ]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Installed plugin manifest rejected',
+      expect.objectContaining({
+        pluginDirectory: 'test-plugin',
+        code: 'malformed-json',
+      }),
     );
   });
 

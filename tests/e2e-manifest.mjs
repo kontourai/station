@@ -327,6 +327,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connect-remote-auth-recovery.spec.ts',
     'tests/connect-reconnect-banner.spec.ts',
     'tests/plugin-update.spec.ts',
+    'tests/plugin-rejection-visibility.spec.ts',
     'tests/schedule-runs.spec.ts',
     'tests/schedule.spec.ts',
     'tests/monitoring.spec.ts',
@@ -963,6 +964,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted plugin update lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/plugin-rejection-visibility.spec.ts',
+    bucket: 'product',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves the rejected-manifest row, exact recovery copy, and repair/reload transition in the real Plugins surface.',
     exceptions: [],
   },
   {
