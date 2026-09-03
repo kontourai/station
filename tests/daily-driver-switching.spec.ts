@@ -648,7 +648,10 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       name: /Continued with Codex Runtime/,
     });
     await expect(boundary).toBeVisible({ timeout: 10_000 });
-    await expect(agentTrigger).toBeFocused();
+    // The accepted target becomes current before focus restoration, so the
+    // same control now carries its new Agent and may temporarily be unavailable
+    // while that Agent starts. Its stable host selector proves return focus.
+    await expect(page.locator('.chat-input__agent-btn')).toBeFocused();
     await boundary.getByText('What carried and reset').click();
     await expect(boundary).toContainText('Conversation transcript');
     await expect(boundary).toContainText('Provider-native cursor');

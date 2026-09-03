@@ -2341,10 +2341,12 @@ for (const viewport of [
     await expect(modelButton).toContainText('⌄');
     const modelBox = await modelButton.boundingBox();
     expect(modelBox!.x + modelBox!.width).toBeLessThanOrEqual(viewport.width);
-    const agentButton = page.getByRole('button', {
-      name: /^Agent: .*\. Change Agent$/,
-    });
+    const agentButton = page.locator('.chat-input__agent-btn');
     await expect(agentButton).toBeVisible();
+    await expect(agentButton).toHaveAccessibleName(
+      'Agent: Claude. Send a message before changing Agent.',
+    );
+    await expect(agentButton).toHaveAttribute('aria-disabled', 'true');
     await expect(agentButton.locator('.chat-input__choice-label')).toHaveText(
       'Agent',
     );
