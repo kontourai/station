@@ -283,6 +283,284 @@ describe('UnifiedSearchService', () => {
     expect(search).not.toHaveBeenCalled();
   });
 
+  test('rejects non-exact, accessor-backed, proxied, and sparse provider descriptors without invoking them', () => {
+    const descriptorGetter = vi.fn(
+      () => provider({ id: 'station.tasks' }).descriptor,
+    );
+    const accessorProvider = {
+      search: async () => ({
+        version: UNIFIED_SEARCH_V1,
+        state: 'available' as const,
+        results: [],
+      }),
+    } as Record<string, unknown>;
+    Object.defineProperty(accessorProvider, 'descriptor', {
+      enumerable: true,
+      get: descriptorGetter,
+    });
+    expect(() => new UnifiedSearchService([accessorProvider as never])).toThrow(
+      TypeError,
+    );
+    expect(descriptorGetter).not.toHaveBeenCalled();
+
+    const ownerGetter = vi.fn(() => ({
+      kind: 'station',
+      stationId: 'station-a',
+    }));
+    const accessorDescriptor = {
+      id: 'station.tasks',
+      version: '1.0.0',
+      kinds: ['task'],
+    } as Record<string, unknown>;
+    Object.defineProperty(accessorDescriptor, 'owner', {
+      enumerable: true,
+      get: ownerGetter,
+    });
+    expect(
+      () =>
+        new UnifiedSearchService([
+          {
+            descriptor: accessorDescriptor,
+            search: async () => ({
+              version: UNIFIED_SEARCH_V1,
+              state: 'available',
+              results: [],
+            }),
+          } as never,
+        ]),
+    ).toThrow(TypeError);
+    expect(ownerGetter).not.toHaveBeenCalled();
+
+    const stationIdGetter = vi.fn(() => 'station-a');
+    const accessorOwner = { kind: 'station' } as Record<string, unknown>;
+    Object.defineProperty(accessorOwner, 'stationId', {
+      enumerable: true,
+      get: stationIdGetter,
+    });
+    expect(
+      () =>
+        new UnifiedSearchService([
+          {
+            ...provider({ id: 'station.tasks' }),
+            descriptor: {
+              ...provider({ id: 'station.tasks' }).descriptor,
+              owner: accessorOwner,
+            },
+          } as never,
+        ]),
+    ).toThrow(TypeError);
+    expect(stationIdGetter).not.toHaveBeenCalled();
+
+    const searchGetter = vi.fn(() => async () => ({
+      version: UNIFIED_SEARCH_V1,
+      state: 'available',
+      results: [],
+    }));
+    const accessorSearch = {
+      descriptor: provider({ id: 'station.tasks' }).descriptor,
+    } as Record<string, unknown>;
+    Object.defineProperty(accessorSearch, 'search', {
+      enumerable: true,
+      get: searchGetter,
+    });
+    expect(() => new UnifiedSearchService([accessorSearch as never])).toThrow(
+      TypeError,
+    );
+    expect(searchGetter).not.toHaveBeenCalled();
+
+    const providerGet = vi.fn();
+    const proxiedProvider = new Proxy(provider({ id: 'station.tasks' }), {
+      get: (target, property, receiver) => {
+        providerGet(property);
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    expect(() => new UnifiedSearchService([proxiedProvider])).toThrow(
+      TypeError,
+    );
+    expect(providerGet).not.toHaveBeenCalled();
+
+    const sparseProviders = new Array(1) as UnifiedSearchProvider[];
+    expect(() => new UnifiedSearchService(sparseProviders)).toThrow(TypeError);
+
+    const kindGetter = vi.fn(() => 'task');
+    const accessorKinds: unknown[] = [];
+    Object.defineProperty(accessorKinds, '0', {
+      enumerable: true,
+      get: kindGetter,
+    });
+    accessorKinds.length = 1;
+    expect(
+      () =>
+        new UnifiedSearchService([
+          {
+            ...provider({ id: 'station.tasks' }),
+            descriptor: {
+              ...provider({ id: 'station.tasks' }).descriptor,
+              kinds: accessorKinds,
+            },
+          } as never,
+        ]),
+    ).toThrow(TypeError);
+    expect(kindGetter).not.toHaveBeenCalled();
+
+    expect(
+      () =>
+        new UnifiedSearchService([
+          {
+            ...provider({ id: 'station.tasks' }),
+            descriptor: {
+              ...provider({ id: 'station.tasks' }).descriptor,
+              kinds: new Array(1),
+            },
+          } as never,
+        ]),
+    ).toThrow(TypeError);
+
+    const searchApply = vi.fn();
+    const proxiedSearch = new Proxy(
+      async () => ({
+        version: UNIFIED_SEARCH_V1,
+        state: 'available' as const,
+        results: [],
+      }),
+      { apply: searchApply },
+    );
+    expect(
+      () =>
+        new UnifiedSearchService([
+          provider({ id: 'station.tasks', search: proxiedSearch }),
+        ]),
+    ).toThrow(TypeError);
+    expect(searchApply).not.toHaveBeenCalled();
+
+    expect(
+      () =>
+        new UnifiedSearchService([
+          {
+            ...provider({ id: 'station.tasks' }),
+            futureAuthority: true,
+          } as never,
+        ]),
+    ).toThrow(TypeError);
+    expect(
+      () =>
+        new UnifiedSearchService([
+          {
+            ...provider({ id: 'station.tasks' }),
+            descriptor: {
+              ...provider({ id: 'station.tasks' }).descriptor,
+              futureAuthority: true,
+            },
+          } as never,
+        ]),
+    ).toThrow(TypeError);
+    expect(
+      () =>
+        new UnifiedSearchService([
+          {
+            ...provider({ id: 'station.tasks' }),
+            descriptor: {
+              ...provider({ id: 'station.tasks' }).descriptor,
+              owner: {
+                kind: 'station',
+                stationId: 'station-a',
+                projectionId: undefined,
+              },
+            },
+          } as never,
+        ]),
+    ).toThrow(TypeError);
+  });
+
+  test('attributes aggregate truncation to every source whose results were dropped', async () => {
+    const stationId = 's\\'.repeat(128);
+    const tenantId = 't\\'.repeat(128);
+    const providers = Array.from(
+      { length: UNIFIED_SEARCH_LIMITS.providers },
+      (_, providerIndex): UnifiedSearchProvider => ({
+        descriptor: {
+          id: `station.source-${providerIndex}`,
+          version: '1.0.0',
+          owner: { kind: 'station', stationId, tenantId },
+          kinds: ['file'],
+        },
+        search: async () => ({
+          version: UNIFIED_SEARCH_V1,
+          state:
+            providerIndex === 0 ? ('stale' as const) : ('partial' as const),
+          reason:
+            providerIndex === 0
+              ? ('source-stale' as const)
+              : ('source-partial' as const),
+          continuation: 'c'.repeat(
+            UNIFIED_SEARCH_LIMITS.providerContinuationBytes,
+          ),
+          results: Array.from(
+            { length: UNIFIED_SEARCH_LIMITS.resultsPerProvider },
+            (_, resultIndex): UnifiedSearchCandidate => {
+              const prefix = `file-${providerIndex}-${resultIndex}-`;
+              const id = `${prefix}${'i'.repeat(
+                UNIFIED_SEARCH_LIMITS.idBytes - prefix.length,
+              )}`;
+              return {
+                id,
+                kind: 'file',
+                title: 'x'.repeat(UNIFIED_SEARCH_LIMITS.titleBytes),
+                snippet: 'y'.repeat(UNIFIED_SEARCH_LIMITS.snippetBytes),
+                matchedFields: ['id', 'title', 'snippet', 'path'],
+                currentness: {
+                  state: 'stale',
+                  observedAt,
+                  reason: 'r'.repeat(UNIFIED_SEARCH_LIMITS.reasonBytes),
+                },
+                relevance: 1,
+                openIntent: {
+                  kind: 'station-resource',
+                  resourceKind: 'file',
+                  resourceId: id,
+                },
+              };
+            },
+          ),
+        }),
+      }),
+    );
+    const service = new UnifiedSearchService(providers);
+
+    const result = await service.search({
+      version: UNIFIED_SEARCH_V1,
+      query: 'large aggregate',
+    });
+
+    expect(result.state).toBe('partial');
+    if (result.state === 'invalid')
+      throw new Error('unexpected invalid result');
+    expect(result.results).toEqual([]);
+    expect(result.sources).toHaveLength(UNIFIED_SEARCH_LIMITS.providers);
+    expect(result.sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          providerId: 'station.source-0',
+          state: 'partial',
+          reason: 'aggregate-byte-limit',
+          priorCondition: { state: 'stale', reason: 'source-stale' },
+        }),
+        expect.objectContaining({
+          providerId: 'station.source-1',
+          state: 'partial',
+          reason: 'aggregate-byte-limit',
+          priorCondition: { state: 'partial', reason: 'source-partial' },
+        }),
+      ]),
+    );
+    expect(
+      result.sources.every(
+        (source) => source.reason === 'aggregate-byte-limit',
+      ),
+    ).toBe(true);
+  });
+
   test('preserves a stale provider page without rewriting result currentness', async () => {
     const service = new UnifiedSearchService([
       provider({

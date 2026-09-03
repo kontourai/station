@@ -4,6 +4,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from 'node:crypto';
+import { types as utilTypes } from 'node:util';
 import {
   UNIFIED_SEARCH_V1,
   type UnifiedSearchCandidate,
@@ -89,6 +90,7 @@ function exactDataRecord(
   try {
     if (!value || typeof value !== 'object' || Array.isArray(value))
       return null;
+    if (utilTypes.isProxy(value)) return null;
     const prototype = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) return null;
     if (Object.getOwnPropertySymbols(value).length > 0) return null;
@@ -122,6 +124,8 @@ function denseDataArray(
 ): readonly unknown[] | null {
   try {
     if (!Array.isArray(value)) return null;
+    if (utilTypes.isProxy(value)) return null;
+    if (Object.getPrototypeOf(value) !== Array.prototype) return null;
     if (Object.getOwnPropertySymbols(value).length > 0) return null;
     const descriptors = Object.getOwnPropertyDescriptors(value);
     const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
@@ -182,10 +186,15 @@ function safeTimestamp(value: unknown): value is string {
 }
 
 function cloneOwner(value: unknown): UnifiedSearchOwner | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const owner = value as Record<string, unknown>;
+  const owner = exactDataRecord(
+    value,
+    ['kind', 'stationId', 'tenantId', 'projectionId'],
+    ['kind'],
+  );
+  if (!owner) return null;
   if (
     owner.kind === 'station' &&
+    !Object.hasOwn(owner, 'projectionId') &&
     safeText(owner.stationId, UNIFIED_SEARCH_LIMITS.idBytes) &&
     (owner.tenantId === undefined ||
       safeText(owner.tenantId, UNIFIED_SEARCH_LIMITS.idBytes))
@@ -200,6 +209,8 @@ function cloneOwner(value: unknown): UnifiedSearchOwner | null {
   }
   if (
     owner.kind === 'console-projection' &&
+    !Object.hasOwn(owner, 'stationId') &&
+    !Object.hasOwn(owner, 'tenantId') &&
     safeText(owner.projectionId, UNIFIED_SEARCH_LIMITS.idBytes)
   ) {
     return { kind: 'console-projection', projectionId: owner.projectionId };
@@ -563,31 +574,49 @@ export class UnifiedSearchService {
   private readonly continuationKey = randomBytes(32);
 
   constructor(providers: readonly UnifiedSearchProvider[]) {
-    if (
-      providers.length < 1 ||
-      providers.length > UNIFIED_SEARCH_LIMITS.providers
-    ) {
+    const providerValues = denseDataArray(
+      providers,
+      UNIFIED_SEARCH_LIMITS.providers,
+    );
+    if (!providerValues || providerValues.length < 1) {
       throw new TypeError(
         `Unified search requires 1 to ${UNIFIED_SEARCH_LIMITS.providers} providers`,
       );
     }
     const ids = new Set<string>();
     this.providers = Object.freeze(
-      providers.map((provider) => {
+      providerValues.map((providerValue) => {
         try {
-          const descriptor = provider.descriptor;
+          const provider = exactDataRecord(
+            providerValue,
+            ['descriptor', 'search'],
+            ['descriptor', 'search'],
+          );
+          const descriptor = exactDataRecord(
+            provider?.descriptor,
+            ['id', 'version', 'owner', 'kinds'],
+            ['id', 'version', 'owner', 'kinds'],
+          );
           const owner = cloneOwner(descriptor?.owner);
+          const kinds = denseDataArray(descriptor?.kinds, RESULT_KINDS.size);
+          const search = provider?.search;
           if (
+            !provider ||
             !descriptor ||
+            typeof descriptor.id !== 'string' ||
             !PROVIDER_ID.test(descriptor.id) ||
             !safeText(descriptor.version, 64) ||
             !owner ||
-            !Array.isArray(descriptor.kinds) ||
-            descriptor.kinds.length < 1 ||
-            descriptor.kinds.length > RESULT_KINDS.size ||
-            !descriptor.kinds.every((kind) => RESULT_KINDS.has(kind)) ||
-            new Set(descriptor.kinds).size !== descriptor.kinds.length ||
-            typeof provider.search !== 'function' ||
+            !kinds ||
+            kinds.length < 1 ||
+            !kinds.every(
+              (kind) =>
+                typeof kind === 'string' &&
+                RESULT_KINDS.has(kind as UnifiedSearchResultKind),
+            ) ||
+            new Set(kinds).size !== kinds.length ||
+            typeof search !== 'function' ||
+            utilTypes.isProxy(search) ||
             ids.has(descriptor.id)
           ) {
             throw new TypeError(
@@ -595,14 +624,17 @@ export class UnifiedSearchService {
             );
           }
           ids.add(descriptor.id);
+          const boundDescriptor = Object.freeze({
+            id: descriptor.id,
+            version: descriptor.version,
+            owner: Object.freeze(owner),
+            kinds: Object.freeze([
+              ...kinds,
+            ]) as readonly UnifiedSearchResultKind[],
+          });
           const bound: BoundProvider = {
-            descriptor: Object.freeze({
-              id: descriptor.id,
-              version: descriptor.version,
-              owner: Object.freeze(owner),
-              kinds: Object.freeze([...descriptor.kinds]),
-            }),
-            search: provider.search.bind(provider),
+            descriptor: boundDescriptor,
+            search: search.bind(Object.freeze({ descriptor: boundDescriptor })),
           };
           return Object.freeze(bound);
         } catch (error) {
@@ -715,15 +747,23 @@ export class UnifiedSearchService {
       ...response,
       state: 'partial',
       results: [],
-      sources: sources.map((source) =>
-        source.state === 'available'
-          ? {
-              ...source,
-              state: 'partial' as const,
-              reason: 'aggregate-byte-limit',
-            }
-          : source,
-      ),
+      sources: sources.map((source, index) => {
+        if (settled[index]!.results.length === 0) return source;
+        const priorReason = PROVIDER_REASONS.has(
+          source.reason as UnifiedSearchProviderReason,
+        )
+          ? (source.reason as UnifiedSearchProviderReason)
+          : undefined;
+        return {
+          ...source,
+          state: 'partial' as const,
+          reason: 'aggregate-byte-limit' as const,
+          priorCondition: {
+            state: source.state,
+            ...(priorReason ? { reason: priorReason } : {}),
+          },
+        };
+      }),
     };
   }
 

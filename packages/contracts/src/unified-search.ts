@@ -160,6 +160,11 @@ export interface UnifiedSearchSourceState {
     | 'provider-timeout-or-error'
     | 'search-cancelled';
   continuation?: string;
+  /** Source condition before the aggregate dropped accepted results for its cap. */
+  priorCondition?: {
+    state: UnifiedSearchProviderPage['state'];
+    reason?: UnifiedSearchProviderReason;
+  };
 }
 
 export type UnifiedSearchResponseState =
