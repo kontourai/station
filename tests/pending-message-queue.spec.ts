@@ -224,7 +224,7 @@ test.describe('Pending message queue (#613)', () => {
     // follow-up is committed with Enter (`:637-651`). So the opening turn goes
     // through the button and every enqueue below goes through the key — which
     // is also what a person does.
-    const sendButton = page.getByRole('button', { name: 'Send' });
+    const sendButton = page.getByRole('button', { name: 'Send', exact: true });
 
     // Start a turn — the mock server acks foreground execution immediately,
     // but never emits turn.completed until we tell it to, so the session
