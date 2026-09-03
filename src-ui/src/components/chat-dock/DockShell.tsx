@@ -44,6 +44,10 @@ export function DockShell({
   const regionModel = useRegionModelOptional();
   const occupant =
     regionId && regionModel ? regionModel.regions[regionId].occupant : 'chat';
+  const landmarkLabel =
+    occupant === 'chat'
+      ? 'Dock'
+      : (regionModel?.surfaces.get(occupant ?? '')?.title ?? 'Dock');
   const chrome = useDockShellChrome({
     publishesDockSlotClearance: true,
     // `DockShell` owns the region maximize command, and only the shell
@@ -68,14 +72,11 @@ export function DockShell({
     <section
       id={occupant === 'chat' ? 'chat-dock' : undefined}
       data-region={renderedRegion}
-      // A landmark region (station#4460 review L2): the per-occupant
-      // `aria-label`s `.dock-slot` used to carry ("Home dock"/"Activity
-      // dock") don't apply once the shell — not the occupant — owns the box.
-      // "Dock" names the shell itself, not whichever occupant is docked;
-      // `DockOccupantPicker`'s "Docked pane: X" trigger names the occupant.
-      // `<section>` with an accessible name carries an implicit `region`
-      // role — no explicit `role` needed (biome a11y/useSemanticElements).
-      aria-label="Dock"
+      // Chat keeps the parity-pinned "Dock" landmark. A second shell needs a
+      // distinct accessible name, so a non-Chat region uses its registered
+      // surface title (#928). `<section>` with an accessible name carries an
+      // implicit `region` role — no explicit role is needed.
+      aria-label={landmarkLabel}
       className={`chat-dock ${!isPaneOpen && !chrome.isCollapsedDragPreview ? 'is-collapsed' : ''} ${isPaneMaximized ? 'is-maximized' : ''} ${chrome.isDragging ? 'is-dragging' : ''} chat-dock--${renderedRegion}`}
       style={
         isSidePanel

@@ -11,10 +11,6 @@
  */
 
 import {
-  WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-  WORKSPACE_ACTIVITY_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-activity-pane';
-import {
   WORKSPACE_HOME_PANE_DESCRIPTOR,
   WORKSPACE_HOME_PANE_INSTANCE,
 } from '@kontourai/station-contracts/workspace-home-pane';
@@ -182,10 +178,22 @@ async function placeChatRight() {
     expect(document.querySelector('.chat-dock')).not.toBeNull(),
   );
   fireEvent.click(
-    screen.getByRole('button', { name: 'Place Chat in Right region' }),
+    screen.getByRole('button', { name: 'Choose a surface for Right region' }),
+  );
+  fireEvent.click(
+    screen.getByRole('menuitemradio', { name: 'Place Chat here' }),
   );
   await waitFor(() =>
     expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
+  );
+}
+
+function chooseChatForEmptyRight() {
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Choose a surface for Right region' }),
+  );
+  fireEvent.click(
+    screen.getByRole('menuitemradio', { name: 'Place Chat here' }),
   );
 }
 
@@ -358,9 +366,7 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
     const dockStateWrite = vi.spyOn(navigationStore, 'setDockState');
     const deviceWrite = vi.spyOn(deviceSettingsStore, 'set');
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Place Chat in Right region' }),
-    );
+    chooseChatForEmptyRight();
     await waitFor(() =>
       expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
     );
@@ -402,9 +408,7 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
     act(() => navigationStore.collapseMaximizedDock());
     expect(navigationStore.lastDockMaximized).toBe(true);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Place Chat in Right region' }),
-    );
+    chooseChatForEmptyRight();
     await waitFor(() =>
       expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
     );
@@ -423,9 +427,7 @@ describe('the region model is the dock writer (station#928 step 3b)', () => {
     );
     const dockStateWrite = vi.spyOn(navigationStore, 'setDockState');
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Place Chat in Right region' }),
-    );
+    chooseChatForEmptyRight();
     await waitFor(() =>
       expect(document.querySelector('.chat-dock--right')).not.toBeNull(),
     );
@@ -554,117 +556,5 @@ describe('every ambient occupant gets the full dock chrome (station#4460)', () =
       expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
     });
     expectFullDockControls('Home');
-  });
-
-  test('Activity, docked, has the SAME controls the shared ChatDockHeader gives Chat', async () => {
-    const action = await dockedAction();
-    act(() => {
-      action.dockPane(
-        WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-        WORKSPACE_ACTIVITY_PANE_INSTANCE,
-      );
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-activity-occupant')).not.toBeNull();
-    });
-    expectFullDockControls('Activity');
-  });
-});
-
-/**
- * These two describe blocks switch Home → Activity, not Chat → Home: Chat's
- * maximize control belongs to the real `ChatDockHeader` rendered by the
- * (heavy, unmocked-here) `ChatWorkspacePane`, but Home and Activity both
- * render through the exact same shared `ChatDockHeader` this file CAN mount
- * with the ambient host's existing mocks. `DockShell` — the thing actually
- * under test — cannot tell Home and Activity apart from Chat: it is the same
- * persistent instance for all three, so proving it survives a Home→Activity
- * switch proves the general claim (any occupant, not case-by-case).
- */
-describe('maximize state survives an occupant switch (station#4460)', () => {
-  test('maximizing while Home is docked, then switching to Activity, stays maximized with a restore control reachable', async () => {
-    const action = await dockedAction();
-    act(() => {
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      );
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
-    });
-
-    fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
-    await waitFor(() => {
-      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull();
-    });
-
-    act(() => {
-      action.dockPane(
-        WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-        WORKSPACE_ACTIVITY_PANE_INSTANCE,
-      );
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-activity-occupant')).not.toBeNull();
-    });
-
-    // The trap this pins: a maximized non-chat occupant with no way back.
-    // The shell stayed maximized (it never remounted — DockShell survives
-    // the occupant switch) AND its own header still carries a working
-    // restore control for whichever occupant is now docked.
-    expect(
-      document.querySelector('.chat-dock.is-maximized'),
-      'the dock must remain maximized across the occupant switch',
-    ).not.toBeNull();
-    const restoreControl = screen.getByLabelText('Restore dock region size');
-    fireEvent.click(restoreControl);
-    await waitFor(() => {
-      expect(document.querySelector('.chat-dock.is-maximized')).toBeNull();
-    });
-  });
-});
-
-describe('dock-slot geometry is stable across an occupant switch (station#4460)', () => {
-  test('a maximized height survives switching from Home to Activity with no settings-derived jump', async () => {
-    const action = await dockedAction();
-    act(() => {
-      action.dockPane(
-        WORKSPACE_HOME_PANE_DESCRIPTOR,
-        WORKSPACE_HOME_PANE_INSTANCE,
-      );
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-home-occupant')).not.toBeNull();
-    });
-
-    // Commit a height that does not match the device-setting default (320)
-    // — the exact scenario a settings-derived fallback would have gotten
-    // wrong for a non-chat occupant pre-fix.
-    fireEvent.click(screen.getByLabelText('Expand dock region to workspace'));
-    await waitFor(() => {
-      expect(document.querySelector('.chat-dock.is-maximized')).not.toBeNull();
-    });
-    const maximizedSize =
-      document.documentElement.style.getPropertyValue('--dock-slot-size');
-    expect(maximizedSize).not.toBe('');
-    expect(maximizedSize).not.toBe('320px');
-
-    act(() => {
-      action.dockPane(
-        WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-        WORKSPACE_ACTIVITY_PANE_INSTANCE,
-      );
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId('ambient-activity-occupant')).not.toBeNull();
-    });
-
-    // Single authority: Activity reads the SAME shell instance Home did, so
-    // the published `--dock-slot-size` does not revert to an
-    // Activity-derived fallback the moment it takes the slot.
-    expect(
-      document.documentElement.style.getPropertyValue('--dock-slot-size'),
-    ).toBe(maximizedSize);
   });
 });

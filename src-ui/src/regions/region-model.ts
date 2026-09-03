@@ -41,6 +41,27 @@ export function chatRegion(layout: RegionLayout): DockRegionId | undefined {
   return occupiedDockRegion(layout, 'chat');
 }
 
+export function foldedDockRegion(
+  layout: RegionLayout,
+  lastShownRegion: RegionId | null,
+): DockRegionId | undefined {
+  const visibleOccupied = DOCK_REGION_IDS.filter(
+    (id) => layout[id].occupant !== null && layout[id].visible,
+  );
+  if (
+    lastShownRegion &&
+    DOCK_REGION_IDS.includes(lastShownRegion as DockRegionId) &&
+    visibleOccupied.includes(lastShownRegion as DockRegionId)
+  ) {
+    return lastShownRegion as DockRegionId;
+  }
+  return (
+    visibleOccupied[0] ??
+    chatRegion(layout) ??
+    DOCK_REGION_IDS.find((id) => layout[id].occupant !== null)
+  );
+}
+
 export function seedRegionLayoutFromDock(
   settings: DockSeedSettings,
   placement: DockRegionId,
@@ -60,34 +81,59 @@ export function syncRegionLayoutFromDock(
   isDockOpen: boolean,
   placement: DockRegionId,
 ): RegionLayout {
-  let next = updateRegion(layout, 'bottom', {
-    size: settings.chatDockHeight,
-  });
-  next = updateRegion(next, 'left', { size: settings.chatDockWidth });
-  next = updateRegion(next, 'right', { size: settings.chatDockWidth });
-  for (const id of REGION_IDS) {
-    if (id !== placement && next[id].occupant === 'chat') {
-      next = updateRegion(next, id, { visible: false, occupant: null });
+  let next = layout;
+  for (const id of DOCK_REGION_IDS) {
+    if (next[id].occupant === null || next[id].occupant === 'chat') {
+      next = updateRegion(next, id, {
+        size:
+          id === 'bottom' ? settings.chatDockHeight : settings.chatDockWidth,
+      });
     }
   }
-  return updateRegion(next, placement, {
-    visible: isDockOpen,
-    occupant: 'chat',
-  });
+
+  const currentChatRegion = chatRegion(next);
+  if (next[placement].occupant === null) {
+    return placeSurface(next, 'chat', placement, isDockOpen);
+  }
+  if (next[placement].occupant === 'chat') {
+    return updateRegion(next, placement, { visible: isDockOpen });
+  }
+  if (currentChatRegion) {
+    return updateRegion(next, currentChatRegion, { visible: isDockOpen });
+  }
+
+  const freeRegion = (['bottom', 'left', 'right'] as const).find(
+    (id) => next[id].occupant === null,
+  );
+  return freeRegion
+    ? updateRegion(next, freeRegion, {
+        visible: isDockOpen,
+        occupant: 'chat',
+      })
+    : next;
 }
 
 export function placeSurface(
   layout: RegionLayout,
   surfaceId: string,
   regionId: RegionId,
+  visible = true,
 ): RegionLayout {
-  let next = layout;
-  for (const id of REGION_IDS) {
-    if (id !== regionId && next[id].occupant === surfaceId) {
-      next = updateRegion(next, id, { occupant: null, visible: false });
-    }
+  const previousRegion = REGION_IDS.find(
+    (id) => id !== regionId && layout[id].occupant === surfaceId,
+  );
+  const displacedSurface = layout[regionId].occupant;
+  const next = updateRegion(layout, regionId, {
+    occupant: surfaceId,
+    visible,
+  });
+  if (previousRegion) {
+    return updateRegion(next, previousRegion, {
+      occupant: displacedSurface,
+      ...(displacedSurface === null ? { visible: false } : {}),
+    });
   }
-  return updateRegion(next, regionId, { occupant: surfaceId, visible: true });
+  return next;
 }
 
 export function dockMirrorDiff(
@@ -117,7 +163,8 @@ export function dockMirrorDiff(
     result.visible = next[placement].visible;
   const sizes: Partial<Record<RegionId, number>> = {};
   for (const id of DOCK_REGION_IDS)
-    if (next[id].size !== previous[id].size) sizes[id] = next[id].size;
+    if (next[id].occupant === 'chat' && next[id].size !== previous[id].size)
+      sizes[id] = next[id].size;
   if (Object.keys(sizes).length) result.size = sizes;
   return result;
 }
@@ -145,6 +192,7 @@ export interface RegisteredSurface {
   title: string;
   icon: string;
   shortcut: SurfaceShortcut;
+  defaultRegion: DockRegionId;
   /** Repository-relative renderer source, used by the architecture ratchet. */
   sourceFile: string;
 }
@@ -168,7 +216,20 @@ export const REGION_SURFACE_REGISTRY = createSurfaceRegistry([
     title: 'Chat',
     icon: 'chat',
     shortcut: { id: 'dock.toggle', key: 'd', modifiers: ['cmd'] },
+    defaultRegion: 'bottom',
     sourceFile: 'src-ui/src/components/chat-dock/ChatDock.tsx',
+  },
+  {
+    id: 'activity',
+    title: 'Activity',
+    icon: 'activity',
+    shortcut: {
+      id: 'activity.toggle',
+      key: 'a',
+      modifiers: ['cmd', 'shift'],
+    },
+    defaultRegion: 'right',
+    sourceFile: 'src-ui/src/views/activity/ActivityWorkspacePane.tsx',
   },
 ]);
 

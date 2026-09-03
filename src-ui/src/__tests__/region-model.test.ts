@@ -4,11 +4,13 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   DEFAULT_DEVICE_REGION_LAYOUT,
   dockMirrorDiff,
+  foldedDockRegion,
   isRegionAvailable,
   occupiedDockRegion,
   placeSurface,
   REGION_SURFACE_REGISTRY,
   seedRegionLayoutFromDock,
+  syncRegionLayoutFromDock,
   updateRegion,
 } from '../regions/region-model';
 
@@ -66,15 +68,73 @@ describe('region model', () => {
     });
   });
 
-  test('registers Chat as the only step-1 surface', () => {
+  test('the coarse fold chooses the most recently shown occupied region and falls back to Chat', () => {
+    const withActivity = placeSurface(
+      DEFAULT_DEVICE_REGION_LAYOUT,
+      'activity',
+      'right',
+    );
+    expect(foldedDockRegion(withActivity, 'right')).toBe('right');
+
+    const hidden = updateRegion(withActivity, 'right', { visible: false });
+    expect(foldedDockRegion(hidden, 'right')).toBe('bottom');
+
+    const allHidden = updateRegion(hidden, 'bottom', { visible: false });
+    expect(foldedDockRegion(allHidden, null)).toBe('bottom');
+  });
+
+  test('registers Chat and Activity with their default regions', () => {
     expect([...REGION_SURFACE_REGISTRY.values()]).toEqual([
       expect.objectContaining({
         id: 'chat',
         title: 'Chat',
         icon: 'chat',
         shortcut: { id: 'dock.toggle', key: 'd', modifiers: ['cmd'] },
+        defaultRegion: 'bottom',
+      }),
+      expect.objectContaining({
+        id: 'activity',
+        title: 'Activity',
+        icon: 'activity',
+        shortcut: {
+          id: 'activity.toggle',
+          key: 'a',
+          modifiers: ['cmd', 'shift'],
+        },
+        defaultRegion: 'right',
       }),
     ]);
+  });
+
+  test('placing an already-mounted surface swaps occupants without moving region sizes', () => {
+    const withActivity = placeSurface(
+      DEFAULT_DEVICE_REGION_LAYOUT,
+      'activity',
+      'right',
+    );
+    const swapped = placeSurface(withActivity, 'activity', 'bottom');
+
+    expect(swapped.bottom).toEqual({
+      visible: true,
+      size: 320,
+      occupant: 'activity',
+    });
+    expect(swapped.right).toEqual({
+      visible: true,
+      size: 400,
+      occupant: 'chat',
+    });
+  });
+
+  test('placing a homeless surface vacates the displaced occupant', () => {
+    const placed = placeSurface(
+      DEFAULT_DEVICE_REGION_LAYOUT,
+      'activity',
+      'bottom',
+    );
+
+    expect(placed.bottom.occupant).toBe('activity');
+    expect(occupiedDockRegion(placed, 'chat')).toBeUndefined();
   });
 
   test('seeds the in-memory model from resolved navigation placement and persisted sizes', () => {
@@ -119,5 +179,53 @@ describe('region model', () => {
       placement: 'right',
       visible: true,
     });
+  });
+
+  test('sync preserves the size of a region occupied by a second surface', () => {
+    const withActivity = updateRegion(DEFAULT_DEVICE_REGION_LAYOUT, 'right', {
+      occupant: 'activity',
+      visible: true,
+      size: 517,
+    });
+    const synced = syncRegionLayoutFromDock(
+      withActivity,
+      { chatDockHeight: 333, chatDockWidth: 444 },
+      false,
+      'bottom',
+    );
+
+    expect(synced.right).toEqual({
+      occupant: 'activity',
+      visible: true,
+      size: 517,
+    });
+    expect(synced.bottom.visible).toBe(false);
+  });
+
+  test('sync never evicts a second occupant when dockMode names its region', () => {
+    const withActivity = updateRegion(DEFAULT_DEVICE_REGION_LAYOUT, 'right', {
+      occupant: 'activity',
+      visible: true,
+    });
+    const synced = syncRegionLayoutFromDock(
+      withActivity,
+      { chatDockHeight: 320, chatDockWidth: 400 },
+      true,
+      'right',
+    );
+
+    expect(synced.right.occupant).toBe('activity');
+    expect(synced.bottom.occupant).toBe('chat');
+    expect(synced.bottom.visible).toBe(true);
+  });
+
+  test('mirror ignores size changes from a region Activity occupies', () => {
+    const before = updateRegion(DEFAULT_DEVICE_REGION_LAYOUT, 'right', {
+      occupant: 'activity',
+      visible: true,
+    });
+    const after = updateRegion(before, 'right', { size: 517 });
+
+    expect(dockMirrorDiff(before, after)).toEqual({});
   });
 });

@@ -59,6 +59,7 @@ describe('useDockShellChrome reads its open state from the region model', () => 
   beforeEach(() => {
     harness.isDockOpen = true;
     harness.dockMode = 'bottom';
+    harness.setDeviceSetting.mockReset();
   });
 
   test('follows the region model when it diverges from navigation', () => {
@@ -119,6 +120,26 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(result.current.regions.right.occupant).toBe('fixture');
     expect(result.current.regions.right.visible).toBe(true);
     expect(result.current.regions.bottom.visible).toBe(false);
+  });
+
+  test('an inbound dockMode naming Activity does not evict it or move Chat over it', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result, rerender } = renderHook(() => useRegionModel(), {
+      wrapper,
+    });
+    act(() => result.current.placeSurface('activity', 'right'));
+    harness.dockMode = 'right';
+    rerender();
+
+    expect(result.current.regions.right.occupant).toBe('activity');
+    expect(result.current.regions.bottom.occupant).toBe('chat');
   });
 
   // Step 3b makes the region model authoritative; navigation is its durable
@@ -278,6 +299,41 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(result.current.model.regions.right.size).toBe(410);
     expect(result.current.model.regions.left.size).toBe(400);
     expect(result.current.model.regions.bottom.size).toBe(320);
+  });
+
+  test('dragging an Activity region never mirrors its width into Chat settings', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({
+        chrome: useDockShellChrome({
+          publishesDockSlotClearance: false,
+          registersDockShortcuts: false,
+          regionId: 'right',
+        }),
+        model: useRegionModel(),
+      }),
+      { wrapper },
+    );
+    act(() => result.current.model.placeSurface('activity', 'right'));
+    harness.setDeviceSetting.mockClear();
+    act(() => {
+      result.current.chrome.setIsDragging(true);
+      result.current.chrome.setDockWidth(517);
+    });
+    act(() => result.current.chrome.setIsDragging(false));
+
+    expect(result.current.model.regions.right.size).toBe(517);
+    expect(harness.setDeviceSetting).not.toHaveBeenCalledWith(
+      'chatDockWidth',
+      517,
+    );
   });
 
   test('a side shell folded to the bottom persists its drag as a bottom height', () => {

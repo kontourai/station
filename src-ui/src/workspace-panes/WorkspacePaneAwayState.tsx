@@ -4,13 +4,11 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useWorkspacePaneDockAction } from './WorkspacePaneDockContext';
 
 /**
- * The route's away state while its pane occupies the ambient dock
- * (archive#4090). Before this, a route whose pane was docked rendered it
- * AGAIN — two live co-mounted placements of one occurrence ( disclosed
- * behavior). The away state is honest chrome riding the shared `Empty`
- * primitive: the pane's name, where it is, and one action that removes it
- * from the dock (restoring the dock's baseline occupant, Chat) so the route
- * renders its pane again.
+ * The route's away state while its pane occupies another shell placement
+ * (archive#4090, #928). Before this, a route whose pane was docked rendered
+ * it AGAIN — two live co-mounted placements of one occurrence. The away
+ * state names where the pane is; the legacy ambient placement also offers
+ * its host-owned action to return the pane to the route.
  *
  * Rendered only when the caller derived "away" through
  * `isAmbientDockOccupant` — the same published host state the dock renders
@@ -27,20 +25,32 @@ import { useWorkspacePaneDockAction } from './WorkspacePaneDockContext';
  * the refusal that keeps a phone from rendering this as the viewport's only
  * content in the first place.
  */
-export function WorkspacePaneAwayState({ paneName }: { paneName: string }) {
+export function WorkspacePaneAwayState({
+  paneName,
+  regionName,
+}: {
+  paneName: string;
+  regionName?: string;
+}) {
   const dock = useWorkspacePaneDockAction();
-  // Compatibility action for the route-owned away surface. // #928 step 5
   const isMobile = useIsMobile();
-  if (!dock) return null;
+  if (!dock && !regionName) return null;
+  const location = regionName ?? (isMobile ? 'the bottom bar' : 'the dock');
   return (
     <Empty
-      label={`${paneName} is in ${isMobile ? 'the bottom bar' : 'the dock'}`}
+      label={`${paneName} is in ${location}`}
       description={
-        isMobile
-          ? 'This pane is currently docked in the bottom bar.'
-          : 'This pane is currently docked at the edge of your workspace.'
+        regionName
+          ? `This pane is currently open in the ${regionName.toLowerCase()}.`
+          : isMobile
+            ? 'This pane is currently docked in the bottom bar.'
+            : 'This pane is currently docked at the edge of your workspace.'
       }
-      action={<Button onClick={dock.undockOccupant}>Bring it back here</Button>}
+      action={
+        dock && !regionName ? (
+          <Button onClick={dock.undockOccupant}>Bring it back here</Button>
+        ) : undefined
+      }
     />
   );
 }

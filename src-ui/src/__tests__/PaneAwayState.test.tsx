@@ -27,6 +27,26 @@ const selection = vi.hoisted(() => ({
     },
   } as unknown,
 }));
+const regionOccupant = vi.hoisted(() => ({ activity: false }));
+
+vi.mock('../contexts/RegionModelContext', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../contexts/RegionModelContext')>();
+  return {
+    ...actual,
+    useRegionModelOptional: () =>
+      regionOccupant.activity
+        ? {
+            regions: {
+              main: { visible: true, size: 0, occupant: null },
+              left: { visible: false, size: 400, occupant: null },
+              right: { visible: true, size: 400, occupant: 'activity' },
+              bottom: { visible: true, size: 320, occupant: 'chat' },
+            },
+          }
+        : null,
+  };
+});
 
 vi.mock('../workspace-panes/workspacePaneRendererSelection', () => ({
   selectClientWorkspacePaneRenderer: () => selection.result,
@@ -82,6 +102,7 @@ import {
 
 beforeEach(() => {
   mobileFlag.isMobile = false;
+  regionOccupant.activity = false;
 });
 
 function publishedAction(
@@ -162,6 +183,17 @@ test('Activity renders its pane when the occupant is someone else or absent', ()
   renderActivity(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
   expect(screen.queryByText('Activity is in the dock')).toBeNull();
   expect(screen.getByTestId('activity-surface')).not.toBeNull();
+});
+
+test('Activity route points at its occupied region without mounting a second pane', () => {
+  regionOccupant.activity = true;
+  renderActivity(publishedAction(WORKSPACE_HOME_PANE_INSTANCE.instanceId));
+
+  expect(screen.getByText('Activity is in Right region')).not.toBeNull();
+  expect(screen.queryByTestId('activity-surface')).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'Bring it back here' }),
+  ).toBeNull();
 });
 
 test("Activity's away action asks the HOST to undock", () => {

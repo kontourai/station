@@ -1,8 +1,4 @@
-import {
-  isCanonicalWorkspaceActivityPaneInstance,
-  WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-  WORKSPACE_ACTIVITY_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
 import {
   createWorkspaceChatPaneInstance,
   isCanonicalWorkspaceChatPaneInstance,
@@ -62,11 +58,6 @@ export const AMBIENT_DOCK_RENDERABLE_PANES: readonly {
     descriptor: WORKSPACE_HOME_PANE_DESCRIPTOR,
     isCanonicalInstance: isCanonicalWorkspaceHomePaneInstance,
     canonicalInstance: () => WORKSPACE_HOME_PANE_INSTANCE,
-  },
-  {
-    descriptor: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-    isCanonicalInstance: isCanonicalWorkspaceActivityPaneInstance,
-    canonicalInstance: () => WORKSPACE_ACTIVITY_PANE_INSTANCE,
   },
 ];
 

@@ -11,7 +11,14 @@
  * `DockShell` → `useDockShellChrome` is the shipped path.
  */
 
-import { act, cleanup, render, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { RegionShells } from '../../app-shell/RegionShells';
@@ -503,6 +510,44 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     );
   });
 
+  test('Chat and Activity occupy independent desktop regions with distinct shell ownership', async () => {
+    seedPlacement('bottom', 'open');
+    await renderShellsSettled();
+    act(() => currentRegionModel().placeSurface('activity', 'right'));
+
+    await waitFor(() => expect(shells()).toHaveLength(2));
+    expect(document.querySelectorAll('#chat-dock')).toHaveLength(1);
+    expect(
+      document.querySelectorAll('section[aria-label="Dock"]'),
+    ).toHaveLength(1);
+    expect(
+      document.querySelectorAll('section[aria-label="Activity"]'),
+    ).toHaveLength(1);
+    expect(shortcutEntries('dock.maximize')).toHaveLength(1);
+    await waitFor(() =>
+      expect(clearance('--region-bottom-size')).toBe('320px'),
+    );
+    await waitFor(() => expect(clearance('--region-right-size')).toBe('400px'));
+
+    const chatShell = document.querySelector<HTMLElement>('#chat-dock');
+    const activityShell = document.querySelector<HTMLElement>(
+      'section[aria-label="Activity"]',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Change Bottom region surface' }),
+    );
+    fireEvent.click(
+      screen.getByRole('menuitemradio', { name: 'Swap in Activity' }),
+    );
+    await waitFor(() => expect(chatShell?.dataset.region).toBe('right'));
+    expect(activityShell?.dataset.region).toBe('bottom');
+    expect(shells()).toHaveLength(2);
+    expect(document.querySelector('#chat-dock')).toBe(chatShell);
+    expect(document.querySelector('section[aria-label="Activity"]')).toBe(
+      activityShell,
+    );
+  });
+
   // `data-region` names the region the shell RENDERS in, because the desktop
   // grid keys its tracks on it (index.css `.app__main:has(> [data-region])`).
   // The persisted region stays `right` in the model; the fold is what the
@@ -525,6 +570,25 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
       clearance('--dock-slot-size'),
     );
     expect(clearance('--region-right-size')).toBe('');
+
+    act(() => currentRegionModel().placeSurface('activity', 'right'));
+    await waitFor(() => expect(shells()).toHaveLength(1));
+    expect(
+      document.querySelector('section[aria-label="Activity"]'),
+    ).not.toBeNull();
+    expect(document.querySelectorAll('#chat-dock')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Show Chat' }));
+    await waitFor(() =>
+      expect(document.querySelectorAll('#chat-dock')).toHaveLength(1),
+    );
+    expect(shells()).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Show Activity' }));
+    await waitFor(() =>
+      expect(
+        document.querySelector('section[aria-label="Activity"]'),
+      ).not.toBeNull(),
+    );
+    expect(shells()).toHaveLength(1);
   });
 
   // A wide coarse-pointer device (landscape tablet) keeps the desktop grid ON
@@ -550,5 +614,10 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
     expect(currentRegionModel().regions.right.occupant).toBe('chat');
     expect(shell.dataset.region).toBe('bottom');
     expect(shell.classList.contains('chat-dock--bottom')).toBe(true);
+    act(() => currentRegionModel().placeSurface('activity', 'left'));
+    await waitFor(() => expect(shells()).toHaveLength(1));
+    expect(
+      document.querySelector('section[aria-label="Activity"]'),
+    ).not.toBeNull();
   });
 });

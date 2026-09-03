@@ -302,16 +302,20 @@ export function useDockShellChrome({
   const setIsDragging = useCallback(
     (value: boolean) => {
       if (draggingRef.current && !value) {
-        // The size persists to the region that was SHOWN, not the shell's
-        // own: a side shell folded to the bottom (useIsMobile.ts
-        // `effectivePlacement`) dragged a height, and its region's size is a
-        // width.
-        if (effectiveDockSlotPlacement === 'bottom') {
-          regionModel?.setRegion('bottom', {
+        // Chat keeps the legacy folded-bottom height contract. A non-Chat
+        // shell retains its own region axis so Activity cannot rewrite the
+        // Chat region or its mirrored device setting through the phone fold
+        // (#928).
+        const persistedRegion =
+          regionId && shellOccupant !== 'chat'
+            ? regionId
+            : effectiveDockSlotPlacement;
+        if (persistedRegion === 'bottom') {
+          regionModel?.setRegion(persistedRegion, {
             size: Math.round(clampDockHeight(dockHeightRef.current)),
           });
         } else {
-          regionModel?.setRegion(effectiveDockSlotPlacement, {
+          regionModel?.setRegion(persistedRegion, {
             size: Math.round(clampDockWidth(dockWidthRef.current)),
           });
         }
@@ -319,7 +323,7 @@ export function useDockShellChrome({
       draggingRef.current = value;
       setIsDraggingState(value);
     },
-    [effectiveDockSlotPlacement, regionModel],
+    [effectiveDockSlotPlacement, regionId, regionModel, shellOccupant],
   );
   const [previousDockHeight, setPreviousDockHeight] = useState(dockHeight);
   const [previousDockOpen, setPreviousDockOpen] = useState(true);
@@ -338,6 +342,17 @@ export function useDockShellChrome({
     return parseInt(raw, 10) || DOCK_COLLAPSED_HEIGHT;
   }, [isMobile]);
 
+  const setShellDockState = useCallback(
+    (open: boolean, maximized: boolean) => {
+      if (regionId && regionModel && shellOccupant !== 'chat') {
+        regionModel.setRegion(regionId, { visible: open });
+        return;
+      }
+      setDockState(open, maximized);
+    },
+    [regionId, regionModel, setDockState, shellOccupant],
+  );
+
   const applyDockSnap = useCallback(
     (next: DockSnap) => {
       setDockSnap(next);
@@ -348,14 +363,14 @@ export function useDockShellChrome({
         collapsedHeight,
       });
       if (next === 'collapsed') {
-        setDockState(false, false);
+        setShellDockState(false, false);
       } else if (next === 'full') {
         setPreviousDockHeight(dockHeight);
         setDockHeight(px);
-        setDockState(true, true);
+        setShellDockState(true, true);
       } else {
         setDockHeight(px);
-        setDockState(true, false);
+        setShellDockState(true, false);
       }
     },
     [
@@ -363,7 +378,7 @@ export function useDockShellChrome({
       collapsedHeight,
       dockHeight,
       setDockHeight,
-      setDockState,
+      setShellDockState,
       visualViewport.height,
     ],
   );
@@ -372,9 +387,9 @@ export function useDockShellChrome({
     (height: number) => {
       setDockHeight(height);
       setPreviousDockHeight(height);
-      setDockState(true, false);
+      setShellDockState(true, false);
     },
-    [setDockHeight, setDockState],
+    [setDockHeight, setShellDockState],
   );
 
   const commitDockPlacement = useCallback(
@@ -518,7 +533,7 @@ export function useDockShellChrome({
     direction: 'horizontal',
     fromLeft: effectiveDockSlotPlacement === 'left',
     onDragStart: () => {
-      if (!readerIsDockOpen) setDockState(true, false);
+      if (!readerIsDockOpen) setShellDockState(true, false);
     },
   });
 

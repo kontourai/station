@@ -4,6 +4,8 @@ import {
 } from '@kontourai/station-contracts/workspace-activity-pane';
 import { ErrorState } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
+import { useRegionModelOptional } from '../contexts/RegionModelContext';
+import { occupiedDockRegion, regionLabel } from '../regions/region-model';
 import { WorkspacePaneAwayState } from '../workspace-panes/WorkspacePaneAwayState';
 import {
   isAmbientDockOccupant,
@@ -43,6 +45,10 @@ export function ActivityView({
 }) {
   const config = useConfig();
   const dock = useWorkspacePaneDockAction();
+  const regionModel = useRegionModelOptional();
+  const activityRegion = regionModel
+    ? occupiedDockRegion(regionModel.regions, 'activity')
+    : undefined;
   const selection = selectClientWorkspacePaneRenderer(
     WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
     {
@@ -59,6 +65,14 @@ export function ActivityView({
     return (
       <WorkspacePaneAwayState
         paneName={WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.name}
+      />
+    );
+  }
+  if (activityRegion) {
+    return (
+      <WorkspacePaneAwayState
+        paneName={WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.name}
+        regionName={`${regionLabel(activityRegion)} region`}
       />
     );
   }
