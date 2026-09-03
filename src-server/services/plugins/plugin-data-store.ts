@@ -39,7 +39,7 @@ type StoredRecordState = 'live' | 'tombstone';
 const { DatabaseSync } = require('node:sqlite') as {
   DatabaseSync: new (
     path: string,
-    options?: { timeout?: number },
+    options?: { timeout?: number; open?: boolean },
   ) => {
     exec(sql: string): void;
     prepare(sql: string): {
@@ -47,6 +47,9 @@ const { DatabaseSync } = require('node:sqlite') as {
       get: (...args: unknown[]) => unknown;
       all: (...args: unknown[]) => unknown[];
     };
+    readonly isOpen: boolean;
+    open(): void;
+    location(dbName?: string): string | null;
     close(): void;
   };
 };
@@ -403,8 +406,96 @@ export interface PluginDataStoreOptions {
   /** Host-selected data directory at or beneath `trustedRoot`. */
   directory: string;
   busyTimeoutMs?: number;
+  /** Test seam for a concurrent creator between absent observation and mkdir. */
+  beforeDirectoryCreate?: (directory: string) => void;
+  /** Test seam for substitution after validation and immediately before open. */
+  beforeDatabaseOpen?: () => void;
+  /** Test seam for adversarial substitution immediately after SQLite opens. */
+  afterDatabaseOpen?: () => void;
+  /** Test seam for database/WAL/SHM substitution before WAL activation. */
+  beforeWalOpen?: () => void;
   /** Test seam for a WAL writer between revision-head and payload reads. */
   afterRevisionHeadsRead?: () => void;
+}
+
+function pathEntry(path: string): ReturnType<typeof lstatSync> | undefined {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+}
+
+function assertPhysicalDirectory(path: string, message: string): void {
+  const stat = pathEntry(path);
+  if (!stat || stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error(message);
+  }
+}
+
+function assertPhysicalFileOrAbsent(
+  path: string,
+  message: string,
+  required = false,
+): void {
+  const stat = pathEntry(path);
+  if (
+    (required && !stat) ||
+    (stat && (stat.isSymbolicLink() || !stat.isFile()))
+  ) {
+    throw new Error(message);
+  }
+}
+
+function assertPreparedStorageLocation(
+  trustedRoot: string,
+  directory: string,
+  databasePath: string,
+  databaseRequired = false,
+): void {
+  assertPhysicalDirectory(
+    trustedRoot,
+    'Plugin data trusted root must be a physical directory',
+  );
+  if (realpathSync(trustedRoot) !== trustedRoot) {
+    throw new Error('Plugin data trusted root must be a physical directory');
+  }
+  const fromRoot = relative(trustedRoot, directory);
+  if (
+    isAbsolute(fromRoot) ||
+    fromRoot === '..' ||
+    fromRoot.startsWith(`..${sep}`)
+  ) {
+    throw new Error(
+      'Plugin data directory must remain within its trusted root',
+    );
+  }
+  let current = trustedRoot;
+  for (const component of fromRoot.split(sep).filter(Boolean)) {
+    current = join(current, component);
+    assertPhysicalDirectory(
+      current,
+      'Plugin data directory path must contain only real directories',
+    );
+  }
+  if (realpathSync(directory) !== directory) {
+    throw new Error('Plugin data directory must be a physical directory');
+  }
+  assertPhysicalFileOrAbsent(
+    databasePath,
+    'Plugin data database must not be a symbolic link',
+    databaseRequired,
+  );
+  if (databaseRequired && realpathSync(databasePath) !== databasePath) {
+    throw new Error('Plugin data database must not be a symbolic link');
+  }
+  for (const suffix of ['-wal', '-shm']) {
+    assertPhysicalFileOrAbsent(
+      `${databasePath}${suffix}`,
+      'Plugin data database sidecars must be physical regular files',
+    );
+  }
 }
 
 function prepareDataDirectory(options: PluginDataStoreOptions): string {
@@ -450,7 +541,18 @@ function prepareDataDirectory(options: PluginDataStoreOptions): string {
         );
       }
     } else {
-      mkdirSync(current, { mode: 0o700 });
+      options.beforeDirectoryCreate?.(current);
+      try {
+        mkdirSync(current, { mode: 0o700 });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      }
+      const stat = lstatSync(current);
+      if (stat.isSymbolicLink() || !stat.isDirectory()) {
+        throw new Error(
+          'Plugin data directory path must contain only real directories',
+        );
+      }
     }
   }
   if (realpathSync(directory) !== directory) {
@@ -467,20 +569,40 @@ export class PluginDataStore {
     this.afterRevisionHeadsRead = options.afterRevisionHeadsRead;
     const directory = prepareDataDirectory(options);
     const databasePath = join(directory, 'plugin-data.sqlite');
-    if (existsSync(databasePath) && lstatSync(databasePath).isSymbolicLink()) {
-      throw new Error('Plugin data database must not be a symbolic link');
-    }
+    const trustedRoot = resolve(options.trustedRoot);
     const timeout = Math.max(
       0,
       Math.floor(options.busyTimeoutMs ?? SQLITE_BUSY_TIMEOUT_MS),
     );
-    this.db = new DatabaseSync(databasePath, { timeout });
+    this.db = new DatabaseSync(databasePath, { timeout, open: false });
     try {
+      // Validation brackets the actual SQLite open. The second check observes
+      // substitutions made while the handle opened; the WAL checks repeat the
+      // same boundary before and after SQLite may touch either sidecar.
+      assertPreparedStorageLocation(trustedRoot, directory, databasePath);
+      options.beforeDatabaseOpen?.();
+      assertPreparedStorageLocation(trustedRoot, directory, databasePath);
+      this.db.open();
+      options.afterDatabaseOpen?.();
+      assertPreparedStorageLocation(trustedRoot, directory, databasePath, true);
+      const openedLocation = this.db.location();
+      if (
+        openedLocation === null ||
+        resolve(openedLocation) !== databasePath ||
+        realpathSync(databasePath) !== databasePath
+      ) {
+        throw new Error(
+          'Plugin data database open escaped its trusted physical location',
+        );
+      }
+      options.beforeWalOpen?.();
+      assertPreparedStorageLocation(trustedRoot, directory, databasePath, true);
       this.db.exec(`PRAGMA busy_timeout = ${timeout}`);
       applyWalJournalMode(this.db, {
         store: 'plugin data',
         onUnavailable: 'throw',
       });
+      assertPreparedStorageLocation(trustedRoot, directory, databasePath, true);
       this.db.exec('BEGIN IMMEDIATE');
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS plugin_data (
@@ -525,7 +647,11 @@ export class PluginDataStore {
       } catch {
         // The schema/open failure remains authoritative.
       }
-      this.db.close();
+      try {
+        if (this.db.isOpen) this.db.close();
+      } catch {
+        // The schema/open failure remains authoritative.
+      }
       throw error;
     }
   }

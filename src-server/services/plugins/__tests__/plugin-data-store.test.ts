@@ -1,8 +1,10 @@
 import {
   existsSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   realpathSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -740,6 +742,99 @@ describe('PluginDataStore', () => {
       lstatSync(join(directory, 'plugin-data.sqlite')).isSymbolicLink(),
     ).toBe(true);
   });
+
+  test('refuses a dangling database symlink before SQLite creates its outside target', () => {
+    const directory = root();
+    const target = join(root(), 'outside.sqlite');
+    symlinkSync(target, join(directory, 'plugin-data.sqlite'));
+
+    expect(() => store(directory)).toThrow(
+      'Plugin data database must not be a symbolic link',
+    );
+    expect(
+      lstatSync(join(directory, 'plugin-data.sqlite')).isSymbolicLink(),
+    ).toBe(true);
+    expect(existsSync(target)).toBe(false);
+  });
+
+  test('revalidates a concurrent creator after mkdir reports EEXIST', () => {
+    const trustedRoot = root();
+    const directory = join(trustedRoot, 'nested', 'data');
+    const concurrentCreate = vi.fn(() => {
+      mkdirSync(directory, { recursive: true });
+    });
+
+    const dataStore = new PluginDataStore({
+      trustedRoot,
+      directory,
+      beforeDirectoryCreate: concurrentCreate,
+    });
+    expect(concurrentCreate).toHaveBeenCalledOnce();
+    expect(dataStore.bind(owner).list()).toEqual({
+      kind: 'available',
+      records: [],
+    });
+    dataStore.close();
+  });
+
+  test('rejects database and ancestor substitution between validation and SQLite open', () => {
+    const databaseDirectory = root();
+    const databaseOutside = join(root(), 'outside-database.sqlite');
+    expect(
+      () =>
+        new PluginDataStore({
+          trustedRoot: databaseDirectory,
+          directory: databaseDirectory,
+          beforeDatabaseOpen() {
+            symlinkSync(
+              databaseOutside,
+              join(databaseDirectory, 'plugin-data.sqlite'),
+            );
+          },
+        }),
+    ).toThrow('Plugin data database must not be a symbolic link');
+    expect(existsSync(databaseOutside)).toBe(false);
+
+    const trustedRoot = root();
+    const directory = join(trustedRoot, 'data');
+    mkdirSync(directory);
+    const parked = join(trustedRoot, 'validated-data');
+    const outside = root();
+    expect(
+      () =>
+        new PluginDataStore({
+          trustedRoot,
+          directory,
+          beforeDatabaseOpen() {
+            renameSync(directory, parked);
+            symlinkSync(outside, directory, 'dir');
+          },
+        }),
+    ).toThrow('Plugin data directory path must contain only real directories');
+    expect(existsSync(join(outside, 'plugin-data.sqlite'))).toBe(false);
+  });
+
+  test.each(['-wal', '-shm'])(
+    'rejects a dangling %s sidecar before WAL activation',
+    (suffix) => {
+      const directory = root();
+      const outside = join(root(), `outside${suffix}`);
+      expect(
+        () =>
+          new PluginDataStore({
+            trustedRoot: directory,
+            directory,
+            beforeWalOpen() {
+              symlinkSync(
+                outside,
+                join(directory, `plugin-data.sqlite${suffix}`),
+              );
+            },
+          }),
+      ).toThrow('Plugin data database sidecars must be physical regular files');
+      expect(existsSync(outside)).toBe(false);
+    },
+  );
 
   test('refuses an ancestor symlink beneath the trusted physical root', () => {
     const trustedRoot = root();

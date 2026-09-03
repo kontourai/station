@@ -395,8 +395,10 @@ are bounded before mutation. Caller objects with accessors, symbols, sparse
 arrays, exotic prototypes, or trapping proxies are invalid. Persisted key,
 timestamp, revision, state, and value metadata are type- and byte-preflighted
 before rows are materialized. The host supplies an existing canonical physical
-root; the data directory must stay beneath it, and every intervening component
-plus the database itself refuses symlinks. WAL plus an explicit busy timeout
+root; the data directory must stay beneath it, and every intervening component,
+the database, and its WAL/SHM sidecars are revalidated across SQLite open and
+refuse symlinks. Concurrent directory creation tolerates `EEXIST` only after
+revalidating the resulting physical directory. WAL plus an explicit busy timeout
 serialize Station processes. Invalid persisted JSON, keys, revisions,
 timestamps, state, or byte accounting are corruption, never absence.
 
