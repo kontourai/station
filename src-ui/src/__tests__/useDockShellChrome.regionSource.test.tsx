@@ -94,6 +94,33 @@ describe('useDockShellChrome reads its open state from the region model', () => 
     expect(result.current.chrome.isDockOpen).toBe(false);
   });
 
+  test('an inbound navigation update preserves a second occupied region', () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <RegionModelProvider>{children}</RegionModelProvider>
+      </QueryClientProvider>
+    );
+    const { result, rerender } = renderHook(() => useRegionModel(), {
+      wrapper,
+    });
+
+    act(() =>
+      result.current.setRegion('right', {
+        occupant: 'fixture',
+        visible: true,
+      }),
+    );
+    harness.isDockOpen = false;
+    rerender();
+
+    expect(result.current.regions.right.occupant).toBe('fixture');
+    expect(result.current.regions.right.visible).toBe(true);
+    expect(result.current.regions.bottom.visible).toBe(false);
+  });
+
   // Step 3b makes the region model authoritative; navigation is its durable
   // mirror, so a disagreement is resolved by the model's occupant.
   test('keeps the model as the placement authority when the two disagree', () => {
