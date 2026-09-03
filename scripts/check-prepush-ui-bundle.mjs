@@ -26,6 +26,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveRef } from './lib/git-ref.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 
 const BASE_REF = process.env.STATION_BASE_REF ?? 'origin/main';
 
@@ -122,7 +123,8 @@ export function changedPathsSince(base, run = git) {
 }
 
 function runBuild() {
-  const result = spawnSync('npm', ['run', '--silent', 'build:ui'], {
+  const npm = npmInvocation(['run', '--silent', 'build:ui']);
+  const result = spawnSync(npm.command, npm.args, {
     stdio: 'inherit',
     env: { ...process.env, STATION_BUILD_UI_DIR: PREPUSH_BUILD_DIR },
     windowsHide: true,
