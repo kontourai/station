@@ -340,7 +340,9 @@ export function registerPluginHostApprovalRoutes(
             ? {
                 reconciliation: await deps.grantReconciliation.reconcile({
                   pluginName,
-                  permissions: normalized,
+                  permissions: [
+                    ...new Set([...normalized, ...outcome.withdrawn]),
+                  ],
                 }),
               }
             : {}),

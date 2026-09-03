@@ -24,7 +24,10 @@ import { createConsentApp } from '../../../runtime/consent/consent-listener.js';
 import { bindRuntimeLocalOperator } from '../../../security/runtime-request-security.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { ConsentCommitRefusedError } from '../../../services/consent/consent-transactions.js';
-import { hasGrant } from '../../../services/plugins/plugin-permissions.js';
+import {
+  grantPermissions,
+  hasGrant,
+} from '../../../services/plugins/plugin-permissions.js';
 import { getInternalApiToken } from '../../../utils/internal-api-token.js';
 import { registerPluginHostApprovalRoutes } from '../plugin-host-approval-routes.js';
 
@@ -243,9 +246,16 @@ describe('plugin host approval routes (consent-transaction consumer)', () => {
       installationGeneration: 'sha256:generation',
       effects: ['provider-activation'],
     }));
-    const { app, consentApp, emit, projectHomeDir } = setup({
+    const { app, consentApp, emit, projectHomeDir, pluginDir } = setup({
       grantReconciliation: { reconcile },
     });
+    await grantPermissions(projectHomeDir, 'server-plugin', [
+      'providers.register',
+    ]);
+    writeFileSync(
+      join(pluginDir, 'plugin.mjs'),
+      'export const behavior = "changed-before-approval";\n',
+    );
     const { approval } = await createApproval(app);
     expect(hasGrant(projectHomeDir, 'server-plugin', 'plugin.server')).toBe(
       false,
@@ -298,7 +308,7 @@ describe('plugin host approval routes (consent-transaction consumer)', () => {
     expect(emit).toHaveBeenCalledWith('plugins:grants-changed', {
       name: 'server-plugin',
       granted: ['plugin.server'],
-      withdrawn: [],
+      withdrawn: ['providers.register'],
       reconciliation: expect.objectContaining({
         status: 'completed',
         operationId: 'grant-operation',
@@ -306,7 +316,7 @@ describe('plugin host approval routes (consent-transaction consumer)', () => {
     });
     expect(reconcile).toHaveBeenCalledWith({
       pluginName: 'server-plugin',
-      permissions: ['plugin.server'],
+      permissions: ['plugin.server', 'providers.register'],
     });
 
     const status = await app.request(`/host-approvals/${approval.id}`);
