@@ -133,19 +133,15 @@ export function ambientWorkspacePaneDockAction(
 }
 
 /**
- * The ambient host is the sole writer of the shell geometry variables
- * (archive#3902/archive#3929 pin exactly one writer). `DockShell` is now the SINGLE
- * geometry authority regardless of occupant (archive#4460) — it reports its
- * live geometry through `onGeometryChange`; this host's only remaining job is
- * applying that report to the CSS variables the rest of the shell reads. No
- * dual chat-vs-derived path anymore: there is nothing left to derive, because
- * every occupant now shares the one instance that tracks live drag/snap/
- * maximize state.
+ * `DockShell` is the geometry authority regardless of occupant
+ * (archive#4460); each shell reports its live geometry keyed by its
+ * rendered region, and the clearance reducer (regions/region-clearance.ts)
+ * is the one writer of the CSS variables (archive#3902/archive#3929).
  */
 function useAmbientDockSlotGeometryWriter() {
   return useCallback(
     (regionId: DockMode | null, geometry: DockSlotGeometry | null) =>
-      reportRegionClearance(regionId ?? null, geometry),
+      reportRegionClearance(regionId, geometry),
     [],
   );
 }
@@ -452,12 +448,13 @@ export function AmbientChatDockPaneHost({
   ]);
   // DockShell wraps every occupant (Chat, Home, Activity) — the one dock
   // chrome shell (archive#4460): root box, resize handle, geometry/snap/
-  // drag state, `dock.toggle`/`dock.maximize`. Its `onGeometryChange` is
-  // this host's only remaining geometry job — apply the shell's live report
-  // to the CSS variables (archive#3902/archive#3929: one writer per shell;
-  // one shell while Chat is the only registered surface, #928).
+  // drag state, `dock.toggle`/`dock.maximize`. Its geometry report goes to
+  // the clearance reducer, one entry per rendered region (#928).
   const host = (
-    <DockShell regionId={regionId} onGeometryChange={writeDockSlotGeometry}>
+    <DockShell
+      regionId={regionId}
+      onRenderedRegionGeometryChange={writeDockSlotGeometry}
+    >
       {(shellChrome) => {
         // station#520: keep `dockPaneAsOnlyContent`'s mobile-maximize ref
         // current every render — see the ref's own doc above.

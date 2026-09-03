@@ -30,11 +30,11 @@ import { ChatDockResizeHandle } from './ChatDockResizeHandle';
  * different content, not copy-pasted per occupant.
  */
 export function DockShell({
-  onGeometryChange,
+  onRenderedRegionGeometryChange,
   regionId,
   children,
 }: {
-  onGeometryChange?: (
+  onRenderedRegionGeometryChange?: (
     regionId: DockMode | null,
     geometry: DockSlotGeometry | null,
   ) => void;
@@ -51,7 +51,7 @@ export function DockShell({
     // second shell's retraction would leave ⌘M dead (#1202's shape).
     registersDockShortcuts: occupant === 'chat',
     regionId,
-    onRenderedRegionGeometryChange: onGeometryChange,
+    onRenderedRegionGeometryChange,
   });
 
   const isPaneOpen = chrome.isDockOpen;

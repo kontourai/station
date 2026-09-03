@@ -122,8 +122,8 @@ describe('the dock clearance is one derivation (station#3902)', () => {
 
   test('the clearance reducer is the sole --dock-slot-size writer', () => {
     // A file that names the variable as a string and writes inline styles
-    // is a writer; the reducer applies its variables from a list, so the
-    // name is not adjacent to the call there.
+    // is a writer; the reducer passes the name through its `write` helper,
+    // so the two are never adjacent there.
     const writers = sourceFiles(uiSrc).flatMap((path) => {
       const source = readFileSync(path, 'utf8');
       return /['"]--dock-slot-size['"]/.test(source) &&

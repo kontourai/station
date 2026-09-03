@@ -28,6 +28,7 @@ import {
   useRegionModel,
 } from '../../contexts/RegionModelContext';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
+import { DOCK_REGION_IDS } from '../../regions/region-model';
 import type { DockMode } from '../../types';
 import { AmbientChatDockPaneHost } from '../AmbientChatDockPaneHost';
 
@@ -360,6 +361,18 @@ describe('RegionShells mounts one shell per occupied region (#928)', () => {
         expect(clearance('--dock-slot-size')).toBe(dockSlotSize),
       );
       expect(clearance('--chat-dock-width')).toBe(chatDockWidth);
+      // The rendered region's variable carries the same value its legacy
+      // alias does (the width for a side, the size for bottom); the other
+      // two regions publish nothing.
+      for (const region of DOCK_REGION_IDS) {
+        expect(clearance(`--region-${region}-size`)).toBe(
+          region !== placement
+            ? ''
+            : placement === 'bottom'
+              ? dockSlotSize
+              : chatDockWidth,
+        );
+      }
     },
   );
 

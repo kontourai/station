@@ -147,9 +147,9 @@ export interface DockShellChrome {
  * auto-hide) that have no meaning outside a Chat pane.
  *
  * `publishesDockSlotClearance` mirrors the flag `useChatDockState` used to
- * take: true for the one ambient mount that reserves route space via
- * `onGeometryChange`, false for the fullscreen placement (which lives inside
- * its own route layout and has nothing to clear).
+ * take: true for an ambient shell that reserves route space via
+ * `onRenderedRegionGeometryChange`, false for the fullscreen placement
+ * (which lives inside its own route layout and has nothing to clear).
  *
  * `registersDockShortcuts` (archive#4460): a DOCKED
  * `ChatWorkspacePane` STILL calls this hook once locally (rules of hooks
@@ -170,17 +170,16 @@ export function useDockShellChrome({
   publishesDockSlotClearance,
   registersDockShortcuts,
   regionId,
-  onGeometryChange,
   onRenderedRegionGeometryChange,
 }: {
   /**
-   * Whether this instance reserves route space by publishing
-   * `--dock-slot-size` (via `onGeometryChange`).
+   * Whether this instance reserves route space by reporting its geometry
+   * to the clearance reducer (regions/region-clearance.ts) through
+   * `onRenderedRegionGeometryChange`, keyed by the RENDERED region.
    *
    * Required, and deliberately not optional (archive#3972). Only the ambient
-   * shells (`DockShell`, one per occupied region — #928) publish it; with Chat
-   * the only registered surface that is one mount, and the N-writer reducer
-   * arrives with the next surface. A full-screen Chat placement is INSIDE the
+   * shells (`DockShell`, one per occupied region — #928) publish it. A
+   * full-screen Chat placement is INSIDE the
    * layout, so it has nothing to clear — and when it published anyway,
    * `/projects/<p>/layouts/chat` reserved 320px for a dock that was not
    * there. A default here would decide that for a caller that never thought
@@ -191,7 +190,7 @@ export function useDockShellChrome({
   /** See the `registersDockShortcuts` paragraph above. */
   registersDockShortcuts: boolean;
   regionId?: DockMode;
-  onGeometryChange?: (geometry: DockSlotGeometry | null) => void;
+  /** `null` regionId is the legacy single-shell mount (`regionId` unset). */
   onRenderedRegionGeometryChange?: (
     regionId: DockMode | null,
     geometry: DockSlotGeometry | null,
@@ -492,13 +491,11 @@ export function useDockShellChrome({
       width: dockWidth,
       liveDragHeight,
     });
-    onGeometryChange?.(geometry);
     onRenderedRegionGeometryChange?.(
       regionId ? effectiveDockSlotPlacement : null,
       geometry,
     );
     return () => {
-      onGeometryChange?.(null);
       onRenderedRegionGeometryChange?.(
         regionId ? effectiveDockSlotPlacement : null,
         null,
@@ -512,7 +509,6 @@ export function useDockShellChrome({
     liveDragHeight,
     publishesDockSlotClearance,
     regionId,
-    onGeometryChange,
     onRenderedRegionGeometryChange,
   ]);
 

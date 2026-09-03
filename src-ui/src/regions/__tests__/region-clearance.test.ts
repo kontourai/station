@@ -45,6 +45,21 @@ describe('region clearance writer', () => {
     expect(value(root, '--chat-dock-width')).toBe('420px');
   });
 
+  test('withholds the single-width alias while both sides are occupied', () => {
+    const { root, writer } = setup();
+    writer.report('left', { size: 0, width: 400 });
+    writer.report('right', { size: 0, width: 420 });
+
+    expect(value(root, '--region-left-size')).toBe('400px');
+    expect(value(root, '--region-right-size')).toBe('420px');
+    expect(value(root, '--dock-slot-size')).toBe('0px');
+    expect(value(root, '--chat-dock-width')).toBe('');
+
+    writer.report('right', null);
+
+    expect(value(root, '--chat-dock-width')).toBe('400px');
+  });
+
   test("removing one report leaves the other region's variables", () => {
     const { root, writer } = setup();
     writer.report('bottom', { size: 320, width: null });
