@@ -24,7 +24,10 @@ import {
   GrantsStoreReservedKeyError,
   GrantsStoreUnavailableError,
 } from '../grants-file-store.js';
-import { withPluginContentLock } from '../plugin-content-integrity.js';
+import {
+  computePluginContentDigest,
+  withPluginContentLock,
+} from '../plugin-content-integrity.js';
 import {
   getPermissionTier,
   getPluginGrants,
@@ -35,9 +38,12 @@ import {
   PluginContentUnavailableError,
   PluginGrantsUnavailableError,
   processInstallPermissions,
+  readPluginDependencyOwnership,
   readPluginGrantRecord,
   readPluginGrantState,
   rebindGrantsAfterContentChange,
+  recordPluginDependencyOwnership,
+  removePluginHostRecord,
   requiredPermissionsForManifest,
   revokeAllGrants,
   revokeGrants,
@@ -650,6 +656,33 @@ describe('grants are bound to plugin content (station#4288)', () => {
     expect(state.granted).toEqual(
       expect.arrayContaining(['network.fetch', 'navigation.dock']),
     );
+  });
+
+  test('permission revocation preserves host-owned dependency authority until uninstall completes', async () => {
+    seedPluginTrees(dir, 'owned-dependency');
+    const dependencyDigest = computePluginContentDigest(
+      join(dir, 'plugins'),
+      'owned-dependency',
+    );
+    expect(dependencyDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    if (!dependencyDigest) throw new Error('fixture dependency was unreadable');
+    await grantPermissions(dir, 'bound-plugin', ['navigation.dock']);
+    await recordPluginDependencyOwnership(dir, 'bound-plugin', [
+      {
+        id: 'owned-dependency',
+        contentDigest: dependencyDigest,
+      },
+    ]);
+
+    await revokeAllGrants(dir, 'bound-plugin');
+
+    expect(getPluginGrants(dir, 'bound-plugin')).toEqual([]);
+    expect(readPluginDependencyOwnership(dir, 'bound-plugin')).toEqual([
+      { id: 'owned-dependency', contentDigest: dependencyDigest },
+    ]);
+
+    await removePluginHostRecord(dir, 'bound-plugin');
+    expect(readPluginDependencyOwnership(dir, 'bound-plugin')).toEqual([]);
   });
 
   test('acceptance 2: a tree that changed under a grant is detected, and EVERY permission stops applying', async () => {

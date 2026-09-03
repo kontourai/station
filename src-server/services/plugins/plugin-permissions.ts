@@ -23,7 +23,10 @@ import type {
   PermissionTier,
   PluginManifest,
 } from '@kontourai/station-contracts/plugin';
-import { permissionTier } from '@kontourai/station-contracts/plugin';
+import {
+  isCanonicalPluginId,
+  permissionTier,
+} from '@kontourai/station-contracts/plugin';
 import { createLogger, type Logger } from '../../utils/logger.js';
 import {
   GrantsFileStore,
@@ -56,20 +59,45 @@ export function needsConsent(permission: string): boolean {
 // ── Grants Storage ─────────────────────────────────────
 
 /**
- * On-disk entry for one plugin. Two shapes are valid and they mean different
- * things — nothing is coerced between them:
+ * On-disk entry for one plugin. Two base shapes are valid and they mean
+ * different things — nothing is coerced between them:
  *
  * - `string[]` — a grant recorded before grants were bound to content
  *   (archive#4288). The permissions are real; the tree they were granted
  *   against was never recorded, so it is UNKNOWN, not empty.
- * - `{ permissions, contentDigest }` — a grant bound to exactly the bytes
- *   {@link computePluginContentDigest} saw when consent was given.
+ * - `{ permissions, contentDigest, installAuthority? }` — a grant bound to
+ *   exactly the bytes {@link computePluginContentDigest} saw when consent was
+ *   given. The optional Station-authored install authority shares this
+ *   existing locked host record so dependency lifecycle does not create a
+ *   parallel ledger. It may keep an object with `permissions: []` alive until
+ *   uninstall finishes.
  *
  * Anything else is corruption and throws (decision 1 of the store's policy).
  */
+export interface PluginDependencyOwnershipEntry {
+  id: string;
+  contentDigest: string;
+}
+
+/**
+ * Station-authored install authority stored beside the existing per-plugin
+ * grant record. It deliberately does not live in the mutable plugin tree: a
+ * plugin may change its own manifest and bytes, but those inputs cannot mint
+ * deletion authority over another installed plugin.
+ */
+export interface PluginInstallAuthorityRecord {
+  version: 1;
+  installedDigest: string;
+  ownedDependencies: PluginDependencyOwnershipEntry[];
+}
+
 type StoredGrantEntry =
   | string[]
-  | { permissions: string[]; contentDigest: string };
+  | {
+      permissions: string[];
+      contentDigest: string;
+      installAuthority?: PluginInstallAuthorityRecord;
+    };
 
 interface GrantsFile {
   [pluginName: string]: StoredGrantEntry;
@@ -84,6 +112,7 @@ interface GrantsFile {
 export interface PluginGrantRecord {
   permissions: string[];
   contentDigest: string | null;
+  installAuthority?: PluginInstallAuthorityRecord;
 }
 
 /**
@@ -225,6 +254,61 @@ function pluginGrantsShapeProblems(value: unknown): string[] {
     } else if (entry.contentDigest.length === 0) {
       problems.push(`${pluginName}: contentDigest must not be empty`);
     }
+    if (entry.installAuthority !== undefined) {
+      const authority = entry.installAuthority;
+      if (!isPlainObject(authority)) {
+        problems.push(`${pluginName}: installAuthority must be an object`);
+        continue;
+      }
+      if (
+        Object.keys(authority).sort().join(',') !==
+        'installedDigest,ownedDependencies,version'
+      ) {
+        problems.push(`${pluginName}: installAuthority has unexpected fields`);
+        continue;
+      }
+      if (authority.version !== 1) {
+        problems.push(`${pluginName}: installAuthority version must be 1`);
+      }
+      if (
+        typeof authority.installedDigest !== 'string' ||
+        !/^sha256:[0-9a-f]{64}$/.test(authority.installedDigest)
+      ) {
+        problems.push(
+          `${pluginName}: installAuthority installedDigest must be a SHA-256 digest`,
+        );
+      }
+      if (
+        !Array.isArray(authority.ownedDependencies) ||
+        authority.ownedDependencies.length > 256
+      ) {
+        problems.push(
+          `${pluginName}: installAuthority ownedDependencies must be a bounded array`,
+        );
+        continue;
+      }
+      const ids = new Set<string>();
+      for (const dependency of authority.ownedDependencies) {
+        if (
+          !isPlainObject(dependency) ||
+          Object.keys(dependency).sort().join(',') !== 'contentDigest,id' ||
+          !isCanonicalPluginId(dependency.id) ||
+          typeof dependency.contentDigest !== 'string' ||
+          !/^sha256:[0-9a-f]{64}$/.test(dependency.contentDigest)
+        ) {
+          problems.push(
+            `${pluginName}: installAuthority contains a malformed dependency`,
+          );
+          continue;
+        }
+        if (ids.has(dependency.id)) {
+          problems.push(
+            `${pluginName}: installAuthority contains duplicate dependency ids`,
+          );
+        }
+        ids.add(dependency.id);
+      }
+    }
   }
   return problems;
 }
@@ -238,15 +322,24 @@ function toGrantRecord(entry: StoredGrantEntry | undefined): PluginGrantRecord {
   return {
     permissions: [...entry.permissions],
     contentDigest: entry.contentDigest,
+    ...(entry.installAuthority
+      ? { installAuthority: structuredClone(entry.installAuthority) }
+      : {}),
   };
 }
 
 function toStoredEntry(record: PluginGrantRecord): StoredGrantEntry {
+  if (record.installAuthority && record.contentDigest === null) {
+    throw new Error('Plugin install authority requires a bound content digest');
+  }
   return record.contentDigest === null
     ? [...record.permissions]
     : {
         permissions: [...record.permissions],
         contentDigest: record.contentDigest,
+        ...(record.installAuthority
+          ? { installAuthority: structuredClone(record.installAuthority) }
+          : {}),
       };
 }
 
@@ -472,6 +565,9 @@ export async function grantPermissions(
     grants[pluginName] = toStoredEntry({
       permissions: [...next],
       contentDigest,
+      ...(record.installAuthority
+        ? { installAuthority: record.installAuthority }
+        : {}),
     });
     return grants;
   });
@@ -539,19 +635,26 @@ export async function rebindGrantsAfterContentChange(
       grants[pluginName] = toStoredEntry({
         permissions: retained,
         contentDigest,
+        ...(before.installAuthority
+          ? { installAuthority: before.installAuthority }
+          : {}),
       });
       return grants;
     });
     return { retained, withdrawn };
   }
   await grantsStore(projectHomeDir).mutate(pluginName, (grants) => {
-    // Matches `revokeGrants`: an empty remainder drops the key rather than
-    // persisting an entry that grants nothing.
-    if (retained.length === 0) delete grants[pluginName];
+    // Dependency deletion authority is host-owned lifecycle state, not a
+    // permission. Withdrawing the last permission must not erase it.
+    if (retained.length === 0 && !before.installAuthority)
+      delete grants[pluginName];
     else
       grants[pluginName] = toStoredEntry({
         permissions: retained,
         contentDigest,
+        ...(before.installAuthority
+          ? { installAuthority: before.installAuthority }
+          : {}),
       });
     return grants;
   });
@@ -675,9 +778,10 @@ export async function revokeGrants(
     const remaining = record.permissions.filter(
       (permission) => !withdrawn.has(permission),
     );
-    // An empty remainder drops the key rather than persisting `[]`, so the
-    // stored shape matches what `revokeAllGrants` leaves behind.
-    if (remaining.length === 0) delete grants[pluginName];
+    // An empty remainder drops a permission-only key. Host-owned install
+    // authority survives permission revocation until uninstall completes.
+    if (remaining.length === 0 && !record.installAuthority)
+      delete grants[pluginName];
     else
       grants[pluginName] = toStoredEntry({
         permissions: remaining,
@@ -685,12 +789,114 @@ export async function revokeGrants(
         // about the bytes the surviving ones were granted against, so a
         // legacy entry stays `unverified` and a bound one keeps its digest.
         contentDigest: record.contentDigest,
+        ...(record.installAuthority
+          ? { installAuthority: record.installAuthority }
+          : {}),
       });
     return grants;
   });
 }
 
 export async function revokeAllGrants(
+  projectHomeDir: string,
+  pluginName: string,
+): Promise<void> {
+  await grantsStore(projectHomeDir).mutate(pluginName, (grants) => {
+    const record = toGrantRecord(grants[pluginName]);
+    if (record.installAuthority) {
+      grants[pluginName] = toStoredEntry({
+        permissions: [],
+        contentDigest: record.contentDigest,
+        installAuthority: record.installAuthority,
+      });
+    } else {
+      delete grants[pluginName];
+    }
+    return grants;
+  });
+}
+
+/**
+ * Reads the only authority that may decide which dependency trees uninstall
+ * can remove. The record is outside plugin-controlled bytes and was committed
+ * by Station after the parent installation reached its final content digest.
+ */
+export function readPluginDependencyOwnership(
+  projectHomeDir: string,
+  pluginName: string,
+): PluginDependencyOwnershipEntry[] {
+  return (
+    readPluginGrantRecord(projectHomeDir, pluginName).installAuthority
+      ?.ownedDependencies ?? []
+  ).map((dependency) => ({ ...dependency }));
+}
+
+/**
+ * Replaces one plugin installation's dependency-deletion authority within the
+ * existing locked host state. This is intentionally part of the established
+ * per-plugin grant/lifecycle record rather than a parallel install ledger.
+ */
+export async function recordPluginDependencyOwnership(
+  projectHomeDir: string,
+  pluginName: string,
+  ownedDependencies: readonly PluginDependencyOwnershipEntry[],
+): Promise<void> {
+  if (ownedDependencies.length > 256) {
+    throw new Error('Plugin dependency ownership exceeds the bounded limit');
+  }
+  const dependencyIds = new Set<string>();
+  for (const dependency of ownedDependencies) {
+    if (
+      !isCanonicalPluginId(dependency.id) ||
+      !/^sha256:[0-9a-f]{64}$/.test(dependency.contentDigest)
+    ) {
+      throw new Error('Plugin dependency ownership entry is malformed');
+    }
+    if (dependencyIds.has(dependency.id)) {
+      throw new Error('Plugin dependency ownership contains duplicate ids');
+    }
+    dependencyIds.add(dependency.id);
+  }
+  await grantsStore(projectHomeDir).mutate(pluginName, (grants) => {
+    const record = toGrantRecord(grants[pluginName]);
+    if (ownedDependencies.length === 0) {
+      if (record.permissions.length === 0) {
+        delete grants[pluginName];
+      } else {
+        grants[pluginName] = toStoredEntry({
+          permissions: record.permissions,
+          contentDigest: record.contentDigest,
+        });
+      }
+      return grants;
+    }
+    const installedDigest = refreshPluginContentDigest(
+      pluginsDirFor(projectHomeDir),
+      pluginName,
+    );
+    if (installedDigest === null) {
+      throw new PluginContentUnavailableError(pluginName);
+    }
+    grants[pluginName] = toStoredEntry({
+      permissions: record.permissions,
+      contentDigest:
+        record.permissions.length > 0 && record.contentDigest
+          ? record.contentDigest
+          : installedDigest,
+      installAuthority: {
+        version: 1,
+        installedDigest,
+        ownedDependencies: ownedDependencies.map((dependency) => ({
+          ...dependency,
+        })),
+      },
+    });
+    return grants;
+  });
+}
+
+/** Drops the complete per-plugin host record only after uninstall succeeds. */
+export async function removePluginHostRecord(
   projectHomeDir: string,
   pluginName: string,
 ): Promise<void> {

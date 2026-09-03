@@ -12,7 +12,10 @@ import {
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
-import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import {
+  isCanonicalPluginId,
+  type PluginManifest,
+} from '@kontourai/station-contracts/plugin';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { copyPluginIntegrations } from '@kontourai/station-shared/parsers';
@@ -58,8 +61,13 @@ import {
 } from '../../services/plugins/plugin-manifest-loader.js';
 import {
   hasGrant,
+  type PluginDependencyOwnershipEntry,
+  type PluginInstallAuthorityRecord,
   processInstallPermissions,
+  readPluginDependencyOwnership,
   rebindGrantsAfterContentChange,
+  recordPluginDependencyOwnership,
+  removePluginHostRecord,
   requiredPermissionsForManifest,
   restorePluginGrantEntry,
   revokeAllGrants,
@@ -359,15 +367,8 @@ const PLUGIN_GRANTS_ENTRY_SNAPSHOT = [
   'project-files',
   'plugin-grants-entry.json',
 ] as const;
-const DEPENDENCY_OWNERSHIP_FILE = '.station-dependency-ownership.json';
-
-interface DependencyOwnershipEntry {
-  id: string;
-  contentDigest: string;
-}
-
 interface RemovedDependencyBackup {
-  entry: DependencyOwnershipEntry;
+  entry: PluginDependencyOwnershipEntry;
   backupDir: string;
   manifest: PluginManifest;
   grantSnapshot: ReturnType<typeof snapshotPluginGrantEntry>;
@@ -421,19 +422,12 @@ function assertDependencyProviderSlotsAvailable(
   }
 }
 
-function writeDependencyOwnershipRecord(
-  stagedPluginDir: string,
+function deriveDependencyOwnership(
   pluginsDir: string,
   createdPluginTrees: ReadonlySet<string>,
-  retained: readonly DependencyOwnershipEntry[] = [],
+  retained: readonly PluginDependencyOwnershipEntry[] = [],
   declaredDependencyIds?: ReadonlySet<string>,
-): void {
-  const recordPath = join(stagedPluginDir, DEPENDENCY_OWNERSHIP_FILE);
-  if (existsSync(recordPath)) {
-    throw new Error(
-      `Plugin source must not contain Station-owned file '${DEPENDENCY_OWNERSHIP_FILE}'`,
-    );
-  }
+): PluginDependencyOwnershipEntry[] {
   const entries = new Map(
     retained
       .filter(
@@ -451,77 +445,7 @@ function writeDependencyOwnershipRecord(
     }
     entries.set(id, { id, contentDigest });
   }
-  if (entries.size > 0) {
-    writeFileSync(
-      recordPath,
-      JSON.stringify(
-        { version: 1, dependencies: [...entries.values()] },
-        null,
-        2,
-      ),
-      { encoding: 'utf-8', mode: 0o600 },
-    );
-  }
-}
-
-function readDependencyOwnershipRecord(
-  pluginDir: string,
-): DependencyOwnershipEntry[] {
-  const recordPath = join(pluginDir, DEPENDENCY_OWNERSHIP_FILE);
-  if (!existsSync(recordPath)) return [];
-  const status = lstatSync(recordPath);
-  if (!status.isFile() || status.isSymbolicLink()) {
-    throw new Error('Plugin dependency ownership record is not a regular file');
-  }
-  const parsed = JSON.parse(readFileSync(recordPath, 'utf-8')) as {
-    version?: unknown;
-    dependencies?: unknown;
-  };
-  if (
-    !parsed ||
-    typeof parsed !== 'object' ||
-    Object.keys(parsed).sort().join(',') !== 'dependencies,version' ||
-    parsed.version !== 1 ||
-    !Array.isArray(parsed.dependencies) ||
-    parsed.dependencies.length > 256 ||
-    !parsed.dependencies.every(
-      (entry) =>
-        entry &&
-        typeof entry === 'object' &&
-        Object.keys(entry).sort().join(',') === 'contentDigest,id' &&
-        typeof entry.id === 'string' &&
-        typeof entry.contentDigest === 'string' &&
-        /^sha256:[0-9a-f]{64}$/.test(entry.contentDigest),
-    )
-  ) {
-    throw new Error('Plugin dependency ownership record is malformed');
-  }
-  const entries = parsed.dependencies as DependencyOwnershipEntry[];
-  for (const entry of entries) assertPluginNameSegment(entry.id);
-  if (new Set(entries.map((entry) => entry.id)).size !== entries.length) {
-    throw new Error('Plugin dependency ownership record has duplicate ids');
-  }
-  return entries;
-}
-
-function installedDependencyClosure(
-  pluginsDir: string,
-  manifest: PluginManifest,
-  seen: Set<string> = new Set(),
-): Set<string> {
-  for (const dependency of manifest.dependencies ?? []) {
-    assertPluginNameSegment(dependency.id);
-    if (seen.has(dependency.id)) continue;
-    seen.add(dependency.id);
-    const manifestPath = join(pluginsDir, dependency.id, 'plugin.json');
-    if (!existsSync(manifestPath)) continue;
-    installedDependencyClosure(
-      pluginsDir,
-      readPluginManifestFileSync(manifestPath),
-      seen,
-    );
-  }
-  return seen;
+  return [...entries.values()];
 }
 
 function dependencyHasOtherInstalledConsumer(
@@ -718,7 +642,7 @@ function createDependencyLifecycle(options: {
 }
 
 async function removeOwnedDependencyLifecycles(options: {
-  dependencies: readonly DependencyOwnershipEntry[];
+  dependencies: readonly PluginDependencyOwnershipEntry[];
   removedPluginName: string;
   pluginsDir: string;
   projectHomeDir: string;
@@ -797,6 +721,7 @@ async function removeOwnedDependencyLifecycles(options: {
             await revokeAllGrants(options.projectHomeDir, dependency.id);
             rmSync(dependencyDir, { recursive: true, force: true });
             forgetPluginContentDigest(options.pluginsDir, dependency.id);
+            await removePluginHostRecord(options.projectHomeDir, dependency.id);
             await options.reconcileEngineConnections?.(dependency.id);
             await options.settleProviderAdapterRetirements?.();
             removed.push(backup);
@@ -979,9 +904,52 @@ export async function restorePluginDurableState(
   // digest would leave the entry reading `unverified` for a tree that was
   // never actually re-consented.
   const entry = snapshot.entry as
-    | { permissions?: unknown; contentDigest?: unknown }
+    | {
+        permissions?: unknown;
+        contentDigest?: unknown;
+        installAuthority?: unknown;
+      }
     | null
     | undefined;
+  const installAuthority =
+    entry && typeof entry === 'object'
+      ? (entry.installAuthority as
+          | {
+              version?: unknown;
+              installedDigest?: unknown;
+              ownedDependencies?: unknown;
+            }
+          | undefined)
+      : undefined;
+  const installAuthorityValid =
+    installAuthority === undefined ||
+    (installAuthority !== null &&
+      typeof installAuthority === 'object' &&
+      Object.keys(installAuthority).sort().join(',') ===
+        'installedDigest,ownedDependencies,version' &&
+      installAuthority.version === 1 &&
+      typeof installAuthority.installedDigest === 'string' &&
+      /^sha256:[0-9a-f]{64}$/.test(installAuthority.installedDigest) &&
+      Array.isArray(installAuthority.ownedDependencies) &&
+      installAuthority.ownedDependencies.length <= 256 &&
+      installAuthority.ownedDependencies.every((dependency) => {
+        if (!dependency || typeof dependency !== 'object') return false;
+        const candidate = dependency as {
+          id?: unknown;
+          contentDigest?: unknown;
+        };
+        return (
+          Object.keys(candidate).sort().join(',') === 'contentDigest,id' &&
+          isCanonicalPluginId(candidate.id) &&
+          typeof candidate.contentDigest === 'string' &&
+          /^sha256:[0-9a-f]{64}$/.test(candidate.contentDigest)
+        );
+      }) &&
+      new Set(
+        installAuthority.ownedDependencies.map(
+          (dependency) => (dependency as { id: string }).id,
+        ),
+      ).size === installAuthority.ownedDependencies.length);
   if (
     typeof snapshot.pluginName !== 'string' ||
     snapshot.pluginName.length === 0 ||
@@ -991,6 +959,9 @@ export async function restorePluginDurableState(
         entry !== null &&
         Array.isArray(entry.permissions) &&
         entry.permissions.every((value) => typeof value === 'string') &&
+        installAuthorityValid &&
+        (installAuthority === undefined ||
+          typeof entry.contentDigest === 'string') &&
         (entry.contentDigest === null ||
           (typeof entry.contentDigest === 'string' &&
             entry.contentDigest.length > 0)))
@@ -1007,6 +978,12 @@ export async function restorePluginDurableState(
       : {
           permissions: entry.permissions as string[],
           contentDigest: entry.contentDigest as string | null,
+          ...(installAuthority
+            ? {
+                installAuthority:
+                  installAuthority as PluginInstallAuthorityRecord,
+              }
+            : {}),
         },
   );
 }
@@ -1902,7 +1879,7 @@ export async function installPluginFromSource(
       : new Map<string, string | undefined>();
     const hadExistingPlugin = existingManifest !== null;
     const retainedDependencyOwnership = hadExistingPlugin
-      ? readDependencyOwnershipRecord(pluginDir)
+      ? readPluginDependencyOwnership(projectHomeDir, pluginName)
       : [];
     if (hadExistingPlugin) {
       eventSubscriptionQuiescence =
@@ -2004,14 +1981,6 @@ export async function installPluginFromSource(
             );
           }
         }
-
-        writeDependencyOwnershipRecord(
-          tempDir,
-          pluginsDir,
-          createdPluginTrees,
-          retainedDependencyOwnership,
-          approvedDependencyIds,
-        );
 
         // One cross-process publication transaction owns the fresh catalog
         // preflight through durable plugin copy. Without it two installs can
@@ -2153,6 +2122,16 @@ export async function installPluginFromSource(
           );
           eventBus?.emit('plugins:grants-changed', { name: pluginName });
         }
+        await recordPluginDependencyOwnership(
+          projectHomeDir,
+          pluginName,
+          deriveDependencyOwnership(
+            pluginsDir,
+            createdPluginTrees,
+            retainedDependencyOwnership,
+            approvedDependencyIds,
+          ),
+        );
         const activeProviders = hasGrant(
           projectHomeDir,
           pluginName,
@@ -2344,6 +2323,11 @@ export async function uninstallInstalledPlugin(
   const installedPluginName =
     resolveInstalledPluginName(projectHomeDir, pluginsDir, name) || name;
   const pluginDir = join(pluginsDir, installedPluginName);
+  // The selected installed directory is the uninstall identity. A mutable
+  // manifest may describe what needs cleanup, but it cannot rename the
+  // principal whose grants, providers, integrations, or host record are
+  // removed.
+  const pluginName = installedPluginName;
 
   if (!existsSync(pluginDir)) {
     throw new Error('Plugin not found');
@@ -2357,33 +2341,26 @@ export async function uninstallInstalledPlugin(
     installedPluginName,
     logger,
   );
-  const ownedDependencies = readDependencyOwnershipRecord(pluginDir);
-  const declaredDependencies = installedDependencyClosure(pluginsDir, manifest);
-  if (
-    ownedDependencies.some(
-      (dependency) => !declaredDependencies.has(dependency.id),
-    )
-  ) {
-    throw new Error(
-      'Plugin dependency ownership record names a plugin outside its installed dependency graph',
-    );
-  }
+  // Destructive dependency cleanup reads only Station's host-owned install
+  // authority. The parent manifest and every file in its mutable tree are
+  // untrusted uninstall inputs and cannot mint ownership over another plugin.
+  const ownedDependencies = readPluginDependencyOwnership(
+    projectHomeDir,
+    installedPluginName,
+  );
   const eventSubscriptionQuiescence =
-    (await deps.quiesceEventSubscriptions?.(
-      manifest.name || installedPluginName,
-    )) ?? null;
+    (await deps.quiesceEventSubscriptions?.(pluginName)) ?? null;
   let serverQuiescence: PluginPublicServerQuiescence;
   try {
     serverQuiescence = await quiescePluginPublicServerModule(
       pluginsDir,
-      manifest.name || installedPluginName,
+      pluginName,
     );
   } catch (error) {
     eventSubscriptionQuiescence?.release();
     throw error;
   }
   deps.beginConfigurationMutation?.();
-  const pluginName = manifest.name || name;
   // Captured BEFORE any agent directory deletion (archive#1004 review
   // HIGH-1 residual b) — if a later step in this try block throws, the
   // catch block's rollback `synchronizePluginAgentDefinitions` call can no
@@ -2448,11 +2425,8 @@ export async function uninstallInstalledPlugin(
       reconcileEngineConnections: deps.reconcileEngineConnections,
       settleProviderAdapterRetirements: deps.settleProviderAdapterRetirements,
     });
-    forgetRegistryInstallsForPlugin(
-      projectHomeDir,
-      manifest.name || installedPluginName,
-      name,
-    );
+    forgetRegistryInstallsForPlugin(projectHomeDir, installedPluginName, name);
+    await removePluginHostRecord(projectHomeDir, pluginName);
     eventBus?.emit('plugins:removed', { name: pluginName });
     pluginUninstalls.add(1, { plugin: pluginName });
     logger.info('Plugin removed', { plugin: pluginName });

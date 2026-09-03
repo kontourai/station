@@ -3271,17 +3271,9 @@ describe('plugin install consent gate (station#4288)', () => {
 
       expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
       expect(
-        JSON.parse(
-          readFileSync(
-            join(
-              root,
-              'plugins',
-              'enterprise-layout',
-              '.station-dependency-ownership.json',
-            ),
-            'utf-8',
-          ),
-        ).dependencies,
+        JSON.parse(readFileSync(join(root, 'plugin-grants.json'), 'utf-8'))[
+          'enterprise-layout'
+        ].installAuthority.ownedDependencies,
       ).toEqual([
         expect.objectContaining({
           id: 'shared-providers',
@@ -3521,7 +3513,7 @@ describe('plugin install consent gate (station#4288)', () => {
       expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(true);
     });
 
-    test('rejects a forged ownership record outside the declared dependency graph', async () => {
+    test('ignores a tampered parent manifest and forged in-tree ownership record when deciding dependency deletion', async () => {
       const root = mkdtempSync(join(tmpdir(), 'station-plugin-dependency-'));
       cleanupDirs.push(root);
       const dependencySource = writeProviderDependency(root);
@@ -3543,6 +3535,13 @@ describe('plugin install consent gate (station#4288)', () => {
         join(root, 'plugins'),
         'unrelated-plugin',
       );
+      writePlugin(join(root, 'plugins', 'enterprise-layout'), {
+        name: 'unrelated-plugin',
+        version: '1.0.0',
+        dependencies: [
+          { id: 'unrelated-plugin', source: '../unrelated-plugin' },
+        ],
+      });
       writeFileSync(
         join(
           root,
@@ -3560,9 +3559,12 @@ describe('plugin install consent gate (station#4288)', () => {
 
       await expect(
         uninstallInstalledPlugin('enterprise-layout', installDeps),
-      ).rejects.toThrow(/outside its installed dependency graph/);
+      ).resolves.toEqual({ success: true });
       expect(existsSync(join(root, 'plugins', 'unrelated-plugin'))).toBe(true);
-      expect(existsSync(join(root, 'plugins', 'enterprise-layout'))).toBe(true);
+      expect(existsSync(join(root, 'plugins', 'shared-providers'))).toBe(false);
+      expect(existsSync(join(root, 'plugins', 'enterprise-layout'))).toBe(
+        false,
+      );
     });
 
     test('preserves a dependency consumed transitively by another installed plugin', async () => {
