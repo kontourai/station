@@ -4,6 +4,7 @@ import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import type { AuthenticatedFetchInit } from '@kontourai/station-sdk/client';
 import {
   authenticatedFetch,
+  type InstalledPluginRecord,
   listPlugins,
   StationRequestTimeoutError,
 } from '@kontourai/station-sdk/client';
@@ -23,7 +24,7 @@ const NO_FLAGS: ParsedCoreArgs = {
   repeatedFlags: {},
 };
 
-type PluginRecord = PluginManifest & { hasBundle?: boolean };
+type PluginRecord = InstalledPluginRecord;
 
 function resolvePluginSourceForStation(
   source: string,

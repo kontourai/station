@@ -11,7 +11,7 @@ const rejected = {
     recovery: {
       kind: 'repair-manifest',
       instruction:
-        'Use a lowercase plugin name containing only letters, digits, and hyphens, then choose Reload plugins.',
+        'Use 1–64 lowercase letters, digits, hyphens, or periods with alphanumeric endpoints and no repeated hyphens or periods, then choose Reload plugins.',
     },
   },
 };
