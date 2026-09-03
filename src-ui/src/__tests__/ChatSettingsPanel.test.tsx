@@ -23,10 +23,6 @@ function props() {
     setShowReasoning: vi.fn(),
     showToolDetails: false,
     setShowToolDetails: vi.fn(),
-    dockMode: 'bottom' as const,
-    storedDockSlotPlacement: 'bottom' as const,
-    availableDockSlotPlacements: ['left', 'right', 'bottom'] as const,
-    onDockModeChange: vi.fn(),
     autoHideEnabled: false,
     setAutoHideEnabled: vi.fn(),
   };
@@ -58,7 +54,7 @@ describe('ChatSettingsPanel accessibility', () => {
     const dialog = screen.getByRole('dialog', { name: 'Chat Settings' });
     expect(document.activeElement).toBe(dialog);
 
-    const first = screen.getByRole('menuitemradio', { name: 'Left' });
+    const first = screen.getByRole('button', { name: 'A−' });
     const last = screen.getByRole('button', { name: 'Done' });
     first.focus();
     fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
@@ -74,60 +70,11 @@ describe('ChatSettingsPanel accessibility', () => {
     trigger.remove();
   });
 
-  test('offers all three dock positions and applies the left choice', () => {
-    const panelProps = props();
-    render(<ChatSettingsPanel {...panelProps} />);
+  test('does not expose dock position settings', () => {
+    render(<ChatSettingsPanel {...props()} />);
 
-    expect(screen.getByRole('menuitemradio', { name: 'Bottom' })).toBeTruthy();
-    expect(screen.getByRole('menuitemradio', { name: 'Right' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Left' }));
-    expect(panelProps.onDockModeChange).toHaveBeenCalledWith('left');
-  });
-
-  test('states the placement instead of offering it when the device offers only bottom', () => {
-    render(
-      <ChatSettingsPanel
-        {...props()}
-        availableDockSlotPlacements={['bottom']}
-      />,
-    );
-
-    // The section stays: an absent setting is indistinguishable from one
-    // Station never had. What goes is the CHOICE.
-    expect(screen.getByText('Dock Position')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Bottom' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Left' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Right' })).toBeNull();
-    expect(
-      screen.getByText(/Bottom — the only position this screen can use/),
-    ).toBeTruthy();
-  });
-
-  test('names the wider-screen preference it is keeping, and only when there is one', () => {
-    const { unmount } = render(
-      <ChatSettingsPanel
-        {...props()}
-        storedDockSlotPlacement="right"
-        availableDockSlotPlacements={['bottom']}
-      />,
-    );
-    expect(
-      screen.getByText(
-        /Your right preference is remembered for a wider screen/,
-      ),
-    ).toBeTruthy();
-    unmount();
-
-    // Nothing to remember when the stored preference IS what this screen
-    // uses — saying so anyway would invent a conflict that does not exist.
-    render(
-      <ChatSettingsPanel
-        {...props()}
-        storedDockSlotPlacement="bottom"
-        availableDockSlotPlacements={['bottom']}
-      />,
-    );
-    expect(screen.queryByText(/remembered for a wider screen/)).toBeNull();
+    expect(screen.queryByText('Dock Position')).toBeNull();
+    expect(screen.queryByRole('menuitemradio')).toBeNull();
   });
 
   test('dismisses from the non-tabbable overlay without exposing a backdrop button', () => {

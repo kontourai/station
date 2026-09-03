@@ -1,9 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-  WORKSPACE_ACTIVITY_PANE_INSTANCE,
-} from '@kontourai/station-contracts/workspace-activity-pane';
+import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-activity-pane';
 import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '@kontourai/station-contracts/workspace-chat-pane';
 import {
   WORKSPACE_HOME_PANE_DESCRIPTOR,
@@ -713,13 +710,13 @@ describe('the mobile dock-and-empty contract derivation (station#520)', () => {
     ).toBe(false);
   });
 
-  it('ambientDockOccupantRouteViewType maps Home/Activity to their routes and Chat to null', () => {
+  it('ambientDockOccupantRouteViewType maps Home to its route and Chat to null; Activity is a region surface, not a routed occupant (#928)', () => {
     expect(
       ambientDockOccupantRouteViewType(WORKSPACE_HOME_PANE_DESCRIPTOR),
     ).toBe('home');
     expect(
       ambientDockOccupantRouteViewType(WORKSPACE_ACTIVITY_PANE_DESCRIPTOR),
-    ).toBe('activity');
+    ).toBeNull();
     expect(
       ambientDockOccupantRouteViewType(WORKSPACE_CHAT_PANE_DESCRIPTOR),
     ).toBeNull();
@@ -731,17 +728,17 @@ describe('the mobile dock-and-empty contract derivation (station#520)', () => {
 
     chooseAmbientOccupant({
       isMobile: true,
-      pathname: '/activity',
-      descriptor: WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-      instance: WORKSPACE_ACTIVITY_PANE_INSTANCE,
+      pathname: '/',
+      descriptor: WORKSPACE_HOME_PANE_DESCRIPTOR,
+      instance: WORKSPACE_HOME_PANE_INSTANCE,
       onChoose,
       onChooseAsOnlyContent,
     });
 
     expect(onChooseAsOnlyContent).toHaveBeenCalledOnce();
     expect(onChooseAsOnlyContent).toHaveBeenCalledWith(
-      WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
-      WORKSPACE_ACTIVITY_PANE_INSTANCE,
+      WORKSPACE_HOME_PANE_DESCRIPTOR,
+      WORKSPACE_HOME_PANE_INSTANCE,
     );
     expect(onChoose).not.toHaveBeenCalled();
   });
