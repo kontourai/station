@@ -67,7 +67,7 @@ export function parsePluginManifest(
   // refuses those three but not `../evil` or `Name With Spaces`.
   if (!isCanonicalPluginId(candidate.name)) {
     throw new Error(
-      `Plugin manifest name '${candidate.name}' is not a canonical plugin id (lowercase letters, digits and hyphens, starting with a letter or digit, at most 63 characters)`,
+      `Plugin manifest name '${candidate.name}' is not a canonical plugin id under Agent Plugins 1.0 (1-64 lowercase letters, digits, hyphens or periods; alphanumeric endpoints; no repeated hyphens or periods)`,
     );
   }
   if (isReservedObjectKey(candidate.name)) {

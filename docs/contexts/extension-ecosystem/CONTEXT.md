@@ -5,11 +5,15 @@ Extension Ecosystem covers how Station is extended by plugins, registry items, p
 ## Language
 
 **Plugin**:
-An installable Station extension that can contribute layouts, agents, integrations, providers, knowledge namespaces, settings, and server behavior.
+Target v1: an Agent Plugins package with portable skills/MCP plus optional Station-owned
+Pane, agent, provider, knowledge, setting, and server contributions under
+`io.kontourai.station`.
 _Avoid_: integration if it contributes more than tools
 
 **Plugin manifest**:
-The declarative contract for a plugin's identity, version, permissions, settings, dependencies, and contributed assets.
+Target v1: the closed portable root `plugin.json`. Station host declarations live only in
+`extensions["io.kontourai.station"]`; portable skills and MCP use their fixed
+package locations. The current legacy loader has not completed this migration.
 _Avoid_: package metadata
 
 **Plugin command contribution**:
@@ -27,11 +31,11 @@ The permission tier for a plugin: passive, active, or trusted.
 _Avoid_: permission string when discussing user trust
 
 **Registry**:
-The browse and install surface for agents, skills, integrations, plugins, and layouts.
+The browse and install surface for agents, skills, integrations, plugins, and panes.
 _Avoid_: marketplace when local install semantics matter
 
 **Registry item**:
-An installable or installed catalog entry. It may be an agent, skill, integration, plugin, or layout.
+An installable or installed catalog entry. It may be an agent, skill, integration, plugin, or pane.
 _Avoid_: plugin as a catch-all
 
 **Registry lifecycle**:
@@ -76,10 +80,12 @@ _Avoid_: direct execution
 
 ## Relationships
 
-- A plugin can contribute registry sources, providers, layouts, agents, integrations, skills, settings, and knowledge namespaces.
+- A plugin can contribute portable skills/MCP and Station-owned registry sources,
+  providers, panes, agents, settings, and knowledge namespaces.
 - A Plugin command contribution selects a closed host intent; it does not own
   navigation, shortcuts, validation, rendering, or execution.
-- A registry item becomes available before it becomes active in any project, agent, or layout.
+- A registry item becomes available before it becomes active in any project,
+  agent, or pane composition.
 - station-control exposes platform mutations; governed sessions should turn those mutations into receipts.
 - MCP-UI panels are rendered through Station's host, but tools still route through Station-mediated policy and approval.
 

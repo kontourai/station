@@ -10,7 +10,8 @@ import type { WorkspacePaneDescriptor } from './workspace-pane.js';
  * use this exact path-safe lowercase identifier rather than accepting a second
  * broader spelling at their storage boundary.
  */
-export const CANONICAL_PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
+export const CANONICAL_PLUGIN_ID_PATTERN =
+  /^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$/;
 
 export function isCanonicalPluginId(value: unknown): value is string {
   return typeof value === 'string' && CANONICAL_PLUGIN_ID_PATTERN.test(value);

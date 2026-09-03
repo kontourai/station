@@ -234,6 +234,18 @@ describe('plugin-manifest-loader', () => {
         expect.objectContaining({ name: 'my-plugin-1' }),
       );
     });
+
+    test('accepts the Agent Plugins period-bearing name alphabet', async () => {
+      await expect(loadName('acme.tools')).resolves.toEqual(
+        expect.objectContaining({ name: 'acme.tools' }),
+      );
+      await expect(loadName('has--double')).rejects.toThrow(
+        /not a canonical plugin id/,
+      );
+      await expect(loadName('too.many..dots')).rejects.toThrow(
+        /not a canonical plugin id/,
+      );
+    });
   });
 
   // archive#4307 review: a DECLARED SETTING's key is a store key too. It is
