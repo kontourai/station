@@ -36,7 +36,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   // one the Models list reads, rather than the full projection plus a
   // client-side membership filter.
   useModelConnectionsQuery: () => ({ data: state.modelConnections }),
-  useAgentConnectionsQuery: () => ({ data: state.engines }),
+  useEngineConnectionsQuery: () => ({ data: state.engines }),
   useIntegrationsQuery: () => ({ data: state.tools }),
   useGlobalKnowledgeStatusQuery: () => ({ data: state.knowledge }),
   useSshEnvironmentsQuery: () => ({ data: state.ssh }),

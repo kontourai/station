@@ -206,6 +206,10 @@ describe('ChatDockActiveIdentity', () => {
       <ChatDockActiveIdentity session={routedSession} onClose={vi.fn()} />,
     );
     expect(copyButton().textContent).toBe('Copy ID');
+    expect(copyButton().classList).toContain('chat-dock__active-identity-copy');
+    expect(copyButton().style.minWidth).toBe('44px');
+    expect(copyButton().style.minHeight).toBe('44px');
+    expect(copyButton().style.fontSize).toBe('var(--text-xs)');
   });
 
   test('copies the routed conversation id, never the local tab key', async () => {

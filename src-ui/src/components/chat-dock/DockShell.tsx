@@ -30,11 +30,14 @@ import { ChatDockResizeHandle } from './ChatDockResizeHandle';
  * different content, not copy-pasted per occupant.
  */
 export function DockShell({
-  onGeometryChange,
+  onRenderedRegionGeometryChange,
   regionId,
   children,
 }: {
-  onGeometryChange?: (geometry: DockSlotGeometry | null) => void;
+  onRenderedRegionGeometryChange?: (
+    regionId: DockMode | null,
+    geometry: DockSlotGeometry | null,
+  ) => void;
   regionId?: DockMode;
   children: (chrome: DockShellChrome) => ReactNode;
 }) {
@@ -48,17 +51,23 @@ export function DockShell({
     // second shell's retraction would leave ⌘M dead (#1202's shape).
     registersDockShortcuts: occupant === 'chat',
     regionId,
-    onGeometryChange,
+    onRenderedRegionGeometryChange,
   });
 
   const isPaneOpen = chrome.isDockOpen;
   const isPaneMaximized = chrome.isDockMaximized;
-  const isSidePanel = chrome.effectiveDockSlotPlacement !== 'bottom';
+  // Rendered region, not `regionId`: coarse pointers fold side placements to
+  // bottom (useIsMobile.ts `availablePlacements`) and index.css keys the grid
+  // tracks on this attribute, so both must come from the one expression. The
+  // fold also means every shell on a coarse device renders bottom, so at most
+  // one shell may mount there (RegionShells.tsx).
+  const renderedRegion = chrome.effectiveDockSlotPlacement;
+  const isSidePanel = renderedRegion !== 'bottom';
 
   return (
     <section
       id={occupant === 'chat' ? 'chat-dock' : undefined}
-      data-region={regionId}
+      data-region={renderedRegion}
       // A landmark region (station#4460 review L2): the per-occupant
       // `aria-label`s `.dock-slot` used to carry ("Home dock"/"Activity
       // dock") don't apply once the shell — not the occupant — owns the box.
@@ -67,7 +76,7 @@ export function DockShell({
       // `<section>` with an accessible name carries an implicit `region`
       // role — no explicit `role` needed (biome a11y/useSemanticElements).
       aria-label="Dock"
-      className={`chat-dock ${!isPaneOpen && !chrome.isCollapsedDragPreview ? 'is-collapsed' : ''} ${isPaneMaximized ? 'is-maximized' : ''} ${chrome.isDragging ? 'is-dragging' : ''} chat-dock--${isSidePanel ? chrome.effectiveDockSlotPlacement : 'bottom'}`}
+      className={`chat-dock ${!isPaneOpen && !chrome.isCollapsedDragPreview ? 'is-collapsed' : ''} ${isPaneMaximized ? 'is-maximized' : ''} ${chrome.isDragging ? 'is-dragging' : ''} chat-dock--${renderedRegion}`}
       style={
         isSidePanel
           ? {
@@ -92,7 +101,7 @@ export function DockShell({
           <button
             type="button"
             tabIndex={-1}
-            className={`chat-dock__resize-handle chat-dock__resize-handle--horizontal${chrome.effectiveDockSlotPlacement === 'left' ? ' chat-dock__resize-handle--left' : ''}`}
+            className={`chat-dock__resize-handle chat-dock__resize-handle--horizontal${renderedRegion === 'left' ? ' chat-dock__resize-handle--left' : ''}`}
             aria-label="Resize chat dock"
             onPointerDown={chrome.onSidePanelResizePointerDown}
             // M5 (station#4460 review): this handle sits OUTSIDE any

@@ -69,7 +69,7 @@ vi.mock('../../platform/PlatformProfileContext', async () => {
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   useForceRefetchSystemStatus: () => vi.fn(),
-  useAgentConnectionsQuery: () => ({ data: [] }),
+  useEngineConnectionsQuery: () => ({ data: [] }),
   useConfigQuery: () => ({ data: undefined }),
   useUpdateConfigMutation: () => ({ mutate: () => {}, isPending: false }),
 }));

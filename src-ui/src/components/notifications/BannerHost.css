@@ -604,21 +604,21 @@
  * to its named notice layer underneath it.
  *
  * Keep the widths in lockstep with the dock grid in index.css
- * (`--chat-dock-width`, and the 36px collapsed rail). */
+ * (the per-region size fallback chain, and the 36px collapsed rail). */
 @media (min-width: 769px) and (not ((max-height: 540px) and (pointer: coarse))) {
-  .app__main--dock-right:has(> .chat-dock) > .banner-host {
-    right: var(--chat-dock-width, 400px);
+  .app__main:has(> [data-region="right"]) > .banner-host {
+    right: var(--region-right-size, var(--chat-dock-width, 400px));
   }
 
-  .app__main--dock-right:has(> .chat-dock.is-collapsed) > .banner-host {
+  .app__main:has(> [data-region="right"].is-collapsed) > .banner-host {
     right: 36px;
   }
 
-  .app__main--dock-left:has(> .chat-dock) > .banner-host {
-    left: var(--chat-dock-width, 400px);
+  .app__main:has(> [data-region="left"]) > .banner-host {
+    left: var(--region-left-size, var(--chat-dock-width, 400px));
   }
 
-  .app__main--dock-left:has(> .chat-dock.is-collapsed) > .banner-host {
+  .app__main:has(> [data-region="left"].is-collapsed) > .banner-host {
     left: 36px;
   }
 
@@ -641,7 +641,7 @@
 * the collapse control. When it is not scrollable, only the literal
 * dismiss, action and cap rectangles are taken and every other pixel still
 * reaches the dock, in every state alike. */
-  .app__main--dock-bottom > .banner-host {
+  .app__main:has(> [data-region="bottom"]) > .banner-host {
     z-index: calc(var(--layer-dock) + 1);
   }
 }

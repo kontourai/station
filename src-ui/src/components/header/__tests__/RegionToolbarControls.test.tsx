@@ -60,10 +60,8 @@ vi.mock('../../../contexts/NavigationContext', () => ({
 
 vi.mock('../../../hooks/useIsMobile', () => ({
   useIsMobile: () => false,
-  useDockSlotPlacement: () => ({
-    available: ['left', 'right', 'bottom'],
-    effective: 'bottom',
-  }),
+  useDockSlotDevice: () => ({ viewportWidth: 1024, coarsePointer: false }),
+  availablePlacements: () => ['left', 'right', 'bottom'],
 }));
 
 vi.mock('../../../hooks/useKeyboardShortcut', () => ({
