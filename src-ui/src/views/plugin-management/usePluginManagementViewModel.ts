@@ -386,16 +386,33 @@ export function usePluginManagementViewModel() {
         permissions: [permission],
       });
       const label = describePermission(permission);
+      const operation = outcome.reconciliation.operationId
+        ? ` Cleanup operation ${outcome.reconciliation.operationId}.`
+        : '';
+      const action =
+        outcome.reconciliation.status === 'winding-down' ||
+        outcome.reconciliation.status === 'incomplete'
+          ? {
+              label:
+                outcome.reconciliation.status === 'winding-down'
+                  ? 'Check cleanup'
+                  : 'Retry cleanup',
+              invoke: () => {
+                void revokePermission(pluginName, permission);
+              },
+            }
+          : undefined;
       setMessage({
         type: 'success',
         text:
           outcome.reconciliation.status === 'completed'
             ? `${label} was removed and its runtime capability is retired.`
             : outcome.reconciliation.status === 'winding-down'
-              ? `${label} was removed. Existing work is still winding down.`
+              ? `${label} was removed. Existing work is still winding down.${operation}`
               : outcome.reconciliation.status === 'superseded'
                 ? `${label} changed again while runtime state was reconciling; the latest grant state won.`
-                : `${label} was removed, but runtime cleanup is incomplete. Retry the removal to reconcile it again.`,
+                : `${label} was removed, but runtime cleanup is incomplete.${operation}`,
+        ...(action ? { action } : {}),
       });
     } catch (error) {
       // A failed withdrawal used to be silent: the row stopped spinning, the

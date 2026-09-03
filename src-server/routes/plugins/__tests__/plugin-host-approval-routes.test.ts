@@ -321,7 +321,15 @@ describe('plugin host approval routes (consent-transaction consumer)', () => {
 
     const status = await app.request(`/host-approvals/${approval.id}`);
     expect(await status.json()).toMatchObject({
-      approval: { status: 'approved' },
+      approval: {
+        status: 'approved',
+        reconciliation: {
+          status: 'completed',
+          operationId: 'grant-operation',
+          generation: 1,
+          effects: ['provider-activation'],
+        },
+      },
     });
   });
 

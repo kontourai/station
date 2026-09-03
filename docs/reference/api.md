@@ -2347,6 +2347,13 @@ work is still `winding-down`; its operation id and generation identify that
 owned continuation. An `incomplete` result names bounded cleanup stages and can
 be retried with the same idempotent DELETE.
 
+Trusted approvals use the same reconciliation service. After an approval is
+terminal, `GET /plugins/host-approvals/:id` retains its `reconciliation`
+projection—including status, operation id, generation, and bounded effect or
+failure stage names—alongside `approval.status`. An approved consent record
+therefore does not erase a still-winding or incomplete withdrawal caused by
+grant rebinding.
+
 ```json
 {
   "success": true,

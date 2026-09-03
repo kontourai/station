@@ -27,7 +27,10 @@ export interface PluginGrantReconciliationAdapters {
     pluginName: string,
     expectedGeneration: number,
   ): Promise<'retired' | 'superseded'>;
-  activateProviders(pluginName: string): Promise<void>;
+  activateProviders(
+    pluginName: string,
+    expected: PluginGrantRuntimeGenerationFence,
+  ): Promise<'activated' | 'superseded'>;
   settleProviderAdapters(): Promise<void>;
   removeEngineConnections(
     pluginName: string,
@@ -95,6 +98,7 @@ export function createPluginGrantReconciliationService(
   const deadlineMs = options.responseDeadlineMs ?? 2_000;
   const generations = new Map<string, number>();
   const tails = new Map<string, Promise<void>>();
+  const pendingPermissions = new Map<string, Set<string>>();
   const retained = new Map<
     string,
     { generation: number; result?: PluginGrantReconciliationResult }
@@ -228,7 +232,21 @@ export function createPluginGrantReconciliationService(
       if (changed.has('providers.register')) {
         if (beforeEffect.grants.includes('providers.register')) {
           try {
-            await adapters.activateProviders(input.pluginName);
+            const activated = await adapters.activateProviders(
+              input.pluginName,
+              {
+                installed: beforeEffect.installed,
+                installationGeneration: beforeEffect.installationGeneration,
+                providerGeneration: beforeEffect.providerGeneration,
+              },
+            );
+            if (activated === 'superseded') {
+              return {
+                status: 'superseded',
+                operationId: input.operationId,
+                generation: input.generation,
+              };
+            }
             effects.push('provider-activation');
             expectedProviderGeneration = beforeEffect.providerGeneration + 1;
           } catch {
@@ -404,6 +422,7 @@ export function createPluginGrantReconciliationService(
         if (evictable) {
           retained.delete(evictable);
           generations.delete(evictable);
+          pendingPermissions.delete(evictable);
         }
       }
       if (!retained.has(input.pluginName) && retained.size >= 256) {
@@ -416,12 +435,21 @@ export function createPluginGrantReconciliationService(
       }
       const generation = currentGeneration(input.pluginName) + 1;
       generations.set(input.pluginName, generation);
+      const completePermissionVector =
+        pendingPermissions.get(input.pluginName) ?? new Set<string>();
+      for (const permission of input.permissions) {
+        if (LIFECYCLE_PERMISSIONS.has(permission)) {
+          completePermissionVector.add(permission);
+        }
+      }
+      pendingPermissions.set(input.pluginName, completePermissionVector);
       const prior = tails.get(input.pluginName) ?? Promise.resolve();
       const work = prior
         .catch(() => undefined)
         .then(() =>
           perform({
             ...input,
+            permissions: [...completePermissionVector],
             generation,
             operationId,
           }),
@@ -430,7 +458,12 @@ export function createPluginGrantReconciliationService(
       const tail = work.then(
         (result) => {
           const record = retained.get(input.pluginName);
-          if (record?.generation === generation) record.result = result;
+          if (record?.generation === generation) {
+            record.result = result;
+            if (result.status === 'completed') {
+              pendingPermissions.delete(input.pluginName);
+            }
+          }
         },
         () => undefined,
       );

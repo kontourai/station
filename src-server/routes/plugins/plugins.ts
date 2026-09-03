@@ -13,11 +13,9 @@ import {
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
-import {
-  computePluginContentDigest,
-  withPluginContentLock,
-} from '../../services/plugins/plugin-content-integrity.js';
+import { computePluginContentDigest } from '../../services/plugins/plugin-content-integrity.js';
 import { createPluginGrantReconciliationService } from '../../services/plugins/plugin-grant-reconciliation.js';
+import { withPluginInstallationGeneration } from '../../services/plugins/plugin-installation-generation-fence.js';
 import { readPluginManifestFile } from '../../services/plugins/plugin-manifest-loader.js';
 import { getPluginGrants } from '../../services/plugins/plugin-permissions.js';
 import type { Logger } from '../../utils/logger.js';
@@ -78,43 +76,46 @@ export function createPluginRoutes(
               pluginName,
               expectedGeneration,
             ),
-          activateProviders: async (pluginName) => {
-            const manifest = await readPluginManifestFile(
-              join(pluginsDir, pluginName, 'plugin.json'),
-            );
-            await loadPluginProviders(
+          activateProviders: async (pluginName, expected) => {
+            const activation = await withPluginInstallationGeneration({
               pluginsDir,
               pluginName,
-              manifest,
-              logger,
-              { strict: true },
-            );
+              expected,
+              effect: async () => {
+                const manifest = await readPluginManifestFile(
+                  join(pluginsDir, pluginName, 'plugin.json'),
+                );
+                await loadPluginProviders(
+                  pluginsDir,
+                  pluginName,
+                  manifest,
+                  logger,
+                  { strict: true },
+                );
+              },
+            });
+            return activation.kind === 'applied'
+              ? ('activated' as const)
+              : ('superseded' as const);
           },
           settleProviderAdapters: runtime.settleProviderAdapterRetirements,
-          removeEngineConnections: (pluginName, expected) =>
-            withPluginContentLock(pluginsDir, pluginName, async () => {
-              const installed = existsSync(
-                join(pluginsDir, pluginName, 'plugin.json'),
-              );
-              const installationGeneration = computePluginContentDigest(
-                pluginsDir,
-                pluginName,
-              );
-              if (
-                installed !== expected.installed ||
-                installationGeneration !== expected.installationGeneration
-              ) {
-                return 'superseded' as const;
-              }
-              const removal = await withPluginProviderSourceGeneration(
-                pluginName,
-                expected.providerGeneration,
-                () => runtime.removeEngineConnections!(pluginName),
-              );
-              return removal.kind === 'applied'
-                ? ('removed' as const)
-                : ('superseded' as const);
-            }),
+          removeEngineConnections: async (pluginName, expected) => {
+            const installation = await withPluginInstallationGeneration({
+              pluginsDir,
+              pluginName,
+              expected,
+              effect: () =>
+                withPluginProviderSourceGeneration(
+                  pluginName,
+                  expected.providerGeneration,
+                  () => runtime.removeEngineConnections!(pluginName),
+                ),
+            });
+            return installation.kind === 'applied' &&
+              installation.value.kind === 'applied'
+              ? ('removed' as const)
+              : ('superseded' as const);
+          },
           reconcileEngineConnections: runtime.reconcileEngineConnections,
           reconcileSubscriptions: runtime.reconcileEventSubscriptions,
         })

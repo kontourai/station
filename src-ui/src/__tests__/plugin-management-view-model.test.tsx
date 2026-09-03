@@ -182,20 +182,23 @@ describe('usePluginManagementViewModel', () => {
       status: 'completed',
       expected:
         'Make network requests through the server was removed and its runtime capability is retired.',
+      actionLabel: undefined,
     },
     {
       status: 'winding-down',
       expected:
-        'Make network requests through the server was removed. Existing work is still winding down.',
+        'Make network requests through the server was removed. Existing work is still winding down. Cleanup operation operation-1.',
+      actionLabel: 'Check cleanup',
     },
     {
       status: 'incomplete',
       expected:
-        'Make network requests through the server was removed, but runtime cleanup is incomplete. Retry the removal to reconcile it again.',
+        'Make network requests through the server was removed, but runtime cleanup is incomplete.',
+      actionLabel: 'Retry cleanup',
     },
   ] as const)(
     'reports $status runtime revocation truth',
-    async ({ status, expected }) => {
+    async ({ status, expected, actionLabel }) => {
       mocks.revokePermission.mockResolvedValueOnce({
         granted: [],
         reconciliation:
@@ -211,12 +214,44 @@ describe('usePluginManagementViewModel', () => {
         result.current.revokePermission('plugin-a', 'network.fetch'),
       );
 
-      expect(result.current.message).toEqual({
+      expect(result.current.message).toMatchObject({
         type: 'success',
         text: expected,
       });
+      expect(result.current.message?.action?.label).toBe(actionLabel);
     },
   );
+
+  test('offers an actionable retry after incomplete runtime cleanup', async () => {
+    mocks.revokePermission
+      .mockResolvedValueOnce({
+        granted: [],
+        reconciliation: {
+          status: 'incomplete',
+          operationId: 'operation-incomplete',
+          generation: 1,
+          failures: ['provider-retirement'],
+        },
+      })
+      .mockResolvedValueOnce({
+        granted: [],
+        reconciliation: { status: 'completed', effects: [] },
+      });
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await act(() =>
+      result.current.revokePermission('plugin-a', 'providers.register'),
+    );
+
+    expect(result.current.message?.action?.label).toBe('Retry cleanup');
+    act(() => result.current.message?.action?.invoke());
+    await waitFor(() =>
+      expect(mocks.revokePermission).toHaveBeenCalledTimes(2),
+    );
+    expect(mocks.revokePermission).toHaveBeenLastCalledWith({
+      name: 'plugin-a',
+      permissions: ['providers.register'],
+    });
+  });
 
   /**
    * archive#4288. Everything below drives the real sequence: preview, then

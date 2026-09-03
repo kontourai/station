@@ -14,7 +14,7 @@
  * renders — this is the join, not either half again.
  */
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const refetchPlugins = vi.fn();
@@ -158,6 +158,21 @@ describe('PluginManagementView error wiring (Review H1)', () => {
     ).toBeTruthy();
     expect(screen.getByText(/still winding down/)).toBeTruthy();
     expect(screen.queryByText(/continues until the plugin reloads/)).toBeNull();
+  });
+
+  test('renders and invokes runtime-cleanup continuation actions', () => {
+    const invoke = vi.fn();
+    viewModel = baseViewModel({
+      message: {
+        type: 'success',
+        text: 'Runtime cleanup is incomplete.',
+        action: { label: 'Retry cleanup', invoke },
+      },
+    });
+    render(<PluginManagementView onNavigate={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry cleanup' }));
+    expect(invoke).toHaveBeenCalledOnce();
   });
 });
 

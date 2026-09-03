@@ -39,6 +39,7 @@ function harness(
         ...snapshot,
         providerGeneration: snapshot.providerGeneration + 1,
       };
+      return 'activated' as const;
     }),
     settleProviderAdapters: vi.fn(async () => {
       order.push('settle-adapters');
@@ -151,6 +152,72 @@ describe('plugin grant reconciliation', () => {
     expect(fixture.adapters.retireProviders).not.toHaveBeenCalled();
     expect(fixture.adapters.activateProviders).toHaveBeenCalledOnce();
     expect(fixture.adapters.reconcileEngineConnections).toHaveBeenCalledOnce();
+  });
+
+  test('inherits disjoint pending lifecycle permissions when a newer revoke supersedes cleanup', async () => {
+    const fixture = harness();
+    let releaseAdapterDrain!: () => void;
+    const adapterDrain = new Promise<void>((resolve) => {
+      releaseAdapterDrain = resolve;
+    });
+    vi.mocked(fixture.adapters.settleProviderAdapters).mockImplementationOnce(
+      async () => {
+        fixture.order.push('settle-adapters-blocked');
+        await adapterDrain;
+      },
+    );
+    const service = createPluginGrantReconciliationService(fixture.adapters, {
+      responseDeadlineMs: 1_000,
+    });
+    const providerRevoke = service.reconcile({
+      pluginName: 'provider-plugin',
+      permissions: ['providers.register'],
+    });
+    await vi.waitFor(() =>
+      expect(fixture.order).toContain('settle-adapters-blocked'),
+    );
+    const serverRevoke = service.reconcile({
+      pluginName: 'provider-plugin',
+      permissions: ['plugin.server'],
+    });
+    releaseAdapterDrain();
+
+    await expect(providerRevoke).resolves.toMatchObject({
+      status: 'superseded',
+    });
+    await expect(serverRevoke).resolves.toMatchObject({ status: 'completed' });
+    expect(fixture.adapters.retireProviders).toHaveBeenCalledTimes(2);
+    expect(fixture.adapters.removeEngineConnections).toHaveBeenCalledOnce();
+    expect(fixture.adapters.quiesceModule).toHaveBeenCalledOnce();
+  });
+
+  test('passes the exact installation generation into retained provider activation and honors supersession', async () => {
+    const fixture = harness({
+      installed: true,
+      installationGeneration: 'sha256:generation-1',
+      providerGeneration: 4,
+      grants: ['providers.register'],
+    });
+    vi.mocked(fixture.adapters.activateProviders).mockResolvedValueOnce(
+      'superseded',
+    );
+    const service = createPluginGrantReconciliationService(fixture.adapters);
+
+    await expect(
+      service.reconcile({
+        pluginName: 'provider-plugin',
+        permissions: ['providers.register'],
+      }),
+    ).resolves.toMatchObject({ status: 'superseded' });
+    expect(fixture.adapters.activateProviders).toHaveBeenCalledWith(
+      'provider-plugin',
+      {
+        installed: true,
+        installationGeneration: 'sha256:generation-1',
+        providerGeneration: 4,
+      },
+    );
+    expect(fixture.adapters.reconcileEngineConnections).not.toHaveBeenCalled();
   });
 
   test('refuses to retire a different installed generation', async () => {

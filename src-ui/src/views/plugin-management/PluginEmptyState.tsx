@@ -30,7 +30,16 @@ export function PluginEmptyState({
       )}
       {message && (
         <div className={`plugins__message plugins__message--${message.type}`}>
-          {message.text}
+          <span>{message.text}</span>
+          {message.action && (
+            <button
+              type="button"
+              className="editor-btn"
+              onClick={message.action.invoke}
+            >
+              {message.action.label}
+            </button>
+          )}
         </div>
       )}
       {/*

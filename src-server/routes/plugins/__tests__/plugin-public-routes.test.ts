@@ -293,7 +293,7 @@ describe('plugin-public-routes', () => {
           quiescePluginPublicServerModule(pluginsDir, 'server-plugin'),
         quiesceSubscriptions: async () => ({ release: vi.fn() }),
         retireProviders: async () => 'retired',
-        activateProviders: async () => {},
+        activateProviders: async () => 'activated',
         settleProviderAdapters: async () => {},
         removeEngineConnections: async () => 'removed',
         reconcileEngineConnections: async () => {},
