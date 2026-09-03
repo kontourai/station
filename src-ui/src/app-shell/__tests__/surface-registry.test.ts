@@ -152,7 +152,7 @@ describe('SurfaceRegistry', () => {
     });
     expect(
       APP_SURFACE_REGISTRY.getSurfaceForView({
-        type: 'connections-provider-edit',
+        type: 'connections-model-edit',
         id: 'ollama',
       })?.id,
     ).toBe('connections');

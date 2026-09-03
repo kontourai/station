@@ -123,7 +123,17 @@ export function DockOccupantPicker({
             the caret is `aria-hidden`; this name is the trigger's visible
             label text, already covered by the `aria-label` above. */}
         <span className="dock-occupant-picker__label">{current.name}</span>
-        <span aria-hidden="true" className="dock-occupant-picker__caret">
+        <span
+          aria-hidden="true"
+          className="dock-occupant-picker__caret"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            alignSelf: 'center',
+            color: 'var(--text-tertiary)',
+            lineHeight: 1,
+          }}
+        >
           ⌄
         </span>
       </button>

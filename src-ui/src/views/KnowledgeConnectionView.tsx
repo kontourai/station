@@ -389,7 +389,7 @@ export function KnowledgeConnectionView({
                       guard(() =>
                         navigate(
                           getPathForView({
-                            type: 'connections-provider-edit',
+                            type: 'connections-model-edit',
                             id: embeddingProvider.id,
                           })!,
                         ),
@@ -415,9 +415,7 @@ export function KnowledgeConnectionView({
                   className="knowledge-view__link"
                   onClick={() =>
                     guard(() =>
-                      navigate(
-                        getPathForView({ type: 'connections-providers' })!,
-                      ),
+                      navigate(getPathForView({ type: 'connections-models' })!),
                     )
                   }
                 >

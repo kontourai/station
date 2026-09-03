@@ -11,7 +11,7 @@
  *
  * The widening is deliberately narrow: an `:is` list naming the selector,
  * and nothing else. A rule that merely MENTIONS the selector somewhere in its
- * list — `.app__main--dock-right:has(> .chat-dock) > .banner-host` — is a rule
+ * list — `.app__main:has(> [data-region="right"]) > .banner-host` — is a rule
  * about the banner host, and treating it as a dock rule would be a worse
  * error than the one this fixes.
  */

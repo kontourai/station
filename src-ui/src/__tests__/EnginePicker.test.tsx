@@ -28,7 +28,7 @@ const reconnectMutate = vi.fn();
 const invalidateQueries = vi.fn();
 
 vi.mock('@kontourai/station-sdk', () => ({
-  useAgentConnectionsQuery: () => ({ data: connectionsData }),
+  useEngineConnectionsQuery: () => ({ data: connectionsData }),
   useConfigQuery: () => ({ data: configData }),
   useUpdateConfigMutation: () => ({
     mutate,

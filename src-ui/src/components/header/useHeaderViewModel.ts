@@ -1,5 +1,5 @@
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
-import { telemetry, useAgentConnectionsQuery } from '@kontourai/station-sdk';
+import { telemetry, useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { getPathForView } from '../../app-shell/routing';
 import type { AgentData } from '../../contexts/AgentsContext';
@@ -31,7 +31,7 @@ export function useHeaderViewModel({
   const { apiBase } = useApiBase();
   const { user: authUser } = useAuth();
   const launchChat = useLaunchChat(apiBase);
-  const { data: agentConnections = [] } = useAgentConnectionsQuery() as {
+  const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data?: ConnectionConfig[];
   };
 

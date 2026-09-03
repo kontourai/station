@@ -68,11 +68,11 @@ const CANONICAL_VIEWS = [
   { type: 'agent-edit', slug: 'planner' },
   { type: 'guidance', tab: 'skills', selectedId: 'code review' },
   { type: 'connections' },
-  { type: 'connections-providers' },
-  { type: 'connections-provider-edit', id: 'provider' },
-  { type: 'connections-acp-new', providerId: 'custom' },
+  { type: 'connections-models' },
+  { type: 'connections-model-edit', id: 'provider' },
+  { type: 'connections-engine-new', providerId: 'custom' },
   { type: 'connections-engines' },
-  { type: 'connections-runtime-edit', id: 'engine' },
+  { type: 'connections-engine-edit', id: 'engine' },
   { type: 'connections-tools' },
   { type: 'connections-tool-edit', id: 'tool' },
   { type: 'connections-knowledge' },
@@ -218,8 +218,8 @@ describe('app-shell routing', () => {
   test('getParentView returns semantic Station parents instead of browser history', () => {
     expect(getParentView({ type: 'home' })).toBeNull();
     expect(
-      getParentView({ type: 'connections-provider-edit', id: 'ollama' }),
-    ).toEqual({ type: 'connections-providers' });
+      getParentView({ type: 'connections-model-edit', id: 'ollama' }),
+    ).toEqual({ type: 'connections-models' });
     expect(
       getParentView({
         type: 'layout',
@@ -238,7 +238,7 @@ describe('app-shell routing', () => {
   test('resolveViewFromPath maps agent, connection, and project routes', () => {
     expect(resolveViewFromPath('/agents/new')).toEqual({ type: 'agent-new' });
     expect(resolveViewFromPath('/connections/models/demo')).toEqual({
-      type: 'connections-provider-edit',
+      type: 'connections-model-edit',
       id: 'demo',
     });
     expect(resolveViewFromPath('/connections/engines')).toEqual({
@@ -642,17 +642,17 @@ describe('app-shell routing', () => {
   });
 
   test('getPathForView emits the canonical route for Models and Agent apps', () => {
-    expect(getPathForView({ type: 'connections-providers' })).toBe(
+    expect(getPathForView({ type: 'connections-models' })).toBe(
       '/connections/models',
     );
-    expect(
-      getPathForView({ type: 'connections-provider-edit', id: 'demo' }),
-    ).toBe('/connections/models/demo');
+    expect(getPathForView({ type: 'connections-model-edit', id: 'demo' })).toBe(
+      '/connections/models/demo',
+    );
     expect(getPathForView({ type: 'connections-engines' })).toBe(
       '/connections/engines',
     );
     expect(
-      getPathForView({ type: 'connections-runtime-edit', id: 'demo' }),
+      getPathForView({ type: 'connections-engine-edit', id: 'demo' }),
     ).toBe('/connections/engines/demo');
   });
 

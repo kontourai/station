@@ -15,13 +15,13 @@ import type {
 import {
   useAgentConnectionCatalogQuery,
   useAgentConnectionQuery,
-  useAgentConnectionsQuery,
   useAppHomeProfileQuery,
   useApplyCredentialProfileMutation,
   useClearAppHomeProfileMutation,
   useCredentialRecoveryQuery,
   useDeleteAgentConnectionMutation,
   useDeleteCredentialProfileMutation,
+  useEngineConnectionsQuery,
   useImportAppHomeSnapshotMutation,
   useImportCredentialProfileSnapshotMutation,
   useSaveAgentConnectionMutation,
@@ -112,7 +112,7 @@ export function AgentConnectionView({
     isLoading,
     error: runtimesError,
     refetch: refetchRuntimes,
-  } = useAgentConnectionsQuery() as {
+  } = useEngineConnectionsQuery() as {
     data?: AgentConnectionViewData[];
     isLoading?: boolean;
     error?: unknown;
@@ -134,7 +134,7 @@ export function AgentConnectionView({
   );
   const onChooseCommand = (choice: ACPConnectionRegistryEntry | 'custom') =>
     onNavigate({
-      type: 'connections-acp-new',
+      type: 'connections-engine-new',
       providerId: choice === 'custom' ? 'custom' : choice.id,
     });
 
@@ -169,7 +169,7 @@ export function AgentConnectionView({
       setForm(saved);
       setError(null);
       setShowAddCatalog(false);
-      onNavigate({ type: 'connections-runtime-edit', id: saved.id });
+      onNavigate({ type: 'connections-engine-edit', id: saved.id });
     },
     onError: (mutationError: Error) => {
       setError(mutationError.message);
@@ -187,13 +187,17 @@ export function AgentConnectionView({
 
   const testMutation = useTestAgentConnectionMutation();
 
-  const externalAgentApps = runtimes;
-  const availableAgentApps = useMemo(() => {
+  // #1054 stopped excluding Station here: the Station engine is a row this
+  // view legitimately shows, and its test asserts so. This branch renames the
+  // binding and must not reinstate the filter that rename predates.
+  const externalEngines = runtimes;
+  const availableEngines = useMemo(() => {
     const addedIds = new Set(
-      externalAgentApps.filter(isAddedEngine).map(({ id }) => id),
+      externalEngines.filter(isAddedEngine).map(({ id }) => id),
     );
     return (
       catalog
+        .filter((connection) => connectionEngineId(connection) !== 'station')
         // Review fix (#592 slice 2, M1): the catalog endpoint is not
         // registration-authoritative — it can carry entries this Station
         // already considers 'ready'/'configured' (an adapter the runtime
@@ -205,14 +209,14 @@ export function AgentConnectionView({
         .filter((connection) => !isAddedEngine(connection))
         .filter((connection) => !addedIds.has(connection.id))
     );
-  }, [catalog, externalAgentApps]);
-  const addedAgentApps = useMemo(
-    () => externalAgentApps.filter(isAddedEngine),
-    [externalAgentApps],
+  }, [catalog, externalEngines]);
+  const addedEngines = useMemo(
+    () => externalEngines.filter(isAddedEngine),
+    [externalEngines],
   );
   const items = useMemo(
     () =>
-      addedAgentApps
+      addedEngines
         .filter((connection) => {
           if (!search) return true;
           const query = search.toLowerCase();
@@ -238,7 +242,7 @@ export function AgentConnectionView({
             />
           ),
         })),
-    [addedAgentApps, search],
+    [addedEngines, search],
   );
 
   function setField<K extends keyof ConnectionConfig>(
@@ -319,7 +323,7 @@ export function AgentConnectionView({
       selectedId={isAddRoute ? null : (selectedRuntimeId ?? null)}
       onSelect={(id) => {
         setShowAddCatalog(false);
-        onNavigate({ type: 'connections-runtime-edit', id });
+        onNavigate({ type: 'connections-engine-edit', id });
       }}
       onDeselect={() => {
         setShowAddCatalog(false);
@@ -328,7 +332,7 @@ export function AgentConnectionView({
       onSearch={setSearch}
       searchValue={search}
       listFilteredEmptyNoun="engines"
-      collectionEmpty={addedAgentApps.length === 0}
+      collectionEmpty={addedEngines.length === 0}
       /* empty-state action: the section frame's "Add engine" is adjacent. Copy
          stays action-shaped (matching the sibling providers list) rather than
          a bespoke "No engines yet" — the state-primitives ratchet exists to
@@ -340,7 +344,7 @@ export function AgentConnectionView({
       emptyContent={
         addCatalogOpen ? (
           <EngineAddCatalog
-            connections={availableAgentApps}
+            connections={availableEngines}
             commandEntries={availableCommandEntries}
             error={error}
             pendingId={

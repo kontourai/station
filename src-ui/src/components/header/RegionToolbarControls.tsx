@@ -1,10 +1,13 @@
 import { useCallback } from 'react';
-import { useNavigation } from '../../contexts/NavigationContext';
 import {
   useRegionModel,
   useRegionModelOptional,
 } from '../../contexts/RegionModelContext';
-import { useDockSlotPlacement, useIsMobile } from '../../hooks/useIsMobile';
+import {
+  availablePlacements,
+  useDockSlotDevice,
+  useIsMobile,
+} from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
   DOCK_REGION_IDS,
@@ -64,9 +67,8 @@ function ConnectedRegionToolbarControls() {
     setRegion,
     placeSurface: placeSurfaceInModel,
   } = useRegionModel();
-  const { dockMode } = useNavigation();
   const isMobile = useIsMobile();
-  const { available } = useDockSlotPlacement(dockMode);
+  const available = availablePlacements(useDockSlotDevice());
   const breakpoint = isMobile ? 'phone' : 'desktop';
   const firstSurface = surfaces.values().next().value as
     | RegisteredSurface

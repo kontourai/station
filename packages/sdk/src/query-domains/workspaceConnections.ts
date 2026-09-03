@@ -428,11 +428,11 @@ export function useModelPickerCatalogQuery(
   );
 }
 
-export function useAgentConnectionsQuery(
+export function useEngineConnectionsQuery(
   config?: QueryConfig<AgentConnectionView[]>,
 ) {
   return useApiQuery(
-    ['connections', 'runtimes'],
+    ['connections', 'engines'],
     async () => {
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
@@ -447,11 +447,13 @@ export function useAgentConnectionsQuery(
   );
 }
 
+/** Engines exposed by the Connections / Engines surface. */
+
 export function useAgentConnectionCatalogQuery(
   config?: QueryConfig<AgentConnectionView[]>,
 ) {
   return useApiQuery(
-    ['connections', 'runtimes', 'catalog'],
+    ['connections', 'engines', 'catalog'],
     async () => {
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(

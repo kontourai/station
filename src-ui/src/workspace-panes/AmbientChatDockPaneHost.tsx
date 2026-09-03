@@ -39,8 +39,8 @@ import type { DockSnap } from '../components/chat-dock/dockSnap';
 import { shouldMaximizeAfterDockingAsOnlyContent } from '../components/chat-dock/mobile-chrome';
 import { SkeletonBlock } from '../components/state';
 import { useApiBase } from '../contexts/ApiBaseContext';
-import type { DockSlotGeometry } from '../hooks/dock-slot-geometry';
 import type { DockShellChrome } from '../hooks/useDockShellChrome';
+import { reportRegionClearance } from '../regions/region-clearance';
 import type { DockMode, NavigationView } from '../types';
 import { ActivityWorkspacePaneBindingProvider } from '../views/activity/ActivityWorkspacePaneBinding';
 import {
@@ -129,33 +129,6 @@ export function ambientWorkspacePaneDockAction(
     occupantInstanceId,
     undockOccupant,
   };
-}
-
-/**
- * The ambient host is the sole writer of the shell geometry variables
- * (archive#3902/archive#3929 pin exactly one writer). `DockShell` is now the SINGLE
- * geometry authority regardless of occupant (archive#4460) — it reports its
- * live geometry through `onGeometryChange`; this host's only remaining job is
- * applying that report to the CSS variables the rest of the shell reads. No
- * dual chat-vs-derived path anymore: there is nothing left to derive, because
- * every occupant now shares the one instance that tracks live drag/snap/
- * maximize state.
- */
-function useAmbientDockSlotGeometryWriter() {
-  return useCallback((geometry: DockSlotGeometry | null) => {
-    const root = document.documentElement;
-    if (!geometry) {
-      root.style.removeProperty('--chat-dock-width');
-      root.style.removeProperty('--dock-slot-size');
-      return;
-    }
-    if (geometry.width === null) {
-      root.style.removeProperty('--chat-dock-width');
-    } else {
-      root.style.setProperty('--chat-dock-width', `${geometry.width}px`);
-    }
-    root.style.setProperty('--dock-slot-size', `${geometry.size}px`);
-  }, []);
 }
 
 function admitsAmbientDockInstance(
@@ -344,7 +317,6 @@ export function AmbientChatDockPaneHost({
   const [activeInstanceId, setActiveInstanceId] = useState(
     ambientChatDockPaneDocument.activeInstanceId,
   );
-  const writeDockSlotGeometry = useAmbientDockSlotGeometryWriter();
   // Internal, boolean-returning: `dockPane`'s PUBLIC shape (both on
   // `AmbientDockShellApi` and `WorkspacePaneDockAction`) returns `void`, but
   // `dockPaneAsOnlyContent` below must not maximize the dock for a request
@@ -460,12 +432,14 @@ export function AmbientChatDockPaneHost({
   ]);
   // DockShell wraps every occupant (Chat, Home, Activity) — the one dock
   // chrome shell (archive#4460): root box, resize handle, geometry/snap/
-  // drag state, `dock.toggle`/`dock.maximize`. Its `onGeometryChange` is
-  // this host's only remaining geometry job — apply the shell's live report
-  // to the CSS variables (archive#3902/archive#3929: one writer per shell;
-  // one shell while Chat is the only registered surface, #928).
+  // drag state, `dock.toggle`/`dock.maximize`. Its geometry report goes to
+  // the clearance reducer, one entry per rendered region (#928; the reducer
+  // is the one writer of the CSS variables, archive#3902/archive#3929).
   const host = (
-    <DockShell regionId={regionId} onGeometryChange={writeDockSlotGeometry}>
+    <DockShell
+      regionId={regionId}
+      onRenderedRegionGeometryChange={reportRegionClearance}
+    >
       {(shellChrome) => {
         // station#520: keep `dockPaneAsOnlyContent`'s mobile-maximize ref
         // current every render — see the ref's own doc above.
