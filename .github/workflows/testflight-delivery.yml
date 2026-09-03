@@ -217,6 +217,12 @@ jobs:
           git diff --exit-code -- gen/apple/.gitignore gen/apple/ExportOptions.plist gen/apple/LaunchScreen.storyboard gen/apple/Podfile gen/apple/PrivacyInfo.xcprivacy gen/apple/Sources
           grep -Fq 'CODE_SIGN_STYLE: Manual' gen/apple/project.yml
           grep -Fq 'PROVISIONING_PROFILE_SPECIFIER:' gen/apple/project.yml
+          # `rm -rf gen/apple` also removed the staged provenance resource
+          # (gen/apple/assets/station-build.json, gitignored). The packaged
+          # copy is what "Verify IPA identity" compares byte for byte, so
+          # stage it again from the same authority before building.
+          (cd .. && STATION_BUILD_BRANCH="$AUTHORITY_REF" node scripts/write-ios-build-manifest.mjs)
+          test -s gen/apple/assets/station-build.json
       - name: Build signed and channel-audited iOS package
         working-directory: src-desktop
         run: |
