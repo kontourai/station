@@ -171,6 +171,62 @@ function isInside(parent: string, child: string): boolean {
   );
 }
 
+export function resolveAgentPluginDataDirectory(
+  projectHomeDir: string,
+  pluginName: string,
+  { provision = false }: { provision?: boolean } = {},
+): { root: string; directory: string } {
+  if (!isCanonicalPluginId(pluginName)) {
+    throw new Error('Agent Plugin data identity is invalid');
+  }
+  const requestedHome = resolve(projectHomeDir);
+  const home = realpathSync(requestedHome);
+  if (!statSync(home).isDirectory()) {
+    throw new Error('Station home is not a real directory');
+  }
+  const requestedRoot = join(home, 'agent-plugin-data');
+  let rootInfo = lstatSync(requestedRoot, { throwIfNoEntry: false });
+  if (rootInfo?.isSymbolicLink()) {
+    throw new Error('Agent Plugin data root must not be a symbolic link');
+  }
+  if (!rootInfo && provision) {
+    mkdirSync(requestedRoot, { mode: 0o700 });
+    rootInfo = lstatSync(requestedRoot);
+  }
+  if (rootInfo && !rootInfo.isDirectory()) {
+    throw new Error('Agent Plugin data root must be a directory');
+  }
+  const root = rootInfo ? realpathSync(requestedRoot) : requestedRoot;
+  if (!isInside(home, root)) {
+    throw new Error('Agent Plugin data root escapes Station home');
+  }
+
+  const requestedDirectory = join(root, pluginName);
+  let directoryInfo = lstatSync(requestedDirectory, {
+    throwIfNoEntry: false,
+  });
+  if (directoryInfo?.isSymbolicLink()) {
+    throw new Error('Agent Plugin data directory must not be a symbolic link');
+  }
+  if (!directoryInfo && provision) {
+    if (!rootInfo) {
+      throw new Error('Agent Plugin data root is unavailable');
+    }
+    mkdirSync(requestedDirectory, { mode: 0o700 });
+    directoryInfo = lstatSync(requestedDirectory);
+  }
+  if (directoryInfo && !directoryInfo.isDirectory()) {
+    throw new Error('Agent Plugin data directory must be a directory');
+  }
+  const directory = directoryInfo
+    ? realpathSync(requestedDirectory)
+    : requestedDirectory;
+  if (!isInside(root, directory)) {
+    throw new Error('Agent Plugin data directory escapes its root');
+  }
+  return { root, directory };
+}
+
 function readBoundedRegularFile(path: string): string {
   const info = statSync(path);
   if (!info.isFile()) throw new Error('expected a regular file');
@@ -286,16 +342,14 @@ function toolId(pluginName: string, serverName: string): string {
 export class AgentPluginLoader {
   private readonly projectHomeDir: string;
   private readonly pluginsDir: string;
-  private readonly pluginDataDir: string;
   private readonly reportSink?: (report: AgentPluginLoadReport) => void;
   private readonly validateManifest: ValidateFunction;
   private readonly validateMcpServer: ValidateFunction;
   private readonly validateStationExtension: ValidateFunction;
 
   constructor(options: AgentPluginLoaderOptions) {
-    this.projectHomeDir = resolve(options.projectHomeDir);
+    this.projectHomeDir = realpathSync(resolve(options.projectHomeDir));
     this.pluginsDir = join(this.projectHomeDir, 'plugins');
-    this.pluginDataDir = join(this.projectHomeDir, 'agent-plugin-data');
     this.reportSink = options.report;
     const schemaRoot = options.schemaRoot
       ? realpathSync(resolve(options.schemaRoot))
@@ -363,7 +417,22 @@ export class AgentPluginLoader {
       root,
       reports,
     );
-    const dataRoot = join(this.pluginDataDir, manifest.name);
+    let dataRoot: string;
+    try {
+      dataRoot = resolveAgentPluginDataDirectory(
+        this.projectHomeDir,
+        manifest.name,
+      ).directory;
+    } catch (error) {
+      this.emit(reports, {
+        level: 'error',
+        code: 'component-invalid',
+        pluginRoot: root,
+        component: 'PLUGIN_DATA',
+        message: `Agent Plugin data is unavailable: ${String(error)}`,
+      });
+      return { ok: false, reports };
+    }
     const skills = this.discoverSkills(root, reports);
     const tools = this.discoverMcp(
       root,
@@ -799,7 +868,11 @@ export class AgentPluginLoader {
           throw new Error('unsupported MCP transport');
         }
         if (provisionData) {
-          mkdirSync(dataRoot, { recursive: true, mode: 0o700 });
+          dataRoot = resolveAgentPluginDataDirectory(
+            this.projectHomeDir,
+            manifest.name,
+            { provision: true },
+          ).directory;
           accessSync(dataRoot, fsConstants.W_OK);
         }
         const resolvedData = provisionData

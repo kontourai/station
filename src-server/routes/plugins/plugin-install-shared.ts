@@ -38,6 +38,7 @@ import {
   writeRegistryInstallAliases,
 } from '../../providers/registries/registry-install-aliases.js';
 import { ContextSafetyError } from '../../services/orchestration/context-safety.js';
+import { resolveAgentPluginDataDirectory } from '../../services/plugins/agent-plugin-loader.js';
 import { scanPluginPromptGeneration } from '../../services/plugins/plugin-command-skill-source.js';
 import {
   findPluginContentLockCycleError,
@@ -126,6 +127,18 @@ function assertNoSymlinkTree(
     if (entry.isDirectory()) {
       assertNoSymlinkTree(root, child, label);
     }
+  }
+}
+
+function assertAgentPluginDataStaging(root: string, candidate: string): void {
+  const rootInfo = lstatSync(root);
+  if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) {
+    throw new Error('Agent Plugin data root must be a real directory');
+  }
+  assertExistingPathInside(root, candidate, 'Agent Plugin staged data');
+  const info = lstatSync(candidate);
+  if (info.isSymbolicLink() || !info.isDirectory()) {
+    throw new Error('Agent Plugin staged data must be a real directory');
   }
 }
 
@@ -1744,6 +1757,12 @@ export async function uninstallInstalledPlugin(
     installedPluginName,
     logger,
   );
+  const pluginName = manifest.name || name;
+  if (isAgentPlugin) {
+    // Preflight before quiescence or any plugin mutation. The same authority is
+    // re-read immediately around each later data rename/delete boundary.
+    resolveAgentPluginDataDirectory(projectHomeDir, pluginName);
+  }
   const eventSubscriptionQuiescence =
     (await deps.quiesceEventSubscriptions?.(
       manifest.name || installedPluginName,
@@ -1759,7 +1778,6 @@ export async function uninstallInstalledPlugin(
     throw error;
   }
   deps.beginConfigurationMutation?.();
-  const pluginName = manifest.name || name;
   // Captured BEFORE any agent directory deletion (archive#1004 review
   // HIGH-1 residual b) — if a later step in this try block throws, the
   // catch block's rollback `synchronizePluginAgentDefinitions` call can no
@@ -1817,8 +1835,8 @@ export async function uninstallInstalledPlugin(
       name,
     );
     if (isAgentPlugin) {
-      const dataRoot = join(projectHomeDir, 'agent-plugin-data');
-      const dataDir = join(dataRoot, pluginName);
+      const { root: dataRoot, directory: dataDir } =
+        resolveAgentPluginDataDirectory(projectHomeDir, pluginName);
       if (existsSync(dataDir)) {
         stagedAgentPluginData = join(
           dataRoot,
@@ -1832,6 +1850,11 @@ export async function uninstallInstalledPlugin(
     logger.info('Plugin removed', { plugin: pluginName });
     if (stagedAgentPluginData) {
       try {
+        const { root: dataRoot } = resolveAgentPluginDataDirectory(
+          projectHomeDir,
+          pluginName,
+        );
+        assertAgentPluginDataStaging(dataRoot, stagedAgentPluginData);
         rmSync(stagedAgentPluginData, { recursive: true, force: true });
       } catch (error) {
         logger.warn('Removed plugin data awaits cleanup', {
@@ -1863,7 +1886,9 @@ export async function uninstallInstalledPlugin(
         );
         await restorePluginDurableState(projectHomeDir, backupRoot);
         if (stagedAgentPluginData && existsSync(stagedAgentPluginData)) {
-          const dataDir = join(projectHomeDir, 'agent-plugin-data', pluginName);
+          const { root: dataRoot, directory: dataDir } =
+            resolveAgentPluginDataDirectory(projectHomeDir, pluginName);
+          assertAgentPluginDataStaging(dataRoot, stagedAgentPluginData);
           renameSync(stagedAgentPluginData, dataDir);
           stagedAgentPluginData = null;
         }

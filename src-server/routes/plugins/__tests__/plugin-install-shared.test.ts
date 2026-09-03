@@ -422,6 +422,35 @@ describe('installPluginFromSource', () => {
     expect(existsSync(join(root, 'integrations'))).toBe(false);
   });
 
+  test.runIf(process.platform !== 'win32')(
+    'refuses Agent Plugin uninstall through a symlinked data ancestor without touching external data',
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-agent-plugin-remove-'));
+      const outside = mkdtempSync(
+        join(tmpdir(), 'station-agent-plugin-external-'),
+      );
+      cleanupDirs.push(root, outside);
+      const pluginDir = join(root, 'plugins', 'acme.tools');
+      writePlugin(pluginDir, {
+        $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+        name: 'acme.tools',
+      });
+      const externalData = join(outside, 'acme.tools');
+      mkdirSync(externalData, { recursive: true });
+      const marker = join(externalData, 'must-survive.txt');
+      writeFileSync(marker, 'external');
+      symlinkSync(outside, join(root, 'agent-plugin-data'), 'dir');
+
+      await expect(
+        uninstallInstalledPlugin('acme.tools', deps(root)),
+      ).rejects.toThrow(/data.*symbolic link/i);
+
+      expect(existsSync(join(pluginDir, 'plugin.json'))).toBe(true);
+      expect(readFileSync(marker, 'utf8')).toBe('external');
+      expect(existsSync(externalData)).toBe(true);
+    },
+  );
+
   test('installs a pane-only plugin and projects its inert catalog declaration', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-plugin-pane-install-'));
     cleanupDirs.push(root);

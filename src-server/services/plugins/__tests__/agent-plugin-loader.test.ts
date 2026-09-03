@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -487,6 +488,36 @@ describe('AgentPluginLoader', () => {
           expect.objectContaining({ code: 'mcp-server-invalid' }),
         ]),
       );
+    },
+  );
+
+  test.runIf(process.platform !== 'win32')(
+    'rejects a symlinked PLUGIN_DATA ancestor without creating external data',
+    () => {
+      const stationHome = home();
+      const outside = home();
+      symlinkSync(outside, join(stationHome, 'agent-plugin-data'), 'dir');
+      const root = plugin(stationHome);
+      writeJson(join(root, 'mcp.json'), {
+        $schema: MCP_SCHEMA,
+        mcpServers: { local: { type: 'stdio', command: 'node' } },
+      });
+
+      const outcome = new AgentPluginLoader({
+        projectHomeDir: stationHome,
+      }).loadPackageResult(root);
+
+      expect(outcome).toEqual({
+        ok: false,
+        reports: [
+          expect.objectContaining({
+            code: 'component-invalid',
+            component: 'PLUGIN_DATA',
+            message: expect.stringMatching(/must not be a symbolic link/),
+          }),
+        ],
+      });
+      expect(readdirSync(outside)).toEqual([]);
     },
   );
 
