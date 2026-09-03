@@ -7347,13 +7347,22 @@ button.tool-call__line:hover {
    above Station's 768px breakpoint (with main's short-coarse-screen carve-out,
    which routes landscape phones to the mobile bottom-sheet treatment). */
 @media (min-width: 769px) and (not ((max-height: 540px) and (pointer: coarse))) {
-  /* #928: region shells contribute independent tracks to the desktop grid. */
-  .app__main:has(> [data-region]) {
+  /* #928: region shells contribute independent tracks to the desktop grid.
+     Keyed on the three placed regions, not bare `[data-region]`, so a shell
+     stamped with an unplaced value never turns the grid on around itself.
+     Side tracks default to 0 and the bottom track to 0, which means every
+     direct child of `.app__main` must be out of flow or explicitly placed:
+     an auto-placed child lands in a zero-width track. */
+  .app__main:has(
+    > :is([data-region="left"], [data-region="right"], [data-region="bottom"])
+  ) {
     display: grid;
     grid-template-columns: var(--region-left-track, 0) minmax(0, 1fr) var(
         --region-right-track,
         0
       );
+    /* Toolbar row + content row + bottom-region row. BannerHost is an
+       absolutely-positioned overlay (station#3308) and takes no grid row. */
     grid-template-rows: auto minmax(0, 1fr) var(--region-bottom-track, 0);
   }
 
@@ -7395,7 +7404,9 @@ button.tool-call__line:hover {
   .app__main:has(> [data-region]) > .main-content {
     /* Explicit column pin (archive#1055 empirical follow-up): every item
        explicitly placed in row 2 must also pin its column or Chromium creates
-       an implicit shrink-to-fit column. Future row-2 items must do the same. */
+       an implicit shrink-to-fit column (measured live: a maximized dock came
+       out 400.7px wide instead of the full 1040px content column). Future
+       row-2 items must do the same. */
     grid-column: 2;
     grid-row: 2;
     overflow: hidden;
@@ -7516,7 +7527,10 @@ button.tool-call__line:hover {
      hiding .main-content prevents the underlying workspace (including the
      coding-layout inspector side panel) from consuming a grid column or
      painting through behind the spanning dock. Mirrors the existing
-     :has(> .chat-dock.is-collapsed) pattern above. */
+     :has(> .chat-dock.is-collapsed) pattern above.
+     Single-occupant only: with a second region shell present this collapse
+     leaves that shell's column outside the explicit grid (archive#1055 on
+     the column axis). Per-region maximize is the #928 follow-up slice. */
   .app__main:has(
     > :is([data-region="left"], [data-region="right"]).is-maximized
   ) {
@@ -7698,7 +7712,9 @@ button.tool-call__line:hover {
   /* A maximized bottom dock owns one real fill row. Keeping the normal
      `var(--dock-slot-size)` third row and spanning across it left percentage
      height resolution anchored to the content row in Chromium, producing a
-     dead band roughly the size of the former dock at the viewport bottom. */
+     dead band roughly the size of the former dock at the viewport bottom.
+     Single-occupant only, like the side-maximize collapse above: a side
+     shell would share row 2 with the maximized bottom shell. */
   .app__main:has(> [data-region="bottom"].is-maximized) {
     grid-template-rows: auto minmax(0, 1fr);
   }

@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 
-// Capture: node scripts/region-grid-parity.mjs --css <stylesheet> --out <json> [--legacy-parent]
+// Capture: node scripts/region-grid-parity.mjs --css <built entry css> --out <json> [--legacy-parent]
 // Compare: node scripts/region-grid-parity.mjs --diff <before.json> <after.json>
+// `<built entry css>` is `dist-ui/assets/index-*.css` from `npm run build:ui`
+// (the fixture carries no styles of its own); `--legacy-parent` reconstructs
+// the pre-#928 `app__main--dock-*` parent class for a capture of main.
+// See docs/guides/testing.md "Region grid parity".
 
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -13,12 +17,8 @@ import { chromium } from 'playwright';
 const STRUCTURAL_GRID_PROPERTIES = [
   'grid-template-columns',
   'grid-column',
-  'grid-column-start',
-  'grid-column-end',
   'grid-template-rows',
   'grid-row',
-  'grid-row-start',
-  'grid-row-end',
 ];
 
 const DECLARED_PROPERTIES = [
@@ -69,10 +69,54 @@ const PROPERTIES = DECLARED_PROPERTIES.filter(
 
 const PLACEMENTS = ['left', 'right', 'bottom'];
 const STATES = ['open', 'collapsed', 'maximized'];
+// `coarse-desktop` keeps the desktop @media block on while every side
+// placement folds to bottom (useIsMobile.ts `availablePlacements`).
 const VIEWPORTS = [
   { id: 'desktop', width: 1280, height: 800, coarse: false },
+  { id: 'coarse-desktop', width: 1024, height: 768, coarse: true },
   { id: 'coarse-landscape', width: 844, height: 390, coarse: true },
   { id: 'phone', width: 390, height: 844, coarse: true },
+];
+
+// Every `data-parity` name in fixtures/region-grid-skeleton.html; a capture
+// that finds a different set fails instead of silently comparing less.
+const EXPECTED_ELEMENTS = [
+  'app-main',
+  'app-toolbar',
+  'banner-host',
+  'chat-dock',
+  'chat-input',
+  'chat-messages',
+  'chat-textarea',
+  'content-view',
+  'context-indicator',
+  'controls-row',
+  'dock-activity',
+  'dock-badge',
+  'dock-body',
+  'dock-counter',
+  'dock-header',
+  'dock-new',
+  'dock-new-label',
+  'dock-subtitle',
+  'dock-title',
+  'filter-pill',
+  'header-actions',
+  'icon-button',
+  'input-container',
+  'main-content',
+  'maximize-button',
+  'message',
+  'message-pre',
+  'message-row',
+  'occupant-menu',
+  'occupant-picker',
+  'project-filter',
+  'resize-handle',
+  'session-info',
+  'streaming-message',
+  'streaming-text',
+  'tab-actions',
 ];
 
 function usage() {
@@ -129,7 +173,10 @@ async function diffFiles(beforePath, afterPath) {
     readFile(beforePath, 'utf8').then(JSON.parse),
     readFile(afterPath, 'utf8').then(JSON.parse),
   ]);
-  const found = differences(before.cases, after.cases);
+  const found = [
+    ...differences(before.inventory, after.inventory, 'inventory'),
+    ...differences(before.cases, after.cases),
+  ];
   if (found.length === 0) {
     process.stdout.write('No differences.\n');
     return;
@@ -166,7 +213,7 @@ async function capture({ css: cssPath, out, legacyParent }) {
           const fold = viewport.coarse ? 'bottom' : placement;
           const key = `${viewport.id}/${placement}/${state}`;
           await page.evaluate(
-            ({ fold, legacyParent, placement, state }) => {
+            ({ fold, legacyParent, state }) => {
               const main = document.querySelector('.app__main');
               const dock = document.querySelector('.chat-dock');
               if (
@@ -187,14 +234,15 @@ async function capture({ css: cssPath, out, legacyParent }) {
               dock.className = `chat-dock chat-dock--${fold}${
                 state === 'open' ? '' : ` is-${state}`
               }`;
-              dock.dataset.region = placement;
+              // DockShell.tsx stamps the rendered region, so it equals the fold.
+              dock.dataset.region = fold;
               const handle = dock.querySelector('.chat-dock__resize-handle');
               handle?.classList.toggle(
                 'chat-dock__resize-handle--left',
                 fold === 'left',
               );
             },
-            { fold, legacyParent, placement, state },
+            { fold, legacyParent, state },
           );
           await page.evaluate(
             () =>
@@ -241,14 +289,21 @@ async function capture({ css: cssPath, out, legacyParent }) {
     await browser.close();
   }
 
-  const elementCount = Object.keys(Object.values(cases)[0] ?? {}).length;
+  const elements = Object.keys(Object.values(cases)[0] ?? {}).sort();
+  const missing = EXPECTED_ELEMENTS.filter((name) => !elements.includes(name));
+  const extra = elements.filter((name) => !EXPECTED_ELEMENTS.includes(name));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      `Parity fixture inventory drifted (missing: ${missing.join(', ') || '-'}; extra: ${extra.join(', ') || '-'})`,
+    );
+  }
   const output = stable({
     cases,
-    inventory: { elements: elementCount, properties: PROPERTIES.length },
+    inventory: { elements, properties: PROPERTIES },
   });
   await writeFile(out, `${JSON.stringify(output, null, 2)}\n`);
   process.stdout.write(
-    `Captured ${Object.keys(cases).length} cases, ${elementCount} elements, ${PROPERTIES.length} properties.\n`,
+    `Captured ${Object.keys(cases).length} cases, ${elements.length} elements, ${PROPERTIES.length} properties.\n`,
   );
 }
 

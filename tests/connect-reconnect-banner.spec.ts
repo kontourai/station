@@ -246,7 +246,10 @@ test.describe('compatibility-aware reconnect', () => {
         `.app__main > [data-region="${placement}"]`,
       );
       await expect(regionShell).toBeVisible();
-      await expect(regionShell).toHaveAttribute('data-region', placement);
+      // Region and fold agree on this fine-pointer viewport (DockShell.tsx `renderedRegion`).
+      await expect(regionShell).toHaveClass(
+        new RegExp(`chat-dock--${placement}\\b`),
+      );
       await expect(
         page.getByRole('heading', { name: 'What do you want to work on?' }),
       ).toBeVisible();
@@ -428,7 +431,9 @@ test.describe('compatibility-aware reconnect', () => {
         `.app__main > [data-region="${dock.mode}"]`,
       );
       await expect(regionShell).toBeVisible();
-      await expect(regionShell).toHaveAttribute('data-region', dock.mode);
+      await expect(regionShell).toHaveClass(
+        new RegExp(`chat-dock--${dock.mode}\\b`),
+      );
       const chatDock = page.locator('.app__main > .chat-dock');
       await expect(chatDock).toBeVisible();
       // Fail loudly if the URL params did not actually reach the dock state
