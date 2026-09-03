@@ -5,6 +5,7 @@ import { describe, expect, test, vi } from 'vitest';
 
 const catalogMock = vi.hoisted(() => ({
   projectId: 'project-uuid',
+  projectSlug: 'demo',
   entries: [
     {
       descriptor: {
@@ -63,12 +64,14 @@ vi.mock('../../core/SDKAdapter', () => ({
     children,
     layout,
     boundProjectSlug,
+    boundPluginName,
   }: {
     children: React.ReactNode;
     layout: unknown;
     boundProjectSlug?: string;
+    boundPluginName?: string;
   }) => {
-    sdkAdapterMock({ layout, boundProjectSlug });
+    sdkAdapterMock({ layout, boundProjectSlug, boundPluginName });
     return children;
   },
 }));
@@ -302,6 +305,7 @@ describe('WorkspacePaneRouteView', () => {
     );
     expect(sdkAdapterMock).toHaveBeenCalledWith({
       boundProjectSlug: 'demo',
+      boundPluginName: 'third-party-review',
       layout: expect.objectContaining({
         slug: 'third-party-issues-1',
         tabs: [

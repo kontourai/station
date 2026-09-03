@@ -6,14 +6,24 @@ import { STATION_PLUGIN_HEADER } from '@kontourai/station-contracts/http';
 import type { LayoutDefinition } from '@kontourai/station-contracts/layout';
 
 let _apiBase = '';
-let _currentLayout: LayoutDefinition | undefined;
+let _currentPluginName = '';
+let _currentLayoutOwner: object | undefined;
 
 export function _setApiBase(apiBase: string) {
   _apiBase = apiBase;
 }
 
-export function _setLayoutContext(layout: LayoutDefinition | undefined) {
-  _currentLayout = layout;
+export function _setLayoutContext(
+  layout: LayoutDefinition | undefined,
+  options: { owner?: object; pluginName?: string } = {},
+) {
+  _currentPluginName = options.pluginName ?? layout?.slug ?? '';
+  _currentLayoutOwner = options.owner;
+  return () => {
+    if (!options.owner || _currentLayoutOwner !== options.owner) return;
+    _currentPluginName = '';
+    _currentLayoutOwner = undefined;
+  };
 }
 
 export function _resolveAgent(agentSlug: string): AgentId {
@@ -21,7 +31,7 @@ export function _resolveAgent(agentSlug: string): AgentId {
 }
 
 export function _getPluginName(): string {
-  return _currentLayout?.slug || '';
+  return _currentPluginName;
 }
 
 export async function _getApiBase(): Promise<string> {

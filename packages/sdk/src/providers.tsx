@@ -84,11 +84,11 @@ export function LayoutProvider({
   activeLayout: _activeLayout,
   children,
 }: LayoutProviderProps) {
+  const [layoutContextOwner] = useState(() => ({}));
   // Set layout context for API agent resolution
   useEffect(() => {
-    _setLayoutContext(layout);
-    return () => _setLayoutContext(undefined);
-  }, [layout]);
+    return _setLayoutContext(layout, { owner: layoutContextOwner });
+  }, [layout, layoutContextOwner]);
 
   return <SDKProvider value={sdk}>{children}</SDKProvider>;
 }

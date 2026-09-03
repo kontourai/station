@@ -7,7 +7,7 @@ import {
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
@@ -38,6 +38,8 @@ interface SDKAdapterProps {
    * Direct Pane routes use this instead of ambient navigation selection.
    */
   boundProjectSlug?: string;
+  /** Owning installed plugin, distinct from this Pane occurrence/layout id. */
+  boundPluginName?: string;
 }
 
 /**
@@ -48,13 +50,19 @@ export function SDKAdapter({
   children,
   layout,
   boundProjectSlug,
+  boundPluginName,
 }: SDKAdapterProps) {
   // Get API base from the single source of truth
   const { apiBase } = useApiBase();
 
   // Set layout context synchronously so plugin tool calls resolve correctly on first render
+  const layoutContextOwner = useRef<object>({}).current;
+  const releaseLayoutContext = useRef<() => void>(() => {});
   _setApiBase(apiBase);
-  _setLayoutContext(layout as any);
+  releaseLayoutContext.current = _setLayoutContext(layout as any, {
+    owner: layoutContextOwner,
+    ...(boundPluginName ? { pluginName: boundPluginName } : {}),
+  });
 
   // Set API base and layout context for SDK API functions
   useEffect(() => {
@@ -67,7 +75,7 @@ export function SDKAdapter({
     });
 
     return () => {
-      _setLayoutContext(undefined);
+      releaseLayoutContext.current();
     };
   }, []);
 
@@ -118,14 +126,14 @@ export function SDKAdapter({
             duration?: number;
             action?: { label: string; onClick: () => void };
           },
-      _type?: 'info' | 'success' | 'warning' | 'error',
+      type: 'info' | 'success' | 'warning' | 'error' = 'info',
       duration?: number,
     ) =>
       typeof request === 'string'
-        ? toast.showToast(request, undefined, duration)
-        : toast.showToast(
+        ? toast.showSdkToast(request, type, duration)
+        : toast.showSdkToast(
             request.message,
-            undefined,
+            request.type ?? 'info',
             request.duration,
             request.action ? [request.action] : undefined,
           ),

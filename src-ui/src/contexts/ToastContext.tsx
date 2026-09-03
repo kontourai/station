@@ -27,6 +27,8 @@ type ToastAction = {
   variant?: 'primary' | 'secondary' | 'danger';
 };
 
+type ToastTone = 'info' | 'success' | 'warning' | 'error';
+
 type Toast = {
   id: string;
   message: string;
@@ -42,7 +44,7 @@ type Toast = {
   // union regardless, because the rendering code already switches on it and
   // a real device-pairing notification producer is meant to opt into this
   // exact shape next, not invent a second one.
-  type?: 'info' | 'tool-approval' | 'tool-activity' | 'pairing-request';
+  type?: ToastTone | 'tool-approval' | 'tool-activity' | 'pairing-request';
   toolName?: string;
   agentName?: string;
   conversationTitle?: string;
@@ -96,6 +98,7 @@ class ToastStore {
     duration = 5000,
     actions?: ToastAction[],
     metadata?: Record<string, unknown>,
+    tone: ToastTone = 'info',
   ) {
     const clean = stripAnsi(message);
 
@@ -104,7 +107,7 @@ class ToastStore {
     // the existing toast's auto-dismiss timer instead of adding another copy.
     const existing = this.toasts.find(
       (t) =>
-        t.type === 'info' && t.message === clean && t.sessionId === sessionId,
+        t.type === tone && t.message === clean && t.sessionId === sessionId,
     );
     if (existing) {
       const prevTimeout = this.timeouts.get(existing.id);
@@ -124,7 +127,7 @@ class ToastStore {
       message: clean,
       sessionId,
       duration,
-      type: 'info',
+      type: tone,
       actions,
       metadata,
     };
@@ -314,6 +317,12 @@ const ToastContext = createContext<{
     duration?: number,
     actions?: ToastAction[],
   ) => string;
+  showSdkToast: (
+    message: string,
+    tone?: ToastTone,
+    duration?: number,
+    actions?: ToastAction[],
+  ) => string;
   showToolApproval: (options: {
     sessionId: string;
     toolName: string;
@@ -350,6 +359,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     ) => {
       return toastStore.show(message, sessionId, duration, actions);
     },
+    [],
+  );
+  const showSdkToast = useCallback(
+    (
+      message: string,
+      tone: ToastTone = 'info',
+      duration?: number,
+      actions?: ToastAction[],
+    ) =>
+      toastStore.show(message, undefined, duration, actions, undefined, tone),
     [],
   );
 
@@ -407,6 +426,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       showToast,
+      showSdkToast,
       showToolApproval,
       showToolActivity,
       dismissToast,
@@ -416,6 +436,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }),
     [
       showToast,
+      showSdkToast,
       showToolApproval,
       showToolActivity,
       dismissToast,

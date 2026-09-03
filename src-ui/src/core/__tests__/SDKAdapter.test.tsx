@@ -7,9 +7,9 @@ const mocks = vi.hoisted(() => ({
   activeLayoutQuery: vi.fn(),
   layoutsQuery: vi.fn(),
   setApiBase: vi.fn(),
-  setLayoutContext: vi.fn(),
   setProviderFunctions: vi.fn(),
   shellToast: vi.fn(),
+  shellSdkToast: vi.fn(),
 }));
 
 const ambientNavigation = {
@@ -22,7 +22,6 @@ const ambientNavigation = {
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   _setApiBase: mocks.setApiBase,
-  _setLayoutContext: mocks.setLayoutContext,
   _setProviderFunctions: mocks.setProviderFunctions,
   useProjectLayoutsQuery: mocks.layoutsQuery,
   useProjectLayoutQuery: mocks.activeLayoutQuery,
@@ -43,7 +42,10 @@ vi.mock('../../contexts/NavigationContext', () => ({
   useNavigation: () => ambientNavigation,
 }));
 vi.mock('../../contexts/ToastContext', () => ({
-  useToast: () => ({ showToast: mocks.shellToast }),
+  useToast: () => ({
+    showToast: mocks.shellToast,
+    showSdkToast: mocks.shellSdkToast,
+  }),
 }));
 vi.mock('../../hooks/useActiveChatSessions', () => ({
   useSendMessage: () => vi.fn(),
@@ -82,7 +84,13 @@ function Probe() {
           })
         }
       >
-        Toast
+        Object toast
+      </button>
+      <button
+        type="button"
+        onClick={() => showToast('String warning', 'warning', 321)}
+      >
+        String toast
       </button>
     </>
   );
@@ -96,7 +104,11 @@ beforeEach(() => {
 
 test('binds SDK navigation and layout reads to the admitted Pane Project', () => {
   const { rerender } = render(
-    <SDKAdapter layout={paneLayout} boundProjectSlug="project-alpha">
+    <SDKAdapter
+      layout={paneLayout}
+      boundProjectSlug="project-alpha"
+      boundPluginName="plugin-alpha"
+    >
       <Probe />
     </SDKAdapter>,
   );
@@ -116,7 +128,11 @@ test('binds SDK navigation and layout reads to the admitted Pane Project', () =>
   });
 
   rerender(
-    <SDKAdapter layout={paneLayout} boundProjectSlug="project-beta">
+    <SDKAdapter
+      layout={paneLayout}
+      boundProjectSlug="project-beta"
+      boundPluginName="plugin-beta"
+    >
       <Probe />
     </SDKAdapter>,
   );
@@ -126,16 +142,26 @@ test('binds SDK navigation and layout reads to the admitted Pane Project', () =>
 
 test('normalizes the documented object-form plugin toast at the shell seam', () => {
   render(
-    <SDKAdapter layout={paneLayout} boundProjectSlug="project-alpha">
+    <SDKAdapter
+      layout={paneLayout}
+      boundProjectSlug="project-alpha"
+      boundPluginName="plugin-alpha"
+    >
       <Probe />
     </SDKAdapter>,
   );
 
-  fireEvent.click(screen.getByRole('button', { name: 'Toast' }));
-  expect(mocks.shellToast).toHaveBeenCalledWith(
+  fireEvent.click(screen.getByRole('button', { name: 'Object toast' }));
+  expect(mocks.shellSdkToast).toHaveBeenCalledWith(
     'Bound toast',
-    undefined,
+    'success',
     123,
     undefined,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'String toast' }));
+  expect(mocks.shellSdkToast).toHaveBeenCalledWith(
+    'String warning',
+    'warning',
+    321,
   );
 });

@@ -90,6 +90,9 @@ function ToastCard({
     <article
       className={[
         'toast-card',
+        ['success', 'warning', 'error'].includes(notification.type ?? '')
+          ? `toast-card--${notification.type}`
+          : '',
         isApproval ? 'toast-card--approval' : '',
         isPairing ? 'toast-card--pairing' : '',
         clickable ? 'toast-card--clickable' : '',

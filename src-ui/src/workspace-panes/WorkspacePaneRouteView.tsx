@@ -5,18 +5,15 @@ import type {
 } from '@kontourai/station-contracts';
 import { withWorkspacePaneInstanceLayoutBinding } from '@kontourai/station-contracts/workspace-pane';
 import type { WorkspacePaneAvailabilityAction } from '@kontourai/station-contracts/workspace-pane-availability';
-import {
-  LayoutNavigationProvider,
-  useProjectLayoutQuery,
-} from '@kontourai/station-sdk';
+import { useProjectLayoutQuery } from '@kontourai/station-sdk';
 import { useEffect, useState } from 'react';
 import { ErrorState, SkeletonList } from '../components/state';
 import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import { SDKAdapter } from '../core/SDKAdapter';
 import { LayoutRenderer } from '../layouts';
 import { getBuiltinWorkspacePaneRenderer } from './builtinWorkspacePaneRegistry';
 import { trackMcpAppDisplayModeDecision } from './mcpAppDisplayModeTelemetry';
+import { PluginWorkspacePaneSDKBoundary } from './PluginWorkspacePaneSDKBoundary';
 import { useResolvedWorkspacePaneCatalog } from './resolvedWorkspacePaneCatalog';
 import { WorkspacePaneAvailabilityList } from './WorkspacePaneAvailabilityList';
 import { WorkspacePaneFrame } from './WorkspacePaneFrame';
@@ -373,6 +370,19 @@ export function WorkspacePaneRouteView({
         onMcpUiDisplayModeDecision={trackMcpAppDisplayModeDecision}
       />
     );
+    const owningPluginName =
+      trustedPluginLayout &&
+      boundInstance.boundContext?.contribution?.provenance.origin === 'plugin'
+        ? boundInstance.boundContext.contribution.provenance.pluginId
+        : undefined;
+    if (trustedPluginLayout && (!owningPluginName || !catalog.projectSlug)) {
+      return (
+        <ErrorState
+          title="Workspace pane unavailable"
+          description="Station could not bind this plugin pane to its owning Project and plugin."
+        />
+      );
+    }
     return (
       <section
         className="project-page project-page__workspace-pane-route"
@@ -384,18 +394,16 @@ export function WorkspacePaneRouteView({
             paneName={entry.descriptor.name}
           >
             {trustedPluginLayout ? (
-              // The route slug is accepted only after the server-issued
-              // catalog Project id matches this occurrence above. Reuse the
-              // ONE legacy plugin SDK composition with that admitted slug;
-              // do not create parallel Agent/navigation/toast authorities.
-              <SDKAdapter layout={paneLayout} boundProjectSlug={projectSlug}>
-                <LayoutNavigationProvider
-                  activeTabId={selectedTab.id}
-                  layoutSlug={paneLayout.slug}
-                >
-                  {renderer}
-                </LayoutNavigationProvider>
-              </SDKAdapter>
+              // The server-issued catalog Project id matches this occurrence
+              // above, and the slug comes from that same Project record. Reuse
+              // the ONE SDK composition; do not create parallel authorities.
+              <PluginWorkspacePaneSDKBoundary
+                layout={paneLayout}
+                projectSlug={catalog.projectSlug!}
+                pluginName={owningPluginName!}
+              >
+                {renderer}
+              </PluginWorkspacePaneSDKBoundary>
             ) : (
               renderer
             )}
