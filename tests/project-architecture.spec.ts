@@ -819,7 +819,7 @@ test.describe('ChatDock', () => {
     // archive#3973. The dock renders THROUGH a chromeless WorkspacePaneHost
     // now, and the whole point of chromeless is that you cannot tell from the
     // DOM: the shell positions the dock with child combinators
-    // (`.app__main--dock-left > .chat-dock`, `:has(> .chat-dock)`), so one
+    // (`.app__main > [data-region="left"]`, `:has(> [data-region])`), so one
     // wrapper node is enough to un-place it — which is exactly what happened,
     // and the desktop dock measured x=0.
     await expect(

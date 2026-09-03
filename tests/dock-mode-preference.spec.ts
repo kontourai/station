@@ -398,7 +398,10 @@ test.describe('Dock Mode Preference', () => {
     const appMain = page.locator('.app__main');
     const dock = page.locator('.chat-dock');
     const content = page.locator('.main-content');
-    await expect(appMain).toHaveClass(/app__main--dock-left/);
+    await expect(
+      page.locator('.app__main > [data-region="left"]'),
+    ).toBeVisible();
+    await expect(dock).toHaveAttribute('data-region', 'left');
     await expect(dock).toHaveClass(/chat-dock--left/);
 
     const [mainBox, dockBox, contentBox] = await Promise.all([

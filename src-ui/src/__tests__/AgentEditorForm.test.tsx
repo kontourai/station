@@ -164,6 +164,68 @@ describe('AgentEditorForm', () => {
     expect(tabButton('Skills and tools')).toBeTruthy();
   });
 
+  test('uses one Model heading for an external engine with selectable catalog models', () => {
+    agentConnections = [
+      {
+        id: 'codex',
+        kind: 'agent',
+        type: 'codex',
+        name: 'Codex',
+        enabled: true,
+        capabilities: ['agent-runtime'],
+        config: { engineId: 'codex' },
+        status: 'ready',
+        runtimeCatalog: {
+          models: [{ id: 'gpt-5.3-codex', name: 'GPT-5.3 Codex' }],
+        },
+      },
+    ];
+    const form = createForm({
+      execution: {
+        agentConnectionId: 'codex',
+        modelConnectionId: '',
+        runtimeOptions: {},
+      },
+    });
+
+    render(<AgentEditorForm {...baseProps({ form, agentConnections })} />);
+
+    expect(screen.getAllByRole('heading', { name: 'Model' })).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: 'Model options' })).toBeNull();
+  });
+
+  test('keeps unsupported authored model content visible read-only and names the engine and capability', () => {
+    agentConnections = [
+      {
+        id: 'legacy-engine',
+        kind: 'agent',
+        type: 'legacy-engine',
+        name: 'Legacy Engine',
+        enabled: true,
+        capabilities: ['agent-runtime'],
+        config: { engineId: 'legacy-engine' },
+        status: 'ready',
+      },
+    ];
+    const form = createForm({
+      modelId: 'authored-model',
+      execution: {
+        agentConnectionId: 'legacy-engine',
+        modelConnectionId: '',
+        runtimeOptions: { effort: 'high' },
+      },
+    });
+
+    render(<AgentEditorForm {...baseProps({ form, agentConnections })} />);
+
+    expect(screen.getByRole('heading', { name: 'Model' })).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain(
+      'Legacy Engine can’t receive model selection from Station',
+    );
+    expect(screen.getByRole('status').textContent).toContain('authored-model');
+    expect(screen.queryByRole('combobox', { name: 'Model' })).toBeNull();
+  });
+
   test('codex-bound agent exposes authored undeliverable commands read-only with catalog guidance', () => {
     agentConnections = [
       {
